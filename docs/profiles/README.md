@@ -27,13 +27,13 @@ checkpoint hash. Both Qwen base profiles pin
 revision `ab3a91a13813df8096cb4c1d560ed3669035d0cf` and the checkpoint's
 published configuration hash.
 
-## Research-only profiles
+## GLM NVFP4-Spark profiles and bounded qualification
 
 | Profile | Topology | Serving sources and evidence scope | Documentation |
 |---|---|---|---|
-| GLM-5.3 Flash NVFP4-Spark with native MTP3 | four-Spark mesh, TP4/DCP1 or DCP4 | Shared source image; coalescing, mHC and dual-domain NCCL; full shared-image qualification incomplete | [Quickstart](../GLM53_TP4_PREFILL_QUICKSTART.md), [image source lock](../../runtime/sparkring/source_image/glm53-tp4-lock.json) |
-| GLM-5.3 Flash NVFP4-Spark with MTP3 and SparkCache | four-Spark mesh, TP4/DCP1 | Bounded connector-job capture and restore profile; full shared-image recovery qualification incomplete | [Profile selection](../GLM53_TP4_PREFILL_QUICKSTART.md#verify-the-image-and-select-a-profile) |
-| GLM-5.3 Flash NVFP4-Spark with native MTP3 | two Sparks, TP2/DCP1, one DAC and both host PCIe domains | Shared source image, managed loader, adaptive RoCEnante; 256K context and 8.75 GiB KV per rank; about 1M token capacity; SparkCache unsupported | [Quickstart](../../runtime/profiles/glm53-flash-spark-tp2/README.md) |
+| GLM-5.3 Flash NVFP4-Spark with native MTP3 | four-Spark mesh, TP4/DCP1 or DCP4 | **research-only** shared-source profiles without SparkCache; no R33 cache qualification inherited | [Source profiles](../../runtime/sparkring/source_image/README.md), [image source lock](../../runtime/sparkring/source_image/glm53-tp4-lock.json) |
+| GLM-5.3 Flash NVFP4-Spark with MTP3 and SparkCache | four-Spark ring, TP4/DCP1 | R33: **qualified** for bounded startup, 112K exact-answer prefill and 8K restart restore; 24 GiB KV/rank; configured 1M request limit is not a tested 1M workload | [Quickstart](../GLM53_TP4_PREFILL_QUICKSTART.md), [qualification](../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md) |
+| GLM-5.3 Flash NVFP4-Spark with MTP3 and SparkCache | two Sparks, TP2/DCP1, one DAC and both host PCIe domains | R33: **qualified** for bounded startup, 8K restart restore and C8 correctness; managed B12X, 7.5 GiB KV/rank; configured 1M request limit is not a tested 1M workload | [Quickstart](../../runtime/profiles/glm53-flash-spark-tp2/README.md), [qualification](../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md) |
 | GLM-5.3 Flash NVFP4-Spark with native MTP3 | switched four-Spark TP4/DCP1 | Provided as-is; switched hardware not validated | [Quickstart](../GLM53_SWITCHED_TP4_QUICKSTART.md) |
 | DeepSeek-V4-Flash-Vision-Exp with DSpark | four-Spark cycle, TP4 | Anemll image and MiaAI-Lab recipe with SparkRing patched NCCL; contributor-reported observations; independent reproduction is not claimed | [Artifact contract](../../runtime/deepseek-vision-exp/profile.json), [recipe](../../recipes/deepseek-v4-flash-vision-exp-tp4.json), [quickstart](../DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
 
@@ -59,8 +59,11 @@ links the configuration and bounded evidence.
 The retired 5 GiB NVFP4-Spark TP2 configuration and its pinned image/source
 references remain available through the
 [TP2 guide's retained configuration links](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md).
-The shared-image NVFP4-Spark pair listed above uses 8.75 GiB per rank and
-does not enable SparkCache.
+The separate cache-disabled `glm53-flash-spark-tp2-mtp3` shared-image profile
+retains 8.75 GiB KV per rank and a 262,144-token request limit. It is
+**implemented**, without the R33 SparkCache profile's bounded GPU qualification.
+Select its [profile file](../../runtime/profiles/glm53-flash-spark-tp2/profile.json)
+only with the matching shared-image receipt.
 
 ## Unsupported integrations
 

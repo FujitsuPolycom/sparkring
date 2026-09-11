@@ -69,7 +69,7 @@ def load_site(path: Path):
     data = json.loads(path.read_text())
     required = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
                 "bundle_root", "container_prefix", "marker_binary", "marker_binary_sha256", "state_root"}
-    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile"}
+    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile", "cache_diagnostics", "nccl_debug"}
     if (not required <= set(data) <= required | optional
             or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1"):
         raise ValueError("Site fields do not match sparkring-glm53-mtp3-mesh-site/v1")
@@ -94,6 +94,21 @@ def load_site(path: Path):
         timeout = data["liveness_output_seconds"]
         if type(timeout) is not int or not 0 < timeout <= 2147483647:
             raise ValueError("liveness_output_seconds must be an integer from 1 to 2147483647")
+    if "nccl_debug" in data and (
+            data.get("runtime_profile") not in ("tp4-dcp1", "tp4-dcp1-sparkcache")
+            or data["nccl_debug"] != "INFO"):
+        raise ValueError("nccl_debug diagnostic mode requires an R33 TP4 profile and INFO")
+    if "cache_diagnostics" in data:
+        diagnostic = data["cache_diagnostics"]
+        if (data.get("runtime_profile") != "tp4-dcp1-sparkcache"
+                or not isinstance(diagnostic, dict)
+                or set(diagnostic) != {"namespace", "access_mode", "trace_reuse"}
+                or not isinstance(diagnostic.get("namespace"), str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", diagnostic["namespace"])
+                or "REPLACE" in diagnostic["namespace"]
+                or diagnostic["access_mode"] != "restore-only"
+                or type(diagnostic["trace_reuse"]) is not int or diagnostic["trace_reuse"] != 1):
+            raise ValueError("cache_diagnostics requires R33 tp4-dcp1-sparkcache, a concrete safe namespace, restore-only access and trace_reuse=1")
     topology_path = path.parent / data["topology_file"]
     topology = fabric.load_topology(topology_path)
     for node in topology.ranks:
@@ -137,9 +152,30 @@ def _source_receipt_contract():
                 sys.modules[name] = saved
 
 
+def _r33_profile_verifier():
+    path = ROOT / "runtime/sparkring/jovian-r33/profiles/verify_profile.py"
+    spec = importlib.util.spec_from_file_location("sparkring_r33_mesh_profile_verifier", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def validate_image_receipt(document: dict) -> dict:
     if not isinstance(document, dict):
         raise ValueError("Image receipt must be a JSON object")
+    if document.get("schema") == "sparkring-r33-image-receipt/v1":
+        _r33_profile_verifier().validate_image_receipt(document)
+        expected = document.get("bundle_manifest_sha256")
+        verification = document.get("verification")
+        checked = verification.get("checked_files") if isinstance(verification, dict) else None
+        manifest_path = "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json"
+        if (not isinstance(expected, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", expected)
+                or not isinstance(checked, dict)
+                or checked.get(manifest_path) != expected):
+            raise ValueError(
+                "R33 image receipt does not bind its mesh manifest to verified image bytes")
+        return dict(document, r33_candidate=True)
     if document.get("schema") == "sparkring-source-image-receipt/v1":
         lock = json.loads(SOURCE_LOCK.read_text())
         selected = lock["profiles"].get(document.get("profile"), {})
@@ -250,11 +286,31 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         raise ValueError("Bundle manifest does not match the MTP3 mesh profile")
     manifest = json.loads((bundle / "sparkring-overlay-manifest.json").read_text())
     for item in manifest["files"]:
-        if sha(manifest_file(bundle, item["path"])) != item["sha256"]:
+        expected_hashes = {item["sha256"]}
+        if image_record and image_record.get("schema") == "sparkring-r33-image-receipt/v1":
+            # R33 retains the overlay lineage manifest and separately attests its
+            # rebuilt native library and packaged Python files. Host rendering may
+            # use the lineage bundle or files extracted from that verified image.
+            image_path = "/opt/sparkring/sircl/python/" + item["path"]
+            if item["path"] == "libspark_transport_capi.so":
+                image_path = "/opt/sparkring/sircl/libspark_transport_capi.so"
+            rebuilt_hash = image_record["verification"]["checked_files"].get(image_path)
+            if rebuilt_hash is not None:
+                expected_hashes.add(rebuilt_hash)
+        if sha(manifest_file(bundle, item["path"])) not in expected_hashes:
             raise ValueError("Bundle entry is unsafe or differs from its manifest")
     site, topology, plan = load_site(site_path)
     source_composition = image_record and image_record.get("schema") == "sparkring-source-image-receipt/v1"
-    if site.get("runtime_profile") != (image_record["profile"] if source_composition else None):
+    r33_composition = image_record and image_record.get("schema") == "sparkring-r33-image-receipt/v1"
+    if "cache_diagnostics" in site and not r33_composition:
+        raise ValueError("cache_diagnostics requires an R33 image receipt")
+    if "nccl_debug" in site and not r33_composition:
+        raise ValueError("nccl_debug diagnostic mode requires an R33 image receipt")
+    if r33_composition:
+        runtime_profile = site.get("runtime_profile")
+        if runtime_profile not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
+            raise ValueError("R33 managed site must select tp4-dcp1 or tp4-dcp1-sparkcache")
+    elif site.get("runtime_profile") != (image_record["profile"] if source_composition else None):
         raise ValueError("Site runtime profile differs from the explicit image receipt")
     values = defaults(BASE / "runtime.env.example")
     values.update(defaults(BASE / "sircl-fused.env.example"))
@@ -272,12 +328,14 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     })
     if "liveness_output_seconds" in site:
         values["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = str(site["liveness_output_seconds"])
+    if "nccl_debug" in site:
+        values["NCCL_DEBUG"] = site["nccl_debug"]
     if site.get("api_keys_file"):
         values["API_KEYS_FILE"] = site["api_keys_file"]
     if image_record is not None:
         values["IMAGE_ID"] = image_record["image_id"]
         values["IMAGE_REF"] = image_record["image_reference"]
-        if image_record["inside_image"].get("readiness_warmup") is not None:
+        if image_record.get("inside_image", {}).get("readiness_warmup") is not None:
             values["SPARKRING_WARMUP_TEMPERATURE"] = "1"
         if image_record.get("schema") == "sparkring-mtp3-performance-public-image/v1":
             values["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] = image_record["native_placement_sha256"]
@@ -288,15 +346,77 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
             values.update(selected["environment"])
             values.update(NCCL_LIBRARY_PATH=lock["runtime"]["nccl_path"],
                           NCCL_LIBRARY_SHA256=lock["runtime"]["nccl_sha256"])
+        elif r33_composition:
+            verifier = _r33_profile_verifier()
+            contract = verifier.load_contract()
+            selected = contract["profiles"][runtime_profile]
+            profile_values = verifier.parse_template(
+                ROOT / "runtime/sparkring/jovian-r33/profiles" / selected["template"]
+            )
+            if selected.get("inherits"):
+                parent = contract["profiles"][selected["inherits"]]
+                profile_values = {
+                    **verifier.parse_template(ROOT / "runtime/sparkring/jovian-r33/profiles" / parent["template"]),
+                    **profile_values,
+                }
+            for unresolved in ("NODE_RANK", "MASTER_ADDR", "NCCL_IB_HCA"):
+                profile_values.pop(unresolved, None)
+            values.update(contract["common_environment"])
+            values.update(profile_values)
+            sparkcache_enabled = "1" if selected["sparkcache"] else "0"
+            values.update({
+                "SPARKCACHE_ENABLED": sparkcache_enabled,
+                "SPARKCACHE_ASYNC_PAGE_CAPTURE": sparkcache_enabled,
+            })
+            values.update({
+                "SOURCE_IMAGE_PROFILE": runtime_profile,
+                "SPARKRING_PROFILE_MODE": "custom",
+                "SPARKRING_MANAGED_MESH_RENDERED": "1",
+                "PYTHONPATH": "/opt/sparkring/sircl/python",
+                "SPARK_TP4_LIBRARY": "/opt/sparkring/sircl/libspark_transport_capi.so",
+                "SIRCL_BUNDLE_HOST_ROOT": "",
+                "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": image_record["verification"]["checked_files"]["/opt/sparkring/sircl/libspark_transport_capi.so"],
+                "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": image_record["bundle_manifest_sha256"],
+                "VLLM_SPARK_TP4_MODE": "custom",
+                "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+                "NCCL_LIBRARY_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+                "VLLM_NCCL_SO_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+                "NCCL_LOCAL_INFERENCE_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+                "LD_PRELOAD": "/opt/local-inference/nccl/lib/libnccl.so.2",
+                "NCCL_LIBRARY_SHA256": image_record["verification"]["checked_files"]["/opt/local-inference/nccl/lib/libnccl.so.2.31.2"],
+            })
+            if selected["sparkcache"]:
+                native = contract["sparkcache_native"]
+                checked = image_record.get("verification", {}).get("checked_files", {})
+                if (checked.get(native["placement_path"]) != native["placement_sha256"]
+                        or checked.get(native["snapshot_path"]) != native["snapshot_sha256"]):
+                    raise ValueError("R33 image receipt does not bind SparkCache native libraries")
+                values.update({
+                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-r33-{image_record['image_id'][7:19]}-tp4-dcp1",
+                    "SPARKCACHE_PLACEMENT_LIBRARY_PATH": native["placement_path"],
+                    "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": native["placement_sha256"],
+                    "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": native["snapshot_path"],
+                    "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256": native["snapshot_sha256"],
+                    "SPARKCACHE_VLLM_ROOT": native["vllm_root"],
+                    "SPARKCACHE_SOURCE_LEASE_CONTRACT": native["lease_contract"],
+                })
+    if "cache_diagnostics" in site:
+        diagnostic = site["cache_diagnostics"]
+        if diagnostic["namespace"] == values["SPARKCACHE_CACHE_NAMESPACE"]:
+            raise ValueError("cache_diagnostics requires an isolated namespace distinct from the image default")
+        values.update(SPARKCACHE_CACHE_NAMESPACE=diagnostic["namespace"],
+                      SPARKCACHE_ACCESS_MODE="restore-only", SPARKCACHE_ASYNC_PAGE_CAPTURE="0",
+                      SPARK_CONTEXT_CACHE_TRACE_REUSE="1", SPARKCACHE_CLEAR_ONCE="")
     output.mkdir(parents=True)
     ranks = []
     for rank in range(4):
         env = dict(values)
         env.update(HOST_IP=site["management_addresses"][rank], TARGET_MODEL_HOST_PATH=site["model_roots"][rank],
                    CACHE_HOST_ROOT=site["cache_roots"][rank], SOCKET_IFNAME=topology.rank(rank).management_netdev,
+                   NODE_RANK=str(rank), SPARKRING_NODE_RANK=str(rank),
                    NCCL_IB_HCA=",".join(topology.rank(rank).port(direction, 0).rdma_device
                                          for direction in ("clockwise", "counter_clockwise")))
-        if source_composition and selected["host_domains"] == "dual":
+        if (source_composition or r33_composition) and selected["host_domains"] == "dual":
             env["NCCL_IB_HCA"] = "=" + ",".join(
                 topology.rank(rank).port(direction, function).rdma_device + ":1"
                 for function in (0, 1) for direction in ("clockwise", "counter_clockwise")
@@ -315,6 +435,9 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                 env[prefix + f"PEER{slot}"] = peer.ipv4
                 env[prefix + f"DEVICE{slot}"] = local.rdma_device
                 env[prefix + f"GID{slot}"] = "3"
+        if r33_composition:
+            env["SPARK_TP4_CONTROL_PORT0"] = env["SPARK_TP4_GRAPH_CONTROL_PORT0"]
+            env["SPARK_TP4_CONTROL_PORT1"] = env["SPARK_TP4_GRAPH_CONTROL_PORT1"]
         if any("REPLACE" in value for value in env.values()):
             raise ValueError("Rendered runtime still contains unresolved values")
         text = "# Native MTP3 mesh profile. Review before sourcing.\n"

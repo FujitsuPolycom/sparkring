@@ -8,6 +8,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+from unittest import mock
 
 import pytest
 
@@ -33,6 +34,17 @@ def _bash_path(path: Path) -> str:
     drive, tail = os.path.splitdrive(str(path))
     assert drive
     return f"/mnt/{drive[0].lower()}/" + tail.lstrip("\\/").replace("\\", "/")
+
+
+def test_nccl_info_only_changes_one_effective_docker_argument(launch_fixture):
+    launch, _, _ = launch_fixture
+    normal, normal_args, _ = launch(0, {})
+    diagnostic, diagnostic_args, _ = launch(0, {"NCCL_DEBUG": "INFO"})
+    assert normal.returncode == diagnostic.returncode == 0
+    assert len(normal_args) == len(diagnostic_args)
+    assert [(a, b) for a, b in zip(normal_args, diagnostic_args) if a != b] == [
+        ("NCCL_DEBUG=WARN", "NCCL_DEBUG=INFO")]
+    assert "NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH" in diagnostic_args
 
 
 def _write_executable(path, source):
@@ -128,6 +140,159 @@ printf '%s  %s\n' "$hash" "$2"
 def _option(arguments, name):
     assert arguments.count(name) == 1
     return arguments[arguments.index(name) + 1]
+
+
+def _docker_environment(arguments):
+    values = [arguments[index + 1] for index, value in enumerate(arguments[:-1]) if value == "-e"]
+    names = [value.partition("=")[0] for value in values]
+    assert len(names) == len(set(names)), f"duplicate Docker environment names: {names}"
+    return dict(value.split("=", 1) for value in values if "=" in value)
+
+
+def _docker_labels(arguments):
+    values = [arguments[index + 1] for index, value in enumerate(arguments[:-1]) if value == "--label"]
+    names = [value.partition("=")[0] for value in values]
+    assert len(names) == len(set(names)), f"duplicate Docker label names: {names}"
+    return dict(value.split("=", 1) for value in values)
+
+
+def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture):
+    launch, _, _ = launch_fixture
+    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
+    result, arguments, _ = launch(0, {
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
+        "SPARKRING_PROFILE_MODE": "custom",
+        "LOAD_FORMAT": "instanttensor",
+        "SPARKRING_MANAGED_MESH_RENDERED": "1",
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "SPARKCACHE_ENABLED": "0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
+        "NCCL_LIBRARY_PATH": nccl,
+        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+        "SIRCL_BUNDLE_HOST_ROOT": "",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
+    })
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
+    image_index = arguments.index(profile.defaults(profile.BASE / "runtime.env.example")["IMAGE_REF"])
+    assert arguments[image_index + 1:image_index + 3] == ["serve", "/models/target"]
+    assert _option(arguments, "--load-format") == "instanttensor"
+    assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
+    environment_map = _docker_environment(arguments)
+    for expected in (
+        "SOURCE_IMAGE_PROFILE=tp4-dcp1",
+        "SPARKRING_PROFILE_MODE=custom",
+        "SPARKRING_MANAGED_MESH_RENDERED=1",
+        "VLLM_SPARK_TP4_VOCAB_MODE=custom",
+        f"VLLM_NCCL_SO_PATH={nccl}",
+        f"NCCL_LOCAL_INFERENCE_PATH={nccl}",
+        "NODE_RANK=0",
+    ):
+        name, value = expected.split("=", 1)
+        assert environment_map[name] == value
+    assert environment_map["PYTHONPATH"] == "/opt/sparkring/sircl/python"
+    assert environment_map["SPARK_TP4_LIBRARY"] == "/opt/sparkring/sircl/libspark_transport_capi.so"
+    assert environment_map["LOAD_FORMAT"] == "instanttensor"
+    assert environment_map["VLLM_PLUGINS"] == ""
+    assert "MASTER_ADDR" in environment_map
+    assert "SPARK_TP4_CONTROL_PORT0" in environment_map
+    assert _docker_labels(arguments)["org.sparkring.runtime"] == "glm53-flash-spark-jovian-r33-tp4-dcp1"
+    assert all("/opt/spark-sircl" not in value for value in arguments)
+    entrypoint_path = HERE.parent / "sparkring/jovian-r33/image/entrypoint.py"
+    spec = importlib.util.spec_from_file_location("r33_tp4_candidate_entrypoint", entrypoint_path)
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
+    with mock.patch.dict(os.environ, environment_map, clear=True), mock.patch.object(entrypoint.subprocess, "run"):
+        selected = entrypoint.validate_external_profile(HERE.parent / "sparkring/jovian-r33/profiles")
+    assert selected["tensor_parallel_size"] == 4
+
+
+@pytest.mark.parametrize("diagnostic,clear_once", [(False, "auto"), (True, ""), (True, "auto"), (True, "none")])
+def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixture, diagnostic, clear_once):
+    launch, _, _ = launch_fixture
+    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
+    placement = "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
+    snapshot = "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
+    lease = "/opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json"
+    result, arguments, _ = launch(0, {
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp1-sparkcache",
+        "SPARKRING_PROFILE_MODE": "custom",
+        "LOAD_FORMAT": "instanttensor",
+        "SPARKRING_MANAGED_MESH_RENDERED": "1",
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "SPARKCACHE_ENABLED": "1",
+        "SPARKCACHE_ACCESS_MODE": "restore-only" if diagnostic else "read-write",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0" if diagnostic else "1",
+        "SPARK_CONTEXT_CACHE_TRACE_REUSE": "1" if diagnostic else "0",
+        "SPARKCACHE_CLEAR_ONCE": clear_once,
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT": "2",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES": "536870912",
+        "SPARKCACHE_LOAD_THREADS": "2",
+        "SPARKCACHE_MAX_PENDING_RESTORES": "2",
+        "SPARKCACHE_CUDA_RESTORE_IO_WORKERS": "2",
+        "SPARKCACHE_CUDA_ARENA_BYTES": "67108864",
+        "SPARKCACHE_BUFFER_BUDGET_BYTES": "1342177280",
+        "SPARKCACHE_MAX_BYTES": "8589934592",
+        "SPARKCACHE_LOW_WATERMARK_BYTES": "6442450944",
+        "SPARKCACHE_MIN_SPAN_TOKENS": "4096",
+        "SPARKCACHE_MAX_SPAN_TOKENS": "65536",
+        "SPARKCACHE_PUBLICATION_SCHEMA": "tail-cow-v2",
+        "KV_CACHE_MEMORY_BYTES": "25769803776",
+        "MAX_MODEL_LEN": "1048576",
+        "SPARKCACHE_CACHE_NAMESPACE": "r33-cache-fixture",
+        "SPARKCACHE_PLACEMENT_LIBRARY_PATH": placement,
+        "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+        "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": snapshot,
+        "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
+        "SPARKCACHE_VLLM_ROOT": "/opt/venv/lib/python3.12/site-packages",
+        "SPARKCACHE_SOURCE_LEASE_CONTRACT": lease,
+        "NCCL_LIBRARY_PATH": nccl,
+        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+        "SIRCL_BUNDLE_HOST_ROOT": "",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
+    })
+    if diagnostic and clear_once:
+        assert result.returncode == 78
+        assert "traced restore-only diagnostics" in result.stderr
+        return
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
+    assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
+    connector = json.loads(_option(arguments, "--kv-transfer-config"))["kv_connector_extra_config"]
+    assert connector["spark_cache_access_mode"] == ("restore-only" if diagnostic else "read-write")
+    assert connector["spark_cache_async_page_capture"] is (not diagnostic)
+    assert connector["spark_cache_clear_once"] == ("" if diagnostic else "r33-cache-fixture")
+    assert connector["spark_cache_cuda_placement_library"] == placement
+    assert connector["spark_cache_async_page_capture_library"] == snapshot
+    assert connector["spark_cache_async_page_capture_vllm_root"] == "/opt/venv/lib/python3.12/site-packages"
+    assert connector["spark_cache_async_page_capture_lease_contract"] == lease
+    environment = _docker_environment(arguments)
+    assert _docker_labels(arguments)["org.sparkring.runtime"] == (
+        "glm53-flash-spark-jovian-r33-tp4-dcp1-sparkcache"
+    )
+    entrypoint_path = HERE.parent / "sparkring/jovian-r33/image/entrypoint.py"
+    spec = importlib.util.spec_from_file_location("r33_cache_candidate_entrypoint", entrypoint_path)
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
+    with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(entrypoint.subprocess, "run"):
+        selected = entrypoint.validate_external_profile(HERE.parent / "sparkring/jovian-r33/profiles")
+    assert selected["sparkcache"] is True
 
 
 @pytest.mark.parametrize('rank', range(4))

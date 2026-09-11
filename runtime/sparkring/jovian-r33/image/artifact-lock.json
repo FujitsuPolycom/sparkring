@@ -1,0 +1,244 @@
+{
+  "schema": "sparkring-r33-candidate-inputs/v1",
+  "foundation": {
+    "reference": "local/sparkring:r33-arm64-foundation",
+    "image_id": "sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217",
+    "architecture": "arm64",
+    "cuda": "13.3",
+    "torch": "2.13.0",
+    "torch_source": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+    "nccl_replaced_in_candidate": true
+  },
+  "media_runtime": {
+    "reference": "local/sparkring:r33-media-probe",
+    "image_id": "sha256:a1a72e18ad49d99f6194a2585bfdc5f32d79180cdf2cd015c0d0d451479d6a42",
+    "foundation_image_id": "sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217",
+    "architecture": "arm64",
+    "ffmpeg": "6.1.1-3ubuntu5",
+    "status": "content-addressed-media-import-and-video-decode-qualified"
+  },
+  "source_identities": {
+    "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
+    "vllm_integrated_tree": "547f7091841728f21ab419012a766fd1df70a569",
+    "vllm_cached_diff_sha256": "aca0e198b659ba3d0a7778e88d4aa65a718ded57c826d5ee23ed861a9af30be5",
+    "vllm_status_sha256": "78fe89198cbaeb21c21b57aad6013008f1e851ce3e376e8a73efba5c56eb64e3",
+    "vllm_status_lines": 35,
+    "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
+    "vllm_flash_attn_commit": "f3e1a4f74c99145c0717709860bf765de1703779",
+    "b12x_commit": "68acfc14893c087aa9b3120bb984fde4c4e7a21f",
+    "b12x_tree": "284e7df8caff930477a314fea20d826256844de4",
+    "torch_commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+    "nccl_base_commit": "fb6f40999a2a9e63104d4ae4a84118bce61528f8",
+    "nccl_patched_tree": "aa7028b2b2a55af4817f8d742e17717dd4509ee7",
+    "nccl_patch_sha256": "a69a4376b5732cde42f7d39057e5667b4b248c5afc197c7d188a8f891f7ccd8c",
+    "flashinfer_commit": "803c4664f4771ddc418f20a57f752469a237a825",
+    "flashinfer_tree": "8728cfffc16c122e3536b63dc3456fdcdb9db272",
+    "flashinfer_generated_file_map_sha256": "0a7929e8096447f9ea1e3ec3972799c130a6f2651fa3e9d18c7ffbc8bfaacb8e",
+    "flashinfer_recursive_submodules_sha256": "639f176c3f32c8947377f8ba4902ef8eb2b927594c74cd2529016bdbabcb57bd",
+    "flashinfer_status_sha256": "46308fe01c0fb5d5a40e473e19d002cb8e4374c2199301be39eeded26cebce9b",
+    "flashkda_commit": "3b225bf26bb8e218928a1fe14751cb48cf31d11b",
+    "flashkda_base_tree": "e8cf226562e56d0817462de76a614d32a83409ef",
+    "flashkda_result_tree": "3668743d4c392da0270b6c36cbfeb3545571a613",
+    "flashkda_result_diff_sha256": "a21c2a2ee49e17c4f356a1b40ef2d30ac8f826f14d9f054eb6622e94ee634796",
+    "flashkda_patch_sha256": "a9537532cf231babc942fa592666893268ca0617b24daeb8e78d3249e8c1d58a",
+    "lmcache_commit": "29bc5a2efde737c436b04499eb62cd1776cebeec",
+    "lmcache_tree": "5a88a1ea9d2627c76288d056e7193f7454669b64",
+    "instanttensor_commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
+    "instanttensor_tree": "e87cad722a31e78f45097cb82aa7b9bb067224a6",
+    "libaio_commit": "1b18bfafc6a2f7b9fa2c6be77a95afed8b7be448",
+    "xgrammar_commit": "2ea71da4ccb997a06928c9fb69b99f330da56697",
+    "xgrammar_base_tree": "6f118db56d875807366d249dc327cb63dcb91b73",
+    "xgrammar_result_tree": "4c848facc0ec2d9a77d1caa7408b339fea2f4424",
+    "xgrammar_transformers_metadata_patch_sha256": "f458147eecb0678978528e43dd608945996da3378a0bec7663ad4c9d0d053847",
+    "sparkcache_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
+    "sparkcache_tree": "86ef46de45dd0f4ed776b86109a30df6f83db557",
+    "sparkcache_native_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
+    "sparkcache_native_tree": "86ef46de45dd0f4ed776b86109a30df6f83db557",
+    "sparkcache_native_source_archive_sha256": "d61bb093bb247c772709a5a25a0751960e31db3052ab0b1830332e03b7b05989",
+    "torchvision_commit": "8fb87713a24951e639c494b0f2a8a81b5f8e33a6",
+    "torchvision_tree": "7c24608af79802e05d7acfb6a44479fed788545a",
+    "torchaudio_commit": "34c52a67e8941bbd8e6adaca0eb0b9eabec11d78",
+    "torchaudio_tree": "d0101192942c6971ae9cd347a0100bb6a6ae7b06",
+    "torch_tree": "7cda5eae52ace99ca4daa7e623920cc93782cc6c",
+    "cutlass_commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
+    "cutlass_tree": "c820b06913f616dc6dd57559ca525b8ce645aaf0",
+    "rust_tree": "85c3cd52db223217d45377d3f7f884e756641de3",
+    "rust_toolchain_blob": "4933b3ba170755e38ab3fc39cfc6bf952aabedcc",
+    "rust_manifest_sha256": "821ff14e4c4a1cbe1e8915f35aff0a3fbbdf8d293ad48ab8f31e3b0440c581f9",
+    "rust_toolchain_sha256": "094c9c36531911c5cc7dd6ab2d3069ab8dcd744d6239b0bda1387b243dfc391e",
+    "sircl_commit": "3be025668705a9f72dd08a215230784e3c42c977",
+    "sircl_tree": "18e13dad5071b0a153f2c33c9c1720a3eca50318",
+    "sircl_source_archive_sha256": "fe3e12de5cb1b392f015a751d7b27b6210c95fa7613113fd7895990e2041db0f",
+    "vllm_continuation_port_commit": "b611611a643502542c2d900057eb47e407b8379e",
+    "vllm_continuation_port_tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a",
+    "vllm_source_manifest_sha256": "f2e61b47d241de2cd54cbf3c8219ff93c096a2085e504522099788b11499b8c1",
+    "vllm_scheduler_config_compatibility_commit": "3049b639bdbc513319f7bae896c4e239992bc7bb",
+    "vllm_prefix_hit_metadata_compatibility_commit": "4405a965e54f14df00d28e5e23f9793f866aae39",
+    "vllm_tp2_continuation_port_commit": "8fe550fd876ddea18a23b597611baec15dec048e"
+  },
+  "artifacts": [
+    {
+      "name": "lmcache",
+      "source": "artifacts/lmcache/lmcache-0.5.5.dev0+glm53checkpoints.29bc5a2e-cp312-cp312-linux_aarch64.whl",
+      "destination": "wheelhouse/lmcache-0.5.5.dev0+glm53checkpoints.29bc5a2e-cp312-cp312-linux_aarch64.whl",
+      "sha256": "de088ce5b129b6b4c45907abb730185d048240b1ef4ad6b4df4409af8b4dabe1",
+      "install": true
+    },
+    {
+      "name": "lmcache-cumem-interposer",
+      "source": "artifacts/lmcache/liblmcache_cumem_shareable.so",
+      "destination": "native/liblmcache_cumem_shareable.so",
+      "sha256": "6c3b32b7892571c0a6a94b7197f87a3bad9735eb897779fc9c9d5981a583499d",
+      "install": false
+    },
+    {
+      "name": "instanttensor",
+      "source": "artifacts/instanttensor/instanttensor-0.1.9-cp312-cp312-linux_aarch64.whl",
+      "destination": "wheelhouse/instanttensor-0.1.9-cp312-cp312-linux_aarch64.whl",
+      "sha256": "5e84d195301218dc9e65dbab40230c75b88873ae60bfb4eb16e95b51b061d6db",
+      "install": true
+    },
+    {
+      "name": "xgrammar",
+      "source": "artifacts/xgrammar-r33/xgrammar-0.2.5-cp312-cp312-linux_aarch64.whl",
+      "destination": "wheelhouse/xgrammar-0.2.5-cp312-cp312-linux_aarch64.whl",
+      "sha256": "41ecfe5d7ac8c19a868048d7fe4b1850937b49c19ac6ad0498df1f090bddefec",
+      "install": true
+    },
+    {
+      "name": "sparkcache",
+      "source": "artifacts/sparkcache/sparkcache-0.1.0a3-py3-none-any.whl",
+      "destination": "wheelhouse/sparkcache-0.1.0a3-py3-none-any.whl",
+      "sha256": "5587669f246369a33a33dc70cfaa7bfa945223787b298323f073d69b2d735b25",
+      "install": true
+    },
+    {
+      "name": "torchvision",
+      "source": "artifacts/torchvision-r33-v2/torchvision-0.28.0-cp312-cp312-linux_aarch64.whl",
+      "destination": "wheelhouse/torchvision-0.28.0-cp312-cp312-linux_aarch64.whl",
+      "sha256": "893288e5706d74bd835433ef63ce07e7f43a43e3478df397c3ff456158064609",
+      "install": false,
+      "purpose": "resolver input; inherited byte-identically from the content-addressed media runtime"
+    },
+    {
+      "name": "torchaudio",
+      "source": "artifacts/torchaudio/torchaudio-2.11.0+cu133-cp312-cp312-linux_aarch64.whl",
+      "destination": "wheelhouse/torchaudio-2.11.0+cu133-cp312-cp312-linux_aarch64.whl",
+      "sha256": "ea03691048c55857bd6ee61a13f068211e064ab4f2fd529699f72c200f777e27",
+      "install": false,
+      "purpose": "resolver input; inherited byte-identically from the content-addressed media runtime"
+    },
+    {
+      "name": "torchcodec",
+      "source": "artifacts/arm-wheels/torchcodec-0.16.0+cu130-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "destination": "wheelhouse/torchcodec-0.16.0+cu130-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "sha256": "011f6ed28d60bae9fdc2147be5b6a67e6cce9a71cbc4ad697ecf27d22561f045",
+      "install": false,
+      "purpose": "resolver input; inherited byte-identically from the content-addressed media runtime"
+    },
+    {
+      "name": "pynvvideocodec",
+      "source": "artifacts/arm-wheels/pynvvideocodec-2.0.4-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "destination": "wheelhouse/pynvvideocodec-2.0.4-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "sha256": "bad9e25f494abdcfa8f9dffa33a840509eda3ffcdf6e7cf6465d73be307c0c82",
+      "install": false,
+      "purpose": "resolver input; inherited byte-identically from the content-addressed media runtime"
+    },
+    {
+      "name": "humming-kernels",
+      "source": "artifacts/arm-wheels/humming_kernels-0.1.12-py3-none-manylinux_2_28_aarch64.whl",
+      "destination": "wheelhouse/humming_kernels-0.1.12-py3-none-manylinux_2_28_aarch64.whl",
+      "sha256": "988e8b9da41e3679ae2816bdfb51acab53c05cc56254b5ca98e847f4efcf24fd",
+      "install": true
+    },
+    {
+      "name": "tokenspeed-mla",
+      "source": "artifacts/arm-wheels/tokenspeed_mla-0.1.8-py3-none-manylinux_2_28_aarch64.whl",
+      "destination": "wheelhouse/tokenspeed_mla-0.1.8-py3-none-manylinux_2_28_aarch64.whl",
+      "sha256": "952209cf4b29a54e6b6e7e088be9d4a40f24792b06fdfa330de8077b9926a7d9",
+      "install": true
+    },
+    {
+      "name": "torch-resolver-input",
+      "source": "artifacts/torch/torch-2.13.0-cp312-cp312-linux_aarch64.whl",
+      "destination": "wheelhouse/torch-2.13.0-cp312-cp312-linux_aarch64.whl",
+      "sha256": "49b1da341a7ac1ee2b6fa32c3868cd375159b787133d72eea95e75bfa4bf47b8",
+      "install": false,
+      "purpose": "dependency resolver input; final image inherits this exact build from the foundation"
+    },
+    {
+      "name": "nccl-2.31.2-sparkring-routing",
+      "source": "nccl-port-a69a4376/build/lib/libnccl.so.2.31.2",
+      "destination": "native/libnccl.so.2.31.2",
+      "sha256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+      "install": false
+    },
+    {
+      "name": "sircl",
+      "source": "build/sircl-cu133-sm121/artifacts/libspark_transport_capi.so",
+      "destination": "native/libspark_transport_capi.so",
+      "sha256": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+      "install": false
+    },
+    {
+      "name": "sparkcache-native-source-archive",
+      "source": "artifacts/sparkcache-native/sparkcache-f220230a-source.tar.gz",
+      "destination": "receipts/sources/sparkcache-f220230a-source.tar.gz",
+      "sha256": "d61bb093bb247c772709a5a25a0751960e31db3052ab0b1830332e03b7b05989",
+      "install": false
+    }
+  ],
+  "pending_artifacts": [
+    {
+      "name": "vllm",
+      "source_glob": "artifacts/vllm-package/vllm-0.26.1rc0+sparkring.r33.547f7091-*.whl",
+      "destination_directory": "wheelhouse",
+      "receipt_sums": "artifacts/vllm-package/SHA256SUMS",
+      "install": true,
+      "required": true
+    },
+    {
+      "name": "b12x",
+      "source_glob": "artifacts/b12x/b12x-1.3.0-*.whl",
+      "destination_directory": "wheelhouse",
+      "receipt_sums": "artifacts/b12x/SHA256SUMS",
+      "install": true,
+      "required": true
+    },
+    {
+      "name": "flashinfer-python",
+      "source_glob": "artifacts/flashinfer/flashinfer_python-0.6.18+cu133-*.whl",
+      "destination_directory": "wheelhouse",
+      "receipt_sums": "artifacts/flashinfer/SHA256SUMS",
+      "install": true,
+      "required": true
+    },
+    {
+      "name": "flashinfer-jit-cache",
+      "source_glob": "artifacts/flashinfer/flashinfer_jit_cache-0.6.18+cu133-*.whl",
+      "destination_directory": "wheelhouse",
+      "receipt_sums": "artifacts/flashinfer/SHA256SUMS",
+      "install": true,
+      "required": true
+    }
+  ],
+  "pending_native_artifacts": [
+    {
+      "name": "sparkcache-placement",
+      "source": "artifacts/sparkcache-native/libspark_cache_placement.so",
+      "destination": "native/libspark_cache_placement.so",
+      "sha256": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+      "required": true
+    },
+    {
+      "name": "sparkcache-snapshot",
+      "source": "artifacts/sparkcache-native/libspark_cache_snapshot.so",
+      "destination": "native/libspark_cache_snapshot.so",
+      "sha256": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
+      "required": true
+    }
+  ],
+  "forbidden_inputs": [
+    "artifacts/arm-wheels/torchaudio-2.11.0+cu130-cp312-cp312-manylinux_2_28_aarch64.whl"
+  ]
+}

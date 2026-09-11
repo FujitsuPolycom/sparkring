@@ -7,14 +7,20 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app" / "tp4_fused_prefill_probe.cu"
 
 
-def test_probe_is_opt_in_and_absent_from_serving_abi() -> None:
+def test_probe_is_opt_in_and_links_shared_sources_once() -> None:
     cmake = (ROOT / "CMakeLists.txt").read_text()
     assert "SPARK_TP4_ENABLE_FUSED_PREFILL_PROBE" in cmake
-    target = cmake[cmake.index("if(SPARK_TP4_ENABLE_FUSED_PREFILL_PROBE)") :]
+    target = cmake.split("if(SPARK_TP4_ENABLE_FUSED_PREFILL_PROBE)", 1)[1].split("endif()", 1)[0]
+    library = cmake.split("add_library(spark_transport\n", 1)[1].split(")", 1)[0]
+    capi = cmake.split("add_library(spark_transport_capi SHARED", 1)[1].split(")", 1)[0]
     assert "app/tp4_fused_prefill_probe.cu" in target
-    assert "fused_prefill_verbs_proxy.cpp" in target
-    assert "fused_prefill_kernels.cu" in target
-    assert "spark_transport_capi" not in target.split("endif()", 1)[0]
+    assert "target_link_libraries(spark_tp4_fused_prefill_probe PRIVATE" in target
+    assert "spark_transport CUDA::cudart" in target
+    for source in ("fused_prefill_verbs_proxy.cpp", "fused_prefill_kernels.cu"):
+        assert library.count(source) == 1
+        assert source not in target
+    assert "app/tp4_fused_prefill_probe.cu" not in library + capi
+    assert "spark_transport_capi" not in target
 
 
 def test_probe_requires_four_distinct_dual_rail_endpoints_and_mtu_4096() -> None:

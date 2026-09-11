@@ -1,0 +1,74 @@
+# syntax=docker/dockerfile:1.7
+ARG MEDIA_RUNTIME=local/sparkring:r33-media-probe
+
+FROM ${MEDIA_RUNTIME} AS verified-context
+COPY . /context/
+RUN python3 -S /context/verify_context.py --context /context
+
+FROM ${MEDIA_RUNTIME} AS python-closure
+SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
+COPY --from=verified-context /context/wheelhouse/ /wheelhouse/
+COPY --from=verified-context /context/closure-install-wheels.txt /tmp/closure-install-wheels.txt
+RUN python3 -m venv /opt/venv \
+    && mapfile -t wheels < /tmp/closure-install-wheels.txt \
+    && for index in "${!wheels[@]}"; do wheels[$index]="/wheelhouse/${wheels[$index]}"; done \
+    && /opt/venv/bin/python -m pip install --no-index --no-cache-dir --no-deps --ignore-installed --no-compile "${wheels[@]}" \
+    && /opt/venv/bin/python -m pip check
+
+FROM ${MEDIA_RUNTIME}
+SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
+COPY --from=python-closure /opt/venv /opt/venv
+COPY --from=verified-context /context/native/libnccl.so.2.31.2 /opt/local-inference/nccl/lib/libnccl.so.2.31.2
+COPY --from=verified-context /context/native/liblmcache_cumem_shareable.so /opt/lmcache/lib/liblmcache_cumem_shareable.so
+COPY --from=verified-context /context/native/libspark_transport_capi.so /opt/sparkring/sircl/libspark_transport_capi.so
+COPY --from=verified-context /context/native/libspark_cache_placement.so /opt/sparkring/sparkcache/lib/libspark_cache_placement.so
+COPY --from=verified-context /context/native/libspark_cache_snapshot.so /opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so
+COPY --from=verified-context /context/profile-contract/ /opt/sparkring/profile-contract/
+COPY --from=verified-context /context/profile-assets/ /opt/sparkring/runtime/
+COPY --from=verified-context /context/transports/ /opt/sparkring/transports/
+COPY --from=verified-context /context/sircl-python/ /opt/sparkring/sircl/python/
+COPY --from=verified-context /context/contracts/ /opt/sparkring/contracts/
+COPY --from=verified-context /context/receipts/ /opt/sparkring/receipts/
+COPY --from=verified-context /context/receipts/artifact-lock.json /opt/sparkring/image/artifact-lock.json
+COPY --from=verified-context /context/source-lock.json /opt/sparkring/receipts/source-lock.json
+COPY --from=verified-context /context/installed-python-files.json /opt/sparkring/receipts/installed-python-files.json
+COPY --from=verified-context /context/entrypoint.py /opt/sparkring/bin/sparkring-r33
+COPY --from=verified-context /context/verify_candidate.py /opt/sparkring/bin/verify-candidate
+RUN ln -sfn libnccl.so.2.31.2 /opt/local-inference/nccl/lib/libnccl.so.2 \
+    && ln -sfn libnccl.so.2 /opt/local-inference/nccl/lib/libnccl.so \
+    && ln -sfn ../libspark_transport_capi.so /opt/sparkring/sircl/python/libspark_transport_capi.so \
+    && ln -sfn /opt/sparkring/sircl/python /opt/spark-sircl \
+    && chmod 0755 /opt/sparkring/bin/sparkring-r33 /opt/sparkring/bin/verify-candidate \
+    && printf '%s\n' /opt/sparkring/transports > /opt/venv/lib/python3.12/site-packages/sparkring-transports.pth
+RUN VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:${PATH} \
+    LD_LIBRARY_PATH=/opt/local-inference/nccl/lib:/opt/sparkring/sircl:/opt/lmcache/lib:${LD_LIBRARY_PATH} \
+    LD_PRELOAD=/opt/local-inference/nccl/lib/libnccl.so.2 \
+    /opt/sparkring/bin/verify-candidate
+ENV VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:${PATH} \
+    LD_LIBRARY_PATH=/opt/local-inference/nccl/lib:/opt/sparkring/sircl:/opt/lmcache/lib:${LD_LIBRARY_PATH} \
+    LD_PRELOAD=/opt/local-inference/nccl/lib/libnccl.so.2 \
+    VLLM_NCCL_SO_PATH=/opt/local-inference/nccl/lib/libnccl.so.2 \
+    NCCL_LOCAL_INFERENCE_PATH=/opt/local-inference/nccl/lib/libnccl.so.2 \
+    SPARKRING_PROFILE_MODE=custom \
+    VLLM_B12X_KDA_PREFILL_COALESCING=0 \
+    VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT=0 \
+    VLLM_GLM53_MHC_PREFILL_SHARD=1 \
+    VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH=1 \
+    NCCL_IB_PRESERVE_PCI_DOMAIN=1 \
+    NCCL_IB_ROUTE_DIAGNOSTICS=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    VLLM_NO_USAGE_STATS=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+LABEL org.sparkring.release="jovian-r33-arm64-candidate" \
+      org.sparkring.status="package-qualified-runtime-pending" \
+      org.sparkring.vllm.tree="547f7091841728f21ab419012a766fd1df70a569" \
+      org.sparkring.nccl.sha256="84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47" \
+      org.sparkring.sircl.sha256="bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246" \
+      org.sparkring.sircl.native-sha256="bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246" \
+      org.sparkring.sircl.manifest-sha256="c0fd5567442b08b908cc193f36d0864e262573c7e5d232509479a823cface742"
+ENTRYPOINT ["/opt/sparkring/bin/sparkring-r33"]
+CMD ["--help"]

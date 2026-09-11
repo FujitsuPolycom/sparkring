@@ -236,3 +236,44 @@ def test_explicit_public_performance_selection_retains_registry_and_raw_receipt(
     preparation["spec"] = spec
     plan = build_runtime_plan(preparation, "install")
     assert "selected-image-receipt.json" in json.dumps(plan)
+
+def r33_public_receipt_path():
+    return Path(__file__).resolve().parents[1] / 'runtime/sparkring/jovian-r33/public-image-receipt.json'
+
+
+@pytest.mark.parametrize('runtime_profile', ['tp4-dcp1', 'tp4-dcp1-sparkcache'])
+def test_r33_public_receipt_plans_explicit_profile(tmp_path, runtime_profile):
+    spec = create_spec(inventory(), 'r33-ring', '/srv/sparkring/r33-ring',
+                       image_receipt=r33_public_receipt_path(), runtime_profile=runtime_profile)
+    chosen = selection(spec, PROFILE)
+    assert not chosen['local']
+    assert chosen['image_reference'].startswith('ghcr.io/fujitsupolycom/sparkring@sha256:')
+    assert chosen['config_image_id'] == 'sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4'
+    assert spec['site']['runtime_profile'] == runtime_profile
+    assert spec['site']['marker_binary_sha256'] == '2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64'
+    assert chosen['pins']['canonical_bundle_manifest_sha256'] == chosen['receipt']['bundle_manifest_sha256']
+    preparation = prepared()
+    preparation['spec'] = spec
+    preparation['network_verification']['spec_sha256'] = plan_digest(spec)
+    result = build_runtime_plan(preparation, 'create')
+    assert chosen['config_image_id'] in json.dumps(result)
+    receipt = tmp_path / 'selected-image-receipt.json'
+    receipt.write_text(json.dumps(chosen['receipt']))
+    assert validate_selected_file(spec, tmp_path, PROFILE) == receipt
+
+
+@pytest.mark.parametrize('runtime_profile', [None, 'tp2-dcp1', 'tp4-dcp4'])
+def test_r33_selection_requires_supported_explicit_profile(runtime_profile):
+    with pytest.raises(ValueError, match='explicit TP4 runtime profile'):
+        create_spec(inventory(), 'r33-ring', '/srv/sparkring/r33-ring',
+                    image_receipt=r33_public_receipt_path(), runtime_profile=runtime_profile)
+
+
+def test_r33_selection_rejects_mesh_attestation_substitution(tmp_path):
+    document = json.loads(r33_public_receipt_path().read_text())
+    document['bundle_manifest_sha256'] = '0' * 64
+    path = tmp_path / 'bad.json'
+    path.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match='mesh manifest'):
+        create_spec(inventory(), 'r33-ring', '/srv/sparkring/r33-ring',
+                    image_receipt=path, runtime_profile='tp4-dcp1-sparkcache')

@@ -230,7 +230,10 @@ def test_model_arm_rechecks_local_docker_status_after_group_gate(tmp_path, monke
 
 @pytest.mark.parametrize('message, missing', [
     ('Error: No such object: ' + 'a' * 64, True),
+    ('error: no such object: ' + 'a' * 64, True),
+    ('error: no such container: ' + 'a' * 64 + '\n', True),
     ('Error: No such object: ' + 'b' * 64, False),
+    ('error: no such object: ' + 'b' * 64, False),
     ('No such file or directory: Docker socket', False),
 ])
 def test_only_pinned_missing_container_proves_absence(monkeypatch, message, missing):
