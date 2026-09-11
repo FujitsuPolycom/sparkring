@@ -321,6 +321,89 @@ def test_legacy_tp2_plan_keeps_its_pinned_preload(inputs):
     assert plan["command"][plan["command"].index("--name") + 1] == plan["name"]
 
 
+def cache_capable_receipt():
+    receipt = r33_receipt()
+    contract = launch._r33_verifier().load_contract()
+    selected = contract["profiles"]["tp2-dcp1-sparkcache"]
+    document = {"schema": "sparkring-r33-runtime-capabilities/v1", "profile": "tp2-dcp1-sparkcache",
+                "sources": {k: receipt["sources"][k] for k in ("vllm_integrated_tree", "b12x_tree", "sparkcache_tree")},
+                "checks": {key: True for key in selected["required_capabilities"]},
+                "evidence_sha256": {key: "e" * 64 for key in selected["required_capabilities"]}}
+    data = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    digest = hashlib.sha256(data).hexdigest()
+    receipt["runtime_capabilities"] = {"document": document, "sha256": digest}
+    native = contract["sparkcache_native"]
+    receipt["verification"] = {"checked_files": {
+        "/opt/sparkring/profile-contract/tp2-sparkcache-capabilities.json": digest,
+        native["placement_path"]: native["placement_sha256"], native["snapshot_path"]: native["snapshot_sha256"]}}
+    return receipt, data
+
+
+@pytest.mark.parametrize("rank", [0, 1])
+def test_r33_cache_preserves_reference_settings_with_explicit_1m_target(inputs, rank, tmp_path):
+    runtime, capability = cache_capable_receipt()
+    value = launch.render(rank, "master.example", *inputs, LOCAL_IMAGE, runtime, r33_sparkcache=True)
+    assert value["name"] == f"sparkring-r33-tp2-dcp1-sparkcache-r{rank}"
+    args = value["container_args"]
+    option = lambda name: args[args.index(name) + 1]
+    assert option("--load-format") == "b12x"
+    assert json.loads(option("--model-loader-extra-config")) == {"allocation": "managed"}
+    assert option("--kv-cache-memory-bytes") == "7247757312"
+    assert option("--max-model-len") == "1048576"
+    assert option("--max-num-seqs") == "8"
+    assert option("--prefill-schedule-interval") == "8"
+    assert json.loads(option("--limit-mm-per-prompt")) == {"image": 3, "video": 1}
+    assert value["environment"]["VLLM_B12X_KDA_PREFILL_COALESCING"] == "1"
+    assert value["environment"]["VLLM_PLUGINS"] == "b12x_loader"
+    assert value["memory_guard_floor_bytes"] == 2147483648
+    connector = json.loads(option("--kv-transfer-config"))
+    assert connector["kv_load_failure_policy"] == "recompute"
+    extra = connector["kv_connector_extra_config"]
+    assert extra["spark_cache_cuda_restore_arena_budget_bytes"] == 268435456
+    assert extra["spark_cache_async_page_capture_slot_bytes"] == 536870912
+    assert extra["spark_cache_async_page_capture_slot_count"] == 2
+    assert "shared-tp2-jobs-20260911" not in extra["spark_cache_root"]
+    assert value["qualification"]["gpu_qualified"] is False
+    assert value["activation_blockers"] == []
+    launch.validate_runtime_receipt(runtime, value)
+    host = Host(value)
+    launch.execute(value, "create", runtime, run=host.run)
+    assert host.commands[-1] == value["command"]
+    entrypoint_path = ROOT.parents[1] / "sparkring/jovian-r33/image/entrypoint.py"
+    spec = importlib.util.spec_from_file_location("r33_tp2_cache_entrypoint", entrypoint_path)
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
+    profile_root = tmp_path / "packaged-profiles"
+    shutil.copytree(launch.R33_PROFILE_ROOT, profile_root)
+    (profile_root / "tp2-sparkcache-capabilities.json").write_bytes(capability)
+    with mock.patch.dict(os.environ, value["environment"], clear=True), mock.patch.object(entrypoint.subprocess, "run"):
+        assert entrypoint.validate_external_profile(profile_root)["sparkcache"] is True
+        (profile_root / "tp2-sparkcache-capabilities.json").unlink()
+        with pytest.raises(RuntimeError, match="capability evidence"):
+            entrypoint.validate_external_profile(profile_root)
+
+
+@pytest.mark.parametrize("failure", ["missing", "coalescing", "source", "file", "native"])
+def test_r33_cache_rejects_unproven_capabilities_before_host_action(inputs, failure):
+    runtime, _ = cache_capable_receipt()
+    if failure == "missing":
+        runtime.pop("runtime_capabilities")
+    elif failure == "coalescing":
+        runtime["runtime_capabilities"]["document"]["checks"]["tp2_continuation_prefill_coalescing"] = False
+    elif failure == "source":
+        runtime["runtime_capabilities"]["document"]["sources"]["vllm_integrated_tree"] = "0" * 40
+    elif failure == "file":
+        runtime["runtime_capabilities"]["sha256"] = "0" * 64
+    else:
+        runtime["verification"]["checked_files"].pop(launch._r33_verifier().load_contract()["sparkcache_native"]["snapshot_path"])
+    value = launch.render(0, "master.example", *inputs, LOCAL_IMAGE, runtime, r33_sparkcache=True)
+    assert value["activation_blockers"]
+    host = Host(value)
+    with pytest.raises(ValueError):
+        launch.execute(value, "create", runtime, run=host.run)
+    assert host.commands == []
+
+
 def test_changed_r33_receipt_rejected_before_host_action(inputs):
     runtime = r33_receipt()
     value = launch.render(0, "master.example", *inputs, LOCAL_IMAGE, runtime)

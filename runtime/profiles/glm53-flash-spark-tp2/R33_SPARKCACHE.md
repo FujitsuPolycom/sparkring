@@ -1,0 +1,74 @@
+# R33 TP2 SparkCache composition
+
+Status: **research-only**. The local launcher implements a separate
+`tp2-dcp1-sparkcache` plan. It preserves the bounded TP2 cache reference's
+6.75 GiB KV pool, managed B12X loader, TP2/DCP1, MTP3 with Humming draft MoE,
+eight sequences, 8,192-token scheduler budget, prefill interval eight,
+three-image/one-video admission, exact graph list, single-DAC two-domain
+transport, and active 2 GiB memory guard. It selects the R33 image's pinned
+SparkCache native libraries and lease contract and uses a fresh image-specific
+namespace. It does not reuse the reference deployment's disk cache.
+
+The request limit is explicitly 1,048,576 tokens. The reference used 262,144;
+neither that reference nor this plan proves one-million-token serving capacity.
+Multimodal accuracy, guarded memory stability, native cache capture/restore,
+recovery, and performance need new measurements on the selected image.
+
+The cache-disabled `tp2-dcp1` profile continues to use InstantTensor with
+coalescing disabled. The cache composition requires managed B12X loading and
+TP2 continuation coalescing; it never silently disables either requirement.
+An image with only the existing TP4 coalescing implementation cannot run it.
+Adding these local files does not change an already built image. An image must
+contain the extended entrypoint, matching source composition, and capability
+evidence before serving this profile.
+
+## Prepare and validate a plan
+
+Use the existing launcher arguments and add `--r33-sparkcache`:
+
+```bash
+python3 runtime/profiles/glm53-flash-spark-tp2/launch.py plan \
+  --rank 0 --master 198.18.200.1 \
+  --model-dir /srv/models/nvfp4-spark-df116c4f \
+  --cache-dir /srv/sparkring/r33-tp2-cache-r0 \
+  --env-file /srv/sparkring/private/tp2-rank0.env \
+  --image sha256:IMAGE_CONFIG_ID \
+  --runtime-receipt /srv/sparkring/private/r33-image.json \
+  --r33-sparkcache
+```
+
+Model/cache paths must exist. The site file supplies the host IP and NCCL/Gloo
+socket interfaces. The plan prints `activation_blockers` when the image lacks
+capabilities. `create` and `start` reject that receipt before inspecting guards
+or contacting Docker. Their other guard and existing-GPU-container checks are
+unchanged. Candidate names are `sparkring-r33-tp2-dcp1-sparkcache-r0/r1`.
+
+## Required capability evidence
+
+The source build must supply `tp2-sparkcache-capabilities.json` in the canonical
+R33 profile directory before context preparation. No passing capability file is
+provided by this change. Its schema is `sparkring-r33-runtime-capabilities/v1`,
+its `profile` is `tp2-dcp1-sparkcache`, and its `sources` must exactly match the
+contract's `vllm_integrated_tree`, `b12x_tree`, and `sparkcache_tree`.
+
+Both `checks` and `evidence_sha256` must contain exactly these keys:
+
+- `tp2_continuation_prefill_coalescing`
+- `managed_b12x_loader`
+- `tp2_sparkcache`
+
+Each check must be true and backed by a retained evidence artifact's SHA-256.
+Serialize the file with `json.dumps(document, sort_keys=True,
+separators=(",", ":")) + "\n"`. Context finalization binds its bytes; image
+verification checks the source lock and validates the capability document.
+The resulting image receipt carries `runtime_capabilities.document` and its
+`sha256`, matching `verification.checked_files`. The launcher also requires
+both pinned SparkCache native library hashes in that image verification.
+These are source/package capability gates, not GPU qualification.
+
+Activation requires positive managed-B12X allocation, coalescing, mHC and
+RoCEnante activity on both ranks. For an 8,192-row TP2 prefill, each owner must
+execute 4,096 rows. Retain exact image/source identities, loaded NCCL and
+dual-domain routes, graph capture, MTP acceptance, correctness, cache payload
+comparison and fault recovery. Do not substitute InstantTensor counters or
+TP4 results for the managed-B12X TP2 run.

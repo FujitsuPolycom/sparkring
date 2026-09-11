@@ -35,13 +35,18 @@ selects TP4/DCP1, MTP3, the 1,048,576-token request limit, dual-domain NCCL, and
 the exact graph sizes recorded by the mesh profile. Apply
 `tp4-dcp1-sparkcache.env.example` only for the separate bounded cache run.
 
-All profiles enable mHC prefill sharding, the native vLLM `instanttensor` load
-format, and DCP1. For an 8,192-row prefill, TP4 divides mHC ownership into
+The cache-disabled TP2 and both TP4 profiles use native vLLM `instanttensor`
+loading. All profiles enable mHC prefill sharding and DCP1. For an 8,192-row prefill, TP4 divides mHC ownership into
 2,048 rows per rank; this is not a fixed owner-row count for every topology.
 The TP4 template requests continuation-prefill coalescing and up to four
 diagnostic records per rank. The SparkCache overlay inherits those settings.
-TP2 disables coalescing because the implemented admission contract requires
-TP4. The locked vLLM composition implements sparse checkpoint scheduling and
+The cache-disabled TP2 profile disables coalescing. The separate
+`tp2-dcp1-sparkcache` profile requires managed B12X loading, TP2 coalescing,
+6.75 GiB KV per rank and source-bound capability evidence. It remains blocked
+until a rebuilt image carries the necessary source implementation and packaged
+evidence; adding a profile does not extend an existing image's capabilities.
+See [the TP2 cache plan and evidence gates](../../../profiles/glm53-flash-spark-tp2/R33_SPARKCACHE.md).
+The locked vLLM composition implements sparse checkpoint scheduling and
 the multi-checkpoint B12X execution path. The pinned
 InstantTensor revision selects its I/O backend automatically; these profiles do
 not require an `INSTANTTENSOR_*` environment override. Configuration is

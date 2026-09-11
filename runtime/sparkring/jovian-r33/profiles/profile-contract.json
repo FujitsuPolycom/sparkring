@@ -238,6 +238,44 @@
         64
       ],
       "lifecycle": "runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md"
+    },
+    "tp2-dcp1-sparkcache": {
+      "template": "tp2-dcp1-sparkcache.env.example",
+      "tensor_parallel_size": 2,
+      "decode_context_parallel_size": 1,
+      "node_count": 2,
+      "transport": "tp2-rocenante-adaptive",
+      "transport_manifest": "transport_profiles/tp2-rocenante-adaptive/manifest.json",
+      "transport_manifest_sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
+      "host_domains": "dual",
+      "physical_dacs_per_rank": 1,
+      "sparkcache": true,
+      "kv_cache_memory_bytes": 7247757312,
+      "cudagraph_capture_sizes": [
+        1,
+        2,
+        4,
+        8,
+        12,
+        16,
+        20,
+        24,
+        28,
+        32
+      ],
+      "lifecycle": "explicit-create-and-start-with-active-memory-guard",
+      "load_format": "b12x",
+      "loader_extra_config": {
+        "allocation": "managed"
+      },
+      "plugins": "b12x_loader",
+      "continuation_coalescing": true,
+      "capability_file": "tp2-sparkcache-capabilities.json",
+      "required_capabilities": [
+        "tp2_continuation_prefill_coalescing",
+        "managed_b12x_loader",
+        "tp2_sparkcache"
+      ]
     }
   }
 }

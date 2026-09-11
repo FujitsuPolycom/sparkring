@@ -99,6 +99,14 @@ def main() -> int:
         "model_loaded": False,
         "gpu_qualified": False,
     }
+    capability = ROOT / "profile-contract/tp2-sparkcache-capabilities.json"
+    if capability.exists():
+        if checked_files.get(str(capability)) != digest(capability):
+            raise RuntimeError("TP2 capability evidence is not bound by the image source lock")
+        subprocess.run([sys.executable, str(ROOT / "profile-contract/verify_profile.py"),
+                        "capability", "--profile", "tp2-dcp1-sparkcache", "--receipt", str(capability)],
+                       check=True, stdout=subprocess.DEVNULL)
+        result["runtime_capabilities"] = {"document": json.loads(capability.read_text()), "sha256": digest(capability)}
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

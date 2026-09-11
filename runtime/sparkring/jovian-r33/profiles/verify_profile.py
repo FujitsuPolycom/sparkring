@@ -63,7 +63,7 @@ def validate_template(name: str, asset_root: Path | None = None) -> dict:
         "MAX_MODEL_LEN": str(contract["model"]["max_model_len"]),
         "KV_CACHE_MEMORY_BYTES": str(selected["kv_cache_memory_bytes"]),
         "NUM_SPECULATIVE_TOKENS": str(contract["model"]["speculation"]["num_speculative_tokens"]),
-        "LOAD_FORMAT": contract["model"]["loader"]["load_format"],
+        "LOAD_FORMAT": selected.get("load_format", contract["model"]["loader"]["load_format"]),
         "CUDAGRAPH_CAPTURE_SIZES": ",".join(map(str, selected["cudagraph_capture_sizes"])),
         "VLLM_B12X_KDA_PREFILL_COALESCING": (
             "0" if name == "tp2-dcp1" else "1"
@@ -74,10 +74,12 @@ def validate_template(name: str, asset_root: Path | None = None) -> dict:
         "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
         "SPARKCACHE_ENABLED": "1" if selected["sparkcache"] else "0",
     }
+    if selected.get("plugins"):
+        expected["VLLM_PLUGINS"] = selected["plugins"]
     for key, value in expected.items():
         if values.get(key) != value:
             raise ValueError(f"{name} requires {key}={value}")
-    if name == "tp2-dcp1":
+    if name.startswith("tp2-"):
         manifest = asset_root / selected["transport_manifest"]
         if hashlib.sha256(manifest.read_bytes()).hexdigest() != selected["transport_manifest_sha256"]:
             raise ValueError("The TP2 RoCEnante manifest differs from the profile contract")
@@ -127,10 +129,44 @@ def _positive(value: object, label: str) -> None:
         raise ValueError(f"Activation receipt requires positive {label}")
 
 
+def validate_capability_record(document: dict, name: str) -> dict:
+    contract, selected = profile(name)
+    required = selected.get("required_capabilities", [])
+    sources = contract["image"]["required_sources"]
+    expected_sources = {key: sources[key] for key in ("vllm_integrated_tree", "b12x_tree", "sparkcache_tree")}
+    if (not required or document.get("schema") != "sparkring-r33-runtime-capabilities/v1"
+            or document.get("profile") != name or document.get("sources") != expected_sources
+            or set(document.get("checks", {})) != set(required)
+            or any(document["checks"][key] is not True for key in required)
+            or set(document.get("evidence_sha256", {})) != set(required)
+            or any(not SHA256.fullmatch(document["evidence_sha256"][key]) for key in required)):
+        raise ValueError("TP2 cache requires source-bound coalescing, managed B12X loader and SparkCache capability evidence")
+    return document
+
+
+def validate_profile_image_capabilities(document: dict, name: str) -> None:
+    contract, selected = profile(name)
+    if not selected.get("required_capabilities"):
+        return
+    capability = document.get("runtime_capabilities", {})
+    validate_capability_record(capability.get("document", {}), name)
+    expected = capability.get("sha256", "")
+    encoded = (json.dumps(capability["document"], sort_keys=True, separators=(",", ":")) + "\n").encode()
+    path = "/opt/sparkring/profile-contract/" + selected["capability_file"]
+    if (not SHA256.fullmatch(expected) or hashlib.sha256(encoded).hexdigest() != expected
+            or document.get("verification", {}).get("checked_files", {}).get(path) != expected):
+        raise ValueError("TP2 cache capability receipt must match the file verified inside the image")
+    native = contract["sparkcache_native"]
+    checked = document.get("verification", {}).get("checked_files", {})
+    if any(checked.get(native[kind + "_path"]) != native[kind + "_sha256"] for kind in ("placement", "snapshot")):
+        raise ValueError("TP2 cache image receipt must verify both pinned SparkCache native libraries")
+
+
 def validate_activation(document: dict) -> dict:
     name = document.get("profile")
     contract, selected = profile(name)
     validate_image_receipt(document.get("image", {}))
+    validate_profile_image_capabilities(document.get("image", {}), name)
     expected_hash = hashlib.sha256(CONTRACT_PATH.read_bytes()).hexdigest()
     if (document.get("schema") != "sparkring-r33-activation-receipt/v1"
             or document.get("checks_passed") is not True
@@ -148,11 +184,14 @@ def validate_activation(document: dict) -> dict:
             raise ValueError("Every rank must activate NCCL HCAs from both host PCIe domains")
         if rank.get("captured_graph_sizes") != expected_graphs:
             raise ValueError("Every rank must capture the profile's exact CUDA graph sizes")
-        for key in ("instanttensor_allocations", "mtp_draft_tokens", "mhc_sharded_prefill_calls"):
+        loader_counter = "managed_b12x_allocations" if selected.get("load_format") == "b12x" else "instanttensor_allocations"
+        for key in (loader_counter, "mtp_draft_tokens", "mhc_sharded_prefill_calls"):
             _positive(rank.get(key), key)
-        if name == "tp2-dcp1":
+        if name.startswith("tp2-"):
             coalesced = rank.get("continuation_coalesced_groups")
-            if type(coalesced) is not int or coalesced != 0:
+            if selected.get("continuation_coalescing"):
+                _positive(coalesced, "continuation_coalesced_groups")
+            elif type(coalesced) is not int or coalesced != 0:
                 raise ValueError("TP2 requires continuation_coalesced_groups=0 because coalescing is disabled")
             rows = rank.get("mhc_prefill_rows")
             if type(rows) is not int or rows not in (4096, 8192):
@@ -163,9 +202,9 @@ def validate_activation(document: dict) -> dict:
             _positive(rank.get("continuation_coalesced_groups"), "continuation_coalesced_groups")
             if 2048 not in rank.get("mhc_owner_rows", []):
                 raise ValueError("Every rank must report a 2,048-row mHC owner execution")
-        counter = "rocenante_collectives" if name == "tp2-dcp1" else "sircl_collectives"
+        counter = "rocenante_collectives" if name.startswith("tp2-") else "sircl_collectives"
         _positive(rank.get(counter), counter)
-    if name == "tp2-dcp1" and len({rank["mhc_prefill_rows"] for rank in ranks}) != 1:
+    if name.startswith("tp2-") and len({rank["mhc_prefill_rows"] for rank in ranks}) != 1:
         raise ValueError("TP2 ranks must report the same mHC prefill row ceiling")
     serving = document.get("serving", {})
     if (serving.get("max_model_len") != contract["model"]["max_model_len"]
@@ -192,8 +231,8 @@ def validate_activation(document: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=("template", "image", "activation"))
-    parser.add_argument("--profile", choices=("tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"))
+    parser.add_argument("kind", choices=("template", "image", "activation", "capability"))
+    parser.add_argument("--profile", choices=tuple(load_contract()["profiles"]))
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--asset-root", type=Path)
     args = parser.parse_args()
@@ -205,7 +244,12 @@ def main() -> None:
         if args.receipt is None:
             parser.error(f"{args.kind} validation requires --receipt")
         document = json.loads(args.receipt.read_text())
-        result = validate_image_receipt(document) if args.kind == "image" else validate_activation(document)
+        if args.kind == "capability":
+            if not args.profile:
+                parser.error("capability validation requires --profile")
+            result = validate_capability_record(document, args.profile)
+        else:
+            result = validate_image_receipt(document) if args.kind == "image" else validate_activation(document)
     print(json.dumps(result, sort_keys=True))
 
 

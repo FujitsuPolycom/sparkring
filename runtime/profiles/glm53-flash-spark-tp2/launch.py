@@ -88,37 +88,76 @@ def _remove_option(arguments, flag):
     return result
 
 
-def adapt_r33_plan(plan, receipt):
+def adapt_r33_plan(plan, receipt, *, sparkcache=False):
     verifier = _r33_verifier()
     verifier.validate_image_receipt(receipt)
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
     if plan["image"] != expected_image:
         raise ValueError("R33 receipt does not identify the selected TP2 image")
     contract = verifier.load_contract()
+    profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
+    selected = contract["profiles"][profile_name]
     environment = dict(plan["environment"])
     environment.update(contract["common_environment"])
     environment.update({
         "LD_PRELOAD": contract["common_environment"]["VLLM_NCCL_SO_PATH"],
-        "SOURCE_IMAGE_PROFILE": "tp2-dcp1",
+        "SOURCE_IMAGE_PROFILE": profile_name,
         "SPARKRING_PROFILE_MODE": "custom",
-        "SPARKCACHE_ENABLED": "0",
-        "VLLM_B12X_KDA_PREFILL_COALESCING": "0",
-        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "0",
+        "SPARKCACHE_ENABLED": "1" if sparkcache else "0",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1" if sparkcache else "0",
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4" if sparkcache else "0",
         "VLLM_SPARK_TP4_MODE": "",
         "VLLM_SPARK_TP4_VOCAB_MODE": "",
     })
     arguments = plan["container_args"][4:]
     arguments = _replace_option(arguments, "--max-model-len", str(contract["model"]["max_model_len"]))
-    arguments = _replace_option(arguments, "--kv-cache-memory-bytes", str(contract["profiles"]["tp2-dcp1"]["kv_cache_memory_bytes"]))
-    arguments = _replace_option(arguments, "--load-format", contract["model"]["loader"]["load_format"])
-    arguments = _remove_option(arguments, "--model-loader-extra-config")
+    arguments = _replace_option(arguments, "--kv-cache-memory-bytes", str(selected["kv_cache_memory_bytes"]))
+    arguments = _replace_option(arguments, "--load-format", selected.get("load_format", contract["model"]["loader"]["load_format"]))
+    if sparkcache:
+        environment.update(LOAD_FORMAT="b12x", VLLM_PLUGINS="b12x_loader", B12X_NVFP4_DYNAMIC_MATERIALIZED="0")
+        arguments = _replace_option(arguments, "--limit-mm-per-prompt", '{"image":3,"video":1}')
+        native = contract["sparkcache_native"]
+        namespace = f"sparkring-r33-{receipt['image_id'][7:19]}-tp2-cache"
+        environment.update(SPARKCACHE_CACHE_NAMESPACE=namespace,
+                           SPARKCACHE_PLACEMENT_LIBRARY_PATH=native["placement_path"],
+                           SPARKCACHE_PLACEMENT_LIBRARY_SHA256=native["placement_sha256"],
+                           SPARKCACHE_SNAPSHOT_LIBRARY_PATH=native["snapshot_path"],
+                           SPARKCACHE_SNAPSHOT_LIBRARY_SHA256=native["snapshot_sha256"],
+                           SPARKCACHE_VLLM_ROOT=native["vllm_root"],
+                           SPARKCACHE_SOURCE_LEASE_CONTRACT=native["lease_contract"])
+        fingerprint = "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4"
+        extra = dict(
+            spark_cache_root="/cache/jit/sparkcache-context/" + namespace,
+            spark_cache_model_profile="glm53-flash-hybrid", spark_cache_publication_schema="tail-cow-v2",
+            spark_cache_target_checkpoint_sha256=fingerprint, spark_cache_draft_checkpoint_sha256=fingerprint,
+            spark_cache_draft_policy="separate", spark_cache_access_mode="read-write",
+            spark_cache_shared_prefix_lease_ttl_seconds=300, spark_cache_scheduler_probe="none",
+            spark_cache_streaming_snapshots=False, spark_cache_cuda_restore=True,
+            spark_cache_max_bytes=8589934592, spark_cache_low_watermark_bytes=6442450944,
+            spark_cache_ttl_seconds=0, spark_cache_min_span_tokens=4096, spark_cache_max_span_tokens=65536,
+            spark_cache_cuda_placement_library=native["placement_path"],
+            spark_cache_cuda_placement_library_sha256=native["placement_sha256"],
+            spark_cache_cuda_placement_arena_bytes=67108864, spark_cache_cuda_restore_arena_budget_bytes=268435456,
+            spark_cache_cuda_restore_io_workers=2, spark_cache_load_threads=2, spark_cache_max_pending_restores=2,
+            spark_cache_async_page_capture=True, spark_cache_async_page_capture_lease_mode="connector-jobs",
+            spark_cache_async_page_capture_library=native["snapshot_path"],
+            spark_cache_async_page_capture_library_sha256=native["snapshot_sha256"],
+            spark_cache_async_page_capture_slot_bytes=536870912, spark_cache_async_page_capture_slot_count=2,
+            spark_cache_async_page_capture_vllm_root=native["vllm_root"],
+            spark_cache_async_page_capture_lease_contract=native["lease_contract"],
+            spark_cache_page_snapshot_interval_tokens=0)
+        arguments += ["--enable-prompt-tokens-details", "--kv-transfer-config", json.dumps(dict(
+            kv_connector="SparkContextCacheConnector", kv_connector_module_path="sparkcache.spark_context_cache_connector",
+            kv_role="kv_both", kv_load_failure_policy="recompute", kv_connector_extra_config=extra))]
+    else:
+        arguments = _remove_option(arguments, "--model-loader-extra-config")
     container_args = ["serve", *arguments]
     command = list(plan["command"])
-    name = f"sparkring-r33-tp2-dcp1-r{environment['NODE_RANK']}"
+    name = f"sparkring-r33-{profile_name}-r{environment['NODE_RANK']}"
     command[command.index("--name") + 1] = name
     command[command.index("--entrypoint") + 1] = "/opt/sparkring/bin/sparkring-r33"
     labels = dict(plan["labels"])
-    labels["org.sparkring.profile"] = "tp2-dcp1"
+    labels["org.sparkring.profile"] = profile_name
     image_index = len(command) - len(plan["container_args"]) - 1
     prefix = command[:image_index]
     for key, value in sorted(environment.items()):
@@ -137,14 +176,25 @@ def adapt_r33_plan(plan, receipt):
     command = [*prefix, plan["image"], *container_args]
     plan.update(
         name=name,
-        profile="tp2-dcp1", environment=environment, container_args=container_args,
+        profile=profile_name, environment=environment, container_args=container_args,
         command=command, labels=labels, entrypoint="/opt/sparkring/bin/sparkring-r33",
         runtime_kind="r33-candidate",
+        sparkcache_enabled=sparkcache,
     )
+    if sparkcache:
+        plan["qualification"] = {"status": "research-only", "gpu_qualified": False,
+                                 "request_context_target": 1048576, "reference_context_limit": 262144}
+        try:
+            verifier.validate_profile_image_capabilities(receipt, profile_name)
+            plan["activation_blockers"] = []
+        except ValueError as error:
+            plan["activation_blockers"] = [str(error)]
     return plan
 
 
-def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None):
+def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None, *, r33_sparkcache=False):
+    if r33_sparkcache and r33_receipt is None:
+        raise ValueError("R33 SparkCache requires an exact R33 image receipt")
     if rank not in (0, 1) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", master):
         raise ValueError("A valid rank and master address are required")
     if not (re.fullmatch(REGISTRY_IMAGE_PATTERN, image) or re.fullmatch(LOCAL_IMAGE_PATTERN, image)):
@@ -224,7 +274,7 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         "qualification": profile["qualification"],
         "entrypoint": "python3", "runtime_kind": "legacy",
     }
-    return adapt_r33_plan(result, r33_receipt) if r33_receipt is not None else result
+    return adapt_r33_plan(result, r33_receipt, sparkcache=r33_sparkcache) if r33_receipt is not None else result
 
 
 def _source_receipt_contract(directory):
@@ -291,8 +341,9 @@ def validate_runtime_receipt(receipt, plan):
     if receipt.get("schema") == "sparkring-r33-image-receipt/v1":
         _r33_verifier().validate_image_receipt(receipt)
         expected = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
-        if plan.get("runtime_kind") != "r33-candidate" or plan["profile"] != "tp2-dcp1" or plan["image"] != expected:
+        if plan.get("runtime_kind") != "r33-candidate" or plan["profile"] not in ("tp2-dcp1", "tp2-dcp1-sparkcache") or plan["image"] != expected:
             raise ValueError("R33 receipt differs from the adapted TP2 plan")
+        _r33_verifier().validate_profile_image_capabilities(receipt, plan["profile"])
         return
     if re.fullmatch(LOCAL_IMAGE_PATTERN, plan["image"]):
         validate_source_image_receipt(receipt, plan)
@@ -363,10 +414,12 @@ def main():
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--runtime-receipt", type=Path)
+    parser.add_argument("--r33-sparkcache", action="store_true", help="Plan the source-capability-gated TP2 cache composition")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
     r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") == "sparkring-r33-image-receipt/v1" else None
-    plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt)
+    plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt,
+                  r33_sparkcache=args.r33_sparkcache)
     print(json.dumps(plan, indent=2), flush=True)
     if args.action == "plan":
         return

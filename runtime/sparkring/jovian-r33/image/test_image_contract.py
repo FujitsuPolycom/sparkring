@@ -226,7 +226,7 @@ class CandidateImageContractTests(unittest.TestCase):
         self.assertIn('context / "profile-contract"', source)
         self.assertFalse(any((HERE / "profiles").glob("*.json")))
         contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
-        self.assertEqual(set(contract["profiles"]), {"tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"})
+        self.assertEqual(set(contract["profiles"]), {"tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"})
         for name in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
             selected = contract["profiles"][name]
             values = (CANONICAL_PROFILES / selected["template"]).read_text()
@@ -247,7 +247,7 @@ class CandidateImageContractTests(unittest.TestCase):
             (root / "runtime/glm53-spark-mtp3-mesh").mkdir(parents=True)
             shutil.copy2(HERE.parents[2] / "glm53-spark-mtp3-mesh/pins.json", root / "runtime/glm53-spark-mtp3-mesh/pins.json")
             verifier = root / "profile-contract/verify_profile.py"
-            for profile in ("tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"):
+            for profile in ("tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"):
                 result = subprocess.run(
                     [sys.executable, str(verifier), "template", "--profile", profile,
                      "--asset-root", str(root / "runtime")],

@@ -1,5 +1,6 @@
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -48,9 +49,12 @@ def activation(name):
             "mhc_sharded_prefill_calls": 1,
             "mhc_owner_rows": [2048],
         }
-        if name == "tp2-dcp1":
+        if name.startswith("tp2-"):
             item["mhc_prefill_rows"] = 4096
-        item["rocenante_collectives" if name == "tp2-dcp1" else "sircl_collectives"] = 1
+        if profile.get("load_format") == "b12x":
+            item.pop("instanttensor_allocations")
+            item["managed_b12x_allocations"] = 1
+        item["rocenante_collectives" if name.startswith("tp2-") else "sircl_collectives"] = 1
         ranks.append(item)
     result = {
         "schema": "sparkring-r33-activation-receipt/v1",
@@ -82,10 +86,21 @@ def activation(name):
             recoveries_after_fault=1,
             payload_correctness_passed=True,
         )
+    if profile.get("required_capabilities"):
+        capability = {"schema": "sparkring-r33-runtime-capabilities/v1", "profile": name,
+                      "sources": {k: contract["image"]["required_sources"][k] for k in ("vllm_integrated_tree", "b12x_tree", "sparkcache_tree")},
+                      "checks": {k: True for k in profile["required_capabilities"]},
+                      "evidence_sha256": {k: "e" * 64 for k in profile["required_capabilities"]}}
+        digest = hashlib.sha256((json.dumps(capability, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
+        result["image"]["runtime_capabilities"] = {"document": capability, "sha256": digest}
+        native = contract["sparkcache_native"]
+        result["image"]["verification"] = {"checked_files": {
+            "/opt/sparkring/profile-contract/" + profile["capability_file"]: digest,
+            native["placement_path"]: native["placement_sha256"], native["snapshot_path"]: native["snapshot_sha256"]}}
     return result
 
 
-@pytest.mark.parametrize("name", ["tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"])
+@pytest.mark.parametrize("name", ["tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"])
 def test_candidate_templates_match_contract_and_pinned_inputs(name):
     assert verifier.validate_template(name, ASSET_ROOT)["checks_passed"] is True
 
@@ -155,6 +170,19 @@ def test_tp4_long_prefill_timeout_fails_qualification():
     document = activation("tp4-dcp1")
     document["long_prefill_sample_tokens"]["timeouts"] = 1
     with pytest.raises(ValueError, match="sample_tokens"):
+        verifier.validate_activation(document)
+
+
+def test_tp2_cache_activation_requires_managed_loader_and_coalescing_evidence():
+    document = activation("tp2-dcp1-sparkcache")
+    assert verifier.validate_activation(document)["ranks"] == 2
+    document["ranks"][0]["managed_b12x_allocations"] = 0
+    document["ranks"][0]["instanttensor_allocations"] = 1
+    with pytest.raises(ValueError, match="managed_b12x_allocations"):
+        verifier.validate_activation(document)
+    document["ranks"][0]["managed_b12x_allocations"] = 1
+    document["ranks"][0]["continuation_coalesced_groups"] = 0
+    with pytest.raises(ValueError, match="continuation_coalesced_groups"):
         verifier.validate_activation(document)
 
 

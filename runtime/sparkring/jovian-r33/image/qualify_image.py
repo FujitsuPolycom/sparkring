@@ -76,6 +76,8 @@ def main() -> None:
             "cache_recovery": False
         }
     }
+    if "runtime_capabilities" in verification:
+        receipt["runtime_capabilities"] = verification["runtime_capabilities"]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"image_id": inspect["Id"], "receipt": str(args.output), "status": "local-candidate-only"}, indent=2))
