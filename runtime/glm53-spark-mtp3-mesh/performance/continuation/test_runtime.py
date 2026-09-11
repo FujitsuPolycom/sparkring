@@ -1,4 +1,4 @@
-"""CPU tests of candidate methods, not live model or CUDA qualification."""
+"""CPU tests of packaged checkpoint methods; no live model or CUDA qualification."""
 
 import ast
 from collections import defaultdict

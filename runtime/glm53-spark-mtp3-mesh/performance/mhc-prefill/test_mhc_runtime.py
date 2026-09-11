@@ -1,4 +1,4 @@
-"""Executable reduction and model-boundary tests for generated methods."""
+"""CPU reduction and model-boundary tests of packaged methods; no GPU qualification."""
 
 import ast
 from concurrent.futures import ThreadPoolExecutor
