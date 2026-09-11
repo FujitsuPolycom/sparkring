@@ -35,7 +35,7 @@ Development profiles are under active development; validated profiles have docum
 
 | Model | Quant | Layout | Configured context (tokens) | KV* (tokens) | Status | Navigation | Quickstart |
 |---|---|---|---:|---:|---|---|---|
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1,048,576 | [1,081,922](../runtime/profiles/glm53-flash-spark-tp2/README.md) | Validated | recommended | [Guide](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1,048,576 | [1,081,922](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | recommended | [Guide](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP2/DCP1 | 1,048,576 | [1,000,000](../performance/capacity-references.md) | Development | alternative | [Guide](deepseek-v4-flash-0731-pair/README.md) |
 | GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp2-dcp1/README.md) |
 | Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | TP2/DCP1 | 1,048,576 | [4,130,233](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6-pair/README.md) |

@@ -3,7 +3,7 @@
   "profiles": {
     "glm53-flash-spark-tp2-dcp1-sparkcache": {
       "tokens": 1081922,
-      "source": "runtime/profiles/glm53-flash-spark-tp2/README.md",
+      "source": "profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md",
       "witness": "1,081,922 total KV tokens",
       "conditions": "Published R33 TP2/DCP1 SparkCache startup, 7.5 GiB KV per rank."
     },

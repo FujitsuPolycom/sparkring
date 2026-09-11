@@ -10,7 +10,7 @@
     "key": "tp4-dcp1-sparkcache"
   },
   "release": "runtime/releases/sparkring-r33-dcp4/release.json",
-  "guide": "docs/GLM53_TP4_PREFILL_QUICKSTART.md",
+  "guide": "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md",
   "evidence_scope": "Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.",
   "overrides": [],
   "launcher": {

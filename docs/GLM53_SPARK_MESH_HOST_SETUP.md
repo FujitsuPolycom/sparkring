@@ -1,14 +1,13 @@
 # Prepare four DGX Sparks for the MTP3 mesh quickstart
 
 This is the detailed managed-mesh extension to
-[SparkRing prerequisites](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh).
-Use [the shared blank-cluster bootstrap](BOOTSTRAP.md) for SSH enrollment,
+[SparkRing prerequisites](operations/prerequisites.md#four-spark-managed-hardware-forwarded-mesh).
+Use [the shared blank-cluster bootstrap](operations/bootstrap.md) for SSH enrollment,
 primary-interface netplans, host checks, and kernel routing/firewall setup.
 This extension adds the second Socket Direct functions, mesh-specific driver
 requirements, public model/runtime downloads, and then hands off to
-the [shared-image TP4 quickstart](GLM53_TP4_PREFILL_QUICKSTART.md). That guide
-selects GLM-5.3 Flash NVFP4-Spark with MTP3 at TP4/DCP1, with explicit
-DCP4 and DCP1 SparkCache alternatives, through a verified image receipt.
+the [four-Spark quickstart](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md).
+It selects DCP1 by default, with optional SparkCache and a separate DCP4 overlay procedure.
 
 Status: **research-only**. The recorded serving deployment passed the bounded
 checks in the [managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md).
@@ -97,7 +96,7 @@ four-host topology uses a switch, not this cable cycle.
 
 ## 3. Complete shared bootstrap and check additional tools
 
-Follow [Bootstrap a blank SparkRing cluster](BOOTSTRAP.md) from rank zero:
+Follow [Bootstrap a blank SparkRing cluster](operations/bootstrap.md) from rank zero:
 install the shared CLI, run `sparkring host check`, enroll four ranks with
 `sparkring cluster init --size 4`, review/apply the primary-interface
 netplans, and review the Ring Doctor plan. Keep its
@@ -485,7 +484,7 @@ to select a SparkRing checkout with the matching source lock and verifier.
 Run subsequent repository commands from that checkout. The shared bootstrap's
 installed CLI does not replace this image-verification context.
 
-Follow [Prepare the hosts and image](GLM53_TP4_PREFILL_QUICKSTART.md#prepare-the-hosts-and-image)
+Follow [Prepare the hosts and image](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md#2-select-the-published-image)
 to pull the immutable image and validate its tracked runtime receipt. A local
 image build or external DFlash checkpoint is unnecessary when using the
 published image. The deployment suite handles checkpoint distribution and
@@ -504,12 +503,12 @@ before creating the four serving containers.
 ## 9. Fill the private site and start serving
 
 Validate the tracked R33 runtime receipt using
-[Prepare the hosts and image](GLM53_TP4_PREFILL_QUICKSTART.md#prepare-the-hosts-and-image).
+[Prepare the hosts and image](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md#2-select-the-published-image).
 The bounded-qualified guide sets `SPARKRING_RECEIPT` for TP4/DCP1 SparkCache.
 Pass that receipt to `sr plan` with `--image-receipt` as shown
-in [Use the managed deployment suite](GLM53_TP4_PREFILL_QUICKSTART.md#use-the-managed-deployment-suite).
-The receipt determines the private site's `runtime_profile`; omitting it
-selects a different default runtime.
+in [Use the managed deployment suite](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md#3-discover-and-plan-dcp1).
+The receipt selects the image; `--runtime-profile` selects DCP1 with or
+without SparkCache. Omitting the receipt selects a different runtime.
 
 Review the generated private site and fabric against actual management
 addresses, MACs, netdevs, model/cache paths, and the verified marker hash.
@@ -520,21 +519,21 @@ names apply to the other three.
 
 Finish these steps in order using the linked command sections:
 
-1. [Discover and review](DEPLOYMENT_SUITE.md#discover-and-review) the host
+1. [Discover and review](operations/deployment-suite.md#discover-and-review) the host
    inventory, using the shared-image quickstart's receipt-bearing `sr plan`
    command to create the preparation document.
-2. [Apply networking, then verify it](DEPLOYMENT_SUITE.md#apply-networking-then-verify-it).
+2. [Apply networking, then verify it](operations/deployment-suite.md#apply-networking-then-verify-it).
    Review changes before execution and preserve the host rollback records.
-3. [Stage the runtime](DEPLOYMENT_SUITE.md#stage-the-runtime-without-starting-a-model).
+3. [Stage the runtime](operations/deployment-suite.md#stage-the-runtime-without-starting-a-model).
    Staging verifies and distributes the selected image, model, source receipt,
    and transport artifacts, then renders matching launch inputs.
-4. [Create containers, install services, and test the mesh](DEPLOYMENT_SUITE.md#create-containers-install-services-and-test-the-mesh).
+4. [Create containers, install services, and test the mesh](operations/deployment-suite.md#create-containers-install-services-and-test-the-mesh).
    Require stopped-container verification, authenticated mesh readiness, and
    all native correctness gates before starting the model.
-5. [Start and inspect serving](DEPLOYMENT_SUITE.md#start-inspect-and-stop-serving).
+5. [Start and inspect serving](operations/deployment-suite.md#start-inspect-and-stop-serving).
    Wait for all four containers healthy plus rank-zero API/liveness HTTP 200,
    not merely a successful `systemctl start`.
-6. [Qualify the selected deployment](GLM53_TP4_PREFILL_QUICKSTART.md#qualify-the-deployment),
+6. [Qualify the selected deployment](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md#5-verify-the-selected-configuration),
    including source witnesses, actual prefill activation, and cache checks
    when SparkCache is selected. Rank zero serves `glm-5.3-flash-spark` on port 8015.
 

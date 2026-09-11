@@ -1,23 +1,8 @@
-# GLM-5.3-Flash TP4/DCP4
+# GLM-5.3-Flash DCP4 with SparkCache
 
-Quant: [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark).
-SparkCache is enabled in this configuration.
+Use the [four-Spark quickstart](../glm53-flash-spark-tp4-dcp1-sparkcache/README.md#dcp4-alternative)
+and select `tp4-dcp4-sparkcache`. DCP1 is the default; DCP4 is an alternative.
 
-Published-image TP4/DCP4 ring checks: exact answers, cold prefill, prefix hits, full-CKV gather, mHC sharding and restart/SIGKILL SparkCache restore. No completed 1M request, sustained soak or switched-hardware qualification.
+DCP4 requires the contract/entrypoint overlay and prepared managed fabric. Do not pass this selection to the DCP1-only deployment-suite planner.
 
-```bash
-python scripts/profiles.py resolve glm53-flash-spark-tp4-dcp4-sparkcache
-```
-
-Follow the [four-Spark quickstart](../../docs/GLM53_TP4_PREFILL_QUICKSTART.md)
-and its [DCP4 overlay procedure](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md#reproduction-overlay-and-quickstart).
-Use the published image plus the supplied contract and entrypoint overlay;
-DCP4 requires the managed fabric installation on every rank.
-
-The recorded KV pool is **8,364,901 tokens** at 24 GiB per rank. The configured
-context limit is 1,048,576 tokens; a completed request of that size is not claimed.
-
-[DCP1](../glm53-flash-spark-tp4-dcp1-sparkcache/README.md) is the default configuration. DCP4 is an alternative
-with a larger KV pool. The [record](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)
-compares its bounded prefill/decode observations. For a switched fabric, use
-[switched setup](../glm53-flash-spark-tp4-switched/README.md); it has a separate configuration.
+See [profile.json](profile.json) for the exact release and evidence scope.

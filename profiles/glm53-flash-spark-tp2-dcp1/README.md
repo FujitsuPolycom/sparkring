@@ -1,13 +1,8 @@
-# GLM-5.3 Flash NVFP4-Spark · MTP3
+# GLM-5.3-Flash TP2 without SparkCache
 
-Status: **research-only**. Source contract only; packaged alternatives do not inherit another profile’s functional qualification.
+Use the [two-Spark quickstart](../glm53-flash-spark-tp2-dcp1-sparkcache/README.md)
+and its [SparkCache-off selection](../glm53-flash-spark-tp2-dcp1-sparkcache/README.md#sparkcache-off).
+Keep the published R33 image receipt; omitting it selects a different source-image configuration.
 
-```bash
-python scripts/profiles.py resolve glm53-flash-spark-tp2-dcp1
-```
-
-Use the [primary quickstart](../../runtime/profiles/glm53-flash-spark-tp2/README.md) with the exact release selected by [profile.json](profile.json). The resolver reports the image and immutable contract before any operation.
-
-An active memory guard is required before creating or starting either rank.
-
-Configured context is not a completed long-context test. See the [publication record](../../runtime/sparkring/jovian-r33/publication.json) for the exact measured conditions.
+This selection uses DCP1, InstantTensor loading and 8.75 GiB KV per rank.
+See [profile.json](profile.json) for its exact release and evidence scope.

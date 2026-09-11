@@ -30,6 +30,10 @@ source includes those operations; capability negotiation does not add
 them to an image or installer that lacks them. Match source, image receipt, and installed
 lifecycle before replacement. This is not a drop-in upgrade command.
 
+If a model quickstart supplied a preparation document, keep that document and
+its `STATE` directory. Continue at the stage it names; do not replace its image
+receipt or runtime selection with the generic planning example below.
+
 ## Discover and review
 
 Replace the example addresses with your management LAN addresses. The

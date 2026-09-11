@@ -37,7 +37,7 @@ in the same order. See the
 
 | Model | Quant | DCP | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |
 |---|---|---|---:|---:|---|---|---|
-| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | DCP1 | 1M | [1.1M](runtime/profiles/glm53-flash-spark-tp2/README.md) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | DCP1 | 1M | [1.1M](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | DCP1 | 1M | [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
 | Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | DCP1 | 1M | [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
 
