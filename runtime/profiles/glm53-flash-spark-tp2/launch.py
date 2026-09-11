@@ -1,4 +1,4 @@
-"""Plan, create, or manually start the NVFP4-Spark TP2 profile with 8.75 GiB KV."""
+"""Plan, create, or manually start guarded NVFP4-Spark TP2 profiles with explicit KV settings."""
 
 from __future__ import annotations
 

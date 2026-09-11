@@ -11,6 +11,7 @@ values prove admission only; they do not prove that a runtime path executed.
 | Both host PCIe domains carried NCCL | `NET/IB RouteFinal` records plus rank-local sysfs PCI addresses | Map each distinct `hca=` value to `/sys/class/infiniband/<hca>/device`; require successful routes through HCAs whose PCI addresses use both host domains. `NCCL_IB_HCA` alone is insufficient. |
 | CUDA graph sizes | Engine configuration log plus completed graph-capture log | Parse `cudagraph_capture_sizes` from the initialized engine and require capture completion. The ordered set must equal the selected profile. |
 | InstantTensor | Completed `Loading safetensors using InstantTensor loader` progress record | Require the terminal progress record for each worker. `LOAD_FORMAT=instanttensor` alone is insufficient. |
+| Managed B12X loading (TP2 cache profile) | Target and MTP loader completion plus managed-storage audit | Require positive `managed_b12x_allocations` on both ranks. The pinned loader selects managed storage internally; an InstantTensor counter does not establish this path. |
 | MTP3 | Initialized engine configuration and decode result metadata | Require `method='mtp'`, `num_spec_tokens=3`, and at least one completed decode request with observed accepted draft tokens. |
 | mHC token sharding | `GLM_MHC_PREFILL` diagnostics | Launch with `VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS=1`; require `rows=8192 owner_rows=2048` on every TP4 rank. |
 | SIRCL collectives | Atomic graph status snapshots before and after requests | Sum positive submitted-sequence or event-count deltas from `SPARK_TP4_GRAPH_STATUS_PATH`. Require zero native health failures. |
@@ -21,7 +22,7 @@ values prove admission only; they do not prove that a runtime path executed.
 
 ## Continuation-prefill coalescing
 
-Status: **implemented, GPU qualification pending**. The vLLM source composition
+Status: **implemented; full-profile qualification pending**. The vLLM source composition
 identified by tree `547f7091841728f21ab419012a766fd1df70a569` carries sparse
 checkpoint plans through scheduling, allocation, worker metadata and Kimi GDN
 execution. It preserves R33's packed FlashKDA metadata path. The B12X path uses
@@ -29,9 +30,11 @@ fixed four-column checkpoint metadata and requires a B12X package that supports
 four transactional checkpoint exports.
 
 `VLLM_B12X_KDA_PREFILL_COALESCING=1` admits the path only for GLM5Next BF16,
-model runner V2, TP4 with DCP1, DCP2 or DCP4, PP1/DP1, an 8,192-token scheduler
+model runner V2, TP2 with DCP1 or TP4 with DCP1, DCP2 or DCP4, PP1/DP1,
+an 8,192-token scheduler
 budget, aligned recurrent caching with retention interval zero, and static MTP3
-or no speculation. Unsupported configurations fail during initialization.
+or no speculation. TP2/DCP2 is unsupported. Unsupported configurations fail
+during initialization.
 Cache hits, resumed requests, preempted requests, asynchronous external loads,
 multimodal requests and concurrent service use the ordinary scheduler path.
 
@@ -39,10 +42,20 @@ Set `VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT` to a positive integer on every
 rank. A qualifying activation must capture a bounded record with the request
 identifier, an 8,192-token span and the checkpoint token positions selected on
 every rank. The default value is zero and produces no per-request records.
-Environment values alone do not prove execution. The TP4 template sets this
-limit to four; TP2 disables both coalescing and its diagnostics. The SparkCache
-overlay inherits TP4 admission settings, but external-load requests still use
-the ordinary scheduler path.
+Environment values alone do not prove execution. The TP4 profiles and
+`tp2-dcp1-sparkcache` set the diagnostic limit to four and enable coalescing.
+The cache-disabled `tp2-dcp1` profile disables both. External-load requests
+still use the ordinary scheduler path in the cache profiles.
+
+TP2 admission is implemented by source commit
+`8fe550fd876ddea18a23b597611baec15dec048e`. The packaged
+[`tp2-sparkcache-capabilities.json`](tp2-sparkcache-capabilities.json) binds the
+vLLM, B12X and SparkCache trees and source/component evidence hashes. Its
+coalescing, managed-loader and TP2-cache checks have status `implemented`;
+`live_qualification` remains `pending`. This evidence admits a research run.
+Bounded checkpoint-kernel component coverage does not establish complete
+TP2 model execution, memory stability, graph startup reliability or cache
+fault recovery. Those require the exact image/profile activation records.
 
 The source patch and complete changed-file manifest are packaged as
 `vllm-source-composition.patch` and
@@ -58,10 +71,20 @@ fixed image, including completed prefix-cache-hit requests.
 
 ## TP2 activation evidence
 
-TP2 is unqualified. Its template sets
-`VLLM_B12X_KDA_PREFILL_COALESCING=0`; the activation receipt must report integer
-zero for `continuation_coalesced_groups` on both ranks. Retain the initialized
-configuration and bounded request diagnostics that establish this value.
+TP2 full-profile qualification remains pending. The two TP2 profiles have
+different loader and coalescing requirements:
+
+| Profile | Loader evidence | Coalescing evidence |
+|---|---|---|
+| `tp2-dcp1` | Completed InstantTensor loading | Integer zero for `continuation_coalesced_groups` on both ranks; coalescing is disabled. |
+| `tp2-dcp1-sparkcache` | Completed managed B12X target and MTP loading | Positive `continuation_coalesced_groups` on both ranks, backed by request/span/checkpoint diagnostics. |
+
+Retain initialized configurations and runtime diagnostics for the selected
+profile. The cache profile additionally requires capture, native restore,
+payload correctness and fault-recovery evidence. Its source capability record
+does not replace those live checks. Record the external launcher revision and
+explicit KV pin with the image identity; admission at a one-million-token
+limit is not proof of a completed one-million-token request.
 
 The committed mHC source admits TP2/DCP1 at a 4,096- or 8,192-token prefill
 ceiling. Extract each rank's `mhc_prefill_rows` from the `rows` field of its
