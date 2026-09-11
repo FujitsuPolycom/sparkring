@@ -503,6 +503,10 @@ def test_r33_cache_preserves_reference_settings_with_explicit_1m_target(
         return args[args.index(name) + 1]
 
     assert option("--load-format") == "b12x"
+    assert json.loads(option("--speculative-config")) == {
+        "method": "mtp", "num_speculative_tokens": 3, "moe_backend": "humming", "attention_backend": "B12X",
+        "draft_load_config": {"load_format": "b12x", "model_loader_extra_config": {"allocation": "managed"}},
+    }
     assert json.loads(option("--model-loader-extra-config")) == {
         "allocation": "managed"
     }
