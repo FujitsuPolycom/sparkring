@@ -126,7 +126,7 @@ def validate_external_profile(root: Path = PROFILE_ROOT) -> dict:
             "SPARK_TP4_CONTROL_PORT0", "SPARK_TP4_CONTROL_PORT1",
         ):
             concrete(key)
-        if profile_name == "tp4-dcp1-sparkcache":
+        if profile_name in ("tp4-dcp1-sparkcache", "tp4-dcp4-sparkcache"):
             concrete("SPARKCACHE_CACHE_NAMESPACE")
             native = contract["sparkcache_native"]
             for key, expected in {
