@@ -14,10 +14,15 @@ param(
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
     [string]$ManagementNic = "wlP9s9",
+    # Named serving-container guard; this does not inventory other GPU users.
+    [ValidatePattern("^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")]
+    [string]$ModelContainer = "glm52-trace",
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = [System.Collections.Generic.List[object]]::new()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -60,7 +65,7 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-numerical-r$($Node.Rank)"
+    $name = "spark-tp4-numerical-$runIdentity-r$($Node.Rank)"
     $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -71,9 +76,12 @@ function Get-ContainerState {
 
 foreach ($node in $nodes) {
     $runningGlm = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "docker inspect glm52-trace --format '{{.State.Running}}' 2>/dev/null || echo false")
-    if ($runningGlm.Trim() -eq "true") {
-        throw "glm52-trace is still running on rank $($node.Rank); stop the model explicitly before this audit"
+        "docker ps --filter name=^/${ModelContainer}$ --format '{{.Names}}'")
+    if ($LASTEXITCODE -ne 0) {
+        throw "failed to inspect running containers on rank $($node.Rank)"
+    }
+    if (@($runningGlm | ForEach-Object { $_.Trim() }) -contains $ModelContainer) {
+        throw "$ModelContainer is still running on rank $($node.Rank); stop the model explicitly before this audit"
     }
 }
 
@@ -82,11 +90,11 @@ $timedOut = $false
 
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-numerical-r$($node.Rank)"
+        $name = "spark-tp4-numerical-$runIdentity-r$($node.Rank)"
         $command = @(
             "test -f $Source/tp4_numerical_audit.py"
             "&& test -f $Library"
-            "&& docker rm -f $name >/dev/null 2>&1 || true;"
+            "&&"
             "docker run -d --name $name"
             "--network host --ipc host --gpus all"
             "--cap-add IPC_LOCK --ulimit memlock=-1:-1"
@@ -112,6 +120,7 @@ try {
         if ($exitCode -ne 0) {
             throw "failed to launch numerical-audit rank $($node.Rank)"
         }
+        $ownedNodes.Add($node)
     }
 
     $deadline = [DateTime]::UtcNow.AddSeconds($WatchdogSeconds + 15)
@@ -134,7 +143,7 @@ try {
     }
 
     foreach ($node in $nodes) {
-        $name = "spark-tp4-numerical-r$($node.Rank)"
+        $name = "spark-tp4-numerical-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         Write-Output "rank=$($node.Rank) state=$state"
         & ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
@@ -149,8 +158,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-numerical-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-numerical-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }

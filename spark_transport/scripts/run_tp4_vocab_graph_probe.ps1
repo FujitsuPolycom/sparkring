@@ -33,10 +33,15 @@ param(
     [string]$Image = "<your-vllm-image>",
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
+    # Named serving-container guard; this does not inventory other GPU users.
+    [ValidatePattern("^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")]
+    [string]$ModelContainer = "glm52-trace",
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = [System.Collections.Generic.List[object]]::new()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -105,7 +110,7 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-vocab-graph-r$($Node.Rank)"
+    $name = "spark-tp4-vocab-graph-$runIdentity-r$($Node.Rank)"
     $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -117,12 +122,12 @@ function Get-ContainerState {
 $artifactHashes = @()
 foreach ($node in $nodes) {
     $runningModel = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "docker ps --filter name=^/glm52-trace$ --format '{{.Names}}'")
+        "docker ps --filter name=^/${ModelContainer}$ --format '{{.Names}}'")
     if ($LASTEXITCODE -ne 0) {
         throw "failed to inspect running containers on rank $($node.Rank)"
     }
-    if (($runningModel -join "`n").Trim() -eq "glm52-trace") {
-        throw "rank $($node.Rank) still runs glm52-trace; the vocabulary graph probe requires the model-down memory window"
+    if (@($runningModel | ForEach-Object { $_.Trim() }) -contains $ModelContainer) {
+        throw "rank $($node.Rank) still runs $ModelContainer; stop that serving container explicitly before the vocabulary graph probe"
     }
 
     $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
@@ -135,16 +140,15 @@ foreach ($node in $nodes) {
 if (@($artifactHashes | Sort-Object -Unique).Count -ne 1) {
     throw "vocabulary graph artifact SHA-256 values differ across ranks"
 }
-Write-Output "preflight=pass model_down=true identical_sha256=true"
+Write-Output "preflight=pass model_container=$ModelContainer model_container_running=false identical_sha256=true"
 Write-Output $artifactHashes[0]
 
 $failed = $false
 $timedOut = $false
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-vocab-graph-r$($node.Rank)"
+        $name = "spark-tp4-vocab-graph-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
@@ -175,6 +179,7 @@ try {
         if ($exitCode -ne 0) {
             throw "failed to launch vocabulary graph rank $($node.Rank)"
         }
+        $ownedNodes.Add($node)
     }
 
     $deadline = [DateTime]::UtcNow.AddSeconds($WatchdogSeconds + 15)
@@ -201,7 +206,7 @@ try {
         @($targetQ) + (@(1L) * $MtpTokens)
     ) -join ","
     foreach ($node in $nodes) {
-        $name = "spark-tp4-vocab-graph-r$($node.Rank)"
+        $name = "spark-tp4-vocab-graph-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1")
@@ -230,8 +235,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-vocab-graph-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-vocab-graph-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }
