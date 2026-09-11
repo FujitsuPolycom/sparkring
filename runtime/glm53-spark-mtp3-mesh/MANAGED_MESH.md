@@ -361,7 +361,7 @@ The bounded `--run-seconds` mode is for isolated diagnostics only.
 | Check | Configured interval or bound |
 |---|---|
 | Child-process and peer checks | 1-second loop; peer HTTP timeout 2 seconds |
-| Unavailable peer connection | 4-second grace after the first transport failure; degraded health blocks model startup |
+| Unavailable peer connection | 300-second grace after the first transport failure (covers a management-switch reboot); degraded health blocks model startup |
 | Docker container status | One background query at a time, 3-second timeout; unknown status blocks model startup |
 | MAC/IP, Ethernet MTU, sysfs GID/netdev, routes, qdiscs, TC state | 5-second periodic check |
 | Full RDMA active-MTU probe | Startup and approximately every 60 seconds |
@@ -369,7 +369,7 @@ The bounded `--run-seconds` mode is for isolated diagnostics only.
 | systemd watchdog | 15 seconds |
 
 A connection timeout or other peer transport error enters a degraded state.
-Existing serving is retained during a four-second grace interval measured
+Existing serving is retained during a 300-second grace interval measured
 from the first observed transport failure. Successful authenticated peer
 responses clear that interval. Degraded peer health blocks model startup.
 An authentication failure, explicit negative readiness, or changed process
