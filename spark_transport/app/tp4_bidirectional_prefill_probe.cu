@@ -1,3 +1,4 @@
+#include "probe_options.hpp"
 // Research-only adaptive-Q width-4096 BF16 bidirectional-ring qualification.
 // This executable is deliberately absent from the production C ABI and vLLM.
 
@@ -38,6 +39,8 @@
 namespace research = spark_transport::tiled_prefill_research;
 
 namespace {
+
+using spark_transport::probe::unsigned_value;
 
 constexpr std::uint16_t kEndpointVersion = 6;
 constexpr std::uint16_t kEndpointTag = 0x4244;  // "BD"
@@ -114,20 +117,6 @@ static_assert(std::is_trivially_copyable_v<Geometry>);
                " [--allow-shared-peer-ip]"
                " [--warmup N] [--iterations N] [--timeout-seconds N]\n";
   std::exit(2);
-}
-
-template <typename Integer>
-Integer unsigned_value(const char* value, const char* name) {
-  const std::string text(value);
-  if (text.empty() || !std::all_of(text.begin(), text.end(),
-                                 [](char digit) { return digit >= '0' && digit <= '9'; })) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  const auto parsed = std::stoull(text);
-  if (parsed > static_cast<std::uint64_t>(std::numeric_limits<Integer>::max())) {
-    throw std::out_of_range(std::string(name) + " exceeds its integer range");
-  }
-  return static_cast<Integer>(parsed);
 }
 
 Options parse_options(int argc, char** argv) {

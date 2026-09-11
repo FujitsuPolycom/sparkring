@@ -1,3 +1,4 @@
+#include "probe_options.hpp"
 #include "spark_transport/statistics.hpp"
 #include "spark_transport/tp4_session.hpp"
 
@@ -16,6 +17,8 @@
 #include <vector>
 
 namespace {
+
+using spark_transport::probe::unsigned_value;
 
 struct Options {
   spark_transport::Tp4AllreduceOptions transport;
@@ -46,16 +49,6 @@ struct Options {
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed = 0;
-  const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return parsed;
-}
-
 Options parse_options(int argc, char** argv) {
   Options options;
   for (int index = 1; index < argc; ++index) {
@@ -69,7 +62,7 @@ Options parse_options(int argc, char** argv) {
 
     if (argument == "--rank") {
       options.transport.rank =
-          static_cast<std::uint32_t>(unsigned_value(take_value(), "rank"));
+          unsigned_value<std::uint32_t>(take_value(), "rank");
     } else if (argument == "--peer0") {
       options.transport.peer0 = take_value();
     } else if (argument == "--peer1") {
@@ -80,31 +73,28 @@ Options parse_options(int argc, char** argv) {
       options.transport.device1 = take_value();
     } else if (argument == "--gid0") {
       options.transport.gid0 =
-          static_cast<std::uint8_t>(unsigned_value(take_value(), "GID 0"));
+          unsigned_value<std::uint8_t>(take_value(), "GID 0");
     } else if (argument == "--gid1") {
       options.transport.gid1 =
-          static_cast<std::uint8_t>(unsigned_value(take_value(), "GID 1"));
+          unsigned_value<std::uint8_t>(take_value(), "GID 1");
     } else if (argument == "--control-port0") {
-      options.transport.control_port0 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 0"));
+      options.transport.control_port0 = unsigned_value<std::uint16_t>(take_value(), "control port 0");
     } else if (argument == "--control-port1") {
-      options.transport.control_port1 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 1"));
+      options.transport.control_port1 = unsigned_value<std::uint16_t>(take_value(), "control port 1");
     } else if (argument == "--bytes") {
       options.transport.payload_bytes =
           unsigned_value(take_value(), "payload size");
     } else if (argument == "--warmup") {
       options.warmup =
-          static_cast<int>(unsigned_value(take_value(), "warmup count"));
+          unsigned_value<int>(take_value(), "warmup count");
     } else if (argument == "--iterations") {
       options.iterations =
-          static_cast<int>(unsigned_value(take_value(), "iteration count"));
+          unsigned_value<int>(take_value(), "iteration count");
     } else if (argument == "--queued-delay-ms") {
       options.queued_delay_ms =
-          unsigned_value(take_value(), "queued delay");
+          unsigned_value<std::chrono::milliseconds::rep>(take_value(), "queued delay");
     } else if (argument == "--queued-delay-rank") {
-      options.queued_delay_rank = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "queued delay rank"));
+      options.queued_delay_rank = unsigned_value<std::uint32_t>(take_value(), "queued delay rank");
     } else if (argument == "--alternate-streams") {
       options.alternate_streams = true;
     } else {
@@ -264,10 +254,13 @@ int main(int argc, char** argv) {
         }
       }
 
-      const cudaStream_t final_stream =
-          options.alternate_streams && total % 2 == 0 ? stream1 : stream0;
-      check_cuda(cudaStreamSynchronize(final_stream),
-                 "probe stream synchronize");
+      // Validation runs after the session's completion event on each caller
+      // stream. Retire both streams before reading counters or releasing the
+      // stack-owned queued_delay passed to cudaLaunchHostFunc.
+      check_cuda(cudaStreamSynchronize(stream0), "probe stream 0 synchronize");
+      if (stream1 != nullptr) {
+        check_cuda(cudaStreamSynchronize(stream1), "probe stream 1 synchronize");
+      }
       check_cuda(cudaMemcpy(&host_mismatches, mismatches,
                             sizeof(host_mismatches), cudaMemcpyDeviceToHost),
                  "copy mismatch counter");

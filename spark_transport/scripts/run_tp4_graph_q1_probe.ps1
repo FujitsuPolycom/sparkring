@@ -403,9 +403,9 @@ try {
     }
     else {
         $expectedTimingScope = `
-            "device_output_ready_replay_throughput"
+            "device_graph_cycle_with_preparation_and_validation"
         $expectedDeviceGateMetric = `
-            "mean_device_output_ready_us_per_collective"
+            "mean_device_graph_cycle_us_per_collective"
     }
 
     foreach ($node in $nodes) {
@@ -470,6 +470,12 @@ try {
             $failed = $true
             Write-Output "rank=$($node.Rank) failure_log:"
             $log | Select-Object -Last 40 | Write-Output
+        }
+        if ($TimingMode -eq "burst" -and `
+            ($gate -notmatch "device_graph_cycle_us=[0-9.eE+-]+(?:\s|$)" `
+            -or $gate -notmatch "device_graph_cycle_us_per_collective=[0-9.eE+-]+(?:\s|$)")) {
+            $failed = $true
+            Write-Output "rank=$($node.Rank) missing burst graph-cycle timing fields"
         }
         if ($TimingMode -eq "isolated" -and `
             ($gate -notmatch "timing_samples=$Iterations(?:\s|$)" `

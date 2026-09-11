@@ -8,18 +8,15 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.fixture(scope="module", params=["tp4_bidirectional_prefill_probe.cu", "tp4_fused_prefill_probe.cu"])
-def parser_binary(request, tmp_path_factory):
+@pytest.fixture(scope="module")
+def parser_binary(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("probe-parser")
     compiler = shutil.which("g++")
     if compiler is None:
         pytest.skip("C++ compiler required for standalone numeric parser")
-    text = (ROOT / "app" / request.param).read_text()
-    helper = text.split("template <typename Integer>", 1)[1].split("Options parse_options", 1)[0]
     source = tmp_path / "parser.cpp"
-    source.write_text("#include <algorithm>\n#include <cstdint>\n#include <limits>\n"
-                      "#include <string>\n#include <stdexcept>\n#include <iostream>\n"
-                      "template <typename Integer>" + helper + r'''
+    source.write_text('#include "probe_options.hpp"\n#include <iostream>\n'
+                      'using spark_transport::probe::unsigned_value;\n' + r'''
 int main(int argc, char** argv) {
   if (argc != 3) return 3;
   try {
@@ -34,7 +31,7 @@ int main(int argc, char** argv) {
 ''')
     binary = tmp_path / "parser"
     subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                    str(source), "-o", str(binary)], check=True, capture_output=True)
+                    "-I", str(ROOT / "app"), str(source), "-o", str(binary)], check=True, capture_output=True)
     return binary
 
 
@@ -50,3 +47,12 @@ def test_no_truncation_or_signed_unsigned_input(parser_binary, width, value, acc
     assert result.returncode == (0 if accepted else 2)
     if accepted:
         assert result.stdout == value
+
+
+def test_tensor_probe_retires_both_streams_before_reading_shared_counter():
+    source = (ROOT / "app/tp4_tensor_probe.cu").read_text()
+    first = source.index('cudaStreamSynchronize(stream0)')
+    second = source.index('cudaStreamSynchronize(stream1)')
+    readback = source.index('cudaMemcpy(&host_mismatches')
+    assert first < second < readback
+    assert 'if (stream1 != nullptr)' in source[first:second]

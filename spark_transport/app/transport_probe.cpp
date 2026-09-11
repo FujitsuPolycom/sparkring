@@ -1,3 +1,5 @@
+#include "probe_options.hpp"
+
 #include "spark_transport/control_channel.hpp"
 #include "spark_transport/gpu_doorbell.hpp"
 #include "spark_transport/memory_buffer.hpp"
@@ -9,6 +11,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -58,15 +61,7 @@ struct Options {
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed = 0;
-  const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return parsed;
-}
+using spark_transport::probe::unsigned_value;
 
 Options parse_options(int argc, char** argv) {
   Options options;
@@ -87,20 +82,19 @@ Options parse_options(int argc, char** argv) {
       options.device = take_value();
     } else if (argument == "--gid") {
       options.gid_index =
-          static_cast<std::uint8_t>(unsigned_value(take_value(), "GID index"));
+          unsigned_value<std::uint8_t>(take_value(), "GID index");
     } else if (argument == "--control-port") {
-      options.control_port = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port"));
+      options.control_port = unsigned_value<std::uint16_t>(take_value(), "control port");
     } else if (argument == "--bytes") {
       options.bytes = unsigned_value(take_value(), "payload size");
     } else if (argument == "--buffer-bytes") {
       options.buffer_bytes = unsigned_value(take_value(), "buffer size");
     } else if (argument == "--warmup") {
       options.warmup =
-          static_cast<int>(unsigned_value(take_value(), "warmup count"));
+          unsigned_value<int>(take_value(), "warmup count");
     } else if (argument == "--iterations") {
       options.iterations =
-          static_cast<int>(unsigned_value(take_value(), "iteration count"));
+          unsigned_value<int>(take_value(), "iteration count");
     } else if (argument == "--memory") {
       options.memory = spark_transport::parse_memory_kind(take_value());
     } else if (argument == "--gpu-producer") {
@@ -117,6 +111,7 @@ Options parse_options(int argc, char** argv) {
   }
 
   if (options.device.empty() || options.server == !options.peer.empty() ||
+      options.control_port == 0 ||
       options.bytes == 0 || options.bytes > options.buffer_bytes ||
       options.warmup < 0 || options.iterations <= 0) {
     usage(argv[0]);
@@ -137,11 +132,15 @@ Options parse_options(int argc, char** argv) {
         "GPU round trip requires CPU-visible control memory; rerun with "
         "--memory cuda-managed");
   }
+  if (options.bytes > std::numeric_limits<std::size_t>::max() -
+                          (alignof(spark_transport::DoorbellControl) - 1)) {
+    throw std::invalid_argument("payload size overflows aligned control offset");
+  }
   const auto control_offset =
       spark_transport::aligned_control_offset(options.bytes);
   if (options.gpu_roundtrip &&
-      control_offset + sizeof(spark_transport::DoorbellControl) >
-          options.buffer_bytes) {
+      (control_offset > options.buffer_bytes ||
+       sizeof(spark_transport::DoorbellControl) > options.buffer_bytes - control_offset)) {
     throw std::invalid_argument(
         "buffer is too small for payload and doorbell control block");
   }
@@ -345,7 +344,8 @@ int main(int argc, char** argv) {
       latencies.reserve(options.iterations);
       for (int iteration = 0; iteration < options.iterations; ++iteration) {
         const auto work_id =
-            static_cast<std::uint64_t>(options.warmup + iteration + 1);
+            static_cast<std::uint64_t>(options.warmup) +
+            static_cast<std::uint64_t>(iteration) + 1U;
         const double start = now_microseconds();
         endpoint.write(0, 0, options.bytes, work_id);
         endpoint.wait_for_send(work_id);
@@ -387,8 +387,9 @@ int main(int argc, char** argv) {
                 << " verifier=" << (options.gpu_verifier ? "gpu" : "cpu")
                 << " correct=" << (local_correct ? "true" : "false")
                 << '\n';
-    } else if (remote_status != 1U) {
-      throw std::runtime_error("remote data verification failed");
+    }
+    if (!local_correct || remote_status != 1U) {
+      throw std::runtime_error("data verification failed on at least one endpoint");
     }
     return 0;
   } catch (const std::exception& error) {

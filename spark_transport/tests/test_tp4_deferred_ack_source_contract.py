@@ -97,7 +97,7 @@ def test_graph_runner_forwards_and_attests_selected_protocol() -> None:
     assert runner.count('Device0 = "rocep1s0f1"') == 2
     assert runner.count('Device1 = "rocep1s0f0"') == 2
     assert "device_output_ready_single_replay" in runner
-    assert "device_output_ready_replay_throughput" in runner
+    assert "device_graph_cycle_with_preparation_and_validation" in runner
     assert "p95_device_output_ready_us_per_graph" in runner
 
 
@@ -116,3 +116,16 @@ def test_isolated_timing_excludes_input_preparation_and_validation() -> None:
     validation = launch.index("validate_active_output<<<")
     assert prepare < start < graph < stop < validation
     assert "options.timing_mode == TimingMode::kBurst" in source
+
+
+def test_burst_timing_fields_describe_complete_graph_cycles():
+    source = _read("app/tp4_graph_q1_probe.cu")
+    burst = source.split('timing_scope=device_graph_cycle_with_preparation_and_validation', 1)[1]
+    burst = burst.split('std::cout << " published="', 1)[0]
+    runner = _read("scripts/run_tp4_graph_q1_probe.ps1")
+    for field in ("device_graph_cycle_us", "device_graph_cycle_us_per_collective",
+                  "mean_device_graph_cycle_us_per_collective"):
+        assert field in burst
+        assert field in runner
+    assert "device_output_ready" not in burst
+    assert "device_output_ready_us_per_graph_p95" in source

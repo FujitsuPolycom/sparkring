@@ -1,3 +1,5 @@
+#include "probe_options.hpp"
+
 #include "spark_transport/gpu_tp4_vocab_allgather.hpp"
 #include "spark_transport/tp4_vocab_allgather_c_api.h"
 
@@ -53,15 +55,7 @@ struct Options {
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed{};
-  const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return parsed;
-}
+using spark_transport::probe::unsigned_value;
 
 Options parse_options(int argc, char** argv) {
   Options options;
@@ -74,8 +68,7 @@ Options parse_options(int argc, char** argv) {
       return argv[index];
     };
     if (argument == "--rank") {
-      options.rank = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "rank"));
+      options.rank = unsigned_value<std::uint32_t>(take_value(), "rank");
     } else if (argument == "--peer0") {
       options.peer0 = take_value();
     } else if (argument == "--peer1") {
@@ -85,40 +78,36 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--device1") {
       options.device1 = take_value();
     } else if (argument == "--gid0") {
-      options.gid0 = static_cast<std::uint8_t>(
-          unsigned_value(take_value(), "GID 0"));
+      options.gid0 = unsigned_value<std::uint8_t>(take_value(), "GID 0");
     } else if (argument == "--gid1") {
-      options.gid1 = static_cast<std::uint8_t>(
-          unsigned_value(take_value(), "GID 1"));
+      options.gid1 = unsigned_value<std::uint8_t>(take_value(), "GID 1");
     } else if (argument == "--control-port0") {
-      options.control_port0 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 0"));
+      options.control_port0 = unsigned_value<std::uint16_t>(take_value(), "control port 0");
     } else if (argument == "--control-port1") {
-      options.control_port1 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 1"));
+      options.control_port1 = unsigned_value<std::uint16_t>(take_value(), "control port 1");
     } else if (argument == "--submit-cpu") {
-      options.submit_cpu = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "submit CPU"));
+      options.submit_cpu = unsigned_value<std::uint32_t>(take_value(), "submit CPU");
     } else if (argument == "--progress-cpu") {
-      options.progress_cpu = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "progress CPU"));
+      options.progress_cpu = unsigned_value<std::uint32_t>(take_value(), "progress CPU");
     } else if (argument == "--warmup") {
       options.warmup =
-          static_cast<int>(unsigned_value(take_value(), "warmup"));
+          unsigned_value<int>(take_value(), "warmup");
     } else if (argument == "--iterations") {
       options.iterations =
-          static_cast<int>(unsigned_value(take_value(), "iterations"));
+          unsigned_value<int>(take_value(), "iterations");
     } else if (argument == "--mtp-tokens") {
-      options.mtp_tokens = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "MTP tokens"));
+      options.mtp_tokens = unsigned_value<std::uint32_t>(take_value(), "MTP tokens");
     } else {
       usage(argv[0]);
     }
   }
   if (options.rank >= spark_transport::kTp4VocabWorldSize ||
       options.peer0.empty() || options.peer1.empty() ||
+      options.control_port0 == 0 || options.control_port1 == 0 ||
       options.control_port0 == options.control_port1 ||
       options.submit_cpu == options.progress_cpu ||
+      options.submit_cpu == std::numeric_limits<std::uint32_t>::max() ||
+      options.progress_cpu == std::numeric_limits<std::uint32_t>::max() ||
       options.warmup < 0 || options.iterations <= 0 ||
       (options.mtp_tokens != 4 && options.mtp_tokens != 5)) {
     usage(argv[0]);

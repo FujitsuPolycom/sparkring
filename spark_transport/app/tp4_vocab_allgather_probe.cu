@@ -1,3 +1,5 @@
+#include "probe_options.hpp"
+
 #include "spark_transport/gpu_tp4_vocab_allgather.hpp"
 #include "spark_transport/tp4_vocab_allgather_c_api.h"
 
@@ -51,15 +53,7 @@ struct Options {
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed{};
-  const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return parsed;
-}
+using spark_transport::probe::unsigned_value;
 
 Options parse_options(int argc, char** argv) {
   Options options;
@@ -72,8 +66,7 @@ Options parse_options(int argc, char** argv) {
       return argv[index];
     };
     if (argument == "--rank") {
-      options.rank = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "rank"));
+      options.rank = unsigned_value<std::uint32_t>(take_value(), "rank");
     } else if (argument == "--peer0") {
       options.peer0 = take_value();
     } else if (argument == "--peer1") {
@@ -83,35 +76,28 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--device1") {
       options.device1 = take_value();
     } else if (argument == "--gid0") {
-      options.gid0 = static_cast<std::uint8_t>(
-          unsigned_value(take_value(), "GID 0"));
+      options.gid0 = unsigned_value<std::uint8_t>(take_value(), "GID 0");
     } else if (argument == "--gid1") {
-      options.gid1 = static_cast<std::uint8_t>(
-          unsigned_value(take_value(), "GID 1"));
+      options.gid1 = unsigned_value<std::uint8_t>(take_value(), "GID 1");
     } else if (argument == "--control-port0") {
-      options.control_port0 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 0"));
+      options.control_port0 = unsigned_value<std::uint16_t>(take_value(), "control port 0");
     } else if (argument == "--control-port1") {
-      options.control_port1 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 1"));
+      options.control_port1 = unsigned_value<std::uint16_t>(take_value(), "control port 1");
     } else if (argument == "--q") {
-      options.query_rows = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "Q"));
+      options.query_rows = unsigned_value<std::uint32_t>(take_value(), "Q");
     } else if (argument == "--warmup") {
       options.warmup =
-          static_cast<int>(unsigned_value(take_value(), "warmup"));
+          unsigned_value<int>(take_value(), "warmup");
     } else if (argument == "--iterations") {
       options.iterations =
-          static_cast<int>(unsigned_value(take_value(), "iterations"));
+          unsigned_value<int>(take_value(), "iterations");
     } else if (argument == "--production-rounds") {
-      options.production_rounds = static_cast<int>(
-          unsigned_value(take_value(), "production rounds"));
+      options.production_rounds = unsigned_value<int>(take_value(), "production rounds");
     } else if (argument == "--queued-delay-ms") {
       options.queued_delay_ms =
-          unsigned_value(take_value(), "queued delay");
+          unsigned_value<std::chrono::milliseconds::rep>(take_value(), "queued delay");
     } else if (argument == "--queued-delay-rank") {
-      options.queued_delay_rank = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "queued delay rank"));
+      options.queued_delay_rank = unsigned_value<std::uint32_t>(take_value(), "queued delay rank");
     } else if (argument == "--alternate-streams") {
       options.alternate_streams = true;
     } else {
@@ -121,6 +107,7 @@ Options parse_options(int argc, char** argv) {
   if (options.rank >= spark_transport::kTp4VocabWorldSize ||
       options.peer0.empty() || options.peer1.empty() ||
       options.query_rows > spark_transport::kTp4VocabMaxQueryRows ||
+      options.control_port0 == 0 || options.control_port1 == 0 ||
       options.control_port0 == options.control_port1 ||
       options.warmup < 0 || options.iterations <= 0 ||
       options.production_rounds < 0 ||

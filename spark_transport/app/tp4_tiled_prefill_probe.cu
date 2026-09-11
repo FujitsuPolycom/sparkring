@@ -1,6 +1,8 @@
 // Research-only standalone native qualification probe for tiled TP4 prefill.
 // This binary is not linked by the production C ABI or the vLLM adapter.
 
+#include "probe_options.hpp"
+
 #include "spark_transport/control_channel.hpp"
 #include "spark_transport/memory_buffer.hpp"
 #include "spark_transport/statistics.hpp"
@@ -120,25 +122,10 @@ static_assert(std::is_trivially_copyable_v<TiledGeometryInfo>);
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed{};
-  const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return parsed;
-}
+using spark_transport::probe::unsigned_value;
 
 int signed_value(const char* value, const char* name) {
-  std::size_t consumed{};
-  const std::string text(value);
-  const auto parsed = std::stoll(text, &consumed);
-  if (consumed != text.size() || parsed < std::numeric_limits<int>::min() ||
-      parsed > std::numeric_limits<int>::max()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return static_cast<int>(parsed);
+  return std::string_view(value) == "-1" ? -1 : unsigned_value<int>(value, name);
 }
 
 TimingMode parse_timing_mode(std::string_view value) {
@@ -188,9 +175,9 @@ Options parse_options(int argc, char** argv) {
       return argv[index];
     };
     if (argument == "--rank") {
-      options.rank = static_cast<std::uint32_t>(unsigned_value(take_value(), "rank"));
+      options.rank = unsigned_value<std::uint32_t>(take_value(), "rank");
     } else if (argument == "--world-size") {
-      options.world_size = static_cast<std::uint32_t>(unsigned_value(take_value(), "world size"));
+      options.world_size = unsigned_value<std::uint32_t>(take_value(), "world size");
     } else if (argument == "--peer0") {
       options.peer0 = take_value();
     } else if (argument == "--peer1") {
@@ -200,26 +187,25 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--device1") {
       options.device1 = take_value();
     } else if (argument == "--gid0") {
-      options.gid0 = static_cast<std::uint8_t>(unsigned_value(take_value(), "gid0"));
+      options.gid0 = unsigned_value<std::uint8_t>(take_value(), "gid0");
     } else if (argument == "--gid1") {
-      options.gid1 = static_cast<std::uint8_t>(unsigned_value(take_value(), "gid1"));
+      options.gid1 = unsigned_value<std::uint8_t>(take_value(), "gid1");
     } else if (argument == "--control-port0") {
-      options.control_port0 = static_cast<std::uint16_t>(unsigned_value(take_value(), "control port0"));
+      options.control_port0 = unsigned_value<std::uint16_t>(take_value(), "control port0");
     } else if (argument == "--control-port1") {
-      options.control_port1 = static_cast<std::uint16_t>(unsigned_value(take_value(), "control port1"));
+      options.control_port1 = unsigned_value<std::uint16_t>(take_value(), "control port1");
     } else if (argument == "--arm-id") {
       options.arm_id = take_value();
     } else if (argument == "--query-rows") {
-      options.query_rows = static_cast<std::uint32_t>(unsigned_value(take_value(), "query rows"));
+      options.query_rows = unsigned_value<std::uint32_t>(take_value(), "query rows");
     } else if (argument == "--elements-per-row") {
-      options.elements_per_row = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "elements per row"));
+      options.elements_per_row = unsigned_value<std::uint32_t>(take_value(), "elements per row");
     } else if (argument == "--timing-mode") {
       options.timing_mode = parse_timing_mode(take_value());
     } else if (argument == "--warmup-operations") {
-      options.warmup_operations = static_cast<std::uint32_t>(unsigned_value(take_value(), "warmup operations"));
+      options.warmup_operations = unsigned_value<std::uint32_t>(take_value(), "warmup operations");
     } else if (argument == "--measured-operations") {
-      options.measured_operations = static_cast<std::uint32_t>(unsigned_value(take_value(), "measured operations"));
+      options.measured_operations = unsigned_value<std::uint32_t>(take_value(), "measured operations");
     } else if (argument == "--guard-bytes") {
       options.guard_bytes = unsigned_value(take_value(), "guard bytes");
     } else if (argument == "--credit-delay-edge") {
@@ -235,9 +221,9 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--expected-payload-tile-bytes") {
       options.expected_payload_tile_bytes = unsigned_value(take_value(), "tile bytes");
     } else if (argument == "--expected-slots-per-edge") {
-      options.expected_slots_per_edge = static_cast<std::uint32_t>(unsigned_value(take_value(), "slots"));
+      options.expected_slots_per_edge = unsigned_value<std::uint32_t>(take_value(), "slots");
     } else if (argument == "--expected-lanes-per-edge") {
-      options.expected_lanes_per_edge = static_cast<std::uint32_t>(unsigned_value(take_value(), "lanes"));
+      options.expected_lanes_per_edge = unsigned_value<std::uint32_t>(take_value(), "lanes");
     } else if (argument == "--expected-registered-tile-storage-bytes-per-edge") {
       options.expected_registered_bytes_per_edge = unsigned_value(take_value(), "registered bytes");
     } else if (argument == "--submit-cpu" ||
@@ -598,7 +584,7 @@ class VerbsTiledEdgePort final : public research::TiledEdgePort {
   }
 
   std::uint64_t* word(std::uint64_t offset) const {
-    if (offset + sizeof(std::uint64_t) > arena_.size()) {
+    if (offset > arena_.size() || arena_.size() - offset < sizeof(std::uint64_t)) {
       throw std::out_of_range("tiled edge control offset exceeds arena");
     }
     return reinterpret_cast<std::uint64_t*>(
@@ -622,8 +608,14 @@ std::string json_string(std::string_view value) {
   std::ostringstream stream;
   stream << '"';
   for (char character : value) {
-    if (character == '"' || character == '\\') stream << '\\';
-    stream << character;
+    const auto byte = static_cast<unsigned char>(character);
+    if (byte < 0x20) {
+      stream << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+             << static_cast<unsigned>(byte) << std::dec;
+    } else {
+      if (character == '"' || character == '\\') stream << '\\';
+      stream << character;
+    }
   }
   stream << '"';
   return stream.str();
@@ -745,6 +737,14 @@ int main(int argc, char** argv) {
       throw std::runtime_error("qualification geometry does not match native layout");
     }
 
+    const auto geometry = research::oracle_payload_geometry(
+        options.query_rows, options.elements_per_row);
+    if (options.guard_bytes > (std::numeric_limits<std::size_t>::max() - geometry.capacity_bytes) / 2U) {
+      throw std::invalid_argument("guard bytes overflow the bounded payload allocation");
+    }
+    const std::uint64_t allocation_bytes =
+        geometry.capacity_bytes + 2U * options.guard_bytes;
+
     auto arena0 = spark_transport::MemoryBuffer::allocate(
         spark_transport::MemoryKind::kCudaMapped, layout.total_bytes);
     auto arena1 = spark_transport::MemoryBuffer::allocate(
@@ -762,10 +762,6 @@ int main(int argc, char** argv) {
     exchange_and_connect(channel1, endpoint1, options, plan1, storage,
                          layout, operation);
 
-    const auto geometry = research::oracle_payload_geometry(
-        options.query_rows, options.elements_per_row);
-    const std::uint64_t allocation_bytes =
-        geometry.capacity_bytes + 2U * options.guard_bytes;
     std::uint8_t* guarded_input{};
     std::uint8_t* guarded_output{};
     research::TiledCorrectnessReceipt* device_correctness{};

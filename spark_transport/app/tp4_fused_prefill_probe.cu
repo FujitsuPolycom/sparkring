@@ -1,3 +1,4 @@
+#include "probe_options.hpp"
 // Research-only four-node Q8192 fused-ring verbs qualification probe.
 // This executable is deliberately absent from the serving session and C ABI.
 
@@ -38,6 +39,8 @@
 namespace research = spark_transport::tiled_prefill_research;
 
 namespace {
+
+using spark_transport::probe::unsigned_value;
 
 constexpr std::uint16_t kEndpointVersion = 8;
 constexpr std::uint16_t kEndpointTag = 0x4633;  // "F3"
@@ -114,23 +117,6 @@ static_assert(std::is_trivially_copyable_v<GeometryHandshake>);
   std::exit(2);
 }
 
-template <typename Integer>
-Integer unsigned_value(const char* value, const char* name) {
-  const std::string text(value);
-  if constexpr (std::numeric_limits<Integer>::is_signed) {
-    if (text == "-1") return -1;  // Proxy CPU -1 leaves affinity unpinned.
-  }
-  if (text.empty() || !std::all_of(text.begin(), text.end(),
-                                 [](char digit) { return digit >= '0' && digit <= '9'; })) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  const auto parsed = std::stoull(text);
-  if (parsed > static_cast<std::uint64_t>(std::numeric_limits<Integer>::max())) {
-    throw std::out_of_range(std::string(name) + " exceeds its integer range");
-  }
-  return static_cast<Integer>(parsed);
-}
-
 Options parse_options(int argc, char** argv) {
   Options options;
   for (int index = 1; index < argc; ++index) {
@@ -174,7 +160,10 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--secondary-port1") {
       options.secondary_port1 = unsigned_value<std::uint16_t>(take(), "secondary port1");
     } else if (argument == "--proxy-cpu") {
-      options.proxy_cpu = unsigned_value<std::int32_t>(take(), "proxy cpu");
+      const char* cpu = take();
+      options.proxy_cpu = std::string_view(cpu) == "-1"
+                              ? -1
+                              : unsigned_value<std::int32_t>(cpu, "proxy cpu");
     } else if (argument == "--warmup") {
       options.warmup = unsigned_value<std::uint32_t>(take(), "warmup");
     } else if (argument == "--iterations") {
