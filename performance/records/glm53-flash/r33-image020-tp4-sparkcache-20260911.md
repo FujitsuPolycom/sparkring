@@ -1,6 +1,7 @@
 # Generic R33 image TP4 ring qualification
 
-Status: **bounded-qualified; versioned generic image published**.
+Status: **qualified** for the bounded functional checks below; image published.
+Throughput values are **research-only** observations.
 
 ## Conditions
 
@@ -31,7 +32,22 @@ The image construction receipt binds these source and native identities:
 | NCCL | 2.31.2; `libnccl.so.2.31.2` SHA-256 `84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47` |
 | SIRCL | `libspark_transport_capi.so` SHA-256 `bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246` |
 
-## Results
+## Measurement
+
+Functional checks use startup logs, exact-answer comparisons, cache-token
+usage, worker restore logs and transport snapshots. The six prefix-hit cases
+check liveness rather than output equivalence. Evidence identifies retained
+artifacts by name and hash; the raw files are not published in this repository.
+
+Prefill values are reported medians of three cold requests per prompt size;
+all nine requests reported zero cached tokens. Decode used 10-second windows
+and reported no request errors. The repository does not specify the harness
+revision, complete command, timing clock/interval or warm-up policy, and does
+not provide complete per-sample data or a variability calculation. The tables
+therefore preserve research-only throughput observations, not a reproducible
+benchmark or a speedup claim. TP2 methods are not inferred for this TP4 run.
+
+## Result
 
 - Three coordinated startups of the same image completed CUDA graph capture
   on all four ranks. Two used normal WARN logging and one used the INFO-only
@@ -112,7 +128,14 @@ paths, prompts, generated secrets, or container identifiers.
 | INFO-start semantic check | `tp4-020-info-semantic.json` | `c4b92e4845773e7433f506db79ad774576b53c31f694c9aeb434898ecc1010e3` |
 | Canonical WARN return | `tp4-image020-nccl-info-plan/deployment/canonical-ready.json` | `cfbb837566ac01ef049566fd24815687102f558a479910c7353b1eaadbd653df` |
 
-## Qualification limits
+## Conclusion
+
+The exact TP4/DCP1 ring configuration completed the reported startup, bounded
+text and 8K restart-restore checks. Transport records establish the stated
+activation scope, not per-request bandwidth balance. Functional qualification
+does not establish independently reproducible throughput.
+
+## Limitations
 
 The configured one-million-token limit was admitted by the reported KV pool;
 no completed one-million-token request was run. Multimodal correctness,
@@ -124,9 +147,11 @@ transferred by a particular request.
 
 The managed Noether lifecycle returned all ranks to the canonical WARN
 renderer and passed health, graph-capture, semantic, and cache-restore checks.
-The image has no public registry digest yet, and no published tag or quickstart
-should identify it as the public default until immutable registry verification
-completes.
+The image is published as
+`ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef`.
+The [publication receipt](../../../runtime/sparkring/jovian-r33/publication.json)
+binds that digest to the tested image config ID and records anonymous registry
+verification. Publication does not extend the bounded serving qualification.
 
 This record qualifies only the TP4/DCP1 ring profile on the exact image and
 source identities above. The TP2 result has a separate

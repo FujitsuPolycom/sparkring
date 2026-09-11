@@ -1,6 +1,7 @@
 # Generic R33 image TP2 SparkCache qualification
 
-Status: **TP2 bounded-qualified; versioned generic image published**.
+Status: **qualified** for the bounded functional checks below; image published.
+Throughput values are **research-only** observations.
 
 ## Conditions
 
@@ -27,7 +28,23 @@ Both workers mapped the pinned NCCL library and selected the two physical
 functions `rocep1s0f0` and `roceP2p1s0f0` of the single DAC. RoCEnante
 initialized as the first tensor-parallel all-reduce backend.
 
-## Results
+## Measurement
+
+Functional checks record graph-start completion, exact-answer comparisons,
+cached-token usage after process restart, and worker restore logs. Artifact
+identifiers and SHA-256 hashes appear in Evidence; the raw files are retained
+outside this repository and are not independently inspectable from these hashes.
+
+Prefill values are the reported medians of three cold requests per prompt
+size. The recorded 32K durations are 17.83, 13.93 and 13.94 seconds; the first
+sample is retained. The repository does not specify the harness revision,
+complete command, timing clock/interval, warm-up policy, or decode duration.
+It also lacks a variability calculation and complete public per-sample data.
+Therefore the throughput tables preserve research-only observations, not a
+reproducible benchmark or a speedup claim. No missing method is inferred from
+another runtime's benchmark defaults.
+
+## Result
 
 - Three consecutive cold starts completed CUDA graph capture on both ranks.
   Neither log contains `capture_end` or `cudaErrorNotPermitted`.
@@ -93,7 +110,13 @@ prompts or generated secrets.
 | Rank-zero NCCL process maps | `tp2-020-nccl-maps-r0.txt` | `da8b913f38b6f317eb107ef0bf1ee85179da941d77abdbe7a07cbc9dfc215d8d` |
 | Rank-one NCCL process maps | `tp2-020-nccl-maps-r1.txt` | `f26a5802f2f46aa4d2742893e733f144127f3e3a8f2323bfeddd5eed85ec55bd` |
 
-## Qualification limits
+## Conclusion
+
+The exact TP2 image/profile completed the reported startup, text and 8K
+external-cache restart checks. This supports bounded functional qualification,
+not arbitrary-context correctness or independently reproducible throughput.
+
+## Limitations
 
 The configured one-million-token limit was admitted by the reported KV pool;
 no completed one-million-token request was run. Multimodal correctness and
@@ -104,5 +127,6 @@ out-of-memory condition. The event is retained and is not classified as a CUDA
 graph startup failure.
 
 This record qualifies only the TP2 profile on the exact image and source
-identities above. TP4 qualification is independent. The generic image must not
-be labeled release-qualified until the TP4 gate passes.
+identities above. The separate TP4 qualification and registry publication are
+recorded in the [publication receipt](../../../runtime/sparkring/jovian-r33/publication.json);
+neither extends the TP2 checks to untested workloads.

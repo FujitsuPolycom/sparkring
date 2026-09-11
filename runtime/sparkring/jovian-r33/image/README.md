@@ -37,7 +37,7 @@ The goal-complete image requires the ARM64/SM121 SparkCache placement and snapsh
 Run the local contract tests from the repository root:
 
 ```bash
-python -m unittest runtime/sparkring/jovian-r33/image/test_image_contract.py -v
+python -m unittest runtime/sparkring/jovian-r33/image/test_r33_image_contract.py -v
 ```
 
 On the ARM64 build host, place this directory at a stable path and make the repository checkout available. After all component builds finish, generate the three terminal source-identity receipts in one fail-closed step:
@@ -103,4 +103,11 @@ sparkring-r33 verify
 sparkring-r33 serve MODEL [vLLM options...]
 ```
 
-The entrypoint does not define or render a second profile system. Serving requires `SPARKRING_PROFILE_MODE=custom` and one canonical externally rendered profile from `runtime/sparkring/jovian-r33/profiles`. It validates common source settings and concrete site inputs before invoking vLLM. TP4 additionally requires the managed-mesh marker plus concrete native library, peer, device, GID, control-port, HCA, rank, and management values. The optional SparkCache and LMCache packages are present, but only the canonical `tp4-dcp1-sparkcache` profile can enable SparkCache.
+Serving requires `SPARKRING_PROFILE_MODE=custom` and an externally rendered
+profile from `runtime/sparkring/jovian-r33/profiles`. The entrypoint validates
+common source settings and concrete site inputs before invoking vLLM; it does
+not render profiles. TP4 also requires the managed-mesh marker and resolved
+native-library, peer, device, GID, control-port, HCA, rank, and management values.
+SparkCache is admitted by `tp2-dcp1-sparkcache` and `tp4-dcp1-sparkcache`.
+Their separate qualification records above define the tested scope. Installed
+SparkCache or LMCache packages do not enable caching for other profiles.

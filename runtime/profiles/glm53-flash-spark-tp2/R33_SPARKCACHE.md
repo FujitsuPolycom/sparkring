@@ -1,6 +1,7 @@
 # R33 TP2 SparkCache composition
 
-Status: **research-only**. The local launcher implements a separate
+Status: **qualified** for the bounded startup, text and restart-restore checks
+identified below; throughput observations remain research-only. The launcher implements a separate
 `tp2-dcp1-sparkcache` plan. Its default KV pool is 7.5 GiB per rank, matching
 the bounded R33 test configuration. It preserves the TP2 reference's
 managed B12X loader, TP2/DCP1, MTP3 with Humming draft MoE,
@@ -72,24 +73,20 @@ capabilities. `create` and `start` reject that receipt before inspecting guards
 or contacting Docker. Their other guard and existing-GPU-container checks are
 unchanged. Candidate names are `sparkring-r33-tp2-dcp1-sparkcache-r0/r1`.
 
-## Final image packaging
+## Image packaging and verification
 
 The canonical profile records the 7.5 GiB default, implicit managed B12X
 allocation, explicit B12X draft loader with empty extra configuration, and
 request scheduling/multimodal limits. The launcher reads these fields rather
 than inheriting the legacy profile's values for the cache composition.
 
-An already built image retains its packaged profile bytes. Final packaging
-requires a new context/source lock, a rebuilt generic image with this contract,
-and a new verified image receipt. The pinned runtime sources and native
-artifacts are unchanged and can be reused. Distribute the external launcher
-from the same repository revision and bind its rendered plans to the final
-image receipt. Repeat the required TP2 and TP4 qualification on that exact
-image; neither these configuration changes nor a successful package build
-promotes earlier bounded results to complete release qualification.
-
-The TP2 and TP4 bounded checks have passed on the published image. Their
-separate qualification records state the measured scope and limitations.
+The published image contains the canonical profile bytes and has a matching
+verified image receipt. Its TP2 and TP4 bounded checks are recorded separately.
+Distribute an external launcher whose profile contract matches that receipt.
+Changing packaged profile bytes requires a matching context/source lock,
+image build, and verification receipt; a build alone does not qualify serving.
+Modified images require their own tests rather than inheriting the published
+image's results.
 
 ## Required capability evidence
 

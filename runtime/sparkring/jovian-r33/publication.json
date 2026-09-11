@@ -28,12 +28,12 @@
     "tp2-dcp1-sparkcache": {
       "status": "bounded-qualified",
       "record": "performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md",
-      "sha256": "d07d28b1b2d09a05910886fdb8f58cafc88904b6713e476e64cad048c4fe4e84"
+      "sha256": "c46e190ed171af69dddf667d69ac75714599bd86f789474e1e19d621ae1c200c"
     },
     "tp4-dcp1-sparkcache": {
       "status": "bounded-qualified",
       "record": "performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md",
-      "sha256": "4e2db6619a2d71bcda0c55ceb3a5a1c476edcb3148839553ac493e37175af7ae"
+      "sha256": "65458cfa88935a3bb6255f952ace1ed3f8b50bf778b7da46a6a6e65e1c572575"
     }
   }
 }

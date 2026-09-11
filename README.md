@@ -116,8 +116,6 @@ Results attempt to reflect real world use-case numbers in all instances unless o
 
 | Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
 |---|---:|---:|---:|---:|---:|---:|
-| [GLM-5.3 NVFP4-Spark · R33 MTP3 + SparkCache ring · 4 Sparks](performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md) | 8K | 3,274 (8K median) | 51.4 | — | C4: 132.5 | — |
-| [GLM-5.3 NVFP4-Spark · R33 MTP3 + SparkCache pair · 2 Sparks](performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md) | 8K | 2,340 (8K median) | 33.1 | — | C4: 66.1 | — |
 | [GLM-5.3 NVFP4-Spark · native MTP3 + mesh · 4 Sparks](performance/records/glm53-flash/spark-mtp3-mesh-20260905.md) | 8K | 2,703 (8K scout) | 48.2 | 168.8 | C16: 231.3 | — |
 | [GLM-5.3 NVFP4-Spark · DFlash2 exact request-batch graphs · 4 Sparks](performance/records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md) | 16K | 2,717 (16K scout) | 43.05 | 134.3 | C16: 187.0 | — |
 | [GLM-5.3 NVFP4 · DFlash2/B12X-KDA DCP4 · 4 Sparks](performance/records/glm53-flash/b12x-kda-dcp4-20260903.md) | 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |
@@ -130,6 +128,18 @@ Results attempt to reflect real world use-case numbers in all instances unless o
 See [full results](docs/RESULTS.md) and the
 [mesh validation report](performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 for repeat counts, accuracy checks, settings, and limitations.
+
+### R33 throughput observations
+
+Status: **research-only**. These reported values lack a complete public
+harness/method record and must not be treated as matched comparisons with the
+benchmarks above. Their linked records separately qualify bounded functional
+checks and describe the missing measurement details.
+
+| NVFP4-Spark MTP3 + SparkCache profile | Context | Prefill tok/s, median of 3 | C1 output tok/s | C4 aggregate output tok/s |
+|---|---:|---:|---:|---:|
+| [R33 four-Spark ring](performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md) | 8K | 3,274 | 51.4 | 132.5 |
+| [R33 two-Spark pair](performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md) | 8K | 2,340 | 33.1 | 66.1 |
 
 ## Architecture
 

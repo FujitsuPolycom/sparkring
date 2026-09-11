@@ -1,4 +1,7 @@
+"""Contracts for the source-pinned R33 ARM64 image and entrypoint."""
+
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +16,24 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 CANONICAL_PROFILES = HERE.parent / "profiles"
+
+
+class PublicationDocumentationTests(unittest.TestCase):
+    def test_qualification_documents_match_publication_hashes(self):
+        root = HERE.parents[3]
+        publication = json.loads((HERE.parent / "publication.json").read_text())
+        for entry in publication["qualification"].values():
+            path = root / entry["record"]
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), entry["sha256"])
+            document = path.read_text()
+            for heading in ("Conditions", "Measurement", "Result", "Conclusion", "Limitations"):
+                self.assertIn(f"## {heading}\n", document)
+            self.assertIn("**research-only**", document)
+
+    def test_image_documentation_names_both_cache_profiles(self):
+        document = (HERE / "README.md").read_text()
+        self.assertIn("`tp2-dcp1-sparkcache` and `tp4-dcp1-sparkcache`", document)
+        self.assertNotIn("only the canonical `tp4-dcp1-sparkcache`", document)
 
 
 def load_entrypoint():
