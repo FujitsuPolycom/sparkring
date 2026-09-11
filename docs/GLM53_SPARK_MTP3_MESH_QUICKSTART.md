@@ -8,7 +8,7 @@ That record defines the qualified conditions; in-flight collective failure
 containment and unattended availability are not established.
 
 **Starting with four stock Sparks and no image?** Follow
-[the managed-mesh prerequisite section](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh)
+[the managed-mesh prerequisite section](operations/prerequisites.md#four-spark-managed-hardware-forwarded-mesh)
 first. It reuses the shared blank-cluster bootstrap and adds the secondary
 data interfaces, GID/MTU checks, and driver configuration required below.
 Return here to pull the published image and deploy the model.
@@ -36,8 +36,6 @@ The packaged RoCEnante runtime orders shared staging buffers across streams
 and preserves its one-stream-per-CUDA-capture guard. CPU regressions and
 four-rank GPU tests cover alternating streams, misaligned buffers,
 changed-input graph replay, and second-stream capture rejection.
-The [proposal-head throughput record](../performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
-reports observations, not a general performance guarantee.
 
 ## Attribution and design origins
 
@@ -47,50 +45,22 @@ including PR author `original-el8`, for the communication implementation in
 [B12X #295](https://github.com/local-inference-lab/b12x/pull/295) and its
 [vLLM integration in #597](https://github.com/local-inference-lab/vllm/pull/597).
 
-Those PRs motivated SparkRing's investigation of hardware-forwarded paths
-between opposite ranks on a four-node ring. SparkRing adapts the donor
-communication package to those paths and combines it with SIRCL routing and
-managed deployment. It does not claim to originate RoCEnante or install both
-complete PRs unchanged. The [vendored-source provenance](../third_party/b12x_roce/README.md)
+SparkRing adapts that communication package to hardware-forwarded paths
+between opposite ranks and combines it with SIRCL routing and managed
+deployment. The [vendored-source provenance](../third_party/b12x_roce/README.md)
 identifies the included code and retained license.
 
-The proposal-head and metadata implementation is derived from
-[Local Inference Lab vLLM revision `3512b066`](https://github.com/local-inference-lab/vllm/commit/3512b066e7796128c0c380ccc558182960f2f0ea),
-as retained in
-[revision `a8c796f3`](https://github.com/local-inference-lab/vllm/commit/a8c796f3af74106b2d8d441e9ec54588936a5388).
-The compute source uses Local Inference Lab B12X
-[revision `ef308bac`](https://github.com/local-inference-lab/b12x/commit/ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301)
-for shared native MoE scale storage, with three source-checked selector files
-from [PR 316](https://github.com/local-inference-lab/b12x/pull/316). The vLLM
-composition also includes deferred-weight ownership from `17e341b9` and
-independent draft/rejection randomness from
-[PR 653](https://github.com/local-inference-lab/vllm/pull/653). Exact source and
-file identities are in the compute source lock.
+The proposal-head, metadata and compute changes derive from Local Inference
+Lab's vLLM and B12X work. The [compute source composition](../runtime/glm53-spark-mtp3-mesh/compute/README.md)
+records contributor revisions, feature provenance and exact source identities.
 
 ## Recorded benchmark observations
 
-The [compute matrices](../performance/records/glm53-flash/spark-mtp3-compute-matrices-20260905.md)
-compare proposal-head, loader/RNG, scale-sharing, and selector configurations
-at C1/C2/C4/C8/C12/C16. They include averages across 8K/32K/64K context rows
-and source-hashed individual cells. Their compute images and transport bundle
-are identified separately from the combined image requiring qualification.
-
-See the [consolidated validation report](../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
-for completed checks, repeat counts, and the remaining test plan.
-
-The [profile results table](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
-shows the completed three-run C1/C2/C4/C8 screen. At 8K, aggregate decode means
-were **51.6, 76.9, 120.8, and 168.8 tok/s**. Against two shared-BF16-head
-controls using the same CUDA version, B12X kernels, metadata reuse, and dense-kernel
-integration, C1 improved **8.22% raw** and
-**4.90% in normalized sequence steps/s**. Higher concurrency was mixed and
-prefill means were flat within 0.36% over 8K–128K. The linked record provides
-the receipt hashes, exact settings, and limitations.
-
-A separate [Estonia long-context accuracy benchmark](../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
-completed **30/30 correct answers at C8** on one repeated 133,208-token prompt,
-with no output-budget hits. The records include both operator screenshots,
-numeric results, and distinct throughput definitions.
+The [profile results](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
+collect throughput and long-context accuracy measurements, their image and
+workload conditions, and limitations. The
+[validation report](../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
+records completed checks and remaining qualification gates.
 
 ## Preparation order and command locations
 

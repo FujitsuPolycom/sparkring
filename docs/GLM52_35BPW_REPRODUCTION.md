@@ -13,7 +13,7 @@ status **implemented** until it completes
 - Candidate template: `scripts/config/exl3-r7-candidate.example.json`
 - Runtime builder: `runtime/exl3-r7/build-image.sh`
 
-Complete [the GLM quickstart](GLM52_35BPW_QUICKSTART.md) through image build
+Complete [the GLM quickstart](../profiles/glm52-exl3-r7-3.5bpw/README.md) through image build
 before deriving the deployment foundation.
 
 ## Derive the complete pre-exact-Q40 profile
@@ -87,5 +87,3 @@ Copy both generated bundles to their declared remote roots before launch.
 Staging files and starting are host-mutating, and starting can stop a running
 service. Perform those actions only with authorization for the four named
 hosts. Verify `/health`, the served model name, and the 1,048,576-token maximum.
-The rebuilt profile has status **implemented** until it completes the promotion
-checklist.

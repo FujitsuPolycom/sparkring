@@ -2,22 +2,12 @@
 
 The retained historical guide is [here](history/glm53-cache-checkpoints.md). Its commands and evidence apply only to that retired configuration. Use the [profile catalog](../profiles/README.md) for maintained deployments.
 
-## Prerequisites
+## [Prerequisites](history/glm53-cache-checkpoints.md#prerequisites)
 
-See the [historical guide](history/glm53-cache-checkpoints.md).
+## [Pull and verify the image](history/glm53-cache-checkpoints.md#pull-and-verify-the-image)
 
-## Pull and verify the image
+## [Extract and render](history/glm53-cache-checkpoints.md#extract-and-render)
 
-See the [historical guide](history/glm53-cache-checkpoints.md).
+## [Source-build liveness differences](history/glm53-cache-checkpoints.md#source-build-liveness-differences)
 
-## Extract and render
-
-See the [historical guide](history/glm53-cache-checkpoints.md).
-
-## Source-build liveness differences
-
-See the [historical guide](history/glm53-cache-checkpoints.md).
-
-## Runtime behavior and limits
-
-See the [historical guide](history/glm53-cache-checkpoints.md).
+## [Runtime behavior and limits](history/glm53-cache-checkpoints.md#runtime-behavior-and-limits)

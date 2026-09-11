@@ -43,6 +43,6 @@ or establish quality at the configured 1,048,576-token limit.
 
 The TP native path covers tested TP all-reduce and vocabulary families; DCP and
 indexer collectives remain stock.
-Use [the quickstart](GLM52_35BPW_QUICKSTART.md) for deployment and
+Use [the quickstart](../profiles/glm52-exl3-r7-3.5bpw/README.md) for deployment and
 [the reproduction procedure](GLM52_35BPW_REPRODUCTION.md) for the generated
 layers.
