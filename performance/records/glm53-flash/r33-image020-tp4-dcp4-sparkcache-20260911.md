@@ -46,10 +46,18 @@ launch. DCP1 activations disarm that overlay and do not require it.
 - Four exact-answer semantic requests returned exact responses.
 - Two completed cold prompts of 37,032 tokens each with zero cached tokens,
   no `sample_tokens` timeout, and no fatal engine error.
-- DCP prefill execution used the cross-rank path: worker logs on every rank
-  report `Using full-CKV gather for GLM5Next B12X DCP prefill`
-  (`b12x_mla_sparse.py`), the DCP top-k owner-exchange machinery being
-  active rather than a DCP1 fallback.
+- DCP prefill execution used the DCP4-specific path, verified in the
+  published image source: the `_use_b12x_full_ckv_gather` gate
+  (`dcp_world_size > 1`, prefill-only) selects the local
+  `cp_gather_cache` + DCP-group all-gather path, and top-k selection
+  resolves per-token ownership arithmetically over the gathered cache in
+  `_map_global_topk_to_gathered_ckv_kernel`
+  (`owner = (tok // DCP_INTERLEAVE) % DCP_SIZE`). Worker logs on every
+  rank report the `Using full-CKV gather for GLM5Next B12X DCP prefill`
+  gate line. Note: this image has no separate topk-to-owner message
+  exchange step — ownership is resolved after the all-gather, not
+  exchanged — so the evidence is the gate line plus the
+  all-gather/owner-mapping code path, not a distinct exchange primitive.
 - A repeated prompt with an identical 37,019-token prefix hit the cache on
   its second run: 36,352 cached tokens, 15.8 s → 5.0 s wall time.
 - mHC token sharding executed on every rank:
@@ -82,7 +90,13 @@ only (`spec_decode_num_drafts_total` delta per window); the effective
 acceptance length divides `spec_decode_num_accepted_tokens_total` deltas.
 Throughput values remain **research-only** observations: the harness does
 not pin clocks, warm-up policy, or a timing revision, so the tables are not
-a reproducible benchmark or a speedup claim.
+a reproducible benchmark or a speedup claim. No concurrent heavy tenants
+were observed on the four measurement hosts during the windows: the only
+containers running were the four serving ranks of this start (verified by
+container census at each stop/launch cycle), the DeepSeek V4.1 cycle of
+#260 runs on a separate physical ring, and the second fabric NIC's byte
+counter was idle. No re-run after external transfers is therefore required
+on the overlap question.
 
 | Prompt tokens (actual) | Cold prefill tok/s, median of 3 |
 |---:|---:|
@@ -145,12 +159,13 @@ caching stayed enabled (28,160-token hits in the suffix cases), so
 
 The TP4/DCP4 SparkCache profile is bounded-qualified on the unchanged
 published R33 image through the profile-contract overlay: managed four-rank
-startup with graph capture, exact-answer serving, DCP prefill gather
-evidence, dual-domain RouteFinal attribution, the six-case prefix-hit
-regression including the 1,027-token suffix, planned-restart and SIGKILL
-fault-injection restore, and the 8.36M-token KV pool with 1M request
-admission. #220's zero-hit behavior was not observed. The cache-disabled
-`tp4-dcp4` profile starts and serves as an observation row: functional
+startup with graph capture, exact-answer serving, DCP4 prefill
+all-gather/owner-mapping evidence, dual-domain RouteFinal attribution,
+the six-case prefix-hit regression including the 1,027-token suffix,
+planned-restart and SIGKILL fault-injection restore, and the 8.36M-token
+KV pool with 1M request admission. #220's zero-hit behavior was not
+observed. The cache-disabled `tp4-dcp4` profile starts and serves as an
+observation row: functional
 checks (four-rank start, semantic answer, 1M admission) passed on that
 start as well.
 

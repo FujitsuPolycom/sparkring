@@ -38,7 +38,7 @@
     "tp4-dcp4-sparkcache": {
       "status": "bounded-qualified",
       "record": "performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md",
-      "sha256": "8a172acf27efe6b1887e7f08324a70a8d5c02ab9331007eb018f59779a98eb4a",
+      "sha256": "d2671b403962fef0a93bb82bccc0fadea0c9ae3e97cf3f0189525f4c575d6df6",
       "activation_receipt": "runtime/sparkring/jovian-r33/profiles/evidence/tp4-dcp4-sparkcache-activation-20260911.json",
       "activation_receipt_sha256": "d35a111e53fed5074197f2072f512e8a1e4bc02347bc853436b974abe53902ce",
       "overlay_required": "R33_PROFILE_CONTRACT_HOST_ROOT overlay (runtime/sparkring/jovian-r33/profiles) mounted read-only at the contract host root; see the record's Reproduction section"
