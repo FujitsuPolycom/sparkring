@@ -95,11 +95,15 @@ class CandidateImageContractTests(unittest.TestCase):
         self.assertNotIn("vllm", artifacts)
         self.assertEqual(
             lock["source_identities"]["vllm_integrated_tree"],
-            "4f1813fcd2fa1cfc94fdc69a256f2266e394ff90",
+            "667ee2f6652efa065c57a7adc0193991f6cde6ac",
         )
         self.assertEqual(
             lock["source_identities"]["vllm_continuation_port_commit"],
             "b611611a643502542c2d900057eb47e407b8379e",
+        )
+        self.assertEqual(
+            lock["source_identities"]["vllm_prefix_hit_metadata_compatibility_commit"],
+            "58c087102cd3039245240e34c750c7f77ce07ed7",
         )
         self.assertEqual(
             lock["source_identities"]["vllm_flash_attn_commit"],

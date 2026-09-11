@@ -89,11 +89,15 @@ class VllmPackageContractTests(unittest.TestCase):
         self.assertEqual(patch.stat().st_size, manifest["patch"]["size"])
         self.assertEqual(
             manifest["result"]["tree"],
-            "4f1813fcd2fa1cfc94fdc69a256f2266e394ff90",
+            "667ee2f6652efa065c57a7adc0193991f6cde6ac",
         )
         self.assertEqual(
             manifest["continuation_port"]["commit"],
             "b611611a643502542c2d900057eb47e407b8379e",
+        )
+        self.assertEqual(
+            manifest["prefix_hit_metadata_compatibility"]["commit"],
+            "58c087102cd3039245240e34c750c7f77ce07ed7",
         )
         dependency = manifest["required_b12x_checkpoint_contract"]
         self.assertEqual(dependency["commit"], "68acfc14893c087aa9b3120bb984fde4c4e7a21f")

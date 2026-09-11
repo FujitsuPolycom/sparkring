@@ -45,8 +45,8 @@
       "size": 12096
     },
     "tests/v1/worker/test_kda_prefill_checkpoint_binding.py": {
-      "sha256": "e5fbeb8668aa354fc5d37f2367bc43f7ee37b08bea3c0a9c13404b6c61db155d",
-      "size": 6527
+      "sha256": "60f693d67d30d271dd02f32c500ee53d787477eab478a7d3484bbb758e905bb3",
+      "size": 11362
     },
     "vllm/config/vllm.py": {
       "sha256": "3526f14fb1cf949fab1065536656c73a04e663c696ef40dff77bff8a1660cabb",
@@ -73,8 +73,8 @@
       "size": 67356
     },
     "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py": {
-      "sha256": "5da3459db2b46a716218f79edc243d9893eadb6f342d2015864f5f612f0a249a",
-      "size": 71460
+      "sha256": "b96430bd278ec1802bcab89c879a58f712164ef28edd3525f53b2f788f0313cf",
+      "size": 73100
     },
     "vllm/model_executor/layers/mla.py": {
       "sha256": "1925a55de20db522f2e97e4e80ba8133773393c478839b2609d400b3a758b760",
@@ -174,8 +174,13 @@
   },
   "patch": {
     "path": "patches/vllm-r33-sparkring.patch",
-    "sha256": "26c21814b7b3239ce8085cfee667ca60710e434586623c8f6d9db8aed987b97e",
-    "size": 202264
+    "sha256": "ca66931518af4392d3cad42faf9fe8e4136cc8221edb7ac72491fde2000a6040",
+    "size": 209863
+  },
+  "prefix_hit_metadata_compatibility": {
+    "behavior": "Normalize one-checkpoint fallback metadata into cleared four-column B12X buffers while preserving the capacity-one vector contract.",
+    "commit": "58c087102cd3039245240e34c750c7f77ce07ed7",
+    "status": "implemented-and-cpu-qualified"
   },
   "preserved_package_tree": "ac8e94ae4ae84d6edfffd97b0d60545c9714e62f",
   "required_b12x_checkpoint_contract": {
@@ -186,10 +191,10 @@
     "tree": "284e7df8caff930477a314fea20d826256844de4"
   },
   "result": {
-    "cached_diff_sha256": "26c21814b7b3239ce8085cfee667ca60710e434586623c8f6d9db8aed987b97e",
+    "cached_diff_sha256": "ca66931518af4392d3cad42faf9fe8e4136cc8221edb7ac72491fde2000a6040",
     "status_lines": 33,
     "status_sha256": "0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe",
-    "tree": "4f1813fcd2fa1cfc94fdc69a256f2266e394ff90"
+    "tree": "667ee2f6652efa065c57a7adc0193991f6cde6ac"
   },
   "scheduler_config_compatibility": {
     "behavior": "Validate the R33 prefill compute-share and parallel-prefill controls without reading an absent scheduler field.",
