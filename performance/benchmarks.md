@@ -1,9 +1,12 @@
 # Benchmark results
 
-Each row links the exact measured configuration. These records include retired
-profiles and are not benchmark results for the shared-image build.
+Each row links the exact measured configuration, including its image identity.
+The first table includes retired profiles; its results do not establish
+performance for other images or configurations.
 
-Decode is aggregate output throughput. Each record specifies its sampling, workload and measurement conditions; results from different conditions are not matched comparisons.
+Throughput values are tokens per second; decode is aggregate output throughput.
+Each record specifies its sampling, workload and measurement conditions;
+results from different conditions are not matched comparisons.
 
 | Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
 |---|---:|---:|---:|---:|---:|---:|
@@ -21,7 +24,9 @@ See [full results](../docs/RESULTS.md) and the
 [mesh validation report](records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 for repeat counts, accuracy checks, settings, and limitations.
 
-### R33 throughput observations
+### GLM-5.3-Flash with MTP3 and SparkCache
+
+These observations use the [SparkRing R33 image](../runtime/releases/sparkring-r33/release.json).
 
 Status: **research-only**. These reported values lack a complete public
 harness/method record and must not be treated as matched comparisons with the

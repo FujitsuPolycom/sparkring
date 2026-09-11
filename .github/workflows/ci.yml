@@ -54,7 +54,7 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm runtime/common -q -rs
+        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm runtime/common runtime/deepseek-v41-gb10/tools/test_packed_output_policy.py runtime/deepseek-v41-gb10/tools/test_prewarm5.py -q -rs
 
   lil-bridge:
     name: pinned LIL bridge

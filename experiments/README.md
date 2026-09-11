@@ -1,7 +1,7 @@
 # Prototype and maintained transport boundary
 
-A directory named `experiments` does not establish whether deployment depends
-on its contents. The migration audited imports, source manifests and build inputs.
+Classify prototypes by their callers and artifact contracts. Directory names
+alone do not establish whether a deployment depends on their contents.
 
 | Existing material | Disposition and evidence |
 |---|---|

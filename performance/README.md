@@ -3,10 +3,9 @@
 See the [benchmark summaries](benchmarks.md) for model-throughput results and
 links to the exact measured configurations.
 
-`performance/` contains reproducible measurement programs and bounded evidence
-records for the supported GLM-5.2 EXL3 3.5-bpw, GLM-5.3 Flash,
-DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving configurations. It
-does not establish a general hardware, model, or production-serving claim.
+`performance/` contains measurement programs and evidence records for model
+serving and transport. Each record identifies the measured configuration;
+the [profile catalog](../profiles/README.md) lists deployment options.
 
 Public model-throughput summaries link to their evidence records. Normalized
 profile records support qualified summaries; explicitly labeled single-run
@@ -22,10 +21,12 @@ experiments are stored separately and do not feed those summaries.
 | `harnesses/vllm/` | vLLM timing, payload-planning, flight-recording, and prefill-capacity research |
 | `harnesses/moe_round_floor/` | Routed-expert timing, route reuse, and capture diagnostics |
 | `harnesses/transport/` | Model-loop replay and direct-link payload sweeps |
+| `harnesses/indexer_barrier/` | Fused-indexer CUDA-graph correctness stress |
 | `methodology/` | Measurement definitions, attribution rules, and CUDA-graph correctness requirements |
 | `records/glm-3.5bpw/` | GLM-5.2 EXL3 R7 evidence records |
 | `records/glm53-flash/` | GLM-5.3 Flash functional cache evidence and research-only throughput observations |
 | `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
+| `records/deepseek-v41-flash/` | DeepSeek-V4.1-Flash evidence records |
 | `records/qwen38-27b/` | Qwen3.8-27B EXL3 K5/K6 evidence records |
 | `records/transport/` | Transport evidence records independent of a model result |
 | `records/research-material/` | Incomplete observations without model or transport attribution |
