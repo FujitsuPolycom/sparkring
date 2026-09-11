@@ -10,9 +10,9 @@ patch=${SPARKRING_R33_VLLM_PATCH:-$script_root/patches/vllm-r33-sparkring.patch}
 manifest=${SPARKRING_R33_VLLM_MANIFEST:-$script_root/patches/vllm-r33-sparkring.manifest.json}
 receipt="$root/artifacts/vllm-sparkring-source.txt"
 base_commit=ae89131442359dc332d9c46009be3c1f8cdee0b4
-patch_sha=ca66931518af4392d3cad42faf9fe8e4136cc8221edb7ac72491fde2000a6040
-manifest_sha=8e17816bc60f8a14b6bfe9ead7af9436903b6ce4482c4f99afff6b3748710ce4
-expected_tree=667ee2f6652efa065c57a7adc0193991f6cde6ac
+patch_sha=73df604d183a3309109ac3e97e1a952e99d111b5761ef2e67fbf41a7957f4ae2
+manifest_sha=c6d041a652895db3112fe7adcf19961816a2457272ea294c2f1162d373e6080d
+expected_tree=0511a78617bb755ea2901ef3c5db7547bc1e148d
 
 test "$(git -C "$base" rev-parse HEAD)" = "$base_commit"
 test -z "$(git -C "$base" status --porcelain)"
@@ -32,7 +32,7 @@ test "$actual_tree" = "$expected_tree"
   printf 'patch.manifest.sha256=%s\n' "$(sha256sum "$manifest" | cut -d' ' -f1)"
   printf 'continuation.port.commit=%s\n' b611611a643502542c2d900057eb47e407b8379e
   printf 'scheduler.config.compatibility.commit=%s\n' 3049b639bdbc513319f7bae896c4e239992bc7bb
-  printf 'prefix.hit.metadata.compatibility.commit=%s\n' 58c087102cd3039245240e34c750c7f77ce07ed7
+  printf 'prefix.hit.metadata.compatibility.commit=%s\n' 4405a965e54f14df00d28e5e23f9793f866aae39
   printf 'result.tree=%s\n' "$actual_tree"
 } > "$receipt"
 git -C "$target" diff --cached --check

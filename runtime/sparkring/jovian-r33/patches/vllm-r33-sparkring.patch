@@ -2012,10 +2012,10 @@ index 0000000..466216b
 +    assert calls == ["preempt", "bind", "load", "metadata", "clear"]
 diff --git a/tests/v1/worker/test_kda_prefill_checkpoint_binding.py b/tests/v1/worker/test_kda_prefill_checkpoint_binding.py
 new file mode 100644
-index 0000000..31b01cf
+index 0000000..6c0d4c6
 --- /dev/null
 +++ b/tests/v1/worker/test_kda_prefill_checkpoint_binding.py
-@@ -0,0 +1,311 @@
+@@ -0,0 +1,406 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""KDA checkpoint binding and convolution-history wrapper contracts."""
@@ -2111,7 +2111,9 @@ index 0000000..31b01cf
 +        recurrent_state=torch.empty(4, 1, 128, 128),
 +        output=torch.empty_like(rows),
 +    )
-+    assert result is None
++    error, bound = result
++    assert error is None
++    assert bound is None
 +    assert observed["checkpoint_state_indices"].shape == (1,)
 +    assert observed["checkpoint_offsets"].shape == (1,)
 +    assert observed["initial_state_indices"].tolist() == [1]
@@ -2190,6 +2192,99 @@ index 0000000..31b01cf
 +    assert observed[1][1].tolist() == [[0, 0, 0, 0]]
 +    assert observed[2][0].tolist() == [[1, 2, 3, 4], [4, 5, 6, 7]]
 +    assert observed[2][1].tolist() == [[16, 32, 48, 64], [8, 24, 40, 56]]
++
++
++def test_four_checkpoint_binding_expands_irregular_packed_csr_for_conv_history():
++    from vllm.model_executor.layers.mamba.gdn import kimi_gdn_linear_attn as module
++
++    observed = {}
++
++    def bind(plan, **kwargs):
++        observed.update(kwargs)
++        return NS(error_code=torch.zeros(1, dtype=torch.int32))
++
++    layer = NS(
++        _b12x_prefill_api=NS(bind=bind, run=lambda *args, **kwargs: None),
++        _b12x_prefill_plan=object(),
++        _b12x_prefill_checkpoint_capacity=4,
++        _b12x_prefill_max_tokens=32,
++        _b12x_prefill_max_seqs=3,
++        _b12x_prefill_initial_indices=torch.zeros(3, dtype=torch.int32),
++        _b12x_prefill_null_indices=torch.full((3, 4), 99, dtype=torch.int32),
++        _b12x_prefill_zero_offsets=torch.full((3, 4), 99, dtype=torch.int32),
++        _b12x_prefill_num_seqs=torch.zeros(1, dtype=torch.int32),
++        _b12x_prefill_num_tokens=torch.zeros(1, dtype=torch.int32),
++        A_log=torch.zeros(1),
++        dt_bias=torch.zeros(1, 128),
++        head_dim=128,
++        gate_lower_bound=-5.0,
++    )
++    rows = torch.empty(12, 1, 128, dtype=torch.bfloat16)
++    error, bound = module.KimiGatedDeltaNetAttention._run_b12x_kda_prefill(
++        layer,
++        scratch=torch.empty(1024, dtype=torch.uint8),
++        q=rows,
++        k=rows,
++        v=rows,
++        raw_g=rows,
++        raw_beta=torch.zeros(12, 1, dtype=torch.bfloat16),
++        cu_seqlens=torch.tensor([0, 4, 8, 12], dtype=torch.int32),
++        state_indices=torch.tensor([1, 2, 3], dtype=torch.int32),
++        has_initial_state=torch.ones(3, dtype=torch.bool),
++        checkpoint=NS(
++            checkpoint_offsets=torch.tensor([512, 1024, 512], dtype=torch.int32),
++            state_indices=torch.tensor([10, 11, 12], dtype=torch.int32),
++            checkpoint_indptr=torch.tensor([0, 2, 2, 3], dtype=torch.int32),
++            checkpoint_query_indices=torch.tensor([0, 0, 2], dtype=torch.int64),
++        ),
++        recurrent_state=torch.empty(16, 1, 128, 128),
++        output=torch.empty_like(rows),
++    )
++
++    assert error is not None
++    assert observed["checkpoint_state_indices"].tolist() == [
++        [10, 11, 0, 0],
++        [0, 0, 0, 0],
++        [12, 0, 0, 0],
++    ]
++    assert observed["checkpoint_offsets"].tolist() == [
++        [512, 1024, 0, 0],
++        [0, 0, 0, 0],
++        [512, 0, 0, 0],
++    ]
++    assert bound.checkpoint_indptr is None
++    assert bound.checkpoint_query_indices is None
++    assert bound.state_indices.shape == (3, 4)
++
++    kernel = {}
++
++    class CaptureKernel:
++        def __getitem__(self, grid):
++            kernel["grid"] = grid
++
++            def launch(*args):
++                kernel["args"] = args
++
++            return launch
++
++    original_kernel = module._store_cache_checkpoints_kernel
++    module._store_cache_checkpoints_kernel = CaptureKernel()
++    layer.conv1d = NS(weight=torch.empty(12, 1, 4))
++    try:
++        module.KimiGatedDeltaNetAttention._store_kda_conv_checkpoint(
++            layer,
++            mixed_qkv=torch.empty(12, 12),
++            conv_state=torch.empty(16, 12, 6),
++            recurrent_state=torch.empty(16, 1, 128, 128),
++            query_start_loc=torch.tensor([0, 4, 8, 12], dtype=torch.int32),
++            checkpoint=bound,
++            error_code=error,
++        )
++    finally:
++        module._store_cache_checkpoints_kernel = original_kernel
++    assert kernel["grid"][0] == 12
++    assert kernel["args"][22] == 4
++    assert kernel["args"][21] is None
 +
 +
 +@pytest.mark.parametrize(
@@ -2565,10 +2660,18 @@ index b5b01ed..36266be 100644
          else:
              output = output_parallel
 diff --git a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
-index 49dbb26..0dc1b08 100644
+index 49dbb26..b8c349a 100644
 --- a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
 +++ b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
-@@ -160,18 +160,26 @@ def _store_cache_checkpoints_kernel(
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
+ from collections.abc import Callable
++from copy import copy
+ from dataclasses import replace
+ from typing import TYPE_CHECKING, Any
+ 
+@@ -160,18 +161,26 @@ def _store_cache_checkpoints_kernel(
      BLOCK_SIZE: tl.constexpr,
      STORE_RECURRENT: tl.constexpr,
      checkpoint_query_indices_ptr=None,
@@ -2598,7 +2701,7 @@ index 49dbb26..0dc1b08 100644
      valid_conv = (
          (cols < WIDTH * STATE_LEN) & valid_checkpoint & (checkpoint_offset >= STATE_LEN)
      )
-@@ -179,7 +187,7 @@ def _store_cache_checkpoints_kernel(
+@@ -179,7 +188,7 @@ def _store_cache_checkpoints_kernel(
      history_idx = cols % STATE_LEN
      query_idx = seq_idx_i64
      if checkpoint_query_indices_ptr is not None:
@@ -2607,7 +2710,7 @@ index 49dbb26..0dc1b08 100644
      checkpoint_end = tl.load(query_start_loc_ptr + query_idx) + checkpoint_offset
      token_idx = checkpoint_end.to(tl.int64) - STATE_LEN + history_idx.to(tl.int64)
      values = tl.load(
-@@ -395,8 +403,8 @@ class _B12xKdaPrefillWarmup:
+@@ -395,8 +404,8 @@ class _B12xKdaPrefillWarmup:
                  cu_seqlens=torch.tensor([0, tokens], dtype=torch.int32, device=device),
                  initial_state_indices=indices,
                  final_state_indices=indices,
@@ -2618,7 +2721,7 @@ index 49dbb26..0dc1b08 100644
                  num_seqs=layer._b12x_prefill_num_seqs,
                  num_tokens=layer._b12x_prefill_num_tokens,
                  output=torch.zeros_like(rows),
-@@ -413,6 +421,7 @@ class _B12xKdaPrefillWarmup:
+@@ -413,6 +422,7 @@ class _B12xKdaPrefillWarmup:
                  layer.head_dim,
                  layer._b12x_prefill_max_tokens,
                  layer._b12x_prefill_max_seqs,
@@ -2626,7 +2729,7 @@ index 49dbb26..0dc1b08 100644
                  None if caps is None else caps.max_state_slots,
              ),
              compile=compile,
-@@ -452,6 +461,8 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -452,6 +462,8 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
              self.kda_prefill_backend in ("flashkda", "b12x")
              and not vllm_config.use_request_boundary_checkpoints
          )
@@ -2635,7 +2738,7 @@ index 49dbb26..0dc1b08 100644
          if capacity and self.kda_prefill_backend == "flashkda":
              max_tokens = vllm_config.scheduler_config.max_num_batched_tokens
              capacity = max(1, (max_tokens - 1) // spec.block_size)
-@@ -742,6 +753,15 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -742,6 +754,15 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
  
      def _initialize_b12x_kda_prefill(self, vllm_config: VllmConfig) -> None:
          """Hold the b12x prefill op and its per-request metadata buffers."""
@@ -2651,7 +2754,7 @@ index 49dbb26..0dc1b08 100644
          if self.kda_prefill_backend != "b12x":
              return
          api = get_b12x_kda_prefill()
-@@ -750,11 +770,28 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -750,11 +771,28 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
                  "The b12x KDA prefill backend requires the b12x package."
              )
          device = torch.device(current_platform.current_device())
@@ -2680,7 +2783,7 @@ index 49dbb26..0dc1b08 100644
          self.register_buffer(
              "_b12x_prefill_num_seqs",
              torch.zeros(1, dtype=torch.int32, device=device),
-@@ -772,12 +809,14 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -772,12 +810,14 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
          )
          self.register_buffer(
              "_b12x_prefill_null_indices",
@@ -2697,7 +2800,7 @@ index 49dbb26..0dc1b08 100644
              persistent=False,
          )
          self.b12x_warmup_provider = _B12xKdaPrefillWarmup()
-@@ -799,7 +838,16 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -799,7 +839,16 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
                  qk_l2norm=True,
                  checkpoint_export=True,
                  null_state_index=NULL_BLOCK_ID,
@@ -2715,16 +2818,26 @@ index 49dbb26..0dc1b08 100644
              )
          )
  
-@@ -839,7 +887,7 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -839,7 +888,7 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
          checkpoint: Any | None,
          recurrent_state: torch.Tensor,
          output: torch.Tensor,
 -    ) -> None:
-+    ) -> torch.Tensor | None:
++    ) -> tuple[torch.Tensor | None, Any | None]:
          """Run packed KDA prefill straight against the recurrent-state pool.
  
          The op reads each request's initial state and writes its final state,
-@@ -886,12 +934,42 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -847,6 +896,9 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+         dense initial state nor scatters a dense final one. Requests without
+         an initial state name the null slot and start from zero.
+ 
++        Returns the transactional validation code and checkpoint metadata in
++        the fixed-capacity matrix consumed by convolution-history storage.
++
+         Args:
+             scratch: Caller-owned workspace disjoint from ``output``.
+             q: Live packed query rows, ``[tokens, heads, head_dim]``.
+@@ -886,12 +938,96 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
          initial_indices = self._b12x_prefill_initial_indices[:num_requests]
          initial_indices.copy_(state_indices)
          initial_indices.masked_fill_(~has_initial_state[:num_requests], NULL_BLOCK_ID)
@@ -2749,7 +2862,54 @@ index 49dbb26..0dc1b08 100644
 +                source_offsets = checkpoint.checkpoint_offsets
 +                if tuple(source_indices.shape) != tuple(source_offsets.shape):
 +                    raise ValueError("Checkpoint offset and destination shapes differ")
-+                if source_indices.ndim == 1:
++                checkpoint_query_indices = getattr(
++                    checkpoint, "checkpoint_query_indices", None
++                )
++                checkpoint_indptr = getattr(checkpoint, "checkpoint_indptr", None)
++                if checkpoint_query_indices is not None:
++                    if (
++                        source_indices.ndim != 1
++                        or checkpoint_indptr is None
++                        or checkpoint_query_indices.ndim != 1
++                        or checkpoint_indptr.ndim != 1
++                        or source_indices.shape != checkpoint_query_indices.shape
++                        or checkpoint_indptr.shape[0] != num_requests + 1
++                        or source_indices.shape[0]
++                        > num_requests * self._b12x_prefill_checkpoint_capacity
++                    ):
++                        raise ValueError(
++                            "Packed checkpoint metadata does not match its CSR shape"
++                        )
++                    safe_query_indices = checkpoint_query_indices.clamp(
++                        0, max(0, num_requests - 1)
++                    )
++                    flat_columns = (
++                        torch.arange(
++                            source_indices.shape[0],
++                            dtype=checkpoint_indptr.dtype,
++                            device=checkpoint_indptr.device,
++                        )
++                        - checkpoint_indptr[safe_query_indices]
++                    )
++                    torch._assert_async(
++                        torch.all(
++                            (checkpoint_query_indices >= 0)
++                            & (checkpoint_query_indices < num_requests)
++                            & (flat_columns >= 0)
++                            & (flat_columns < self._b12x_prefill_checkpoint_capacity)
++                        ),
++                        "packed checkpoint metadata exceeds per-request capacity",
++                    )
++                    safe_columns = flat_columns.clamp(
++                        0, self._b12x_prefill_checkpoint_capacity - 1
++                    )
++                    checkpoint_indices[safe_query_indices, safe_columns] = (
++                        source_indices
++                    )
++                    checkpoint_offsets[safe_query_indices, safe_columns] = (
++                        source_offsets
++                    )
++                elif source_indices.ndim == 1:
 +                    if source_indices.shape[0] != num_requests:
 +                        raise ValueError(
 +                            "One-checkpoint fallback metadata must contain "
@@ -2768,10 +2928,17 @@ index 49dbb26..0dc1b08 100644
 +                        "Checkpoint metadata must be one vector entry per request "
 +                        "or match the planned checkpoint matrix"
 +                    )
++        bound_checkpoint = None
++        if checkpoint is not None:
++            bound_checkpoint = copy(checkpoint)
++            bound_checkpoint.state_indices = checkpoint_indices
++            bound_checkpoint.checkpoint_offsets = checkpoint_offsets
++            bound_checkpoint.checkpoint_indptr = None
++            bound_checkpoint.checkpoint_query_indices = None
          self._b12x_prefill_num_seqs.fill_(num_requests)
          self._b12x_prefill_num_tokens.fill_(num_tokens)
  
-@@ -921,6 +999,12 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -921,6 +1057,12 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
              max_live_tokens=num_tokens,
              max_live_seqs=num_requests,
          )
@@ -2779,12 +2946,12 @@ index 49dbb26..0dc1b08 100644
 +            torch._assert_async(
 +                binding.error_code == 0, "invalid recurrent checkpoint metadata"
 +            )
-+            return binding.error_code
-+        return None
++            return binding.error_code, bound_checkpoint
++        return None, bound_checkpoint
  
      def _store_kda_conv_checkpoint(
          self,
-@@ -930,13 +1014,30 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -930,13 +1072,30 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
          recurrent_state: torch.Tensor,
          query_start_loc: torch.Tensor,
          checkpoint: Any,
@@ -2816,7 +2983,7 @@ index 49dbb26..0dc1b08 100644
          _store_cache_checkpoints_kernel[
              (
                  checkpoint.checkpoint_offsets.numel(),
-@@ -964,6 +1065,10 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -964,6 +1123,10 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
              NULL_BLOCK_ID,
              store_block_size,
              False,
@@ -2827,7 +2994,7 @@ index 49dbb26..0dc1b08 100644
          )
  
      def rearrange_mixed_qkv(
-@@ -1118,6 +1223,8 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -1118,6 +1281,8 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
          hidden_states: torch.Tensor,
          positions: torch.Tensor,
          output: torch.Tensor,
@@ -2836,7 +3003,7 @@ index 49dbb26..0dc1b08 100644
      ) -> None:
          num_tokens = hidden_states.size(0)
          projected_qkvgfab = self.in_proj_qkvgfab(hidden_states)[0]
-@@ -1168,7 +1275,10 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -1168,7 +1333,10 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
              core_attn_out=core_attn_out,
          )
          core_attn_out = rearrange(core_attn_out, "1 n h d -> n (h d)")
@@ -2848,19 +3015,51 @@ index 49dbb26..0dc1b08 100644
  
      @eager_break_during_capture
      def _forward(
-@@ -1441,7 +1551,7 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -1441,22 +1609,24 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
                      num_prefill_tokens = int(q_ns.shape[1])
                      b12x_scratch, b12x_out = self._get_b12x_prefill_workspace()
                      b12x_out = b12x_out[:num_prefill_tokens]
 -                    self._run_b12x_kda_prefill(
-+                    checkpoint_error = self._run_b12x_kda_prefill(
-                         scratch=b12x_scratch,
-                         q=q_ns[0],
-                         k=k_ns[0],
-@@ -1465,6 +1575,7 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+-                        scratch=b12x_scratch,
+-                        q=q_ns[0],
+-                        k=k_ns[0],
+-                        v=v_ns[0],
+-                        raw_g=g1_ns[0],
+-                        raw_beta=beta_ns[0],
+-                        cu_seqlens=prefill_query_start_loc,
+-                        state_indices=prefill_state_indices,
+-                        has_initial_state=prefill_has_initial_state,
+-                        checkpoint=prefill_checkpoint,
+-                        recurrent_state=recurrent_state,
+-                        output=b12x_out,
++                    checkpoint_error, bound_prefill_checkpoint = (
++                        self._run_b12x_kda_prefill(
++                            scratch=b12x_scratch,
++                            q=q_ns[0],
++                            k=k_ns[0],
++                            v=v_ns[0],
++                            raw_g=g1_ns[0],
++                            raw_beta=beta_ns[0],
++                            cu_seqlens=prefill_query_start_loc,
++                            state_indices=prefill_state_indices,
++                            has_initial_state=prefill_has_initial_state,
++                            checkpoint=prefill_checkpoint,
++                            recurrent_state=recurrent_state,
++                            output=b12x_out,
++                        )
+                     )
+                     core_attn_out_non_spec = b12x_out.unsqueeze(0)
+-                    if prefill_checkpoint is not None:
++                    if bound_prefill_checkpoint is not None:
+                         # The op already wrote the recurrent checkpoint into
+                         # its slot; only the convolution history is left.
+                         self._store_kda_conv_checkpoint(
+@@ -1464,7 +1634,8 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+                             conv_state=conv_state,
                              recurrent_state=recurrent_state,
                              query_start_loc=prefill_query_start_loc,
-                             checkpoint=prefill_checkpoint,
+-                            checkpoint=prefill_checkpoint,
++                            checkpoint=bound_prefill_checkpoint,
 +                            error_code=checkpoint_error,
                          )
                  elif self.kda_prefill_backend == "flashkda":

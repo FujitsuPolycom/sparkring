@@ -19,8 +19,8 @@
   },
   "source_identities": {
     "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
-    "vllm_integrated_tree": "667ee2f6652efa065c57a7adc0193991f6cde6ac",
-    "vllm_cached_diff_sha256": "ca66931518af4392d3cad42faf9fe8e4136cc8221edb7ac72491fde2000a6040",
+    "vllm_integrated_tree": "0511a78617bb755ea2901ef3c5db7547bc1e148d",
+    "vllm_cached_diff_sha256": "73df604d183a3309109ac3e97e1a952e99d111b5761ef2e67fbf41a7957f4ae2",
     "vllm_status_sha256": "0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe",
     "vllm_status_lines": 33,
     "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
@@ -71,9 +71,9 @@
     "sircl_source_archive_sha256": "fe3e12de5cb1b392f015a751d7b27b6210c95fa7613113fd7895990e2041db0f",
     "vllm_continuation_port_commit": "b611611a643502542c2d900057eb47e407b8379e",
     "vllm_continuation_port_tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a",
-    "vllm_source_manifest_sha256": "8e17816bc60f8a14b6bfe9ead7af9436903b6ce4482c4f99afff6b3748710ce4",
+    "vllm_source_manifest_sha256": "c6d041a652895db3112fe7adcf19961816a2457272ea294c2f1162d373e6080d",
     "vllm_scheduler_config_compatibility_commit": "3049b639bdbc513319f7bae896c4e239992bc7bb",
-    "vllm_prefix_hit_metadata_compatibility_commit": "58c087102cd3039245240e34c750c7f77ce07ed7"
+    "vllm_prefix_hit_metadata_compatibility_commit": "4405a965e54f14df00d28e5e23f9793f866aae39"
   },
   "artifacts": [
     {
@@ -190,7 +190,7 @@
   "pending_artifacts": [
     {
       "name": "vllm",
-      "source_glob": "artifacts/vllm-package/vllm-0.26.1rc0+sparkring.r33.667ee2f6-*.whl",
+      "source_glob": "artifacts/vllm-package/vllm-0.26.1rc0+sparkring.r33.0511a786-*.whl",
       "destination_directory": "wheelhouse",
       "receipt_sums": "artifacts/vllm-package/SHA256SUMS",
       "install": true,

@@ -95,7 +95,7 @@ class CandidateImageContractTests(unittest.TestCase):
         self.assertNotIn("vllm", artifacts)
         self.assertEqual(
             lock["source_identities"]["vllm_integrated_tree"],
-            "667ee2f6652efa065c57a7adc0193991f6cde6ac",
+            "0511a78617bb755ea2901ef3c5db7547bc1e148d",
         )
         self.assertEqual(
             lock["source_identities"]["vllm_continuation_port_commit"],
@@ -103,7 +103,7 @@ class CandidateImageContractTests(unittest.TestCase):
         )
         self.assertEqual(
             lock["source_identities"]["vllm_prefix_hit_metadata_compatibility_commit"],
-            "58c087102cd3039245240e34c750c7f77ce07ed7",
+            "4405a965e54f14df00d28e5e23f9793f866aae39",
         )
         self.assertEqual(
             lock["source_identities"]["vllm_flash_attn_commit"],
@@ -170,7 +170,7 @@ class CandidateImageContractTests(unittest.TestCase):
 
     def test_sparkcache_lease_contract_matches_composed_vllm_sources(self):
         contract_path = (
-            HERE.parent / "contracts/vllm-connector-jobs-r33-667ee2f6.json"
+            HERE.parent / "contracts/vllm-connector-jobs-r33-0511a786.json"
         )
         contract = json.loads(contract_path.read_text())
         manifest = json.loads(
@@ -198,7 +198,7 @@ class CandidateImageContractTests(unittest.TestCase):
         )
         self.assertEqual(
             profile["sparkcache_native"]["lease_contract"],
-            "/opt/sparkring/contracts/vllm-connector-jobs-r33-667ee2f6.json",
+            "/opt/sparkring/contracts/vllm-connector-jobs-r33-0511a786.json",
         )
         prepare = (HERE / "prepare_context.py").read_text()
         self.assertIn(contract_path.name, prepare)
