@@ -35,6 +35,8 @@ add_library(spark_transport
     src/tp4_session.cpp
     src/tp4_vocab_allgather_session.cpp
     src/verbs_endpoint.cpp
+    # Serving-session research components selected through explicit C ABI gates.
+    # The generic tiled correctness executor is a separate standalone target.
     experiments/tiled_prefill/bidirectional_ring_executor.cpp
     experiments/tiled_prefill/bidirectional_bulk_kernels.cu
     experiments/tiled_prefill/fused_prefill_kernels.cu
@@ -130,7 +132,9 @@ if(BUILD_TESTING)
     # Release builds define NDEBUG, which would otherwise compile every
     # assertion away and can also turn assertion-only values into -Werror
     # failures. Keep the tests active in every build configuration.
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-UNDEBUG>")
+    add_compile_options(
+        "$<$<COMPILE_LANGUAGE:CXX>:-UNDEBUG>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:-UNDEBUG>")
 
     if(SPARK_TP4_ENABLE_FUSED_STREAM_SWITCH_SMOKE)
         add_executable(tp4_fused_stream_switch_smoke
@@ -235,7 +239,7 @@ if(BUILD_TESTING)
     target_include_directories(tp4_bidirectional_ring_executor_test PRIVATE
         include experiments/tiled_prefill)
     target_compile_options(tp4_bidirectional_ring_executor_test PRIVATE
-        -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+        -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME tp4_bidirectional_ring_executor_test
         COMMAND tp4_bidirectional_ring_executor_test)
 
@@ -279,7 +283,7 @@ if(BUILD_TESTING)
     target_include_directories(tp4_tiled_executor_test PRIVATE
         include experiments/tiled_prefill)
     target_compile_options(tp4_tiled_executor_test PRIVATE
-        -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+        -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME tp4_tiled_executor_test COMMAND tp4_tiled_executor_test)
 
     add_executable(tp4_tiled_signaled_work_gate_test
@@ -287,7 +291,7 @@ if(BUILD_TESTING)
     target_include_directories(tp4_tiled_signaled_work_gate_test PRIVATE
         experiments/tiled_prefill)
     target_compile_options(tp4_tiled_signaled_work_gate_test PRIVATE
-        -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+        -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME tp4_tiled_signaled_work_gate_test
         COMMAND tp4_tiled_signaled_work_gate_test)
 
@@ -297,7 +301,7 @@ if(BUILD_TESTING)
     target_include_directories(tp4_tiled_dual_rail_edge_test PRIVATE
         include experiments/tiled_prefill)
     target_compile_options(tp4_tiled_dual_rail_edge_test PRIVATE
-        -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+        -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME tp4_tiled_dual_rail_edge_test
         COMMAND tp4_tiled_dual_rail_edge_test)
 
@@ -344,6 +348,7 @@ if(BUILD_TESTING)
     target_link_libraries(cuda_event_gate_test PRIVATE CUDA::cudart)
     add_test(NAME cuda_event_gate_test
         COMMAND cuda_event_gate_test)
+    set_tests_properties(cuda_event_gate_test PROPERTIES SKIP_RETURN_CODE 77)
 
 
     add_executable(tp4_c_api_test tests/tp4_c_api_test.cpp)

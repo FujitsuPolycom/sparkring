@@ -147,7 +147,7 @@ def test_example_loads_and_validates():
 
 def test_digest_pinned_image_may_have_no_loose_host_artifacts(document):
     document["artifacts"] = []
-    site = parse_site_yaml(yaml.safe_dump(document), source="<faststart>")
+    site = parse_site_yaml(yaml.safe_dump(document), source="<image-only-artifact-contract>")
     assert site.artifacts == ()
 
 
@@ -184,7 +184,7 @@ def test_six_rank_ring_loads_and_resolves_every_neighbour(document):
             assert port.peer_address is not None
 
 
-def test_five_rank_ring_is_rejected_as_unsupported(document):
+def test_five_edge_document_is_rejected_as_unsupported(document):
     candidate = six_ring_document(document)
     candidate["topology"]["edges"] = candidate["topology"]["edges"][:5]
 
@@ -251,11 +251,12 @@ def test_summary_lines_mention_every_rank_and_edge():
         assert edge.id in text
 
 
-def test_no_private_addresses_in_shipped_example():
+@pytest.mark.parametrize("example", [EXAMPLE_PATH, GLM53_EXAMPLE_PATH])
+def test_no_private_addresses_in_shipped_example(example):
     """The public template must never carry a real site's addressing."""
-    raw = EXAMPLE_PATH.read_text(encoding="utf-8")
+    raw = example.read_text(encoding="utf-8")
     assert "192.168." not in raw
-    site = load_site(EXAMPLE_PATH)
+    site = load_site(example)
     for rank in site.ranks:
         assert is_documentation_address(rank.management.address)
         for port in rank.ring_ports:
@@ -829,11 +830,6 @@ CASES: list[tuple[str, object, str, str]] = [
         lambda d: d["serving"].__setitem__("api_port", 70000),
         "serving.api_port", "out of range",
     ),
-    (
-        "serving-master-rank-unknown",
-        lambda d: d["serving"].__setitem__("master_rank", 3),
-        None, None,  # valid: rank 3 exists - see dedicated test below
-    ),
     # --- paths ------------------------------------------------------------
     (
         "paths-jit-and-context-identical",
@@ -926,13 +922,10 @@ CASES: list[tuple[str, object, str, str]] = [
     ),
 ]
 
-_FAILING_CASES = [case for case in CASES if case[2] is not None]
-
-
 @pytest.mark.parametrize(
     "case_id,mutate,expected_field,expected_message",
-    _FAILING_CASES,
-    ids=[case[0] for case in _FAILING_CASES],
+    CASES,
+    ids=[case[0] for case in CASES],
 )
 def test_malformed_configuration_is_rejected(
     document, case_id, mutate, expected_field, expected_message
@@ -999,15 +992,22 @@ def test_memory_launch_headroom_is_optional_and_validated(document):
     assert memory.minimum_contiguous_blocks == 200
 
 
+def test_dflash_glm53_site_pins_its_tp4_dcp4_image():
+    # This template names the DFlash operator image; it does not select the
+    # default MTP3 NVFP4-Spark profile's DCP degree.
+    site = load_site(GLM53_EXAMPLE_PATH)
+    assert site.serving.decode_context_parallel_size == 4
+    assert site.runtime.container_image.endswith(
+        "@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
+    )
+    assert "documentation/benchmark address" in "\n".join(site.placeholder_warnings())
+
+
 def test_glm53_site_enables_memory_launch_headroom():
     site = load_site(GLM53_EXAMPLE_PATH)
     memory = site.preflight.memory
 
     assert memory is not None
-    assert site.serving.decode_context_parallel_size == 4
-    assert site.runtime.container_image.endswith(
-        "@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
-    )
     assert memory.minimum_available_bytes == 96 * (1 << 30)
     assert memory.contiguous_block_bytes == 32 * (1 << 20)
     assert memory.minimum_contiguous_blocks == 200
