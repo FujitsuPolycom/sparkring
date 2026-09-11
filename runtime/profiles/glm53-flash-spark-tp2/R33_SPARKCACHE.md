@@ -31,6 +31,14 @@ prefill and decode, native 8,192-token cache capture and restart restoration,
 and active memory guards. The
 [qualification record](../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
 states the exact image, source identities, measurements and evidence hashes.
+Continuation-prefill coalescing is implemented for TP2/DCP1 under the
+[source and component evidence contract](../../sparkring/jovian-r33/profiles/evidence/tp2-continuation-prefill-coalescing.json).
+During the bounded model run, the scheduler selected an 8,192-token coalesced
+span with checkpoint targets at tokens 6,144 and 7,936. Both workers configured
+B12X checkpoint export with 32 local heads and four checkpoint slots. The
+worker logs do not contain a distinct export-completion event, so the live
+evidence proves plan selection and compatible worker configuration rather than
+independently observing the checkpoint writes.
 The configured one-million-token limit was admitted by the KV pool but was not
 exercised by a completed request. Multimodal correctness and sustained guarded
 memory stability remain unqualified.

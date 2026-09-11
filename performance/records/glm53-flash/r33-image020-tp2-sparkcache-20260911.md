@@ -39,6 +39,14 @@ initialized as the first tensor-parallel all-reduce backend.
 - Sixteen of sixteen structured-output requests passed at concurrency eight
   with a 1,024-token output budget.
 - Both ranks repeatedly executed mHC with 8,192 input rows and 4,096 owner rows.
+- Continuation-prefill coalescing was enabled under its
+  [TP2/DCP1 source and component contract](../../../runtime/sparkring/jovian-r33/profiles/evidence/tp2-continuation-prefill-coalescing.json).
+  The live scheduler selected one 8,192-token span with checkpoint targets at
+  tokens 6,144 and 7,936. Both workers initialized the B12X KDA prefill path
+  with 32 local heads, checkpoint export enabled, and capacity for four
+  checkpoints. The worker logs do not emit a checkpoint-export completion
+  event, so this record establishes live plan selection and compatible worker
+  configuration, not an independent observation of the checkpoint writes.
 - Six decode cells completed with zero request errors.
 
 | Prompt tokens | Cold prefill tok/s, median of 3 | C1 aggregate tok/s | C4 aggregate tok/s |
