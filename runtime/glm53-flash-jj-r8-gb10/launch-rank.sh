@@ -279,7 +279,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
        "${SPARKCACHE_SNAPSHOT_LIBRARY_PATH}" == /opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so && \
        "${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256}" == 7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953 && \
        "${SPARKCACHE_VLLM_ROOT}" == /opt/venv/lib/python3.12/site-packages && \
-       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /opt/venv/lib/python3.12/site-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json ]] || \
+       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /opt/sparkring/contracts/vllm-connector-jobs-r33-667ee2f6.json ]] || \
       die 'R33 SparkCache native and lease paths differ from its receipt' ;;
   *) die 'Unsupported source-composed runtime profile' ;;
 esac

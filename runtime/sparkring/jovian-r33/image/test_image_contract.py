@@ -168,6 +168,41 @@ class CandidateImageContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "ambiguous SHA256SUMS"):
                 module.load_sums(sums)
 
+    def test_sparkcache_lease_contract_matches_composed_vllm_sources(self):
+        contract_path = (
+            HERE.parent / "contracts/vllm-connector-jobs-r33-667ee2f6.json"
+        )
+        contract = json.loads(contract_path.read_text())
+        manifest = json.loads(
+            (
+                HERE.parent / "patches/vllm-r33-sparkring.manifest.json"
+            ).read_text()
+        )
+        self.assertEqual(contract["vllm_tree"], manifest["result"]["tree"])
+        records = {item["path"]: item for item in contract["files"]}
+        reviewed = set(contract["semantic_review"]["affected_files"])
+        self.assertEqual(
+            reviewed,
+            {
+                "vllm/v1/core/sched/output.py",
+                "vllm/v1/core/sched/scheduler.py",
+                "vllm/v1/core/kv_cache_manager.py",
+                "vllm/v1/core/single_type_kv_cache_manager.py",
+                "vllm/v1/worker/gpu/model_runner.py",
+            },
+        )
+        for name in reviewed:
+            self.assertEqual(records[name]["sha256"], manifest["files"][name]["sha256"])
+        profile = json.loads(
+            (HERE.parent / "profiles/profile-contract.json").read_text()
+        )
+        self.assertEqual(
+            profile["sparkcache_native"]["lease_contract"],
+            "/opt/sparkring/contracts/vllm-connector-jobs-r33-667ee2f6.json",
+        )
+        prepare = (HERE / "prepare_context.py").read_text()
+        self.assertIn(contract_path.name, prepare)
+
     def test_dockerfile_verifies_context_and_uses_locked_media_runtime(self):
         source = (HERE / "Dockerfile.candidate").read_text()
         self.assertIn("ARG MEDIA_RUNTIME=local/sparkring:r33-media-probe", source)

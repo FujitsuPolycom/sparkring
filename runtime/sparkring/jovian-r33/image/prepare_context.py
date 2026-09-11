@@ -85,7 +85,7 @@ def main() -> None:
     runtime = args.repository_root / "runtime"
     required_files = [
         *(HERE / name for name in ("Dockerfile.candidate", "entrypoint.py", "verify_candidate.py", "verify_context.py", "validate_receipts.py", "capture_installed.py", "finalize_lock.py", "download_report.py", "sitecustomize.py")),
-        runtime / "sparkring/jovian-r33/contracts/vllm-connector-jobs-r33-prefill-a2ad36d.json",
+        runtime / "sparkring/jovian-r33/contracts/vllm-connector-jobs-r33-667ee2f6.json",
         runtime / "sparkring/jovian-r33/patches/vllm-r33-sparkring.patch",
         runtime / "sparkring/jovian-r33/patches/vllm-r33-sparkring.manifest.json",
         args.build_root / "artifacts/vllm-package/verification.json",
@@ -218,7 +218,7 @@ def main() -> None:
         context / "sircl-python",
     )
     shutil.copy2(HERE / "sitecustomize.py", context / "sircl-python/sitecustomize.py")
-    contract = runtime / "sparkring/jovian-r33/contracts/vllm-connector-jobs-r33-prefill-a2ad36d.json"
+    contract = runtime / "sparkring/jovian-r33/contracts/vllm-connector-jobs-r33-667ee2f6.json"
     (context / "contracts").mkdir()
     shutil.copy2(contract, context / "contracts" / contract.name)
 
