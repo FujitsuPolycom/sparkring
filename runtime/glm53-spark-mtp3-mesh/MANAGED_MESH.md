@@ -362,6 +362,7 @@ The bounded `--run-seconds` mode is for isolated diagnostics only.
 |---|---|
 | Child-process and peer checks | 1-second loop; peer HTTP timeout 2 seconds |
 | Unavailable peer connection | 300-second grace after the first transport failure (covers a management-switch reboot); degraded health blocks model startup |
+| Management-address probe | Startup: fail fast. Runtime: same grace bound as peer transport when the address matches the startup-validated identity; fabric checks continue and stay immediate; degraded health blocks model startup |
 | Docker container status | One background query at a time, 3-second timeout; unknown status blocks model startup |
 | MAC/IP, Ethernet MTU, sysfs GID/netdev, routes, qdiscs, TC state | 5-second periodic check |
 | Full RDMA active-MTU probe | Startup and approximately every 60 seconds |
@@ -375,6 +376,15 @@ responses clear that interval. Degraded peer health blocks model startup.
 An authentication failure, explicit negative readiness, or changed process
 generation does not receive transport-error grace: it triggers failure when
 observed. Local marker exits also trigger failure without that grace.
+
+A temporary loss of this rank's own management address shares the peer-transport
+grace bound and does not itself stop serving. Fabric, marker, authentication,
+generation and readiness checks continue during that interval and keep their
+immediate-failure semantics; a management identity that differs from the
+startup-validated one never receives grace. The model process survives the
+outage, but API clients routed over the management network can still lose
+connectivity for its duration, and a peer fault visible only through the
+management path takes up to the grace interval to detect.
 
 Docker status queries run outside the fabric-monitor loop. A slow or failed
 query reports `docker_status_degraded: true`; it does not declare fabric
