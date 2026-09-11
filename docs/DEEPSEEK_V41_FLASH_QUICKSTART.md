@@ -1,5 +1,8 @@
 # DeepSeek-V4.1-Flash four-Spark cycle quickstart
 
+For SGLang, use the [SGLang deployment guide](../runtime/deepseek-v41-sglang/README.md).
+The sections below describe the vLLM profile.
+
 See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md). Section links below retain existing anchors.
 
 ## [Why this profile is shaped the way it is](../profiles/deepseek-v41-flash-cycle/README.md#why-this-profile-is-shaped-the-way-it-is)

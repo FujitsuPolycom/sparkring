@@ -2,8 +2,8 @@
 
 SparkRing is an inference-serving stack with low-latency collective communication
 for switchless clusters of NVIDIA GB10-based devices. It supports two-node pairs
-and four-node rings; six-node rings are experimental. Model profiles use vLLM,
-with [SGLang support under review](https://github.com/FujitsuPolycom/sparkring/pull/267).
+and four-node rings; six-node rings are experimental. Model profiles use vLLM
+and [SGLang](runtime/deepseek-v41-sglang/README.md).
 
 The collective communication stack combines SIRCL, RoCEnante, and patched NCCL.
 The high-speed data fabric needs no external Ethernet or InfiniBand switch;
