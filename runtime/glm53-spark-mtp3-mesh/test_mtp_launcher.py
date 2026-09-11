@@ -36,6 +36,17 @@ def _bash_path(path: Path) -> str:
     return f"/mnt/{drive[0].lower()}/" + tail.lstrip("\\/").replace("\\", "/")
 
 
+def test_nccl_info_only_changes_one_effective_docker_argument(launch_fixture):
+    launch, _, _ = launch_fixture
+    normal, normal_args, _ = launch(0, {})
+    diagnostic, diagnostic_args, _ = launch(0, {"NCCL_DEBUG": "INFO"})
+    assert normal.returncode == diagnostic.returncode == 0
+    assert len(normal_args) == len(diagnostic_args)
+    assert [(a, b) for a, b in zip(normal_args, diagnostic_args) if a != b] == [
+        ("NCCL_DEBUG=WARN", "NCCL_DEBUG=INFO")]
+    assert "NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH" in diagnostic_args
+
+
 def _write_executable(path, source):
     path.write_text(source, encoding="utf-8", newline="\n")
     path.chmod(0o755)

@@ -69,7 +69,7 @@ def load_site(path: Path):
     data = json.loads(path.read_text())
     required = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
                 "bundle_root", "container_prefix", "marker_binary", "marker_binary_sha256", "state_root"}
-    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile", "cache_diagnostics"}
+    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile", "cache_diagnostics", "nccl_debug"}
     if (not required <= set(data) <= required | optional
             or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1"):
         raise ValueError("Site fields do not match sparkring-glm53-mtp3-mesh-site/v1")
@@ -94,6 +94,10 @@ def load_site(path: Path):
         timeout = data["liveness_output_seconds"]
         if type(timeout) is not int or not 0 < timeout <= 2147483647:
             raise ValueError("liveness_output_seconds must be an integer from 1 to 2147483647")
+    if "nccl_debug" in data and (
+            data.get("runtime_profile") not in ("tp4-dcp1", "tp4-dcp1-sparkcache")
+            or data["nccl_debug"] != "INFO"):
+        raise ValueError("nccl_debug diagnostic mode requires an R33 TP4 profile and INFO")
     if "cache_diagnostics" in data:
         diagnostic = data["cache_diagnostics"]
         if (data.get("runtime_profile") != "tp4-dcp1-sparkcache"
@@ -289,6 +293,8 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     r33_composition = image_record and image_record.get("schema") == "sparkring-r33-image-receipt/v1"
     if "cache_diagnostics" in site and not r33_composition:
         raise ValueError("cache_diagnostics requires an R33 image receipt")
+    if "nccl_debug" in site and not r33_composition:
+        raise ValueError("nccl_debug diagnostic mode requires an R33 image receipt")
     if r33_composition:
         runtime_profile = site.get("runtime_profile")
         if runtime_profile not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
@@ -311,6 +317,8 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     })
     if "liveness_output_seconds" in site:
         values["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = str(site["liveness_output_seconds"])
+    if "nccl_debug" in site:
+        values["NCCL_DEBUG"] = site["nccl_debug"]
     if site.get("api_keys_file"):
         values["API_KEYS_FILE"] = site["api_keys_file"]
     if image_record is not None:

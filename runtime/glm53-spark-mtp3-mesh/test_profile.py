@@ -525,6 +525,53 @@ def test_cache_diagnostics_rejects_cache_disabled_profile(tmp_path):
         mesh_profile.load_site(site)
 
 
+@pytest.mark.parametrize("value", ["WARN", "TRACE", "INFO,NET", True, 1])
+def test_nccl_diagnostic_site_rejects_non_info_values(tmp_path, value):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp1-sparkcache", nccl_debug=value)
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="nccl_debug"):
+        mesh_profile.load_site(site)
+
+
+def test_nccl_info_changes_only_debug_and_reproduces_through_installer(tmp_path, manifest_bundle, monkeypatch):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(_r33_image_receipt_document(manifest_sha)))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1-sparkcache"
+    site.write_text(json.dumps(data))
+    normal = tmp_path / "normal"
+    mesh_profile.render(site, manifest_bundle, normal, receipt)
+    data["nccl_debug"] = "INFO"
+    site.write_text(json.dumps(data))
+    diagnostic = tmp_path / "nccl-info"
+    mesh_profile.render(site, manifest_bundle, diagnostic, receipt)
+    for rank in range(4):
+        defaults = {"NCCL_DEBUG": "WARN", "NCCL_DEBUG_SUBSYS": "NET,INIT,GRAPH"}
+        before = {**defaults, **mesh_profile.defaults(normal / f"rank{rank}.env")}
+        after = {**defaults, **mesh_profile.defaults(diagnostic / f"rank{rank}.env")}
+        assert {k: (before.get(k), after.get(k)) for k in before.keys() | after.keys()
+                if before.get(k) != after.get(k)} == {"NCCL_DEBUG": ("WARN", "INFO")}
+    assert (normal / "launch-rank.sh").read_bytes() == (diagnostic / "launch-rank.sh").read_bytes()
+    sys.path.insert(0, str(HERE))
+    import managed_install
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(managed_install, "expected_container_spec", lambda argv, image: argv)
+    render = mesh_profile.render
+    monkeypatch.setattr(mesh_profile, "render", lambda site, bundle, output, receipt:
+                        render(site, manifest_bundle, output, receipt))
+    def run(command, **kwargs):
+        env = mesh_profile.defaults(Path(command[3]))
+        assert env["NCCL_DEBUG"] == "INFO"
+        assert env.get("NCCL_DEBUG_SUBSYS", "NET,INIT,GRAPH") == "NET,INIT,GRAPH"
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "schema": "sparkring-container-command/v1", "argv": ["nccl-info-roundtrip"]}))
+    assert managed_install.canonical_container_spec(diagnostic, receipt, 0, {}, run=run) == ["nccl-info-roundtrip"]
+
+
 def test_r33_sparkcache_rejects_unbound_native_library(tmp_path, manifest_bundle, monkeypatch):
     manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
     monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
