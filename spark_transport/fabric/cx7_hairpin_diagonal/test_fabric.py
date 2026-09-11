@@ -88,7 +88,7 @@ def _qualified_gate(plan: fabric.FabricPlan) -> dict[str, object]:
     }
 
 
-def test_topology_runtime_limit_matches_the_native_marker_helper(
+def test_topology_runtime_accepts_7200_and_rejects_7201(
     tmp_path: Path,
 ) -> None:
     document = _document()
@@ -235,6 +235,7 @@ def test_plan_exposes_exact_route_marker_and_restore_commands(tmp_path: Path) ->
     ]
     assert rule.rewrite_ethernet_destination in rule_command
     assert rule.egress_netdev == rule_command[-1]
+    # Fabric plans must not invoke container runtimes or model serving.
     assert not any("docker" in value.lower() or "model" in value.lower() for value in (
         route_command + neighbor_command + marker_command + rule_command
     ))
@@ -357,6 +358,7 @@ def test_apply_manifest_requires_all_four_token_and_hardware_gate(
     ]
     assert {command["rank"] for command in commands} == {0, 1, 2, 3}
     assert all(isinstance(command["argv"], list) for command in commands)
+    # Apply and cleanup remain limited to networking commands.
     assert not any(
         "docker" in argument.lower() or "model" in argument.lower()
         for command in commands
@@ -377,6 +379,7 @@ def test_rocenante_selection_uses_24_origin_qps_and_balances_each_rank_function(
     assert len(diagonal) == 8
     assert len(selected.paths) == 24
     assert len(selected.routes) == 8
+    assert {route.path_name for route in selected.routes} == {path.name for path in diagonal}
     assert len(selected.markers) == 8
     assert len(selected.tc_rules) == 8
     assert inventory["origin_qps_per_rank"] == {str(rank): 6 for rank in range(4)}
@@ -446,7 +449,7 @@ def test_rocenante_cleanup_is_scoped_to_eight_selected_diagonals(
     for command in phases["intermediate_qdiscs"]:
         argv = command["argv"]
         assert argv[:3] == [
-            "/opt/sparkring/bin/sparkring-cx7-fabric-helper",
+            selected.host_helper_path,
             "qdisc",
             "cleanup",
         ]
@@ -462,6 +465,15 @@ def test_rocenante_native_path_arguments_pair_reciprocal_routes(
 
     assert set(arguments) == {"0", "1", "2", "3"}
     assert all(len(values) == 6 for values in arguments.values())
+    for path in selected.paths:
+        peer = next(item for item in selected.paths
+                    if item.source_rank == path.destination_rank
+                    and item.destination_rank == path.source_rank
+                    and item.function == path.function
+                    and item.intermediate_rank == path.intermediate_rank)
+        hops = 1 if path.kind == "direct" else 2
+        assert (f"{path.source_rank},{path.function},{peer.source_rdma_device},"
+                f"{selected.roce_gid_index},{hops}") in arguments[str(path.destination_rank)]
     assert set(arguments["0"]) == {
         "1,0,rocep1s0f0,3,1",
         "1,1,roceP2p1s0f0,3,1",
@@ -583,3 +595,23 @@ def test_topology_rejects_unresolved_nonreciprocal_colliding_or_broad_paths(
 
     with pytest.raises(fabric.FabricError, match=message):
         fabric.load_topology(_write_topology(tmp_path, document))
+
+
+def test_complete_gateway_plan_establishes_direct_neighbor_routes(tmp_path: Path) -> None:
+    document = _document()
+    document["endpoint_route_strategy"] = "adjacent_gateway"
+    complete = fabric.build_plan(fabric.load_topology(_write_topology(tmp_path, document)))
+    paths = {path.name: path for path in complete.paths}
+    for route in complete.routes:
+        if paths[route.path_name].kind == "direct":
+            assert route.gateway_ipv4 is None
+            assert route.permanent_final_neighbor
+            assert fabric.route_command(route, add=True)[-2:] == ["scope", "link"]
+        else:
+            direct = next(candidate for candidate in complete.routes
+                          if candidate.source_rank == route.source_rank
+                          and candidate.source_netdev == route.source_netdev
+                          and candidate.destination_ipv4 == route.gateway_ipv4)
+            assert paths[direct.path_name].kind == "direct"
+            assert complete.routes.index(direct) < complete.routes.index(route)
+            assert route.destination_ipv4 != route.gateway_ipv4

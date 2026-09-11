@@ -263,14 +263,7 @@ def _mapping(value: object, field: str) -> Mapping[str, object]:
 
 
 def _only_keys(value: Mapping[str, object], expected: set[str], field: str) -> None:
-    unknown = set(value) - expected
-    missing = expected - set(value)
-    if unknown:
-        raise FabricError(
-            f"{field} contains unsupported fields: {', '.join(sorted(unknown))}"
-        )
-    if missing:
-        raise FabricError(f"{field} omits fields: {', '.join(sorted(missing))}")
+    _required_and_optional_keys(value, expected, set(), field)
 
 
 def _required_and_optional_keys(
@@ -539,13 +532,9 @@ def load_topology(path: Path) -> FabricTopology:
         flow_label_base=_integer(
             root["flow_label_base"], "topology.flow_label_base", 1, FLOW_LABEL_LIMIT
         ),
-        shared_diagonal_flow_label=(
-            _boolean(
-                root["shared_diagonal_flow_label"],
-                "topology.shared_diagonal_flow_label",
-            )
-            if "shared_diagonal_flow_label" in root
-            else False
+        shared_diagonal_flow_label=_boolean(
+            root["shared_diagonal_flow_label"],
+            "topology.shared_diagonal_flow_label",
         ),
         endpoint_route_strategy=str(endpoint_route_strategy),
         tc_rule_identity_overrides=tuple(overrides),
@@ -833,7 +822,12 @@ def _route(topology: FabricTopology, path: FabricPath) -> EndpointRoute:
     peer_port = topology.rank(source_port.peer_rank).port(
         source_port.peer_direction, source_port.peer_function
     )
-    adjacent_gateway = topology.endpoint_route_strategy == "adjacent_gateway"
+    # A gateway route needs a reachable direct neighbor. Only diagonal routes
+    # use that gateway; direct paths establish its link route and neighbor.
+    adjacent_gateway = (
+        topology.endpoint_route_strategy == "adjacent_gateway"
+        and path.kind == "diagonal"
+    )
     return EndpointRoute(
         path_name=path.name,
         source_rank=path.source_rank,
@@ -847,16 +841,20 @@ def _route(topology: FabricTopology, path: FabricPath) -> EndpointRoute:
 
 
 def _validate_plan(plan: FabricPlan) -> None:
+    paths_by_name = {path.name: path for path in plan.paths}
     for route in plan.routes:
-        if plan.endpoint_route_strategy == "adjacent_gateway":
+        path = paths_by_name.get(route.path_name)
+        if path is None:
+            raise FabricError(f"route {route.path_name} has no transport path")
+        if plan.endpoint_route_strategy == "adjacent_gateway" and path.kind == "diagonal":
             valid_route = (
                 route.gateway_ipv4 is not None
                 and route.permanent_final_neighbor is False
             )
         else:
             valid_route = (
-                plan.endpoint_route_strategy
-                == "scope_link_permanent_final_neighbor"
+                (plan.endpoint_route_strategy == "scope_link_permanent_final_neighbor"
+                 or (plan.endpoint_route_strategy == "adjacent_gateway" and path.kind == "direct"))
                 and route.gateway_ipv4 is None
                 and route.permanent_final_neighbor is True
             )
@@ -936,7 +934,13 @@ def _validate_plan(plan: FabricPlan) -> None:
 
 
 def build_rocenante_plan(complete: FabricPlan) -> FabricPlan:
-    """Select the 24 origin QPs used by a balanced TP4 RoCEnante mesh."""
+    """Select 24 origin queue pairs for four-rank RoCEnante RDMA transport.
+
+    Direct-neighbor connectivity is a preconfigured underlay. Keep its QP
+    paths for transport inventory, but manage only the eight selected diagonal
+    routes, markers and restore rules. Cleanup must not remove underlay routes.
+    The managed-mesh prerequisites require direct-neighbor RoCE verification.
+    """
 
     if complete.socket_direct_functions != 2:
         raise FabricError("RoCEnante selection requires two Socket-Direct functions")
@@ -976,6 +980,8 @@ def build_rocenante_plan(complete: FabricPlan) -> FabricPlan:
         tc_rules=tuple(
             rule for rule in complete.tc_rules if rule.path_name in selected_names
         ),
+        # Selection creates a different plan identity; qualification cannot
+        # transfer from the complete plan to this selected subset.
         hardware_gate_status="unproven",
         apply_permitted=False,
     )
@@ -1127,7 +1133,7 @@ def neighbor_command(route: EndpointRoute, *, add: bool) -> list[str]:
 def marker_command(
     plan: FabricPlan, marker: SourceMarker, *, apply: bool
 ) -> list[str]:
-    """Return one QP-scoped EtherType-marker helper invocation."""
+    """Return a reserved-UDP-source-port EtherType-marker helper invocation."""
 
     command = [
         plan.host_helper_path,

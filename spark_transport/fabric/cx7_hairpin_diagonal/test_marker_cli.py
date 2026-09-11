@@ -16,7 +16,7 @@ BASE = ["--device", "test-device", "--source-port", "65535",
 
 @pytest.fixture(scope="module")
 def parser_binary(tmp_path_factory):
-    """Compile the actual parser and waits without linking any RDMA code."""
+    """Compile option parsing and signal/timeout waits without RDMA linkage."""
     compiler = shutil.which("cc") or shutil.which("gcc")
     if compiler is None or os.name == "nt":
         pytest.skip("POSIX C compiler required for native parser tests")
@@ -27,6 +27,7 @@ def parser_binary(tmp_path_factory):
 int main(int argc, char **argv) {
     struct options options;
     int rc = parse_options(argc, argv, &options);
+    /* Parser result: 0 valid options, positive help, negative usage error. */
     if (rc != 0) return rc > 0 ? 0 : 1;
     if (getenv("MARKER_TEST_WAIT") != NULL) {
         if (install_stop_handlers() != 0) return 2;
@@ -90,15 +91,18 @@ def test_full_binary_rejects_modes_before_device_open():
     binary = os.environ.get("MARKER_TEST_BINARY")
     if binary is None:
         pytest.skip("MARKER_TEST_BINARY must name a compiled native helper")
-    for args in (["--managed"], ["--attach"],
-                 ["--attach", "--managed", "--run-seconds", "1"],
-                 ["--attach", "--run-seconds", "7201"]):
+    for args, message in (
+        (["--managed"], "valid only with --attach"),
+        (["--attach"], "requires --run-seconds or --managed"),
+        (["--attach", "--managed", "--run-seconds", "1"], "mutually exclusive"),
+        (["--attach", "--run-seconds", "7201"], "must be from 1 to 7200"),
+    ):
         result = subprocess.run([binary, *BASE, *args],
                                 capture_output=True, text=True, timeout=3)
         assert result.returncode == 1
         assert "cannot open RDMA device" not in result.stderr
         assert "cannot enumerate RDMA devices" not in result.stderr
-        assert "--" in result.stderr
+        assert message in result.stderr
 
 
 @pytest.mark.parametrize("stop_signal", [signal.SIGTERM, signal.SIGINT])

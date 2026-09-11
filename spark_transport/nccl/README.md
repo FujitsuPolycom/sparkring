@@ -12,12 +12,18 @@ path.
 
 On a four-rank cycle, the patch set constrains NCCL to the direct-cable RoCE ring. It
 prevents Tree and PAT connection setup, which would require non-adjacent
-peers, and advertises both eligible listener GIDs so subnet-aware connection
+peers, and advertises eligible listener GIDs so subnet-aware connection
 selection reaches the directly attached peer. No collective payload is routed
 through an intermediate rank. A two-rank pair uses the same verified library
 but a separate single-HCA environment: subnet-aware routing is off and Tree,
 algorithm, and channel overrides remain unset because both ranks are directly
 adjacent.
+
+The [Qwen builder's pinned patch](../../runtime/qwen38/pins.json) publishes at
+most two listener GIDs, matching its two selected cycle devices. Despite the
+`advertise-all-listener-gids` filename, it is not an unlimited inventory.
+Profiles selecting four functions across two PCIe domains instead use the
+[four-GID routing contract](DUAL_PCI_DOMAIN.md).
 
 ## Runtime contract
 
