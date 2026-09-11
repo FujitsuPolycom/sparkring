@@ -24,7 +24,7 @@ complete report. Only the observed-problem field is required in the bug form.
 | Public surface | Result |
 |---|---|
 | `recipes/*.json` and SparkCache composition recipes | Generated exports of the authoritative `profiles/` source; existing consumers keep their paths |
-| Six serving ENV examples | Generated from profile templates; migration-baseline tests preserve their existing defaults |
+| Six serving ENV examples | Generated from profile templates; ordered-assignment checks preserve baseline defaults except recorded changes |
 | TP2 Python launcher | Existing path delegates to `runtime/common/tp2.py`; plan/receipt/guard behavior is retained |
 | Switched Python launcher | Frozen image asset remains byte-identical; maintained host adapter lives in `runtime/common/switched.py` and produces an equivalent plan |
 | vLLM adapter source paths | Canonical owner is `integrations/vllm`; generated legacy exports preserve overlay/package consumers |
@@ -46,25 +46,20 @@ No useful evidence was deleted or uploaded to another location.
 
 ## Verification
 
-Local verification ran on Windows with Python 3.12:
+The repository-wide review remains in progress. These checks ran on Windows
+with Python 3.12 at commit c4e8d8; later changes require relevant validation.
 
 | Check | Result |
 |---|---|
-| Full maintained pytest selection from CI | 3,709 passed; 118 skipped; no failures |
-| Shared profile/configuration tests | 56 passed |
-| Focused image-documentation and shared-runtime checks after navigation refinement | 76 passed |
+| Full maintained pytest selection from CI | 4,061 passed; 119 skipped; no failures |
+| Shared profile/configuration tests | 119 passed |
 | Ruff over maintained Python trees | Passed |
-| Repository structural check | 21 profiles, 52 generated outputs, 427 preserved inputs, 439 Python sources, 7 builders |
-| Repository Markdown links | Passed; 933 local links at report preparation |
+| Repository structural check | 21 profiles, 52 generated outputs, 430 preserved inputs, 444 Python sources, 7 builders |
+| Repository Markdown links | 985 local links checked |
 | Release-safety scan | Zero findings |
-| Managed-service source closure | Imported from the installed allowlist in an isolated Python process, without the checkout on its import path |
-| Launch compatibility | Existing TP2 tests pass; maintained switched renderer matches the frozen renderer's plan |
-| Configuration equivalence | Omitted defaults, explicit defaults and equivalent legacy recipes resolve consistently; preferred DCP selections and composition base references are validated; ENV examples match migration-baseline hashes |
-
-The initial baseline subset passed 1,072 tests with 77 skips. The migration's
-full-suite documentation regressions were corrected by following canonical
-paths while retaining the original content assertions. Test discovery was not
-reduced to hide failures.
+| Managed-service source closure | Imported from an extracted deployment archive without the checkout on its import path |
+| Launch compatibility | Existing TP2 entry point and maintained switched-renderer contracts pass |
+| Configuration equivalence | Omitted and explicit defaults agree; ENV assignments match the initial baseline except declared default changes; comment edits do not change compatibility |
 
 The standalone, unchanged DeepSeek Engram probe could not import vLLM in this
 environment. It requires the serving image and model/packed-row inputs, so it is
