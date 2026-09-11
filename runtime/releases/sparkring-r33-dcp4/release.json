@@ -9,7 +9,7 @@
     },
     {
       "path": "runtime/sparkring/jovian-r33/publication.json",
-      "sha256": "0012aeb0e1db467f21bb075d0e4dc3db99b7fd8b2a98be35d56d22692163af07"
+      "sha256": "e431bb284ed45e6ac898bc7157dd07a133951322c323e9f1452b86b028b2ae82"
     },
     {
       "path": "runtime/sparkring/jovian-r33/image/artifact-lock.json",
@@ -29,7 +29,7 @@
     },
     {
       "path": "performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md",
-      "sha256": "d2671b403962fef0a93bb82bccc0fadea0c9ae3e97cf3f0189525f4c575d6df6"
+      "sha256": "b2d8d2f18c75b3a04e559e6d5eb0c45cc9275b395e90810995c0bb1c10a76a76"
     }
   ],
   "image": "ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef"
