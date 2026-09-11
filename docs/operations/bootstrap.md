@@ -166,7 +166,7 @@ the recorded management address or Docker firewall chain is not ready.
 The command writes files but does not install or enable them. The absolute
 program path recorded in `ExecStart` must exist on the corresponding rank
 before its service is installed. The installation requirements and management
-safety checks are described in [SparkRing prerequisites](prerequisites.md#management-safety-during-repair).
+safety checks are described in [SparkRing prerequisites](fabric-repair.md#management-safety-during-repair).
 
 ## Worker-controller recovery
 
