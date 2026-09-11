@@ -247,7 +247,8 @@ OracleComparison compare_to_rounded_fp32(
           absolute / std::max(std::abs(reference), 1.0e-12);
       comparison.max_abs = std::max(comparison.max_abs, absolute);
       comparison.max_rel = std::max(comparison.max_rel, relative);
-      if (absolute > atol + rtol * std::abs(reference)) {
+      if (!std::isfinite(actual) || !std::isfinite(reference) ||
+          absolute > atol + rtol * std::abs(reference)) {
         ++comparison.mismatches;
       }
     }

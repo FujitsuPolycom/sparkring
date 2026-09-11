@@ -241,3 +241,15 @@ def test_cuda_correctness_translation_unit_compiles_when_nvcc_is_available(
         check=True,
         cwd=directory,
     )
+
+
+@pytest.mark.parametrize("offset", ["input", "output"])
+def test_negative_tile_offsets_are_rejected_before_guard_mutation(offset):
+    geometry = payload_geometry(1)
+    buffers = initialize_guarded_buffers(geometry, guard_bytes=16)
+    before = (bytes(buffers.input), bytes(buffers.output))
+    tile = OracleTile(-2 if offset == "input" else 0,
+                      -2 if offset == "output" else 0, 4, 1)
+    with pytest.raises(ValueError):
+        fill_expected_output(buffers, tile)
+    assert (bytes(buffers.input), bytes(buffers.output)) == before

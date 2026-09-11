@@ -249,7 +249,8 @@ cudaError_t launch_bidirectional_stage_initial(
     const BidirectionalBulkDescriptor& descriptor, cudaStream_t stream,
     std::uint32_t query_rows) {
   const auto blocks = launch_blocks(query_rows);
-  if (!launch_arguments_valid(input, outgoing_endpoint) || blocks == 0) {
+  if (!launch_arguments_valid(input, outgoing_endpoint) || blocks == 0 ||
+      descriptor.query_rows != query_rows) {
     return cudaErrorInvalidValue;
   }
   stage_initial_kernel<<<blocks, kWorkerThreads, 0, stream>>>(
@@ -264,7 +265,8 @@ cudaError_t launch_bidirectional_reduce_forward(
     std::uint32_t query_rows) {
   const auto blocks = launch_blocks(query_rows);
   if (!launch_arguments_valid(input, incoming_endpoint) ||
-      outgoing_endpoint == nullptr || blocks == 0) {
+      outgoing_endpoint == nullptr || blocks == 0 ||
+      descriptor.query_rows != query_rows) {
     return cudaErrorInvalidValue;
   }
   reduce_forward_kernel<<<blocks, kWorkerThreads, 0, stream>>>(
@@ -279,7 +281,8 @@ cudaError_t launch_bidirectional_reduce_finalize_seed_gather(
     std::uint32_t query_rows) {
   const auto blocks = launch_blocks(query_rows);
   if (!launch_arguments_valid(input, incoming_endpoint) ||
-      outgoing_endpoint == nullptr || output == nullptr || blocks == 0) {
+      outgoing_endpoint == nullptr || output == nullptr || blocks == 0 ||
+      descriptor.query_rows != query_rows) {
     return cudaErrorInvalidValue;
   }
   reduce_finalize_seed_gather_kernel<<<blocks, kWorkerThreads, 0, stream>>>(
@@ -293,7 +296,8 @@ cudaError_t launch_bidirectional_gather_forward(
     cudaStream_t stream, std::uint32_t query_rows) {
   const auto blocks = launch_blocks(query_rows);
   if (!launch_arguments_valid(incoming_endpoint, outgoing_endpoint) ||
-      output == nullptr || blocks == 0) {
+      output == nullptr || blocks == 0 ||
+      descriptor.query_rows != query_rows) {
     return cudaErrorInvalidValue;
   }
   gather_forward_kernel<<<blocks, kWorkerThreads, 0, stream>>>(
@@ -307,7 +311,7 @@ cudaError_t launch_bidirectional_gather_finish(
     std::uint32_t query_rows) {
   const auto blocks = launch_blocks(query_rows);
   if (!launch_arguments_valid(incoming_endpoint, output) ||
-      blocks == 0) {
+      blocks == 0 || descriptor.query_rows != query_rows) {
     return cudaErrorInvalidValue;
   }
   gather_finish_kernel<<<blocks, kWorkerThreads, 0, stream>>>(

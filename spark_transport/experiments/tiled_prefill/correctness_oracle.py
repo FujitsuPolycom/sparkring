@@ -199,6 +199,8 @@ def _payload_capacity(buffers: GuardedBuffers) -> int:
 def _validate_tile(tile: OracleTile, capacity_bytes: int) -> None:
     if (
         tile.active_bytes <= 0
+        or tile.input_offset_bytes < 0
+        or tile.output_offset_bytes < 0
         or tile.active_bytes % (2 * BF16_BYTES) != 0
         or tile.input_offset_bytes % BF16_BYTES != 0
         or tile.output_offset_bytes % BF16_BYTES != 0
