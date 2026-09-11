@@ -1,6 +1,8 @@
 """Collect correctness, timing, and per-QP evidence for TP4 RoCE all-reduce.
 
 Gloo carries metadata and evidence; RoCEnante carries tensor payloads.
+The four-rank physical ring reaches opposite peers through hardware-forwarded
+two-link paths, called virtual diagonals in the evidence schema.
 Correctness probes and completion retirement execute outside timed intervals.
 Short timing samples are diagnostics, not serving-performance qualification.
 """
@@ -10,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import statistics
 import time
 from typing import Any
@@ -228,20 +231,17 @@ def _retire_and_validate(
 
     operations = int(stats["ops_posted"])
     # The bundled proxy posts one payload WQE per stripe and has no tiling knob.
-    tile_bytes = 0
     packs = payload_bytes // 16
     stripe_bytes = (((packs + 1) // 2) * 16, payload_bytes - ((packs + 1) // 2) * 16)
     for path in paths:
-        path_index = int(path["path_index"])
+        # path_index selects one of two payload stripes for each peer, not
+        # the ordinal among the six local queue pairs.
+        path_index = path["path_index"]
+        if type(path_index) is not int or path_index not in (0, 1):
+            raise ValueError(f"RoCE path_index must identify stripe 0 or 1: {path_index!r}")
         expected_bytes = operations * stripe_bytes[path_index]
         path_bytes = stripe_bytes[path_index]
-        chunks = (
-            0
-            if path_bytes == 0
-            else 1
-            if tile_bytes == 0
-            else 1 + (path_bytes - 1) // tile_bytes
-        )
+        chunks = 0 if path_bytes == 0 else 1
         expected_writes = operations * chunks
         if int(path["payload_bytes"]) != expected_bytes:
             raise AssertionError(
@@ -273,8 +273,18 @@ def _retire_and_validate(
     return stats, paths, expected
 
 
+def validate_options(args) -> None:
+    """Reject invalid sample counts and out-of-capacity payloads before startup."""
+    if not 0 < args.bytes <= (2 << 20) or args.bytes % 16:
+        raise ValueError("--bytes must be a positive multiple of 16 no larger than 2 MiB")
+    if args.warmups < 0 or args.samples <= 0 or args.graph_ops <= 0:
+        raise ValueError("warmups must be nonnegative; samples and graph-ops must be positive")
+    if not math.isfinite(args.retire_timeout) or args.retire_timeout <= 0:
+        raise ValueError("--retire-timeout must be finite and positive")
+
+
 def main() -> None:
-    """Run correctness probes, unchanged timing loops, and QP reconciliation."""
+    """Run correctness probes, timing samples, and QP reconciliation."""
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--bytes", type=int, default=65536)
@@ -283,14 +293,13 @@ def main() -> None:
     parser.add_argument("--graph-ops", type=int, default=10)
     parser.add_argument("--retire-timeout", type=float, default=10.0)
     args = parser.parse_args()
+    validate_options(args)
 
     dist.init_process_group("gloo")
     rank = dist.get_rank()
     world = dist.get_world_size()
     if world != 4:
         raise RuntimeError(f"virtual-diagonal evidence requires four ranks, got {world}")
-    if args.bytes <= 0 or args.bytes % 16:
-        raise ValueError("--bytes must be a positive multiple of 16")
     torch.cuda.set_device(0)
     device = torch.device("cuda", 0)
 

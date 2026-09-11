@@ -7,6 +7,8 @@ import torch.distributed as dist
 parser=argparse.ArgumentParser()
 parser.add_argument('--bytes',type=int,required=True)
 args,_=parser.parse_known_args()
+if not 0 < args.bytes <= (2 << 20) or args.bytes % 16:
+    parser.error("--bytes must be a positive multiple of 16 no larger than 2 MiB")
 dist.init_process_group('gloo')
 rank=dist.get_rank()
 assert dist.get_world_size()==4

@@ -1,4 +1,8 @@
-"""Plan or execute bounded four-rank RC checks using a rendered mesh site."""
+"""Plan or execute bounded four-rank RC checks using a rendered mesh site.
+
+Each --rows value selects a BF16 payload of rows * 4096 elements (8192 bytes
+per row), not a count of trials. Supported row counts are listed by --help.
+"""
 from __future__ import annotations
 
 import argparse
@@ -19,8 +23,8 @@ spec.loader.exec_module(profile)
 def make_plan(launch: Path, receipt_path: Path, rows: list[int], port: int) -> dict:
     """Reject modified rendered inputs and resolve rank-specific execution argv."""
     if not rows or any(q not in (4, 8, 12, 16, 20, 24, 28, 32, 64) for q in rows):
-        raise ValueError("Rows must belong to the bounded native correctness matrix")
-    if len(set(rows)) != len(rows) or not 1024 <= port <= 65535 - len(rows):
+        raise ValueError("Payload rows must be one of 4,8,12,16,20,24,28,32,64")
+    if len(set(rows)) != len(rows) or not 1024 <= port <= 65536 - len(rows):
         raise ValueError("Rows must be distinct and rendezvous ports must fit the TCP range")
     site, topology, _ = profile.load_site(launch / "site.json")
     rendered = json.loads((launch / "fabric-plan.json").read_text())
@@ -36,7 +40,7 @@ def make_plan(launch: Path, receipt_path: Path, rows: list[int], port: int) -> d
             raise ValueError(f"Rendered {name} hash mismatch")
     if rendered.get("topology_sha256") != topology.sha256:
         raise ValueError("Rendered topology identity mismatch")
-    contract = json.loads((profile.ROOT / "spark_transport/experiments/glm53_rocenante_overlay/overlay_contract.json").read_text())
+    contract = json.loads((profile.ROOT / "integrations/vllm/rocenante/overlay_contract.json").read_text())
     runtime = contract["runtime"]
     cells = []
     for index, q in enumerate(rows):
@@ -83,7 +87,8 @@ def main() -> None:
     parser.add_argument("--launch", type=Path, required=True)
     parser.add_argument("--image-receipt", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--rows", nargs="+", type=int, default=[4, 20, 28, 64])
+    parser.add_argument("--rows", nargs="+", type=int, default=[4, 20, 28, 64],
+                        help="BF16 payload rows (8192 bytes each): 4,8,12,16,20,24,28,32,64")
     parser.add_argument("--port", type=int, default=29960)
     parser.add_argument("--mode", choices=("correctness", "streams"), default="correctness")
     parser.add_argument("--execute-authorized", action="store_true")
