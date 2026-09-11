@@ -287,6 +287,12 @@ def test_r33_receipt_adapts_final_tp2_docker_command(inputs, rank):
     assert environment["SOURCE_IMAGE_PROFILE"] == "tp2-dcp1"
     assert environment["SPARKRING_PROFILE_MODE"] == "custom"
     assert environment["VLLM_NCCL_SO_PATH"] == "/opt/local-inference/nccl/lib/libnccl.so.2"
+    assert environment["LD_PRELOAD"] == environment["VLLM_NCCL_SO_PATH"]
+    assert "LD_PRELOAD=/opt/local-inference/nccl/lib/libnccl.so.2" in value["command"]
+    assert "LD_PRELOAD=/opt/sparkring/nccl-pci/libnccl.so.2.30.7" not in value["command"]
+    arguments = value["container_args"]
+    assert arguments[arguments.index("--gdn-decode-kernel") + 1] == "b12x"
+    assert json.loads(arguments[arguments.index("--speculative-config") + 1])["moe_backend"] == "humming"
     assert environment["LOAD_FORMAT"] == "instanttensor"
     assert environment["VLLM_PLUGINS"] == ""
     assert "SOURCE_IMAGE_PROFILE=tp2-dcp1" in value["command"]
@@ -302,6 +308,13 @@ def test_r33_receipt_adapts_final_tp2_docker_command(inputs, rank):
     assert host.commands[-1] == value["command"]
     launch.execute(value, "start", runtime, run=host.run)
     assert host.commands[-1] == ["docker", "start", value["name"]]
+
+
+def test_legacy_tp2_plan_keeps_its_pinned_preload(inputs):
+    plan = launch.render(0, "master.example", *inputs, LOCAL_IMAGE)
+    assert plan["environment"]["LD_PRELOAD"] == "/opt/sparkring/nccl-pci/libnccl.so.2.30.7"
+    assert "LD_PRELOAD=/opt/sparkring/nccl-pci/libnccl.so.2.30.7" in plan["command"]
+    assert plan["runtime_kind"] == "legacy"
 
 
 def test_changed_r33_receipt_rejected_before_host_action(inputs):

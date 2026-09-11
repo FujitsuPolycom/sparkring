@@ -98,6 +98,7 @@ def adapt_r33_plan(plan, receipt):
     environment = dict(plan["environment"])
     environment.update(contract["common_environment"])
     environment.update({
+        "LD_PRELOAD": contract["common_environment"]["VLLM_NCCL_SO_PATH"],
         "SOURCE_IMAGE_PROFILE": "tp2-dcp1",
         "SPARKRING_PROFILE_MODE": "custom",
         "SPARKCACHE_ENABLED": "0",
