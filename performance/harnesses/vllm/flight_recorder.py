@@ -1,7 +1,8 @@
-"""Opt-in TP4/B12X ordering trace after explicit activation.
+"""Trace four-rank collective and B12X fused-indexer call ordering.
 
-Activation enables logging for every subsequent instrumented call until process
-exit. The recorder has no first-request cutoff or sample bound.
+With SPARK_TP4_FLIGHT_RECORDER=1, activate(rank) enables logging for every
+subsequent instrumented call until process exit. The recorder has no
+first-request cutoff or sample bound.
 """
 
 from __future__ import annotations

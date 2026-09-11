@@ -1,4 +1,4 @@
-"""Offline contracts for the supported-profile overlay bundle."""
+"""Offline contracts for the modules listed in runtime/public-overlay-files.json."""
 
 from __future__ import annotations
 
@@ -24,13 +24,15 @@ def load_script(name: str):
 overlay = load_script("build-public-overlay.py")
 
 
-def test_overlay_spec_names_existing_supported_profile_modules():
+def test_overlay_spec_names_existing_public_adapter_modules():
     document = json.loads(SPEC.read_text(encoding="utf-8"))
     listed = document["files"]
     assert listed
     assert len(listed) == len(set(listed))
     assert all((REPO / path).is_file() for path in listed)
     assert not any("/experiments/" in path for path in listed)
+    # Exclude inherited Python startup-hook modules; the corresponding
+    # sparkring_nf3_hybrid.pth hook is removed by runtime/exl3-r7/Containerfile.
     assert not any("nf3" in path.lower() for path in listed)
 
 

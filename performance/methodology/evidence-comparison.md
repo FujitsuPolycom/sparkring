@@ -21,8 +21,9 @@ deltas.
 - `metadata.decode_mode` and every result `benchmark_mode` are `duration`.
 - `duration_per_test` is at least 10 seconds.
 - `max_tokens` is at least 256.
-- Bounded gates and indeterminate documents are rejected, including a pair of
-  two bounded documents.
+- Runs classified as `bounded_gate` (fewer than 256 maximum output tokens or
+  less than 10 seconds per cell) and indeterminate documents are rejected,
+  even when both input documents have the same classification.
 
 ### Runtime and workload identity
 

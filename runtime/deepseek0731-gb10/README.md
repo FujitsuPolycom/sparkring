@@ -128,7 +128,8 @@ header, and native artifact hash. Any drift stops the build.
 
 ## Build
 
-The default target includes the compiled pull request 431 top-k defenses:
+The default target includes the compiled sparse top-k defenses described in
+the runtime contracts above:
 
 ```bash
 bash runtime/deepseek0731-gb10/build-image.sh \

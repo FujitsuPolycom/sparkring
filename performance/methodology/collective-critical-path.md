@@ -70,8 +70,8 @@ Reject, rather than adjust, a capture when any of these conditions fails:
 - the value-validating probe reports a mismatch.
 
 Collect enough independent sessions to measure the workload's own dispersion
-before choosing a detection threshold. Do not reuse thresholds from removed
-or unmatched benchmark records. No claim about concurrent serving, C8, tails,
+before choosing a detection threshold. Derive thresholds from records collected
+under the same conditions. No claim about concurrent serving, C8, tails,
 or another model profile follows from a C1 collection.
 
 ## Reporting and limits

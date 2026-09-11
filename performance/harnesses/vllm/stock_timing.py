@@ -1,8 +1,12 @@
-"""Low-overhead CUDA-event timing for one fixed-K4 stock-collective round.
+"""CUDA-event timing for one GLM-5.2 round with four speculative tokens.
 
 This diagnostic never changes a collective's inputs, outputs, or ordering. It
 records CUDA events around the original vLLM operation and reports once the
-known GLM-5.2 MTP4 Q1/Q5 inventory for one target round has completed.
+fixed call inventory in _EXPECTED has completed. Query-row counts Q5 and Q1
+represent a five-row target step and single-row draft steps for MTP4. This
+inventory is specific to that execution shape, not a model-independent timer.
+SPARK_TP4_STOCK_TIMING=1 enables instrumentation; an arm-file run ID selects
+the measured round after the three-row startup call has been observed.
 """
 
 from __future__ import annotations

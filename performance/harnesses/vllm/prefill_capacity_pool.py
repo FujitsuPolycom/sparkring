@@ -164,6 +164,10 @@ def transport_engine_audit(
 
     Q1024 and Q4096 entries are projections of the present stride-two port
     formula, not claims that the executable adapter admits those shapes.
+    The compatibility field ``executable_today`` means within the exact-Q
+    adapter's opt-in Q512 bound (spark_tp4_backend._ALLREDUCE_PREFILL_MAX_QUERY_ROWS).
+    It does not assert that VLLM_SPARK_TP4_PREFILL_Q512 is enabled or that
+    capacity-pool dispatch is implemented.
     """
 
     environment = _environment(environ)

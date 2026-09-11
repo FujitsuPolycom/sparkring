@@ -1,4 +1,11 @@
-"""Verify packaged overlay bytes; deliberately does not initialize CUDA."""
+"""Check installed package files against the supplied package manifest.
+
+The manifest is trusted input: this detects file drift, not changes to both
+files and manifest, and does not attest source provenance or GPU behavior.
+package_image.py installs this tool as verify-runtime-package.py. The separate
+source_image/verify_image.py verifies source-image receipts against a lock.
+No CUDA initialization is performed.
+"""
 import hashlib
 import json
 from pathlib import Path
