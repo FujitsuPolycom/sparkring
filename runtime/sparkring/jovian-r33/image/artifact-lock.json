@@ -71,7 +71,7 @@
     "sircl_source_archive_sha256": "fe3e12de5cb1b392f015a751d7b27b6210c95fa7613113fd7895990e2041db0f",
     "vllm_continuation_port_commit": "b611611a643502542c2d900057eb47e407b8379e",
     "vllm_continuation_port_tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a",
-    "vllm_source_manifest_sha256": "c6d041a652895db3112fe7adcf19961816a2457272ea294c2f1162d373e6080d",
+    "vllm_source_manifest_sha256": "dfd47ca3883ece53feda318c3ce8d1ea0ac1bce9a2145bb36c77e9a7c0531dab",
     "vllm_scheduler_config_compatibility_commit": "3049b639bdbc513319f7bae896c4e239992bc7bb",
     "vllm_prefix_hit_metadata_compatibility_commit": "4405a965e54f14df00d28e5e23f9793f866aae39"
   },

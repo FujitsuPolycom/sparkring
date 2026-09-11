@@ -18,6 +18,18 @@ VERIFY = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VERIFY)
 
 
+def repository_bytes(path: Path) -> bytes:
+    """Return the normalized bytes that a Git archive supplies to a build."""
+    repository = HERE.parents[3]
+    relative = path.resolve().relative_to(repository.resolve()).as_posix()
+    try:
+        return subprocess.check_output(
+            ["git", "show", f":{relative}"], cwd=repository
+        )
+    except subprocess.CalledProcessError:
+        return path.read_bytes()
+
+
 class VllmPackageContractTests(unittest.TestCase):
     def test_external_flash_attention_python_mapping_is_commit_bound(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -83,13 +95,15 @@ class VllmPackageContractTests(unittest.TestCase):
         manifest_path = root / "patches/vllm-r33-sparkring.manifest.json"
         manifest = json.loads(manifest_path.read_text())
         patch = root / manifest["patch"]["path"]
-        patch_sha = hashlib.sha256(patch.read_bytes()).hexdigest()
-        manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        patch_bytes = repository_bytes(patch)
+        manifest_bytes = repository_bytes(manifest_path)
+        patch_sha = hashlib.sha256(patch_bytes).hexdigest()
+        manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
         self.assertEqual(
             patch_sha,
             manifest["patch"]["sha256"],
         )
-        self.assertEqual(patch.stat().st_size, manifest["patch"]["size"])
+        self.assertEqual(len(patch_bytes), manifest["patch"]["size"])
         self.assertEqual(
             manifest["result"]["tree"],
             "0511a78617bb755ea2901ef3c5db7547bc1e148d",
