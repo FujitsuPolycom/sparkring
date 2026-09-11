@@ -88,7 +88,7 @@ def _remove_option(arguments, flag):
     return result
 
 
-def adapt_r33_plan(plan, receipt, *, sparkcache=False):
+def adapt_r33_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
     verifier = _r33_verifier()
     verifier.validate_image_receipt(receipt)
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
@@ -111,7 +111,8 @@ def adapt_r33_plan(plan, receipt, *, sparkcache=False):
     })
     arguments = plan["container_args"][4:]
     arguments = _replace_option(arguments, "--max-model-len", str(contract["model"]["max_model_len"]))
-    arguments = _replace_option(arguments, "--kv-cache-memory-bytes", str(selected["kv_cache_memory_bytes"]))
+    kv_memory_bytes = selected["kv_cache_memory_bytes"] if cache_kv_memory_bytes is None else cache_kv_memory_bytes
+    arguments = _replace_option(arguments, "--kv-cache-memory-bytes", str(kv_memory_bytes))
     arguments = _replace_option(arguments, "--load-format", selected.get("load_format", contract["model"]["loader"]["load_format"]))
     if sparkcache:
         environment.update(LOAD_FORMAT="b12x", VLLM_PLUGINS="b12x_loader", B12X_NVFP4_DYNAMIC_MATERIALIZED="0")
@@ -189,6 +190,7 @@ def adapt_r33_plan(plan, receipt, *, sparkcache=False):
         command=command, labels=labels, entrypoint="/opt/sparkring/bin/sparkring-r33",
         runtime_kind="r33-candidate",
         sparkcache_enabled=sparkcache,
+        kv_cache_memory_bytes=kv_memory_bytes,
     )
     if sparkcache:
         plan["qualification"] = {"status": "research-only", "gpu_qualified": False,
@@ -201,7 +203,12 @@ def adapt_r33_plan(plan, receipt, *, sparkcache=False):
     return plan
 
 
-def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None, *, r33_sparkcache=False):
+def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None, *, r33_sparkcache=False,
+           r33_cache_kv_memory_bytes=None):
+    if r33_cache_kv_memory_bytes is not None and (
+            not r33_sparkcache or type(r33_cache_kv_memory_bytes) is not int
+            or r33_cache_kv_memory_bytes not in (7247757312, 9395240960)):
+        raise ValueError("R33 cache KV override requires --r33-sparkcache and an explicit 6.75 or 8.75 GiB pin")
     if r33_sparkcache and r33_receipt is None:
         raise ValueError("R33 SparkCache requires an exact R33 image receipt")
     if rank not in (0, 1) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", master):
@@ -283,7 +290,8 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         "qualification": profile["qualification"],
         "entrypoint": "python3", "runtime_kind": "legacy",
     }
-    return adapt_r33_plan(result, r33_receipt, sparkcache=r33_sparkcache) if r33_receipt is not None else result
+    return adapt_r33_plan(result, r33_receipt, sparkcache=r33_sparkcache,
+                          cache_kv_memory_bytes=r33_cache_kv_memory_bytes) if r33_receipt is not None else result
 
 
 def _source_receipt_contract(directory):
@@ -424,11 +432,13 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--runtime-receipt", type=Path)
     parser.add_argument("--r33-sparkcache", action="store_true", help="Plan the source-capability-gated TP2 cache composition")
+    parser.add_argument("--r33-cache-kv-memory-bytes", type=int, choices=(7247757312, 9395240960),
+                        help="Explicit TP2 R33 cache KV pin; 9395240960 selects the 8.75 GiB research configuration")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
     r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") == "sparkring-r33-image-receipt/v1" else None
     plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt,
-                  r33_sparkcache=args.r33_sparkcache)
+                  r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes)
     print(json.dumps(plan, indent=2), flush=True)
     if args.action == "plan":
         return

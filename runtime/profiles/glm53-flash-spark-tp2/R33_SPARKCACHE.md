@@ -17,6 +17,14 @@ managed-allocation option for its different loader implementation.
 
 The request limit is explicitly 1,048,576 tokens. The reference used 262,144;
 neither that reference nor this plan proves one-million-token serving capacity.
+The R33 startup capacity check rejected the 6.75 GiB reference pin at this
+request limit: it estimated 7.27 GiB required, about 6.74 GiB available, and
+a 962,560-token maximum. Those estimates are specific to that image/run.
+For one-million-token qualification, explicitly select the 8.75 GiB candidate
+with `--r33-cache-kv-memory-bytes 9395240960`. The default remains the 6.75 GiB
+reference configuration and is not sufficient for that observed R33 startup.
+The larger pin retains the same source-capability gates and active memory
+guard; its startup, request capacity and memory stability must be measured.
 Multimodal accuracy, guarded memory stability, native cache capture/restore,
 recovery, and performance need new measurements on the selected image.
 
@@ -40,7 +48,7 @@ python3 runtime/profiles/glm53-flash-spark-tp2/launch.py plan \
   --env-file /srv/sparkring/private/tp2-rank0.env \
   --image sha256:IMAGE_CONFIG_ID \
   --runtime-receipt /srv/sparkring/private/r33-image.json \
-  --r33-sparkcache
+  --r33-sparkcache --r33-cache-kv-memory-bytes 9395240960
 ```
 
 Model/cache paths must exist. The site file supplies the host IP and NCCL/Gloo

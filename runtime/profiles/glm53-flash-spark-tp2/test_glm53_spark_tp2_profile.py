@@ -594,6 +594,31 @@ def test_r33_cache_rejects_unproven_capabilities_before_host_action(inputs, fail
     assert host.commands == []
 
 
+@pytest.mark.parametrize("rank", [0, 1])
+def test_r33_cache_explicit_875_gib_pin_reaches_docker_with_guards(inputs, rank):
+    runtime, _ = cache_capable_receipt()
+    value = launch.render(rank, "master.example", *inputs, LOCAL_IMAGE, runtime,
+                          r33_sparkcache=True, r33_cache_kv_memory_bytes=9395240960)
+    command = value["command"]
+    assert command[command.index("--kv-cache-memory-bytes") + 1] == "9395240960"
+    assert command[command.index("--max-model-len") + 1] == "1048576"
+    assert value["kv_cache_memory_bytes"] == 9395240960
+    assert value["memory_guard_floor_bytes"] == 2147483648
+    assert value["qualification"]["gpu_qualified"] is False
+    launch.validate_runtime_receipt(runtime, value)
+    host = Host(value)
+    launch.execute(value, "create", runtime, run=host.run)
+    assert host.commands[-1] == command
+    assert any(item[:2] == ["systemctl", "is-active"] for item in host.commands)
+
+
+@pytest.mark.parametrize("cache,pin", [(False, 9395240960), (True, 0), (True, 8589934592), (True, True)])
+def test_r33_cache_kv_override_rejects_wrong_scope_or_unreviewed_pin(inputs, cache, pin):
+    with pytest.raises(ValueError, match="KV override"):
+        launch.render(0, "master.example", *inputs, LOCAL_IMAGE, r33_receipt(),
+                      r33_sparkcache=cache, r33_cache_kv_memory_bytes=pin)
+
+
 def test_changed_r33_receipt_rejected_before_host_action(inputs):
     runtime = r33_receipt()
     value = launch.render(0, "master.example", *inputs, LOCAL_IMAGE, runtime)
