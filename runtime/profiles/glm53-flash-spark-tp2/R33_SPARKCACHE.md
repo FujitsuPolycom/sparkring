@@ -45,9 +45,10 @@ unchanged. Candidate names are `sparkring-r33-tp2-dcp1-sparkcache-r0/r1`.
 
 ## Required capability evidence
 
-The source build must supply `tp2-sparkcache-capabilities.json` in the canonical
-R33 profile directory before context preparation. No passing capability file is
-provided by this change. Its schema is `sparkring-r33-runtime-capabilities/v1`,
+The source build supplies `tp2-sparkcache-capabilities.json` in the canonical
+R33 profile directory before context preparation. The file records implemented
+source/component capabilities with live qualification pending. Its schema is
+`sparkring-r33-runtime-capabilities/v1`,
 its `profile` is `tp2-dcp1-sparkcache`, and its `sources` must exactly match the
 contract's `vllm_integrated_tree`, `b12x_tree`, and `sparkcache_tree`.
 
