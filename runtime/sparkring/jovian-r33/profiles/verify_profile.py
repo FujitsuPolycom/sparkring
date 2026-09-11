@@ -83,6 +83,13 @@ def validate_template(name: str, asset_root: Path | None = None) -> dict:
     }
     if selected.get("plugins"):
         expected["VLLM_PLUGINS"] = selected["plugins"]
+    if "serving" in selected:
+        serving = selected["serving"]
+        expected.update(MAX_NUM_SEQS=str(serving["max_num_seqs"]),
+                        MAX_NUM_BATCHED_TOKENS=str(serving["max_num_batched_tokens"]),
+                        PREFILL_SCHEDULE_INTERVAL=str(serving["prefill_schedule_interval"]),
+                        MAX_IMAGES_PER_PROMPT=str(serving["limit_mm_per_prompt"]["image"]),
+                        MAX_VIDEOS_PER_PROMPT=str(serving["limit_mm_per_prompt"]["video"]))
     for key, value in expected.items():
         if values.get(key) != value:
             raise ValueError(f"{name} requires {key}={value}")

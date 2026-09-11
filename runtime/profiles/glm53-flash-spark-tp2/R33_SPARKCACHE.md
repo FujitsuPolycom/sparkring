@@ -1,8 +1,9 @@
 # R33 TP2 SparkCache composition
 
 Status: **research-only**. The local launcher implements a separate
-`tp2-dcp1-sparkcache` plan. It preserves the bounded TP2 cache reference's
-6.75 GiB KV pool, managed B12X loader, TP2/DCP1, MTP3 with Humming draft MoE,
+`tp2-dcp1-sparkcache` plan. Its default KV pool is 7.5 GiB per rank, matching
+the bounded R33 test configuration. It preserves the TP2 reference's
+managed B12X loader, TP2/DCP1, MTP3 with Humming draft MoE,
 eight sequences, 8,192-token scheduler budget, prefill interval eight,
 three-image/one-video admission, exact graph list, single-DAC two-domain
 transport, and active 2 GiB memory guard. It selects the R33 image's pinned
@@ -20,11 +21,13 @@ neither that reference nor this plan proves one-million-token serving capacity.
 The R33 startup capacity check rejected the 6.75 GiB reference pin at this
 request limit: it estimated 7.27 GiB required, about 6.74 GiB available, and
 a 962,560-token maximum. Those estimates are specific to that image/run.
-For one-million-token qualification, explicitly select the 8.75 GiB candidate
-with `--r33-cache-kv-memory-bytes 9395240960`. The default remains the 6.75 GiB
-reference configuration and is not sufficient for that observed R33 startup.
-The larger pin retains the same source-capability gates and active memory
-guard; its startup, request capacity and memory stability must be measured.
+The packaged profile and launcher now default to 7.5 GiB
+(`8053063680` bytes). The contract records 6.75 GiB separately as the reference
+pin, not the R33 one-million-token default. Explicit overrides remain available
+for 6.75, 7.5 and 8.75 GiB; they do not inherit qualification from another pin.
+The 7.5 GiB configuration has bounded text-test evidence, but this does not
+establish full request capacity or sustained memory stability. All settings
+retain the same source-capability gates and active memory guard.
 Multimodal accuracy, guarded memory stability, native cache capture/restore,
 recovery, and performance need new measurements on the selected image.
 
@@ -48,7 +51,7 @@ python3 runtime/profiles/glm53-flash-spark-tp2/launch.py plan \
   --env-file /srv/sparkring/private/tp2-rank0.env \
   --image sha256:IMAGE_CONFIG_ID \
   --runtime-receipt /srv/sparkring/private/r33-image.json \
-  --r33-sparkcache --r33-cache-kv-memory-bytes 9395240960
+  --r33-sparkcache
 ```
 
 Model/cache paths must exist. The site file supplies the host IP and NCCL/Gloo
@@ -56,6 +59,22 @@ socket interfaces. The plan prints `activation_blockers` when the image lacks
 capabilities. `create` and `start` reject that receipt before inspecting guards
 or contacting Docker. Their other guard and existing-GPU-container checks are
 unchanged. Candidate names are `sparkring-r33-tp2-dcp1-sparkcache-r0/r1`.
+
+## Final image packaging
+
+The canonical profile records the 7.5 GiB default, implicit managed B12X
+allocation, explicit B12X draft loader with empty extra configuration, and
+request scheduling/multimodal limits. The launcher reads these fields rather
+than inheriting the legacy profile's values for the cache composition.
+
+An already built image retains its packaged profile bytes. Final packaging
+requires a new context/source lock, a rebuilt generic image with this contract,
+and a new verified image receipt. The pinned runtime sources and native
+artifacts are unchanged and can be reused. Distribute the external launcher
+from the same repository revision and bind its rendered plans to the final
+image receipt. Repeat the required TP2 and TP4 qualification on that exact
+image; neither these configuration changes nor a successful package build
+promotes earlier bounded results to complete release qualification.
 
 ## Required capability evidence
 

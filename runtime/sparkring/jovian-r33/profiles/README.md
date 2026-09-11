@@ -42,7 +42,9 @@ The TP4 template requests continuation-prefill coalescing and up to four
 diagnostic records per rank. The SparkCache overlay inherits those settings.
 The cache-disabled TP2 profile disables coalescing. The separate
 `tp2-dcp1-sparkcache` profile requires managed B12X loading, TP2 coalescing,
-6.75 GiB KV per rank and source-bound capability evidence. It remains blocked
+7.5 GiB KV per rank and source-bound capability evidence. The 6.75 GiB pin is
+retained as reference metadata and an explicit override, not the default for
+the R33 one-million-token target. It remains blocked
 until a rebuilt image carries the necessary source implementation and packaged
 evidence; adding a profile does not extend an existing image's capabilities.
 See [the TP2 cache plan and evidence gates](../../../profiles/glm53-flash-spark-tp2/R33_SPARKCACHE.md).

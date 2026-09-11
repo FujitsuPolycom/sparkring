@@ -251,7 +251,7 @@
       "host_domains": "dual",
       "physical_dacs_per_rank": 1,
       "sparkcache": true,
-      "kv_cache_memory_bytes": 7247757312,
+      "kv_cache_memory_bytes": 8053063680,
       "cudagraph_capture_sizes": [
         1,
         2,
@@ -275,7 +275,21 @@
         "tp2_continuation_prefill_coalescing",
         "managed_b12x_loader",
         "tp2_sparkcache"
-      ]
+      ],
+      "reference_kv_cache_memory_bytes": 7247757312,
+      "draft_load_config": {
+        "load_format": "b12x",
+        "model_loader_extra_config": {}
+      },
+      "serving": {
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "prefill_schedule_interval": 8,
+        "limit_mm_per_prompt": {
+          "image": 3,
+          "video": 1
+        }
+      }
     }
   }
 }

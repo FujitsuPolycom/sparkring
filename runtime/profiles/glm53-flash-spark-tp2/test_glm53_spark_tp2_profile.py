@@ -508,7 +508,10 @@ def test_r33_cache_preserves_reference_settings_with_explicit_1m_target(
         "draft_load_config": {"load_format": "b12x", "model_loader_extra_config": {}},
     }
     assert "--model-loader-extra-config" not in args
-    assert option("--kv-cache-memory-bytes") == "7247757312"
+    assert option("--kv-cache-memory-bytes") == "8053063680"
+    contract = launch._r33_verifier().load_contract()["profiles"]["tp2-dcp1-sparkcache"]
+    assert contract["reference_kv_cache_memory_bytes"] == 7247757312
+    assert json.loads(option("--speculative-config"))["draft_load_config"] == contract["draft_load_config"]
     assert option("--max-model-len") == "1048576"
     assert option("--max-num-seqs") == "8"
     assert option("--prefill-schedule-interval") == "8"
