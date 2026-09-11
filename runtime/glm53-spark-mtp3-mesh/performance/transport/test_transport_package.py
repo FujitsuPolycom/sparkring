@@ -24,7 +24,7 @@ def test_source_inventory_and_correctness_repairs():
     assert "write_payload_and_doorbell" in source["spark_transport/src/verbs_endpoint.cpp"].decode()
 
 
-@pytest.mark.parametrize("name", ["../escape", "/absolute", "a\\b", "a/../b"])
+@pytest.mark.parametrize("name", ["../escape", "/absolute", "a\\b", "a/../b", "C:/escape", "C:relative"])
 def test_unsafe_paths_refused(name):
     with pytest.raises(ValueError):
         package.checked_name(name)

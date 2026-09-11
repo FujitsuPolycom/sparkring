@@ -76,8 +76,15 @@ def test_prepared_liveness_is_installed_attested_and_compatible(tmp_path, monkey
                   and ast.unparse(node.target) == "(name, target)")
     inventory = next(node for node in tree.body if isinstance(node, ast.For)
                      and ast.unparse(node.target) == "path" and isinstance(node.iter, ast.Tuple))
+    entrypoints = [node for node in tree.body if isinstance(node, ast.Expr)
+                   and isinstance(node.value, ast.Call)
+                   and ast.unparse(node.value.func) == "shutil.copyfile"
+                   and isinstance(node.value.args[0], ast.BinOp)
+                   and isinstance(node.value.args[0].right, ast.Constant)
+                   and node.value.args[0].right.value in ("verify.py", "start.py")]
+    assert len(entrypoints) == 2
     namespace = dict(SOURCE=output, Path=installed_path, shutil=shutil, hashlib=hashlib, files={})
-    exec(compile(ast.Module(body=[copies, inventory], type_ignores=[]), "installed-startup", "exec"), namespace)
+    exec(compile(ast.Module(body=[copies, *entrypoints, inventory], type_ignores=[]), "installed-startup", "exec"), namespace)
     installed = installation / "scheduler_liveness.py"
     assert installed.read_bytes() == helper.read_bytes()
     assert namespace["files"][str(installed)] == hashlib.sha256(installed.read_bytes()).hexdigest()

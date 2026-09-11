@@ -25,7 +25,12 @@ def cache_metrics(text):
             continue
         match = re.fullmatch(r'(.+?)\s+([-+0-9.eE]+)(?:\s+\d+)?', line)
         if match:
-            result[match[1]] = float(match[2])
+            try:
+                value = float(match[2])
+            except ValueError:
+                continue
+            if math.isfinite(value):
+                result[match[1]] = value
     return result
 
 
@@ -54,7 +59,7 @@ def main():
         raise SystemExit("Output directory must be absent")
     if not 1 <= args.max_tokens <= 2048:
         raise SystemExit("Output budget must be between 1 and 2048 tokens")
-    suffix = "Respond with exactly SPARKCACHE_GLM53_OK and no other text."
+    suffix = f"Respond with exactly {args.expected_text} and no other text."
     prompt = suffix if args.kind == "semantic" else "benchmark " * 8192 + "\n" + suffix
     if args.prompt_file:
         prompt = args.prompt_file.read_text(encoding="utf-8")
