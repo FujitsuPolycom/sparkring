@@ -53,14 +53,17 @@ the extension's SHA-256 prefix and the minimum host `MemAvailable` seen during t
 
 ## Patches (bind-mounted at launch, nothing baked)
 
-[`patches/`](patches/) holds the seven files the launcher mounts over the image, byte-identical
+[`patches/`](patches/) holds the seven files the launcher mounts over the image: six byte-identical
 to boot 9 of https://github.com/tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark (MIT; Kai
-authored the SM12x page-size fixes), with their md5s in `patches/MD5SUMS` and the mount
-manifest in `patches/mounts.txt`:
+authored the SM12x page-size fixes), plus `engram.py` = that file with two env-gated additions
+from this repository's contributor (balanced hash-column assignment, packed single-read shards;
+stock behaviour when the variables are unset). md5s in `patches/MD5SUMS`, mount manifest in
+`patches/mounts.txt`:
 
 | file | mounted over `vllm/…` | what it fixes |
 |---|---|---|
 | `engram.py`, `weight_utils.py` | `models/deepseek_v4_1/common/engram.py`, `model_executor/model_loader/weight_utils.py` | the two Engram tables stay in the safetensors shards; rows are `preadv`'d on demand and dequantized on the CPU; includes the rank-offset fix |
+| `engram.py` (additions) | same | `DSV41_ENGRAM_BALANCED=1`: rank r owns hash columns c with c % tp == r (two heads of each n-gram order) instead of six columns of one order, all-gather permuted back — the stock split made rank 3 read 5× the rows of rank 0 per prefill chunk and stall the ring; `DSV41_ENGRAM_PACKED_DIR`: sparse per-layer shard with weight+scale adjacent (264 B/row, `tools/pack_engram_rows.py`), one `preadv` per row; manifest-checked, falls back with a warning |
 | `model_state.py` | `models/deepseek_v4_1/nvidia/model_state.py` | Engram rows staged in `prepare_inputs` so the decode step is CUDA-graph capturable |
 | `attention.py`, `flashinfer_sparse.py`, `sparse_swa.py` | `models/deepseek_v4_1/…`, `v1/attention/backends/mla/sparse_swa.py` | SM12x page sizes: 64 compressed states per page, 64-token SWA backend, indexer cache 64 states per page (DeepGEMM paged MQA logits accepts 32 or 64) |
 | `sparse_attn_indexer.py` | `model_executor/layers/sparse_attn_indexer.py` | decode top-k via `top_k_per_row_decode`; `persistent_topk` oversubscribes GB10's 48 SMs and needs 128 KB of shared memory |
@@ -70,6 +73,14 @@ pins them in host memory, and on a unified-memory device that is the same pool t
 allocates from. Row-sharded, the two FP8 tables are 47 GiB per rank on top of ~71 GiB of
 other weights against 121.7 GiB visible. With the tables on NVMe a rank loads 78.8 GiB
 (text-only) or 81.6 GiB (with the DSpark draft layers and vision encoder).
+
+## Tools
+
+- `tools/prewarm5.py`, `tools/verify5.py` — FlashInfer prewarm/verify (tonyd2wild).
+- `tools/pack_engram_rows.py --model-dir … --out-dir /cache/engram-packed --tp 4 --rank <r> --balanced` — builds this
+  rank's packed Engram shards (run once per rank inside the image, CPU only, ~9 min; 48 GB allocated per rank as sparse
+  101 GB files). `--contiguous` matches the stock head split.
+- `tools/test_engram_packed.py` — CPU equality check: packed rows == two-read rows for random rows in the rank's ranges.
 
 ## Launch
 

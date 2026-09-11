@@ -43,8 +43,11 @@
     "engram": {
       "cpu_offload": false,
       "tables_on_disk": true,
-      "env": "DSV41_ENGRAM_DISK=1, DSV41_ENGRAM_DISK_THREADS=64, DSV41_ENGRAM_DISK_CHUNK=16",
-      "note": "Engram rows are read from shards 47/48 on the rank's local NVMe at serve time and staged before the forward; every rank needs its own complete local copy of the checkpoint."
+      "env": "DSV41_ENGRAM_DISK=1, DSV41_ENGRAM_DISK_THREADS=64, DSV41_ENGRAM_DISK_CHUNK=16, DSV41_ENGRAM_BALANCED=1, DSV41_ENGRAM_PACKED_DIR=/cache/engram-packed",
+      "note": "Engram rows are read from shards 47/48 on the rank's local NVMe at serve time and staged before the forward; every rank needs its own complete local copy of the checkpoint.",
+      "column_assignment": "balanced: rank r owns hash columns c with c % 4 == r (two bigram, two trigram, two four-gram heads); the all-gather is permuted back to column order",
+      "packed_shards": "runtime/deepseek-v41-gb10/tools/pack_engram_rows.py --tp 4 --rank <r> --balanced builds engram-l1/l14-packed.bin (+ .json manifest) under the cache mount: sparse 101 GB files, ~48 GB allocated per rank, 264 B per row (weight + scale adjacent), one pread per row; ~9 min per rank",
+      "why": "The checkpoint lays the 24 hash columns out order-major, so the stock contiguous split gives rank 3 six four-gram columns (~all rows unique) and rank 0 six bigram columns (heavy dedupe); per-rank torch traces of one 15.7K-token prefill showed rank 3 issuing 320,066 row reads to rank 0's 60,664 and stalling its GPU 1.6 s per chunk while the others waited in the next all-reduce. Balanced columns + one read per row: prefill 1,590 -> 1,873 tok/s at 16K, 1,745 -> 2,058 at 64K, burst TTFT p50 11.1 -> 9.8 s, decode and acceptance unchanged, 131K/262K needle pass at +17 %."
     },
     "speculation": {
       "method": "dspark",

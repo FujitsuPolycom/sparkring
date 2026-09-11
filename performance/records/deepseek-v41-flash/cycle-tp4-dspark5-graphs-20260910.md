@@ -130,6 +130,41 @@ needle pass at 397,753 prompt tokens, TTFT 302.6 s, 1,314 tok/s prefill, and the
 Raw per-boot summaries and prompt-set JSON are in the operator's repository; the headline numbers above are the complete
 compact-set output for each boot.
 
+## Engram loader rebalance (2026-09-11): where the prefill time went
+
+A rank-0 torch trace of one 15,693-token prefill (9.6 s) put 48.6 % of GPU time in `ncclDevKernel_AllReduce` (184 calls,
+≈23.5 ms each on 84 MB tensors). An idle-fleet PyNccl sweep then showed the same all-reduce completing in 9.7–12.5 ms under
+every protocol/channel/buffer variant (84–109 Gb/s bus bandwidth — the PCIe Gen5 ×4 ceiling of the ConnectX-7; raw
+`ib_write_bw` between neighbours: 109 Gb/s one way, 213 bidirectional), so roughly half of the in-serving all-reduce time was
+ranks waiting for each other. Per-rank traces of the same prefill located the skew:
+
+| rank | GPU busy | NCCL kernel time | GPU idle gaps > 20 ms | `preadv` calls in the Engram staging pool |
+|---|---:|---:|---:|---:|
+| 0 | 94 % | 4,349 ms | 527 ms | 60,664 |
+| 1 | 84 % | 3,317 ms | ~1,550 ms | — |
+| 2 | 74 % | 2,417 ms | ~2,440 ms | — |
+| 3 | 67 % | 1,718 ms | 3,162 ms (one gap per chunk) | 320,066 |
+
+The checkpoint lays its 24 hash columns out order-major and the loader split them contiguously, so rank 3 owned six four-gram
+columns (nearly every row unique after `torch.unique`) and rank 0 six bigram columns (heavily repeated), and every row cost two
+`preadv` calls (weight and scale ~24 GB apart). `engram.py` gained two env-gated additions — strided columns
+(`DSV41_ENGRAM_BALANCED=1`) with the all-gather permuted back, and packed single-read shards (`DSV41_ENGRAM_PACKED_DIR`,
+`tools/pack_engram_rows.py`) — measured on the same profile after a fleet reboot:
+
+| probe | stock loader (L7/L10/L11 boots) | balanced + packed (L12) |
+|---|---:|---:|
+| prefill 16K / 64K (tok/s) | 1,590–1,668 / 1,745–1,758 | **1,873 / 2,058** |
+| burst 8×4K TTFT p50 / max (s) | 11.1–11.6 / 16.5–17.5 | **9.76 / 14.58** |
+| needle 131K / 262K (prefill tok/s, pass) | 1,565 / 1,445 | **1,826 / 1,689**, pass |
+| decode C1 / C4 / C8 aggregate (tok/s) | 32–36 / 57–64 / 88–98 | 32.0 / 59.5 / 94.0 |
+| draft acceptance code / prose | 90–93 % / 23–25 % | 92.3 % / 23.5 % |
+| prompt set C1 per stream / C6 aggregate | 52–55 / 150–157 | 54.26 / 157.47 |
+
+Also tried on this profile and found neutral (one rebooted boot each): FlashInfer `b12x` MXFP8 dense GEMM backend in place of
+vLLM's pinned CUTLASS SM120 kernel (eager microbench 1.9–3.2× at decode M, no change inside the captured graph), `NCCL_PROTO=Simple`,
+128 Engram reader threads, and `rejection_sample_method=standard` (prose acceptance identical to `block`). The decode trace on
+this profile: MoE grouped GEMM 42 %, dense MXFP8 GEMM 21 %, bf16 `wo_a` emulation 15 %, NCCL 13 %, ≈66 ms per step at C1.
+
 ## Fabric probes before the boot (same image and NCCL environment, GPUs idle)
 
 Four-rank all-reduce latency through vLLM's PyNccl wrapper (`nccl_lat.py`, tonyd2wild, MIT), ring `0 1 2 3`

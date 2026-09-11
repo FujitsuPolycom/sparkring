@@ -16,7 +16,7 @@ patches are bind-mounted over it. Deploy with the [quickstart](../DEEPSEEK_V41_F
 | Parallelism | TP4 across a four-Spark cycle, `--nnodes 4`, `mp` executor |
 | Loader | `--load-format safetensors` |
 | Request limit / sequences / scheduler | 430,080 tokens / 8 / 8,192 (16 sequences probed as an admission option) |
-| Memory | `--gpu-memory-utilization 0.83`, `--block-size 128`, `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`; Engram tables on disk (`--engram-config '{"cpu_offload": false}'`, `DSV41_ENGRAM_DISK=1`, 64 reader threads) |
+| Memory | `--gpu-memory-utilization 0.83`, `--block-size 128`, `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`; Engram tables on disk (`--engram-config '{"cpu_offload": false}'`, `DSV41_ENGRAM_DISK=1`, 64 reader threads, `DSV41_ENGRAM_BALANCED=1`, packed single-read shards) |
 | Speculation | DSpark, 5 tokens, greedy draft, block rejection, adaptive verification off |
 | Graphs | `FULL_AND_PIECEWISE`, exact capture sizes, `VLLM_USE_BREAKABLE_CUDAGRAPH=1` |
 | Parsers | `--tool-call-parser deepseek_v41 --enable-auto-tool-choice --reasoning-parser deepseek_v41`; thinking off by default |

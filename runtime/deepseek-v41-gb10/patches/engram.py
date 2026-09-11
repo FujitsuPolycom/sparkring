@@ -634,6 +634,18 @@ _DSV41_ENGRAM_DISK = _kai_os.environ.get("DSV41_ENGRAM_DISK", "0") == "1"
 _KAI_THREADS = int(_kai_os.environ.get("DSV41_ENGRAM_DISK_THREADS", "32"))
 _KAI_CHUNK = int(_kai_os.environ.get("DSV41_ENGRAM_DISK_CHUNK", "16"))
 _KAI_POOL: _KaiPool | None = None
+# --- dgx-sparks 2026-09-11 (prefill skew): the checkpoint's 24 hash columns are
+# (n-gram order, head) pairs laid out order-major, so the stock contiguous
+# head split gives rank 0 six bigram columns (rows repeat heavily and dedupe)
+# and rank 3 six four-gram columns (~all unique): rank 3 read 5.3x the rows of
+# rank 0 per 16K prefill and everyone else waited for it at the next all-reduce.
+# DSV41_ENGRAM_BALANCED=1 assigns columns strided (rank r owns c where
+# c % tp == r) so every rank holds two columns of each order; the all-gather
+# result is permuted back to column order. DSV41_ENGRAM_PACKED_DIR names a
+# directory of sparse per-layer files (tools/pack_engram_rows.py) with weight
+# and scale bytes adjacent per row, so a row costs one pread instead of two.
+_DSV41_ENGRAM_BALANCED = _kai_os.environ.get("DSV41_ENGRAM_BALANCED", "0") == "1"
+_DSV41_ENGRAM_PACKED_DIR = _kai_os.environ.get("DSV41_ENGRAM_PACKED_DIR", "")
 
 
 def _kai_pool() -> _KaiPool:
@@ -700,6 +712,7 @@ class DiskEngramTable:
         block_size: int,
         row_start: int = 0,
         num_rows: int | None = None,
+        owned_ranges: list | None = None,
     ):
         idx_path = _kai_os.path.join(model_dir, "model.safetensors.index.json")
         with open(idx_path) as f:
@@ -727,6 +740,45 @@ class DiskEngramTable:
         self.threads = _KAI_THREADS
         self.chunk = _KAI_CHUNK
         self.pool = _kai_pool()  # shared by all tables (was one pool per table)
+        # dgx-sparks: packed single-read shard (weight+scale adjacent, sparse file
+        # addressed by GLOBAL row id). Used only when its manifest covers every
+        # row range this rank owns; otherwise the two-read path stays.
+        self.row_bytes = dim + self.sb
+        self.packed = False
+        self.p_fd = -1
+        self.p_off = 0
+        if _DSV41_ENGRAM_PACKED_DIR:
+            pf = _kai_os.path.join(_DSV41_ENGRAM_PACKED_DIR, f"engram-l{layer_id}-packed.bin")
+            mf = pf + ".json"
+            want = owned_ranges if owned_ranges else [(row_start, row_start + num_rows)]
+            reason = None
+            try:
+                with open(mf) as f:
+                    m = _kai_json.load(f)
+                total = self.w_shape[0]
+                if m.get("rows") != total or m.get("row_bytes") != self.row_bytes:
+                    reason = f"manifest rows/row_bytes {m.get('rows')}/{m.get('row_bytes')} != {total}/{self.row_bytes}"
+                elif _kai_os.path.getsize(pf) != total * self.row_bytes:
+                    reason = "packed file size != rows * row_bytes"
+                elif not all(any(a <= lo and hi <= b for a, b in m.get("ranges", [])) for lo, hi in want):
+                    reason = f"manifest ranges {m.get('ranges')} do not cover owned ranges {want}"
+            except FileNotFoundError:
+                reason = f"{pf}(.json) missing"
+            except Exception as exc:  # noqa: BLE001
+                reason = f"{type(exc).__name__}: {exc}"
+            if reason is None:
+                self.p_fd = _kai_os.open(pf, _kai_os.O_RDONLY)
+                try:
+                    _kai_os.posix_fadvise(self.p_fd, 0, 0, _kai_os.POSIX_FADV_RANDOM)
+                except Exception:  # noqa: BLE001
+                    pass
+                self.p_off = row_start * self.row_bytes
+                self.packed = True
+                logger.info("Engram DISK layer %d: PACKED single-read shard %s (rows %d x %d B)",
+                            layer_id, pf, self.w_shape[0], self.row_bytes)
+            else:
+                logger.warning("Engram DISK layer %d: packed shard not used (%s); two preads per row",
+                               layer_id, reason)
         logger.info(
             "Engram DISK mode: layer %d rows [%d, %d) read from %s (off=%d) and %s (off=%d); "
             "%d threads, chunk %d",
@@ -782,6 +834,12 @@ def gather_dequant_many(requests: list) -> list[torch.Tensor]:
     plans, jobs = [], []
     for table, rel, owned in requests:
         uniq, inverse = torch.unique(rel, return_inverse=True)
+        if table.packed:
+            pk = torch.empty((uniq.numel(), table.row_bytes), dtype=torch.uint8)
+            jobs.append((table.p_fd, table.p_off, uniq.tolist(), table.row_bytes,
+                         memoryview(pk.numpy()).cast("B")))
+            plans.append((table, pk, None, inverse, owned))
+            continue
         w = torch.empty((uniq.numel(), table.dim), dtype=torch.uint8)
         s = torch.empty((uniq.numel(), table.sb), dtype=torch.uint8)
         jobs += table.read_jobs(uniq.tolist(), w, s)
@@ -789,6 +847,8 @@ def gather_dequant_many(requests: list) -> list[torch.Tensor]:
     _kai_parallel_read(jobs)
     outs = []
     for table, w, s, inverse, owned in plans:
+        if s is None:  # packed rows: [R, dim + sb] -> weight bytes, scale bytes
+            w, s = w[:, : table.dim].contiguous(), w[:, table.dim :].contiguous()
         out = table.dequant(w, s)[inverse]
         out[~owned] = 0
         outs.append(out.to(torch.bfloat16))
@@ -835,6 +895,28 @@ class ParallelEngramEmbedding(nn.Module):
         self.part_num_embeddings = self.vocab_end_idx - self.vocab_start_idx
         self.tp_size = tp_size
         self.cpu_offload = cpu_offload
+        # dgx-sparks: which hash columns this rank owns (contiguous = stock;
+        # balanced = strided over TP, disk mode only) and the row ranges behind them.
+        self.balanced = False
+        cols = list(range(self.head_start, min(head_end, self.n_hash_cols)))
+        if _DSV41_ENGRAM_DISK and _DSV41_ENGRAM_BALANCED:
+            if self.n_hash_cols % tp_size == 0:
+                cols = [c for c in range(self.n_hash_cols) if c % tp_size == tp_rank]
+                self.balanced = True
+            else:
+                logger.warning("DSV41_ENGRAM_BALANCED ignored: %d hash columns not divisible by tp %d",
+                               self.n_hash_cols, tp_size)
+        self.owned_cols = cols
+        cum = [0]
+        for size in head_sizes:
+            cum.append(cum[-1] + size)
+        self.owned_ranges = [(cum[c], cum[c + 1]) for c in cols]
+        self.gather_perm: torch.Tensor | None = None
+        if self.balanced:
+            # all_gather(dim=1) yields rank-major blocks of part_n_hash_cols; column c
+            # sits at (c % tp) * part + c // tp. Persistent CUDA index (graph-safe).
+            perm = [(c % tp_size) * self.part_n_hash_cols + c // tp_size for c in range(self.n_hash_cols)]
+            self.gather_perm = torch.tensor(perm, dtype=torch.long, device="cuda")
         self._views: tuple[torch.Tensor, torch.Tensor] | None = None
         self._view_src: tuple[int, int] | None = None
         self._num_sms = torch.cuda.get_device_properties(
@@ -848,8 +930,13 @@ class ParallelEngramEmbedding(nn.Module):
             assert model_dir is not None and layer_id is not None
             self.disk = DiskEngramTable(
                 model_dir, layer_id, dim, block_size,
-                row_start=self.vocab_start_idx, num_rows=self.part_num_embeddings,
+                row_start=0 if self.balanced else self.vocab_start_idx,
+                num_rows=num_embeddings if self.balanced else self.part_num_embeddings,
+                owned_ranges=self.owned_ranges,
             )
+            if self.balanced:
+                logger.info("Engram DISK layer %d: BALANCED column assignment, rank %d owns hash columns %s (%d rows)",
+                            layer_id, tp_rank, self.owned_cols, sum(hi - lo for lo, hi in self.owned_ranges))
             # 1-row placeholders as BUFFERS (not Parameters): the checkpoint
             # rows are skipped by the weights iterator and must not trip the
             # "weights not initialized" check.
@@ -958,6 +1045,10 @@ class ParallelEngramEmbedding(nn.Module):
             pad = torch.full((T, L - local.shape[1]), -1, dtype=torch.int64)
             local = torch.cat([local, pad], dim=1)
         rows = local.reshape(-1)
+        if self.balanced:  # global row ids into the full table; pad (-1) not owned
+            owned = (rows >= 0) & (rows < self.num_embeddings)
+            rel = torch.where(owned, rows, torch.zeros_like(rows))
+            return rel, owned
         owned = (rows >= self.vocab_start_idx) & (rows < self.vocab_end_idx)
         rel = torch.where(owned, rows - self.vocab_start_idx, torch.zeros_like(rows))
         return rel, owned
@@ -978,8 +1069,7 @@ class ParallelEngramEmbedding(nn.Module):
         T = indices.shape[0]
         L = self.part_n_hash_cols
         ids = indices.detach().to("cpu", dtype=torch.int64)
-        head_end = min(self.head_start + L, self.n_hash_cols)
-        rel, owned = self.disk_rel_owned(ids[:, self.head_start:head_end])
+        rel, owned = self.disk_rel_owned(ids[:, self.owned_cols])
         assert self.disk is not None
         deq = self.disk.gather_dequant(rel, owned)
         out[:T].copy_(deq.view(T, L, self.dim))
@@ -995,6 +1085,8 @@ class ParallelEngramEmbedding(nn.Module):
         self.lookup(indices, out)
         if self.tp_size > 1:
             out = tensor_model_parallel_all_gather(out, dim=1)
+            if self.gather_perm is not None:
+                return out[:, self.gather_perm]
             out = out[:, : self.n_hash_cols]
         return out
 
@@ -1215,8 +1307,12 @@ class Engram(nn.Module):
                 self.embed_tokens.n_hash_cols * dim,
                 BLOCK_SIZE=1024,
             )
+            if self.embed_tokens.gather_perm is not None:
+                rows = rows[:, self.embed_tokens.gather_perm]
             return rows
         rows = tensor_model_parallel_all_gather(rows, dim=1)
+        if self.embed_tokens.gather_perm is not None:
+            return rows[:, self.embed_tokens.gather_perm]
         return rows[:, : self.embed_tokens.n_hash_cols]
 
     def forward(
@@ -1306,11 +1402,13 @@ class EngramDiskStager:
         self.local_heads = emb.part_n_hash_cols
         self.head_start = emb.head_start
         self.head_end = min(emb.head_start + emb.part_n_hash_cols, emb.n_hash_cols)
+        self.cols = list(emb.owned_cols)  # dgx-sparks: contiguous or balanced
+        self.cols_dev = torch.tensor(self.cols, dtype=torch.long, device="cuda")
         self.dim = emb.dim
         self.max_tokens = self.engrams[0].staged_rows.shape[0]
         num_layers = hash_state.multipliers.shape[0]
         self.hash_host = torch.empty(
-            (self.max_tokens, num_layers, self.head_end - self.head_start),
+            (self.max_tokens, num_layers, len(self.cols)),
             dtype=torch.int32,
             device="cpu",
             pin_memory=True,
@@ -1328,10 +1426,9 @@ class EngramDiskStager:
         self.num_staged = 0
         logger.info(
             "Engram DISK rows staged before the forward (graph-safe): %d layers, "
-            "heads [%d, %d) of %d, up to %d tokens/step, %d read threads",
+            "hash columns %s of %d, up to %d tokens/step, %d read threads",
             len(self.engrams),
-            self.head_start,
-            self.head_end,
+            self.cols,
             emb.n_hash_cols,
             self.max_tokens,
             _KAI_THREADS,
@@ -1366,7 +1463,7 @@ class EngramDiskStager:
             None,
         )
         host = self.hash_host[:n]
-        host.copy_(hashes[:, :, self.head_start : self.head_end], non_blocking=True)
+        host.copy_(hashes.index_select(2, self.cols_dev), non_blocking=True)
         self.hashes_ready.record()
         # The one host sync per step. It also orders this step's rewrite of the
         # pinned buffers after the previous step's async H2D copies from them.

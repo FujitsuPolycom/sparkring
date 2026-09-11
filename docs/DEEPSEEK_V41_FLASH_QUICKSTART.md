@@ -31,7 +31,7 @@ cycle environment, so no Ethernet switch is needed.
 |---|---|
 | Ranks / cabling | 0–3, four DACs as `0-1-2-3-0`, two RoCE devices per rank |
 | Weights resident per rank | 78.79 GiB text-only; 81.6 GiB with DSpark draft + vision (measured) |
-| Engram tables | on each rank's NVMe, read on demand (23.6 GiB per rank per table not allocated) |
+| Engram tables | on each rank's NVMe, read on demand (23.6 GiB per rank per table not allocated); balanced hash-column split + packed single-read shards (`ENGRAM_BALANCED=1`, `ENGRAM_PACKED_DIR`) |
 | Request limit / sequences / scheduler tokens | 430,080 / 8 / 8,192 |
 | `--gpu-memory-utilization` | 0.83 with `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0` → KV 10.94 GiB = 2,182,642 tokens (5.07× 430K) measured; 13–15 GiB MemAvailable per rank |
 | Speculation | DSpark k=5, greedy draft, block rejection, adaptive verification off |
@@ -88,6 +88,29 @@ The image's own pip NCCL is also 2.30.7; vLLM logs a `Duplicate NCCL runtime` wa
 because the two paths differ. The preloaded library is the one mapped in every process and
 the one PyNccl loads by path.
 
+### Engram packed shards (once per rank)
+
+The stock loader reads two 4 KiB pages per Engram row (weight and scale sit ~24 GB apart in the
+shard) and splits the 24 hash columns contiguously, which hands rank 3 the six four-gram columns
+(nearly every row unique) and rank 0 the six bigram columns (heavily repeated): per-rank traces of
+one 16K prefill showed rank 3 issuing 320K row reads to rank 0's 60K and the other ranks waiting
+for it at the next all-reduce. The recipe therefore sets `ENGRAM_BALANCED=1` (strided columns,
+two heads of each order per rank) and reads from packed shards built once per rank:
+
+```bash
+docker run --rm --entrypoint python3 --memory 6g \
+  -v "$MODEL_HOST_PATH:/models/DeepSeek-V4.1-Flash:ro" -v "$CACHE_HOST_PATH:/cache" \
+  -v "$PWD/runtime/deepseek-v41-gb10/tools:/tools:ro" "$IMAGE" \
+  /tools/pack_engram_rows.py --model-dir /models/DeepSeek-V4.1-Flash --out-dir /cache/engram-packed \
+  --tp 4 --rank "$NODE_RANK" --balanced
+```
+
+About nine minutes per rank; the two sparse files show 101 GB logical / ~48 GB allocated. The
+manifest records the covered ranges and the loader refuses a shard that does not cover the rank's
+columns (it then logs a warning and reads the checkpoint shards directly). Measured on the cycle:
+prefill 1,590 → 1,873 tok/s at 16K and 1,745 → 2,058 at 64K, burst TTFT p50 11.1 → 9.8 s, decode
+and acceptance unchanged, 131K/262K needle pass.
+
 ### Environment
 
 Copy the template once per rank and resolve every placeholder. `NODE_RANK` and
@@ -132,7 +155,9 @@ GPU KV cache size: 2,182,642 tokens, Maximum concurrency for 430,080 tokens per 
 Application startup complete.
 ```
 
-The Engram row ranges must differ per rank and together cover the table; identical `off=`
+With `ENGRAM_BALANCED=1` each rank logs `BALANCED column assignment, rank r owns hash columns [...]`
+(six distinct columns per rank) and, when the packed shard is used, `PACKED single-read shard`.
+Without it the Engram row ranges must differ per rank and together cover the table; identical `off=`
 values on every rank mean the rank-offset fix is not mounted.
 
 ## 3. Verify rank 0

@@ -2430,6 +2430,97 @@
    "available_kv_gib": 10.94,
    "concurrency_at_430080": 5.07,
    "memavailable_gib_per_rank": "13-15"
+  },
+  "L8-mxfp8-b12x": {
+   "verdict": "neutral in the captured graph (eager microbench 1.9-3.2x at decode M); not adopted",
+   "decode_c1_c4_c8_agg_tok_s": [
+    31.7,
+    57.1,
+    91.8
+   ],
+   "prefill_16k_64k_tok_s": [
+    1625,
+    1693
+   ]
+  },
+  "L9-nccl-proto-simple": {
+   "verdict": "neutral; not adopted",
+   "decode_c1_c4_c8_agg_tok_s": [
+    33.4,
+    55.9,
+    97.6
+   ],
+   "prefill_16k_64k_tok_s": [
+    1703,
+    1758
+   ],
+   "steps_per_s_c1": 13.05
+  },
+  "L10-engram-threads-128": {
+   "verdict": "neutral; not adopted",
+   "decode_c1_c4_c8_agg_tok_s": [
+    32.5,
+    64.3,
+    88.4
+   ],
+   "prefill_16k_64k_tok_s": [
+    1599,
+    1758
+   ]
+  },
+  "L11-rejection-standard": {
+   "verdict": "neutral (prose acceptance 2.20 tok/step = block); not adopted",
+   "decode_c1_c4_c8_agg_tok_s": [
+    29.6,
+    59.7,
+    93.3
+   ],
+   "prefill_16k_64k_tok_s": [
+    1668,
+    1750
+   ]
+  },
+  "L12-engram-balanced-packed": {
+   "verdict": "adopted: +12-18% prefill, -13% burst TTFT, decode/acceptance unchanged, needle pass",
+   "decode_c1_c4_c8_agg_tok_s": [
+    32.0,
+    59.5,
+    94.0
+   ],
+   "steps_per_s_c1": 13.98,
+   "prefill_16k_64k_tok_s": [
+    1873,
+    2058
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    9.76,
+    14.58
+   ],
+   "shapes_code_prose_tok_s": [
+    83.0,
+    32.5
+   ],
+   "promptset_c1_agg_per_stream": [
+    48.43,
+    54.26
+   ],
+   "promptset_c6_agg": 157.47,
+   "kv_pool_tokens": 2435036,
+   "memavailable_gib_per_rank": "10-12",
+   "needle": {
+    "131072": {
+     "prompt_tokens": 130258,
+     "ttft_s": 71.3,
+     "prefill_tok_s": 1826.1,
+     "pass": true
+    },
+    "262144": {
+     "prompt_tokens": 260119,
+     "ttft_s": 154.0,
+     "prefill_tok_s": 1688.7,
+     "pass": true
+    }
+   }
   }
  },
  "soak_6h_recorded_profile": {
@@ -2471,5 +2562,57 @@
     14
    ]
   }
+ },
+ "prefill_profile_rank0_16k": {
+  "window_ms": 9490,
+  "gpu_busy_ms": 8950,
+  "nccl_allreduce_ms": 4349,
+  "nccl_calls": 184,
+  "norm_act_hyperconn_ms": 1252,
+  "moe_grouped_gemm_ms": 1228,
+  "dense_mxfp8_gemm_ms": 912,
+  "attention_ms": 644,
+  "engram_gpu_ms": 220,
+  "per_rank_nccl_ms": [
+   4349,
+   3317,
+   2417,
+   1718
+  ],
+  "per_rank_gpu_idle_ms": [
+   527,
+   1550,
+   2440,
+   3162
+  ],
+  "engram_preadv_calls_rank0_rank3": [
+   60664,
+   320066
+  ]
+ },
+ "decode_profile_rank0_c1": {
+  "window_ms": 4108,
+  "gpu_busy_ms": 3863,
+  "steps": 62,
+  "ms_per_step": 66,
+  "moe_grouped_gemm_share": 0.42,
+  "dense_mxfp8_share": 0.21,
+  "bf16_wo_a_emulation_share": 0.15,
+  "nccl_share": 0.13
+ },
+ "nccl_bandwidth_sweep_idle_gbps_84mb": {
+  "base_LL_LL128_Simple_4ch": 84,
+  "Simple": 85,
+  "Simple_8ch": 104,
+  "Simple_16ch": 91,
+  "Simple_8ch_buf16m": 109,
+  "Simple_8ch_qp4": 97,
+  "Simple_8ch_gdr_sys": 98,
+  "switchless_ring_only_0": "fails (ibv_modify_qp timeout)",
+  "ib_write_bw_gbps_uni_bi": [
+   109,
+   213
+  ],
+  "pcie": "Gen5 x4"
  }
 }
