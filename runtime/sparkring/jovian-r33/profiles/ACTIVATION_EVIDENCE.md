@@ -79,8 +79,10 @@ For a bounded restore-failure test, the managed site may specify
 `cache_diagnostics` with `namespace` set to an isolated copy's safe name,
 `access_mode` set to `restore-only`, and integer `trace_reuse` set to `1`.
 This option requires the R33 `tp4-dcp1-sparkcache` profile and image receipt.
-The renderer disables asynchronous capture and enables reuse traces on every
-rank while preserving the pinned libraries and buffer limits. The namespace
+The renderer disables asynchronous capture and startup cache clearing, and
+enables reuse traces on every rank while preserving the pinned libraries and
+buffer limits. It uses an explicit empty `SPARKCACHE_CLEAR_ONCE`; a word such
+as `none` would be a clear token, not a disabled setting. The namespace
 must differ from the image's default. Save these settings in the site before
 rendering so the installer can reproduce them; do not edit rank environments.
 Restore-only mode disables publication through the connector; it does not make

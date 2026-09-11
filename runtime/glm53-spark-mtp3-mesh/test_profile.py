@@ -467,6 +467,7 @@ def test_r33_sparkcache_renders_receipt_bound_native_libraries(tmp_path, manifes
         if diagnostic:
             assert env["SPARKCACHE_CACHE_NAMESPACE"] == "r33-isolated-fault-test"
             assert env["SPARK_CONTEXT_CACHE_TRACE_REUSE"] == "1"
+            assert env["SPARKCACHE_CLEAR_ONCE"] == ""
         assert env["SPARKCACHE_BUFFER_BUDGET_BYTES"] == "1342177280"
         assert env["SPARKCACHE_PLACEMENT_LIBRARY_PATH"] == "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
         assert env["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] == "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93"
@@ -494,6 +495,7 @@ def test_r33_sparkcache_renders_receipt_bound_native_libraries(tmp_path, manifes
             assert env["SPARKCACHE_ACCESS_MODE"] == "restore-only"
             assert env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "0"
             assert env["SPARK_CONTEXT_CACHE_TRACE_REUSE"] == "1"
+            assert env["SPARKCACHE_CLEAR_ONCE"] == ""
             return SimpleNamespace(returncode=0, stdout=json.dumps({
                 "schema": "sparkring-container-command/v1", "argv": ["diagnostic-roundtrip"]}))
         assert managed_install.canonical_container_spec(canonical, receipt, 0, {}, run=run) == ["diagnostic-roundtrip"]

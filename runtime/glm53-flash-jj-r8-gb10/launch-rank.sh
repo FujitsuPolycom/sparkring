@@ -131,7 +131,7 @@ esac
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
 : "${SPARKCACHE_PUBLICATION_SCHEMA:=tail-cow-v2}"
-: "${SPARKCACHE_CLEAR_ONCE:=auto}"
+: "${SPARKCACHE_CLEAR_ONCE=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
 : "${SPARKCACHE_LOW_WATERMARK_BYTES:=34359738368}"
 : "${SPARKCACHE_TTL_SECONDS:=0}"
@@ -267,7 +267,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
     [[ "${SPARKCACHE_ENABLED}" == 1 && ( \
        ( "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 && "${SPARKCACHE_ACCESS_MODE}" == read-write ) || \
        ( "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 && "${SPARKCACHE_ACCESS_MODE}" == restore-only && \
-         "${SPARK_CONTEXT_CACHE_TRACE_REUSE}" == 1 ) ) ]] || \
+         "${SPARK_CONTEXT_CACHE_TRACE_REUSE}" == 1 && -z "${SPARKCACHE_CLEAR_ONCE}" ) ) ]] || \
       die 'R33 SparkCache requires bounded capture or traced restore-only diagnostics'
     [[ "${VLLM_SPARK_TP4_MODE}" == custom && "${VLLM_SPARK_TP4_VOCAB_MODE}" == custom ]] || \
       die 'R33 SparkCache requires custom all-reduce and vocabulary transports'
@@ -609,6 +609,9 @@ case "${SPARK_CUDAGRAPH_REPLAY_TIMING}" in
 esac
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE JIT_CACHE_NAMESPACE
 do
+  if [[ "${name}" == SPARKCACHE_CLEAR_ONCE && -z "${!name}" ]]; then
+    continue
+  fi
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
     die "${name} must contain only letters, digits, dot, underscore, or hyphen"
 done

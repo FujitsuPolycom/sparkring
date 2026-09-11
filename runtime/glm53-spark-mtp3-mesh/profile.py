@@ -387,7 +387,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
             raise ValueError("cache_diagnostics requires an isolated namespace distinct from the image default")
         values.update(SPARKCACHE_CACHE_NAMESPACE=diagnostic["namespace"],
                       SPARKCACHE_ACCESS_MODE="restore-only", SPARKCACHE_ASYNC_PAGE_CAPTURE="0",
-                      SPARK_CONTEXT_CACHE_TRACE_REUSE="1")
+                      SPARK_CONTEXT_CACHE_TRACE_REUSE="1", SPARKCACHE_CLEAR_ONCE="")
     output.mkdir(parents=True)
     ranks = []
     for rank in range(4):
