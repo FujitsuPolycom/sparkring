@@ -8,5 +8,14 @@
     "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp": "DeepSeek-V4-Flash-Vision-Exp",
     "deepseek-ai/DeepSeek-V4.1-Flash": "DeepSeek-V4.1-Flash",
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "Qwen3.8-27B"
+  },
+  "quant_labels": {
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": "NVFP4-Spark",
+    "local-inference-lab/GLM-5.3-Flash-NVFP4": "NVFP4",
+    "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78": "EXL3 3.5bpw",
+    "deepseek-ai/DeepSeek-V4-Flash-0731": "Stock",
+    "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp": "Stock",
+    "deepseek-ai/DeepSeek-V4.1-Flash": "FP8/MXFP4",
+    "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "EXL3 K5/K6"
   }
 }

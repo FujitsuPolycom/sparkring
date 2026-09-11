@@ -65,10 +65,12 @@ def compact_profile_rows(rows, root=ROOT):
 
 def profile_table(root=ROOT, *, compact=False):
     rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
-    names = read_json(root/'profiles/model-names.json')['models']
+    model_labels = read_json(root/'profiles/model-names.json')
+    names = model_labels['models']
+    quant_labels = model_labels['quant_labels']
     for _, resolved in rows:
         repository = resolved['model']['repository']
-        if repository not in names or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
+        if repository not in names or repository not in quant_labels or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
             raise ValueError(f'Model repository needs a standard display name: {repository}')
     capacity = read_json(root/'performance/profile-capacity.json')['profiles']
     if not set(capacity) <= {p['id'] for p, _ in rows}:
@@ -90,16 +92,16 @@ def profile_table(root=ROOT, *, compact=False):
     ):
         if compact and title == 'Retired profiles':
             continue
-        lines += ['### '+title, '', '| Model | Model quant | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
+        lines += ['### '+title, '', '| Model | Quant | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model | Model quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
+            lines[-2:] = ['| Model | Quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r) or (compact and r['topology'] == 'switched'):
                 continue
             s = r['serving']
             repository = r['model']['repository']
             model_name = names[repository]
-            quant = f"[{repository.split('/', 1)[1]}](https://huggingface.co/{repository})"
+            quant = f"[{quant_labels[repository]}](https://huggingface.co/{repository})"
             layout = f"TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']}"
             if r['topology'] == 'switched':
                 layout += ' · switched'
