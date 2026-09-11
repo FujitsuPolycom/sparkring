@@ -44,10 +44,12 @@ def activation(name):
             "captured_graph_sizes": profile["cudagraph_capture_sizes"],
             "instanttensor_allocations": 1,
             "mtp_draft_tokens": 8,
-            "continuation_coalesced_groups": 1,
+            "continuation_coalesced_groups": 0 if name == "tp2-dcp1" else 1,
             "mhc_sharded_prefill_calls": 1,
             "mhc_owner_rows": [2048],
         }
+        if name == "tp2-dcp1":
+            item["mhc_prefill_rows"] = 4096
         item["rocenante_collectives" if name == "tp2-dcp1" else "sircl_collectives"] = 1
         ranks.append(item)
     result = {
@@ -153,6 +155,57 @@ def test_tp4_long_prefill_timeout_fails_qualification():
     document = activation("tp4-dcp1")
     document["long_prefill_sample_tokens"]["timeouts"] = 1
     with pytest.raises(ValueError, match="sample_tokens"):
+        verifier.validate_activation(document)
+
+
+@pytest.mark.parametrize("rows", [4096, 8192])
+def test_tp2_accepts_supported_mhc_ceilings_with_coalescing_disabled(rows):
+    document = activation("tp2-dcp1")
+    for rank in document["ranks"]:
+        rank["mhc_prefill_rows"] = rows
+        rank["mhc_owner_rows"] = [rows // 2]
+    assert verifier.validate_activation(document)["checks_passed"] is True
+
+
+@pytest.mark.parametrize("count", [None, False, -1, 1])
+def test_tp2_rejects_missing_or_executed_coalescing(count):
+    document = activation("tp2-dcp1")
+    document["ranks"][0]["continuation_coalesced_groups"] = count
+    with pytest.raises(ValueError, match="coalescing is disabled"):
+        verifier.validate_activation(document)
+
+
+@pytest.mark.parametrize("rows", [None, 2048, 16384])
+def test_tp2_rejects_missing_or_unsupported_mhc_ceiling(rows):
+    document = activation("tp2-dcp1")
+    document["ranks"][0]["mhc_prefill_rows"] = rows
+    with pytest.raises(ValueError, match="mhc_prefill_rows"):
+        verifier.validate_activation(document)
+
+
+def test_tp2_rejects_tp4_owner_count_for_8192_rows():
+    document = activation("tp2-dcp1")
+    document["ranks"][0]["mhc_prefill_rows"] = 8192
+    with pytest.raises(ValueError, match="owner rows must match"):
+        verifier.validate_activation(document)
+
+
+def test_tp2_rejects_inconsistent_mhc_ceilings_across_ranks():
+    document = activation("tp2-dcp1")
+    document["ranks"][0].update(mhc_prefill_rows=8192, mhc_owner_rows=[4096])
+    with pytest.raises(ValueError, match="same mHC prefill row ceiling"):
+        verifier.validate_activation(document)
+
+
+@pytest.mark.parametrize("name", ["tp4-dcp1", "tp4-dcp1-sparkcache"])
+@pytest.mark.parametrize("field,value,match", [
+    ("continuation_coalesced_groups", 0, "continuation_coalesced_groups"),
+    ("mhc_owner_rows", [4096], "2,048-row"),
+])
+def test_tp4_retains_coalescing_and_mhc_execution_requirements(name, field, value, match):
+    document = activation(name)
+    document["ranks"][0][field] = value
+    with pytest.raises(ValueError, match=match):
         verifier.validate_activation(document)
 
 

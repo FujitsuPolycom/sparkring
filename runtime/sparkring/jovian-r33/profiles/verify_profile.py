@@ -148,13 +148,25 @@ def validate_activation(document: dict) -> dict:
             raise ValueError("Every rank must activate NCCL HCAs from both host PCIe domains")
         if rank.get("captured_graph_sizes") != expected_graphs:
             raise ValueError("Every rank must capture the profile's exact CUDA graph sizes")
-        for key in ("instanttensor_allocations", "mtp_draft_tokens", "continuation_coalesced_groups",
-                    "mhc_sharded_prefill_calls"):
+        for key in ("instanttensor_allocations", "mtp_draft_tokens", "mhc_sharded_prefill_calls"):
             _positive(rank.get(key), key)
-        if 2048 not in rank.get("mhc_owner_rows", []):
-            raise ValueError("Every rank must report a 2,048-row mHC owner execution")
+        if name == "tp2-dcp1":
+            coalesced = rank.get("continuation_coalesced_groups")
+            if type(coalesced) is not int or coalesced != 0:
+                raise ValueError("TP2 requires continuation_coalesced_groups=0 because coalescing is disabled")
+            rows = rank.get("mhc_prefill_rows")
+            if type(rows) is not int or rows not in (4096, 8192):
+                raise ValueError("TP2 requires mhc_prefill_rows of 4096 or 8192 from runtime diagnostics")
+            if rows // selected["tensor_parallel_size"] not in rank.get("mhc_owner_rows", []):
+                raise ValueError("TP2 mHC owner rows must match the observed prefill rows divided by TP size")
+        else:
+            _positive(rank.get("continuation_coalesced_groups"), "continuation_coalesced_groups")
+            if 2048 not in rank.get("mhc_owner_rows", []):
+                raise ValueError("Every rank must report a 2,048-row mHC owner execution")
         counter = "rocenante_collectives" if name == "tp2-dcp1" else "sircl_collectives"
         _positive(rank.get(counter), counter)
+    if name == "tp2-dcp1" and len({rank["mhc_prefill_rows"] for rank in ranks}) != 1:
+        raise ValueError("TP2 ranks must report the same mHC prefill row ceiling")
     serving = document.get("serving", {})
     if (serving.get("max_model_len") != contract["model"]["max_model_len"]
             or serving.get("prefill_decode_passed") is not True

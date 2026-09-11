@@ -56,18 +56,22 @@ correctness, long-prefill liveness, throughput, or qualification of the fixed
 composition. Require matching native, wheel and activation receipts from the
 fixed image, including completed prefix-cache-hit requests.
 
-## TP2 evidence limitation
+## TP2 activation evidence
 
 TP2 is unqualified. Its template sets
-`VLLM_B12X_KDA_PREFILL_COALESCING=0`, while `verify_profile.py` currently requires
-positive `continuation_coalesced_groups` for every profile. It also requires a
-2,048-row mHC owner execution for every profile, although ownership depends on
-the input row count and tensor-parallel size. The 8,192-row TP4 evidence in the
-table cannot be reused as TP2 evidence. The validator must be reconciled with
-the TP2 execution contract before it can accept a truthful TP2 activation
-receipt. Do not enable an unsupported TP2 coalescing configuration or insert
-synthetic counters to satisfy it. Offline template checks do not resolve this
-activation mismatch.
+`VLLM_B12X_KDA_PREFILL_COALESCING=0`; the activation receipt must report integer
+zero for `continuation_coalesced_groups` on both ranks. Retain the initialized
+configuration and bounded request diagnostics that establish this value.
+
+The committed mHC source admits TP2/DCP1 at a 4,096- or 8,192-token prefill
+ceiling. Extract each rank's `mhc_prefill_rows` from the `rows` field of its
+`GLM_MHC_PREFILL` record and compare it with the initialized scheduler ceiling.
+Both ranks must report the same ceiling. Require a positive sharded-call count
+and `mhc_owner_rows` containing half that ceiling: 2,048 or 4,096, respectively.
+The 8,192-row TP4 evidence in the table cannot be reused as TP2 evidence.
+Retain the same image, NCCL, graph, loader, MTP and correctness evidence, using
+RoCEnante collective activity for TP2 instead of SIRCL snapshots. Passing the
+offline validator with synthetic test fixtures does not qualify model serving.
 
 ## Collector behavior
 

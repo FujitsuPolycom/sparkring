@@ -52,8 +52,8 @@ domains carried NCCL, the exact graph set was captured, and InstantTensor, MTP3,
 mHC, and the selected custom transport executed. Package verification of the
 prefix-hit metadata fix in source tree `667ee2f6652efa065c57a7adc0193991f6cde6ac`
 does not qualify model execution. TP4 model qualification for that composition
-is pending, and TP2 is unqualified. The activation validator also has a TP2
-contract mismatch described in the activation evidence document. TP4 requires
+is pending, and TP2 is unqualified. TP2 evidence must show disabled coalescing
+and mHC ownership matching its observed prefill ceiling. TP4 requires
 two completed
 32,768-token-or-longer prompts with no `sample_tokens` timeout or fatal engine
 error. The cache profile also requires successful capture, restore, payload
