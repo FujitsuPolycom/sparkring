@@ -45,6 +45,7 @@ def configured_inventory(spec):
                 i for i in facts["rdma"] if i["device"] == port["rdma_device"]
             )
             interface["ipv4"] = [port["address"]]
+            interface["network_manager"]["ipv4_addresses"] = [port["address"]]
             function["gid"] = "::ffff:" + port["address"].split("/")[0]
     return result
 

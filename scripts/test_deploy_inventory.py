@@ -383,6 +383,8 @@ class LinuxFixture:
                     "connection.interface-name": "eno1",
                     "connection.permissions": "",
                     "ipv4.method": "auto",
+                    "ipv4.addresses": "192.0.2.10/24, 192.0.2.11/24",
+                    "802-3-ethernet.mtu": "1500",
                     "ipv6.method": "auto",
                     "connection.autoconnect": "yes",
                 }.get(field, "no")
@@ -459,6 +461,8 @@ def test_collector_parses_linux_fixtures_without_remote_access(tmp_path):
     assert result["network"]["backend"] == "NetworkManager"
     assert result["network"]["connections"][0]["owner"] == "system"
     assert result["interfaces"][0]["network_manager"]["ipv4_method"] == "auto"
+    assert result['interfaces'][0]['network_manager']['ipv4_addresses'] == ['192.0.2.10/24', '192.0.2.11/24']
+    assert result['interfaces'][0]['network_manager']['ethernet_mtu'] == 1500
     assert result["interfaces"][1]["hw_tc_offload"] is True
     assert result["rdma"][0]["active_mtu"] == 4096
     assert result["rdma"][0]["gid"] == "::ffff:198.18.1.1"
@@ -517,3 +521,35 @@ def test_validation_rejects_duplicate_functions_and_bad_gid():
     document["rdma"][0]["gid"] = "not-an-ipv6-address"
     with pytest.raises(ValueError, match="GID"):
         validate_inventory(document)
+
+
+@pytest.mark.parametrize('outcome', ['directory', 'failed', 'malformed', 'symlink', 'no-sudo'])
+def test_protected_backup_directory_uses_verified_read_only_sudo(tmp_path, monkeypatch, outcome):
+    fixture = LinuxFixture(tmp_path)
+    protected = tmp_path / 'etc/NetworkManager/system-connections'
+    original = Path.iterdir
+    def iterdir(path):
+        if path == protected:
+            raise PermissionError('synthetic root-only directory')
+        return original(path)
+    monkeypatch.setattr(Path, 'iterdir', iterdir)
+    run = fixture.run
+    privileged = []
+    def command(argv, **kwargs):
+        if argv[:5] == ['sudo', '-n', 'python3', '-I', '-c']:
+            privileged.append(argv)
+            assert argv[-1] == '/etc/NetworkManager/system-connections'
+            metadata = {'exists': True, 'type': outcome, 'nonempty': True,
+                        'mode': '0700', 'owner_uid': 0}
+            return subprocess.CompletedProcess(argv, int(outcome == 'failed'),
+                                               json.dumps({} if outcome == 'malformed' else metadata), '')
+        if outcome == 'no-sudo' and argv == ['sudo', '-n', 'id', '-u']:
+            return subprocess.CompletedProcess(argv, 1, '', 'denied')
+        return run(argv, **kwargs)
+    fixture.run = command
+    result = fixture.collect()['paths']['/etc/NetworkManager/system-connections']
+    assert bool(privileged) is (outcome != 'no-sudo')
+    if outcome == 'directory':
+        assert result['error'] is None and result['type'] == 'directory' and result['nonempty'] is True
+    else:
+        assert result['error'] is not None

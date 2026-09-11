@@ -68,12 +68,14 @@ def source_archive(root, output):
     )
     selected = []
     for name in filter(None, names):
+        # Managed profile rendering imports framework adapters and bundle
+        # composition from their integrations/vllm owner.
         if name.split("/")[0] not in (
             "scripts",
             "runtime",
             "spark_transport",
             "third_party",
-        ):
+        ) and not name.startswith("integrations/vllm/"):
             continue
         p = root / name
         if any(part in (".private", "__pycache__") for part in p.parts) or p.suffix in (

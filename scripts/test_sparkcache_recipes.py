@@ -35,12 +35,17 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_recipe_indexes_link_every_machine_readable_recipe() -> None:
+def test_recipe_indexes_expose_every_compatibility_export() -> None:
     base_index = (BASE_RECIPE_DIR / "README.md").read_text(encoding="utf-8")
     composition_index = (RECIPE_DIR / "README.md").read_text(encoding="utf-8")
 
+    assert "../profiles/compatibility.json" in base_index
+    exports = {row["destination"]: row["source"] for row in
+               _load(ROOT / "profiles/compatibility.json")["mirrors"] if row["kind"] == "recipe"}
     for path in sorted(BASE_RECIPE_DIR.glob("*.json")):
-        assert f"]({path.name})" in base_index, path.name
+        relative = path.relative_to(ROOT).as_posix()
+        assert relative in exports, relative
+        assert (ROOT / exports[relative]).is_file()
     for path in RECIPE_PATHS:
         assert f"]({path.name})" in composition_index, path.name
 

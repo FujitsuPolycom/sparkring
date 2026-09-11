@@ -255,21 +255,33 @@ def _load_script(
     final = shlex.quote(paths.final)
     image_arg = shlex.quote(image)
     expected = shlex.quote(expected_image_id)
+    # A registry digest is not a tag that Docker can recreate after load.
+    # Archives saved by config ID need either that ID or an explicit local tag.
+    if "@" in image:
+        missing_reference = "echo 'Registry digest was not restored by the archive; use a local tag or exact image ID' >&2; exit 1; "
+    elif _IMAGE_ID.fullmatch(image):
+        missing_reference = "echo 'Archive did not restore the expected image ID' >&2; exit 1; "
+    else:
+        missing_reference = (
+            f"loaded=$(docker image inspect {expected} --format '{{{{.Id}}}}'); "
+            f'test "$loaded" = {expected}; '
+            f"docker image tag {expected} {image_arg}; "
+        )
     return (
+        "set -eu; "
         f"if docker image inspect {image_arg} >/dev/null 2>&1; then "
         f"existing=$(docker image inspect {image_arg} --format '{{{{.Id}}}}'); "
-        f"test \"$existing\" = {expected}; "
+        f'test "$existing" = {expected}; '
         "else "
         f"docker image load --input {final} >/dev/null; "
         f"if ! docker image inspect {image_arg} >/dev/null 2>&1; then "
-        f"loaded=$(docker image inspect {expected} --format '{{{{.Id}}}}'); "
-        f"test \"$loaded\" = {expected}; "
-        f"docker image tag {expected} {image_arg}; fi; fi; "
+        + missing_reference + "fi; fi; "
         f"docker image inspect {image_arg}"
         " --format '{{.Id}} {{.Os}}/{{.Architecture}}'; "
         f"image_id=$(docker image inspect {image_arg} --format '{{{{.Id}}}}')"
-        f"; test \"$image_id\" = {expected}"
+        f'; test "$image_id" = {expected}'
     )
+
 
 
 def _destination_user(rank: Any) -> str:

@@ -1,10 +1,12 @@
 import io
+import ast
 import base64
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 
 import pytest
@@ -46,6 +48,30 @@ def test_source_archive_checks_tracked_payload_and_extracts(tmp_path):
         module.extract_source(
             tmp_path / "archive.tar.gz", tmp_path / "unpacked", receipt["files"]
         )
+
+
+def test_repository_archive_contains_importable_managed_source_closure(tmp_path):
+    archive = tmp_path / 'source.tar.gz'
+    receipt = module.source_archive(module.ROOT, archive)
+    tree = ast.parse((module.PROFILE / 'managed_install.py').read_text(encoding='utf-8'))
+    required = next(ast.literal_eval(node.value) for node in tree.body
+                    if isinstance(node, ast.Assign)
+                    and any(isinstance(target, ast.Name) and target.id == 'SOURCE_FILES'
+                            for target in node.targets))
+    assert set(required) <= set(receipt['files'])
+    with tarfile.open(archive, 'r:gz') as source:
+        assert {item.name for item in source.getmembers()} == set(receipt['files'])
+    output = tmp_path / 'unpacked'
+    module.extract_source(archive, output, receipt['files'])
+    result = subprocess.run(
+        [sys.executable, '-I', '-B', '-c',
+         "import sys; from pathlib import Path; root=Path(sys.argv[1]); "
+         "sys.path.insert(0,str(root/'runtime/glm53-spark-mtp3-mesh')); "
+         "import managed_install; "
+         "assert set(managed_install.source_payloads()) == set(managed_install.SOURCE_FILES)",
+         str(output)], cwd=output, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_archive_traversal_rejected(tmp_path):

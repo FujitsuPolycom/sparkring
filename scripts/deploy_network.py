@@ -324,6 +324,8 @@ def _nm_matches(interface, address):
     return (
         addresses == [address]
         and interface.get("mtu") == 9000
+        and nm.get("ipv4_addresses") == [address]
+        and type(nm.get("ethernet_mtu")) is int and nm["ethernet_mtu"] == 9000
         and nm.get("connection_uuid")
         and nm.get("ipv4_method") == "manual"
         and nm.get("ipv4_never_default") is True
@@ -340,6 +342,10 @@ def _connection(owner, host, port, interface, connections, owned):
     previous = nm.get("connection_uuid")
     if previous:
         previous = _uuid(previous, f"{ssh} previous connection")
+        if (not isinstance(nm.get('ipv4_addresses'), list)
+                or type(nm.get('ethernet_mtu')) is not int):
+            raise NetworkPlanError(
+                f"{ssh}: saved addresses or MTU are unavailable on {port['netdev']}; rediscover before planning")
     record = {
         "netdev": port["netdev"],
         "address": port["address"],
@@ -896,6 +902,8 @@ def verify_network(spec, inventory):
                 )
             if function.get("gid_type") != "RoCE v2":
                 raise NetworkPlanError(f"{host['host']}: GID index 3 must use RoCE v2")
+            if function.get('gid_netdev') != port['netdev']:
+                raise NetworkPlanError(f"{host['host']}: GID index 3 interface must be {port['netdev']}")
             if function.get("active_mtu") != 4096:
                 raise NetworkPlanError(
                     f"{host['host']}: RDMA active MTU must be 4096 on {port['rdma_device']}"

@@ -1,7 +1,8 @@
 # Serving configuration templates
 
 This directory contains sanitized inputs for the supported GLM-5.2 EXL3
-3.5-bpw, GLM-5.3 Flash, DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving
+3.5-bpw, GLM-5.3 Flash, DeepSeek-V4-Flash-0731, DeepSeek-V4.1-Flash, and
+Qwen3.8-27B EXL3 K5/K6 serving
 configurations. Templates describe contracts; they are not deployment receipts
 or evidence of a healthy cluster.
 
@@ -142,6 +143,20 @@ base-profile inputs.
 The template's immutable image digest is also represented in
 [`runtime/faststart-lock.json`](../../runtime/faststart-lock.json). If those
 inputs differ, stop and resolve the identity drift before launching.
+
+## DeepSeek-V4.1-Flash
+
+Status: **implemented**. `deepseek-v41-flash-cycle.env.example` selects the
+four-rank cycle launcher, local image ID, runtime patch directory, patched NCCL
+library, and rank-local model/cache paths. Fill every placeholder independently
+on each host; image, checkpoint and serving settings must agree across ranks.
+
+The configured request limit is 1,048,576 tokens, with eight sequences and an
+8,192-token scheduler budget. Engram lookup tables remain on local NVMe.
+The recorded capacity and serving measurements used request limits through
+430,080 tokens; they do not qualify a completed 1M-token request. Follow the
+[DeepSeek-V4.1 quickstart](../../profiles/deepseek-v41-flash-cycle/README.md)
+and [runtime build instructions](../../runtime/deepseek-v41-gb10/README.md).
 
 ## Qwen3.8-27B EXL3 K5/K6
 

@@ -93,6 +93,8 @@ def network_fixture():
                     "owner": "system",
                     "autoconnect": True,
                     "ipv4_method": "manual",
+                    "ipv4_addresses": [address],
+                    "ethernet_mtu": 9000,
                     "ipv4_never_default": True,
                     "ipv4_ignore_auto_dns": True,
                     "ipv6_method": "link-local",
@@ -130,6 +132,7 @@ def network_fixture():
                         "gid_index": 3,
                         "gid": "::ffff:" + port["ipv4_cidr"].split("/")[0],
                         "gid_type": "RoCE v2",
+                        "gid_netdev": port["netdev"],
                         "active_mtu": 4096,
                         "state": "ACTIVE",
                         "link_layer": "Ethernet",
@@ -439,6 +442,24 @@ def test_missing_interface_driver_identity_refuses():
     inventory["spark-r0"]["rdma"][0]["driver"] = None
     with pytest.raises(NetworkPlanError, match="verified mlx5"):
         plan_network(spec, inventory)
+
+
+@pytest.mark.parametrize('field,value', [('ipv4_addresses', ['198.18.99.1/24']),
+                                        ('ethernet_mtu', 1500), ('ipv4_addresses', None),
+                                        ('ethernet_mtu', None)])
+def test_live_settings_do_not_prove_saved_connection_settings(field, value):
+    spec, inventory = network_fixture()
+    inventory['spark-r0']['interfaces'][0]['network_manager'][field] = value
+    with pytest.raises(NetworkPlanError):
+        verify_network(spec, inventory)
+
+
+@pytest.mark.parametrize('binding', ['different-interface', None])
+def test_network_readiness_requires_gid_interface_binding(binding):
+    spec, inventory = network_fixture()
+    inventory['spark-r0']['rdma'][0]['gid_netdev'] = binding
+    with pytest.raises(NetworkPlanError, match='GID.*interface'):
+        verify_network(spec, inventory)
 
 
 def test_synthetic_command_text_cannot_enter_interface_identity():

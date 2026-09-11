@@ -319,3 +319,57 @@ def test_cli_help_names_all_modes_and_confirmation_inputs() -> None:
         "--output",
     ):
         assert option in completed.stdout
+
+
+
+def test_digest_import_never_attempts_to_create_a_registry_digest():
+    paths = fanout.archive_paths("/var/lib/sparkring/images", "runtime.tar.zst")
+    digest = "registry.example/runtime@sha256:" + "e" * 64
+    script = fanout._load_script(paths, digest, IMAGE_ID)
+    assert "docker image tag" not in script
+    assert "Registry digest was not restored by the archive" in script
+    assert f"docker image inspect {digest}" in script
+
+
+def test_image_id_import_needs_no_tag():
+    paths = fanout.archive_paths("/var/lib/sparkring/images", "runtime.tar.zst")
+    script = fanout._load_script(paths, IMAGE_ID, IMAGE_ID)
+    assert "docker image tag" not in script
+    assert "Archive did not restore the expected image ID" in script
+
+
+
+@pytest.mark.parametrize("kind,expected_status,tagged", [("tag", 0, True), ("id", 0, False), ("digest", 1, False)])
+def test_import_reference_recovery_with_fake_docker(kind, expected_status, tagged):
+    import os
+    import shutil
+    shell = shutil.which("sh") if os.name != "nt" else str(Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe")
+    if not shell or not Path(shell).is_file():
+        pytest.skip("POSIX shell required for isolated command-script test")
+    image = {"tag": "registry.example/runtime:verified", "id": IMAGE_ID,
+             "digest": "registry.example/runtime@sha256:" + "e" * 64}[kind]
+    stub = f"""
+have_image=0
+have_name=0
+wanted={image}
+expected={IMAGE_ID}
+docker() {{
+  case "$2" in
+    load) have_image=1; return 0 ;;
+    tag) have_name=1; printf 'TAGGED\\n'; return 0 ;;
+    inspect)
+      if {{ [ "$3" = "$expected" ] && [ "$have_image" = 1 ]; }} || {{ [ "$3" = "$wanted" ] && [ "$have_name" = 1 ]; }}; then
+        printf '%s\\n' "$expected"
+        return 0
+      fi
+      return 1 ;;
+  esac
+  return 99
+}}
+"""
+    script = fanout._load_script(fanout.archive_paths("/var/lib/sparkring/images", "runtime.tar"), image, IMAGE_ID)
+    result = subprocess.run([shell, "-c", stub + script], capture_output=True, text=True, timeout=5)
+    assert result.returncode == expected_status, result.stderr
+    assert ("TAGGED" in result.stdout) is tagged
+    if kind == "digest":
+        assert "Registry digest was not restored by the archive" in result.stderr
