@@ -1,0 +1,235 @@
+{
+  "base": {
+    "commit": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
+    "tree": "c66eb3aa3dca493d7a6852c6aff099eb55bd8415"
+  },
+  "continuation_port": {
+    "commit": "b611611a643502542c2d900057eb47e407b8379e",
+    "tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a"
+  },
+  "files": {
+    "docs/features/quantization/b12x.md": {
+      "sha256": "ae6067ea7c7e704312bccaff3969affc8896a4d6454af20c1a68140cb982863d",
+      "size": 9679
+    },
+    "requirements/cuda.txt": {
+      "sha256": "fc4edb4b726a148520b5b7b0b3bc2c7895bf9c7730eecede39449f357130c658",
+      "size": 1245
+    },
+    "tests/kernels/mamba/test_causal_conv1d.py": {
+      "sha256": "f934af77a38b3730a1d477af885cb63d5ceeddc2a72e6f055eeeda8879a53158",
+      "size": 20759
+    },
+    "tests/models/test_glm5next_kda_gate_stream.py": {
+      "sha256": "95a2668f2b2ec7ca50f4a624c774c172ed866b69daa1f96529277166819761ea",
+      "size": 6823
+    },
+    "tests/models/test_glm5next_mhc_prefill.py": {
+      "sha256": "8be98f70d5a89a456042270ceb74f306cd6f7211afafc7adddabd4bd8fab4024",
+      "size": 33519
+    },
+    "tests/v1/attention/test_gdn_metadata_builder.py": {
+      "sha256": "6977fd6e088520bcabbb8ad6f01bf013df5c7e91d2802d179dcb9bd1b52951e2",
+      "size": 39236
+    },
+    "tests/v1/core/test_prefix_caching.py": {
+      "sha256": "6958bd09a1ef8cc8ae0c0819e8cb00b977c998587185c440c6a16c5058878bbc",
+      "size": 191892
+    },
+    "tests/v1/core/test_recurrent_prefill_checkpoint.py": {
+      "sha256": "8e5d543c51244954ac746e25d2cd4912c603b942611604aff2588865df2c0b87",
+      "size": 16908
+    },
+    "tests/v1/core/test_scheduler.py": {
+      "sha256": "ac0cbd207d936cc806b94de8033df3a0e284362830f12e09bf831a414e281707",
+      "size": 247674
+    },
+    "tests/v1/kv_connector/unit/test_hybrid_recovery_source.py": {
+      "sha256": "97a27c581f4eeebde1903b2619bf571db0eb47638ebfe134001d2066edb19444",
+      "size": 12096
+    },
+    "tests/v1/worker/test_kda_prefill_checkpoint_binding.py": {
+      "sha256": "f656a11be7dff3bff789fbb917f9579d4f48f3e959001755d2c4dd64180b5888",
+      "size": 15985
+    },
+    "vllm/config/vllm.py": {
+      "sha256": "3526f14fb1cf949fab1065536656c73a04e663c696ef40dff77bff8a1660cabb",
+      "size": 130236
+    },
+    "vllm/envs.py": {
+      "sha256": "485ee7125664162938c502eabc90401882ed4a7e186a2f23d402910e263d124f",
+      "size": 118626
+    },
+    "vllm/forward_context.py": {
+      "sha256": "a2222e7cde78b5ace2a7c0f5fc84bd6b7749d906e5b93ebe384636d97a33734b",
+      "size": 14496
+    },
+    "vllm/model_executor/layers/fused_moe/runner/moe_runner.py": {
+      "sha256": "d1a8692b19a38ac62733fd62b1ff35c6a9a650751b19e63746d11f052f338916",
+      "size": 39925
+    },
+    "vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py": {
+      "sha256": "6e57212e46964a5737e2fcea7c29e9bcf88fa7e22886c7c21208ad661b154feb",
+      "size": 3822
+    },
+    "vllm/model_executor/layers/linear.py": {
+      "sha256": "3f1e54b4d068a0c67e91be55e0d9bbfd8c0c20e3b2046507dc64072a432c5878",
+      "size": 67356
+    },
+    "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py": {
+      "sha256": "409b82537cfa841e0fe7dbc122d9abe16d2f678ac8e52635d8253b0bf5813acf",
+      "size": 76222
+    },
+    "vllm/model_executor/layers/mla.py": {
+      "sha256": "1925a55de20db522f2e97e4e80ba8133773393c478839b2609d400b3a758b760",
+      "size": 9498
+    },
+    "vllm/models/glm5next/model_state.py": {
+      "sha256": "86164e8fc554c6ac4a8d3058c4976a10ce019537e91656e974c1fdb14ff36e83",
+      "size": 17402
+    },
+    "vllm/models/glm5next/nvidia/attention.py": {
+      "sha256": "7b257c7406a261fa92f3627c8b96fe5240dda7bd0c1a98d69ca185c9dab0a0c0",
+      "size": 8348
+    },
+    "vllm/models/glm5next/nvidia/kda.py": {
+      "sha256": "dc97e86531eb011df68e0156bf2dfe3a663992fa1f6974646be0ef8e5cf353d8",
+      "size": 7772
+    },
+    "vllm/models/glm5next/nvidia/mhc_prefill_sharding.py": {
+      "sha256": "b3616d081087eec0a35475e202f37e08c5e88753cfd280e64fb09e0e2ed1a66c",
+      "size": 19732
+    },
+    "vllm/models/glm5next/nvidia/model.py": {
+      "sha256": "6693fd08d1523a3b3a54496366904881fe1bd4838ec072251868197755b5bbf6",
+      "size": 69492
+    },
+    "vllm/v1/attention/backend.py": {
+      "sha256": "b4b28355a819442c2c8ee107f3c81a29637e0e1f7909029a293dbf420ad6cf3d",
+      "size": 41061
+    },
+    "vllm/v1/attention/backends/gdn_attn.py": {
+      "sha256": "d70afea4ef9c9da60cbe82223356ce7805fe0648781a31aa7cf21bb007f0e907",
+      "size": 47456
+    },
+    "vllm/v1/core/kv_cache_manager.py": {
+      "sha256": "0880f7bee9c2bbbdd4d2be3c41827cffb24669fdc65fbf5ea0b4b13ba6e3d25e",
+      "size": 60830
+    },
+    "vllm/v1/core/recurrent_prefill_checkpoint.py": {
+      "sha256": "18b4d7eb66e88affffdbdf0151d3ed742077c3c60fc42ee62ad2a4b655d6e283",
+      "size": 10284
+    },
+    "vllm/v1/core/sched/output.py": {
+      "sha256": "8ea57558c576d80971faf28aba3d093d3d0ca5ad773b79e586255c2695e30846",
+      "size": 13399
+    },
+    "vllm/v1/core/sched/scheduler.py": {
+      "sha256": "c085117f43459bce8b00a9f92fb781745f0f43a03bff2bc2c78a1669e940485f",
+      "size": 200388
+    },
+    "vllm/v1/core/single_type_kv_cache_manager.py": {
+      "sha256": "e0c18ad0948d92fc0bf42fd90ecfa45bc3811b4c54a17c042f6149a2745f403c",
+      "size": 115250
+    },
+    "vllm/v1/kv_cache_interface.py": {
+      "sha256": "1e308dd6389f0e17aec0ecf47853f611cb06f8f24cee4ca4736e963dc8a5d0cd",
+      "size": 51240
+    },
+    "vllm/v1/worker/gpu/model_runner.py": {
+      "sha256": "089acb88aaac6743646eb1d4717eff1639d777d4a1d57d6503ff66066d61fc65",
+      "size": 105134
+    },
+    "vllm/v1/worker/gpu/model_states/mamba_hybrid.py": {
+      "sha256": "beccbafafbe47dc676e76da842a0b32ddc22e7c7f0fc8221f34ae6fa7d1e6a0b",
+      "size": 19263
+    },
+    "vllm/v1/worker/gpu_model_runner.py": {
+      "sha256": "4dcc7266f30776187c3d7d2fabfad0e9e8063780e810ec52dab3b740109046fc",
+      "size": 349710
+    }
+  },
+  "native_reuse": {
+    "changed_paths": [
+      "docs/features/quantization/b12x.md",
+      "requirements/cuda.txt",
+      "tests/kernels/mamba/test_causal_conv1d.py",
+      "tests/v1/attention/test_gdn_metadata_builder.py",
+      "tests/v1/core/test_prefix_caching.py",
+      "tests/v1/core/test_recurrent_prefill_checkpoint.py",
+      "tests/v1/worker/test_kda_prefill_checkpoint_binding.py",
+      "vllm/envs.py",
+      "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py",
+      "vllm/models/glm5next/model_state.py",
+      "vllm/v1/attention/backend.py",
+      "vllm/v1/attention/backends/gdn_attn.py",
+      "vllm/v1/core/kv_cache_manager.py",
+      "vllm/v1/core/recurrent_prefill_checkpoint.py",
+      "vllm/v1/core/sched/output.py",
+      "vllm/v1/core/sched/scheduler.py",
+      "vllm/v1/core/single_type_kv_cache_manager.py",
+      "vllm/v1/kv_cache_interface.py",
+      "vllm/v1/worker/gpu/model_runner.py",
+      "vllm/v1/worker/gpu/model_states/mamba_hybrid.py"
+    ],
+    "git_file_records_sha256": "bf4b2150ac4937b325d9b0ff1b0d676e12405e2f4ca940159b959cc7a4bde9e1",
+    "native_input_paths": [
+      "CMakeLists.txt",
+      "cmake",
+      "csrc",
+      "rust"
+    ],
+    "source_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
+    "status": "byte-identical-native-input-archives"
+  },
+  "packed_fallback_compatibility": {
+    "behavior": "Expand bounded per-request CSR checkpoints without truncation and preserve zero-checkpoint request rows for B12X binding and convolution-history storage.",
+    "commit": "4405a965e54f14df00d28e5e23f9793f866aae39",
+    "qualification": "ARM CPU/mock binder suite 10/10; CUDA component oracle used mocked B12X recurrence execution and the actual Triton convolution-history kernel for irregular counts [2,0,1].",
+    "status": "implemented-component-gpu-qualified-full-model-pending"
+  },
+  "patch": {
+    "path": "patches/vllm-r33-sparkring.patch",
+    "sha256": "aca0e198b659ba3d0a7778e88d4aa65a718ded57c826d5ee23ed861a9af30be5",
+    "size": 227313
+  },
+  "prefix_hit_metadata_compatibility": {
+    "behavior": "Normalize vector and packed-CSR fallback metadata into cleared four-column B12X buffers and use the same normalized destinations for recurrent and convolution checkpoint state.",
+    "commit": "4405a965e54f14df00d28e5e23f9793f866aae39",
+    "status": "implemented-cpu-and-component-gpu-qualified"
+  },
+  "preserved_package_tree": "ac8e94ae4ae84d6edfffd97b0d60545c9714e62f",
+  "required_b12x_checkpoint_contract": {
+    "commit": "68acfc14893c087aa9b3120bb984fde4c4e7a21f",
+    "max_checkpoints": 4,
+    "metadata_validation": "transactional",
+    "status": "qualified-gpu-27-tests",
+    "tree": "284e7df8caff930477a314fea20d826256844de4"
+  },
+  "result": {
+    "cached_diff_sha256": "aca0e198b659ba3d0a7778e88d4aa65a718ded57c826d5ee23ed861a9af30be5",
+    "status_lines": 35,
+    "status_sha256": "78fe89198cbaeb21c21b57aad6013008f1e851ce3e376e8a73efba5c56eb64e3",
+    "tree": "547f7091841728f21ab419012a766fd1df70a569"
+  },
+  "scheduler_config_compatibility": {
+    "behavior": "Validate the R33 prefill compute-share and parallel-prefill controls without reading an absent scheduler field.",
+    "commit": "3049b639bdbc513319f7bae896c4e239992bc7bb",
+    "status": "implemented-and-cpu-qualified"
+  },
+  "schema": "sparkring-r33-vllm-source-composition/v1",
+  "status": "implemented-source-only-gpu-qualification-pending",
+  "tp2_dcp1_coalescing": {
+    "b12x_test_commit": "2a24e92",
+    "behavior": "Permit bounded four-checkpoint KDA prefill coalescing on TP2/DCP1 while preserving TP4 DCP1/2/4 and rejecting TP2 DCP2/4.",
+    "commit": "8fe550f",
+    "qualification": "ARM validator and 32-local-head binding tests 7/7; GB10 H32/max-checkpoints4 component oracle and 8K prefix-equivalence tests 3/3. TP2 full-model serving remains unqualified.",
+    "status": "implemented-component-gpu-qualified-full-model-pending"
+  },
+  "unplanned_checkpoint_capacity": {
+    "behavior": "Use packed checkpoint export only when every internal boundary fits the declared reserve. Longer unplanned queries retain the aligned final state and, when needed, one final partial boundary through the sparse allocator path.",
+    "commit": "7a2dad4",
+    "qualification": "ARM allocator and metadata tests 5/5, including exact NULL/unhashed omitted columns.",
+    "status": "implemented-cpu-qualified-full-model-pending"
+  }
+}

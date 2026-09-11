@@ -409,3 +409,23 @@ planned model and fabric restart, helper loss, supervisor loss, peer failure,
 changed hardware rules, explicit recovery, temperature-one model output, and
 persistent-cache restoration. CPU tests establish software contracts; they
 do not qualify those four-rank hardware behaviors.
+## NCCL route diagnostic startup
+
+For an explicitly selected R33 TP4 diagnostic startup, add `"nccl_debug":
+"INFO"` to the managed site and render/install from the revision that supports
+that field. The only effective container environment change is
+`NCCL_DEBUG=WARN` to `NCCL_DEBUG=INFO`; `NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH`,
+transport settings, image identity, cache configuration and model arguments
+remain unchanged. Removing the field restores the normal logging default.
+This is diagnostic evidence collection, not a performance configuration.
+
+Retain the diagnostic site, renderer/installer revision and rendered-file
+hashes separately from the image receipt. An image built from `c8646b0` does
+not imply that a later diagnostic renderer is also `c8646b0`. This option
+changes external orchestration only; it does not modify runtime binaries or
+require a new image. The managed installer must reproduce the diagnostic
+environment from the saved site; hand-edited rank environments are rejected.
+
+Use NCCL's emitted `NET/IB RouteFinal` HCA records together with rank-local
+PCI mappings for attribution. Worker-owned QPs or host-wide HCA counters alone
+cannot distinguish NCCL from other communication libraries in the same worker.

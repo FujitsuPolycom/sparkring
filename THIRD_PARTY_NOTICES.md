@@ -387,3 +387,34 @@ remain applicable to the built library. Source preparation does not distribute
 model weights. The parent image also contains CUDA, framework and kernel
 dependencies governed by their respective licenses; rebuilding this recipe
 does not replace or remove those obligations.
+
+## 15. DeepSeek-V4.1-Flash GB10 profile artifacts
+
+### 15a. tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark (patches included)
+
+`runtime/deepseek-v41-gb10/patches/` contains seven Python files copied byte-for-byte from
+https://github.com/tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark (`patch/` directory, boot 9,
+MIT License, Copyright (c) 2026 tonyd2wild; SM12x page-size and top-k fixes authored by Kai as
+credited in that repository). They are bind-mounted over the vLLM `dsv41-feat` tree at launch and
+are modified files of vLLM (Apache-2.0). The Engram-on-disk method is theirs. `tools/prewarm5.py`
+and `tools/verify5.py` in the same directory are from the same repository, as are the benchmark
+method, prompt set and harnesses referenced by `performance/records/deepseek-v41-flash/`.
+These files are pinned by md5 and excluded from linting in `.ruff.toml`.
+
+### 15b. vLLM `dsv41-feat` branch (referenced; built into the operator's image)
+
+`runtime/deepseek-v41-gb10/build-image.sh` copies the Python tree of `vllm-project/vllm`
+commit `e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba` (Apache-2.0) over the `vllm/vllm-openai`
+nightly image and rebuilds `_C_stable_libtorch` from that tree with NVIDIA CUTLASS v4.7.1
+(BSD-3-Clause). No vLLM source is included in this repository.
+
+### 15c. FlashInfer (referenced; built into the operator's image)
+
+The image builds FlashInfer commit `07869c61ba581e6d6b8ad8d142f4a6c89b707cc1` (Apache-2.0)
+with its pinned CUTLASS, CCCL and spdlog submodules. No FlashInfer source is included here.
+
+### 15d. Model weights (not included)
+
+`deepseek-ai/DeepSeek-V4.1-Flash` is distributed by DeepSeek under the MIT License. No weights or
+model files are included; operators fetch the checkpoint themselves.
+

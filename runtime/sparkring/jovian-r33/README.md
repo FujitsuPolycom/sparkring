@@ -1,0 +1,73 @@
+# Jovian Judgement R33 integration for Spark
+
+Status: **TP2 and TP4 ring bounded-qualified; public ARM64 image available**.
+
+This integration reproduces the pinned R33 software composition for ARM64 and
+adds SparkRing transport, startup, profile and optional SparkCache integration.
+The published R33 image is AMD64 and cannot supply native binaries to DGX Spark.
+Architecture-specific artifacts require matching source and ABI validation.
+
+The upstream image is
+`localinferencelab/vllm@sha256:3ae04d964f8e7e936ef4b34dd75406b9169fead8062fb8b4b1634f3bbf512827`.
+Its release source lock has SHA256
+`c4b1029eb355736f94b02efa19b10efe4d9680cac41ae38b952b05de9e4381c4`.
+
+| Component | R33 source |
+|---|---|
+| vLLM | `voipmonitor/vllm` at `ae89131442359dc332d9c46009be3c1f8cdee0b4` plus [`patches/vllm-r33-sparkring.manifest.json`](patches/vllm-r33-sparkring.manifest.json), producing tree `547f7091841728f21ab419012a766fd1df70a569` |
+| B12X | `FujitsuPolycom/b12x` branch `integration/sparkring-r33-checkpoint-export`; runtime commit `68acfc14893c087aa9b3120bb984fde4c4e7a21f`, tree `284e7df8caff930477a314fea20d826256844de4` |
+| LMCache | `local-inference-lab/LMCache` at `29bc5a2efde737c436b04499eb62cd1776cebeec` |
+| FlashInfer | `803c4664f4771ddc418f20a57f752469a237a825` |
+| FlashKDA | `3b225bf26bb8e218928a1fe14751cb48cf31d11b` plus the release patch |
+| Build recipe | `local-inference-lab/blackwell-llm-docker` at `11c5c7fc7fc8fcad33994d6608885f646e50e4f2` |
+
+Installed-component identities take precedence over inherited container labels.
+The ARM64 foundation image
+`sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217`
+contains CUDA 13.3, PyTorch source
+`cf30153c4c131c8164ee7798e5022d810682e2cb`, and canonical NCCL 2.31.2 source
+`fb6f40999a2a9e63104d4ae4a84118bce61528f8`. The routed NCCL candidate is
+compiled from patched tree `aa7028b2b2a55af4817f8d742e17717dd4509ee7`
+with library SHA-256
+`84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47`.
+The source and package contracts are implemented in image
+`sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4`.
+Bounded TP2 and TP4 ring model, performance, restart, and cache-recovery
+evidence is recorded in the
+[TP2 qualification](../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
+and
+[TP4 qualification](../../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md).
+Neither record establishes a completed one-million-token request, switched
+hardware, other models, or every packaged dependency. The immutable public
+image is
+`ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef`.
+Its [publication receipt](publication.json) binds that manifest to Docker
+config ID `3c7779ad71dd…`, the source lock, and anonymous registry verification.
+The [runtime receipt](public-image-receipt.json) is the launcher-compatible
+source and installed-file attestation.
+
+## Integration rules
+
+- Preserve R33 behavior before applying missing SparkRing changes. Classify
+  existing patches as present, superseded or still required against exact source.
+- Keep hardware-forwarded ring/mesh routing, both host PCIe domains, and TP2
+  communication assets source-bound. Test actual backend activation.
+- Retain the upstream cache components while making the selected external
+  connector explicit per profile. LMCache qualification does not qualify SparkCache.
+- Preserve safe asynchronous capture, block ownership and hybrid restore recovery.
+- Package one image with model/topology profiles; do not claim every model is
+  qualified merely because the generic image contains its dependencies.
+- Update the published image, source lock, verification receipts and quickstarts
+  together only after qualification. Existing published inputs remain unchanged.
+
+## Qualification
+
+CPU, source, native, and package compatibility checks passed before the bounded
+TP2 and TP4 ring model runs. The linked records cover model loading, exact
+responses, prefix reuse, cache capture/restore, feature activation, and bounded
+prefill/decode measurements. Corrupted-cache recovery remains component evidence
+from the same source/native implementation where the exact image record says so.
+The switched profile retains its explicit untested-hardware status.
+
+Record the exact image and configuration used for every result. Keep rollback
+inputs and restore verified serving after disruptive tests.

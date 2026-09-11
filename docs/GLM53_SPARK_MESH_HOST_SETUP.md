@@ -479,22 +479,22 @@ Do not create `/opt/sparkring/managed-mesh` or
 `/etc/sparkring/managed-mesh`; the installer requires those targets absent.
 Health-key setup belongs to the managed installation step.
 
-Use the [published shared-image instructions](../runtime/sparkring/source_image/README.md#download-the-published-image)
-and its [publication record](../runtime/sparkring/source_image/publication.json)
+Use the [published R33 image instructions](../runtime/sparkring/jovian-r33/image/README.md)
+and its [publication record](../runtime/sparkring/jovian-r33/publication.json)
 to select a SparkRing checkout with the matching source lock and verifier.
 Run subsequent repository commands from that checkout. The shared bootstrap's
-installed CLI does not replace this source-image verification context.
+installed CLI does not replace this image-verification context.
 
-Follow [Prepare the hosts and source](GLM53_TP4_PREFILL_QUICKSTART.md#prepare-the-hosts-and-source)
-to prepare the matching context, pull the shared image and its declared parent,
-and retain the context for verification. A local image build or external
-DFlash checkpoint is unnecessary when using the published image. The
-deployment suite handles checkpoint distribution and transport extraction.
+Follow [Prepare the hosts and image](GLM53_TP4_PREFILL_QUICKSTART.md#prepare-the-hosts-and-image)
+to pull the immutable image and validate its tracked runtime receipt. A local
+image build or external DFlash checkpoint is unnecessary when using the
+published image. The deployment suite handles checkpoint distribution and
+transport extraction.
 After pulling, a device-access smoke check on an otherwise idle Spark uses
 the same immutable image:
 
 ```bash
-SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:f25cdb6bf7df85754ea5c62445b139dac3143bc6e910a0442d681b6e63c31c4b
+SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef
 docker run --rm --gpus all --entrypoint nvidia-smi "$SPARKRING_IMAGE"
 ```
 
@@ -503,10 +503,10 @@ before creating the four serving containers.
 
 ## 9. Fill the private site and start serving
 
-Generate the selected profile's CPU receipt using
-[Verify the image and select a profile](GLM53_TP4_PREFILL_QUICKSTART.md#verify-the-image-and-select-a-profile).
-The guide sets `SPARKRING_RECEIPT` for cache-disabled DCP1, DCP4, or bounded
-DCP1 SparkCache. Pass that receipt to `sr plan` with `--image-receipt` as shown
+Validate the tracked R33 runtime receipt using
+[Prepare the hosts and image](GLM53_TP4_PREFILL_QUICKSTART.md#prepare-the-hosts-and-image).
+The bounded-qualified guide sets `SPARKRING_RECEIPT` for TP4/DCP1 SparkCache.
+Pass that receipt to `sr plan` with `--image-receipt` as shown
 in [Use the managed deployment suite](GLM53_TP4_PREFILL_QUICKSTART.md#use-the-managed-deployment-suite).
 The receipt determines the private site's `runtime_profile`; omitting it
 selects a different default runtime.

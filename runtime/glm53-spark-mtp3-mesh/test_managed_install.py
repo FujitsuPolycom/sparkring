@@ -212,6 +212,77 @@ def test_installer_rejects_ambiguous_ownership(change):
         managed_install.validate_container(value, {'container_prefix': 'profile'}, 0, 'sha256:' + 'b' * 64)
 
 
+def r33_managed_receipt():
+    profile = managed_install.managed_units.service.mesh_profile
+    manifest = 'c' * 64
+    return {
+        'schema': 'sparkring-r33-image-receipt/v1',
+        'checks_passed': True,
+        'bundle_manifest_sha256': manifest,
+        'verification': {
+            'schema': 'sparkring-r33-candidate-verification/v1',
+            'status': 'source-closure-verified-runtime-qualification-pending',
+            'cuda_initialized': False,
+            'model_loaded': False,
+            'checked_files': {
+                '/opt/local-inference/nccl/lib/libnccl.so.2.31.2': 'a' * 64,
+                '/opt/sparkring/sircl/libspark_transport_capi.so': 'b' * 64,
+                '/opt/sparkring/sircl/python/sparkring-overlay-manifest.json': manifest,
+                '/opt/sparkring/runtime/glm53-spark-mtp3-mesh/pins.json':
+                    profile.sha(profile.HERE / 'pins.json'),
+            },
+        },
+    }
+
+
+def test_r33_managed_attestation_uses_source_bound_marker_identity():
+    profile = managed_install.managed_units.service.mesh_profile
+    marker = json.loads((profile.HERE / 'image-receipt.json').read_text())['inside_image']
+    attestation = managed_install.managed_image_attestation(r33_managed_receipt())
+    assert attestation == {
+        'marker_source_sha256': marker['marker_source_sha256'],
+        'marker_binary_sha256': marker['marker_binary_sha256'],
+    }
+
+
+@pytest.mark.parametrize('change', [
+    'failed', 'missing-verification', 'wrong-verification-schema', 'wrong-status',
+    'cuda-initialized', 'model-loaded', 'missing-checked-files', 'missing-native',
+    'changed-manifest', 'changed-profile-pins',
+])
+def test_r33_managed_attestation_rejects_incomplete_or_failed_receipts(change):
+    receipt = r33_managed_receipt()
+    verification = receipt['verification']
+    checked = verification['checked_files']
+    if change == 'failed':
+        receipt['checks_passed'] = False
+    elif change == 'missing-verification':
+        del receipt['verification']
+    elif change == 'wrong-verification-schema':
+        verification['schema'] = 'other/v1'
+    elif change == 'wrong-status':
+        verification['status'] = 'failed'
+    elif change == 'cuda-initialized':
+        verification['cuda_initialized'] = True
+    elif change == 'model-loaded':
+        verification['model_loaded'] = True
+    elif change == 'missing-checked-files':
+        del verification['checked_files']
+    elif change == 'missing-native':
+        del checked['/opt/sparkring/sircl/libspark_transport_capi.so']
+    elif change == 'changed-manifest':
+        checked['/opt/sparkring/sircl/python/sparkring-overlay-manifest.json'] = 'd' * 64
+    else:
+        checked['/opt/sparkring/runtime/glm53-spark-mtp3-mesh/pins.json'] = 'e' * 64
+    with pytest.raises(ValueError, match='R33 image receipt'):
+        managed_install.managed_image_attestation(receipt)
+
+
+def test_legacy_managed_attestation_is_preserved():
+    inside = {'marker_source_sha256': 'a' * 64, 'readiness_warmup': {'temperature': 1.0}}
+    assert managed_install.managed_image_attestation({'inside_image': inside}) is inside
+
+
 def test_down_never_removes_fabric_before_all_model_stops():
     phases = managed_cluster.phases('down', '/opt/sparkring/managed-mesh', '/etc/sparkring/managed-mesh')
     names = [name for name, _ in phases]

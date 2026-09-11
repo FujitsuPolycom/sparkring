@@ -95,7 +95,7 @@ def discover(nodes, controller_address, run=None):
 
 
 def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_receipt=None,
-                *, reuse_existing_image=False, existing_model_roots=None):
+                *, reuse_existing_image=False, existing_model_roots=None, runtime_profile=None):
     """Derive network and profile inputs from host facts and the documented cable cycle."""
     if (
         inventory.get("schema") != "sparkring-deploy-inventory/v1"
@@ -208,10 +208,16 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
             "schema": "sparkring-deploy-runtime-selection/v1", "image_receipt": document}
         if document.get("profile") is not None:
             result["site"]["runtime_profile"] = document["profile"]
+        if runtime_profile is not None:
+            if document.get("schema") != "sparkring-r33-image-receipt/v1":
+                raise ValueError("Explicit runtime profile requires an R33 image receipt")
+            result["site"]["runtime_profile"] = runtime_profile
         selected = selection(result, PROFILE)
-        result["site"]["marker_binary_sha256"] = selected["inside_image"]["marker_binary_sha256"]
+        result["site"]["marker_binary_sha256"] = selected["marker_binary_sha256"]
         result["site"]["model_roots"] = [
             f"{workspace}/models/{selected['pins']['target']['revision']}"] * 4
+    if runtime_profile is not None and image_receipt is None:
+        raise ValueError("Runtime profile requires an explicit image receipt")
     if reuse_existing_image or existing_model_roots:
         from scripts.deploy_existing_assets import validate_existing_assets
         if not reuse_existing_image or not existing_model_roots:
@@ -289,6 +295,8 @@ def main(argv=None):
                    help="Explicit verified local source composition or canonical performance receipt; omission retains the base public image")
     p.add_argument("--reuse-existing-image", action="store_true",
                    help="Verify the selected image on all four hosts without saving or copying it")
+    p.add_argument("--runtime-profile", choices=("tp4-dcp1", "tp4-dcp1-sparkcache"),
+                   help="Required topology/profile selection for an R33 image receipt")
     p.add_argument("--existing-model-root", type=str, action="append", default=[],
                    help="Read-only existing model directory; repeat in rank order exactly four times with --reuse-existing-image")
     p.add_argument("--output", type=Path, required=True)
@@ -349,7 +357,8 @@ def main(argv=None):
             inventory = read(args.inventory)
             spec = create_spec(inventory, args.name, args.workspace, args.fabric_range, args.image_receipt,
                                reuse_existing_image=args.reuse_existing_image,
-                               existing_model_roots=args.existing_model_root)
+                               existing_model_roots=args.existing_model_root,
+                               runtime_profile=args.runtime_profile)
             network = plan_network(spec, inventory["hosts"])
             result = {
                 "schema": "sparkring-deploy-preparation/v1",
