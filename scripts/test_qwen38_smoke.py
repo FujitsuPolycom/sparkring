@@ -77,9 +77,7 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
                     200,
                     {
                         "object": "list",
-                        "data": [
-                            {"id": model_id, "max_model_len": max_model_len}
-                        ],
+                        "data": [{"id": model_id, "max_model_len": max_model_len}],
                     },
                 )
                 return
@@ -106,7 +104,8 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
                 if (
                     function.get("name") != "multiply"
                     or function.get("parameters", {}).get("required") != ["a", "b"]
-                    or function.get("parameters", {}).get("additionalProperties") is not False
+                    or function.get("parameters", {}).get("additionalProperties")
+                    is not False
                     or request.get("tool_choice", {}).get("function", {}).get("name")
                     != "multiply"
                 ):
@@ -137,7 +136,9 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
                 if not image_url.startswith("data:image/png;base64,"):
                     self._send_json(400, {"error": "vision contract mismatch"})
                     return
-                marker = "WRONG_MARKER" if state.failing_gate == "vision" else "VISION_OK"
+                marker = (
+                    "WRONG_MARKER" if state.failing_gate == "vision" else "VISION_OK"
+                )
                 self._chat(
                     {
                         "role": "assistant",
@@ -150,7 +151,10 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
             if "17 * 23" in user_content:
                 state.arithmetic_requests += 1
                 reasoning = "checked multiplication"
-                if state.failing_gate == "arithmetic_stability" and state.arithmetic_requests == 2:
+                if (
+                    state.failing_gate == "arithmetic_stability"
+                    and state.arithmetic_requests == 2
+                ):
                     reasoning = "different reasoning"
                 self._chat(
                     {
@@ -300,3 +304,106 @@ def test_arithmetic_gate_ignores_response_ids_but_rejects_message_drift() -> Non
         "detail": "repeated arithmetic stable message fields differ",
     }
     assert result["gates"]["tool_call"]["status"] == "pass"
+
+
+def test_png_fixture_has_valid_chunks_and_pixels_without_http():
+    import base64
+    import struct
+    import zlib
+
+    payload = base64.b64decode(smoke.TINY_PNG_DATA_URL.split(",", 1)[1], validate=True)
+    assert payload[:8] == b"\x89PNG\r\n\x1a\n"
+    offset = 8
+    compressed = b""
+    kinds = []
+    while offset < len(payload):
+        length = struct.unpack(">I", payload[offset : offset + 4])[0]
+        kind = payload[offset + 4 : offset + 8]
+        data = payload[offset + 8 : offset + 8 + length]
+        crc = struct.unpack(">I", payload[offset + 8 + length : offset + 12 + length])[
+            0
+        ]
+        assert zlib.crc32(kind + data) == crc
+        kinds.append(kind)
+        if kind == b"IHDR":
+            assert struct.unpack(">IIBBBBB", data) == (1, 1, 8, 2, 0, 0, 0)
+        if kind == b"IDAT":
+            compressed += data
+        offset += length + 12
+    assert kinds == [b"IHDR", b"IDAT", b"IEND"]
+    assert offset == len(payload)
+    assert zlib.decompress(compressed) == b"\0\xff\xff\xff"
+
+
+def test_incomplete_or_nonassistant_text_fails_without_http():
+    import pytest
+
+    for role, finish in [
+        ("user", "stop"),
+        ("assistant", None),
+        ("assistant", "length"),
+    ]:
+        with pytest.raises(smoke.SmokeFailure):
+            choice = smoke._stable_choice(
+                {
+                    "choices": [
+                        {
+                            "message": {"role": role, "content": "391"},
+                            "finish_reason": finish,
+                        }
+                    ]
+                }
+            )
+            smoke._content(choice, "391", "arithmetic")
+
+
+def test_nonfinite_timeout_fails_without_http():
+    import pytest
+
+    for value in (float("nan"), float("inf"), 0, -1):
+        with pytest.raises(smoke.SmokeFailure, match="positive and finite"):
+            smoke.run_smoke("http://invalid", "fixture", timeout=value)
+
+
+def test_all_gates_and_tool_completion_contract_without_http(monkeypatch):
+    class Client:
+        failure = None
+
+        def get(self, path):
+            return 200, b""
+
+        def get_json(self, path):
+            return 200, {"data": [{"id": "qwen38", "max_model_len": 1048576}]}
+
+        def post_json(self, path, payload):
+            text = payload["messages"][0]["content"]
+            finish = "stop"
+            message = {"role": "assistant"}
+            if payload.get("tools"):
+                finish = None if self.failure == "finish" else "tool_calls"
+                message["tool_calls"] = [
+                    {
+                        "type": "invalid" if self.failure == "type" else "function",
+                        "function": {"name": "multiply", "arguments": '{"a":6,"b":7}'},
+                    }
+                ]
+            elif isinstance(text, list):
+                message["content"] = "VISION_OK"
+            elif "17 * 23" in text:
+                message["content"] = "391"
+            elif text.endswith("PREFIX_OK."):
+                message["content"] = "PREFIX_OK"
+            elif text.endswith("13."):
+                message["content"] = "13"
+            else:
+                message["content"] = "17"
+            return {"choices": [{"message": message, "finish_reason": finish}]}
+
+    client = Client()
+    monkeypatch.setattr(smoke, "_Client", lambda *args: client)
+    assert smoke.run_smoke("unused", "qwen38")["status"] == "pass"
+    for failure in ("finish", "type"):
+        client.failure = failure
+        result = smoke.run_smoke("unused", "qwen38")
+        assert result["status"] == "fail"
+        assert result["gates"]["tool_call"]["status"] == "fail"

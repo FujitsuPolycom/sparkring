@@ -74,6 +74,7 @@ def _run_launcher(env: dict[str, str], *arguments: str) -> subprocess.CompletedP
         "QWEN_VENV",
         "QWEN_VLLM_SOURCE",
         "QWEN_EXLLAMAV3_SOURCE",
+        "QWEN_EXLLAMAV3_ARM_PATCH",
         "QWEN_INFINIBAND_DEV_ROOT",
         "QWEN_INFINIBAND_SYS_ROOT",
         "QWEN_TEST_EXEC_MARKER",
@@ -90,7 +91,7 @@ def _run_launcher(env: dict[str, str], *arguments: str) -> subprocess.CompletedP
     launcher = _bash_path(LAUNCHER)
     rendered_arguments = " ".join(shlex.quote(value) for value in arguments)
     command = (
-        f"export PATH={shlex.quote(mock_bin)}:$PATH; "
+        f'export PATH={shlex.quote(mock_bin)}:"$PATH"; '
         f"exec env {assignments} bash {shlex.quote(launcher)} {rendered_arguments}"
     )
     return subprocess.run(
@@ -115,6 +116,8 @@ def prepared_rank(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
     nccl = tmp_path / "libnccl.so.2"
     env_file = tmp_path / "rank.env"
     marker = tmp_path / "vllm-executed.txt"
+    arm_patch = tmp_path / "exllamav3-arm.patch"
+    _write(arm_patch, "fixture patch\n")
 
     for path in (
         model,
@@ -217,8 +220,13 @@ EOF
             printf '%064d  %s\n' 0 "${{!#}}"
             exit 0
         fi
+        if [[ "${{QWEN_TEST_BAD_ARM_PATCH:-0}}" == 1 && "$args" == *"exllamav3-arm.patch"* ]]; then
+            printf '%064d  %s\\n' 0 "${{!#}}"
+            exit 0
+        fi
         case "$args" in
 {sha_cases}
+          *exllamav3-arm.patch*) digest=594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb ;;
           *model/SHA256SUMS*) digest=7626d18481e7f995fd1d9ff211083b7fd57f044daba39e107fb29a48207f24c4 ;;
           *model/config.json*) digest=fbb105334da6554c10784ff1257fda5e3821d4d5426d64469cee2b2ad67ba2b3 ;;
           *model/model.safetensors.index.json*) digest=ea6e0e1064efbb72d89b4a6f9e0ee76c909a94b3f25047487a2ffb282896a26c ;;
@@ -300,6 +308,7 @@ EOF
             "QWEN_VENV": str(venv),
             "QWEN_VLLM_SOURCE": str(vllm_source),
             "QWEN_EXLLAMAV3_SOURCE": str(exllamav3_source),
+            "QWEN_EXLLAMAV3_ARM_PATCH": str(arm_patch),
             "QWEN_INFINIBAND_DEV_ROOT": str(dev_root),
             "QWEN_INFINIBAND_SYS_ROOT": str(sys_root),
             "QWEN_TEST_EXEC_MARKER": str(marker),
@@ -441,3 +450,32 @@ def test_env_serving_overrides_reach_the_vllm_command(
     assert "--max-num-seqs\n12\n" in arguments
     assert "--max-num-batched-tokens\n4096\n" in arguments
     assert '"num_speculative_tokens":2' in arguments
+
+
+@pytest.mark.parametrize("api,master,accepted", [("8000", "29500", True), ("8000", "8000", False), ("08000", "8000", False)])
+def test_embedded_address_validator_rejects_shared_ports(api, master, accepted):
+    import re
+    import sys
+    text = LAUNCHER.read_text()
+    blocks = re.findall(r"<<'PY'[^\n]*\n(.*?)\nPY", text, flags=re.S)
+    code = next(block for block in blocks if "management address" not in block and "for value in sys.argv[3:]" in block)
+    result = subprocess.run([sys.executable, "-c", code, "192.0.2.10", "192.0.2.10", api, master], capture_output=True, text=True, timeout=5)
+    assert (result.returncode == 0) is accepted
+
+
+def test_check_mode_requires_arm_patch_file(prepared_rank):
+    env, _, marker = prepared_rank
+    Path(env["QWEN_EXLLAMAV3_ARM_PATCH"]).unlink()
+    result = _run_launcher(env, "--check")
+    assert result.returncode == 20
+    assert "ExLlamaV3 ARM patch is missing" in result.stderr
+    assert not marker.exists()
+
+
+def test_check_mode_rejects_wrong_arm_patch_digest(prepared_rank):
+    env, _, marker = prepared_rank
+    env["QWEN_TEST_BAD_ARM_PATCH"] = "1"
+    result = _run_launcher(env, "--check")
+    assert result.returncode == 20
+    assert "ExLlamaV3 ARM patch SHA-256 mismatch" in result.stderr
+    assert not marker.exists()
