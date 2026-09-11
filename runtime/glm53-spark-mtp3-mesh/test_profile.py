@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -443,7 +444,8 @@ def test_r33_receipt_renders_canonical_managed_tp4_environment(tmp_path, manifes
         assert env["SPARK_TP4_CONTROL_PORT0"] == env["SPARK_TP4_GRAPH_CONTROL_PORT0"]
 
 
-def test_r33_sparkcache_renders_receipt_bound_native_libraries(tmp_path, manifest_bundle, monkeypatch):
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_r33_sparkcache_renders_receipt_bound_native_libraries(tmp_path, manifest_bundle, monkeypatch, diagnostic):
     manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
     monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
     receipt = tmp_path / "r33-image.json"
@@ -451,18 +453,74 @@ def test_r33_sparkcache_renders_receipt_bound_native_libraries(tmp_path, manifes
     site = _site(tmp_path)
     data = json.loads(site.read_text())
     data["runtime_profile"] = "tp4-dcp1-sparkcache"
+    if diagnostic:
+        data["cache_diagnostics"] = {"namespace": "r33-isolated-fault-test", "access_mode": "restore-only", "trace_reuse": 1}
     site.write_text(json.dumps(data))
     output = tmp_path / "r33-cache"
     mesh_profile.render(site, manifest_bundle, output, receipt)
     for rank in range(4):
         env = mesh_profile.defaults(output / f"rank{rank}.env")
         assert env["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-sparkcache"
-        assert env["SPARKCACHE_ENABLED"] == env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "1"
+        assert env["SPARKCACHE_ENABLED"] == "1"
+        assert env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == ("0" if diagnostic else "1")
+        assert env["SPARKCACHE_ACCESS_MODE"] == ("restore-only" if diagnostic else "read-write")
+        if diagnostic:
+            assert env["SPARKCACHE_CACHE_NAMESPACE"] == "r33-isolated-fault-test"
+            assert env["SPARK_CONTEXT_CACHE_TRACE_REUSE"] == "1"
+        assert env["SPARKCACHE_BUFFER_BUDGET_BYTES"] == "1342177280"
         assert env["SPARKCACHE_PLACEMENT_LIBRARY_PATH"] == "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
         assert env["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] == "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93"
         assert env["SPARKCACHE_SNAPSHOT_LIBRARY_PATH"] == "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
         assert env["SPARKCACHE_SNAPSHOT_LIBRARY_SHA256"] == "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953"
-        assert env["SPARKCACHE_SOURCE_LEASE_CONTRACT"].startswith("/opt/venv/")
+        assert env["SPARKCACHE_SOURCE_LEASE_CONTRACT"] == mesh_profile._r33_profile_verifier().load_contract()["sparkcache_native"]["lease_contract"]
+    reproduced = tmp_path / "reproduced-cache"
+    mesh_profile.render(site, manifest_bundle, reproduced, receipt)
+    for rank in range(4):
+        assert (output / f"rank{rank}.env").read_bytes() == (reproduced / f"rank{rank}.env").read_bytes()
+    if diagnostic:
+        sys.path.insert(0, str(HERE))
+        import managed_install
+        monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+        monkeypatch.setattr(managed_install, "expected_container_spec", lambda argv, image: argv)
+        render = mesh_profile.render
+        monkeypatch.setattr(mesh_profile, "render", lambda site, bundle, output, receipt:
+                            render(site, manifest_bundle, output, receipt))
+        # The installer reads the saved site, then runs the real renderer again.
+        canonical = tmp_path / "installer-cache"
+        mesh_profile.render(site, manifest_bundle, canonical, receipt)
+        def run(command, **kwargs):
+            env = mesh_profile.defaults(Path(command[3]))
+            assert env["SPARKCACHE_CACHE_NAMESPACE"] == "r33-isolated-fault-test"
+            assert env["SPARKCACHE_ACCESS_MODE"] == "restore-only"
+            assert env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "0"
+            assert env["SPARK_CONTEXT_CACHE_TRACE_REUSE"] == "1"
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                "schema": "sparkring-container-command/v1", "argv": ["diagnostic-roundtrip"]}))
+        assert managed_install.canonical_container_spec(canonical, receipt, 0, {}, run=run) == ["diagnostic-roundtrip"]
+
+
+@pytest.mark.parametrize("change", [
+    {"namespace": "../shared"}, {"namespace": "REPLACE_ME"},
+    {"access_mode": "read-write"}, {"trace_reuse": True}, {"trace_reuse": 0}, {"extra": 1},
+])
+def test_cache_diagnostics_rejects_unsafe_or_unbounded_settings(tmp_path, change):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp1-sparkcache", cache_diagnostics={
+        "namespace": "fault-copy", "access_mode": "restore-only", "trace_reuse": 1, **change})
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="cache_diagnostics"):
+        mesh_profile.load_site(site)
+
+
+def test_cache_diagnostics_rejects_cache_disabled_profile(tmp_path):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp1", cache_diagnostics={
+        "namespace": "fault-copy", "access_mode": "restore-only", "trace_reuse": 1})
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="cache_diagnostics"):
+        mesh_profile.load_site(site)
 
 
 def test_r33_sparkcache_rejects_unbound_native_library(tmp_path, manifest_bundle, monkeypatch):

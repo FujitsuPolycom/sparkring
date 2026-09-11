@@ -75,6 +75,18 @@ offline validator with synthetic test fixtures does not qualify model serving.
 
 ## Collector behavior
 
+For a bounded restore-failure test, the managed site may specify
+`cache_diagnostics` with `namespace` set to an isolated copy's safe name,
+`access_mode` set to `restore-only`, and integer `trace_reuse` set to `1`.
+This option requires the R33 `tp4-dcp1-sparkcache` profile and image receipt.
+The renderer disables asynchronous capture and enables reuse traces on every
+rank while preserving the pinned libraries and buffer limits. The namespace
+must differ from the image's default. Save these settings in the site before
+rendering so the installer can reproduce them; do not edit rank environments.
+Restore-only mode disables publication through the connector; it does not make
+the host cache directory a read-only filesystem. A diagnostic run cannot supply
+the capture evidence required for full cache qualification.
+
 A collector must retain every source artifact beside the generated activation
 receipt and include its SHA-256 digest. It must fail when a source is missing,
 ambiguous, stale, or inconsistent across ranks. It must reject environment-only

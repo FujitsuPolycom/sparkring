@@ -204,7 +204,8 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
     assert selected["tensor_parallel_size"] == 4
 
 
-def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixture):
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixture, diagnostic):
     launch, _, _ = launch_fixture
     nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
     placement = "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
@@ -224,8 +225,9 @@ def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixtur
         "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
         "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
         "SPARKCACHE_ENABLED": "1",
-        "SPARKCACHE_ACCESS_MODE": "read-write",
-        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "1",
+        "SPARKCACHE_ACCESS_MODE": "restore-only" if diagnostic else "read-write",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0" if diagnostic else "1",
+        "SPARK_CONTEXT_CACHE_TRACE_REUSE": "1" if diagnostic else "0",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT": "2",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES": "536870912",
         "SPARKCACHE_LOAD_THREADS": "2",
@@ -257,6 +259,8 @@ def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixtur
     assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
     assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
     connector = json.loads(_option(arguments, "--kv-transfer-config"))["kv_connector_extra_config"]
+    assert connector["spark_cache_access_mode"] == ("restore-only" if diagnostic else "read-write")
+    assert connector["spark_cache_async_page_capture"] is (not diagnostic)
     assert connector["spark_cache_cuda_placement_library"] == placement
     assert connector["spark_cache_async_page_capture_library"] == snapshot
     assert connector["spark_cache_async_page_capture_vllm_root"] == "/opt/venv/lib/python3.12/site-packages"

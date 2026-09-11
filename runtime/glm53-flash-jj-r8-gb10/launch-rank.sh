@@ -264,9 +264,11 @@ case "${SOURCE_IMAGE_PROFILE}" in
     r33_profile=1
     [[ "${SPARKRING_PROFILE_MODE:-}" == custom && "${SPARKRING_MANAGED_MESH_RENDERED:-0}" == 1 ]] || \
       die 'R33 SparkCache requires the canonical managed custom profile'
-    [[ "${SPARKCACHE_ENABLED}" == 1 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 && \
-       "${SPARKCACHE_ACCESS_MODE}" == read-write ]] || \
-      die 'R33 SparkCache requires bounded read-write asynchronous capture'
+    [[ "${SPARKCACHE_ENABLED}" == 1 && ( \
+       ( "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 && "${SPARKCACHE_ACCESS_MODE}" == read-write ) || \
+       ( "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 && "${SPARKCACHE_ACCESS_MODE}" == restore-only && \
+         "${SPARK_CONTEXT_CACHE_TRACE_REUSE}" == 1 ) ) ]] || \
+      die 'R33 SparkCache requires bounded capture or traced restore-only diagnostics'
     [[ "${VLLM_SPARK_TP4_MODE}" == custom && "${VLLM_SPARK_TP4_VOCAB_MODE}" == custom ]] || \
       die 'R33 SparkCache requires custom all-reduce and vocabulary transports'
     [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && \
@@ -461,8 +463,14 @@ if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache || \
       "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache ]]; then
   # These are the bounded capacities named by the source-image profile. Reject
   # inherited operator defaults instead of allocating larger unqualified buffers.
-  for setting in SPARKCACHE_ENABLED=1 SPARKCACHE_ACCESS_MODE=read-write \
-    SPARKCACHE_ASYNC_PAGE_CAPTURE=1 SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2 \
+  expected_cache_access=read-write
+  expected_cache_capture=1
+  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache && "${SPARKCACHE_ACCESS_MODE}" == restore-only ]]; then
+    expected_cache_access=restore-only
+    expected_cache_capture=0
+  fi
+  for setting in SPARKCACHE_ENABLED=1 "SPARKCACHE_ACCESS_MODE=${expected_cache_access}" \
+    "SPARKCACHE_ASYNC_PAGE_CAPTURE=${expected_cache_capture}" SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2 \
     SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=536870912 SPARKCACHE_LOAD_THREADS=2 \
     SPARKCACHE_MAX_PENDING_RESTORES=2 SPARKCACHE_CUDA_RESTORE_IO_WORKERS=2 \
     SPARKCACHE_CUDA_ARENA_BYTES=67108864 SPARKCACHE_BUFFER_BUDGET_BYTES=1342177280 \
