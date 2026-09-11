@@ -119,6 +119,15 @@ class VllmPackageContractTests(unittest.TestCase):
             dependency["commit"], "68acfc14893c087aa9b3120bb984fde4c4e7a21f"
         )
         self.assertEqual(dependency["max_checkpoints"], 4)
+        native_to_package = set(manifest["native_reuse"]["changed_paths"])
+        self.assertTrue(native_to_package <= set(manifest["files"]))
+        self.assertTrue(
+            {
+                "tests/v1/core/test_prefix_caching.py",
+                "vllm/v1/kv_cache_interface.py",
+            }
+            <= native_to_package
+        )
         package = (HERE / "package_vllm.sh").read_text()
         prepare = (root / "prepare_vllm_source.sh").read_text()
 
