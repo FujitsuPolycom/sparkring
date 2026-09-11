@@ -25,11 +25,15 @@ The packaged profile and launcher now default to 7.5 GiB
 (`8053063680` bytes). The contract records 6.75 GiB separately as the reference
 pin, not the R33 one-million-token default. Explicit overrides remain available
 for 6.75, 7.5 and 8.75 GiB; they do not inherit qualification from another pin.
-The 7.5 GiB configuration has bounded text-test evidence, but this does not
-establish full request capacity or sustained memory stability. All settings
-retain the same source-capability gates and active memory guard.
-Multimodal accuracy, guarded memory stability, native cache capture/restore,
-recovery, and performance need new measurements on the selected image.
+The 7.5 GiB configuration is bounded-qualified on generic R33 image
+`3c7779ad71dd…` for text correctness, three cold starts, managed loading,
+prefill and decode, native 8,192-token cache capture and restart restoration,
+and active memory guards. The
+[qualification record](../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
+states the exact image, source identities, measurements and evidence hashes.
+The configured one-million-token limit was admitted by the KV pool but was not
+exercised by a completed request. Multimodal correctness and sustained guarded
+memory stability remain unqualified.
 
 The cache-disabled `tp2-dcp1` profile continues to use InstantTensor with
 coalescing disabled. The cache composition requires managed B12X loading and
@@ -75,6 +79,10 @@ from the same repository revision and bind its rendered plans to the final
 image receipt. Repeat the required TP2 and TP4 qualification on that exact
 image; neither these configuration changes nor a successful package build
 promotes earlier bounded results to complete release qualification.
+
+The TP2 bounded checks have passed on the packaged image. TP4 qualification is
+separate and remains pending; the generic image is not release-qualified until
+the required TP4 record also passes.
 
 ## Required capability evidence
 
