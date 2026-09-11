@@ -1,5 +1,8 @@
 # Performance evidence
 
+See the [benchmark summaries](benchmarks.md) for model-throughput results and
+links to the exact measured configurations.
+
 `performance/` contains reproducible measurement programs and bounded evidence
 records for the supported GLM-5.2 EXL3 3.5-bpw, GLM-5.3 Flash,
 DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving configurations. It

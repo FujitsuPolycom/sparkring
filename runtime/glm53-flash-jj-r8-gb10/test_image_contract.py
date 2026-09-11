@@ -520,7 +520,7 @@ def test_operator_docs_name_public_sources_and_explain_stable_locators() -> None
     ).read_text(encoding="utf-8")
     sircl_readme = (ROOT / "docs/architecture/sircl.md").read_text(encoding="utf-8")
     runtime_index = (ROOT / "docs/history/runtime-compositions.md").read_text(encoding="utf-8")
-    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    benchmarks = (ROOT / "performance/benchmarks.md").read_text(encoding="utf-8")
 
     for document in (runtime_readme, quickstart):
         assert "sparkring-glm53-flash-gb10-e02b1746" in document
@@ -539,8 +539,8 @@ def test_operator_docs_name_public_sources_and_explain_stable_locators() -> None
 
     assert "four-rank TP4/DCP4\nfunctional checks" in sircl_readme
     assert "**research-only**" in sircl_readme
-    assert "b12x-kda-dcp4-20260903.md" in root_readme
-    assert "C4: 90.36" in root_readme
+    assert "b12x-kda-dcp4-20260903.md" in benchmarks
+    assert "C4: 90.36" in benchmarks
 
     active_docs = "\n".join((runtime_readme, quickstart, sircl_readme))
     for ambiguous in (

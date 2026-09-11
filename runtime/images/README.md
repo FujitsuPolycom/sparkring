@@ -14,3 +14,17 @@ actual container assembly and its release-specific options.
 
 A successful local build is not a published or hardware-qualified image.
 See the [release procedure](../../docs/development/releases.md).
+
+## Container images
+
+| Package / runtime | Profile | Details |
+|---|---|---|
+| `ghcr.io/fujitsupolycom/sparkring` | Generic R33 ARM64 image; exact profiles select TP2/TP4 topology and optional components | [Source build and profile verification](../../runtime/sparkring/jovian-r33/image/README.md) |
+| `gb10-vllm-serving` | Profile-specific images, including DeepSeek | [Packages](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) |
+| Anemll `dspark-vllm-gx10` | DeepSeek-V4-Flash-Vision-Exp with the MiaAI-Lab recipe | [Image, recipe, and transport provenance](../../runtime/deepseek-vision-exp/profile.json) |
+
+Use the exact digest in the selected quickstart. Images sharing a package
+name are not interchangeable; a model-neutral name does not qualify every profile.
+Retired profiles retain their image references in their linked guides.
+The [R33 publication record](../../runtime/sparkring/jovian-r33/publication.json)
+contains the download digest and profile verification scope.

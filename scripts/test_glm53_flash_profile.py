@@ -462,10 +462,14 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_links_profile() -> N
     # The front page provides navigation; launcher contracts own DCP settings
     # and measurement receipts own numeric results, not Markdown table layout.
     targets = set(re.findall(r"\]\(([^)]+)\)", readme))
-    assert "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/README.md" in targets
+    assert "profiles/README.md" in targets
+    catalog = (ROOT / "profiles/README.md").read_text(encoding="utf-8")
+    assert "glm53-flash-nvfp4-dflash2-bf16-tp4/README.md" in catalog
     profile = json.loads((ROOT / "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/profile.json").read_text())
     assert profile["guide"] == "docs/history/glm53-dflash-operator.md"
-    assert "performance/records/glm53-flash/b12x-kda-dcp4-20260903.md" in targets
+    assert "performance/benchmarks.md" in targets
+    benchmarks = (ROOT / "performance/benchmarks.md").read_text(encoding="utf-8")
+    assert "records/glm53-flash/b12x-kda-dcp4-20260903.md" in benchmarks
 
 
 def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:

@@ -15,26 +15,39 @@ START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
 
 
-def profile_table(root=ROOT):
+def profile_table(root=ROOT, *, compact=False):
     rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
              'Status describes the evidence scope; recommendation describes deployment navigation.', '']
+    if compact:
+        lines = [START, '']
     for title, predicate in (
         ('Four Sparks', lambda p, r: p['recommendation'] != 'retired' and r['serving']['node_count'] == 4),
         ('Two Sparks', lambda p, r: p['recommendation'] != 'retired' and r['serving']['node_count'] == 2),
-        ('Retired GLM-5.3 profiles', lambda p, r: p['recommendation'] == 'retired'),
+        ('Retired profiles', lambda p, r: p['recommendation'] == 'retired'),
     ):
+        if compact and title == 'Retired profiles':
+            continue
         lines += ['### '+title, '', '| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |', '|---|---|---:|---|---|---|']
+        if compact:
+            lines[-2:] = ['| Model / features | Layout | Status | Quickstart |', '|---|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r):
                 continue
             s = r['serving']
+            if compact:
+                title = f"**{p['title']}**" if p['recommendation'] == 'recommended' else p['title']
+                lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {p['status']} | [Guide](profiles/{p['id']}/README.md) |")
+                continue
             lines.append(f"| {p['title']} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {s.get('max_model_len', '—')} | {p['status']} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
         lines.append('')
+    if compact:
+        return '\n'.join(lines + [END])
     lines += ['Additional pinned historical variants, including original NVFP4 TP2, are in the [retained deployment index](docs/history/deployment-variants.md).', '', 'Qualification applies only to the exact image, checkpoint, topology and workload in the selected guide.',
               'Switched deployments have no switched-hardware qualification. Qwen with SparkCache is unsupported;',
               'six-node work remains research-only and is outside this deployment catalog.', '', END]
-    return '\n'.join(lines)
+    text = '\n'.join(lines)
+    return text.replace('](profiles/', '](').replace('](docs/', '](../docs/')
 
 
 def generate(check=False, root=ROOT):
@@ -65,13 +78,14 @@ def generate(check=False, root=ROOT):
         if not target.is_relative_to(root.resolve()) or target in expected:
             raise ValueError('Environment exports must have unique destinations within the checkout')
         expected[target] = render_environment(row['profile'], root=root, template_only=True).encode('utf-8')
-    readme = root/'README.md'
-    text = readme.read_text(encoding='utf-8-sig')
-    if START not in text or END not in text:
-        raise ValueError('README.md requires generated profile region markers')
-    before, tail = text.split(START, 1)
-    _, after = tail.split(END, 1)
-    expected[readme] = (before+profile_table(root)+after).encode()
+    for relative, compact in (('README.md', True), ('profiles/README.md', False)):
+        readme = root/relative
+        text = readme.read_text(encoding='utf-8-sig')
+        if START not in text or END not in text:
+            raise ValueError(f'{relative} requires generated profile region markers')
+        before, tail = text.split(START, 1)
+        _, after = tail.split(END, 1)
+        expected[readme] = (before+profile_table(root, compact=compact)+after).encode()
     stale = []
     for path, content in expected.items():
         if not path.exists() or path.read_bytes().replace(b'\r\n', b'\n') != content.replace(b'\r\n', b'\n'):
