@@ -10,7 +10,7 @@ patch=${SPARKRING_R33_VLLM_PATCH:-$script_root/patches/vllm-r33-sparkring.patch}
 manifest=${SPARKRING_R33_VLLM_MANIFEST:-$script_root/patches/vllm-r33-sparkring.manifest.json}
 receipt="$root/artifacts/vllm-sparkring-source.txt"
 base_commit=ae89131442359dc332d9c46009be3c1f8cdee0b4
-patch_sha=ca66931518af4392d3cad42faf9e8e4136cc8221edb7ac72491fde2000a6040
+patch_sha=ca66931518af4392d3cad42faf9fe8e4136cc8221edb7ac72491fde2000a6040
 manifest_sha=8e17816bc60f8a14b6bfe9ead7af9436903b6ce4482c4f99afff6b3748710ce4
 expected_tree=667ee2f6652efa065c57a7adc0193991f6cde6ac
 

@@ -22,7 +22,7 @@ expected_rust_parser_sha=b52494b9f599acc71ccf9e63523fa3b2b173cf395d155eca37b0941
 test "$(uname -m)" = aarch64
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$expected_head"
 test "$(git -C "$source_dir" write-tree)" = "$expected_package_tree"
-test "$(git -C "$source_dir" diff --cached --binary | sha256sum | cut -d' ' -f1)" = ca66931518af4392d3cad42faf9e8e4136cc8221edb7ac72491fde2000a6040
+test "$(git -C "$source_dir" diff --cached --binary | sha256sum | cut -d' ' -f1)" = ca66931518af4392d3cad42faf9fe8e4136cc8221edb7ac72491fde2000a6040
 test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | sha256sum | cut -d' ' -f1)" = 0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe
 test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | wc -l)" = 33
 test "$(git -C "$source_dir" ls-tree -r "$expected_package_tree" -- CMakeLists.txt cmake csrc rust | sha256sum | cut -d' ' -f1)" = "$expected_native_inputs_sha"
