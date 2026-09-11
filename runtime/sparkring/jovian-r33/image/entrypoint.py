@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -12,7 +13,14 @@ import sys
 VERIFY = "/opt/sparkring/bin/verify-candidate"
 PYTHON = "/opt/venv/bin/python"
 PROFILE_ROOT = Path("/opt/sparkring/profile-contract")
-ALLOWED_PROFILES = {"tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"}
+ALLOWED_PROFILES = {
+    "tp2-dcp1",
+    "tp2-dcp1-sparkcache",
+    "tp4-dcp1",
+    "tp4-dcp1-sparkcache",
+    "tp4-dcp4",
+    "tp4-dcp4-sparkcache",
+}
 PLACEHOLDER_MARKERS = ("<", ">", "${")
 
 
@@ -38,6 +46,32 @@ def verification_environment() -> dict[str, str]:
     for name in ("PYTHONPATH", "SPARKRING_TRANSPORT_PROFILE", "SPARKRING_TRANSPORT_MANIFEST_SHA256"):
         environment.pop(name, None)
     return environment
+
+CONTRACT_MOUNT_LOCK = Path("/opt/sparkring/receipts/source-lock.json")
+
+
+def verify_installed_files() -> None:
+    """Verify installed files, tolerating a mounted profile-contract overlay.
+
+    With the contract overlay active, the mounted directory supersedes the
+    baked contract files, so the source-lock identity check excludes that
+    directory and verifies every other installed file itself. Without the
+    overlay the baked verify-candidate runs unchanged.
+    """
+    if not os.environ.get("R33_PROFILE_CONTRACT_HOST_ROOT", ""):
+        subprocess.run([VERIFY], check=True, env=verification_environment())
+        return
+    lock = json.loads(CONTRACT_MOUNT_LOCK.read_text())
+    if lock.get("schema") != "sparkring-r33-candidate-source-lock/v1":
+        raise RuntimeError("unsupported candidate source lock")
+    if sys.prefix != "/opt/venv" or sys.base_prefix == sys.prefix:
+        raise RuntimeError("candidate verifier is outside /opt/venv")
+    for relative, expected in lock["installed_files"].items():
+        if relative.startswith("opt/sparkring/profile-contract/"):
+            continue
+        digest = hashlib.sha256((Path("/") / relative).read_bytes()).hexdigest()
+        if digest != expected:
+            raise RuntimeError(f"installed file identity mismatch: /{relative}")
 
 
 def validate_external_profile(root: Path = PROFILE_ROOT) -> dict:
@@ -119,7 +153,7 @@ def validate_external_profile(root: Path = PROFILE_ROOT) -> dict:
             "SPARK_TP4_CONTROL_PORT0", "SPARK_TP4_CONTROL_PORT1",
         ):
             concrete(key)
-        if profile_name == "tp4-dcp1-sparkcache":
+        if profile_name in ("tp4-dcp1-sparkcache", "tp4-dcp4-sparkcache"):
             concrete("SPARKCACHE_CACHE_NAMESPACE")
             native = contract["sparkcache_native"]
             for key, expected in {
@@ -156,7 +190,7 @@ def main() -> int:
     verify_environment = verification_environment()
     if argv == [VERIFY]:
         os.execve(argv[0], argv, verify_environment)
-    subprocess.run([VERIFY], check=True, env=verify_environment)
+    verify_installed_files()
     os.execve(argv[0], argv, os.environ)
     return 127
 

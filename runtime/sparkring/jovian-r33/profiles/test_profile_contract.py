@@ -133,7 +133,15 @@ def activation(name):
 
 
 @pytest.mark.parametrize(
-    "name", ["tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"]
+    "name",
+    [
+        "tp2-dcp1",
+        "tp2-dcp1-sparkcache",
+        "tp4-dcp1",
+        "tp4-dcp1-sparkcache",
+        "tp4-dcp4",
+        "tp4-dcp4-sparkcache",
+    ],
 )
 def test_candidate_templates_match_contract_and_pinned_inputs(name):
     assert verifier.validate_template(name, ASSET_ROOT)["checks_passed"] is True
@@ -194,7 +202,9 @@ def test_local_config_identity_can_be_qualified_before_publication():
     )
 
 
-@pytest.mark.parametrize("name", ["tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"])
+@pytest.mark.parametrize(
+    "name", ["tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"]
+)
 def test_activation_receipt_requires_runtime_counters(name):
     document = activation(name)
     document["ranks"][0]["instanttensor_allocations"] = 0
@@ -202,7 +212,9 @@ def test_activation_receipt_requires_runtime_counters(name):
         verifier.validate_activation(document)
 
 
-@pytest.mark.parametrize("name", ["tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"])
+@pytest.mark.parametrize(
+    "name", ["tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"]
+)
 def test_complete_activation_receipt_passes(name):
     assert verifier.validate_activation(activation(name)) == {
         "profile": name,
@@ -270,7 +282,7 @@ def test_tp2_rejects_inconsistent_mhc_ceilings_across_ranks():
         verifier.validate_activation(document)
 
 
-@pytest.mark.parametrize("name", ["tp4-dcp1", "tp4-dcp1-sparkcache"])
+@pytest.mark.parametrize("name", ["tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"])
 @pytest.mark.parametrize(
     "field,value,match",
     [

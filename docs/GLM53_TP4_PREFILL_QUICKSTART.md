@@ -7,8 +7,11 @@ The exact evidence and limits are in the
 This guide downloads or builds a source-pinned image and selects it through SparkRing's
 existing managed mesh deployment. It uses four NVIDIA Sparks, native MTP depth
 three, continuation-prefill coalescing, token-sharded mHC, and NCCL across both
-host PCIe domains. DCP1 is the qualified profile. This R33 profile contract does
-not expose a DCP4 launch profile.
+host PCIe domains. DCP1 is the baked-in qualified profile. A TP4/DCP4
+profile (SparkCache and cache-disabled variants) is available through the
+profile-contract overlay (`R33_PROFILE_CONTRACT_HOST_ROOT`; see the
+Reproduction section of the record) and is bounded-qualified in
+[r33-image020-tp4-dcp4-sparkcache-20260911](../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md).
 
 | Setting | DCP1 profile |
 |---|---|
@@ -21,7 +24,7 @@ not expose a DCP4 launch profile.
 | Coalescing and mHC prefill sharding | Enabled |
 | TP4 mesh and dual-domain NCCL | Enabled |
 | SparkCache connector / compact index cache | Enabled / disabled |
-| DCP top-k owner exchange | Disabled; its implementation requires DCP4 |
+| DCP top-k owner exchange | DCP1: disabled (implementation requires DCP4). DCP4 overlay: active (`full-CKV gather` prefill path) |
 
 The maximum context is a request-length limit. It is distinct from the total
 KV capacity reported at startup and does not establish a tested concurrency
