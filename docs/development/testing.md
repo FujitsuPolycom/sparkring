@@ -28,3 +28,7 @@ CPU tests cover configuration, packaging and lifecycle contracts. They do not
 validate CUDA kernels, RDMA behavior, live serving, GPU memory stability or
 performance. Hardware checks before deployment promotion are the maintainer's
 responsibility; a contributor can state what they could not run.
+
+ENV compatibility checks compare ordered assignments against the initial
+migration baseline, allowing comment edits. `profiles/environment-exports.json`
+retains the original file hashes and records separately approved default changes.

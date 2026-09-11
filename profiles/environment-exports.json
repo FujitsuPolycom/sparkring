@@ -5,13 +5,15 @@
       "profile": "deepseek-v4-flash-0731",
       "template": "profiles/deepseek-v4-flash-0731/runtime.env.template",
       "destination": "scripts/config/deepseek-v4-flash-0731.env.example",
-      "migration_baseline_sha256": "123e91a38110578ea209e3171587e7e7292ebf7602d8fd84bb2d52edf57729e1"
+      "migration_baseline_sha256": "123e91a38110578ea209e3171587e7e7292ebf7602d8fd84bb2d52edf57729e1",
+      "migration_assignment_sha256": "1ee158fe61c5fa5f774abfcba7d9f663fc968cd5a359524643cdae227d7eee58"
     },
     {
       "profile": "deepseek-v4-flash-0731-pair",
       "template": "profiles/deepseek-v4-flash-0731-pair/runtime.env.template",
       "destination": "scripts/config/deepseek-v4-flash-0731-pair.env.example",
-      "migration_baseline_sha256": "c59f5ccbafc826de721abc520f2a11674f166f04fdf419be35c4aaf338d27fb5"
+      "migration_baseline_sha256": "c59f5ccbafc826de721abc520f2a11674f166f04fdf419be35c4aaf338d27fb5",
+      "migration_assignment_sha256": "7687ea0b0d05a5010d3ed66e12f373c633fd6f667e5a4d5b9349bad736adf1b2"
     },
     {
       "profile": "deepseek-v41-flash-cycle",
@@ -23,25 +25,30 @@
           "from": 430080,
           "to": 1048576
         }
-      }
+      },
+      "migration_assignment_sha256": "6b4da4fad051b8b2fe54a3f5da158fe1c22678b94bf274875512d919e573347b"
     },
     {
       "profile": "glm53-flash-nvfp4-dflash2-bf16-tp4",
       "template": "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/runtime.env.template",
       "destination": "runtime/glm53-flash-jj-r8-gb10/runtime.env.example",
-      "migration_baseline_sha256": "54b9e722bb554dfb2970f814936f4079edc4632f642a970e4065abfc634dfda6"
+      "migration_baseline_sha256": "54b9e722bb554dfb2970f814936f4079edc4632f642a970e4065abfc634dfda6",
+      "migration_assignment_sha256": "318b2ba7e51092963273735a3c464a6a3fe5a752ebe60f78fc1eeb6fa815b11b"
     },
     {
       "profile": "qwen38-27b-exl3-k5k6",
       "template": "profiles/qwen38-27b-exl3-k5k6/runtime.env.template",
       "destination": "scripts/config/qwen38-27b-exl3-k5k6.env.example",
-      "migration_baseline_sha256": "ec3bb8782f63bc9a24d54d021c89bab84850da4bf7c56ecd71149e621ce85031"
+      "migration_baseline_sha256": "ec3bb8782f63bc9a24d54d021c89bab84850da4bf7c56ecd71149e621ce85031",
+      "migration_assignment_sha256": "ac4df3cf50d894e4066e254d406c5cf8ea31f74dc0f2cc46bb30515500916d98"
     },
     {
       "profile": "qwen38-27b-exl3-k5k6-pair",
       "template": "profiles/qwen38-27b-exl3-k5k6-pair/runtime.env.template",
       "destination": "scripts/config/qwen38-27b-exl3-k5k6-pair.env.example",
-      "migration_baseline_sha256": "0ffbc64afd7043fefd54dba00d6f2f6011a2377f27dc6c1afd7838835c7d80b0"
+      "migration_baseline_sha256": "0ffbc64afd7043fefd54dba00d6f2f6011a2377f27dc6c1afd7838835c7d80b0",
+      "migration_assignment_sha256": "af596302ab584bc3767fa68fe2c72a68007b931b1ddd71865d2a73648e51018c"
     }
-  ]
+  ],
+  "migration_baseline_commit": "c65a9981e2a69f821ac716f6f13484d99d23f4ea"
 }

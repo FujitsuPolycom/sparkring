@@ -226,7 +226,7 @@ def test_r33_pair_and_source_profile_are_not_silently_interchanged():
 
 
 def test_environment_examples_preserve_baseline_defaults():
-    from runtime.common.environment import render_environment
+    from runtime.common.environment import assignment_digest, render_environment
     rows = profiles.read_json(profiles.ROOT/'profiles/environment-exports.json')['exports']
     for row in rows:
         rendered = render_environment(row['profile'], template_only=True).encode('utf-8')
@@ -235,7 +235,19 @@ def test_environment_examples_preserve_baseline_defaults():
             original = f"{key.upper()}={change['from']}".encode()
             assert rendered.count(current) == 1
             rendered = rendered.replace(current, original)
-        assert hashlib.sha256(rendered).hexdigest() == row['migration_baseline_sha256']
+        assert assignment_digest(rendered.decode('utf-8')) == row['migration_assignment_sha256']
+
+
+def test_environment_assignment_digest_preserves_executable_content():
+    from runtime.common.environment import assignment_digest
+    baseline = assignment_digest('A=1\nB="two words"\n')
+    assert assignment_digest('# purpose\r\nA=1\r\n\r\nB="two words"\r\n') == baseline
+    assert assignment_digest('A=2\nB="two words"\n') != baseline
+    assert assignment_digest('B="two words"\nA=1\n') != baseline
+    assert assignment_digest('A=1\nB=two words\n') != baseline
+    for invalid in ('A=1\nA=2\n', 'echo changed\n', 'export A=1\n'):
+        with pytest.raises(ValueError, match='unique literal assignments'):
+            assignment_digest(invalid)
 
 
 def rank_values(profile_id):

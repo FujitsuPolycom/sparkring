@@ -2,6 +2,28 @@
 from pathlib import Path
 
 
+def assignment_digest(text: str) -> str:
+    """Hash ordered ENV assignments, excluding only blank and comment lines.
+
+    Values, quoting and assignment order remain significant. This checks
+    compatibility, not shell evaluation or a published artifact's identity.
+    """
+    import hashlib
+    import re
+
+    assignments = []
+    seen = set()
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        key, separator, _ = line.partition('=')
+        if not separator or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', key) or key in seen:
+            raise ValueError('ENV baseline requires unique literal assignments')
+        seen.add(key)
+        assignments.append(line)
+    return hashlib.sha256(('\n'.join(assignments) + '\n').encode('utf-8')).hexdigest()
+
+
 def read_assignments(path: Path, keys: set[str]) -> dict[str, str]:
     result = {}
     for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
