@@ -14,7 +14,7 @@ Mia commit `e59e6eb67479aa68f6fa700c600dc90a0729b5ec`, image ID
 `sha256:4252984d1cd642a51bd0cde06665a4f6a73726141dec760392a73cf968bce744`.
 The source/base identity is recorded in the [runtime pins](../../../runtime/deepseek-v41-sglang/pins.json).
 
-The four ranks were rebooted before each arm. Context 262144, prefill chunk
+The four Spark nodes were rebooted before each arm. Context 262144, prefill chunk
 4096, maximum eight requests, memory fraction 0.90, requested total-token pool
 1500000, DSpark block five without SPS/STS tables, b12x MXFP8 backend, MoE fused
 finalize disabled, expandable segments disabled, Engram NVMe packed layout,
@@ -34,8 +34,8 @@ preceded the ladder, but the first nominal 16K prefill still included additional
 initialization and is retained without being represented as steady-state
 performance. There is no repeated-run confidence interval. Quality capture
 used 20 fixed prompts, including four roughly 12–15K prompts, first-token top-20
-log probabilities, and 48-token greedy continuations. Truncated-distribution
-KL is a diagnostic, not a full-vocabulary divergence measure.
+log probabilities, and 48-token greedy continuations. The truncated token sets
+do not define full-vocabulary probability distributions.
 
 Raw observations: [replay-off prefill](sglang-decoder-replay-20260911/prefill-sgl-replay0.json),
 [replay-on prefill](sglang-decoder-replay-20260911/prefill-sgl-replay1.json),
@@ -57,17 +57,18 @@ Endpoint addresses are sanitized; numerical observations are retained.
 | C1 decode aggregate, tok/s | 35.4 | 37.4 |
 | C4 decode aggregate, tok/s | 80.5 | 76.3 |
 
-Both needle requests returned the exact passphrase. All 20 first-token choices
-and all 20 greedy continuations matched. Top-20 diagnostic KL mean was 0.006,
-maximum 0.12. These are the handoff's rounded summaries; raw quality distributions
-are retained for independent recomputation.
+Both needle receipts report a pass. All 20 recorded first-token choices and
+all 20 recorded greedy continuations match between arms. The paired top-20
+sets share 17–20 token strings. Their normalization and missing-probability
+treatment are unspecified, so this summary does not report an aggregate KL
+value. Raw distributions remain available for explicitly defined comparisons.
 
 ## Conclusion
 
 Enabling decoder-tail replay increased nominal 64K prefill throughput by about
-57% in this comparison. With replay disabled, SGLang prefill was near the
-separately measured vLLM implementation's approximately 2K tok/s. The matched
-SGLang comparison isolates the replay flag; it does not attribute this gain to
+57% in this comparison. C4 decode throughput decreased by about 5%.
+Each result is one observation per arm, not a repeated-run performance bound.
+The matched SGLang comparison isolates the replay flag; it does not attribute this gain to
 two-batch overlap or generic engine scheduling.
 
 The optimization retains all rows through layer 20, then executes layers 21–39
