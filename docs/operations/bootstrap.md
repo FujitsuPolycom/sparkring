@@ -1,6 +1,7 @@
 # Bootstrap a blank SparkRing cluster
 
-Status: implemented for four- and six-Spark direct rings.
+This host and network bootstrap supports four- and six-Spark direct rings.
+It does not select a serving profile or qualify six-rank inference.
 
 This procedure starts with one blank DGX Spark whose management IPv4 address,
 username, and password are known. That first Spark becomes rank 0 and the
@@ -170,8 +171,11 @@ safety checks are described in [SparkRing prerequisites](fabric-repair.md#manage
 
 ## Worker-controller recovery
 
-Prepare and test worker recovery while rank 0 is healthy. Then, if rank 0
-cannot run Doctor, execute from an enrolled worker:
+Prepare and test worker recovery while rank 0 is healthy. Install the CLI
+on the recovery worker using step 2, and place a private copy of the verified
+cluster inventory at `~/.config/sparkring/cluster.yaml` there. Head-node
+enrollment alone does not install the CLI or authorize worker-to-peer SSH.
+Then, if rank 0 cannot run Doctor, execute from that enrolled worker:
 
 ```bash
 sparkring doctor --allow-worker-controller --verify

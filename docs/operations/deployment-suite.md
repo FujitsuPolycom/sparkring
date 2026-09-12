@@ -70,6 +70,12 @@ JSON, especially management interfaces, RDMA devices, data addresses, backups,
 and proposed changes. The fabric range must not overlap management or VPN
 routes. Existing foreign NetworkManager profiles are not silently adopted.
 
+To reuse an already verified image and model copies, pass
+`--reuse-existing-image` and four rank-ordered `--existing-model-root` values
+to `sr plan`. Both inputs are required together. Staging verifies those assets
+on every rank instead of downloading replacement copies; this is an explicit
+plan choice, not automatic reuse after an uncertain operation.
+
 ## Apply networking, then verify it
 
 Execution requires the exact reviewed plan's SHA-256. This helper supplies
@@ -113,8 +119,9 @@ sr stage --preparation "$STATE/network-verified.json" \
 PREP="$STATE/runtime/prepared.json"
 ```
 
-Staging repeats the network check, packages tracked source, downloads the
-pinned image and model on rank 0, verifies distributed copies, preserves one
+Staging repeats the network check and packages tracked source. Unless existing
+assets were selected, it downloads the pinned image and model on rank 0 and
+verifies distributed copies. It preserves one
 shared mesh key, and renders launch files. Transfers pass through the
 controller using SCP; direct fabric fanout is not implemented here. The
 download helper runs without GPUs under the staging login user's UID/GID;
