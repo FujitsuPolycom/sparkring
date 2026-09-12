@@ -1,8 +1,7 @@
 # NCCL routing across two host PCIe domains
 
-Status: **implemented** source patch; **research-only** shared-image profile.
-Four DGX Spark ranks have passed collective correctness and serving
-measurements with this routing. The
+Status: **Development** source patch; **Experimental** shared-image profile.
+The build manifest records a measured library hash. The
 [shared GLM source builder](../../runtime/sparkring/source_image/README.md)
 consumes the cumulative patch; its rebuilt library requires separate
 qualification.
@@ -12,10 +11,14 @@ only two listener GIDs can omit reachable secondary-domain functions. A global
 first-reachable fallback can also select a primary-domain function when the
 intended function belongs to the secondary domain.
 
-`nccl-2.30.7-dual-pci-domain.patch` provides bounded four-IPv4-GID publication
+The [cumulative patch](nccl-2.30.7-dual-pci-domain.patch) provides bounded four-IPv4-GID publication
 and a PCI-root-preserving fallback. It includes the switchless cycle changes;
-apply it to the unmodified revision in `dual-pci-domain.json`, not after the
-existing switchless patch. The flags default off. Generic InfiniBand and IPv6
+apply it alone to the unmodified revision in the [build manifest](dual-pci-domain.json).
+Do not layer it over the separate
+[switchless-cycle patch](nccl-2.30.7-switchless-cycle.patch),
+[Tree/PAT patch](nccl-2.30.7-skip-tree-pat.patch), or
+[two-GID patch](nccl-2.30.7-advertise-all-listener-gids.patch).
+The flags default off. Generic InfiniBand and IPv6
 retain legacy publication. Unknown handle formats are rejected. Compatible
 legacy handles do not read the unused tail bytes.
 
@@ -28,10 +31,13 @@ From that source checkout, apply the cumulative patch and run:
 ```sh
 g++ -std=c++11 -O2 -Wall -Wextra -Werror tests/routing_handle/compat.cc -o routing-handle-test
 ./routing-handle-test
-make -j8 src.build CUDA_HOME=/opt/cuda-13.3 CUDA_LIB=/opt/cuda-13.3/lib NVCC_GENCODE='-gencode=arch=compute_121,code=sm_121'
+: "${CUDA_HOME:?Set CUDA_HOME to the installed SM121-capable toolkit root}"
+: "${CUDA_LIB:?Set CUDA_LIB to that toolkit's library directory}"
+make -j8 src.build CUDA_HOME="$CUDA_HOME" CUDA_LIB="$CUDA_LIB" NVCC_GENCODE='-gencode=arch=compute_121,code=sm_121'
 ```
 
 Keep NCCL LICENSE.txt and ThirdPartyNotices.txt with distributed binaries.
+The measured library used CUDA 13.3 as recorded in the build manifest.
 The measured binary hash is provenance, not a guarantee of a byte-identical
 rebuild across toolchains. Record the produced binary, compiler, source tree,
 patch, CUDA version and image digest in the build receipt.
@@ -54,7 +60,8 @@ NCCL_IB_QPS_PER_CONNECTION=1
 ```
 
 Both `LD_PRELOAD` and `VLLM_NCCL_SO_PATH` must reference the verified library.
-Retain the existing switchless subnet and no-Tree connection contract.
+Retain the [four-rank cycle environment](README.md#four-rank-cycle), including
+subnet-aware routing and the no-Tree connection setting.
 Use INFO NET connection logs to verify final connected QPs use both domains
 on every rank. HCA discovery alone does not prove effective selection. QP
 counts establish connection placement, not equal byte distribution. Keep
@@ -66,9 +73,10 @@ custom mesh transport has separate routing and submission code.
 
 ## Validation boundary
 
-A fresh LF checkout passed `git apply --check` for the packaged patch. Existing
-cluster receipts qualify the measured library with TP4/DCP4/MTP3, B12X KDA,
-continuation coalescing and token-sharded mHC. Import sanitized raw receipts
-before publishing performance claims. Rebuild and image qualification remain
-required for the public packaging. Do not turn these settings into defaults
-for every pair, model or NCCL version.
+`git apply --check` establishes source applicability; the handle test checks
+CPU compatibility. Neither qualifies a compiled NCCL library or serving image.
+The manifest's measured-library hash identifies prior bytes, but this page
+does not provide raw cluster receipts that establish their serving scope.
+Qualify a rebuild against its own binary and image receipts before publishing
+performance claims. Keep these routing settings specific to the selected
+profile, topology and NCCL version.

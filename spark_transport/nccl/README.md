@@ -1,7 +1,7 @@
 # Patched NCCL fallback
 
-Status: implemented patched-NCCL fallback for direct pairs, four-rank and six-rank
-direct-cable cycles.
+Status: **Development**. This page specifies the patched-NCCL fallback
+environments for direct pairs and four-rank direct-cable cycles.
 
 ## Status and scope
 
@@ -10,17 +10,20 @@ Patched NCCL is the supported fallback for collectives that
 every non-admitted tensor-parallel collective. It is not a custom transport
 path.
 
-On a four-rank cycle, the patch set constrains NCCL to the direct-cable RoCE ring. It
+On a four-rank cycle, the patch set and profile environment constrain NCCL to the direct-cable RoCE ring. Together they
 prevents Tree and PAT connection setup, which would require non-adjacent
 peers, and advertises eligible listener GIDs so subnet-aware connection
-selection reaches the directly attached peer. No collective payload is routed
-through an intermediate rank. A two-rank pair uses the same verified library
-but a separate single-HCA environment: subnet-aware routing is off and Tree,
+selection reaches the directly attached peer. NCCL connections follow direct
+cable edges; its ring collectives still propagate chunks between ranks.
+The patch does not provide IP forwarding between non-adjacent endpoints.
+DeepSeek and Qwen pair profiles use a separate single-HCA environment:
+subnet-aware routing is off and Tree,
 algorithm, and channel overrides remain unset because both ranks are directly
 adjacent.
 
 The [Qwen builder's pinned patch](../../runtime/qwen38/pins.json) publishes at
-most two listener GIDs, matching its two selected cycle devices. Despite the
+most two listener GIDs. `NCCL_IB_HCA` must restrict discovery to the two
+selected cycle devices for both to be advertised. Despite the
 `advertise-all-listener-gids` filename, it is not an unlimited inventory.
 Profiles selecting four functions across two PCIe domains instead use the
 [four-GID routing contract](DUAL_PCI_DOMAIN.md).
@@ -49,7 +52,8 @@ container; it must not be replaced by an arbitrary fixed index.
 Both ranks are directly adjacent. Single-HCA profiles, including the DeepSeek
 and Qwen pair recipes, name one function attached to the cable and use its
 fabric interface for bootstrap. GLM-5.3 pair profiles select both host-domain
-functions through their own runtime contract:
+functions through their own runtime contract. The following block applies to
+the single-HCA DeepSeek/Qwen pair profiles:
 
 ```text
 NCCL_SOCKET_IFNAME=<direct-fabric-interface>
@@ -95,4 +99,4 @@ Before serving, validate the patched library identity and its image or mount,
 selected pair/cycle topology, direct-peer subnet mapping, and complete runtime
 environment on every rank. Any failed identity, topology, environment, or
 collective-correctness check is a hard stop. Do not substitute Socket
-transport or route RoCE traffic through another rank.
+transport or IP forwarding for the selected direct RoCE connections.
