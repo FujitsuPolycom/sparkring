@@ -1,21 +1,20 @@
 # DeepSeek-V4-Flash-0731 on Four DGX Sparks: SIRCL Findings
 
-Status: **research-only; live-validated**. This page summarizes the four-Spark
+Status: **Experimental**. This page summarizes the recorded four-Spark
 DeepSeek-V4-Flash-0731 SIRCL investigation and its matched patched-NCCL
 comparison. It does not promote SIRCL into the public DeepSeek quickstart.
 
 ## Executive summary
 
-SIRCL works end to end on the four-Spark TP4/DCP1 DeepSeek deployment. It
-captures and replays the width-4096 target and DSpark CUDA-graph collective path
-on all four ranks, serves correct API output, and maintains zero overflow and
-zero fatal state under sustained C32 load.
+The recorded four-Spark TP4/DCP1 run captured and replayed the width-4096
+target and DSpark CUDA-graph collective path on every rank, passed API smoke
+checks, and reported zero overflow and fatal state under sustained C32 load.
 
-The current SIRCL path does not improve throughput. Prefill is effectively
-unchanged because both arms use NCCL for prefill. Coding Peak is about 1.9%
+The comparison did not establish a SIRCL throughput improvement. Both arms
+used NCCL for prefill. Coding Peak is about 1.9%
 lower by mean. At near-identical DSpark acceptance, matched live samples place
-SIRCL approximately 2.4–3.0% below patched NCCL. Patched NCCL should remain the
-DeepSeek default while the graph-transport overhead is investigated.
+SIRCL approximately 2.4–3.0% below patched NCCL. These diagnostic windows do
+not establish causation. Patched NCCL remains the DeepSeek default.
 
 ## Tested serving contract
 
@@ -58,9 +57,9 @@ only transport activation:
 | Overflow | 0 on every rank |
 | Fatal state | None |
 | Replay | Advanced and caught up on every rank |
-| Final state | SIRCL containers stopped and preserved for later restart |
+| Final state | SIRCL containers stopped at the end of the recorded test |
 
-The active DeepSeek SIRCL session reported:
+The recorded DeepSeek SIRCL session used:
 
 ```text
 graph kernel: tiered_64k
@@ -110,7 +109,7 @@ SIRCL is not expected to affect prefill. Both arms route prefill through NCCL.
 | 128K | 2,172 | 2,212 | NCCL +1.8% |
 
 Server-side prefill validation tracked the client values within about 0.5%.
-This is measurement noise, not a SIRCL effect.
+These observations do not demonstrate a SIRCL prefill effect.
 
 ### C1 decode, three temperature-1.0 repetitions
 
@@ -164,12 +163,12 @@ where mean accepted length and draft acceptance were effectively equal:
 
 Other nearby matched windows placed SIRCL approximately 3% lower. These are
 diagnostic windows rather than independent 240-second repetitions, but they
-agree with the Coding Peak regression and isolate transport better than raw
-temperature-1.0 whole-window averages.
+have the same direction as the Coding Peak difference. Matching acceptance
+does not isolate transport cost from other runtime or workload differences.
 
 ## Tiered-64K versus striped transport
 
-DeepSeek currently uses sequential `tiered_64k`. The separate dual-port striped
+The recorded SIRCL arm used sequential `tiered_64k`. The separate dual-port striped
 schedule has been probed, but it requires the fused graph kernel and cannot be
 combined with tiered-64K in the current adapter.
 
@@ -185,9 +184,9 @@ width-4096 path.
 
 ## Finding and next step
 
-The result is not “SIRCL is broken.” SIRCL is correct and stable, but its
-current width-4096 sequential graph transport adds a small decode cost relative
-to patched NCCL. The public DeepSeek profile should remain on NCCL.
+The recorded run passed smoke and runtime-health checks but did not establish
+a throughput advantage over patched NCCL. The public DeepSeek profile remains
+on NCCL; these results do not qualify another SIRCL revision.
 
 The next useful experiment is acceptance-controlled transport profiling:
 

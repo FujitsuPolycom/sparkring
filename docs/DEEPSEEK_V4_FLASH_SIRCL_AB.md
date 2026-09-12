@@ -1,6 +1,6 @@
 # Four-Spark DeepSeek SIRCL A/B plan
 
-Status: **research-only; live-validated on one four-Spark appliance**. This
+Status: **Experimental**, with bounded execution evidence from one four-Spark deployment. This
 plan prepares a matched transport experiment for four directly cabled NVIDIA
 DGX Sparks. It does not qualify SIRCL or the DeepSeek profile and does not
 provide an execution command that contacts a host. The completed temperature-1
@@ -91,13 +91,13 @@ The generated plan reproduces the accepted sustained-decode method rather
 than a finite-request latency benchmark:
 
 - each concurrency level runs in a separate harness invocation;
-- contexts are exactly 2,048 and 8,192 total chat tokens, not prompt text
-  estimated from character count;
+- tokenized chat prompts contain exactly 2,048 or 8,192 input tokens;
+  generated output tokens are separate;
 - every cell measures 90 seconds after a hidden ten-second C1 warmup at the
   largest requested context;
 - every stream has a fully unique context;
 - requests use temperature 1.0, ignore EOS, and permit up to 8,192 output
-  tokens so completions do not drain the cell;
+  tokens; observed concurrency and underfill flags determine cell validity;
 - queueing, underfilled concurrency, errors, capacity rejection, warmup
   timeout, and missing hardware samples reject a cell; and
 - the headline uses client token timing only when it covers enough of the
@@ -125,6 +125,7 @@ usage.
 
 This invocation is not part of the 2K/8K validation matrix. Compare it only to
 another 16K/C32 receipt using the same timing, output ceiling, temperature,
-key-value budget, prompt construction, and readiness gate.
+key-value budget, prompt construction, readiness gate and serving contract.
+Both arms retain the same 4,096-token server batch budget.
 The completed transport comparison is recorded in
 [`sircl-width4096-nccl-ab-20260822.md`](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
