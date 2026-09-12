@@ -4,7 +4,7 @@ Deploy DeepSeek-V4-Flash across directly cabled DGX Sparks in either of two
 topologies: **two tensor-parallel ranks on a cabled pair**, or **four on a
 cycle**.
 
-**Status: implemented.** The env-driven launchers at
+**Status: Development.** The env-driven launchers at
 [`scripts/deepseek_v4_pair_serve.sh`](../../scripts/deepseek_v4_pair_serve.sh) and
 [`scripts/deepseek_v4_cycle_serve.sh`](../../scripts/deepseek_v4_cycle_serve.sh)
 have offline contract coverage. Equivalent two-rank and four-rank serving
@@ -67,9 +67,8 @@ rendezvous reaches ranks that are not directly cabled to each other only if
 every node relays for its neighbours, and Docker's default `FORWARD` policy
 blocks that relay.
 
-Download the official FP8 checkpoint once, distribute identical bytes to every
-rank, and choose the same container model mount on each host. The model
-contains 48 safetensors shards totaling about 167 GB.
+The plain 0731 checkpoint has 48 safetensors shards totaling about 167 GB.
+Download its pinned revision once, then distribute identical bytes to every rank.
 
 Pull the immutable ARM64 runtime image on every rank before launching any rank:
 
@@ -77,8 +76,26 @@ Pull the immutable ARM64 runtime image on every rank before launching any rank:
 docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
 ```
 
-This is the `deepseek_v4_flash_0731_hardened_serving_image.manifest_digest`
-pinned by
+On the download host, use the image's Hugging Face client without loading a model:
+
+```bash
+IMAGE=ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
+MODEL_DIR="$HOME/deepseek/model/DeepSeek-V4-Flash-0731"
+mkdir -p "$MODEL_DIR"
+docker run --rm -v "$MODEL_DIR:/model" -e LD_PRELOAD= -e HF_HUB_OFFLINE=0 \
+  --entrypoint python3 "$IMAGE" -c \
+  'from huggingface_hub import snapshot_download; snapshot_download("deepseek-ai/DeepSeek-V4-Flash-0731", revision="7872f01b1d1fe23eabc4c98b48bffcef5a386062", local_dir="/model")' || exit
+(set -o pipefail; cd "$MODEL_DIR" && find -L . -type f ! -path './.cache/*' -print0 | sort -z | xargs -0 sha256sum) \
+  > "$MODEL_DIR/../checkpoint.SHA256SUMS" || exit
+```
+
+Copy the complete model directory and `checkpoint.SHA256SUMS` to each rank,
+then run `(cd "$MODEL_DIR" && sha256sum --check ../checkpoint.SHA256SUMS)`
+with that rank's model path. This checks transfer equality against the downloaded
+revision; the launcher's directory checks alone do not verify weight bytes.
+
+The runtime digest is recorded under
+`deepseek_v4_flash_0731_hardened_serving_image.manifest_digest` in
 [`runtime/faststart-lock.json`](../../runtime/faststart-lock.json). The image
 registers `DeepseekV4ForCausalLM` and repairs malformed speculative-model
 metadata plus five-token sparse-row/native top-k execution. The launch commands
@@ -176,7 +193,7 @@ Use a pin only as an intentional escape hatch:
 
 ```text
 NCCL_IB_GID_AUTO=0
-NCCL_IB_GID_INDEX=<locally verified decimal index>
+NCCL_IB_GID_INDEX='<locally verified decimal index>'
 ```
 
 Pinned mode preserves the configured value and does not validate sysfs. On a
@@ -210,16 +227,14 @@ on both hosts before launching; matching values do not verify that model bytes
 are identical.
 
 Start rank 1 first, then rank 0. `--run` refuses to replace an existing
-container; remove an existing container intentionally before a relaunch.
+container; use the recovery procedure below for an unchanged deployment.
 
 ```bash
 # Rank 1 / worker host
 scripts/deepseek_v4_pair_serve.sh --run /path/to/rank-1.env
-docker logs -f deepseek-v4-flash-r1
 
 # Rank 0 / API host
 scripts/deepseek_v4_pair_serve.sh --run /path/to/rank-0.env
-docker logs -f deepseek-v4-flash-r0
 ```
 
 The pair environment exposes these operator-facing settings and uses the
@@ -272,8 +287,8 @@ scripts/deepseek_v4_cycle_serve.sh --run /path/to/rank-0.env
 Follow the container for the rank on each host, for example:
 
 ```bash
-docker logs -f deepseek-v4-flash-r1
-docker logs -f deepseek-v4-flash-r0
+docker logs deepseek-v4-flash-r1
+docker logs deepseek-v4-flash-r0
 ```
 
 `--kv-cache-dtype fp8_ds_mla` is required in both topologies: it declares the
@@ -362,25 +377,63 @@ exact settings and observed memory before increasing context or concurrency.
 
 ## 4. Verify rank 0
 
-Wait for the API health endpoint, then issue a bounded semantic smoke request.
-Read the configured port from the rank-0 environment so a non-default
-`API_PORT` is verified correctly.
+On rank 0, wait at most 15 minutes for health, then check a completed arithmetic
+response. Set the port from its environment and the served name from the cycle
+environment if overridden. These checks do not qualify long-context output.
 
 ```bash
-api_port=$(sed -n 's/^API_PORT=//p' /path/to/rank-0.env)
-curl --fail "http://localhost:$api_port/health"
-curl "http://localhost:$api_port/v1/models"
-curl -s "http://localhost:$api_port/v1/chat/completions" \
+API_PORT='<rank0-API_PORT>'
+SERVED_MODEL_NAME=deepseek-v4-flash-0731
+LOG_DIR="$HOME/deepseek/logs"
+mkdir -p "$LOG_DIR"
+timeout 900 bash -c 'until curl -fsS --max-time 5 "http://127.0.0.1:$1/health" >/dev/null; do sleep 5; done' _ "$API_PORT" || {
+  echo "startup failed; preserve logs and stop all ranks using the recovery procedure" >&2; exit 1;
+}
+curl --fail --max-time 10 "http://127.0.0.1:$API_PORT/v1/models"
+python3 - "$SERVED_MODEL_NAME" > "$LOG_DIR/smoke-request.json" <<'PY'
+import json, sys
+print(json.dumps({"model": sys.argv[1], "messages": [{"role": "user", "content": "What is 17 * 23? Reply with only the number."}], "max_tokens": 512, "temperature": 1.0, "top_p": 1.0}))
+PY
+curl --fail --show-error --max-time 180 "http://127.0.0.1:$API_PORT/v1/chat/completions" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"deepseek-v4-flash-0731",
-       "messages":[{"role":"user","content":"What is 17 * 23?"}],
-       "max_tokens":16,"temperature":1.0,"top_p":1.0}'
+  --data-binary "@$LOG_DIR/smoke-request.json" -o "$LOG_DIR/smoke-response.json" || exit
+python3 - "$LOG_DIR/smoke-response.json" <<'PY'
+import json, sys
+with open(sys.argv[1]) as handle:
+    response = json.load(handle)
+choice = response["choices"][0]
+message = choice["message"]
+if choice["finish_reason"] != "stop" or message["role"] != "assistant" or message.get("content", "").strip() != "391":
+    raise SystemExit("Arithmetic smoke failed; inspect the saved response and rank logs")
+print("Arithmetic smoke passed")
+PY
 ```
 
 Check rank logs for a successful rendezvous across every rank and for DSpark
 metrics. `Mean acceptance length` above one confirms speculative decoding is
 active, and `GPU KV cache size` reports the token capacity the reservation
 bought.
+
+## Stop or restart the manual deployment
+
+On each host, set its rank and save the exact container ID before stopping it:
+
+```bash
+NODE_RANK='<this-host-rank>'
+LOG_DIR="$HOME/deepseek/logs"
+mkdir -p "$LOG_DIR"
+CONTAINER_ID=$(docker inspect --format '{{.Id}}' "deepseek-v4-flash-r${NODE_RANK}") || exit
+docker inspect "$CONTAINER_ID" > "$LOG_DIR/container-${CONTAINER_ID}.json"
+docker logs "$CONTAINER_ID" > "$LOG_DIR/container-${CONTAINER_ID}.log" 2>&1
+docker stop "$CONTAINER_ID"
+```
+
+Keep the container and its model/cache mounts. For unchanged configuration,
+run `docker start "$CONTAINER_ID"` on each worker, then rank 0, and repeat
+the bounded health/smoke checks. To change configuration, retain these records,
+remove only the stopped deployment container with `docker rm "$CONTAINER_ID"`,
+then rerun `--check` and `--run` with the updated environment on every rank.
+Do not remove model or cache directories to recover a failed launch.
 
 ## Preserve JIT and collective-hang evidence
 

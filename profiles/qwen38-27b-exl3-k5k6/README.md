@@ -1,6 +1,6 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark quickstart
 
-Profile: `qwen38-27b-exl3-k5k6`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
+Profile: `qwen38-27b-exl3-k5k6`. Status: **Development**. Benchmark results apply to their recorded runtime; validate each rebuilt image.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve qwen38-27b-exl3-k5k6`.
 
@@ -332,7 +332,7 @@ Read the host mounts and rank settings from the resolved env file:
 
 ```bash
 IMAGE=sparkring-qwen38:arm64-sm121
-ATTEMPT_ID=<shared-deployment-id>
+ATTEMPT_ID='<shared-deployment-id>'
 ENV_FILE="$HOME/qwen38/config/rank.env"
 # shellcheck disable=SC1090
 . "$ENV_FILE"
@@ -433,8 +433,10 @@ Allow up to 15 minutes for first-start compilation and graph capture:
 
 ```bash
 timeout 900 bash -c \
-  "until curl -fsS http://<rank0-management-ip>:$API_PORT/health >/dev/null; do sleep 5; done"
-curl -fsS "http://<rank0-management-ip>:$API_PORT/v1/models"
+  "until curl -fsS --max-time 5 http://<rank0-management-ip>:$API_PORT/health >/dev/null; do sleep 5; done" || {
+  echo "startup failed; preserve logs and stop this attempt using the commands below" >&2; exit 1;
+}
+curl -fsS --max-time 10 "http://<rank0-management-ip>:$API_PORT/v1/models"
 ```
 
 On every rank, require the container to remain running and inspect its log:
@@ -476,8 +478,8 @@ hash/preflight check to make a later attempt proceed.
 From a client that can reach rank 0:
 
 ```bash
-API_PORT=<API_PORT value from rank 0 environment>
-MAX_MODEL_LEN=<MAX_MODEL_LEN value from rank 0 environment>
+API_PORT='<API_PORT value from rank 0 environment>'
+MAX_MODEL_LEN='<MAX_MODEL_LEN value from rank 0 environment>'
 mkdir -p "$HOME/qwen38/logs"
 python scripts/qwen38_smoke.py \
   --endpoint "http://<rank0-management-ip>:$API_PORT" \
@@ -515,7 +517,7 @@ docker logs --tail 200 "$CONTAINER_ID"
 From the client, require rank 0 to remain healthy:
 
 ```bash
-curl -fsS "http://<rank0-management-ip>:$API_PORT/health"
+curl -fsS --max-time 10 "http://<rank0-management-ip>:$API_PORT/health"
 ```
 
 ## 10. Stop or restart the exact deployment

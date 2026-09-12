@@ -1,6 +1,6 @@
 # Qwen3.8-27B EXL3 K5/K6 two-Spark quickstart
 
-Profile: `qwen38-27b-exl3-k5k6-pair`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
+Profile: `qwen38-27b-exl3-k5k6-pair`. Status: **Development**. Benchmark results apply to their recorded runtime; validate each rebuilt image.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve qwen38-27b-exl3-k5k6-pair`.
 
@@ -46,7 +46,7 @@ measurements use the same model-length policy.
 
 ## 1. Prepare the pair
 
-Complete [`docs/PREREQUISITES.md`](../../docs/operations/prerequisites.md) for a directly cabled
+Complete [the prerequisites](../../docs/operations/prerequisites.md) for a directly cabled
 pair. Both ranks need one active 200 Gb/s ConnectX-7 link, a point-to-point
 IPv4 subnet, RoCEv2, Docker with the NVIDIA runtime, passwordless SSH for
 operator coordination, and enough disk for the runtime, model and JIT cache.
@@ -60,8 +60,8 @@ Record these site values:
 
 `show_gids` or the files under
 `/sys/class/infiniband/<device>/ports/1/gid_attrs/` identify the GID. An empty
-GID entry is an artifact-lifecycle failure; do not retry the launch against a
-guessed index.
+GID entry means the selected interface has no usable address at that index;
+check link state and IPv4 configuration before choosing a GID.
 
 ## 2. Build and distribute the runtime
 
@@ -176,10 +176,12 @@ Use a fresh attempt identifier. Start the follower first and rank 0 within the
 rendezvous window:
 
 ```bash
-ATTEMPT_ID=qwen38-tp2-1m-probmtp-001
+ATTEMPT_ID='<fresh-shared-deployment-id>'
 CONTAINER="qwen38-dgx2-${ATTEMPT_ID}-r${RANK}"
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+test ! -e "$ID_FILE" || { echo "attempt already recorded: $ID_FILE" >&2; exit 1; }
 
-docker run -d --name "$CONTAINER" \
+CONTAINER_ID=$(docker run -d --name "$CONTAINER" \
   --network host --ipc host --shm-size 16g --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   -v "$MODEL_DIR:/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated:ro" \
@@ -187,15 +189,23 @@ docker run -d --name "$CONTAINER" \
   -v "$ENV_FILE:/ws/rank.env:ro" \
   --label org.sparkring.profile=qwen38-27b-exl3-k5k6-pair \
   --label org.sparkring.attempt="$ATTEMPT_ID" \
+  --label org.sparkring.rank="$RANK" \
   --entrypoint /ws/qwen38_dgx2_serve.sh \
-  "$IMAGE" --run
+  "$IMAGE" --run) || exit
+printf '%s\n' "$CONTAINER_ID" > "$ID_FILE"
 ```
 
-Tail rank 0:
+On rank 0, wait at most 15 minutes for startup, then inspect both ranks' logs:
 
 ```bash
-docker logs --follow "qwen38-dgx2-${ATTEMPT_ID}-r0"
+timeout 900 bash -c 'until curl -fsS --max-time 5 "http://127.0.0.1:$1/health" >/dev/null; do sleep 5; done' _ "$API_PORT" || {
+  echo "startup failed; preserve logs and stop both ranks using section 9" >&2; exit 1;
+}
+docker logs "$CONTAINER_ID"
 ```
+
+Run `docker logs "$CONTAINER_ID"` on rank 1 too. A timeout is a failed
+startup, not permission to leave the worker running or skip validation.
 
 The ready service must report all of these:
 
@@ -209,9 +219,14 @@ The ready service must report all of these:
 
 ## 7. Run bounded functional checks
 
-From the checkout or another machine that can reach rank 0:
+From a checkout on a client that can reach rank 0, set these values from the
+rank-0 environment and the shared deployment ID:
 
 ```bash
+API_PORT='<rank0-API_PORT>'
+MAX_MODEL_LEN='<rank0-MAX_MODEL_LEN>'
+ATTEMPT_ID='<shared-deployment-id>'
+mkdir -p "$HOME/qwen38/logs"
 python scripts/qwen38_smoke.py \
   --endpoint "http://<rank-0-management-address>:$API_PORT" \
   --model qwen38 \
@@ -255,11 +270,23 @@ normalized unique-context result.
 
 ## 9. Stop or restore another stack
 
-Stopping this profile interrupts serving. Preserve the exact logs and launch
-inputs before stopping the two named containers. Do not remove model, image,
-JIT cache, or receipt trees to make a later launch pass. If this profile
-replaced another stack, restore that stack from its retained container or
-recorded launch specification rather than reconstructing it from memory.
+On each rank, recover the recorded container ID and check its labels before
+saving logs and stopping it:
+
+```bash
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+CONTAINER_ID=$(cat "$ID_FILE") || exit
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.attempt"}}' "$CONTAINER_ID")" = "$ATTEMPT_ID" || exit 1
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.rank"}}' "$CONTAINER_ID")" = "$RANK" || exit 1
+docker logs "$CONTAINER_ID" > "$LOG_DIR/startup-${ATTEMPT_ID}-r${RANK}.log" 2>&1
+docker stop "$CONTAINER_ID"
+```
+
+Keep the stopped containers, environment files and caches. To restart the same
+configuration, run `docker start "$CONTAINER_ID"` on rank 1, then rank 0,
+after repeating the ID and label checks. Repeat startup and smoke checks.
+Changed images, mounts or environment require fresh containers and a fresh
+attempt ID. Restore another stack from its retained launch specification.
 
 ## Results and receipts
 

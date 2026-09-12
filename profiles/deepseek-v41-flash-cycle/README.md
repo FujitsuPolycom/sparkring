@@ -1,6 +1,6 @@
 # DeepSeek-V4.1-Flash four-Spark cycle quickstart
 
-Profile: `deepseek-v41-flash-cycle`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
+Profile: `deepseek-v41-flash-cycle`. Status: **Development**.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve deepseek-v41-flash-cycle`.
 
@@ -8,7 +8,7 @@ Serve `deepseek-ai/DeepSeek-V4.1-Flash` (the stock checkpoint) as four tensor-pa
 ranks on a directly cabled four-Spark cycle, with the model's two Engram lookup tables
 left on each rank's NVMe.
 
-**Status: implemented; live-benchmarked on one private cycle; not qualified.** The
+The recorded hardware runs used one four-Spark cycle. This
 profile uses a locally built vLLM image with pinned sources and runtime patches
 ([`runtime/deepseek-v41-gb10`](../../runtime/deepseek-v41-gb10/README.md)); no public
 image digest exists to replay. The machine-readable contract is
@@ -51,11 +51,6 @@ four-Spark cycle, including forwarding and the relay routes: a torch rendezvous 
 that are not directly cabled only if every node relays for its neighbours. Run
 `scripts/ring_doctor.py --site <site> --verify` and require a clean reachability matrix.
 
-Check the GPUs before trusting any number: GB10s can latch below 1 GHz with nothing visible
-in `nvidia-smi` except speed (clear it by unplugging the adapter for 30–60 s), and can sit in a
-slower hidden state under load. A 15 s fp16 matmul burn on a healthy unit reads about
-2.2–2.4 GHz at 80 W or more.
-
 ### Weights
 
 Download the stock checkpoint once and place a complete, byte-identical copy on **every rank's
@@ -80,12 +75,13 @@ the FlashInfer layers can be built inside a 7 GiB cgroup on a node that is still
 
 Copy `runtime/deepseek-v41-gb10/patches/` (seven files, `mounts.txt`, `MD5SUMS`) to the same
 absolute path on every rank; the launcher verifies the md5s. Extract SparkRing's patched
-NCCL from any published SparkRing image and put it at the same path on every rank:
+NCCL from the pinned donor below and put it at the same path on every rank:
 
 ```bash
-docker create --name nccl-tmp <sparkring image> true
-docker cp -L nccl-tmp:/opt/sparkring/nccl/libnccl.so.2 /path/to/libnccl.so.2
-docker rm nccl-tmp
+donor_image=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987
+cid=$(docker create "$donor_image" true)
+docker cp -L "$cid":/opt/sparkring/nccl/libnccl.so.2 /path/to/libnccl.so.2
+docker rm "$cid"
 ```
 
 The image's own pip NCCL is also 2.30.7; vLLM logs a `Duplicate NCCL runtime` warning
@@ -155,6 +151,17 @@ the image identity differs from `IMAGE_ID`. Stop every rank (rank 0 first) befor
 a worker that starts while an old head still listens on the rendezvous port joins the old
 head and hangs.
 
+For a restart, run this on rank 0 first, then on each worker, setting the local rank number:
+
+```bash
+rank=0  # use 1, 2 or 3 on that worker
+cid=$(docker inspect --format '{{.Id}}' "deepseek-v41-flash-r$rank") || exit 1
+docker stop --time 30 "$cid" && docker rm "$cid"
+```
+
+The launcher uses `--restart no` and keeps stopped containers. Remove the stopped
+container before rerunning `--run`; model and cache bind mounts remain on disk.
+
 Expect about eight minutes to readiness from local NVMe: ~4 min of weights, ~1 min for the
 DSpark draft layers, then graph capture and FlashInfer autotune. Require the
 Engram disk-loading messages and `Application startup complete`. For example:
@@ -192,16 +199,16 @@ Check `SpecDecoding metrics` in the log for a mean acceptance length above one, 
 
 ## 4. Sizing
 
-`--kv-cache-memory-bytes` is not used here; `--gpu-memory-utilization 0.83` sizes the pool
-against ~113 GiB free at startup, and `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0` stops the
-profiler reserving an estimated 1.5 GiB for graphs that measure 0.54 GiB on this profile. On the
-recorded boot the pool came out at 10.94 GiB (2,182,642 tokens, 5.07× the 430,080-token limit)
-with 13–15 GiB MemAvailable per rank while serving. 0.85 was measured too (3,085,606 tokens,
-400K needle pass, same speed) but left only 7–9 GiB MemAvailable, so the recorded profile keeps
-the headroom; 0.80 at a 300,000-token limit gave 1,171,588 tokens. Raising `--max-num-batched-tokens`
-to 16,384 did not boot at 0.80 (the profiler run needs 1.9 GiB of KV for one full-length request
-and 1.84 GiB was left). `--max-num-seqs 8` is the soaked value; 16 booted at 0.80 with 13–15 GiB
-free, was neutral up to eight streams and reached 285 tok/s aggregate on the prompt set at 16
-streams, so it is a valid admission option when per-stream speed matters less than throughput.
-With five speculative tokens, graph capture covers draft batches of 5n tokens and
-verification batches of 6n tokens for sequence counts n from 1 through the sequence cap. The configured default is 1,048,576 tokens; the measurements described here used limits through 430,080 tokens.
+The default uses memory utilization `0.83`, block size `128`, eight sequences,
+and 8,192 scheduler tokens. Keep `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`
+with this configuration. The launcher sizes KV from available memory rather
+than setting `--kv-cache-memory-bytes`.
+
+The 1M context default exceeds the limits tested in the retained measurements
+(up to 430,080 tokens). Record the actual startup KV pool and test the request
+lengths and concurrency you intend to serve. Changing admission or memory
+settings requires checking startup, available memory and preemption again.
+
+See the [profile evidence](../../docs/profiles/DEEPSEEK_V41_FLASH.md#evidence-boundary)
+and [benchmark record](../../performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md)
+for the measured memory budgets, capacity and concurrency comparisons.
