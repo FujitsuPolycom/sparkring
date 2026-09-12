@@ -17,6 +17,81 @@ SIRCL_ENVIRONMENT = HERE / "sircl-fused.env.example"
 IMAGE_ID = "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
 
 
+def _offline_integer_spec(tmp_path: Path, rank: str, setting: str = ""):
+    fake_bin, capture, _ = _launcher_fixture(tmp_path)
+    config = tmp_path / "integer-spec.env"
+    config.write_text("\n".join((
+        "HOST_IP=rank0.example.net", "MASTER_ADDR=rank0.example.net",
+        "TARGET_MODEL_HOST_PATH=/nonexistent-target",
+        "DFLASH_MODEL_HOST_PATH=/nonexistent-draft",
+        "CACHE_HOST_ROOT=/nonexistent-cache",
+        f"PATH={_bash_path(fake_bin)}:$PATH",
+        f"export CAPTURE_PATH={_bash_path(capture)}",
+        "SPARKRING_PRINT_CONTAINER_SPEC=1", "SPARKRING_OFFLINE_SPEC=1",
+        "SPARKCACHE_ENABLED=0", setting,
+    )), encoding="utf-8", newline="\n")
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), rank, _bash_path(config)],
+        cwd=ROOT, text=True, capture_output=True, check=False, timeout=15,
+    )
+    assert not capture.exists(), "offline rendering must not run a container"
+    return result
+
+
+@pytest.mark.parametrize("rank,headless", [("0", False), ("1", True)])
+def test_canonical_rank_preserves_api_role(tmp_path, rank, headless):
+    result = _offline_integer_spec(tmp_path, rank, "PORT=65535")
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(result.stdout)["argv"]
+    assert ("--headless" in argv) is headless
+    assert argv[argv.index("--node-rank") + 1] == rank
+    assert argv[argv.index("--port") + 1] == "65535"
+
+
+@pytest.mark.parametrize("rank,setting,diagnostic", [
+    ("00", "", "rank must be an unsigned integer without leading zeros"),
+    ("01", "", "rank must be an unsigned integer without leading zeros"),
+    ("18446744073709551616", "", "rank exceeds the supported integer range"),
+    ("0", "PORT=18446744073709559631", "PORT exceeds the supported integer range"),
+    ("0", "PORT=9223372036854775808", "PORT exceeds the supported integer range"),
+    ("0", "PORT=08015", "PORT must be an unsigned integer without leading zeros"),
+    ("0", "PORT=65536", "ports must be at most 65535"),
+    ("0", "NODE_COUNT=18446744073709551620", "NODE_COUNT exceeds the supported integer range"),
+])
+def test_invalid_integers_fail_before_container_execution(tmp_path, rank, setting, diagnostic):
+    result = _offline_integer_spec(tmp_path, rank, setting)
+    assert result.returncode == 78
+    assert diagnostic in result.stderr
+    assert '"schema": "sparkring-container-command/v1"' not in result.stdout
+
+
+@pytest.mark.parametrize("gid,submit_cpu,progress_cpu,diagnostic", [
+    ("0", "0", "1", None),
+    ("255", "1", "0", None),
+    ("256", "0", "1", "SPARK_TP4_GID0 must be at most 255"),
+    ("0", "2147483648", "1", "SPARK_TP4_GRAPH_SUBMIT_CPU exceeds the native CPU index range"),
+    ("0", "0", "0", "SIRCL graph submit and progress CPUs must be distinct"),
+])
+def test_sircl_indices_use_native_ranges(tmp_path, gid, submit_cpu, progress_cpu, diagnostic):
+    result = _offline_integer_spec(tmp_path, "0", "\n".join((
+        "SIRCL_ENABLED=1", "SPARK_TP4_PEER0=rank1.example.net",
+        "SPARK_TP4_PEER1=rank2.example.net", f"SPARK_TP4_GID0={gid}",
+        "SPARK_TP4_GID1=0", f"SPARK_TP4_GRAPH_SUBMIT_CPU={submit_cpu}",
+        f"SPARK_TP4_GRAPH_PROGRESS_CPU={progress_cpu}",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256=" + "a" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256=" + "b" * 64,
+    )))
+    if diagnostic is not None:
+        assert result.returncode == 78
+        assert diagnostic in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        argv = json.loads(result.stdout)["argv"]
+        assert f"SPARK_TP4_GID0={gid}" in argv
+        assert f"SPARK_TP4_GRAPH_SUBMIT_CPU={submit_cpu}" in argv
+        assert f"SPARK_TP4_GRAPH_PROGRESS_CPU={progress_cpu}" in argv
+
+
 def _defaults(path: Path = ENVIRONMENT) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():

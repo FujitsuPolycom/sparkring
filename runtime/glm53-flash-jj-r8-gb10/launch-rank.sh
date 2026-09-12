@@ -179,7 +179,14 @@ die() {
 
 require_uint() {
   local name="$1" value="${!1}"
-  [[ "${value}" =~ ^[0-9]+$ ]] || die "${name} must be an unsigned integer"
+  # Canonical decimal values keep shell arithmetic and emitted arguments equal.
+  # Check the signed shell range as text before evaluating any arithmetic.
+  [[ "${value}" =~ ^(0|[1-9][0-9]*)$ ]] || \
+    die "${name} must be an unsigned integer without leading zeros"
+  if (( ${#value} > 19 )) || \
+     { (( ${#value} == 19 )) && [[ "${value}" > 9223372036854775807 ]]; }; then
+    die "${name} exceeds the supported integer range"
+  fi
 }
 
 require_positive_uint() {
@@ -383,7 +390,7 @@ case "${B12X_FUSED_INDEXER}" in
   *) die 'B12X_FUSED_INDEXER must be 0 or 1' ;;
 esac
 
-[[ "${rank}" =~ ^[0-9]+$ ]] || die 'rank must be an unsigned integer'
+require_uint rank
 (( rank < NODE_COUNT )) || die "rank must be between 0 and $((NODE_COUNT - 1))"
 (( PORT <= 65535 && MASTER_PORT <= 65535 && SPARKRING_LIVENESS_PORT <= 65535 )) || \
   die 'ports must be at most 65535'
@@ -701,12 +708,18 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   [[ -n "${SPARK_TP4_DEVICE0}" && -n "${SPARK_TP4_DEVICE1}" ]] || \
     die 'SIRCL requires SPARK_TP4_DEVICE0 and SPARK_TP4_DEVICE1'
   for name in \
-    SPARK_TP4_GID0 SPARK_TP4_GID1 \
     SPARK_TP4_GRAPH_CONTROL_PORT0 SPARK_TP4_GRAPH_CONTROL_PORT1 \
-    SPARK_TP4_GRAPH_SUBMIT_CPU SPARK_TP4_GRAPH_PROGRESS_CPU \
     SPARK_TP4_MAX_INFLIGHT SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS
   do
     require_positive_uint "${name}"
+  done
+  for name in SPARK_TP4_GID0 SPARK_TP4_GID1; do
+    require_uint "${name}"
+    (( ${!name} <= 255 )) || die "${name} must be at most 255"
+  done
+  for name in SPARK_TP4_GRAPH_SUBMIT_CPU SPARK_TP4_GRAPH_PROGRESS_CPU; do
+    require_uint "${name}"
+    (( ${!name} <= 2147483647 )) || die "${name} exceeds the native CPU index range"
   done
   (( SPARK_TP4_GRAPH_CONTROL_PORT0 <= 65535 && SPARK_TP4_GRAPH_CONTROL_PORT1 <= 65535 )) || \
     die 'SIRCL graph control ports must be at most 65535'
@@ -1315,8 +1328,8 @@ container_command=(docker "${container_action[@]}" \
   "${prompt_tokens_details[@]}" \
   "${kv_transfer_args[@]}" "${headless[@]}")
 
-# The inspection path emits the same argument array used for execution. It
-# performs identity checks above, but never creates a container or waits for a model.
+# Inspection emits the execution argument array without creating a container.
+# Online rendering checks identities; offline rendering records intended inputs.
 if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]]; then
   python3 - "${container_command[@]}" <<'PY'
 import json
