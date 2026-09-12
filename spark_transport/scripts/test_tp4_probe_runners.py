@@ -201,3 +201,49 @@ try { & 'SCRIPT' -Image fake-image MAPPING; exit 2 } catch { Write-Host "EXPECTE
     assert result.returncode == 0, result.stdout + result.stderr
     assert "EXPECTED=" in result.stdout
     assert "UNEXPECTED_SSH" not in result.stdout
+
+
+@pytest.mark.parametrize("name", [
+    "run_tp4_numerical_audit.ps1", "run_tp4_vocab_graph_probe.ps1",
+])
+@pytest.mark.parametrize("embedded_empty", [False, True])
+def test_filtered_ranks_and_lost_launch_reply_cleanup(name, embedded_empty):
+    command = r"""
+function global:ssh {
+    $cmd=$args[-1]
+    Write-Host "COMMAND=$cmd"
+    Write-Host "TARGET=$($args[-2])"
+    $global:LASTEXITCODE=0
+    if ($cmd -match 'sha256sum') { Write-Output ('a' * 64 + '  /probe') }
+    if ($cmd -match 'docker run .*?-r1 ') { $global:LASTEXITCODE=255 }
+}
+try {
+    & 'SCRIPT' -Image fake-image `
+        -Targets @('host0','','host1','host2','host3') `
+        -RankHosts @('peer0','','peer1','peer2','peer3')
+    exit 2
+} catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+""".replace("SCRIPT", (SCRIPTS / name).as_posix())
+    if not embedded_empty:
+        command = command.replace(",''", "")
+    result = _powershell("-Command", command, env=os.environ.copy())
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = result.stdout.splitlines()
+    calls = [
+        (line.removeprefix("COMMAND="), lines[index + 1].removeprefix("TARGET="))
+        for index, line in enumerate(lines) if line.startswith("COMMAND=")
+    ]
+    launches = [(command, target) for command, target in calls if "docker run" in command]
+    removals = [(command, target) for command, target in calls if "docker rm" in command]
+    assert len(launches) == 2, result.stdout + result.stderr
+    assert [target for _, target in launches] == ["host0", "host1"]
+    assert len(removals) == 2, result.stdout
+    for (launch, target), (removal, cleanup_target) in zip(launches, removals):
+        owned_name = launch.split("--name ")[1].split()[0]
+        assert removal == f"docker rm -f {owned_name} >/dev/null 2>&1 || true"
+        assert cleanup_target == target
+    if name == "run_tp4_vocab_graph_probe.ps1":
+        assert "--peer0 peer1 --peer1 peer3" in launches[0][0]
+        assert "--peer0 peer0 --peer1 peer2" in launches[1][0]
+    else:
+        assert all("MASTER_ADDR=peer0 " in command for command, _ in launches)

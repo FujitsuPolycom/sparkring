@@ -38,6 +38,10 @@ if ($Image -eq "<your-vllm-image>") {
     throw "set -Image to your vLLM container image tag"
 }
 
+# Keep rank indices aligned with the non-empty entries validated above.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
+
 $nodes = @(
     [pscustomobject]@{ Rank = 0; Target = $Targets[0] },
     [pscustomobject]@{ Rank = 1; Target = $Targets[1] },
@@ -116,11 +120,13 @@ try {
             "python3 /opt/spark-vllm/tp4_numerical_audit.py >/dev/null"
         ) -join " "
 
+        # An SSH failure may follow a successful remote launch. The unique
+        # invocation name remains ours to clean up when its reply is lost.
+        $ownedNodes.Add($node)
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch numerical-audit rank $($node.Rank)"
         }
-        $ownedNodes.Add($node)
     }
 
     $deadline = [DateTime]::UtcNow.AddSeconds($WatchdogSeconds + 15)
