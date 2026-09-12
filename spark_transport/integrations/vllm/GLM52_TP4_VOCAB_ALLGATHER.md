@@ -51,8 +51,8 @@ ctest --test-dir build/spark-transport \
 One native session supports all admitted `Q` values and requires a stable
 caller CUDA stream. The adapter uses the candidate only for the exact
 four-rank CUDA BF16 contract. Nonmatching signatures use the original
-vLLM/NCCL collective. With the vocabulary graph option enabled in `custom`
-mode, admitted captures use a prepared graph session; otherwise capture uses
+vLLM/NCCL collective. With `VLLM_SPARK_TP4_GRAPH_Q1=1` and vocabulary mode
+`custom`, admitted captures use a prepared graph session; otherwise capture uses
 the original collective. Session creation failure falls back before enqueue only in shadow mode;
 custom mode terminates to prevent rank-split dispatch.
 

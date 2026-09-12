@@ -37,8 +37,7 @@ Any non-matching collective calls the original vLLM/NCCL implementation.
 result, and checks numerical agreement. `custom` returns the native result
 only after the operator has completed the selected signature's required
 validation. All-reduce native session construction and enqueue failures
-terminate the worker. Vocabulary shadow mode permits fallback when session creation fails
-before enqueue; custom mode terminates to prevent rank-split dispatch. A failure after enqueue terminates the worker; an in-process fallback
+terminate the worker. A failure after enqueue terminates the worker; an in-process fallback
 could reuse a CUDA stream with an unfulfilled native wait.
 
 The fused prefill candidate is never used during CUDA graph capture. Captured
@@ -76,12 +75,12 @@ the following variables:
 |---|---|
 | `VLLM_SPARK_TP4_MODE` | All-reduce mode: `shadow`, `custom`, `disabled`, or unset. |
 | `VLLM_SPARK_TP4_VOCAB_MODE` | Vocabulary mode: `shadow`, `custom`, or unset. |
-| `SPARK_TP4_LIBRARY` | Required path to `libspark_transport_capi.so` when either custom candidate is enabled. |
+| `SPARK_TP4_LIBRARY` | Path to `libspark_transport_capi.so` for candidate execution in either `shadow` or `custom` mode. |
 | `SPARK_TP4_PEER0`, `SPARK_TP4_PEER1` | Required site-specific direct-peer addresses; do not use placeholder defaults for serving. |
 | `SPARK_TP4_DEVICE0`, `SPARK_TP4_DEVICE1` | Local RoCE devices; defaults are `rocep1s0f0` and `rocep1s0f1`. |
 | `SPARK_TP4_GID0`, `SPARK_TP4_GID1` | GID indices; default is `3` for each device. |
 | `SPARK_TP4_CONTROL_PORT0`, `SPARK_TP4_CONTROL_PORT1` | All-reduce control-port base pair. |
-| `VLLM_SPARK_TP4_GRAPH_Q1` | Enables the width-6144 captured-graph session. |
+| `VLLM_SPARK_TP4_GRAPH_Q1` | Set to `1` to enable width-6144 all-reduce graph sessions and, with vocabulary mode `custom`, captured vocabulary all-gather. |
 | `VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH` | Enables the implemented width-4096 captured-graph performance-testing session; mutually exclusive with the width-6144 graph paths. |
 | `VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40` | Enables the exact-Q40 striped width-6144 graph session. |
 | `VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL` | Graph payload-slot protocol: `serial_ack` or `two_slot_deferred_ack`. |
@@ -118,7 +117,7 @@ the following variables:
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0`, `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1` | Secondary prefill control-port base pair. |
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS` | Positive setup and operation timeout for a prefill session. |
 | `SPARK_TP4_VOCAB_CONTROL_PORT0`, `SPARK_TP4_VOCAB_CONTROL_PORT1` | Vocabulary control-port pair. |
-| `VLLM_SPARK_MAX_QUERY_ROWS` | Default-width all-reduce row limit. Set to `40` for the qualified GLM geometry. |
+| `VLLM_SPARK_MAX_QUERY_ROWS` | Shared vocabulary and default-width all-reduce row limit. Set to `40` for the qualified GLM geometry. |
 | `VLLM_SPARK_TP4_EAGER_WIDTHS` | Comma-separated all-reduce widths; unset admits only `6144`. Set `4096,6144` only for research shadow validation. |
 | `SPARK_TP4_SHADOW_COLLECTIVES` | All-reduce shadow comparison window. |
 | `SPARK_TP4_SHADOW_PROMOTE` | Promotes an all-reduce shape after its shadow window passes. |
