@@ -6,6 +6,22 @@ import sys
 import pytest
 
 
+@pytest.mark.parametrize("payload", [b"\x80\x04binary", b"import hook\x00payload"])
+def test_small_binary_pth_is_not_a_startup_hook(tmp_path, monkeypatch, payload):
+    from scripts.check_repository_layout import validate_artifacts
+    (tmp_path / "sample.pth").write_bytes(payload)
+    monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: b"sample.pth\0")
+    with pytest.raises(ValueError, match="not a repository source"):
+        validate_artifacts(tmp_path)
+
+
+def test_small_text_pth_startup_hook_is_allowed(tmp_path, monkeypatch):
+    from scripts.check_repository_layout import validate_artifacts
+    (tmp_path / "sample.pth").write_bytes(b"import sparkring_transport\n")
+    monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: b"sample.pth\0")
+    validate_artifacts(tmp_path)
+
+
 def test_layout_check_protects_locked_markdown_asset(tmp_path):
     import hashlib
     import json

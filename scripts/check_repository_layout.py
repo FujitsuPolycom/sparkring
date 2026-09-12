@@ -90,9 +90,16 @@ def validate_artifacts(root=ROOT):
     for relative in filter(None, paths):
         path = root/relative
         if path.suffix.lower() in {'.safetensors', '.gguf', '.ggml', '.ckpt', '.pt', '.pth', '.p12', '.pfx'}:
-            # Python .pth startup hooks are small source files, not model tensors.
+            # Permit small UTF-8 .pth startup files, never binary payloads.
             if path.suffix == '.pth' and path.stat().st_size < 4096:
-                continue
+                data = path.read_bytes()
+                try:
+                    data.decode('utf-8')
+                except UnicodeDecodeError:
+                    pass
+                else:
+                    if b'\0' not in data:
+                        continue
             raise ValueError(f'{relative}: model/checkpoint or credential bundle is not a repository source')
 
 
