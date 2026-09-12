@@ -1,4 +1,4 @@
-"""Select a pinned image builder; print the command unless execution is explicit."""
+"""Print an image-build plan; run it only when execution is explicit."""
 from __future__ import annotations
 import argparse
 import json
@@ -14,7 +14,11 @@ def plan(name, arguments=(), root=ROOT):
     data = read_json(root/'runtime/images/builders.json')
     if data['schema'] != 'sparkring-image-builders/v1':
         raise ValueError('Unsupported image-builder schema')
-    choices = {row['id']: row for row in data['builders']}
+    choices = {}
+    for row in data['builders']:
+        if row['id'] in choices or row['kind'] not in ('python', 'bash'):
+            raise ValueError('Image builders require unique IDs and a supported interpreter')
+        choices[row['id']] = row
     if name not in choices:
         raise ValueError('Select a builder: '+', '.join(choices))
     selected = choices[name]

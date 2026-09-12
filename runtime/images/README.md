@@ -4,6 +4,8 @@ Use `python scripts/build_image.py BUILDER -- BUILDER_ARGUMENTS` to print a
 build command. Add `--execute` before the builder name only when you intend to
 run that build on the current host. Building consumes resources and may download
 dependencies; the default command planner performs neither action.
+The plan is JSON. With `--execute`, builder output follows it on the same
+streams; the combined output is not a single JSON document.
 
 [builders.json](builders.json) selects existing pinned implementations. GLM,
 DeepSeek and Qwen engine versions are not interchangeable. Shared image context
