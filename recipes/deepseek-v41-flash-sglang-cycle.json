@@ -47,6 +47,7 @@
   "evidence": {
     "status": "implemented",
     "record": "performance/records/deepseek-v41-flash/sglang-decoder-replay-20260911.md",
+    "streaming_record": "performance/records/deepseek-v41-flash/sglang-soak-20260912.md",
     "limitations": [
       "No public image; operators must build and pin their image.",
       "Controlled A/B has one observation per prefill size, not a repeated-run confidence interval.",

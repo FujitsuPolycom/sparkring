@@ -2,6 +2,8 @@
 
 Run DeepSeek-V4.1-Flash across four DGX Sparks using SGLang and the pinned Mia
 adapter. This is a separate runtime from the [vLLM profile](../deepseek-v41-flash-cycle/README.md).
+The recipe's fallback reference identifies that manual alternative; the
+launcher does not automatically switch runtimes after a failure.
 
 | Setting | Default |
 |---|---|
