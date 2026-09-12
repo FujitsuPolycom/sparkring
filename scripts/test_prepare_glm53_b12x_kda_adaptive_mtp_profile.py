@@ -182,3 +182,15 @@ def test_failed_site_resolution_does_not_mutate_caller():
                 parent_image="local/parent", parent_image_id="sha256:" + "b" * 64,
                 native_library_sha256="c" * 64)
     assert site == before
+
+
+@pytest.mark.parametrize("speculative", [None, True, 5, []])
+def test_scalar_speculation_reports_field_error(speculative):
+    profile = json.loads(PROFILE.read_text())
+    site = yaml.safe_load(SITE.read_text())
+    args = profile["extra_vllm_args"]
+    args[args.index("--speculative-config") + 1] = json.dumps(speculative)
+    with pytest.raises(ResolveError, match="speculative-config.*object"):
+        resolve(profile, site, image="local/image", image_id="sha256:" + "a" * 64,
+                parent_image="local/parent", parent_image_id="sha256:" + "b" * 64,
+                native_library_sha256="c" * 64)

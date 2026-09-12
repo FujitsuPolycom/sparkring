@@ -3,7 +3,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import importlib
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -215,3 +218,61 @@ def test_resolver_rejects_unverified_native_library() -> None:
             parent_image_id="sha256:" + "b" * 64,
             native_library_sha256="short",
         )
+
+
+@pytest.fixture(params=["e105", "b12x"])
+def preparer_inputs(request):
+    stem = "e105" if request.param == "e105" else "b12x_kda_adaptive_mtp"
+    module = importlib.import_module(f"prepare_glm53_{stem}_profile")
+    prefix = "glm53-flash-b12x-kda"
+    profile_path = (PROFILES["dflash"] if stem == "e105" else
+                    CONFIG / f"{prefix}-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json")
+    site_path = SITE if stem == "e105" else CONFIG / f"{prefix}-adaptive-mtp-tp4-site.example.yaml"
+    return module, json.loads(profile_path.read_text()), yaml.safe_load(site_path.read_text()), {
+        "image": "local/image", "image_id": "sha256:" + "a" * 64,
+        "parent_image": "local/parent", "parent_image_id": "sha256:" + "b" * 64,
+        "native_library_sha256": "c" * 64,
+    }
+
+
+@pytest.mark.parametrize("section", ["profile", "site", "identity", "required_image_labels", "runtime", "serving"])
+def test_preparer_rejects_nonobject_sections(preparer_inputs, section):
+    module, profile, site, arguments = preparer_inputs
+    if section == "profile":
+        profile = []
+    elif section == "site":
+        site = None
+    elif section in ("runtime", "serving"):
+        site[section] = []
+    else:
+        profile[section] = None
+    with pytest.raises(module.ResolveError, match=section):
+        module.resolve(profile, site, **arguments)
+
+
+def test_preparer_requires_argv_attestation(preparer_inputs):
+    module, profile, site, arguments = preparer_inputs
+    profile["attestation_hook"] = " ".join(profile["attestation_hook"])
+    with pytest.raises(module.ResolveError, match="attestation_hook"):
+        module.resolve(profile, site, **arguments)
+
+
+def test_preparer_cli_invalid_yaml_preserves_outputs(preparer_inputs, tmp_path):
+    module, profile, _, arguments = preparer_inputs
+    source = tmp_path / "input.json"
+    source.write_text(json.dumps(profile))
+    site = tmp_path / "input.yaml"
+    site.write_text("runtime: [unterminated")
+    outputs = [tmp_path / "profile.json", tmp_path / "site.yaml"]
+    for output in outputs:
+        output.write_text("existing output")
+    command = [sys.executable, module.__file__, "--profile-template", str(source),
+               "--site-template", str(site), "--profile-output", str(outputs[0]),
+               "--site-output", str(outputs[1])]
+    for key, value in arguments.items():
+        command.extend(["--" + key.replace("_", "-"), value])
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert "error:" in result.stderr
+    assert all(output.read_text() == "existing output" for output in outputs)

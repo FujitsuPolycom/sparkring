@@ -52,6 +52,8 @@ def _replace_native(value: Any, digest: str) -> Any:
 
 def _argument(profile: dict[str, Any], option: str) -> str:
     arguments = profile.get("extra_vllm_args", [])
+    if not isinstance(arguments, list) or any(not isinstance(value, str) for value in arguments):
+        raise ResolveError("extra_vllm_args must be a list of strings")
     if arguments.count(option) != 1:
         raise ResolveError(f"profile must contain exactly one {option}")
     index = arguments.index(option)
@@ -70,6 +72,19 @@ def resolve(
     parent_image_id: str,
     native_library_sha256: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    for name, value in (("profile", profile), ("site", site)):
+        if not isinstance(value, dict):
+            raise ResolveError(f"{name} must be an object")
+    for owner, fields in ((profile, ("identity", "required_image_labels", "environment")),
+                          (site, ("runtime", "serving"))):
+        for field in fields:
+            if not isinstance(owner.get(field), dict):
+                raise ResolveError(f"{field} must be an object")
+    hook = profile.get("attestation_hook")
+    if not isinstance(hook, list) or not hook or any(
+        not isinstance(value, str) or not value for value in hook
+    ):
+        raise ResolveError("attestation_hook must be a non-empty list of strings")
     if not image or IMAGE_PLACEHOLDER in image:
         raise ResolveError("SparkCache image reference is unresolved")
     if not parent_image or PARENT_PLACEHOLDER in parent_image:
@@ -105,6 +120,8 @@ def resolve(
     if _argument(profile, "--load-format") != "fastsafetensors":
         raise ResolveError("profile must select the fastsafetensors loader")
     speculative = json.loads(_argument(profile, "--speculative-config"))
+    if not isinstance(speculative, dict):
+        raise ResolveError("--speculative-config must be an object")
     if speculative.get("num_speculative_tokens") != 5:
         raise ResolveError("adaptive MTP maximum depth must be five")
     if speculative.get("adaptive_speculative_tokens_initial") != 3:
@@ -113,7 +130,7 @@ def resolve(
         raise ResolveError("adaptive MTP observation window must be 32")
     if profile.get("environment", {}).get("VLLM_FASTSAFETENSORS_QUEUE_SIZE") != "1":
         raise ResolveError("fastsafetensors queue size must be one")
-    attestation = " ".join(str(value) for value in profile.get("attestation_hook", []))
+    attestation = " ".join(hook)
     if SPARKCACHE_SOURCE_SHA256 not in attestation:
         raise ResolveError("profile does not attest the integrated SparkCache source")
     if LEASE_CONTRACT_SHA256 not in attestation:
@@ -159,6 +176,8 @@ def main() -> int:
             parent_image_id=args.parent_image_id,
             native_library_sha256=args.native_library_sha256,
         )
+    except yaml.YAMLError:
+        parser.error("site template must contain valid YAML")
     except (OSError, KeyError, json.JSONDecodeError, ResolveError) as exc:
         parser.error(str(exc))
     args.profile_output.write_text(
