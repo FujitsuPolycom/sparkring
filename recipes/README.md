@@ -27,7 +27,7 @@ be narrower than the corresponding base serving profile.
 ## MTP3 mesh profile
 
 The retained [compute-image mesh recipe](glm53-spark-mtp3-managed-mesh-tp4.json)
-records a TP4/DCP4 native-MTP3 composition. TP and DCP use the same four
+records a TP4/DCP4 MTP3 composition. TP and DCP use the same four
 processes: TP4 shards model tensors across the ranks, while DCP4 shards decode
 context work across those ranks; the shape does not require 16 processes. Its
 dedicated site contract is
@@ -41,6 +41,7 @@ catalog.
 A status applies to the exact configuration and evidence named by its record.
 See the [writing and evidence policy](../docs/development/writing.md) for
 `implemented`, `qualified`, `research-only`, and `unsupported` scope.
+The catalog displays these as Development, Validated, Experimental and Unsupported.
 
 [Profile validation](../docs/operations/profile-validation.md) describes
 performance, accuracy, and restart checks.

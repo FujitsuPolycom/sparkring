@@ -28,9 +28,9 @@ configurations and workloads recorded with each profile.
 
 ## Profiles
 
-Bold entries are recommended. Values describe the linked default profile.
-Context is the per-request limit; counts are rounded. DCP and KV choices appear
-in the same order. See the
+Bold entries are recommended. The guide describes the default; DCP alternatives
+link to their own KV evidence. Context is the per-request limit; counts are
+rounded. DCP and KV choices appear in the same order. See the
 [full catalog](profiles/README.md) for exact settings and alternatives.
 
 <!-- BEGIN GENERATED PROFILES -->
