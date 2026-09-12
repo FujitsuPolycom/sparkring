@@ -16,6 +16,13 @@ import pytest
 import compare_benchmark_evidence as cmp  # noqa: E402
 
 
+def test_duplicate_json_settings_are_rejected(tmp_path):
+    path = tmp_path / "evidence.json"
+    path.write_text('{"metadata":{"temperature":1,"temperature":2}}')
+    with pytest.raises(cmp.ConfigError, match="duplicate JSON key"):
+        cmp.load_document(path)
+
+
 def test_missing_cell_mode_cannot_classify_as_sustained():
     document = _make_doc()
     del document['results'][0]['benchmark_mode']

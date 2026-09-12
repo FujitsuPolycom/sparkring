@@ -895,8 +895,15 @@ def compare_documents(
 def load_document(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise ConfigError(f"file not found: {path}")
+    def unique_keys(entries):
+        result = {}
+        for key, value in entries:
+            if key in result:
+                raise ConfigError(f"duplicate JSON key {key!r} in {path}")
+            result[key] = value
+        return result
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_keys)
     except json.JSONDecodeError as exc:
         raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
     if not isinstance(doc, dict):
