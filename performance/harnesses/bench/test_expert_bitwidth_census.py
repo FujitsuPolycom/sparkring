@@ -466,6 +466,7 @@ class CensusTest(unittest.TestCase):
             declared = census.read_declared(root)
 
         self.assertIsNone(declared["declared_average_bits_per_weight"])
+        self.assertEqual(declared["bit_rate_fields"], [])
 
     def test_invalid_comparison_tolerance_is_rejected(self) -> None:
         declared = {"declared_average_bits_per_weight": 3.5}

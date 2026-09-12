@@ -726,7 +726,8 @@ def read_declared(path: Path) -> dict[str, Any]:
         sources.append({"file": name, "present": True})
         for json_path, value in _walk(document):
             key = json_path.rsplit(".", 1)[-1]
-            if key in DECLARED_BIT_KEYS and isinstance(value, (int, float, str)):
+            if (key in DECLARED_BIT_KEYS and isinstance(value, (int, float, str))
+                    and not isinstance(value, bool)):
                 fields.append({"file": name, "path": json_path, "value": value})
             if name in TIER_VECTOR_SOURCES and _is_tier_vector(value):
                 tier_vector_sources.append(name)
