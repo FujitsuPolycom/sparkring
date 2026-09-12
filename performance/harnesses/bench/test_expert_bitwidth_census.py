@@ -505,6 +505,19 @@ class CensusTest(unittest.TestCase):
 
 
 class UndeterminedTest(unittest.TestCase):
+    def test_overlapping_payload_ranges_exclude_the_ambiguous_shard(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "good.safetensors", {"good.weight": ("F16", [2])})
+            header = json.dumps({
+                "first.weight": {"dtype": "F16", "shape": [2], "data_offsets": [0, 4]},
+                "second.weight": {"dtype": "F16", "shape": [2], "data_offsets": [0, 4]},
+            }).encode()
+            (root / "overlap.safetensors").write_bytes(len(header).to_bytes(8, "little") + header + bytes(4))
+            records, findings = census.read_tensor_records(root)
+            self.assertEqual([record.name for record in records], ["good.weight"])
+            self.assertTrue(any("overlap" in finding for finding in findings))
+
     def test_mixed_instance_excludes_unknown_payload_from_bit_rate(self):
         with TemporaryDirectory() as raw:
             root = Path(raw)

@@ -451,6 +451,24 @@ def read_tensor_records(path: Path) -> tuple[list[TensorRecord], list[str]]:
             findings.append(f"unreadable shard: {error}")
             continue
         shard_size = shard.stat().st_size
+        ranges = []
+        for name, entry in header.items():
+            if name == "__metadata__" or not isinstance(entry, dict):
+                continue
+            offsets = entry.get("data_offsets")
+            if (not isinstance(offsets, list) or len(offsets) != 2
+                    or any(type(value) is not int for value in offsets)):
+                continue
+            start, end = offsets
+            if 0 <= start < end and payload_start + end <= shard_size:
+                ranges.append((start, end))
+        ranges.sort()
+        # Overlap makes byte ownership ambiguous; retain no tensors from that
+        # shard. Empty tensors have no payload interval and cannot overlap.
+        if any(start < previous_end
+               for (_, previous_end), (start, _) in zip(ranges, ranges[1:])):
+            findings.append(f"{shard.name}: overlapping tensor payload ranges; shard excluded")
+            continue
         for name, entry in header.items():
             if name == "__metadata__":
                 continue
