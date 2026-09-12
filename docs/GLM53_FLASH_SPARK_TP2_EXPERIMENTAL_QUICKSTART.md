@@ -1,14 +1,14 @@
 # GLM-5.3 Flash NVFP4-Spark TP2 quickstart
 
 Use the [published-image TP2 guide](../profiles/glm53-flash-spark-tp2-dcp1/README.md)
-for the maintained 1,048,576-token pair deployment, or its
+for a two-Spark deployment with a 1M-token per-request context limit, or its
 [SparkCache variant](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md).
 
 The [retained source-image TP2 guide](../runtime/profiles/glm53-flash-spark-tp2/README.md)
 defines a separate contract
 for 8.75 GiB FP8 KV per node, managed B12X loading, static MTP3, and single-DAC
 transport across both PCI domains. The reference allocator estimated 1,050,118
-KV tokens; the configured per-request context limit remains 262,144.
+KV tokens; the configured per-request context limit is 262,144.
 The guide defines the source-image receipt, active 2 GiB host-memory guard,
 and manual lifecycle commands.
 
