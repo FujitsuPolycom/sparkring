@@ -5,7 +5,7 @@
   "upstream_base_commit": "ffb7442d04a9f50b950df1fb17280acad881b7d5",
   "license": "Apache-2.0",
   "scope": "Only b12x.comm.roce; no model kernels or other B12X package modules",
-  "roce_tree_sha256": "05babcac64f2b915249fe5a11c048fb4468887abeaa4a5eed4cf3d100479b52d",
+  "roce_tree_sha256": "23cddf72cbf9e2c1612d561e1f4b70c858547a10cf1de6e55d4beea04dcd1cd8",
   "local_changes": [
     "Preserve capture-ID stream admission across Python contexts",
     "Order shared input staging and output copies across streams",
