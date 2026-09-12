@@ -6,8 +6,8 @@ The profile ran on two directly cabled DGX Sparks and produced the results
 linked below.
 
 Use the
-[two-Spark quickstart](../QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) to build and
-distribute the public image, verify the pinned checkpoint, and
+[two-Spark quickstart](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md) to build and
+distribute one local image, verify the pinned checkpoint, and
 launch one rank per Spark.
 
 ## Serving contract
@@ -17,7 +17,7 @@ launch one rank per Spark.
 | Model | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` |
 | Parallelism | TP2/DCP1 across two DGX Sparks |
 | Transport | patched NCCL over one direct RoCEv2 link |
-| Advertised request limit | 1,048,576 tokens through static YaRN factor 4 |
+| Advertised request limit | 1,048,576 tokens through static YaRN factor 4 over native 262,144 |
 | Maximum sequences | 32 |
 | Scheduler budget | 8,192 tokens |
 | Key-value cache | explicit FP8, 0.70 unified-memory utilization |
@@ -27,12 +27,8 @@ launch one rank per Spark.
 | External key-value cache | disabled |
 | SIRCL | unsupported for width 5,120 |
 
-The pair profile does not copy DeepSeek's model-specific MLA layout, DSpark
-proposer, explicit KV byte reservation, or block geometry. Its 8,192-token
-scheduler budget matches the operator's selected comparison envelope. The
-Qwen LMCache path cannot compose with that budget, so LMCache remains outside
-this profile. SparkCache has no qualified composition for this Qwen profile and
-also remains outside it.
+External caching is outside this profile. Use the recorded scheduler and
+native prefix-cache settings when reproducing its results.
 
 ## Benchmark results
 
@@ -40,6 +36,8 @@ See the [benchmark table, screenshot, and machine-readable data](../../performan
 
 ## Limitations
 
+- Actual concurrency depends on the KV pool and request lengths; 32 is the
+  scheduler's sequence ceiling.
 - Static YaRN can shift short-context output distributions relative to native
   262,144-token serving.
 - Generic FP8 KV is explicit. The checkpoint has no KV-format metadata that

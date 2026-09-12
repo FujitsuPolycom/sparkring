@@ -6,7 +6,7 @@ The profile ran on four directly cabled DGX Sparks and produced the results
 linked below.
 
 Use the
-[Qwen3.8-27B four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md)
+[Qwen3.8-27B four-Spark quickstart](../../profiles/qwen38-27b-exl3-k5k6/README.md)
 to build one local runtime image, distribute it, and launch one rank per
 Spark.
 
@@ -32,16 +32,13 @@ Spark.
 | External key-value cache | disabled |
 | SIRCL | unsupported for the width-5,120 path |
 
-The four-Spark and [two-Spark](QWEN38_27B_EXL3_K5K6_PAIR.md) normalized
-profiles use the same static-YaRN model-length and MTP sampling contract. The
-four-Spark profile does not copy DeepSeek's DSpark proposer or MLA cache
-format. It reuses DeepSeek's four-Spark physical topology,
-non-adjacent-rank routing, multi-node process shape, and patched-NCCL cycle
-settings.
+The four-Spark and [two-Spark](QWEN38_27B_EXL3_K5K6_PAIR.md) profiles use the
+same static-YaRN model-length and MTP sampling contract. Four-node transport
+uses a direct ring, routes between nonadjacent ranks and patched NCCL.
 
 ## Build and launch
 
-The [four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md) is
+The [four-Spark quickstart](../../profiles/qwen38-27b-exl3-k5k6/README.md) is
 self-contained within public repositories. It builds a local ARM64 image from
 immutable CUDA, vLLM, ExLlamaV3, companion-recipe, Torch, B12X, and NCCL
 inputs; distributes one image ID and the separately verified checkpoint; runs
@@ -62,3 +59,11 @@ See the [benchmark table, screenshot, and machine-readable data](../../performan
 ## SparkCache
 
 SparkCache is not included. External key-value caching is disabled.
+
+## Limitations
+
+Actual concurrency depends on the KV pool and request lengths; 64 is the
+scheduler's sequence ceiling. Static YaRN can change short-context output
+distributions relative to native 262,144-token serving. Use the explicit FP8
+KV setting recorded by the profile; an automatic selection is not equivalent
+evidence.
