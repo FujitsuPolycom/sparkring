@@ -1,6 +1,6 @@
 # Serve GLM-5.3 with adaptive MTP, live-tensor B12X KDA, and SparkCache
 
-Status: **implemented, not qualified**. This guide builds vLLM commit
+Status: **Development**; four-rank serving is not validated. This guide builds vLLM commit
 `0b67266a0f37d6146a8403fb8482403c62f412d5` and the SparkCache overlay from
 commit `20838ace3ebda570ca039cb7f1976c29da554b39` for four DGX Spark systems at
 TP4/DCP1.
@@ -19,7 +19,9 @@ same verified image ID.
 ## Build the runtime and SparkCache overlay
 
 Use Linux ARM64 with Docker BuildKit and at least 250 GiB of free local
-storage. Clone both repositories beside each other:
+storage. The operator host needs Python 3.11 or newer with PyYAML. Clone both
+repositories beside each other and replace the checkout placeholder with a
+reviewed 40-character SparkRing commit:
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git sparkring
@@ -54,16 +56,10 @@ native_sha256="$(docker run --rm --entrypoint sha256sum "${sparkcache_image}" \
 test "${#native_sha256}" -eq 64
 ```
 
-Save the finished SparkCache image as an OCI archive and distribute that one
-archive to all four ranks using the
-[direct-fabric image fanout procedure](DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md).
-Require every rank to report the same image ID before resolving or starting the
-profile.
-
-The runtime builder verifies the complete first-parent vLLM history from
-`da4d7be` through adaptive MTP and the three live-tensor B12X KDA commits. The
-SparkCache build verifies LF Linux preimages, four exact patches, and eleven
-postimage source files.
+The [runtime source lock](../runtime/glm53-flash-b12x-kda-adaptive-mtp/pins.json)
+identifies the vLLM commits and trees checked by the runtime builder. The
+SparkCache build checks its pinned patch inputs and resulting source files;
+retain both build receipts with the image IDs.
 
 ## Resolve the TP4 profile
 
@@ -83,9 +79,16 @@ python sparkring/scripts/prepare_glm53_b12x_kda_adaptive_mtp_profile.py \
 ```
 
 Replace the documentation-only addresses, interfaces, RDMA devices, model
-path, and rank-local cache roots. Every rank must use a different local
-SparkCache directory. Do not change MTP depths, the observation window,
+path, and rank-local cache roots. Each rank needs its own local SparkCache
+storage; identical path strings on separate hosts are acceptable. Do not use a
+shared cache directory. Do not change MTP depths, the observation window,
 loader queue, source identities, or attestation command.
+
+Distribute the built SparkCache image to all four hosts before launch. Use the
+[image archive fanout procedure](DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md) with
+the resolved site file, or copy a `docker image save` archive and load it on
+each host. Require the same exact image ID and selected tag on every rank;
+the profile resolver does not distribute images.
 
 The one-shot clear token is recorded only after a successful SparkCache-owned
 cache removal. Restarting this unchanged profile does not clear again.
@@ -104,7 +107,9 @@ python sparkring/scripts/sparkring_generic_launcher.py \
   start
 ```
 
-The final command changes the four-rank serving deployment. Tail rank zero:
+The final command changes the four-rank serving deployment. Tail rank zero,
+replacing the SSH target and API endpoint below with the configured management
+address and API port:
 
 ```bash
 ssh operator@rank0.example.net \
@@ -127,7 +132,8 @@ python sparkcache/deploy/glm53_flash/qualification_request.py \
 
 Construction support does not prove four-rank serving. Qualification requires
 health, exact visible output, adaptive-MTP activity, successful model loading,
-persistent restore, shared-prefix C2/C8/C16 checks, and no engine exit, OOM,
+persistent restore, shared-prefix checks with 2, 8 and 16 concurrent requests,
+and no engine exit, OOM,
 NCCL error, or traceback.
 
 ## Cache namespace impact
