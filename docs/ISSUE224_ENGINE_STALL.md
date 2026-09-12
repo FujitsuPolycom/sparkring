@@ -4,10 +4,11 @@ The [source-level indexer investigation](ISSUE224_INDEXER_BARRIER.md) identifies
 a histogram-publication race and includes a GPU-tested kernel fix and targeted
 isolation experiment. This document covers the fallback liveness detector.
 
-Status: implemented for offline output-stall detection. The separate kernel
-fix addresses the confirmed publication race behind the suspected deadlock in
-[issue #224](https://github.com/FujitsuPolycom/sparkring/issues/224). No full model
-soak or deployment of the fix to serving containers is claimed.
+Status: **Development** for stall detection; unattended recovery is unverified. The
+separate kernel fix addresses a confirmed publication race that can cause the
+blocked response path described in
+[issue #224](https://github.com/FujitsuPolycom/sparkring/issues/224). End-to-end
+incident resolution remains unverified.
 
 ## Source evidence
 
@@ -64,11 +65,13 @@ and logs together so they can be correlated with the same stall.
 
 ## Detection and recovery
 
-The rank-zero monitor detects sustained running requests without observable
+The source's progress-aware rank-zero monitor detects sustained running requests without observable
 output, prompt-counter, or KV-allocation progress. The 300-second default
 `SPARKRING_LIVENESS_OUTPUT_SECONDS` must exceed legitimate gaps without these
 signals. Output batches reset the interval. KV allocation must exceed the
 interval's high-water mark; allocation/release oscillation does not renew it.
+An output-counter change or running work after an idle observation starts a
+fresh high-water interval. A change in running-request count alone does not.
 Prompt totals are optional and are not assumed to report every prefill chunk.
 This is a fallback heuristic for the single-engine TP4 profile, not proof of
 GPU execution. Fully preallocated work still needs a suitable timeout override.
@@ -81,15 +84,24 @@ invalid timeouts, and the timeout override. No GPU race is reproduced by these
 tests. Raw output-gap reporting remains available alongside the separate
 inactivity timer.
 
+The progress-aware monitor has a separate
+[million-token prefill record](../performance/records/glm53-flash/prefill-aware-liveness-20260908.md).
+All 206 liveness polls were healthy; the maximum raw output gap was 398.582
+seconds while the maximum inactivity interval was 9.967 seconds. This validates
+one healthy-prefill case, not automatic recovery from a stalled engine.
+
 The [published operator image](../runtime/glm53-flash-jj-r8-gb10/hotfix/README.md)
-contains the output-only monitor and its source receipt. The source policy
-described above also accounts for allocation and prompt-counter progress; it
-requires a rebuilt, source-verified image and live qualification before deployment.
-Editing a timeout cannot install that source change. Preserve the deployment's
-coordinated stop/start procedure when replacing its runtime.
+contains the output-only monitor and its source receipt. Deployment of the
+progress-aware policy requires an image with the corresponding verified source;
+editing a timeout cannot install it. Preserve the deployment's coordinated
+stop/start procedure when replacing its runtime.
 Unattended recovery remains unqualified: the deployment must first establish
 its longest healthy prefill/restore gap and verify its response to an injected
 output stall. The monitor reports health and does not restart the cluster.
+
+The executor RPC deadline and monitor inactivity timer have different starting
+points and observation intervals. Either may report first even when both are
+set to 300 seconds; retain both executor errors and liveness samples.
 
 Do not automatically replay a timed-out model step. The executor's responses
 are ordered without per-call IDs, and a partially completed step can mutate KV

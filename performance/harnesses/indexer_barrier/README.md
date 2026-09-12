@@ -1,5 +1,8 @@
 # Fused indexer barrier checks
 
+Status: **Experimental**. The linked record identifies the GPU-tested cases
+and exact source hashes.
+
 `gpu_barrier_probe.py` uses the installed B12X helper with a delayed publishing
 warp. Each kernel runs one barrier; it cannot enter a second barrier with only
 some blocks participating. Run against the unpatched B12X source to
@@ -21,9 +24,11 @@ The publication probe requires the original helper to expose incomplete data
 within 10 eager calls and 10 graph replays. If it does not, the run is inconclusive
 about the race; it does not establish that the original helper is correct.
 
+From the SparkRing repository root in the isolated test environment:
+
 ```bash
-python3 gpu_barrier_probe.py
-PYTHONPATH=/path/to/b12x/tests/attention python3 stress_indexer.py
+python3 performance/harnesses/indexer_barrier/gpu_barrier_probe.py
+PYTHONPATH=/path/to/b12x/tests/attention python3 performance/harnesses/indexer_barrier/stress_indexer.py
 ```
 
 See [the GPU evidence](../../records/glm53-flash/issue224-dgx4-validation.md)

@@ -1,15 +1,19 @@
 # Issue 224: sparse-indexer publication barrier race
 
-Status: implemented and GPU-tested. The publication race reproduced on all four
-GB10 GPUs; the fix prevented it in all 80 probes. The patched indexer passed 15
-GPU correctness tests and 2,000 graph replays with concurrent copies. A full
-model soak was not performed. See the
+Status: **Validated** for the bounded publication-order regression and tested
+single-GPU indexer cases. The publication race reproduced on all four
+GB10 GPUs; entry synchronization prevented it in all 80 cooperatively launched
+probes. The mixed-line-ending patched source passed 15 GPU correctness tests
+and 2,000 graph replays with concurrent copies. The source-equivalent LF build
+output separately passed the 15 correctness tests. Full-model and ordinary-launch
+forward progress remain unqualified. See the
 [bounded GPU evidence](../performance/records/glm53-flash/issue224-dgx4-validation.md).
 
 ## Finding
 
-The strongest source-backed explanation is GPU deadlock in the fused DSA
-indexer's cooperative top-k merge. The executor stack is downstream of it.
+The fused DSA indexer's cooperative top-k merge contains a publication race
+capable of causing GPU deadlock. Such a deadlock can block the executor's
+response path; it does not establish the cause of every reported stall.
 
 Affected source: B12X commit
 `9ae41c5cb9935d740456479954b0089f80bd2ef2`, file
@@ -65,9 +69,12 @@ hardware reproduction or a measurement of its production frequency.
 The CPU interleaving harness,
 [`repro_indexer_barrier.py`](../performance/harnesses/indexer_barrier/repro_indexer_barrier.py),
 uses only Python's standard library. From the SparkRing repository root, run it
-against an LF checkout of B12X commit
+against the B12X source at commit
 `9ae41c5cb9935d740456479954b0089f80bd2ef2`, apply the checked source transform,
-and repeat:
+and repeat. Before applying the transform, verify the file's raw SHA-256 is
+`d3ec6274e142a4e7d1062ea6d2d99b97db0a02e92bb976c6570ae990b836b18d`.
+Git line-ending conversion can change those bytes; the transform rejects any
+other input hash.
 
 ```bash
 python performance/harnesses/indexer_barrier/repro_indexer_barrier.py /path/to/b12x/b12x/attention/dsa_indexer/fused_indexer.py --expect deadlock
@@ -79,7 +86,7 @@ The harness prints a JSON trace. Without entry synchronization, the modeled
 arrival count is 4 while a block waits for 6. With entry synchronization, the
 count reaches 6 and no actors remain pending.
 
-## Full response path
+## Response path when the indexer stalls
 
 ```text
 EngineCore.step_with_batch_queue()
@@ -124,11 +131,11 @@ B12X commit `357576e6d49a2d9fbf623cd73542826fdf55bb8e` introduces the separate
 12/12/8-bit cooperative merge and its conditional refinement. It is not an
 ancestor of the comparison image's pin and is an ancestor of the affected pin. The comparison
 merge also has publication-order concerns, but its main refinement loop uses a
-fixed four rounds; it does not use this new early-exit protocol. Absence of
+fixed four rounds; it does not use this conditional early-exit protocol. Absence of
 observed hangs in the comparison image is not proof that it is race-free.
 
 The affected GB10 profile's `attention.dsa_indexer` entry contains only
-`backend: native`. Missing `fused_merge` resolves to `auto`, which now resolves
+`backend: native`. Missing `fused_merge` resolves to `auto`, which resolves
 to cooperative for multi-block groups. GLM's 32-head/top-k-512 shape permits the
 fused path for decode plans up to 16 rows on SM121. With 48 SMs and a 16-row
 plan, the scratch planner assigns three blocks per group. Request concurrency
@@ -198,5 +205,5 @@ EngineCore stall has the same cause.
 
 The regular indexer launch also assumes co-resident blocks without requesting
 cooperative launch. That is a separate forward-progress risk requiring occupancy
-and concurrent-stream validation; the candidate patch does not claim to solve
+and concurrent-stream validation; the publication-barrier patch does not claim to solve
 all possible kernel hangs.
