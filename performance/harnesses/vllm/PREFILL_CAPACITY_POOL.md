@@ -96,7 +96,7 @@ The Python adapter intentionally contains no tiled-engine native symbol lookup.
 
 ## Port coexistence
 
-The proposed shared pair is disjoint from exact decode Q1-Q40 under both the
+The proposed shared pair is disjoint from the exact Q1-Q40 sessions under both the
 default exact base `11000/11001` and the alternate base `11100/11101`. It cannot
 coexist with an arbitrarily extended exact-Q prefill family:
 

@@ -172,7 +172,11 @@ def _render_maximum_table(families: Sequence[PayloadFamily]) -> list[str]:
 
 
 def render_markdown() -> str:
-    """Render the checked-in deliverable from this contract's formulas."""
+    """Render the contract document from this module's formulas.
+
+    ``--write PATH`` stores the rendering and ``--check PATH`` compares a
+    stored copy byte for byte; the repository tracks no rendered copy.
+    """
 
     collective_families = PAYLOAD_FAMILIES[:6]
     fused_families = PAYLOAD_FAMILIES[6:]
