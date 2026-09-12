@@ -444,8 +444,9 @@ def active_port_reservations(
                     ),
                 )
             )
-        if allreduce_mode == "custom" and _flag(
-            environment, "VLLM_SPARK_TP4_GRAPH_Q1"
+        if allreduce_mode == "custom" and (
+            _flag(environment, "VLLM_SPARK_TP4_GRAPH_Q1")
+            or _flag(environment, "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH")
         ):
             reservations.append(
                 PortReservation(

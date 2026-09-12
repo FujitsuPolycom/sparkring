@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import unittest
+
+import pytest
 from unittest.mock import patch
 
 import spark_tp4_backend
@@ -339,3 +341,20 @@ class Tp4PortNamespaceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_width4096_graph_reserves_pair_and_rejects_eager_collision():
+    environment = {
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH": "1",
+        "SPARK_TP4_GRAPH_CONTROL_PORT0": "11000",
+        "SPARK_TP4_GRAPH_CONTROL_PORT1": "11001",
+    }
+    with pytest.raises(ValueError, match="collide"):
+        namespace.validate_active_port_namespace(environment)
+    environment.update(SPARK_TP4_GRAPH_CONTROL_PORT0="9970",
+                       SPARK_TP4_GRAPH_CONTROL_PORT1="9971")
+    reservations = namespace.validate_active_port_namespace(environment)
+    graph = [entry for entry in reservations if entry.owner == "graph_allreduce"]
+    assert len(graph) == 1
+    assert graph[0].ports == (9970, 9971)
