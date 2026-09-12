@@ -47,33 +47,31 @@ or byte changes.
 
 ## Verification
 
-The file inventory at `41491c7` contains 1,566 tracked files. Exhaustive semantic review is
-not established: several completion records assigned full-review status without
-recovering the underlying review or inspecting all intervening changes. Those
-records require reconciliation before an exhaustive-review claim is warranted.
-At that revision, 210 files still require review or evidence reconciliation.
-Coverage records include provenance checks and do not all establish semantic
-correctness. The checks below ran on Windows with Python 3.12 at commit `ef8de04`;
-their inventory counts describe that snapshot.
+Exhaustive semantic review is not established. Completion records must bind
+exact file revisions and distinguish source/prose review from provenance and
+generated-export verification. Passing tests do not close that review gap.
+
+Source snapshot `a0d7f36b082381337f353052d0f4a582064af6b4` passed the complete
+maintained CI selection in Ubuntu WSL with Python 3.12.3 and CPU Torch 2.11.0.
+Its command was read from the archived workflow; Git archive metadata and JUnit
+bind the source and results. Later Markdown-checker changes have separate
+focused tests and require inclusion in final adoption validation.
 
 | Check | Result |
 |---|---|
-| Full maintained pytest selection from CI | 4,573 passed; 123 skipped; no failures |
-| Shared profile/configuration tests | 119 passed |
+| Full maintained pytest selection from CI | 4,681 passed; 105 skipped; zero failures/errors |
 | Ruff over maintained Python trees | Passed |
-| Repository structural check | 21 profiles, 52 generated outputs, 430 preserved inputs, 448 Python sources, 7 builders |
-| Repository Markdown links | 999 local links checked |
+| Repository structural check | 22 profiles, 53 generated outputs, 430 preserved inputs, 22 locked profile assets, 453 Python sources, 8 builders |
+| Repository Markdown links | 1,053 local links checked at the test snapshot |
 | Release-safety scan | Zero findings |
-| Managed-service source closure | Imported from an extracted deployment archive without the checkout on its import path |
 | Launch compatibility | Existing TP2 entry point and maintained switched-renderer contracts pass |
 | Configuration equivalence | Omitted and explicit defaults agree; ENV assignments match the initial baseline except declared default changes; comment edits do not change compatibility |
 
-Source snapshot `06e4925046db3b8ae203f9f745d7dbe01d0dbe73` passed the full
-maintained Linux selection in Ubuntu WSL with Python 3.12.3 and CPU Torch
-2.11.0: 4,591 passed and 105 skipped. Linux lint, links, release safety and
-layout checks passed. Skips include PowerShell and optional serving dependencies.
+Skips include PowerShell and optional serving dependencies. Hosted GitHub
+Actions has not run for this unpublished branch.
 
-The same snapshot built on ARM64 GB10 with CUDA 13.0, architecture `sm_121`,
+Native source snapshot `06e4925046db3b8ae203f9f745d7dbe01d0dbe73`
+built on ARM64 GB10 with CUDA 13.0, architecture `sm_121`,
 Release mode and `BUILD_TESTING=ON`, including the optional fused probe and GPU
 smoke targets. All 31 CTests passed. Isolated four-rank tests established:
 
@@ -114,24 +112,19 @@ and six pre-existing adopted objects retained per host. Model files were not
 modified. Test evidence is retained locally; these results do not qualify
 arbitrary later source revisions or rebuilt images.
 
-The SGLang integration snapshot `4b6d9c311d61644fb1d738b7a31c8308dc864baf`
-passed 4,621 tests with 105 skips in the maintained Linux selection. Subsequent
-focused Windows and Linux checks passed 26 SGLang launcher tests, 95 telemetry
-tests and 18 public-overlay tests. The contributor's SGLang serving records
-remain separate from the GLM hardware results.
+SGLang launcher and integration tests are included in the Linux selection.
+The contributor's SGLang serving records remain separate from the GLM
+hardware results; the local GLM run does not qualify DeepSeek serving.
 
-Local WSL validation with Python 3.12.3 also passed 97 shell-guard,
-cleanup and deployment-documentation tests, plus 66 staging, trust and
-existing-asset tests, with no skips in either selection. These checks used
-fixtures and temporary directories; they did not deploy to hosts. The pinned
+The pinned
 [LIL deployment companion](../../integrations/lil/README.md) was built at revision
 `329cde801b847294005cb16765692032a6cdf206` with Go 1.26.0: its tests and
 vet passed, and all 87 SparkRing LIL integration tests passed in WSL without
 skips. These local checks do not constitute a hosted GitHub Actions run.
 
-The standalone, unchanged DeepSeek Engram probe could not import vLLM in this
-environment. It requires the serving image and model/packed-row inputs, so it is
-not part of hosted CPU CI. The GLM serving tests used read-only model mounts.
+The standalone DeepSeek Engram probe requires a serving image and
+model/packed-row inputs; it is outside hosted CPU CI. The GLM serving tests
+used read-only model mounts.
 
 Windows skips include POSIX mode/symlink behavior, Bash/native compilers, optional
 LIL integration and serving-runtime checks. Hosted Linux CI has not run because
