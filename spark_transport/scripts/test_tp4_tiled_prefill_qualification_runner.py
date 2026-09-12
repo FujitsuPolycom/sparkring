@@ -172,7 +172,7 @@ def test_execute_requires_four_rank_inputs_before_remote_contact() -> None:
 
     assert result.returncode != 0
     assert "SPARKRING_TARGETS" in (result.stdout + result.stderr)
-    assert "ssh" not in result.stdout.lower()
+    assert "ssh" not in (result.stdout + result.stderr).lower()
 
 
 def test_invalid_arm_is_rejected_by_parameter_binding() -> None:

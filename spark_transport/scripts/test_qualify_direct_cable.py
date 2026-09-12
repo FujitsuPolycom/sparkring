@@ -171,9 +171,76 @@ class QualificationLogicTest(unittest.TestCase):
         self.assertEqual(verify["correct"], "true")
 
     def test_payloads_are_exact_glm_shapes(self) -> None:
+        import argparse
+
         self.assertEqual(MODULE.parse_payloads("12288,16384"), (12288, 16384))
-        with self.assertRaises(Exception):
+        with self.assertRaises(argparse.ArgumentTypeError):
             MODULE.parse_payloads("4096")
+
+    def test_l2_peer_gate_requires_real_mac_addresses(self) -> None:
+        left = {"lladdr": "02:00:00:00:00:02", "state": ["REACHABLE"]}
+        right = {"lladdr": "02:00:00:00:00:01", "state": ["STALE"]}
+        self.assertTrue(
+            MODULE.l2_peers_exact(left, "02:00:00:00:00:01", right, "02:00:00:00:00:02")
+        )
+        # Missing evidence on both sides must not match as empty strings.
+        self.assertFalse(MODULE.l2_peers_exact({}, None, {}, None))
+        self.assertFalse(MODULE.l2_peers_exact({}, "", {}, ""))
+        self.assertFalse(
+            MODULE.l2_peers_exact(left, "02:00:00:00:00:01", {}, "02:00:00:00:00:02")
+        )
+        self.assertFalse(
+            MODULE.l2_peers_exact(left, "02:00:00:00:00:09", right, "02:00:00:00:00:02")
+        )
+        failed = {"lladdr": "02:00:00:00:00:02", "state": ["FAILED"]}
+        self.assertFalse(
+            MODULE.l2_peers_exact(failed, "02:00:00:00:00:01", right, "02:00:00:00:00:02")
+        )
+
+    def test_vanished_counter_is_an_instrumentation_reset(self) -> None:
+        before = {"counters": {"ethtool.rx_crc_errors": 5, "sysfs.rx_dropped": 1}}
+        after = {"counters": {"sysfs.rx_dropped": 1, "ethtool.new_counter": 3}}
+        deltas = MODULE.counter_deltas(before, after)
+        self.assertEqual(deltas["reset"], {"ethtool.rx_crc_errors": -5})
+        self.assertEqual(deltas["other"], {"ethtool.new_counter": 3})
+        self.assertEqual(deltas["phy"], {})
+
+    def test_postflight_counter_gates_are_warnings_without_probe_traffic(self) -> None:
+        deltas = {
+            "left": {"phy": {"ethtool.rx_crc_errors": 2}, "pressure": {}, "other": {}, "reset": {}},
+            "right": {"phy": {}, "pressure": {}, "other": {}, "reset": {"sysfs.rx_bytes": -9}},
+        }
+        soft = MODULE.postflight_gates(deltas, ("left", "right"), probe_completed=False)
+        hard = MODULE.postflight_gates(deltas, ("left", "right"), probe_completed=True)
+        failing_soft = [g for g in soft if not g["passed"]]
+        failing_hard = [g for g in hard if not g["passed"]]
+        self.assertEqual([g["name"] for g in failing_soft], ["left.no_phy_error_delta", "right.no_counter_reset"])
+        self.assertTrue(all(not g["hard"] for g in failing_soft))
+        self.assertTrue(all(g["hard"] for g in failing_hard))
+        result: dict = {}
+        self.assertEqual(
+            MODULE.finalize(result, soft, probe_completed=False, strict_latency=False),
+            MODULE.EXIT_INCOMPLETE,
+        )
+        self.assertEqual(result["status"], "incomplete")
+        result = {}
+        self.assertEqual(
+            MODULE.finalize(result, hard, probe_completed=True, strict_latency=False),
+            MODULE.EXIT_FAILED,
+        )
+        self.assertEqual(result["failure_domain"], "cable_or_phy,instrumentation")
+
+    def test_expected_probe_digest_must_be_hex(self) -> None:
+        parser = MODULE.build_parser()
+        base = [
+            "--tier", "diagonal10", "--left", "user@left", "--right", "user@right",
+            "--left-interface", "enP7s7", "--right-interface", "enP7s7",
+            "--left-ip", "198.51.100.1", "--right-ip", "198.51.100.2",
+            "--expected-mtu", "1500", "--preflight-only",
+        ]
+        args = parser.parse_args(base + ["--probe-binary-sha256", "zz"])
+        with self.assertRaisesRegex(MODULE.QualificationError, "64 hex digits"):
+            MODULE.run(args)
 
 
 if __name__ == "__main__":
