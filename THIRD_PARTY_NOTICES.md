@@ -5,6 +5,11 @@ text is in the `LICENSE` file at the root of this repository.
 
 Copyright 2026 SparkRing contributors.
 
+This document identifies third-party material contained in this repository and
+third-party projects that this repository references, patches, or interoperates
+with. Except as stated below, all files in this repository are original
+SparkRing work licensed under Apache-2.0.
+
 ## MiaAI-Lab DSpark recipe test fixture
 
 `runtime/deepseek-vision-exp/upstream/docker-compose.dspark.yml.gz` contains an
@@ -14,11 +19,6 @@ at revision `7440c53c1f0352886e47b1909051784879fa0a24`, under the MIT License,
 Copyright (c) 2026 Tony Deangelo. The complete license is preserved in
 `runtime/deepseek-vision-exp/upstream/LICENSE`. The file is an offline test
 fixture; operators use the complete upstream checkout to obtain its hotfixes.
-
-This document identifies third-party material contained in this repository and
-third-party projects that this repository references, patches, or interoperates
-with. Except as stated below, all files in this repository are original
-SparkRing work licensed under Apache-2.0.
 
 ## 1. NVIDIA NCCL (portions included)
 
