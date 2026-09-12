@@ -7,6 +7,8 @@ import logging
 import sys
 import types
 
+import pytest
+
 from . import flight_recorder
 from . import shape_trace
 
@@ -64,6 +66,40 @@ def test_shape_trace_records_first_call_then_calls_original(monkeypatch, tmp_pat
     record = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
     assert record["shape"] == [4, 6144] and record["bytes"] == 4 * 6144 * 2
     assert record["count"] == 1
+
+
+def test_shape_trace_metadata_failure_preserves_original_call(monkeypatch, tmp_path):
+    communicator, calls = _install_fake_communicator(monkeypatch)
+    monkeypatch.setenv("VLLM_SPARK_TRACE_PATH", str(tmp_path / "trace.jsonl"))
+    shape_trace.install()
+
+    class BrokenMetadata(_Tensor):
+        def stride(self):
+            raise RuntimeError("metadata unavailable")
+
+    tensor = BrokenMetadata()
+    assert communicator().all_reduce(tensor) == "reduced"
+    assert calls == [tensor]
+    assert shape_trace._write_failed
+
+
+def test_shape_trace_does_not_retry_failed_collective(monkeypatch, tmp_path):
+    communicator, calls = _install_fake_communicator(monkeypatch)
+    monkeypatch.setenv("VLLM_SPARK_TRACE_PATH", str(tmp_path / "trace.jsonl"))
+    failure = RuntimeError("collective failed")
+
+    def fail(self, tensor):
+        calls.append(tensor)
+        raise failure
+
+    communicator.all_reduce = fail
+    shape_trace.install()
+    tensor = _Tensor()
+    with pytest.raises(RuntimeError) as caught:
+        communicator().all_reduce(tensor)
+    assert caught.value is failure
+    assert calls == [tensor]
+    assert not shape_trace._write_failed
 
 
 def test_shape_trace_write_failure_disables_tracing_without_skipping_collective(

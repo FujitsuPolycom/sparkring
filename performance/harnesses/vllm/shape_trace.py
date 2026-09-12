@@ -4,7 +4,7 @@ Call ``install()`` explicitly during startup before using the communicator.
 The module has no automatic installer or environment gate. It logs each shape's
 first call and power-of-two counts, then calls the original communicator.
 Records describe attempted calls, not completed work. Writes can perturb
-arrival timing; a file error disables tracing without skipping the collective.
+arrival timing; metadata or file errors disable tracing without skipping the collective.
 """
 
 from __future__ import annotations
@@ -54,10 +54,10 @@ def install() -> None:
         _installed = True
         return
 
-    def traced_all_reduce(self: Any, input_: Any) -> Any:
+    def record_call(self: Any, input_: Any) -> None:
         global _write_failed
         if _write_failed:
-            return original(self, input_)
+            return
         shape = tuple(int(size) for size in input_.shape)
         stride = tuple(int(value) for value in input_.stride())
         element_size = int(input_.element_size())
@@ -98,6 +98,18 @@ def install() -> None:
                         logger.error("Shape trace disabled after record write failure; trace is incomplete")
                     except Exception:
                         pass  # Diagnostic sinks must not prevent the collective.
+    def traced_all_reduce(self: Any, input_: Any) -> Any:
+        global _write_failed
+        try:
+            record_call(self, input_)
+        except Exception:
+            _write_failed = True
+            try:
+                logger.error("Shape trace disabled after metadata failure; trace is incomplete")
+            except Exception:
+                pass
+        # Keep operation failures outside diagnostic recovery: never retry a
+        # collective whose invocation may already have enqueued native work.
         return original(self, input_)
 
     traced_all_reduce._spark_shape_trace = True  # type: ignore[attr-defined]
