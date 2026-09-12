@@ -57,9 +57,10 @@ ENV deployment inputs remain supported by their original launchers.
 ## Launch and release boundaries
 
 `python scripts/launch.py PROFILE -- ADAPTER_ARGUMENTS` prints an argv plan.
-Add `--execute` before the profile only to run the adapter locally. Python rank
-adapters expose `plan`, `create` and `start`; Bash adapters expose `--check` and
-`--run`. Existing guards and receipt validation remain active. Profiles using
+Add `--execute` before the profile only to run the adapter locally. GLM Python
+rank adapters expose `plan`, `create` and `start`; Bash adapters expose `--check`
+and `--run`. The SGLang Python adapter exposes `--check`, `--prepare`, `--pack`
+and `--run`. Existing guards and receipt validation remain active. Profiles using
 the [published SparkRing image release](../../runtime/releases/sparkring-r33-dcp4/release.json)
 supply the catalog's exact runtime receipt. Compositions requiring managed
 multi-host steps direct the operator to their guide instead of inventing a

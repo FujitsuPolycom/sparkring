@@ -132,6 +132,12 @@ def test_invalid_private_site_rejected(repository, mutation):
         profiles.resolve('example', site=site, root=repository)
 
 
+@pytest.mark.parametrize("value", [[], "", 0, False])
+def test_nonobject_site_input_is_rejected(repository, value):
+    with pytest.raises(ValueError, match="site.*object"):
+        profiles.resolve("example", site=value, root=repository)
+
+
 def test_plan_does_not_execute_launcher(repository):
     result = plan('example', ['plan', '--name', 'value with spaces'], repository)
     assert result['command'][-1] == 'value with spaces'

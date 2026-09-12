@@ -160,6 +160,8 @@ def resolve(profile_id, overrides=None, site=None, root=ROOT):
         raise ValueError("decode_context_parallel_size must divide tensor_parallel_size")
     if values["node_count"] != values["tensor_parallel_size"]:
         raise ValueError("These GB10 profiles require one tensor-parallel rank per node")
+    if site is not None and not isinstance(site, dict):
+        raise ValueError("site input must be a JSON object")
     site = copy.deepcopy(site or {})
     if set(site) - {"schema", "nodes", "model_dir", "cache_dir"} or (site and site.get("schema") != "sparkring-site/v1"):
         raise ValueError("Site configuration accepts only schema, nodes, model_dir and cache_dir")
