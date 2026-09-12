@@ -15,6 +15,31 @@ def write(path, data):
     path.write_text(json.dumps(data), encoding='utf-8')
 
 
+@pytest.mark.parametrize("arguments, expected", [
+    (["--max-model-len", "1024", "--max-model-len", "2048"], 2048),
+    (["--max-model-len=2048"], 2048),
+])
+def test_serving_argv_uses_last_option_and_equals_form(repository, arguments, expected):
+    profile, _ = profiles.load("example", repository)
+    profile["configuration"]["format"] = "serving-profile"
+    write(repository / profile["configuration"]["path"], {
+        "schema": "sparkring-serving-profile/v1", "model": {}, "environment": {},
+        "vllm_args": ["--tensor-parallel-size", "2", *arguments],
+    })
+    assert profiles.configuration(profile, repository)[1]["max_model_len"] == expected
+
+
+def test_serving_argv_missing_value_has_field_error(repository):
+    profile, _ = profiles.load("example", repository)
+    profile["configuration"]["format"] = "serving-profile"
+    write(repository / profile["configuration"]["path"], {
+        "schema": "sparkring-serving-profile/v1", "model": {}, "environment": {},
+        "vllm_args": ["--tensor-parallel-size", "2", "--max-model-len"],
+    })
+    with pytest.raises(ValueError, match="--max-model-len.*integer"):
+        profiles.configuration(profile, repository)
+
+
 @pytest.fixture
 def repository(tmp_path):
     recipe = {'schema': 'sparkring-recipe/v1', 'recipe_id': 'example',

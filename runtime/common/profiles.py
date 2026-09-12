@@ -134,8 +134,16 @@ def configuration(p, root=ROOT):
     serving = {}
     for key in ("tensor_parallel_size", "decode_context_parallel_size", "max_model_len", "max_num_seqs", "max_num_batched_tokens"):
         flag = "--" + key.replace("_", "-")
-        if flag in args:
-            serving[key] = int(args[args.index(flag) + 1])
+        for index, argument in enumerate(args):
+            option, separator, value = argument.partition("=")
+            if option != flag:
+                continue
+            if not separator:
+                value = args[index + 1] if index + 1 < len(args) else ""
+            try:
+                serving[key] = int(value)
+            except (TypeError, ValueError):
+                raise ValueError(f"{flag}: expected an integer value") from None
     serving["node_count"] = serving["tensor_parallel_size"]
     return data["model"], serving, "switched", data.get("qualification", {}), {"vllm_args": args, "environment": data["environment"]}
 
