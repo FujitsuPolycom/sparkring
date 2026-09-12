@@ -29,6 +29,12 @@ same PyNccl communicator directly. The coalescing validator admits TP4/DCP1,
 the V2 runner, B12X KDA, aligned prefix caching, and static MTP3 without a
 physical ring requirement.
 
+The historical `nccl.audited_lock_sha256` in that dependency record is
+unverified: its lock bytes have not been recovered from the reachable Git
+history. It does not establish an audit of the selected source lock. Image
+verification must still check the exact build lock, profile hash and installed
+file witnesses; switched-hardware qualification remains required.
+
 ## Supply the switch-connected interfaces
 
 Copy `rank.env.example` into a private file for each rank. Fill its five
