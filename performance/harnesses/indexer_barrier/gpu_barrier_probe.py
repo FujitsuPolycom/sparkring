@@ -103,8 +103,10 @@ def main():
                                           for row in samples + graph_samples)}
         print(json.dumps(result), flush=True)
         results.append(result)
-    assert results[0]["incomplete_reads"] > 0, "baseline did not expose the race"
-    assert results[1]["incomplete_reads"] == 0, "entry barrier did not fix publication"
+    if results[0]["incomplete_reads"] <= 0:
+        raise RuntimeError("baseline did not expose the race")
+    if results[1]["incomplete_reads"] != 0:
+        raise RuntimeError("entry barrier did not fix publication")
     print("PASS: actual B12X helper exposes premature publication; entry sync prevents it", flush=True)
 
 

@@ -115,3 +115,38 @@ class B12xFloorPlanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_live_source_binding_rejects_a_different_imported_tree(tmp_path, monkeypatch):
+    import pytest
+    from types import SimpleNamespace
+    from performance.harnesses.moe_round_floor import b12x_floor_benchmark as bench
+    payload = b"pinned source"
+    audited = tmp_path / "audited" / "module.py"
+    imported = tmp_path / "imported" / "module.py"
+    for path in (audited, imported):
+        path.parent.mkdir()
+        path.write_bytes(payload)
+    monkeypatch.setattr(bench, "PINNED_SOURCES", {"fixture": ("b12x/module.py", hashlib.sha256(payload).hexdigest())})
+    audit = {"fixture": {"path": str(audited)}}
+    with pytest.raises(GateError, match="Imported B12X source differs"):
+        bench.require_imported_b12x_sources(audit, importer=lambda name: SimpleNamespace(__file__=str(imported)))
+    bench.require_imported_b12x_sources(audit, importer=lambda name: SimpleNamespace(__file__=str(audited)))
+    audited.write_bytes(b"modified after audit")
+    with pytest.raises(GateError, match="Imported B12X source differs"):
+        bench.require_imported_b12x_sources(audit, importer=lambda name: SimpleNamespace(__file__=str(audited)))
+
+
+def test_indexer_correctness_gates_survive_optimized_python():
+    import ast
+    import pytest
+    source = Path(__file__).parents[1] / "indexer_barrier" / "gpu_barrier_probe.py"
+    tree = ast.parse(source.read_text())
+    main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
+    # Execute the actual final gate statements without importing CUDA dependencies.
+    gates = ast.Module(body=main.body[-3:], type_ignores=[])
+    code = compile(ast.fix_missing_locations(gates), str(source), "exec", optimize=2)
+    for original, fixed in ((0, 0), (1, 1)):
+        with pytest.raises(RuntimeError):
+            exec(code, {"results": [{"incomplete_reads": original}, {"incomplete_reads": fixed}], "print": lambda *a, **k: None})
+    exec(code, {"results": [{"incomplete_reads": 1}, {"incomplete_reads": 0}], "print": lambda *a, **k: None})

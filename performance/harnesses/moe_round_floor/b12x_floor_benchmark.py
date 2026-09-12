@@ -246,6 +246,22 @@ def audit_sources(source_root: str | None = None) -> dict[str, dict[str, Any]]:
     return result
 
 
+def require_imported_b12x_sources(audit, *, importer=None):
+    """Bind live B12X execution to the audited files before allocating GPU inputs."""
+    if importer is None:
+        from importlib import import_module
+        importer = import_module
+    for name, (relative, expected) in PINNED_SOURCES.items():
+        if not relative.startswith("b12x/"):
+            continue  # The vLLM pin is context evidence; this child executes B12X directly.
+        module = importer(relative.removesuffix(".py").replace("/", "."))
+        source = getattr(module, "__file__", None)
+        audited = audit[name].get("path")
+        if (not source or not audited or Path(source).resolve() != Path(audited).resolve()
+                or _sha256(Path(source)) != expected):
+            raise GateError(f"Imported B12X source differs from audited input: {name}")
+
+
 def require_pinned_sources(audit: dict[str, dict[str, Any]]) -> None:
     failures = [
         f"{name}:{entry['state']}"
@@ -770,6 +786,7 @@ def _run_live_child(arguments: argparse.Namespace) -> dict:
 
     import torch
     import b12x.integration.tp_moe as tp_moe
+    require_imported_b12x_sources(audit)
 
     platform = _check_live_platform(torch)
     abi = _assert_live_abi(tp_moe)
