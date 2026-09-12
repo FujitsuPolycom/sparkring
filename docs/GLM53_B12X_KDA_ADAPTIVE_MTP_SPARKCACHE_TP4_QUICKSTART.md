@@ -137,8 +137,9 @@ geometry, or stored object schemas. Its embedded-MTP digest is SHA-256 over
 `glm53-embedded-mtp-runtime-v1`, the target identity, the full vLLM commit,
 maximum depth five, and `adaptive:3:32`, separated by zero bytes.
 
-Including the vLLM revision gives this runtime a distinct draft-state cache
-identity from the [adaptive embedded-MTP composition at vLLM revision `e10536a`](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md#resolve-a-serving-profile).
+The digest domain and inclusion of the vLLM revision distinguish this cache
+identity from the [adaptive embedded-MTP composition at vLLM revision `e10536a`](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md#resolve-a-serving-profile),
+which uses the domain `glm53-embedded-mtp-v1` without a runtime revision.
 Stored entries therefore
 recompute instead of crossing the KDA source boundary without byte-equivalence
 evidence.

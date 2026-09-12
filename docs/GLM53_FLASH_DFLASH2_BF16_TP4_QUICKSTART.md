@@ -75,7 +75,7 @@ underlying DFlash capture path or change an existing image.
 
 ```bash
 python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
-  --site site.yaml --profile profile.json start > start-plan.json
+  --site site.yaml --profile profile.json plan > start-plan.json
 python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
   --site site.yaml --profile profile.json \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start

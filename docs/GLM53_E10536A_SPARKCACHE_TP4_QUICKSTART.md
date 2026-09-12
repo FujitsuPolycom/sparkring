@@ -95,9 +95,10 @@ python sparkring/scripts/prepare_glm53_e105_profile.py \
   --site-output site.yaml
 ```
 
-Edit only host-specific values in `site.yaml` and the target, DFlash, and
-rank-local cache paths in `profile.json`. The MTP profiles have no external
-draft-model mount. Every rank must use a different local cache directory.
+Edit host-specific values in `site.yaml` and the target-model and rank-local
+cache paths in `profile.json`. For the DFlash2 profile, also set its external
+draft-model path; the MTP profiles have no external draft-model mount.
+Every rank must use a different local cache directory.
 
 The one-shot clear token is stored after successful removal. Restarting an
 unchanged profile does not clear again. Every profile has a distinct clear
