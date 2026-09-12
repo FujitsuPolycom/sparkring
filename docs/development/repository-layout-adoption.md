@@ -47,15 +47,15 @@ No useful evidence was deleted or uploaded to another location.
 ## Verification
 
 The repository-wide review remains in progress. These checks ran on Windows
-with Python 3.12 at commit c4e8d8; later changes require relevant validation.
+with Python 3.12 at commit 3743fb5; later changes require relevant validation.
 
 | Check | Result |
 |---|---|
-| Full maintained pytest selection from CI | 4,061 passed; 119 skipped; no failures |
+| Full maintained pytest selection from CI | 4,297 passed; 137 skipped; no failures |
 | Shared profile/configuration tests | 119 passed |
 | Ruff over maintained Python trees | Passed |
-| Repository structural check | 21 profiles, 52 generated outputs, 430 preserved inputs, 444 Python sources, 7 builders |
-| Repository Markdown links | 985 local links checked |
+| Repository structural check | 21 profiles, 52 generated outputs, 430 preserved inputs, 447 Python sources, 7 builders |
+| Repository Markdown links | 986 local links checked |
 | Release-safety scan | Zero findings |
 | Managed-service source closure | Imported from an extracted deployment archive without the checkout on its import path |
 | Launch compatibility | Existing TP2 entry point and maintained switched-renderer contracts pass |
