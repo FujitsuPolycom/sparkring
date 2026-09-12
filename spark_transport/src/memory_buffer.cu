@@ -92,9 +92,15 @@ class CudaMappedBuffer final : public MemoryBuffer {
       flags |= cudaHostAllocWriteCombined;
     }
     check_cuda(cudaHostAlloc(&host_, bytes_, flags), "cudaHostAlloc");
-    check_cuda(cudaHostGetDevicePointer(&device_, host_, 0),
-               "cudaHostGetDevicePointer");
-    std::memset(host_, 0, bytes_);
+    try {
+      check_cuda(cudaHostGetDevicePointer(&device_, host_, 0),
+                 "cudaHostGetDevicePointer");
+      std::memset(host_, 0, bytes_);
+    } catch (...) {
+      cudaFreeHost(host_);
+      host_ = nullptr;
+      throw;
+    }
   }
 
   ~CudaMappedBuffer() override {
@@ -164,8 +170,14 @@ class CudaAllocationBuffer final : public MemoryBuffer {
     } else {
       check_cuda(cudaMalloc(&data_, bytes_), "cudaMalloc");
     }
-    check_cuda(cudaMemset(data_, 0, bytes_), "cudaMemset allocation");
-    check_cuda(cudaDeviceSynchronize(), "cudaMemset allocation synchronize");
+    try {
+      check_cuda(cudaMemset(data_, 0, bytes_), "cudaMemset allocation");
+      check_cuda(cudaDeviceSynchronize(), "cudaMemset allocation synchronize");
+    } catch (...) {
+      cudaFree(data_);
+      data_ = nullptr;
+      throw;
+    }
   }
 
   ~CudaAllocationBuffer() override {
