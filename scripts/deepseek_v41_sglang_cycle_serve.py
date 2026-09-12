@@ -144,7 +144,20 @@ def verify_image(cfg):
         raise ValueError("image identity mismatch")
 
 
+def verify_host_paths(cfg):
+    model = Path(cfg["MODEL_HOST_PATH"]).resolve()
+    writable = {key: Path(cfg[key]) for key in
+                ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH")}
+    operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
+    writable.update({"auth output": operator / "auth.py", "auth temporary output": operator / "auth.py.tmp"})
+    for name, path in writable.items():
+        resolved = path.resolve()
+        if resolved.is_relative_to(model) or model.is_relative_to(resolved):
+            raise ValueError(f"{name} must not overlap the resolved model directory")
+
+
 def verify_host(cfg):
+    verify_host_paths(cfg)
     verify_image(cfg)
     if not (Path(cfg["MODEL_HOST_PATH"]) / "config.json").is_file():
         raise ValueError("missing checkpoint config.json")
@@ -190,6 +203,7 @@ def main():
     if args.check:
         print(shlex.join(command(cfg)))
     elif args.prepare:
+        verify_host_paths(cfg)
         verify_image(cfg)
         state = Path(cfg["STATE_HOST_PATH"])
         operator = state / "operator"
@@ -206,6 +220,7 @@ def main():
         staged.replace(operator / "auth.py")
         print("Authentication prepared; no GPU used")
     elif args.pack:
+        verify_host_paths(cfg)
         verify_image(cfg)
         packed = Path(cfg["ENGRAM_HOST_PATH"])
         packed.mkdir(parents=True, exist_ok=True)

@@ -169,6 +169,19 @@ def test_image_drift_rejected_before_host_actions(tmp_path, monkeypatch):
         launch.verify_host(cfg)
 
 
+def test_writable_model_alias_is_rejected_before_docker(tmp_path, monkeypatch):
+    cfg = host_config(tmp_path)
+    alias = tmp_path / "cache-alias"
+    try:
+        alias.symlink_to(Path(cfg["MODEL_HOST_PATH"]), target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    cfg["CACHE_HOST_PATH"] = str(alias)
+    monkeypatch.setattr(launch, "output", lambda args: pytest.fail("Docker must not run"))
+    with pytest.raises(ValueError, match="overlap"):
+        launch.verify_host(cfg)
+
+
 def test_running_model_rejected_even_before_gpu_allocation(tmp_path, monkeypatch):
     cfg = host_config(tmp_path)
     def output(args):
