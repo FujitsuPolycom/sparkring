@@ -310,3 +310,109 @@ def test_full_topology_gate_requires_24_qps_eight_rules_and_cleanup(
     unclean = {**gate, "status": "research-only", "cleanup_verified": False}
     with pytest.raises(fabric.FabricError, match="hardware gate"):
         overlay_plan.require_full_topology_gate(selected, unclean)
+
+
+def _contract_document() -> dict:
+    return json.loads((HERE / "overlay_contract.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    "mutate,message",
+    [
+        (lambda c: c["runtime"].pop("gid_index"), "gid_index"),
+        (lambda c: c["runtime"].__setitem__("gid_index", "3"), "gid_index"),
+        (lambda c: c["sidecars"].__setitem__("source_marker_runtime_seconds", 0), "runtime_seconds"),
+        (lambda c: c.pop("sidecars"), "sidecars"),
+    ],
+)
+def test_contract_requires_gid_index_and_marker_runtime(tmp_path, mutate, message) -> None:
+    from integrations.vllm.rocenante.rocenante_vllm_overlay import OverlayError
+
+    contract = _contract_document()
+    mutate(contract)
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(contract))
+    with pytest.raises(OverlayError, match=message):
+        load_contract(path)
+
+
+def test_rank_environment_follows_the_validated_contract(tmp_path) -> None:
+    contract = _contract_document()
+    contract["runtime"]["gid_index"] = 5
+    contract["runtime"]["proxy_cpu"] = 14
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(contract))
+    environment = overlay_plan.rank_environment(load_contract(path))
+    assert sorted(environment) == ["0", "1", "2", "3"]
+    for rank, values in environment.items():
+        assert values["B12X_ROCE_GID_INDEX"] == "5"
+        assert values["ROCENANTE_PROXY_CPU"] == "14"
+        assert values["B12X_ROCE_OPPOSITE_PATHS"] == "2"
+        assert values["B12X_ROCE_WAVE_MODE"] == "two"
+        assert values["B12X_ROCE_TWO_WAVE_THRESHOLD_BYTES"] == "196608"
+        assert values["B12X_ROCE_PEER_HCA_MAP"] == contract["peer_hca_maps"][rank]
+        assert values["B12X_ROCE_HCA"] == ",".join(contract["canonical_hca_order"])
+
+
+def test_marker_command_without_run_seconds_fails_closed() -> None:
+    manifest = {
+        "apply_phases": [
+            {
+                "name": "source_markers",
+                "commands": [{"argv": ["/helper", "marker", "apply"]}] * 8,
+            }
+        ]
+    }
+    with pytest.raises(overlay_plan.PlanError, match="does not declare --run-seconds"):
+        overlay_plan._bind_marker_lifetime(manifest, 7200)
+    manifest["apply_phases"][0]["commands"] = [{"argv": ["/helper", "--run-seconds"]}] * 8
+    with pytest.raises(overlay_plan.PlanError, match="does not declare --run-seconds"):
+        overlay_plan._bind_marker_lifetime(manifest, 7200)
+
+
+def test_destroy_releases_saved_communicator_when_runtime_close_fails(monkeypatch) -> None:
+    import sys
+    import types
+    import weakref
+    from integrations.vllm.rocenante import rocenante_vllm_overlay as module
+
+    events = []
+
+    class CudaCommunicator:
+        def __init__(self):
+            events.append("init")
+
+        def all_reduce(self, tensor):
+            return "saved"
+
+        def destroy(self):
+            events.append("destroy")
+
+    vllm_module = types.ModuleType("vllm.distributed.device_communicators.cuda_communicator")
+    vllm_module.CudaCommunicator = CudaCommunicator
+    for name in ("vllm", "vllm.distributed", "vllm.distributed.device_communicators"):
+        monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
+    monkeypatch.setitem(sys.modules, vllm_module.__name__, vllm_module)
+    reporter = types.ModuleType("spark_graph_status_reporter")
+    reporter.collect_graph_status = lambda: {}
+    monkeypatch.setitem(sys.modules, "spark_graph_status_reporter", reporter)
+    monkeypatch.setattr(module, "_installed", False)
+    monkeypatch.setattr(module, "_adapters", weakref.WeakSet())
+
+    module.install(HERE / "overlay_contract.json")
+
+    class Adapter:
+        def close(self):
+            events.append("close")
+            raise RuntimeError("runtime close failed")
+
+    adapter = Adapter()
+    module._adapters.add(adapter)
+    communicator = CudaCommunicator.__new__(CudaCommunicator)
+    communicator._rocenante_virtual_diagonal_adapter = adapter
+    with pytest.raises(RuntimeError, match="runtime close failed"):
+        communicator.destroy()
+    assert events == ["close", "destroy"]
+    assert list(module._adapters) == []
+    assert communicator._rocenante_virtual_diagonal_adapter is None
+    assert reporter.collect_graph_status()["rocenante_routing"] == []

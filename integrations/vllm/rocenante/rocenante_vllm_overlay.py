@@ -1,8 +1,9 @@
 """Route bounded GLM-5.3 TP4 shapes through B12X virtual diagonals.
 
-Status: research-only. The adapter wraps an already-installed vLLM all-reduce
-chain. Eligible Q1-Q32 BF16 ``[Q,4096]`` tensors use one six-origin-QP B12X
-runtime per rank. Every rejected signature calls the saved SIRCL/NCCL chain.
+Status: research-only. The adapter wraps the vLLM all-reduce bound at install
+time, which the private bundle's startup order makes the SIRCL chain. Eligible
+Q1-Q32 BF16 ``[Q,4096]`` tensors use one six-origin-QP B12X runtime per rank.
+Every rejected signature calls that saved all-reduce.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ DEFAULT_CONFIG = Path("/opt/spark-sircl/rocenante-overlay-config.json")
 _installed = False
 _adapters: weakref.WeakSet[VirtualDiagonalAdapter] = weakref.WeakSet()
 _registry_lock = threading.Lock()
+_constructing = False
 _b12x_path_installed = False
 
 
@@ -69,8 +71,10 @@ def load_contract(path: Path = DEFAULT_CONFIG) -> dict[str, object]:
     except (OSError, json.JSONDecodeError) as error:
         raise OverlayError(f"overlay contract cannot be read: {error}") from error
     root = dict(_mapping(value, "overlay contract"))
-    if root.get("schema") != CONFIG_SCHEMA or root.get("status") != "research-only":
+    if root.get("schema") != CONFIG_SCHEMA:
         raise OverlayError(f"overlay contract must use {CONFIG_SCHEMA}")
+    if root.get("status") != "research-only":
+        raise OverlayError("overlay contract status must be research-only")
     runtime = _mapping(root.get("runtime"), "runtime")
     if _integer(runtime.get("world_size"), "runtime.world_size", 1, 64) != 4:
         raise OverlayError("runtime.world_size must be four")
@@ -124,6 +128,15 @@ def load_contract(path: Path = DEFAULT_CONFIG) -> dict[str, object]:
     forbidden = runtime.get("forbidden_proxy_cpus")
     if forbidden != [10, 11] or proxy_cpu in forbidden:
         raise OverlayError("runtime.proxy_cpu must differ from SIRCL CPUs 10 and 11")
+    # The adapter and the plan both export this index as B12X_ROCE_GID_INDEX.
+    _integer(runtime.get("gid_index"), "runtime.gid_index", 0, 255)
+    sidecars = _mapping(root.get("sidecars"), "sidecars")
+    _integer(
+        sidecars.get("source_marker_runtime_seconds"),
+        "sidecars.source_marker_runtime_seconds",
+        1,
+        86_400,
+    )
     hcas = root.get("canonical_hca_order")
     expected_hcas = [
         "rocep1s0f0",
@@ -289,7 +302,8 @@ class VirtualDiagonalAdapter:
         for device in self.hcas:
             try:
                 available = _gid_available(device, self.gid_index)
-            except OSError as error:
+            except (OSError, ValueError) as error:
+                # ValueError covers a sysfs GID file that is not ASCII text.
                 available = False
                 errors.append(
                     f"RDMA device/GID probe failed: {device}:{self.gid_index}: {error}"
@@ -382,7 +396,11 @@ class VirtualDiagonalAdapter:
             raise OverlayError("Gloo capability vote must contain ranks 0, 1, 2, and 3")
         digests = {vote.get("config_sha256") for vote in votes}
         manifests = {vote.get("manifest_sha256") for vote in votes}
-        if len(digests) != 1 or len(manifests) != 1 or "" in manifests:
+        if "" in manifests:
+            raise OverlayError(
+                "private bundle manifest is missing or unreadable on at least one rank"
+            )
+        if len(digests) != 1 or len(manifests) != 1:
             raise OverlayError("overlay source or configuration differs across ranks")
         failures = [
             f"rank {rank}: {error}"
@@ -544,6 +562,7 @@ def install(config_path: Path = DEFAULT_CONFIG) -> None:
         return
 
     def wrapped_init(self, *args, **kwargs):
+        global _constructing
         original_init(self, *args, **kwargs)
         prefix = str(contract["dispatch"]["candidate"]["group_name_prefix"])
         if str(self.unique_name).startswith(prefix):
@@ -551,15 +570,22 @@ def install(config_path: Path = DEFAULT_CONFIG) -> None:
                 raise OverlayError(
                     f"virtual-diagonal TP group requires four ranks, got {self.world_size}"
                 )
+            # Reserve the single runtime slot under the lock so a second TP
+            # communicator constructed concurrently cannot also pass the check.
             with _registry_lock:
-                if list(_adapters):
+                if list(_adapters) or _constructing:
                     raise OverlayError(
                         "one process cannot construct more than one virtual-diagonal TP runtime"
                     )
-            adapter = VirtualDiagonalAdapter(self, contract)
-            self._rocenante_virtual_diagonal_adapter = adapter
-            with _registry_lock:
-                _adapters.add(adapter)
+                _constructing = True
+            try:
+                adapter = VirtualDiagonalAdapter(self, contract)
+                self._rocenante_virtual_diagonal_adapter = adapter
+                with _registry_lock:
+                    _adapters.add(adapter)
+            finally:
+                with _registry_lock:
+                    _constructing = False
 
     def wrapped_all_reduce(self, tensor):
         adapter = getattr(self, "_rocenante_virtual_diagonal_adapter", None)
@@ -571,19 +597,26 @@ def install(config_path: Path = DEFAULT_CONFIG) -> None:
 
     def wrapped_destroy(self):
         adapter = getattr(self, "_rocenante_virtual_diagonal_adapter", None)
-        if adapter is not None:
+        if adapter is None:
+            return original_destroy(self)
+        try:
             adapter.close()
+        finally:
+            # The saved communicator is destroyed even when the B12X runtime
+            # fails to close, so no NCCL resources outlive the wrapper.
             with _registry_lock:
                 _adapters.discard(adapter)
             self._rocenante_virtual_diagonal_adapter = None
-        return original_destroy(self)
+            original_destroy(self)
 
     wrapped_all_reduce._rocenante_virtual_diagonal = True
     wrapped_all_reduce._rocenante_saved_all_reduce = original_all_reduce
+    # Status reporting is installed first: if it fails, no class is patched
+    # and a retry cannot mistake a partial install for a complete one.
+    _install_status_reporting()
     CudaCommunicator.__init__ = wrapped_init
     CudaCommunicator.all_reduce = wrapped_all_reduce
     CudaCommunicator.destroy = wrapped_destroy
-    _install_status_reporting()
     _installed = True
 
 

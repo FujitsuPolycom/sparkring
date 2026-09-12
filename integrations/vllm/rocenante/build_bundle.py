@@ -2,8 +2,10 @@
 """Compose a content-addressed SIRCL and B12X RoCEnante transport bundle.
 
 Status: research-only. The builder reads local source trees and writes one
-output directory after requiring that target to be absent. It does not contact a host, configure networking, or start a model.
-Only ``b12x.comm.roce`` overlays the B12X package already present in the image.
+output directory after requiring that target to be absent. It does not contact
+a host, configure networking, or start a model. The bundle carries only the
+``b12x.comm.roce`` subpackage, which the overlay path prepends to the B12X
+package installed in the serving image.
 """
 
 from __future__ import annotations
@@ -185,6 +187,23 @@ def _base_manifest(
     native = root / "libspark_transport_capi.so"
     if native.is_file() and all(str(path) != native.name for path, _ in result):
         result.append((PurePosixPath(native.name), sha256_file(native)))
+    # Every file in the base bundle must be accounted for; an unmanifested
+    # file would otherwise be dropped from the composed bundle without notice.
+    listed = {root.joinpath(*path.parts) for path, _ in result}
+    unlisted = sorted(
+        source.relative_to(root).as_posix()
+        for source in root.rglob("*")
+        if source.is_file()
+        and source != manifest_path
+        and "__pycache__" not in source.parts
+        and source.suffix not in {".pyc", ".pyo"}
+        and source not in listed
+    )
+    if unlisted:
+        raise BundleError(
+            "base SIRCL bundle contains files absent from its manifest: "
+            + ",".join(unlisted)
+        )
     return manifest_path, document, result
 
 
@@ -264,6 +283,10 @@ def build(base_sircl: Path, b12x_repository: Path, output: Path, *,
             "rocenante_vllm_overlay.py",
             "rocenante_health_gate.py",
         ):
+            if name in copied_base_names:
+                raise BundleError(
+                    f"base SIRCL bundle already contains overlay file {name}"
+                )
             source = HERE / name
             destination = output / name
             shutil.copyfile(source, destination)

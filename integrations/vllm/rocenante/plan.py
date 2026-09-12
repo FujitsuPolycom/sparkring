@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from spark_transport.fabric.cx7_hairpin_diagonal import fabric
+from integrations.vllm.rocenante.build_bundle import MANIFEST_SCHEMA
 from integrations.vllm.rocenante.rocenante_vllm_overlay import (
     load_contract,
 )
@@ -47,22 +48,36 @@ def _bind_marker_lifetime(
 
     result = json.loads(json.dumps(manifest))
     marker_commands = 0
-    for phase in result["apply_phases"]:
-        if phase["name"] != "source_markers":
-            continue
-        for command in phase["commands"]:
-            argv = command["argv"]
-            index = argv.index("--run-seconds")
-            if argv[index + 1] != str(runtime_seconds):
-                raise PlanError(
-                    "topology marker lifetime differs from the overlay contract"
-                )
-            marker_commands += 1
-            command["required_helper_contract"] = {
-                "signal_safe_cleanup": True,
-                "maximum_runtime_seconds": runtime_seconds,
-                "binary_identity_verified": True,
-            }
+    try:
+        phases = [
+            (phase["name"], phase["commands"]) for phase in result["apply_phases"]
+        ]
+        commands = [
+            command
+            for name, phase_commands in phases
+            if name == "source_markers"
+            for command in phase_commands
+        ]
+        argvs = [(command, list(command["argv"])) for command in commands]
+    except (KeyError, TypeError) as error:
+        raise PlanError(f"apply manifest is malformed: {error!r}") from error
+    for command, argv in argvs:
+        try:
+            configured = argv[argv.index("--run-seconds") + 1]
+        except (ValueError, IndexError) as error:
+            raise PlanError(
+                "source-marker command does not declare --run-seconds"
+            ) from error
+        if configured != str(runtime_seconds):
+            raise PlanError(
+                "topology marker lifetime differs from the overlay contract"
+            )
+        marker_commands += 1
+        command["required_helper_contract"] = {
+            "signal_safe_cleanup": True,
+            "maximum_runtime_seconds": runtime_seconds,
+            "binary_identity_verified": True,
+        }
     if marker_commands != 8:
         raise PlanError("source-marker phase must contain eight commands")
     return result
@@ -97,6 +112,32 @@ def require_full_topology_gate(
     return inventory
 
 
+def rank_environment(contract: dict[str, object]) -> dict[str, dict[str, str]]:
+    """Derive each rank's B12X environment from the validated contract.
+
+    The adapter checks the same assignments at startup, so the plan and the
+    running process cannot disagree about the GID index, proxy CPU, path
+    count, wave mode or threshold.
+    """
+
+    runtime = contract["runtime"]
+    hcas = ",".join(contract["canonical_hca_order"])
+    return {
+        str(rank): {
+            "B12X_ROCE_HCA": hcas,
+            "B12X_ROCE_GID_INDEX": str(runtime["gid_index"]),
+            "B12X_ROCE_OPPOSITE_PATHS": str(runtime["opposite_rank_paths"]),
+            "B12X_ROCE_PEER_HCA_MAP": contract["peer_hca_maps"][str(rank)],
+            "B12X_ROCE_WAVE_MODE": str(runtime["wave_mode"]),
+            "B12X_ROCE_TWO_WAVE_THRESHOLD_BYTES": str(
+                runtime["direct_then_diagonal_threshold_bytes"]
+            ),
+            "ROCENANTE_PROXY_CPU": str(runtime["proxy_cpu"]),
+        }
+        for rank in range(int(runtime["world_size"]))
+    }
+
+
 def build_plan(
     bundle: Path,
     topology: Path,
@@ -110,9 +151,7 @@ def build_plan(
     manifest_path = bundle / "sparkring-overlay-manifest.json"
     config_path = bundle / "rocenante-overlay-config.json"
     manifest = _load_json(manifest_path, "private bundle manifest")
-    if not isinstance(manifest, dict) or manifest.get("schema") != (
-        "sparkring.glm53-rocenante-private-bundle/v1"
-    ):
+    if not isinstance(manifest, dict) or manifest.get("schema") != MANIFEST_SCHEMA:
         raise PlanError("private bundle manifest has an unsupported schema")
     contract = load_contract(contract_path or config_path)
     files = manifest.get("files")
@@ -148,18 +187,9 @@ def build_plan(
     sidecar_apply = _bind_marker_lifetime(base_apply, runtime_seconds)
     cleanup = fabric.build_cleanup_manifest(selected)
 
-    rank_environment = {}
-    hcas = ",".join(contract["canonical_hca_order"])
-    for rank in range(4):
-        rank_environment[str(rank)] = {
-            "B12X_ROCE_HCA": hcas,
-            "B12X_ROCE_GID_INDEX": "3",
-            "B12X_ROCE_OPPOSITE_PATHS": "2",
-            "B12X_ROCE_PEER_HCA_MAP": contract["peer_hca_maps"][str(rank)],
-            "B12X_ROCE_WAVE_MODE": "two",
-            "B12X_ROCE_TWO_WAVE_THRESHOLD_BYTES": "196608",
-            "ROCENANTE_PROXY_CPU": "13",
-        }
+    environment = rank_environment(contract)
+    proxy_cpu = int(contract["runtime"]["proxy_cpu"])
+    sircl_submit_cpu, sircl_progress_cpu = contract["runtime"]["forbidden_proxy_cpus"]
 
     plan = {
         "schema": PLAN_SCHEMA,
@@ -186,7 +216,7 @@ def build_plan(
             "launcher": "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh",
             "base_runtime_values_unchanged": True,
         },
-        "rank_environment": rank_environment,
+        "rank_environment": environment,
         "dispatch": {
             "candidate": "contiguous CUDA BF16 TP4 [Q,4096], Q1 through Q32",
             "fallback": "the saved SIRCL/NCCL all-reduce chain",
@@ -198,10 +228,10 @@ def build_plan(
             "additional_nccl_communicators": 0,
         },
         "cpu_affinity": {
-            "rocenante_proxy": 13,
-            "sircl_graph_submit": 10,
-            "sircl_graph_progress": 11,
-            "overlap": False,
+            "rocenante_proxy": proxy_cpu,
+            "sircl_graph_submit": int(sircl_submit_cpu),
+            "sircl_graph_progress": int(sircl_progress_cpu),
+            "overlap": proxy_cpu in (int(sircl_submit_cpu), int(sircl_progress_cpu)),
         },
         "fabric_inventory": inventory,
         "sidecar_apply": sidecar_apply,
@@ -217,7 +247,8 @@ def build_plan(
         ],
         "limitations": [
             "The plan does not execute a command or establish model correctness.",
-            "Every marker helper must prove signal-safe cleanup and an exact configured runtime of 7200 seconds.",
+            "Every marker helper must prove signal-safe cleanup and an exact "
+            f"configured runtime of {runtime_seconds} seconds.",
             "Hardware QoS and four-opposite-path mesh32 are rejected research arms and are absent.",
         ],
     }
