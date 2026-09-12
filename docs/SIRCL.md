@@ -1,6 +1,6 @@
 # SIRCL
 
-See the [maintained guide](architecture/sircl.md). Section links below retain existing anchors.
+See the [maintained guide](architecture/sircl.md). This page preserves inbound section anchors and links to the corresponding maintained sections.
 
 ## [Implemented boundary](architecture/sircl.md#implemented-boundary)
 

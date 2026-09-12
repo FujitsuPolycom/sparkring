@@ -1,6 +1,6 @@
 # Validate a serving profile
 
-See the [maintained guide](operations/profile-validation.md). Section links below retain existing anchors.
+See the [maintained guide](operations/profile-validation.md). This page preserves inbound section anchors and links to the corresponding maintained sections.
 
 ## [Required test card](operations/profile-validation.md#required-test-card)
 

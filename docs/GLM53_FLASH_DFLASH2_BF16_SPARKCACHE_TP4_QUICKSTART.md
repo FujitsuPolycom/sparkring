@@ -197,7 +197,8 @@ python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
 
 After readiness, the first request may safely recompute while all worker
 inventories reach the scheduler, or it may restore immediately. Save metrics
-before either request so an immediate restore remains visible:
+before either request so an immediate restore remains visible. Keep unrelated
+traffic off this backend while measuring these counter deltas:
 
 ```bash
 curl --fail --silent --max-time 10 "${api_endpoint}/metrics" > metrics-before-prime.prom
@@ -206,9 +207,9 @@ python "${qualification_script}" --endpoint "${api_endpoint}" \
 curl --fail --silent "${api_endpoint}/metrics" > metrics-before-restore.prom
 python "${qualification_script}" --endpoint "${api_endpoint}" \
   --model "${served_model}" --kind persistent --output post-restart-restore.json
+curl --fail --silent "${api_endpoint}/metrics" > metrics-after-restore.prom
 python "${qualification_script}" --endpoint "${api_endpoint}" \
   --model "${served_model}" --kind semantic --output post-restore-semantic.json
-curl --fail --silent "${api_endpoint}/metrics" > metrics-after-restore.prom
 ```
 
 Require every worker to log `restored 8192 tokens async`. Across the metrics

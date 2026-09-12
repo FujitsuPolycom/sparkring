@@ -1,6 +1,6 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark quickstart
 
-See the [maintained guide](../profiles/qwen38-27b-exl3-k5k6/README.md). Section links below retain existing anchors.
+See the [maintained guide](../profiles/qwen38-27b-exl3-k5k6/README.md). This page preserves inbound section anchors and links to the corresponding maintained sections.
 
 ## [1. Prepare the four hosts](../profiles/qwen38-27b-exl3-k5k6/README.md#1-prepare-the-four-hosts)
 

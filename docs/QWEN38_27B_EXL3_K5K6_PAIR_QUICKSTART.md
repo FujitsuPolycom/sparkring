@@ -1,6 +1,6 @@
 # Qwen3.8-27B EXL3 K5/K6 two-Spark quickstart
 
-See the [maintained guide](../profiles/qwen38-27b-exl3-k5k6-pair/README.md). Section links below retain existing anchors.
+See the [maintained guide](../profiles/qwen38-27b-exl3-k5k6-pair/README.md). This page preserves inbound section anchors and links to the corresponding maintained sections.
 
 ## [Serving contract](../profiles/qwen38-27b-exl3-k5k6-pair/README.md#serving-contract)
 

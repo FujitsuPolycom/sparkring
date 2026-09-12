@@ -1,6 +1,6 @@
 # SparkRing prerequisites
 
-See the [maintained guide](operations/prerequisites.md). Section links below retain existing anchors.
+See the [maintained guide](operations/prerequisites.md). This page preserves inbound section anchors and links to the corresponding maintained sections.
 
 ## [Hardware and topology](operations/prerequisites.md#hardware-and-topology)
 
