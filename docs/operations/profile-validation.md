@@ -311,6 +311,17 @@ hosts or alter networking during load.
 
 ## Report and operator decision
 
+For shared-image GLM activation receipts using schema
+`sparkring-r33-activation-receipt/v1`, run the maintained offline validator:
+
+```bash
+python3 runtime/common/verify_activation.py --receipt /path/to/activation.json
+```
+
+It requires each rank exactly once, checks the declared SparkCache state, and
+applies the retained profile's image, source and runtime evidence checks. It
+does not contact hosts or establish that a reported measurement occurred.
+
 Use [the report template](../PROFILE_VALIDATION_REPORT_TEMPLATE.md). Include the
 recipe and source identities, commands, raw-receipt hashes, three-run medians
 and ranges, accuracy counts, failure details, and restart/cache evidence.

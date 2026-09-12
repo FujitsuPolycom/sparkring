@@ -2,8 +2,9 @@
 
 Status: **research-only**. `fabric.py` implements topology validation and
 command planning for a four-node ring. The native source marker supports
-managed attachment until signaled, plus bounded diagnostic runs. The MTP3
-profile provides an [implemented managed host service](../../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md);
+managed attachment until signaled, plus bounded diagnostic runs. The retained
+GLM-5.3 Flash mesh recipe (`glm53-spark-mtp3-managed-mesh-tp4`) provides an
+[implemented managed host service](../../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md);
 its [functional record](../../../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
 qualifies bounded installer, fault/recovery, reload, and recall cases.
 Hot marker replacement beneath active RC QPs and unattended high availability
@@ -29,7 +30,7 @@ preserved. Endpoints still use CPU-pinned, GPU-mapped host memory and CPU
 posting. Hardware transit through the intermediate ASIC does not provide
 GPUDirect RDMA to the endpoint GB10 GPU.
 
-The MTP3 profile uses six origin QPs per rank, two paths per peer, eight
+That mesh recipe uses six origin QPs per rank, two paths per peer, eight
 intermediate rules, and eight source-marker processes across four ranks.
 Direct-neighbor and opposite-peer traffic share physical link capacity; this
 is a logical mesh, not additional physical bandwidth.
@@ -66,9 +67,8 @@ sha256sum build/cx7-marker/mlx5-rdma-tx-rewrite-probe
 ```
 
 Record the compiler, source digest, library dependencies, and binary digest.
-Use that binary digest in the private site document. A rebuild is not
-required to have the observed deployment's binary hash; source compatibility
-is not byte-for-byte binary reproducibility. The profile pins record both
+Use that binary digest in the private site document. A compatible rebuild
+may have a different binary hash; record its actual hash. The profile pins record both
 source and observed binary identities.
 
 With `--managed`, the process owns the installed rule until it receives
@@ -96,8 +96,10 @@ the MTP3 mesh. The separate
 [managed service](../../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
 regenerates canonical network commands, verifies ownership, supervises
 persistent markers, and authenticates four-rank readiness. Follow the
-[operator quickstart](../../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md)
-for image, model, and transport configuration.
+[retained-image reproduction guide](../../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md)
+for that recipe's image, model, and transport configuration. For deployment
+with the shared serving image, use the
+[maintained TP4 guide](../../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md).
 
 ```bash
 python -m pytest spark_transport/fabric/cx7_hairpin_diagonal -q

@@ -143,6 +143,7 @@ runtime:
 serving:
   tensor_parallel_size: 4
   decode_context_parallel_size: 1
+  # The runtime profile owns speculation; disable the generic site's MTP settings.
   mtp_mode: "off"
   mtp_tokens: 0
   max_model_len: 524288
