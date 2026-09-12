@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status: implemented and live-benchmarked; not qualified.**
+Status: **Development**. Measurements are scoped to the records below.
 DeepSeek-V4-Flash loads and serves as either two or four tensor-parallel ranks
 on directly cabled DGX Sparks. The TP2 benchmark used the DSpark package at
 `913f0657…`; TP4 used the plain 0731 package at `7872f01…`. Use the
@@ -44,7 +44,7 @@ pair recipe; its throughput does not establish same-checkpoint TP2/TP4 scaling.
 The implemented pair and cycle launches exercised API health, chat
 completions, tool calling, and DSpark speculative decoding. Both topologies
 completed prefill and sustained-decode matrices through 128K,
-with C1/C2 measured at least five times and every other applicable cell at
+with one and two concurrent streams (C1/C2) measured at least five times and every other applicable cell at
 least three times. The [TP2 record](../../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md)
 and [TP4 record](../../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md)
 retain the conditions, variability, and source-receipt hashes. These results
@@ -56,8 +56,8 @@ throughput records exercise contexts through 128K; they do not establish a
 successful 1M request. The contract's published runtime digest also awaits an
 exact-digest TP2 and TP4 replay, as described below.
 
-The hardened runtime lane adds malformed-DSML recovery and the Python/Triton
-plus native sparse-row repairs. A diagnostic TP4/K5 build from that lane passed
+The [runtime](../../runtime/deepseek0731-gb10/README.md) includes malformed-DSML
+recovery and Python/Triton plus native sparse-row repairs. A diagnostic TP4/K5 build passed
 100 strict max-reasoning streams and cold tool calls near 98K and 262K prompt
 tokens on 2026-08-24. That run did not attest the published digest. The
 throughput matrices above predate the hardened image and remain historical
