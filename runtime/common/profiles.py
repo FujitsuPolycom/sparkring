@@ -14,6 +14,8 @@ STATUS = {"implemented", "qualified", "research-only", "unsupported"}
 OVERRIDES = {"max_model_len", "max_num_seqs", "max_num_batched_tokens"}
 PROFILE_FIELDS = {"schema", "id", "title", "recommendation", "status", "configuration", "release", "guide", "evidence_scope", "overrides", "launcher"}
 COMMON = {"decode_context_parallel_size": 1, "pipeline_parallel_size": 1}
+TOPOLOGIES = {"direct-pair-2", "direct-cycle-4", "sparkring-rocenante-mesh",
+              "tp2-rocenante-adaptive", "switched"}
 
 
 def read_json(path):
@@ -154,6 +156,12 @@ def resolve(profile_id, overrides=None, site=None, root=ROOT):
     p, release = load(profile_id, root)
     model, defaults, topology, evidence, runtime = configuration(p, root)
     values = {**COMMON, **defaults}
+    if not isinstance(topology, str) or topology not in TOPOLOGIES:
+        raise ValueError(f"Unsupported profile topology: {topology!r}")
+    topology_nodes = {"direct-pair-2": 2, "direct-cycle-4": 4,
+                      "tp2-rocenante-adaptive": 2}.get(topology)
+    if topology_nodes is not None and values.get("node_count") != topology_nodes:
+        raise ValueError(f"topology {topology} requires {topology_nodes} nodes")
     origin = {key: ("profile" if key in defaults else "common") for key in values}
     overrides = overrides or {}
     if not set(overrides) <= set(p["overrides"]):

@@ -15,6 +15,16 @@ def write(path, data):
     path.write_text(json.dumps(data), encoding='utf-8')
 
 
+@pytest.mark.parametrize("topology", ["unknown-fabric", "direct-cycle-4"])
+def test_profile_topology_must_match_supported_node_count(repository, topology):
+    path = repository / "profiles/example/recipe.json"
+    recipe = profiles.read_json(path)
+    recipe["hardware"]["topology"] = topology
+    write(path, recipe)
+    with pytest.raises(ValueError, match="topology"):
+        profiles.resolve("example", root=repository)
+
+
 @pytest.mark.parametrize("template", ["missing.json", "../../../outside.json"])
 def test_release_template_must_resolve_inside_repository(repository, template):
     profile = {"configuration": {"format": "release-profile", "path": "profiles/contract.json", "key": "pair"}}
