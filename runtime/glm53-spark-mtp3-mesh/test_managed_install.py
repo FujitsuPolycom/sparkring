@@ -522,3 +522,74 @@ def test_managed_dcp4_requires_persisted_overlay_roots(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="r33_profile_contract_roots"):
         managed_install.canonical_container_spec(tmp_path, tmp_path / "receipt", 0, {},
                                                run=lambda *a, **kw: pytest.fail("Missing overlay must fail before execution"))
+
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError(2, "fixture SSH executable missing", "ssh"), PermissionError(13, "fixture permission denied", "ssh")])
+def test_coordinator_local_spawn_failure_is_a_rank_result(monkeypatch, error):
+    def fail(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(managed_cluster.subprocess, "run", fail)
+    result = managed_cluster.execute("fixture-rank", ["true"])
+    assert result["returncode"] == 127
+    assert result["ssh_started"] is False
+    assert "Local SSH process could not start" in result["error"]
+
+
+def test_coordinator_retains_mixed_phase_results_after_spawn_failure(tmp_path, monkeypatch):
+    receipt = tmp_path / "phase.json"
+    monkeypatch.setattr(managed_cluster.managed_units.service.mesh_profile, "load_site",
+        lambda path: ({}, SimpleNamespace(rank=lambda rank: SimpleNamespace(ssh_alias=f"rank{rank}")), None))
+    monkeypatch.setattr(managed_cluster, "phases", lambda *args: [("first", ["first"]), ("later", ["later"])])
+    calls = []
+    def run(argv, **kwargs):
+        assert receipt.is_file(), "receipt must be exclusively reserved before dispatch"
+        assert json.loads(receipt.read_text())["phases"] == []
+        calls.append(argv)
+        if argv[-2] == "rank1":
+            raise FileNotFoundError(2, "fixture spawn failure", "ssh")
+        return SimpleNamespace(returncode=0, stdout="completed", stderr="")
+    monkeypatch.setattr(managed_cluster.subprocess, "run", run)
+    monkeypatch.setattr(sys, "argv",
+        ["managed_cluster.py", "up", "--site", str(tmp_path / "site.json"),
+         "--output", str(receipt), "--execute-authorized"])
+    with pytest.raises(SystemExit, match="Phase failed"):
+        managed_cluster.main()
+    observed = json.loads(receipt.read_text())
+    assert len(observed["phases"]) == 1
+    ranks = observed["phases"][0]["ranks"]
+    assert [row["returncode"] for row in ranks] == [0, 127, 0, 0]
+    assert ranks[1]["ssh_started"] is False
+    assert all(row["stdout"] == "completed" for row in (ranks[0], ranks[2], ranks[3]))
+    assert len(calls) == 4 and all(argv[-1] == "first" for argv in calls)
+
+
+
+def test_coordinator_receipt_collision_refuses_dispatch(tmp_path, monkeypatch):
+    receipt = tmp_path / "phase.json"
+    monkeypatch.setattr(managed_cluster.managed_units.service.mesh_profile, "load_site",
+        lambda path: ({}, SimpleNamespace(rank=lambda rank: SimpleNamespace(ssh_alias=f"rank{rank}")), None))
+    monkeypatch.setattr(managed_cluster, "execute", lambda *args: pytest.fail("remote dispatch before receipt ownership"))
+    monkeypatch.setattr(sys, "argv", ["managed_cluster.py", "up", "--site", str(tmp_path / "site.json"),
+                                     "--output", str(receipt), "--execute-authorized"])
+    original = Path.open
+    def raced_open(path, mode="r", *args, **kwargs):
+        if path == receipt and mode == "x":
+            with original(path, "w", encoding="utf-8") as competing:
+                competing.write("other invocation")
+        return original(path, mode, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", raced_open)
+    with pytest.raises(FileExistsError):
+        managed_cluster.main()
+    assert receipt.read_text() == "other invocation"
+
+
+@pytest.mark.parametrize("error", [OSError(5, "I/O failure"), FileNotFoundError(2, "missing unrelated file", "other")])
+def test_coordinator_io_error_preserves_unknown_remote_state(monkeypatch, error):
+    def fail(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(managed_cluster.subprocess, "run", fail)
+    result = managed_cluster.execute("fixture-rank", ["true"])
+    assert result["returncode"] == 127
+    assert result["ssh_started"] is None
+    assert "remote operation state is unknown" in result["error"]

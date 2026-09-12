@@ -30,8 +30,8 @@ B12X shares native MoE scale storage and includes the top-k-512 selector from
 records full donor identities. The selector archive is applied only after all
 base and resulting file hashes pass verification.
 
-The image builder calls `prepare_compute_source.prepare(destination, cache)`
-while network access is available. The prepared directory contains the pinned
+Run `prepare_compute_source.py` while network access is available, before
+passing its output to the image builder. The prepared directory contains the pinned
 B12X source and CUDA archives. Docker copies that directory into the build and
 runs `apply_compute.py` with network access disabled. The installer verifies
 the parent hashes before extracting the replacement archive; this preserves the

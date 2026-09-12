@@ -54,6 +54,13 @@ def execute(host, argv):
     except subprocess.TimeoutExpired:
         return {'host': host, 'argv': argv, 'returncode': 124, 'seconds': time.monotonic() - started,
                 'error': 'SSH deadline exceeded; remote operation may still be in progress'}
+    except OSError as error:
+        spawn_failed = (isinstance(error, (FileNotFoundError, PermissionError))
+                        and error.filename == 'ssh')
+        return {'host': host, 'argv': argv, 'returncode': 127, 'seconds': time.monotonic() - started,
+                'ssh_started': False if spawn_failed else None,
+                'error': ('Local SSH process could not start: ' if spawn_failed else
+                          'SSH I/O failed; remote operation state is unknown: ') + type(error).__name__}
 
 
 def main():
@@ -78,17 +85,27 @@ def main():
         raise ValueError('Executed operations require an absent receipt path')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     receipt = {'action': args.action, 'started_unix': time.time(), 'phases': []}
-    for name, argv in steps:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            results = list(executor.map(lambda host: execute(host, argv), hosts))
-        receipt['phases'].append({'name': name, 'ranks': results})
-        args.output.write_text(json.dumps(receipt, indent=2) + '\n')
-        passed = all(result['returncode'] == 0 for result in results)
-        print(json.dumps({'phase': name, 'passed': passed}), flush=True)
-        if not passed:
-            raise SystemExit('Phase failed; no later phase executed. Inspect receipts before recovery.')
-    receipt['completed_unix'] = time.time()
-    args.output.write_text(json.dumps(receipt, indent=2) + '\n')
+    # Reserve the receipt before any remote work; retain ownership through one descriptor.
+    with args.output.open('x', encoding='utf-8') as stream:
+        def persist_receipt():
+            stream.seek(0)
+            json.dump(receipt, stream, indent=2)
+            stream.write('\n')
+            stream.truncate()
+            stream.flush()
+        persist_receipt()
+        for name, argv in steps:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(lambda host: execute(host, argv), hosts))
+            receipt['phases'].append({'name': name, 'ranks': results})
+            persist_receipt()
+            passed = all(result['returncode'] == 0 for result in results)
+            print(json.dumps({'phase': name, 'passed': passed}), flush=True)
+            if not passed:
+                raise SystemExit('Phase failed; no later phase executed. Inspect receipts before recovery.')
+        receipt['completed_unix'] = time.time()
+        persist_receipt()
+
 
 
 if __name__ == '__main__':

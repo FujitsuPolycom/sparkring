@@ -120,10 +120,12 @@ python3 runtime/glm53-spark-mtp3-mesh/build_image.py prepare \
   --context /var/tmp/mtp3-mesh-image-context
 ```
 
-The context path must not exist. Preparation copies only manifest-listed
-compute and transport files, source-pinned marker code, verification code,
-pins, and the RoCEnante license and provenance. It rejects unexpected bundle
-or compute files and writes a content manifest for every construction input.
+The context path must not exist. Preparation verifies the compute source lock and transport inventory, then
+copies the prepared compute directory, manifest-listed transport files,
+source-pinned marker code, verification code, pins, and license/provenance
+files. It rejects unexpected transport files and compute symlinks, and records
+every copied input. The in-image compute installer verifies the pinned archive
+and installed package hashes during the build.
 
 Build and verify without loading a model:
 
