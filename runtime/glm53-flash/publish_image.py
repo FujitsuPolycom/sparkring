@@ -131,17 +131,19 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     try:
-        receipt = publish(
-            image=args.image,
-            destination=args.destination,
-            build_receipt_path=args.build_receipt.resolve(),
-            sbom_path=args.sbom.resolve(),
-        )
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        # Reserve the receipt before any tag or push can change registry state.
+        with args.output.open("x", encoding="utf-8", newline="\n") as stream:
+            receipt = publish(
+                image=args.image,
+                destination=args.destination,
+                build_receipt_path=args.build_receipt.resolve(),
+                sbom_path=args.sbom.resolve(),
+            )
+            rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
+            stream.write(rendered)
     except (OSError, json.JSONDecodeError, PublishError) as exc:
         parser.error(str(exc))
-    rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(rendered, encoding="utf-8", newline="\n")
     print(rendered, end="")
     return 0
 

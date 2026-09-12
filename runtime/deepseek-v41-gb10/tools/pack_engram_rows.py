@@ -93,6 +93,10 @@ def main():
     g.add_argument("--contiguous", action="store_true")
     ap.add_argument("--chunk-rows", type=int, default=1 << 20)
     a = ap.parse_args()
+    if a.tp <= 0 or not 0 <= a.rank < a.tp:
+        ap.error("--tp must be positive and --rank must be in [0, tp)")
+    if a.chunk_rows <= 0:
+        ap.error("--chunk-rows must be positive")
     if os.path.lexists(a.out_dir):
         raise FileExistsError(
             "packed output already exists; preserve it and select a fresh "

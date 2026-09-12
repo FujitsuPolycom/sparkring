@@ -8,6 +8,16 @@ target=${SPARKRING_DEEPSEEK_GB10_TARGET:-native}
 image_tag=${1:-sparkring/deepseek-v4-flash-0731-gb10-hardened:local}
 max_jobs=${MAX_JOBS:-10}
 source_revision=$(git -C "${repo_root}" rev-parse HEAD)
+build_inputs=(LICENSE THIRD_PARTY_NOTICES.md runtime/deepseek0731-gb10)
+git -C "${repo_root}" diff --quiet HEAD -- "${build_inputs[@]}" || {
+  printf 'builder inputs differ from source revision %s\n' "${source_revision}" >&2
+  exit 2
+}
+untracked=$(git -C "${repo_root}" ls-files --others --exclude-standard -- "${build_inputs[@]}")
+[[ -z "${untracked}" ]] || {
+  printf 'builder inputs include untracked files: %s\n' "${untracked}" >&2
+  exit 2
+}
 
 case "${target}" in
   native|thin) ;;

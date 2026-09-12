@@ -1,27 +1,13 @@
 #!/usr/bin/env bash
-# build-image.sh — build the DeepSeek-V4.1-Flash GB10 serving image on one
-# Spark *while it keeps serving another lane*.
-#
-# Reproduces the tonyd2wild/Kai overlay chain (build/Dockerfile.overlay,
-# build_stable_ext.sh, build_overlay{3,4,5}.sh, prewarm5.py in
-# https://github.com/tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark), pinned, with
-# three deliberate changes:
-#   1. every compile runs inside a cgroup (--memory/--memory-swap/--cpus), so an
-#      overrun kills the compiler and never the serving rank (their boot-3 wedge
-#      was a 22-job runtime JIT on nodes with 10-15 GiB available);
-#   2. ninja -j / MAX_JOBS default 2, NVCC threads 1, automatic retry at 1 job;
-#   3. steps are idempotent (skipped when the overlay tag exists) and end in a
-#      receipt + BUILD_OK / BUILD_FAILED marker in $WORK.
-#
-# Usage (on the build node, unattended):
-#   nohup runtime/deepseek-v41-gb10/build-image.sh > build.out 2>&1 &
-# Knobs: MEM (7g) CPUS (6) JOBS (2) WORK (~/deepseek-v41-build) MIN_AVAIL_GIB (12)
-#        VERIFY=1 runs tools/verify5.py on the GPU at the end (only when the
-#        node is not serving).
+# Build the DeepSeek-V4.1 GB10 image with cgroup-limited compile stages.
+# Stop model workloads for the full extension build; cgroups do not guarantee
+# serving availability. README.md describes source provenance and build limits.
+# Existing stage tags are reused by name, not revalidated against receipts.
+# VERIFY=1 requests a GPU check; stop GPU workloads before enabling it.
 set -uo pipefail
 
-BASE_IMG=vllm/vllm-openai:nightly-8a728663c1c3eeace834a95f5654fa653cc1998c   # merge-base of deepseek-v41-feat, multi-arch
-VLLM_SHA=e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba                             # vllm-project/vllm deepseek-v41-feat HEAD 2026-09-10T07:23Z
+BASE_IMG=vllm/vllm-openai:nightly-8a728663c1c3eeace834a95f5654fa653cc1998c   # pinned multi-architecture parent
+VLLM_SHA=e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba                             # pinned vllm-project/vllm source
 FI_SHA=07869c61ba581e6d6b8ad8d142f4a6c89b707cc1                               # flashinfer v0.7.0rc1
 FI_CUTLASS_SHA=b46b16d003484063bca4ed365e44095c4c6ed633
 FI_CCCL_SHA=16bd510c9b712e82b0ab6cbb630d8e29ba1f7116
@@ -32,12 +18,13 @@ SITE=/usr/local/lib/python3.12/dist-packages/vllm
 
 WORK="${WORK:-$HOME/deepseek-v41-build}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# Cgroup sizing. 2026-09-10 finding: one CUTLASS TU of _C_stable_libtorch drives a
-# single cicc past 7 GiB, so a 7 GiB cgroup stalls in reclaim (memory.events max
-# 5.4M, no OOM kill, no progress). While a GLM mesh container serves on this node
-# the safe ceiling is 7g and the build WILL stall on that TU; with the lane down
-# the node has ~110 GiB free and the build should use it. Defaults pick by state.
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE "${SERVING_CONTAINER_RE:-^glm53-mtp3|^vllm_}"; then
+# Cgroup sizing. Known serving container names select conservative defaults.
+# This name probe cannot detect every workload; set resource limits explicitly.
+running_containers=$(docker ps --format '{{.Names}}') || {
+  printf 'cannot inspect running containers; refusing build resource selection\n' >&2
+  exit 1
+}
+if printf '%s\n' "$running_containers" | grep -qE "${SERVING_CONTAINER_RE:-^glm53-mtp3|^vllm_}"; then
   MEM="${MEM:-7g}"; CPUS="${CPUS:-6}"; JOBS="${JOBS:-2}"; MIN_AVAIL_GIB="${MIN_AVAIL_GIB:-12}"
   echo "note: a serving container is running here; cgroup capped at $MEM (expect the CUTLASS TU stall unless MEM is raised)"
 else
@@ -224,10 +211,10 @@ log "stable ext sha256 $EXT_SHA"
 # ---- 4. final: branch python tree + rebuilt ext over the FlashInfer layers -----
 if ! have_tag "$TAG:overlay5"; then
   CTX="$WORK/final"; mkdir -p "$CTX"
-  rsync -a --delete --exclude '__pycache__' "$SRC/vllm/" "$CTX/vllm/"   # own context: vLLM's .dockerignore drops vllm/*.so
+  rsync -a --delete --exclude '__pycache__' "$SRC/vllm/" "$CTX/vllm/" || fail "final source staging"
   cat > "$CTX/Dockerfile" <<DF
 FROM $TAG:fi5
-# vllm-project/vllm deepseek-v41-feat @ $VLLM_SHA python tree + _C_stable_libtorch rebuilt for sm_121a
+# vllm-project/vllm @ $VLLM_SHA Python tree and rebuilt SM121 extension
 COPY vllm/ $SITE/
 RUN find $SITE -name "__pycache__" -type d -prune -exec rm -rf {} + && python3 -c "import vllm; print('final', vllm.__version__)"
 LABEL org.dgx-sparks.dsv41.vllm_sha=$VLLM_SHA org.dgx-sparks.dsv41.ext_sha256_16=$EXT_SHA org.dgx-sparks.dsv41.flashinfer_sha=$FI_SHA
@@ -244,7 +231,7 @@ if [ "${VERIFY:-0}" = 1 ]; then
   docker run --rm --gpus all -v "$HERE/tools/verify5.py:/v.py:ro" \
     -e FLASHINFER_CUDA_ARCH_LIST=12.1a -e TORCH_CUDA_ARCH_LIST=12.1a -e FLASHINFER_DISABLE_VERSION_CHECK=1 \
     -e VLLM_HAS_FLASHINFER_CUBIN=1 -e MAX_JOBS=2 -e FLASHINFER_NVCC_THREADS=1 \
-    --entrypoint bash "$TAG:overlay5" -c 'timeout 900 python3 /v.py 2>&1 | grep -E "VERIFY|Building JIT" | cut -c1-160' | tee -a "$LOG"
+    --entrypoint bash "$TAG:overlay5" -o pipefail -c 'timeout 900 python3 /v.py 2>&1 | grep -E "VERIFY|Building JIT" | cut -c1-160' | tee -a "$LOG" || fail "optional GPU verification"
 fi
 
 # ---- receipt -----------------------------------------------------------------

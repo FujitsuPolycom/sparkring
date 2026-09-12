@@ -30,6 +30,7 @@ PY
 }
 
 tracked_inputs=(
+  LICENSE
   runtime/glm53-flash
   spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch
 )

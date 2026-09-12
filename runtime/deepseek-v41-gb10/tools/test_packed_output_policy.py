@@ -89,3 +89,16 @@ def test_fresh_destination_packs_tiny_synthetic_rows(tmp_path, monkeypatch):
     assert json.loads((output / "engram-l1-packed.bin.json").read_text())["ranges"] == [
         [0, 2]
     ]
+
+
+@pytest.mark.parametrize("tp,rank,chunk", [(0, 0, 2), (4, -1, 2), (4, 4, 2), (4, 0, 0)])
+def test_invalid_rank_or_chunk_rejected_before_model_reads(tmp_path, monkeypatch, tp, rank, chunk):
+    module = load_packer()
+    output = tmp_path / "unused-output"
+    monkeypatch.setattr(module.argparse.ArgumentParser, "parse_args", lambda self: SimpleNamespace(
+        model_dir=str(tmp_path / "absent-model"), out_dir=str(output),
+        tp=tp, rank=rank, balanced=True, contiguous=False, chunk_rows=chunk))
+    with pytest.raises(SystemExit) as error:
+        module.main()
+    assert error.value.code == 2
+    assert not output.exists()
