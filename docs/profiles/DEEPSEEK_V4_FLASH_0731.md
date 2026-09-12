@@ -19,7 +19,7 @@ on directly cabled DGX Sparks. The TP2 benchmark used the DSpark package at
 | Activations | `bfloat16` |
 | Request limit | 1,048,576 tokens |
 | Maximum sequences | 32 |
-| Key-value reservation | 17,179,869,184 bytes per rank in both base targets; SparkCache TP4 retains 34,359,738,368 bytes per rank |
+| Key-value reservation | 17,179,869,184 bytes per rank in both base targets; the optional [SparkCache TP4 composition](../../performance/records/deepseek-v4-flash/sparkcache-tp4-public-reproduction-20260822.md) retains 34,359,738,368 bytes per rank |
 | Scheduler budget | 4,096 tokens |
 | Block size | 256 tokens |
 | Key-value dtype | `fp8_ds_mla` |
@@ -50,6 +50,11 @@ and [TP4 record](../../performance/records/deepseek-v4-flash/normalized-tp4-base
 retain the conditions, variability, and source-receipt hashes. These results
 remain evidence for the recorded image/checkpoint objects; they do not qualify
 an unrecorded model revision or locally built image.
+
+The 1,048,576-token request limit is the configured serving default. The
+throughput records exercise contexts through 128K; they do not establish a
+successful 1M request. The contract's published runtime digest also awaits an
+exact-digest TP2 and TP4 replay, as described below.
 
 The hardened runtime lane adds malformed-DSML recovery and the Python/Triton
 plus native sparse-row repairs. A diagnostic TP4/K5 build from that lane passed

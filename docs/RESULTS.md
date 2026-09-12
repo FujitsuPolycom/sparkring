@@ -44,8 +44,9 @@ with a 1,048,576-token request limit and 26 GiB of FP8 KV per rank.
 | 64K | 649 | 20.17 | 30.12 | 45.52 | 63.58 |
 | 128K | 635 | 19.67 | 30.64 | 45.73 | 62.63 |
 
-The completed C8 and long-context cells are N=3 means. Other displayed cells
-are single accepted observations. See the [full record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
+Every C8 cell is an N=3 mean. At 64K, C2/C4/C8 are N=3 means; at 128K,
+C1/C2/C4/C8 are N=3 means. Other displayed decode cells are single accepted
+observations. See the [full record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
 
 ## Notes
 

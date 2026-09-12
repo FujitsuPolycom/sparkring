@@ -4,7 +4,8 @@ These recipe paths are generated compatibility exports. Edit the matching
 source under [profiles/](../profiles/README.md), then run
 `python scripts/generate_profiles.py`. Do not maintain a second copy here.
 
-The [profile catalog](../profiles/README.md) owns deployment discovery,
+The machine-readable [profile catalog](../profiles/catalog.json), with its
+[human index](../profiles/README.md), owns deployment discovery,
 recommendations, settings and primary quickstarts. Some deployments select
 release-profile contracts rather than a standalone recipe JSON, so this
 directory is not a complete inventory of supported deployments.
@@ -26,7 +27,10 @@ be narrower than the corresponding base serving profile.
 ## MTP3 mesh profile
 
 The retained [compute-image mesh recipe](glm53-spark-mtp3-managed-mesh-tp4.json)
-records a TP4/DCP4 native-MTP3 composition. Its dedicated site contract is
+records a TP4/DCP4 native-MTP3 composition. TP and DCP use the same four
+processes: TP4 shards model tensors across the ranks, while DCP4 shards decode
+context work across those ranks; the shape does not require 16 processes. Its
+dedicated site contract is
 consumed by the [mesh renderer](../runtime/glm53-spark-mtp3-mesh/README.md),
 not by treating recipe JSON as an executable installer. Its settings and
 receipts do not define the defaults of the published-image profiles in the

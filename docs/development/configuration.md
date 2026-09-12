@@ -24,20 +24,21 @@ python scripts/profiles.py resolve deepseek-v41-flash-cycle --set max_num_seqs=4
 python scripts/profiles.py resolve --legacy recipes/deepseek-v41-flash-cycle.json
 ```
 
-Resolution applies supported explicit overrides, profile defaults, then the small
-common defaults (DCP1 and pipeline parallelism 1 when omitted). The result names
+Resolution applies supported explicit overrides, profile defaults including a
+declared preferred DCP selection, then the small common defaults (DCP1 and
+pipeline parallelism 1 when omitted). The result names
 each value's origin. Model identity, quantization variant, rank count, topology
 and release cannot be overridden through serving knobs. A changed serving value
 is research-only; it does not inherit the default's evidence. An explicit value
-equal to a default produces the same behavior and retains its original scope.
+equal to a default produces the same behavior and retains the default's evidence
+scope.
 
 The resolver does not read process environment variables, run a shell, contact
 hosts or inspect model weights. A legacy recipe must match a catalog recipe;
 edit its authoritative `profiles/` source and regenerate the compatibility
 export. This prevents independent configuration drift. Canonical composition base references
 are repository-relative; the exporter restores their historical relative paths.
-Recipes with a declared preferred DCP selection resolve that selection. A
-composition that records a checkpoint digest without a model revision retains
+A composition that records a checkpoint digest without a model revision retains
 that evidence limit instead of inheriting an unverified revision from its base.
 
 ## Private site configuration
@@ -72,7 +73,9 @@ python scripts/profiles.py render-env deepseek-v41-flash-cycle --site-values ran
 python scripts/launch.py deepseek-v41-flash-cycle -- --check rank0.local.env
 ```
 
-The per-rank JSON object supplies only the environment keys whose template values
+`--site-values` accepts a separate per-rank placeholder-values JSON object, not
+the common `*.site.json` schema consumed by `--site`. The per-rank object supplies
+only the environment keys whose template values
 contain placeholders, such as `NODE_RANK`, `MASTER_ADDR` and `MODEL_HOST_PATH`.
 Use the selected `runtime.env.template` to identify them. It cannot replace
 serving or identity settings. The renderer rejects shell syntax and unresolved

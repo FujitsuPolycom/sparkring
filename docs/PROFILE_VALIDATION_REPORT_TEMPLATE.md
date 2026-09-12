@@ -6,6 +6,7 @@ the profile status. Record a gate as pass, fail, pending, or not applicable.
 
 ## Conditions
 
+- Profile status: [implemented | qualified | research-only | unsupported]
 - Profile/recipe and source revision: [identifiers]
 - Image digest; target/draft revisions; quantization: [identifiers]
 - Hardware/topology, TP/DCP/PP: [values]
@@ -20,6 +21,7 @@ the profile status. Record a gate as pass, fail, pending, or not applicable.
 Follow [the validation runbook](PROFILE_VALIDATION.md). Link commands and raw
 receipts with hashes. Record timing definitions, actual token counts,
 repetitions, concurrency, and cache evidence.
+Use the selected profile's deployment guide for its startup and warmup gate.
 
 ## Result
 

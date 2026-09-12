@@ -112,23 +112,25 @@ python sparkring/scripts/preflight.py \
   --site site.yaml --strict-placeholders --json preflight.json
 python sparkring/scripts/sparkring_generic_launcher.py \
   --site site.yaml --profile profile.json plan > start-plan.json
+confirmation=$(python -c 'import json; print(json.load(open("profile.json", encoding="utf-8"))["confirmation"])')
 python sparkring/scripts/sparkring_generic_launcher.py \
   --site site.yaml --profile profile.json \
-  --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start
+  --execute --confirmation "${confirmation}" start
 ```
 
-Use the confirmation value from the selected profile. Tail rank zero:
+Tail the rank-zero container named by the selected profile:
 
 ```bash
+container_name=$(python -c 'import json; print(json.load(open("profile.json", encoding="utf-8"))["container_name"] + "-r0")')
 ssh operator@rank0.example.net \
-  'docker logs --follow --tail 120 glm53-flash-e10536a-dflash2-bf16-sparkcache-tp4-r0 2>&1'
+  "docker logs --follow --tail 120 '${container_name}' 2>&1"
 ```
 
 Wait for health, then run the exact semantic canary:
 
 ```bash
 api_endpoint='http://rank0.example.net:8015'
-served_model='glm-5.3-flash-nvfp4-dflash5-e10536a-tp4'
+served_model=$(python -c 'import json; d=json.load(open("profile.json", encoding="utf-8")); a=d["vllm_args"]; print(a[a.index("--served-model-name") + 1])')
 startup_timeout=$(python -c 'import json; print(json.load(open("profile.json", encoding="utf-8"))["startup_timeout_seconds"])')
 timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --max-time 10 "$1/health" >/dev/null; do sleep 5; done' _ "$api_endpoint" || {
   echo "Readiness failed or timed out; inspect all rank logs before retrying" >&2; exit 1;

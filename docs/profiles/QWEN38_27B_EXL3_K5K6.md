@@ -48,6 +48,9 @@ inputs; distributes one image ID and the separately verified checkpoint; runs
 the rank launcher in `--check` mode; starts one container per rank; and runs
 the public `scripts/qwen38_smoke.py` gate.
 
+The runtime builder installs `libibverbs1`, `ibverbs-providers`, and
+`ibverbs-utils` for NCCL. The bare CUDA base lacks these serving dependencies.
+
 No published Qwen image is required. A published image would reduce build
 time, but it would not replace site-specific topology checks, model
 verification, or live functional evidence for the selected image ID.
@@ -55,12 +58,6 @@ verification, or live functional evidence for the selected image ID.
 ## Benchmark results
 
 See the [benchmark table, screenshot, and machine-readable data](../../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md).
-
-Limitations:
-
-- The runtime builder installs `libibverbs1`, `ibverbs-providers`, and
-  `ibverbs-utils` for NCCL. The bare CUDA base lacks these dependencies and
-  is not the serving image.
 
 ## SparkCache
 

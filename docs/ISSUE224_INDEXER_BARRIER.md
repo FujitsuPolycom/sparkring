@@ -153,21 +153,24 @@ same RPC is confirmed to remain blocked beyond its configured deadline, inspect
 the actual container files, environment, and closure's method/deadline; that is
 additional evidence not explained by the source-pinned timeout behavior.
 
-## Candidate fix and isolation experiment
+## Implemented fix and isolation experiment
 
 Add `cute.arch.sync_threads()` at entry to `_fused_group_barrier()`, before the
 leader publishes arrival. Keep the existing trailing barrier. This makes every
 publishing warp participate before peers are allowed to consume the histogram.
-Bump the fused indexer's `KernelCompileSpec` revision from 1 to 2 so existing
-cached compiled artifacts do not reuse the old protocol.
+Bump the `KernelCompileSpec` revision in
+`b12x/attention/dsa_indexer/fused_indexer.py` from 1 to 2 so existing cached
+compiled artifacts do not reuse the old protocol.
 
 The kernel patch contains those changes only. The image builder applies
 `runtime/glm53-flash-jj-r8-gb10/patch_indexer_barrier.py` to the exported B12X
 source before creating its source manifest. The transform checks both input
 and output hashes and records its own digest in the build receipt. It rejects
-unexpected source rather than applying a speculative replacement. The output
-uses LF line endings; the original GPU test file used mixed line endings.
-Both have identical Python source after newline normalization.
+unexpected source rather than applying a speculative replacement. The accepted
+input is the raw byte sequence with SHA-256
+`d3ec6274e142a4e7d1062ea6d2d99b97db0a02e92bb976c6570ae990b836b18d`,
+including its mixed line endings. The output uses LF line endings. Both files
+have identical Python source after newline normalization.
 
 The [published child image](../runtime/glm53-flash-jj-r8-gb10/hotfix/README.md)
 includes the fix; users do not need to rebuild it. Existing image digests are

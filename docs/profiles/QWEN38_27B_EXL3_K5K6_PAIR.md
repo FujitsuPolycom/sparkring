@@ -30,8 +30,9 @@ launch one rank per Spark.
 The pair profile does not copy DeepSeek's model-specific MLA layout, DSpark
 proposer, explicit KV byte reservation, or block geometry. Its 8,192-token
 scheduler budget matches the operator's selected comparison envelope. The
-Qwen LMCache path cannot compose with that budget, so LMCache and SparkCache
-remain outside this profile.
+Qwen LMCache path cannot compose with that budget, so LMCache remains outside
+this profile. SparkCache has no qualified composition for this Qwen profile and
+also remains outside it.
 
 ## Benchmark results
 

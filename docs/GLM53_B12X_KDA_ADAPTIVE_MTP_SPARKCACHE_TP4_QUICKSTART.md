@@ -54,6 +54,12 @@ native_sha256="$(docker run --rm --entrypoint sha256sum "${sparkcache_image}" \
 test "${#native_sha256}" -eq 64
 ```
 
+Save the finished SparkCache image as an OCI archive and distribute that one
+archive to all four ranks using the
+[direct-fabric image fanout procedure](DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md).
+Require every rank to report the same image ID before resolving or starting the
+profile.
+
 The runtime builder verifies the complete first-parent vLLM history from
 `da4d7be` through adaptive MTP and the three live-tensor B12X KDA commits. The
 SparkCache build verifies LF Linux preimages, four exact patches, and eleven

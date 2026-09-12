@@ -13,7 +13,7 @@ patches are bind-mounted over it. Deploy with the [quickstart](../DEEPSEEK_V41_F
 | Image | built by `runtime/deepseek-v41-gb10/build-image.sh`; recorded build `sha256:af86a3d2bb0d267faa7f31777cdbe855addc1348f0b9f8323016ebf17d3dae3c` ([receipt](../../runtime/deepseek-v41-gb10/image-receipt.json)) |
 | vLLM / FlashInfer | `vllm-project/vllm` `dsv41-feat` @ `e47aa780…` on nightly `8a728663…`; FlashInfer `07869c61…` (0.7.0rc1) |
 | Checkpoint | `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa45a94ad051997016db3960a90277`, stock, on every rank's NVMe |
-| Parallelism | TP4 across a four-Spark cycle, `--nnodes 4`, `mp` executor |
+| Parallelism | TP4 across a four-Spark cycle; the pinned vLLM fork extends its `mp` executor with `--nnodes 4`, `--node-rank`, and rendezvous arguments |
 | Loader | `--load-format safetensors` |
 | Request limit / sequences / scheduler | 1,048,576 tokens / 8 / 8,192 (16 sequences probed as an admission option) |
 | Memory | `--gpu-memory-utilization 0.83`, `--block-size 128`, `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`; Engram tables on disk (`--engram-config '{"cpu_offload": false}'`, `DSV41_ENGRAM_DISK=1`, 64 reader threads, `DSV41_ENGRAM_BALANCED=1`, packed single-read shards) |

@@ -39,5 +39,7 @@ rewrite it.
 Review meaning and context, not a banned-word list. Literal flags, paths and
 published release identifiers remain exact when the reader must use them.
 Historical records and immutable artifacts retain their provenance. The profile
-tables use the agreed reader-facing labels Validated, Development and Experimental;
-their underlying status values and linked evidence retain the precise scope.
+tables use the reader-facing labels Validated, Development and Experimental.
+Unsupported configurations are omitted from recommendation tables and documented
+as unsupported where their boundary matters. Underlying status values and linked
+evidence retain the precise scope.
