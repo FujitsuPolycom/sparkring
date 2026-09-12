@@ -37,8 +37,8 @@ Any non-matching collective calls the original vLLM/NCCL implementation.
 result, and checks numerical agreement. `custom` returns the native result
 only after the operator has completed the selected signature's required
 validation. All-reduce native session construction and enqueue failures
-terminate the worker. Vocabulary session creation separately permits fallback
-before enqueue, as described below. A failure after enqueue terminates the worker; an in-process fallback
+terminate the worker. Vocabulary shadow mode permits fallback when session creation fails
+before enqueue; custom mode terminates to prevent rank-split dispatch. A failure after enqueue terminates the worker; an in-process fallback
 could reuse a CUDA stream with an unfulfilled native wait.
 
 The fused prefill candidate is never used during CUDA graph capture. Captured
@@ -59,8 +59,9 @@ and accepts values through `40`. It produces token-major BF16 `[Q, 154880]`:
 output[q] = [rank0[q], rank1[q], rank2[q], rank3[q]]
 ```
 
-Shadow comparison is byte-exact. Session creation failure falls back before
-enqueue; a native failure after enqueue terminates the worker.
+Shadow comparison is byte-exact. Session creation failure falls back before enqueue only in shadow mode.
+Custom mode terminates on creation failure to prevent rank-split dispatch.
+A native failure after enqueue terminates the worker.
 
 The ABI, probe, and retained build targets are specified in
 [GLM52_TP4_VOCAB_ALLGATHER.md](GLM52_TP4_VOCAB_ALLGATHER.md).

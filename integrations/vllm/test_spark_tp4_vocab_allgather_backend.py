@@ -675,6 +675,23 @@ class SparkTp4VocabDispatchTest(unittest.TestCase):
                 _FakeTensor((3, 38720)), -1
             )
 
+    def test_failed_fatal_log_sink_cannot_bypass_abort(self) -> None:
+        _FakeNativeSession.fail_call = True
+        self._install("custom")
+        group = self.group_type()
+        with patch.object(backend_module.logger, "critical", side_effect=OSError("broken sink")):
+            with self.assertRaises(_AbortCalled):
+                group._all_gather_out_place(_FakeTensor((3, 38720)), -1)
+        backend_module._abort_after_native_failure.assert_called_once()
+
+    def test_failed_creation_log_sink_preserves_custom_abort(self) -> None:
+        _FakeNativeSession.fail_create = True
+        self._install("custom")
+        with patch.object(backend_module.logger, "exception", side_effect=OSError("broken sink")):
+            with self.assertRaises(_AbortCalled):
+                self.group_type()._all_gather_out_place(_FakeTensor((3, 38720)), -1)
+        backend_module._abort_after_native_failure.assert_called_once()
+
     def test_reference_failure_after_enqueue_aborts_worker(self) -> None:
         self._install("shadow")
         group = self.group_type()

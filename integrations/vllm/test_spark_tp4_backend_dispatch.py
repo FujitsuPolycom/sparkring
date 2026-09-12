@@ -2847,3 +2847,21 @@ class BidirectionalPrefillDualRailConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_failed_fatal_diagnostic_still_aborts(monkeypatch):
+    import pytest
+    import spark_tp4_backend as adapter
+    calls = []
+    class Aborted(Exception):
+        pass
+    def abort():
+        calls.append(1)
+        raise Aborted()
+    def broken(*args, **kwargs):
+        raise OSError("broken sink")
+    monkeypatch.setattr(adapter, "_abort_after_native_failure", abort)
+    monkeypatch.setattr(adapter.logger, "critical", broken)
+    with pytest.raises(Aborted):
+        adapter._fatal_native_failure("native operation failed")
+    assert calls == [1]

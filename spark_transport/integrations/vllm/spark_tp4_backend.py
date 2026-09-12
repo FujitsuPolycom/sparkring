@@ -119,6 +119,14 @@ _DEFAULT_PEERS = {
 }
 
 
+def _fatal_native_failure(message: str) -> None:
+    """Terminate on a fatal native failure even if diagnostic logging fails."""
+    try:
+        logger.critical(message, exc_info=True)
+    finally:
+        _abort_after_native_failure()
+
+
 def _abort_after_native_failure() -> None:
     """Terminate a worker whose CUDA stream may contain an unfulfillable wait."""
     os._exit(70)
@@ -615,12 +623,11 @@ def _research_graph_all_reduce(
         _record_graph_event(communicator, "width4096_captured_nodes")
         return output
     except BaseException:
-        logger.exception(
+        _fatal_native_failure(
             "fatal Spark TP4 width-4096 graph-capture error; terminating "
             "worker because a partially captured native graph cannot "
             "safely fall back"
         )
-        _abort_after_native_failure()
         raise AssertionError("unreachable after worker termination")
 
 
@@ -2190,12 +2197,11 @@ def install() -> None:
                         _record_graph_event(self, "captured_nodes")
                         return output
                     except BaseException:
-                        logger.exception(
+                        _fatal_native_failure(
                             "fatal Spark TP4 graph-capture error; terminating "
                             "worker because a partially captured native graph "
                             "cannot safely fall back"
                         )
-                        _abort_after_native_failure()
                         raise AssertionError("unreachable after worker termination")
                 _record_graph_event(self, "fallbacks")
                 _record_stock_path(
@@ -2239,11 +2245,10 @@ def install() -> None:
                 native_session = backend.native_for(payload_bytes)
             candidate = native_session.all_reduce(input_)
         except BaseException:
-            logger.exception(
+            _fatal_native_failure(
                 "fatal Spark TP4 error; terminating worker because its "
                 "CUDA stream may be poisoned"
             )
-            _abort_after_native_failure()
             raise AssertionError("unreachable after worker termination")
         if mode == "custom" or promoted:
             return candidate

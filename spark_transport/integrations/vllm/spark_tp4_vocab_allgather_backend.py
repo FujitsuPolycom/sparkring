@@ -47,6 +47,14 @@ _DEFAULT_PEERS = {
 _Signature = int
 
 
+def _fatal_native_failure(message: str) -> None:
+    """Terminate on a fatal native failure even if diagnostic logging fails."""
+    try:
+        logger.critical(message, exc_info=True)
+    finally:
+        _abort_after_native_failure()
+
+
 def _abort_after_native_failure() -> None:
     """Terminate a worker whose CUDA stream may contain a native wait."""
 
@@ -564,10 +572,13 @@ class _Backend:
                 self._session = _NativeVocabSession(self.rank)
             except Exception:
                 self.disabled = True
-                logger.exception(
-                    "disabling Spark TP4 vocabulary before native enqueue "
-                    "because session creation failed"
-                )
+                try:
+                    logger.exception(
+                        "disabling Spark TP4 vocabulary before native enqueue "
+                        "because session creation failed"
+                    )
+                except Exception:
+                    pass
                 return None
         return self._session
 
@@ -591,10 +602,13 @@ class _Backend:
                 ensure_status_reporter(rank=self.rank)
             except Exception:
                 self.graph_disabled = True
-                logger.exception(
-                    "disabling Spark TP4 vocabulary graph capture before "
-                    "native enqueue because session creation failed"
-                )
+                try:
+                    logger.exception(
+                        "disabling Spark TP4 vocabulary graph capture before "
+                        "native enqueue because session creation failed"
+                    )
+                except Exception:
+                    pass
                 return None
         return self._graph_session
 
@@ -694,22 +708,20 @@ def install() -> None:
                         _record_graph_event(self, "captured_nodes")
                         return candidate
                     except BaseException:
-                        logger.exception(
+                        _fatal_native_failure(
                             "fatal Spark TP4 vocabulary graph-capture "
                             "failure; terminating worker because a partial "
                             "native graph cannot safely fall back"
                         )
-                        _abort_after_native_failure()
                         raise AssertionError(
                             "unreachable after worker termination"
                         )
                 _record_graph_event(self, "cold_fallbacks")
-                logger.critical(
+                _fatal_native_failure(
                     "fatal Spark TP4 vocabulary graph session is absent "
                     "during custom capture; terminating worker to prevent "
                     "a rank-split collective"
                 )
-                _abort_after_native_failure()
                 raise AssertionError(
                     "unreachable after worker termination"
                 )
@@ -727,12 +739,11 @@ def install() -> None:
         if mode == "custom" and _graph_enabled():
             graph_session = backend.prepare_graph()
             if graph_session is None:
-                logger.critical(
+                _fatal_native_failure(
                     "fatal Spark TP4 vocabulary graph session creation "
                     "failed in custom mode; terminating worker to prevent "
                     "a rank-split collective"
                 )
-                _abort_after_native_failure()
                 raise AssertionError(
                     "unreachable after worker termination"
                 )
@@ -740,12 +751,11 @@ def install() -> None:
         session = backend.session()
         if session is None:
             if mode == "custom":
-                logger.critical(
+                _fatal_native_failure(
                     "fatal Spark TP4 vocabulary eager session creation "
                     "failed in custom mode; terminating worker to prevent "
                     "a rank-split collective"
                 )
-                _abort_after_native_failure()
                 raise AssertionError(
                     "unreachable after worker termination"
                 )
@@ -787,11 +797,10 @@ def install() -> None:
                 input_tensor, candidate, signature, stream
             )
         except BaseException:
-            logger.exception(
+            _fatal_native_failure(
                 "fatal Spark TP4 vocabulary failure; terminating worker "
                 "because native enqueue may have poisoned its CUDA stream"
             )
-            _abort_after_native_failure()
             raise AssertionError("unreachable after worker termination")
 
         if mode == "custom" or promoted:
@@ -806,11 +815,10 @@ def install() -> None:
             assert shadow is not None
             shadow.observe(reference)
         except BaseException:
-            logger.exception(
+            _fatal_native_failure(
                 "fatal failure after Spark TP4 vocabulary enqueue; "
                 "terminating worker"
             )
-            _abort_after_native_failure()
             raise AssertionError("unreachable after worker termination")
 
         if shadow.count == shadow_limit:

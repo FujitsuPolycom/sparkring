@@ -53,7 +53,8 @@ caller CUDA stream. The adapter uses the candidate only for the exact
 four-rank CUDA BF16 contract. Nonmatching signatures use the original
 vLLM/NCCL collective. With the vocabulary graph option enabled in `custom`
 mode, admitted captures use a prepared graph session; otherwise capture uses
-the original collective. Session creation failure falls back before enqueue.
+the original collective. Session creation failure falls back before enqueue only in shadow mode;
+custom mode terminates to prevent rank-split dispatch.
 
 Shadow mode compares the final output byte-for-byte and returns the reference
 result. `SPARK_TP4_VOCAB_SHADOW_PROMOTE=1` permits per-shape custom promotion
