@@ -4,7 +4,7 @@
   "inputs": [
     {
       "path": "runtime/releases/glm53-spark-mtp3-managed-mesh-tp4/compatibility-sources.tar.gz",
-      "sha256": "4a8228ffc897a6b4082ac8e3c3d00af0ce63f784d1024c37c1cc4563d108d374"
+      "sha256": "ad031d9e9a6356bc1621e32eeae337e61761d5d55121776a289d0a37dbee6986"
     }
   ],
   "image": {

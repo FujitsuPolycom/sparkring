@@ -44,7 +44,7 @@ def published_bundle_sources():
     data = (ROOT / RELEASE_SOURCES).read_bytes()
     if hashlib.sha256(data).hexdigest() != record["sha256"]:
         raise ValueError("Published bundle source archive differs from its release identity")
-    names = {"_roce_proxy.c", "roce_oneshot.py", "rocenante_vllm_overlay.py", "provenance.json",
+    names = {"_roce_proxy.c", "roce_oneshot.py", "_cute_intrinsics.py", "rocenante_vllm_overlay.py", "provenance.json",
              "sparkring-overlay-manifest.json"}
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
         members = archive.getmembers()
@@ -60,6 +60,7 @@ def published_bundle_sources():
     hashes = {item["path"]: item["sha256"] for item in manifest["files"]}
     for name, target in (("_roce_proxy.c", "b12x_overlay/b12x/comm/roce/_roce_proxy.c"),
                          ("roce_oneshot.py", "b12x_overlay/b12x/comm/roce/roce_oneshot.py"),
+                         ("_cute_intrinsics.py", "b12x_overlay/b12x/comm/roce/_cute_intrinsics.py"),
                          ("rocenante_vllm_overlay.py", "rocenante_vllm_overlay.py")):
         if hashlib.sha256(contents[name]).hexdigest() != hashes[target]:
             raise ValueError("Published bundle source differs: " + name)
@@ -70,6 +71,7 @@ def published_bundle_sources():
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
         (vendor / "b12x/comm/roce/_roce_proxy.c").write_bytes(contents["_roce_proxy.c"])
         (vendor / "b12x/comm/roce/roce_oneshot.py").write_bytes(contents["roce_oneshot.py"])
+        (vendor / "b12x/comm/roce/_cute_intrinsics.py").write_bytes(contents["_cute_intrinsics.py"])
         (vendor / "provenance.json").write_bytes(contents["provenance.json"])
         if build_bundle._canonical_tree(vendor / "b12x/comm/roce")[0] != manifest["b12x_roce_tree_sha256"]:
             raise ValueError("Published RoCEnante source tree cannot be reproduced")

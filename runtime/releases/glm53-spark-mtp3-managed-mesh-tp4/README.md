@@ -1,6 +1,6 @@
 # Published mesh bundle source inputs
 
-`compatibility-sources.tar.gz` retains the RoCEnante C proxy and Python runtime, adapter,
+`compatibility-sources.tar.gz` retains the RoCEnante C proxy, Python runtime and PTX helpers, adapter,
 provenance record and bundle manifest needed to reproduce published bundle
 `69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500`.
 Its digest is recorded in [release.json](release.json).

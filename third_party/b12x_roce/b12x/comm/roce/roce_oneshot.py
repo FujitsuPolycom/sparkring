@@ -55,8 +55,8 @@ DEFAULT_MAX_GATHER_BYTES = 16 * 1024 * 1024
 DEFAULT_THREADS = 512
 DEFAULT_BLOCKS = 8
 DEFAULT_GID_INDEX = 3
-# Polls of a peer flag before the kernel gives up (each poll is a system-scope
-# load of host memory, roughly a microsecond): about 20 s.
+# Peer-flag poll budget before the kernel gives up; elapsed time depends on
+# memory latency and scheduling, so this is not a wall-clock timeout.
 DEFAULT_SPIN_LIMIT = 20_000_000
 _SLOT_ALIGNMENT = 4096
 # CuTe launcher byte counts are signed Int32; padding must remain representable.
