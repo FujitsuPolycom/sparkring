@@ -45,6 +45,27 @@ GLM53_EXAMPLE_PATH = (
 )
 
 
+@pytest.mark.parametrize("text", [
+    "schema_version: 1\nschema_version: 1\n",
+    "site:\n  name: first\n  name: second\n",
+])
+def test_duplicate_yaml_keys_are_rejected(text):
+    with pytest.raises(SiteConfigError, match="duplicate YAML key"):
+        parse_site_yaml(text)
+
+
+def test_complete_site_rejects_repeated_top_level_setting():
+    text = EXAMPLE_PATH.read_text(encoding="utf-8") + "\nschema_version: 1\n"
+    with pytest.raises(SiteConfigError, match="duplicate YAML key"):
+        parse_site_yaml(text)
+
+
+def test_yaml_merge_preserves_explicit_override(example_document):
+    text = yaml.safe_dump(example_document)
+    text = text.replace("site:\n", "site:\n  <<: {name: inherited-name}\n")
+    assert parse_site_yaml(text).name == example_document["site"]["name"]
+
+
 @pytest.fixture(scope="session")
 def example_document() -> dict:
     return yaml.safe_load(EXAMPLE_PATH.read_text(encoding="utf-8"))

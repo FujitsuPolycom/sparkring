@@ -1538,7 +1538,37 @@ def parse_site_yaml(text: str, source: str | None = None) -> SiteConfig:
             f"(import failed with: {_YAML_IMPORT_ERROR})",
         )
     try:
-        document = _yaml.safe_load(text)
+        loader = _yaml.SafeLoader(text)
+        try:
+            root = loader.get_single_node()
+            visited = set()
+
+            def check_keys(node):
+                if node is None or id(node) in visited:
+                    return
+                visited.add(id(node))
+                if isinstance(node, _yaml.MappingNode):
+                    keys = set()
+                    for key, value in node.value:
+                        if isinstance(key, _yaml.ScalarNode):
+                            identity = (key.tag, key.value)
+                            if identity in keys:
+                                raise ValueError(
+                                    f"duplicate YAML key at line {key.start_mark.line + 1}"
+                                )
+                            keys.add(identity)
+                        check_keys(key)
+                        check_keys(value)
+                elif isinstance(node, _yaml.SequenceNode):
+                    for item in node.value:
+                        check_keys(item)
+
+            # Check explicit entries before SafeLoader expands merge keys.
+            # Inherited defaults may still be overridden by one explicit key.
+            check_keys(root)
+            document = None if root is None else loader.construct_document(root)
+        finally:
+            loader.dispose()
     except Exception as exc:  # yaml.YAMLError and friends
         raise SiteConfigError(
             source or "<yaml>", f"could not parse YAML: {exc}"
