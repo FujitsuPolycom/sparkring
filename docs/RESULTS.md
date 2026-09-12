@@ -1,22 +1,30 @@
 # SparkRing benchmark results
 
-All values are tokens per second. Decode values are aggregate throughput across
-all active streams.
+Selected benchmark records are summarized below. Throughput is in tokens per
+second; decode throughput is aggregate across concurrent requests. `C1`, `C8`
+and similar labels mean one, eight or that many simultaneous requests.
+The records use different models, images, sampling settings and sample counts;
+consult their conditions and limitations before comparing results.
 
-## At a glance — 16K context
+## Recorded throughput at 16K context
 
-| Profile | Prefill | C1 decode | C8 decode | Highest tested concurrency | Coding Peak |
-|---|---:|---:|---:|---:|---:|
-| GLM-5.3 Flash B12X-KDA DCP4 public image, four Sparks | 2,649 | 37.97 | — | C4: 90.36 | — |
-| GLM-5.2 EXL3 3.5-bpw, four Sparks | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
-| DeepSeek-V4-Flash DSpark, two Sparks | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
-| DeepSeek-V4-Flash-0731, four Sparks | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
-| Qwen3.8-27B EXL3 K5/K6, two Sparks | 1,367 | 29.50 | 142.20 | C16: 184.39 | 39.95 |
-| Qwen3.8-27B EXL3 K5/K6, four Sparks | 1,964 | 35.07 | 191.02 | C8: 191.02 | 48.46 |
+| Profile | Prefill | C1 decode | C8 decode | Highest recorded concurrency at 16K |
+|---|---:|---:|---:|---:|
+| GLM-5.3 Flash B12X-KDA DCP4 public image, four Sparks | 2,649 | 37.97 | — | C4: 90.36 |
+| GLM-5.2 EXL3 3.5-bpw, four Sparks | 671 | 20.15 | 64.13 | C8: 64.13 |
+| DeepSeek-V4-Flash DSpark, two Sparks | 1,926 | 58.36 | 162.69 | C32: 307.13 |
+| DeepSeek-V4-Flash-0731, four Sparks | 2,488 | 68.84 | 265.16 | C32: 508.11 |
+| Qwen3.8-27B EXL3 K5/K6, two Sparks | 1,367 | 29.50 | 142.20 | C16: 184.39 |
+| Qwen3.8-27B EXL3 K5/K6, four Sparks | 1,964 | 35.07 | 191.02 | C8: 191.02 |
 
-## Full matrices
+Dashes indicate no value in the linked record. Full context/concurrency matrices,
+coding workloads, sample counts and uncertainty estimates remain in those records.
+The GLM-5.3 B12X-KDA row is one bounded observation per cell; it has no
+repeated-sample performance qualification.
 
-| Profile | Results | Green matrix | Receipts |
+## Records and receipts
+
+| Profile | Results | Matrix image | Receipts |
 |---|---|---|---|
 | GLM-5.3 Flash B12X-KDA DCP4 public image, four Sparks | [Bounded record](../performance/records/glm53-flash/b12x-kda-dcp4-20260903.md) | — | [Sanitized summary](../performance/receipts/glm53-flash/b12x-kda-dcp4-20260903/summary.json) |
 | GLM-5.3 Flash DCP4 image `380283a5`, four Sparks | [Bounded record](../performance/records/glm53-flash/dcp4-24g-default-20260901.md) | — | [Sanitized summary](../performance/receipts/glm53-flash/dcp4-24g-default-20260901/summary.json) |
@@ -29,29 +37,6 @@ all active streams.
 The normalized DeepSeek two-Spark profile also completed a
 [three-hour llama-benchy prefix-cache benchmark](../performance/records/deepseek-v4-flash/llama-benchy-normalized-tp2-20260822.md).
 
-The complete-snapshot Linux/ARM64 GLM-5.3 rollback image completed a TP4/DCP1
+The GLM-5.3 Linux/ARM64 image identified by the linked validation report completed a TP4/DCP1
 [942,898-token needle retrieval](../runtime/glm53-flash-jj-r8-gb10/PUBLIC_IMAGE_VALIDATION.md)
-with a 1,048,576-token request limit and 26 GiB of FP8 KV per rank.
-
-## GLM-5.2 EXL3 3.5-bpw — four Sparks
-
-| Context | Prefill | C1 decode | C2 decode | C4 decode | C8 decode |
-|---|---:|---:|---:|---:|---:|
-| 2K | 694 | 22.00 | 28.28 | 46.98 | 65.35 |
-| 8K | 675 | 19.15 | 30.21 | 47.70 | 64.46 |
-| 16K | 671 | 20.15 | 32.38 | 45.38 | 64.13 |
-| 32K | 661 | 21.61 | 30.52 | 46.08 | 65.79 |
-| 64K | 649 | 20.17 | 30.12 | 45.52 | 63.58 |
-| 128K | 635 | 19.67 | 30.64 | 45.73 | 62.63 |
-
-Every C8 cell is an N=3 mean. At 64K, C2/C4/C8 are N=3 means; at 128K,
-C1/C2/C4/C8 are N=3 means. Other displayed decode cells are single accepted
-observations. See the [full record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
-
-## Notes
-
-- Dashes mean the cell was not measured or did not fit the tested KV pool.
-
-- Qwen TP2 C16 was measured through 64K; its 128K cell has N=2. Qwen TP2 C32 and Qwen TP4 C16/C32 were not measured.
-
-- Use each full record for exact settings, sample counts, and limitations.
+with a 1M-token request limit and 26 GiB of FP8 KV per rank.

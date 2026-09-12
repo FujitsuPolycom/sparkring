@@ -16,7 +16,7 @@
 | KV and scheduling | FP8 KV; 1,600-token hybrid alignment; asynchronous scheduling; full-input-length reservation |
 | Decode | native prefix caching; full-decode CUDA graphs; probabilistic Qwen MTP3 with standard rejection |
 | Sampling | temperature 1.0; effective top-p 0.95 and top-k 20 from `generation_config.json` |
-| Inputs | 2K–128K; C1/C2/C4/C8 and C16 through 64K; 100% unique prompts |
+| Published inputs | 2K–128K at C1/C2/C4/C8; C16 through 64K; 100% unique prompts. Two accepted 128K/C16 runs are withheld as noted below. |
 
 ## Measurement
 

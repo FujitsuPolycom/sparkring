@@ -38,8 +38,10 @@ Aggregate generated tokens per second:
 
 Every displayed decode cell had complete client accounting, exact
 client/server agreement, requested concurrency, zero queue/errors, and clean
-all-rank logs. Newly completed C8 and long-context cells are N=3 means; the
-remaining short-context cells are one accepted observation each.
+all-rank logs. Every C8 cell is a mean of three accepted observations. At 64K,
+C2/C4 also have three observations; at 128K, C1/C2/C4 also have three.
+The remaining cells have one observation each. Counts are retained in the
+[machine-readable summary](normalized-base-20260822.json).
 
 ## Coding workload
 
