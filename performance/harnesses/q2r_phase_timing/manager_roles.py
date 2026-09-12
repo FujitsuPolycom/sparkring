@@ -345,10 +345,8 @@ class FailClosedRoleAssignmentAdapter:
                     manager = __hook.manager_after_call(
                         instance, args, kwargs, result
                     )
-                    decode_query_len = int(
-                        __hook.decode_query_len_after_call(
-                            instance, args, kwargs, result
-                        )
+                    decode_query_len = __hook.decode_query_len_after_call(
+                        instance, args, kwargs, result
                     )
                     self._registry.register(
                         manager,

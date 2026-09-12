@@ -169,3 +169,21 @@ def test_role_adapter_source_mismatch_mutates_nothing() -> None:
     with pytest.raises(AdapterValidationError, match="source mismatch"):
         adapter.install()
     assert Speculator.init_cudagraph_manager is original
+
+
+@pytest.mark.parametrize("value", [True, 1.9, "6", 6])
+def test_role_hook_preserves_strict_query_width_type(value):
+    registry = ManagerRoleRegistry()
+    adapter = FailClosedRoleAssignmentAdapter(registry, (_draft_role_hook(),))
+    adapter.install()
+    try:
+        speculator = Speculator()
+        speculator.block_size = value
+        if type(value) is int:
+            speculator.init_cudagraph_manager()
+            assert registry.identity(speculator.forward_cudagraph_manager).decode_query_len == value
+        else:
+            with pytest.raises(ValueError, match="positive integer"):
+                speculator.init_cudagraph_manager()
+    finally:
+        adapter.uninstall()
