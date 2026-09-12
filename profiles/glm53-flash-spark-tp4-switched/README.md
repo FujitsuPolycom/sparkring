@@ -98,6 +98,8 @@ Use `create` with the same arguments plus
 `--runtime-receipt /tmp/glm53-switched-image-receipt.json` to create stopped
 containers. `create` refuses existing container names. Use `start` with the same
 arguments, including `--runtime-receipt`, to start ranks 1–3, then rank 0.
+`start` verifies the stopped container's host networking, shared IPC and GPU
+request, along with its image, environment and mounts.
 The receipt file and matching source checkout must be available on every node.
 Automatic restart remains disabled.
 

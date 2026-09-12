@@ -210,6 +210,7 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     container = json.loads(run(["docker", "inspect", plan["name"]], check=True,
                                capture_output=True, text=True).stdout)[0]
     config = container["Config"]
+    host_config = container["HostConfig"]
     actual_env = dict(item.split("=", 1) for item in config.get("Env", []))
     actual_mounts = {item["Destination"]: item for item in container.get("Mounts", [])}
     matches = (
@@ -224,7 +225,12 @@ def execute(plan, action, receipt, *, run=subprocess.run):
                 for target, source in plan["binds"].items())
         and actual_mounts.get("/models/target", {}).get("RW") is False
         and actual_mounts.get("/cache/jit", {}).get("RW") is True
-        and container["HostConfig"]["RestartPolicy"]["Name"] == "no"
+        and host_config.get("NetworkMode") == "host"
+        and host_config.get("IpcMode") == "host"
+        and any(request.get("Count") == -1
+                and any("gpu" in group for group in request.get("Capabilities", []))
+                for request in host_config.get("DeviceRequests") or [])
+        and host_config["RestartPolicy"]["Name"] == "no"
     )
     if not matches:
         raise RuntimeError("Stopped container differs from this profile plan; inspect it before replacement")
