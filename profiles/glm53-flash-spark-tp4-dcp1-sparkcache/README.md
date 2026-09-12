@@ -4,9 +4,9 @@ Run [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4
 with MTP3 on a four-Spark ring. **DCP1 is the default; DCP4 is an alternative.**
 Context defaults to 1M tokens. SparkCache is optional.
 
-| Selection | KV allocation per rank | Recorded KV tokens | Procedure |
+| Selection | KV allocation per rank | KV evidence | Procedure |
 |---|---:|---:|---|
-| DCP1, with or without SparkCache | 24 GiB | 2.3M reference | Deployment suite below |
+| DCP1, with or without SparkCache | 24 GiB | [2.3M sizing reference](../../performance/capacity-references.md) | Deployment suite below |
 | DCP4, with or without SparkCache | 24 GiB | 8.4M with SparkCache | [DCP4 setup](#dcp4-alternative) |
 
 Capacity depends on enabled features. The validated results are scoped to the
@@ -29,10 +29,11 @@ and RDMA users first. This setup must not replace an unrelated deployment.
 ## 2. Select the published image
 
 The deployment suite downloads and distributes the image during staging.
-First select its exact digest and validate the tracked runtime receipt locally:
+The tracked runtime receipt selects
+`ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef`.
+Validate it locally before staging:
 
 ```bash
-SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
 SPARKRING_RECEIPT="$PWD/runtime/sparkring/jovian-r33/public-image-receipt.json"
 python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
   --receipt "$SPARKRING_RECEIPT"
@@ -122,7 +123,7 @@ DCP4 uses the **same published image**, plus a profile-contract and entrypoint
 overlay. It requires the managed fabric installation. It is not a different
 model download or image rebuild.
 
-The current deployment-suite planner and staged-source selection are DCP1-only.
+The deployment-suite planner and staged-source selection are DCP1-only.
 For DCP4, use the separately documented
 [render-and-launch procedure](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md#reproduction-overlay-and-quickstart)
 with an already prepared ring, verified bundle, image receipt and private site.
