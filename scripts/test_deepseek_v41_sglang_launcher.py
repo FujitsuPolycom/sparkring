@@ -114,6 +114,21 @@ def test_catalog_preserves_sglang_defaults_and_runtime():
     assert command["command"][1].endswith("deepseek_v41_sglang_cycle_serve.py")
 
 
+@pytest.mark.parametrize("overrides", [
+    {"CACHE_HOST_PATH": "/operator/model_host_path"},
+    {"CACHE_HOST_PATH": "/operator/model_host_path/cache"},
+    {"ENGRAM_HOST_PATH": "/operator/model_host_path/packed"},
+    {"API_PORT": "20000"},
+    {"API_PORT": "020000"},
+    {"CACHE_HOST_PATH": "/operator/cache/../model_host_path"},
+    {"MASTER_ADDR": "host:20000"},
+    {"API_PORT": "\u00b2"},
+])
+def test_invalid_mounts_and_endpoints_fail_before_host_access(tmp_path, overrides):
+    with pytest.raises(ValueError):
+        launch.read_config(environment(tmp_path, **overrides))
+
+
 def test_profile_table_keeps_both_deepseek_engines():
     from scripts.generate_profiles import profile_table
     table = profile_table(compact=True)

@@ -64,8 +64,12 @@ def read_config(path):
               "MAX_RUNNING_REQUESTS": (1, 64), "MAX_TOTAL_TOKENS": (4096, 10000000),
               "NCCL_IB_GID_INDEX": (0, 255)}
     for key, (low, high) in limits.items():
-        if not cfg[key].isdigit() or not low <= int(cfg[key]) <= high:
+        if not re.fullmatch(r"[0-9]+", cfg[key]) or not low <= int(cfg[key]) <= high:
             raise ValueError(f"invalid numeric setting: {key}")
+    if int(cfg["API_PORT"]) == int(cfg["MASTER_PORT"]):
+        raise ValueError("API_PORT and MASTER_PORT must differ")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", cfg["MASTER_ADDR"]):
+        raise ValueError("MASTER_ADDR must be an IPv4 address or hostname")
     if not 0.1 <= float(cfg["MEM_FRACTION_STATIC"]) < 1:
         raise ValueError("invalid MEM_FRACTION_STATIC")
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", cfg["IMAGE_ID"]):
@@ -74,8 +78,17 @@ def read_config(path):
         raise ValueError("NCCL_SO_SHA256 must pin the library contents")
     for key in REQUIRED:
         if key.endswith("_PATH") or key == "API_KEY_FILE":
-            if not PurePosixPath(cfg[key]).is_absolute() or ":" in cfg[key] or "\\" in cfg[key]:
+            if (not PurePosixPath(cfg[key]).is_absolute() or ":" in cfg[key]
+                    or "\\" in cfg[key] or ".." in PurePosixPath(cfg[key]).parts):
                 raise ValueError(f"{key} must be an absolute bind-mount path without colons")
+    paths = {k: PurePosixPath(cfg[k]) for k in REQUIRED if k.endswith("_PATH") or k == "API_KEY_FILE"}
+    if len(set(paths.values())) != len(paths):
+        raise ValueError("Bind-mount paths must be distinct")
+    model = paths["MODEL_HOST_PATH"]
+    for key in ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH"):
+        path = paths[key]
+        if path.is_relative_to(model) or model.is_relative_to(path):
+            raise ValueError(f"{key} must not overlap the model directory")
     return cfg
 
 
@@ -123,7 +136,7 @@ def command(cfg):
 
 
 def output(args):
-    return subprocess.check_output(args, text=True).strip()
+    return subprocess.check_output(args, text=True, timeout=20).strip()
 
 
 def verify_image(cfg):
@@ -187,6 +200,7 @@ def main():
             "docker", "run", "--rm", "--memory", "512m", "--entrypoint", "python3",
             "-v", str(RUNTIME / "patch-multikey.py") + ":/patch.py:ro", cfg["IMAGE"],
             "-S", "/patch.py", PINS["auth_path"]])
+        compile(source, str(operator / "auth.py"), "exec")
         staged = operator / "auth.py.tmp"
         staged.write_bytes(source)
         staged.replace(operator / "auth.py")
@@ -211,6 +225,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
         print(f"SGLang launch failed: {exc}", file=sys.stderr)
         sys.exit(1)
