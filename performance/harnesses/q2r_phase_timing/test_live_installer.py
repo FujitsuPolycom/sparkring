@@ -279,6 +279,25 @@ def session(
     )
 
 
+@pytest.mark.parametrize("adapter_name", ["_timing_adapter", "_draft_loop_adapter"])
+def test_interrupted_install_restores_prior_hooks(monkeypatch, adapter_name):
+    live = session()
+    original_binding = GPUModelRunner.initialize_kv_cache
+    original_timing = GPUModelRunner.execute_model
+    def interrupt():
+        raise KeyboardInterrupt("installation interrupted")
+    monkeypatch.setattr(getattr(live, adapter_name), "install", interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt, match="installation interrupted"):
+            live.install()
+        assert GPUModelRunner.initialize_kv_cache is original_binding
+        assert GPUModelRunner.execute_model is original_timing
+    finally:
+        live._draft_loop_adapter.uninstall()
+        live._timing_adapter.uninstall()
+        live._binding_adapter.uninstall()
+
+
 def test_snapshot_reports_unbound_startup_without_claiming_readiness():
     live = session()
     live.install()

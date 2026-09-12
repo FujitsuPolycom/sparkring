@@ -415,10 +415,10 @@ class LiveQ2RSession:
             self._timing_adapter.install()
             try:
                 self._draft_loop_adapter.install()
-            except Exception:
+            except BaseException:
                 self._timing_adapter.uninstall()
                 raise
-        except Exception:
+        except BaseException:
             self._binding_adapter.uninstall()
             raise
         self._installed = True
