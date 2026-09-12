@@ -16,6 +16,42 @@ class Manager:
     pass
 
 
+@pytest.mark.parametrize("copy_marker", [False, True])
+def test_uninstall_preflights_all_hooks_and_preserves_replacements(copy_marker):
+    import functools
+
+    class Owner:
+        def first(self):
+            return Manager()
+
+        def second(self):
+            return Manager()
+
+    originals = [Owner.first, Owner.second]
+    hooks = tuple(RoleAssignmentHook(
+        Owner, name, source_sha256(getattr(Owner, name)), ManagerRole.TARGET_VERIFY,
+        lambda instance, args, kwargs, result: result,
+        lambda *args: 1,
+    ) for name in ("first", "second"))
+    adapter = FailClosedRoleAssignmentAdapter(ManagerRoleRegistry(), hooks)
+    adapter.install()
+    installed = [Owner.first, Owner.second]
+
+    def replacement(self):
+        return installed[0](self)
+
+    if copy_marker:
+        replacement = functools.wraps(installed[0])(replacement)
+    Owner.first = replacement
+    with pytest.raises(AdapterValidationError, match="changed"):
+        adapter.uninstall()
+    assert Owner.first is replacement
+    assert Owner.second is installed[1]
+    Owner.first = installed[0]
+    adapter.uninstall()
+    assert [Owner.first, Owner.second] == originals
+
+
 def test_query_length_never_infers_semantic_role() -> None:
     registry = ManagerRoleRegistry()
     first_q6 = Manager()

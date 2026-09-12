@@ -290,6 +290,7 @@ class FailClosedRoleAssignmentAdapter:
         self._registry = registry
         self._hooks = hooks
         self._validated: tuple[_ValidatedRoleHook, ...] = ()
+        self._wrappers: dict[tuple[type, str], Callable[..., Any]] = {}
         self._installed = False
 
     def validate(self) -> tuple[_ValidatedRoleHook, ...]:
@@ -328,6 +329,7 @@ class FailClosedRoleAssignmentAdapter:
             raise RuntimeError("role adapter is already installed")
         validated = self.validate()
         installed: list[_ValidatedRoleHook] = []
+        wrappers = {}
         try:
             for item in validated:
                 hook = item.hook
@@ -358,6 +360,7 @@ class FailClosedRoleAssignmentAdapter:
                 wrapped._spark_q2r_role_assignment = True  # type: ignore[attr-defined]
                 wrapped._spark_original = original  # type: ignore[attr-defined]
                 setattr(hook.owner, hook.method_name, wrapped)
+                wrappers[(hook.owner, hook.method_name)] = wrapped
                 installed.append(item)
         except Exception:
             for item in reversed(installed):
@@ -366,18 +369,22 @@ class FailClosedRoleAssignmentAdapter:
                 )
             raise
         self._validated = validated
+        self._wrappers = wrappers
         self._installed = True
 
     def uninstall(self) -> None:
         if not self._installed:
             return
-        for item in reversed(self._validated):
+        # Verify the complete ownership set before restoring any method.
+        for item in self._validated:
             current = getattr(item.hook.owner, item.hook.method_name)
-            if not getattr(current, "_spark_q2r_role_assignment", False):
+            if current is not self._wrappers[(item.hook.owner, item.hook.method_name)]:
                 raise AdapterValidationError(
                     f"{item.hook.owner.__qualname__}."
                     f"{item.hook.method_name} changed after installation"
                 )
+        for item in reversed(self._validated):
             setattr(item.hook.owner, item.hook.method_name, item.original)
         self._validated = ()
+        self._wrappers.clear()
         self._installed = False
