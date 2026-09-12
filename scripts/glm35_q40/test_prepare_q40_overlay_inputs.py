@@ -157,3 +157,23 @@ def test_wrong_scheduler_output_leaves_both_inputs_unchanged(tmp_path, monkeypat
         producer.apply_route_capture(tmp_path)
     assert runner.read_bytes() == b"runner before"
     assert scheduler.read_bytes() == b"scheduler before"
+
+
+def test_unavailable_git_is_an_overlay_input_error(tmp_path, monkeypatch):
+    import pytest
+    runner = tmp_path / producer.MODEL_RUNNER_RELATIVE
+    scheduler = tmp_path / producer.SCHEDULER_RELATIVE
+    for path, payload in ((runner, b"runner before"), (scheduler, b"scheduler before")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    monkeypatch.setattr(producer, "MODEL_RUNNER_INPUT_SHA256", producer.sha256_bytes(runner.read_bytes()))
+    monkeypatch.setattr(producer, "SCHEDULER_INPUT_BLOB_PREFIX", producer.scheduler_blob_id(scheduler.read_bytes()))
+
+    def missing(argv, cwd, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(producer.subprocess, "run", missing)
+    with pytest.raises(producer.OverlayInputError, match="git apply could not run"):
+        producer.apply_route_capture(tmp_path)
+    assert runner.read_bytes() == b"runner before"
+    assert scheduler.read_bytes() == b"scheduler before"

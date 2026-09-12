@@ -145,10 +145,13 @@ def apply_route_capture(tree: Path) -> str:
             target = staging / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
-        result = subprocess.run(
-            ["git", "apply", str(ROUTE_CAPTURE_PATCH.resolve())],
-            cwd=staging, capture_output=True, text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "apply", str(ROUTE_CAPTURE_PATCH.resolve())],
+                cwd=staging, capture_output=True, text=True, timeout=60,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise OverlayInputError(f"git apply could not run: {error}") from error
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip().splitlines()
             raise OverlayInputError("route-capture patch did not apply: " +
