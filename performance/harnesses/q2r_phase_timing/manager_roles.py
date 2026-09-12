@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 import functools
 import re
+from builtins import BaseExceptionGroup
 from dataclasses import dataclass
 from enum import Enum
 from collections.abc import Callable
@@ -367,10 +368,16 @@ class FailClosedRoleAssignmentAdapter:
                 # Track the target before assignment can raise after mutation.
                 installed.append(item)
                 setattr(hook.owner, hook.method_name, wrapped)
-        except BaseException:
-            for item in reversed(installed):
-                setattr(
-                    item.hook.owner, item.hook.method_name, item.original
+        except BaseException as installation_error:
+            self._validated = tuple(installed)
+            self._wrappers = wrappers
+            self._installed = bool(installed)
+            try:
+                self.uninstall()
+            except BaseException as cleanup_error:
+                raise BaseExceptionGroup(
+                    "Role-hook installation and rollback failed",
+                    [installation_error, cleanup_error],
                 )
             raise
         self._validated = validated

@@ -16,6 +16,39 @@ class Manager:
     pass
 
 
+def test_role_failed_rollback_retains_retry_state(monkeypatch):
+    import builtins
+    from . import manager_roles
+
+    class Owner:
+        def first(self):
+            return Manager()
+        def second(self):
+            return Manager()
+
+    originals = [Owner.first, Owner.second]
+    hooks = tuple(RoleAssignmentHook(
+        Owner, name, source_sha256(getattr(Owner, name)), ManagerRole.TARGET_VERIFY,
+        lambda instance, args, kwargs, result: result, lambda *args: 1,
+    ) for name in ("first", "second"))
+    adapter = FailClosedRoleAssignmentAdapter(ManagerRoleRegistry(), hooks)
+    install_error = RuntimeError("assignment failed")
+    cleanup_error = RuntimeError("restoration failed")
+    def assign(owner, name, value):
+        if name == "second" and value is not originals[1]:
+            raise install_error
+        if name == "first" and value is originals[0]:
+            raise cleanup_error
+        builtins.setattr(owner, name, value)
+    with monkeypatch.context() as patcher:
+        patcher.setattr(manager_roles, "setattr", assign, raising=False)
+        with pytest.raises(builtins.BaseExceptionGroup) as caught:
+            adapter.install()
+        assert caught.value.exceptions == (install_error, cleanup_error)
+    adapter.uninstall()
+    assert [Owner.first, Owner.second] == originals
+
+
 @pytest.mark.parametrize("after_assignment", [False, True])
 def test_role_uninstall_retries_after_partial_restoration(monkeypatch, after_assignment):
     import builtins
