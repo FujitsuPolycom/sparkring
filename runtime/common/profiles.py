@@ -105,6 +105,11 @@ def configuration(p, root=ROOT):
                 if key in data["model"] and key in base["model"] and data["model"][key] != base["model"][key]:
                     raise ValueError(f"{p['id']}: composition model {key} differs from its base recipe")
         serving = copy.deepcopy(data.get("serving", data.get("serving_common", {})))
+        if data.get("profiles"):
+            selected = data.get("preferred_profile")
+            if selected not in data["profiles"]:
+                raise ValueError(f"{p['id']}: select a defined preferred recipe profile")
+            serving.update(copy.deepcopy(data["profiles"][selected]))
         if data.get("runtime", {}).get("engine") == "sglang":
             # Normalize display names without rewriting SGLang recipe settings.
             for common, native in (("max_model_len", "context_length"),
@@ -113,11 +118,6 @@ def configuration(p, root=ROOT):
                 if common in serving and serving[common] != serving[native]:
                     raise ValueError(f"Conflicting SGLang setting: {common}/{native}")
                 serving[common] = serving[native]
-        if data.get("profiles"):
-            selected = data.get("preferred_profile")
-            if selected not in data["profiles"]:
-                raise ValueError(f"{p['id']}: select a defined preferred recipe profile")
-            serving.update(copy.deepcopy(data["profiles"][selected]))
         serving.setdefault("tensor_parallel_size", data["hardware"]["ranks"])
         serving.setdefault("node_count", data["hardware"]["ranks"])
         return data["model"], serving, data["hardware"]["topology"], data.get("evidence", data.get("publication", {})), data.get("runtime", {})

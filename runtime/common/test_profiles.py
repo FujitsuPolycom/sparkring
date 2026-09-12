@@ -15,6 +15,20 @@ def write(path, data):
     path.write_text(json.dumps(data), encoding='utf-8')
 
 
+def test_sglang_aliases_follow_selected_profile(repository):
+    path = repository / "profiles/example/recipe.json"
+    recipe = profiles.read_json(path)
+    recipe["runtime"] = {"engine": "sglang"}
+    recipe["serving"] = {"context_length": 1024, "max_running_requests": 8,
+                         "chunked_prefill_size": 32}
+    recipe["profiles"] = {"larger": {"context_length": 2048, "chunked_prefill_size": 64}}
+    recipe["preferred_profile"] = "larger"
+    write(path, recipe)
+    serving = profiles.resolve("example", root=repository)["serving"]
+    assert serving["max_model_len"] == serving["context_length"] == 2048
+    assert serving["max_num_batched_tokens"] == serving["chunked_prefill_size"] == 64
+
+
 @pytest.mark.parametrize("topology", ["unknown-fabric", "direct-cycle-4"])
 def test_profile_topology_must_match_supported_node_count(repository, topology):
     path = repository / "profiles/example/recipe.json"
