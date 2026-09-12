@@ -828,7 +828,7 @@ def compare(
         "declared_average_bits_per_weight": float(stated),
         "declared_average_source": declared.get("declared_average_source"),
         "measured_average_bits_per_weight": measured,
-        "difference_bits_per_weight": _round_bpw(difference),
+        "difference_bits_per_weight": difference,
         "tolerance_bits_per_weight": tolerance,
         "comparable": True,
         "agrees": abs(difference) <= tolerance,
@@ -853,8 +853,10 @@ def census(path: Path, tolerance: float) -> dict[str, Any]:
     totals = summarize_classes(records)
     aggregate = expert_aggregate(records)
     declared = read_declared(path)
+    measured = (aggregate["payload_bytes"] * 8 / aggregate["logical_weights"]
+                if aggregate["logical_weights"] else None)
     comparison = compare(
-        declared, aggregate["average_bits_per_weight_payload"], tolerance
+        declared, measured, tolerance
     )
 
     if comparison.get("comparable") and comparison.get("agrees") is False:

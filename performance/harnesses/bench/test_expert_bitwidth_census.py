@@ -642,6 +642,18 @@ class UndeterminedTest(unittest.TestCase):
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_tolerance_uses_unrounded_measured_rate(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.proj.trellis": trellis(3),
+                "model.layers.0.mlp.experts.0.bias.weight": ("F16", [1]),
+            })
+            (root / "config.json").write_text(json.dumps({"bits": 3.0016}))
+            report = census.census(root, 0.000001)
+            self.assertFalse(report["comparison"]["agrees"])
+            self.assertNotEqual(report["comparison"]["difference_bits_per_weight"], 0)
+
     def test_a_checkpoint_without_declared_metadata_is_not_comparable(self) -> None:
         with TemporaryDirectory() as raw:
             root = Path(raw)
