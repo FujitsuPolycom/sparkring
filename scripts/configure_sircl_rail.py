@@ -404,7 +404,11 @@ def verify_rail(
     live_mtu: int | None = None
     live_state: str | None = None
     try:
+        if link_result.returncode != 0:
+            raise ValueError("link query failed")
         link_document = json.loads(link_result.stdout)[0]
+        if not isinstance(link_document, dict):
+            raise ValueError("link response must contain an object")
         live_mtu = int(link_document.get("mtu"))
         live_state = str(link_document.get("operstate", "")).upper()
     except (json.JSONDecodeError, IndexError, KeyError, TypeError, ValueError):
@@ -564,6 +568,9 @@ def apply_rail(
         action = "modified"
         command = modify_profile_command(config)
     else:
+        inventory = _run(("nmcli", "--terse", "--escape", "no", "--fields", "NAME", "connection", "show"), runner=runner)
+        if inventory.returncode != 0 or config.connection_name in inventory.stdout.splitlines():
+            raise RailConfigError("Cannot prove the named profile is absent; no NetworkManager changes were made")
         action = "created"
         command = add_profile_command(config)
 

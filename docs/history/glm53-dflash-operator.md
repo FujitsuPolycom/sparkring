@@ -528,6 +528,7 @@ idle baseline:
 
 ```bash
 python scripts/glm53_liveness_gate.py \
+  --require-capture-metrics \
   --endpoint http://rank0.example.net:8015 \
   --model glm-5.3-flash \
   --concurrency 4 \

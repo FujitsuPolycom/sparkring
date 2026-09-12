@@ -240,3 +240,9 @@ def test_sircl_overlay_has_no_site_addresses() -> None:
         values[name] = value
     for name, expected in plan_module.SIRCL_ENVIRONMENT.items():
         assert values[name] == expected
+
+
+@pytest.mark.parametrize("digest", ["sha256:", "sha256:short", "sha256:" + "a" * 64 + "\n"])
+def test_image_reference_requires_complete_manifest_digest(digest):
+    with pytest.raises(plan_module.PlanError, match="digest"):
+        plan_module._image({"serving_image": {"repository": "example/image", "manifest_digest": digest}})

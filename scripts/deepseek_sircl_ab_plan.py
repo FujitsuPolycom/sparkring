@@ -204,7 +204,7 @@ def _image(lock: dict[str, Any]) -> str:
     digest = serving_image.get("manifest_digest")
     if not isinstance(repository, str) or not repository:
         raise PlanError("runtime lock serving-image repository is missing")
-    if not isinstance(digest, str) or not digest.startswith("sha256:"):
+    if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
         raise PlanError("runtime lock serving-image digest is invalid")
     return f"{repository}@{digest}"
 
