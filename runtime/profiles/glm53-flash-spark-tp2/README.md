@@ -5,9 +5,9 @@ The commands below reproduce the separate 256K source-image configuration.
 
 ## Retained cache-disabled composition
 
-The profile below describes the earlier cache-disabled source-image
-composition. Its source and loader settings are separate from the bounded R33
-SparkCache result above.
+The profile below describes the cache-disabled source-image composition.
+Its source and loader settings differ from the bounded
+[shared-image SparkCache composition](R33_SPARKCACHE.md).
 
 Select `glm53-flash-spark-tp2-mtp3` and the checkpoint
 `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` at full revision
@@ -27,7 +27,7 @@ records the common-source requirements and reference-trial limits.
 | Prefill | Token-sharded mHC and recurrent-checkpoint coalescing; sequential KDA projection |
 | Graphs | `FULL_AND_PIECEWISE`, mode 0; `[1,2,4,8,12,16,20,24,28,32]` |
 | Transport | HCA indices 0/2; two RoCEnante paths; 16 MiB all-reduce and all-gather input-shard limits |
-| NCCL | Verified 2.30.7; eight channels; `=rocep1s0f0,roceP2p1s0f0` |
+| NCCL | Receipt-pinned 2.30.7; eight channels; `=rocep1s0f0,roceP2p1s0f0` |
 | Multimodal / SparkCache | Four images, zero videos; SparkCache disabled |
 | Lifecycle | Active 2 GiB host-memory guard; manual create/start; Docker restart `no` |
 
@@ -42,7 +42,8 @@ Use the same source revision for this checkout, its prepared image context,
 and its receipt. The [shared-image recipe](../../sparkring/source_image/README.md)
 uses public source bases and the repository's locked native archive. With
 the declared parent image present on an ARM64 Docker build host, download the
-native archive as documented there and run:
+native archive as documented there. Create `/srv/config` before writing the
+receipt, then run:
 
 ```bash
 python3 runtime/sparkring/source_image/prepare_image.py \
@@ -61,13 +62,15 @@ python3 runtime/sparkring/source_image/verify_image.py \
 
 The context and source-cache directories must initially be absent. For a
 verified existing source cache, add `--reuse-source-cache` and select a fresh
-context directory. Create `/srv/config` before writing the receipt. The CPU
+context directory. The preparation command verifies cached source identities
+before reuse. The CPU
 verifier checks installed packages, native files, this profile's hash, and
 its transport bundle before producing the receipt; it does not load a model.
 
 A published shared image is usable when its source lock and TP2 profile hash
 match this checkout. Pull its immutable digest, obtain its local config ID
-with `docker image inspect`, and run the same verifier against the matching
+with `docker image inspect`, assign it to `SPARKRING_LOCAL_IMAGE_ID`, and run
+the same verifier against the matching
 prepared context. An image with an older TP2 profile cannot pass this source
 lock. Do not relabel an old receipt or infer compatibility from a tag name.
 
@@ -94,7 +97,9 @@ transport, memory-guard, and cache settings come from the profile.
 
 Confirm this hardware inventory maps to the intended physical cage:
 `rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1`. The reciprocal peer maps
-are rank 0 `1=0/2` and rank 1 `0=0/2`; both selected functions belong to p0.
+are rank 0 `1=0/2` and rank 1 `0=0/2`: the left-hand number identifies the
+peer rank, and `0/2` selects zero-based entries 0 and 2 in that inventory.
+Those functions expose the same physical cage through the two PCI domains.
 Install the host memory-guard service and apply
 [memory-guard.conf](memory-guard.conf) as its systemd drop-in. Both `create`
 and `start` require the active guard's effective 2 GiB floor. The launcher
@@ -134,12 +139,14 @@ manually before admitting traffic:
 curl --fail http://rank0.example:8000/health
 curl --fail http://rank0.example:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"GLM-5.3-Flash-NVFP4-Spark","messages":[{"role":"user","content":"What is 17 + 25? End with FINAL=42."}],"temperature":1,"max_tokens":256}'
+  -d '{"model":"GLM-5.3-Flash-NVFP4-Spark","messages":[{"role":"user","content":"What is 17 + 25? End with FINAL= followed by the sum."}],"temperature":1,"max_tokens":256}'
 ```
 
 Rank 0 serves `GLM-5.3-Flash-NVFP4-Spark` on port 8000. It binds all interfaces
 without API authentication; use a trusted network or authenticated gateway.
 There is no automatic boot start or restart after a guard stop.
+
+Require the response to end with `FINAL=42`; HTTP success alone is insufficient.
 
 ## Reference evidence and limits
 
@@ -156,7 +163,8 @@ ranks; the allocator estimated 1,050,118 KV tokens. Available host memory
 after the response was 8,184/9,025 MiB. These are single observations.
 
 **Conclusion and limits.** The reference establishes startup and one arithmetic
-answer. It does not qualify the guarded shared image, throughput, sustained
+response to a prompt that supplied the expected answer, so it does not establish
+independent arithmetic accuracy. It does not qualify the guarded shared image, throughput, sustained
 memory stability, full-context/concurrent capacity, or multimodal accuracy.
 All indexed model shards existed and config/index hashes matched; full shard
 hashes were not recomputed during the checkpoint swap. Video remains disabled;
