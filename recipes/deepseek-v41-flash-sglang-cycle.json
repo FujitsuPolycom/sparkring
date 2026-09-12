@@ -50,7 +50,7 @@
     "limitations": [
       "No public image; operators must build and pin their image.",
       "Controlled A/B has one observation per prefill size, not a repeated-run confidence interval.",
-      "Broader production and 430080-context qualification is still pending.",
+      "The 430080-context streaming record in performance/records/deepseek-v41-flash/sglang-soak-20260912.md covers repeated short prompts; it does not qualify long-context retrieval or unattended recovery.",
       "Decoder-tail replay changes late-layer local attention visibility; finite quality checks do not prove exact equivalence."
     ]
   },
