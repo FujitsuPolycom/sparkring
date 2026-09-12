@@ -3,10 +3,10 @@
 ## Result and base
 
 The restructuring branch is `refactor/repository-layout`. Its integration
-base is main commit `f575d421d72c7fbdef3d6165eb6bbe241517fa87`, including
-PRs #259, #262, #265 and #269. The initial preservation inventory is based on
-`c65a9981e2a69f821ac716f6f13484d99d23f4ea`. Adoption requires completing the
-repository-wide review and the checks below; no deployment is included.
+base is main commit `506c8db0c09c95a75467e006110242cb5d0bcc7d`, including
+PRs #259, #262, #265, #269 and #271. The initial preservation inventory is
+based on `c65a9981e2a69f821ac716f6f13484d99d23f4ea`. The repository review and
+local checks below are complete; adoption includes no deployment.
 
 The branch provides 21 indexed deployment profiles, deterministic configuration
 resolution, a shared guarded launch entry point, ENV rendering for the DeepSeek
@@ -46,20 +46,38 @@ No useful evidence was deleted or uploaded to another location.
 
 ## Verification
 
-The repository-wide review remains in progress. These checks ran on Windows
-with Python 3.12 at commit 599ed64; later changes require relevant validation.
+The repository-wide source, prose, configuration, generated-owner and artifact
+provenance review covers all 1,537 tracked files at their recorded blobs. The
+checks below ran on Windows with Python 3.12 at commit `ef8de04`; the adoption
+document changes only this report.
 
 | Check | Result |
 |---|---|
-| Full maintained pytest selection from CI | 4,337 passed; 137 skipped; no failures |
+| Full maintained pytest selection from CI | 4,573 passed; 123 skipped; no failures |
 | Shared profile/configuration tests | 119 passed |
 | Ruff over maintained Python trees | Passed |
 | Repository structural check | 21 profiles, 52 generated outputs, 430 preserved inputs, 448 Python sources, 7 builders |
-| Repository Markdown links | 986 local links checked |
+| Repository Markdown links | 999 local links checked |
 | Release-safety scan | Zero findings |
 | Managed-service source closure | Imported from an extracted deployment archive without the checkout on its import path |
 | Launch compatibility | Existing TP2 entry point and maintained switched-renderer contracts pass |
 | Configuration equivalence | Omitted and explicit defaults agree; ENV assignments match the initial baseline except declared default changes; comment edits do not change compatibility |
+
+The native source at commit `addd704`, including constructor-lifetime and
+buffer-range fixes, configured and compiled on an
+ARM64 GB10 host with CUDA 13.0.88, architecture `sm_121`, Release mode and
+`BUILD_TESTING=ON`. All 28 default CTest cases passed. Optional CMake probe
+and smoke features remained disabled. This verifies the default native build
+and standalone tests, not four-rank RDMA, NCCL or serving behavior.
+
+Local WSL validation with Python 3.12.3 also passed 97 shell-guard,
+cleanup and deployment-documentation tests, plus 66 staging, trust and
+existing-asset tests, with no skips in either selection. These checks used
+fixtures and temporary directories; they did not deploy to hosts. The pinned
+LIL companion was then built at revision
+`329cde801b847294005cb16765692032a6cdf206` with Go 1.26.0: its tests and
+vet passed, and all 87 SparkRing LIL integration tests passed in WSL without
+skips. These local checks do not constitute a hosted GitHub Actions run.
 
 The standalone, unchanged DeepSeek Engram probe could not import vLLM in this
 environment. It requires the serving image and model/packed-row inputs, so it is
@@ -67,7 +85,7 @@ not part of hosted CPU CI. No model files were accessed or changed for this work
 
 Windows skips include POSIX mode/symlink behavior, Bash/native compilers, optional
 LIL integration and serving-runtime checks. Hosted Linux CI has not run because
-the reviewed changes have not been published. CUDA, RDMA, native ARM64 image assembly, live failure
+the reviewed changes have not been published. Four-rank RDMA/NCCL, native ARM64 image assembly, live failure
 recovery, full-context serving and performance were not validated. Local CPU
 results do not qualify a reorganized build or authorize a deployment promotion.
 
@@ -81,10 +99,18 @@ results do not qualify a reorganized build or authorize a deployment promotion.
 | #265 | Merged in the integration base | TP4/DCP1 remains the default; TP4/DCP4 is a validated alternative; its contract/entrypoint overlay and activation record are pinned separately from the published image |
 | #266 | Open, head `544f498c6369a72c1afba0a856dfb870cfc0d302` | Review local-address recovery separately from peer-silence handling; relocation leaves its managed-service paths intact |
 | #267 | Open, head `5a74a07a0b8e11d660036600ce64ea7eedc6903b` | Keep the proposed SGLang runtime distinct from vLLM; add its profile only with its own builder and evidence |
-| #269 | Merged in the integration base | Preserve the corrected DCP4 arithmetic-owner mapping and no-overlap evidence; published image identity is unchanged |
+| #269 | Merged in the integration base | Preserve the corrected DCP4 arithmetic-owner mapping; apply PR #271's overlap correction and attribution withdrawal before using throughput evidence |
 | #270 | Open, head `27d6b0dbd2b5a2113fb8c14923d70fb354d5a0ee` | Apply selected-HCA rendering to the maintained TP2 owner and regenerate its compatibility launcher if adopted; retain transport-change validation scope |
 
-PR states above were checked against GitHub with this integration base.
+PRs #258, #266, #267 and #270 remain open at the upstream recheck.
+Main commit `506c8db0c09c95a75467e006110242cb5d0bcc7d` adds merged
+[PR #271](https://github.com/FujitsuPolycom/sparkring/pull/271), which corrects
+the DCP4 measurement overlap and withdraws the C4 gather attribution. Its
+record and publication-reference changes are integrated locally, with the
+DCP4 release selection updated to bind the corrected evidence. The frozen
+published-input archive remains unchanged. The conflicting RouteFinal times
+in that historical correction do not establish an independently verified
+non-overlap result.
 
 PR #262 is already part of the initial base. No pending PR was merged, closed,
 rejected or rewritten by this branch. Maintainers should recheck main and open
