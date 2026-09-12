@@ -171,6 +171,10 @@ __device__ bool flow_barrier(const FusedPrefillDescriptor& descriptor,
                              std::uint32_t phase,
                              std::uint32_t poison_stage) {
   __shared__ std::uint32_t arrived;
+  // Every payload-writing thread must finish its stores and system fence
+  // before this CTA's leader contributes an arrival to the flow barrier.
+  // Both callers reach this barrier uniformly across their CTA.
+  __syncthreads();
   if (threadIdx.x == 0) {
     const std::uint32_t prior = atomicAdd(
         &descriptor.device_sync->arrivals[phase], 1U);

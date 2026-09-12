@@ -7,8 +7,9 @@ kernels, and stable edge adapters are exercised by the standalone
 claim. The bidirectional-ring executor and fused-prefill kernels and verbs
 proxy are linked into `libspark_transport_capi.so` for the GLM-5.3 research
 transport. The public C ABI and vLLM adapter select those serving components
-through explicit shape and topology gates. Delayed-credit backpressure remains
-unsupported by the generic correctness executor.
+through explicit shape and topology gates. CPU tests cover delayed-credit retry
+and retirement ordering in the generic correctness executor. Its four-rank
+delayed-credit arms still require hardware qualification receipts.
 
 `substrate.py` models a bounded replacement for exact-shape transport
 sessions. BF16 `[Q, 6144]` all-reduce widths from Q1 through Q4096 map onto

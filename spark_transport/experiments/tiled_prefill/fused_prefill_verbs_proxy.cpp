@@ -1,4 +1,5 @@
 #include "fused_prefill_verbs_proxy.hpp"
+#include "fused_prefill_posting.hpp"
 
 #include <algorithm>
 #include <array>
@@ -417,9 +418,6 @@ class FusedPrefillVerbsProxy::Impl {
           arena_.registered_offset +
           fused_prefill_slot_offset(flow, incoming, parity);
       const std::uint64_t payload_id = next_work_id(endpoint);
-      config_.endpoints[endpoint]->write(
-          local_payload, remote_payload, active_rail_bytes_,
-          payload_id, false);
       const std::uint64_t local_doorbell = control_field_offset(
           flow, offsetof(FusedPrefillHostControl, producer), parity) +
           arena_.registered_offset;
@@ -430,13 +428,20 @@ class FusedPrefillVerbsProxy::Impl {
           control_field_offset(flow, remote_field, parity) +
           arena_.registered_offset;
       const std::uint64_t doorbell_id = next_work_id(endpoint);
-      config_.endpoints[endpoint]->write(local_doorbell, remote_doorbell,
-                                         sizeof(expected), doorbell_id, true);
-      outstanding_wqes_[endpoint] += 2U;
-      pending_[endpoint].push_back(
-          {doorbell_id, flow, stage, 2U,
-           rail == 0 ? CompletionKind::kExchangePrimary
-                     : CompletionKind::kExchangeSecondary});
+      detail::post_reserved_work(
+          pending_[endpoint], outstanding_wqes_[endpoint],
+          PendingCompletion{doorbell_id, flow, stage, 2U,
+                            rail == 0 ? CompletionKind::kExchangePrimary
+                                      : CompletionKind::kExchangeSecondary},
+          [&] {
+            config_.endpoints[endpoint]->write(
+                local_payload, remote_payload, active_rail_bytes_,
+                payload_id, false);
+          },
+          [&] {
+            config_.endpoints[endpoint]->write(local_doorbell, remote_doorbell,
+                                               sizeof(expected), doorbell_id, true);
+          });
       ++receipt_.payload_writes;
       ++receipt_.doorbell_writes;
       receipt_.payload_bytes[endpoint] += active_rail_bytes_;
@@ -461,11 +466,13 @@ class FusedPrefillVerbsProxy::Impl {
         flow, offsetof(FusedPrefillHostControl, peer_credit), parity) +
         arena_.registered_offset;
     const std::uint64_t credit_id = next_work_id(endpoint);
-    config_.endpoints[endpoint]->write(local_credit, remote_credit,
-                                       sizeof(expected), credit_id, true);
-    ++outstanding_wqes_[endpoint];
-    pending_[endpoint].push_back(
-        {credit_id, flow, stage, 1U, CompletionKind::kCredit});
+    detail::post_reserved_work(
+        pending_[endpoint], outstanding_wqes_[endpoint],
+        PendingCompletion{credit_id, flow, stage, 1U, CompletionKind::kCredit},
+        [&] {
+          config_.endpoints[endpoint]->write(local_credit, remote_credit,
+                                             sizeof(expected), credit_id, true);
+        }, [] {});
     stages_[flow][stage].credit_posted = true;
     ++receipt_.credit_writes;
     receipt_.credit_bytes[endpoint] += sizeof(expected);

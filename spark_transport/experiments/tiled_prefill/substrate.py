@@ -1,9 +1,9 @@
 """CPU-only substrate for bounded, tiled TP4 collective planning.
 
 The module describes transport work without importing CUDA, vLLM, or native
-transport bindings.  It is research-only: production sessions do not consume
-these descriptors until a separate native integration proves their wire and
-retirement invariants.
+transport bindings. It is research-only. The standalone probe
+``spark_tp4_tiled_prefill_probe`` exercises the corresponding native correctness
+executor; serving sessions do not consume this generic planner.
 """
 
 from __future__ import annotations
@@ -117,6 +117,8 @@ def validate_tile_acquisition(
     have consumed that slot's immediately preceding ordinal.
     """
 
+    if type(consumed_through) is not int or consumed_through < -1:
+        raise ValueError("consumed_through must be an integer watermark >= -1")
     expected = TileTicket.from_ordinal(expected_ordinal, slots_per_edge)
     if ticket != expected:
         raise UnexpectedTileTicket(
@@ -409,6 +411,8 @@ def verify_allgather_schedule(
                 )
             used_sender_endpoints.add(key)
             selected = frozenset(transfer.segments)
+            if len(selected) != len(transfer.segments):
+                raise ValueError("all-gather transfer repeats a segment")
             if not selected or not selected <= expected_segments:
                 raise ValueError("all-gather transfer names invalid segments")
             if not selected <= before[transfer.sender_rank]:
@@ -603,6 +607,8 @@ def verify_bidirectional_ring_allreduce_schedule(
             source = before[transfer.sender_rank][transfer.chunk]
             if transfer.phase == "reduce_scatter":
                 local = before[transfer.receiver_rank][transfer.chunk]
+                if local & source:
+                    raise ValueError("reduction repeats a contributor")
                 holdings[transfer.receiver_rank][transfer.chunk] = (
                     local | source
                 )
@@ -709,6 +715,8 @@ def verify_allreduce_schedule(
             stage_bytes[exchange.endpoint] += partition_bytes
             edge_bytes[exchange.endpoint] += partition_bytes
             source = before[exchange.partition]
+            if any(source[rank] & source[rank ^ exchange.matching_mask] for rank in range(4)):
+                raise ValueError("reduction repeats a contributor")
             contributors[exchange.partition] = [
                 source[rank] | source[rank ^ exchange.matching_mask]
                 for rank in range(4)
@@ -823,7 +831,7 @@ class TiledCapacityPlanner:
         *,
         elements_per_query_row: int = 6144,
     ) -> TiledCapacityPlanner:
-        """Return a bounded Q1-Q4096 contiguous BF16 TP4 planner."""
+        """Return a bounded Q1-Q8192 contiguous BF16 TP4 planner."""
 
         if (
             isinstance(elements_per_query_row, bool)

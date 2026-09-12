@@ -216,9 +216,10 @@ class DualRailStripedEdgePort::Impl {
       } catch (...) {
         return poison_credit();
       }
-      if (observed == 0 ||
-          (peer_credit_observed_[rail] &&
-           observed < peer_wire_credits_[rail])) {
+      // The edge interface treats zero as no remote publication.
+      if (observed == 0) continue;
+      if (peer_credit_observed_[rail] &&
+          observed < peer_wire_credits_[rail]) {
         return poison_credit();
       }
       peer_credit_observed_[rail] = true;
@@ -239,21 +240,19 @@ class DualRailStripedEdgePort::Impl {
 
   DualRailDrainState drain() noexcept {
     if (poisoned_) return DualRailDrainState::kPoisoned;
+    // Visit every pending exchange once. A backpressured entry must not hide
+    // an accepted exchange whose completion releases the child QP capacity.
     for (auto position = exchanges_.begin(); position != exchanges_.end();) {
       const auto request = position->second.logical;
-      if (!position->second.submitted[0] || !position->second.submitted[1]) {
-        if (try_post_exchange(request) == TiledSubmitState::kFatal) {
-          return DualRailDrainState::kPoisoned;
-        }
+      ++position;  // Polling may erase this request, but not the next entry.
+      const auto submitted = try_post_exchange(request);
+      if (submitted == TiledSubmitState::kFatal) {
+        return DualRailDrainState::kPoisoned;
       }
-      position = exchanges_.find(request.work_id);
-      if (position == exchanges_.end()) continue;
-      if (position->second.submitted[0] && position->second.submitted[1] &&
+      if (submitted == TiledSubmitState::kAccepted &&
           poll_exchange(request) == TiledPollState::kFatal) {
         return DualRailDrainState::kPoisoned;
       }
-      position = exchanges_.begin();
-      if (!exchanges_.empty()) break;
     }
     if (credit_.has_value()) {
       const auto request = credit_->logical;

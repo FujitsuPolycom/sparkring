@@ -1,4 +1,5 @@
 #include "fused_prefill_kernels.cuh"
+#include "../../app/probe_options.hpp"
 
 #include "spark_transport/tp4_bidirectional_prefill.hpp"
 
@@ -126,7 +127,7 @@ struct ProxyConfig {
   std::uint32_t credit_delay_us{7};
 };
 
-void delay_us(std::uint32_t delay) {
+void delay_us(std::uint64_t delay) {
   if (delay != 0) std::this_thread::sleep_for(std::chrono::microseconds(delay));
 }
 
@@ -360,7 +361,7 @@ void proxy_one_operation(
                   research::kFusedPrefillRailBytes);
       // Tile three is deliberately the slow secondary rail. It verifies that
       // neither the consumer nor reuse token can run ahead of the late half.
-      delay_us(config.secondary_delay_us +
+      delay_us(static_cast<std::uint64_t>(config.secondary_delay_us) +
                (flow_tile(flow_index) == 3U ? config.secondary_delay_us : 0U));
       store_release(&control->secondary_doorbell[parity], token);
 
@@ -509,7 +510,8 @@ ProxyConfig parse_config(int argc, char** argv) {
     const std::string argument = argv[index];
     auto parse = [&](const std::string& prefix, std::uint32_t& target) {
       if (argument.rfind(prefix, 0) != 0) return false;
-      target = static_cast<std::uint32_t>(std::stoul(argument.substr(prefix.size())));
+      target = spark_transport::probe::unsigned_value<std::uint32_t>(
+          argument.c_str() + prefix.size(), prefix.c_str());
       return true;
     };
     if (parse("--operations=", config.operations) ||

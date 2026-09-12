@@ -87,9 +87,9 @@ def qualification_arms() -> tuple[QualificationArm, ...]:
                 QualificationArm(
                     arm_id=f"q{query_rows}_{timing_mode}",
                     purpose=(
-                        "single-operation output readiness and retirement"
+                        "host operation timing with per-operation correctness checks"
                         if timing_mode == "isolated"
-                        else "back-to-back credit-limited throughput"
+                        else "host operation timing with final correctness checks"
                     ),
                     query_rows=query_rows,
                     timing_mode=timing_mode,
@@ -116,7 +116,7 @@ def qualification_arms() -> tuple[QualificationArm, ...]:
         arms.append(
             QualificationArm(
                 arm_id=f"glm4096_q{query_rows}_steady",
-                purpose="GLM-5.3 width-4096 steady prefill qualification",
+                purpose="width-4096 tiled correctness and host-duration evidence",
                 query_rows=query_rows,
                 timing_mode="steady",
                 warmup_operations=10,
@@ -240,6 +240,8 @@ def qualification_plan() -> dict[str, object]:
         "schema": PLAN_SCHEMA,
         "status": "research-only",
         "runnable": True,
+        "hardware_results_included": False,
+        "required_coverage": "all listed arms",
         "world_size": WORLD_SIZE,
         "receipt_schema": RECEIPT_SCHEMA,
         "receipt_prefix": RECEIPT_PREFIX,
@@ -345,7 +347,7 @@ def _equals(
     receipt: Mapping[str, object], name: str, expected: object
 ) -> None:
     actual = _required(receipt, name)
-    if actual != expected:
+    if type(actual) is not type(expected) or actual != expected:
         raise ReceiptValidationError(
             f"receipt {name} expected {expected!r}, got {actual!r}"
         )
@@ -591,6 +593,8 @@ def validate_rank_receipts(
         "timing_mode": arm.timing_mode,
         "poison": arm.poison,
         "expected_exit_code": arm.expected_exit_code,
+        "qualification_scope": "single-arm",
+        "full_matrix_qualified": False,
         "executor_stream_policy": "single_stream_correctness_only",
         "performance_claim_allowed": False,
         "teardown_state": (

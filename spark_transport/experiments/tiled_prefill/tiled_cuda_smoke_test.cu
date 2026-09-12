@@ -20,8 +20,11 @@ constexpr std::uint64_t kGuardBytes = 64U;
 constexpr std::uint64_t kTileBytes = 512U * 1024U;
 constexpr std::uint64_t kStripeCapacityBytes = kTileBytes / 2U;
 constexpr std::uint64_t kReceiveOffsetBytes = kStripeCapacityBytes;
+// Reserve the per-lane 64-byte control record used by the tiled pool layout;
+// this numerical smoke test exchanges payloads without reading control words.
+constexpr std::uint64_t kSlotControlBytes = 64U;
 constexpr std::uint64_t kLaneStrideBytes =
-    2U * kStripeCapacityBytes + 64U;
+    2U * kStripeCapacityBytes + kSlotControlBytes;
 constexpr std::uint64_t kSlotStrideBytes = 2U * kLaneStrideBytes;
 constexpr std::uint64_t kSlotsPerEdge = 8U;
 constexpr std::uint64_t kEndpointBytes =
@@ -85,7 +88,7 @@ void run_width(std::uint32_t query_rows) {
   }
   check(research::launch_initialize_correctness_receipt(
             receipt, query_rows, tile_count, geometry.active_bytes,
-            spark_transport::kTp4TiledBf16ElementsPerQueryRow, stream),
+            research::kOracleModelWidth, stream),
         "launch_initialize_correctness_receipt");
 
   for (std::uint32_t ordinal = 0; ordinal < tile_count; ++ordinal) {

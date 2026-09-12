@@ -123,9 +123,15 @@ foreach ($arm in $selectedArms) {
     }
 }
 
-$state = if ($Execute) { "pass" } else { "plan" }
+$completedIds = if ($Execute) { @($selectedArms | ForEach-Object { $_.arm_id }) } else { @() }
+$remainingIds = @($plan.arms | Where-Object { $_.arm_id -notin $completedIds } | ForEach-Object { $_.arm_id })
+$completeMatrix = $Execute -and $remainingIds.Count -eq 0
+$state = if (-not $Execute) { "plan" } elseif ($completeMatrix) { "pass" } else { "partial-pass" }
 Write-Output ("tiled_prefill_qualification=$state suite=$Suite " +
     "arms=$($selectedArms.Count) ranks=4 " +
+    "required_arms=$($plan.arms.Count) completed_arms=$($completedIds.Count) " +
+    "remaining_required_arms=$($remainingIds -join ',') " +
+    "full_matrix_passed=$($completeMatrix.ToString().ToLowerInvariant()) " +
     "remote_contact=$($Execute.IsPresent.ToString().ToLowerInvariant()) " +
     "serving_integration=false " +
     "executor_stream_policy=single_stream_correctness_only " +

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
@@ -184,9 +185,9 @@ def test_cuda_correctness_kernels_use_the_qualification_receipt_abi() -> None:
     cmake = (directory.parents[1] / "CMakeLists.txt").read_text(
         encoding="utf-8"
     )
-    library_start = cmake.index("add_library(spark_transport")
-    library_end = cmake.index("\n)", library_start)
-    production_library = cmake[library_start:library_end]
+    library = re.search(r"add_library\s*\(\s*spark_transport(?=\s|\))([^)]*)\)", cmake)
+    assert library is not None, "production spark_transport target is missing"
+    production_library = library.group(1)
     assert "tiled_correctness_kernels" not in production_library
     assert "tiled_correctness_oracle" not in production_library
 

@@ -384,3 +384,46 @@ def test_receipt_rejects_fabricated_host_quantiles() -> None:
     receipts[0]["host_operation_us_min"] = 121.0
     with pytest.raises(ReceiptValidationError, match="monotonic"):
         validate_rank_receipts(receipts, arm_by_id("q512_steady"))
+
+
+@pytest.mark.parametrize("field,value", [("passed", 1), ("descriptor_overflow_count", False),
+                                         ("world_size", 4.0), ("device_timing_measured", 0)])
+def test_exact_receipt_fields_require_exact_json_types(field, value):
+    receipts = rank_fixtures("q512_steady")
+    for receipt in receipts:
+        receipt[field] = value
+    with pytest.raises(ReceiptValidationError, match=field):
+        validate_rank_receipts(receipts, arm_by_id("q512_steady"))
+
+
+def test_single_arm_pass_is_not_full_matrix_qualification():
+    result = validate_rank_receipts(rank_fixtures("q512_steady"), arm_by_id("q512_steady"))
+    assert result["qualification_scope"] == "single-arm"
+    assert result["full_matrix_qualified"] is False
+    plan = qualification_plan()
+    assert plan["hardware_results_included"] is False
+    assert plan["required_coverage"] == "all listed arms"
+    assert {arm["arm_id"] for arm in plan["arms"] if arm["credit_delay_us"]} == {
+        "q4096_backpressure_edge0", "q4096_backpressure_edge1"}
+
+
+@pytest.mark.parametrize("execute,selected,state,remaining", [(True, 1, "partial-pass", "b"), (True, 2, "pass", ""), (False, 2, "plan", "a,b")])
+def test_runner_reports_required_matrix_coverage_without_remote_execution(execute, selected, state, remaining):
+    import base64
+    import shutil
+    import subprocess
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if not shell:
+        pytest.skip("PowerShell unavailable")
+    path = Path(__file__).parents[2] / "scripts/run_tp4_tiled_prefill_qualification.ps1"
+    text = path.read_text()
+    summary = text[text.index("$completedIds = if ($Execute)"):]
+    setup = '$plan = @{arms=@(@{arm_id="a"},@{arm_id="b"})}; $Suite="fixture"; '
+    setup += '$Execute=[switch]$' + str(execute).lower() + '; '
+    setup += '$selectedArms=@($plan.arms | Select-Object -First ' + str(selected) + '); '
+    encoded = base64.b64encode((setup + summary).encode("utf-16le")).decode()
+    result = subprocess.run([shell, "-NoProfile", "-EncodedCommand", encoded], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert "tiled_prefill_qualification=" + state + " " in result.stdout
+    assert "remaining_required_arms=" + remaining + " " in result.stdout
+    assert "full_matrix_passed=" + str(execute and selected == 2).lower() in result.stdout

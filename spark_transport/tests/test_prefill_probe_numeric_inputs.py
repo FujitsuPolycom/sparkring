@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
 ''')
     binary = tmp_path / "parser"
     subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                    "-I", str(ROOT / "app"), str(source), "-o", str(binary)], check=True, capture_output=True)
+                    "-I", str(ROOT / "app"), str(source), "-o", str(binary)], check=True, capture_output=True, timeout=30)
     return binary
 
 
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     (32, " 1", False), (32, "1junk", False),
 ])
 def test_no_truncation_or_signed_unsigned_input(parser_binary, width, value, accepted):
-    result = subprocess.run([str(parser_binary), str(width), value], capture_output=True, text=True)
+    result = subprocess.run([str(parser_binary), str(width), value], capture_output=True, text=True, timeout=5)
     assert result.returncode == (0 if accepted else 2)
     if accepted:
         assert result.stdout == value

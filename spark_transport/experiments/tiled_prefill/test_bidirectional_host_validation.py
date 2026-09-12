@@ -12,7 +12,7 @@ HERE = Path(__file__).resolve().parent
 INCLUDE = HERE.parents[1] / "include"
 
 
-def _run_cpp(tmp_path, source):
+def _run_cpp(tmp_path, source, *, syntax_only=False):
     path = tmp_path / "host.cpp"
     path.write_text(source)
     binary = tmp_path / "host-test"
@@ -20,19 +20,23 @@ def _run_cpp(tmp_path, source):
         def linux(p):
             drive, tail = os.path.splitdrive(str(p))
             return "/mnt/" + drive[0].lower() + "/" + tail.lstrip("\\/").replace("\\", "/")
-        available = subprocess.run(["bash", "-lc", "command -v g++"], capture_output=True)
+        available = subprocess.run(["bash", "-lc", "command -v g++"], capture_output=True, timeout=30)
         if available.returncode:
             pytest.skip("WSL g++ unavailable")
-        command = " ".join(shlex.quote(v) for v in ["g++", "-std=c++17", "-I", linux(HERE), "-I", linux(INCLUDE), linux(path), "-o", linux(binary)])
-        built = subprocess.run(["bash", "-lc", command], text=True, capture_output=True)
+        command = " ".join(shlex.quote(v) for v in ["g++", "-std=c++17", "-I", linux(tmp_path), "-I", linux(HERE), "-I", linux(INCLUDE), linux(path), *( ["-fsyntax-only"] if syntax_only else ["-o", linux(binary)] )])
+        built = subprocess.run(["bash", "-lc", command], text=True, capture_output=True, timeout=30)
         assert built.returncode == 0, built.stderr
-        result = subprocess.run(["bash", "-lc", shlex.quote(linux(binary))], capture_output=True, text=True)
+        if syntax_only:
+            return
+        result = subprocess.run(["bash", "-lc", shlex.quote(linux(binary))], capture_output=True, text=True, timeout=30)
     else:
         compiler = shutil.which("g++")
         if compiler is None:
             pytest.skip("g++ unavailable")
-        subprocess.run([compiler, "-std=c++17", "-I", str(HERE), "-I", str(INCLUDE), str(path), "-o", str(binary)], check=True)
-        result = subprocess.run([str(binary)], capture_output=True, text=True)
+        subprocess.run([compiler, "-std=c++17", "-I", str(tmp_path), "-I", str(HERE), "-I", str(INCLUDE), str(path), *(["-fsyntax-only"] if syntax_only else ["-o", str(binary)])], check=True, timeout=30)
+        if syntax_only:
+            return
+        result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 
 
@@ -107,3 +111,25 @@ template<class... T> void gather_finish_kernel(T...) { ++launches; }
     main += "\n".join(f"if ({call} != 0) return 3;" for call in calls)
     main += 'return launches == 5 ? 0 : 4; }'
     _run_cpp(tmp_path, prelude + body + main)
+
+
+def test_generic_smoke_host_code_resolves_its_declared_constants(tmp_path):
+    # Only CUDA host API declarations are supplied. Compile the unmodified smoke
+    # translation unit for C++ name/type checking without linking or execution.
+    (tmp_path / "cuda_runtime.h").write_text("""
+#pragma once
+#include <cstddef>
+using cudaError_t = int;
+using cudaStream_t = void*;
+constexpr int cudaSuccess=0, cudaStreamNonBlocking=1;
+constexpr int cudaMemcpyHostToDevice=1, cudaMemcpyDeviceToHost=2, cudaMemcpyDeviceToDevice=3;
+const char* cudaGetErrorString(cudaError_t);
+cudaError_t cudaMalloc(void**,std::size_t);
+cudaError_t cudaFree(void*);
+cudaError_t cudaStreamCreateWithFlags(cudaStream_t*,unsigned);
+cudaError_t cudaMemsetAsync(void*,int,std::size_t,cudaStream_t);
+cudaError_t cudaMemcpyAsync(void*,const void*,std::size_t,int,cudaStream_t);
+cudaError_t cudaStreamSynchronize(cudaStream_t);
+cudaError_t cudaStreamDestroy(cudaStream_t);
+""")
+    _run_cpp(tmp_path, '#include "tiled_cuda_smoke_test.cu"\n', syntax_only=True)
