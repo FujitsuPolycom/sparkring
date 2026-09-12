@@ -1,11 +1,24 @@
 # SparkRing
 
-SparkRing runs vLLM inference across pairs and four-node rings of NVIDIA
-GB10 devices. Its communication stack combines SIRCL, RoCEnante and patched
-NCCL to connect the high-speed data fabric without an external switch.
-Administration and API traffic use the management network.
+SparkRing is an inference-serving stack with low-latency collective communication
+for switchless clusters of NVIDIA GB10-based devices. It supports two-node pairs
+and four-node rings; six-node rings are experimental. Model profiles use vLLM,
+with [SGLang support under review](https://github.com/FujitsuPolycom/sparkring/pull/267).
 
-SparkRing is experimental. Six-node deployments are research-only.
+The collective communication stack combines SIRCL, RoCEnante, and patched NCCL.
+The high-speed data fabric needs no external Ethernet or InfiniBand switch;
+administration and inference API traffic use the management network, typically
+through each node's 10GbE NIC.
+
+Profiles that need communication between nonadjacent nodes can use a virtual
+mesh over the four-node ring. Custom RoCE RDMA routing and hardware forwarding
+in the ConnectX network ASICs create those paths over the existing ring cables,
+without routing the traffic through host CPUs. This provides mesh connectivity
+over a physical ring; the selected profile defines its transport requirements.
+
+The repository provides setup guides, launch tooling, model profiles,
+reproducible benchmarks, and test results. Validation applies to the exact
+configurations and workloads recorded with each profile.
 
 ## Setup
 
