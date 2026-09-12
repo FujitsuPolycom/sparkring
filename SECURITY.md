@@ -1,7 +1,7 @@
 # Security Policy
 
-SparkRing is pre-release research software. No released version receives a
-security-maintenance guarantee; accepted fixes land on the `main` branch.
+No released version receives a security-maintenance guarantee.
+Accepted fixes land on the `main` branch.
 
 ## Reporting a vulnerability
 

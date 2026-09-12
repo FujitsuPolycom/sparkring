@@ -5,7 +5,7 @@ runtime/sparkring/*.gz -text
 runtime/deepseek-vision-exp/upstream/*.gz -text
 runtime/deepseek0731-gb10/upstream/*.gz -text
 # Build inputs carry byte-level hashes; preserve their stored bytes on every
-# platform. Intentional byte changes require regenerated build receipts.
+# platform. Changed inputs need distinct release identities and build receipts.
 runtime/sparkring/source_image/** -text whitespace=cr-at-eol
 runtime/sparkring/source_image/patches/*.patch whitespace=cr-at-eol,-trailing-space
 spark_transport/nccl/nccl-2.30.7-dual-pci-domain.patch -text whitespace=cr-at-eol,-trailing-space
@@ -25,7 +25,8 @@ third_party/b12x_roce/** -text whitespace=cr-at-eol
 runtime/transport_profiles/tp2-rocenante-adaptive/roce/** -text whitespace=cr-at-eol
 runtime/transport_profiles/tp2-rocenante-adaptive/LICENSE -text whitespace=cr-at-eol
 
-# Canonical sources and generated compatibility exports use identical bytes.
+# Canonical source trees use LF. The compatibility generator checks exports
+# and rewrites relative Markdown links for their destination directories.
 integrations/vllm/** text eol=lf
 spark_transport/fabric/** text eol=lf
 profiles/** text eol=lf
