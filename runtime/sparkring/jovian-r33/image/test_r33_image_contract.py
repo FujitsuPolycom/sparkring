@@ -382,11 +382,20 @@ class CandidateImageContractTests(unittest.TestCase):
                     clear=True,
                 ),
                 mock.patch.object(sys, "path", [str(copied), *sys.path]),
+                mock.patch.dict(sys.modules),
             ):
                 for name in ("spark_tp4_backend", "spark_tp4_vocab_allgather_backend"):
                     sys.modules.pop(name, None)
                     module = __import__(name)
                     self.assertEqual(module._mode(), "custom")
+
+    def test_copied_adapter_import_restores_existing_module_cache(self):
+        names = ("spark_tp4_backend", "spark_tp4_vocab_allgather_backend")
+        sentinels = {name: object() for name in names}
+        with mock.patch.dict(sys.modules, sentinels):
+            self.test_copied_tp4_adapters_import_in_canonical_custom_mode()
+            for name, sentinel in sentinels.items():
+                self.assertIs(sys.modules[name], sentinel)
 
     def test_embedded_sitecustomize_loads_its_adjacent_sircl_hook(self):
         bundle_source = (
