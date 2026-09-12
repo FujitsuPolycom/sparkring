@@ -11,6 +11,7 @@ import functools
 import importlib
 import os
 import threading
+from builtins import BaseExceptionGroup
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -410,16 +411,23 @@ class LiveQ2RSession:
         self._binding_adapter.validate()
         self._timing_adapter.validate()
         self._draft_loop_adapter.validate()
-        self._binding_adapter.install()
         try:
+            self._binding_adapter.install()
             self._timing_adapter.install()
-            try:
-                self._draft_loop_adapter.install()
-            except BaseException:
-                self._timing_adapter.uninstall()
-                raise
-        except BaseException:
-            self._binding_adapter.uninstall()
+            self._draft_loop_adapter.install()
+        except BaseException as installation_error:
+            errors = [installation_error]
+            for adapter in (
+                self._draft_loop_adapter, self._timing_adapter, self._binding_adapter
+            ):
+                try:
+                    adapter.uninstall()
+                except BaseException as cleanup_error:
+                    errors.append(cleanup_error)
+            if len(errors) > 1:
+                self._installed = True
+                self._cleanup_pending = True
+                raise BaseExceptionGroup("Timing installation and rollback failed", errors)
             raise
         self._installed = True
 

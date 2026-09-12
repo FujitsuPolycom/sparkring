@@ -298,6 +298,34 @@ def test_interrupted_install_restores_prior_hooks(monkeypatch, adapter_name):
         live._binding_adapter.uninstall()
 
 
+def test_failed_install_rollback_retains_cleanup_and_original_error(monkeypatch):
+    from builtins import BaseExceptionGroup
+    live = session()
+    original = GPUModelRunner.initialize_kv_cache
+    install_error = RuntimeError("draft install failed")
+    cleanup_error = RuntimeError("timing restore failed")
+    try:
+        with monkeypatch.context() as patcher:
+            def fail_install():
+                raise install_error
+            def fail_cleanup():
+                raise cleanup_error
+            patcher.setattr(live._draft_loop_adapter, "install", fail_install)
+            patcher.setattr(live._timing_adapter, "uninstall", fail_cleanup)
+            with pytest.raises(BaseExceptionGroup) as caught:
+                live.install()
+            assert caught.value.exceptions == (install_error, cleanup_error)
+            assert GPUModelRunner.initialize_kv_cache is original
+            with pytest.raises(RuntimeError, match="cleanup"):
+                live.arm("partial")
+        live.uninstall()
+        assert not live._installed
+    finally:
+        live._draft_loop_adapter.uninstall()
+        live._timing_adapter.uninstall()
+        live._binding_adapter.uninstall()
+
+
 def test_snapshot_reports_unbound_startup_without_claiming_readiness():
     live = session()
     live.install()
