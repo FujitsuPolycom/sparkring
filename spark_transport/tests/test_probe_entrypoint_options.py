@@ -15,12 +15,15 @@ def test_integer_overflow_diagnostic_names_the_option(tmp_path):
     command = compile_cpu(tmp_path, r'''
 #include "probe_options.hpp"
 int main() {
-  try {
-    spark_transport::probe::unsigned_value<std::uint16_t>("18446744073709551616", "port");
-  } catch (const std::out_of_range& error) {
-    return std::string(error.what()) == "port exceeds its integer range" ? 0 : 1;
+  for (const char* value : {"18446744073709551616", "65536"}) {
+    try {
+      spark_transport::probe::unsigned_value<std::uint16_t>(value, "port");
+      return 2;
+    } catch (const std::out_of_range& error) {
+      if (std::string(error.what()) != "port exceeds its integer range") return 1;
+    }
   }
-  return 2;
+  return 0;
 }
 ''')
     assert subprocess.run(command, capture_output=True, timeout=5).returncode == 0
@@ -64,7 +67,8 @@ def compile_cpu(tmp_path, source):
         "-o",
         linux_path(binary),
     ]
-    subprocess.run(command, check=True, capture_output=True, timeout=30)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
     return prefix + [linux_path(binary)]
 
 
@@ -89,14 +93,14 @@ def parser(request, tmp_path_factory):
     support = r"""#include "probe_options.hpp"
 #include "spark_transport/gpu_doorbell.hpp"
 #include "spark_transport/memory_buffer.hpp"
+#include "spark_transport/gpu_tp4_vocab_allgather.hpp"
+#include "spark_transport/tp4_tiled_session.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string_view>
 namespace spark_transport {
-constexpr std::uint32_t kTp4VocabWorldSize = 4, kTp4VocabMaxQueryRows = 6;
-constexpr std::uint32_t kTp4TiledBf16ElementsPerQueryRow = 6144;
 MemoryKind parse_memory_kind(std::string_view value) {
  if (value == "cuda-managed") return MemoryKind::kCudaManaged;
  throw std::invalid_argument("test stub only supports cuda-managed");
@@ -152,6 +156,16 @@ def test_valid_defaults_remain_accepted(parser):
     )
 
 
+def test_vocab_query_limit_matches_protocol(parser):
+    name, binary, base = parser
+    if name != "tp4_vocab_allgather_probe.cu":
+        pytest.skip("Only vocabulary allgather accepts an explicit Q")
+    for rows, expected in ((40, 0), (41, 2)):
+        assert subprocess.run(
+            binary + base + ["--q", str(rows)], capture_output=True, timeout=10
+        ).returncode == expected
+
+
 @pytest.mark.parametrize(
     "kind,value",
     [
@@ -162,7 +176,7 @@ def test_valid_defaults_remain_accepted(parser):
         ("warmup", "4294967296"),
     ],
 )
-def test_entrypoint_rejects_wrapped_values(parser, kind, value):
+def test_entrypoint_rejects_invalid_values(parser, kind, value):
     name, binary, base = parser
     option = {
         "gid": "--gid" if name == "transport_probe.cpp" else "--gid0",
@@ -224,7 +238,8 @@ int main(int argc,char**argv) {
  constexpr std::uint8_t pattern=0xa5;
 """
         + tail
-        + "} catch(const std::exception&) {return 1;} }"
+        + '} catch(const std::exception& error) {return std::string(error.what()) == '
+        '"data verification failed on at least one endpoint" ? 1 : 3;} }'
     )
     return compile_cpu(tmp_path_factory.mktemp("transport-verdict"), source)
 
@@ -234,6 +249,7 @@ int main(int argc,char**argv) {
     [
         ("server", "false", "true", 1),
         ("server", "true", "true", 0),
+        ("server", "true", "false", 1),
         ("client", "true", "false", 1),
         ("client", "true", "true", 0),
     ],
