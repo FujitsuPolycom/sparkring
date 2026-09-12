@@ -36,6 +36,7 @@ def test_default_plan_keeps_keys_in_file(tmp_path):
     assert "MAX_RUNNING_REQUESTS=8" in cmd
     assert any(launch.PINS["nccl_target"] + ":ro" in arg for arg in cmd)
     assert cmd[-2:] == ["/operator/entrypoint.py", "run"]
+    assert cmd[-3] == cfg["IMAGE_ID"]
 
 
 @pytest.mark.parametrize("values", [
@@ -180,6 +181,25 @@ def test_prepared_auth_must_match_selected_image(tmp_path, monkeypatch):
     monkeypatch.setattr(launch, "output", output)
     with pytest.raises(ValueError, match="authentication.*prepare"):
         launch.verify_host(cfg)
+
+
+@pytest.mark.parametrize("mode", ["prepare", "pack"])
+def test_preparation_containers_use_image_id(tmp_path, monkeypatch, mode):
+    cfg = host_config(tmp_path)
+    cfg["ENGRAM_HOST_PATH"] = str(tmp_path / "empty-packed")
+    monkeypatch.setattr(launch, "read_config", lambda path: cfg)
+    monkeypatch.setattr(launch, "verify_image", lambda values: None)
+    monkeypatch.setattr(sys, "argv", ["launcher", "--" + mode, "unused.env"])
+    commands = []
+    def capture(args, **kwargs):
+        commands.append(args)
+        return b"# prepared module\n"
+    monkeypatch.setattr(launch.subprocess, "check_output", capture)
+    monkeypatch.setattr(launch.subprocess, "run", capture)
+    launch.main()
+    assert len(commands) == 1
+    assert cfg["IMAGE_ID"] in commands[0]
+    assert cfg["IMAGE"] not in commands[0]
 
 
 @pytest.mark.parametrize("change", ["source", "missing-receipt"])

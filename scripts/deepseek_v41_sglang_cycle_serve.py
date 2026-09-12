@@ -133,7 +133,7 @@ def command(cfg):
         args += ["-v", source + ":" + target]
     for key, value in env.items():
         args += ["-e", key + "=" + value]
-    return args + ["--entrypoint", "python3", cfg["IMAGE"], "/operator/entrypoint.py", "run"]
+    return args + ["--entrypoint", "python3", cfg["IMAGE_ID"], "/operator/entrypoint.py", "run"]
 
 
 def output(args):
@@ -250,7 +250,7 @@ def main():
         verify_image(cfg)
         source = subprocess.check_output([
             "docker", "run", "--rm", "--memory", "512m", "--entrypoint", "python3",
-            "-v", str(RUNTIME / "patch-multikey.py") + ":/patch.py:ro", cfg["IMAGE"],
+            "-v", str(RUNTIME / "patch-multikey.py") + ":/patch.py:ro", cfg["IMAGE_ID"],
             "-S", "/patch.py", PINS["auth_path"]])
         write_prepared_auth(cfg, source)
         print("Authentication prepared; no GPU used")
@@ -264,7 +264,7 @@ def main():
         subprocess.run(["docker", "run", "--rm", "--memory", "8g", "--entrypoint", "python3",
             "-v", cfg["MODEL_HOST_PATH"] + ":/models/DeepSeek-V4.1-Flash:ro",
             "-v", str(packed) + ":/engram", "-e", "PYTHONPATH=/opt/sglang/lib/python3.12/site-packages",
-            cfg["IMAGE"], "-S", "/opt/dsv41/scripts/pack_engram.py",
+            cfg["IMAGE_ID"], "-S", "/opt/dsv41/scripts/pack_engram.py",
             "--rank", cfg["NODE_RANK"], "--tp", "4", "--out", "/engram"], check=True)
     else:
         verify_host(cfg)
