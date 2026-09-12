@@ -197,14 +197,15 @@ def resolve(profile_id, overrides=None, site=None, root=ROOT):
 def legacy_recipe_bytes(source, destination, root=ROOT):
     """Export repository-root recipe references in the historical relative format."""
     text = local_path(source, root).read_text(encoding="utf-8-sig")
-    data = json.loads(text)
+    data = read_json(local_path(source, root))
     if data.get("base_recipe"):
         rows = read_json(root / "profiles/compatibility.json")["mirrors"]
         locations = {row["source"]: row["destination"] for row in rows if row["kind"] == "recipe"}
         if data["base_recipe"] not in locations:
             raise ValueError("Base recipe has no compatible public export")
         relative = os.path.relpath(root / locations[data["base_recipe"]], (root / destination).parent).replace("\\", "/")
-        text = text.replace(json.dumps(data["base_recipe"]), json.dumps(relative))
+        data["base_recipe"] = relative
+        text = json.dumps(data, indent=2) + "\n"
     return text.encode("utf-8")
 
 

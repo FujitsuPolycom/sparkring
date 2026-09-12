@@ -15,6 +15,25 @@ def write(path, data):
     path.write_text(json.dumps(data), encoding='utf-8')
 
 
+def test_legacy_export_rewrites_only_base_reference(repository):
+    base = "profiles/example/recipe.json"
+    source = "profiles/child.json"
+    destination = "recipes/sparkcache/child.json"
+    write(repository / source, {"base_recipe": base, "evidence_reference": base})
+    write(repository / "profiles/compatibility.json", {"mirrors": [
+        {"source": base, "destination": "recipes/base.json", "kind": "recipe"},
+    ]})
+    result = json.loads(profiles.legacy_recipe_bytes(source, destination, repository))
+    assert result == {"base_recipe": "../base.json", "evidence_reference": base}
+
+
+def test_legacy_export_rejects_duplicate_json_keys(repository):
+    source = repository / "profiles/duplicate.json"
+    source.write_text('{"value": 1, "value": 2}')
+    with pytest.raises(ValueError, match="duplicate key"):
+        profiles.legacy_recipe_bytes("profiles/duplicate.json", "recipes/duplicate.json", repository)
+
+
 @pytest.mark.parametrize("arguments, expected", [
     (["--max-model-len", "1024", "--max-model-len", "2048"], 2048),
     (["--max-model-len=2048"], 2048),
