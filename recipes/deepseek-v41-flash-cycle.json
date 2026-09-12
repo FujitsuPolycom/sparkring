@@ -22,7 +22,7 @@
     "patches": "runtime/deepseek-v41-gb10/patches",
     "patch_manifest": "runtime/deepseek-v41-gb10/patches/mounts.txt",
     "patch_md5": "runtime/deepseek-v41-gb10/patches/MD5SUMS",
-    "nccl": "SparkRing patched NCCL 2.30.7 (libnccl.so.2 from any published SparkRing image) bind-mounted from the host and preloaded (LD_PRELOAD + VLLM_NCCL_SO_PATH)",
+    "nccl": "SparkRing patched NCCL 2.30.7 from ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987, path /opt/sparkring/nccl/libnccl.so.2; bind-mounted from the host and selected by LD_PRELOAD and VLLM_NCCL_SO_PATH. Follow the quickstart donor procedure; other images are not interchangeable.",
     "environment_template": "scripts/config/deepseek-v41-flash-cycle.env.example",
     "launcher": "scripts/deepseek_v41_cycle_serve.sh",
     "launcher_preflight_argument": "--check",

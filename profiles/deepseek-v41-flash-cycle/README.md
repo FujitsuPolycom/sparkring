@@ -27,9 +27,11 @@ shards and reading the 48 rows a token needs on demand brings a rank to **78.8 G
 (text-only) or **81.6 GiB** (with the DSpark draft layers and the vision encoder). That
 method, and the SM12x fixes the vLLM `dsv41-feat` branch still needs on GB10, come from
 [tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark](https://github.com/tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark)
-(MIT; SM12x page fixes by Kai) and are bind-mounted over the image unchanged. What this
-profile adds is the switchless-cycle transport: SparkRing's patched NCCL and the four-rank
-cycle environment, so no Ethernet switch is needed.
+(MIT; SM12x page fixes by Kai). Six patch files retain the recorded upstream
+bytes; `engram.py` also contains SparkRing contributor changes for balanced
+hash-column assignment and packed single-read shards. The files are bind-mounted
+over the image. SparkRing's patched NCCL and cycle environment provide switchless
+four-rank transport. See [third-party notices](../../THIRD_PARTY_NOTICES.md#15a-tonyd2wilddeepseek-v41-flash-vllm-dgx-spark-patches-included).
 
 | | value |
 |---|---|
@@ -183,8 +185,11 @@ values on every rank mean the rank-offset fix is not mounted.
 ## 3. Verify rank 0
 
 ```bash
-curl --fail http://localhost:8000/health
-curl -s http://localhost:8000/v1/chat/completions -H 'Content-Type: application/json' -d '{
+ENV_FILE=/path/to/rank-0.env
+. "$ENV_FILE"
+export -n LD_PRELOAD
+curl --fail --max-time 10 "http://localhost:$API_PORT/health"
+curl --fail --show-error --max-time 180 "http://localhost:$API_PORT/v1/chat/completions" -H 'Content-Type: application/json' -d '{
   "model":"deepseek-v4.1-flash",
   "messages":[{"role":"user","content":"Count from 1 to 30, comma separated, then say done."}],
   "max_tokens":120,"temperature":0}'
