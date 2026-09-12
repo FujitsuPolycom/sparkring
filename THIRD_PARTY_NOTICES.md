@@ -7,8 +7,8 @@ Copyright 2026 SparkRing contributors.
 
 This document identifies third-party material contained in this repository and
 third-party projects that this repository references, patches, or interoperates
-with. Except as stated below, all files in this repository are original
-SparkRing work licensed under Apache-2.0.
+with. SparkRing-authored material uses Apache-2.0; included third-party
+material retains its own licenses and notices as identified below.
 
 ## MiaAI-Lab DSpark recipe test fixture
 
@@ -44,7 +44,10 @@ source code:
 > Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 The NCCL files these patches modify are licensed under the Apache License,
-Version 2.0, per NCCL's `LICENSE.txt`. NCCL itself is not distributed in this
+Version 2.0, per NCCL's
+[pinned LICENSE.txt](https://raw.githubusercontent.com/NVIDIA/nccl/73cf112295c33aee2b895f329f592f2a9b4b0f97/LICENSE.txt).
+That license also identifies retained BSD and separately licensed portions of
+the complete project. The complete NCCL source tree is not distributed in this
 repository. Applying these patches and building or distributing a patched
 `libnccl` binary requires compliance with NCCL's complete `LICENSE.txt`,
 including preservation of its copyright notices and license text.
@@ -118,13 +121,11 @@ Mod-packaging and build-cache concepts were studied from
 `eugr/spark-vllm-docker` (MIT License, Copyright 2026 Eugene Rakhmatulin). No
 code from that project was copied into this repository.
 
-## 6. RTL8127 kernel experiment (withheld)
+## 6. RTL8127 driver (external input)
 
-A SparkRing-authored RTL8127 kernel-handoff prototype, licensed GPL-2.0-only by
-design for linkage into Realtek's GPL `r8127` driver, exists but is withheld
-from this snapshot. The approach it describes requires Realtek's GPL `r8127`
-(11.014.00) driver source, which must be obtained separately under its own
-license. No GPL-licensed code is included in this snapshot.
+RTL8127 kernel-integration experiments reference Realtek's GPL `r8127`
+(11.014.00) driver source, obtained separately under its own license. Neither
+that driver nor a kernel-handoff implementation is included here.
 
 ## 7. References are not inclusion
 
@@ -146,9 +147,10 @@ upstream headers and license text.
 ## 9. EXL3 R7 runtime builder components
 
 The `runtime/exl3-r7/` builder package assembles an ARM64/SM121 container image
-from the following upstream components. Each is identified by an exact Git
-commit in `runtime/exl3-r7/pins.json` or `runtime/exl3-r7/prepare_build_deps.py`
-and embedded as an OCI label in the built image. The builder fetches complete
+from the following upstream components. Git revisions or package versions and
+wheel hashes identify them in `runtime/exl3-r7/pins.json` and
+`runtime/exl3-r7/prepare_build_deps.py`. Build receipts and OCI labels retain
+their selected identities. The builder fetches complete
 component source trees at build time from their public repositories. Selected
 source subsets and fixtures included in SparkRing are identified separately
 in this document, including the vLLM files in Section 3.
@@ -239,8 +241,8 @@ license, and redistribution terms before publishing a derived image.
 
 ### 9j. OCI provenance labels
 
-The built image carries these OCI labels for every component: exact upstream
-revision (`org.sparkring.*.commit`), source repository
+The built image records component revisions and package identities in its
+labels. Labels also identify the source repository
 (`org.opencontainers.image.source`), license
 (`org.opencontainers.image.licenses`), and the parent image's immutable ID
 (`org.sparkring.parent.image-id`). Building or distributing the image requires
@@ -314,14 +316,14 @@ those notices and that license.
 The SparkRing vLLM adapter also draws integration ideas from
 [`local-inference-lab/vllm` PR 597](https://github.com/local-inference-lab/vllm/pull/597),
 including capability agreement and the synchronized output-health boundary.
-It is an independently source-bound adapter, not redistribution of the
-complete PR or a claim that both PRs are installed unchanged.
+The adapter has its own source binding; PRs 295 and 597 are design and donor
+references rather than two unchanged installed packages.
 
 The MTP3 profile references
 `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` revision
 `df116c4fb16b1d37ae43d2cfd624de26ffbc832e`. Its weights are not included.
 Operators must obtain and use that checkpoint under its own license and
-notices. Native MTP uses its included prediction layer and does not require
+notices. MTP uses its included prediction layer and does not require
 an external DFlash checkpoint.
 
 ## 12. B12X selector source and MoE scale sharing
@@ -333,8 +335,9 @@ scales for A4/A16 MoE paths. Three selector Python files are included in
 [B12X PR 316](https://github.com/local-inference-lab/b12x/pull/316), revision
 `9ac142824b4edb750892a0fb63d914230086495d`. They implement the top-k-512
 candidate buffer, exact overflow handling, and omission of unused terminal
-scores. These files are licensed under Apache-2.0; source notices are retained
-and the downloaded B12X archive supplies the license. The compute source lock
+scores. These files are licensed under Apache-2.0; source notices are retained.
+The repository's [LICENSE](LICENSE) supplies the Apache-2.0 text for the included
+source, and the downloaded B12X archive retains its upstream license. The compute source lock
 binds the source archive and each base/result file hash.
 
 ## 13. MiaAI DeepSeek DGX Spark launcher (adapted GID policy)
@@ -431,7 +434,7 @@ with its pinned CUTLASS, CCCL and spdlog submodules. No FlashInfer source is inc
 model files are included; operators fetch the checkpoint themselves.
 
 
-### 16. Mia DeepSeek V4.1 SGLang adapter (external build input)
+## 16. Mia DeepSeek V4.1 SGLang adapter (external build input)
 
 `runtime/deepseek-v41-sglang/build-image.sh` clones
 [MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks](https://github.com/MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks)
