@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""20-min (default) soak at fixed concurrency against an OpenAI-compatible endpoint, using the
+prompts-v1 categories in rotation. Records per-wave aggregate tok/s, failures, truncations, and flags
+any request that streams 0 tokens for HANG_S seconds (FlashInfer #5015 signature). Uses V41BENCH_API_KEY.
+usage: soak.py --base URL --model NAME --c 8 --minutes 20 --out soak.json"""
+import argparse, json, os, sys, time, urllib.request, statistics as st
+from concurrent.futures import ThreadPoolExecutor
+ap=argparse.ArgumentParser(); ap.add_argument("--base",required=True); ap.add_argument("--model",required=True)
+ap.add_argument("--c",type=int,default=8); ap.add_argument("--minutes",type=float,default=20); ap.add_argument("--max-tokens",type=int,default=256)
+ap.add_argument("--prompts",default="prompts-v1.json"); ap.add_argument("--out",default="soak.json"); ap.add_argument("--hang-s",type=float,default=90)
+a=ap.parse_args()
+P=json.load(open(a.prompts))
+CATS=P["categories"] if isinstance(P,dict) and "categories" in P else P   # prompts-v1: {"categories":[{name,prompt,max_tokens},...]}
+def prompt_for(i):
+    e=CATS[i%len(CATS)]; return e["prompt"], e.get("name","p")
+def one(i,seed):
+    text,cat=prompt_for(i+seed)
+    body=json.dumps({"model":a.model,"messages":[{"role":"user","content":text}],"max_tokens":a.max_tokens,"temperature":1.0,"top_p":0.95,"chat_template_kwargs":{"thinking":False},"stream":True,"stream_options":{"include_usage":True}}).encode()
+    req=urllib.request.Request(a.base+"/chat/completions",data=body,headers={"Content-Type":"application/json",**({"Authorization":"Bearer "+os.environ["V41BENCH_API_KEY"]} if os.environ.get("V41BENCH_API_KEY") else {})})  # dgx-sparks: keyed lanes
+    t0=time.time(); last=t0; toks=0; ttft=None; usage=None; hang=False; fin=None; done=False; text_seen=False
+    try:
+        with urllib.request.urlopen(req,timeout=a.hang_s) as r:
+            for line in r:
+                if not line.startswith(b"data: "): continue
+                s=line[6:].strip()
+                if s==b"[DONE]":
+                    done=True
+                    break
+                ev=json.loads(s); now=time.time()
+                if now-last>a.hang_s: hang=True
+                last=now
+                if ev.get("usage"): usage=ev["usage"]
+                ch=ev.get("choices") or []
+                if ch:
+                    if ch[0].get("delta",{}).get("content"):
+                        text_seen=True
+                        if ttft is None: ttft=now-t0
+                    if ch[0].get("finish_reason"): fin=ch[0]["finish_reason"]
+        if usage: toks=usage.get("completion_tokens",0)
+        return {"ok":done and text_seen and toks > 0 and fin in ("stop", "length") and not hang,"cat":cat,"tokens":toks,"ttft":ttft,"total":time.time()-t0,"finish":fin,"hang":hang}
+    except Exception as e:
+        return {"ok":False,"cat":cat,"err":str(e)[:120],"total":time.time()-t0,"hang":hang}
+waves=[]; t_end=time.time()+a.minutes*60; w=0
+with ThreadPoolExecutor(max_workers=a.c) as ex:
+    while time.time()<t_end:
+        s=time.time(); res=list(ex.map(lambda i: one(i,w*a.c), range(a.c))); wall=time.time()-s
+        toks=sum(r.get("tokens",0) for r in res); fails=sum(1 for r in res if not r["ok"]); hangs=sum(1 for r in res if r.get("hang"))
+        trunc=sum(1 for r in res if r.get("finish")=="length"); ttfts=[r["ttft"] for r in res if r.get("ttft")]
+        wv={"wave":w,"results":res,"wall_s":round(wall,2),"tokens":toks,"agg_tok_s":round(toks/wall,1),"fails":fails,"hangs":hangs,"truncated":trunc,"ttft_p50":round(st.median(ttfts),2) if ttfts else None,"ttft_max":round(max(ttfts),2) if ttfts else None}
+        waves.append(wv); print(json.dumps(wv),flush=True); w+=1
+agg=[x["agg_tok_s"] for x in waves]
+summary={"c":a.c,"minutes":a.minutes,"waves":len(waves),"agg_median":st.median(agg) if agg else None,"agg_min":min(agg) if agg else None,"agg_max":max(agg) if agg else None,"fails":sum(x["fails"] for x in waves),"hangs":sum(x["hangs"] for x in waves),"truncated":sum(x["truncated"] for x in waves),"requests":len(waves)*a.c}
+print("SUMMARY",json.dumps(summary),flush=True); json.dump({"summary":summary,"waves":waves},open(a.out,"w"),indent=1)
+
+sys.exit(0 if summary["requests"] and not summary["fails"] and not summary["hangs"] else 1)
