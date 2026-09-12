@@ -543,6 +543,9 @@ def summarize_classes(records: Iterable[TensorRecord]) -> dict[str, ClassTotals]
         bucket = totals[record.name_class]
         bucket.tensor_count += 1
         bucket.stored_bytes += record.stored_bytes
+        if not record.determined:
+            bucket.undetermined_tensor_count += 1
+            bucket.undetermined_bytes += record.stored_bytes
         if record.role == "sidecar":
             bucket.sidecar_tensor_count += 1
             bucket.sidecar_bytes += record.stored_bytes
@@ -550,8 +553,6 @@ def summarize_classes(records: Iterable[TensorRecord]) -> dict[str, ClassTotals]
         bucket.weight_tensor_count += 1
         bucket.weight_bytes += record.stored_bytes
         if not record.determined:
-            bucket.undetermined_tensor_count += 1
-            bucket.undetermined_bytes += record.stored_bytes
             continue
         assert record.logical_weights is not None
         assert record.bits_per_weight is not None

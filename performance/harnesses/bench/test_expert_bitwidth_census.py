@@ -505,6 +505,20 @@ class CensusTest(unittest.TestCase):
 
 
 class UndeterminedTest(unittest.TestCase):
+    def test_undetermined_sidecar_counts_reconcile_with_class_totals(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.proj.weight": ("F16", [2]),
+                "model.layers.0.mlp.experts.0.proj.su": ("U8", [1]),
+            })
+            report = census.census(root, 0.01)
+            bucket = report["classes"][census.CLASS_EXPERT]
+            self.assertEqual(report["totals"]["undetermined_tensor_count"], 1)
+            self.assertEqual(bucket["undetermined_tensor_count"], 1)
+            self.assertEqual(bucket["undetermined_bytes"], 1)
+            self.assertEqual(bucket["logical_weights"], 2)
+
     def test_overlapping_payload_ranges_exclude_the_ambiguous_shard(self):
         with TemporaryDirectory() as raw:
             root = Path(raw)
