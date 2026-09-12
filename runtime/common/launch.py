@@ -1,7 +1,9 @@
 """Dispatch deployment commands through one profile-selected entry point.
 
-The default prints an argv plan. --execute is an explicit local action; existing
-rank launchers retain their receipt, memory guard and host lifecycle gates.
+The default prints an argv plan. Put --execute before the profile name to run
+the selected adapter. The JSON describes the plan before execution, not a
+completion receipt; adapter output follows it when execution is requested.
+Validation and lifecycle checks remain owned by the selected rank launcher.
 """
 from __future__ import annotations
 import argparse
