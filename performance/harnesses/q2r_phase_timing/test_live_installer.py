@@ -41,6 +41,29 @@ def test_binding_uninstall_preserves_later_wrapper():
     assert Owner.initialize is original
 
 
+@pytest.mark.parametrize("after_assignment", [False, True])
+def test_binding_assignment_interrupt_is_rolled_back(monkeypatch, after_assignment):
+    import builtins
+    live = session()
+    original = GPUModelRunner.initialize_kv_cache
+    fired = False
+    def assign(owner, name, value):
+        nonlocal fired
+        if owner is GPUModelRunner and name == "initialize_kv_cache" and not fired:
+            fired = True
+            if after_assignment:
+                builtins.setattr(owner, name, value)
+            raise KeyboardInterrupt("binding assignment interrupted")
+        builtins.setattr(owner, name, value)
+    monkeypatch.setattr(live_installer, "setattr", assign, raising=False)
+    try:
+        with pytest.raises(KeyboardInterrupt, match="binding assignment interrupted"):
+            live.install()
+        assert GPUModelRunner.initialize_kv_cache is original
+    finally:
+        builtins.setattr(GPUModelRunner, "initialize_kv_cache", original)
+
+
 def test_concurrent_module_installers_create_only_one_session(monkeypatch):
     monkeypatch.setenv('SPARK_Q2R_PHASE_TIMING', '1')
     monkeypatch.delenv('SPARK_Q2R_PHASE_TIMING_NVTX', raising=False)

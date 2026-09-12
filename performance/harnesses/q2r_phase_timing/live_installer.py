@@ -162,23 +162,25 @@ class _PinnedBindingAdapter:
 
         wrapped._spark_q2r_manager_binding = True  # type: ignore[attr-defined]
         wrapped._spark_original = original  # type: ignore[attr-defined]
-        setattr(hook.owner, hook.method_name, wrapped)
+        # Publish rollback ownership before assignment can be interrupted.
         self._original = original
         self._wrapper = wrapped
         self._installed = True
+        setattr(hook.owner, hook.method_name, wrapped)
 
     def uninstall(self) -> None:
         if not self._installed:
             return
-        current = getattr(self._hook.owner, self._hook.method_name)
-        if current is not self._wrapper:
+        current = getattr(self._hook.owner, self._hook.method_name, None)
+        if current is not self._wrapper and current is not self._original:
             raise AdapterValidationError(
                 "binding owner changed after installation"
             )
         assert self._original is not None
-        setattr(
-            self._hook.owner, self._hook.method_name, self._original
-        )
+        if current is self._wrapper:
+            setattr(
+                self._hook.owner, self._hook.method_name, self._original
+            )
         self._original = None
         self._wrapper = None
         self._installed = False
