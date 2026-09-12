@@ -79,10 +79,10 @@ the following variables:
 | `SPARK_TP4_PEER0`, `SPARK_TP4_PEER1` | Required site-specific direct-peer addresses; do not use placeholder defaults for serving. |
 | `SPARK_TP4_DEVICE0`, `SPARK_TP4_DEVICE1` | Local RoCE devices; defaults are `rocep1s0f0` and `rocep1s0f1`. |
 | `SPARK_TP4_GID0`, `SPARK_TP4_GID1` | GID indices; default is `3` for each device. |
-| `SPARK_TP4_CONTROL_PORT0`, `SPARK_TP4_CONTROL_PORT1` | All-reduce control-port base pair. |
+| `SPARK_TP4_CONTROL_PORT0`, `SPARK_TP4_CONTROL_PORT1` | All-reduce control-port base pair, default 11000/11001. Default-width row Q adds `2*(Q-1)`; width-extension slots begin at 512. |
 | `VLLM_SPARK_TP4_GRAPH_Q1` | Set to `1` to enable width-6144 all-reduce graph sessions and, with vocabulary mode `custom`, captured vocabulary all-gather. |
 | `VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH` | Enables the implemented width-4096 captured-graph performance-testing session; mutually exclusive with the width-6144 graph paths. |
-| `VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40` | Enables the exact-Q40 striped width-6144 graph session. |
+| `VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40` | Enables the exact-Q40 striped width-6144 graph session; requires `VLLM_SPARK_TP4_GRAPH_Q1=1`, all-reduce mode `custom`, and a row limit of 40. |
 | `VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL` | Graph payload-slot protocol: `serial_ack` or `two_slot_deferred_ack`. |
 | `VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY` | Graph kernel strategy: `fused`, `split_64k`, or `tiered_64k`. |
 | `VLLM_SPARK_SHARED_CAPTURE_STREAM` | Must be `1` for a graph-native TP4 session; all process-local TP ranks share the capture stream. |
