@@ -106,6 +106,13 @@ SparkCache setting. After the API is ready, run the
 If SparkCache is enabled, check cold requests, prefix reuse and restore;
 API health alone does not establish cache operation.
 
+For this pinned NVFP4-Spark checkpoint, leave reasoning enabled (omit the request
+override or use `chat_template_kwargs: {"enable_thinking": true}`). Its chat
+template always opens a thinking block. With this image, setting the flag to
+`false` disables reasoning parsing without changing that template and can put
+reasoning text and a closing tag in the visible answer. A non-thinking request
+needs a separately validated template/parser combination.
+
 Use the deployment suite's coordinated `stop`/`recover` actions for operation
 and recovery. Preserve private site inputs, image receipts and cache roots.
 
