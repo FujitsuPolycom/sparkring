@@ -254,10 +254,13 @@ def time_original(
             _invalidate(f"overflow:{family}:q{q}")
         return operation()
 
-    if torch_module is None:
-        import torch as torch_module
-
-    current_stream_id = int(stream.cuda_stream)
+    try:
+        if torch_module is None:
+            import torch as torch_module
+        current_stream_id = int(stream.cuda_stream)
+    except Exception:
+        _invalidate("instrument_setup_failed")
+        return operation()
     if _stream_id is None:
         _stream_id = current_stream_id
     elif _stream_id != current_stream_id:

@@ -57,6 +57,18 @@ _ENV = {
 
 
 class StockTimingTests(unittest.TestCase):
+    def test_stream_metadata_failure_does_not_skip_collective(self):
+        calls = []
+        with patch.dict(os.environ, _ENV, clear=True):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, "read_text", return_value="run-1"):
+                result = timing.time_original(
+                    "query", 5, object(), lambda: calls.append(1) or "result", _Torch
+                )
+        self.assertEqual(result, "result")
+        self.assertEqual(calls, [1])
+        self.assertIn("instrument_setup_failed", timing.snapshot_for_test()["invalid_reasons"])
+
     def test_event_allocation_failure_does_not_skip_the_collective(self):
         calls = []
         with patch.dict(os.environ, _ENV, clear=True):
