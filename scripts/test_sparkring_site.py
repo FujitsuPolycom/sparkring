@@ -1125,7 +1125,9 @@ def test_cli_strict_placeholders_fails_on_the_example(capsys):
     assert sparkring_site.main(
         [str(EXAMPLE_PATH), "--strict-placeholders"]
     ) == 1
-    assert "placeholder" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "placeholder" in captured.err
+    assert "OK:" not in captured.out
 
 
 def test_cli_rejects_a_broken_file(tmp_path, capsys):

@@ -72,9 +72,9 @@ CONTIGUOUS_BLOCK_COUNT_RANGE = (1, 1 << 20)
 MTP_MODES = ("off", "static", "adaptive")
 
 # --------------------------------------------------------------------------
-# Character classes.  Every value that is later interpolated into a remote
-# shell command is restricted here, so command construction in preflight.py
-# cannot be turned into injection by an edited config.
+# Character classes for command-facing identifiers and paths. Consumers must
+# still quote shell arguments; descriptive text is not constrained by these
+# patterns and must not be interpolated as shell syntax.
 # --------------------------------------------------------------------------
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -1642,7 +1642,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             for warning in warnings:
                 print(f"  [WARN] {warning}")
         print("")
-        print(f"OK: {args.site} is a valid SparkRing site configuration")
+        if not (warnings and args.strict_placeholders):
+            print(f"OK: {args.site} is a valid SparkRing site configuration")
 
     if warnings and args.strict_placeholders:
         print(
