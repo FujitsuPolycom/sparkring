@@ -13,8 +13,8 @@ Safety class: OFFLINE. It opens files under the named model directory for
 reading, parses the safetensors header of each shard, and reads the JSON
 metadata files beside them. It contacts no host, starts no runtime, imports
 neither torch nor the safetensors package, and writes nothing. Tensor payload
-bytes are never read: a shard is touched only for its header prefix, so a
-checkpoint of hundreds of gigabytes costs kilobytes of I/O.
+bytes are never read: I/O depends on shard-header and JSON metadata sizes,
+rather than tensor payload size.
 
 Two quantities are reported side by side and are not interchangeable.
 
@@ -279,8 +279,15 @@ def read_safetensors_header(path: Path) -> tuple[Mapping[str, Any], int]:
         raw_header = handle.read(header_bytes)
     if len(raw_header) != header_bytes:
         raise CensusError(f"{path.name}: header is truncated")
+    def unique_keys(entries):
+        result = {}
+        for key, value in entries:
+            if key in result:
+                raise CensusError(f"{path.name}: duplicate header key {key!r}")
+            result[key] = value
+        return result
     try:
-        header = json.loads(raw_header.decode("utf-8"))
+        header = json.loads(raw_header.decode("utf-8"), object_pairs_hook=unique_keys)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise CensusError(f"{path.name}: header is not JSON ({error})") from error
     if not isinstance(header, dict):

@@ -119,6 +119,14 @@ def build_model(root: Path) -> None:
 
 
 class HeaderParsingTest(unittest.TestCase):
+    def test_duplicate_header_keys_are_not_silently_replaced(self):
+        with TemporaryDirectory() as raw:
+            path = Path(raw) / "fixture.safetensors"
+            header = b'{"weight":{"shape":[1]},"weight":{"shape":[2]}}'
+            path.write_bytes(len(header).to_bytes(8, "little") + header)
+            with self.assertRaisesRegex(census.CensusError, "duplicate header key"):
+                census.read_safetensors_header(path)
+
     def test_malformed_tensor_metadata_does_not_suppress_other_records(self):
         for field, value in [('shape', 7), ('shape', ['invalid']),
                              ('data_offsets', 7), ('data_offsets', ['invalid', 2])]:
