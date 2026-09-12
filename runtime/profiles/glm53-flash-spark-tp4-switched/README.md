@@ -29,11 +29,12 @@ same PyNccl communicator directly. The coalescing validator admits TP4/DCP1,
 the V2 runner, B12X KDA, aligned prefix caching, and static MTP3 without a
 physical ring requirement.
 
-The historical `nccl.audited_lock_sha256` in that dependency record is
-unverified: its lock bytes have not been recovered from the reachable Git
-history. It does not establish an audit of the selected source lock. Image
-verification must still check the exact build lock, profile hash and installed
-file witnesses; switched-hardware qualification remains required.
+The dependency field `nccl.audited_lock_sha256` contains the patched NCCL
+library's SHA-256, matching `runtime.nccl_sha256` in the
+[source lock](../../sparkring/source_image/glm53-tp4-lock.json).
+The image receipt's `source_lock_sha256` identifies the complete lock.
+Image verification checks the build lock, profile hash and installed file
+witnesses; switched-hardware qualification remains required.
 
 ## Supply the switch-connected interfaces
 
