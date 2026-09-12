@@ -1,16 +1,18 @@
 # =============================================================================
-# SparkRing EXL3 R7 site configuration - EXAMPLE / TEMPLATE
+# GLM-5.2 EXL3 3.5-bpw foundation site template
 # =============================================================================
 #
-# This is the EXL3 3.5-bpw foundation site template. Copy it to site.yaml and
-# replace every placeholder. The serving values are the reproducible 65K
-# foundation for the operator-accepted 262K profile whose recipe ID is R7:
-# TP4, DCP4, fixed MTP4, 9.25 GB KV/rank, fp8_ds_mla, 65536 max model len.
+# Copy to .sparkring/exl3-r7/site.yaml and replace every placeholder.
+# These 65K foundation settings are inputs to scripts/glm35_profile.py, which
+# produces the 1M-context glm52-exl3-r7-3.5bpw recipe's serving profile.
+# Foundation: TP4, DCP4, fixed MTP4, 9.25 GB KV/rank, fp8_ds_mla.
 #
 # Validate your copy before use:
 #
-#     python scripts/sparkring_site.py scripts/config/site.yaml
-#     python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+#     mkdir -p .sparkring/exl3-r7
+#     cp scripts/config/exl3-r7-site.example.yaml .sparkring/exl3-r7/site.yaml
+#     python scripts/sparkring_site.py .sparkring/exl3-r7/site.yaml
+#     python scripts/preflight.py --site .sparkring/exl3-r7/site.yaml --print-plan
 #
 # See docs/GLM52_35BPW_QUICKSTART.md for the full stand-up path.
 # =============================================================================
@@ -147,7 +149,7 @@ runtime:
   model_revision: "9ab9579774cc432df91567a36f6e9e863e0d4c9f"
   checkpoint_sha256: 9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd
 
-# R7 serving contract: fixed MTP4, DCP4, 9.25 GB KV/rank, fp8_ds_mla.
+# Foundation serving values: fixed MTP4, DCP4, 9.25 GB KV/rank, fp8_ds_mla.
 # The MTP3 rollback uses mtp_tokens: 3 and kv_cache_bytes_per_rank: 9250000000.
 serving:
   tensor_parallel_size: 4
