@@ -49,7 +49,7 @@ class ManagerIdentity:
 
 
 class ManagerRoleRegistry:
-    """Bounded mapping populated from a source-pinned ``__init__`` hook."""
+    """Bounded mapping populated by explicit manager-ownership hooks."""
 
     def __init__(
         self,
@@ -275,7 +275,11 @@ class _ValidatedRoleHook:
 
 
 class FailClosedRoleAssignmentAdapter:
-    """Source-pin semantic manager creation before changing any method."""
+    """Source-pin semantic manager creation before changing any method.
+
+    Install and uninstall on a serialized startup/shutdown path. The registry
+    lock protects identities, not concurrent edits to hooked class methods.
+    """
 
     def __init__(
         self,
