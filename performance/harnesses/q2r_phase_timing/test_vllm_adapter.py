@@ -157,3 +157,64 @@ def test_interrupted_install_restores_methods(monkeypatch, error_type) -> None:
         assert DraftGraph.run is originals[1]
     finally:
         FullGraph.run, DraftGraph.run = originals
+
+@pytest.mark.parametrize("descriptor_type", [staticmethod, classmethod])
+def test_non_instance_methods_are_rejected(descriptor_type) -> None:
+    class OtherGraph:
+        run = descriptor_type(FullGraph.run)
+    original = OtherGraph.__dict__["run"]
+    adapter = FailClosedMethodAdapter(_collector(), (
+        _hook(OtherGraph, PhaseDescriptor(PhaseKind.TARGET_FULL_GRAPH, "Q6")),
+    ))
+    try:
+        with pytest.raises(AdapterValidationError, match="instance method"):
+            adapter.install()
+        assert OtherGraph.__dict__["run"] is original
+    finally:
+        OtherGraph.run = original
+
+def test_inherited_method_restores_inheritance() -> None:
+    class ChildGraph(FullGraph):
+        pass
+    adapter = FailClosedMethodAdapter(_collector(), (
+        _hook(ChildGraph, PhaseDescriptor(PhaseKind.TARGET_FULL_GRAPH, "Q6")),
+    ))
+    adapter.install()
+    adapter.uninstall()
+    assert "run" not in ChildGraph.__dict__
+    assert ChildGraph.run is FullGraph.run
+
+def test_call_keywords_cannot_replace_the_pinned_method() -> None:
+    adapter = FailClosedMethodAdapter(_collector(), (
+        _hook(FullGraph, PhaseDescriptor(PhaseKind.TARGET_FULL_GRAPH, "Q6")),
+    ))
+    adapter.install()
+    try:
+        with pytest.raises(TypeError):
+            FullGraph().run("a", _FailClosedMethodAdapter__original=lambda *a, **k: "wrong")
+    finally:
+        adapter.uninstall()
+
+def test_uninstall_checks_all_wrapper_identities_before_restoring() -> None:
+    import functools
+    originals = FullGraph.run, DraftGraph.run
+    adapter = FailClosedMethodAdapter(_collector(), (
+        _hook(FullGraph, PhaseDescriptor(PhaseKind.TARGET_FULL_GRAPH, "Q6")),
+        _hook(DraftGraph, PhaseDescriptor(PhaseKind.DRAFT_MULTISTEP_GRAPH, "Q1")),
+    ))
+    adapter.install()
+    full_wrapper, draft_wrapper = FullGraph.run, DraftGraph.run
+    @functools.wraps(full_wrapper)
+    def foreign(*args, **kwargs):
+        return full_wrapper(*args, **kwargs)
+    FullGraph.run = foreign
+    try:
+        with pytest.raises(AdapterValidationError, match="changed after installation"):
+            adapter.uninstall()
+        assert FullGraph.run is foreign
+        assert DraftGraph.run is draft_wrapper
+        FullGraph.run = full_wrapper
+        adapter.uninstall()
+        assert (FullGraph.run, DraftGraph.run) == originals
+    finally:
+        FullGraph.run, DraftGraph.run = originals
