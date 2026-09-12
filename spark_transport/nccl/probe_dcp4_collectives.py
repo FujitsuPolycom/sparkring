@@ -259,6 +259,7 @@ def _graph_replay(
     torch.cuda.synchronize()
     dist.barrier()
     invalidate(result)
+    torch.cuda.synchronize()  # Exclude the asynchronous reset from replay timing.
 
     started_ns = time.perf_counter_ns()
     for _ in range(replays):

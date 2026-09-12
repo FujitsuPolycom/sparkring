@@ -87,9 +87,10 @@ def test_noncanonical_source_cannot_escape_output_or_leave_partial_bundle(tmp_pa
     assert not output.exists()
 
 
-def test_manifest_filename_is_reserved_before_output_creation(tmp_path):
+@pytest.mark.parametrize("filename", [overlay.MANIFEST, overlay.MANIFEST.upper(), "SparkRing-Overlay-Manifest.json"])
+def test_manifest_filename_is_reserved_before_output_creation(tmp_path, filename):
     repo = tmp_path / "repo"
-    relative = "spark_transport/integrations/vllm/" + overlay.MANIFEST
+    relative = "spark_transport/integrations/vllm/" + filename
     source = repo / relative
     source.parent.mkdir(parents=True)
     source.write_text("payload")

@@ -33,6 +33,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = @()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -136,7 +138,7 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-vocab-r$($Node.Rank)"
+    $name = "spark-tp4-vocab-$runIdentity-r$($Node.Rank)"
     $state = (& ssh -o BatchMode=yes -o ConnectTimeout=10 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" `
         2>$null)
@@ -150,13 +152,12 @@ $failed = $false
 $timedOut = $false
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-vocab-r$($node.Rank)"
+        $name = "spark-tp4-vocab-$runIdentity-r$($node.Rank)"
         $command = @(
             # Missing artifacts must fail here instead of becoming empty
             # directories at the bind-mount paths.
             "test -f '$Binary' -a -f '$Library' || exit 97;"
             "chmod 0755 '$Binary' '$Library' || exit 97;"
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--ulimit memlock=-1"
@@ -178,6 +179,8 @@ try {
             $productionPatternArgument
             $queuedDelayArgument
         ) -join " "
+        # The invocation-specific name also identifies a launch whose SSH reply is lost.
+        $ownedNodes += $node
         $launchExit = Invoke-NodeSsh -Node $node -Command $command
         if ($launchExit -eq 97) {
             throw "rank $($node.Rank) is missing the probe binary or library"
@@ -209,7 +212,7 @@ try {
     $expectedMeasuredSubmissions = 4L * [long]$ProductionRounds
     $expectedDelaySequence = 4L * [long]$Warmup + 1L
     foreach ($node in $nodes) {
-        $name = "spark-tp4-vocab-r$($node.Rank)"
+        $name = "spark-tp4-vocab-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         $log = (& ssh -o BatchMode=yes -o ConnectTimeout=10 `
             $node.Target "docker logs $name 2>&1")
@@ -259,8 +262,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-vocab-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-vocab-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" |
                 Out-Null

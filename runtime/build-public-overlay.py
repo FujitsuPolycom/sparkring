@@ -66,7 +66,7 @@ def build(repo: Path, spec_path: Path, output: Path) -> dict:
             raise ValueError(f"public-overlay source missing: {relative}")
         target_relative = destination(relative)
         target_key = target_relative.as_posix()
-        if target_key == MANIFEST:
+        if target_key.casefold() == MANIFEST.casefold():
             raise ValueError("overlay manifest filename is reserved")
         target = output / Path(*target_relative.parts)
         if target in destinations:

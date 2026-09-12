@@ -3,7 +3,7 @@
 Each runner is parsed by PowerShell's own parser, refused without a
 topology before any remote command, and required to keep the container
 lifecycle contract: a watchdog poll instead of a fixed sleep, forced
-container removal in a finally block, and rank mapping over filtered entries.
+owned-container removal in a finally block, and rank mapping over filtered entries.
 """
 
 from __future__ import annotations
@@ -112,3 +112,52 @@ def test_tiered_gate_counts_fused_nodes_by_the_64k_boundary() -> None:
     # Q5 (61,440 bytes) stays fused and Q6 (73,728 bytes) is split, matching
     # tp4_graph_kernel_uses_split(tiered, 64 KiB + 1).
     assert 5 * 6144 * 2 <= 64 * 1024 < 6 * 6144 * 2
+
+
+@pytest.mark.parametrize("name", RUNNERS[:3])
+def test_transport_failure_cleans_attempted_unique_names_only(name):
+    command = r"""
+$env:SPARKRING_TARGETS='host0,host1,host2,host3'
+$env:SPARKRING_RANK_HOSTS='host0,host1,host2,host3'
+function global:ssh {
+    $cmd=$args[-1]
+    Write-Host "COMMAND=$cmd"
+    $global:LASTEXITCODE=0
+    if ($cmd -match 'docker run .*?-r1 ') { $global:LASTEXITCODE=255 }
+}
+for ($i=0; $i -lt 2; $i++) {
+    try { & 'SCRIPT' -Image 'fake-image' } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+}
+""".replace("SCRIPT", (SCRIPTS / name).as_posix())
+    result = _powershell("-Command", command, env=os.environ.copy())
+    assert result.returncode == 0, result.stdout + result.stderr
+    commands = [line.removeprefix("COMMAND=") for line in result.stdout.splitlines() if line.startswith("COMMAND=")]
+    launches = [line for line in commands if "docker run" in line]
+    removals = [line for line in commands if "docker rm" in line]
+    assert len(launches) == 4, result.stdout
+    assert len(removals) == 4, result.stdout
+    assert all("docker rm" not in line for line in launches)
+    names = [line.split("--name ")[1].split()[0] for line in launches]
+    assert len(set(names)) == 4
+    assert all(name in removal for name, removal in zip(names, removals))
+    assert all("-r2" not in line and "-r3" not in line for line in removals)
+
+
+def test_failed_stage_copy_cleans_only_created_unique_stage():
+    command = r"""
+$env:SPARKRING_TARGETS='host0,host1,host2,host3'
+$env:SPARKRING_RANK_HOSTS='host0,host1,host2,host3'
+function global:ssh { Write-Host "COMMAND=$($args[-1])"; $global:LASTEXITCODE=0 }
+function global:scp { $global:LASTEXITCODE=9 }
+for ($i=0; $i -lt 2; $i++) {
+    try { & 'SCRIPT' -Image 'fake-image' } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+}
+""".replace("SCRIPT", (SCRIPTS / "run_tp4_vocab_graph_stream_switch_probe.ps1").as_posix())
+    result = _powershell("-Command", command, env=os.environ.copy())
+    assert result.returncode == 0, result.stdout + result.stderr
+    commands = [line.removeprefix("COMMAND=") for line in result.stdout.splitlines() if line.startswith("COMMAND=")]
+    created = [line.removeprefix("mkdir ") for line in commands if line.startswith("mkdir ")]
+    removed = [line.removeprefix("rm -rf ") for line in commands if line.startswith("rm -rf ")]
+    assert len(created) == 2 and len(set(created)) == 2, result.stdout
+    assert created == removed
+    assert not any("docker rm" in line for line in commands)

@@ -221,3 +221,35 @@ def test_failed_row_still_destroys_the_process_group(monkeypatch, module):
     with pytest.raises(RuntimeError, match="validation failed"):
         module.main()
     assert calls == ["init", "destroy"]
+
+
+@pytest.mark.parametrize("module", [dcp2, dcp4])
+def test_graph_timer_waits_for_asynchronous_output_invalidation(monkeypatch, module):
+    FakeCuda(monkeypatch, module, working_iterations=None)
+    original = module.invalidate
+    pending = False
+    clock_calls = 0
+
+    def invalidate(tensor):
+        nonlocal pending
+        original(tensor)
+        pending = True
+
+    def synchronize():
+        nonlocal pending
+        pending = False
+
+    def clock():
+        nonlocal clock_calls
+        assert not pending, "output reset must finish before host replay timing"
+        clock_calls += 1
+        return clock_calls * 1000
+
+    monkeypatch.setattr(module, "invalidate", invalidate)
+    monkeypatch.setattr(module.torch.cuda, "synchronize", synchronize)
+    monkeypatch.setattr(module.time, "perf_counter_ns", clock)
+    if module is dcp2:
+        module.graph_pair_all_gather(SMALL_GATHER_DCP2, rank=0, pair_ranks=[0, 1], pair_group=None, replays=2)
+    else:
+        module.graph_world_all_gather(SMALL_GATHER_DCP4, 2, replays=2)
+    assert clock_calls == 2

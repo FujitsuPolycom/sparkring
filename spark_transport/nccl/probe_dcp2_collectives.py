@@ -166,6 +166,7 @@ def graph_pair_all_gather(
     torch.cuda.synchronize()
     dist.barrier(group=pair_group)
     invalidate(output)
+    torch.cuda.synchronize()  # Exclude the asynchronous reset from replay timing.
 
     started_ns = time.perf_counter_ns()
     for _ in range(replays):

@@ -25,6 +25,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = @()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -96,7 +98,7 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-r$($Node.Rank)"
+    $name = "spark-tp4-$runIdentity-r$($Node.Rank)"
     $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -110,9 +112,8 @@ $timedOut = $false
 
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-r$($node.Rank)"
+        $name = "spark-tp4-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--ulimit memlock=-1"
@@ -132,6 +133,8 @@ try {
             "--iterations $Iterations >/dev/null"
         ) -join " "
 
+        # The invocation-specific name also identifies a launch whose SSH reply is lost.
+        $ownedNodes += $node
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch rank $($node.Rank)"
@@ -158,7 +161,7 @@ try {
     }
 
     foreach ($node in $nodes) {
-        $name = "spark-tp4-r$($node.Rank)"
+        $name = "spark-tp4-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         Write-Output "rank=$($node.Rank) state=$state"
         & ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
@@ -173,8 +176,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }

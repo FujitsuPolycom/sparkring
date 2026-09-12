@@ -72,6 +72,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = @()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -230,7 +232,7 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-graph-q1-r$($Node.Rank)"
+    $name = "spark-tp4-graph-q1-$runIdentity-r$($Node.Rank)"
     $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -277,9 +279,8 @@ if ($MixedQValidation) {
 
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-graph-q1-r$($node.Rank)"
+        $name = "spark-tp4-graph-q1-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
@@ -313,6 +314,8 @@ try {
             ">/dev/null"
         ) -join " "
 
+        # The invocation-specific name also identifies a launch whose SSH reply is lost.
+        $ownedNodes += $node
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch graph probe rank $($node.Rank)"
@@ -448,7 +451,7 @@ try {
     }
 
     foreach ($node in $nodes) {
-        $name = "spark-tp4-graph-q1-r$($node.Rank)"
+        $name = "spark-tp4-graph-q1-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1")
@@ -533,8 +536,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-graph-q1-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-graph-q1-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }

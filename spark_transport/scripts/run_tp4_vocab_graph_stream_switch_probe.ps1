@@ -41,6 +41,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = @()
+$ownedStages = @()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -126,7 +129,7 @@ $stageId = (
     "$($adapterHash.Substring(0, 12))-" +
     "$($queryContractHash.Substring(0, 12))"
 )
-$remoteStage = "/tmp/spark-vocab-stream-switch-$stageId"
+$remoteStage = "/tmp/spark-vocab-stream-switch-$stageId-$runIdentity"
 
 $nodes = @(
     [pscustomobject]@{
@@ -174,7 +177,7 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-vocab-stream-switch-r$($Node.Rank)"
+    $name = "spark-vocab-stream-switch-$runIdentity-r$($Node.Rank)"
     $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" `
         2>$null)
@@ -184,73 +187,73 @@ function Get-ContainerState {
     return $state.Trim()
 }
 
-$artifactHashes = @()
-foreach ($node in $nodes) {
-    $runningModel = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
-        $node.Target `
-        "docker ps --filter name=^/glm52-trace$ --format '{{.Names}}'")
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to inspect running containers on rank $($node.Rank)"
-    }
-    if (($runningModel -join "`n").Trim() -eq "glm52-trace") {
-        throw "rank $($node.Rank) still runs glm52-trace; the stream-switch probe requires the model-down memory window"
-    }
-
-    $mkdirExit = Invoke-NodeSsh -Node $node `
-        -Command "mkdir -p '$remoteStage'"
-    if ($mkdirExit -ne 0) {
-        throw "failed to create stage directory on rank $($node.Rank)"
-    }
-    & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
-        $probeSource "$($node.Target):$remoteStage/probe.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to stage probe on rank $($node.Rank)"
-    }
-    & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
-        $adapterSource "$($node.Target):$remoteStage/adapter.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to stage adapter on rank $($node.Rank)"
-    }
-    & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
-        $queryContractSource `
-        "$($node.Target):$remoteStage/spark_tp4_query_contract.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to stage query-width contract on rank $($node.Rank)"
-    }
-    $hashCommand = (
-        "test -f '$Library' && sha256sum '$remoteStage/probe.py' " +
-        "'$remoteStage/adapter.py' " +
-        "'$remoteStage/spark_tp4_query_contract.py' '$Library'"
-    )
-    $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
-        $node.Target $hashCommand)
-    if ($LASTEXITCODE -ne 0) {
-        throw "rank $($node.Rank) is missing a staged probe artifact"
-    }
-    $hashLines = @($hash)
-    if ($hashLines.Count -ne 4 `
-        -or $hashLines[0] -notmatch "^$probeHash\s" `
-        -or $hashLines[1] -notmatch "^$adapterHash\s" `
-        -or $hashLines[2] -notmatch "^$queryContractHash\s" `
-        -or $hashLines[3] -notmatch "^$ExpectedLibrarySha256\s") {
-        throw "rank $($node.Rank) staged source hash mismatch"
-    }
-    $artifactHashes += ,(($hashLines -join "`n").Trim())
-}
-
-if (@($artifactHashes | Sort-Object -Unique).Count -ne 1) {
-    throw "stream-switch probe artifact SHA-256 values differ across ranks"
-}
-Write-Output "preflight=pass model_down=true identical_sha256=true"
-Write-Output $artifactHashes[0]
-
 $failed = $false
 $timedOut = $false
 try {
+    $artifactHashes = @()
     foreach ($node in $nodes) {
-        $name = "spark-vocab-stream-switch-r$($node.Rank)"
+        $runningModel = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
+            $node.Target `
+            "docker ps --filter name=^/glm52-trace$ --format '{{.Names}}'")
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to inspect running containers on rank $($node.Rank)"
+        }
+        if (($runningModel -join "`n").Trim() -eq "glm52-trace") {
+            throw "rank $($node.Rank) still runs glm52-trace; the stream-switch probe requires the model-down memory window"
+        }
+
+        $mkdirExit = Invoke-NodeSsh -Node $node `
+            -Command "mkdir '$remoteStage'"
+        if ($mkdirExit -ne 0) {
+            throw "failed to create stage directory on rank $($node.Rank)"
+        }
+        $ownedStages += $node
+        & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
+            $probeSource "$($node.Target):$remoteStage/probe.py"
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to stage probe on rank $($node.Rank)"
+        }
+        & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
+            $adapterSource "$($node.Target):$remoteStage/adapter.py"
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to stage adapter on rank $($node.Rank)"
+        }
+        & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
+            $queryContractSource `
+            "$($node.Target):$remoteStage/spark_tp4_query_contract.py"
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to stage query-width contract on rank $($node.Rank)"
+        }
+        $hashCommand = (
+            "test -f '$Library' && sha256sum '$remoteStage/probe.py' " +
+            "'$remoteStage/adapter.py' " +
+            "'$remoteStage/spark_tp4_query_contract.py' '$Library'"
+        )
+        $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
+            $node.Target $hashCommand)
+        if ($LASTEXITCODE -ne 0) {
+            throw "rank $($node.Rank) is missing a staged probe artifact"
+        }
+        $hashLines = @($hash)
+        if ($hashLines.Count -ne 4 `
+            -or $hashLines[0] -notmatch "^$probeHash\s" `
+            -or $hashLines[1] -notmatch "^$adapterHash\s" `
+            -or $hashLines[2] -notmatch "^$queryContractHash\s" `
+            -or $hashLines[3] -notmatch "^$ExpectedLibrarySha256\s") {
+            throw "rank $($node.Rank) staged source hash mismatch"
+        }
+        $artifactHashes += ,(($hashLines -join "`n").Trim())
+    }
+
+    if (@($artifactHashes | Sort-Object -Unique).Count -ne 1) {
+        throw "stream-switch probe artifact SHA-256 values differ across ranks"
+    }
+    Write-Output "preflight=pass model_down=true identical_sha256=true"
+    Write-Output $artifactHashes[0]
+
+    foreach ($node in $nodes) {
+        $name = "spark-vocab-stream-switch-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
@@ -283,6 +286,8 @@ try {
             ">/dev/null"
         ) -join " "
 
+        # The invocation-specific name also identifies a launch whose SSH reply is lost.
+        $ownedNodes += $node
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch stream-switch rank $($node.Rank)"
@@ -315,7 +320,7 @@ try {
         @($expectedNodes) + (@(1L) * $MtpTokens)
     ) -join ","
     foreach ($node in $nodes) {
-        $name = "spark-vocab-stream-switch-r$($node.Rank)"
+        $name = "spark-vocab-stream-switch-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
             $node.Target "docker logs $name 2>&1")
@@ -348,12 +353,14 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-vocab-stream-switch-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-vocab-stream-switch-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
-                -Command ("docker rm -f $name >/dev/null 2>&1 || true; " +
-                    "rm -rf '$remoteStage'") |
+                -Command "docker rm -f $name >/dev/null 2>&1 || true" |
                 Out-Null
+        }
+        foreach ($node in $ownedStages) {
+            Invoke-NodeSsh -Node $node -Command "rm -rf '$remoteStage'" | Out-Null
         }
     }
 }
