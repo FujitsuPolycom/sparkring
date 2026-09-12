@@ -534,7 +534,16 @@ def _padding_metrics(
             waste_ppm = 0
         else:
             padding_rows = target - sample.query_rows
-            padded = family.byte_geometry(target)[2]
+            try:
+                padded = family.byte_geometry(target)[2]
+            except OverflowError as error:
+                raise ValueError(
+                    f"padded census target {sample.family_tag} Q{target} is not admissible"
+                ) from error
+            if padded > family.arena.capacity_bytes:
+                raise ValueError(
+                    f"padded census target {sample.family_tag} Q{target} exceeds the family arena cap"
+                )
             waste = padded - logical
             waste_ppm = (
                 (waste * 1_000_000 + logical - 1) // logical

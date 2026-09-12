@@ -62,12 +62,23 @@ def _complete() -> bool:
     )
 
 
+def _log(level: int, message: str, *arguments: Any) -> None:
+    """Keep diagnostic sink failures out of the collective call path."""
+    global _invalid
+    try:
+        logger.log(level, message, *arguments)
+    except Exception:
+        _invalid = True
+        _invalid_reasons.add("diagnostic_log_failed")
+
+
 def _invalidate(reason: str) -> None:
     global _invalid
     _invalid = True
     if reason not in _invalid_reasons:
         _invalid_reasons.add(reason)
-        logger.error(
+        _log(
+            logging.ERROR,
             "SPARK_STOCK_TIMING invalid reason=%s rank=%s run_id=%s",
             reason,
             os.getenv("RANK", "unknown"),
@@ -124,7 +135,7 @@ def _report() -> None:
         total_host_enqueue_us += host_enqueue_us
         total_calls += expected_calls
         total_logical += logical_collectives
-        logger.warning(
+        _log(logging.WARNING,
             "SPARK_STOCK_TIMING rank=%s run_id=%s family=%s q=%d "
             "wrapper_calls=%d "
             "logical_collectives=%d device_ms=%.6f device_us_per_call=%.3f "
@@ -141,7 +152,7 @@ def _report() -> None:
         )
 
     covered_span_ms = _elapsed_ms(_first_start, _last_stop)
-    logger.warning(
+    _log(logging.WARNING,
         "SPARK_STOCK_TIMING rank=%s run_id=%s total wrapper_calls=%d "
         "logical_collectives=%d "
         "device_ms=%.6f covered_span_ms=%.6f host_enqueue_us=%.3f "
@@ -201,7 +212,7 @@ def time_original(
         if requested_run_id is not None:
             _invalidate("operator_arm_before_startup_q3")
         _startup_q3_seen = True
-        logger.warning(
+        _log(logging.WARNING,
             "SPARK_STOCK_TIMING startup_q3_seen rank=%s",
             os.getenv("RANK", "unknown"),
         )
@@ -213,7 +224,7 @@ def time_original(
             return operation()
         _armed = True
         _run_id = requested_run_id
-        logger.warning(
+        _log(logging.WARNING,
             "SPARK_STOCK_TIMING armed rank=%s run_id=%s path=%s",
             os.getenv("RANK", "unknown"),
             _run_id,

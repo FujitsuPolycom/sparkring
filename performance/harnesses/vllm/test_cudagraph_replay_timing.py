@@ -215,3 +215,19 @@ def test_invalid_elapsed_time_is_diagnostic_error(tmp_path, duration):
     assert result["errors"] == 1
     assert result["completed"] == 0
     assert result["total_completed_ms"] == 0
+
+
+def test_arm_stat_error_preserves_replay_and_snapshot():
+    class UnreadableArm:
+        def is_file(self):
+            raise PermissionError("arm directory inaccessible")
+    calls = []
+    collector = timing.ReplayTimingCollector(
+        event_factory=lambda: pytest.fail("Disarmed timing must not allocate events"),
+        arm_path=UnreadableArm(), sample_limit=1)
+    assert collector.measure("key", object(), lambda: calls.append(1) or "result") == "result"
+    assert calls == [1]
+    snapshot = collector.snapshot()
+    assert snapshot["armed"] is False
+    assert snapshot["errors"] > 0
+    assert snapshot["completed"] == snapshot["reserved"] == 0

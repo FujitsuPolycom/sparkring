@@ -158,3 +158,21 @@ def test_import_hook_is_inert_when_disabled(monkeypatch):
     flight_recorder.install_b12x_import_hook()
     assert sys.meta_path == before
     assert not flight_recorder.enabled()
+
+
+def test_shape_trace_and_log_sink_failure_still_calls_original(monkeypatch, tmp_path):
+    communicator, calls = _install_fake_communicator(monkeypatch)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    monkeypatch.setenv("VLLM_SPARK_TRACE_PATH", str(blocker / "trace.jsonl"))
+    handler = logging.FileHandler(blocker / "log.txt", delay=True)
+    shape_trace.logger.addHandler(handler)
+    try:
+        shape_trace.install()
+        tensor = _Tensor()
+        assert communicator().all_reduce(tensor) == "reduced"
+        assert calls == [tensor]
+        assert shape_trace._write_failed
+    finally:
+        shape_trace.logger.removeHandler(handler)
+        handler.close()

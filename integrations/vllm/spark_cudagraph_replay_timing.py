@@ -81,7 +81,7 @@ class ReplayTimingCollector:
         stream: Any,
         operation: Callable[[], Any],
     ) -> Any:
-        if not self._arm_path.is_file():
+        if not self._is_armed():
             return operation()
 
         with self._lock:
@@ -114,11 +114,19 @@ class ReplayTimingCollector:
             self._pending.append(_PendingSample(key=key, start=start, end=end))
         return result
 
+    def _is_armed(self) -> bool:
+        try:
+            return self._arm_path.is_file()
+        except OSError:
+            self._record_error()
+            return False
+
     def _record_error(self) -> None:
         with self._lock:
             self._errors += 1
 
     def snapshot(self) -> dict[str, Any]:
+        armed = self._is_armed()
         with self._lock:
             pending = list(self._pending)
             self._pending.clear()
@@ -172,7 +180,7 @@ class ReplayTimingCollector:
 
         return {
             "enabled": True,
-            "armed": self._arm_path.is_file(),
+            "armed": armed,
             "arm_path": str(self._arm_path),
             "sample_limit": self._sample_limit,
             "reserved": reserved,

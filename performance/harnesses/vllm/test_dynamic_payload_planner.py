@@ -256,3 +256,15 @@ def test_census_unknown_family_fails_closed() -> None:
                 ),
             ),
         )
+
+
+@pytest.mark.parametrize("overflow_formula", [False, True])
+def test_padded_target_bucket_must_fit_family_arena(overflow_formula):
+    family = prototype.FAMILY_REGISTRY["vocabulary"]
+    maximum_q = family.arena.capacity_bytes // family.byte_geometry(1)[2]
+    target = (1 << 64) if overflow_formula else maximum_q + 1
+    sample = prototype.CensusSample("vocabulary", maximum_q, 100, prototype.CensusRoute.PADDED)
+    assert prototype.admit_payload(prototype.descriptor_for("vocabulary", maximum_q)).admitted
+    for operation in (prototype.padding_metrics, prototype.propose_next_restart_plan):
+        with pytest.raises(ValueError, match="padded census target"):
+            operation((target,), (sample,))

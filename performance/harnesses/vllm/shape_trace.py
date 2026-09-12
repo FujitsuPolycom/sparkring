@@ -94,7 +94,10 @@ def install() -> None:
                         stream.write(json.dumps(record, separators=(",", ":")) + "\n")
                 except (OSError, ValueError):
                     _write_failed = True
-                    logger.error("Shape trace disabled after record write failure; trace is incomplete")
+                    try:
+                        logger.error("Shape trace disabled after record write failure; trace is incomplete")
+                    except Exception:
+                        pass  # Diagnostic sinks must not prevent the collective.
         return original(self, input_)
 
     traced_all_reduce._spark_shape_trace = True  # type: ignore[attr-defined]

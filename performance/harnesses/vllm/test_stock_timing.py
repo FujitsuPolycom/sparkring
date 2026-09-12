@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import logging
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -112,6 +115,28 @@ class StockTimingTests(unittest.TestCase):
             ):
                 self.assertEqual(timing.time_original("query", 5, _STREAM, lambda: "ok", _Torch), "ok")
         self.assertTrue(timing.snapshot_for_test()["invalid"])
+
+    def test_failed_log_sink_preserves_startup_result_and_original_exception(self):
+        with tempfile.TemporaryDirectory() as raw:
+            blocker = Path(raw) / "blocker"
+            blocker.write_text("not a directory")
+            handler = logging.FileHandler(blocker / "log.txt", delay=True)
+            timing.logger.addHandler(handler)
+            try:
+                with patch.dict(os.environ, _ENV, clear=True):
+                    with patch.object(timing.Path, "read_text", side_effect=OSError):
+                        self.assertEqual(timing.time_original("query", 3, _STREAM, lambda: "startup", _Torch), "startup")
+                    original = RuntimeError("original collective error")
+                    def operation():
+                        raise original
+                    with patch.object(timing.Path, "read_text", return_value="run"):
+                        with self.assertRaises(RuntimeError) as raised:
+                            timing.time_original("query", 5, _STREAM, operation, _Torch)
+                    self.assertIs(raised.exception, original)
+                    self.assertIn("diagnostic_log_failed", timing.snapshot_for_test()["invalid_reasons"])
+            finally:
+                timing.logger.removeHandler(handler)
+                handler.close()
 
     def setUp(self) -> None:
         timing.reset_for_test()
