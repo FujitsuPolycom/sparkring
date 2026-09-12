@@ -58,6 +58,15 @@ def test_duplicate_rejected(tmp_path):
         launch.read_config(path)
 
 
+@pytest.mark.parametrize("key", ["API_KEY_FILE", "NCCL_SO_HOST_PATH"])
+@pytest.mark.parametrize("name", ["auth.py", "auth-receipt.json"])
+def test_generated_auth_paths_cannot_replace_input_files(tmp_path, key, name):
+    with pytest.raises(ValueError, match="generated authentication"):
+        launch.read_config(environment(tmp_path, **{
+            key: "/operator/state_host_path/operator/" + name,
+        }))
+
+
 def test_offline_check_never_requires_docker(tmp_path, monkeypatch):
     path = environment(tmp_path)
     monkeypatch.setenv("PATH", str(tmp_path))
@@ -226,6 +235,18 @@ def test_writable_model_alias_is_rejected_before_docker(tmp_path, monkeypatch):
     monkeypatch.setattr(launch, "output", lambda args: pytest.fail("Docker must not run"))
     with pytest.raises(ValueError, match="overlap"):
         launch.verify_host(cfg)
+
+
+def test_key_file_alias_of_generated_auth_is_rejected(tmp_path):
+    cfg = host_config(tmp_path)
+    alias = tmp_path / "key-alias"
+    try:
+        alias.symlink_to(Path(cfg["STATE_HOST_PATH"]) / "operator/auth.py")
+    except OSError:
+        pytest.skip("file symlinks unavailable")
+    cfg["API_KEY_FILE"] = str(alias)
+    with pytest.raises(ValueError, match="generated authentication"):
+        launch.verify_host_paths(cfg)
 
 
 def test_running_model_rejected_even_before_gpu_allocation(tmp_path, monkeypatch):

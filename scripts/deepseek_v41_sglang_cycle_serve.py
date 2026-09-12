@@ -87,6 +87,10 @@ def read_config(path):
     if len(set(paths.values())) != len(paths):
         raise ValueError("Bind-mount paths must be distinct")
     model = paths["MODEL_HOST_PATH"]
+    generated = {paths["STATE_HOST_PATH"] / "operator" / name
+                 for name in ("auth.py", "auth-receipt.json")}
+    if any(paths[key] in generated for key in ("API_KEY_FILE", "NCCL_SO_HOST_PATH")):
+        raise ValueError("input files must not use generated authentication paths")
     for key in ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH"):
         path = paths[key]
         if path.is_relative_to(model) or model.is_relative_to(path):
@@ -151,7 +155,10 @@ def verify_host_paths(cfg):
     writable = {key: Path(cfg[key]) for key in
                 ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH")}
     operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
-    writable.update({"auth output": operator / "auth.py", "auth temporary output": operator / "auth.py.tmp"})
+    writable.update({"auth output": operator / "auth.py", "auth receipt": operator / "auth-receipt.json"})
+    inputs = {Path(cfg[key]).resolve() for key in ("API_KEY_FILE", "NCCL_SO_HOST_PATH")}
+    if any((operator / name).resolve() in inputs for name in ("auth.py", "auth-receipt.json")):
+        raise ValueError("input files must not alias generated authentication paths")
     for name, path in writable.items():
         resolved = path.resolve()
         if resolved.is_relative_to(model) or model.is_relative_to(resolved):
