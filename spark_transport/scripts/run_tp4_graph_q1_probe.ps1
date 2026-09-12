@@ -93,6 +93,39 @@ if ($ControlPort0 -eq $ControlPort1) {
 if ($SubmitCpu -eq $ProgressCpu) {
     throw "SubmitCpu and ProgressCpu must differ"
 }
+
+function Test-CpuInSet {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Set,
+
+        [Parameter(Mandatory)]
+        [int]$Cpu
+    )
+
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so both pinned CPUs must lie inside it.
+foreach ($cpu in @($SubmitCpu, $ProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+# Index only the non-empty entries so an embedded empty element cannot shift
+# the rank-to-target mapping after the count check.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
 if ($MultiGraphValidation -and -not $DisablePerformanceGates) {
     throw "MultiGraphValidation requires DisablePerformanceGates because it synchronizes and verifies every replay"
 }
@@ -380,9 +413,15 @@ try {
         $expectedKernelSplitNodes = $expectedCapturedNodes
     }
     else {
+        # tiered_64k keeps a node fused only while its active bytes fit in
+        # 64 KiB (kTp4TieredFusedMaximumBytes); wider nodes use the split
+        # kernel. Q5 is the last fused width at 12,288 bytes per row.
+        $tieredFusedMaximumBytes = 64L * 1024L
         $expectedKernelFusedNodes = 0L
-        for ($q = 1; $q -le 6; $q++) {
-            $expectedKernelFusedNodes += $expectedQHistogram[$q - 1]
+        for ($q = 1; $q -le 512; $q++) {
+            if (([long]$q * 6144L * 2L) -le $tieredFusedMaximumBytes) {
+                $expectedKernelFusedNodes += $expectedQHistogram[$q - 1]
+            }
         }
         $expectedKernelSplitNodes = `
             $expectedCapturedNodes - $expectedKernelFusedNodes

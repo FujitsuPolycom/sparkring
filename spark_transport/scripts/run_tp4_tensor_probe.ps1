@@ -57,6 +57,14 @@ if (($QueuedDelayMs -gt 0) -and
     ((-not $AlternateStreams) -or ($Warmup -lt 1) -or ($Iterations -lt 2))) {
     throw "QueuedDelayMs requires AlternateStreams, Warmup >= 1, and Iterations >= 2"
 }
+if (($QueuedDelayMs -gt 0) -and
+    (($QueuedDelayMs + 10000) -ge ($WatchdogSeconds * 1000))) {
+    throw "WatchdogSeconds must exceed QueuedDelayMs by more than 10 seconds"
+}
+# Index only the non-empty entries so an embedded empty element cannot shift
+# the rank-to-target mapping after the count check.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
 
 $alternateStreamsArgument = if ($AlternateStreams) {
     "--alternate-streams"
@@ -131,6 +139,9 @@ try {
     foreach ($node in $nodes) {
         $name = "spark-tp4-tensor-r$($node.Rank)"
         $command = @(
+            # A missing binary must fail here; a bind mount of an absent path
+            # would otherwise create a directory and fail inside the probe.
+            "test -x '$Binary' || exit 97;"
             "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
@@ -155,6 +166,9 @@ try {
         ) -join " "
 
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
+        if ($exitCode -eq 97) {
+            throw "rank $($node.Rank) is missing the executable probe binary $Binary"
+        }
         if ($exitCode -ne 0) {
             throw "failed to launch rank $($node.Rank)"
         }

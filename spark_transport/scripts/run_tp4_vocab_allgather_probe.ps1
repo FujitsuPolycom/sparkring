@@ -64,6 +64,10 @@ if (($QueuedDelayMs -gt 0) -and
     (($QueuedDelayMs + 10000) -ge ($WatchdogSeconds * 1000))) {
     throw "WatchdogSeconds must exceed QueuedDelayMs by more than 10 seconds"
 }
+# Index only the non-empty entries so an embedded empty element cannot shift
+# the rank-to-target mapping after the count check.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
 
 $alternateStreamsArgument = if ($AlternateStreams) {
     "--alternate-streams"
@@ -148,7 +152,10 @@ try {
     foreach ($node in $nodes) {
         $name = "spark-tp4-vocab-r$($node.Rank)"
         $command = @(
-            "chmod 0755 $Binary $Library;"
+            # Missing artifacts must fail here instead of becoming empty
+            # directories at the bind-mount paths.
+            "test -f '$Binary' -a -f '$Library' || exit 97;"
+            "chmod 0755 '$Binary' '$Library' || exit 97;"
             "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
@@ -171,7 +178,11 @@ try {
             $productionPatternArgument
             $queuedDelayArgument
         ) -join " "
-        if ((Invoke-NodeSsh -Node $node -Command $command) -ne 0) {
+        $launchExit = Invoke-NodeSsh -Node $node -Command $command
+        if ($launchExit -eq 97) {
+            throw "rank $($node.Rank) is missing the probe binary or library"
+        }
+        if ($launchExit -ne 0) {
             throw "failed to launch vocabulary probe rank $($node.Rank)"
         }
     }

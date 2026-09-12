@@ -54,8 +54,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Status: research-only. Without -Execute this script only prints the exact
-# arm and never validates remote configuration, invokes SSH, or starts CUDA.
+# Status: research-only. Without -Execute this script validates the supplied
+# topology locally and prints the exact arm; it never contacts a remote host
+# over SSH or starts CUDA.
 $repositoryRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $qualificationModule =
     "spark_transport.experiments.tiled_prefill.qualification"
@@ -107,6 +108,35 @@ if (@($SubmitCpu, $Edge0ProgressCpu, $Edge1ProgressCpu |
     throw "SubmitCpu, Edge0ProgressCpu, and Edge1ProgressCpu must differ"
 }
 
+function Test-CpuInSet {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Set,
+
+        [Parameter(Mandatory)]
+        [int]$Cpu
+    )
+
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so every pinned CPU must lie inside it.
+foreach ($cpu in @($SubmitCpu, $Edge0ProgressCpu, $Edge1ProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+
 $configuredTargets = @($Targets | Where-Object { $_ })
 $configuredRankHosts = @($RankHosts | Where-Object { $_ })
 $nodes = @()
@@ -121,6 +151,10 @@ if ($configuredTargets.Count -ne 0 -or $configuredRankHosts.Count -ne 0) {
     }
     if (@($configuredRankHosts | Sort-Object -Unique).Count -ne 4) {
         throw "rank host addresses must be unique"
+    }
+    if (@($configuredTargets | Sort-Object -Unique).Count -ne 4) {
+        # Two ranks on one host would share the fixed control ports.
+        throw "SSH targets must be unique"
     }
 
     $nodes = @(

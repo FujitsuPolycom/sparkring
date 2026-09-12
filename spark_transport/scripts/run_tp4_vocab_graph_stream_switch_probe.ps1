@@ -64,6 +64,39 @@ if (@($SubmitCpu, $TpProgressCpu, $VocabProgressCpu |
     throw "submit, TP progress, and vocabulary progress CPUs must differ"
 }
 
+function Test-CpuInSet {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Set,
+
+        [Parameter(Mandatory)]
+        [int]$Cpu
+    )
+
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so every pinned CPU must lie inside it.
+foreach ($cpu in @($SubmitCpu, $TpProgressCpu, $VocabProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+# Index only the non-empty entries so an embedded empty element cannot shift
+# the rank-to-target mapping after the count check.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $probeSource = Join-Path $repoRoot `
     "spark_transport\integrations\vllm\probe_vocab_graph_stream_switch.py"
@@ -318,7 +351,8 @@ finally {
         foreach ($node in $nodes) {
             $name = "spark-vocab-stream-switch-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
-                -Command "docker rm -f $name >/dev/null 2>&1 || true" |
+                -Command ("docker rm -f $name >/dev/null 2>&1 || true; " +
+                    "rm -rf '$remoteStage'") |
                 Out-Null
         }
     }
