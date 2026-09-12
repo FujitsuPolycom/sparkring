@@ -21,6 +21,12 @@ Dashes indicate no value in the linked record. Full context/concurrency matrices
 coding workloads, sample counts and uncertainty estimates remain in those records.
 The GLM-5.3 B12X-KDA row is one bounded observation per cell; it has no
 repeated-sample performance qualification.
+Exact GLM-5.2 sample counts are in its
+[machine-readable summary](../performance/records/glm-3.5bpw/normalized-base-20260822.json):
+all C8 cells, 64K C2/C4, and 128K C1/C2/C4 use three observations; the remaining
+decode cells use one.
+The two-Spark Qwen record withholds its 128K/C16 cell despite two accepted
+observations; its published C16 values run through 64K.
 
 ## Records and receipts
 
