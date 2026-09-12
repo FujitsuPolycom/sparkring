@@ -1,8 +1,8 @@
 # DeepSeek V4.1 Flash on SGLang
 
-Status: **implemented**. This source-pinned adapter and launcher support a
-four-Spark direct cycle. The recorded prefill experiment passed its bounded
-quality checks. A separate [six-hour streaming record](../../performance/records/deepseek-v41-flash/sglang-soak-20260912.md)
+Status: **Development**. This source-pinned adapter and launcher support a
+four-Spark direct cycle. The [controlled prefill comparison](../../performance/records/deepseek-v41-flash/sglang-decoder-replay-20260911.md)
+passed its bounded quality checks. A separate [six-hour streaming record](../../performance/records/deepseek-v41-flash/sglang-soak-20260912.md)
 covers a 430080-context site configuration; the recipe retains its 262144-context
 default. Rebuilt images and unattended recovery require separate validation.
 No public image is published.
@@ -38,7 +38,7 @@ once per rank outside the checkout. Resolve all placeholders. Values are literal
 are rejected. Keep node-local paths and credentials out of version control.
 
 Obtain SparkRing's patched `libnccl.so.2` as described in the
-[vLLM quickstart](../../docs/DEEPSEEK_V41_FLASH_QUICKSTART.md), resolve any symlink,
+[vLLM library setup](../../profiles/deepseek-v41-flash-cycle/README.md#patches-and-nccl), resolve any symlink,
 and record `sha256sum` of that library as `NCCL_SO_SHA256`. The launcher mounts
 it **over the image's pip NCCL library**. Do not add `LD_PRELOAD`: loading a second
 NCCL runtime triggers SGLang's runtime check. This substitution assumes the

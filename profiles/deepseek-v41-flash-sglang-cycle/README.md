@@ -28,20 +28,21 @@ python scripts/profiles.py resolve deepseek-v41-flash-sglang-cycle
 python scripts/launch.py deepseek-v41-flash-sglang-cycle -- --check /private/rank-0.env
 ```
 
-The shared launcher prints the adapter command. Follow
+The shared launcher prints the adapter command; arguments after `--` belong
+to the SGLang adapter. Check each rank's environment file before startup. Follow
 [preparation and startup](../../runtime/deepseek-v41-sglang/README.md#serve-and-validate)
 for the explicit `--prepare`, `--pack`, and `--run` actions. Start workers 3, 2,
-1, then rank 0. Hardware and model checks run only on the selected host.
+1, then rank 0. Each adapter invocation checks only the host on which it runs.
 
 ## Evidence and limits
 
-Status: **implemented**. The [controlled prefill record](../../performance/records/deepseek-v41-flash/sglang-decoder-replay-20260911.md)
+Status: **Development**. The [controlled prefill record](../../performance/records/deepseek-v41-flash/sglang-decoder-replay-20260911.md)
 uses the recipe's 262K context setting. The [six-hour streaming record](../../performance/records/deepseek-v41-flash/sglang-soak-20260912.md)
 used a 430,080-token context setting and an actual shared pool of 1,499,904
 tokens; it does not change these defaults or qualify an arbitrary rebuilt image.
 
 Decoder-tail replay changes late-layer local attention visibility and is not
-proven equivalent to full prefill. Keep its quality and workload limits with
-reported performance. This profile does not include SparkCache or an unattended
+proven equivalent to full prefill. Report its quality and workload limits
+alongside performance measurements. This profile does not include SparkCache or an unattended
 recovery service. The source contribution and its qualification records originate
 from [PR #267](https://github.com/FujitsuPolycom/sparkring/pull/267).
