@@ -2,6 +2,10 @@
   "schema": "sparkring-catalog/v1",
   "profiles": [
     {
+      "id": "deepseek-v41-flash-sglang-cycle",
+      "path": "profiles/deepseek-v41-flash-sglang-cycle/profile.json"
+    },
+    {
       "id": "deepseek-v4-flash-0731-pair",
       "path": "profiles/deepseek-v4-flash-0731-pair/profile.json"
     },

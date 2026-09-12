@@ -103,6 +103,14 @@ def configuration(p, root=ROOT):
                 if key in data["model"] and key in base["model"] and data["model"][key] != base["model"][key]:
                     raise ValueError(f"{p['id']}: composition model {key} differs from its base recipe")
         serving = copy.deepcopy(data.get("serving", data.get("serving_common", {})))
+        if data.get("runtime", {}).get("engine") == "sglang":
+            # Normalize display names without rewriting SGLang recipe settings.
+            for common, native in (("max_model_len", "context_length"),
+                                   ("max_num_seqs", "max_running_requests"),
+                                   ("max_num_batched_tokens", "chunked_prefill_size")):
+                if common in serving and serving[common] != serving[native]:
+                    raise ValueError(f"Conflicting SGLang setting: {common}/{native}")
+                serving[common] = serving[native]
         if data.get("profiles"):
             selected = data.get("preferred_profile")
             if selected not in data["profiles"]:

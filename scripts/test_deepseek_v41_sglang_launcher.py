@@ -92,10 +92,35 @@ def host_config(tmp_path):
     state = tmp_path / 'state'
     (state / 'operator').mkdir(parents=True)
     (state / 'operator/auth.py').write_text('# fixture')
-    return launch.read_config(environment(tmp_path, MODEL_HOST_PATH=str(model),
+    cfg = launch.read_config(environment(tmp_path))
+    cfg.update(MODEL_HOST_PATH=str(model),
         ENGRAM_HOST_PATH=str(packed), API_KEY_FILE=str(keys), NCCL_SO_HOST_PATH=str(library),
         NCCL_SO_SHA256=launch.hashlib.sha256(library.read_bytes()).hexdigest(),
-        STATE_HOST_PATH=str(state)))
+        STATE_HOST_PATH=str(state))
+    return cfg
+
+
+def test_catalog_preserves_sglang_defaults_and_runtime():
+    from runtime.common.profiles import resolve
+    from runtime.common.launch import plan
+    resolved = resolve("deepseek-v41-flash-sglang-cycle")
+    assert resolved["runtime"]["engine"] == "sglang"
+    assert resolved["serving"]["max_model_len"] == 262144
+    assert resolved["serving"]["expert_parallel_size"] == 4
+    assert resolved["serving"]["max_num_seqs"] == 8
+    assert resolved["serving"]["chunked_prefill_size"] == 4096
+    command = plan("deepseek-v41-flash-sglang-cycle", ["--prepare", "/private/rank.env"])
+    assert command["effect"] == "host-action"
+    assert command["command"][1].endswith("deepseek_v41_sglang_cycle_serve.py")
+
+
+def test_profile_table_keeps_both_deepseek_engines():
+    from scripts.generate_profiles import profile_table
+    table = profile_table(compact=True)
+    rows = [line for line in table.splitlines() if line.startswith("| DeepSeek-V4.1-Flash |")]
+    assert len(rows) == 2
+    assert any("| SGLang |" in row and "| 262K /" in row for row in rows)
+    assert any("| vLLM |" in row and "| 1M /" in row for row in rows)
 
 
 def test_image_drift_rejected_before_host_actions(tmp_path, monkeypatch):

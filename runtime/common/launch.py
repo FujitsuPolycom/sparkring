@@ -66,7 +66,7 @@ def plan(profile_id, arguments, root=ROOT):
             'serving': resolved['serving'], 'modified_defaults': modified,
             'execution_status': 'not-run', 'guide': p['guide'],
             'command': command, 'working_directory': str(root),
-            'effect': 'host-action' if args[0] in ('create', 'start', '--run') else 'adapter-check-or-plan'}
+            'effect': 'host-action' if args[0] in ('create', 'start', '--run', '--prepare', '--pack') else 'adapter-check-or-plan'}
 
 
 def main(argv=None):

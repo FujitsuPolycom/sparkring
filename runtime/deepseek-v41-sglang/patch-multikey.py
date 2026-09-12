@@ -2,6 +2,7 @@
 """Accept line-separated operator keys through the pinned SGLang auth module.
 
 Only ordinary API keys are split. A separately configured admin key stays exact.
+The entrypoint joins the file's lines with commas for the internal API_KEY value.
 Run with python -S in a CPU-only container; stdout is the patched source.
 """
 from pathlib import Path

@@ -120,7 +120,7 @@ Standalone hardware and CPU results do not authorize a deployment promotion.
 | #263 | Closed, head `2ae60f01774131d07e7370104599bacafb39473d` | Retain contributor wording improvements around the generated README region; edit the generator for table changes |
 | #265 | Merged in the integration base | TP4/DCP1 remains the default; TP4/DCP4 is a validated alternative; its contract/entrypoint overlay and activation record are pinned separately from the published image |
 | #266 | Open, head `544f498c6369a72c1afba0a856dfb870cfc0d302` | Review local-address recovery separately from peer-silence handling; relocation leaves its managed-service paths intact |
-| #267 | Open, head `5a74a07a0b8e11d660036600ce64ea7eedc6903b` | Keep the proposed SGLang runtime distinct from vLLM; add its profile only with its own builder and evidence |
+| #267 | Open, head `fa77ac48f821a8c760129914f58158bb4700c3c4` | Integrated locally with contributor authorship, a separate SGLang catalog entry, builder, launcher and qualification records; retain the contributor's 262144-context default |
 | #269 | Merged in the integration base | Preserve the corrected DCP4 arithmetic-owner mapping; apply PR #271's overlap correction and attribution withdrawal before using throughput evidence |
 | #270 | Open, head `27d6b0dbd2b5a2113fb8c14923d70fb354d5a0ee` | Apply selected-HCA rendering to the maintained TP2 owner and regenerate its compatibility launcher if adopted; retain transport-change validation scope |
 

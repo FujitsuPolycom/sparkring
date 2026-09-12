@@ -1,6 +1,12 @@
 {
   "schema": "sparkring-profile-capacity/v1",
   "profiles": {
+    "deepseek-v41-flash-sglang-cycle": {
+      "tokens": 1499904,
+      "source": "performance/records/deepseek-v41-flash/sglang-soak-20260912.md",
+      "witness": "token pool 1500000 (actual 1499904)",
+      "conditions": "Contributor-recorded SGLang TP4/EP4 pool at 430080 context, chunk 4096, eight requests and memory fraction 0.90. Sizing reference for the separate 262144-context recipe default; not qualification of a rebuilt image."
+    },
     "glm53-flash-spark-tp2-dcp1-sparkcache": {
       "tokens": 1081922,
       "source": "profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md",

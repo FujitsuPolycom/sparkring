@@ -2,6 +2,11 @@
   "schema": "sparkring-compatibility/v1",
   "mirrors": [
     {
+      "source": "profiles/deepseek-v41-flash-sglang-cycle/recipe.json",
+      "destination": "recipes/deepseek-v41-flash-sglang-cycle.json",
+      "kind": "recipe"
+    },
+    {
       "source": "profiles/deepseek-v4-flash-0731-pair/recipe.json",
       "destination": "recipes/deepseek-v4-flash-0731-pair.json",
       "kind": "recipe"

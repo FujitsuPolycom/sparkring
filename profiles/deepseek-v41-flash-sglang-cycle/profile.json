@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "deepseek-v41-flash-sglang-cycle",
+  "title": "DeepSeek-V4.1-Flash on SGLang",
+  "recommendation": "alternative",
+  "status": "implemented",
+  "configuration": {"format": "recipe", "path": "profiles/deepseek-v41-flash-sglang-cycle/recipe.json"},
+  "release": "runtime/releases/deepseek-v41-flash-sglang-cycle/release.json",
+  "guide": "profiles/deepseek-v41-flash-sglang-cycle/README.md",
+  "evidence_scope": "Contributor-recorded prefill and streaming checks apply to their exact SGLang image and site settings. The recipe retains 262144 context; the six-hour streaming record used 430080. Rebuilt images require their own validation.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "scripts/deepseek_v41_sglang_cycle_serve.py",
+    "actions": ["--check", "--prepare", "--pack", "--run"],
+    "fixed_args": []
+  }
+}

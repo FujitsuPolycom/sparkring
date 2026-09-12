@@ -7,7 +7,7 @@
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shlex
 import subprocess
@@ -16,6 +16,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime/deepseek-v41-sglang"
 PINS = json.loads((RUNTIME / "pins.json").read_text())
+SERVING = json.loads((ROOT / "profiles/deepseek-v41-flash-sglang-cycle/recipe.json").read_text())["serving"]
 REQUIRED = {
     "NODE_RANK", "MASTER_ADDR", "HOST_IP", "MODEL_HOST_PATH", "ENGRAM_HOST_PATH",
     "STATE_HOST_PATH", "CACHE_HOST_PATH", "API_KEY_FILE", "NCCL_SO_HOST_PATH",
@@ -23,9 +24,11 @@ REQUIRED = {
     "NCCL_IB_HCA", "NCCL_IB_GID_INDEX",
 }
 DEFAULTS = {
-    "API_PORT": "8000", "MASTER_PORT": "20000", "CONTEXT_LENGTH": "262144",
-    "CHUNKED_PREFILL_SIZE": "4096", "MAX_RUNNING_REQUESTS": "8",
-    "MAX_TOTAL_TOKENS": "1500000", "MEM_FRACTION_STATIC": "0.90",
+    "API_PORT": "8000", "MASTER_PORT": "20000", "CONTEXT_LENGTH": str(SERVING["context_length"]),
+    "CHUNKED_PREFILL_SIZE": str(SERVING["chunked_prefill_size"]),
+    "MAX_RUNNING_REQUESTS": str(SERVING["max_running_requests"]),
+    "MAX_TOTAL_TOKENS": str(SERVING["max_total_tokens"]),
+    "MEM_FRACTION_STATIC": str(SERVING["mem_fraction_static"]),
     "DSPARK_SPS_TABLE": "/state/dspark_sps.json", "DSPARK_STS_TABLE": "/state/dspark_sts.json",
 }
 TRANSPORT = {
@@ -71,13 +74,13 @@ def read_config(path):
         raise ValueError("NCCL_SO_SHA256 must pin the library contents")
     for key in REQUIRED:
         if key.endswith("_PATH") or key == "API_KEY_FILE":
-            if not Path(cfg[key]).is_absolute() or ":" in cfg[key]:
+            if not PurePosixPath(cfg[key]).is_absolute() or ":" in cfg[key] or "\\" in cfg[key]:
                 raise ValueError(f"{key} must be an absolute bind-mount path without colons")
     return cfg
 
 
 def command(cfg):
-    state = Path(cfg["STATE_HOST_PATH"])
+    state = PurePosixPath(cfg["STATE_HOST_PATH"])
     mounts = {
         cfg["MODEL_HOST_PATH"]: "/models/DeepSeek-V4.1-Flash:ro",
         cfg["ENGRAM_HOST_PATH"]: "/engram:ro", str(state): "/state",
@@ -85,7 +88,7 @@ def command(cfg):
         cfg["API_KEY_FILE"]: "/run/secrets/api-keys:ro",
         str(state / "operator/auth.py"): PINS["auth_path"] + ":ro",
         str(RUNTIME / "entrypoint.py"): "/operator/entrypoint.py:ro",
-        str(Path(cfg["NCCL_SO_HOST_PATH"]).resolve()): PINS["nccl_target"] + ":ro",
+        cfg["NCCL_SO_HOST_PATH"]: PINS["nccl_target"] + ":ro",
     }
     env = {**TRANSPORT, **{k: cfg[k] for k in (
         "NODE_RANK", "HOST_IP", "CONTEXT_LENGTH", "CHUNKED_PREFILL_SIZE",

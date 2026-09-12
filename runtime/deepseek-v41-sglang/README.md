@@ -2,8 +2,10 @@
 
 Status: **implemented**. This source-pinned adapter and launcher support a
 four-Spark direct cycle. The recorded prefill experiment passed its bounded
-quality checks; the larger-context profile and deployment qualification are
-still being tested. No public image is published.
+quality checks. A separate [six-hour streaming record](../../performance/records/deepseek-v41-flash/sglang-soak-20260912.md)
+covers a 430080-context site configuration; the recipe retains its 262144-context
+default. Rebuilt images and unattended recovery require separate validation.
+No public image is published.
 
 | Input | Contract |
 |---|---|

@@ -2,6 +2,12 @@
   "schema": "sparkring-image-builders/v1",
   "builders": [
     {
+      "id": "deepseek-v41-sglang",
+      "path": "runtime/deepseek-v41-sglang/build-image.sh",
+      "kind": "bash",
+      "reason": "Pinned SGLang runtime and Mia adapter with its separate Engram layout."
+    },
+    {
       "id": "sparkring-source",
       "path": "runtime/sparkring/source_image/prepare_context.py",
       "kind": "python",

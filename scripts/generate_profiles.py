@@ -30,6 +30,11 @@ def compact_tokens(tokens):
     return str(tokens)
 
 
+def deployment_family(resolved):
+    return (resolved['model']['repository'], resolved['topology'],
+            resolved['serving']['node_count'], resolved['runtime'].get('engine', 'vllm'))
+
+
 def compact_profile_rows(rows, root=ROOT):
     """Group explicit cache compositions with their base, retaining the default's values."""
     recipe_ids = {p['configuration']['path']: p['id'] for p, _ in rows
@@ -62,10 +67,10 @@ def compact_profile_rows(rows, root=ROOT):
         result.append((p, resolved))
     # A recommended configuration represents its model/topology on the landing
     # page. Other DCP choices remain in the full catalog and profile guide.
-    preferred = {(v['model']['repository'], v['topology'], v['serving']['node_count'])
+    preferred = {deployment_family(v)
                  for p, v in result if p['recommendation'] == 'recommended'}
     result = [(p, v) for p, v in result if p['recommendation'] == 'recommended'
-              or (v['model']['repository'], v['topology'], v['serving']['node_count']) not in preferred]
+              or deployment_family(v) not in preferred]
     return result, cache_cells
 
 
@@ -94,7 +99,7 @@ def profile_table(root=ROOT, *, compact=False):
         for profile, resolved in rows:
             if profile['recommendation'] == 'retired':
                 continue
-            key = (resolved['model']['repository'], resolved['topology'], resolved['serving']['node_count'])
+            key = deployment_family(resolved)
             dcp = resolved['serving']['decode_context_parallel_size']
             dcp_options.setdefault(key, set()).add(dcp)
             if profile['id'] in capacity:
@@ -111,27 +116,33 @@ def profile_table(root=ROOT, *, compact=False):
     ):
         if compact and title == 'Retired profiles':
             continue
-        lines += ['### '+title, '', '| Model | Quant | Layout | Context / KV* (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---|---|---|---|']
+        lines += ['### '+title, '', '| Model | Quant | Runtime | Layout | Context / KV* (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---|---|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model | Quant | DCP | Context / KV* | SparkCache | Status | Quickstart |', '|---|---|---|---|---|---|---|']
+            lines[-2:] = ['| Model | Quant | Runtime | DCP | Context / KV* | SparkCache | Status | Quickstart |', '|---|---|---|---|---|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r) or (compact and r['topology'] == 'switched'):
                 continue
             s = r['serving']
+            engine = r['runtime'].get('engine', 'vllm')
+            engine_title = {'vllm': 'vLLM', 'sglang': 'SGLang'}[engine]
             repository = r['model']['repository']
             model_name = names[repository]
             quant = f"[{quant_labels[repository]}](https://huggingface.co/{repository})"
             layout = f"TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']}"
+            if engine == 'sglang':
+                layout = f"TP{s['tensor_parallel_size']}/EP{s['expert_parallel_size']}"
             if r['topology'] == 'switched':
                 layout += ' · switched'
             context = f"{s['max_model_len']:,}" if 'max_model_len' in s else '—'
             record = capacity.get(p['id'])
             kv = f"[{record['tokens']:,}]({record['source']})" if record else '—'
             if compact:
-                key = (repository, r['topology'], s['node_count'])
+                key = deployment_family(r)
                 default_dcp = s['decode_context_parallel_size']
                 choices = [default_dcp, *sorted(dcp_options[key] - {default_dcp})]
                 layout = '/'.join(f'DCP{value}' for value in choices)
+                if engine == 'sglang':
+                    layout = '—'
                 context = compact_tokens(s['max_model_len']) if 'max_model_len' in s else '—'
                 kv = f"[{compact_tokens(record['tokens'])}]({record['source']})" if record else '—'
             if record and not compact:
@@ -147,9 +158,9 @@ def profile_table(root=ROOT, *, compact=False):
                 title = model_name
                 if p['recommendation'] == 'recommended':
                     title = f"**{title}**"
-                lines.append(f"| {title} | {quant} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
+                lines.append(f"| {title} | {quant} | {engine_title} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
                 continue
-            lines.append(f"| {model_name} | {quant} | {layout} | {context} / {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
+            lines.append(f"| {model_name} | {quant} | {engine_title} | {layout} | {context} / {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
         lines.append('')
     if compact:
         return '\n'.join(lines + [END])
