@@ -1,6 +1,6 @@
 """Arm-file-gated CUDA timing for vLLM FULL graph replays.
 
-The serving thread only records CUDA events. Completion polling and elapsed
+The serving thread checks the arm file and allocates/records CUDA events. Completion polling and elapsed
 time calculation happen from the existing low-rate graph status reporter, so
 the measured request is not host-synchronized by this diagnostic.
 """
@@ -60,7 +60,7 @@ class ReplayTimingCollector:
         arm_path: Path,
         sample_limit: int,
     ) -> None:
-        if not 1 <= sample_limit <= _MAXIMUM_SAMPLE_LIMIT:
+        if type(sample_limit) is not int or not 1 <= sample_limit <= _MAXIMUM_SAMPLE_LIMIT:
             raise ValueError(
                 "sample_limit must be in "
                 f"[1, {_MAXIMUM_SAMPLE_LIMIT}]"
@@ -85,22 +85,38 @@ class ReplayTimingCollector:
             return operation()
 
         with self._lock:
-            if self._reserved >= self._sample_limit:
+            admitted = self._reserved < self._sample_limit
+            if admitted:
+                self._reserved += 1
+            else:
                 self._dropped += 1
-                return operation()
-            self._reserved += 1
-
-        start = self._event_factory()
-        end = self._event_factory()
-        start.record(stream)
-        try:
+        if not admitted:
             return operation()
-        finally:
+
+        try:
+            start = self._event_factory()
+            end = self._event_factory()
+            start.record(stream)
+        except Exception:
+            self._record_error()
+            return operation()
+        try:
+            result = operation()
+        except BaseException:
+            self._record_error()
+            raise
+        try:
             end.record(stream)
-            with self._lock:
-                self._pending.append(
-                    _PendingSample(key=key, start=start, end=end)
-                )
+        except Exception:
+            self._record_error()
+            return result
+        with self._lock:
+            self._pending.append(_PendingSample(key=key, start=start, end=end))
+        return result
+
+    def _record_error(self) -> None:
+        with self._lock:
+            self._errors += 1
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -115,12 +131,10 @@ class ReplayTimingCollector:
                 if not sample.end.query():
                     remaining = pending[index:]
                     break
-                completed_samples.append(
-                    (
-                        sample.key,
-                        float(sample.start.elapsed_time(sample.end)),
-                    )
-                )
+                elapsed_ms = float(sample.start.elapsed_time(sample.end))
+                if not math.isfinite(elapsed_ms) or elapsed_ms < 0:
+                    raise ValueError("CUDA event duration must be finite and nonnegative")
+                completed_samples.append((sample.key, elapsed_ms))
             except Exception:
                 errors += 1
 

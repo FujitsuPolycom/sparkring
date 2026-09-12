@@ -2,7 +2,9 @@
 
 With SPARK_TP4_FLIGHT_RECORDER=1, activate(rank) enables logging for every
 subsequent instrumented call until process exit. The recorder has no
-first-request cutoff or sample bound.
+first-request cutoff or sample bound. Records describe Python call attempts,
+not GPU completion. A recorder failure disables further recording while the
+original operation still runs.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _TARGET = "b12x.attention.indexer.fused_indexer"
 _active = False
+_recording_failed = False
 _rank = -1
 _sequence = 0
 
@@ -29,7 +32,7 @@ def enabled() -> bool:
 
 def activate(rank: int) -> None:
     global _active, _rank, _sequence
-    if not enabled() or _active:
+    if not enabled() or _active or _recording_failed:
         return
     _active = True
     _rank = rank
@@ -43,73 +46,89 @@ def _next_sequence() -> int:
     return _sequence
 
 
+def _disable_recording() -> None:
+    global _recording_failed, _active
+    _recording_failed = True
+    _active = False
+    try:
+        logger.error("Flight recorder disabled after instrumentation failure; trace is incomplete")
+    except Exception:
+        pass
+
+
 def record_collective(kind: str, stream: Any, *tensors: Any) -> None:
     if not _active:
         return
-    descriptions = []
-    for tensor in tensors:
-        descriptions.append(
-            "%s/%s/ptr=%#x"
-            % (
-                tuple(int(value) for value in tensor.shape),
-                tensor.dtype,
-                int(tensor.data_ptr()),
+    try:
+        descriptions = []
+        for tensor in tensors:
+            descriptions.append(
+                "%s/%s/ptr=%#x"
+                % (
+                    tuple(int(value) for value in tensor.shape),
+                    tensor.dtype,
+                    int(tensor.data_ptr()),
+                )
             )
+        logger.warning(
+            "SPARK_FLIGHT rank=%d seq=%d op=%s stream=%#x tensors=%s",
+            _rank,
+            _next_sequence(),
+            kind,
+            int(stream.cuda_stream),
+            ",".join(descriptions),
         )
-    logger.warning(
-        "SPARK_FLIGHT rank=%d seq=%d op=%s stream=%#x tensors=%s",
-        _rank,
-        _next_sequence(),
-        kind,
-        int(stream.cuda_stream),
-        ",".join(descriptions),
-    )
+    except Exception:
+        _disable_recording()
 
 
 def record_b12x(arguments: dict[str, Any]) -> None:
     if not _active:
         return
-    names = (
-        "q_bytes",
-        "weights",
-        "k_quant_bytes",
-        "k_scales",
-        "real_page_table",
-        "seqlens",
-        "out_indices",
-        "out_values",
-        "pack_values",
-        "pack_indices",
-        "merge_state",
-    )
-    descriptions = []
-    for name in names:
-        tensor = arguments.get(name)
-        if tensor is None:
-            continue
-        descriptions.append(
-            "%s=%s/%s/stride=%s/ptr=%#x"
-            % (
-                name,
-                tuple(int(value) for value in tensor.shape),
-                tensor.dtype,
-                tuple(int(value) for value in tensor.stride()),
-                int(tensor.data_ptr()),
-            )
+    try:
+        names = (
+            "q_bytes",
+            "weights",
+            "k_quant_bytes",
+            "k_scales",
+            "real_page_table",
+            "seqlens",
+            "out_indices",
+            "out_values",
+            "pack_values",
+            "pack_indices",
+            "merge_state",
         )
-    import torch
+        descriptions = []
+        for name in names:
+            tensor = arguments.get(name)
+            if tensor is None:
+                continue
+            descriptions.append(
+                "%s=%s/%s/stride=%s/ptr=%#x"
+                % (
+                    name,
+                    tuple(int(value) for value in tensor.shape),
+                    tensor.dtype,
+                    tuple(int(value) for value in tensor.stride()),
+                    int(tensor.data_ptr()),
+                )
+            )
+        import torch
 
-    stream = torch.cuda.current_stream()
-    logger.warning(
-        "SPARK_FLIGHT rank=%d seq=%d op=B12X stream=%#x "
-        "ctas=%s threshold=%s tensors=%s",
-        _rank,
-        _next_sequence(),
-        int(stream.cuda_stream),
-        arguments.get("ctas_per_group"),
-        arguments.get("merge_threshold"),
-        ";".join(descriptions),
-    )
+        stream = torch.cuda.current_stream()
+        logger.warning(
+            "SPARK_FLIGHT rank=%d seq=%d op=B12X stream=%#x "
+            "ctas=%s threshold=%s tensors=%s",
+            _rank,
+            _next_sequence(),
+            int(stream.cuda_stream),
+            arguments.get("ctas_per_group"),
+            arguments.get("merge_threshold"),
+            ";".join(descriptions),
+        )
+    except Exception:
+        _disable_recording()
 
 
 def _wrap(module: ModuleType) -> None:
@@ -118,10 +137,8 @@ def _wrap(module: ModuleType) -> None:
         return
 
     def traced_run_fused_paged_indexer(*args: Any, **kwargs: Any) -> Any:
-        if args:
-            raise TypeError("run_fused_paged_indexer is keyword-only")
         record_b12x(kwargs)
-        return original(**kwargs)
+        return original(*args, **kwargs)
 
     traced_run_fused_paged_indexer._spark_tp4_flight_recorder = True
     module.run_fused_paged_indexer = traced_run_fused_paged_indexer
@@ -164,4 +181,5 @@ def install_b12x_import_hook() -> None:
     if loaded is not None:
         _wrap(loaded)
         return
-    sys.meta_path.insert(0, _TracingFinder())
+    if not any(isinstance(finder, _TracingFinder) for finder in sys.meta_path):
+        sys.meta_path.insert(0, _TracingFinder())

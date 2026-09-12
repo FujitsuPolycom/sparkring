@@ -1,3 +1,4 @@
+"""Test request-phase probe control ordering with injected callbacks, without CUDA."""
 from __future__ import annotations
 
 import json

@@ -1,6 +1,7 @@
 """CUDA-event timing for one GLM-5.2 round with four speculative tokens.
 
-This diagnostic never changes a collective's inputs, outputs, or ordering. It
+This diagnostic preserves inputs, outputs and intra-stream operation order.
+Reporting synchronizes the host once and may perturb later arrivals. It
 records CUDA events around the original vLLM operation and reports once the
 fixed call inventory in _EXPECTED has completed. Query-row counts Q5 and Q1
 represent a five-row target step and single-row draft steps for MTP4. This
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
+import math
 import os
 from pathlib import Path
 import time
@@ -81,14 +83,23 @@ def _initialize_event_pool(torch_module: Any, stream: Any) -> None:
     calibration_stop = torch_module.cuda.Event(enable_timing=True)
     calibration_start.record(stream)
     calibration_stop.record(stream)
-    _calibration_events = (calibration_start, calibration_stop)
+    pairs = []
     for _ in range(_TOTAL_WRAPPER_CALLS):
-        _event_pairs.append(
+        pairs.append(
             (
                 torch_module.cuda.Event(enable_timing=True),
                 torch_module.cuda.Event(enable_timing=True),
             )
         )
+    _event_pairs.extend(pairs)
+    _calibration_events = (calibration_start, calibration_stop)
+
+
+def _elapsed_ms(start: Any, stop: Any) -> float:
+    value = float(start.elapsed_time(stop))
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("CUDA event duration must be finite and nonnegative")
+    return value
 
 
 def _report() -> None:
@@ -98,7 +109,7 @@ def _report() -> None:
     _last_stop.synchronize()
 
     assert _calibration_events is not None
-    calibration_ms = _calibration_events[0].elapsed_time(_calibration_events[1])
+    calibration_ms = _elapsed_ms(*_calibration_events)
     total_device_ms = 0.0
     total_host_enqueue_us = 0.0
     total_calls = 0
@@ -107,7 +118,7 @@ def _report() -> None:
         family, q = key
         samples = _samples[key]
         expected_calls, logical_collectives = _EXPECTED[key]
-        device_ms = sum(start.elapsed_time(stop) for start, stop, _ in samples)
+        device_ms = sum(_elapsed_ms(start, stop) for start, stop, _ in samples)
         host_enqueue_us = sum(host_us for _, _, host_us in samples)
         total_device_ms += device_ms
         total_host_enqueue_us += host_enqueue_us
@@ -129,7 +140,7 @@ def _report() -> None:
             host_enqueue_us,
         )
 
-    covered_span_ms = _first_start.elapsed_time(_last_stop)
+    covered_span_ms = _elapsed_ms(_first_start, _last_stop)
     logger.warning(
         "SPARK_STOCK_TIMING rank=%s run_id=%s total wrapper_calls=%d "
         "logical_collectives=%d "
@@ -166,7 +177,7 @@ def _requested_run_id() -> str | None:
         return None
     try:
         value = Path(arm_path).read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeError):
         return None
     return value or None
 
@@ -181,7 +192,7 @@ def time_original(
     """Run an original collective unchanged and optionally time its GPU span."""
 
     global _armed, _first_host_ns, _first_start, _last_host_ns, _last_stop
-    global _run_id, _startup_q3_seen, _stream_id
+    global _run_id, _startup_q3_seen, _stream_id, _reported
     if not enabled() or _reported:
         return operation()
 
@@ -267,7 +278,10 @@ def time_original(
     _last_stop = stop
     _last_host_ns = host_after_ns
     _samples[key].append((start, stop, host_enqueue_us))
-    max_span_ms = float(os.getenv("SPARK_TP4_STOCK_TIMING_MAX_HOST_SPAN_MS", "2000"))
+    try:
+        max_span_ms = float(os.getenv("SPARK_TP4_STOCK_TIMING_MAX_HOST_SPAN_MS", "2000"))
+    except ValueError:
+        max_span_ms = float("nan")
     if (
         not 0.0 < max_span_ms <= 60_000.0
         or _first_host_ns is None
@@ -277,7 +291,12 @@ def time_original(
     elif (_last_host_ns - _first_host_ns) / 1_000_000.0 > max_span_ms:
         _invalidate("host_span_limit_exceeded")
     if _complete():
-        _report()
+        try:
+            _report()
+        except Exception:
+            _invalidate("report_failed")
+        finally:
+            _reported = True
     return result
 
 

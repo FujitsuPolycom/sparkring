@@ -160,3 +160,58 @@ def test_collector_rejects_unbounded_sample_counts(
             arm_path=tmp_path / "arm",
             sample_limit=sample_limit,
         )
+
+
+@pytest.mark.parametrize("sample_limit", [True, 1.5])
+def test_sample_limit_requires_integer(tmp_path, sample_limit):
+    with pytest.raises(ValueError, match="sample_limit"):
+        timing.ReplayTimingCollector(event_factory=lambda: FakeEvent(1),
+                                     arm_path=tmp_path / "arm", sample_limit=sample_limit)
+
+
+def test_failed_replay_is_not_a_successful_timing_sample(tmp_path):
+    arm = tmp_path / "arm"
+    arm.touch()
+    collector = timing.ReplayTimingCollector(event_factory=lambda: FakeEvent(1), arm_path=arm, sample_limit=1)
+    def fail():
+        raise RuntimeError("replay failed")
+    with pytest.raises(RuntimeError, match="replay failed"):
+        collector.measure("key", object(), fail)
+    snapshot = collector.snapshot()
+    assert snapshot["completed"] == snapshot["pending"] == 0
+    assert snapshot["errors"] == 1
+
+
+def test_event_allocation_failure_preserves_original_operation(tmp_path):
+    arm = tmp_path / "arm"
+    arm.touch()
+    def unavailable():
+        raise RuntimeError("no event")
+    collector = timing.ReplayTimingCollector(event_factory=unavailable, arm_path=arm, sample_limit=1)
+    calls = []
+    assert collector.measure("key", object(), lambda: calls.append(1) or "result") == "result"
+    assert calls == [1]
+    assert collector.snapshot()["errors"] == 1
+
+
+def test_sample_limit_bypass_calls_original_outside_collector_lock(tmp_path):
+    arm = tmp_path / "arm"
+    arm.touch()
+    collector = timing.ReplayTimingCollector(event_factory=lambda: FakeEvent(1), arm_path=arm, sample_limit=1)
+    collector.measure("key", object(), lambda: None)
+    def operation():
+        assert not collector._lock.locked()
+        return collector.snapshot()["completed"]
+    assert collector.measure("key", object(), operation) == 1
+
+
+@pytest.mark.parametrize("duration", [float("nan"), float("inf"), -1.0])
+def test_invalid_elapsed_time_is_diagnostic_error(tmp_path, duration):
+    arm = tmp_path / "arm"
+    arm.touch()
+    collector = timing.ReplayTimingCollector(event_factory=lambda: FakeEvent(duration), arm_path=arm, sample_limit=1)
+    collector.measure("key", object(), lambda: None)
+    result = collector.snapshot()
+    assert result["errors"] == 1
+    assert result["completed"] == 0
+    assert result["total_completed_ms"] == 0
