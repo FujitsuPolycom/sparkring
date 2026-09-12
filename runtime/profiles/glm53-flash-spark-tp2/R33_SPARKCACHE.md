@@ -22,7 +22,7 @@ neither that reference nor this plan proves one-million-token serving capacity.
 The R33 startup capacity check rejected the 6.75 GiB reference pin at this
 request limit: it estimated 7.27 GiB required, about 6.74 GiB available, and
 a 962,560-token maximum. Those estimates are specific to that image/run.
-The packaged profile and launcher now default to 7.5 GiB
+The packaged profile and launcher default to 7.5 GiB
 (`8053063680` bytes). The contract records 6.75 GiB separately as the reference
 pin, not the R33 one-million-token default. Explicit overrides remain available
 for 6.75, 7.5 and 8.75 GiB; they do not inherit qualification from another pin.
@@ -84,8 +84,9 @@ The published image contains the [preserved profile contract](../../releases/spa
 and has a matching verified image receipt. The checkout's profile contract also
 defines the separately deployed DCP4 overlay; it is not byte-identical to the
 embedded contract. TP2 uses the published image without that overlay. Its
-bounded checks are recorded separately from TP4. Use the external TP2 launcher
-with the published image receipt and its matching TP2 selection.
+bounded checks are recorded separately from TP4. Use
+`runtime/profiles/glm53-flash-spark-tp2/launch.py` with the published image
+receipt and `--r33-sparkcache`, as shown above.
 Changing packaged profile bytes requires a matching context/source lock,
 image build, and verification receipt; a build alone does not qualify serving.
 Modified images require their own tests rather than inheriting the published
@@ -98,7 +99,8 @@ R33 profile directory before context preparation. The file records implemented
 source/component capabilities with live qualification pending. Its schema is
 `sparkring-r33-runtime-capabilities/v1`,
 its `profile` is `tp2-dcp1-sparkcache`, and its `sources` must exactly match the
-contract's `vllm_integrated_tree`, `b12x_tree`, and `sparkcache_tree`.
+source build's `profile-contract.json` fields `vllm_integrated_tree`,
+`b12x_tree`, and `sparkcache_tree`.
 
 Both `checks` and `evidence_sha256` must contain exactly these keys:
 
@@ -125,8 +127,9 @@ The resulting image receipt carries `runtime_capabilities.document` and its
 both pinned SparkCache native library hashes in that image verification.
 These are source/package capability gates. Completed GPU/model/cache-recovery
 results belong in the separate activation receipt and remain release gates.
-Do not change admission status to `qualified` or use a live result as a
-substitute for a missing source/component compatibility check.
+Keep the capability document's `checks` values as `implemented` and its
+`live_qualification` as `pending`; the separate activation receipt records live
+results. A live result cannot replace a missing source/component compatibility check.
 
 Activation requires positive managed-B12X allocation, coalescing, mHC and
 RoCEnante activity on both ranks. For an 8,192-row TP2 prefill, each owner must
