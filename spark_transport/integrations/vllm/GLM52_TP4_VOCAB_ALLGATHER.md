@@ -39,6 +39,7 @@ cmake --build build/spark-transport --target \
   spark_transport_capi \
   spark_tp4_vocab_allgather_probe \
   tp4_vocab_allgather_c_api_test \
+  tp4_vocab_allgather_layout_test \
   --parallel
 ctest --test-dir build/spark-transport \
   -R tp4_vocab_allgather \

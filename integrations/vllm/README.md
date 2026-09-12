@@ -150,8 +150,8 @@ VLLM_SPARK_TP4_MODE=shadow
 VLLM_SPARK_TP4_VOCAB_MODE=shadow
 SPARK_TP4_LIBRARY=/opt/spark-transport/libspark_transport_capi.so
 VLLM_SPARK_MAX_QUERY_ROWS=40
-SPARK_TP4_PEER0=<direct-peer-0>
-SPARK_TP4_PEER1=<direct-peer-1>
+SPARK_TP4_PEER0='<direct-peer-0>'
+SPARK_TP4_PEER1='<direct-peer-1>'
 ```
 
 Use `custom` only after deterministic four-rank native probes and the relevant

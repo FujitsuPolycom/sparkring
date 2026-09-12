@@ -25,10 +25,11 @@ ValueError naming ``VLLM_SPARK_TP4_QUERY_ROW_PROVIDER`` and the module.
 Configuring both Q512 and a provider raises rather than letting two
 geometry sources compete silently.
 
-The provider module name is part of the launch identity: every rank
-must configure the same value (or none). A mismatch produces differing
-port reservations and fails native session establishment; it is not
-detectable from a single rank.
+Ranks must resolve the same admitted row set. The capability vote compares
+resolved rows rather than provider module names, so different modules that
+return the same rows are compatible. Disagreement fails the rank-wide vote
+before native session establishment. A rank that never enters that vote
+cannot be diagnosed by another rank; consistent launch settings remain required.
 """
 
 from __future__ import annotations
@@ -48,8 +49,8 @@ MAX_PROVIDER_QUERY_ROW = 512
 
 _PREFILL_Q512_ROWS = tuple(range(1, 513))
 
-# Cache for ambient-environment resolutions only. os.environ is
-# immutable for the life of a launch, so those resolutions are
+# Cache for ambient-environment resolutions only. launch settings must remain
+# unchanged for the life of a process, so those resolutions are
 # per-process constants and the cache keeps the admission hot path
 # allocation-free. Explicit environment mappings are never cached: a
 # provider may read arbitrary variables from the mapping it is given,
