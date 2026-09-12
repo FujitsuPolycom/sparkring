@@ -136,3 +136,59 @@ def test_memory_capabilities_match_source_contract(tmp_path):
         "memory-idle",
         "memory-prepare",
     ]
+
+def test_preserve_bootstrap_addresses_and_external_connections(tmp_path):
+    from scripts.deploy_network import plan_network
+
+    observed = inventory()
+    # Bootstrap assigns .10/.11, rather than the fresh-site planner's .1/.2.
+    for host in observed['hosts'].values():
+        for interface in host['interfaces'][1:]:
+            address = interface['ipv4'][0]
+            prefix, last = address.split('/')[0].rsplit('.', 1)
+            address = prefix + '.' + str(int(last) + 9) + '/24'
+            interface['ipv4'] = [address]
+            interface['network_manager']['ipv4_addresses'] = [address]
+    before = copy.deepcopy(observed)
+    spec = create_spec(observed, 'adopt', '/srv/sparkring/adopt', preserve_existing_network=True)
+    plan = plan_network(spec, observed['hosts'])
+    for host, network_host in zip(spec['hosts'], plan['hosts'], strict=True):
+        facts = observed['hosts'][host['host']]
+        by_name = {i['name']: i for i in facts['interfaces']}
+        for port, record in zip(host['data_interfaces'], network_host['interfaces'], strict=True):
+            assert port['address'] == by_name[port['netdev']]['ipv4'][0]
+            assert 'replace_connection_uuid' not in port
+            assert record['action'] == 'none'
+            assert record['previous_connection_uuid'] == by_name[port['netdev']]['network_manager']['connection_uuid']
+        assert network_host['apply'] == []
+    assert observed == before
+    source = tmp_path / 'inventory.json'
+    source.write_text(json.dumps(observed))
+    output = tmp_path / 'preparation.json'
+    assert main(['plan', '--inventory', str(source), '--name', 'adopt', '--workspace', '/srv/sparkring/adopt', '--preserve-existing-network', '--output', str(output)]) == 0
+    assert json.loads(output.read_text())['spec'] == spec
+
+
+@pytest.mark.parametrize('addresses', [[], ['198.18.0.10/32'], ['198.18.0.10/24', '198.18.0.12/24']])
+def test_preserve_network_rejects_incomplete_endpoint(addresses):
+    observed = inventory()
+    next(iter(observed['hosts'].values()))['interfaces'][1]['ipv4'] = addresses
+    with pytest.raises(ValueError, match='exactly one|observed IPv4 /24'):
+        create_spec(observed, 'adopt', '/srv/sparkring/adopt', preserve_existing_network=True)
+
+
+def test_preserve_network_rejects_saved_state_replacement():
+    observed = inventory()
+    interface = next(iter(observed['hosts'].values()))['interfaces'][1]
+    interface['network_manager']['ipv4_addresses'] = ['198.18.250.1/24']
+    with pytest.raises(ValueError, match='unowned connection'):
+        create_spec(observed, 'adopt', '/srv/sparkring/adopt', preserve_existing_network=True)
+
+
+def test_preserve_network_rejects_broken_cable_cycle():
+    observed = inventory()
+    interface = next(iter(observed['hosts'].values()))['interfaces'][1]
+    interface['ipv4'] = ['198.18.250.1/24']
+    interface['network_manager']['ipv4_addresses'] = interface['ipv4'][:]
+    with pytest.raises(ValueError):
+        create_spec(observed, 'adopt', '/srv/sparkring/adopt', preserve_existing_network=True)

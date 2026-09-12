@@ -95,7 +95,7 @@ def discover(nodes, controller_address, run=None):
 
 
 def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_receipt=None,
-                *, reuse_existing_image=False, existing_model_roots=None, runtime_profile=None):
+                *, reuse_existing_image=False, existing_model_roots=None, runtime_profile=None, preserve_existing_network=False):
     """Derive network and profile inputs from host facts and the documented cable cycle."""
     if (
         inventory.get("schema") != "sparkring-deploy-inventory/v1"
@@ -148,6 +148,14 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
                 subnets[edge + function * 4].network_address + (1 if clockwise else 2)
             )
             netdev = mapping[device]["netdev"]
+            if preserve_existing_network:
+                observed = interfaces[netdev].get("ipv4", [])
+                if not isinstance(observed, list) or len(observed) != 1:
+                    raise ValueError(f"{host['host']}: {netdev} requires exactly one observed IPv4 /24 address")
+                endpoint = ipaddress.ip_interface(observed[0])
+                if endpoint.version != 4 or endpoint.network.prefixlen != 24:
+                    raise ValueError(f"{host['host']}: {netdev} requires an observed IPv4 /24 address")
+                address = str(endpoint.ip)
             host["data_interfaces"].append(
                 {
                     "role": role,
@@ -226,6 +234,13 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
                   "model_roots": list(existing_model_roots)}
         result["site"]["model_roots"] = validate_existing_assets(assets)
         result["existing_assets"] = assets
+    if preserve_existing_network:
+        # Reuse the planner's cycle, management-isolation, and saved-state checks.
+        # Existing connection UUIDs remain external; adoption grants no replacement rights.
+        existing_plan = plan_network(result, inventory["hosts"])
+        if any(port["action"] != "none" for host in existing_plan["hosts"]
+               for port in host["interfaces"]):
+            raise ValueError("Preserving the existing network requires matching saved NetworkManager settings on all 16 endpoints")
     return result
 
 
@@ -291,6 +306,8 @@ def main(argv=None):
     p.add_argument("--name", required=True)
     p.add_argument("--workspace", required=True)
     p.add_argument("--fabric-range", default="198.18.0.0/21")
+    p.add_argument("--preserve-existing-network", action="store_true",
+                   help="Keep all 16 observed /24 endpoint addresses and existing connection UUIDs; require a coherent configured cycle")
     p.add_argument("--image-receipt", type=Path,
                    help="Explicit verified local source composition or canonical performance receipt; omission retains the base public image")
     p.add_argument("--reuse-existing-image", action="store_true",
@@ -358,7 +375,8 @@ def main(argv=None):
             spec = create_spec(inventory, args.name, args.workspace, args.fabric_range, args.image_receipt,
                                reuse_existing_image=args.reuse_existing_image,
                                existing_model_roots=args.existing_model_root,
-                               runtime_profile=args.runtime_profile)
+                               runtime_profile=args.runtime_profile,
+                               preserve_existing_network=args.preserve_existing_network)
             network = plan_network(spec, inventory["hosts"])
             result = {
                 "schema": "sparkring-deploy-preparation/v1",

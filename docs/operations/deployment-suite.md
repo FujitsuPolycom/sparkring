@@ -56,6 +56,15 @@ sr network-plan --preparation "$STATE/preparation.json" \
   --inventory "$STATE/inventory.json" --output "$STATE/network-plan.json"
 ```
 
+For a mesh already configured by host setup, replace `--fabric-range 198.18.0.0/21`
+with `--preserve-existing-network`. This retains all 16 observed endpoint addresses
+and existing NetworkManager UUIDs after checking the cable cycle and saved settings.
+The generated network plan must show `action: none` for every interface; driver
+settings are checked separately. An incomplete or inconsistent configuration fails
+planning: correct the host settings, rediscover, and plan again. The flag never
+authorizes replacing an existing connection. Omit it when provisioning fresh endpoints.
+
+
 Discovery reads hosts; both plan commands are offline. Inspect the resulting
 JSON, especially management interfaces, RDMA devices, data addresses, backups,
 and proposed changes. The fabric range must not overlap management or VPN

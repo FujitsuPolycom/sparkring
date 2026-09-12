@@ -58,7 +58,7 @@ sr discover --controller-address 192.0.2.10 \
   --node spark2=192.0.2.22 --node spark3=192.0.2.23 \
   --output "$STATE/inventory.json"
 sr plan --inventory "$STATE/inventory.json" --name glm-tp4 \
-  --workspace /srv/sparkring/glm-tp4 --fabric-range 198.18.0.0/21 \
+  --workspace /srv/sparkring/glm-tp4 --preserve-existing-network \
   --image-receipt "$SPARKRING_RECEIPT" --runtime-profile "$RUNTIME_PROFILE" \
   --output "$STATE/preparation.json"
 sr network-plan --preparation "$STATE/preparation.json" \
@@ -77,6 +77,11 @@ do not pass `tp4-dcp4` to it. Use the DCP4 procedure below instead.
 
 Continue in the [deployment suite at “Apply networking, then verify it”](../../docs/operations/deployment-suite.md#apply-networking-then-verify-it),
 using the `STATE`, `SPARKRING_RECEIPT` and preparation file from this guide.
+The preservation flag retains the endpoint addresses and connection UUIDs configured
+by host setup. Planning rejects incomplete addressing, inconsistent cable subnets,
+or saved NetworkManager settings that would require connection replacement.
+Correct those settings and rediscover before planning again.
+
 Do not repeat the generic guide's receipt-free `sr plan` example.
 
 Follow its stages in order:
