@@ -168,9 +168,11 @@ source before creating its source manifest. The transform checks both input
 and output hashes and records its own digest in the build receipt. It rejects
 unexpected source rather than applying a speculative replacement. The accepted
 input is the raw byte sequence with SHA-256
-`d3ec6274e142a4e7d1062ea6d2d99b97db0a02e92bb976c6570ae990b836b18d`,
-including its mixed line endings. The output uses LF line endings. Both files
-have identical Python source after newline normalization.
+`d3ec6274e142a4e7d1062ea6d2d99b97db0a02e92bb976c6570ae990b836b18d`;
+the transform does not normalize input before hashing. Its patched output uses
+LF line endings. The separately GPU-tested patched file had mixed line endings;
+its normalized Python source matches the transform output, which also passed
+the 15 GPU correctness tests recorded in the linked evidence.
 
 The [published child image](../runtime/glm53-flash-jj-r8-gb10/hotfix/README.md)
 includes the fix; users do not need to rebuild it. Existing image digests are

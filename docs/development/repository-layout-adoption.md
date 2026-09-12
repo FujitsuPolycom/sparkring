@@ -46,10 +46,11 @@ No useful evidence was deleted or uploaded to another location.
 
 ## Verification
 
-The repository-wide source, prose, configuration, generated-owner and artifact
-provenance review covers all 1,537 tracked files at their recorded blobs. The
-checks below ran on Windows with Python 3.12 at commit `ef8de04`; the adoption
-document changes only this report.
+The file inventory contains 1,537 tracked files. Exhaustive semantic review is
+not established: several completion records assigned full-review status without
+recovering the underlying review or inspecting all intervening changes. Those
+records require reconciliation before an exhaustive-review claim is warranted.
+The checks below ran on Windows with Python 3.12 at commit `ef8de04`.
 
 | Check | Result |
 |---|---|
