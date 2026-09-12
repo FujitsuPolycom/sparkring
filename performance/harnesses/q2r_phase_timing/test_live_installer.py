@@ -534,6 +534,9 @@ def test_real_draft_generation_calls_get_positions_not_synthetic_steps(
             for position in range(1, 5)
         }
         assert not any("position=5," in key for key in coverage["observed"])
+        assert snapshot["coverage"]["graph_methods"]["counts"]["draft_decode"] == (
+            4 if dispatch == "full_graph" else 0
+        )
     finally:
         live.uninstall()
 

@@ -508,6 +508,13 @@ class LiveQ2RSession:
                 )
                 for method in ("run_fullgraph", "run_pw_graph")
             )
+        # Scoped draft replays use generation-position descriptors instead of
+        # manager descriptors. Include them once in the graph-method total.
+        graph_counts["draft_decode"] += sum(
+            int(descriptor_metrics[descriptor.key]["count"])
+            for descriptor in self._draft_ordinals.descriptors
+            if descriptor.name.endswith(",dispatch=full_graph")
+        )
         step_samples = (
             target_forward_samples + sample_and_draft_samples
         )
