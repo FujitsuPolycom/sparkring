@@ -5,6 +5,25 @@ import sys
 
 import pytest
 
+
+def test_layout_check_protects_locked_markdown_asset(tmp_path):
+    import hashlib
+    import json
+    from scripts.check_repository_layout import validate_locked_profile_assets
+
+    asset = tmp_path / "runtime/example/README.md"
+    asset.parent.mkdir(parents=True)
+    asset.write_bytes(b"# Published build input\n")
+    lock = tmp_path / "runtime/sparkring/source_image/glm53-tp4-lock.json"
+    lock.parent.mkdir(parents=True)
+    lock.write_text(json.dumps({"profile_assets": {
+        "runtime/example/README.md": {"sha256": hashlib.sha256(asset.read_bytes()).hexdigest()}
+    }}))
+    assert validate_locked_profile_assets(tmp_path) == 1
+    asset.write_bytes(b"# Edited documentation\n")
+    with pytest.raises(ValueError, match="published profile asset changed"):
+        validate_locked_profile_assets(tmp_path)
+
 sys.path.insert(0, str(Path(__file__).parent))
 import check_markdown_links as markdown  # noqa: E402
 import check_release_safety as safety  # noqa: E402

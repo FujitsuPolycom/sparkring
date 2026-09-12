@@ -4,10 +4,16 @@ Profile: `glm53-flash-spark-tp4-switched`. Status: **Experimental**. Provided as
 
 Inspect its selected defaults with `python3 scripts/profiles.py resolve glm53-flash-spark-tp4-switched`.
 
-Use the [switched profile](../../runtime/profiles/glm53-flash-spark-tp4-switched/README.md)
+Use the [frozen source-image profile reference](../../runtime/profiles/glm53-flash-spark-tp4-switched/README.md)
 for four one-GPU nodes connected through a RoCE switch. It selects the common
 SparkRing image, NVFP4-Spark, TP4/DCP1, static MTP3, coalescing, and mHC with
 ordinary NCCL. SparkCache is disabled.
+
+That runtime README is a byte-pinned build input; maintain operational
+instructions on this page. The dependency field `nccl.audited_lock_sha256`
+contains the patched NCCL library hash, matching `runtime.nccl_sha256` in the
+[source lock](../../runtime/sparkring/source_image/glm53-tp4-lock.json).
+The image receipt's `source_lock_sha256` identifies the complete lock.
 
 ## Prepare the source image
 

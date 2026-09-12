@@ -28,6 +28,14 @@ def validate_preserved(root=ROOT):
     return len(record['files'])
 
 
+def validate_locked_profile_assets(root=ROOT):
+    lock = read_json(root/'runtime/sparkring/source_image/glm53-tp4-lock.json')
+    for source, record in lock['profile_assets'].items():
+        if hashlib.sha256(local_path(source, root).read_bytes()).hexdigest() != record['sha256']:
+            raise ValueError(f'{source}: published profile asset changed; preserve the locked bytes')
+    return len(lock['profile_assets'])
+
+
 def validate_imports(root=ROOT):
     paths = []
     for directory in ('runtime', 'integrations', 'scripts', 'spark_transport/fabric'):
@@ -95,10 +103,11 @@ def main():
             resolve(id)
         generated = generate(check=True)
         frozen = validate_preserved()
+        locked_assets = validate_locked_profile_assets()
         imports = validate_imports()
         builders = validate_build_contracts()
         validate_artifacts()
-        print(f'Validated {len(catalog())} profiles, {generated} exports, {frozen} preserved inputs, {imports} Python sources and {builders} builders')
+        print(f'Validated {len(catalog())} profiles, {generated} exports, {frozen} preserved inputs, {locked_assets} locked profile assets, {imports} Python sources and {builders} builders')
     except (ValueError, OSError, KeyError, SyntaxError) as error:
         print(error, file=sys.stderr)
         return 1
