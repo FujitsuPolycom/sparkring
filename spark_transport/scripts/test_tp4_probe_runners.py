@@ -9,6 +9,7 @@ owned-container removal in a finally block, and rank mapping over filtered entri
 from __future__ import annotations
 
 import os
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -150,7 +151,7 @@ $env:SPARKRING_RANK_HOSTS='host0,host1,host2,host3'
 function global:ssh { Write-Host "COMMAND=$($args[-1])"; $global:LASTEXITCODE=0 }
 function global:scp { $global:LASTEXITCODE=9 }
 for ($i=0; $i -lt 2; $i++) {
-    try { & 'SCRIPT' -Image 'fake-image' } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+    try { & 'SCRIPT' -Image 'fake-image' -DevicePreset documented-cycle } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
 }
 """.replace("SCRIPT", (SCRIPTS / "run_tp4_vocab_graph_stream_switch_probe.ps1").as_posix())
     result = _powershell("-Command", command, env=os.environ.copy())
@@ -188,7 +189,9 @@ try { & 'SCRIPT' -Image fake-image MAPPING } catch { Write-Host "EXPECTED=$($_.E
         assert f"--device0 {devices0[rank]} --device1 {devices1[rank]}" in line
 
 
-@pytest.mark.parametrize("name", RUNNERS[:3])
+@pytest.mark.parametrize("name", RUNNERS[:3] + (
+    "run_tp4_vocab_graph_probe.ps1", "run_tp4_vocab_graph_stream_switch_probe.ps1",
+))
 @pytest.mark.parametrize("mapping", ["", "-Device0 a,a,a,a", "-Device0 a,a,a -Device1 b,b,b", "-Device0 a,a,a,a -Device1 a,b,b,b", "-Device0 'a;bad',a,a,a -Device1 b,b,b,b", "-DevicePreset documented-cycle -Device0 a,a,a,a -Device1 b,b,b,b"])
 def test_invalid_device_mapping_fails_before_ssh(name, mapping):
     command = r"""
@@ -226,6 +229,8 @@ try {
 """.replace("SCRIPT", (SCRIPTS / name).as_posix())
     if not embedded_empty:
         command = command.replace(",''", "")
+    if name == "run_tp4_vocab_graph_probe.ps1":
+        command = command.replace("-Image fake-image", "-Image fake-image -DevicePreset documented-cycle")
     result = _powershell("-Command", command, env=os.environ.copy())
     assert result.returncode == 0, result.stdout + result.stderr
     lines = result.stdout.splitlines()
@@ -247,3 +252,60 @@ try {
         assert "--peer0 peer0 --peer1 peer2" in launches[1][0]
     else:
         assert all("MASTER_ADDR=peer0 " in command for command, _ in launches)
+
+
+@pytest.mark.parametrize("name", [
+    "run_tp4_vocab_graph_probe.ps1", "run_tp4_vocab_graph_stream_switch_probe.ps1",
+])
+@pytest.mark.parametrize("mapping,devices0,devices1", [
+    ("-DevicePreset documented-cycle", ["rocep1s0f0", "rocep1s0f1"] * 2, ["rocep1s0f1", "rocep1s0f0"] * 2),
+    ("-Device0 a,b,c,d -Device1 e,f,g,h", list("abcd"), list("efgh")),
+])
+def test_vocabulary_graph_launches_use_selected_device_mapping(name, mapping, devices0, devices1):
+    command = r"""
+$env:SPARKRING_TARGETS='host0,host1,host2,host3'
+$env:SPARKRING_RANK_HOSTS='peer0,peer1,peer2,peer3'
+function global:scp { $global:LASTEXITCODE=0 }
+function global:ssh {
+    $cmd=$args[-1]; Write-Host "COMMAND=$cmd"; $global:LASTEXITCODE=0
+    if ($cmd -match 'sha256sum') {
+        if ($cmd -match 'spark_tp4_query_contract.py') {
+            foreach ($match in [regex]::Matches(($cmd -split 'sha256sum ')[1], "'([^']+)'")) {
+                $path=$match.Groups[1].Value
+                $hash=switch -Wildcard ($path) {
+                    '*/probe.py' { 'PROBE_HASH' }
+                    '*/adapter.py' { 'ADAPTER_HASH' }
+                    '*/spark_tp4_query_contract.py' { 'CONTRACT_HASH' }
+                    default { '8657306b1807c4111687f5f128725ff6726be2c8c8c4bebc67b520a730c0acca' }
+                }
+                Write-Output "$hash  $path"
+            }
+        } else { Write-Output 'identical fixture hashes' }
+    }
+    if ($cmd -match 'docker run .*?-r3 ') { $global:LASTEXITCODE=255 }
+}
+try { & 'SCRIPT' -Image fake-image MAPPING } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+""".replace("SCRIPT", (SCRIPTS / name).as_posix()).replace("MAPPING", mapping)
+    integration = SCRIPTS.parent / "integrations/vllm"
+    for token, filename in (
+        ("PROBE_HASH", "probe_vocab_graph_stream_switch.py"),
+        ("ADAPTER_HASH", "spark_tp4_vocab_allgather_backend.py"),
+        ("CONTRACT_HASH", "spark_tp4_query_contract.py"),
+    ):
+        command = command.replace(token, hashlib.sha256((integration / filename).read_bytes()).hexdigest())
+    result = _powershell("-Command", command, env=os.environ.copy())
+    launches = [line for line in result.stdout.splitlines() if line.startswith("COMMAND=") and "docker run" in line]
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(launches) == 4, result.stdout + result.stderr
+    for rank, launch in enumerate(launches):
+        if "stream_switch" in name:
+            assert f"-e SPARK_TP4_DEVICE0={devices0[rank]} " in launch
+            assert f"-e SPARK_TP4_DEVICE1={devices1[rank]} " in launch
+            assert f"-e SPARK_TP4_PEER0=peer{rank ^ 1} " in launch
+            assert f"-e SPARK_TP4_PEER1=peer{rank ^ 3} " in launch
+        else:
+            assert f"--device0 {devices0[rank]} --device1 {devices1[rank]}" in launch
+            assert f"--peer0 peer{rank ^ 1} --peer1 peer{rank ^ 3}" in launch
+    if "stream_switch" in name:
+        assert "model_container=glm52-trace model_container_running=false" in result.stdout
+        assert "model_down=true" not in result.stdout

@@ -40,9 +40,13 @@ function global:ssh {
 $failures = @()
 foreach ($run in 1..2) {
     try {
+        $mapping = @{}
+        if ($env:PROBE_SCRIPT -like '*vocab_graph_probe.ps1') {
+            $mapping.DevicePreset = 'documented-cycle'
+        }
         & $env:PROBE_SCRIPT -Image fixture-image -ModelContainer custom.serving `
             -Targets node0,node1,node2,node3 -RankHosts 192.0.2.1,192.0.2.2,192.0.2.3,192.0.2.4 `
-            -KeepContainers:($env:PROBE_SCENARIO -eq 'keep')
+            -KeepContainers:($env:PROBE_SCENARIO -eq 'keep') @mapping
     } catch { $failures += $_.Exception.Message }
 }
 'CAPTURE_JSON ' + (@{calls=@($commands); failures=$failures} | ConvertTo-Json -Depth 4 -Compress)
@@ -66,8 +70,9 @@ foreach ($run in 1..2) {
     assert all("docker rm" not in call for call in launches)
     names = [re.search(r"--name (\S+)", call)[1] for call in launches]
     assert len(names) == len(set(names))
-    owned = {re.search(r"--name (\S+)", call)[1] for call in launches
-             if not (scenario == "launch_failure" and "-r1 " in call)}
+    # A failed SSH reply can follow successful container creation. Every
+    # invocation-specific attempted name must be included in cleanup.
+    owned = {re.search(r"--name (\S+)", call)[1] for call in launches}
     removed = {re.search(r"docker rm -f (\S+)", call)[1] for call in removals}
     assert removed == (set() if scenario == "keep" else owned)
     assert all("glm52-trace" not in call for call in calls)

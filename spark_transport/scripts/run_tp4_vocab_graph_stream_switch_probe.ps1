@@ -36,6 +36,10 @@ param(
     [string]$Image = "<your-vllm-image>",
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
+    [ValidateSet("documented-cycle")]
+    [string]$DevicePreset,
+    [string[]]$Device0 = @(),
+    [string[]]$Device1 = @(),
 
     [switch]$KeepContainers
 )
@@ -100,6 +104,9 @@ foreach ($cpu in @($SubmitCpu, $TpProgressCpu, $VocabProgressCpu)) {
 $Targets = @($Targets | Where-Object { $_ })
 $RankHosts = @($RankHosts | Where-Object { $_ })
 
+. "$PSScriptRoot/tp4_device_mapping.ps1"
+$deviceMapping = @(Resolve-Tp4DeviceMapping -Preset $DevicePreset -Device0 $Device0 -Device1 $Device1)
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $probeSource = Join-Path $repoRoot `
     "spark_transport\integrations\vllm\probe_vocab_graph_stream_switch.py"
@@ -134,24 +141,32 @@ $remoteStage = "/tmp/spark-vocab-stream-switch-$stageId-$runIdentity"
 $nodes = @(
     [pscustomobject]@{
         Rank = 0
+        Device0 = $deviceMapping[0].Device0
+        Device1 = $deviceMapping[0].Device1
         Target = $Targets[0]
         Peer0 = $RankHosts[1]
         Peer1 = $RankHosts[3]
     },
     [pscustomobject]@{
         Rank = 1
+        Device0 = $deviceMapping[1].Device0
+        Device1 = $deviceMapping[1].Device1
         Target = $Targets[1]
         Peer0 = $RankHosts[0]
         Peer1 = $RankHosts[2]
     },
     [pscustomobject]@{
         Rank = 2
+        Device0 = $deviceMapping[2].Device0
+        Device1 = $deviceMapping[2].Device1
         Target = $Targets[2]
         Peer0 = $RankHosts[3]
         Peer1 = $RankHosts[1]
     },
     [pscustomobject]@{
         Rank = 3
+        Device0 = $deviceMapping[3].Device0
+        Device1 = $deviceMapping[3].Device1
         Target = $Targets[3]
         Peer0 = $RankHosts[2]
         Peer1 = $RankHosts[0]
@@ -199,7 +214,7 @@ try {
             throw "failed to inspect running containers on rank $($node.Rank)"
         }
         if (($runningModel -join "`n").Trim() -eq "glm52-trace") {
-            throw "rank $($node.Rank) still runs glm52-trace; the stream-switch probe requires the model-down memory window"
+            throw "rank $($node.Rank) still runs glm52-trace; stop that serving container explicitly before the stream-switch probe"
         }
 
         $mkdirExit = Invoke-NodeSsh -Node $node `
@@ -248,7 +263,8 @@ try {
     if (@($artifactHashes | Sort-Object -Unique).Count -ne 1) {
         throw "stream-switch probe artifact SHA-256 values differ across ranks"
     }
-    Write-Output "preflight=pass model_down=true identical_sha256=true"
+    # This guard checks one named container, not all GPU users on the host.
+    Write-Output "preflight=pass model_container=glm52-trace model_container_running=false identical_sha256=true"
     Write-Output $artifactHashes[0]
 
     foreach ($node in $nodes) {
@@ -268,8 +284,8 @@ try {
             "-e VLLM_SPARK_TP4_GRAPH_Q1=1"
             "-e SPARK_TP4_PEER0=$($node.Peer0)"
             "-e SPARK_TP4_PEER1=$($node.Peer1)"
-            "-e SPARK_TP4_DEVICE0=rocep1s0f0"
-            "-e SPARK_TP4_DEVICE1=rocep1s0f1"
+            "-e SPARK_TP4_DEVICE0=$($node.Device0)"
+            "-e SPARK_TP4_DEVICE1=$($node.Device1)"
             "-e SPARK_TP4_GID0=3"
             "-e SPARK_TP4_GID1=3"
             "-e SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0=$ControlPort0"
