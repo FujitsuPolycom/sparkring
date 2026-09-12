@@ -26,32 +26,31 @@ fatal() {
   exit 78
 }
 
-# Resolve the parent image to its immutable ID and fail closed on drift.
+repo_root="$(git -C "${here}" rev-parse --show-toplevel 2>/dev/null)" ||
+  fatal "builder must run from a Git checkout"
+sparkring_revision="$(git -C "${repo_root}" rev-parse HEAD)"
+build_inputs=(
+  runtime/exl3-r7
+  runtime/build-public-overlay.py
+  runtime/public-overlay-files.json
+  spark_transport
+  scripts/glm35_q40/prepare_q40_overlay_inputs.py
+  scripts/glm35_q40/q40_v2_route_capture.patch
+)
+if ! git -C "${repo_root}" diff --quiet HEAD -- "${build_inputs[@]}"; then
+  fatal "builder inputs differ from SparkRing revision ${sparkring_revision}"
+fi
+untracked_inputs="$(git -C "${repo_root}" ls-files --others --exclude-standard -- "${build_inputs[@]}")"
+if [[ -n "${untracked_inputs}" ]]; then
+  fatal "builder inputs include untracked files: ${untracked_inputs%%$'\n'*}"
+fi
+# Resolve the parent only after every checkout-owned build input is verified.
 observed_base="$("${engine}" image inspect --format '{{.Id}}' "${base_image}" 2>/dev/null || true)"
 if [[ -z "${observed_base}" ]]; then
   fatal "parent image not found: ${base_image}"
 fi
 if [[ "${observed_base}" != "${base_image_id}" ]]; then
   fatal "parent image identity drift: expected ${base_image_id}, got ${observed_base}"
-fi
-
-repo_root="$(git -C "${here}" rev-parse --show-toplevel 2>/dev/null)" ||
-  fatal "builder must run from a Git checkout"
-sparkring_revision="$(git -C "${repo_root}" rev-parse HEAD)"
-if ! git -C "${repo_root}" diff --quiet HEAD -- \
-  runtime/exl3-r7 \
-  runtime/build-public-overlay.py \
-  runtime/public-overlay-files.json \
-  spark_transport; then
-  fatal "builder inputs differ from SparkRing revision ${sparkring_revision}"
-fi
-untracked_inputs="$(git -C "${repo_root}" ls-files --others --exclude-standard -- \
-  runtime/exl3-r7 \
-  runtime/build-public-overlay.py \
-  runtime/public-overlay-files.json \
-  spark_transport)"
-if [[ -n "${untracked_inputs}" ]]; then
-  fatal "builder inputs include untracked files: ${untracked_inputs%%$'\n'*}"
 fi
 image_licenses="${base_image_licenses} AND Apache-2.0 AND MIT AND BSD-3-Clause"
 

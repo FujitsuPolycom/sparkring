@@ -42,8 +42,8 @@ creating a build context.
 
 ```bash
 BASE_IMAGE=ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028 \
-BASE_IMAGE_ID=<docker-image-id> \
-BASE_IMAGE_LICENSES=<audited-spdx-expression> \
+BASE_IMAGE_ID='<docker-image-id>' \
+BASE_IMAGE_LICENSES='<audited-spdx-expression>' \
   ./runtime/exl3-r7/build-image.sh
 ```
 
