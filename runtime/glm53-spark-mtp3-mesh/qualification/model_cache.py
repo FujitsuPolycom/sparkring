@@ -1,4 +1,4 @@
-"""Record bounded native-MTP model requests and cache evidence without host changes."""
+"""Send bounded MTP requests to a serving endpoint and record cache evidence."""
 from __future__ import annotations
 
 import argparse
@@ -60,6 +60,12 @@ def temperature_value(text):
     if not math.isfinite(value) or not 0 <= value <= 2:
         raise ValueError("Temperature must be finite and between 0 and 2")
     return value
+
+
+def cache_metric_deltas(before, after):
+    """Omit unrepresentable differences, as for non-finite metric samples."""
+    return {key: delta for key, value in after.items() if key in before
+            and math.isfinite(delta := value - before[key])}
 
 
 def main():
@@ -125,7 +131,7 @@ def main():
                "semantic_passed": passed, "semantic_status": "passed" if passed else "inconclusive",
                "elapsed_seconds": elapsed,
                "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-               "cache_metric_deltas": {key: value - before[key] for key, value in after.items() if key in before},
+               "cache_metric_deltas": cache_metric_deltas(before, after),
                "finish_reason": choice.get("finish_reason"), "usage": response.get("usage"),
                "content": content, "persistent_restore_proven": False,
                "limitation": "Require per-rank external restore logs and external-hit metric deltas; latency alone is insufficient. One stochastic canary does not establish model or cache correctness; a mismatch needs repeated controls."}

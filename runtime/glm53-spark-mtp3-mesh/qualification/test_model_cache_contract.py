@@ -32,6 +32,12 @@ def test_metric_overflow_is_not_serialized_as_infinity():
     assert cache.cache_metrics("prefix_hit_total 1e999\nexternal_hit_total -1e999\nprefix_valid 12.5\n") == {"prefix_valid": 12.5}
 
 
+def test_metric_difference_overflow_is_omitted_from_json_evidence():
+    result = cache.cache_metric_deltas({'prefix_hits': -1e308, 'prefix_valid': 5},
+                                      {'prefix_hits': 1e308, 'prefix_valid': 8})
+    assert json.loads(json.dumps(result, allow_nan=False)) == {'prefix_valid': 3}
+
+
 @pytest.mark.parametrize("value", ["-", ".", "1e", "++2"])
 def test_malformed_metric_numbers_are_ignored(value):
     assert cache.cache_metrics(f"prefix_hits {value}\n") == {}
