@@ -475,12 +475,10 @@ class LiveQ2RSession:
         return self._collector.drain()
 
     def snapshot(self) -> dict[str, Any]:
-        # Status reporting starts before the first explicit arm.  Once
-        # initialize_kv_cache has bound all three managers, snapshots need the
-        # same finite descriptor registry that arm() would create; otherwise
-        # looking up graph counters below fails with a KeyError and makes the
-        # control bridge appear disabled.
-        self._finalize_descriptors()
+        # An empty registry is observable during startup. Once binding begins,
+        # require the same complete role set and descriptors used by arm().
+        if self._registry.manager_entries():
+            self._finalize_descriptors()
         phase_timing = self._collector.snapshot()
         descriptor_metrics = phase_timing["descriptors"]
         target_forward_samples = int(
@@ -519,6 +517,11 @@ class LiveQ2RSession:
             target_forward_samples + sample_and_draft_samples
         )
         return {
+            "lifecycle": {
+                "installed": self._installed,
+                "cleanup_pending": self._cleanup_pending,
+                "manager_binding_complete": self._descriptors_finalized,
+            },
             "phase_timing": phase_timing,
             "manager_roles": self._registry.snapshot(),
             "coverage": {

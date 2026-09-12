@@ -279,6 +279,23 @@ def session(
     )
 
 
+def test_snapshot_reports_unbound_startup_without_claiming_readiness():
+    live = session()
+    live.install()
+    try:
+        snapshot = live.snapshot()
+        assert snapshot["lifecycle"] == {
+            "installed": True, "cleanup_pending": False, "manager_binding_complete": False,
+        }
+        assert snapshot["manager_roles"]["registered"] == 0
+        with pytest.raises(RuntimeError, match="target manager"):
+            live.arm("too-early")
+        GPUModelRunner().initialize_kv_cache(None)
+        assert live.snapshot()["lifecycle"]["manager_binding_complete"] is True
+    finally:
+        live.uninstall()
+
+
 def test_partial_uninstall_blocks_rearming_and_can_retry(monkeypatch):
     live = session()
     live.install()
