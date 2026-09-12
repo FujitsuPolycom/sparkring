@@ -1,7 +1,12 @@
 {
   "schema": "sparkring-release-selection/v1",
   "id": "glm53-spark-mtp3-managed-mesh-tp4",
-  "inputs": [],
+  "inputs": [
+    {
+      "path": "runtime/releases/glm53-spark-mtp3-managed-mesh-tp4/compatibility-sources.tar.gz",
+      "sha256": "2cecfdc5e8932ba7dac88d0aec15f4554dd98de7484c370223c501cf05a00a76"
+    }
+  ],
   "image": {
     "configuration_runtime": "profiles/glm53-spark-mtp3-managed-mesh-tp4/recipe.json"
   },

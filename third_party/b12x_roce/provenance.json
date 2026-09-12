@@ -5,11 +5,17 @@
   "upstream_base_commit": "ffb7442d04a9f50b950df1fb17280acad881b7d5",
   "license": "Apache-2.0",
   "scope": "Only b12x.comm.roce; no model kernels or other B12X package modules",
-  "roce_tree_sha256": "902a9dfd1a9c8ec379b002b13737701dd6bc58e240abcb5ab9b443455961a3a4",
-  "local_changes": ["Preserve capture-ID stream admission across Python contexts", "Order shared input staging and output copies across streams"],
+  "roce_tree_sha256": "0e2c67f991f0c17ce2f4d24b7ef7c6c2824387a65b84537872f44c76d86d3725",
+  "local_changes": [
+    "Preserve capture-ID stream admission across Python contexts",
+    "Order shared input staging and output copies across streams",
+    "Read and update proxy diagnostic counters atomically"
+  ],
   "git_state": {
     "commit": "eac260a8257cc6b14e7d4ad674f51e9a09b8790f",
-    "roce_source_dirty": false,
-    "roce_status": []
+    "roce_source_dirty": true,
+    "roce_status": [
+      " M b12x/comm/roce/_roce_proxy.c"
+    ]
   }
 }

@@ -13,6 +13,14 @@ the upstream Apache-2.0 license; source copyright notices are retained.
 Local stream-safety modifications preserve CUDA capture-ID admission across
 Python context boundaries. Eager calls wait for the preceding operation before
 writing shared staging buffers, and record completion after output copies.
+Proxy diagnostic counters use C atomics so readers can sample them while the
+posting thread updates them.
+
+The retired MTP3 mesh profile's source-reproduction command selects
+[frozen release inputs](../../runtime/releases/glm53-spark-mtp3-managed-mesh-tp4/README.md)
+for its published bundle. The generic
+[bundle builder](../../integrations/vllm/rocenante/build_bundle.py) uses this
+development source and records its distinct source and manifest hashes.
 
 ## Attribution and design origins
 

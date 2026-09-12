@@ -153,6 +153,31 @@ def test_vendor_is_complete_and_content_bound():
     assert (vendor / "LICENSE").is_file()
 
 
+def test_published_bundle_sources_preserve_released_proxy_and_adapter():
+    with mesh_profile.published_bundle_sources() as (vendor, adapter):
+        tree, files = mesh_profile.build_bundle._canonical_tree(vendor / "b12x/comm/roce")
+        assert tree == "902a9dfd1a9c8ec379b002b13737701dd6bc58e240abcb5ab9b443455961a3a4"
+        assert len(files) == 9
+        assert mesh_profile.sha(vendor / "b12x/comm/roce/_roce_proxy.c") == (
+            "b208f07d4bb12613a6aef3e8e59ac334b53028655b76f3f5c6e531bd354b369e"
+        )
+        assert adapter.read_bytes() != (mesh_profile.ROOT / "integrations/vllm/rocenante/rocenante_vllm_overlay.py").read_bytes()
+        development_tree, _ = mesh_profile.build_bundle._canonical_tree(
+            mesh_profile.ROOT / "third_party/b12x_roce/b12x/comm/roce"
+        )
+        assert development_tree != tree
+
+
+def test_published_bundle_source_archive_rejects_changed_bytes(tmp_path, monkeypatch):
+    archive = tmp_path / mesh_profile.RELEASE_SOURCES
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"changed archive")
+    monkeypatch.setattr(mesh_profile, "ROOT", tmp_path)
+    with pytest.raises(ValueError, match="source archive differs"):
+        with mesh_profile.published_bundle_sources():
+            pytest.fail("changed sources were accepted")
+
+
 def test_marker_source_matches_its_declared_pin():
     source = HERE / mesh_profile.PINS["marker"]["source"]
     assert mesh_profile.sha(source) == mesh_profile.PINS["marker"]["source_sha256"]

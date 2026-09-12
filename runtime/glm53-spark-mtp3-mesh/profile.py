@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import ipaddress
 import importlib.util
 import json
@@ -12,6 +14,8 @@ import re
 import shlex
 import shutil
 import sys
+import tarfile
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -24,10 +28,52 @@ BASE = HERE.parent / "glm53-flash-jj-r8-gb10"
 IMAGE = json.loads((BASE / "pins.json").read_text())
 ASSIGNMENT = re.compile(r"([A-Z][A-Z0-9_]*)=(.*)")
 SOURCE_LOCK = ROOT / "runtime/sparkring/source_image/glm53-tp4-lock.json"
+RELEASE_SELECTION = ROOT / "runtime/releases/glm53-spark-mtp3-managed-mesh-tp4/release.json"
+RELEASE_SOURCES = "runtime/releases/glm53-spark-mtp3-managed-mesh-tp4/compatibility-sources.tar.gz"
 
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@contextlib.contextmanager
+def published_bundle_sources():
+    """Select byte-bound sources for the released bundle without changing development sources."""
+    release = json.loads(RELEASE_SELECTION.read_text())
+    record = next(item for item in release["inputs"] if item["path"] == RELEASE_SOURCES)
+    data = (ROOT / RELEASE_SOURCES).read_bytes()
+    if hashlib.sha256(data).hexdigest() != record["sha256"]:
+        raise ValueError("Published bundle source archive differs from its release identity")
+    names = {"_roce_proxy.c", "rocenante_vllm_overlay.py", "provenance.json",
+             "sparkring-overlay-manifest.json"}
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        members = archive.getmembers()
+        if len(members) != len(names) or {member.name for member in members} != names or any(
+            not member.isfile() or member.size > 1_000_000 for member in members
+        ):
+            raise ValueError("Published bundle source archive has unexpected members")
+        contents = {member.name: archive.extractfile(member).read() for member in members}
+    manifest_bytes = contents["sparkring-overlay-manifest.json"]
+    if hashlib.sha256(manifest_bytes).hexdigest() != PINS["canonical_bundle_manifest_sha256"]:
+        raise ValueError("Published source manifest differs from the selected bundle")
+    manifest = json.loads(manifest_bytes)
+    hashes = {item["path"]: item["sha256"] for item in manifest["files"]}
+    for name, target in (("_roce_proxy.c", "b12x_overlay/b12x/comm/roce/_roce_proxy.c"),
+                         ("rocenante_vllm_overlay.py", "rocenante_vllm_overlay.py")):
+        if hashlib.sha256(contents[name]).hexdigest() != hashes[target]:
+            raise ValueError("Published bundle source differs: " + name)
+    with tempfile.TemporaryDirectory(prefix="sparkring-release-sources-") as directory:
+        root = Path(directory)
+        vendor = root / "vendor"
+        shutil.copytree(ROOT / "third_party/b12x_roce", vendor,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
+        (vendor / "b12x/comm/roce/_roce_proxy.c").write_bytes(contents["_roce_proxy.c"])
+        (vendor / "provenance.json").write_bytes(contents["provenance.json"])
+        if build_bundle._canonical_tree(vendor / "b12x/comm/roce")[0] != manifest["b12x_roce_tree_sha256"]:
+            raise ValueError("Published RoCEnante source tree cannot be reproduced")
+        adapter = root / "rocenante_vllm_overlay.py"
+        adapter.write_bytes(contents[adapter.name])
+        yield vendor, adapter
 
 
 def compose(base_sircl: Path, output: Path) -> dict:
@@ -35,8 +81,10 @@ def compose(base_sircl: Path, output: Path) -> dict:
         raise ValueError("Base SIRCL manifest does not match the pinned operator image")
     if sha(base_sircl / "libspark_transport_capi.so") != IMAGE["sircl"]["native_sha256"]:
         raise ValueError("Base SIRCL native library does not match the pinned image")
-    result = build_bundle.build(base_sircl, ROOT / "third_party/b12x_roce", output,
-                                captured_sircl_rows=tuple(PINS["captured_sircl_query_rows"]))
+    with published_bundle_sources() as (vendor, adapter):
+        result = build_bundle.build(base_sircl, vendor, output,
+                                    captured_sircl_rows=tuple(PINS["captured_sircl_query_rows"]),
+                                    adapter_source=adapter)
     actual = sha(output / "sparkring-overlay-manifest.json")
     if actual != PINS["canonical_bundle_manifest_sha256"]:
         raise ValueError(f"Composed bundle differs from its pin: {actual}")

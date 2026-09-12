@@ -208,7 +208,8 @@ def _base_manifest(
 
 
 def build(base_sircl: Path, b12x_repository: Path, output: Path, *,
-          captured_sircl_rows: tuple[int, ...] | None = None) -> dict[str, object]:
+          captured_sircl_rows: tuple[int, ...] | None = None,
+          adapter_source: Path | None = None) -> dict[str, object]:
     """Write one transport overlay directory from verified immutable inputs."""
 
     base_sircl = base_sircl.resolve()
@@ -287,7 +288,7 @@ def build(base_sircl: Path, b12x_repository: Path, output: Path, *,
                 raise BundleError(
                     f"base SIRCL bundle already contains overlay file {name}"
                 )
-            source = HERE / name
+            source = adapter_source if name == "rocenante_vllm_overlay.py" and adapter_source is not None else HERE / name
             destination = output / name
             shutil.copyfile(source, destination)
             copied.append(

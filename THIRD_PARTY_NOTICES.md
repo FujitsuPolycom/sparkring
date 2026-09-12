@@ -313,6 +313,11 @@ Apache-2.0 license is retained as `third_party/b12x_roce/LICENSE`, and
 copyright notices remain in the source files. Distribution must preserve
 those notices and that license.
 
+`runtime/releases/glm53-spark-mtp3-managed-mesh-tp4/compatibility-sources.tar.gz`
+retains the matching C proxy and SparkRing adapter, with provenance and the
+published bundle manifest, for source reproduction. These sources retain the
+same Apache-2.0 licensing; the repository's `LICENSE` supplies the license text.
+
 The SparkRing vLLM adapter also draws integration ideas from
 [`local-inference-lab/vllm` PR 597](https://github.com/local-inference-lab/vllm/pull/597),
 including capability agreement and the synchronized output-health boundary.
