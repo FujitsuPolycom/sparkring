@@ -513,3 +513,12 @@ def test_envelope_scan_accepts_registry_port_in_repository_digest():
     reference = 'registry.example:5000/team/image@sha256:' + 'b' * 64
     image = {'Id': image_id, 'RepoDigests': [reference], 'Config': {}}
     assert managed_install.expected_container_spec(_envelope_argv(reference), image)['image'] == image_id
+
+
+def test_managed_dcp4_requires_persisted_overlay_roots(tmp_path, monkeypatch):
+    profile = managed_install.managed_units.service.mesh_profile
+    monkeypatch.setattr(profile, "load_site", lambda path: ({"runtime_profile": "tp4-dcp4", "bundle_root": "/bundle"}, None, None))
+    monkeypatch.setenv("R33_PROFILE_CONTRACT_HOST_ROOT", "/ambient/overlay")
+    with pytest.raises(ValueError, match="r33_profile_contract_roots"):
+        managed_install.canonical_container_spec(tmp_path, tmp_path / "receipt", 0, {},
+                                               run=lambda *a, **kw: pytest.fail("Missing overlay must fail before execution"))

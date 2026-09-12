@@ -469,3 +469,22 @@ def test_failed_launch_has_no_capture_from_prior_success(launch_fixture):
     failed, arguments, _ = launch(0, {"SPARKRING_CREATE_ONLY": "invalid"})
     assert failed.returncode != 0
     assert arguments == []
+
+
+def test_dcp4_overlay_emits_both_readonly_mounts(launch_fixture, tmp_path):
+    launch, _, _ = launch_fixture
+    source = tmp_path / "source"
+    contract = source / "profiles"
+    contract.mkdir(parents=True)
+    (contract / "profile-contract.json").write_text("{}")
+    (contract / "verify_profile.py").write_text("# fixture")
+    (source / "image").mkdir()
+    (source / "image/entrypoint.py").write_text("# fixture")
+    root = _bash_path(contract)
+    result, arguments, _ = launch(0, {**_r33_overrides(),
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp4", "DECODE_CONTEXT_PARALLEL_SIZE": "4",
+        "R33_PROFILE_CONTRACT_HOST_ROOT": root})
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33-overlay"
+    assert f"{root}:/opt/sparkring/profile-contract:ro" in arguments
+    assert f"{root}/../image/entrypoint.py:/opt/sparkring/bin/sparkring-r33-overlay:ro" in arguments

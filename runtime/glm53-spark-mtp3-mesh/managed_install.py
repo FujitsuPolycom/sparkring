@@ -226,6 +226,9 @@ def canonical_container_spec(launch, image_receipt, rank, image, *, run=subproce
     """Regenerate trusted launch inputs and inspect them without creating a container."""
     profile = managed_units.service.mesh_profile
     site, _, _ = profile.load_site(launch / 'site.json')
+    if (site.get('runtime_profile') in ('tp4-dcp4', 'tp4-dcp4-sparkcache')
+            and 'r33_profile_contract_roots' not in site):
+        raise ValueError('Managed DCP4 requires r33_profile_contract_roots in the private site; an ambient shell export is not a persisted launch input')
     with tempfile.TemporaryDirectory(prefix='sparkring-container-spec-') as temporary:
         rendered = Path(temporary) / 'launch'
         profile.render(launch / 'site.json', Path(site['bundle_root']), rendered, image_receipt)

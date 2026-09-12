@@ -69,7 +69,7 @@ def load_site(path: Path):
     data = json.loads(path.read_text())
     required = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
                 "bundle_root", "container_prefix", "marker_binary", "marker_binary_sha256", "state_root"}
-    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile", "cache_diagnostics", "nccl_debug"}
+    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile", "cache_diagnostics", "nccl_debug", "r33_profile_contract_roots"}
     if (not required <= set(data) <= required | optional
             or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1"):
         raise ValueError("Site fields do not match sparkring-glm53-mtp3-mesh-site/v1")
@@ -88,6 +88,14 @@ def load_site(path: Path):
             absolute(value, key)
     for key in ("bundle_root", "marker_binary", "state_root"):
         absolute(data[key], key)
+    if "r33_profile_contract_roots" in data:
+        roots = data["r33_profile_contract_roots"]
+        if (data.get("runtime_profile") not in
+                ("tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache")
+                or not isinstance(roots, list) or len(roots) != 4):
+            raise ValueError("r33_profile_contract_roots requires an R33 TP4 selection and four rank-ordered paths")
+        for root in roots:
+            absolute(root, "r33_profile_contract_roots")
     if "api_keys_file" in data:
         absolute(data["api_keys_file"], "api_keys_file")
     if "liveness_output_seconds" in data:
@@ -309,6 +317,8 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     site, topology, plan = load_site(site_path)
     source_composition = image_record and image_record.get("schema") == "sparkring-source-image-receipt/v1"
     r33_composition = image_record and image_record.get("schema") == "sparkring-r33-image-receipt/v1"
+    if "r33_profile_contract_roots" in site and not r33_composition:
+        raise ValueError("r33_profile_contract_roots requires an R33 image receipt")
     if "cache_diagnostics" in site and not r33_composition:
         raise ValueError("cache_diagnostics requires an R33 image receipt")
     if "nccl_debug" in site and not r33_composition:
@@ -420,6 +430,8 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     ranks = []
     for rank in range(4):
         env = dict(values)
+        if "r33_profile_contract_roots" in site:
+            env["R33_PROFILE_CONTRACT_HOST_ROOT"] = site["r33_profile_contract_roots"][rank]
         env.update(HOST_IP=site["management_addresses"][rank], TARGET_MODEL_HOST_PATH=site["model_roots"][rank],
                    CACHE_HOST_ROOT=site["cache_roots"][rank], SOCKET_IFNAME=topology.rank(rank).management_netdev,
                    NODE_RANK=str(rank), SPARKRING_NODE_RANK=str(rank),

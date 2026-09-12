@@ -115,6 +115,24 @@ For DCP4, use the separately documented
 [render-and-launch procedure](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md#reproduction-overlay-and-quickstart)
 with an already prepared ring, verified bundle, image receipt and private site.
 Choose `tp4-dcp4-sparkcache` or `tp4-dcp4` in the site's `runtime_profile`.
+For managed installation, also save the four host-local contract directories in
+that private site's `r33_profile_contract_roots`, in rank order:
+
+```json
+"r33_profile_contract_roots": [
+  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles",
+  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles",
+  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles",
+  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles"
+]
+```
+
+Use each host's actual checkout path and the same source revision. Keep the
+sibling `image/entrypoint.py` in that checkout. The renderer puts the selected
+path into each rank environment, so managed container verification reproduces
+both read-only overlay mounts. A shell export alone does not persist this input.
+Re-render before creating the stopped containers and installing services.
+
 That procedure supplies `R33_PROFILE_CONTRACT_HOST_ROOT` on every host and
 uses each host's own rendered rank environment.
 

@@ -746,3 +746,43 @@ def test_r33_extracted_bundle_requires_receipt_for_rebuilt_files(tmp_path, manif
     else:
         with pytest.raises(ValueError, match='differs from its manifest'):
             mesh_profile.render(site, manifest_bundle, tmp_path / 'rendered', receipt)
+
+
+@pytest.mark.parametrize("selection", ["tp4-dcp4", "tp4-dcp4-sparkcache"])
+def test_dcp4_overlay_roots_survive_render_and_managed_regeneration(tmp_path, manifest_bundle, monkeypatch, selection):
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(_r33_image_receipt_document(mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json"))))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    roots = [f"/srv/rank{rank}/source/runtime/sparkring/jovian-r33/profiles" for rank in range(4)]
+    data.update(runtime_profile=selection, r33_profile_contract_roots=roots)
+    site.write_text(json.dumps(data))
+    launch = tmp_path / "launch"
+    mesh_profile.render(site, manifest_bundle, launch, receipt)
+    assert json.loads((launch / "site.json").read_text())["r33_profile_contract_roots"] == roots
+    for rank in range(4):
+        assert mesh_profile.defaults(launch / f"rank{rank}.env")["R33_PROFILE_CONTRACT_HOST_ROOT"] == roots[rank]
+    monkeypatch.syspath_prepend(str(HERE))
+    import managed_install
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(managed_install, "expected_container_spec", lambda argv, image: argv)
+    render = mesh_profile.render
+    monkeypatch.setattr(mesh_profile, "render", lambda site, bundle, output, receipt: render(site, manifest_bundle, output, receipt))
+    monkeypatch.setenv("R33_PROFILE_CONTRACT_HOST_ROOT", "/ambient/ignored")
+    def run(argv, **kwargs):
+        assert "R33_PROFILE_CONTRACT_HOST_ROOT" not in kwargs["env"]
+        rank = int(argv[2])
+        assert mesh_profile.defaults(Path(argv[3]))["R33_PROFILE_CONTRACT_HOST_ROOT"] == roots[rank]
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"schema": "sparkring-container-command/v1", "argv": [roots[rank]]}))
+    for rank in range(4):
+        assert managed_install.canonical_container_spec(launch, receipt, rank, {}, run=run) == [roots[rank]]
+
+
+@pytest.mark.parametrize("roots", [[], ["/one"], ["relative"] * 4, ["/a/../b"] * 4, ["/"] * 4])
+def test_r33_overlay_roots_require_four_safe_paths(tmp_path, roots):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp4", r33_profile_contract_roots=roots)
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="r33_profile_contract_roots"):
+        mesh_profile.load_site(site)
