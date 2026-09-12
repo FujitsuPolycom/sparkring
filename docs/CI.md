@@ -26,6 +26,7 @@ Run the documentation and release checks locally from the repository root:
 ```bash
 python scripts/check_markdown_links.py .
 python scripts/check_release_safety.py .
+python scripts/check_repository_layout.py
 python -m pytest scripts/test_ci_checks.py scripts/test_glm53_flash_profile.py -q
 ```
 
