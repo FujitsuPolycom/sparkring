@@ -124,3 +124,29 @@ probes in a stopped-model test window. Probes generate GPU/RDMA traffic.
 Contract tests and cable checks do not establish model correctness or serving
 performance; those require the profile's
 [validation procedure](../docs/PROFILE_VALIDATION.md).
+
+
+### Four-rank probe device mapping
+
+The basic, tensor, and vocabulary probe runners in `scripts/` require an
+explicit RDMA device mapping. For the [documented direct-cable cycle](../docs/operations/bootstrap.md#4-cable-and-initialize-the-ring),
+pass `-DevicePreset documented-cycle`:
+
+```powershell
+./spark_transport/scripts/run_tp4_probe.ps1 -Image my-vllm-image -DevicePreset documented-cycle
+./spark_transport/scripts/run_tp4_tensor_probe.ps1 -Image my-vllm-image -DevicePreset documented-cycle
+./spark_transport/scripts/run_tp4_vocab_allgather_probe.ps1 -Image my-vllm-image -DevicePreset documented-cycle
+```
+
+Set `SPARKRING_TARGETS` and `SPARKRING_RANK_HOSTS` to four comma-separated SSH
+targets and control-channel addresses in rank order. The preset assumes rank
+N physical port f0 connects to rank N+1 port f1, wrapping after rank 3.
+It selects f1 before f0 on odd ranks because device slot 0 reaches rank XOR 1
+and slot 1 reaches rank XOR 3. All three runners use GID index 3.
+
+For another device naming or cabling arrangement, supply four rank-ordered
+values for each slot instead of a preset. For example, a topology where
+every rank reaches its XOR-1 peer through `mlx5_0` and its XOR-3 peer through
+`mlx5_1` uses `-Device0 mlx5_0,mlx5_0,mlx5_0,mlx5_0 -Device1 mlx5_1,mlx5_1,mlx5_1,mlx5_1`.
+The runners print the resolved mapping before launch. Hostnames do not imply
+RDMA device wiring.

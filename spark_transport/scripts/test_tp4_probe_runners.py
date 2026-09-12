@@ -126,7 +126,7 @@ function global:ssh {
     if ($cmd -match 'docker run .*?-r1 ') { $global:LASTEXITCODE=255 }
 }
 for ($i=0; $i -lt 2; $i++) {
-    try { & 'SCRIPT' -Image 'fake-image' } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+    try { & 'SCRIPT' -Image 'fake-image' -DevicePreset documented-cycle } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
 }
 """.replace("SCRIPT", (SCRIPTS / name).as_posix())
     result = _powershell("-Command", command, env=os.environ.copy())
@@ -161,3 +161,43 @@ for ($i=0; $i -lt 2; $i++) {
     assert len(created) == 2 and len(set(created)) == 2, result.stdout
     assert created == removed
     assert not any("docker rm" in line for line in commands)
+
+
+@pytest.mark.parametrize("name", RUNNERS[:3])
+@pytest.mark.parametrize("mapping,devices0,devices1", [
+    ("-DevicePreset documented-cycle", ["rocep1s0f0", "rocep1s0f1"] * 2, ["rocep1s0f1", "rocep1s0f0"] * 2),
+    ("-Device0 a,a,a,a -Device1 b,b,b,b", ["a"] * 4, ["b"] * 4),
+])
+def test_actual_launch_arguments_match_explicit_device_mapping(name, mapping, devices0, devices1):
+    command = r"""
+$env:SPARKRING_TARGETS='host0,host1,host2,host3'
+$env:SPARKRING_RANK_HOSTS='host0,host1,host2,host3'
+function global:ssh {
+    $cmd=$args[-1]; Write-Host "COMMAND=$cmd"; $global:LASTEXITCODE=0
+    if ($cmd -match 'docker run .*?-r3 ') { $global:LASTEXITCODE=255 }
+}
+try { & 'SCRIPT' -Image fake-image MAPPING } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+""".replace("SCRIPT", (SCRIPTS / name).as_posix()).replace("MAPPING", mapping)
+    result = _powershell("-Command", command, env=os.environ.copy())
+    launches = [line for line in result.stdout.splitlines() if line.startswith("COMMAND=") and "docker run" in line]
+    assert len(launches) == 4, result.stdout + result.stderr
+    for rank, line in enumerate(launches):
+        assert f"--rank {rank} " in line
+        assert f"--peer0 host{rank ^ 1} " in line
+        assert f"--peer1 host{rank ^ 3} " in line
+        assert f"--device0 {devices0[rank]} --device1 {devices1[rank]}" in line
+
+
+@pytest.mark.parametrize("name", RUNNERS[:3])
+@pytest.mark.parametrize("mapping", ["", "-Device0 a,a,a,a", "-Device0 a,a,a -Device1 b,b,b", "-Device0 a,a,a,a -Device1 a,b,b,b", "-Device0 'a;bad',a,a,a -Device1 b,b,b,b", "-DevicePreset documented-cycle -Device0 a,a,a,a -Device1 b,b,b,b"])
+def test_invalid_device_mapping_fails_before_ssh(name, mapping):
+    command = r"""
+$env:SPARKRING_TARGETS='host0,host1,host2,host3'
+$env:SPARKRING_RANK_HOSTS='host0,host1,host2,host3'
+function global:ssh { Write-Host 'UNEXPECTED_SSH'; throw 'must not connect' }
+try { & 'SCRIPT' -Image fake-image MAPPING; exit 2 } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+""".replace("SCRIPT", (SCRIPTS / name).as_posix()).replace("MAPPING", mapping)
+    result = _powershell("-Command", command, env=os.environ.copy())
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "EXPECTED=" in result.stdout
+    assert "UNEXPECTED_SSH" not in result.stdout

@@ -21,6 +21,10 @@ param(
     [string]$Image = "<your-vllm-image>",
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
+    [ValidateSet("documented-cycle")]
+    [string]$DevicePreset,
+    [string[]]$Device0 = @(),
+    [string[]]$Device1 = @(),
     [switch]$KeepContainers
 )
 
@@ -52,32 +56,47 @@ if ($ControlPort0 -eq $ControlPort1) {
 $Targets = @($Targets | Where-Object { $_ })
 $RankHosts = @($RankHosts | Where-Object { $_ })
 
+. "$PSScriptRoot/tp4_device_mapping.ps1"
+$deviceMapping = @(Resolve-Tp4DeviceMapping -Preset $DevicePreset -Device0 $Device0 -Device1 $Device1)
+
 $nodes = @(
     [pscustomobject]@{
         Rank = 0
+        Device0 = $deviceMapping[0].Device0
+        Device1 = $deviceMapping[0].Device1
         Target = $Targets[0]
         Peer0 = $RankHosts[1]
         Peer1 = $RankHosts[3]
     },
     [pscustomobject]@{
         Rank = 1
+        Device0 = $deviceMapping[1].Device0
+        Device1 = $deviceMapping[1].Device1
         Target = $Targets[1]
         Peer0 = $RankHosts[0]
         Peer1 = $RankHosts[2]
     },
     [pscustomobject]@{
         Rank = 2
+        Device0 = $deviceMapping[2].Device0
+        Device1 = $deviceMapping[2].Device1
         Target = $Targets[2]
         Peer0 = $RankHosts[3]
         Peer1 = $RankHosts[1]
     },
     [pscustomobject]@{
         Rank = 3
+        Device0 = $deviceMapping[3].Device0
+        Device1 = $deviceMapping[3].Device1
         Target = $Targets[3]
         Peer0 = $RankHosts[2]
         Peer1 = $RankHosts[0]
     }
 )
+
+foreach ($node in $nodes) {
+    Write-Output "rank=$($node.Rank) peer0=$($node.Peer0) device0=$($node.Device0) peer1=$($node.Peer1) device1=$($node.Device1) gid0=3 gid1=3"
+}
 
 function Invoke-NodeSsh {
     param(
@@ -124,7 +143,7 @@ try {
             "--rank $($node.Rank)"
             "--peer0 $($node.Peer0)"
             "--peer1 $($node.Peer1)"
-            "--device0 rocep1s0f0 --device1 rocep1s0f1"
+            "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"
             "--control-port1 $ControlPort1"
