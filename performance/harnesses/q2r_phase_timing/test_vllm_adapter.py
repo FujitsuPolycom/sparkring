@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from builtins import BaseExceptionGroup, ExceptionGroup
 from typing import Any
 
 import pytest
@@ -214,6 +215,40 @@ def test_uninstall_checks_all_wrapper_identities_before_restoring() -> None:
         assert FullGraph.run is foreign
         assert DraftGraph.run is draft_wrapper
         FullGraph.run = full_wrapper
+        adapter.uninstall()
+        assert (FullGraph.run, DraftGraph.run) == originals
+    finally:
+        FullGraph.run, DraftGraph.run = originals
+
+@pytest.mark.parametrize("during_install", [False, True])
+def test_restore_failure_cleans_other_hooks_and_allows_retry(monkeypatch, during_install) -> None:
+    from . import vllm_adapter
+    originals = FullGraph.run, DraftGraph.run
+    adapter = FailClosedMethodAdapter(_collector(), (
+        _hook(FullGraph, PhaseDescriptor(PhaseKind.TARGET_FULL_GRAPH, "Q6")),
+        _hook(DraftGraph, PhaseDescriptor(PhaseKind.DRAFT_MULTISTEP_GRAPH, "Q1")),
+    ))
+    blocked = True
+
+    def failing_setattr(owner, name, value):
+        if owner is DraftGraph and value is originals[1] and blocked:
+            raise RuntimeError("restore temporarily refused")
+        setattr(owner, name, value)
+        if during_install and owner is DraftGraph and value is not originals[1]:
+            raise KeyboardInterrupt("interrupt after assignment")
+
+    monkeypatch.setattr(vllm_adapter, "setattr", failing_setattr, raising=False)
+    try:
+        if during_install:
+            with pytest.raises(BaseExceptionGroup):
+                adapter.install()
+        else:
+            adapter.install()
+            with pytest.raises(ExceptionGroup):
+                adapter.uninstall()
+        assert FullGraph.run is originals[0]
+        assert DraftGraph.run is not originals[1]
+        blocked = False
         adapter.uninstall()
         assert (FullGraph.run, DraftGraph.run) == originals
     finally:

@@ -1,9 +1,13 @@
-"""All-or-nothing, source-pinned method adapter for Q-2R telemetry.
+"""Source-pinned instance-method hooks for CUDA phase timing.
 
 No vLLM method is patched until every requested owner/method/hash validates.
 The concrete deployed integration points beyond ``run_fullgraph`` still need
 one read-only source census; callers must supply them explicitly rather than
 letting this experiment guess.
+
+Installation failure restores every changed method where possible. Restoration
+errors retain the unfinished hooks for an explicit uninstall retry and report
+all errors together. Callers must stop instrumented execution before removal.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import functools
 import hashlib
 import inspect
 import re
+from builtins import BaseExceptionGroup
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -146,13 +151,40 @@ class FailClosedMethodAdapter:
                 installed.append(item)
                 wrappers.append(wrapped)
                 setattr(hook.owner, hook.method_name, wrapped)
-        except BaseException:
-            for item in reversed(installed):
-                _restore(item)
+        except BaseException as installation_error:
+            self._validated = tuple(installed)
+            self._wrappers = tuple(wrappers)
+            errors = self._restore_pending()
+            if errors:
+                raise BaseExceptionGroup(
+                    "Telemetry installation and rollback failed",
+                    [installation_error, *errors],
+                ) from None
             raise
         self._validated = validated
         self._wrappers = tuple(wrappers)
         self._installed = True
+
+    def _restore_pending(self) -> list[BaseException]:
+        errors: list[BaseException] = []
+        pending = []
+        for item, wrapper in reversed(tuple(zip(self._validated, self._wrappers, strict=True))):
+            try:
+                _restore(item)
+            except BaseException as error:
+                errors.append(error)
+                # A setter may raise after restoring the attribute. Retain only
+                # work that is still required so an explicit cleanup can retry.
+                local = vars(item.hook.owner)
+                restored = (local.get(item.hook.method_name) is item.original
+                            if item.locally_defined else item.hook.method_name not in local)
+                if not restored:
+                    pending.append((item, wrapper))
+        pending.reverse()
+        self._validated = tuple(item for item, _ in pending)
+        self._wrappers = tuple(wrapper for _, wrapper in pending)
+        self._installed = bool(pending)
+        return errors
 
     def uninstall(self) -> None:
         if not self._installed:
@@ -166,8 +198,6 @@ class FailClosedMethodAdapter:
                     f"{item.hook.owner.__qualname__}."
                     f"{item.hook.method_name} changed after installation"
                 )
-        for item in reversed(self._validated):
-            _restore(item)
-        self._validated = ()
-        self._wrappers = ()
-        self._installed = False
+        errors = self._restore_pending()
+        if errors:
+            raise BaseExceptionGroup("Telemetry hook restoration failed", errors)
