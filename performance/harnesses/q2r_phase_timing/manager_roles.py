@@ -382,14 +382,16 @@ class FailClosedRoleAssignmentAdapter:
             return
         # Verify the complete ownership set before restoring any method.
         for item in self._validated:
-            current = getattr(item.hook.owner, item.hook.method_name)
-            if current is not self._wrappers[(item.hook.owner, item.hook.method_name)]:
+            current = getattr(item.hook.owner, item.hook.method_name, None)
+            if (current is not item.original
+                    and current is not self._wrappers[(item.hook.owner, item.hook.method_name)]):
                 raise AdapterValidationError(
                     f"{item.hook.owner.__qualname__}."
                     f"{item.hook.method_name} changed after installation"
                 )
         for item in reversed(self._validated):
-            setattr(item.hook.owner, item.hook.method_name, item.original)
+            if getattr(item.hook.owner, item.hook.method_name, None) is not item.original:
+                setattr(item.hook.owner, item.hook.method_name, item.original)
         self._validated = ()
         self._wrappers.clear()
         self._installed = False

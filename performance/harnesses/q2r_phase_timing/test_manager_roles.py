@@ -17,6 +17,41 @@ class Manager:
 
 
 @pytest.mark.parametrize("after_assignment", [False, True])
+def test_role_uninstall_retries_after_partial_restoration(monkeypatch, after_assignment):
+    import builtins
+    from . import manager_roles
+
+    class Owner:
+        def first(self):
+            return Manager()
+        def second(self):
+            return Manager()
+
+    originals = [Owner.first, Owner.second]
+    hooks = tuple(RoleAssignmentHook(
+        Owner, name, source_sha256(getattr(Owner, name)), ManagerRole.TARGET_VERIFY,
+        lambda instance, args, kwargs, result: result, lambda *args: 1,
+    ) for name in ("first", "second"))
+    adapter = FailClosedRoleAssignmentAdapter(ManagerRoleRegistry(), hooks)
+    adapter.install()
+    fired = False
+    def assign(owner, name, value):
+        nonlocal fired
+        if owner is Owner and name == "first" and not fired:
+            fired = True
+            if after_assignment:
+                builtins.setattr(owner, name, value)
+            raise RuntimeError("restore interrupted")
+        builtins.setattr(owner, name, value)
+    monkeypatch.setattr(manager_roles, "setattr", assign, raising=False)
+    with pytest.raises(RuntimeError, match="restore interrupted"):
+        adapter.uninstall()
+    assert Owner.second is originals[1]
+    adapter.uninstall()
+    assert [Owner.first, Owner.second] == originals
+
+
+@pytest.mark.parametrize("after_assignment", [False, True])
 def test_role_install_interrupt_restores_all_assigned_hooks(monkeypatch, after_assignment):
     import builtins
     from . import manager_roles
