@@ -60,8 +60,8 @@ BUSY_C=4
 RUN="$HOME/sparkring-results/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$RUN"
 git rev-parse HEAD > "$RUN/sparkring-revision.txt"
-curl --fail --silent --show-error "$ENDPOINT/v1/models" > "$RUN/models.json"
-curl --fail --silent --show-error "$ENDPOINT/health" > "$RUN/health-before.txt"
+curl --fail --silent --show-error --max-time 10 "$ENDPOINT/v1/models" > "$RUN/models.json"
+curl --fail --silent --show-error --max-time 10 "$ENDPOINT/health" > "$RUN/health-before.txt"
 ```
 
 Record the recipe path, image digest, model revision, quantization, TP/DCP/PP,

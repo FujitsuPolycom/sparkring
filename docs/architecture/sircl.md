@@ -167,8 +167,9 @@ custom SparkRing collective adapter.
 
 ## Operational invariants
 
-- All four ranks require the same topology, peer ordering, RDMA device mapping,
-  and transport configuration.
+- All four ranks require one consistent topology and compatible transport
+  configuration. Each rank selects its own peers and RDMA devices from that
+  shared mapping; local device order need not be identical across ranks.
 - A collective shape not admitted to the native path must use the NCCL fallback.
 - The management network is not an RDMA cycle edge.
 - Dual-rail prefill uses both RDMA device functions associated with each
