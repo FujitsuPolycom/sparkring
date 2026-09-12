@@ -150,3 +150,16 @@ def test_indexer_correctness_gates_survive_optimized_python():
         with pytest.raises(RuntimeError):
             exec(code, {"results": [{"incomplete_reads": original}, {"incomplete_reads": fixed}], "print": lambda *a, **k: None})
     exec(code, {"results": [{"incomplete_reads": 1}, {"incomplete_reads": 0}], "print": lambda *a, **k: None})
+
+
+def test_cpu_indexer_expectation_survives_optimized_python():
+    import ast
+    import pytest
+    from types import SimpleNamespace
+    source = Path(__file__).parents[1] / "indexer_barrier" / "repro_indexer_barrier.py"
+    tree = ast.parse(source.read_text())
+    main = tree.body[-1]
+    code = compile(ast.fix_missing_locations(ast.Module(body=main.body[-1:], type_ignores=[])), str(source), "exec", optimize=2)
+    with pytest.raises(RuntimeError, match="Barrier outcome differs"):
+        exec(code, {"result": {"deadlocked": False}, "args": SimpleNamespace(expect="deadlock")})
+    exec(code, {"result": {"deadlocked": True}, "args": SimpleNamespace(expect="deadlock")})

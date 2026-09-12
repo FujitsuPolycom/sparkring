@@ -132,4 +132,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     result = simulate(load_barrier(args.source))
     print(json.dumps(result, indent=2))
-    assert result["deadlocked"] == (args.expect == "deadlock"), result
+    if result["deadlocked"] != (args.expect == "deadlock"):
+        raise RuntimeError(f"Barrier outcome differs from {args.expect}: {result}")

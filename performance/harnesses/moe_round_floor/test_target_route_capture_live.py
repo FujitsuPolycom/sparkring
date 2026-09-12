@@ -494,3 +494,23 @@ def test_process_global_controller_entrypoint_is_explicit_and_reversible() -> No
     finally:
         uninstall_opt_in()
     assert all(module.router.capture_fn is None for module in modules)
+
+def test_live_controller_rejects_unwired_stream_slots_before_capture():
+    from performance.harnesses.moe_round_floor.target_route_capture_live import LiveTargetRouteController
+    calls = []
+    capture = SimpleNamespace(begin_request=lambda **kwargs: calls.append(kwargs),
+        disarm=lambda **kwargs: calls.append(kwargs),
+        record_rejection=lambda *args, **kwargs: calls.append(kwargs))
+    controller = LiveTargetRouteController(capture, (), None, None)
+    for slot in (1, 2, 3, -1, False):
+        with pytest.raises(LiveInstallError, match='stream_slot=0'):
+            controller.arm_salted(request_slot=0, request_key='salted', stream_slot=slot)
+        with pytest.raises(LiveInstallError, match='stream_slot=0'):
+            controller.disarm(stream_slot=slot)
+        with pytest.raises(LiveInstallError, match='stream_slot=0'):
+            controller.record_rejection(None, None, stream_slot=slot)
+    assert calls == []
+    assert controller.armed is False
+    controller.arm_salted(request_slot=0, request_key='salted', stream_slot=0)
+    assert controller.armed is True
+    assert calls[0]['stream_slot'] == 0

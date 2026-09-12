@@ -359,7 +359,7 @@ class TargetRouteCapture:
         prior = self._request_keys.get(request_slot)
         if prior is not None and prior != request_key:
             raise CaptureError(
-                "request slots cannot be reused before draining/resetting capture"
+                "request slots cannot be reused; drain evidence and create a fresh capture instance"
             )
         self._request_keys[request_slot] = request_key
         # This host-to-device update is deliberately outside timed execution.

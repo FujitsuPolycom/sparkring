@@ -167,6 +167,7 @@ class LiveTargetRouteController:
         stream_slot: int = 0,
     ) -> None:
         self._require_open()
+        self._require_stream_slot(stream_slot)
         self.capture.begin_request(
             request_slot=request_slot,
             request_key=request_key,
@@ -177,6 +178,7 @@ class LiveTargetRouteController:
 
     def disarm(self, *, stream_slot: int = 0) -> None:
         self._require_open()
+        self._require_stream_slot(stream_slot)
         self.capture.disarm(stream_slot=stream_slot)
         self._armed = False
 
@@ -192,6 +194,7 @@ class LiveTargetRouteController:
         stream_slot: int = 0,
     ) -> None:
         self._require_open()
+        self._require_stream_slot(stream_slot)
         self.capture.record_rejection(
             num_sampled,
             num_rejected,
@@ -206,6 +209,7 @@ class LiveTargetRouteController:
         stream_slot: int = 0,
     ) -> dict[str, int]:
         self._require_open()
+        self._require_stream_slot(stream_slot)
         self.capture.disarm(stream_slot=stream_slot)
         self._armed = False
         return self.capture.drain_jsonl(
@@ -227,6 +231,11 @@ class LiveTargetRouteController:
             binding.router.set_capture_fn(binding.previous_callback)
         self._armed = False
         self._closed = True
+
+    @staticmethod
+    def _require_stream_slot(stream_slot: int) -> None:
+        if type(stream_slot) is not int or stream_slot != 0:
+            raise LiveInstallError("Installed live capture callbacks require stream_slot=0")
 
     def _require_open(self) -> None:
         if self._closed:
