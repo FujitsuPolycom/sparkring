@@ -86,7 +86,9 @@ def _percentile(values: Sequence[float], percentile: float) -> float:
 def _validate_expert_ids(value: object, context: str) -> list[int]:
     if not isinstance(value, list) or not value:
         raise ValueError(f"{context}: expert_ids must be a non-empty list")
-    result = [int(item) for item in value]
+    if any(type(item) is not int for item in value):
+        raise ValueError(f"{context}: expert ids must be integers")
+    result = list(value)
     if any(item < 0 for item in result):
         raise ValueError(f"{context}: expert ids must be non-negative")
     if len(set(result)) != len(result):
@@ -96,6 +98,10 @@ def _validate_expert_ids(value: object, context: str) -> list[int]:
 
 def iter_layers(record: dict, width: int) -> Iterator[tuple[int, list[list[int]]]]:
     """Yield ``(layer, positions[expert_ids])`` from the canonical schema."""
+    if type(width) is not int or width <= 0:
+        raise ValueError("width must be a positive integer")
+    if not isinstance(record, dict):
+        raise ValueError("record must be an object")
     if record.get("schema") != SCHEMA:
         raise ValueError(f"unsupported schema: {record.get('schema')!r}")
     layers = record.get("layers")
@@ -104,7 +110,9 @@ def iter_layers(record: dict, width: int) -> Iterator[tuple[int, list[list[int]]
 
     seen_layers: set[int] = set()
     for layer_record in layers:
-        layer = int(layer_record["layer"])
+        if not isinstance(layer_record, dict) or type(layer_record.get("layer")) is not int or layer_record["layer"] < 0:
+            raise ValueError("layer must be a nonnegative integer")
+        layer = layer_record["layer"]
         if layer in seen_layers:
             raise ValueError(f"duplicate layer {layer}")
         seen_layers.add(layer)
@@ -462,12 +470,18 @@ def adjacent_round_reuse_summary(records: Iterable[dict], width: int) -> dict:
     candidates: list[tuple[str, int, dict[int, set[int]]]] = []
     occurrence_counts: dict[tuple[str, int], int] = {}
     skipped_missing_request_key = 0
+    skipped_invalid_round_records = 0
     for record in records:
-        request_key = str(record.get("request_key", ""))
-        if not request_key:
+        if not isinstance(record, dict):
+            raise ValueError("record must be an object")
+        request_key = record.get("request_key")
+        if not isinstance(request_key, str) or not request_key.strip():
             skipped_missing_request_key += 1
             continue
-        round_index = int(record.get("round", 0))
+        round_index = record.get("round")
+        if type(round_index) is not int or round_index < 0:
+            skipped_invalid_round_records += 1
+            continue
         key = (request_key, round_index)
         occurrence_counts[key] = occurrence_counts.get(key, 0) + 1
         candidates.append(
@@ -533,6 +547,7 @@ def adjacent_round_reuse_summary(records: Iterable[dict], width: int) -> dict:
         "round_pairs": round_pairs,
         "layer_observations": len(jaccard_values),
         "skipped_missing_request_key": skipped_missing_request_key,
+        "skipped_invalid_round_records": skipped_invalid_round_records,
         "skipped_duplicate_round_records": skipped_duplicate_round_records,
         "skipped_layer_mismatch_pairs": skipped_layer_mismatch_pairs,
         "intersection_experts": _distribution(intersection_values),

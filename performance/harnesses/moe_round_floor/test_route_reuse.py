@@ -347,3 +347,38 @@ class RouteReuseTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def test_expert_ids_do_not_coerce_malformed_numeric_values():
+    import pytest
+    for value in (True, 1.5, '1'):
+        fixture = record([[[value]] * 5])
+        with pytest.raises(ValueError, match='expert ids must be integers'):
+            analyze_round(fixture)
+
+
+def test_adjacent_rounds_require_typed_request_and_explicit_round():
+    import copy
+    from performance.harnesses.moe_round_floor.route_reuse import adjacent_round_reuse_summary
+    valid = record([[[1, 2]] * 5])
+    valid['round'] = 1
+    for key in (None, '', ' ', 123):
+        before = copy.deepcopy(valid)
+        before.update(request_key=key, round=0)
+        after = copy.deepcopy(before)
+        after['round'] = 1
+        result = adjacent_round_reuse_summary([before, after], 5)
+        assert result['round_pairs'] == 0
+        assert result['skipped_missing_request_key'] == 2
+    for value in (None, True, 0.0, '0', -1):
+        before = copy.deepcopy(valid)
+        before['round'] = value
+        result = adjacent_round_reuse_summary([before, valid], 5)
+        assert result['round_pairs'] == 0
+        assert result['skipped_invalid_round_records'] == 1
+    before = copy.deepcopy(valid)
+    del before['round']
+    assert adjacent_round_reuse_summary([before, valid], 5)['round_pairs'] == 0
+    before['round'] = 0
+    result = adjacent_round_reuse_summary([before, valid], 5)
+    assert result['round_pairs'] == 1
+    assert result['layer_observations'] == 1
