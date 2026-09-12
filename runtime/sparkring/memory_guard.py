@@ -18,7 +18,7 @@ RunCommand = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
 
 def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, check=False, capture_output=True, text=True)
+    return subprocess.run(command, check=False, capture_output=True, text=True, timeout=10)
 
 
 def read_mem_available(path: Path = Path("/proc/meminfo")) -> int:
@@ -56,7 +56,9 @@ def _running(container_id: str, run: RunCommand) -> bool:
             container_id,
         )
     )
-    return result.returncode == 0 and result.stdout.strip() == "true"
+    # Keep an uncertain container in the escalation set. Only a successful
+    # stopped-state response proves that KILL is unnecessary.
+    return not (result.returncode == 0 and result.stdout.strip() == "false")
 
 
 def terminate_guarded_containers(

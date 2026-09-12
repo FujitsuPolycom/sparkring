@@ -4,7 +4,7 @@ import subprocess
 import sys
 import unittest
 from unittest.mock import patch
-from memory_guard import GuardState, parse_args, terminate_guarded_containers
+from memory_guard import GuardState, parse_args, terminate_guarded_containers, _running, run_command
 
 
 class GuardTests(unittest.TestCase):
@@ -26,6 +26,20 @@ class GuardTests(unittest.TestCase):
         self.assertEqual((args.poll_seconds, args.term_grace_seconds,
                           args.trip_cooldown_seconds), (0.25, 0, 0))
 
+
+    def test_failed_inspection_does_not_prove_a_container_stopped(self):
+        for code, output, expected in [(1, "", True), (0, "invalid", True),
+                                       (0, "true", True), (0, "false", False)]:
+            with self.subTest(code=code, output=output):
+                result = subprocess.CompletedProcess([], code, output, "")
+                self.assertEqual(_running("abc", lambda command: result), expected)
+
+    def test_docker_command_has_a_timeout(self):
+        with patch("memory_guard.subprocess.run", side_effect=subprocess.TimeoutExpired("docker", 10)) as run:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                run_command(("docker", "ps"))
+        self.assertEqual(run.call_args.kwargs["timeout"], 10)
+
     def test_requires_consecutive_low_samples(self):
         state = GuardState()
         def observe(n):
@@ -35,7 +49,7 @@ class GuardTests(unittest.TestCase):
         self.assertFalse(observe(99))
         self.assertTrue(observe(99))
 
-    def test_only_labeled_containers_and_bounded_stop(self):
+    def test_only_labeled_containers_receive_term_then_kill(self):
         calls = []
         def run(command):
             calls.append(command)

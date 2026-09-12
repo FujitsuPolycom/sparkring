@@ -8,7 +8,7 @@ import pytest
 import niah_boundary_probe as probe
 
 
-@pytest.mark.parametrize("completed,expected,deadline,stall_ticks", [(0.5, 0, 1, 0), (2.0, 4, 1, 0), (None, 4, 1, 0), (None, 4, 45, 1)])
+@pytest.mark.parametrize("completed,expected,deadline,stall_ticks", [(0.5, 0, 1, 0), (1.0, 0, 1, 0), (1.001, 4, 1, 0), (2.0, 4, 1, 0), (None, 4, 1, 0), (None, 4, 45, 1)])
 def test_deadline_never_accepts_a_late_response(monkeypatch, completed, expected, deadline, stall_ticks):
     now = [0.0]
     joins = []

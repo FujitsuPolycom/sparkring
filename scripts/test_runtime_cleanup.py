@@ -56,10 +56,10 @@ case "$1" in
    [[ "${!#}" == "$ID" ]] || exit 1
    case "$3" in
     *org.sparkring.managed*) [[ "$MODE" == foreign ]] && echo false || echo true;;
-    *org.sparkring.profile*) echo "$PROFILE";;
+    *org.sparkring.profile*) [[ "$MODE" == badprofile ]] && echo wrong || echo "$PROFILE";;
     *org.sparkring.bundle*) [[ "$MODE" == badbundle ]] && echo wrong || echo bundle;;
-    *org.sparkring.service*) echo service;;
-    *org.sparkring.source-profile*) echo source;;
+    *org.sparkring.service*) [[ "$MODE" == badservice ]] && echo wrong || echo service;;
+    *org.sparkring.source-profile*) [[ "$MODE" == badsource ]] && echo wrong || echo source;;
     *) exit 1;;
    esac;;
  rm) printf '%s' "$3" > "$LOG";;
@@ -123,12 +123,13 @@ def test_stop_checks_labels_and_removes_only_captured_id(
         assert not log.exists()
 
 
-def test_stop_checks_bundle_label(inputs, tmp_path):
+@pytest.mark.parametrize("mode", ["badprofile", "badbundle", "badservice", "badsource"])
+def test_stop_rejects_mismatched_ownership_labels(inputs, tmp_path, mode):
     site, profile = inputs
     action = runtime.stop_actions(
         site, profile, ownership=runtime.Ownership("bundle", "service", "source")
     )[0]
-    result, log = run_fake_engine(tmp_path, action.argv[-1], profile, "badbundle")
+    result, log = run_fake_engine(tmp_path, action.argv[-1], profile, mode)
     assert result.returncode == 73
     assert not log.exists()
 

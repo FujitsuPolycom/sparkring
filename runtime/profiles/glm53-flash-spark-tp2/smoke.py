@@ -46,7 +46,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base', default='http://127.0.0.1:8000')
     parser.add_argument('--phase', choices=('text', 'long-prompt', 'image', 'video'), required=True)
-    parser.add_argument('--video-file', help='MP4 depicting a solid blue field; checks video decoding and color recognition')
+    parser.add_argument('--video-file', help='Retained option; this TP2 profile rejects video checks')
     args = parser.parse_args()
     if args.phase == 'video':
         parser.error('The shared-image TP2 profile disables video input')
@@ -72,13 +72,7 @@ def main():
         print(json.dumps({'phase': args.phase, 'seconds': time.monotonic()-start, 'answer_correct': 'amber-73091' in text, 'cache_restore_verified': False, 'output': text, 'usage': body['usage']}), flush=True)
         assert 'amber-73091' in text
     else:
-        if args.phase == 'image':
-            content = {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(png_blue()).decode()}}
-        else:
-            from pathlib import Path
-            if not args.video_file:
-                parser.error('--video-file is required for video')
-            content = {'type': 'video_url', 'video_url': {'url': 'data:video/mp4;base64,' + base64.b64encode(Path(args.video_file).read_bytes()).decode()}}
+        content = {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(png_blue()).decode()}}
         body = post(base, '/v1/chat/completions', {'model': MODEL, 'messages': [{'role': 'user', 'content': [content, {'type': 'text', 'text': 'What is the dominant color? Answer with just the color.'}]}], 'temperature': 0, 'max_tokens': 256})
         message = body['choices'][0]['message']
         text = message.get('content') or ''

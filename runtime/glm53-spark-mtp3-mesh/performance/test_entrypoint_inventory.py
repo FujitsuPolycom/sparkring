@@ -38,8 +38,10 @@ def test_entrypoints_are_installed_attested_and_checked(tmp_path, entrypoint):
     name = "/opt/sparkring/bin/" + entrypoint
     # The sandbox paths are used consistently by the real installer and verifier.
     assert str(mapped_path(name)) in receipt["files"]
-    mapped_path(name).write_bytes(b"tampered")
     verifier = ast.parse((HERE / "verify.py").read_text())
     body = [n for n in verifier.body if not isinstance(n, (ast.Import, ast.ImportFrom))]
+    verification = compile(ast.Module(body=body, type_ignores=[]), "verifier", "exec")
+    exec(verification, scope)
+    mapped_path(name).write_bytes(b"tampered")
     with pytest.raises(RuntimeError, match="Runtime source differs"):
-        exec(compile(ast.Module(body=body, type_ignores=[]), "verifier", "exec"), scope)
+        exec(verification, scope)
