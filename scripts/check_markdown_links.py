@@ -9,9 +9,24 @@ from urllib.parse import unquote
 from pathlib import Path
 
 LINK = re.compile(r"(?<!\\)\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
-FENCE = re.compile(r"^\s*(```|~~~)")
+FENCE = re.compile(r"^ {0,3}(\x60{3,}|~{3,})(.*)$")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
 SKIP = re.compile(r"^(https?:|mailto:|ftp:|tel:|data:|#!)", re.IGNORECASE)
+
+def fence_state(line, active):
+    """Track matching fence character/length; shorter examples stay literal."""
+    match = FENCE.match(line)
+    if not match:
+        return active, False
+    marker, tail = match.groups()
+    if active is not None:
+        if marker[0] == active[0] and len(marker) >= active[1] and not tail.strip():
+            return None, True
+        return active, False
+    if marker[0] == chr(96) and chr(96) in tail:
+        return None, False
+    return (marker[0], len(marker)), True
+
 
 def slug(text: str) -> str:
     text = re.sub(r"`([^`]*)`", r"\1", text)
@@ -21,11 +36,10 @@ def slug(text: str) -> str:
     return re.sub(r"[^\w\- ]+", "", text).strip().replace(" ", "-")
 
 def anchors(path: Path) -> set[str]:
-    result, fenced = set(), False
+    result, fenced = set(), None
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if FENCE.match(line):
-            fenced = not fenced
-        elif not fenced and (match := HEADING.match(line)):
+        fenced, boundary = fence_state(line, fenced)
+        if not boundary and fenced is None and (match := HEADING.match(line)):
             base = slug(match.group(1))
             anchor, suffix = base, 0
             while anchor in result:
@@ -36,11 +50,10 @@ def anchors(path: Path) -> set[str]:
 
 def formatting_warnings(text: str) -> list[int]:
     """Locate top-level lists touching paragraphs or tables, outside code fences."""
-    result, fenced, previous = [], False, ""
+    result, fenced, previous = [], None, ""
     for number, line in enumerate(text.splitlines(), 1):
-        if FENCE.match(line):
-            fenced = not fenced
-        elif not fenced and re.match(r"^(?:[-+*] |\d+\. )", line):
+        fenced, boundary = fence_state(line, fenced)
+        if not boundary and fenced is None and re.match(r"^(?:[-+*] |\d+\. )", line):
             if previous.strip() and not re.match(r"^(?:[-+*] |\d+\. |\s)", previous):
                 result.append(number)
         previous = line
@@ -55,12 +68,10 @@ def main() -> int:
     cache, failures, checked = {}, [], 0
     for relative in filter(None, tracked):
         source = root / relative
-        fenced = False
+        fenced = None
         for number, line in enumerate(source.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if FENCE.match(line):
-                fenced = not fenced
-                continue
-            if fenced:
+            fenced, boundary = fence_state(line, fenced)
+            if boundary or fenced is not None:
                 continue
             for target in LINK.findall(re.sub(r"`[^`]*`", "", line)):
                 if SKIP.match(target):

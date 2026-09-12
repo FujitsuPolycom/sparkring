@@ -57,6 +57,18 @@ def test_fenced_headings_do_not_create_anchors(tmp_path):
     assert markdown.anchors(doc) == {"visible"}
 
 
+@pytest.mark.parametrize("inner", [chr(96) * 3, "~~~"])
+def test_shorter_or_other_fences_remain_literal(tmp_path, monkeypatch, inner):
+    fence = chr(96) * 4
+    doc = tmp_path / "README.md"
+    doc.write_text(f"# Visible\n{fence}markdown\n{inner}\n# Hidden\n[Example](missing.md)\n{fence}\n")
+    assert markdown.anchors(doc) == {"visible"}
+    monkeypatch.setattr(markdown.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, b"README.md\0", b""))
+    monkeypatch.setattr(sys, "argv", ["check", str(tmp_path)])
+    assert markdown.main() == 0
+
+
 def test_scanner_reports_location_without_secret(tmp_path, monkeypatch, capsys):
     secret = "synthetic" + "CredentialValue123"
     (tmp_path / "sample.txt").write_text("api_key=" + secret, encoding="utf-8")
