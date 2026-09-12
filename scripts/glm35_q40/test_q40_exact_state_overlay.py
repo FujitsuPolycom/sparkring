@@ -194,7 +194,7 @@ class Q40ExactStateOverlayTest(unittest.TestCase):
         )
         self.assertEqual(result[0, 0].item(), 3)
 
-    def test_baseline_already_captures_q40_without_a_prefill_block_override(self) -> None:
+    def test_baseline_profile_configures_q1_q40_capture_without_a_prefill_block_override(self) -> None:
         profile = base_profile()
         environment = profile["environment"]
         self.assertEqual(environment["VLLM_EXL3_PREFILL_CAPACITY"], "4096")
