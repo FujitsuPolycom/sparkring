@@ -70,7 +70,9 @@ def main() -> int:
                 path = unquote(path)
                 fragment = unicodedata.normalize("NFC", unquote(fragment)).lower()
                 destination = source if not path else (source.parent / path).resolve()
-                if not destination.exists():
+                if not destination.is_relative_to(root):
+                    failures.append(f"{relative}:{number}: target escapes repository {path!r}")
+                elif not destination.exists():
                     failures.append(f"{relative}:{number}: missing target {path!r}")
                 elif fragment and destination.suffix.lower() == ".md":
                     if destination not in cache:

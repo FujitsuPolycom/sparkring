@@ -34,6 +34,17 @@ def test_duplicate_heading_anchors(tmp_path):
     doc.write_text("# Setup\n# Setup\n# Setup-1\n# Setup\n", encoding="utf-8")
     assert markdown.anchors(doc) == {"setup", "setup-1", "setup-1-1", "setup-2"}
 
+
+def test_links_cannot_pass_using_files_outside_repository(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "README.md").write_text("[Outside](../outside.md#available)\n")
+    (tmp_path / "outside.md").write_text("# Available\n")
+    monkeypatch.setattr(markdown.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, b"README.md\0", b""))
+    monkeypatch.setattr(sys, "argv", ["check", str(root)])
+    assert markdown.main() == 1
+
 def test_formatting_warns_for_list_touching_table():
     assert markdown.formatting_warnings("| value |\n* note\n* another\n") == [2]
     assert markdown.formatting_warnings("| value |\n\n* note\n") == []
