@@ -27,13 +27,13 @@ def read_api_key(path):
     return keys[0]
 
 
-def fetch(url, payload=None, *, api_key=None):
+def fetch(url, payload=None, *, credential=None):
     data = None if payload is None else json.dumps(payload).encode()
     headers = {"Content-Type": "application/json"}
-    if api_key is not None:
-        headers["Authorization"] = "Bearer " + api_key
+    if credential is not None:
+        headers["Authorization"] = "Bearer " + credential
     request = urllib.request.Request(url, data=data, headers=headers)
-    open_request = (urllib.request.urlopen if api_key is None else
+    open_request = (urllib.request.urlopen if credential is None else
                     urllib.request.build_opener(_NoCredentialRedirect()).open)
     with open_request(request, timeout=120) as response:
         return response.read().decode()
@@ -102,7 +102,9 @@ def main():
                           "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                           "request_characters": len(prompt), "executed": False}, indent=2))
         return
-    authentication = {} if args.api_key_file is None else {"api_key": read_api_key(args.api_key_file)}
+    authentication = {} if args.api_key_file is None else {
+        "credential": read_api_key(args.api_key_file)
+    }
     args.output.mkdir(parents=True)
     base = args.endpoint.rstrip("/")
     metrics_before = fetch(base + "/metrics", **authentication)
