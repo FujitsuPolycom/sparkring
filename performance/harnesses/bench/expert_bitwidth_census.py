@@ -54,9 +54,8 @@ from typing import Any, Iterable, Mapping, Sequence
 SCHEMA = "sparkring-expert-bitwidth-census/v1"
 
 # The safetensors container: 8 bytes of little-endian header length, then that
-# many bytes of JSON, then the tensor payload. A header is metadata for at most
-# a few hundred thousand tensors, so a length beyond this bound means the file
-# is not a safetensors container rather than that it is a large one.
+# many bytes of JSON, then the tensor payload. This census imposes a metadata
+# allocation bound; a larger header is unsupported by this reader.
 HEADER_LENGTH_BYTES = 8
 MAX_HEADER_BYTES = 256 * 1024 * 1024
 
@@ -118,10 +117,8 @@ SIDECAR_SUFFIXES = frozenset(
     }
 )
 
-# Name classification, applied in a fixed order; the first rule that matches
-# owns the tensor. Order matters: a shared expert is named with the same
-# `experts` stem as a routed one, so it is excluded before the routed-expert
-# rule is tried.
+# Name classification uses the listed precedence; the first matching rule
+# owns the tensor. Shared experts are classified as always-active dense capacity.
 EMBEDDING_RE = re.compile(r"(?:^|\.)(embed_tokens|embed_out|lm_head|wte|wpe)(?:\.|$)")
 SHARED_EXPERT_RE = re.compile(r"(?:^|\.)shared_experts?(?:\.|$)")
 ROUTED_EXPERT_RE = re.compile(r"(?:^|\.)experts\.(?P<expert>\d+)(?:\.|$)")
@@ -172,7 +169,7 @@ DERIVATION_METHODS: Mapping[str, str] = {
         "int16 rank-3 tensor whose final name segment is trellis and whose "
         "last dimension is a multiple of 16: logical shape is "
         "[shape[0]*16, shape[1]*16] and the tier is shape[2]//16, the EXL3 "
-        "packing the EXL3 quantization backend validates at load time"
+        "packing convention recognized by this census"
     ),
     DERIVATION_UNPACKED: (
         "float dtype storing one logical weight per element: the logical "
@@ -392,7 +389,7 @@ def derive_geometry(
                 None,
                 None,
                 f"EXL3 trellis implies a {tier}-bit tier, outside the "
-                f"{EXL3_MIN_BITS}..{EXL3_MAX_BITS} range the format defines",
+                f"{EXL3_MIN_BITS}..{EXL3_MAX_BITS} range this census recognizes",
             )
         logical = int(shape[0]) * EXL3_BLOCK * int(shape[1]) * EXL3_BLOCK
         if logical <= 0:
@@ -566,7 +563,7 @@ def summarize_classes(records: Iterable[TensorRecord]) -> dict[str, ClassTotals]
 
 
 def distribution(bucket: ClassTotals) -> dict[str, Any] | None:
-    """Min, median, max, and the tier histogram over one class's weights."""
+    """Unweighted tensor spread; histogram shares use logical weight counts."""
 
     if not bucket.bits_per_weight:
         return None
@@ -960,6 +957,7 @@ def render(report: Mapping[str, Any]) -> str:
         lines.append(f"  {method}: {description}")
     lines.append("")
 
+    lines.append("class min/median/max: unweighted over determined weight tensors")
     lines.append(
         f"{'class':<13} {'tensors':>8} {'stored bytes':>16} "
         f"{'logical weights':>16} {'min':>7} {'median':>7} {'max':>7}"
