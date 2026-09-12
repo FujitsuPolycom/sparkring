@@ -586,8 +586,8 @@ class SiteConfig:
     def placeholder_warnings(self) -> list[str]:
         """Fields that still look like the shipped example, not a real site.
 
-        These never fail validation - the example file has to validate - but
-        preflight surfaces them so a half-filled config is obvious.
+        Structural validation accepts these values. The CLI's
+        --strict-placeholders option turns reported placeholders into failure.
         """
         warnings: list[str] = []
         for rank in self.ranks:
@@ -1157,7 +1157,8 @@ def _cross_validate(topology: Topology, ranks: Sequence[Rank]) -> None:
             )
         targets[rank.ssh_target] = rank.id
 
-    # 7. control-channel peers must be exactly the ring neighbours
+    # Control peers name ring neighbours. Reject contradictory known ownership;
+    # additional routable addresses require live preflight, not this inventory.
     mgmt_owner = {
         str(rank.management.address): rank.id for rank in ranks
     }
