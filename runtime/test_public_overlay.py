@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import pytest
@@ -41,11 +42,33 @@ def test_overlay_build_is_content_addressed(tmp_path):
     manifest = overlay.build(REPO, SPEC, output)
     expected = json.loads(SPEC.read_text(encoding="utf-8"))["files"]
     assert len(manifest["files"]) == len(expected)
+    assert {record["source"]: record["path"] for record in manifest["files"]} == {
+        source: Path(source).name for source in expected
+    }
     assert (output / overlay.MANIFEST).is_file()
     for record in manifest["files"]:
         path = output / record["path"]
         assert path.is_file()
         assert overlay.sha256_file(path) == record["sha256"]
+        assert path.read_bytes() == (REPO / record["source"]).read_bytes()
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == record["sha256"]
+
+
+def test_experiment_source_keeps_its_subdirectory(tmp_path):
+    repo = tmp_path / "repo"
+    relative = "spark_transport/experiments/example/module.py"
+    source = repo / relative
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"value = 3\n")
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"schema": overlay.SCHEMA, "files": [relative]}))
+    output = tmp_path / "bundle"
+    manifest = overlay.build(repo, spec, output)
+    assert manifest["files"] == [{
+        "source": relative, "path": "example/module.py",
+        "sha256": hashlib.sha256(b"value = 3\n").hexdigest(),
+    }]
+    assert (output / "example/module.py").read_bytes() == b"value = 3\n"
 
 
 def test_overlay_builder_rejects_unrecognised_layout(tmp_path):
@@ -107,3 +130,31 @@ def test_nonstring_inventory_has_a_validation_error(tmp_path):
     spec.write_text(json.dumps({"schema": overlay.SCHEMA, "files": [{}]}))
     with pytest.raises(ValueError, match="non-empty string"):
         overlay.build(tmp_path, spec, tmp_path / "bundle")
+
+
+@pytest.mark.parametrize("value", [None, True, 7, [{}], "schema"])
+def test_nondocument_spec_fails_with_validation_error(tmp_path, value):
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="schema"):
+        overlay.build(tmp_path, spec, tmp_path / "output")
+    assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.parametrize("files", [
+    ["spark_transport/experiments/sparkring-overlay-manifest.json/module.py"],
+    ["spark_transport/integrations/vllm/Module.py", "spark_transport/integrations/vllm/module.py"],
+    ["spark_transport/integrations/vllm/nested", "spark_transport/experiments/nested/module.py"],
+])
+def test_destination_collisions_fail_before_output_creation(tmp_path, files):
+    repo = tmp_path / "repo"
+    for name in files:
+        source = repo / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("payload")
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"schema": overlay.SCHEMA, "files": files}))
+    output = tmp_path / "bundle"
+    with pytest.raises(ValueError):
+        overlay.build(repo, spec, output)
+    assert not output.exists()

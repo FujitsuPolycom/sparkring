@@ -43,7 +43,7 @@ def destination(relative: str) -> PurePosixPath:
 
 def build(repo: Path, spec_path: Path, output: Path) -> dict:
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
-    if set(spec) != {"schema", "files"} or spec.get("schema") != SCHEMA:
+    if not isinstance(spec, dict) or set(spec) != {"schema", "files"} or spec.get("schema") != SCHEMA:
         raise ValueError(f"{spec_path}: expected exact {SCHEMA} schema")
     files = spec.get("files")
     if not isinstance(files, list) or not files:
@@ -54,7 +54,7 @@ def build(repo: Path, spec_path: Path, output: Path) -> dict:
         raise ValueError(f"{spec_path}: duplicate source path")
 
     records: list[dict[str, str]] = []
-    destinations: set[Path] = set()
+    destinations: set[str] = set()
     copies = []
     for relative in files:
         source = (repo / Path(relative)).resolve()
@@ -66,12 +66,14 @@ def build(repo: Path, spec_path: Path, output: Path) -> dict:
             raise ValueError(f"public-overlay source missing: {relative}")
         target_relative = destination(relative)
         target_key = target_relative.as_posix()
-        if target_key.casefold() == MANIFEST.casefold():
+        folded = target_key.casefold()
+        if folded == MANIFEST.casefold() or folded.startswith(MANIFEST.casefold() + "/"):
             raise ValueError("overlay manifest filename is reserved")
         target = output / Path(*target_relative.parts)
-        if target in destinations:
+        if any(folded == other or folded.startswith(other + "/") or other.startswith(folded + "/")
+               for other in destinations):
             raise ValueError(f"duplicate output path: {target_key}")
-        destinations.add(target)
+        destinations.add(folded)
         copies.append((relative, source, target, target_key))
 
     # Invalid inventories must fail before creating or modifying output files.
