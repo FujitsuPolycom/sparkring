@@ -947,6 +947,21 @@ def test_cli_matched(tmp_path, capsys):
     assert report["inputs"]["candidate_sha256"] == hashlib.sha256(cand.read_bytes()).hexdigest()
 
 
+def test_cli_hashes_the_bytes_actually_compared(tmp_path, capsys, monkeypatch):
+    base, cand = tmp_path / "base.json", tmp_path / "cand.json"
+    base.write_text(json.dumps(SUSTAINED_BASELINE))
+    cand.write_text(json.dumps(SUSTAINED_CANDIDATE))
+    expected = hashlib.sha256(cand.read_bytes()).hexdigest()
+    original = cmp.compare_documents
+    def compare_then_change(baseline, candidate):
+        result = original(baseline, candidate)
+        cand.write_text('{"changed_after_loading": true}')
+        return result
+    monkeypatch.setattr(cmp, "compare_documents", compare_then_change)
+    assert cmp.main(["--baseline", str(base), "--candidate", str(cand)]) == cmp.EXIT_OK
+    assert json.loads(capsys.readouterr().out)["inputs"]["candidate_sha256"] == expected
+
+
 def test_cli_identical_documents_exit_mismatch(tmp_path, capsys):
     base = tmp_path / "base.json"
     cand = tmp_path / "cand.json"

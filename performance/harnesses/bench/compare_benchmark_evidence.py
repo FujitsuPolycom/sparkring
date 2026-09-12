@@ -892,7 +892,8 @@ def compare_documents(
     }
 
 
-def load_document(path: Path) -> dict[str, Any]:
+def _load_document_with_digest(path: Path) -> tuple[dict[str, Any], str]:
+    """Parse and hash the same input buffer."""
     if not path.is_file():
         raise ConfigError(f"file not found: {path}")
     def unique_keys(entries):
@@ -903,17 +904,18 @@ def load_document(path: Path) -> dict[str, Any]:
             result[key] = value
         return result
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_keys)
-    except json.JSONDecodeError as exc:
+        raw = path.read_bytes()
+        doc = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
     if not isinstance(doc, dict):
         raise ConfigError(f"top-level JSON in {path} is not an object")
-    return doc
+    return doc, hashlib.sha256(raw).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
-    """Return the SHA-256 digest of an input evidence file."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def load_document(path: Path) -> dict[str, Any]:
+    """Load and validate one benchmark JSON document."""
+    return _load_document_with_digest(path)[0]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -930,8 +932,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         baseline_path = Path(args.baseline)
         candidate_path = Path(args.candidate)
-        baseline = load_document(baseline_path)
-        candidate = load_document(candidate_path)
+        baseline, baseline_digest = _load_document_with_digest(baseline_path)
+        candidate, candidate_digest = _load_document_with_digest(candidate_path)
     except ConfigError as exc:
         print(f"compare-benchmark-evidence: CONFIG ERROR: {exc}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
@@ -943,8 +945,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_INVALID
 
     report["inputs"] = {
-        "baseline_sha256": _sha256_file(baseline_path),
-        "candidate_sha256": _sha256_file(candidate_path),
+        "baseline_sha256": baseline_digest,
+        "candidate_sha256": candidate_digest,
     }
 
     print(json.dumps(report, indent=2, sort_keys=True))
