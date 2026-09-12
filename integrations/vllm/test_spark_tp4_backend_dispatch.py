@@ -2865,3 +2865,25 @@ def test_failed_fatal_diagnostic_still_aborts(monkeypatch):
     with pytest.raises(Aborted):
         adapter._fatal_native_failure("native operation failed")
     assert calls == [1]
+
+
+def test_allreduce_native_indices_reject_narrowing(monkeypatch):
+    import pytest
+    import spark_tp4_backend as adapter
+    library = _FakeLibrary()
+    monkeypatch.setenv("SPARK_TP4_LIBRARY", "/fake.so")
+    monkeypatch.setattr(adapter.ctypes, "CDLL", lambda _path: library)
+    for bad in ("-1", "256", "259"):
+        monkeypatch.setenv("SPARK_TP4_GID0", bad)
+        with pytest.raises(ValueError, match="GID0"):
+            adapter._NativeSession(0, 12288)
+    assert library.configs == []
+    monkeypatch.setenv("SPARK_TP4_GID0", "255")
+    adapter._NativeSession(0, 12288)
+    config = library.configs[0]
+    assert config["gid0"] == 255
+    assert config["graph_submit_cpu_plus_one"] == 0
+    assert adapter._cpu_plus_one(0xFFFFFFFE) == 0xFFFFFFFF
+    for bad in (-2, 0xFFFFFFFF, 0x100000000):
+        with pytest.raises(ValueError, match="CPU index"):
+            adapter._cpu_plus_one(bad)

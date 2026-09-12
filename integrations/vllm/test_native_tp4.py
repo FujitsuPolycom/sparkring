@@ -16,7 +16,9 @@ if "RANK" not in os.environ and __name__ != "__main__":
 
 rank = int(os.environ["RANK"])
 iterations = int(os.getenv("ITERATIONS", "100"))
-session = _NativeSession(rank)
+if iterations <= 0:
+    raise ValueError("ITERATIONS must be positive")
+session = _NativeSession(rank, 6144 * 2)
 
 for sequence in range(iterations):
     parity = sequence & 1

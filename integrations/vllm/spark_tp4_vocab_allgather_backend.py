@@ -47,6 +47,20 @@ _DEFAULT_PEERS = {
 _Signature = int
 
 
+def _gid_index(name: str) -> int:
+    value = int(os.getenv(name, "3"))
+    if not 0 <= value <= 255:
+        raise ValueError(f"{name} must be in [0, 255]")
+    return value
+
+
+def _cpu_plus_one(value: int) -> int:
+    # -1 is the eager-session sentinel; zero on the wire disables affinity.
+    if type(value) is not int or not -1 <= value <= 0xFFFFFFFE:
+        raise ValueError("CPU index must be -1 (unset) or in [0, 4294967294]")
+    return value + 1
+
+
 def _fatal_native_failure(message: str) -> None:
     """Terminate on a fatal native failure even if diagnostic logging fails."""
     try:
@@ -348,16 +362,16 @@ class _NativeVocabSession:
             "device1": os.getenv(
                 "SPARK_TP4_DEVICE1", "rocep1s0f1"
             ).encode(),
-            "gid0": int(os.getenv("SPARK_TP4_GID0", "3")),
-            "gid1": int(os.getenv("SPARK_TP4_GID1", "3")),
+            "gid0": _gid_index("SPARK_TP4_GID0"),
+            "gid1": _gid_index("SPARK_TP4_GID1"),
             "control_port0": port0,
             "control_port1": port1,
         }
         if graph_only:
             config = _NativeVocabGraphConfig(
                 **common_config,
-                graph_submit_cpu_plus_one=submit_cpu + 1,
-                graph_progress_cpu_plus_one=progress_cpu + 1,
+                graph_submit_cpu_plus_one=_cpu_plus_one(submit_cpu),
+                graph_progress_cpu_plus_one=_cpu_plus_one(progress_cpu),
             )
             create = self._library.spark_tp4_vocab_graph_create
         else:

@@ -953,3 +953,27 @@ class NativeBindingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_native_config_rejects_narrowing_and_preserves_boundaries(monkeypatch):
+    import pytest
+    library = _FakeLibrary()
+    monkeypatch.setenv("SPARK_TP4_LIBRARY", "/fake.so")
+    monkeypatch.setattr(backend_module.ctypes, "CDLL", lambda _path: library)
+    for bad in ("-1", "256", "259"):
+        monkeypatch.setenv("SPARK_TP4_GID0", bad)
+        with pytest.raises(ValueError, match="GID0"):
+            backend_module._NativeVocabSession(0)
+    assert library.spark_tp4_vocab_allgather_create.calls == []
+    monkeypatch.setenv("SPARK_TP4_GID0", "255")
+    for bad in (-2, 0xFFFFFFFF, 0x100000000):
+        with pytest.raises(ValueError, match="CPU index"):
+            backend_module._NativeVocabSession(0, graph_only=True,
+                control_ports=(10110, 10111), graph_cpu_affinity=(bad, 12))
+    assert library.spark_tp4_vocab_graph_create.calls == []
+    backend_module._NativeVocabSession(0, graph_only=True,
+        control_ports=(10110, 10111), graph_cpu_affinity=(0xFFFFFFFE, 12))
+    config = library.spark_tp4_vocab_graph_create.calls[0][0]._obj
+    assert config.gid0 == 255
+    assert config.graph_submit_cpu_plus_one == 0xFFFFFFFF
+    assert backend_module._cpu_plus_one(-1) == 0

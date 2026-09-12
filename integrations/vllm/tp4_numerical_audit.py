@@ -39,6 +39,8 @@ def make_rank_input(sequence: int, rank: int) -> torch.Tensor:
 def main() -> None:
     rank = int(os.environ["RANK"])
     iterations = int(os.getenv("ITERATIONS", "1000"))
+    if iterations <= 0:
+        raise ValueError("ITERATIONS must be positive")
     device = torch.device("cuda", 0)
     torch.cuda.set_device(device)
 
@@ -47,7 +49,7 @@ def main() -> None:
         rank=rank,
         world_size=WORLD_SIZE,
     )
-    session = _NativeSession(rank)
+    session = _NativeSession(rank, ELEMENTS * 2)
 
     compared = 0
     candidate_absolute_sum = 0.0

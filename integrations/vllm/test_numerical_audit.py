@@ -35,3 +35,57 @@ class NumericalAuditInputTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_invalid_iterations_fail_before_transport_setup(monkeypatch):
+    import pytest
+    import tp4_numerical_audit as audit
+    def unexpected(*args, **kwargs):
+        raise AssertionError("transport setup reached")
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setattr(audit.torch.cuda, "set_device", unexpected)
+    monkeypatch.setattr(audit, "_NativeSession", unexpected)
+    for count in ("0", "-1"):
+        monkeypatch.setenv("ITERATIONS", count)
+        with pytest.raises(ValueError, match="ITERATIONS must be positive"):
+            audit.main()
+
+
+def test_native_smoke_rejects_empty_run_before_native_construction(monkeypatch):
+    import pytest
+    import runpy
+    import spark_tp4_backend
+    from pathlib import Path
+    def unexpected(*args, **kwargs):
+        raise AssertionError("native setup reached")
+    monkeypatch.setattr(spark_tp4_backend, "_NativeSession", unexpected)
+    monkeypatch.setenv("RANK", "0")
+    for count in ("0", "-1"):
+        monkeypatch.setenv("ITERATIONS", count)
+        with pytest.raises(ValueError, match="ITERATIONS must be positive"):
+            runpy.run_path(str(Path(__file__).with_name("test_native_tp4.py")), run_name="__main__")
+
+
+def test_probe_entrypoints_supply_native_payload_bytes(monkeypatch):
+    import pytest
+    import runpy
+    from pathlib import Path
+    import tp4_numerical_audit as audit
+    import spark_tp4_backend as backend
+    calls = []
+    class SetupObserved(Exception):
+        pass
+    def session(rank, payload_bytes):
+        calls.append((rank, payload_bytes))
+        raise SetupObserved()
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("ITERATIONS", "1")
+    monkeypatch.setattr(audit.torch.cuda, "set_device", lambda *_: None)
+    monkeypatch.setattr(audit.dist, "init_process_group", lambda **_: None)
+    monkeypatch.setattr(audit, "_NativeSession", session)
+    monkeypatch.setattr(backend, "_NativeSession", session)
+    with pytest.raises(SetupObserved):
+        audit.main()
+    with pytest.raises(SetupObserved):
+        runpy.run_path(str(Path(__file__).with_name("test_native_tp4.py")), run_name="__main__")
+    assert calls == [(0, 12288), (0, 12288)]

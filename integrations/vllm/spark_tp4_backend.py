@@ -119,6 +119,20 @@ _DEFAULT_PEERS = {
 }
 
 
+def _gid_index(name: str) -> int:
+    value = int(os.getenv(name, "3"))
+    if not 0 <= value <= 255:
+        raise ValueError(f"{name} must be in [0, 255]")
+    return value
+
+
+def _cpu_plus_one(value: int) -> int:
+    # -1 is the eager-session sentinel; zero on the wire disables affinity.
+    if type(value) is not int or not -1 <= value <= 0xFFFFFFFE:
+        raise ValueError("CPU index must be -1 (unset) or in [0, 4294967294]")
+    return value + 1
+
+
 def _fatal_native_failure(message: str) -> None:
     """Terminate on a fatal native failure even if diagnostic logging fails."""
     try:
@@ -612,11 +626,10 @@ def _research_graph_all_reduce(
     if session is None:
         # Fail closed: an admitted capture-phase collective must never
         # silently take the stock path in the research profile.
-        logger.error(
+        _fatal_native_failure(
             "research width-4096 graph capture reached before session "
             "preparation; terminating worker"
         )
-        _abort_after_native_failure()
         raise AssertionError("unreachable after worker termination")
     try:
         output = session.capture(tensor)
@@ -977,8 +990,8 @@ class _BidirectionalPrefillNativeSession:
             peer1=peer1.encode(),
             device0=device0.encode(),
             device1=device1.encode(),
-            gid0=int(os.getenv("SPARK_TP4_GID0", "3")),
-            gid1=int(os.getenv("SPARK_TP4_GID1", "3")),
+            gid0=_gid_index("SPARK_TP4_GID0"),
+            gid1=_gid_index("SPARK_TP4_GID1"),
             control_port0=control_port0,
             control_port1=control_port1,
             payload_bytes=payload_bytes,
@@ -1451,13 +1464,13 @@ class _NativeSession:
             peer1=os.getenv("SPARK_TP4_PEER1", default_peer1).encode(),
             device0=os.getenv("SPARK_TP4_DEVICE0", "rocep1s0f0").encode(),
             device1=os.getenv("SPARK_TP4_DEVICE1", "rocep1s0f1").encode(),
-            gid0=int(os.getenv("SPARK_TP4_GID0", "3")),
-            gid1=int(os.getenv("SPARK_TP4_GID1", "3")),
+            gid0=_gid_index("SPARK_TP4_GID0"),
+            gid1=_gid_index("SPARK_TP4_GID1"),
             control_port0=control_port0,
             control_port1=control_port1,
             payload_bytes=payload_bytes,
-            graph_submit_cpu_plus_one=submit_cpu + 1,
-            graph_progress_cpu_plus_one=progress_cpu + 1,
+            graph_submit_cpu_plus_one=_cpu_plus_one(submit_cpu),
+            graph_progress_cpu_plus_one=_cpu_plus_one(progress_cpu),
         )
         error = ctypes.create_string_buffer(512)
         if use_v2_geometry:
