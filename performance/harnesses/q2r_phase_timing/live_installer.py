@@ -244,6 +244,7 @@ class LiveQ2RSession:
         self._current_stream = current_stream
         self._descriptors_finalized = False
         self._installed = False
+        self._cleanup_pending = False
 
         def bind_managers(
             runner: Any,
@@ -456,6 +457,8 @@ class LiveQ2RSession:
     def arm(self, epoch: str) -> None:
         if not self._installed:
             raise RuntimeError("install before arm")
+        if self._cleanup_pending:
+            raise RuntimeError("complete pending cleanup before arming")
         self._finalize_descriptors()
         self._collector.arm(epoch)
         try:
@@ -554,10 +557,13 @@ class LiveQ2RSession:
     def uninstall(self) -> None:
         if not self._installed:
             return
+        self._cleanup_pending = True
+        self.disarm()
         self._draft_loop_adapter.uninstall()
         self._timing_adapter.uninstall()
         self._binding_adapter.uninstall()
         self._installed = False
+        self._cleanup_pending = False
 
 
 def _load_types() -> LiveTypes:

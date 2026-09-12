@@ -279,6 +279,27 @@ def session(
     )
 
 
+def test_partial_uninstall_blocks_rearming_and_can_retry(monkeypatch):
+    live = session()
+    live.install()
+    try:
+        GPUModelRunner().initialize_kv_cache(None)
+        with monkeypatch.context() as patcher:
+            def fail():
+                raise RuntimeError("cleanup interrupted")
+            patcher.setattr(live._timing_adapter, "uninstall", fail)
+            with pytest.raises(RuntimeError, match="cleanup interrupted"):
+                live.uninstall()
+            with pytest.raises(RuntimeError, match="cleanup"):
+                live.arm("partial")
+        live.uninstall()
+        with pytest.raises(RuntimeError, match="install before arm"):
+            live.arm("removed")
+    finally:
+        live.disarm()
+        live.uninstall()
+
+
 def test_live_session_separates_same_q_target_and_draft() -> None:
     live = session()
     live.install()
