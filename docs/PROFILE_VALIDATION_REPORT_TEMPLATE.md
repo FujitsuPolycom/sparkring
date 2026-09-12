@@ -1,12 +1,14 @@
 # Profile validation report template
 
 Copy this template into a named evidence record and replace bracketed fields.
-Use **implemented**, **qualified**, **research-only**, or **unsupported** for
-the profile status. Record a gate as pass, fail, pending, or not applicable.
+Use **Development**, **Validated**, **Experimental**, or **Unsupported** for
+the reader-facing profile status. Machine-readable status values follow the
+[writing and evidence policy](development/writing.md). Record a gate as pass,
+fail, pending, or not applicable. C1/C8 denote one/eight concurrent requests.
 
 ## Conditions
 
-- Profile status: [implemented | qualified | research-only | unsupported]
+- Profile status: [Development | Validated | Experimental | Unsupported]
 - Profile/recipe and source revision: [identifiers]
 - Image digest; target/draft revisions; quantization: [identifiers]
 - Hardware/topology, TP/DCP/PP: [values]
@@ -18,7 +20,7 @@ the profile status. Record a gate as pass, fail, pending, or not applicable.
 
 ## Measurement
 
-Follow [the validation runbook](PROFILE_VALIDATION.md). Link commands and raw
+Follow [the validation runbook](operations/profile-validation.md). Link commands and raw
 receipts with hashes. Record timing definitions, actual token counts,
 repetitions, concurrency, and cache evidence.
 Use the selected profile's deployment guide for its startup and warmup gate.
@@ -31,7 +33,7 @@ Use the selected profile's deployment guide for its startup and warmup gate.
 | Prefill ×3 | [gate] | [per-context median/min/max TTFT and tokens/s] |
 | Decode matrix ×3 | [gate] | [per-cell median/min/max throughput, TTFT, ITL] |
 | Coding peak ×3 | [gate] | [median/peak rate, output lengths, truncation] |
-| Estonia C1/C8 | [gate] | [correct/attempted and output-budget hits] |
+| Long-context accuracy (Estonia), C1/C8 | [gate] | [correct/attempted and output-budget hits] |
 | Needle/revision/join | [gate] | [actual contexts, positions, pass counts] |
 | SparkCache restart restore ×3 | [gate or not applicable] | [per-rank restore and accuracy] |
 | Mixed traffic ×3 | [gate] | [idle versus loaded throughput/ITL/TTFT] |

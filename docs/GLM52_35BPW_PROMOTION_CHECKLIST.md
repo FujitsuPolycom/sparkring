@@ -3,8 +3,12 @@
 Use this checklist for an image built from the tracked GLM recipe
 `recipes/glm52-exl3-r7-3.5bpw.json`. The qualified status of the operator image
 does not transfer to another image ID.
+Use the [GLM-5.2 quickstart](../profiles/glm52-exl3-r7-3.5bpw/README.md)
+for build and profile-generation commands.
 
 ## Offline qualification
+
+These preparation steps do not launch serving; downloads require network access.
 
 - [ ] Build from `runtime/exl3-r7/build-image.sh` with an immutable parent image
   ID and an audited parent license expression.
@@ -31,6 +35,8 @@ does not transfer to another image ID.
 - [ ] Define and run a separate bounded C16 acceptance check for the same image
   ID. The linked runbook does not supply a C16 command or evidence; record its
   workload, admission and output criteria, and post-run health before promotion.
+  Capture separate before/after transport snapshots and repeat the runbook's
+  post-run gates for this C16 window.
 - [ ] Confirm post-run rank and transport health.
 
 ## Promotion record

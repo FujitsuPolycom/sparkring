@@ -2,9 +2,10 @@
 
 Use this procedure for the fixed-seed and bounded-concurrency item in
 [`GLM52_35BPW_PROMOTION_CHECKLIST.md`](GLM52_35BPW_PROMOTION_CHECKLIST.md).
-It produces functional-equivalence, speculative-counter, and C1/C2/C8
+It produces functional-equivalence, speculative-counter, transport, and C1/C2/C8
 receipts for one immutable rebuilt image. It does not promote an image by
 itself or establish a general performance claim.
+C1, C2 and C8 mean one, two and eight concurrent requests.
 
 ## Conditions
 
@@ -13,7 +14,8 @@ Record these values before sending traffic:
 - rebuilt Docker image ID and immutable parent manifest digest;
 - SparkRing commit and generated exact-Q40 profile SHA-256;
 - model repository, revision, config SHA-256, and index SHA-256;
-- four physical ranks in cycle order, TP4/DCP4, `ag_rs`, interleave one;
+- four physical ranks in cycle order, TP4/DCP4, all-gather/reduce-scatter
+  DCP communication (`ag_rs`), interleave one;
 - KV representation and bytes per rank, model length, maximum sequences, and
   maximum batched tokens;
 - cache state and every client other than the acceptance harness;
@@ -30,7 +32,7 @@ MTP0 baseline:
 
 ```bash
 python runtime/exl3-r7/mtp4_qualification.py capture-mtp0 \
-  --base-url http://<rank0-management-address>:8000 \
+  --base-url 'http://<rank0-management-address>:8000' \
   --model glm-5.2-exl3-r7-3.5bpw \
   --output /path/to/receipts/mtp0.json
 ```
@@ -40,7 +42,7 @@ qualify it against the baseline:
 
 ```bash
 python runtime/exl3-r7/mtp4_qualification.py qualify-mtp4 \
-  --base-url http://<rank0-management-address>:8000 \
+  --base-url 'http://<rank0-management-address>:8000' \
   --model glm-5.2-exl3-r7-3.5bpw \
   --baseline /path/to/receipts/mtp0.json \
   --output /path/to/receipts/mtp4.json
@@ -59,6 +61,9 @@ Before the workload, copy each rank's JSON file at its configured
 `/path/to/receipts/transport-before-rank<RANK>.json`. Use the reviewed site
 plan for container names and SSH targets; keep those site values out of the
 public receipt.
+
+Save the pre-workload `/v1/models` response as `models-before.json` with
+these receipts; use it to check the served identity and model length afterward.
 
 Use
 [`local-inference-lab/llm-inference-bench`](https://github.com/local-inference-lab/llm-inference-bench)
@@ -122,7 +127,7 @@ After the C8 cell:
 
    Require status `pass`; this rejects fatal, overflow, dropped-signature,
    stock TP/vocabulary fallback, and missing captured-width evidence.
-4. record the SHA-256 of `mtp0.json`, `mtp4.json`, `c1-c2-c8.json`, and
+4. record the SHA-256 of `models-before.json`, `mtp0.json`, `mtp4.json`, `c1-c2-c8.json`, and
    `transport.json`;
 5. copy sanitized receipts into the promotion evidence record or retain them at
    an immutable public artifact location.
