@@ -91,7 +91,8 @@ def main() -> int:
                     if fragment.lower() not in cache[destination]:
                         failures.append(f"{relative}:{number}: missing anchor #{fragment} in {destination.relative_to(root)}")
     for failure in failures:
-        print(f"::error::{failure}")
+        escaped = failure.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::error::{escaped}")
     front_page = root / "README.md"
     if front_page.exists():
         for number in formatting_warnings(front_page.read_text(encoding="utf-8")):

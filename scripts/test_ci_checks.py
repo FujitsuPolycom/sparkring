@@ -45,6 +45,17 @@ def test_links_cannot_pass_using_files_outside_repository(tmp_path, monkeypatch)
     monkeypatch.setattr(sys, "argv", ["check", str(root)])
     assert markdown.main() == 1
 
+
+def test_link_error_escapes_annotation_control_characters(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(markdown.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, b"bad%0A\nname.md\0", b""))
+    monkeypatch.setattr(markdown.Path, "read_text", lambda *a, **k: "[Missing](absent.md)\n")
+    monkeypatch.setattr(sys, "argv", ["check", str(tmp_path)])
+    assert markdown.main() == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith("::error::bad%250A%0Aname.md:")
+
 def test_formatting_warns_for_list_touching_table():
     assert markdown.formatting_warnings("| value |\n* note\n* another\n") == [2]
     assert markdown.formatting_warnings("| value |\n\n* note\n") == []
