@@ -28,6 +28,9 @@ def sha256_file(path: Path) -> str:
 
 def destination(relative: str) -> PurePosixPath:
     path = PurePosixPath(relative)
+    if (path.is_absolute() or ".." in path.parts or "\\" in relative
+            or ":" in relative or path.as_posix() != relative):
+        raise ValueError(f"noncanonical public-overlay source path: {relative}")
     parts = path.parts
     integration = ("spark_transport", "integrations", "vllm")
     experiments = ("spark_transport", "experiments")
@@ -45,15 +48,15 @@ def build(repo: Path, spec_path: Path, output: Path) -> dict:
     files = spec.get("files")
     if not isinstance(files, list) or not files:
         raise ValueError(f"{spec_path}: files must be a non-empty list")
+    if any(not isinstance(relative, str) or not relative for relative in files):
+        raise ValueError(f"{spec_path}: every file must be a non-empty string")
     if len(files) != len(set(files)):
         raise ValueError(f"{spec_path}: duplicate source path")
 
     records: list[dict[str, str]] = []
-    destinations: set[str] = set()
-    output.mkdir(parents=True, exist_ok=False)
+    destinations: set[Path] = set()
+    copies = []
     for relative in files:
-        if not isinstance(relative, str) or not relative:
-            raise ValueError(f"{spec_path}: every file must be a non-empty string")
         source = (repo / Path(relative)).resolve()
         try:
             source.relative_to(repo.resolve())
@@ -63,10 +66,17 @@ def build(repo: Path, spec_path: Path, output: Path) -> dict:
             raise ValueError(f"public-overlay source missing: {relative}")
         target_relative = destination(relative)
         target_key = target_relative.as_posix()
-        if target_key in destinations:
-            raise ValueError(f"duplicate output path: {target_key}")
-        destinations.add(target_key)
+        if target_key == MANIFEST:
+            raise ValueError("overlay manifest filename is reserved")
         target = output / Path(*target_relative.parts)
+        if target in destinations:
+            raise ValueError(f"duplicate output path: {target_key}")
+        destinations.add(target)
+        copies.append((relative, source, target, target_key))
+
+    # Invalid inventories must fail before creating or modifying output files.
+    output.mkdir(parents=True, exist_ok=False)
+    for relative, source, target, target_key in copies:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
         records.append(

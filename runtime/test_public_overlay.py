@@ -68,3 +68,41 @@ def test_overlay_builder_rejects_unrecognised_layout(tmp_path):
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
+
+
+@pytest.mark.parametrize("relative", ["spark_transport/experiments/../escape.py", "spark_transport/integrations/vllm/./escape.py"])
+def test_noncanonical_source_cannot_escape_output_or_leave_partial_bundle(tmp_path, relative):
+    repo = tmp_path / "repo"
+    source = repo / relative
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"replacement")
+    sentinel = tmp_path / "escape.py"
+    sentinel.write_bytes(b"preserve")
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"schema": overlay.SCHEMA, "files": [relative]}))
+    output = tmp_path / "bundle"
+    with pytest.raises(ValueError):
+        overlay.build(repo, spec, output)
+    assert sentinel.read_bytes() == b"preserve"
+    assert not output.exists()
+
+
+def test_manifest_filename_is_reserved_before_output_creation(tmp_path):
+    repo = tmp_path / "repo"
+    relative = "spark_transport/integrations/vllm/" + overlay.MANIFEST
+    source = repo / relative
+    source.parent.mkdir(parents=True)
+    source.write_text("payload")
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"schema": overlay.SCHEMA, "files": [relative]}))
+    output = tmp_path / "bundle"
+    with pytest.raises(ValueError, match="manifest"):
+        overlay.build(repo, spec, output)
+    assert not output.exists()
+
+
+def test_nonstring_inventory_has_a_validation_error(tmp_path):
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"schema": overlay.SCHEMA, "files": [{}]}))
+    with pytest.raises(ValueError, match="non-empty string"):
+        overlay.build(tmp_path, spec, tmp_path / "bundle")
