@@ -10,7 +10,7 @@ used by GLM-5.2's DCP4 attention path:
 
 Every case validates values. Representative decode and prefill shapes are
 also captured into CUDA graphs and replayed before the bridge is admitted.
-Result buffers are invalidated after warmup and after graph capture, so a
+Gather/scatter results are invalidated after warmup and after graph capture, so a
 timed loop or replay loop that performs no collective fails the value check.
 Validation covers the final output of each row, not every iteration.
 
@@ -247,6 +247,8 @@ def _graph_replay(
     """
 
     capture_stream = torch.cuda.Stream()
+    # Input fills were queued on the caller's stream before warmup switches streams.
+    capture_stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(capture_stream):
         for _ in range(20):
             operation()
@@ -325,6 +327,11 @@ def validate_launch(environ: dict[str, str]) -> tuple[int, int, str]:
         raise ValueError(f"this probe requires WORLD_SIZE=4, got {world_size}")
     if rank not in range(world_size):
         raise ValueError(f"RANK must be in 0..{world_size - 1}, got {rank}")
+    port = environ.get("MASTER_PORT")
+    if port is not None and (
+        not port.isascii() or not port.isdecimal() or not 1 <= int(port) <= 65535
+    ):
+        raise ValueError("MASTER_PORT must be a decimal TCP port in 1..65535")
     head_ip = environ.get("HEAD_IP")
     if not head_ip:
         raise RuntimeError(

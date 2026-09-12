@@ -4,12 +4,12 @@
 The probe exercises both communication scopes that a TP4/DCP2 vLLM process
 creates:
 
-* one four-rank TP communicator, forced to the physical ring; and
+* one four-rank TP communicator, configured for the physical ring by the launcher; and
 * two adjacent two-rank DCP communicators, [0, 1] and [2, 3].
 
 Every row checks values as well as latency.  A fast result is not accepted if
 the rank-major all-gather layout differs from torch.distributed semantics.
-Output buffers are invalidated after warmup and after graph capture, so a
+Gather output buffers are invalidated after warmup and after graph capture, so a
 timed loop or replay loop that performs no collective fails the value check.
 Validation covers the final output of each row, not every iteration.
 
@@ -152,6 +152,8 @@ def graph_pair_all_gather(
     output_shape = (len(pair_ranks) * case.shape[0], *case.shape[1:])
     output = torch.empty(output_shape, dtype=case.dtype, device=DEVICE)
     capture_stream = torch.cuda.Stream()
+    # Input fills were queued on the caller's stream before warmup switches streams.
+    capture_stream.wait_stream(torch.cuda.current_stream())
 
     # Initialize all lazy NCCL state before capture.
     with torch.cuda.stream(capture_stream):
@@ -208,6 +210,11 @@ def validate_launch(environ: dict[str, str]) -> tuple[int, int, str]:
         raise ValueError(f"this probe requires WORLD_SIZE=4, got {world_size}")
     if rank not in range(world_size):
         raise ValueError(f"RANK must be in 0..{world_size - 1}, got {rank}")
+    port = environ.get("MASTER_PORT")
+    if port is not None and (
+        not port.isascii() or not port.isdecimal() or not 1 <= int(port) <= 65535
+    ):
+        raise ValueError("MASTER_PORT must be a decimal TCP port in 1..65535")
     head_ip = environ.get("HEAD_IP")
     if not head_ip:
         raise RuntimeError(

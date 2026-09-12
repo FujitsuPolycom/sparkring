@@ -63,7 +63,8 @@ class FakeCuda:
         cuda = SimpleNamespace(
             Event=lambda enable_timing: FakeEvent(enable_timing=enable_timing, log=self.log),
             synchronize=lambda: None,
-            Stream=lambda: object(),
+            Stream=lambda: SimpleNamespace(wait_stream=lambda stream: self.log.append("wait_input_stream")),
+            current_stream=lambda: object(),
             stream=lambda stream: contextlib.nullcontext(),
             CUDAGraph=lambda: self.graph,
             graph=self._capture,
@@ -103,8 +104,9 @@ class FakeCuda:
     def _all_gather(self, output, source, group=None) -> None:
         def work() -> None:
             ranks = output.shape[0] // source.shape[0]
+            peers = group if group is not None else range(ranks)
             output.copy_(torch.cat(
-                [torch.full_like(source, peer + 1) for peer in range(ranks)], dim=0))
+                [torch.full_like(source, peer + 1) for peer in peers], dim=0))
         self._perform(work)
 
     def _all_reduce(self, tensor, group=None) -> None:
@@ -119,13 +121,14 @@ SMALL_GATHER_DCP4 = dcp4.GatherCase("query_q1", (1, 4, 8), torch.bfloat16, 5)
 SMALL_SCATTER_DCP4 = dcp4.ReduceScatterCase("output_q1_d8", 1, 8, 5)
 
 
-def test_dcp2_pair_gather_accepts_only_fresh_output(monkeypatch):
+@pytest.mark.parametrize("pair_ranks,rank", [([0, 1], 1), ([2, 3], 3)])
+def test_dcp2_pair_gather_accepts_only_fresh_output(monkeypatch, pair_ranks, rank):
     fake = FakeCuda(monkeypatch, dcp2, working_iterations=None)
-    row = dcp2.timed_pair_all_gather(SMALL_GATHER_DCP2, rank=1, pair_ranks=[0, 1], pair_group=None)
+    row = dcp2.timed_pair_all_gather(SMALL_GATHER_DCP2, rank=rank, pair_ranks=pair_ranks, pair_group=pair_ranks)
     assert row["correct"] is True and row["iterations"] == 5
 
     stale = FakeCuda(monkeypatch, dcp2, working_iterations=5)  # warmup only
-    row = dcp2.timed_pair_all_gather(SMALL_GATHER_DCP2, rank=1, pair_ranks=[0, 1], pair_group=None)
+    row = dcp2.timed_pair_all_gather(SMALL_GATHER_DCP2, rank=rank, pair_ranks=pair_ranks, pair_group=pair_ranks)
     assert stale.collective_calls == 10
     assert row["correct"] is False
     del fake
@@ -140,6 +143,16 @@ def test_dcp2_graph_replay_without_collective_fails_validation(monkeypatch):
     row = dcp2.graph_pair_all_gather(SMALL_GATHER_DCP2, rank=0, pair_ranks=[0, 1], pair_group=None, replays=3)
     assert stale.graph.replays == 3
     assert row["correct"] is False
+
+
+@pytest.mark.parametrize("module", [dcp2, dcp4])
+def test_graph_warmup_waits_for_input_producer_stream(monkeypatch, module):
+    fake = FakeCuda(monkeypatch, module, working_iterations=None)
+    if module is dcp2:
+        module.graph_pair_all_gather(SMALL_GATHER_DCP2, rank=0, pair_ranks=[0, 1], pair_group=None, replays=2)
+    else:
+        module.graph_world_all_gather(SMALL_GATHER_DCP4, 0, replays=2)
+    assert fake.log[0] == "wait_input_stream"
 
 
 def test_dcp4_gather_and_reduce_scatter_reject_stale_results(monkeypatch):
@@ -176,6 +189,12 @@ def test_dcp4_input_preparation_runs_before_the_start_event(monkeypatch):
 
 def test_all_reduce_refills_its_input_before_each_timed_iteration(monkeypatch):
     fake = FakeCuda(monkeypatch, dcp2, working_iterations=None)
+
+    def check_input(tensor):
+        assert bool(torch.all(tensor == 4).item())
+        fake._all_reduce(tensor)
+
+    monkeypatch.setattr(dcp2.dist, "all_reduce", check_input)
     row = dcp2.timed_world_all_reduce(3)
     assert row["correct"] is True
     assert fake.collective_calls == 520
@@ -201,6 +220,19 @@ def test_launch_validation_requires_head_ip(module):
     with pytest.raises(RuntimeError, match="HEAD_IP"):
         module.validate_launch({"RANK": "0", "WORLD_SIZE": "4"})
     assert module.validate_launch({"RANK": "3", "WORLD_SIZE": "4", "HEAD_IP": "h"}) == (3, 4, "h")
+    for port in ("1", "65535"):
+        assert module.validate_launch({"RANK": "3", "HEAD_IP": "h", "MASTER_PORT": port}) == (3, 4, "h")
+
+
+@pytest.mark.parametrize("module", [dcp2, dcp4])
+@pytest.mark.parametrize("port", ["0", "65536", "invalid", " 29641"])
+def test_invalid_rendezvous_port_is_rejected_before_cuda(monkeypatch, module, port):
+    FakeCuda(monkeypatch, module, working_iterations=None)
+    monkeypatch.setattr(module.os, "environ", {
+        "RANK": "0", "HEAD_IP": "h", "MASTER_PORT": port,
+    })
+    with pytest.raises(ValueError, match="MASTER_PORT"):
+        module.main()
 
 
 @pytest.mark.parametrize("module", [dcp2, dcp4])
