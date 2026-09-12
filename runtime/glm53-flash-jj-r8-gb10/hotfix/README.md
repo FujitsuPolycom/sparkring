@@ -2,7 +2,7 @@
 
 Status: implemented and GPU-tested. No full-model soak or serving replacement
 is claimed. This is a small child of the published SIRCL operator image, with
-the tested B12X publication barrier, its new compile revision, output-stall
+the tested B12X publication barrier, its compile-cache revision, output-stall
 liveness detection, and temperature-one/thinking-enabled readiness warmup.
 
 Published tag:

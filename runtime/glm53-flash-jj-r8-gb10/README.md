@@ -104,22 +104,14 @@ native bundle, so only the fabric inputs vary by rank.
 
 #### Embedded bundle identity
 
-The image builder regenerates the allowlisted Python overlay from the checked
-out SparkRing revision. It accepts only the ARM64
-`libspark_transport_capi.so` whose SHA-256 is recorded by
-[`sircl-public-build-receipt.json`](sircl-public-build-receipt.json). Build that
-native input from the same clean revision on an ARM64 CUDA host:
-
-```bash
-cmake -S spark_transport -B build/spark-transport \
-  -G Ninja \
-  -DBUILD_TESTING=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_ARCHITECTURES=121 \
-  -DSPARK_TP4_ENABLE_FUSED_STREAM_SWITCH_SMOKE=ON
-cmake --build build/spark-transport --parallel
-ctest --test-dir build/spark-transport --output-on-failure
-```
+The image builder extracts the preserved Python overlay from
+[`runtime/releases/glm53-dflash-sircl-overlay/`](../releases/glm53-dflash-sircl-overlay/).
+Its source lock binds transport tree `2aac02232a9115037723aa1dd40483a5693a3e1e`,
+the archive, overlay specification, and generated manifest. Changes to the
+maintained transport source do not alter this image's pinned bundle.
+The builder accepts only the ARM64 `libspark_transport_capi.so` identified by
+[`sircl-public-build-receipt.json`](sircl-public-build-receipt.json).
+The receipt records the original toolchain and source identity for that library.
 
 The
 [`sircl-public-build-receipt.json`](sircl-public-build-receipt.json) receipt
@@ -130,8 +122,9 @@ The image builder does not compile this library. Byte-for-byte reproducibility
 has not been established, so `--sircl-library` must name the preserved artifact
 from the receipt or a rebuild that happens to match its recorded SHA-256.
 
-The builder rejects a different SparkRing transport tree, overlay
-specification, generated manifest, build receipt, or native-library digest.
+The builder rejects a preserved overlay whose archive, source lock,
+specification, manifest, or payload hashes differ, and rejects a different
+build receipt or native-library digest.
 The resulting image carries the complete bundle at `/opt/spark-sircl` and the
 launcher records its native-library and overlay-manifest hashes as container
 labels.
@@ -150,7 +143,12 @@ cat runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example >> "$HOME/glm53-flash
 ${EDITOR:-vi} "$HOME/glm53-flash.env"
 ```
 
-Replace every `REPLACE` value in the combined file. The secondary values select
+Replace every `REPLACE` value and set both primary RDMA devices for each rank.
+Device slot 0 reaches rank XOR 1; slot 1 reaches rank XOR 3. With the
+[documented cabling](../../docs/GLM53_SPARK_MESH_HOST_SETUP.md), even ranks use
+`rocep1s0f0`/`rocep1s0f1` and odd ranks use `rocep1s0f1`/`rocep1s0f0`.
+Apply the same slot ordering to secondary peers and device functions.
+The secondary values select
 the second RDMA device function on each existing cabled ring edge; the topology
 requires neither additional cables nor diagonal rank links. The launcher
 rejects incomplete or repeated peer/device assignments, inconsistent modes,
@@ -574,8 +572,8 @@ on an ARM64 CUDA 13 host before invoking the image builder:
 | B12X source checkout | `pins.json` `b12x.repository`, commit, tree, and package tree |
 | SparkCache source checkout | `pins.json` `sparkcache.commit`, tree, package tree, and source hash |
 | CUDA placement and snapshot libraries | SparkCache source plus the SHA-256 values in `pins.json` |
-| SIRCL Python overlay | This checkout plus `runtime/public-overlay-files.json` |
-| SIRCL ARM64 native library | This checkout plus `sircl-public-build-receipt.json` and `pins.json` `sircl` hashes |
+| SIRCL Python overlay | Preserved archive, specification, and source lock in `runtime/releases/glm53-dflash-sircl-overlay/` |
+| SIRCL ARM64 native library | Preserved artifact identified by `sircl-public-build-receipt.json` and `pins.json` `sircl` hashes |
 | Short KV-metrics logger transform | [`patch_kv_metrics_logging.py`](patch_kv_metrics_logging.py) and its exact vLLM preimage |
 | B12X histogram publication barrier | [`patch_indexer_barrier.py`](patch_indexer_barrier.py), with checked source and result hashes |
 
