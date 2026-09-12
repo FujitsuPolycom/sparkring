@@ -909,3 +909,24 @@ def test_preserved_overlay_rejects_archive_tampering(tmp_path, monkeypatch):
     with pytest.raises(build.BuildError, match="Preserved SIRCL overlay differs"):
         build.prepare_pinned_public_overlay(tmp_path / "output", build.load_pins())
     assert not (tmp_path / "output").exists()
+
+
+def test_external_verification_remains_bound_when_tag_moves(monkeypatch):
+    from types import SimpleNamespace
+    inspected_id, replacement_id = 'sha256:' + 'a' * 64, 'sha256:' + 'b' * 64
+    tag = 'local/image:verification'
+    labels = verify.expected_labels(verify.load_json(verify.PINS))
+
+    def run(command, **kwargs):
+        if command[1:3] == ('image', 'inspect'):
+            result = [{'Id': inspected_id, 'Architecture': 'arm64', 'Os': 'linux',
+                       'Config': {'Labels': labels}}]
+        else:
+            # The mutable tag now resolves to another image; the inspected ID does not.
+            result = {'verified_image': replacement_id if tag in command else inspected_id}
+        return SimpleNamespace(stdout=json.dumps(result))
+
+    monkeypatch.setattr(verify.subprocess, 'run', run)
+    receipt = verify.verify_external(tag, 'docker')
+    assert receipt['image'] == tag
+    assert receipt['image_id'] == receipt['inside_image']['verified_image'] == inspected_id
