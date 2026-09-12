@@ -623,7 +623,9 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
     """Per (layer, expert) byte and bit-rate spread across routed experts.
 
     One routed expert is the unit an expert transfer moves, so its stored size
-    is the quantity a transfer-time estimate needs. Reporting the spread rather
+    is the quantity a transfer-time estimate needs. Bit rates exclude payload
+    with undetermined logical geometry; stored-byte totals still include it.
+    Reporting the spread rather
     than a single figure is the point: a uniform assumption predicts none.
     """
 
@@ -649,7 +651,8 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
 
     sizes = sorted(slot[0] for slot in per_instance.values())
     rates = sorted(
-        slot[0] * 8 / slot[1] for slot in per_instance.values() if slot[1] > 0
+        (slot[0] - slot[2]) * 8 / slot[1]
+        for slot in per_instance.values() if slot[1] > 0
     )
     summary: dict[str, Any] = {
         "count": len(per_instance),

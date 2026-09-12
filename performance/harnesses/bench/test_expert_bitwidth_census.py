@@ -504,6 +504,21 @@ class CensusTest(unittest.TestCase):
 
 
 class UndeterminedTest(unittest.TestCase):
+    def test_mixed_instance_excludes_unknown_payload_from_bit_rate(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.down_proj.trellis": trellis(3),
+                "model.layers.0.mlp.experts.0.down_proj.suh": ("F16", [64]),
+                "model.layers.0.mlp.experts.0.up_proj.qweight": ("U8", [64, 32]),
+            })
+            records, findings = census.read_tensor_records(root)
+            self.assertFalse(findings)
+            instances = census.expert_instances(records)
+            self.assertEqual(instances["stored_bytes_total"], 3072 + 128 + 2048)
+            self.assertEqual(instances["instances_with_undetermined_tensors"], 1)
+            self.assertEqual(instances["bits_per_weight_with_sidecars_min"], 3.125)
+
     def test_an_underivable_expert_tensor_is_excluded_and_reported(self) -> None:
         with TemporaryDirectory() as raw:
             root = Path(raw)
