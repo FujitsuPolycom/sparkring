@@ -284,6 +284,7 @@ def status_ranks(
             print(f"[status] rank{rank.id} ({rank.ssh_target}) {name}: SSH ERROR")
             failed = True
             continue
+        failed |= not running
         state = "UP" if running else "down"
         print(f"[status] rank{rank.id} ({rank.ssh_target}) {name}: {state}")
     head = next(r for r in ranks if r.id == 0)

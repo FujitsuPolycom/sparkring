@@ -327,7 +327,7 @@ def test_status_reports_up_and_api(monkeypatch, fake_ranks, capsys):
     ssh.api_ready = True
     rc = ctl.status_ranks(fake_ranks, "deepseek-v4-flash-r", 8888)
     out = capsys.readouterr().out
-    assert rc == 0
+    assert rc == 1
     assert "rank0" in out and "UP" in out
     assert "rank1" in out and "down" in out
     assert "200 OK" in out
@@ -381,6 +381,8 @@ def test_failed_ssh_submission_checks_current_rank_ownership(monkeypatch, fake_r
 
 def test_main_loads_cluster_and_runs_status(monkeypatch, sample_cluster,
                                             capsys):
+    targets = {rank.ssh_target: rank.id for rank in ctl.load_cluster(sample_cluster).ranks}
+    monkeypatch.setitem(globals(), "_rank_of", lambda target: targets[target])
     ssh = FakeSSH(monkeypatch)
     ssh.containers_up = {0: True, 1: True, 2: True, 3: True}
     ssh.api_ready = True
@@ -467,3 +469,11 @@ def test_non_four_rank_inventory_rejected_before_remote_work(monkeypatch, sample
     monkeypatch.setattr(ctl, "load_cluster", lambda *_: SimpleNamespace(ranks=[SimpleNamespace(id=i) for i in range(6)]))
     monkeypatch.setattr(ctl, "_run_ssh", lambda *a, **kw: pytest.fail("remote work forbidden"))
     assert ctl.main(["start", "--cluster", str(sample_cluster), "--repo", "/repo"]) == 2
+
+
+@pytest.mark.parametrize("missing_rank,expected", [(None, 0), (2, 1)])
+def test_status_requires_every_worker_even_when_head_api_is_healthy(monkeypatch, fake_ranks, missing_rank, expected):
+    missing_target = next((rank.ssh_target for rank in fake_ranks if rank.id == missing_rank), None)
+    monkeypatch.setattr(ctl, "_container_running", lambda target, name: target != missing_target)
+    monkeypatch.setattr(ctl, "_head_api_ready", lambda *args: True)
+    assert ctl.status_ranks(fake_ranks, "deepseek-v4-flash-r", 8000) == expected
