@@ -557,7 +557,7 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
     assert 'git -C sparkring checkout --detach "${sparkring_revision}"' in cache_text
     assert "metrics-before-restore.prom" in cache_text
     assert "restored 8192 tokens async" in cache_text
-    assert "A rebuilt image has **implemented** status" in cache_text
+    assert "A rebuild has **Development** status" in cache_text
 
     base_text = BASE_QUICKSTART_PATH.read_text(encoding="utf-8")
     assert "qualification-client checkout" in base_text

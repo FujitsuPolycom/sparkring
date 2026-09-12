@@ -1,6 +1,6 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 without an external KV cache
 
-Status: **qualified** for startup, semantic generation, and runtime health
+Status: **Validated** for startup, semantic generation, and runtime health
 using the immutable image, model revisions, and TP4/DCP1 settings in this
 guide. The configured 524,288-token request limit and 32-sequence limit were
 not exercised at their limits. The image is a FujitsuPolycom community
@@ -15,10 +15,9 @@ NCCL. It omits only `--kv-transfer-config`.
 
 ## Prepare the four-rank service
 
-Complete the prerequisites, model acquisition, image pull or source-build,
-qualification-client checkout, cluster inventory, and provenance review in
+Complete the prerequisites, qualification-client checkout and SparkRing checkout in
 [`GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md`](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md).
-The qualified service image is:
+The recorded service image is:
 
 ```bash
 image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943'
@@ -57,21 +56,12 @@ python "${sparkring_root}/scripts/pull_glm53_image_cluster.py" \
 
 ## Start and verify
 
-The generic launcher rejects GLM-5.3 profiles that explicitly select
-`method: "dflash"` with TP4/DCP4 and a non-null
-`num_speculative_tokens_per_batch_size` or `adaptive_speculative_tokens_window`.
-These dynamic-depth settings are unsupported because they can hang CUDA-graph
+Keep this profile's TP4/DCP1 and fixed seven-token DFlash settings.
+Dynamic-depth DFlash on TP4/DCP4 is unsupported because it can hang graph
 capture ([issue #221](https://github.com/FujitsuPolycom/sparkring/issues/221)).
-Use a fixed `num_speculative_tokens` value on that configuration. This guide's
-TP4/DCP1 profile and fixed-depth MTP3 profiles retain their settings.
-
-This check runs while building the offline plan, before SSH or container
-creation. It reads explicit speculative JSON and dotted CLI fields, including
-vLLM's last-option precedence. TP/DCP aliases cannot override site-owned
-parallelism. Configuration hidden inside an image entrypoint or external vLLM
-config file, an inferred speculative method, and direct `docker`/`vllm`
-invocations remain outside this host-side check. The guard does not repair the
-underlying DFlash capture path or change an existing image.
+The [launcher guard](../scripts/sparkring_runtime.py) rejects explicit affected
+settings during offline planning; it cannot inspect configuration hidden in
+an image entrypoint or external vLLM config file.
 
 ```bash
 python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
@@ -81,7 +71,9 @@ python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start
 ```
 
-Tail the API rank using the container name in `profile.json`:
+Tail the API rank using the container name in `profile.json`. Replace the SSH
+target and API endpoint below with rank zero's management address and configured
+API port:
 
 ```bash
 ssh operator@rank0.example.net \
@@ -100,11 +92,11 @@ timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --ma
 python "${sparkcache_root}/deploy/glm53_flash/qualification_request.py" \
   --endpoint "${api_endpoint}" --model "${served_model}" \
   --kind semantic --output no-external-cache-semantic.json
-curl --fail --silent "${api_endpoint}/metrics" > no-external-cache-metrics.prom
+curl --fail --silent --show-error --max-time 10 "${api_endpoint}/metrics" > no-external-cache-metrics.prom
 ```
 
 Require `semantic_match: true`, `finish_reason: stop`,
-`draft_tokens = 7 × drafts`, zero external-cache queries, zero preemptions,
+`draft_tokens = 7 Ã— drafts`, zero external-cache queries, zero preemptions,
 the same image ID on all ranks, no SparkCache connector log lines, no restarts
 or OOMs, and 24 RTS `VLLM::Worker` queue pairs per rank.
 

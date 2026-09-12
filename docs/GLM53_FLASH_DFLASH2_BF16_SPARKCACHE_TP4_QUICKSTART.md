@@ -1,6 +1,6 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 and SparkCache on four DGX Sparks
 
-Status: **qualified** for startup, semantic generation, runtime health, and one
+Status: **Validated** for startup, semantic generation, runtime health, and one
 8,192-token persistent restore using the immutable image, model revisions, and
 TP4/DCP1 settings in this guide. The configured 524,288-token request limit and
 32-sequence limit were not exercised at their limits. The image is a
@@ -13,7 +13,7 @@ Spark systems. Tensor parallelism spans all four GPUs. SparkCache persists an
 aligned 8,192-token target-model context on each rank's NVMe and can restore
 it after all four containers are replaced.
 
-## Qualified configuration
+## Recorded configuration
 
 | Setting | Value |
 |---|---|
@@ -23,13 +23,16 @@ it after all four containers are replaced.
 | Model and scheduler limits | 524,288 tokens; 8,192 batched tokens; 32 sequences |
 | GPU KV memory | 12 GiB FP8 per rank; measured capacity 549,950 tokens |
 | Speculation | DFlash2; seven tokens; draft TP4 |
-| Graphs | target `FULL_AND_PIECEWISE`; DFlash FULL; capture sizes 8–256 |
+| Graphs | target `FULL_AND_PIECEWISE`; DFlash FULL; capture sizes 8â€“256 |
 | Scheduler | asynchronous scheduling; chunked prefill; native prefix caching |
 | KDA prefill | Triton |
 | SparkCache | 48 GiB maximum and 40 GiB low watermark per rank |
 
+The site template's `serving` section supplies the context, KV, sequence and
+port settings to the launcher. The profile supplies model and cache options.
+
 The target repository publishes ModelOpt mixed precision: NVFP4 routed
-experts in target layers 3–44 and MXFP8 in the embedded MTP expert layer. The
+experts in target layers 3â€“44 and MXFP8 in the embedded MTP expert layer. The
 repository does not identify the unquantized base-checkpoint revision. The
 external DFlash checkpoint is not quantized and is licensed CC BY-NC-ND 4.0;
 obtain it under Inco AI's published terms.
@@ -39,8 +42,8 @@ obtain it under Inco AI's published terms.
 - Four Linux/ARM64 DGX Spark systems with Docker, NVIDIA Container Toolkit,
   passwordless SSH from the operator host, and the direct-cycle RoCE network
   described by `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml`.
-- At least 13 GiB of free GPU memory per rank for the configured KV slab and
-  runtime overhead.
+- Memory for the target and draft weights, runtime and graph allocations,
+  plus the configured 12 GiB KV slab per rank.
 - At least 48 GiB of dedicated free local storage per rank for SparkCache,
   plus storage for model files and compilation caches.
 - The target and draft revisions downloaded to the same host paths on every
@@ -49,7 +52,7 @@ obtain it under Inco AI's published terms.
 
 ## Obtain the images and qualification client
 
-The qualified image can be pulled directly:
+The recorded image can be pulled directly:
 
 ```bash
 runtime_image='ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd'
@@ -71,26 +74,13 @@ git -C sparkcache checkout --detach 3860a2250193a6679ac6bac857af53e0757841f8
 sparkcache_root="$PWD/sparkcache"
 ```
 
-To build both images instead, follow
-[`runtime/glm53-flash/BUILD.md`](../runtime/glm53-flash/BUILD.md) for the
-runtime. Set these references to the local outputs before building the overlay:
-
-```bash
-runtime_image='sparkring-glm53-runtime:da4d7be-source-arm64'
-sparkcache_image='sparkring-glm53-sparkcache:local'
-python "${sparkcache_root}/deploy/glm53_flash/build_public_image.py" \
-  --repository "${sparkcache_root}" \
-  --base-image "${runtime_image}" \
-  --output-image "${sparkcache_image}" \
-  --output glm53-sparkcache-build-receipt.json
-```
-
-A rebuilt image has **implemented** status. It does not acquire the
-qualification of the published digest until its own image ID passes the live
-checks below. Publication procedures, SBOM generation, licenses, and required
-OCI labels are in
-[`runtime/glm53-flash/PUBLISHING.md`](../runtime/glm53-flash/PUBLISHING.md)
-and the SparkCache repository's `deploy/glm53_flash/PUBLISHING.md`.
+This quickstart uses the published digest throughout. Source-build development
+starts with the [runtime build guide](../runtime/glm53-flash/BUILD.md) and the
+pinned SparkCache checkout's `deploy/glm53_flash/build_public_image.py`.
+A rebuild has **Development** status and needs its own profile/site image
+identities, parent labels, attestation checks and deployment validation.
+The checked-in templates and registry-pull commands below select the recorded
+published artifact.
 
 ## Configure the cluster
 
@@ -154,9 +144,9 @@ ssh operator@rank0.example.net \
   'docker logs --follow --tail 120 glm53-flash-dflash2-bf16-sparkcache-tp4-r0 2>&1'
 ```
 
-Replace the SSH target with rank 0 from `site.yaml`. The container name comes
-from `profile.json`; use that literal name if it was changed. Set `api_endpoint`
-to rank 0's management address from `site.yaml` and the API port in `profile.json`.
+Replace the SSH target with rank 0 from `site.yaml`. The rank-zero container name
+is `container_name` from `profile.json` plus `-r0`. Set `api_endpoint` to rank 0's
+management address and `serving.api_port` from `site.yaml`.
 Wait for readiness, then verify the served model:
 
 ```bash
@@ -165,12 +155,11 @@ startup_timeout=$(python -c 'import json; print(json.load(open("profile.json", e
 timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --max-time 10 "$1/health" >/dev/null; do sleep 5; done' _ "$api_endpoint" || {
   echo "Readiness failed or timed out; inspect all rank logs before retrying" >&2; exit 1;
 }
-curl --fail --silent "${api_endpoint}/v1/models"
+curl --fail --silent --show-error --max-time 10 "${api_endpoint}/v1/models"
 ```
 
-Cold startup with stock safetensors took about 8 minutes for model loading and
-about 45–103 seconds for graph capture in the qualification runs. API health,
-not a particular progress line, defines readiness.
+API health defines readiness. If the wait times out, inspect model-loading,
+graph-capture and engine logs on all ranks before retrying.
 
 ## Verify persistent restore
 
@@ -195,29 +184,38 @@ python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start
 ```
 
-After readiness, the first request may safely recompute while all worker
+Repeat the readiness wait after the restart:
+
+```bash
+timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --max-time 10 "$1/health" >/dev/null; do sleep 5; done' _ "$api_endpoint" || {
+  echo "Readiness failed or timed out; inspect all rank logs before retrying" >&2; exit 1;
+}
+```
+
+The first request may safely recompute while all worker
 inventories reach the scheduler, or it may restore immediately. Save metrics
 before either request so an immediate restore remains visible. Keep unrelated
 traffic off this backend while measuring these counter deltas:
 
 ```bash
-curl --fail --silent --max-time 10 "${api_endpoint}/metrics" > metrics-before-prime.prom
+curl --fail --silent --show-error --max-time 10 "${api_endpoint}/metrics" > metrics-before-prime.prom
 python "${qualification_script}" --endpoint "${api_endpoint}" \
   --model "${served_model}" --kind persistent --output post-restart-prime.json
-curl --fail --silent "${api_endpoint}/metrics" > metrics-before-restore.prom
+curl --fail --silent --show-error --max-time 10 "${api_endpoint}/metrics" > metrics-before-restore.prom
 python "${qualification_script}" --endpoint "${api_endpoint}" \
   --model "${served_model}" --kind persistent --output post-restart-restore.json
-curl --fail --silent "${api_endpoint}/metrics" > metrics-after-restore.prom
+curl --fail --silent --show-error --max-time 10 "${api_endpoint}/metrics" > metrics-after-restore.prom
 python "${qualification_script}" --endpoint "${api_endpoint}" \
   --model "${served_model}" --kind semantic --output post-restore-semantic.json
 ```
 
-Require every worker to log `restored 8192 tokens async`. Across the metrics
+Require every worker to log `restored 8192 tokens async` during the prime or
+repeat request that performed the external restore. Across the metrics
 snapshots, require an 8,192-token increase in both
 `external_prefix_cache_hits_total` and the `external_kv_transfer` source during
 either the prime interval or the repeat interval. A later native-prefix hit
 does not invalidate an external restore already proved by the prime interval.
-Require `draft_tokens = 7 × drafts`, zero preemptions, a passing semantic
+Require `draft_tokens = 7 Ã— drafts`, zero preemptions, a passing semantic
 receipt, the same image ID on every rank, no restarts or OOMs, and 24 RTS
 `VLLM::Worker` queue pairs per rank.
 
