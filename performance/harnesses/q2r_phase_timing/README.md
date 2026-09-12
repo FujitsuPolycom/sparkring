@@ -75,11 +75,14 @@ counts from the configured speculative depth.
 
 ## Fail-closed adapter
 
-`vllm_adapter.py` is intentionally generic and all-or-nothing. Every
+`vllm_adapter.py` validates the complete hook set before mutation. Every
 owner/method/source SHA-256 is validated before any monkeypatch occurs. A
 missing method, changed source, uninspectable function, duplicate target, or
 pre-existing wrapper aborts installation without mutating vLLM. Uninstall
 also refuses to overwrite a method changed by somebody else.
+An assignment failure triggers rollback. If restoration also fails, the
+adapter reports the failure and retains pending cleanup for an explicit retry;
+it does not guarantee atomic restoration under arbitrary setter failures.
 
 The pinned runtime version and graph-replay seam are:
 
@@ -268,8 +271,8 @@ running image:
 1. `vllm.v1.worker.gpu.cudagraph_utils.CudaGraphManager.run_fullgraph`
 2. `CudaGraphManager.run_pw_graph(model, model_inputs)`
 3. `CudaGraphManager.__init__`, specifically the stored
-   `decode_query_len`, to register an `UNKNOWN` manager before any replay;
-   this value is metadata, never semantic classification
+   `decode_query_len`; this value is metadata, never semantic classification.
+   The live installer binds explicit roles after `initialize_kv_cache`
 4. `AutoRegressiveSpeculator.init_cudagraph_manager`, which owns the
    draft-prefill and draft-decode managers
 5. the target manager's owning construction seam, which must explicitly
@@ -297,7 +300,7 @@ assert the vLLM version and immutable source-bundle manifest before calling
 `install`.
 
 For graph dispatch the stream expression should be equivalent to the existing
-known-good timer:
+timed graph call:
 
 ```python
 torch.cuda.current_stream(instance.device)
