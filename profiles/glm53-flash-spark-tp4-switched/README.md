@@ -11,8 +11,8 @@ ordinary NCCL. SparkCache is disabled.
 
 ## Prepare the source image
 
-The common recipe and profile must be published before a model test. From the
-repository root, prepare a new source cache and context using Python 3.12+:
+Build and verify the common source image locally before a model test. From the
+repository root, prepare an unused source cache and context using Python 3.12+:
 
 ```bash
 curl --fail --location \

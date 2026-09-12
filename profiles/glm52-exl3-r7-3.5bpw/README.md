@@ -30,10 +30,11 @@ ignored local configuration, replace every placeholder, and use one identical
 model path on every rank.
 
 ```bash
-cp scripts/config/exl3-r7-site.example.yaml scripts/config/site.yaml
-$EDITOR scripts/config/site.yaml
-python scripts/sparkring_site.py scripts/config/site.yaml
-python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+mkdir -p .sparkring/exl3-r7
+cp scripts/config/exl3-r7-site.example.yaml .sparkring/exl3-r7/site.yaml
+$EDITOR .sparkring/exl3-r7/site.yaml
+python scripts/sparkring_site.py .sparkring/exl3-r7/site.yaml
+python scripts/preflight.py --site .sparkring/exl3-r7/site.yaml --print-plan
 ```
 
 The printed plan is offline. Run the command without `--print-plan` only after
@@ -69,16 +70,16 @@ parent reference, the local image ID reported by Docker, and the audited SPDX
 license expression for the exact parent:
 
 ```bash
-BASE_IMAGE=<parent-image-tag> \
-BASE_IMAGE_ID=<parent-image-sha256-id> \
-BASE_IMAGE_LICENSES=<parent-image-spdx-expression> \
+BASE_IMAGE='<parent-image-tag>' \
+BASE_IMAGE_ID='<parent-image-sha256-id>' \
+BASE_IMAGE_LICENSES='<parent-image-spdx-expression>' \
   ./runtime/exl3-r7/build-image.sh
 ```
 
 Mixed EXL3 execution at exactly 40 query rows requires an image-bound state
 attestation. The tools call this shape `Q40`; their attestation generator requires
 `--image-id` and binds its output to the derived image. Record the immutable Docker image ID and set both runtime image fields in
-`scripts/config/site.yaml` before generating the launch profile.
+`.sparkring/exl3-r7/site.yaml` before generating the launch profile.
 
 ```bash
 docker image inspect <your-image-ref> --format '{{.Id}}'
@@ -93,16 +94,17 @@ runtime:
 ## 4. Generate the serving profile before state attestation
 
 Build and test the native SIRCL library, then create a local candidate template
-whose image and host paths match `scripts/config/site.yaml`.
+whose image and host paths match `.sparkring/exl3-r7/site.yaml`.
 
 ```bash
 cmake -S spark_transport -B build/sircl-tiered \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CUDA_ARCHITECTURES=121
 cmake --build build/sircl-tiered \
-  --target spark_transport_capi \
+  --target spark_transport_capi statistics_test control_channel_test wire_protocol_test topology_test \
   --parallel
-ctest --test-dir build/sircl-tiered --output-on-failure
+ctest --test-dir build/sircl-tiered --output-on-failure \
+  -R '^(statistics|control_channel|wire_protocol|topology)_test$'
 
 mkdir -p .sparkring/exl3-r7
 cp scripts/config/exl3-r7-candidate.example.json \
@@ -110,7 +112,7 @@ cp scripts/config/exl3-r7-candidate.example.json \
 $EDITOR .sparkring/exl3-r7/candidate.json
 
 python scripts/glm35_profile.py plan --execute \
-  --site scripts/config/site.yaml \
+  --site .sparkring/exl3-r7/site.yaml \
   --template .sparkring/exl3-r7/candidate.json \
   --transport-library build/sircl-tiered/libspark_transport_capi.so \
   --backend spark_transport/integrations/vllm/spark_tp4_backend.py \
@@ -133,26 +135,37 @@ binds the complete profile, site, and five SIRCL artifacts by SHA-256.
 
 ## 5. Bind the 40-query-row execution and attestation overlays
 
-The exact-Q40 tools remain separate because they accept only pinned vLLM source
-bytes and bind the serving profile to the built image ID. Prepare the pinned
-vLLM tree, generate `exl3.py` with
-`q40_exact_state_overlay.py`, and generate `model_runner.py` with
-`q40_exact_state_attestation_overlay.py`. Then bind those outputs to the
-complete pre-Q40 profile:
+The overlays accept exact source bytes and bind the profile to the built image ID.
+Prepare a source tree, preserve it with its receipt, and adapt a separate copy:
 
 ```bash
+python runtime/exl3-r7/prepare_context.py .sparkring/exl3-r7/prepared-sources
+cp -a .sparkring/exl3-r7/prepared-sources/vllm .sparkring/exl3-r7/q40-source
+python scripts/glm35_q40/prepare_q40_overlay_inputs.py .sparkring/exl3-r7/q40-source
+python scripts/glm35_q40/q40_exact_state_overlay.py \
+  --source .sparkring/exl3-r7/q40-source/vllm/model_executor/layers/quantization/exl3.py \
+  --output .sparkring/exl3-r7/q40-overlay/exl3.py
+IMAGE_REF=REPLACE_WITH_BUILT_IMAGE_REFERENCE
+image_id="$(docker image inspect "$IMAGE_REF" --format '{{.Id}}')"
+python scripts/glm35_q40/q40_exact_state_attestation_overlay.py \
+  --source .sparkring/exl3-r7/q40-source/vllm/v1/worker/gpu/model_runner.py \
+  --output .sparkring/exl3-r7/q40-overlay/model_runner.py \
+  --image-id "$image_id"
+base_sha="$(sha256sum .sparkring/exl3-r7/pre-q40-profile.json | cut -d ' ' -f 1)"
+runner_sha="$(sha256sum .sparkring/exl3-r7/q40-overlay/model_runner.py | cut -d ' ' -f 1)"
+
 python scripts/glm35_q40/prepare_q40_exact_state_serving.py \
   --base-profile .sparkring/exl3-r7/pre-q40-profile.json \
-  --expected-base-profile-sha256 <pre-q40-profile-sha256> \
+  --expected-base-profile-sha256 "$base_sha" \
   --exl3 .sparkring/exl3-r7/q40-overlay/exl3.py \
   --model-runner .sparkring/exl3-r7/q40-overlay/model_runner.py \
-  --expected-model-runner-sha256 <model-runner-sha256> \
+  --expected-model-runner-sha256 "$runner_sha" \
   --bundle .sparkring/exl3-r7/q40-bundle \
   --output-profile .sparkring/exl3-r7/exact-q40-profile.json \
   --output-manifest .sparkring/exl3-r7/exact-q40-receipt.json
 ```
 
-Use `pre_q40_profile_sha256` from the compiler's printed receipt. The exact-Q40
+Check that `$base_sha` matches `pre_q40_profile_sha256` in the compiler's printed receipt. The exact-Q40
 generators reject source-byte or image-identity drift rather than rewriting an
 unrecognized runtime.
 
@@ -215,10 +228,50 @@ exclusions, and pending coordinates.
 
 [Coding Peak per-run image](../../performance/records/glm-3.5bpw/coding-peak-temperature1-20260822.png)
 
-This launch used fresh rank-specific JIT and create-once receipt
-namespaces. A same-namespace restart currently fails before model startup when
-the exact-Q40 producer finds its existing receipt. Keep the receipt and use a
-fresh namespace until the launcher can safely reuse a matching receipt. This is
-a restart problem, not a model-performance failure.
+## Coordinated restart with preserved receipts
+
+The attestation producer refuses to overwrite an existing receipt. Stop all four
+ranks before restarting, and retain their original JIT directories:
+
+```bash
+python scripts/sparkring_generic_launcher.py \
+  --site .sparkring/exl3-r7/pre-q40-site.yaml \
+  --profile .sparkring/exl3-r7/exact-q40-profile.json \
+  --execute --confirmation START-SIRCL-Q40-EXACT-STATE-CANARY-ALL-FOUR stop
+```
+
+Choose an unused local output directory and unused absolute JIT directory on every
+rank. Copy and edit the inputs; both cache settings must name the same fresh path:
+
+```bash
+restart_dir=.sparkring/exl3-r7-restart-1
+mkdir "$restart_dir"
+cp .sparkring/exl3-r7/site.yaml "$restart_dir/site.yaml"
+cp .sparkring/exl3-r7/candidate.json "$restart_dir/candidate.json"
+$EDITOR "$restart_dir/site.yaml" "$restart_dir/candidate.json"
+# Set paths.jit_cache_dir in site.yaml and jit_cache_host_path in candidate.json.
+python scripts/glm35_profile.py plan --execute \
+  --site "$restart_dir/site.yaml" --template "$restart_dir/candidate.json" \
+  --output-dir "$restart_dir" \
+  --transport-library build/sircl-tiered/libspark_transport_capi.so \
+  --backend spark_transport/integrations/vllm/spark_tp4_backend.py \
+  --port-namespace spark_transport/integrations/vllm/spark_tp4_port_namespace.py
+base_sha="$(sha256sum "$restart_dir/pre-q40-profile.json" | cut -d ' ' -f 1)"
+python scripts/glm35_q40/prepare_q40_exact_state_serving.py \
+  --base-profile "$restart_dir/pre-q40-profile.json" \
+  --expected-base-profile-sha256 "$base_sha" \
+  --exl3 .sparkring/exl3-r7/q40-overlay/exl3.py \
+  --model-runner .sparkring/exl3-r7/q40-overlay/model_runner.py \
+  --expected-model-runner-sha256 "$runner_sha" \
+  --bundle "$restart_dir/q40-bundle" \
+  --output-profile "$restart_dir/exact-q40-profile.json" \
+  --output-manifest "$restart_dir/exact-q40-receipt.json"
+```
+
+Recompute `runner_sha` as in step 5 in a fresh shell. Reuse the overlay files only
+when the image ID is unchanged. Stage the generated bundles, inspect the plan,
+and start as in step 6 with `$restart_dir/pre-q40-site.yaml` and
+`$restart_dir/exact-q40-profile.json`. This changes the host directory mounted at
+`/cache/jit`; preserve prior directories and the fixed in-container receipt name.
 
 [Profile validation: performance, accuracy, and restart checks](../../docs/operations/profile-validation.md).
