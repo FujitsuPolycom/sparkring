@@ -1,6 +1,6 @@
 # SGLang TP4 streaming soak
 
-Status: **qualified** for the bounded streaming stability checks below.
+Status: **Validated** for the bounded streaming stability checks below.
 The tested 430080-context site profile completed six hours at concurrency eight.
 This does not change the recipe's 262144-context defaults.
 
@@ -61,7 +61,7 @@ independently recomputed from these observations.
 
 The short run started September 12 at 05:05:01 UTC and its coordinator accepted
 PASS at 05:25:11 UTC. The overnight run started at 05:30 UTC and the coordinator
-completed at 11:30:12 UTC (04:30 Pacific).
+completed at 11:30:12 UTC.
 
 | Measurement | 20-minute gate | Six-hour soak |
 |---|---:|---:|
@@ -88,12 +88,17 @@ through its router afterward. No serving restart was needed.
 
 ## Limitations
 
-This does not score response correctness, cyber capability, reasoning effort,
+Request files retain success/hang flags and finish reasons, not complete SSE
+streams. Counts can be recomputed; DONE-marker and gap detection cannot be
+replayed from those summaries. Fingerprint, guard-health and router checks
+are reported run observations without separate raw receipts linked here.
+
+This does not score response correctness, reasoning quality,
 vision, tool use, long-output generation, or long-context memory pressure.
 The context setting is recorded configuration, not a context-capacity result
 from these short prompts. Output-cap finishes are accepted by this stability
 gate and do not imply complete answers. Sampled memory floors can miss brief
-allocation peaks. The warmer overnight rate cannot establish a tuning gain
+allocation peaks. The higher overnight rate cannot establish a tuning gain
 over the short run. No transport counters or controlled competing-client
 measurements were captured. Six hours without errors does not establish
 unattended recovery or high availability, and decoder-tail replay retains the
