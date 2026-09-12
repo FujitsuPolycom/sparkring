@@ -34,8 +34,8 @@ do not guarantee byte-identical compiler output on independently built hosts.
 
 Copy the [environment template](../../scripts/config/deepseek-v41-flash-sglang-cycle.env.example)
 once per rank outside the checkout. Resolve all placeholders. Values are literal
-`KEY=VALUE` entries: shell expansion, inline credentials, and unknown settings
-are rejected. Keep node-local paths and credentials out of version control.
+`KEY=VALUE` entries and are passed without shell expansion. Inline credentials
+and unknown settings are rejected. Keep node-local paths and credentials out of version control.
 
 Obtain SparkRing's patched `libnccl.so.2` as described in the
 [vLLM library setup](../../profiles/deepseek-v41-flash-cycle/README.md#patches-and-nccl), resolve any symlink,

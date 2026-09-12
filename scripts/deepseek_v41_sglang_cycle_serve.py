@@ -2,7 +2,8 @@
 """Render or launch one SGLang rank from a literal, private environment file.
 
 --check is offline. --prepare patches authentication using a CPU-only container.
---pack builds Mia-layout Engram files on local NVMe. --run requires an idle GPU.
+--pack builds Mia-layout Engram files at the configured path; use local NVMe.
+--run requires an idle GPU and starts a detached container, not a readiness gate.
 """
 import argparse
 import hashlib
