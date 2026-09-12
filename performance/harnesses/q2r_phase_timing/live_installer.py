@@ -127,6 +127,7 @@ class _PinnedBindingAdapter:
     def __init__(self, hook: _BindingHook) -> None:
         self._hook = hook
         self._original: Callable[..., Any] | None = None
+        self._wrapper: Callable[..., Any] | None = None
         self._installed = False
 
     def validate(self) -> Callable[..., Any]:
@@ -162,13 +163,14 @@ class _PinnedBindingAdapter:
         wrapped._spark_original = original  # type: ignore[attr-defined]
         setattr(hook.owner, hook.method_name, wrapped)
         self._original = original
+        self._wrapper = wrapped
         self._installed = True
 
     def uninstall(self) -> None:
         if not self._installed:
             return
         current = getattr(self._hook.owner, self._hook.method_name)
-        if not getattr(current, "_spark_q2r_manager_binding", False):
+        if current is not self._wrapper:
             raise AdapterValidationError(
                 "binding owner changed after installation"
             )
@@ -177,6 +179,7 @@ class _PinnedBindingAdapter:
             self._hook.owner, self._hook.method_name, self._original
         )
         self._original = None
+        self._wrapper = None
         self._installed = False
 
 

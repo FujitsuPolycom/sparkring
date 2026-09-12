@@ -14,6 +14,33 @@ from .live_installer import LivePins, LiveQ2RSession, LiveTypes
 from .vllm_adapter import AdapterValidationError, source_sha256
 
 
+def test_binding_uninstall_preserves_later_wrapper():
+    import functools
+
+    class Owner:
+        def initialize(self):
+            return "ready"
+
+    original = Owner.initialize
+    adapter = live_installer._PinnedBindingAdapter(live_installer._BindingHook(
+        Owner, "initialize", source_sha256(original), lambda *args: None
+    ))
+    adapter.install()
+    installed = Owner.initialize
+
+    @functools.wraps(installed)
+    def later(self):
+        return installed(self)
+
+    Owner.initialize = later
+    with pytest.raises(AdapterValidationError, match="changed"):
+        adapter.uninstall()
+    assert Owner.initialize is later
+    Owner.initialize = installed
+    adapter.uninstall()
+    assert Owner.initialize is original
+
+
 def test_concurrent_module_installers_create_only_one_session(monkeypatch):
     monkeypatch.setenv('SPARK_Q2R_PHASE_TIMING', '1')
     monkeypatch.delenv('SPARK_Q2R_PHASE_TIMING_NVTX', raising=False)
