@@ -74,6 +74,41 @@ def test_concurrent_module_installers_create_only_one_session(monkeypatch):
     assert len(candidates) == 1
 
 
+def test_module_retains_failed_rollback_session_for_cleanup(monkeypatch):
+    monkeypatch.setenv("SPARK_Q2R_PHASE_TIMING", "1")
+    monkeypatch.delenv("SPARK_Q2R_PHASE_TIMING_NVTX", raising=False)
+    monkeypatch.setattr(live_installer, "_session", None)
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(current_stream=lambda: None)))
+    monkeypatch.setitem(sys.modules, "vllm", SimpleNamespace(__version__=live_installer._EXPECTED_VLLM_VERSION))
+    monkeypatch.setattr(live_installer, "_load_types", lambda: None)
+    monkeypatch.setattr(live_installer, "_depth_attestation", lambda: SimpleNamespace(
+        configured_speculative_steps=5, attested_round_depths=(5,), adaptive_window=0))
+
+    class Candidate:
+        _cleanup_pending = True
+        def install(self):
+            raise RuntimeError("rollback incomplete")
+        def uninstall(self):
+            self._cleanup_pending = False
+
+    candidate = Candidate()
+    monkeypatch.setattr(live_installer, "LiveQ2RSession", lambda **kwargs: candidate)
+    with pytest.raises(RuntimeError, match="rollback incomplete"):
+        live_installer.install()
+    assert live_installer._required_session() is candidate
+    with monkeypatch.context() as patcher:
+        def fail_cleanup():
+            raise RuntimeError("still pending")
+        patcher.setattr(candidate, "uninstall", fail_cleanup)
+        with pytest.raises(RuntimeError, match="still pending"):
+            live_installer.uninstall()
+        assert live_installer._required_session() is candidate
+    live_installer.uninstall()
+    assert live_installer._session is None
+    assert not candidate._cleanup_pending
+    live_installer.uninstall()
+
+
 @dataclass
 class FakeEvent:
     ready: bool = True

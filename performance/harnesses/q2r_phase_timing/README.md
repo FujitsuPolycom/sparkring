@@ -49,6 +49,8 @@ The live-session snapshot also reports whether hooks are installed, cleanup
 is pending, and manager binding is complete. An empty startup registry can be
 reported before model initialization, but cannot be armed. Cleanup disarms the
 recorder; if cleanup fails, retry it before arming again.
+Module-level `live_installer.uninstall()` retries retained cleanup and clears
+the installed session only after successful hook restoration.
 
 `drain()` is a separate, nonblocking completion poll: an unready event remains
 pending. It must run in the low-rate reporter or after timed execution, never

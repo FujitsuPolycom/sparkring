@@ -682,7 +682,7 @@ def install() -> None:
 
 
 def _install_once() -> None:
-    """Hold the installation lock through validation, patching, and publication."""
+    """Install while the caller holds the module installation lock."""
     global _session
     if os.getenv("SPARK_Q2R_PHASE_TIMING") != "1":
         raise RuntimeError("SPARK_Q2R_PHASE_TIMING=1 is required")
@@ -712,8 +712,22 @@ def _install_once() -> None:
         adaptive_window=depth.adaptive_window,
         nvtx=nvtx,
     )
-    candidate.install()
+    try:
+        candidate.install()
+    except BaseException:
+        if candidate._cleanup_pending:
+            _session = candidate
+        raise
     _session = candidate
+
+
+def uninstall() -> None:
+    """Remove live hooks; retain the session when cleanup needs a retry."""
+    global _session
+    with _install_lock:
+        if _session is not None:
+            _session.uninstall()
+            _session = None
 
 
 def _required_session() -> LiveQ2RSession:
