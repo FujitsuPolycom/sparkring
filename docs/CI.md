@@ -17,6 +17,8 @@ run this workflow. Jobs use read-only repository permissions.
   including duplicate-heading suffixes. Front-page lists without a separating
   blank line produce advisory warnings. External links, reference-style links,
   HTML anchors, and rendered visual layout are not validated by this checker.
+  Inline-code exclusion recognizes single-backtick spans. Use percent-encoded
+  destinations for filenames containing spaces or parentheses.
 - `release safety` scans tracked nonbinary files for configured site-address
   and credential shapes. It prints only path, line number, and rule identifier.
   Findings exit with status 1; scan failures exit with status 2. The rule file
