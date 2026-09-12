@@ -229,6 +229,14 @@ def test_classify_indeterminate_empty():
     assert cmp.classify_document_type({}) == "indeterminate"
 
 
+def test_classify_indeterminate_without_result_cells():
+    assert cmp.classify_document_type(_make_doc(results=[])) == "indeterminate"
+    assert cmp.classify_document_type({"metadata": _make_meta()}) == "indeterminate"
+    assert cmp.classify_document_type(
+        {"metadata": _make_meta(), "results": ["not a result cell"]}
+    ) == "indeterminate"
+
+
 def test_classify_indeterminate_no_metadata():
     assert cmp.classify_document_type(NO_METADATA) == "indeterminate"
 
@@ -388,6 +396,18 @@ def test_extract_throughput_from_results_no_summary():
 
 def test_extract_throughput_empty():
     assert cmp.extract_throughput({}) == {}
+
+
+def test_extract_throughput_omits_non_finite_and_boolean_values():
+    doc = {
+        "results": [
+            _make_result(1, float("nan")),
+            _make_result(2, float("inf")),
+            _make_result(4, True),
+            _make_result(8, 40.0),
+        ]
+    }
+    assert cmp.extract_throughput(doc) == {"C8": 40.0}
 
 
 def test_extract_throughput_ignores_non_required_concurrencies():

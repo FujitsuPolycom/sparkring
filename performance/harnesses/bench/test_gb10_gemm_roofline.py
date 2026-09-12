@@ -15,6 +15,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import gb10_gemm_roofline as bench
 
@@ -210,6 +211,19 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertEqual(state["reason"], "GPU is lost")
 
+    def test_a_device_uuid_is_passed_to_nvidia_smi_unchanged(self) -> None:
+        commands = []
+
+        def runner(command, **_kwargs):
+            commands.append(command)
+            return SimpleNamespace(returncode=9, stdout="", stderr="unavailable")
+
+        bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertEqual(commands[0][commands[0].index("-i") + 1], "GPU-abc")
+
     def test_a_failure_to_execute_is_reported_rather_than_raised(self) -> None:
         def runner(_command, **_kwargs):
             raise OSError("exec format error")
@@ -260,6 +274,19 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertIn("fields", state["reason"])
 
+    def test_multiple_device_rows_are_refused(self) -> None:
+        row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
+
+        def runner(_command, **_kwargs):
+            return SimpleNamespace(returncode=0, stdout=f"{row}\n{row}\n", stderr="")
+
+        state = bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertFalse(state["read"])
+        self.assertIn("2 rows", state["reason"])
+
 
 class ReportShapeTest(unittest.TestCase):
     def test_the_report_names_its_schema_and_both_formulas(self) -> None:
@@ -270,6 +297,7 @@ class ReportShapeTest(unittest.TestCase):
         self.assertEqual(
             report["measurement"]["bytes_formula"], "bytes = 2 * (M*K + K*N + M*N)"
         )
+        self.assertIn("does not identify", report["measurement"]["dispatch"])
 
     def test_the_report_records_the_conditions_a_reader_needs(self) -> None:
         report = _report()
@@ -418,6 +446,18 @@ class ArgumentTest(unittest.TestCase):
 
         self.assertEqual(code, bench.EXIT_OK)
         self.assertIn("m4096_k4096_n4096", stream.getvalue())
+
+    def test_json_stdout_contains_only_the_json_document(self) -> None:
+        output = io.StringIO()
+        errors = io.StringIO()
+        with patch.object(bench, "measure", return_value=_report()), redirect_stdout(
+            output
+        ), redirect_stderr(errors):
+            code = bench.main(["--json", "-"], load_torch=lambda: object())
+
+        self.assertEqual(code, bench.EXIT_OK)
+        self.assertEqual(json.loads(output.getvalue())["schema"], bench.SCHEMA)
+        self.assertIn("dense BF16 GEMM", errors.getvalue())
 
 
 class NoDeviceTest(unittest.TestCase):

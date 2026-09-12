@@ -281,9 +281,9 @@ def required_repetitions(
     paired differences replaces it, and the two can disagree.
     """
 
-    if dispersion_percent < 0.0:
+    if not math.isfinite(dispersion_percent) or dispersion_percent < 0.0:
         raise ValueError("dispersion_percent must be nonnegative")
-    if detect_percent <= 0.0:
+    if not math.isfinite(detect_percent) or detect_percent <= 0.0:
         raise ValueError("detect_percent must be positive")
     if multiplier <= 0.0:
         raise ValueError("multiplier must be positive")
@@ -357,6 +357,8 @@ def fit_exposure(
     assumes the exposure stays linear down to zero.
     """
 
+    if not math.isfinite(detect_percent) or detect_percent <= 0.0:
+        raise ValueError("detect_percent must be finite and positive")
     if len(points) < 3:
         raise ValueError("an exposure fit requires at least three delay points")
     delays = [delay for delay, _wall in points]
@@ -824,6 +826,7 @@ def build_report(
 ) -> dict[str, Any]:
     """Assemble the narrowed interval and every gate that qualifies it."""
 
+    require_comparable(gated, naked)
     naked_by_key = {instance.key: instance for instance in naked.instances}
     rows = [
         attribute_instance(
@@ -918,6 +921,8 @@ def require_comparable(gated: Capture, naked: Capture) -> None:
         )
     if gated.rate_gbit_per_second != naked.rate_gbit_per_second:
         raise NotComparable("the two arms state different link rates")
+    if gated.rate_basis != naked.rate_basis:
+        raise NotComparable("the two arms state different link-rate bases")
     missing = sorted(
         key.label for key in set(gated.keys) - set(naked.keys)
     )
@@ -928,6 +933,25 @@ def require_comparable(gated: Capture, naked: Capture) -> None:
             f"only in gated: {missing or 'none'}; only in naked: "
             f"{extra or 'none'}"
         )
+    naked_by_key = {instance.key: instance for instance in naked.instances}
+    for gated_instance in gated.instances:
+        naked_instance = naked_by_key[gated_instance.key]
+        if gated_instance.wire_bytes_multiplier != naked_instance.wire_bytes_multiplier:
+            raise NotComparable(
+                f"instance {gated_instance.key.label} states different wire-byte multipliers"
+            )
+        if gated_instance.multiplier_basis != naked_instance.multiplier_basis:
+            raise NotComparable(
+                f"instance {gated_instance.key.label} states different multiplier bases"
+            )
+        if gated_instance.occurrences != naked_instance.occurrences:
+            raise NotComparable(
+                f"instance {gated_instance.key.label} states different occurrence counts"
+            )
+        if set(gated_instance.residency_us) != set(naked_instance.residency_us):
+            raise NotComparable(
+                f"instance {gated_instance.key.label} covers different rank identities"
+            )
 
 
 # --------------------------------------------------------------------------
@@ -1120,6 +1144,8 @@ def load_document(path: str) -> Any:
         text = Path(path).read_text(encoding="utf-8")
     except OSError as error:
         raise FileNotFoundError(f"{path}: {error}") from error
+    except UnicodeDecodeError as error:
+        raise DocumentInvalid(f"{path} is not UTF-8: {error}") from error
     try:
         return json.loads(text)
     except json.JSONDecodeError as error:
@@ -1197,10 +1223,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     if arguments.plan:
         if arguments.dispersion_percent is None or arguments.detect_percent is None:
             parser.error("--plan requires --dispersion-percent and --detect-percent")
-        if arguments.dispersion_percent < 0.0:
-            parser.error("--dispersion-percent must be nonnegative")
-        if arguments.detect_percent <= 0.0:
-            parser.error("--detect-percent must be positive")
+        if not math.isfinite(arguments.dispersion_percent) or arguments.dispersion_percent < 0.0:
+            parser.error("--dispersion-percent must be finite and nonnegative")
+        if not math.isfinite(arguments.detect_percent) or arguments.detect_percent <= 0.0:
+            parser.error("--detect-percent must be finite and positive")
         return arguments
     if not arguments.gated or not arguments.naked:
         parser.error("--gated and --naked are both required")
@@ -1219,6 +1245,8 @@ def resolve_detect_percent(layer: str, requested: float | None) -> float:
     floor = DETECT_FLOOR_PERCENT[layer]
     if requested is None:
         return floor
+    if not math.isfinite(requested) or requested <= 0.0:
+        raise ThresholdRefused("--detect-percent must be finite and positive")
     if requested < floor:
         raise ThresholdRefused(
             f"--detect-percent {requested} is below the {floor} floor this "
@@ -1283,7 +1311,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return EXIT_INVALID_DOCUMENT
 
     report = build_report(gated, naked, detect_percent, fit, exposure_layer=exposure_layer)
-    print(render_report(report), end="")
+    print(
+        render_report(report),
+        end="",
+        file=sys.stderr if arguments.json == "-" else sys.stdout,
+    )
     if arguments.json:
         emit_json(report, arguments.json)
     return EXIT_OK

@@ -993,7 +993,7 @@ def resolve_api(
 
 
 def read_clock_state(
-    device_index: int = 0,
+    device_index: int | str = 0,
     *,
     which: Callable[[str], str | None] = shutil.which,
     runner: Callable[..., Any] = subprocess.run,
@@ -1027,6 +1027,11 @@ def read_clock_state(
     rows = (result.stdout or "").strip().splitlines()
     if not rows:
         return {"read": False, "reason": "nvidia-smi returned no rows"}
+    if len(rows) != 1:
+        return {
+            "read": False,
+            "reason": f"nvidia-smi returned {len(rows)} rows for one device",
+        }
     values = [value.strip() for value in rows[0].split(",")]
     if len(values) != len(NVIDIA_SMI_FIELDS):
         return {
@@ -1068,6 +1073,9 @@ def describe_environment(torch_module: Any, device_index: int) -> dict[str, Any]
         "torch_version": str(torch_module.__version__),
         "torch_cuda_version": str(torch_module.version.cuda),
         "device_index": device_index,
+        "device_uuid": (
+            str(properties.uuid) if getattr(properties, "uuid", None) else None
+        ),
         "device_name": torch_module.cuda.get_device_name(device_index),
         "compute_capability": list(capability),
         "multi_processor_count": int(getattr(properties, "multi_processor_count", 0)),
@@ -1552,7 +1560,8 @@ def run_measure(
         environment["total_memory_bytes"],
         arguments.max_pool_fraction,
     )
-    clocks_before = read_clock_state(arguments.device)
+    clock_selector = environment.get("device_uuid") or arguments.device
+    clocks_before = read_clock_state(clock_selector)
     maps, map_record = build_tier_maps(torch_module, api, geometry, device)
     torch_dtype = (
         torch_module.bfloat16 if arguments.dtype == "bf16" else torch_module.float16
@@ -1588,7 +1597,7 @@ def run_measure(
     ]
     del pool
     torch_module.cuda.empty_cache()
-    clocks_after = read_clock_state(arguments.device)
+    clocks_after = read_clock_state(clock_selector)
     return build_report(
         mode="measure",
         geometry=geometry,
@@ -1632,7 +1641,8 @@ def run_tune(
         environment["total_memory_bytes"],
         arguments.max_pool_fraction,
     )
-    clocks_before = read_clock_state(arguments.device)
+    clock_selector = environment.get("device_uuid") or arguments.device
+    clocks_before = read_clock_state(clock_selector)
     maps, map_record = build_tier_maps(torch_module, api, geometry, device)
     torch_dtype = (
         torch_module.bfloat16 if arguments.dtype == "bf16" else torch_module.float16
@@ -1696,7 +1706,7 @@ def run_tune(
                 torch_module.cuda.empty_cache()
         del pool
         torch_module.cuda.empty_cache()
-    clocks_after = read_clock_state(arguments.device)
+    clocks_after = read_clock_state(clock_selector)
     return build_report(
         mode="tune",
         geometry=geometry,
@@ -2001,7 +2011,7 @@ def _render_tune(report: dict[str, Any]) -> str:
 def emit_json(report: dict[str, Any], destination: str) -> None:
     """Write the report as JSON to a path, or to stdout for `-`."""
 
-    rendered = json.dumps(report, indent=2, sort_keys=True, default=str)
+    rendered = json.dumps(report, indent=2, sort_keys=True)
     if destination == "-":
         print(rendered)
         return

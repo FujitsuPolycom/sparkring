@@ -283,7 +283,7 @@ def shape_result(shape: Shape, samples_ms: Sequence[float]) -> dict[str, Any]:
 
 
 def read_clock_state(
-    device_index: int = 0,
+    device_index: int | str = 0,
     *,
     which: Callable[[str], str | None] = shutil.which,
     runner: Callable[..., Any] = subprocess.run,
@@ -317,6 +317,11 @@ def read_clock_state(
     rows = (result.stdout or "").strip().splitlines()
     if not rows:
         return {"read": False, "reason": "nvidia-smi returned no rows"}
+    if len(rows) != 1:
+        return {
+            "read": False,
+            "reason": f"nvidia-smi returned {len(rows)} rows for one device",
+        }
     values = [value.strip() for value in rows[0].split(",")]
     if len(values) != len(NVIDIA_SMI_FIELDS):
         return {
@@ -359,6 +364,9 @@ def describe_environment(torch_module: Any, device_index: int) -> dict[str, Any]
         "torch_version": str(torch_module.__version__),
         "torch_cuda_version": str(torch_module.version.cuda),
         "device_index": device_index,
+        "device_uuid": (
+            str(properties.uuid) if getattr(properties, "uuid", None) else None
+        ),
         "device_name": torch_module.cuda.get_device_name(device_index),
         "compute_capability": list(capability),
         "multi_processor_count": int(getattr(properties, "multi_processor_count", 0)),
@@ -434,8 +442,8 @@ def measure_shape(
         shape.m, shape.n, device=device, dtype=torch_module.bfloat16
     )
 
-    # Warmup absorbs workspace allocation and the cuBLASLt heuristic and
-    # algorithm selection for this shape, both one-time costs.
+    # Warmup absorbs workspace allocation and backend algorithm selection for
+    # this shape, both one-time costs.
     for _ in range(warmup):
         torch_module.mm(left, right, out=out)
     torch_module.cuda.synchronize(device)
@@ -474,7 +482,8 @@ def measure(
     torch_module.cuda.set_device(device)
 
     environment = describe_environment(torch_module, device_index)
-    clocks_before = read_clock_state(device_index)
+    clock_selector = environment.get("device_uuid") or device_index
+    clocks_before = read_clock_state(clock_selector)
 
     floor_samples = measure_shape(
         torch_module,
@@ -497,7 +506,7 @@ def measure(
         for shape in shapes
     ]
 
-    clocks_after = read_clock_state(device_index)
+    clocks_after = read_clock_state(clock_selector)
     return build_report(
         environment=environment,
         clocks_before=clocks_before,
@@ -533,7 +542,8 @@ def build_report(
             "dispatch": (
                 "torch.mm with B a view of a row-major [N, K] weight, the "
                 "operand layout torch.nn.functional.linear produces; Torch "
-                "routes this to cuBLASLt"
+                "selects the CUDA GEMM backend, which this harness does not "
+                "identify"
             ),
             "dtype": "torch.bfloat16",
             "element_bytes": BF16_BYTES,
@@ -553,7 +563,7 @@ def build_report(
             "timed_calls_per_shape": iterations,
             "tile_assumption": (
                 f"output_tiles_at_128 assumes a {ASSUMED_TILE}-wide output "
-                "tile; cuBLASLt selects its own tile size, so this indicates "
+                "tile; the selected backend chooses its own tile size, so this indicates "
                 "the grid's scale rather than the grid that was launched"
             ),
             "single_process": True,
@@ -724,7 +734,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="gb10_gemm_roofline",
         description=(
             "Measure the dense BF16 GEMM rate one GB10 GPU reaches through "
-            "cuBLASLt, for K=6144 N=512 at M in {40, 128, 512} plus a "
+            "torch.mm, for K=6144 N=512 at M in {40, 128, 512} plus a "
             "4096-cubed control shape."
         ),
     )
@@ -740,7 +750,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=50,
         help=(
             "untimed calls per shape before measuring, absorbing workspace "
-            "allocation and cuBLASLt algorithm selection (default: 50)"
+            "allocation and backend algorithm selection (default: 50)"
         ),
     )
     parser.add_argument(
@@ -798,7 +808,11 @@ def main(
         print(f"FAIL no valid measurement available: {error}", file=sys.stderr)
         return EXIT_UNAVAILABLE
 
-    print(render_text(report), end="")
+    print(
+        render_text(report),
+        end="",
+        file=sys.stderr if arguments.json == "-" else sys.stdout,
+    )
     if arguments.json:
         emit_json(report, arguments.json)
     return EXIT_OK

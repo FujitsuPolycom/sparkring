@@ -408,6 +408,46 @@ class ComparabilityTest(unittest.TestCase):
         with self.assertRaises(attribution.NotComparable):
             attribution.require_comparable(gated, naked)
 
+    def test_different_link_rate_bases_are_not_comparable(self) -> None:
+        gated, _ = self._pair()
+        naked_document = _capture(attribution.NAKED_ARM)
+        naked_document["link"]["rate_basis"] = "measured"
+        naked = attribution.parse_capture(naked_document)
+        with self.assertRaises(attribution.NotComparable):
+            attribution.require_comparable(gated, naked)
+
+    def test_instance_measurement_contract_must_match(self) -> None:
+        gated, _ = self._pair()
+        cases = {
+            "wire_bytes_multiplier": 1.25,
+            "multiplier_basis": "another algorithm",
+            "occurrences": 3,
+        }
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                naked_document = _capture(attribution.NAKED_ARM)
+                naked_document["instances"][0][field] = value
+                naked = attribution.parse_capture(naked_document)
+                with self.assertRaises(attribution.NotComparable):
+                    attribution.require_comparable(gated, naked)
+
+    def test_instance_rank_identities_must_match(self) -> None:
+        gated, _ = self._pair()
+        naked_document = _capture(attribution.NAKED_ARM)
+        ranks = naked_document["instances"][0]["ranks"]
+        ranks["4"] = ranks.pop("3")
+        naked = attribution.parse_capture(naked_document)
+        with self.assertRaises(attribution.NotComparable):
+            attribution.require_comparable(gated, naked)
+
+    def test_build_report_refuses_an_unchecked_mismatched_pair(self) -> None:
+        gated, _ = self._pair()
+        naked_document = _capture(attribution.NAKED_ARM)
+        naked_document["instances"][0]["occurrences"] = 3
+        naked = attribution.parse_capture(naked_document)
+        with self.assertRaises(attribution.NotComparable):
+            attribution.build_report(gated, naked, 5.0, None)
+
 
 class ReportTest(unittest.TestCase):
     def _report(self, detect_percent: float = 5.0) -> dict:
@@ -619,6 +659,16 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(code, attribution.EXIT_INVALID_DOCUMENT)
         self.assertIn("invalid document", err)
 
+    def test_non_utf8_input_returns_the_invalid_exit_code(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gated = self._write(root, "g.json", _capture(attribution.GATED_ARM))
+            broken = root / "n.json"
+            broken.write_bytes(b"\xff")
+            code, _, err = self._run(["--gated", gated, "--naked", str(broken)])
+        self.assertEqual(code, attribution.EXIT_INVALID_DOCUMENT)
+        self.assertIn("UTF-8", err)
+
     def test_swapped_arms_return_the_not_comparable_exit_code(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -652,6 +702,31 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(code, attribution.EXIT_OK)
         self.assertIn("Per-request totals", out)
         self.assertEqual(written["schema"], attribution.REPORT_SCHEMA)
+
+    def test_json_stdout_contains_only_the_json_document(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gated = self._write(root, "g.json", _capture(attribution.GATED_ARM))
+            naked = self._write(root, "n.json", _capture(attribution.NAKED_ARM))
+            code, out, err = self._run(
+                ["--gated", gated, "--naked", naked, "--json", "-"]
+            )
+        self.assertEqual(code, attribution.EXIT_OK)
+        self.assertEqual(json.loads(out)["schema"], attribution.REPORT_SCHEMA)
+        self.assertIn("Per-request totals", err)
+
+    def test_non_finite_plan_thresholds_are_rejected(self) -> None:
+        for option, value in (
+            ("--detect-percent", "nan"),
+            ("--detect-percent", "inf"),
+            ("--dispersion-percent", "nan"),
+        ):
+            argv = ["--plan", "--dispersion-percent", "1", "--detect-percent", "5"]
+            argv[argv.index(option) + 1] = value
+            with self.subTest(option=option, value=value):
+                with self.assertRaises(SystemExit):
+                    with redirect_stderr(io.StringIO()):
+                        attribution.parse_args(argv)
 
     def test_plan_without_its_inputs_is_rejected_by_the_parser(self) -> None:
         with self.assertRaises(SystemExit):

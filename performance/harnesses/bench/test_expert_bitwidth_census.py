@@ -391,6 +391,28 @@ class CensusTest(unittest.TestCase):
         self.assertEqual(instances["bits_per_weight_with_sidecars_median"], 3.875)
         self.assertEqual(instances["bits_per_weight_with_sidecars_max"], 5.375)
 
+    def test_even_instance_size_median_preserves_the_half_byte(self) -> None:
+        records = [
+            census.TensorRecord(
+                name=f"model.layers.0.experts.{expert}.weight",
+                shard="model.safetensors",
+                dtype="U8",
+                shape=(size,),
+                stored_bytes=size,
+                name_class=census.CLASS_EXPERT,
+                role="weight",
+                derivation=census.DERIVATION_UNPACKED,
+                logical_weights=size,
+                bits_per_weight=8.0,
+                layer_index=0,
+                expert_index=expert,
+                note=None,
+            )
+            for expert, size in enumerate((10, 11))
+        ]
+
+        self.assertEqual(census.expert_instances(records)["stored_bytes_median"], 10.5)
+
     def test_other_classes_measure_their_stored_width(self) -> None:
         classes = self.report["classes"]
 
@@ -424,6 +446,25 @@ class CensusTest(unittest.TestCase):
             declared["tier_vector_histogram"]["counts"], {"3": 4, "4": 4}
         )
         self.assertEqual(declared["tier_vector_histogram"]["mean_declared_tier"], 3.5)
+
+    def test_boolean_bit_rate_is_not_selected_as_a_declared_average(self) -> None:
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "config.json").write_text(
+                json.dumps({"quantization_config": {"bits": True}}),
+                encoding="utf-8",
+            )
+
+            declared = census.read_declared(root)
+
+        self.assertIsNone(declared["declared_average_bits_per_weight"])
+
+    def test_invalid_comparison_tolerance_is_rejected(self) -> None:
+        declared = {"declared_average_bits_per_weight": 3.5}
+        for tolerance in (-0.01, float("nan"), float("inf")):
+            with self.subTest(tolerance=tolerance):
+                with self.assertRaises(census.CensusError):
+                    census.compare(declared, 3.5, tolerance)
 
     def test_a_declared_measured_disagreement_is_the_headline_finding(self) -> None:
         comparison = self.report["comparison"]

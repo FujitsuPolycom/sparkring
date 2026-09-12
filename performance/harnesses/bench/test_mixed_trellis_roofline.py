@@ -1176,6 +1176,19 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertEqual(state["reason"], "GPU is lost")
 
+    def test_a_device_uuid_is_passed_to_nvidia_smi_unchanged(self) -> None:
+        commands = []
+
+        def runner(command, **_kwargs):
+            commands.append(command)
+            return SimpleNamespace(returncode=9, stdout="", stderr="unavailable")
+
+        bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertEqual(commands[0][commands[0].index("-i") + 1], "GPU-abc")
+
     def test_pinned_application_clocks_are_reported_as_pinned(self) -> None:
         row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
 
@@ -1213,6 +1226,19 @@ class ClockStateTest(unittest.TestCase):
 
         self.assertFalse(state["read"])
         self.assertIn("fields", state["reason"])
+
+    def test_multiple_device_rows_are_refused(self) -> None:
+        row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
+
+        def runner(_command, **_kwargs):
+            return SimpleNamespace(returncode=0, stdout=f"{row}\n{row}\n", stderr="")
+
+        state = bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertFalse(state["read"])
+        self.assertIn("2 rows", state["reason"])
 
 
 class ReportShapeTest(unittest.TestCase):
@@ -1298,6 +1324,10 @@ class ReportShapeTest(unittest.TestCase):
             bench.emit_json(_measure_report(), "-")
 
         self.assertEqual(json.loads(stream.getvalue())["schema"], bench.SCHEMA)
+
+    def test_emit_json_rejects_unknown_value_types(self) -> None:
+        with self.assertRaises(TypeError):
+            bench.emit_json({"bad": object()}, "-")
 
 
 class TextRenderTest(unittest.TestCase):

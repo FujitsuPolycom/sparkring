@@ -307,12 +307,11 @@ def classify_document_type(doc: dict[str, Any]) -> str:
 
     # Verify every result cell has benchmark_mode == "duration"
     results = doc.get("results")
-    if isinstance(results, list):
-        for cell in results:
-            if isinstance(cell, dict):
-                bmode = cell.get("benchmark_mode")
-                if bmode != "duration":
-                    return "indeterminate"
+    if not isinstance(results, list) or not results:
+        return "indeterminate"
+    for cell in results:
+        if not isinstance(cell, dict) or cell.get("benchmark_mode") != "duration":
+            return "indeterminate"
 
     if max_tokens >= 256 and duration >= 10:
         return "sustained_matrix"
@@ -511,14 +510,11 @@ def extract_throughput(doc: dict[str, Any]) -> dict[str, float]:
                 continue
             conc = cell.get("concurrency")
             agg = cell.get("aggregate_tps")
-            if conc is not None and agg is not None:
+            if conc is not None and _is_finite_number(agg):
                 if not _is_int_not_bool(conc):
                     continue
-                try:
-                    nk = f"C{int(conc)}"
-                    val = float(agg)
-                except (ValueError, TypeError):
-                    continue
+                nk = f"C{int(conc)}"
+                val = float(agg)
                 if nk in required_labels and nk not in tps:
                     tps[nk] = val
 
@@ -829,7 +825,13 @@ def compare_documents(
     cand_coverage = validate_context_coverage(candidate)
 
     # Determine overall status — deltas are NOT computed until all pass
-    if type_mismatch:
+    if (
+        (base_validity.get("zero_cells") or cand_validity.get("zero_cells"))
+        and base_metadata["valid"]
+        and cand_metadata["valid"]
+    ):
+        status = "no_cells"
+    elif type_mismatch:
         status = "type_mismatch"
     elif baseline == candidate:
         status = "identical_documents"
@@ -837,8 +839,6 @@ def compare_documents(
         status = "invalid_metadata"
     elif not settings_comparison["all_matched"]:
         status = "settings_mismatch"
-    elif base_validity.get("zero_cells") or cand_validity.get("zero_cells"):
-        status = "no_cells"
     elif not base_coverage["valid"] or not cand_coverage["valid"]:
         status = "coverage_error"
     elif not base_validity.get("all_cells_valid", False) or not cand_validity.get(

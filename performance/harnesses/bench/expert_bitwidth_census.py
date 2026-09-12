@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 from dataclasses import dataclass, field
@@ -647,7 +648,7 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
         "count": len(per_instance),
         "stored_bytes_total": sum(sizes),
         "stored_bytes_min": sizes[0],
-        "stored_bytes_median": int(statistics.median(sizes)),
+        "stored_bytes_median": statistics.median(sizes),
         "stored_bytes_max": sizes[-1],
         "instances_with_undetermined_tensors": sum(
             1 for slot in per_instance.values() if slot[2] > 0
@@ -725,10 +726,15 @@ def read_declared(path: Path) -> dict[str, Any]:
     declared_average: float | None = None
     declared_average_source: str | None = None
     for entry in fields:
-        if entry["path"].rsplit(".", 1)[-1] != "head_bits" and isinstance(
-            entry["value"], (int, float)
+        value = entry["value"]
+        if (
+            entry["path"].rsplit(".", 1)[-1] != "head_bits"
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+            and float(value) > 0.0
         ):
-            declared_average = float(entry["value"])
+            declared_average = float(value)
             declared_average_source = f"{entry['file']}:{entry['path']}"
             break
 
@@ -769,6 +775,9 @@ def compare(
     declared: Mapping[str, Any], measured: float | None, tolerance: float
 ) -> dict[str, Any]:
     """State declared against measured without reconciling the two."""
+
+    if not math.isfinite(tolerance) or tolerance < 0.0:
+        raise CensusError("tolerance_bits_per_weight must be finite and nonnegative")
 
     stated = declared.get("declared_average_bits_per_weight")
     if stated is None or measured is None:
@@ -1083,7 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=0.01,
         help=(
-            "bits-per-weight difference below which declared and measured "
+            "bits-per-weight difference at or below which declared and measured "
             "rates are reported as agreeing (default: 0.01)"
         ),
     )
