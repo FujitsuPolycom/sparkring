@@ -9,6 +9,13 @@ creates:
 
 Every row checks values as well as latency.  A fast result is not accepted if
 the rank-major all-gather layout differs from torch.distributed semantics.
+Output buffers are invalidated after warmup and after graph capture, so a
+timed loop or replay loop that performs no collective fails the value check.
+Validation covers the final output of each row, not every iteration.
+
+Eager rows time one collective between CUDA events; the all-reduce input is
+refilled before the start event. Graph rows report the mean host time of
+submitting every replay plus one final device synchronization.
 """
 
 from __future__ import annotations
@@ -20,6 +27,15 @@ from dataclasses import dataclass
 
 import torch
 import torch.distributed as dist
+
+DEVICE = "cuda"
+INVALID_VALUE = -1
+
+
+def invalidate(tensor: torch.Tensor) -> None:
+    """Overwrite a result buffer with a value no case can legitimately produce."""
+
+    tensor.fill_(INVALID_VALUE)
 
 
 @dataclass(frozen=True)
@@ -51,14 +67,15 @@ def timed_pair_all_gather(
     pair_ranks: list[int],
     pair_group: dist.ProcessGroup,
 ) -> dict[str, object]:
-    source = torch.full(case.shape, rank + 1, dtype=case.dtype, device="cuda")
+    source = torch.full(case.shape, rank + 1, dtype=case.dtype, device=DEVICE)
     output_shape = (len(pair_ranks) * case.shape[0], *case.shape[1:])
-    output = torch.empty(output_shape, dtype=case.dtype, device="cuda")
+    output = torch.empty(output_shape, dtype=case.dtype, device=DEVICE)
 
     for _ in range(min(20, case.iterations)):
         dist.all_gather_into_tensor(output, source, group=pair_group)
     torch.cuda.synchronize()
     dist.barrier(group=pair_group)
+    invalidate(output)
 
     samples_us: list[float] = []
     for _ in range(case.iterations):
@@ -72,7 +89,7 @@ def timed_pair_all_gather(
 
     expected = torch.cat(
         [
-            torch.full(case.shape, peer + 1, dtype=case.dtype, device="cuda")
+            torch.full(case.shape, peer + 1, dtype=case.dtype, device=DEVICE)
             for peer in pair_ranks
         ],
         dim=0,
@@ -92,7 +109,7 @@ def timed_pair_all_gather(
 def timed_world_all_reduce(rank: int) -> dict[str, object]:
     elements = 6144
     tensor = torch.full(
-        (elements,), rank + 1, dtype=torch.bfloat16, device="cuda"
+        (elements,), rank + 1, dtype=torch.bfloat16, device=DEVICE
     )
     for _ in range(20):
         tensor.fill_(rank + 1)
@@ -131,9 +148,9 @@ def graph_pair_all_gather(
     pair_group: dist.ProcessGroup,
     replays: int = 2_000,
 ) -> dict[str, object]:
-    source = torch.full(case.shape, rank + 1, dtype=case.dtype, device="cuda")
+    source = torch.full(case.shape, rank + 1, dtype=case.dtype, device=DEVICE)
     output_shape = (len(pair_ranks) * case.shape[0], *case.shape[1:])
-    output = torch.empty(output_shape, dtype=case.dtype, device="cuda")
+    output = torch.empty(output_shape, dtype=case.dtype, device=DEVICE)
     capture_stream = torch.cuda.Stream()
 
     # Initialize all lazy NCCL state before capture.
@@ -148,6 +165,7 @@ def graph_pair_all_gather(
         dist.all_gather_into_tensor(output, source, group=pair_group)
     torch.cuda.synchronize()
     dist.barrier(group=pair_group)
+    invalidate(output)
 
     started_ns = time.perf_counter_ns()
     for _ in range(replays):
@@ -157,7 +175,7 @@ def graph_pair_all_gather(
 
     expected = torch.cat(
         [
-            torch.full(case.shape, peer + 1, dtype=case.dtype, device="cuda")
+            torch.full(case.shape, peer + 1, dtype=case.dtype, device=DEVICE)
             for peer in pair_ranks
         ],
         dim=0,
@@ -180,17 +198,25 @@ def emit(row: dict[str, object], rank: int) -> None:
         raise RuntimeError(f"collective validation failed: {row}")
 
 
-def main() -> None:
-    rank = int(os.environ["RANK"])
-    world_size = int(os.environ.get("WORLD_SIZE", "4"))
+def validate_launch(environ: dict[str, str]) -> tuple[int, int, str]:
+    """Return (rank, world_size, head_ip) or raise before any CUDA or NCCL setup."""
+
+    rank = int(environ["RANK"])
+    world_size = int(environ.get("WORLD_SIZE", "4"))
     if world_size != 4:
         raise ValueError(f"this probe requires WORLD_SIZE=4, got {world_size}")
-
-    head_ip = os.environ.get("HEAD_IP")
+    if rank not in range(world_size):
+        raise ValueError(f"RANK must be in 0..{world_size - 1}, got {rank}")
+    head_ip = environ.get("HEAD_IP")
     if not head_ip:
         raise RuntimeError(
             "HEAD_IP must be set to rank 0's control-plane IP address"
         )
+    return rank, world_size, head_ip
+
+
+def main() -> None:
+    rank, world_size, head_ip = validate_launch(dict(os.environ))
 
     torch.cuda.set_device(0)
     dist.init_process_group(
@@ -202,7 +228,14 @@ def main() -> None:
         rank=rank,
         world_size=world_size,
     )
+    try:
+        _run_cases(rank)
+    finally:
+        # A failed row must not leave the NCCL communicator open.
+        dist.destroy_process_group()
 
+
+def _run_cases(rank: int) -> None:
     # Every rank must create groups in the same global order.
     groups = [
         (pair, dist.new_group(pair, backend="nccl"))
@@ -250,7 +283,6 @@ def main() -> None:
     dist.barrier()
     if rank == 0:
         print("PASS switchless TP4/DCP2 NCCL-IB bridge", flush=True)
-    dist.destroy_process_group()
 
 
 if __name__ == "__main__":

@@ -10,6 +10,13 @@ used by GLM-5.2's DCP4 attention path:
 
 Every case validates values. Representative decode and prefill shapes are
 also captured into CUDA graphs and replayed before the bridge is admitted.
+Result buffers are invalidated after warmup and after graph capture, so a
+timed loop or replay loop that performs no collective fails the value check.
+Validation covers the final output of each row, not every iteration.
+
+Eager rows time one collective between CUDA events; input preparation runs
+before the start event. Graph rows report the mean host time of submitting
+every replay plus one final device synchronization.
 """
 
 from __future__ import annotations
@@ -22,6 +29,15 @@ from typing import Callable
 
 import torch
 import torch.distributed as dist
+
+DEVICE = "cuda"
+INVALID_VALUE = -1
+
+
+def invalidate(tensor: torch.Tensor) -> None:
+    """Overwrite a result buffer with a value no case can legitimately produce."""
+
+    tensor.fill_(INVALID_VALUE)
 
 
 @dataclass(frozen=True)
@@ -67,14 +83,28 @@ def _time_cuda(
     *,
     warmups: int,
     iterations: int,
+    prepare: Callable[[], None] | None = None,
+    result: torch.Tensor | None = None,
 ) -> list[float]:
+    """Time ``operation`` per iteration; ``prepare`` runs before each start event.
+
+    ``result`` is invalidated after warmup so the final value check depends
+    on the timed iterations.
+    """
+
     for _ in range(warmups):
+        if prepare is not None:
+            prepare()
         operation()
     torch.cuda.synchronize()
     dist.barrier()
+    if result is not None:
+        invalidate(result)
 
     samples_us: list[float] = []
     for _ in range(iterations):
+        if prepare is not None:
+            prepare()
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         start.record()
@@ -87,14 +117,18 @@ def _time_cuda(
 
 def timed_world_all_reduce(rank: int) -> dict[str, object]:
     tensor = torch.full(
-        (6144,), rank + 1, dtype=torch.bfloat16, device="cuda"
+        (6144,), rank + 1, dtype=torch.bfloat16, device=DEVICE
     )
 
-    def operation() -> None:
+    def prepare() -> None:
         tensor.fill_(rank + 1)
+
+    def operation() -> None:
         dist.all_reduce(tensor)
 
-    samples_us = _time_cuda(operation, warmups=20, iterations=300)
+    samples_us = _time_cuda(
+        operation, warmups=20, iterations=300, prepare=prepare
+    )
     return {
         "scope": "dcp4_world",
         "operation": "all_reduce",
@@ -111,17 +145,17 @@ def _gather_tensors(
     case: GatherCase, rank: int
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     source = torch.full(
-        case.shape, rank + 1, dtype=case.dtype, device="cuda"
+        case.shape, rank + 1, dtype=case.dtype, device=DEVICE
     )
     output = torch.empty(
         (4 * case.shape[0], *case.shape[1:]),
         dtype=case.dtype,
-        device="cuda",
+        device=DEVICE,
     )
     expected = torch.cat(
         [
             torch.full(
-                case.shape, peer + 1, dtype=case.dtype, device="cuda"
+                case.shape, peer + 1, dtype=case.dtype, device=DEVICE
             )
             for peer in range(4)
         ],
@@ -142,6 +176,7 @@ def timed_world_all_gather(
         operation,
         warmups=min(20, case.iterations),
         iterations=case.iterations,
+        result=output,
     )
     return {
         "scope": "dcp4_world",
@@ -163,9 +198,9 @@ def _reduce_scatter_tensors(
     input_tensor = torch.empty(
         (64, case.q, case.head_dimension),
         dtype=torch.bfloat16,
-        device="cuda",
+        device=DEVICE,
     )
-    output = torch.empty(output_shape, dtype=torch.bfloat16, device="cuda")
+    output = torch.empty(output_shape, dtype=torch.bfloat16, device=DEVICE)
     return input_tensor, output
 
 
@@ -174,14 +209,18 @@ def timed_world_reduce_scatter(
 ) -> dict[str, object]:
     input_tensor, output = _reduce_scatter_tensors(case, rank)
 
-    def operation() -> None:
+    def prepare() -> None:
         input_tensor.fill_(rank + 1)
+
+    def operation() -> None:
         dist.reduce_scatter_tensor(output, input_tensor)
 
     samples_us = _time_cuda(
         operation,
         warmups=min(20, case.iterations),
         iterations=case.iterations,
+        prepare=prepare,
+        result=output,
     )
     return {
         "scope": "dcp4_world",
@@ -199,7 +238,14 @@ def _graph_replay(
     operation: Callable[[], None],
     *,
     replays: int,
+    result: torch.Tensor,
 ) -> float:
+    """Capture ``operation`` once and return mean host microseconds per replay.
+
+    ``result`` is invalidated after capture so the value check depends on the
+    replays. The mean includes replay submission and one final synchronization.
+    """
+
     capture_stream = torch.cuda.Stream()
     with torch.cuda.stream(capture_stream):
         for _ in range(20):
@@ -212,6 +258,7 @@ def _graph_replay(
         operation()
     torch.cuda.synchronize()
     dist.barrier()
+    invalidate(result)
 
     started_ns = time.perf_counter_ns()
     for _ in range(replays):
@@ -228,7 +275,7 @@ def graph_world_all_gather(
     def operation() -> None:
         dist.all_gather_into_tensor(output, source)
 
-    mean_us = _graph_replay(operation, replays=replays)
+    mean_us = _graph_replay(operation, replays=replays, result=output)
     return {
         "scope": "dcp4_world",
         "operation": "all_gather_graph",
@@ -249,7 +296,7 @@ def graph_world_reduce_scatter(
     def operation() -> None:
         dist.reduce_scatter_tensor(output, input_tensor)
 
-    mean_us = _graph_replay(operation, replays=replays)
+    mean_us = _graph_replay(operation, replays=replays, result=output)
     return {
         "scope": "dcp4_world",
         "operation": "reduce_scatter_graph",
@@ -268,17 +315,25 @@ def emit(row: dict[str, object], rank: int) -> None:
         raise RuntimeError(f"collective validation failed: {row}")
 
 
-def main() -> None:
-    rank = int(os.environ["RANK"])
-    world_size = int(os.environ.get("WORLD_SIZE", "4"))
+def validate_launch(environ: dict[str, str]) -> tuple[int, int, str]:
+    """Return (rank, world_size, head_ip) or raise before any CUDA or NCCL setup."""
+
+    rank = int(environ["RANK"])
+    world_size = int(environ.get("WORLD_SIZE", "4"))
     if world_size != 4:
         raise ValueError(f"this probe requires WORLD_SIZE=4, got {world_size}")
-
-    head_ip = os.environ.get("HEAD_IP")
+    if rank not in range(world_size):
+        raise ValueError(f"RANK must be in 0..{world_size - 1}, got {rank}")
+    head_ip = environ.get("HEAD_IP")
     if not head_ip:
         raise RuntimeError(
             "HEAD_IP must be set to rank 0's control-plane IP address"
         )
+    return rank, world_size, head_ip
+
+
+def main() -> None:
+    rank, world_size, head_ip = validate_launch(dict(os.environ))
 
     torch.cuda.set_device(0)
     dist.init_process_group(
@@ -290,7 +345,14 @@ def main() -> None:
         rank=rank,
         world_size=world_size,
     )
+    try:
+        _run_cases(rank)
+    finally:
+        # A failed row must not leave the NCCL communicator open.
+        dist.destroy_process_group()
 
+
+def _run_cases(rank: int) -> None:
     if rank == 0:
         print(
             "CONFIG"
@@ -341,7 +403,6 @@ def main() -> None:
     dist.barrier()
     if rank == 0:
         print("PASS switchless TP4/DCP4 NCCL-IB bridge", flush=True)
-    dist.destroy_process_group()
 
 
 if __name__ == "__main__":
