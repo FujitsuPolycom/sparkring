@@ -1,8 +1,15 @@
-"""GLM-shaped patched fused-indexer graph correctness stress on one GB10."""
+"""GLM-shaped patched fused-indexer graph correctness stress on one CUDA device.
+
+The recorded device name identifies the hardware; the script does not gate on
+it. ``wall_seconds`` spans 500 replays including the per-replay host-side
+correctness checks and synchronizations, so it bounds but does not measure
+kernel time.
+"""
 import hashlib
 import inspect
 import json
 import time
+from pathlib import Path
 
 import torch
 from test_fused_indexer import _build_case, _golden_topk
@@ -19,8 +26,8 @@ def check(idx, val, gold_values, gold_sets):
 
 
 def main():
-    source = inspect.getsourcefile(run_fused_paged_indexer)
-    print(json.dumps({"source_sha256": hashlib.sha256(open(source, "rb").read()).hexdigest(),
+    source = Path(inspect.getsourcefile(run_fused_paged_indexer))
+    print(json.dumps({"source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                       "gpu": torch.cuda.get_device_name(), "torch": torch.__version__}), flush=True)
     for rows, max_len in ((3, 65536), (4, 200000), (8, 65536), (16, 65536)):
         q, w, k, scales, pages, lengths = _build_case(
@@ -66,6 +73,7 @@ def main():
                           "lengths": [4097, max_len], "graph_replays": 500,
                           "concurrent_copy_bytes": copy_src.numel()*4,
                           "wall_seconds": time.monotonic()-started,
+                          "wall_seconds_scope": "replays plus host checks and synchronizations",
                           "result": "passed"}), flush=True)
         del graph, kwargs, q, w, k, scales, pages, lengths, pack_v, pack_i, state
         del idx, val, gold, copy_src, copy_dst, copy_stream

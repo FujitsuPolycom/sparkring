@@ -5,8 +5,10 @@ source-pinned GPU ``Worker.initialize_from_config`` seam. CUDA events, the
 route arena, and the custom CUDA op are created only when that worker method
 runs; API/frontend processes never allocate probe CUDA state.
 
-The low-rate graph-status reporter calls ``q2r_probe_snapshot()``. It consumes
-at most one atomically replaced JSON command per poll and publishes the
+The low-rate graph-status reporter calls ``q2r_probe_snapshot()``. Each poll
+consumes at most one JSON command file. The writer must replace that file
+atomically; a partially written file is rejected as an invalid control file
+and the previously acknowledged sequence stands. The snapshot publishes the
 acknowledged sequence with phase timing state. ``verify_clean`` and ``drain``
 read route counters; ``drain`` exports route artifacts after inference stops.
 """
@@ -171,7 +173,8 @@ class ProbeControlBridge:
             capture_routes = command.get("capture_routes", True)
             if not isinstance(capture_routes, bool):
                 raise ProbeBridgeError("capture_routes must be a boolean")
-            self._capture_routes = capture_routes
+            # Bridge state changes only after both arms succeed, so a failed
+            # arm leaves the previous epoch's routing policy in force.
             functions.phase_arm(epoch)
             if capture_routes:
                 try:
@@ -183,9 +186,8 @@ class ProbeControlBridge:
                 except Exception:
                     functions.phase_disarm()
                     raise
-                self._route_armed = True
-            else:
-                self._route_armed = False
+            self._capture_routes = capture_routes
+            self._route_armed = capture_routes
             return
         if action == "next_request":
             slot, key = self._request_fields(command)
@@ -245,13 +247,9 @@ class ProbeControlBridge:
             }
             return
 
-        # Drain is an explicitly model-idle operation. Reading route counters
-        # performs the one permitted device synchronization. Timing events are
-        # drained before route artifact validation, so an independently useful
-        # phase decomposition survives any later route-format failure.
-        functions.route_disarm(stream_slot=0)
-        functions.phase_disarm()
-        self._route_armed = False
+        # Drain is an explicitly model-idle operation. A drain whose
+        # provenance does not match is rejected before the armed epoch is
+        # torn down, so the operator can retry with the published provenance.
         provenance = command.get("provenance")
         if not isinstance(provenance, dict):
             raise ProbeBridgeError("drain requires provenance")
@@ -264,6 +262,13 @@ class ProbeControlBridge:
             raise ProbeBridgeError(
                 "drain provenance requires source_sha256"
             )
+        # Reading route counters performs the one permitted device
+        # synchronization. Timing events are drained before route artifact
+        # validation, so an independently useful phase decomposition survives
+        # any later route-format failure.
+        functions.route_disarm(stream_slot=0)
+        functions.phase_disarm()
+        self._route_armed = False
         provenance_value = functions.provenance_factory(
             image=provenance.get("image", ""),
             checkpoint=provenance.get("checkpoint", ""),
@@ -374,14 +379,23 @@ class ProbeControlBridge:
             capture_routes = self._capture_routes
             drain = dict(self._drain)
             dcp_graph_report = dict(self._dcp_graph_report)
-        phase: Mapping[str, Any] = {"enabled": False}
+        phase: Mapping[str, Any] = {"phase_timing": {"enabled": False}}
         if worker_ready:
             try:
                 phase = self._functions.phase_snapshot()
             except Exception as error:
-                last_result = "failed"
-                last_error = f"phase snapshot failed: {error}"
+                # The command outcome stays published; the phase failure is
+                # reported in its own section instead of replacing it.
+                phase = {
+                    "phase_timing": {
+                        "enabled": False,
+                        "error": f"phase snapshot failed: {error}",
+                    }
+                }
         return {
+            # Bridge keys are listed after the phase mapping so a phase key
+            # cannot replace them.
+            **dict(phase),
             "schema": _STATUS_SCHEMA,
             "enabled": True,
             "session_id": self._session_id,
@@ -401,7 +415,6 @@ class ProbeControlBridge:
                 "drain": drain,
             },
             "dcp_graph_report": dcp_graph_report,
-            **dict(phase),
         }
 
 
@@ -583,12 +596,15 @@ def q2r_probe_snapshot() -> dict[str, Any]:
             "source_bundle_manifest": "",
             "provenance": {},
             "worker_ready": False,
+            "control_path": "",
+            "route_output_path": "",
             "last_sequence": 0,
             "last_action": "",
             "last_result": "not_installed",
             "last_error": "",
             "route": {
                 "armed": False,
+                "capture_enabled": False,
                 "counters": None,
                 "drain": {"state": "not_run"},
             },

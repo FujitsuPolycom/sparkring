@@ -490,3 +490,109 @@ def test_malformed_commands_fail_closed(
     snapshot = bridge.snapshot()
     assert snapshot["last_result"] == "failed"
     assert calls.values == []
+
+
+def _bridge_with(tmp_path: Path, calls: Calls, **overrides: Any):
+    functions = bridge_module.ProbeFunctions(
+        **{**calls.functions().__dict__, **overrides}
+    )
+    control = tmp_path / "control.json"
+    bridge = bridge_module.ProbeControlBridge(
+        functions=functions,
+        control_path=control,
+        route_output_path=tmp_path / "routes.jsonl",
+        rank=2,
+    )
+    bridge.mark_worker_ready()
+    return bridge, control
+
+
+def test_failed_arm_keeps_the_previous_routing_policy(tmp_path: Path) -> None:
+    calls = Calls()
+    attempts: list[int] = []
+
+    def route_arm(**kwargs: Any) -> None:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("route arena unavailable")
+        calls.values.append(("route_arm", kwargs))
+
+    bridge, control = _bridge_with(tmp_path, calls, route_arm=route_arm)
+    write_command(control, 1, "arm", epoch="a", request_slot=0, request_key="a",
+                  capture_routes=False)
+    assert bridge.snapshot()["last_result"] == "ok"
+    write_command(control, 2, "arm", epoch="b", request_slot=0, request_key="b",
+                  capture_routes=True)
+    failed = bridge.snapshot()
+    assert failed["last_result"] == "failed"
+    assert "route arena unavailable" in failed["last_error"]
+    assert failed["route"]["capture_enabled"] is False
+    assert failed["route"]["armed"] is False
+    # The phase-only policy of the successful epoch still governs next_request.
+    write_command(control, 3, "next_request", request_slot=1, request_key="c",
+                  capture_routes=False)
+    assert bridge.snapshot()["last_result"] == "ok"
+
+
+def test_drain_with_mismatched_provenance_keeps_the_epoch_armed(tmp_path: Path) -> None:
+    calls = Calls()
+    bridge, control = make_bridge(tmp_path, calls)
+    write_command(control, 1, "arm", epoch="q2r", request_slot=0, request_key="a")
+    assert bridge.snapshot()["route"]["armed"] is True
+    before = len(calls.values)
+    write_command(control, 2, "drain", provenance={"image": "other"})
+    snapshot = bridge.snapshot()
+    assert snapshot["last_result"] == "failed"
+    assert "provenance does not match" in snapshot["last_error"]
+    assert snapshot["route"]["armed"] is True
+    assert calls.values[before:] == []
+    (tmp_path / "routes.jsonl").write_text('{"round": 1}\n', encoding="utf-8")
+    write_command(control, 3, "drain", provenance=snapshot["provenance"])
+    drained = bridge.snapshot()
+    assert drained["last_result"] == "ok"
+    assert drained["route"]["armed"] is False
+
+
+def test_phase_snapshot_failure_is_reported_beside_the_command_outcome(tmp_path: Path) -> None:
+    calls = Calls()
+
+    def phase_snapshot() -> dict[str, Any]:
+        raise RuntimeError("collector busy")
+
+    bridge, control = _bridge_with(tmp_path, calls, phase_snapshot=phase_snapshot)
+    write_command(control, 1, "arm", epoch="q2r", request_slot=0, request_key="a",
+                  capture_routes=False)
+    snapshot = bridge.snapshot()
+    assert snapshot["last_result"] == "ok"
+    assert snapshot["last_error"] == ""
+    assert snapshot["enabled"] is True
+    assert snapshot["phase_timing"] == {
+        "enabled": False,
+        "error": "phase snapshot failed: collector busy",
+    }
+
+
+def test_phase_keys_cannot_replace_bridge_keys(tmp_path: Path) -> None:
+    calls = Calls()
+    bridge, control = _bridge_with(
+        tmp_path, calls,
+        phase_snapshot=lambda: {"enabled": False, "last_result": "hijacked",
+                                "phase_timing": {"enabled": True}},
+    )
+    snapshot = bridge.snapshot()
+    assert snapshot["enabled"] is True
+    assert snapshot["last_result"] == "idle"
+    assert snapshot["phase_timing"] == {"enabled": True}
+
+
+def test_not_installed_status_uses_the_installed_schema(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(bridge_module, "_control_bridge", None)
+    absent = bridge_module.q2r_probe_snapshot()
+    calls = Calls()
+    bridge, _ = make_bridge(tmp_path, calls)
+    present = bridge.snapshot()
+    assert absent["enabled"] is False and present["enabled"] is True
+    assert set(absent) == set(present)
+    assert set(absent["route"]) == set(present["route"])
+    assert absent["route"]["capture_enabled"] is False
+    assert absent["phase_timing"] == {"enabled": False}
