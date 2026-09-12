@@ -131,12 +131,33 @@ def test_compose_resolves_each_rank_without_launching(tmp_path, rank):
     library_path.write_bytes(b"Offline path fixture; not an executable library")
     # A shell export overrides --env-file before rendering. Validate the
     # resolved result rather than trusting the file alone.
-    for key in ("DSPARK_ENABLE_DSPARK_BLOCK_K", "DSPARK_MAX_INFLIGHT_PREFILLS", "NODE_RANK"):
+    for key in ("DSPARK_ENABLE_DSPARK_BLOCK_K", "DSPARK_MAX_INFLIGHT_PREFILLS", "DSPARK_ASYNC_SCHEDULING", "NODE_RANK"):
         original = document["services"]["vllm-dspark"]["environment"][key]
         document["services"]["vllm-dspark"]["environment"][key] = "999"
         with pytest.raises(ValueError, match="Resolved setting differs"):
             CHECKER.validate(document, rank, values["SPARKRING_NCCL_LIBRARY"])
         document["services"]["vllm-dspark"]["environment"][key] = original
+    service = document["services"]["vllm-dspark"]
+    original_command = service["command"][:]
+    for flag, value in (("--kv-cache-dtype", "fp8"), ("--block-size", "128"),
+                        ("--moe-backend", "other"), ("--tokenizer-mode", "auto"),
+                        ("--tool-call-parser", "other"), ("--distributed-executor-backend", "ray")):
+        service["command"] = [re.sub(r"(" + re.escape(flag) + r"\s+)\S+", r"\g<1>" + value, text)
+                              for text in original_command]
+        with pytest.raises(ValueError, match="Resolved serving argument differs"):
+            CHECKER.validate(document, rank, library_path)
+        service["command"] = original_command[:]
+    for duplicate in ("--tensor-parallel-size=2", "--tensor_parallel_size=2", "-tp=2", "-tp 2", "-pp 2"):
+        service["command"] = original_command[:]
+        service["command"][-1] += " " + duplicate
+        with pytest.raises(ValueError, match="Resolved serving argument differs"):
+            CHECKER.validate(document, rank, library_path)
+    service["command"] = [re.sub(r"--max-model-len\s+\S+", "", text)
+                          for text in original_command]
+    service["command"][-1] += " --max-model-len"
+    with pytest.raises(ValueError, match="--max-model-len has no value"):
+        CHECKER.validate(document, rank, library_path)
+    service["command"] = original_command
     document["services"]["vllm-dspark"]["image"] = "unreviewed:tag"
     with pytest.raises(ValueError, match="Resolved image"):
         CHECKER.validate(document, rank, values["SPARKRING_NCCL_LIBRARY"])

@@ -103,6 +103,7 @@
     "speculator": "embedded_mtp",
     "mtp_maximum_tokens": "5",
     "mtp_adaptive": "false",
+    "mtp_cache_identity_schema": "glm53-embedded-mtp-v1",
     "mtp_cache_identity_sha256": "e21f4a0ef4e53c995b7b003e05d8b028abf262b88203ab8b8bc21d6a44462dd6",
     "sparkcache_source_sha256": "34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f",
     "sparkcache_source_revision": "eb3690c1aac2b9e86be8d513799dbb64afa53f25",

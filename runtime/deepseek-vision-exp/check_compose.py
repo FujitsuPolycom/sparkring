@@ -11,8 +11,11 @@ ROOT = HERE.parents[1]
 
 
 def validate(document, rank, nccl_library):
+    if type(rank) is not int or rank not in range(4):
+        raise ValueError("Rank must be an integer from 0 to 3")
     profile = json.loads((HERE / "profile.json").read_text())
     recipe = json.loads((ROOT / "recipes/deepseek-v4-flash-vision-exp-tp4.json").read_text())
+    serving = recipe["serving"]
     service = document["services"]["vllm-dspark"]
     env = service["environment"]
     expected = {
@@ -22,6 +25,7 @@ def validate(document, rank, nccl_library):
         "DSPARK_REVISION": profile["model"]["revision"],
         "DSPARK_ENABLE_DSPARK_BLOCK_K": "1", "DSPARK_MAX_INFLIGHT_PREFILLS": "2",
         "DSPARK_ENABLE_SP_INDEXER": "1", "DEFAULT_THINKING": "off",
+        "DSPARK_ASYNC_SCHEDULING": "1",
         "LD_PRELOAD": profile["transport"]["container_path"],
         "VLLM_NCCL_SO_PATH": profile["transport"]["container_path"],
     }
@@ -47,16 +51,32 @@ def validate(document, rank, nccl_library):
     args = shlex.split(command.split(marker, 1)[1])
     if args[0] != profile["model"]["repository"]:
         raise ValueError("Resolved model differs from the profile")
+    aliases = {"--tensor-parallel-size": "-tp", "--pipeline-parallel-size": "-pp"}
     for flag, value in {
+        "--pipeline-parallel-size": "1",
+        "--kv-cache-dtype": serving["kv_cache_dtype"],
+        "--block-size": str(serving["block_size"]),
+        "--tokenizer-mode": serving["tokenizer_mode"],
+        "--distributed-executor-backend": serving["distributed_executor_backend"],
+        "--moe-backend": serving["speculation"]["moe_backend"],
+        "--tool-call-parser": serving["tool_call_parser"],
+        "--reasoning-parser": "deepseek_v4",
         "--served-model-name": recipe["serving"]["served_model_name"],
         "--tensor-parallel-size": "4", "--nnodes": "4", "--node-rank": str(rank),
         "--max-model-len": "1048576", "--max-num-seqs": "48",
         "--max-num-batched-tokens": "12288", "--gpu-memory-utilization": "0.80",
         "--long-prefill-token-threshold": "1024",
     }.items():
-        if args.count(flag) != 1:
+        occurrences = sum(arg.split("=", 1)[0].replace("_", "-") in {flag, aliases.get(flag)}
+                          for arg in args)
+        if args.count(flag) != 1 or occurrences != 1:
             raise ValueError(f"Resolved serving argument differs: {flag}")
-        actual = args[args.index(flag) + 1]
+        position = args.index(flag)
+        if position + 1 >= len(args):
+            raise ValueError(f"Resolved serving argument differs: {flag} has no value")
+        actual = args[position + 1]
+        if actual.startswith("-"):
+            raise ValueError(f"Resolved serving argument differs: {flag} has an invalid value")
         equal = float(actual) == float(value) if flag == "--gpu-memory-utilization" else actual == value
         if not equal:
             raise ValueError(f"Resolved serving argument differs: {flag}")

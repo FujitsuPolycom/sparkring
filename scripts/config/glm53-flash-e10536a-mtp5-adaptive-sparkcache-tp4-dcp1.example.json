@@ -105,6 +105,7 @@
     "mtp_adaptive": "true",
     "mtp_adaptive_initial_tokens": "3",
     "mtp_adaptive_window": "32",
+    "mtp_cache_identity_schema": "glm53-embedded-mtp-v1",
     "mtp_cache_identity_sha256": "915b7f71f16348ab84f138d975f3db90f3edfca69976e1b9ffcc03f21cf5eb22",
     "sparkcache_source_sha256": "34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f",
     "sparkcache_source_revision": "eb3690c1aac2b9e86be8d513799dbb64afa53f25",

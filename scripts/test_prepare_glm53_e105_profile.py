@@ -75,6 +75,8 @@ def test_profile_identities_follow_model_and_speculator_semantics() -> None:
     adaptive_fastsafetensors = json.loads(
         PROFILES["mtp_adaptive_fastsafetensors"].read_text()
     )
+    for profile in (static, adaptive, adaptive_fastsafetensors):
+        assert profile["identity"]["mtp_cache_identity_schema"] == "glm53-embedded-mtp-v1"
     assert static["identity"]["mtp_cache_identity_sha256"] == _mtp_identity("static")
     assert adaptive["identity"]["mtp_cache_identity_sha256"] == _mtp_identity(
         "adaptive:3:32"
