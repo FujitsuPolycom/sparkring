@@ -1,4 +1,4 @@
-"""CPU tests proving the shape tracer and flight recorder never skip the traced call."""
+"""CPU checks for traced-call preservation during diagnostic sink failures."""
 
 from __future__ import annotations
 

@@ -1,13 +1,17 @@
 """CUDA-event timing for one GLM-5.2 round with four speculative tokens.
 
 This diagnostic preserves inputs, outputs and intra-stream operation order.
-Reporting synchronizes the host once and may perturb later arrivals. It
+Each enabled call reads the arm file synchronously; event recording and
+reporting also add overhead. Reporting synchronizes the host once. These
+operations can perturb arrivals, so results are instrumented timings. It
 records CUDA events around the original vLLM operation and reports once the
 fixed call inventory in _EXPECTED has completed. Query-row counts Q5 and Q1
 represent a five-row target step and single-row draft steps for MTP4. This
 inventory is specific to that execution shape, not a model-independent timer.
 SPARK_TP4_STOCK_TIMING=1 enables instrumentation; an arm-file run ID selects
 the measured round after the three-row startup call has been observed.
+An unreadable arm file invalidates an armed measurement. CUDA events remain
+allocated until process exit or an explicit test reset.
 """
 
 from __future__ import annotations
