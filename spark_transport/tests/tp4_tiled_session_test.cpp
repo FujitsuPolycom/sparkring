@@ -367,9 +367,32 @@ void test_unexpected_tickets_and_impossible_credits_poison_the_window() {
   assert(regressed_credit.poisoned());
 }
 
+void test_operation_rejects_uint64_wrap() {
+  using namespace spark_transport;
+  bool rejected = false;
+  try {
+    (void)make_tp4_tiled_bf16_allreduce_operation(1, SIZE_MAX - 1);
+  } catch (const std::overflow_error&) { rejected = true; }
+  assert(rejected);
+  Tp4TiledOperationDescriptor forged{Tp4TiledCapacityClass::kLatencyQ40,
+                                     2, 0, SIZE_MAX / 2 + 1, 0};
+  assert(!tp4_tiled_operation_descriptor_valid(forged));
+  forged = {Tp4TiledCapacityClass::kLatencyQ40, 1, 0, SIZE_MAX - 1, SIZE_MAX - 1};
+  assert(!tp4_tiled_operation_descriptor_valid(forged));
+  const auto limit = static_cast<std::uint64_t>(UINT32_MAX) * kTp4TiledDefaultTilePayloadBytes;
+  const auto exact = make_tp4_tiled_bf16_allreduce_operation(1, limit);
+  assert(exact.tile_count == UINT32_MAX);
+  assert(tp4_tiled_operation_descriptor_valid(exact));
+  rejected = false;
+  try { (void)make_tp4_tiled_bf16_allreduce_operation(1, limit + 2); }
+  catch (const std::overflow_error&) { rejected = true; }
+  assert(rejected);
+}
+
 }  // namespace
 
 int main() {
+  test_operation_rejects_uint64_wrap();
   test_capacity_selector_and_inert_default();
   test_pool_layout_has_disjoint_send_receive_and_control_regions();
   test_operation_descriptors_cover_only_active_bytes();

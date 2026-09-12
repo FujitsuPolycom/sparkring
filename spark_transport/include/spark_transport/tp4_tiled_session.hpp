@@ -10,9 +10,9 @@
 
 namespace spark_transport {
 
-// Status: offline-validated, research-only. These types define a bounded
-// native integration seam but no production session, CUDA kernel, verbs
-// endpoint, public C function, or vLLM adapter consumes them.
+// Pool layouts and tile tickets support the bidirectional prefill session.
+// Capacity-tiered storage selectors remain CPU contract models; they do not
+// select a transport implementation or establish hardware qualification.
 
 constexpr std::uint32_t kTp4TiledLatencyMaximumQ = 40;
 constexpr std::uint32_t kTp4TiledMediumMaximumQ = 512;
@@ -398,8 +398,8 @@ make_tp4_tiled_bf16_allreduce_operation(
   const std::uint64_t active_bytes =
       static_cast<std::uint64_t>(query_rows) * bytes_per_row;
   const std::uint64_t tile_count =
-      (active_bytes + kTp4TiledDefaultTilePayloadBytes - 1U) /
-      kTp4TiledDefaultTilePayloadBytes;
+      active_bytes / kTp4TiledDefaultTilePayloadBytes +
+      (active_bytes % kTp4TiledDefaultTilePayloadBytes != 0);
   if (tile_count > std::numeric_limits<std::uint32_t>::max()) {
     throw std::overflow_error("tiled TP4 tile count exceeds uint32");
   }
@@ -429,12 +429,16 @@ constexpr bool tp4_tiled_operation_descriptor_valid(
                                 kTp4TiledStreamingMaximumQ
                             ? Tp4TiledCapacityClass::kStreamingQ4096
                             : Tp4TiledCapacityClass::kExtendedQ8192;
+  if (operation.query_rows >
+      std::numeric_limits<std::uint64_t>::max() / operation.bytes_per_row) {
+    return false;
+  }
   const std::uint64_t expected_active_bytes =
       static_cast<std::uint64_t>(operation.query_rows) *
       operation.bytes_per_row;
   const std::uint64_t expected_tile_count =
-      (expected_active_bytes + kTp4TiledDefaultTilePayloadBytes - 1U) /
-      kTp4TiledDefaultTilePayloadBytes;
+      expected_active_bytes / kTp4TiledDefaultTilePayloadBytes +
+      (expected_active_bytes % kTp4TiledDefaultTilePayloadBytes != 0);
   return operation.capacity_class == expected_capacity &&
          operation.active_bytes == expected_active_bytes &&
          operation.tile_count == expected_tile_count;

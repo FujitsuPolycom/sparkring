@@ -4,9 +4,9 @@
 
 namespace spark_transport {
 
-// Research-only CUDA kernel selection for graph TP4 all-reduce. The public C
-// ABI and vLLM adapter do not expose this selector; their default-constructed
-// C++ options remain on the fused kernel.
+// Research-only CUDA kernel selection for graph TP4 all-reduce. Explicit
+// C ABI constructors expose this selector; default C++ options and
+// spark_tp4_create retain the fused kernel.
 enum class Tp4GraphKernelStrategy : std::uint8_t {
   kFused = 0,
   kSplit64KiB = 1,

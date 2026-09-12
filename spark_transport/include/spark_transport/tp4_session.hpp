@@ -77,8 +77,8 @@ class Tp4AllreduceSession {
 
   // Enqueues a stream-ordered reduction and returns before it completes.
   // Later work on the same stream observes the completed output. One session
-  // accepts submissions from exactly one stable CUDA stream. Destruction
-  // drains submitted collectives and synchronizes that stream. Submission is
+  // orders a stream switch with a CUDA event dependency. Destruction drains
+  // submitted collectives and synchronizes the final linked stream. Submission is
   // bounded by SPARK_TP4_MAX_INFLIGHT (default 64) to prevent the caller from
   // saturating CUDA's launch queue.
   void all_reduce(const void* input, void* output, void* cuda_stream);
