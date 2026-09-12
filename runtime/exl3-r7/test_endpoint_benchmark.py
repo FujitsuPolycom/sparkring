@@ -53,7 +53,7 @@ def test_chat_canary_requires_expected_answer() -> None:
         {
             "choices": [
                 {
-                    "message": {"reasoning_content": "17 + 25", "content": "42"},
+                    "message": {"role": "assistant", "reasoning_content": "17 + 25", "content": "42"},
                     "finish_reason": "stop",
                 }
             ],
@@ -65,7 +65,7 @@ def test_chat_canary_requires_expected_answer() -> None:
     with pytest.raises(BENCHMARK.BenchmarkError, match="expected integer"):
         BENCHMARK.validate_chat_answer(
             {
-                "choices": [{"message": {"content": "41"}}],
+                "choices": [{"message": {"role": "assistant", "content": "41"}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 12, "completion_tokens": 1},
             }
         )
@@ -86,7 +86,62 @@ def test_stream_metrics_excludes_first_token_from_decode_rate() -> None:
     assert metrics["time_to_first_token_seconds"] == 2.0
     assert metrics["client_prompt_tokens_per_ttft_second"] == 50.0
     assert metrics["inter_token_decode_tokens_per_second"] == 2.0
+    assert "estimate" in metrics["decode_rate_basis"]
     assert metrics["end_to_end_completion_tokens_per_second"] == pytest.approx(9 / 6.5)
+
+
+@pytest.mark.parametrize("tokens", [1, 8])
+def test_one_text_event_has_no_intertoken_rate(tokens):
+    result = BENCHMARK.StreamResult(
+        started=10.0, first_token_at=12.0, last_token_at=12.0, finished=14.0,
+        usage={"prompt_tokens": 100, "completion_tokens": tokens},
+        finish_reason="length", text="fixture", content_events=1,
+    )
+    metrics = BENCHMARK.stream_metrics(result, tokens)
+    assert metrics["inter_token_decode_tokens_per_second"] is None
+    assert metrics["end_to_end_completion_tokens_per_second"] == tokens / 4
+    assert "batched events" in metrics["decode_rate_basis"]
+
+
+@pytest.mark.parametrize("option", ["--timeout", "--readiness-timeout"])
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
+def test_timeout_requires_positive_finite_value(monkeypatch, option, value):
+    monkeypatch.setattr(sys, "argv", ["benchmark", option, value])
+    with pytest.raises(SystemExit) as error:
+        BENCHMARK.parse_args()
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("depth", [None, 2, 3, 4])
+@pytest.mark.parametrize("content,reasoning,finish,role,passes", [
+    ("42", "17 + 25 is 42", "stop", "assistant", True),
+    ("41", "42", "stop", "assistant", False),
+    ("", "42", "stop", "assistant", False),
+    ("42", "", "error", "assistant", False),
+    ("42", "", "length", "assistant", False),
+    ("42", "", "stop", "user", False),
+])
+def test_semantic_canary_uses_completed_final_answer(monkeypatch, depth, content, reasoning, finish, role, passes):
+    body = {"choices": [{"message": {"role": role, "content": content, "reasoning_content": reasoning},
+                         "finish_reason": finish}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+    if depth is None:
+        error = BENCHMARK.BenchmarkError
+        def check():
+            return BENCHMARK.validate_chat_answer(body)
+    else:
+        spec = importlib.util.spec_from_file_location(f"semantic_mtp{depth}", HERE / f"mtp{depth}_qualification.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        owner = getattr(module, "_common", module)
+        monkeypatch.setattr(owner, "_json_request", lambda *args, **kwargs: body)
+        error = module.QualificationError
+        def check():
+            return module.semantic_canary("http://unused.invalid", "fixture", 1)
+    if passes:
+        assert check()["answer_present"] is True
+    else:
+        with pytest.raises(error):
+            check()
 
 @pytest.mark.parametrize('ending', ['eof', 'no-finish', 'intermediate-only', 'error-json', 'error-event', 'bad-finish', 'same-event', 'final-event'])
 @pytest.mark.parametrize('finish_reason', ['stop', 'length'])

@@ -286,6 +286,49 @@ def test_cli_declares_mtp4_mode_and_requires_baseline() -> None:
     assert args.mode == "qualify-mtp4"
     assert args.baseline == "mtp0.json"
 
+
+@pytest.mark.parametrize("depth", [2, 3, 4])
+@pytest.mark.parametrize("phase,field,value", [
+    ("before", "published_sequence", None),
+    ("before", "published_sequence", True),
+    ("before", "consumed_sequence", -1),
+    ("before", "fatal", None),
+    ("after", "fatal", None),
+    ("after", "fatal", 0),
+    ("after", "completed_sequence", True),
+    ("after", "overflow_sequence", False),
+])
+def test_transport_requires_explicit_typed_session_evidence(tmp_path, depth, phase, field, value):
+    spec = importlib.util.spec_from_file_location(f"typed_transport{depth}", MODULE_PATH.with_name(f"mtp{depth}_qualification.py"))
+    qualifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(qualifier)
+    args = transport_args(tmp_path)
+    path = Path(getattr(args, phase + "_status")[0])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    session = payload["snapshot"]["all_reduce"]["sessions"]["0"]
+    if value is None:
+        session.pop(field)
+    else:
+        session[field] = value
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(qualifier.QualificationError):
+        qualifier.run_transport(args)
+
+
+@pytest.mark.parametrize("field,value", [("pid", None), ("pid", True),
+    ("snapshot_start_unix_ns", True), ("snapshot_end_unix_ns", 1)])
+def test_transport_requires_worker_and_collection_interval(tmp_path, field, value):
+    args = transport_args(tmp_path)
+    path = Path(args.before_status[0])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if value is None:
+        payload.pop(field)
+    else:
+        payload[field] = value
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(module.QualificationError):
+        module.run_transport(args)
+
 @pytest.mark.parametrize('depth', [2, 3, 4])
 @pytest.mark.parametrize('damage', ['candidate', 'schema', 'missing', 'enabled', 'counter', 'counter-missing', 'counter-nan', 'cross-schema', 'valid'])
 def test_http_qualification_requires_captured_mtp0_baseline(tmp_path, monkeypatch, depth, damage):
