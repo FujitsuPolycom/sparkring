@@ -8,13 +8,34 @@ import math
 import re
 import time
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 
-def fetch(url, payload=None):
+class _NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, newurl):
+        raise urllib.error.HTTPError(request.full_url, code,
+                                     "Authenticated requests do not follow redirects", headers, response)
+
+
+def read_api_key(path):
+    """Use the first nonempty key from the operator's private newline-separated file."""
+    keys = [line for line in path.read_text(encoding="utf-8").splitlines() if line]
+    if not keys or any(any(character.isspace() or ord(character) < 33 or ord(character) > 126
+                           for character in key) for key in keys):
+        raise ValueError("API key file requires nonempty printable ASCII keys without whitespace")
+    return keys[0]
+
+
+def fetch(url, payload=None, *, api_key=None):
     data = None if payload is None else json.dumps(payload).encode()
-    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=120) as response:
+    headers = {"Content-Type": "application/json"}
+    if api_key is not None:
+        headers["Authorization"] = "Bearer " + api_key
+    request = urllib.request.Request(url, data=data, headers=headers)
+    open_request = (urllib.request.urlopen if api_key is None else
+                    urllib.request.build_opener(_NoCredentialRedirect()).open)
+    with open_request(request, timeout=120) as response:
         return response.read().decode()
 
 
@@ -45,6 +66,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--api-key-file", type=Path, help="Private newline-separated API keys; use the first nonempty key")
     parser.add_argument("--temperature", type=temperature_value, default=1.0)
     parser.add_argument("--prompt-file", type=Path)
     parser.add_argument("--expected-text", default="SPARKCACHE_GLM53_OK")
@@ -80,16 +102,17 @@ def main():
                           "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                           "request_characters": len(prompt), "executed": False}, indent=2))
         return
+    authentication = {} if args.api_key_file is None else {"api_key": read_api_key(args.api_key_file)}
     args.output.mkdir(parents=True)
     base = args.endpoint.rstrip("/")
-    metrics_before = fetch(base + "/metrics")
+    metrics_before = fetch(base + "/metrics", **authentication)
     (args.output / "metrics-before.txt").write_text(metrics_before, encoding="utf-8")
     (args.output / "request.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     started = time.monotonic()
-    response = json.loads(fetch(base + "/v1/chat/completions", payload))
+    response = json.loads(fetch(base + "/v1/chat/completions", payload, **authentication))
     elapsed = time.monotonic() - started
     (args.output / "response.json").write_text(json.dumps(response, indent=2), encoding="utf-8")
-    metrics_after = fetch(base + "/metrics")
+    metrics_after = fetch(base + "/metrics", **authentication)
     (args.output / "metrics-after.txt").write_text(metrics_after, encoding="utf-8")
     choice = response["choices"][0]
     content = choice["message"].get("content")

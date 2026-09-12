@@ -1,5 +1,12 @@
 # Run GLM-5.3 Flash Spark with MTP3 and hardware-forwarded mesh
 
+This guide reproduces the retained `glm53-spark-mtp3-managed-mesh-tp4` recipe
+with the `sparkring-glm53-sparkcache` image pinned below, DCP4, and a 40 GiB
+SparkCache ceiling. For deployment with the shared R33 image, use the
+[maintained TP4 guide](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md),
+which defaults to DCP1 and offers optional SparkCache. Its host setup links
+here only for the hardware-forwarding instructions.
+
 Status: **research-only** profile with **implemented** source packaging and
 managed host services. The published image passed the native, GPU stream,
 serving, idle rank-loss, restart, and persistent-recall checks in its
@@ -11,7 +18,7 @@ containment and unattended availability are not established.
 [the managed-mesh prerequisite section](operations/prerequisites.md#four-spark-managed-hardware-forwarded-mesh)
 first. It reuses the shared blank-cluster bootstrap and adds the secondary
 data interfaces, GID/MTU checks, and driver configuration required below.
-Return here to pull the published image and deploy the model.
+Return here only when reproducing the retained image and settings described above.
 
 **Preparing hosts that have already run GPU workloads?** Consider a reboot
 before installation and the first model start, after stopping active workloads.
@@ -552,8 +559,7 @@ The service installs only exact missing planned routes, neighbors, and
 hardware rules. Matching preexisting state is adopted, not owned for removal.
 It never flushes unrelated networking. The service monitors the configured
 paths and their helper processes for the lifetime of the deployment.
-The host installer copies an explicit allowlist of 16 required source files,
-not an entire checkout or user work directory. Private inputs are supplied
+The host installer copies only its [explicit source allowlist](../runtime/glm53-spark-mtp3-mesh/managed_install.py). Private inputs are supplied
 separately; do not place keys or cached results into source trees for transfer.
 
 The source ASIC changes Ethernet type `0x0800` to `0x88b5`. The intermediate
@@ -574,12 +580,30 @@ The tool requires all four containers to be running and Docker-health healthy,
 plus rank-zero API health and scheduler liveness HTTP 200. It is read-only
 and does not treat systemd active state as model readiness.
 
+Set optional authentication in the management shell. Leave `api_auth` empty
+for an API without keys. For an authenticated API, use the same private key file
+as the serving configuration; credentials are read from a file, not printed:
+
+```bash
+api_auth=()
+# When API keys are configured, uncomment and set the private path:
+# api_key_file=/path/to/private-api-keys
+if [[ -n "${api_key_file:-}" ]]; then
+  api_auth=(--api-key-file "$api_key_file")
+fi
+```
+
 With the example container prefix, inspect serving logs and endpoints:
 
 ```bash
 ssh spark-r0 'docker logs -f --tail 100 glm53-spark-mtp3-mesh-r0'
 curl --fail http://RANK0_MANAGEMENT_ADDRESS:8015/health
-curl --fail http://RANK0_MANAGEMENT_ADDRESS:8015/v1/models
+if [[ -n "${api_key_file:-}" ]]; then
+  curl --fail --header @<(awk 'NF { print "Authorization: Bearer " $0; exit }' "$api_key_file") \
+    http://RANK0_MANAGEMENT_ADDRESS:8015/v1/models
+else
+  curl --fail http://RANK0_MANAGEMENT_ADDRESS:8015/v1/models
+fi
 curl --fail http://RANK0_MANAGEMENT_ADDRESS:8016/liveness
 ```
 
@@ -670,11 +694,11 @@ mkdir -p /path/to/private-receipts
 python3 runtime/glm53-spark-mtp3-mesh/qualification/recall_prompt.py \
   --output /path/to/private-receipts/recall.txt
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind semantic --output /path/to/private-receipts/semantic-before \
   --execute-authorized
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind persistent --phase before-restart \
   --prompt-file /path/to/private-receipts/recall.txt \
   --expected-text 'cobalt orchard lantern' --max-tokens 512 --temperature 1 \
@@ -718,14 +742,14 @@ on all ranks, then run:
 
 ```bash
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind persistent --phase after-restart \
   --prompt-file /path/to/private-receipts/recall.txt \
   --expected-text 'cobalt orchard lantern' --max-tokens 512 --temperature 1 \
   --reference /path/to/private-receipts/prefix-before \
   --output /path/to/private-receipts/prefix-after --execute-authorized
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind semantic --output /path/to/private-receipts/semantic-after \
   --execute-authorized
 ```
