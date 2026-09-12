@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read fleet credentials from a mounted file, then run the external Mia launcher.
 
-The image owns /opt/dsv41/boot.py and its licence. No credentials are included
+The image provides /opt/dsv41/boot.py under its upstream licence. No credentials are included
 in docker arguments, the launcher receipt, or this source file.
 """
 import os

@@ -2,7 +2,7 @@
 # Build the externally maintained adapter without vendoring its AGPL source.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-WORK=${WORK:?Set WORK to an empty build directory outside this checkout}
+WORK=${WORK:?Set WORK to an unused build directory path outside this checkout}
 IMAGE=${IMAGE:-local/sparkring-deepseek-v41:sglang}
 [ ! -e "$WORK" ] || { echo 'WORK must not already exist' >&2; exit 1; }
 read_pin(){ python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$HERE/pins.json" "$1"; }

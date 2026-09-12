@@ -75,6 +75,30 @@ def test_pinned_auth_patch_refuses_drift(tmp_path):
     assert "refusing" in result.stderr
 
 
+def test_auth_patch_splits_api_keys_but_keeps_admin_exact(tmp_path):
+    import secrets
+    source = tmp_path / "auth.py"
+    source.write_text(
+        "def authorized(parts, expected_token):\n"
+        "    if len(parts) == 2:\n"
+        "        return secrets.compare_digest(parts[1], expected_token)\n"
+        "    return False\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(launch.RUNTIME / "patch-multikey.py"), str(source)],
+        capture_output=True, text=True, check=True,
+    )
+    scope = {"secrets": secrets, "api_key": "first-key,second-key", "admin_api_key": "admin-a,admin-b"}
+    exec(compile(result.stdout, str(source), "exec"), scope)
+    check = scope["authorized"]
+    for key in ("first-key", "second-key", scope["api_key"]):
+        assert check(["Bearer", key], scope["api_key"])
+    assert not check(["Bearer", "first"], scope["api_key"])
+    assert not check(["Bearer", "admin-a"], scope["admin_api_key"])
+    assert not check(["Bearer", "first-key"], scope["admin_api_key"])
+    assert check(["Bearer", scope["admin_api_key"]], scope["admin_api_key"])
+
+
 def host_config(tmp_path):
     model = tmp_path / 'model'
     model.mkdir()
