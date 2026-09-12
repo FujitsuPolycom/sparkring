@@ -5,14 +5,16 @@ Execution contacts both hosts and generates network and RDMA traffic.
 
 Run `spark_transport/scripts/qualify_direct_cable.py` on every new, moved, or suspect
 direct-attached cable **before** loading a model. Link-up and ping are not
-enough: the test requires bidirectional traffic for the 12,288-byte width-6144 Q1
+enough: by default, the test checks bidirectional traffic for the 12,288-byte width-6144 Q1
 BF16 payload (`[1, 6144]`) and the 16,384-byte width-4096 Q2 BF16 payload
 (`[2, 4096]`) while watching NIC error counters.
+`--payloads` can select either size; the result qualifies only the selected
+sizes, which are recorded in the JSON report.
 
 The controller is deliberately non-destructive. It only:
 
 - reads link, address, route, RDMA/GID, and NIC-counter state over SSH;
-- sends five interface-bound pings in each direction;
+- sends five source-address-bound pings in each direction;
 - hashes an already-installed probe on both endpoints;
 - runs the payload probe in both directions; and
 - reads the same counters afterward.
@@ -27,7 +29,7 @@ optionally, to `--output`.
 
 | Exit | Meaning |
 |---:|---|
-| 0 | Cable integrity qualified. The JSON may still contain a software-latency warning. |
+| 0 | Cable integrity qualified for the selected payload sizes. The JSON may still contain a software-latency warning. |
 | 1 | A hard link, integrity, counter, configuration, or strict-latency gate failed. |
 | 2 | Invalid input, SSH/tool error, timeout, or malformed probe output. |
 | 3 | Preflight passed but no payload test ran; the cable is **not** qualified. |
@@ -83,7 +85,7 @@ The RoCE tier additionally requires:
 - the expected IP and direct route on the named interfaces;
 - active RDMA ports;
 - the selected GID index bound to the named netdev as `RoCE v2`; and
-- verified RC writes at 12 KB and 16 KB in both directions.
+- verified RC writes for each selected payload size in both directions.
 
 The default p99 target is 20 microseconds. Override it only as an explicit
 experiment with `--max-p99-us`.
