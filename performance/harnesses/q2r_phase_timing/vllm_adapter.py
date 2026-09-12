@@ -134,9 +134,11 @@ class FailClosedMethodAdapter:
 
                 wrapped._spark_q2r_phase_timing = True  # type: ignore[attr-defined]
                 wrapped._spark_original = original  # type: ignore[attr-defined]
-                setattr(hook.owner, hook.method_name, wrapped)
+                # Record rollback ownership before the assignment: a signal or
+                # metaclass can raise after the attribute has already changed.
                 installed.append(item)
-        except Exception:
+                setattr(hook.owner, hook.method_name, wrapped)
+        except BaseException:
             for item in reversed(installed):
                 setattr(
                     item.hook.owner, item.hook.method_name, item.original

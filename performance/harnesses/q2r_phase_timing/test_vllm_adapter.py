@@ -131,3 +131,29 @@ def test_adapter_rejects_second_wrapper() -> None:
             second.install()
     finally:
         first.uninstall()
+
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_interrupted_install_restores_methods(monkeypatch, error_type) -> None:
+    from . import vllm_adapter
+    originals = (FullGraph.run, DraftGraph.run)
+    adapter = FailClosedMethodAdapter(_collector(), (
+        _hook(FullGraph, PhaseDescriptor(PhaseKind.TARGET_FULL_GRAPH, "Q6")),
+        _hook(DraftGraph, PhaseDescriptor(PhaseKind.DRAFT_MULTISTEP_GRAPH, "Q1")),
+    ))
+    interrupted = False
+
+    def interrupt_after_write(owner, name, value):
+        nonlocal interrupted
+        setattr(owner, name, value)
+        if owner is DraftGraph and not interrupted:
+            interrupted = True
+            raise error_type("installation interrupted")
+
+    monkeypatch.setattr(vllm_adapter, "setattr", interrupt_after_write, raising=False)
+    try:
+        with pytest.raises(error_type):
+            adapter.install()
+        assert FullGraph.run is originals[0]
+        assert DraftGraph.run is originals[1]
+    finally:
+        FullGraph.run, DraftGraph.run = originals
