@@ -1,8 +1,8 @@
 # Switched TP4 quickstart
 
-Profile: `glm53-flash-spark-tp4-switched`. Status: **research-only**. Provided as-is. No switched-hardware qualification; operators must verify their HCA and GID selection.
+Profile: `glm53-flash-spark-tp4-switched`. Status: **Experimental**. Provided as-is. No switched-hardware qualification; operators must verify their HCA and GID selection.
 
-Inspect its selected defaults with `python scripts/profiles.py resolve glm53-flash-spark-tp4-switched`.
+Inspect its selected defaults with `python3 scripts/profiles.py resolve glm53-flash-spark-tp4-switched`.
 
 Use the [switched profile](../../runtime/profiles/glm53-flash-spark-tp4-switched/README.md)
 for four one-GPU nodes connected through a RoCE switch. It selects the common
@@ -64,7 +64,7 @@ addresses, and receipts outside version control. Ensure the existing
 For rank 0, substitute the site's real values and print the plan:
 
 ```bash
-python3 runtime/profiles/glm53-flash-spark-tp4-switched/launch.py plan \
+python3 runtime/common/switched.py plan \
   --rank 0 --master rank0.example \
   --model-dir /srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e \
   --cache-dir /srv/cache/glm53-switched \
@@ -76,7 +76,7 @@ Repeat with ranks 1–3 and their private files. Inspect HCA selection, addresse
 cache mounts, container UID/GID, disabled custom transports, and image identity.
 Use `create` with the same arguments plus
 `--runtime-receipt /tmp/glm53-switched-image-receipt.json` to create stopped
-containers. Existing names are preserved. Use `start` with the same inputs
+containers. `create` refuses existing container names. Use `start` with the same inputs
 to start ranks 1–3, then rank 0. Automatic restart remains disabled.
 
 The generic startup wrapper performs bounded warmup and six sampler requests
