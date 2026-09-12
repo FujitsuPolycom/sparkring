@@ -23,6 +23,14 @@ def test_duplicate_json_settings_are_rejected(tmp_path):
         cmp.load_document(path)
 
 
+def test_concurrency_metadata_order_does_not_change_set_coverage():
+    candidate = json.loads(json.dumps(SUSTAINED_CANDIDATE))
+    candidate["metadata"]["concurrency_levels"] = [1, 2, 4, 8]
+    report = cmp.compare_documents(SUSTAINED_BASELINE, candidate)
+    assert report["status"] == "compared"
+    assert len(report["throughput"]["cells"]) == 4
+
+
 def test_missing_cell_mode_cannot_classify_as_sustained():
     document = _make_doc()
     del document['results'][0]['benchmark_mode']

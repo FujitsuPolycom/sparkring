@@ -704,6 +704,13 @@ def compare_settings(
     for _meta_key, display_name in MATCHED_SETTINGS:
         base_val = base_settings.get(display_name)
         cand_val = cand_settings.get(display_name)
+        if display_name == "concurrencies":
+            # Coverage is a set contract. Sorting preserves duplicate entries
+            # for the separate metadata validator to reject.
+            if isinstance(base_val, list) and all(_is_int_not_bool(v) for v in base_val):
+                base_val = sorted(base_val)
+            if isinstance(cand_val, list) and all(_is_int_not_bool(v) for v in cand_val):
+                cand_val = sorted(cand_val)
 
         if base_val is None and cand_val is None:
             missing_both.append(display_name)
