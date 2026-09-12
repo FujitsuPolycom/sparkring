@@ -47,7 +47,8 @@ booleans rather than numeric substitutes.
 Each document must contain exactly one 16,384-token context and exactly one
 result for C1, C2, C4, and C8. Metadata, results, and an optional
 `summary_table` must agree. Missing, duplicated, unexpected, or multi-context
-cells fail closed.
+cells fail closed. `metadata.concurrency_levels` must be `[8, 4, 2, 1]`;
+result rows may appear in any order.
 
 Every result must satisfy:
 
@@ -91,7 +92,8 @@ Every report carries this scope statement:
 The v0.4.31 benchmark document does not prove image digest, model revision,
 launch arguments, transport path, hardware identity, competing traffic,
 thermal state, or run ordering. Preserve those facts in a separate launch and
-telemetry receipt. Declare one experimental variable before collecting the
+telemetry receipt. A container census alone cannot exclude host-level file
+transfers on shared fabric links; record their activity during each window. Declare one experimental variable before collecting the
 pair; the comparator cannot infer which external variable changed.
 
 For cache comparisons, name the mechanism precisely:
@@ -100,6 +102,7 @@ For cache comparisons, name the mechanism precisely:
 |---|---|
 | Native automatic prefix cache | vLLM prefix-caching configuration |
 | LMCache | LMCache connector and one local cache service per rank |
+| SparkCache | SparkCache connector, access mode, and capture/restore configuration |
 
 Changing more than one cache mechanism produces a combined cache comparison,
 not evidence attributable to one implementation.

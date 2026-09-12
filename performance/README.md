@@ -9,8 +9,8 @@ the [profile catalog](../profiles/README.md) lists deployment options.
 
 Public model-throughput summaries link to their evidence records. Normalized
 profile records support qualified summaries; explicitly labeled single-run
-records may support research-only observations. Functional gates and transport
-experiments are stored separately and do not feed those summaries.
+records may support research-only observations. Functional checks alone do not establish throughput. Each summary must
+identify the measurements supporting it.
 
 ## Layout
 
@@ -60,8 +60,8 @@ observation and must not be averaged into a result.
 
 ## Evidence record format
 
-Every record and any prose that reports its values must contain these labeled
-sections:
+Evidence records use the following sections; summaries link the complete
+record instead of repeating its methodology:
 
 1. **Conditions** — supported model configuration, immutable image or artifact
    identity, hardware and topology, rank layout, harness revision, input

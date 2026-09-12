@@ -66,7 +66,9 @@ Reject, rather than adjust, a capture when any of these conditions fails:
 - the second gate costs more than 10% of the collective it precedes;
 - gated medians differ by more than 25% peak-to-peak across ranks;
 - a timed descriptor changes CUDA stream within the epoch;
-- the paired arms differ in inventory, layer, link rate, or session; or
+- the paired arms differ in inventory, layer, or link rate;
+- the two arms reuse the same session identifier instead of naming distinct
+  collections; or
 - the value-validating probe reports a mismatch.
 
 Collect enough independent sessions to measure the workload's own dispersion

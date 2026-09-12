@@ -35,21 +35,21 @@
     "glm53-flash-spark-tp4-dcp1-sparkcache": {
       "tokens": 2280000,
       "source": "performance/capacity-references.md",
-      "witness": "~2.28M",
+      "witness": "2.28M",
       "conditions": "Published R33 TP4/DCP1 SparkCache profile; 24 GiB FP8 KV per rank; retained README approximation.",
       "approximate": true
     },
     "deepseek-v4-flash-0731": {
       "tokens": 1000000,
       "source": "performance/capacity-references.md",
-      "witness": "| TP4/DCP1 | ~1M |",
+      "witness": "| TP4/DCP1 | 1M |",
       "conditions": "DeepSeek-0731 TP4/DCP1; retained README approximation at the documented 16 GiB per-rank allocation.",
       "approximate": true
     },
     "deepseek-v4-flash-0731-pair": {
       "tokens": 1000000,
       "source": "performance/capacity-references.md",
-      "witness": "| TP2/DCP1 | ~1M |",
+      "witness": "| TP2/DCP1 | 1M |",
       "conditions": "DeepSeek-0731 TP2/DCP1; retained README approximation at the documented 16 GiB per-rank allocation.",
       "approximate": true
     },
@@ -68,14 +68,14 @@
     "glm53-flash-spark-tp4-dcp1": {
       "tokens": 2300000,
       "source": "performance/capacity-references.md",
-      "witness": "cache-disabled MTP3 TP4/DCP1 profile at ~2.3M tokens",
+      "witness": "cache-disabled MTP3 TP4/DCP1 profile at 2.3M tokens",
       "conditions": "Reference from the shared-image MTP3 TP4/DCP1 layout at 24 GiB per rank; not a separate R33 startup measurement.",
       "approximate": true
     },
     "glm53-flash-spark-tp4-switched": {
       "tokens": 2300000,
       "source": "performance/capacity-references.md",
-      "witness": "Its table uses the ring's ~2.3M",
+      "witness": "Its table uses the ring's 2.3M",
       "conditions": "Sizing estimate using the same target checkpoint, TP4/DCP1, FP8 KV and 24 GiB per rank. Transport and source-image composition differ; not a measured switched-startup pool.",
       "approximate": true
     },
