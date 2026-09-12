@@ -45,6 +45,11 @@ integration runs on the single model-execution thread; the lock protects
 low-rate snapshots from torn counters.
 
 `snapshot()` copies counters only and is safe for before/after evidence.
+The live-session snapshot also reports whether hooks are installed, cleanup
+is pending, and manager binding is complete. An empty startup registry can be
+reported before model initialization, but cannot be armed. Cleanup disarms the
+recorder; if cleanup fails, retry it before arming again.
+
 `drain()` is a separate, nonblocking completion poll: an unready event remains
 pending. It must run in the low-rate reporter or after timed execution, never
 inside a model phase. `reset()` reuses the preallocated event pairs only after
