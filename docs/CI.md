@@ -8,7 +8,8 @@ run this workflow. Jobs use read-only repository permissions.
 - `tests` runs GPU-free contracts, including serving configuration and
   measurement-receipt checks. README tests check navigation rather than
   requiring a particular prose or table layout.
-- `pinned LIL bridge` builds the source-pinned companion CLI and exercises
+- `pinned LIL bridge` builds the source-pinned
+  [LIL deployment companion](../integrations/lil/README.md) and exercises
   its SparkRing integration.
 - `profile and repository contracts` validates deployment profiles, generated
   exports, references, immutable release inputs, and image-builder contracts.

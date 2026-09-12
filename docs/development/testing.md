@@ -22,7 +22,8 @@ before running them. Prose warnings are advisory.
 For implementation changes, run tests beside the affected component. The
 [CI workflow](../../.github/workflows/ci.yml) lists the broader suite and pinned
 CPU torch dependency. Some tests require POSIX modes,
-Bash, the pinned LIL companion or optional dependencies; report skips accurately.
+Bash, the pinned [LIL deployment companion](../../integrations/lil/README.md)
+or optional dependencies; report skips accurately.
 
 CPU tests cover configuration, packaging and lifecycle contracts. They do not
 validate CUDA kernels, RDMA behavior, live serving, GPU memory stability or
