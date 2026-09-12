@@ -34,6 +34,13 @@ exceptions. The switched launcher included in the frozen source image remains
 byte-identical; maintained host launching uses `runtime/common/switched.py`.
 The TP2 compatibility launcher delegates to `runtime/common/tp2.py`.
 
+Two inventories protect published bytes: the
+[preserved-input manifest](../../runtime/releases/preserved-inputs.json) and
+the `profile_assets` map in the [source-image lock](../../runtime/sparkring/source_image/glm53-tp4-lock.json).
+The latter includes Markdown, such as the switched runtime README. Keep those
+files byte-identical and maintain instructions in the corresponding `profiles/`
+guide. The repository layout check validates both inventories.
+
 The native tiled-prefill substrate remains under its recorded path in
 `spark_transport/experiments/tiled_prefill`. It is consumed by native libraries
 and snapshot manifests, so its directory name does not make it disposable.

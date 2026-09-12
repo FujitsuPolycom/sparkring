@@ -13,7 +13,8 @@ The [layout guide](docs/development/layout.md) defines ownership; the
   implementation to copied launchers. Generated compatibility exports are edited
   through their source and [generator](scripts/generate_profiles.py).
 - Preserve published identities and public entry points. Frozen release inputs
-  remain immutable; do not update hashes to disguise a changed build.
+  remain immutable, including [locked Markdown assets](docs/development/layout.md#compatibility-and-frozen-inputs);
+  do not update hashes to disguise a changed build.
 - Keep private site inputs, credentials, model weights and local output out of Git.
 - Follow [Write Without Hidden Context](docs/development/writing.md). Explain
   purpose, behavior, invariants and limitations for a reader without this chat.

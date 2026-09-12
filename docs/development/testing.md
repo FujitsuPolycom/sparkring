@@ -14,7 +14,8 @@ python scripts/check_release_safety.py .
 ```
 
 The structural check validates profiles, generated exports, references, frozen
-release bytes, image-builder paths, managed-service source dependencies and
+release bytes, locked source-image profile assets (including Markdown),
+image-builder paths, managed-service source dependencies and
 maintained imports. It does not need Docker, a GPU, network access or model files.
 The link and secret scanners inspect tracked files; stage intended additions
 before running them. Prose warnings are advisory.
