@@ -15,6 +15,22 @@ def write(path, data):
     path.write_text(json.dumps(data), encoding='utf-8')
 
 
+@pytest.mark.parametrize("template", ["missing.json", "../../../outside.json"])
+def test_release_template_must_resolve_inside_repository(repository, template):
+    profile = {"configuration": {"format": "release-profile", "path": "profiles/contract.json", "key": "pair"}}
+    write(repository / "profiles/contract.json", {
+        "schema": "sparkring-r33-profile-contract/v1", "model": {"max_model_len": 1024},
+        "profiles": {"pair": {
+            "tensor_parallel_size": 2, "decode_context_parallel_size": 1,
+            "node_count": 2, "kv_cache_memory_bytes": 1024, "sparkcache": False,
+            "transport": "direct-pair-2", "template": template,
+        }},
+    })
+    profile["evidence_scope"] = "test"
+    with pytest.raises(ValueError, match="repository file"):
+        profiles.configuration(profile, repository)
+
+
 def test_legacy_export_rewrites_only_base_reference(repository):
     base = "profiles/example/recipe.json"
     source = "profiles/child.json"

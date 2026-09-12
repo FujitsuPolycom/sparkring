@@ -127,7 +127,9 @@ def configuration(p, root=ROOT):
         serving.update(selected.get("serving", {}))
         serving["max_model_len"] = data["model"]["max_model_len"]
         serving["sparkcache"] = selected["sparkcache"]
-        return data["model"], serving, selected["transport"], p["evidence_scope"], {"release_profile": source["key"], "template": str(Path(source["path"]).parent / selected["template"]).replace("\\", "/")}
+        template = (Path(source["path"]).parent / selected["template"]).as_posix()
+        local_path(template, root)
+        return data["model"], serving, selected["transport"], p["evidence_scope"], {"release_profile": source["key"], "template": template}
     if data.get("schema") != "sparkring-serving-profile/v1":
         raise ValueError("Unsupported serving-profile schema")
     args = data["vllm_args"]
