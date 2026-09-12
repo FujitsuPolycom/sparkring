@@ -121,6 +121,7 @@ def host_config(tmp_path):
         ENGRAM_HOST_PATH=str(packed), API_KEY_FILE=str(keys), NCCL_SO_HOST_PATH=str(library),
         NCCL_SO_SHA256=launch.hashlib.sha256(library.read_bytes()).hexdigest(),
         STATE_HOST_PATH=str(state))
+    launch.write_prepared_auth(cfg, b"# fixture\n")
     return cfg
 
 
@@ -167,6 +168,31 @@ def test_image_drift_rejected_before_host_actions(tmp_path, monkeypatch):
     monkeypatch.setattr(launch, 'output', lambda args: 'sha256:' + 'c' * 64)
     with pytest.raises(ValueError, match='image identity'):
         launch.verify_host(cfg)
+
+
+def test_prepared_auth_must_match_selected_image(tmp_path, monkeypatch):
+    cfg = host_config(tmp_path)
+    cfg["IMAGE_ID"] = "sha256:" + "c" * 64
+    def output(args):
+        if args[:3] == ["docker", "image", "inspect"]:
+            return cfg["IMAGE_ID"]
+        pytest.fail("stale authentication must be rejected before occupancy checks")
+    monkeypatch.setattr(launch, "output", output)
+    with pytest.raises(ValueError, match="authentication.*prepare"):
+        launch.verify_host(cfg)
+
+
+@pytest.mark.parametrize("change", ["source", "missing-receipt"])
+def test_prepared_auth_rejects_changed_or_unbound_source(tmp_path, change):
+    cfg = host_config(tmp_path)
+    launch.verify_prepared_auth(cfg)
+    operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
+    if change == "source":
+        (operator / "auth.py").write_bytes(b"# different module\n")
+    else:
+        (operator / "auth-receipt.json").unlink()
+    with pytest.raises(ValueError, match="authentication.*prepare"):
+        launch.verify_prepared_auth(cfg)
 
 
 def test_writable_model_alias_is_rejected_before_docker(tmp_path, monkeypatch):

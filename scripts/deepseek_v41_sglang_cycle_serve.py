@@ -12,6 +12,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime/deepseek-v41-sglang"
@@ -156,6 +157,50 @@ def verify_host_paths(cfg):
             raise ValueError(f"{name} must not overlap the resolved model directory")
 
 
+def auth_record(cfg, source):
+    return {
+        "schema": "sparkring-sglang-auth/v1", "image_id": cfg["IMAGE_ID"],
+        "auth_path": PINS["auth_path"], "auth_sha256": hashlib.sha256(source).hexdigest(),
+        "patch_sha256": hashlib.sha256((RUNTIME / "patch-multikey.py").read_bytes()).hexdigest(),
+        "pins_sha256": hashlib.sha256((RUNTIME / "pins.json").read_bytes()).hexdigest(),
+    }
+
+
+def write_prepared_auth(cfg, source):
+    operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
+    compile(source, str(operator / "auth.py"), "exec")
+    operator.mkdir(parents=True, exist_ok=True)
+    operator.parent.chmod(0o700)
+    operator.chmod(0o700)
+    payloads = {"auth.py": source, "auth-receipt.json":
+                (json.dumps(auth_record(cfg, source), sort_keys=True) + "\n").encode()}
+    for name, payload in payloads.items():
+        with tempfile.NamedTemporaryFile(dir=operator, prefix=".auth-", delete=False) as stream:
+            staged = Path(stream.name)
+            try:
+                stream.write(payload)
+            except BaseException:
+                stream.close()
+                staged.unlink(missing_ok=True)
+                raise
+        try:
+            staged.replace(operator / name)
+        finally:
+            staged.unlink(missing_ok=True)
+
+
+def verify_prepared_auth(cfg):
+    operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
+    try:
+        source = (operator / "auth.py").read_bytes()
+        receipt = json.loads((operator / "auth-receipt.json").read_bytes())
+        if receipt == auth_record(cfg, source):
+            return
+    except (OSError, ValueError):
+        pass
+    raise ValueError("prepared authentication differs or is missing; run --prepare for the selected image")
+
+
 def verify_host(cfg):
     verify_host_paths(cfg)
     verify_image(cfg)
@@ -177,9 +222,7 @@ def verify_host(cfg):
     keys = [line.strip() for line in Path(cfg["API_KEY_FILE"]).read_text().splitlines() if line.strip()]
     if not keys or len(keys) != len(set(keys)) or any("," in k or any(not 33 <= ord(c) <= 126 for c in k) for k in keys):
         raise ValueError("key file must contain distinct nonempty keys without commas or whitespace")
-    state = Path(cfg["STATE_HOST_PATH"])
-    if not (state / "operator/auth.py").is_file():
-        raise ValueError("run --prepare first")
+    verify_prepared_auth(cfg)
     names = output(["docker", "ps", "--format", "{{.Names}}"]).splitlines()
     if any(name.startswith(("vllm", "sgl", "glm")) for name in names):
         raise ValueError("a model container is already running; stop its owning service first")
@@ -205,19 +248,11 @@ def main():
     elif args.prepare:
         verify_host_paths(cfg)
         verify_image(cfg)
-        state = Path(cfg["STATE_HOST_PATH"])
-        operator = state / "operator"
-        operator.mkdir(parents=True, exist_ok=True)
-        state.chmod(0o700)
-        operator.chmod(0o700)
         source = subprocess.check_output([
             "docker", "run", "--rm", "--memory", "512m", "--entrypoint", "python3",
             "-v", str(RUNTIME / "patch-multikey.py") + ":/patch.py:ro", cfg["IMAGE"],
             "-S", "/patch.py", PINS["auth_path"]])
-        compile(source, str(operator / "auth.py"), "exec")
-        staged = operator / "auth.py.tmp"
-        staged.write_bytes(source)
-        staged.replace(operator / "auth.py")
+        write_prepared_auth(cfg, source)
         print("Authentication prepared; no GPU used")
     elif args.pack:
         verify_host_paths(cfg)

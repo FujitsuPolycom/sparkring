@@ -65,7 +65,11 @@ use their own rank index. These are Mia's packed layout, incompatible with the
 vLLM packed files. A directory containing existing files is refused.
 
 The authentication patch checks the pinned upstream source shape before writing
-a private generated module under the state directory. Each individual key is
+a private generated module under the state directory. Its
+`operator/auth-receipt.json` binds the generated source to the
+selected image, patcher and source pins. Rerun `--prepare` after changing the
+image or patch inputs, or when using state prepared without this receipt.
+Startup rejects missing or mismatched authentication receipts. Each key is
 accepted. SGLang's internal caller can use the complete joined value. Separately
 configured admin credentials retain exact matching; ordinary keys cannot unlock
 endpoints that require an admin key. Health and metrics keep SGLang's existing
