@@ -440,11 +440,17 @@ def evaluate_snapshot(
         )
     )
     route = snapshot.get("route") or {}
+    # An explicit `ip route get ... from ...` reports `from`; an inferred
+    # source reports `prefsrc`. Reject contradictory or absent source fields.
+    route_sources = [route[key] for key in ("from", "prefsrc") if key in route]
     checks.append(
         gate(
             f"{endpoint.label}.direct_route",
             route.get("dev") == endpoint.interface
-            and route.get("prefsrc") == endpoint.ip,
+            and bool(route_sources)
+            and all(source == endpoint.ip for source in route_sources)
+            and not route.get("gateway")
+            and not route.get("via"),
             {
                 "expected_interface": endpoint.interface,
                 "expected_source": endpoint.ip,

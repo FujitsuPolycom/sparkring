@@ -80,6 +80,24 @@ class QualificationLogicTest(unittest.TestCase):
         self.assertFalse(direct_route["passed"])
         self.assertTrue(direct_route["hard"])
 
+    def test_explicit_source_route_matches_live_iproute_output(self) -> None:
+        for source_fields, expected in [
+            ({"from": "198.51.100.1"}, True),
+            ({"from": "198.51.100.2"}, False),
+            ({}, False),
+            ({"from": "198.51.100.1", "prefsrc": "198.51.100.2"}, False),
+            ({"from": "198.51.100.1", "gateway": "198.51.100.254"}, False),
+        ]:
+            with self.subTest(source_fields=source_fields):
+                snapshot = good_snapshot()
+                snapshot["route"] = {"dev": "enP7s7", **source_fields}
+                checks = MODULE.evaluate_snapshot(
+                    snapshot, self.endpoint(), tier="diagonal10",
+                    expected_mtu=1500, expected_speed_mbps=10000, gid_index=3,
+                )
+                route_gate = next(c for c in checks if c["name"] == "left.direct_route")
+                self.assertEqual(route_gate["passed"], expected)
+
     def test_counter_deltas_distinguish_phy_from_pressure(self) -> None:
         before = good_snapshot()
         after = good_snapshot()
