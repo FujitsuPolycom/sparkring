@@ -179,6 +179,7 @@ class PhaseTimingCollector:
         self._armed = False
         self._epoch = ""
         self._next_slot = 0
+        self._inflight = 0
         self._pending_count = 0
         self._completed = 0
         self._dropped_capacity = 0
@@ -266,51 +267,56 @@ class PhaseTimingCollector:
                     slot = self._slots[self._next_slot]
                     self._next_slot += 1
                     slot.descriptor_index = descriptor_index
+                    self._inflight += 1
         if slot is None:
             return operation()
 
         try:
-            slot.start.record(stream)
-        except Exception:
-            with self._lock:
-                self._record_errors += 1
-            return operation()
-
-        nvtx_pushed = False
-        if self._nvtx is not None:
             try:
-                self._nvtx.range_push(descriptor.key)
-                nvtx_pushed = True
+                slot.start.record(stream)
             except Exception:
                 with self._lock:
-                    self._nvtx_errors += 1
+                    self._record_errors += 1
+                return operation()
 
-        succeeded = False
-        try:
-            result = operation()
-            succeeded = True
-            return result
-        finally:
-            if nvtx_pushed:
+            nvtx_pushed = False
+            if self._nvtx is not None:
                 try:
-                    assert self._nvtx is not None
-                    self._nvtx.range_pop()
+                    self._nvtx.range_push(descriptor.key)
+                    nvtx_pushed = True
                 except Exception:
                     with self._lock:
                         self._nvtx_errors += 1
-            if not succeeded:
-                with self._lock:
-                    self._operation_errors += 1
-            else:
-                try:
-                    slot.end.record(stream)
-                except Exception:
+
+            succeeded = False
+            try:
+                result = operation()
+                succeeded = True
+                return result
+            finally:
+                if nvtx_pushed:
+                    try:
+                        assert self._nvtx is not None
+                        self._nvtx.range_pop()
+                    except Exception:
+                        with self._lock:
+                            self._nvtx_errors += 1
+                if not succeeded:
                     with self._lock:
-                        self._record_errors += 1
+                        self._operation_errors += 1
                 else:
-                    with self._lock:
-                        slot.pending = True
-                        self._pending_count += 1
+                    try:
+                        slot.end.record(stream)
+                    except Exception:
+                        with self._lock:
+                            self._record_errors += 1
+                    else:
+                        with self._lock:
+                            slot.pending = True
+                            self._pending_count += 1
+        finally:
+            with self._lock:
+                self._inflight -= 1
 
     def drain(self) -> DrainResult:
         """Poll and aggregate ready events without synchronizing.
@@ -408,6 +414,8 @@ class PhaseTimingCollector:
         with self._lock:
             if self._armed:
                 raise RuntimeError("disarm before reset")
+            if self._inflight:
+                raise RuntimeError("all in-flight measurements must finish before reset")
             if self._pending_count:
                 raise RuntimeError("all pending events must drain before reset")
             for slot in self._slots:

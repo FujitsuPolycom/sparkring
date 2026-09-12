@@ -263,3 +263,46 @@ def test_capacity_is_bounded(capacity: int) -> None:
             capacity=capacity,
             descriptors=(TARGET,),
         )
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_reset_waits_for_inflight_measurement_and_releases_on_exception(fails):
+    import threading
+    descriptor = PhaseDescriptor(PhaseKind.STEP_ENVELOPE, "inflight")
+    timing = PhaseTimingCollector(event_factory=EventFactory([1.0, 1.0]), capacity=1,
+                                  descriptors=(descriptor,))
+    entered, release = threading.Event(), threading.Event()
+    outcome = []
+    def operation():
+        entered.set()
+        if not release.wait(2):
+            raise AssertionError("test did not release operation")
+        if fails:
+            raise LookupError("operation failed")
+        return "result"
+    def worker():
+        try:
+            outcome.append(timing.measure(descriptor, object(), operation))
+        except LookupError as error:
+            outcome.append(error)
+    timing.arm("before-reset")
+    thread = threading.Thread(target=worker)
+    thread.start()
+    try:
+        assert entered.wait(2)
+        timing.disarm()
+        with pytest.raises(RuntimeError, match="in-flight"):
+            timing.reset()
+    finally:
+        release.set()
+        thread.join(2)
+    assert not thread.is_alive()
+    if fails:
+        assert isinstance(outcome[0], LookupError)
+        assert timing.snapshot()["errors"]["operation"] == 1
+    else:
+        assert outcome == ["result"]
+        timing.drain()
+    timing.reset()
+    assert timing.snapshot()["pending"] == 0
+    timing.arm("after-reset")
