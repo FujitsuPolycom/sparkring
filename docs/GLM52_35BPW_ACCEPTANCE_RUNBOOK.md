@@ -64,11 +64,14 @@ Use
 [`local-inference-lab/llm-inference-bench`](https://github.com/local-inference-lab/llm-inference-bench)
 commit `0b4185b5b435e948b199c9077a00b084864aa963`. Install its declared
 dependencies in an isolated environment, then run exactly one 16K-context
-cell at C1, C2, and C8:
+cell at C1, C2, and C8. `--skip-prefill` omits the separate prefill measurement;
+the decode requests still carry their 16K prompts. The shown KV budget is the
+recipe's recorded 1,156,864-token pool. Confirm that value in this image's startup
+log, or use its reported logical KV capacity and record the difference:
 
 ```bash
 python llm_decode_bench.py \
-  --host <rank0-management-address> \
+  --host '<rank0-management-address>' \
   --port 8000 \
   --model glm-5.2-exl3-r7-3.5bpw \
   --contexts 16k \

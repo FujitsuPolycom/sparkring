@@ -77,8 +77,8 @@ Five draft rows plus one target row require at most 192 verification rows at
 
 The sustained-decode matrix used separate invocations per concurrency, exact
 token targeting, 100% unique contexts, temperature 1.0, EOS ignored, and a
-90-second post-warmup window. The aligned transport comparison used the same
-16K/C32 workload as the TP2 baseline:
+90-second post-warmup window. The aligned transport comparison used this
+16K/C32 workload:
 
 | Parameter | Value |
 |---|---:|
@@ -91,10 +91,10 @@ token targeting, 100% unique contexts, temperature 1.0, EOS ignored, and a
 | Readiness gate | 32 running, 0 waiting, stable before measurement |
 | Isolation | `--isolated-server` for the final frozen-harness pair |
 
-The benchmark harness changed its client-accounting policy during the A/B/A
-sequence. Earlier receipts retain server-counter observations; a frozen later
-copy was used with explicit isolated-server authority for one additional run on
-each arm. The client stream headline is rejected whenever it disagrees with the
+Client-accounting policies differed across the retained samples. They include
+server-counter observations from the comparison
+and one additional run per arm using a frozen harness with explicit
+isolated-server authority. The client stream headline is rejected whenever it disagrees with the
 server generation-token delta.
 
 ## Results
@@ -117,7 +117,7 @@ This is measurement noise, not a SIRCL effect.
 | Context | SIRCL repetitions | SIRCL mean | NCCL repetitions | NCCL mean |
 |---:|---:|---:|---:|---:|
 | 2K | 62.9, 97.1, 94.4 | 84.8 | 103.2, 103.2, 104.8 | 103.7 |
-| 8K | 94.8, 99.3, 113.6 | 102.5 | 104.5, 54.3, 65.4 | 74.7 |
+| 8K | 94.8, 99.3, 113.6 | 102.6 | 104.5, 54.3, 65.4 | 74.7 |
 
 These short C1 runs are not a clean transport measurement. Temperature-1.0
 DSpark acceptance varied enough to reverse the apparent winner between

@@ -73,13 +73,15 @@ sparkcache_root="$PWD/sparkcache"
 
 To build both images instead, follow
 [`runtime/glm53-flash/BUILD.md`](../runtime/glm53-flash/BUILD.md) for the
-runtime and then run:
+runtime. Set these references to the local outputs before building the overlay:
 
 ```bash
+runtime_image='sparkring-glm53-runtime:da4d7be-source-arm64'
+sparkcache_image='sparkring-glm53-sparkcache:local'
 python "${sparkcache_root}/deploy/glm53_flash/build_public_image.py" \
   --repository "${sparkcache_root}" \
   --base-image "${runtime_image}" \
-  --output-image sparkring-glm53-sparkcache:local \
+  --output-image "${sparkcache_image}" \
   --output glm53-sparkcache-build-receipt.json
 ```
 
@@ -153,12 +155,16 @@ ssh operator@rank0.example.net \
 ```
 
 Replace the SSH target with rank 0 from `site.yaml`. The container name comes
-from `profile.json`; use that literal name if it was changed. Wait for API
-readiness, then verify the served model:
+from `profile.json`; use that literal name if it was changed. Set `api_endpoint`
+to rank 0's management address from `site.yaml` and the API port in `profile.json`.
+Wait for readiness, then verify the served model:
 
 ```bash
 api_endpoint='http://rank0.example.net:8015'
-until curl --fail --silent "${api_endpoint}/health" >/dev/null; do sleep 5; done
+startup_timeout=$(python -c 'import json; print(json.load(open("profile.json", encoding="utf-8"))["startup_timeout_seconds"])')
+timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --max-time 10 "$1/health" >/dev/null; do sleep 5; done' _ "$api_endpoint" || {
+  echo "Readiness failed or timed out; inspect all rank logs before retrying" >&2; exit 1;
+}
 curl --fail --silent "${api_endpoint}/v1/models"
 ```
 
@@ -190,10 +196,11 @@ python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
 ```
 
 After readiness, the first request may safely recompute while all worker
-inventories reach the scheduler. Run it once as a prime, save metrics, then
-repeat it:
+inventories reach the scheduler, or it may restore immediately. Save metrics
+before either request so an immediate restore remains visible:
 
 ```bash
+curl --fail --silent --max-time 10 "${api_endpoint}/metrics" > metrics-before-prime.prom
 python "${qualification_script}" --endpoint "${api_endpoint}" \
   --model "${served_model}" --kind persistent --output post-restart-prime.json
 curl --fail --silent "${api_endpoint}/metrics" > metrics-before-restore.prom
@@ -206,7 +213,9 @@ curl --fail --silent "${api_endpoint}/metrics" > metrics-after-restore.prom
 
 Require every worker to log `restored 8192 tokens async`. Across the metrics
 snapshots, require an 8,192-token increase in both
-`external_prefix_cache_hits_total` and the `external_kv_transfer` source.
+`external_prefix_cache_hits_total` and the `external_kv_transfer` source during
+either the prime interval or the repeat interval. A later native-prefix hit
+does not invalidate an external restore already proved by the prime interval.
 Require `draft_tokens = 7 × drafts`, zero preemptions, a passing semantic
 receipt, the same image ID on every rank, no restarts or OOMs, and 24 RTS
 `VLLM::Worker` queue pairs per rank.

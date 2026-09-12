@@ -23,7 +23,7 @@ storage. Clone both repositories beside each other:
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git sparkring
-git -C sparkring checkout --detach <revision-containing-this-guide>
+git -C sparkring checkout --detach '<revision-containing-this-guide>'
 git clone https://github.com/FujitsuPolycom/sparkcache.git sparkcache
 git -C sparkcache checkout --detach 20838ace3ebda570ca039cb7f1976c29da554b39
 
@@ -110,7 +110,10 @@ Wait for health, then run the exact semantic request:
 ```bash
 api_endpoint='http://rank0.example.net:8015'
 served_model='glm-5.3-flash-nvfp4-b12x-kda-mtp5-adaptive-fastsafetensors-0b67266a-tp4'
-until curl --fail --silent "${api_endpoint}/health" >/dev/null; do sleep 5; done
+startup_timeout=$(python -c 'import json; print(json.load(open("profile.json", encoding="utf-8"))["startup_timeout_seconds"])')
+timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --max-time 10 "$1/health" >/dev/null; do sleep 5; done' _ "$api_endpoint" || {
+  echo "Readiness failed or timed out; inspect all rank logs before retrying" >&2; exit 1;
+}
 python sparkcache/deploy/glm53_flash/qualification_request.py \
   --endpoint "${api_endpoint}" --model "${served_model}" \
   --kind semantic --output semantic.json

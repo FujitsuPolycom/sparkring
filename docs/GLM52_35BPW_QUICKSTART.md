@@ -10,9 +10,9 @@ See the [maintained guide](../profiles/glm52-exl3-r7-3.5bpw/README.md). Section 
 
 ## [3. Build and identify the runtime image](../profiles/glm52-exl3-r7-3.5bpw/README.md#3-build-and-identify-the-runtime-image)
 
-## [4. Generate the complete pre-exact-Q40 profile](../profiles/glm52-exl3-r7-3.5bpw/README.md)
+## [4. Generate the complete pre-exact-Q40 profile](../profiles/glm52-exl3-r7-3.5bpw/README.md#4-generate-the-serving-profile-before-state-attestation)
 
-## [5. Bind the exact-Q40 overlays](../profiles/glm52-exl3-r7-3.5bpw/README.md)
+## [5. Bind the exact-Q40 overlays](../profiles/glm52-exl3-r7-3.5bpw/README.md#5-bind-the-40-query-row-execution-and-attestation-overlays)
 
 ## [6. Start and verify](../profiles/glm52-exl3-r7-3.5bpw/README.md#6-start-and-verify)
 

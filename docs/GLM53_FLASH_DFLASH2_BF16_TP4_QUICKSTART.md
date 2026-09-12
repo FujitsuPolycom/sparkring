@@ -7,7 +7,8 @@ not exercised at their limits. The image is a FujitsuPolycom community
 derivative.
 
 This profile is the controlled comparison for the SparkCache-enabled service.
-It uses the same image, target checkpoint, BF16 DFlash2 checkpoint, 12 GiB FP8
+It uses the same image, target checkpoint, BF16 DFlash2 draft with seven
+proposal tokens, 12 GiB FP8
 GPU KV memory per rank, scheduler, CUDA graphs, asynchronous scheduling,
 chunked prefill, native prefix caching, Triton KDA prefill, and source-built
 NCCL. It omits only `--kv-transfer-config`.
@@ -92,7 +93,10 @@ Wait for health and run the deterministic semantic canary:
 ```bash
 api_endpoint='http://rank0.example.net:8015'
 served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'
-until curl --fail --silent "${api_endpoint}/health" >/dev/null; do sleep 5; done
+startup_timeout=$(python -c 'import json; print(json.load(open("profile.json", encoding="utf-8"))["startup_timeout_seconds"])')
+timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --max-time 10 "$1/health" >/dev/null; do sleep 5; done' _ "$api_endpoint" || {
+  echo "Readiness failed or timed out; inspect all rank logs before retrying" >&2; exit 1;
+}
 python "${sparkcache_root}/deploy/glm53_flash/qualification_request.py" \
   --endpoint "${api_endpoint}" --model "${served_model}" \
   --kind semantic --output no-external-cache-semantic.json
@@ -119,7 +123,8 @@ The draft is
 BF16, under CC BY-NC-ND 4.0. vLLM is
 `local-inference-lab/vllm` at
 `dev/jovian-judgement@da4d7be6c97434f6942292ed8abbf4b32dc44355`;
-B12X is `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`.
+The B12X kernel library (`local-inference-lab/b12x`) is at
+`2fcf23a0ce269be27b2e03fece73d46e90e6aeea`.
 
 Complete source, pull-request, patch, quantization, image, SBOM, and license
 attribution is in
