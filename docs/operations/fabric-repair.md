@@ -15,11 +15,12 @@ on every node before a launch:
 - `net.ipv4.ip_forward=1`, without which the node accepts transit traffic and
   drops it.
 - An unrestricted `DOCKER-USER` ACCEPT rule in both directions between the two
-  fabric interfaces. Installing Docker sets the `FORWARD` chain policy to
-  `DROP`, which silently blocks fabric transit. **This is the most commonly
-  missed condition, and it presents exactly like a dead cable**: links are up,
-  addresses are configured, neighbours ping, and every non-adjacent node is
-  unreachable.
+  fabric interfaces, reachable before any blocking rule. A `FORWARD` drop
+  policy can leave non-adjacent nodes unreachable even when direct links work.
+
+Ring Doctor checks rule order conservatively. It does not reorder existing
+user firewall policy; an earlier blocking or unknown chain rule must be reviewed
+before a later ACCEPT can establish unrestricted forwarding.
 
 [`scripts/ring_doctor.py`](../../scripts/ring_doctor.py) checks all three, plus
 addressing and reachability, and prints a repair plan. When a canonical site

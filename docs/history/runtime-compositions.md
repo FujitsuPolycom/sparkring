@@ -37,8 +37,8 @@ Inference Lab community release named `Jovian Judgement Community R10`.
 ## GLM-5.3 Flash operator image
 
 The [`GLM-5.3 GB10 runtime`](../../runtime/glm53-flash-jj-r8-gb10/README.md) is the operator
-path for four-system TP4 serving. One image supports DCP1, DCP2, and DCP4 with
-persistent SparkCache enabled or disabled at launch. The recommended DCP4
+path retained for four-system TP4 serving. One image supports DCP1, DCP2, and DCP4 with
+persistent SparkCache enabled or disabled at launch. The recorded DCP4
 page-tail image is:
 
 ```text

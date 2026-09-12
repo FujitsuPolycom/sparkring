@@ -1,8 +1,8 @@
 # Reproduce the GLM-5.2 EXL3 3.5-bpw deployment profile
 
-This procedure derives the qualified GLM serving configuration from tracked
+This procedure derives the recorded GLM serving configuration from tracked
 inputs. It is for four directly cabled DGX Sparks. The resulting image has
-status **implemented** until it completes
+status **Development** until it completes
 [the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md).
 
 ## Inputs
@@ -26,7 +26,7 @@ the exact locally built library and tracked adapter modules.
 
 ```bash
 python scripts/glm35_profile.py plan --execute \
-  --site scripts/config/site.yaml \
+  --site .sparkring/exl3-r7/site.yaml \
   --template .sparkring/exl3-r7/candidate.json \
   --output-dir .sparkring/exl3-r7 \
   --transport-library build/sircl-tiered/libspark_transport_capi.so \
@@ -51,8 +51,9 @@ each mounted SIRCL artifact.
 
 ## Bind the exact-Q40 runtime bytes and image identity
 
-Generate the exact-Q40 `exl3.py` and runtime-attestation `model_runner.py` from
-the pinned vLLM source tree. These generators remain separate because they
+Use [quickstart step 5](../profiles/glm52-exl3-r7-3.5bpw/README.md#5-bind-the-40-query-row-execution-and-attestation-overlays)
+to prepare the pinned source and generate `exl3.py` and runtime-attestation
+`model_runner.py`. These generators remain separate because they
 reject unexpected source bytes and bind the attestation to the image ID.
 Use the compiler receipt's `pre_q40_profile_sha256` as the baseline digest:
 
