@@ -17,7 +17,8 @@ installation guides.
 | GLM-5.2 EXL3 3.5-bpw | implemented | four Sparks, TP4/DCP4 | [`glm52-exl3-r7-3.5bpw.json`](glm52-exl3-r7-3.5bpw.json) | [GLM-5.2 quickstart](../docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | implemented | two Sparks, TP2/DCP1 | [`deepseek-v4-flash-0731-pair.json`](deepseek-v4-flash-0731-pair.json) | [DeepSeek quickstart](../docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | implemented | four Sparks, TP4/DCP1 | [`deepseek-v4-flash-0731.json`](deepseek-v4-flash-0731.json) | [DeepSeek quickstart](../docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4.1-Flash, Engram on NVMe, DSpark k=5 | implemented (self-built stock vLLM image) | four Sparks, TP4/DCP1 | [`deepseek-v41-flash-cycle.json`](deepseek-v41-flash-cycle.json) | [DeepSeek-V4.1 quickstart](../docs/DEEPSEEK_V41_FLASH_QUICKSTART.md) |
+| DeepSeek-V4.1-Flash, SGLang decoder-tail replay, DSpark block five | implemented (self-built SGLang image; deployment qualification ongoing) | four Sparks, TP4/EP4 cycle | [`deepseek-v41-flash-sglang-cycle.json`](deepseek-v41-flash-sglang-cycle.json) | [SGLang operator guide](../runtime/deepseek-v41-sglang/README.md) |
+| DeepSeek-V4.1-Flash vLLM fallback, Engram on NVMe, DSpark k=5 | implemented (self-built stock vLLM image) | four Sparks, TP4/DCP1 | [`deepseek-v41-flash-cycle.json`](deepseek-v41-flash-cycle.json) | [DeepSeek-V4.1 quickstart](../docs/DEEPSEEK_V41_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | implemented | two Sparks, TP2/DCP1 | [`qwen38-27b-exl3-k5k6-pair.json`](qwen38-27b-exl3-k5k6-pair.json) | [Qwen pair quickstart](../docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | implemented | four Sparks, TP4/DCP1 | [`qwen38-27b-exl3-k5k6.json`](qwen38-27b-exl3-k5k6.json) | [Qwen quickstart](../docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
 

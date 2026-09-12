@@ -1,0 +1,84 @@
+{
+ "version": "v1",
+ "temperature": 0,
+ "thinking": false,
+ "categories": [
+  {
+   "name": "coding",
+   "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping intervals and returns them sorted. Include a one-line docstring and two example calls.",
+   "max_tokens": 200
+  },
+  {
+   "name": "json",
+   "prompt": "Return only a JSON object describing a fictional bookstore with keys: name (string), city (string), founded (integer year), genres (array of 5 strings), staff (array of 3 objects, each with name and role). No prose.",
+   "max_tokens": 200
+  },
+  {
+   "name": "narrative",
+   "prompt": "Write a 120-word short story about a lighthouse keeper who finds a message in a bottle. Use vivid sensory detail.",
+   "max_tokens": 200
+  },
+  {
+   "name": "prose",
+   "prompt": "Explain in about 120 words how a refrigerator keeps food cold, for a curious 12-year-old.",
+   "max_tokens": 200
+  },
+  {
+   "name": "math",
+   "prompt": "A train leaves at 9:40. It travels 212 km at 80 km/h, stops for 12 minutes, then travels 95 km at 60 km/h. At what time does it arrive? Show the steps briefly, then give the final time.",
+   "max_tokens": 200
+  },
+  {
+   "name": "reasoning",
+   "prompt": "Ana, Ben and Cal each own exactly one pet: a cat, a dog, or a fish. Ana does not own the dog. Ben owns neither the cat nor the fish. Who owns which pet? Explain the deduction step by step.",
+   "max_tokens": 200
+  },
+  {
+   "name": "summary",
+   "prompt": "Summarize the following passage in exactly three bullet points.\n\nGrid-scale batteries have moved from pilot projects to a routine part of how electricity systems run. Their main job is to shift energy in time: they charge when solar and wind output is high and prices are low, then discharge in the evening peak when demand climbs and those sources fade. Operators also use them for services that last seconds rather than hours, such as holding grid frequency steady when a large power plant trips offline, because a battery can respond far faster than a spinning turbine. Most installations today use lithium-ion cells, which fell sharply in price over the last decade, but they are best suited to durations of two to four hours. Longer gaps, such as a windless winter week, need other approaches: flow batteries, compressed air, pumped hydro, or simply more transmission lines that move power between regions with different weather. Critics point out that batteries do not generate energy and lose a portion of it on every cycle, and that mining the metals they contain carries environmental costs. Supporters answer that the alternative, keeping fossil plants idling as backup, is more expensive and dirtier, and that recycling programs are starting to recover lithium, nickel and cobalt at scale. The practical consensus among grid planners is that batteries are one tool among several, most valuable where they are placed close to congestion points or large solar farms, and least valuable when asked to cover long, rare shortages on their own.",
+   "max_tokens": 150
+  },
+  {
+   "name": "format",
+   "prompt": "Convert this list into a Markdown table with columns Item, Qty, Price, Total (Qty x Price), and add a final row with the grand total: apples 3 @ 0.50; bread 1 @ 2.25; milk 2 @ 1.10; eggs 12 @ 0.25.",
+   "max_tokens": 200
+  }
+ ],
+ "ceiling": {
+  "name": "ceiling_count",
+  "prompt": "Count from 1 to 80, comma separated, nothing else.",
+  "max_tokens": 256
+ },
+ "prefill_filler": {
+  "words": [
+   "amber",
+   "basin",
+   "cedar",
+   "delta",
+   "ember",
+   "fjord",
+   "garnet",
+   "harbor",
+   "iris",
+   "juniper",
+   "kestrel",
+   "lumen",
+   "meadow",
+   "nimbus",
+   "orchid",
+   "pylon",
+   "quartz",
+   "raven",
+   "sierra",
+   "tundra",
+   "umber",
+   "vessel",
+   "willow",
+   "xenon",
+   "yarrow",
+   "zephyr"
+  ],
+  "seed_rule": "seed = target tokens",
+  "words_per_target_token": 0.55
+ }
+}
