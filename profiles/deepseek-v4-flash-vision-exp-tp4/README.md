@@ -1,12 +1,11 @@
 # DeepSeek V4 Flash Vision-Exp on a four-Spark cycle
 
-Profile: `deepseek-v4-flash-vision-exp-tp4`. Status: **research-only**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
+Profile: `deepseek-v4-flash-vision-exp-tp4`. Status: **Experimental**.
+This four-rank configuration serves `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`.
+Contributor-reported serving results are attributed below; independent
+reproduction of the selected artifacts is not claimed.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve deepseek-v4-flash-vision-exp-tp4`.
-
-Status: **research-only**. This profile defines a four-rank launch configuration
-for `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`. Contributor-reported serving
-results are attributed below; independent reproduction is not claimed.
 
 The model and serving hotfixes come from
 [MiaAI-Lab's DSpark recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark/tree/7440c53c1f0352886e47b1909051784879fa0a24)
