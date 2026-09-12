@@ -99,10 +99,11 @@ elif [[ -e "$launcher" ]]; then
   mv "$launcher" "$backup"
   echo "backed up existing launcher to $backup"
 fi
+# The launcher runs the tracked script through python3, so the checkout keeps
+# its committed file modes and stays clean for later --ref updates.
 printf '#!/usr/bin/env bash\nexec python3 %q "$@"\n' \
   "$INSTALL_DIR/scripts/sparkring.py" > "$launcher"
 chmod 0755 "$launcher"
-chmod 0755 "$INSTALL_DIR/scripts/sparkring.py"
 
 echo
 echo "SparkRing installed at $INSTALL_DIR"
