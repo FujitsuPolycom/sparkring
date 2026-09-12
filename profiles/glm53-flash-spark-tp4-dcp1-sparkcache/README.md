@@ -159,6 +159,15 @@ The [DCP4 profile](../glm53-flash-spark-tp4-dcp4-sparkcache/profile.json) and
 [activation receipt](../../runtime/sparkring/jovian-r33/profiles/evidence/tp4-dcp4-sparkcache-activation-20260911.json)
 pin the configuration used for the bounded tests. DCP1 remains the default.
 
+Validate a recorded activation from the repository root with:
+
+```bash
+python3 runtime/common/verify_activation.py --receipt /path/to/activation.json
+```
+
+This checks the receipt's rank, cache, image and source declarations. It does
+not run a serving test or replace the workload evidence.
+
 ## Validation and results
 
 - [DCP1 record](../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md): bounded serving, cache and restore checks.
