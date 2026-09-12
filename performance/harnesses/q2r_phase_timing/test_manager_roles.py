@@ -16,6 +16,38 @@ class Manager:
     pass
 
 
+@pytest.mark.parametrize("after_assignment", [False, True])
+def test_role_install_interrupt_restores_all_assigned_hooks(monkeypatch, after_assignment):
+    import builtins
+    from . import manager_roles
+
+    class Owner:
+        def first(self):
+            return Manager()
+        def second(self):
+            return Manager()
+
+    originals = [Owner.first, Owner.second]
+    hooks = tuple(RoleAssignmentHook(
+        Owner, name, source_sha256(getattr(Owner, name)), ManagerRole.TARGET_VERIFY,
+        lambda instance, args, kwargs, result: result, lambda *args: 1,
+    ) for name in ("first", "second"))
+    adapter = FailClosedRoleAssignmentAdapter(ManagerRoleRegistry(), hooks)
+    fired = False
+    def assign(owner, name, value):
+        nonlocal fired
+        if owner is Owner and name == "second" and not fired:
+            fired = True
+            if after_assignment:
+                builtins.setattr(owner, name, value)
+            raise KeyboardInterrupt("role assignment interrupted")
+        builtins.setattr(owner, name, value)
+    monkeypatch.setattr(manager_roles, "setattr", assign, raising=False)
+    with pytest.raises(KeyboardInterrupt, match="role assignment interrupted"):
+        adapter.install()
+    assert [Owner.first, Owner.second] == originals
+
+
 @pytest.mark.parametrize("copy_marker", [False, True])
 def test_uninstall_preflights_all_hooks_and_preserves_replacements(copy_marker):
     import functools

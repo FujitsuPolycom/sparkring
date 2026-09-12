@@ -363,10 +363,11 @@ class FailClosedRoleAssignmentAdapter:
 
                 wrapped._spark_q2r_role_assignment = True  # type: ignore[attr-defined]
                 wrapped._spark_original = original  # type: ignore[attr-defined]
-                setattr(hook.owner, hook.method_name, wrapped)
                 wrappers[(hook.owner, hook.method_name)] = wrapped
+                # Track the target before assignment can raise after mutation.
                 installed.append(item)
-        except Exception:
+                setattr(hook.owner, hook.method_name, wrapped)
+        except BaseException:
             for item in reversed(installed):
                 setattr(
                     item.hook.owner, item.hook.method_name, item.original
