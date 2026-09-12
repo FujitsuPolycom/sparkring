@@ -42,5 +42,7 @@ def test_bootstrap_parses_and_requires_explicit_inputs() -> None:
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash unavailable for syntax check")
-    result = subprocess.run([bash, "-n", str(SCRIPT)], capture_output=True, text=True)
+    result = subprocess.run(
+        [bash, "-n"], input=text.encode("utf-8"), capture_output=True, timeout=10
+    )
     assert result.returncode == 0, result.stderr
