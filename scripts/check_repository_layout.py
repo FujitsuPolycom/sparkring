@@ -35,7 +35,16 @@ def validate_imports(root=ROOT):
     for path in paths:
         tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=str(path))
         for node in ast.walk(tree):
-            modules = [node.module or ''] if isinstance(node, ast.ImportFrom) else [x.name for x in node.names] if isinstance(node, ast.Import) else []
+            modules = []
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ''
+                if node.level:
+                    package = path.relative_to(root).parent.parts
+                    parent = package[:len(package) - node.level + 1]
+                    module = '.'.join((*parent, *filter(None, module.split('.'))))
+                modules = [module, *('.'.join(filter(None, (module, alias.name))) for alias in node.names)]
+            elif isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
             if any(m == 'experiments' or m.startswith(('experiments.', 'spark_transport.experiments')) for m in modules):
                 raise ValueError(f'{path.relative_to(root)}:{node.lineno}: maintained code must import its maintained owner, not experiments')
     return len(paths)
@@ -69,7 +78,7 @@ def validate_build_contracts(root=ROOT):
 
 
 def validate_artifacts(root=ROOT):
-    paths = subprocess.check_output(['git', 'ls-files', '-z'], cwd=root).decode().split('\0')
+    paths = subprocess.check_output(['git', 'ls-files', '-z'], cwd=root).decode('utf-8', 'surrogateescape').split('\0')
     for relative in filter(None, paths):
         path = root/relative
         if path.suffix.lower() in {'.safetensors', '.gguf', '.ggml', '.ckpt', '.pt', '.pth', '.p12', '.pfx'}:

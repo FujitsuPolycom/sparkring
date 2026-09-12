@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 import unicodedata
+from urllib.parse import unquote
 from pathlib import Path
 
 LINK = re.compile(r"(?<!\\)\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
@@ -16,7 +17,7 @@ def slug(text: str) -> str:
     text = re.sub(r"`([^`]*)`", r"\1", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"[*_~]", "", text)
-    text = unicodedata.normalize("NFKD", text).lower()
+    text = unicodedata.normalize("NFC", text).lower()
     return re.sub(r"[^\w\- ]+", "", text).strip().replace(" ", "-")
 
 def anchors(path: Path) -> set[str]:
@@ -49,8 +50,8 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve()
     tracked = subprocess.run(
         ["git", "ls-files", "-z", "*.md"], cwd=root, check=True,
-        capture_output=True, text=True,
-    ).stdout.split("\0")
+        capture_output=True,
+    ).stdout.decode("utf-8", "surrogateescape").split("\0")
     cache, failures, checked = {}, [], 0
     for relative in filter(None, tracked):
         source = root / relative
@@ -66,6 +67,8 @@ def main() -> int:
                     continue
                 checked += 1
                 path, _, fragment = target.partition("#")
+                path = unquote(path)
+                fragment = unicodedata.normalize("NFC", unquote(fragment)).lower()
                 destination = source if not path else (source.parent / path).resolve()
                 if not destination.exists():
                     failures.append(f"{relative}:{number}: missing target {path!r}")
