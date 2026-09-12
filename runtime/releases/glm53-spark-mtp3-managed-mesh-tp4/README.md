@@ -1,6 +1,7 @@
 # Published mesh bundle source inputs
 
-`compatibility-sources.tar.gz` retains the RoCEnante C proxy, Python runtime and PTX helpers, adapter,
+`compatibility-sources.tar.gz` retains the RoCEnante C proxy, Python runtime,
+collective kernels, PTX helpers, adapter,
 provenance record and bundle manifest needed to reproduce published bundle
 `69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500`.
 Its digest is recorded in [release.json](release.json).
@@ -11,7 +12,7 @@ these frozen files in a temporary source tree while leaving development sources
 unchanged. The remaining bundle files come from the pinned base image and
 matching repository inputs.
 
-The retained sources keep the released diagnostic-counter and gather-storage
+The retained sources keep the released counter, gather-storage and timeout
 behavior. This archive reproduces the released artifact; fixes belong to the
 development source. Development bundles have a distinct source and
 manifest identity and require their own validation. Published image references,

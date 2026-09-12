@@ -28,6 +28,22 @@ def methods(names, namespace):
     return namespace
 
 
+@pytest.mark.parametrize('sequence', [0, 1, 0x80000000, 0xFFFFFFFF])
+def test_timeout_health_uses_flag_and_unsigned_sequence(sequence):
+    namespace = methods({'check_health', 'poisoned'}, {})
+    signed = sequence if sequence < 0x80000000 else sequence - (1 << 32)
+    runtime = SimpleNamespace(_lock=threading.RLock(), _proxy=None, rank=1,
+                              _ctrl_np=[0, 0, signed, 2, 0, 0, 1])
+    assert namespace['poisoned'].fget(runtime)
+    with pytest.raises(RuntimeError) as error:
+        namespace['check_health'](runtime)
+    assert f'at sequence {sequence};' in str(error.value)
+    assert f'epoch stopped at {(sequence - 1) & 0xFFFFFFFF},' in str(error.value)
+    runtime._ctrl_np = [0] * 7
+    assert not namespace['poisoned'].fget(runtime)
+    namespace['check_health'](runtime)
+
+
 def test_per_call_capture_context_cannot_reset_cuda_capture_identity():
     state = SimpleNamespace(stream='A', capture_id=123)
     namespace = methods({'capture', '_order_stream'}, {
@@ -189,8 +205,8 @@ def test_diagnostic_read_cannot_overlap_proxy_destruction(method):
     runtime = SimpleNamespace(_lock=threading.RLock(), _closed=False, _proxy=Proxy(),
                               device=0, world_size=2, rank=0, hca_names=('a', 'b'),
                               max_size=16, max_gather_bytes=16, _slot_bytes=4096,
-                              _counters=[scalar], _error_word=scalar, _ctrl_words=[scalar]*4,
-                              _ctrl_np=[0]*4, spin_limit=1, _opposite_paths=2)
+                              _counters=[scalar], _error_word=scalar, _ctrl_words=[scalar]*7,
+                              _ctrl_np=[0]*7, spin_limit=1, _opposite_paths=2)
     operation = namespace[method]
     if isinstance(operation, property):
         operation = operation.fget
@@ -224,7 +240,7 @@ def test_lifecycle_lock_supports_nested_health_checks():
                       and any(isinstance(target, ast.Attribute) and target.attr == '_lock' for target in node.targets))
     lock = eval(compile(ast.Expression(assignment.value), str(SOURCE), 'eval'), {'threading': threading})
     namespace = methods({'check_health'}, {})
-    runtime = SimpleNamespace(_lock=lock, _proxy=None, _ctrl_np=[0]*4)
+    runtime = SimpleNamespace(_lock=lock, _proxy=None, _ctrl_np=[0]*7)
     with lock:
         assert lock.acquire(blocking=False), 'health checks require a reentrant lifecycle lock'
         try:

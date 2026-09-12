@@ -151,7 +151,7 @@ class _RoceAllGatherLaunch:
         # the host sees the failure without waiting another spin limit per op.
         # The device poison word (fourth counter) is written by the same waiting
         # threads that write the host error word and only ever goes from 0 to
-        # the failed sequence, so a cheap GPU-scope load is enough here.
+        # 1, independently of sequence wrap, so a GPU-scope load suffices.
         poison_ptr = epoch_ptr + Int64(12)
         poisoned = ld_relaxed_gpu_u32(poison_ptr)
         if poisoned == Uint32(0):
@@ -206,7 +206,9 @@ class _RoceAllGatherLaunch:
                                         ctrl_base + Int64(12), Uint32(peer)
                                     )
                                     st_relaxed_sys_u32(ctrl_base + Int64(8), seq)
-                                    st_release_gpu_u32(poison_ptr, seq)
+                                    fence_sc_sys()
+                                    st_relaxed_sys_u32(ctrl_base + Int64(24), Uint32(1))
+                                    st_release_gpu_u32(poison_ptr, Uint32(1))
                             waiter += 1
             else:
                 if Int32(tidx) < Int32(self._world_size):
@@ -225,7 +227,9 @@ class _RoceAllGatherLaunch:
                                     ctrl_base + Int64(12), Uint32(tidx)
                                 )
                                 st_relaxed_sys_u32(ctrl_base + Int64(8), seq)
-                                st_release_gpu_u32(poison_ptr, seq)
+                                fence_sc_sys()
+                                st_relaxed_sys_u32(ctrl_base + Int64(24), Uint32(1))
+                                st_release_gpu_u32(poison_ptr, Uint32(1))
             cute.arch.sync_threads()
             # A wait that timed out in this block leaves the peer slot unreliable:
             # skip the data phase so nothing derived from it is stored.
@@ -265,9 +269,9 @@ class _RoceAllGatherLaunch:
                 if (prior + Uint32(1)) % Uint32(gdim) == Uint32(0):
                     fence_sc_gpu()
                     # Every block's timeout store precedes its tail arrival, so the
-                    # error word is final here.  A failed sequence keeps the epoch,
+                    # timeout flag is final here.  A failed sequence keeps the epoch,
                     # which makes every later launch a no-op until the host raises.
-                    if ld_relaxed_sys_u32(ctrl_base + Int64(8)) == Uint32(0):
+                    if ld_relaxed_sys_u32(ctrl_base + Int64(24)) == Uint32(0):
                         st_release_gpu_u32(epoch_ptr, seq)
 
 
@@ -351,7 +355,7 @@ def get_launcher(
         1,
         1,
         current_cuda_stream(),
-        compile_spec=KernelCompileSpec.from_key("comm.roce.allgather", 2, cache_key),
+        compile_spec=KernelCompileSpec.from_key("comm.roce.allgather", 3, cache_key),
     )
 
     def run(
