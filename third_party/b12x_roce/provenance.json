@@ -5,17 +5,22 @@
   "upstream_base_commit": "ffb7442d04a9f50b950df1fb17280acad881b7d5",
   "license": "Apache-2.0",
   "scope": "Only b12x.comm.roce; no model kernels or other B12X package modules",
-  "roce_tree_sha256": "0e2c67f991f0c17ce2f4d24b7ef7c6c2824387a65b84537872f44c76d86d3725",
+  "roce_tree_sha256": "0bb4da429202c36dab43d3bc5716b7c1738c3a0c77bb50d548831ca2dafcd7ec",
   "local_changes": [
     "Preserve capture-ID stream admission across Python contexts",
     "Order shared input staging and output copies across streams",
-    "Read and update proxy diagnostic counters atomically"
+    "Read and update proxy diagnostic counters atomically",
+    "Return independent storage from padded all-gather",
+    "Bound message capacities to signed 32-bit kernel counts",
+    "Serialize diagnostics and proxy teardown with the lifecycle lock",
+    "Reject unsupported HCA exclusions and non-port-one selectors"
   ],
   "git_state": {
     "commit": "eac260a8257cc6b14e7d4ad674f51e9a09b8790f",
     "roce_source_dirty": true,
     "roce_status": [
-      " M b12x/comm/roce/_roce_proxy.c"
+      " M b12x/comm/roce/_roce_proxy.c",
+      " M b12x/comm/roce/roce_oneshot.py"
     ]
   }
 }

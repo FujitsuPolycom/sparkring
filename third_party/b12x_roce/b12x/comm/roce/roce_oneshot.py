@@ -9,8 +9,9 @@ every peer's RDMA-written payload, and reduces in fixed rank order.
 Runtime constraints:
 
 * one all-reduce in flight per runtime (single channel, one stream);
-* all-reduce messages up to ``max_size`` bytes and all-gather shards up to
-  ``max_gather_bytes``, both multiples of 16 bytes;
+* all-reduce messages up to ``max_size`` bytes, in multiples of 16 bytes;
+* all-gather shards up to ``max_gather_bytes``, padded internally to 16 bytes;
+* nonzero message sizes fit a positive signed 32-bit byte count after padding;
 * two paths per peer by default; the research-only TP4 cycle mode selected by
   ``B12X_ROCE_OPPOSITE_PATHS=4`` keeps two neighbor paths and uses four paths
   to the opposite rank;
@@ -58,6 +59,8 @@ DEFAULT_GID_INDEX = 3
 # load of host memory, roughly a microsecond): about 20 s.
 DEFAULT_SPIN_LIMIT = 20_000_000
 _SLOT_ALIGNMENT = 4096
+# CuTe launcher byte counts are signed Int32; padding must remain representable.
+_MAX_MESSAGE_BYTES = (1 << 31) - PACK_BYTES
 _DTYPE_NAMES = {
     torch.float16: "float16",
     torch.bfloat16: "bfloat16",
@@ -72,9 +75,17 @@ def _env_list(*names: str) -> tuple[str, ...]:
         if raw:
             items = []
             for item in raw.split(","):
-                item = item.strip().lstrip("=^")
+                item = item.strip().lstrip("=")
+                if item.startswith("^"):
+                    raise ValueError(
+                        f"{name} exclusion selectors are unsupported by RoCEnante; "
+                        "set B12X_ROCE_HCA to exact included device names"
+                    )
                 if item:
-                    items.append(item.split(":")[0])
+                    device, separator, port = item.partition(":")
+                    if separator and (not port.isascii() or not port.isdecimal() or int(port) != 1):
+                        raise ValueError(f"{name} must select port 1 for RoCEnante devices")
+                    items.append(device)
             if items:
                 return tuple(items)
     return ()
@@ -98,7 +109,8 @@ def default_gid_index() -> int:
 def discover_hcas(gid_index: Optional[int] = None) -> tuple[str, ...]:
     """Return the RDMA devices to use, at most four.
 
-    ``B12X_ROCE_HCA`` (or NCCL's ``NCCL_IB_HCA``) selects explicitly; otherwise
+    ``B12X_ROCE_HCA`` (or NCCL's ``NCCL_IB_HCA``) names devices explicitly;
+    exclusion selectors and ports other than 1 are rejected. Otherwise
     every active device with a populated GID at ``gid_index`` is used.
     """
 
@@ -198,12 +210,18 @@ class RoceOneshotAllReduce:
         blocks: int = DEFAULT_BLOCKS,
     ) -> None:
         """Allocate the pinned region, build and connect the proxy, and start it."""
+        max_size, max_gather_bytes = int(max_size), int(max_gather_bytes)
+        if not PACK_BYTES <= max_size <= _MAX_MESSAGE_BYTES:
+            raise ValueError(f"max_size must be in [{PACK_BYTES}, {_MAX_MESSAGE_BYTES}] bytes")
+        if not 0 <= max_gather_bytes <= _MAX_MESSAGE_BYTES:
+            raise ValueError(f"max_gather_bytes must be in [0, {_MAX_MESSAGE_BYTES}] bytes")
         self.device = _normalize_device(device)
         self.rank = dist.get_rank(group=exchange_group)
         self.world_size = dist.get_world_size(group=exchange_group)
         self._group = exchange_group
         self._closed = False
-        self._lock = threading.Lock()
+        # Collective methods inspect health while holding the lifecycle lock.
+        self._lock = threading.RLock()
         self._proxy: Optional[Proxy] = None
         self._gather_buffers: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         self._align_buffers: Optional[tuple[torch.Tensor, torch.Tensor]] = None
@@ -216,8 +234,6 @@ class RoceOneshotAllReduce:
                 f"unsupported RoCE all-reduce world size {self.world_size}; "
                 f"supported sizes are {SUPPORTED_WORLD_SIZES}"
             )
-        if int(max_size) < PACK_BYTES:
-            raise ValueError("max_size must hold at least one 16-byte pack")
         if int(threads) % 32 != 0 or int(threads) < 32 or int(threads) > 1024:
             raise ValueError("threads must be a multiple of 32 between 32 and 1024")
         if int(blocks) < 1 or int(blocks) & (int(blocks) - 1) != 0:
@@ -450,7 +466,7 @@ class RoceOneshotAllReduce:
         if inp.device != self.device or not inp.is_contiguous():
             return False
         nbytes = inp.numel() * inp.element_size()
-        return 0 < nbytes <= self.max_size and nbytes % PACK_BYTES == 0
+        return 0 < nbytes <= min(self.max_size, _MAX_MESSAGE_BYTES) and nbytes % PACK_BYTES == 0
 
     # -- channels / streams (single channel runtime) ---------------------------
 
@@ -650,23 +666,25 @@ class RoceOneshotAllReduce:
         cannot check inline.
         """
 
-        if self._proxy is not None and self._proxy.failed():
-            raise RuntimeError(f"RoCE proxy failed: {self._proxy.error()}")
-        failed_seq = int(self._ctrl_np[2])
-        if failed_seq != 0:
-            peer = int(self._ctrl_np[3])
-            raise RuntimeError(
-                f"RoCE collective on rank {self.rank} timed out waiting for rank {peer} "
-                f"at sequence {failed_seq}; the runtime is poisoned (its epoch stopped at "
-                f"{failed_seq - 1}, later launches do nothing) and rank data is no "
-                "longer trustworthy"
-            )
+        with self._lock:
+            if self._proxy is not None and self._proxy.failed():
+                raise RuntimeError(f"RoCE proxy failed: {self._proxy.error()}")
+            failed_seq = int(self._ctrl_np[2])
+            if failed_seq != 0:
+                peer = int(self._ctrl_np[3])
+                raise RuntimeError(
+                    f"RoCE collective on rank {self.rank} timed out waiting for rank {peer} "
+                    f"at sequence {failed_seq}; the runtime is poisoned (its epoch stopped at "
+                    f"{failed_seq - 1}, later launches do nothing) and rank data is no "
+                    "longer trustworthy"
+                )
 
     @property
     def poisoned(self) -> bool:
         """True once a wait timed out or the proxy failed; the runtime cannot be reused."""
 
-        return (self._proxy is not None and self._proxy.failed()) or int(self._ctrl_np[2]) != 0
+        with self._lock:
+            return (self._proxy is not None and self._proxy.failed()) or int(self._ctrl_np[2]) != 0
 
     # -- all-gather ---------------------------------------------------------------
 
@@ -697,7 +715,7 @@ class RoceOneshotAllReduce:
         if dim not in (0, inp.dim() - 1):
             return False
         nbytes = inp.numel() * inp.element_size()
-        return 0 < nbytes <= self.max_gather_bytes
+        return 0 < nbytes <= min(self.max_gather_bytes, _MAX_MESSAGE_BYTES)
 
     def _direct_gather_layout(self, inp: torch.Tensor, dim: int) -> bool:
         """True when ``inp`` can be gathered straight into the concatenated layout (16-byte rows and pointer)."""
@@ -719,7 +737,8 @@ class RoceOneshotAllReduce:
         With 16-byte-aligned rows the kernel writes the concatenated layout
         directly (no reshape or copy afterwards).  Otherwise the shards are
         gathered contiguously with 16-byte padding and finished with a torch
-        reshape, which still keeps the collective on RDMA.
+        reshape, which still keeps the collective on RDMA. Without ``out``,
+        the returned tensor owns storage independent of reusable scratch.
         """
 
         with self._lock:
@@ -776,7 +795,9 @@ class RoceOneshotAllReduce:
                 )
                 result = stacked.movedim(0, dim).reshape(shape)
                 if out is None:
-                    result = result.contiguous()
+                    # A contiguous reshape can still alias the reusable gather
+                    # workspace. Return owned storage, as the direct path does.
+                    result = result.clone(memory_format=torch.contiguous_format)
                 else:
                     out.copy_(result)
                     result = out
@@ -854,35 +875,37 @@ class RoceOneshotAllReduce:
 
     def stats(self) -> dict[str, Any]:
         """Runtime, control-record, and proxy counters for diagnostics."""
-        info: dict[str, Any] = {
-            "world_size": self.world_size,
-            "rank": self.rank,
-            "hcas": list(self.hca_names),
-            "max_size": self.max_size,
-            "max_gather_bytes": self.max_gather_bytes,
-            "slot_bytes": self._slot_bytes,
-            "epoch": int(self._counters[0].item()),
-            "error_seq": int(self._error_word.item()),
-            "error_peer": int(self._ctrl_words[3].item()),
-            "ctrl_seq": int(self._ctrl_words[0].item()),
-            "spin_limit": self.spin_limit,
-            "opposite_paths": self._opposite_paths,
-        }
-        if self._proxy is not None:
-            info.update(self._proxy.stats())
-            info["peer_hca"] = {
-                peer: self._proxy.peer_hca(peer)
-                for peer in range(self.world_size)
-                if peer != self.rank
+        with self._lock:
+            info: dict[str, Any] = {
+                "world_size": self.world_size,
+                "rank": self.rank,
+                "hcas": list(self.hca_names),
+                "max_size": self.max_size,
+                "max_gather_bytes": self.max_gather_bytes,
+                "slot_bytes": self._slot_bytes,
+                "epoch": int(self._counters[0].item()),
+                "error_seq": int(self._error_word.item()),
+                "error_peer": int(self._ctrl_words[3].item()),
+                "ctrl_seq": int(self._ctrl_words[0].item()),
+                "spin_limit": self.spin_limit,
+                "opposite_paths": self._opposite_paths,
             }
-        return info
+            if self._proxy is not None:
+                info.update(self._proxy.stats())
+                info["peer_hca"] = {
+                    peer: self._proxy.peer_hca(peer)
+                    for peer in range(self.world_size)
+                    if peer != self.rank
+                }
+            return info
 
     def benchmark_counters(self) -> list[dict[str, int | str | None]]:
         """Return absolute per-origin-QP counters since runtime construction."""
 
-        if self._proxy is None:
-            return []
-        return self._proxy.path_counters()
+        with self._lock:
+            if self._proxy is None:
+                return []
+            return self._proxy.path_counters()
 
     def close(self) -> None:
         """Stop the proxy and release the transport.
