@@ -466,6 +466,22 @@ def _aggregate_census(
             or not isinstance(sample.route, CensusRoute)
         ):
             raise ValueError("census samples must be positive and typed")
+        # A census row describes an admitted collective. Admission rejects
+        # widths whose arena footprint exceeds the family cap, so such a row
+        # is inconsistent evidence rather than a proposal candidate.
+        family = FAMILY_REGISTRY[sample.family_tag]
+        try:
+            arena_bytes = family.byte_geometry(sample.query_rows)[2]
+        except OverflowError as error:
+            raise ValueError(
+                f"census width {sample.family_tag} Q{sample.query_rows} "
+                f"is not admissible: {error}"
+            ) from error
+        if arena_bytes > family.arena.capacity_bytes:
+            raise ValueError(
+                f"census width {sample.family_tag} Q{sample.query_rows} "
+                "exceeds the family arena cap; admission rejects it"
+            )
         key = (sample.family_tag, sample.query_rows, sample.route)
         totals[key] = totals.get(key, 0) + sample.count
     return tuple(
@@ -500,6 +516,13 @@ def _padding_metrics(
             ),
             None,
         )
+        if sample.route is CensusRoute.PADDED and target is None:
+            # A padded route requires a bucket at or above the logical width.
+            # Reporting zero waste here would hide padding of unknown size.
+            raise ValueError(
+                f"padded census row {sample.family_tag} Q{sample.query_rows} "
+                "has no covering bucket"
+            )
         if (
             sample.route is CensusRoute.EAGER
             and sample.query_rows not in exact_eager_promotions
@@ -576,7 +599,14 @@ def propose_next_restart_plan(
     maximum_new_buckets: int = 4,
     maximum_padding_waste_ppm: int = 80_000,
 ) -> dict[str, object]:
-    """Propose, but never apply, exact-Q buckets for the next restart."""
+    """Propose, but never apply, exact-Q buckets for the next restart.
+
+    Census rows must describe collectives admitted under ``current_buckets``:
+    every width must fit the family arena cap, and every padded row needs a
+    bucket at or above its logical width. ``maximum_padding_waste_ppm`` ranks
+    candidates whose per-row waste exceeds it ahead of others; it does not
+    cap or reject candidates.
+    """
 
     current = _validated_buckets(current_buckets)
     if (
