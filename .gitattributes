@@ -31,6 +31,6 @@ integrations/vllm/** text eol=lf
 spark_transport/fabric/** text eol=lf
 profiles/** text eol=lf
 
-runtime/releases/glm53-dflash-sircl-overlay/overlay.tar.gz -text
+runtime/releases/**/*.tar.gz -text
 # The preservation manifest binds the metadata's CRLF bytes.
 runtime/releases/glm53-dflash-sircl-overlay/source.json -text whitespace=cr-at-eol
