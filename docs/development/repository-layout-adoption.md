@@ -4,7 +4,7 @@
 
 The restructuring branch is `refactor/repository-layout`. Its integration
 base is main commit `f575d421d72c7fbdef3d6165eb6bbe241517fa87`, including
-PRs #259, #265 and #269. The initial preservation inventory is based on
+PRs #259, #262, #265 and #269. The initial preservation inventory is based on
 `c65a9981e2a69f821ac716f6f13484d99d23f4ea`. Adoption requires completing the
 repository-wide review and the checks below; no deployment is included.
 
