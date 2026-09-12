@@ -505,6 +505,18 @@ class CensusTest(unittest.TestCase):
 
 
 class UndeterminedTest(unittest.TestCase):
+    def test_empty_unknown_tensor_still_marks_instance_undetermined(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.proj.qweight": ("U8", [0]),
+            })
+            records, _ = census.read_tensor_records(root)
+            instances = census.expert_instances(records)
+            self.assertEqual(instances["stored_bytes_total"], 0)
+            self.assertEqual(instances["instances_with_undetermined_tensors"], 1)
+            self.assertNotIn("bits_per_weight_with_sidecars_median", instances)
+
     def test_undetermined_sidecar_counts_reconcile_with_class_totals(self):
         with TemporaryDirectory() as raw:
             root = Path(raw)

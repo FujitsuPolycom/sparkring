@@ -645,6 +645,8 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
     than a single figure is the point: a uniform assumption predicts none.
     """
 
+    # Slots: total bytes, known logical weights, unknown payload bytes,
+    # and unknown weight-tensor count (including empty tensors).
     per_instance: dict[tuple[int, int], list[int]] = {}
     for record in records:
         if record.name_class != CLASS_EXPERT:
@@ -652,7 +654,7 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
         instance = _expert_instance(record.name)
         if instance is None:
             continue
-        slot = per_instance.setdefault(instance, [0, 0, 0])
+        slot = per_instance.setdefault(instance, [0, 0, 0, 0])
         slot[0] += record.stored_bytes
         if record.role == "sidecar":
             continue
@@ -661,6 +663,7 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
             slot[1] += record.logical_weights
         else:
             slot[2] += record.stored_bytes
+            slot[3] += 1
 
     if not per_instance:
         return {"count": 0}
@@ -677,7 +680,7 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
         "stored_bytes_median": statistics.median(sizes),
         "stored_bytes_max": sizes[-1],
         "instances_with_undetermined_tensors": sum(
-            1 for slot in per_instance.values() if slot[2] > 0
+            1 for slot in per_instance.values() if slot[3] > 0
         ),
     }
     if rates:
