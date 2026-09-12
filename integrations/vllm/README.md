@@ -40,7 +40,7 @@ validation. All-reduce native session construction and enqueue failures
 terminate the worker. A failure after enqueue terminates the worker; an in-process fallback
 could reuse a CUDA stream with an unfulfilled native wait.
 
-The fused prefill candidate is never used during CUDA graph capture. Captured
+Neither synchronous nor fused eager prefill runs during CUDA graph capture. Captured
 width-4096 calls remain on the graph-native SIRCL path when that path is
 configured, and otherwise fall through to NCCL. Eager tensors outside the
 admitted row interval also fall through to NCCL on every rank.
@@ -93,7 +93,8 @@ the following variables:
 | `SPARK_TP4_GRAPH_STATUS_PATH` | Optional rank-local JSON status output for graph progress and collective audit data. |
 | `SPARK_TP4_PERSISTENT_OUTPUT_SLOTS` | Bounded number of eager output buffers retained for pointer stability; `0` disables retention. |
 | `SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS` | Positive value recorded by the rank capability vote; it does not configure the native control channel, which uses a fixed 10-second connect deadline. |
-| `VLLM_SPARK_TP4_PREFILL_Q512` | Enables the width-6144 eager Q1-Q512 row provider. |
+| `VLLM_SPARK_TP4_PREFILL_Q512` | Replaces the default all-reduce row set with Q1-Q512; does not extend vocabulary admission. Mutually exclusive with an external query-row provider. |
+| `VLLM_SPARK_TP4_QUERY_ROW_PROVIDER` | Optional module exposing `provider_query_rows(environ)`; selects the default-width all-reduce row set, with rows in 1-512. |
 | `SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0`, `SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1` | Captured vocabulary all-gather control-port pair. |
 | `SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU` | CPU index reserved for captured vocabulary progress. |
 | `VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM`, `VLLM_SPARK_TP4_DCP_GRAPH_SHADOW` | Reserve the configured DCP graph progress CPU for the corresponding research mode. |
@@ -118,10 +119,10 @@ the following variables:
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS` | Positive setup and operation timeout for a prefill session. |
 | `SPARK_TP4_VOCAB_CONTROL_PORT0`, `SPARK_TP4_VOCAB_CONTROL_PORT1` | Vocabulary control-port pair. |
 | `VLLM_SPARK_MAX_QUERY_ROWS` | Shared vocabulary and default-width all-reduce row limit. Set to `40` for the qualified GLM geometry. |
-| `VLLM_SPARK_TP4_EAGER_WIDTHS` | Comma-separated all-reduce widths; unset admits only `6144`. Set `4096,6144` only for research shadow validation. |
+| `VLLM_SPARK_TP4_EAGER_WIDTHS` | Generic eager all-reduce widths; unset admits only `6144`. Set `4096,6144` only for research shadow validation. The separately enabled bidirectional-prefill candidates admit width 4096 independently of this setting. |
 | `SPARK_TP4_SHADOW_COLLECTIVES` | All-reduce shadow comparison window. |
 | `SPARK_TP4_SHADOW_PROMOTE` | Promotes an all-reduce shape after its shadow window passes. |
-| `SPARK_TP4_SHADOW_STRICT`, `SPARK_TP4_SHADOW_MAX_ULP` | All-reduce shadow comparison gates. |
+| `SPARK_TP4_SHADOW_STRICT`, `SPARK_TP4_SHADOW_MAX_ULP` | A failed all-reduce comparison prevents promotion; strict mode `1` also raises an error. A positive maximum ULP adds a numerical gate; `0` leaves ULP diagnostic-only. |
 | `SPARK_TP4_VOCAB_SHADOW_COLLECTIVES` | Vocabulary shadow comparison window. |
 | `SPARK_TP4_VOCAB_SHADOW_PROMOTE` | Promotes a vocabulary shape after its byte-exact shadow window passes. |
 | `SPARK_TP4_MAX_INFLIGHT` | Native all-reduce and vocabulary submission bound, 1-4096; default 64. |
@@ -134,7 +135,7 @@ different transport.
 
 When enabled, the rank capability vote compares resolved eager widths and row
 sets, graph admission flags and the selected graph kernel, as well as native
-identities and the existing protocol fields. Provider module names alone are
+identities, prefill exposure, rail mode and protocol fields. Provider module names alone are
 not compared: providers returning the same admitted rows are compatible.
 Capability records use `sparkring-sircl-capability/v2`; mixed v1/v2 ranks fail
 the ABI comparison. Update the adapter on every rank together. Device names,

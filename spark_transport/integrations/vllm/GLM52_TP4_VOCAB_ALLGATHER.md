@@ -48,8 +48,10 @@ ctest --test-dir build/spark-transport \
 
 ## Fail-closed operation
 
-One native session supports all admitted `Q` values and requires a stable
-caller CUDA stream. The adapter uses the candidate only for the exact
+One native session supports all admitted `Q` values. Eager calls use vLLM's
+current CUDA stream; the native session orders work across stream changes.
+Graph capture requires one stable stream and
+`VLLM_SPARK_SHARED_CAPTURE_STREAM=1`. The adapter uses the candidate only for the exact
 four-rank CUDA BF16 contract. Nonmatching signatures use the original
 vLLM/NCCL collective. With `VLLM_SPARK_TP4_GRAPH_Q1=1` and vocabulary mode
 `custom`, admitted captures use a prepared graph session; otherwise capture uses
