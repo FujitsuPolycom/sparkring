@@ -39,7 +39,10 @@ rewrite it.
 Review meaning and context, not a banned-word list. Literal flags, paths and
 published release identifiers remain exact when the reader must use them.
 Historical records and immutable artifacts retain their provenance. The profile
-tables use the reader-facing labels Validated, Development and Experimental.
+tables in [README.md](../../README.md#profiles) use reader-facing labels:
+`qualified` maps to **Validated**, `implemented` to **Development**, and
+`research-only` to **Experimental**, as defined by
+[`scripts/generate_profiles.py`](../../scripts/generate_profiles.py).
 Unsupported configurations are omitted from recommendation tables and documented
 as unsupported where their boundary matters. Underlying status values and linked
 evidence retain the precise scope.
