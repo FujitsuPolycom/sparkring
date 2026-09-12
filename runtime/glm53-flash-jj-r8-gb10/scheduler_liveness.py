@@ -282,8 +282,8 @@ class SchedulerLivenessService:
     ) -> None:
         if not 1 <= port <= 65535:
             raise ValueError("liveness port must be between 1 and 65535")
-        if sample_interval_seconds <= 0:
-            raise ValueError("sample interval must be positive")
+        if not math.isfinite(sample_interval_seconds) or sample_interval_seconds <= 0:
+            raise ValueError("sample interval must be finite and positive")
         self._metrics_url = metrics_url
         self._sample_interval = float(sample_interval_seconds)
         self._monitor = monitor

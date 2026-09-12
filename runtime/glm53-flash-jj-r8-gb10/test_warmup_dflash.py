@@ -12,6 +12,33 @@ import pytest
 HERE = Path(__file__).resolve().parent
 
 
+@pytest.mark.parametrize('result', [
+    [], {'choices': [None]},
+    {'choices': [{'finish_reason': 'error', 'message': {'content': 'failed'}}]},
+    {'choices': [{'finish_reason': 'stop', 'message': None}]},
+    {'error': {'message': 'failed'}, 'choices': [{'finish_reason': 'stop', 'message': {'content': 'ok'}}]},
+])
+def test_warmup_rejects_malformed_or_failed_generation(monkeypatch, result):
+    warmup = _load_module()
+    monkeypatch.setattr(warmup.urllib.request, 'urlopen',
+                        lambda *args, **kwargs: io.BytesIO(json.dumps(result).encode()))
+    with pytest.raises(RuntimeError, match='warmup response'):
+        warmup.send_warmup_request('http://localhost', 'model', 'sample', 16, 2, 8)
+
+
+@pytest.mark.parametrize('message,reason', [
+    ({'content': 'ok'}, 'stop'), ({'content': ''}, 'stop'),
+    ({'content': None, 'reasoning': 'partial reasoning'}, 'length'),
+    ({'content': None, 'reasoning_content': 'partial reasoning'}, 'length'),
+])
+def test_warmup_accepts_completed_or_token_limited_generation(monkeypatch, message, reason):
+    warmup = _load_module()
+    result = {'choices': [{'finish_reason': reason, 'message': message}]}
+    monkeypatch.setattr(warmup.urllib.request, 'urlopen',
+                        lambda *args, **kwargs: io.BytesIO(json.dumps(result).encode()))
+    warmup.send_warmup_request('http://localhost', 'model', 'sample', 16, 2, 8)
+
+
 def _load_module():
     path = HERE / "warmup_dflash.py"
     spec = importlib.util.spec_from_file_location("warmup_dflash", path)
@@ -158,7 +185,7 @@ def test_request_uses_sampling_temperature_without_changing_thinking(monkeypatch
 
     def urlopen(request, timeout):
         seen.append(json.loads(request.data))
-        return io.BytesIO(b'{"choices":[{"message":{"content":"ok"}}]}')
+        return io.BytesIO(b'{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}')
 
     monkeypatch.setattr(warmup.urllib.request, "urlopen", urlopen)
     warmup.send_warmup_request("http://localhost", "model", "sample", 16, 2, 8)

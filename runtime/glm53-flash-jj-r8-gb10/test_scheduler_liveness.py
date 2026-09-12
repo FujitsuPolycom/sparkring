@@ -358,6 +358,16 @@ def test_output_or_idle_starts_a_fresh_kv_progress_epoch() -> None:
     assert 'sparkring:engine_output_stalled_seconds 580' in monitor.prometheus()
 
 
+@pytest.mark.parametrize('interval', [float('nan'), float('inf'), -float('inf'), 0, -1])
+def test_sampling_interval_rejected_before_server_creation(monkeypatch, interval):
+    module = _load_module()
+    monkeypatch.setattr(module, 'ThreadingHTTPServer',
+                        lambda *args, **kwargs: pytest.fail('Invalid interval opened a server'))
+    with pytest.raises(ValueError, match='finite and positive'):
+        module.SchedulerLivenessService(metrics_url='http://localhost/metrics', port=8001,
+                                        sample_interval_seconds=interval, monitor=None)
+
+
 @pytest.mark.parametrize("value", ["-1", "nan", "inf"])
 def test_invalid_optional_prompt_counter_rejects_the_sample(value: str) -> None:
     module = _load_module()
