@@ -30,5 +30,8 @@ available without that additional deployment choice.
 Its evidence pins include the correction in upstream commit
 `f575d421d72c7fbdef3d6165eb6bbe241517fa87`: gathered global KV entries are
 mapped to their owners arithmetically, without a separate owner-exchange step.
-The correction changes the report and its publication hash, not image or
+The evidence also includes upstream commit
+`506c8db0c09c95a75467e006110242cb5d0bcc7d`, which marks overlapping measurement
+windows and withdraws the attribution of the C4 throughput gap to a gather.
+These corrections change the report and its publication hash, not image or
 overlay code. Preserved release inputs retain their existing hashes.

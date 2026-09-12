@@ -5,8 +5,8 @@
 The restructuring branch is `refactor/repository-layout`. Its integration
 base is main commit `506c8db0c09c95a75467e006110242cb5d0bcc7d`, including
 PRs #259, #262, #265, #269 and #271. The initial preservation inventory is
-based on `c65a9981e2a69f821ac716f6f13484d99d23f4ea`. The repository review and
-local checks below are complete; adoption includes no deployment.
+based on `c65a9981e2a69f821ac716f6f13484d99d23f4ea`. Local validation results
+and remaining review requirements are listed below; adoption includes no deployment.
 
 The branch provides 21 indexed deployment profiles, deterministic configuration
 resolution, a shared guarded launch entry point, ENV rendering for the DeepSeek
@@ -64,12 +64,33 @@ The checks below ran on Windows with Python 3.12 at commit `ef8de04`.
 | Launch compatibility | Existing TP2 entry point and maintained switched-renderer contracts pass |
 | Configuration equivalence | Omitted and explicit defaults agree; ENV assignments match the initial baseline except declared default changes; comment edits do not change compatibility |
 
-The native source at commit `addd704`, including constructor-lifetime and
-buffer-range fixes, configured and compiled on an
-ARM64 GB10 host with CUDA 13.0.88, architecture `sm_121`, Release mode and
-`BUILD_TESTING=ON`. All 28 default CTest cases passed. Optional CMake probe
-and smoke features remained disabled. This verifies the default native build
-and standalone tests, not four-rank RDMA, NCCL or serving behavior.
+Source snapshot `06e4925046db3b8ae203f9f745d7dbe01d0dbe73` passed the full
+maintained Linux selection in Ubuntu WSL with Python 3.12.3 and CPU Torch
+2.11.0: 4,591 passed and 105 skipped. Linux lint, links, release safety and
+layout checks passed. Skips include PowerShell and optional serving dependencies.
+
+The same snapshot built on ARM64 GB10 with CUDA 13.0, architecture `sm_121`,
+Release mode and `BUILD_TESTING=ON`, including the optional fused probe and GPU
+smoke targets. All 31 CTests passed. Isolated four-rank tests established:
+
+- All 18 tiled-prefill cases passed their per-rank receipt gates, including
+  boundary sizes, backpressure and expected poison outcomes.
+- The fused dual-rail probe passed exact and noninteger input checks on all ranks.
+- Tiered mixed-query graph replay and two-slot reuse passed without mismatches
+  or command overflows. The ctypes/PyTorch boundary passed 100 alternating-input
+  all-reduces per rank using the rebuilt native library.
+- NCCL DCP4 passed 19 eager/graph result rows per rank, and DCP2 passed nine,
+  using the existing image's NCCL 2.31.2. This does not qualify a rebuild of the
+  separate NCCL 2.30.7 patch.
+- All four ring cables passed bidirectional 12,288-byte and 16,384-byte integrity
+  checks, 1,000 measured iterations per direction and size, with the latency
+  target met. The source-route checker fix at `1f439d0` passed 14 regression tests.
+
+These checks do not establish managed serving, cache restore or soak behavior.
+The installed managed mesh services were failed when inspected; they were not
+recovered or replaced as part of this validation. Temporary test containers were
+removed, and the hosts returned to idle. No model files or networking settings
+were changed.
 
 Local WSL validation with Python 3.12.3 also passed 97 shell-guard,
 cleanup and deployment-documentation tests, plus 66 staging, trust and
@@ -86,9 +107,9 @@ not part of hosted CPU CI. No model files were accessed or changed for this work
 
 Windows skips include POSIX mode/symlink behavior, Bash/native compilers, optional
 LIL integration and serving-runtime checks. Hosted Linux CI has not run because
-the reviewed changes have not been published. Four-rank RDMA/NCCL, native ARM64 image assembly, live failure
-recovery, full-context serving and performance were not validated. Local CPU
-results do not qualify a reorganized build or authorize a deployment promotion.
+the reviewed changes have not been published. Native ARM64 image assembly,
+managed failure recovery, full-context serving and performance remain unverified.
+Standalone hardware and CPU results do not authorize a deployment promotion.
 
 ## Pending contributions
 
