@@ -3,6 +3,8 @@
 Profile: `glm53-flash-spark-tp4-switched`. Status: **Experimental**. Provided as-is. No switched-hardware qualification; operators must verify their HCA and GID selection.
 
 Inspect its selected defaults with `python3 scripts/profiles.py resolve glm53-flash-spark-tp4-switched`.
+The catalog uses that deployment ID; image verification uses the locked serving
+profile name `glm53-flash-spark-tp4-switched-mtp3` shown below.
 
 Use the [frozen source-image profile reference](../../runtime/profiles/glm53-flash-spark-tp4-switched/README.md)
 for four one-GPU nodes connected through a RoCE switch. It selects the common
@@ -33,7 +35,14 @@ python3 runtime/sparkring/source_image/prepare_image.py \
 The [common recipe](../../runtime/sparkring/source_image/README.md) supplies the
 ARM64 build and source-verification instructions. Build that common context
 once; selecting this profile does not require a separate switched image.
-Record the resulting exact local image config ID as `SPARKRING_IMAGE_ID`.
+Record the resulting exact local image config ID, using the build's image tag:
+
+```bash
+SPARKRING_IMAGE_ID=$(docker image inspect sparkring-glm53-source --format '{{.Id}}')
+```
+
+Load that same image on all four nodes and confirm its config ID on each node;
+a local image ID does not cause Docker to download a missing image.
 
 Generate a CPU source/file receipt for this profile:
 
@@ -64,6 +73,11 @@ Provide the NVFP4-Spark checkpoint at the profile's pinned revision and a
 separate writable cache directory owned by the serving user. Keep site paths,
 addresses, and receipts outside version control. Ensure the existing
 `sparkring-memory-guard` service is active with at least a 4 GiB floor.
+The [service unit](../../runtime/sparkring/sparkring-memory-guard.service)
+defines that floor and the expected installation path for the
+[guard program](../../runtime/sparkring/memory_guard.py). Both `create` and
+`start` check the running service and refuse to proceed while a GPU container
+is already running on that node.
 
 ## Inspect, create, and start
 
@@ -82,10 +96,13 @@ Repeat with ranks 1–3 and their private files. Inspect HCA selection, addresse
 cache mounts, container UID/GID, disabled custom transports, and image identity.
 Use `create` with the same arguments plus
 `--runtime-receipt /tmp/glm53-switched-image-receipt.json` to create stopped
-containers. `create` refuses existing container names. Use `start` with the same inputs
-to start ranks 1–3, then rank 0. Automatic restart remains disabled.
+containers. `create` refuses existing container names. Use `start` with the same
+arguments, including `--runtime-receipt`, to start ranks 1–3, then rank 0.
+The receipt file and matching source checkout must be available on every node.
+Automatic restart remains disabled.
 
-The generic startup wrapper performs bounded warmup and six sampler requests
-before rank-zero readiness. Wait for Docker health, then check API `/health`
+The [startup wrapper](../../runtime/sparkring/source_image/startup/serve_with_warmup.py)
+performs bounded warmup and six sampler requests before rank-zero readiness.
+On rank zero, wait for Docker health, then check API `/health`
 on port 8000 and `/liveness` on port 8001. The source verifier, admission
 wrapper, and real readiness marker remain active for this profile.
