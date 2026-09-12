@@ -840,8 +840,6 @@ def compare_documents(
         status = "no_cells"
     elif type_mismatch:
         status = "type_mismatch"
-    elif baseline == candidate:
-        status = "identical_documents"
     elif not base_metadata["valid"] or not cand_metadata["valid"]:
         status = "invalid_metadata"
     elif not settings_comparison["all_matched"]:
@@ -852,6 +850,8 @@ def compare_documents(
         "all_cells_valid", False
     ):
         status = "invalid_cells"
+    elif baseline == candidate:
+        status = "identical_documents"
     else:
         status = "compared"
 

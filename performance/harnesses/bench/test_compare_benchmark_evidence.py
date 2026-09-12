@@ -31,6 +31,16 @@ def test_concurrency_metadata_order_does_not_change_set_coverage():
     assert len(report["throughput"]["cells"]) == 4
 
 
+def test_invalid_cells_are_not_hidden_by_boolean_integer_equality():
+    baseline = json.loads(json.dumps(SUSTAINED_BASELINE))
+    candidate = json.loads(json.dumps(SUSTAINED_BASELINE))
+    baseline["results"][0]["num_errors"] = True
+    candidate["results"][0]["num_errors"] = 1
+    report = cmp.compare_documents(baseline, candidate)
+    assert report["status"] == "invalid_cells"
+    assert report["throughput"]["cells"] == []
+
+
 def test_missing_cell_mode_cannot_classify_as_sustained():
     document = _make_doc()
     del document['results'][0]['benchmark_mode']
