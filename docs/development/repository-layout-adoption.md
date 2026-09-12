@@ -154,6 +154,12 @@ Standalone hardware and CPU results do not authorize a deployment promotion.
 | #270 | Open, head `27d6b0dbd2b5a2113fb8c14923d70fb354d5a0ee` | Apply selected-HCA rendering to the maintained TP2 owner and regenerate its compatibility launcher if adopted; retain transport-change validation scope |
 
 PRs #258, #266, #267 and #270 remain open at the upstream recheck.
+The 2026-09-12 recheck found those same head revisions and main at
+`a48c862d9deba66c3cc1462095874a8ad4718811`. Its only change after the
+integration base is the separately approved README notice in PR #272.
+The refactor branch remains local. Remove that temporary restructuring notice
+when adopting the completed layout; it is not part of the replacement README.
+
 Main commit `506c8db0c09c95a75467e006110242cb5d0bcc7d` adds merged
 [PR #271](https://github.com/FujitsuPolycom/sparkring/pull/271), which corrects
 the DCP4 measurement overlap and withdraws the C4 gather attribution. Its
