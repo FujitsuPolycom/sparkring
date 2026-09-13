@@ -1,5 +1,9 @@
 # DeepSeek-V4.1-Flash four-Spark cycle profile
 
+See the [SGLang cycle runtime](../../runtime/deepseek-v41-sglang/README.md) and
+[controlled decoder-replay comparison](../../performance/records/deepseek-v41-flash/sglang-decoder-replay-20260911.md)
+for the SGLang profile. The measurements below belong to the vLLM fallback.
+
 ## Status
 
 **Implemented and live-benchmarked on one private four-Spark cycle; not qualified.** The image

@@ -1,5 +1,10 @@
 # DeepSeek-V4.1-Flash four-Spark cycle quickstart
 
+The [SGLang cycle runtime](../runtime/deepseek-v41-sglang/README.md) adds
+decoder-tail prefill and file-backed multi-key authentication. Its broader
+deployment qualification is still in progress. This page documents the vLLM
+fallback and its existing measured settings.
+
 Serve `deepseek-ai/DeepSeek-V4.1-Flash` (the stock checkpoint) as four tensor-parallel
 ranks on a directly cabled four-Spark cycle, with the model's two Engram lookup tables
 left on each rank's NVMe.
