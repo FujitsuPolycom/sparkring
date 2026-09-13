@@ -1,0 +1,6 @@
+ARG PARENT
+FROM ${PARENT}
+COPY . /candidate-context/
+RUN /opt/venv/bin/python /candidate-context/candidate_image.py --install-context /candidate-context
+ENTRYPOINT ["/opt/venv/bin/python", "/opt/sparkring/bin/candidate-image.py"]
+CMD ["--help"]

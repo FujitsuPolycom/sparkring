@@ -83,6 +83,34 @@ do not fill missing values merely to obtain a pass.
 
 ## Updating LIL application components
 
+The [candidate source packager](../../runtime/images/candidate_sources.py) compares
+the fully patched tree with the integrated foundation sources. Its explicit
+native/build path inventory must cover the component's dependency inputs;
+changes require rebuilding instead of source-only reuse. Python-defined JIT
+kernels still require runtime tests even when compiled extension inputs match.
+
+The [candidate image installer](../../runtime/images/candidate_image.py) consumes
+a `sparkring-candidate-image/v1` descriptor, the parent's installed receipt and
+verified source archives. The descriptor declares the parent image ID, composition
+ID, distribution version, component records and parent-authored file inventories.
+Optional `integration_contracts` bind new JSON contracts by path and SHA256;
+existing contracts cannot be overwritten. The installer verifies inherited bytes
+before overlay and preserves unrelated native libraries and release records.
+
+Build with [Dockerfile.candidate](../../runtime/images/Dockerfile.candidate), using
+a local parent tag whose inspected ID matches the descriptor. A bare Docker
+configuration ID is not a portable `FROM` reference. The build emits a distinct
+candidate receipt; `verify` checks the installed payload. `serve` verifies then
+delegates to vLLM's CLI, including headless rank dispatch. Model and topology
+admission remain the deployment profile's responsibility, separate from image
+verification. Do not pass a candidate through a different release's validator.
+
+Before lifecycle changes, the [candidate host gate](../../runtime/common/candidate.py)
+compares actual image verification and raw installed receipt bytes with the trusted
+descriptor, reviewed entrypoint and mandatory inherited native hashes. The caller
+must obtain image ID, platform and verification from the same local Docker image.
+Passing this gate proves payload agreement, not model correctness or stability.
+
 1. Record the exact upstream repository and commit in an isolated checkout.
    Compare source locks and source trees, not release-number labels or PR prose.
    Inspect each integration in the ledger for upstream overlap before removing,
