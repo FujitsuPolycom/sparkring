@@ -163,6 +163,52 @@ class TargetRouteCaptureTests(unittest.TestCase):
             )
         )
 
+    def test_interleaved_requests_keep_rejections_with_capture_slots(self) -> None:
+        # Slot order is claim order, independent of sampler completion order.
+        snapshot = valid_snapshot(width=6, rounds=3, rejected_tokens=[1, 4, 2])
+        snapshot = CaptureSnapshot(
+            routes=snapshot.routes,
+            metadata=[[0, 0, 6, 0, 0], [1, 0, 6, 0, 0], [0, 1, 6, 0, 0]],
+            layer_masks=snapshot.layer_masks,
+            counters=snapshot.counters,
+            rejected_tokens=snapshot.rejected_tokens,
+        )
+        records = records_from_snapshot(
+            snapshot, CaptureConfig(), {0: "request-a", 1: "request-b"}, provenance()
+        )
+        self.assertEqual(
+            [(r["request_key"], r["round"], r["rejected_tokens"]) for r in records],
+            [("request-a", 0, 1), ("request-b", 0, 4), ("request-a", 1, 2)],
+        )
+
+    def test_completed_rounds_still_require_each_sampler_result(self) -> None:
+        with self.assertRaisesRegex(CaptureError, "slot 0: missing rejection"):
+            records_from_snapshot(
+                valid_snapshot(rounds=2, rejected_tokens=[-1, 1]),
+                CaptureConfig(), {0: "request-a"}, provenance(),
+            )
+
+    def test_cuda_source_preserves_round_width_and_per_stream_association(self) -> None:
+        # Static contract checks only; GPU execution must validate kernel behavior.
+        source = (HERE / "target_route_capture_cuda.cu").read_text(encoding="utf-8")
+        routes = source.split("__global__ void record_routes_kernel(", 1)[1]
+        routes = routes.split("__global__ void record_rejection_kernel(", 1)[0]
+        width_guard = routes.index(
+            "metadata[capture_slot * kMetadataColumns + kWidthColumn] !="
+        )
+        copy_start = routes.index("const auto route_base =")
+        self.assertLess(width_guard, copy_start)
+        self.assertIn("kCounterIncompleteRound", routes[width_guard:copy_start])
+        self.assertIn("capture_slot = -1", routes[width_guard:copy_start])
+        self.assertIn("-(capture_slot + 2)", routes)
+        rejection = source.split("__global__ void record_rejection_kernel(", 1)[1]
+        rejection = rejection.split("void record_rejection_cuda(", 1)[0]
+        self.assertIn("const auto capture_slot = -(pending + 2)", rejection)
+        self.assertNotIn("counters[kCounterClaimed]", rejection)
+        self.assertNotIn("counters[kCounterCompleted]", rejection)
+        self.assertIn("kControlActiveSlot] = -1", rejection)
+        self.assertIn("Tensor(c!) stream_control", source)
+
     def test_any_overflow_or_drop_counter_fails_closed(self) -> None:
         for counter_index in range(2, len(MODULE.COUNTER_NAMES)):
             values = [1, 1, *([0] * (len(MODULE.COUNTER_NAMES) - 2))]

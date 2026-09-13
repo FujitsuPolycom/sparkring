@@ -1,4 +1,4 @@
-#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAStream.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAException.h>
 #include <torch/extension.h>
@@ -16,6 +16,9 @@ constexpr int kPhaseColumn = 3;
 constexpr int kFlagsColumn = 4;
 constexpr int kControlRequestSlot = 0;
 constexpr int kControlPhase = 1;
+// -1 is idle; >= 0 is recording; <= -2 encodes a completed slot awaiting
+// its sampler result as -(capture_slot + 2). Each control row belongs to one
+// ordered CUDA stream; different rows may progress independently.
 constexpr int kControlActiveSlot = 2;
 constexpr int kControlArmed = 3;
 constexpr int kCounterClaimed = 0;
@@ -63,6 +66,11 @@ __global__ void record_routes_kernel(
         atomicAdd(counters_u64 + kCounterOrphanLayer, 1ULL);
         stream_control[stream_slot * 4 + kControlActiveSlot] = -1;
         capture_slot = -1;
+      } else if (layer_index == 0 &&
+                 stream_control[stream_slot * 4 + kControlActiveSlot] != -1) {
+        // Never overwrite an unfinished round or an unconsumed sampler result.
+        atomicAdd(counters_u64 + kCounterRejectionOrder, 1ULL);
+        capture_slot = -1;
       } else if (layer_index == 0) {
         const auto claimed =
             atomicAdd(counters_u64 + kCounterClaimed, 1ULL);
@@ -90,6 +98,12 @@ __global__ void record_routes_kernel(
         if (capture_slot < 0 ||
             capture_slot >= static_cast<long long>(capacity_rounds)) {
           atomicAdd(counters_u64 + kCounterOrphanLayer, 1ULL);
+          capture_slot = -1;
+        } else if (metadata[capture_slot * kMetadataColumns + kWidthColumn] !=
+                   width) {
+          // All layers of a round must have the same number of positions.
+          atomicAdd(counters_u64 + kCounterIncompleteRound, 1ULL);
+          stream_control[stream_slot * 4 + kControlActiveSlot] = -1;
           capture_slot = -1;
         }
       }
@@ -147,10 +161,12 @@ __global__ void record_routes_kernel(
       if (observed_low == expected_low &&
           observed_high == expected_high && flags == 0) {
         atomicAdd(counters_u64 + kCounterCompleted, 1ULL);
+        stream_control[stream_slot * 4 + kControlActiveSlot] =
+            -(capture_slot + 2);
       } else {
         atomicAdd(counters_u64 + kCounterIncompleteRound, 1ULL);
+        stream_control[stream_slot * 4 + kControlActiveSlot] = -1;
       }
-      stream_control[stream_slot * 4 + kControlActiveSlot] = -1;
     }
   }
 }
@@ -158,22 +174,21 @@ __global__ void record_routes_kernel(
 __global__ void record_rejection_kernel(
     const std::int32_t* num_sampled, const std::int32_t* num_rejected,
     std::int32_t* rejected_tokens, const std::int64_t* metadata,
-    const std::int64_t* stream_control, std::int64_t* counters,
+    std::int64_t* stream_control, std::int64_t* counters,
     std::int64_t capacity_rounds, int stream_slot) {
   if (stream_control[stream_slot * 4 + kControlArmed] != 1) {
     return;
   }
 
   auto* counters_u64 = reinterpret_cast<unsigned long long*>(counters);
-  const auto claimed = counters[kCounterClaimed];
-  const auto completed = counters[kCounterCompleted];
-  if (claimed <= 0 || claimed > capacity_rounds || completed != claimed ||
-      stream_control[stream_slot * 4 + kControlActiveSlot] != -1) {
+  const auto pending =
+      stream_control[stream_slot * 4 + kControlActiveSlot];
+  if (pending > -2 || pending < -(capacity_rounds + 1)) {
     atomicAdd(counters_u64 + kCounterRejectionOrder, 1ULL);
     return;
   }
 
-  const auto capture_slot = claimed - 1;
+  const auto capture_slot = -(pending + 2);
   const auto metadata_base = capture_slot * kMetadataColumns;
   const auto request_slot =
       stream_control[stream_slot * 4 + kControlRequestSlot];
@@ -195,13 +210,15 @@ __global__ void record_rejection_kernel(
   if (atomicCAS(rejected_tokens + capture_slot, -1,
                 static_cast<std::int32_t>(rejected)) != -1) {
     atomicAdd(counters_u64 + kCounterRejectionOrder, 1ULL);
+    return;
   }
+  stream_control[stream_slot * 4 + kControlActiveSlot] = -1;
 }
 
 void record_rejection_cuda(
     const at::Tensor& num_sampled, const at::Tensor& num_rejected,
     at::Tensor& rejected_tokens, const at::Tensor& metadata,
-    const at::Tensor& stream_control, at::Tensor& counters,
+    at::Tensor& stream_control, at::Tensor& counters,
     std::int64_t stream_slot) {
   TORCH_CHECK(num_sampled.is_cuda() && num_rejected.is_cuda(),
               "sampler counts must be CUDA tensors");
@@ -216,6 +233,9 @@ void record_rejection_cuda(
               "rejection capture tensors must share a device");
   TORCH_CHECK(num_sampled.is_contiguous() && num_rejected.is_contiguous(),
               "sampler counts must be contiguous");
+  TORCH_CHECK(rejected_tokens.is_contiguous() && metadata.is_contiguous() &&
+                  stream_control.is_contiguous() && counters.is_contiguous(),
+              "rejection capture arenas must be contiguous");
   TORCH_CHECK(num_sampled.scalar_type() == at::kInt &&
                   num_rejected.scalar_type() == at::kInt,
               "sampler counts must be int32");
@@ -243,7 +263,7 @@ void record_rejection_cuda(
 
   const c10::cuda::CUDAGuard guard(num_rejected.device());
   const auto stream =
-      at::cuda::getCurrentCUDAStream(num_rejected.device().index());
+      c10::cuda::getCurrentCUDAStream(num_rejected.device().index());
   record_rejection_kernel<<<1, 1, 0, stream>>>(
       num_sampled.data_ptr<std::int32_t>(),
       num_rejected.data_ptr<std::int32_t>(),
@@ -274,6 +294,10 @@ void record_cuda(
                   counters.device() == routes.device(),
               "all capture tensors must share a device");
   TORCH_CHECK(topk_ids.is_contiguous(), "topk_ids must be contiguous");
+  TORCH_CHECK(routes.is_contiguous() && metadata.is_contiguous() &&
+                  layer_masks.is_contiguous() && stream_control.is_contiguous() &&
+                  request_rounds.is_contiguous() && counters.is_contiguous(),
+              "capture arenas must be contiguous");
   TORCH_CHECK(topk_ids.scalar_type() == at::kInt ||
                   topk_ids.scalar_type() == at::kLong,
               "topk_ids must be int32 or int64");
@@ -314,7 +338,7 @@ void record_cuda(
               "malformed counter table");
 
   const c10::cuda::CUDAGuard guard(topk_ids.device());
-  const auto stream = at::cuda::getCurrentCUDAStream(topk_ids.device().index());
+  const auto stream = c10::cuda::getCurrentCUDAStream(topk_ids.device().index());
   constexpr int threads = 64;
   if (topk_ids.scalar_type() == at::kInt) {
     record_routes_kernel<<<1, threads, 0, stream>>>(
@@ -356,7 +380,7 @@ TORCH_LIBRARY(sparkring_target_route_capture, library) {
       "int width, int stream_slot, int num_layers, int num_experts) -> ()");
   library.def(
       "record_rejection(Tensor num_sampled, Tensor num_rejected, "
-      "Tensor(a!) rejected_tokens, Tensor metadata, Tensor stream_control, "
+      "Tensor(a!) rejected_tokens, Tensor metadata, Tensor(c!) stream_control, "
       "Tensor(b!) counters, int stream_slot) -> ()");
 }
 

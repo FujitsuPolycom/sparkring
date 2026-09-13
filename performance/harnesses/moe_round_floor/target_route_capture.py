@@ -5,9 +5,10 @@ metadata and dispatches a no-output custom CUDA operator.  The operator claims
 round slots, copies expert IDs, and updates counters on the device.  It does
 not allocate tensors, inspect device values from the CPU, or write files.
 
-All synchronization, device-to-host transfer, validation, and JSONL output are
-confined to :meth:`TargetRouteCapture.drain_jsonl`, which must be called after
-the measured/model execution window.
+After execution, :meth:`TargetRouteCapture.drain_jsonl` and
+:meth:`TargetRouteCapture.read_counters` explicitly synchronize and copy device
+data to the host. The drain method validates the snapshot and writes JSONL;
+hot-path metadata validation remains on dispatch.
 """
 
 from __future__ import annotations
@@ -311,8 +312,10 @@ class TargetRouteCapture:
         self.layer_masks = torch.zeros(
             (config.capacity_rounds, 2), dtype=torch.int64, device=device
         )
-        # [request_slot, model_role, active_capture_slot, armed].  Request
-        # context is updated outside graph/timed execution; the graph reads it
+        # [request_slot, model_role, round_state, armed]. State -1 is idle,
+        # >=0 is an active slot, and <=-2 is -(completed_slot + 2), pending
+        # its sampler result. Each row must be used on one ordered CUDA stream.
+        # Request context is updated outside graph/timed execution; graphs read it
         # on replay.  An unarmed graph node is an intentional no-op.
         self.stream_control = torch.tensor(
             [
@@ -428,8 +431,11 @@ class TargetRouteCapture:
         *,
         stream_slot: int = 0,
     ) -> None:
-        """Associate one sampler result with the latest target-route slot.
+        """Associate one sampler result with this stream's completed route slot.
 
+        Call once after all routed layers and before the next round on the same
+        stream slot. Every captured round requires a sampler result before drain.
+        Other stream slots may complete and associate results independently.
         Both inputs remain device tensors. Shape, dtype, route/sample ordering,
         and the ``sampled + rejected == width`` invariant are validated by the
         CUDA dispatcher/kernel without a host read or synchronization.

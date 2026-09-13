@@ -1,7 +1,7 @@
 """Offline wiring checks for the research-only tiled-prefill native probe.
 
-These checks establish the standalone build and protocol seams without
-claiming CUDA, RDMA, numerical, or performance qualification. Those claims
+These checks inspect build definitions and protocol source guards. They do not
+compile or run the probe. CUDA, RDMA, numerical, and performance qualification
 require the four-rank qualification runner and one validated receipt per rank.
 """
 
