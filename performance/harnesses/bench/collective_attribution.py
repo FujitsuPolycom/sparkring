@@ -854,6 +854,7 @@ def build_report(
 
     report: dict[str, Any] = {
         "schema": REPORT_SCHEMA,
+        "status": "invalid_capture" if failures or gate_failures else "compared",
         "sessions": {"gated": gated.session, "naked": naked.session},
         "layer": gated.layer,
         "detect_percent": detect_percent,
@@ -969,6 +970,8 @@ def render_report(report: Mapping[str, Any]) -> str:
     totals = report["totals_seconds"]
     validity = report["validity"]
     out = ["Collective critical-path attribution\n\n"]
+    if report.get("status") == "invalid_capture":
+        out.append("INVALID CAPTURE: failed validity gates; numbers are diagnostic only.\n\n")
     out.append(
         _line("gated session", str(report["sessions"]["gated"]))
         + _line("naked session", str(report["sessions"]["naked"]))
@@ -1318,7 +1321,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if arguments.json:
         emit_json(report, arguments.json)
-    return EXIT_OK
+    return EXIT_NOT_COMPARABLE if report["status"] == "invalid_capture" else EXIT_OK
 
 
 if __name__ == "__main__":

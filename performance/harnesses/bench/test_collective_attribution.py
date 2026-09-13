@@ -587,6 +587,23 @@ class ExampleDocumentTest(unittest.TestCase):
 
 
 class CommandLineTest(unittest.TestCase):
+    def test_failed_validity_gates_return_not_comparable_with_diagnostics(self):
+        for failure in ('gate_cost', 'rank_spread'):
+            with self.subTest(failure=failure), TemporaryDirectory() as directory:
+                root = Path(directory)
+                document = _capture(attribution.GATED_ARM)
+                ranks = document['instances'][0]['ranks']
+                if failure == 'gate_cost':
+                    for rank in ranks.values():
+                        rank['gate_second_us'] = [100.0] * 3
+                else:
+                    ranks['0']['residency_us'] = [1000.0] * 3
+                gated = self._write(root, 'g.json', document)
+                naked = self._write(root, 'n.json', _capture(attribution.NAKED_ARM))
+                code, out, _ = self._run(['--gated', gated, '--naked', naked, '--json', '-'])
+                self.assertEqual(code, attribution.EXIT_NOT_COMPARABLE)
+                self.assertEqual(json.loads(out)['status'], 'invalid_capture')
+
     def test_zero_residency_median_is_a_structured_invalid_document(self):
         for arm in (attribution.GATED_ARM, attribution.NAKED_ARM):
             with self.subTest(arm=arm), TemporaryDirectory() as directory:
