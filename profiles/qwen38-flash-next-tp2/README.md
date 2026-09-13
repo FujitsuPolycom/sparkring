@@ -9,7 +9,7 @@ Resolving the profile starts no model or test.
 
 Use [LIL Qwen3.8-Flash-Next-NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)
 revision `ada4da32a583a78aa47299f45a70603c950490b8` with the published R37
-ARM64 image. This is distinct from Qwen3.8-27B EXL3.
+ARM64 image. 
 
 | Setting | Default |
 | --- | --- |
