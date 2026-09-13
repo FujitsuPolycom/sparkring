@@ -44,6 +44,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = [System.Collections.Generic.List[object]]::new()
 
@@ -172,7 +173,7 @@ foreach ($node in $nodes) {
     }
 
     $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "test -x '$ProbeBinary' && test -f '$Library' && sha256sum '$ProbeBinary' '$Library'")
+        "test -x $(ConvertTo-PosixShellArgument $ProbeBinary) && test -f $(ConvertTo-PosixShellArgument $Library) && sha256sum $(ConvertTo-PosixShellArgument $ProbeBinary) $(ConvertTo-PosixShellArgument $Library)")
     if ($LASTEXITCODE -ne 0) {
         throw "rank $($node.Rank) is missing a staged vocabulary graph artifact"
     }
@@ -194,16 +195,16 @@ try {
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
             "--ulimit memlock=-1"
-            "-v ${ProbeBinary}:/probe:ro"
-            "-v ${Library}:/opt/spark/lib/libspark_transport_capi.so:ro"
+            "-v $(ConvertTo-PosixShellArgument "${ProbeBinary}:/probe:ro")"
+            "-v $(ConvertTo-PosixShellArgument "${Library}:/opt/spark/lib/libspark_transport_capi.so:ro")"
             "-e LD_LIBRARY_PATH=/opt/spark/lib"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "env -u SPARK_TRANSPORT_TRACE"
             "taskset -c $SubmitCpu /probe"
             "--rank $($node.Rank)"
-            "--peer0 $($node.Peer0)"
-            "--peer1 $($node.Peer1)"
+            "--peer0 $(ConvertTo-PosixShellArgument $node.Peer0)"
+            "--peer1 $(ConvertTo-PosixShellArgument $node.Peer1)"
             "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"

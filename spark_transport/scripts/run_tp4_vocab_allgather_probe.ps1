@@ -37,6 +37,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = @()
 
@@ -175,20 +176,20 @@ try {
         $command = @(
             # Missing artifacts must fail here instead of becoming empty
             # directories at the bind-mount paths.
-            "test -f '$Binary' -a -f '$Library' || exit 97;"
-            "chmod 0755 '$Binary' '$Library' || exit 97;"
+            "test -f $(ConvertTo-PosixShellArgument $Binary) -a -f $(ConvertTo-PosixShellArgument $Library) || exit 97;"
+            "chmod 0755 $(ConvertTo-PosixShellArgument $Binary) $(ConvertTo-PosixShellArgument $Library) || exit 97;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--ulimit memlock=-1"
             "-e LD_LIBRARY_PATH=/opt/spark/lib"
-            "-v ${Binary}:/opt/spark/bin/tp4_vocab_probe:ro"
-            "-v ${Library}:/opt/spark/lib/libspark_transport_capi.so:ro"
-            $Image
+            "-v $(ConvertTo-PosixShellArgument "${Binary}:/opt/spark/bin/tp4_vocab_probe:ro")"
+            "-v $(ConvertTo-PosixShellArgument "${Library}:/opt/spark/lib/libspark_transport_capi.so:ro")"
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "taskset -c 8-15 /opt/spark/bin/tp4_vocab_probe"
             "--rank $($node.Rank)"
-            "--peer0 $($node.Peer0)"
-            "--peer1 $($node.Peer1)"
+            "--peer0 $(ConvertTo-PosixShellArgument $node.Peer0)"
+            "--peer1 $(ConvertTo-PosixShellArgument $node.Peer1)"
             "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"

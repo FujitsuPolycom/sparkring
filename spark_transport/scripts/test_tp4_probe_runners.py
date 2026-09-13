@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -271,8 +272,8 @@ function global:ssh {
     $cmd=$args[-1]; Write-Host "COMMAND=$cmd"; $global:LASTEXITCODE=0
     if ($cmd -match 'sha256sum') {
         if ($cmd -match 'spark_tp4_query_contract.py') {
-            foreach ($match in [regex]::Matches(($cmd -split 'sha256sum ')[1], "'([^']+)'")) {
-                $path=$match.Groups[1].Value
+            foreach ($match in [regex]::Matches(($cmd -split 'sha256sum ')[1], "'([^']+)'|(\S+)")) {
+                $path=if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
                 $hash=switch -Wildcard ($path) {
                     '*/probe.py' { 'PROBE_HASH' }
                     '*/adapter.py' { 'ADAPTER_HASH' }
@@ -350,3 +351,121 @@ def test_receipt_selector_never_combines_multiple_records(name):
     ])
     result = _powershell("-Command", command, env=os.environ.copy())
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _local_posix(program, tmp_path):
+    """Execute only local shell fixtures; no SSH or Docker executable is used."""
+    script = tmp_path / "literal-arguments.sh"
+    script.write_text(program, encoding="utf-8", newline="\n")
+    if os.name == "nt":
+        if shutil.which("wsl") is None:
+            pytest.skip("Local WSL shell unavailable")
+        path = script.resolve().as_posix()
+        posix = "/mnt/" + path[0].lower() + path[2:]
+        argv = ["wsl", "--exec", "sh", posix]
+    else:
+        argv = ["sh", str(script)]
+    return subprocess.run(argv, capture_output=True, check=True, timeout=30).stdout
+
+
+def test_posix_argument_encoder_roundtrips_literal_values(tmp_path):
+    values = ["/tmp/probe", "/tmp/a path/probe", "/tmp/Cody's/probe", "$(printf WRONG)",
+              "`printf WRONG`", "a; printf WRONG", "", "line1\nline2", 'a"b', r"a\b"]
+    environment = {**os.environ, "QUOTE_HELPER": str(SCRIPTS / "posix_shell_argument.ps1"),
+                   "QUOTE_VALUES": json.dumps(values)}
+    result = _powershell("-Command", r'''
+. $env:QUOTE_HELPER
+@(($env:QUOTE_VALUES | ConvertFrom-Json) | ForEach-Object {
+    ConvertTo-PosixShellArgument $_
+}) | ConvertTo-Json -Compress
+''', env=environment)
+    assert result.returncode == 0, result.stdout + result.stderr
+    encoded = json.loads(result.stdout)
+    program = "\n".join("printf '%s\\0' " + value for value in encoded)
+    output = _local_posix(program, tmp_path)
+    assert output.split(b"\0")[:-1] == [value.encode() for value in values]
+
+
+@pytest.mark.parametrize("name", [
+    "run_tp4_probe.ps1", "run_tp4_tensor_probe.ps1", "run_tp4_vocab_allgather_probe.ps1",
+    "run_tp4_graph_q1_probe.ps1", "run_tp4_vocab_graph_probe.ps1",
+    "run_tp4_vocab_graph_stream_switch_probe.ps1", "run_tp4_numerical_audit.ps1",
+])
+def test_actual_probe_commands_preserve_literal_paths_and_peer_values(name, tmp_path):
+    source = (SCRIPTS / name).read_text(encoding="utf-8")
+    start = source.index("$command = @(")
+    end = source.index(') -join " "', start) + len(') -join " "')
+    construction = source[start:end]
+    literal = "/tmp/Cody's folder/$(printf WRONG);`printf WRONG`"
+    values = {key: literal for key in ("Binary", "Library", "ProbeBinary", "Source", "Image", "headIp", "ManagementNic")}
+    environment = {**os.environ, "QUOTE_HELPER": str(SCRIPTS / "posix_shell_argument.ps1"),
+                   "QUOTE_VALUES": json.dumps(values), "QUOTE_CONSTRUCTION": construction}
+    result = _powershell("-Command", r'''
+. $env:QUOTE_HELPER
+$values=$env:QUOTE_VALUES | ConvertFrom-Json
+foreach ($property in $values.PSObject.Properties) { Set-Variable $property.Name $property.Value }
+$node=[pscustomobject]@{ Rank=0; Peer0=$Image; Peer1=$Image; Device0='mlx5_0'; Device1='mlx5_1' }
+$name='fixture'; $remoteStage='/tmp/fixture-stage'
+Invoke-Expression $env:QUOTE_CONSTRUCTION
+$command | ConvertTo-Json -Compress
+''', env=environment)
+    assert result.returncode == 0, result.stdout + result.stderr
+    command = json.loads(result.stdout)
+    # Fake Docker records arguments on fd3, which remains visible when the
+    # runner redirects Docker's stdout. Artifact checks do not touch files.
+    program = r'''exec 3>&1
+docker() { printf 'DOCKER\0' >&3; printf '%s\0' "$@" >&3; }
+test() { printf 'CHECK\0' >&3; printf '%s\0' "$@" >&3; }
+chmod() { printf 'MODE\0' >&3; printf '%s\0' "$@" >&3; }
+''' + command
+    values = [value.decode() for value in _local_posix(program, tmp_path).split(b"\0")[:-1]]
+    boundary = values.index("DOCKER")
+    checks, argv = values[:boundary], values[boundary + 1:]
+    if name in {"run_tp4_tensor_probe.ps1", "run_tp4_vocab_allgather_probe.ps1"}:
+        assert literal in checks
+    if "numerical" in name:
+        assert literal + "/tp4_numerical_audit.py" in checks and literal in checks
+    assert literal in argv, argv  # Image identity remains one literal argument.
+    mounts = [argv[index + 1] for index, value in enumerate(argv[:-1]) if value == "-v"]
+    assert any(value.startswith(literal + ":") for value in mounts), argv
+    assert all(value.startswith((literal + ":", "/tmp/fixture-stage/")) for value in mounts), argv
+    if "numerical" in name:
+        for field in ("MASTER_ADDR", "NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME"):
+            assert field + "=" + literal in argv
+    elif "stream_switch" in name:
+        assert "SPARK_TP4_PEER0=" + literal in argv
+        assert "SPARK_TP4_PEER1=" + literal in argv
+    else:
+        assert argv[argv.index("--peer0") + 1] == literal
+        assert argv[argv.index("--peer1") + 1] == literal
+
+
+@pytest.mark.parametrize("name", [
+    "run_tp4_graph_q1_probe.ps1", "run_tp4_vocab_graph_probe.ps1",
+    "run_tp4_vocab_graph_stream_switch_probe.ps1",
+])
+def test_actual_artifact_hash_commands_preserve_literal_paths(name, tmp_path):
+    source = (SCRIPTS / name).read_text(encoding="utf-8")
+    if "stream_switch" in name:
+        start = source.index("$hashCommand = (")
+        end = source.index("\n        )", start) + len("\n        )")
+        construction = source[start:end]
+    else:
+        expression = next(line.strip() for line in source.splitlines()
+                          if line.strip().startswith('"test -x') and "sha256sum" in line)
+        construction = "$hashCommand = " + expression[:-1]
+    literal = "/tmp/Cody's folder/$(printf WRONG);`printf WRONG`"
+    environment = {**os.environ, "QUOTE_HELPER": str(SCRIPTS / "posix_shell_argument.ps1"),
+                   "QUOTE_PATH": literal, "QUOTE_CONSTRUCTION": construction}
+    result = _powershell("-Command", r'''
+. $env:QUOTE_HELPER
+$ProbeBinary=$env:QUOTE_PATH; $Library=$env:QUOTE_PATH; $remoteStage='/tmp/fixture-stage'
+Invoke-Expression $env:QUOTE_CONSTRUCTION
+$hashCommand | ConvertTo-Json -Compress
+''', env=environment)
+    assert result.returncode == 0, result.stdout + result.stderr
+    command = json.loads(result.stdout)
+    program = "test() { return 0; }\nsha256sum() { printf '%s\\0' \"$@\"; }\n" + command
+    argv = [value.decode() for value in _local_posix(program, tmp_path).split(b"\0")[:-1]]
+    assert argv[-1] == literal
+    assert len(argv) == (4 if "stream_switch" in name else 2 if "vocab_graph" in name else 1)

@@ -72,6 +72,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = @()
 
@@ -244,7 +245,7 @@ function Get-ContainerState {
 $hashes = @()
 foreach ($node in $nodes) {
     $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "test -x '$ProbeBinary' && sha256sum '$ProbeBinary'")
+        "test -x $(ConvertTo-PosixShellArgument $ProbeBinary) && sha256sum $(ConvertTo-PosixShellArgument $ProbeBinary)")
     if ($LASTEXITCODE -ne 0) {
         throw "rank $($node.Rank) is missing the staged graph probe"
     }
@@ -285,15 +286,15 @@ try {
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
             "--ulimit memlock=-1"
-            "-v ${ProbeBinary}:/probe:ro"
+            "-v $(ConvertTo-PosixShellArgument "${ProbeBinary}:/probe:ro")"
             "--entrypoint /usr/bin/env"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "env -u SPARK_TRANSPORT_TRACE"
             "taskset -c $SubmitCpu /probe"
             "--rank $($node.Rank)"
-            "--peer0 $($node.Peer0)"
-            "--peer1 $($node.Peer1)"
+            "--peer0 $(ConvertTo-PosixShellArgument $node.Peer0)"
+            "--peer1 $(ConvertTo-PosixShellArgument $node.Peer1)"
             "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"

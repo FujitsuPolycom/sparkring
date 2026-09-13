@@ -36,6 +36,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = @()
 
@@ -162,17 +163,17 @@ try {
         $command = @(
             # A missing binary must fail here; a bind mount of an absent path
             # would otherwise create a directory and fail inside the probe.
-            "test -x '$Binary' || exit 97;"
+            "test -x $(ConvertTo-PosixShellArgument $Binary) || exit 97;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--ulimit memlock=-1"
-            "-v ${Binary}:/probe:ro"
-            $Image
+            "-v $(ConvertTo-PosixShellArgument "${Binary}:/probe:ro")"
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "taskset -c 10 /probe"
             "--rank $($node.Rank)"
-            "--peer0 $($node.Peer0)"
-            "--peer1 $($node.Peer1)"
+            "--peer0 $(ConvertTo-PosixShellArgument $node.Peer0)"
+            "--peer1 $(ConvertTo-PosixShellArgument $node.Peer1)"
             "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"

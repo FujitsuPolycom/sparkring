@@ -45,6 +45,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = @()
 $ownedStages = @()
@@ -240,9 +241,9 @@ try {
             throw "failed to stage query-width contract on rank $($node.Rank)"
         }
         $hashCommand = (
-            "test -f '$Library' && sha256sum '$remoteStage/probe.py' " +
+            "test -f $(ConvertTo-PosixShellArgument $Library) && sha256sum '$remoteStage/probe.py' " +
             "'$remoteStage/adapter.py' " +
-            "'$remoteStage/spark_tp4_query_contract.py' '$Library'"
+            "'$remoteStage/spark_tp4_query_contract.py' $(ConvertTo-PosixShellArgument $Library)"
         )
         $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
             $node.Target $hashCommand)
@@ -277,13 +278,13 @@ try {
             "-v ${remoteStage}/probe.py:/probe/probe.py:ro"
             "-v ${remoteStage}/adapter.py:/probe/spark_tp4_vocab_allgather_backend.py:ro"
             "-v ${remoteStage}/spark_tp4_query_contract.py:/probe/spark_tp4_query_contract.py:ro"
-            "-v ${Library}:/opt/spark/lib/libspark_transport_capi.so:ro"
+            "-v $(ConvertTo-PosixShellArgument "${Library}:/opt/spark/lib/libspark_transport_capi.so:ro")"
             "-e PYTHONPATH=/probe"
             "-e SPARK_TP4_LIBRARY=/opt/spark/lib/libspark_transport_capi.so"
             "-e VLLM_SPARK_TP4_VOCAB_MODE=custom"
             "-e VLLM_SPARK_TP4_GRAPH_Q1=1"
-            "-e SPARK_TP4_PEER0=$($node.Peer0)"
-            "-e SPARK_TP4_PEER1=$($node.Peer1)"
+            "-e $(ConvertTo-PosixShellArgument "SPARK_TP4_PEER0=$($node.Peer0)")"
+            "-e $(ConvertTo-PosixShellArgument "SPARK_TP4_PEER1=$($node.Peer1)")"
             "-e SPARK_TP4_DEVICE0=$($node.Device0)"
             "-e SPARK_TP4_DEVICE1=$($node.Device1)"
             "-e SPARK_TP4_GID0=3"
@@ -291,7 +292,7 @@ try {
             "-e SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0=$ControlPort0"
             "-e SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1=$ControlPort1"
             "-e SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU=$VocabProgressCpu"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "taskset -c $SubmitCpu python3 /probe/probe.py"
             "--rank $($node.Rank)"

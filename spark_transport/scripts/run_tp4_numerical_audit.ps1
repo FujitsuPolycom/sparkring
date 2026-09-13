@@ -21,6 +21,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = [System.Collections.Generic.List[object]]::new()
 
@@ -96,26 +97,26 @@ try {
     foreach ($node in $nodes) {
         $name = "spark-tp4-numerical-$runIdentity-r$($node.Rank)"
         $command = @(
-            "test -f $Source/tp4_numerical_audit.py"
-            "&& test -f $Library"
+            "test -f $(ConvertTo-PosixShellArgument "$Source/tp4_numerical_audit.py")"
+            "&& test -f $(ConvertTo-PosixShellArgument $Library)"
             "&&"
             "docker run -d --name $name"
             "--network host --ipc host --gpus all"
             "--cap-add IPC_LOCK --ulimit memlock=-1:-1"
             "--ulimit nofile=1048576:1048576"
             "--device /dev/infiniband:/dev/infiniband"
-            "-v ${Source}:/opt/spark-vllm:ro"
-            "-v ${Library}:/opt/spark-transport/libspark_transport_capi.so:ro"
+            "-v $(ConvertTo-PosixShellArgument "${Source}:/opt/spark-vllm:ro")"
+            "-v $(ConvertTo-PosixShellArgument "${Library}:/opt/spark-transport/libspark_transport_capi.so:ro")"
             "-e PYTHONPATH=/opt/spark-vllm"
             "-e SPARK_TP4_LIBRARY=/opt/spark-transport/libspark_transport_capi.so"
             "-e RANK=$($node.Rank) -e WORLD_SIZE=4"
-            "-e MASTER_ADDR=$headIp -e MASTER_PORT=$MasterPort"
+            "-e $(ConvertTo-PosixShellArgument "MASTER_ADDR=$headIp") -e MASTER_PORT=$MasterPort"
             "-e ITERATIONS=$Iterations"
             "-e NCCL_NET=Socket -e NCCL_IB_DISABLE=1"
-            "-e NCCL_SOCKET_IFNAME=$ManagementNic"
-            "-e GLOO_SOCKET_IFNAME=$ManagementNic"
+            "-e $(ConvertTo-PosixShellArgument "NCCL_SOCKET_IFNAME=$ManagementNic")"
+            "-e $(ConvertTo-PosixShellArgument "GLOO_SOCKET_IFNAME=$ManagementNic")"
             "-e NCCL_CUMEM_ENABLE=0 -e NCCL_PROTO=Simple"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "python3 /opt/spark-vllm/tp4_numerical_audit.py >/dev/null"
         ) -join " "
