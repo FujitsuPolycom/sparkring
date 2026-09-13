@@ -116,6 +116,7 @@ class _RouterBinding:
     layer_id: int
     router: Any
     previous_callback: Any
+    installed_callback: Any
 
 
 class LiveTargetRouteController:
@@ -223,7 +224,7 @@ class LiveTargetRouteController:
             return
         for binding in reversed(self._bindings):
             current = getattr(binding.router, "capture_fn", None)
-            if not getattr(current, "_sparkring_target_route_capture", False):
+            if current is not binding.installed_callback:
                 raise LiveInstallError(
                     f"layer {binding.layer_id} callback changed after binding"
                 )
@@ -263,6 +264,8 @@ class SourcePinnedLiveInstaller:
         self.config = config
         self._original_initialize: Callable[..., Any] | None = None
         self._original_sample: Callable[..., Any] | None = None
+        self._installed_initialize: Callable[..., Any] | None = None
+        self._installed_sample: Callable[..., Any] | None = None
         self._controller: LiveTargetRouteController | None = None
         self._runner_identity: int | None = None
         self._installed = False
@@ -413,6 +416,8 @@ class SourcePinnedLiveInstaller:
         except Exception:
             setattr(self.runner_type, "sample", sample)
             raise
+        self._installed_initialize = wrapped
+        self._installed_sample = wrapped_sample
         self._original_initialize = initialize
         self._original_sample = sample
         self._installed = True
@@ -463,6 +468,7 @@ class SourcePinnedLiveInstaller:
                     layer_id=layer_id,
                     router=router,
                     previous_callback=previous,
+                    installed_callback=callback,
                 )
                 installed.append(binding)
                 router.set_capture_fn(callback)
@@ -493,6 +499,7 @@ class SourcePinnedLiveInstaller:
 
         modules: list[tuple[int, Any]] = []
         draft_modules: list[tuple[str, int]] = []
+        router_owners: dict[int, int] = {}
         for prefix, module in context.items():
             if not isinstance(module, self.dependencies.moe_runner_type):
                 continue
@@ -512,6 +519,14 @@ class SourcePinnedLiveInstaller:
                 raise LiveInstallError(
                     f"target MoERunner layer {layer_id} lacks BaseRouter"
                 )
+            # Each layer must own a distinct callback slot, including the draft.
+            # Aliasing would overwrite a target callback or bind draft routing.
+            if id(router) in router_owners:
+                raise LiveInstallError(
+                    f"shared BaseRouter between layers {router_owners[id(router)]} "
+                    f"and {layer_id}"
+                )
+            router_owners[id(router)] = layer_id
             if not hasattr(router, "capture_fn") or not callable(
                 getattr(router, "set_capture_fn", None)
             ):
@@ -567,12 +582,10 @@ class SourcePinnedLiveInstaller:
         if not self._installed:
             return
         current = getattr(self.worker_type, "initialize_from_config", None)
-        if not getattr(current, "_sparkring_target_route_installer", False):
+        if current is not self._installed_initialize:
             raise LiveInstallError("Worker initializer changed after installation")
         current_sample = getattr(self.runner_type, "sample", None)
-        if not getattr(
-            current_sample, "_sparkring_target_rejection_installer", False
-        ):
+        if current_sample is not self._installed_sample:
             raise LiveInstallError("GPUModelRunner.sample changed after installation")
         if self._controller is not None:
             self._controller.unbind()
@@ -586,6 +599,8 @@ class SourcePinnedLiveInstaller:
         setattr(self.runner_type, "sample", self._original_sample)
         self._controller = None
         self._runner_identity = None
+        self._installed_initialize = None
+        self._installed_sample = None
         self._original_initialize = None
         self._original_sample = None
         self._installed = False
