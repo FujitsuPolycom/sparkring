@@ -28,6 +28,9 @@ param(
     [string]$Python = "python",
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$Execute,
     [switch]$KeepContainers
 )
@@ -100,6 +103,8 @@ $common = @{
     Python = $Python
     Targets = $Targets
     RankHosts = $RankHosts
+    RemoteTimeoutSeconds = $RemoteTimeoutSeconds
+    RemoteExecutor = $RemoteExecutor
     KeepContainers = $KeepContainers.IsPresent
 }
 if ($Execute) {
