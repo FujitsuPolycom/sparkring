@@ -9,8 +9,12 @@ import subprocess
 import pytest
 
 
-@pytest.mark.parametrize("script", ["run_tp4_numerical_audit.ps1", "run_tp4_vocab_graph_probe.ps1"])
-@pytest.mark.parametrize("scenario", ["success", "launch_failure", "keep", "model_running", "multiple_models", "inspect_failure"])
+@pytest.mark.parametrize("script,scenario", [
+    (script, scenario)
+    for script in ("run_tp4_numerical_audit.ps1", "run_tp4_vocab_graph_probe.ps1")
+    for scenario in ("success", "launch_failure", "keep", "model_running", "multiple_models", "inspect_failure", "duplicate_receipt", "split_receipt")
+    if "numerical" not in script or scenario not in {"duplicate_receipt", "split_receipt"}
+])
 def test_probe_container_ownership(script, scenario):
     shell = shutil.which("pwsh")
     if shell is None:
@@ -34,7 +38,14 @@ function global:ssh {
     }
     if ($line -match 'docker inspect') { 'exited:0' }
     if ($line -match 'docker logs') {
-        'TP4_VOCAB_GRAPH mtp_tokens=4 pattern=5,1,1,1,1 captured_nodes=5 published=510 consumed=510 completed=510 overflow=0 submit_cpu=10 progress_cpu=12 mismatches=0 passed=true'
+        $record = 'TP4_VOCAB_GRAPH mtp_tokens=4 pattern=5,1,1,1,1 captured_nodes=5 published=510 consumed=510 completed=510 overflow=0 submit_cpu=10 progress_cpu=12 mismatches=0 passed=true'
+        if ($env:PROBE_SCENARIO -eq 'split_receipt') {
+            ($record -split ' mismatches=')[0]
+            'TP4_VOCAB_GRAPH mismatches=0 passed=true'
+        } else {
+            $record
+            if ($env:PROBE_SCENARIO -eq 'duplicate_receipt') { $record }
+        }
     }
 }
 $failures = @()

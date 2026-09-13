@@ -27,6 +27,7 @@ RUNNERS = (
     "run_tp4_graph_q1_probe.ps1",
 )
 CPUSET_RUNNERS = (
+    "run_tp4_vocab_graph_probe.ps1",
     "run_tp4_vocab_graph_stream_switch_probe.ps1",
     "run_tp4_graph_q1_probe.ps1",
     "run_tp4_tiled_prefill_probe.ps1",
@@ -309,3 +310,43 @@ try { & 'SCRIPT' -Image fake-image MAPPING } catch { Write-Host "EXPECTED=$($_.E
     if "stream_switch" in name:
         assert "model_container=glm52-trace model_container_running=false" in result.stdout
         assert "model_down=true" not in result.stdout
+
+
+@pytest.mark.parametrize("cpu_option", ["-SubmitCpu 9", "-ProgressCpu 13"])
+def test_vocabulary_graph_cpu_outside_set_fails_before_ssh(cpu_option):
+    command = r"""
+function global:ssh { throw 'UNEXPECTED_SSH' }
+try {
+    & 'SCRIPT' -Image fixture-image -DevicePreset documented-cycle `
+        -Targets node0,node1,node2,node3 -RankHosts peer0,peer1,peer2,peer3 `
+        -CpuSet 10-12 CPU_OPTION
+    exit 2
+} catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
+""".replace("SCRIPT", (SCRIPTS / "run_tp4_vocab_graph_probe.ps1").as_posix()).replace("CPU_OPTION", cpu_option)
+    result = _powershell("-Command", command, env=os.environ.copy())
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "is outside -CpuSet" in result.stdout
+    assert "UNEXPECTED_SSH" not in result.stdout
+
+
+@pytest.mark.parametrize("name", [
+    "run_tp4_graph_q1_probe.ps1", "run_tp4_vocab_graph_probe.ps1",
+    "run_tp4_vocab_graph_stream_switch_probe.ps1", "run_tp4_vocab_allgather_probe.ps1",
+])
+def test_receipt_selector_never_combines_multiple_records(name):
+    source = (SCRIPTS / name).read_text(encoding="utf-8")
+    selection = next(line.strip() for line in source.splitlines() if line.strip().startswith("$gate ="))
+    # Execute the actual selector: complementary incomplete lines must not
+    # become a synthetic complete record, and duplicate records are ambiguous.
+    command = "\n".join([
+        "$result = @('mismatches=0 passed=true')", selection,
+        "if ($gate -ne 'mismatches=0 passed=true') { exit 11 }",
+        "$result = @('mismatches=0', 'passed=true')", selection,
+        "if ($gate) { exit 12 }",
+        "$result = @('mismatches=0 passed=true', 'mismatches=0 passed=true')", selection,
+        "if ($gate) { exit 13 }",
+        "$result = @()", selection,
+        "if ($gate) { exit 14 }",
+    ])
+    result = _powershell("-Command", command, env=os.environ.copy())
+    assert result.returncode == 0, result.stdout + result.stderr

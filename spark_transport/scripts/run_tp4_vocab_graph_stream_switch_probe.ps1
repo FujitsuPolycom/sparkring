@@ -346,8 +346,9 @@ try {
         Write-Output "rank=$($node.Rank) state=$state"
         $result | Write-Output
 
-        $gate = $result -join " "
-        if ($state -ne "exited:0" `
+        # One probe invocation must produce one complete result record.
+        $gate = if ($result.Count -eq 1) { $result[0] } else { "" }
+        if ($result.Count -ne 1 -or $state -ne "exited:0" `
             -or $gate -notmatch "pattern=$expectedPattern(?:\s|$)" `
             -or $gate -notmatch "stock_warmups=$expectedWarmups(?:\s|$)" `
             -or $gate -notmatch "captured_nodes=$expectedNodes(?:\s|$)" `

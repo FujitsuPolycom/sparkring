@@ -72,6 +72,28 @@ if ($SubmitCpu -eq $ProgressCpu) {
     throw "SubmitCpu and ProgressCpu must differ"
 }
 
+function Test-CpuInSet {
+    param([string]$Set, [int]$Cpu)
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so both pinned CPUs must lie inside it.
+foreach ($cpu in @($SubmitCpu, $ProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+
 . "$PSScriptRoot/tp4_device_mapping.ps1"
 $deviceMapping = @(Resolve-Tp4DeviceMapping -Preset $DevicePreset -Device0 $Device0 -Device1 $Device1)
 
@@ -235,8 +257,9 @@ try {
         Write-Output "rank=$($node.Rank) state=$state"
         $result | Write-Output
 
-        $gate = $result -join " "
-        if ($state -ne "exited:0" `
+        # One probe invocation must produce one complete result record.
+        $gate = if ($result.Count -eq 1) { $result[0] } else { "" }
+        if ($result.Count -ne 1 -or $state -ne "exited:0" `
             -or $gate -notmatch "mtp_tokens=$MtpTokens(?:\s|$)" `
             -or $gate -notmatch "pattern=$expectedPattern(?:\s|$)" `
             -or $gate -notmatch "captured_nodes=$expectedNodes(?:\s|$)" `

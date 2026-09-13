@@ -243,7 +243,7 @@ try {
 
         $validEvidence = $true
         if ($AlternateStreams) {
-            $gate = $result -join " "
+            $gate = if ($result.Count -eq 1) { $result[0] } else { "" }
             $measuredGate = (
                 "measured_submissions=$expectedMeasuredSubmissions" +
                 "(?:\s|$)"
