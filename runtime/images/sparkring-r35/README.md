@@ -6,10 +6,12 @@ modules, SIRCL, routed NCCL, continuation-prefill coalescing and mHC sharding.
 The serving entrypoint accepts a model and rendered profile; it has no default
 model. This is a vLLM image, not an SGLang runtime.
 
-Status: **experimental**. Component tests and TP4 serving checks have passed;
-performance tuning and stability qualification are incomplete. Published image
-tags and profile defaults are unchanged. TP2 source compatibility does not
-establish live TP2 R35 qualification.
+Status: **experimental**. Component tests, TP4 functional/decode checks and
+[bounded TP2 cache/decode checks](../../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
+have passed. TP4's prolonged mixed workload encountered a native collective
+stall; stability qualification remains incomplete. Published image tags and
+profile defaults are unchanged. The TP2 test required an R35-specific launcher
+argument correction and does not establish long-duration TP2 stability.
 
 ## Source and build identity
 
