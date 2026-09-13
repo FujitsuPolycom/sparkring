@@ -25,6 +25,22 @@ See [image builders](images/README.md) and [component ownership](../docs/develop
 Select a profile from the catalog; [retained operator details](../docs/history/runtime-compositions.md#glm-53-flash-operator-image)
 apply only to their named image and checkpoint.
 
+## GLM-5.2 EXL3 R7 builder
+
+See the [retained EXL3 builder details](../docs/history/runtime-compositions.md#glm-52-exl3-r7-builder).
+
+## Faststart lock
+
+See the [retained Faststart lock details](../docs/history/runtime-compositions.md#faststart-lock).
+
+## Qwen3.8-27B builder
+
+See the [retained Qwen builder details](../docs/history/runtime-compositions.md#qwen38-27b-builder).
+
+## Public overlay
+
+See the [retained public overlay details](../docs/history/runtime-compositions.md#public-overlay).
+
 ## DeepSeek-V4-Flash-0731
 
 Use the [profile catalog](../profiles/README.md); pair and cycle configurations

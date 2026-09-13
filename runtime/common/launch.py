@@ -64,11 +64,18 @@ def plan(profile_id, arguments, root=ROOT):
         if any(a.startswith('--') and '--runtime-receipt'.startswith(a.split('=', 1)[0]) for a in args):
             raise ValueError('The catalog owns the runtime receipt; select another profile for another release')
         command += ['--runtime-receipt', str(local_path(adapter['receipt'], root))]
-    return {'profile': profile_id, 'configuration_status': resolved['status'],
+    result = {'profile': profile_id, 'configuration_status': resolved['status'],
             'serving': resolved['serving'], 'modified_defaults': modified,
             'execution_status': 'not-run', 'guide': p['guide'],
             'command': command, 'working_directory': str(root),
             'effect': 'host-action' if args[0] in ('create', 'start', '--run', '--prepare', '--pack') else 'adapter-check-or-plan'}
+    if adapter['kind'] == 'bash':
+        # ENV contents belong to the adapter. An argv plan cannot establish
+        # their effective serving settings or inherit catalog qualification.
+        result['catalog_defaults'] = {'serving': resolved['serving'],
+                                      'configuration_status': resolved['status']}
+        result.update(configuration_status='unresolved', serving=None, modified_defaults=None)
+    return result
 
 
 def main(argv=None):

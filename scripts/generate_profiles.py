@@ -202,7 +202,7 @@ def profile_catalog_table(rows, names, root):
             label = p['id'] + (' (default)' if p['recommendation'] == 'recommended' else '')
             lines.append(f"| {parallel} | {r['topology']} | {'On' if cached else 'Off'} | {STATUS_LABELS[p['status']]} | [{label}](profiles/{p['id']}/README.md) |")
         lines += ['', '</details>', '']
-    lines += ['<details>', '<summary>Retired configurations</summary>', '',
+    lines += ['### Retired profiles', '', '<details>', '<summary>Retired configurations</summary>', '',
               'Retained for compatibility and historical evidence; use an active deployment above for setup.', '']
     for p, r in sorted(retired, key=lambda item: item[0]['id']):
         lines.append(f"- [{p['id']}](profiles/{p['id']}/README.md) — {names[r['model']['repository']]}; {STATUS_LABELS[p['status']]}")

@@ -138,6 +138,8 @@ These are saved configurations, not separate models. Profile IDs remain stable f
 
 </details>
 
+### Retired profiles
+
 <details>
 <summary>Retired configurations</summary>
 

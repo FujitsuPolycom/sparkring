@@ -364,6 +364,23 @@ def test_rendered_environment_applies_shared_override():
     assert '\nNODE_RANK=0\n' in text
 
 
+@pytest.mark.parametrize('max_num_seqs', [4, 8])
+def test_env_launch_does_not_claim_unresolved_effective_settings(tmp_path, max_num_seqs):
+    from runtime.common.environment import render_environment
+    profile_id = 'deepseek-v41-flash-cycle'
+    env = tmp_path / 'rank.env'
+    env.write_text(render_environment(profile_id, rank_values(profile_id),
+                                     {'max_num_seqs': max_num_seqs}), encoding='utf-8')
+    result = plan(profile_id, ['--check', str(env)])
+    assert f'\nMAX_NUM_SEQS={max_num_seqs}\n' in env.read_text(encoding='utf-8')
+    assert result['configuration_status'] == 'unresolved'
+    assert result['serving'] is None
+    assert result['modified_defaults'] is None
+    assert result['catalog_defaults']['serving']['max_num_seqs'] == 8
+    assert result['command'][-2:] == ['--check', str(env)]
+    assert result['execution_status'] == 'not-run'
+
+
 def test_environment_cannot_smuggle_serving_override_or_shell(repository):
     from runtime.common.environment import render_environment
     id = 'deepseek-v41-flash-cycle'

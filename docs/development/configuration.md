@@ -66,6 +66,13 @@ supply the catalog's exact runtime receipt. Compositions requiring managed
 multi-host steps direct the operator to their guide instead of inventing a
 single unsafe start command.
 
+For Bash adapters, the argv plan does not read or validate the supplied ENV
+file. Its `catalog_defaults` field identifies the profile's baseline settings
+and status; `configuration_status` is `unresolved`, and `serving` and
+`modified_defaults` are `null`. This applies even when the ENV uses the defaults.
+Run the adapter's `--check` action to inspect its input. The JSON printed before
+`--execute` remains a plan, not a receipt for the adapter's effective settings.
+
 For the DeepSeek and Qwen Bash adapters, `render-env` renders an actual adapter
 input from the same profile defaults and supported overrides:
 
