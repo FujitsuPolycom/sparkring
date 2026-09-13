@@ -23,9 +23,10 @@ or development history.
   Replace stale claims instead of layering history on top. Put chronology,
   rejected attempts, and retrospectives only in explicitly historical
   documents.
-- Label status explicitly as `implemented`, `qualified`, `research-only`, or
-  `unsupported`. State evidence as conditions, measurement, result, and
-  conclusion—not as a story.
+- State validation status and its scope where a reader needs them. Profile
+  tables use **Validated**, **Development**, and **Experimental**; machine
+  schemas retain the values mapped below. Mark unsupported behavior explicitly.
+  State evidence as conditions, measurement, result, and conclusion—not as a story.
 - Comments explain invariants, intent, and non-obvious constraints, never change
   history. TODOs must name the missing condition and removal criterion.
 - Commits and PRs state the resulting behavior, technical reason, compatibility

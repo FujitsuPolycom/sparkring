@@ -18,7 +18,9 @@ release bytes, locked source-image profile assets (including Markdown),
 image-builder paths, managed-service source dependencies and
 maintained imports. It does not need Docker, a GPU, network access or model files.
 The link and secret scanners inspect tracked files; stage intended additions
-before running them. Prose warnings are advisory.
+before running them. Review prose meaning manually using the
+[writing policy](writing.md); CI does not enforce a prose-quality score or
+banned-word list. Suggestions about wording are advisory.
 
 For implementation changes, run tests beside the affected component. The
 [CI workflow](../../.github/workflows/ci.yml) lists the broader suite and pinned

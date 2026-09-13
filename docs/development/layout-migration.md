@@ -27,7 +27,7 @@ Frozen release inputs are not generated from changing implementation.
 
 ## Contribution reconciliation
 
-Integration base: `f575d421d72c7fbdef3d6165eb6bbe241517fa87` from main.
+Integration base: `506c8db0c09c95a75467e006110242cb5d0bcc7d` from main.
 It includes PRs #259, #262, #265 and #269. The DCP4 evidence describes the
 verified global-KV gather and arithmetic owner mapping; it does not claim a
 separate top-k owner-exchange primitive.
