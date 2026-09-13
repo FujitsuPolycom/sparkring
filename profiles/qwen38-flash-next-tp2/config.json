@@ -99,7 +99,7 @@
     "--mm-processor-cache-gb",
     "0",
     "--limit-mm-per-prompt",
-    "{\"image\":1,\"video\":0}",
+    "{\"image\":3,\"video\":1}",
     "--reasoning-parser",
     "qwen3",
     "--tool-call-parser",
@@ -108,10 +108,12 @@
     "--speculative-config",
     "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\"}",
     "--compilation-config",
-    "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}"
+    "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}",
+    "--media-io-kwargs",
+    "{\"video\":{\"num_frames\":16}}"
   ],
   "qualification": {
-    "scope": "Bounded native-262K profile checks: C16 exact JSON, 257504-token retrieval, native prefix reuse and short performance matrix. No long-duration stability, multimodal or SparkCache qualification.",
+    "scope": "Bounded native-262K text checks and synthetic C1 image/video checks. No general video, concurrent-media or long-duration stability qualification. SparkCache is disabled.",
     "record": "performance/records/qwen38-flash-next/r37-tp2.json"
   }
 }

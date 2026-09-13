@@ -16,7 +16,7 @@
     "inference": "bounded exact-answer checks passed",
     "prefix_cache": "native vLLM prefix reuse passed",
     "performance": "bounded matrix recorded",
-    "multimodal": "not tested",
+    "multimodal": "Three synthetic C1 semantic checks passed; no general media qualification",
     "reported_kv_pool_tokens": 2954103,
     "reported_graph_gib_per_rank": [
       1.0,
@@ -30,7 +30,7 @@
     "near_limit_prompt_tokens": 257504
   },
   "sparkcache": "disabled; prefix results use native vLLM caching",
-  "scope": "Bounded checks use the native 262144-context, 16-sequence, 8192-batch, 24 GiB KV profile. Input-length rows are measurements within that profile, not separate launch presets. No long-duration stability, multimodal correctness or SparkCache qualification.",
+  "scope": "One native 262144/16/8192/24 GiB profile. Text checks used image=1/video=0; subsequent synthetic media checks used image=3/video=1 and 16 configured frames with capacity unchanged. No C16-media, general multimodal, long-video, SparkCache or long-duration stability qualification.",
   "evidence_sha256": {
     "expanded-c16.json": "6d68f7cbbaffada7cfd919e805339ac02de2a6f83a8148604af4d324bda8e3a8",
     "expanded-long-context.json": "77005926b298412c07459746bd4f50cb4d1c9740d238ed2f1586871b286120c0",
@@ -39,7 +39,11 @@
     "native262-prefix-before.prom": "c0746d10509332123ad9602ed63cb05055dd62091479018b81169750fa26cb5f",
     "native262-prefix-after.prom": "ccb1bbf5cef618848e82f1201b9b507753b7aca91311e69d2e2fd2f4b57e37fb",
     "user-matrix-native262.json": "2b0100e03f6179cdcb0e0edae920ead0a48b4d11c2ae766c770c89036b666fdd",
-    "checkpoint-verification.json": "fca0e349143dfd07f183d85770711adda0c2eb7092ebd62b920467c81d4165f3"
+    "checkpoint-verification.json": "fca0e349143dfd07f183d85770711adda0c2eb7092ebd62b920467c81d4165f3",
+    "media-results.json": "044518f04f03558efdfc53496df5c95af34461bfdf1afa0c2f7fc8d3183a8ac0",
+    "check_media.py": "0f8cfa04e795ccf0af2f997a64cc64606235f04ffd2e4b9171e77e0cc57da791",
+    "video-loader-memory-1789338550-r0.jsonl": "ac6b27251eab11b94cae125bbd34f46bcfd97001090101aac8db55df45104f84",
+    "video-loader-memory-1789338560-r1.jsonl": "98665ea79b12787f1c41ad23083bf7984c874570cd619a0a90c536e3d802080e"
   },
   "checks": {
     "short_exact_json_passed": 3,
@@ -118,5 +122,57 @@
         "method": "scout_only"
       }
     }
+  },
+  "text_checks_media_limits": {
+    "image": 1,
+    "video": 0
+  },
+  "media_validation": {
+    "image_limit": 3,
+    "video_limit": 1,
+    "configured_video_frames": 16,
+    "concurrency": 1,
+    "image_dimensions": [
+      256,
+      256
+    ],
+    "video_dimensions": [
+      256,
+      256
+    ],
+    "video_seconds": 6,
+    "color_phase_seconds": 2,
+    "results": [
+      {
+        "test": "images",
+        "http_status": 200,
+        "seconds": 8.447633181000128,
+        "semantic_pass": true,
+        "strict_json_response": true
+      },
+      {
+        "test": "video",
+        "http_status": 200,
+        "seconds": 2.610201173999485,
+        "semantic_pass": true,
+        "strict_json_response": true
+      },
+      {
+        "test": "combined",
+        "http_status": 200,
+        "seconds": 3.3953899839998485,
+        "semantic_pass": true,
+        "strict_json_response": false
+      }
+    ],
+    "sampled_min_available_memory_bytes": [
+      19624988672,
+      23543472128
+    ],
+    "final_sample_available_memory_bytes": [
+      21040164864,
+      23621369856
+    ],
+    "scope": "Three solid-color PNGs, one temporal RGB MP4, and their combined request. Frame sampling is not a visual-token or arbitrary-video memory bound. The combined response used fenced JSON."
   }
 }

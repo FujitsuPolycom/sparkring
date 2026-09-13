@@ -3,7 +3,8 @@
 Status: **Experimental**. The profile fixes **262K context, 16 sequences,
 8,192 batched tokens and 24 GiB KV per rank**. Bounded exact-answer, C16,
 near-limit retrieval and native prefix-cache checks passed at these settings.
-Long-duration stability and multimodal correctness remain unqualified.
+Synthetic C1 image/video checks also passed. General media behavior and
+long-duration stability remain unqualified.
 Resolving the profile starts no model or test.
 
 Use [LIL Qwen3.8-Flash-Next-NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)
@@ -19,7 +20,8 @@ ARM64 image. This is distinct from Qwen3.8-27B EXL3.
 | PLE / vocabulary head | Device placement; BF16 target head |
 | Cache | Native vLLM prefix caching; SparkCache disabled |
 | Runner / convolution layout | V2 / DS |
-| Media | One image, zero videos; media correctness untested |
+| Media | Up to three images and one video per request |
+| Video sampling | 16 configured frames; not a visual-token or memory bound |
 | Context extension | None; no YaRN or HF overrides |
 
 [config.json](config.json) owns the arguments and environment. Inspect catalog
@@ -134,10 +136,28 @@ lengths are benchmark rows, not alternative presets. The 17-second windows and
 single-sample prefill measurements do not establish statistical performance or
 long-duration stability.
 
+The media defaults are `--limit-mm-per-prompt '{"image":3,"video":1}'` and
+`--media-io-kwargs '{"video":{"num_frames":16}}'`. OpenAI-style chat content
+uses `image_url` and `video_url` items; the recorded tests supplied data URLs.
+The following synthetic checks ran at C1 with all capacity settings unchanged:
+
+| Request | Result | Elapsed |
+| --- | --- | ---: |
+| Three 256×256 red/green/blue PNGs | Correct color order | 8.45 s |
+| Six-second 256×256 MP4, two seconds per color | Correct temporal order | 2.61 s |
+| Three images plus that video | Both orders correct; fenced JSON | 3.40 s |
+
+All returned HTTP 200. The combined answer was semantically correct but was
+not strict bare JSON. Sampled minimum host available memory was 18.28/21.93 GiB
+across the two ranks. These results do not qualify long or high-resolution
+videos, arbitrary media, or C16 multimodal requests. Sixteen sampled frames do
+not mean sixteen visual tokens or guarantee bounded memory for every video.
+The earlier text measurements used a one-image/zero-video limit.
+
 Startup reported an estimated 2,954,103-token pool, not proof that sixteen 262K
 requests fit simultaneously. SparkCache and GLM-specific mHC/coalescing remain
-disabled. Multimodal behavior, sustained memory use and longer stability checks
-remain open. The profile preserves native positional encoding without YaRN.
+disabled. Sustained memory use and longer stability checks remain open. The
+profile preserves native positional encoding without YaRN.
 
 Upstream: [LIL TP2/RDMA launcher](https://github.com/local-inference-lab/vllm/blob/c687594b8a8082e18af9fe2f64eb5f9ee442e251/scripts/serve-qwen38-flash-next-nvfp4-tp2-rdma.sh).
 SparkRing uses the generic verified R37 entrypoint, not GLM serving admission.

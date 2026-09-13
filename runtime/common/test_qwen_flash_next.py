@@ -191,3 +191,22 @@ def test_evidence_uses_one_native_context_profile():
     assert evidence['profile_defaults']['kv_cache_memory_bytes'] == 25769803776
     assert evidence['measurements']['profile_max_model_len'] == 262144
     assert adapter.CONFIG_NAMES == ('config.json',)
+
+
+def test_media_defaults_keep_fixed_capacity():
+    for rank in (0, 1):
+        command = plan(rank)
+        assert json.loads(command[command.index('--limit-mm-per-prompt') + 1]) == {'image': 3, 'video': 1}
+        assert json.loads(command[command.index('--media-io-kwargs') + 1]) == {'video': {'num_frames': 16}}
+        for flag, value in (('--max-model-len', '262144'), ('--max-num-seqs', '16'),
+                            ('--max-num-batched-tokens', '8192'), ('--kv-cache-memory-bytes', '25769803776')):
+            assert command[command.index(flag) + 1] == value
+
+
+def test_media_evidence_does_not_claim_strict_combined_json():
+    path = Path(__file__).resolve().parents[2] / 'performance/records/qwen38-flash-next/r37-tp2.json'
+    evidence = json.loads(path.read_text())['media_validation']
+    assert evidence['concurrency'] == 1
+    assert all(row['semantic_pass'] and row['http_status'] == 200 for row in evidence['results'])
+    combined = next(row for row in evidence['results'] if row['test'] == 'combined')
+    assert combined['strict_json_response'] is False
