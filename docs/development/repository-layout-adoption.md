@@ -153,7 +153,7 @@ PRs #258, #266, #267 and #270 remain open at the upstream recheck.
 The 2026-09-12 recheck found those same head revisions and main at
 `a48c862d9deba66c3cc1462095874a8ad4718811`. Its only change after the
 integration base is the separately approved README notice in PR #272.
-The refactor branch remains local. Remove that temporary restructuring notice
+The refactor branch is published as `refactor/repository-layout`. Remove the temporary restructuring notice
 when adopting the completed layout; it is not part of the replacement README.
 
 Main commit `506c8db0c09c95a75467e006110242cb5d0bcc7d` adds merged
@@ -171,6 +171,29 @@ PR heads immediately before adoption; preserve contributor credit in normal
 Git history.
 
 ## Review and adoption sequence
+
+### R35 image integration
+
+The refactor includes the [R35 image recipe](../../runtime/images/sparkring-r35/README.md)
+and [explicit local-image launch interface](../operations/r35-local-launch.md).
+It retains the ARM64 CUDA 13.3/PyTorch 2.13 foundation, source-bound SparkCache,
+direct-doorbell SIRCL, dual-domain NCCL, mHC and continuation-prefill coalescing.
+Named managed installations use separate paths and units; existing deployments
+are not overwritten.
+
+[TP4 decode/prefill measurements](../../performance/records/glm53-flash/r35-tp4-direct-performance.md)
+and [bounded TP2 results](../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
+identify the tested image and conditions. Source commit
+`3dbb25d702a134929f04064254e8f78d333bb537` passed 5,135 tests in local Linux,
+with 29 hardware/optional-input skips, using the CI-pinned CPU Torch and the
+verified PowerShell/LIL tools. Maintained-tree lint and preservation checks passed.
+
+R35 remains **Experimental**: a native TP4 serving stall is unresolved, and
+long-duration stability qualification is deferred. Performance results do not
+establish stability. Branch publication distributes recipes, code and evidence;
+container-registry publication and a reviewed main merge are separate actions.
+
+### Repository adoption
 
 1. Review the profile catalog, configuration/launch contracts, migration map and
    retained-source exceptions. Compare default plans and generated legacy inputs.
