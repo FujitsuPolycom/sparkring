@@ -125,6 +125,9 @@ def main() -> None:
             "TP4_NUMERICAL "
             + json.dumps(
                 {
+                    "rank": rank,
+                    "rank_scope": "local_rank",
+                    "world_size": WORLD_SIZE,
                     "iterations": iterations,
                     "elements": compared,
                     "candidate_mae": candidate_absolute_sum / compared,

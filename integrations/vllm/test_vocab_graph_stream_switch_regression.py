@@ -1,9 +1,8 @@
 """Regression seam for vocabulary graph startup stream switching.
 
-This intentionally lives outside the main adapter test module so the startup
-failure has one small, fast, four-rank-shaped reproducer.  It exercises the
-real adapter dispatch while replacing only CUDA tensors and the native
-transport handle.
+Exercises adapter dispatch with four simulated ranks. CUDA tensors, native
+transport, framework groups, preflight, auditing and status reporting are
+replaced by CPU fakes; this does not qualify CUDA or distributed execution.
 """
 
 from __future__ import annotations
@@ -160,11 +159,12 @@ class VocabGraphStreamSwitchRegressionTest(unittest.TestCase):
             "SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1": "10111",
         }
 
-        backend_module._installed = False
-        backend_module._vocab_graph_sessions.clear()
-        backend_module._graph_event_counts.clear()
-        _NativeSession.created.clear()
+        created_sessions = []
         with (
+            patch.object(backend_module, "_installed", False),
+            patch.object(backend_module, "_vocab_graph_sessions", {}),
+            patch.object(backend_module, "_graph_event_counts", {}),
+            patch.object(_NativeSession, "created", created_sessions),
             patch.dict(sys.modules, modules),
             patch.dict(os.environ, environment, clear=True),
             patch.object(backend_module, "_NativeVocabSession", _NativeSession),
@@ -220,9 +220,9 @@ class VocabGraphStreamSwitchRegressionTest(unittest.TestCase):
                 )
                 self.assertEqual(state._graph_session.eager_calls, [])
 
-        self.assertEqual(len(_NativeSession.created), 8)
+        self.assertEqual(len(created_sessions), 8)
         self.assertEqual(
-            sum(item.graph_only for item in _NativeSession.created), 4
+            sum(item.graph_only for item in created_sessions), 4
         )
         self.assertEqual(audit_events, [])
 
