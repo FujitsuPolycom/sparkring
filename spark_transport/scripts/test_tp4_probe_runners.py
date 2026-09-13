@@ -19,7 +19,7 @@ import pytest
 
 
 SCRIPTS = Path(__file__).resolve().parent
-POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
+POWERSHELL = shutil.which("pwsh")
 RUNNERS = (
     "run_tp4_probe.ps1",
     "run_tp4_tensor_probe.ps1",
@@ -38,6 +38,21 @@ CPUSET_RUNNERS = (
 def _powershell(*arguments: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     if POWERSHELL is None:
         pytest.skip("PowerShell is unavailable")
+    arguments = list(arguments)
+    if '-Command' in arguments:
+        index = arguments.index('-Command') + 1
+        program = arguments[index]
+        if 'function global:ssh' in program:
+            executor = r'''
+$probeTestExecutor = {
+    param($program,$commandArguments,$timeout)
+    $output = @(& $program @commandArguments)
+    [pscustomobject]@{ ExitCode=$global:LASTEXITCODE; TimedOut=($global:LASTEXITCODE -eq 124);
+        StandardOutput=($output -join "`n"); StandardError="" }
+}
+'''
+            arguments[index] = executor + program.replace(
+                ' -Image ', ' -RemoteExecutor $probeTestExecutor -Image ')
     return subprocess.run(
         [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", *arguments],
         check=False, capture_output=True, encoding="utf-8", env=env, timeout=60,
@@ -212,7 +227,8 @@ try { & 'SCRIPT' -Image fake-image MAPPING; exit 2 } catch { Write-Host "EXPECTE
     "run_tp4_numerical_audit.ps1", "run_tp4_vocab_graph_probe.ps1",
 ])
 @pytest.mark.parametrize("embedded_empty", [False, True])
-def test_filtered_ranks_and_lost_launch_reply_cleanup(name, embedded_empty):
+@pytest.mark.parametrize("failure_code", [255, 124])
+def test_filtered_ranks_and_lost_launch_reply_cleanup(name, embedded_empty, failure_code):
     command = r"""
 function global:ssh {
     $cmd=$args[-1]
@@ -229,12 +245,15 @@ try {
     exit 2
 } catch { Write-Host "EXPECTED=$($_.Exception.Message)" }
 """.replace("SCRIPT", (SCRIPTS / name).as_posix())
+    command = command.replace('LASTEXITCODE=255', f'LASTEXITCODE={failure_code}')
     if not embedded_empty:
         command = command.replace(",''", "")
     if name == "run_tp4_vocab_graph_probe.ps1":
         command = command.replace("-Image fake-image", "-Image fake-image -DevicePreset documented-cycle")
     result = _powershell("-Command", command, env=os.environ.copy())
     assert result.returncode == 0, result.stdout + result.stderr
+    if failure_code == 124:
+        assert 'operation deadline' in result.stderr
     lines = result.stdout.splitlines()
     calls = [
         (line.removeprefix("COMMAND="), lines[index + 1].removeprefix("TARGET="))

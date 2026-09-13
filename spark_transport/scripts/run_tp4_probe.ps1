@@ -25,11 +25,15 @@ param(
     [string]$DevicePreset,
     [string[]]$Device0 = @(),
     [string[]]$Device1 = @(),
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = @()
 
@@ -108,7 +112,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -119,7 +123,7 @@ function Get-ContainerState {
     )
 
     $name = "spark-tp4-$runIdentity-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
         return "missing"
@@ -184,12 +188,12 @@ try {
         $name = "spark-tp4-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         Write-Output "rank=$($node.Rank) state=$state"
-        & ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1 | grep -E '^(TP4_BF16|PHASE)' || true"
         if ($state -ne "exited:0") {
             $failed = $true
             Write-Output "rank=$($node.Rank) failure_log:"
-            & ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+            Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
                 "docker logs --tail 40 $name 2>&1"
         }
     }

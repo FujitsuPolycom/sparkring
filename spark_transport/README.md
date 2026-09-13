@@ -128,6 +128,14 @@ performance; those require the profile's
 
 ### Four-rank probe device mapping
 
+The basic, tensor, numerical, Q1-graph, and vocabulary probe controllers require
+PowerShell 7. Their SSH/SCP operations have a 60-second deadline, adjustable
+with `-RemoteTimeoutSeconds`, followed by
+at most five seconds for local process cleanup. This is separate from the
+probe's `-WatchdogSeconds`. A timed-out launch fails the run and triggers
+cleanup attempts for its invocation-specific container names; losing the
+reply does not establish that remote creation failed.
+
 The basic, tensor, vocabulary, and vocabulary-graph probe runners in `scripts/` require an
 explicit RDMA device mapping. For the [documented direct-cable cycle](../docs/operations/bootstrap.md#4-cable-and-initialize-the-ring),
 pass `-DevicePreset documented-cycle`:

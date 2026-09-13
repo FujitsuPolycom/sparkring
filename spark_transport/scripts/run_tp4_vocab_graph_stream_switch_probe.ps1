@@ -41,11 +41,15 @@ param(
     [string[]]$Device0 = @(),
     [string[]]$Device1 = @(),
 
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = @()
 $ownedStages = @()
@@ -183,7 +187,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -194,7 +198,7 @@ function Get-ContainerState {
     )
 
     $name = "spark-vocab-stream-switch-$runIdentity-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" `
         2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -208,7 +212,7 @@ $timedOut = $false
 try {
     $artifactHashes = @()
     foreach ($node in $nodes) {
-        $runningModel = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
+        $runningModel = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 `
             $node.Target `
             "docker ps --filter name=^/glm52-trace$ --format '{{.Names}}'")
         if ($LASTEXITCODE -ne 0) {
@@ -224,17 +228,17 @@ try {
             throw "failed to create stage directory on rank $($node.Rank)"
         }
         $ownedStages += $node
-        & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
+        Invoke-ProbeScp -q -o BatchMode=yes -o ConnectTimeout=8 `
             $probeSource "$($node.Target):$remoteStage/probe.py"
         if ($LASTEXITCODE -ne 0) {
             throw "failed to stage probe on rank $($node.Rank)"
         }
-        & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
+        Invoke-ProbeScp -q -o BatchMode=yes -o ConnectTimeout=8 `
             $adapterSource "$($node.Target):$remoteStage/adapter.py"
         if ($LASTEXITCODE -ne 0) {
             throw "failed to stage adapter on rank $($node.Rank)"
         }
-        & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
+        Invoke-ProbeScp -q -o BatchMode=yes -o ConnectTimeout=8 `
             $queryContractSource `
             "$($node.Target):$remoteStage/spark_tp4_query_contract.py"
         if ($LASTEXITCODE -ne 0) {
@@ -245,7 +249,7 @@ try {
             "'$remoteStage/adapter.py' " +
             "'$remoteStage/spark_tp4_query_contract.py' $(ConvertTo-PosixShellArgument $Library)"
         )
-        $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
+        $hash = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 `
             $node.Target $hashCommand)
         if ($LASTEXITCODE -ne 0) {
             throw "rank $($node.Rank) is missing a staged probe artifact"
@@ -339,7 +343,7 @@ try {
     foreach ($node in $nodes) {
         $name = "spark-vocab-stream-switch-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
-        $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
+        $log = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 `
             $node.Target "docker logs $name 2>&1")
         $result = @($log | Where-Object {
             $_ -like "TP4_VOCAB_STREAM_SWITCH*"

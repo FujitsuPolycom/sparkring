@@ -20,6 +20,12 @@ def test_probe_container_ownership(script, scenario):
     if shell is None:
         pytest.skip("PowerShell is unavailable")
     program = r'''
+$probeTestExecutor = {
+    param($program,$commandArguments,$timeout)
+    $output = @(& $program @commandArguments)
+    [pscustomobject]@{ ExitCode=$global:LASTEXITCODE; TimedOut=$false;
+        StandardOutput=($output -join "`n"); StandardError="" }
+}
 $commands = [System.Collections.Generic.List[string]]::new()
 function global:ssh {
     $line = $args -join ' '
@@ -55,7 +61,7 @@ foreach ($run in 1..2) {
         if ($env:PROBE_SCRIPT -like '*vocab_graph_probe.ps1') {
             $mapping.DevicePreset = 'documented-cycle'
         }
-        & $env:PROBE_SCRIPT -Image fixture-image -ModelContainer custom.serving `
+        & $env:PROBE_SCRIPT -RemoteExecutor $probeTestExecutor -Image fixture-image -ModelContainer custom.serving `
             -Targets node0,node1,node2,node3 -RankHosts 192.0.2.1,192.0.2.2,192.0.2.3,192.0.2.4 `
             -KeepContainers:($env:PROBE_SCENARIO -eq 'keep') @mapping
     } catch { $failures += $_.Exception.Message }

@@ -33,11 +33,15 @@ param(
     [string]$DevicePreset,
     [string[]]$Device0 = @(),
     [string[]]$Device1 = @(),
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = @()
 
@@ -143,7 +147,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    $output = & ssh -o BatchMode=yes -o ConnectTimeout=10 `
+    $output = Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=10 `
         $Node.Target $Command
     $exitCode = $LASTEXITCODE
     if ($output) {
@@ -159,7 +163,7 @@ function Get-ContainerState {
     )
 
     $name = "spark-tp4-vocab-$runIdentity-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=10 $Node.Target `
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=10 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" `
         2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -234,7 +238,7 @@ try {
     foreach ($node in $nodes) {
         $name = "spark-tp4-vocab-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
-        $log = (& ssh -o BatchMode=yes -o ConnectTimeout=10 `
+        $log = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=10 `
             $node.Target "docker logs $name 2>&1")
         $result = @($log | Where-Object {
             $_ -like "TP4_VOCAB_ALLGATHER*"

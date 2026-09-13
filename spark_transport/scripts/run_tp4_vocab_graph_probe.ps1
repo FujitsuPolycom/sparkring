@@ -40,11 +40,15 @@ param(
     # Named serving-container guard; this does not inventory other GPU users.
     [ValidatePattern("^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")]
     [string]$ModelContainer = "glm52-trace",
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
 $runIdentity = [Guid]::NewGuid().ToString("N")
 $ownedNodes = [System.Collections.Generic.List[object]]::new()
 
@@ -142,7 +146,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -153,7 +157,7 @@ function Get-ContainerState {
     )
 
     $name = "spark-tp4-vocab-graph-$runIdentity-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
         return "missing"
@@ -163,7 +167,7 @@ function Get-ContainerState {
 
 $artifactHashes = @()
 foreach ($node in $nodes) {
-    $runningModel = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+    $runningModel = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
         "docker ps --filter name=^/${ModelContainer}$ --format '{{.Names}}'")
     if ($LASTEXITCODE -ne 0) {
         throw "failed to inspect running containers on rank $($node.Rank)"
@@ -172,7 +176,7 @@ foreach ($node in $nodes) {
         throw "rank $($node.Rank) still runs $ModelContainer; stop that serving container explicitly before the vocabulary graph probe"
     }
 
-    $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+    $hash = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
         "test -x $(ConvertTo-PosixShellArgument $ProbeBinary) && test -f $(ConvertTo-PosixShellArgument $Library) && sha256sum $(ConvertTo-PosixShellArgument $ProbeBinary) $(ConvertTo-PosixShellArgument $Library)")
     if ($LASTEXITCODE -ne 0) {
         throw "rank $($node.Rank) is missing a staged vocabulary graph artifact"
@@ -252,7 +256,7 @@ try {
     foreach ($node in $nodes) {
         $name = "spark-tp4-vocab-graph-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
-        $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        $log = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1")
         $result = @($log | Where-Object { $_ -like "TP4_VOCAB_GRAPH*" })
         Write-Output "rank=$($node.Rank) state=$state"
