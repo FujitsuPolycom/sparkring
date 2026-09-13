@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 from runtime.common import candidate  # noqa: E402
 
 CONFIG_ROOT = ROOT / "profiles/qwen38-flash-next-tp2"
-CONFIG_NAMES = ("config.json", "config-64k-c1.json")
+CONFIG_NAMES = ("config.json",)
 
 
 def read(path):

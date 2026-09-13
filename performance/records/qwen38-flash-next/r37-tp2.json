@@ -13,9 +13,9 @@
   },
   "default_validation": {
     "startup": "passed",
-    "inference": "deferred",
-    "prefix_cache": "deferred",
-    "performance": "deferred",
+    "inference": "bounded exact-answer checks passed",
+    "prefix_cache": "native vLLM prefix reuse passed",
+    "performance": "bounded matrix recorded",
     "multimodal": "not tested",
     "reported_kv_pool_tokens": 2954103,
     "reported_graph_gib_per_rank": [
@@ -25,59 +25,98 @@
     "reported_available_memory_mib": [
       20230,
       22579
-    ]
-  },
-  "baseline": {
-    "max_model_len": 65536,
-    "max_num_seqs": 1,
-    "max_num_batched_tokens": 2048,
-    "kv_cache_memory_bytes_per_rank": 1610612736,
-    "loader": "b12x",
-    "mtp_tokens": 3,
-    "exact_json_requests_passed": 3,
-    "native_prefix_reused_tokens": 7871,
-    "prefix_request_seconds": [
-      3.813740865999989,
-      0.9310975839998719
     ],
-    "decode_seconds_per_cell": 15.0,
-    "decode_c1_tokens_per_second": {
-      "0": {
-        "1": 46.83928998381794
-      },
-      "8192": {
-        "1": 47.14321007970797
-      }
-    },
-    "prefill_8k_scout": {
-      "ttft_seconds": 2.901,
-      "prefill_seconds": 2.901,
-      "tok_per_sec": 2825.0,
-      "client_ttft_seconds": 2.901,
-      "client_tok_per_sec": 2825.0,
-      "prompt_tokens": 8195,
-      "samples": 1,
-      "method": "integrated_scout",
-      "server_validation": {
-        "method": "prometheus:kv_computed",
-        "tok_per_sec": 2845.0,
-        "prefill_seconds": 2.88,
-        "prompt_tokens": 8195,
-        "request_prompt_tokens": 0,
-        "cached_tokens": 0,
-        "token_source": "",
-        "samples": 1,
-        "invalid_reason": ""
-      },
-      "hardware_summary": {}
-    }
+    "c16_exact_json_passed": 16,
+    "near_limit_prompt_tokens": 257504
   },
   "sparkcache": "disabled; prefix results use native vLLM caching",
-  "scope": "Reported startup-only native-262K profile and separately measured 64K/C1 baseline. No evidence transfer to expanded concurrency, long context, multimodal requests or long-duration stability.",
+  "scope": "Bounded checks use the native 262144-context, 16-sequence, 8192-batch, 24 GiB KV profile. Input-length rows are measurements within that profile, not separate launch presets. No long-duration stability, multimodal correctness or SparkCache qualification.",
   "evidence_sha256": {
-    "NATIVE_262K_IDLE.md": "d9a7d0544b7d8943e49891c3ff03cebfe446a5af2303f43587e44b9a6543a096",
-    "bounded-performance.json": "a6a2150a645f4a5344f260336f73204469886a9ebf3e54dafe45ebb1e9529868",
-    "correctness-prefix.json": "25f5aae7f260d04ae526df18fdf9287131f87932bcd292dee9a20aebbcd42d10",
+    "expanded-c16.json": "6d68f7cbbaffada7cfd919e805339ac02de2a6f83a8148604af4d324bda8e3a8",
+    "expanded-long-context.json": "77005926b298412c07459746bd4f50cb4d1c9740d238ed2f1586871b286120c0",
+    "check_qwen_expanded.py": "e7449168f3b2c7f7cd46f5ee08139f54e66bd79a4ffac39d0bbabe5ede54b7fa",
+    "native262-correctness-prefix.json": "ee962b3af6a3871d5f63552655a5b2520fb8249e7b56ca7e17097b04b1681c07",
+    "native262-prefix-before.prom": "c0746d10509332123ad9602ed63cb05055dd62091479018b81169750fa26cb5f",
+    "native262-prefix-after.prom": "ccb1bbf5cef618848e82f1201b9b507753b7aca91311e69d2e2fd2f4b57e37fb",
+    "user-matrix-native262.json": "2b0100e03f6179cdcb0e0edae920ead0a48b4d11c2ae766c770c89036b666fdd",
     "checkpoint-verification.json": "fca0e349143dfd07f183d85770711adda0c2eb7092ebd62b920467c81d4165f3"
+  },
+  "checks": {
+    "short_exact_json_passed": 3,
+    "c16_exact_json_passed": 16,
+    "long_context": {
+      "prompt_tokens": 257504,
+      "exact_keys_passed": 3,
+      "seconds": 127.4378592539997
+    },
+    "native_prefix_reused_tokens": 7871
+  },
+  "measurements": {
+    "profile_max_model_len": 262144,
+    "temperature": 1.0,
+    "seconds_per_decode_cell": 17.0,
+    "decode_matrix_tokens_per_second": {
+      "8192": {
+        "1": 45.84831162713124,
+        "2": 80.15807479048219,
+        "4": 103.6470588235294,
+        "8": 176.519076778178
+      },
+      "16384": {
+        "1": 45.56962025304587,
+        "2": 74.19411868709284,
+        "4": 125.52941176470588,
+        "8": 178.37550875972718
+      },
+      "32768": {
+        "1": 47.51530852568034,
+        "2": 77.89684408856888,
+        "4": 126.29033209476715,
+        "8": 188.46131180406903
+      },
+      "65536": {
+        "1": 42.05882352941177,
+        "2": 77.53900500447944,
+        "4": 118.45746246697998,
+        "8": 175.40037682528094
+      }
+    },
+    "prefill": {
+      "8192": {
+        "tok_per_sec": 3140.0,
+        "ttft_seconds": 2.609,
+        "prompt_tokens": 8192,
+        "samples": 1,
+        "method": "integrated_scout"
+      },
+      "16384": {
+        "tok_per_sec": 3121.0,
+        "ttft_seconds": 5.25,
+        "prompt_tokens": 16384,
+        "samples": 1,
+        "method": "integrated_scout"
+      },
+      "32768": {
+        "tok_per_sec": 3022.0,
+        "ttft_seconds": 10.844,
+        "prompt_tokens": 32768,
+        "samples": 1,
+        "method": "integrated_scout"
+      },
+      "65536": {
+        "tok_per_sec": 2838.0,
+        "ttft_seconds": 23.093,
+        "prompt_tokens": 65536,
+        "samples": 1,
+        "method": "integrated_scout"
+      },
+      "131072": {
+        "tok_per_sec": 2524.0,
+        "ttft_seconds": 51.922,
+        "prompt_tokens": 131072,
+        "samples": 1,
+        "method": "scout_only"
+      }
+    }
   }
 }

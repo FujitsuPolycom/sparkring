@@ -1,10 +1,10 @@
 # Qwen3.8-Flash-Next NVFP4 on two Sparks
 
 Status: **Experimental**. The profile fixes **262K context, 16 sequences,
-8,192 batched tokens and 24 GiB KV per rank**. Both ranks completed startup;
-inference, C16 and full-context tests at these settings are deferred. The
-separate 64K/C1 baseline does not qualify these defaults. Resolving the profile
-starts no model or test.
+8,192 batched tokens and 24 GiB KV per rank**. Bounded exact-answer, C16,
+near-limit retrieval and native prefix-cache checks passed at these settings.
+Long-duration stability and multimodal correctness remain unqualified.
+Resolving the profile starts no model or test.
 
 Use [LIL Qwen3.8-Flash-Next-NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)
 revision `ada4da32a583a78aa47299f45a70603c950490b8` with the published R37
@@ -117,27 +117,27 @@ curl --fail "http://${MASTER_ADDR}:8000/v1/models"
 ```
 
 The API has no configured authentication; use a trusted network or authenticated
-gateway. Health does not prove inference or capacity. Tests at the primary
-settings remain deferred; this preparation does not authorize running them.
+gateway. Health alone does not prove inference or capacity; retain the validation
+results for the actual image, profile and workload.
 
 ## Evidence and remaining checks
 
 The [evidence record](../../performance/records/qwen38-flash-next/r37-tp2.json)
-separates startup-only defaults from the [64K/C1 baseline](config-64k-c1.json).
+covers this single launch profile. Sixteen concurrent exact-JSON requests passed;
+a 257,504-token prompt returned all three requested keys correctly. Three short
+exact-JSON checks and native prefix reuse also passed, with 7,871 cached tokens
+observed on repeat.
+
+The short performance matrix contains C1/C2/C4/C8 measurements at 8K, 16K, 32K
+and 64K input lengths, all under the same 262K launch configuration. These input
+lengths are benchmark rows, not alternative presets. The 17-second windows and
+single-sample prefill measurements do not establish statistical performance or
+long-duration stability.
+
 Startup reported an estimated 2,954,103-token pool, not proof that sixteen 262K
-requests fit simultaneously.
-
-The baseline used 64K context, one sequence, 2,048 batched tokens and 1.5 GiB KV.
-It passed three exact JSON requests and native prefix-cache reuse. Short C1
-decode measured 46.84 tokens/s without added context and 47.14 at 8K; one
-integrated 8K prefill scout measured 2,825 tokens/s. These are bounded observations,
-not throughput claims for the primary profile. SparkCache and GLM-specific mHC
-and coalescing remain disabled.
-
-Remaining primary-profile checks: exact answers, native prefix reuse, C16
-completion, near-limit correctness, multimodal behavior and sustained memory
-use. The rejected 384K YaRN trial exceeded QSA's internal native limit; this
-profile preserves checkpoint positional-encoding defaults.
+requests fit simultaneously. SparkCache and GLM-specific mHC/coalescing remain
+disabled. Multimodal behavior, sustained memory use and longer stability checks
+remain open. The profile preserves native positional encoding without YaRN.
 
 Upstream: [LIL TP2/RDMA launcher](https://github.com/local-inference-lab/vllm/blob/c687594b8a8082e18af9fe2f64eb5f9ee442e251/scripts/serve-qwen38-flash-next-nvfp4-tp2-rdma.sh).
 SparkRing uses the generic verified R37 entrypoint, not GLM serving admission.

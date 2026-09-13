@@ -10,7 +10,7 @@
   },
   "release": "runtime/releases/qwen38-flash-next-r37/release.json",
   "guide": "profiles/qwen38-flash-next-tp2/README.md",
-  "evidence_scope": "262K/C16 completed startup only. Separate 64K/C1 tests do not qualify expanded concurrency, full context, multimodal requests or SparkCache.",
+  "evidence_scope": "Bounded native-262K profile checks: C16 exact JSON, 257504-token retrieval, native prefix reuse and short performance matrix. No long-duration stability, multimodal or SparkCache qualification.",
   "overrides": [],
   "launcher": {
     "kind": "python",

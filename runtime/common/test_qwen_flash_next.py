@@ -182,10 +182,12 @@ def test_catalog_exposes_native_capacity_and_no_overrides():
     assert all(resolved['serving'][key] == value for key, value in expected.items())
 
 
-def test_evidence_does_not_transfer_baseline_qualification():
+def test_evidence_uses_one_native_context_profile():
     root = Path(__file__).resolve().parents[2]
     evidence = json.loads((root / 'performance/records/qwen38-flash-next/r37-tp2.json').read_text())
-    assert evidence['default_validation']['inference'] == 'deferred'
-    assert evidence['baseline']['max_model_len'] == 65536
-    assert evidence['baseline']['kv_cache_memory_bytes_per_rank'] == 1610612736
+    assert 'baseline' not in evidence
+    assert evidence['checks']['c16_exact_json_passed'] == 16
+    assert evidence['checks']['long_context']['prompt_tokens'] == 257504
     assert evidence['profile_defaults']['kv_cache_memory_bytes'] == 25769803776
+    assert evidence['measurements']['profile_max_model_len'] == 262144
+    assert adapter.CONFIG_NAMES == ('config.json',)
