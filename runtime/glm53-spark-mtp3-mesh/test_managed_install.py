@@ -42,6 +42,8 @@ for selected in release_contract['profiles'].values():
     verifier.parse_template(root / 'runtime/sparkring/jovian-r33/profiles' / selected['template'])
 import json
 module.r35.validate_receipt(json.loads((root/'r35-receipt.json').read_text()))
+from runtime.common import managed_deployment
+assert managed_deployment.layout('r35-trial')['config_dir']=='/etc/sparkring/deployments/r35-trial'
 monitor_path = root / 'runtime/glm53-spark-mtp3-mesh/managed_liveness.py'
 spec = importlib.util.spec_from_file_location('installed_monitor', monitor_path)
 monitor = importlib.util.module_from_spec(spec)

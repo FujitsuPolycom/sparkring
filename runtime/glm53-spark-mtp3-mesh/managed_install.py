@@ -26,6 +26,7 @@ SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json',
     'spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c',
     'runtime/common/r35.py',
+    'runtime/common/managed_deployment.py',
     'runtime/images/sparkring-r35/source-lock.json',
     'runtime/images/sparkring-r35/entrypoint.py',
     'runtime/images/sparkring-r35/verify_image.py',
@@ -359,7 +360,8 @@ def managed_image_attestation(receipt):
     }
 
 
-def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
+def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, deployment_name=None):
+    selected=managed_units.service.managed_deployment.layout(deployment_name)
     if rank not in range(4) or not re.fullmatch('[0-9a-f]{32}', epoch):
         raise ValueError('Rank and common 128-bit hexadecimal epoch are required')
     if not 1024 <= health_port <= 65535:
@@ -401,17 +403,82 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
         raise ValueError('Extracted helper does not expose managed lifetime')
     bundle = Path(site['bundle_root'])
     profile.verify_bundle(bundle, receipt)
-    config = {'schema': managed_units.service.PROTOCOL, 'site_path': str(CONFIG_DIR / 'site.json'),
-              'rank': rank, 'key_file': str(CONFIG_DIR / 'health.key'), 'epoch': epoch,
-              'health_port': health_port, 'state_dir': '/run/sparkring-mesh',
+    config = {'schema': managed_units.service.PROTOCOL, 'site_path': selected['config_dir']+'/site.json',
+              'rank': rank, 'key_file': selected['config_dir']+'/health.key', 'epoch': epoch,
+              'health_port': health_port, 'state_dir': selected['state_dir'],
               'container_id': container['Id'], 'container_image': receipt['image_id']}
-    units = managed_units.unit_text(str(CODE_DIR), str(CONFIG_DIR), container['Id'],
-        host_liveness=managed_units.managed_liveness.requires_host_monitor(container, rank))
-    return {'schema': 'sparkring-managed-install/v1', 'rank': rank, 'config': config,
+    host_liveness=managed_units.managed_liveness.requires_host_monitor(container,rank)
+    if deployment_name is not None:
+        config['deployment_name']=deployment_name
+    units = managed_units.unit_text(selected['code_dir'], selected['config_dir'], container['Id'],
+        host_liveness=host_liveness,deployment_name=deployment_name)
+    result = {'schema': 'sparkring-managed-install/v1', 'rank': rank, 'config': config,
             'units': units, 'source_files': SOURCE_FILES, 'source_hashes': source_hashes(source_payloads()),
             'source_root': str(ROOT),
-            'code_dir': str(CODE_DIR), 'config_dir': str(CONFIG_DIR), 'unit_dir': str(UNIT_DIR),
+            'code_dir': selected['code_dir'], 'config_dir': selected['config_dir'], 'unit_dir': selected['unit_dir'],
             'key_source': str(key_file), 'image': receipt['image_id'], 'applied': False}
+    if deployment_name is not None:
+        result.update(deployment_name=deployment_name,host_liveness=host_liveness)
+    return result
+
+
+def validate_plan_layout(plan):
+    """Regenerate owned paths and unit text before accepting installation writes."""
+    name=plan.get('deployment_name')
+    selected=managed_units.service.managed_deployment.layout(name)
+    if any(plan.get(key)!=selected[key] for key in ('code_dir','config_dir','unit_dir')):
+        raise ValueError('Installation paths differ from the derived deployment layout')
+    config=plan['config']
+    if (plan.get('schema')!='sparkring-managed-install/v1' or config.get('schema')!=managed_units.service.PROTOCOL
+            or type(config.get('rank')) is not int or config['rank'] not in range(4)
+            or plan.get('rank')!=config['rank'] or plan.get('image')!=config.get('container_image')
+            or not re.fullmatch('sha256:[0-9a-f]{64}',config.get('container_image',''))
+            or not re.fullmatch('[0-9a-f]{32}',config.get('epoch',''))
+            or type(config.get('health_port')) is not int or not 1024<=config['health_port']<=65535):
+        raise ValueError('Installation identity differs from the managed deployment contract')
+    if (config.get('deployment_name')!=name or config.get('state_dir')!=selected['state_dir']
+            or config.get('site_path')!=selected['config_dir']+'/site.json'
+            or config.get('key_file')!=selected['config_dir']+'/health.key'):
+        raise ValueError('Installation config differs from the derived deployment layout')
+    host_liveness=plan.get('host_liveness',selected['liveness_unit'] in plan['units'])
+    if type(host_liveness) is not bool or (name is not None and 'host_liveness' not in plan):
+        raise ValueError('Host liveness selection must be boolean')
+    expected=managed_units.unit_text(selected['code_dir'],selected['config_dir'],config['container_id'],
+        host_liveness=host_liveness,deployment_name=name)
+    if plan['units']!=expected:
+        raise ValueError('Installation units differ from canonical deployment rendering')
+    return selected
+
+
+def validate_named_container(plan, *, run=subprocess.run):
+    """Recheck the immutable stopped container before installing named units."""
+    if plan.get('deployment_name') is None:
+        return
+    config=plan['config']
+    result=run(['docker','inspect',config['container_id']],check=True,capture_output=True,text=True,timeout=10)
+    container=json.loads(result.stdout)[0]
+    if (container.get('Id')!=config['container_id'] or container.get('Image')!=config['container_image']
+            or container.get('State',{}).get('Running') is not False):
+        raise ValueError('Named installation requires the pinned stopped container')
+    expected=managed_units.managed_liveness.requires_host_monitor(container,config['rank'])
+    env=managed_units.managed_liveness.environment(container)
+    if env.get('SPARKRING_NODE_RANK')!=str(config['rank']):
+        raise ValueError('Named installation rank differs from the pinned container')
+    if plan['host_liveness']!=expected:
+        raise ValueError('Named observer selection differs from the pinned container')
+
+
+def validate_named_ancestors(selected):
+    """Refuse existing symlinks or non-directory ancestors before named writes."""
+    for key in ('code_dir','config_dir','state_dir','unit_dir'):
+        target=Path(selected[key])
+        for path in (*reversed(target.parents),target):
+            try:
+                mode=path.lstat().st_mode
+            except FileNotFoundError:
+                continue
+            if not stat.S_ISDIR(mode):
+                raise ValueError('Named deployment paths require nonsymlink directory ancestors')
 
 
 def apply(plan, launch, key_file):
@@ -421,29 +488,34 @@ def apply(plan, launch, key_file):
     payloads = source_payloads()
     if tuple(plan['source_files']) != SOURCE_FILES or source_hashes(payloads) != plan['source_hashes']:
         raise ValueError('Managed source differs from the reviewed installation plan')
-    targets = [CODE_DIR, CONFIG_DIR, *[UNIT_DIR / name for name in plan['units']]]
+    selected=validate_plan_layout(plan)
+    if plan.get('deployment_name') is not None:
+        validate_named_ancestors(selected)
+    validate_named_container(plan)
+    code_dir,config_dir,unit_dir=(Path(selected[key]) for key in ('code_dir','config_dir','unit_dir'))
+    targets = [code_dir, config_dir, *[unit_dir / name for name in plan['units']]]
     if any(path.exists() or path.is_symlink() for path in targets):
         raise ValueError('Installation target exists; preserve and remove only a reviewed inactive deployment before reinstalling')
-    installed_hashes = install_code(payloads, CODE_DIR)
-    CONFIG_DIR.mkdir(mode=0o700, parents=True)
+    installed_hashes = install_code(payloads, code_dir)
+    config_dir.mkdir(mode=0o700, parents=True)
     for name in ('site.json', 'fabric.json'):
-        shutil.copyfile(launch / name, CONFIG_DIR / name)
-        (CONFIG_DIR / name).chmod(0o600)
-    (CONFIG_DIR / 'service.json').write_text(json.dumps(plan['config'], indent=2) + '\n')
-    (CONFIG_DIR / 'service.json').chmod(0o600)
-    (CONFIG_DIR / 'health.key').write_bytes(key)
-    (CONFIG_DIR / 'health.key').chmod(0o600)
+        shutil.copyfile(launch / name, config_dir / name)
+        (config_dir / name).chmod(0o600)
+    (config_dir / 'service.json').write_text(json.dumps(plan['config'], indent=2) + '\n')
+    (config_dir / 'service.json').chmod(0o600)
+    (config_dir / 'health.key').write_bytes(key)
+    (config_dir / 'health.key').chmod(0o600)
     for name, content in plan['units'].items():
-        (UNIT_DIR / name).write_text(content)
-        (UNIT_DIR / name).chmod(0o644)
-    subprocess.run(['systemd-analyze', 'verify', *[str(UNIT_DIR / name) for name in plan['units']]], check=True)
+        (unit_dir / name).write_text(content)
+        (unit_dir / name).chmod(0o644)
+    subprocess.run(['systemd-analyze', 'verify', *[str(unit_dir / name) for name in plan['units']]], check=True)
     subprocess.run(['systemctl', 'daemon-reload'], check=True)
     receipt = {key: value for key, value in plan.items() if key != 'key_source'}
     receipt['applied'] = True
     receipt['installed_source_sha256'] = installed_hashes
-    receipt['unit_hashes'] = {name: hashlib.sha256((UNIT_DIR / name).read_bytes()).hexdigest() for name in plan['units']}
+    receipt['unit_hashes'] = {name: hashlib.sha256((unit_dir / name).read_bytes()).hexdigest() for name in plan['units']}
     receipt['enabled'] = receipt['started'] = False
-    (CONFIG_DIR / 'installation.json').write_text(json.dumps(receipt, indent=2) + '\n')
+    (config_dir / 'installation.json').write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps({'applied': True, 'started': False, 'enabled': False, 'rank': plan['rank']}))
 
 
@@ -456,8 +528,9 @@ def main():
     parser.add_argument('--health-port', type=int, default=9975)
     parser.add_argument('--key-file', type=Path, required=True)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--deployment-name')
     args = parser.parse_args()
-    plan = prepare_plan(args.launch, args.image_receipt, args.rank, args.epoch, args.health_port, args.key_file)
+    plan = prepare_plan(args.launch, args.image_receipt, args.rank, args.epoch, args.health_port, args.key_file,args.deployment_name)
     if args.apply:
         apply(plan, args.launch, args.key_file)
     else:

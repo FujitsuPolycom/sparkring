@@ -98,7 +98,43 @@ and that record's source/binary provenance, then hashes the configured host
 binary. Missing or changed evidence is rejected. This preserves the prepared
 host fabric without claiming the inference image contains the marker.
 
+### Isolated managed installation
+
+Use `--deployment-name r35-managed-20260913` on the managed installer to keep
+an existing default installation intact. The identifier accepts lowercase letters,
+digits and internal hyphens, with a maximum of 63 characters. It derives:
+
+- Code: `/opt/sparkring/deployments/r35-managed-20260913`
+- Private configuration: `/etc/sparkring/deployments/r35-managed-20260913`
+- Controller state: `/run/sparkring-r35-managed-20260913`
+- Units: `sparkring-r35-managed-20260913-mesh.service`,
+  `sparkring-r35-managed-20260913-model.service`, and rank zero's
+  `sparkring-r35-managed-20260913-scheduler-liveness.service`.
+
+Keep the private site's `state_root` consistent with that derived controller
+state path. Supply the same deployment name to `managed_cluster.py` for `up`,
+`start-model`, `stop-model`, `down`, `recover` and `status`. The unit renderer
+also accepts the option. Named deployments do not accept arbitrary code/config
+root overrides. Omitting the option preserves the default installation paths
+and unit names.
+
+The install plan records the name. Apply regenerates its paths and complete
+unit text, verifies the source snapshot, and rechecks the pinned stopped
+container before writing. Existing target directories or named unit files are
+rejected; no deployment is overwritten or automatically removed.
+
 Rendering or image verification does not establish native collective stability.
 Retain semantic, cache-restart, concurrency and stability evidence for the exact
 image and settings before adoption. These commands do not publish an image or
 alter a published profile.
+
+## Bounded GLM conversations
+
+GLM checkpoint revision `df116c4fb16b1d37ae43d2cfd624de26ffbc832e` defaults
+to Max reasoning effort when effort is omitted. Its template retains earlier
+reasoning by default (`clear_thinking=false`) and ignores `enable_thinking`.
+An experimental client configuration for bounded conversations is explicit
+`reasoning_effort="low"` with `chat_template_kwargs={"clear_thinking": true}`.
+This removes prior reasoning while retaining final answers, changing rendered
+context length and cache boundaries. It is a client setting under qualification,
+not an image/profile default or a resolution of native transport stalls.
