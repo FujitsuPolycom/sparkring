@@ -111,6 +111,11 @@ descriptor, reviewed entrypoint and mandatory inherited native hashes. The calle
 must obtain image ID, platform and verification from the same local Docker image.
 Passing this gate proves payload agreement, not model correctness or stability.
 
+The [bounded R37 TP4 evaluation](../../performance/records/glm53-flash/r37-tp4-source-upgrade.md)
+exercises this source-overlay path through image admission, inference, cache
+restoration after restart and a matched short performance comparison. It does
+not qualify arbitrary LIL artifacts or other model profiles.
+
 1. Record the exact upstream repository and commit in an isolated checkout.
    Compare source locks and source trees, not release-number labels or PR prose.
    Inspect each integration in the ledger for upstream overlap before removing,

@@ -1,0 +1,200 @@
+{
+  "arithmetic_checks": 3,
+  "cache_mode": "read-write",
+  "changed_tail_checks": 2,
+  "components": {
+    "b12x": {
+      "archive": "b12x-bd931d9e6b22ae21b92af0ab66ac45281658bf2c.tar.gz",
+      "archive_sha256": "c116aa19bc0de89407465fe57379569a8d96947c35363fa002ab3fb1f7024057",
+      "base_commit": "f1c4e9dd5b1d841c10cda70ee49c3190cf3db0be",
+      "base_tree": "480ea232d52fff4271b0412470d4ec340196735a",
+      "native_comparison": {
+        "compared_tree": "bd931d9e6b22ae21b92af0ab66ac45281658bf2c",
+        "paths": [
+          "pyproject.toml"
+        ],
+        "reference": "22de5a1a9f10b698428d9e22abc9b9d217b84152",
+        "unchanged": true
+      },
+      "patch": "b12x-sparkring.patch",
+      "patch_sha256": "9ee042ba1173ba7a49cd204411e233d76edf24e5c7cf6289843cf3c3e1ada854",
+      "qualification": "Source packaging only; runtime verification and serving qualification required.",
+      "tree": "bd931d9e6b22ae21b92af0ab66ac45281658bf2c"
+    },
+    "vllm": {
+      "archive": "vllm-8e0bb7da60e882c095385222d5878981a2666b60.tar.gz",
+      "archive_sha256": "35c7fba9383e44e6d1be51ae1b9bc19a466972d48b3b9cf148f468d89c07fd8d",
+      "base_commit": "c687594b8a8082e18af9fe2f64eb5f9ee442e251",
+      "base_tree": "3fb88fdfd0b5acdd4460076c6443a4299e5edf7d",
+      "native_comparison": {
+        "compared_tree": "8e0bb7da60e882c095385222d5878981a2666b60",
+        "paths": [
+          "csrc",
+          "cmake",
+          "CMakeLists.txt",
+          "requirements",
+          "pyproject.toml",
+          "setup.py",
+          "rust",
+          "rust-toolchain.toml",
+          "build_rust.sh",
+          "MANIFEST.in"
+        ],
+        "reference": "3d4284deab93cbdba8fab097c7f4f1321a547dc1",
+        "unchanged": true
+      },
+      "patch": "vllm-sparkring.patch",
+      "patch_sha256": "ce8fe827732c0aa9c093ba335aceeff477583079164eb98da22357ee4d9bc9aa",
+      "qualification": "Source packaging only; runtime verification and serving qualification required.",
+      "tree": "8e0bb7da60e882c095385222d5878981a2666b60"
+    }
+  },
+  "composition_id": "lil-r37-glm-spark",
+  "configured_context": 1048576,
+  "direct_doorbell": true,
+  "graph_progress_cpu": 11,
+  "graph_submit_cpu": 10,
+  "harness_sha256": "e8907f4930d1f3fc1cba3ad0d5b73d9e28e54b63bf27e4c300eae1371182dcb6",
+  "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+  "kv_bytes_per_rank": 25769803776,
+  "model": "GLM-5.3-Flash-NVFP4-Spark",
+  "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+  "mtp_tokens": 3,
+  "omp_threads": 1,
+  "platform": "linux/arm64",
+  "publication": "Not published; existing image and profile identities retained.",
+  "r35_measurement": {
+    "decode": [
+      {
+        "aggregate_tps": 57.69230769232653,
+        "concurrency": 1,
+        "context_tokens": 0,
+        "effective_concurrency": 1,
+        "num_errors": 0
+      },
+      {
+        "aggregate_tps": 123.39254440839248,
+        "concurrency": 4,
+        "context_tokens": 0,
+        "effective_concurrency": 4,
+        "num_errors": 0
+      }
+    ],
+    "elapsed_seconds": 105.67200000002049,
+    "prefill": {
+      "client_tok_per_sec": 3330.0,
+      "client_ttft_seconds": 2.469,
+      "hardware_summary": {},
+      "method": "client",
+      "prefill_seconds": 2.469,
+      "prompt_tokens": 8194,
+      "samples": 2,
+      "server_validation": {
+        "cached_tokens": 0,
+        "invalid_reason": "",
+        "method": "prometheus",
+        "prefill_seconds": 2.443,
+        "prompt_tokens": 8194,
+        "request_prompt_tokens": 8194,
+        "samples": 2,
+        "tok_per_sec": 3365.0,
+        "token_source": "kv_computed"
+      },
+      "tok_per_sec": 3330.0,
+      "ttft_seconds": 2.469
+    },
+    "repeat": "python work/lil-upgrade-baseline/run.py candidate EXACT_CONTAINER_PREFIX",
+    "scope": "Single bounded API baseline, not a repeated regression estimate or stability qualification."
+  },
+  "r37_measurement": {
+    "decode": [
+      {
+        "aggregate_tps": 55.586158545793865,
+        "concurrency": 1,
+        "context_tokens": 0,
+        "effective_concurrency": 1,
+        "num_errors": 0
+      },
+      {
+        "aggregate_tps": 137.1125244129582,
+        "concurrency": 4,
+        "context_tokens": 0,
+        "effective_concurrency": 4,
+        "num_errors": 0
+      }
+    ],
+    "elapsed_seconds": 111.03099999995902,
+    "prefill": {
+      "client_tok_per_sec": 3330.0,
+      "client_ttft_seconds": 2.468,
+      "hardware_summary": {},
+      "method": "client",
+      "prefill_seconds": 2.468,
+      "prompt_tokens": 8194,
+      "samples": 2,
+      "server_validation": {
+        "cached_tokens": 0,
+        "invalid_reason": "",
+        "method": "prometheus",
+        "prefill_seconds": 2.45,
+        "prompt_tokens": 8194,
+        "request_prompt_tokens": 8194,
+        "samples": 2,
+        "tok_per_sec": 3357.0,
+        "token_source": "kv_computed"
+      },
+      "tok_per_sec": 3330.0,
+      "ttft_seconds": 2.468
+    },
+    "repeat": "python work/lil-upgrade-baseline/run.py candidate EXACT_CONTAINER_PREFIX",
+    "scope": "Single bounded API baseline, not a repeated regression estimate or stability qualification."
+  },
+  "ranks": [
+    {
+      "after_log_sha256": "f2db96548ae90ff841fe14c1aeedbe31bde75d3407bf4b359ea994186823e41d",
+      "all_gather_calls": 90,
+      "before_log_sha256": "7826ad69ee84d7b172e622edd0d4304220fe1bc84be0b51a2b9fc1a6e6d9ce00",
+      "mhc_input_rows": 8192,
+      "mhc_owner_rows": 2048,
+      "rank": 0,
+      "reduce_scatter_calls": 90,
+      "restored_prefix_tokens": 8192
+    },
+    {
+      "after_log_sha256": "72354bc4ec226c61f33a24401e2b78f593b36e9f2705ff269f9380ce0767d069",
+      "all_gather_calls": 90,
+      "before_log_sha256": "ba464374f46f0c32872e0f9f9d877fc5b5143505bc2a35f6992dd38149c7411d",
+      "mhc_input_rows": 8192,
+      "mhc_owner_rows": 2048,
+      "rank": 1,
+      "reduce_scatter_calls": 90,
+      "restored_prefix_tokens": 8192
+    },
+    {
+      "after_log_sha256": "ef47683d530058684ab72ec6bb00e5ae04af9ac631f26586e138c0c6e2096545",
+      "all_gather_calls": 90,
+      "before_log_sha256": "ada9a07ea9d99d2e7f386938695f5a073431fca7b09a8d438fa37da4e3df4a3d",
+      "mhc_input_rows": 8192,
+      "mhc_owner_rows": 2048,
+      "rank": 2,
+      "reduce_scatter_calls": 90,
+      "restored_prefix_tokens": 8192
+    },
+    {
+      "after_log_sha256": "ece2095bb60d9f469e2dfc3132b0c44bff8d83e105d655fa0334571029421a44",
+      "all_gather_calls": 90,
+      "before_log_sha256": "612b1327aa99aa8e84520492bfabe0146ff257f8a178f4a5e7c684c491f0f1e0",
+      "mhc_input_rows": 8192,
+      "mhc_owner_rows": 2048,
+      "rank": 3,
+      "reduce_scatter_calls": 90,
+      "restored_prefix_tokens": 8192
+    }
+  ],
+  "restart_cached_tokens": 8192,
+  "restart_created_cache_tokens": 0,
+  "schema": "sparkring-bounded-upgrade-evidence/v1",
+  "scope": "One bounded comparison and coordinated restart; not statistical performance or long-duration stability qualification. R35 native stall remains unresolved.",
+  "status": "Experimental",
+  "topology": "TP4/DCP1"
+}
