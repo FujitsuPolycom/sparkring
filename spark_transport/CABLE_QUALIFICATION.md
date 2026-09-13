@@ -46,6 +46,12 @@ Important result fields are:
 - `counter_deltas`: separates CRC/alignment/carrier/MAC errors from
   drop/miss/overrun pressure.
 
+Qualification requires readable error counters before traffic. RoCE also
+requires a successful `ethtool -S` query with hardware error counters; generic
+netdev counters alone do not cover RDMA traffic. Disappearing counters or
+newly visible PHY counters without a baseline fail the instrumentation gate.
+The retained `reset` category includes these telemetry discontinuities.
+
 The distinction matters. A raw 10GbE run with zero loss/CRC/counter deltas
 but 160 microseconds p99 has proven the cable; it has **not** proven that the
 AF_PACKET/NAPI software path is suitable for decode. Conversely, any CRC,
@@ -85,7 +91,8 @@ The RoCE tier additionally requires:
 - the expected IP and direct route on the named interfaces;
 - active RDMA ports;
 - the selected GID index bound to the named netdev as `RoCE v2`; and
-- verified RC writes for each selected payload size in both directions.
+- verified host-memory RC writes for each selected payload size in both
+  directions, with matching byte/sample counts and one result record per endpoint.
 
 The default p99 target is 20 microseconds. Override it only as an explicit
 experiment with `--max-p99-us`.

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -39,6 +41,95 @@ def good_snapshot() -> dict:
 
 
 class QualificationLogicTest(unittest.TestCase):
+    def test_malformed_reported_raw_errors_do_not_become_zero(self):
+        for invalid in (None, 'broken', 0.5, False, float('inf')):
+            with self.subTest(invalid=invalid):
+                run = {'direction': 'left->right', 'payload_bytes': 12288,
+                       'sender_returncode': 0, 'receiver_returncode': 0,
+                       'sender': {'valid': True, 'payload_crc_errors': invalid},
+                       'receiver': {'valid': True}}
+                gates = MODULE.raw_probe_gates([run], 30)
+                self.assertFalse(gates[0]['passed'])
+                self.assertIsNone(gates[1]['evidence']['p99_us'])
+                json.dumps(gates, allow_nan=False)
+
+    def test_rdma_receipt_must_match_payload_and_memory_path(self):
+        valid = {'memory': 'host', 'producer': 'cpu', 'bytes': 16384,
+                 'samples': 10000, 'p99_us': 5.0}
+        verify = {'memory': 'host', 'verifier': 'cpu', 'correct': 'true'}
+        for change in ({}, {'bytes': 4096}, {'memory': 'cuda'}, {'producer': 'gpu'},
+                       {'samples': 10000.5}):
+            with self.subTest(change=change):
+                run = {'direction': 'left->right', 'payload_bytes': 16384, 'iterations': 10000,
+                       'client_returncode': 0, 'server_returncode': 0,
+                       'result': {**valid, **change}, 'verify': verify}
+                self.assertEqual(MODULE.rdma_probe_gates([run], 20)[0]['passed'], not change)
+
+    def test_missing_counter_visibility_is_not_clean_telemetry(self):
+        for counters in ({}, {'sysfs.rx_bytes': 100}, {'sysfs.rx_errors': None}):
+            snapshot = {**good_snapshot(), 'counters': counters}
+            gates = MODULE.evaluate_snapshot(snapshot, self.endpoint(), tier='diagonal10',
+                expected_mtu=1500, expected_speed_mbps=10000, gid_index=3)
+            self.assertFalse(next(g for g in gates if g['name'].endswith('counter_visibility'))['passed'])
+
+    def test_newly_visible_phy_counter_requires_a_baseline(self):
+        before = {'counters': {'sysfs.rx_errors': 0}}
+        after = {'counters': {'sysfs.rx_errors': 0, 'ethtool.rx_crc_errors': 7}}
+        deltas = MODULE.counter_deltas(before, after)
+        self.assertEqual(deltas['reset'], {'ethtool.rx_crc_errors': 7})
+
+    def test_roce_requires_readable_hardware_error_counters(self):
+        for status, counters, expected in (
+            (0, {'ethtool.rx_crc_errors_phy': 0}, True),
+            (1, {'ethtool.rx_crc_errors_phy': 0}, False),
+            (0, {'sysfs.rx_errors': 0}, False),
+        ):
+            snapshot = {**good_snapshot(), 'counters': counters,
+                        'ethtool_stats_status': {'returncode': status}}
+            gates = MODULE.evaluate_snapshot(snapshot, self.endpoint(), tier='roce200',
+                expected_mtu=9000, expected_speed_mbps=200000, gid_index=3)
+            self.assertEqual(next(g for g in gates if g['name'].endswith('counter_visibility'))['passed'], expected)
+
+    def test_duplicate_result_records_and_fields_are_rejected(self):
+        for prefix, parser in [('RESULT', MODULE.parse_result_line), ('VERIFY', MODULE.parse_verify_line)]:
+            for text in (f'{prefix} correct=true\n{prefix} correct=false\n',
+                         f'{prefix} correct=false correct=true\n'):
+                with self.subTest(text=text), self.assertRaises(MODULE.QualificationError):
+                    parser(text)
+
+    def test_nonfinite_remote_json_is_rejected(self):
+        for value in ('NaN', 'Infinity', '1e999'):
+            with self.assertRaisesRegex(MODULE.QualificationError, 'non-finite'):
+                MODULE.parse_json_object('{"role":"sender","p99_us":'+value+'}', 'sender')
+
+    def test_receiver_cleanup_keeps_a_final_timeout(self):
+        class Process:
+            def __init__(self):
+                self.timeouts = []
+                self.terminated = self.killed = False
+            def communicate(self, timeout):
+                self.timeouts.append(timeout)
+                raise subprocess.TimeoutExpired('fixture', timeout)
+            def terminate(self): self.terminated = True
+            def kill(self): self.killed = True
+        process = Process()
+        with self.assertRaisesRegex(MODULE.QualificationError, 'did not close'):
+            MODULE.collect_process(process, 3)
+        self.assertEqual(process.timeouts, [3, 10, 5])
+        self.assertTrue(process.terminated and process.killed)
+
+    def test_nonfinite_options_fail_before_remote_work(self):
+        from unittest.mock import patch
+        base = ['--tier','diagonal10','--left','left','--right','right',
+                '--left-interface','eth0','--right-interface','eth0',
+                '--left-ip','198.51.100.1','--right-ip','198.51.100.2','--expected-mtu','1500']
+        for option in ('--startup-delay', '--max-p99-us'):
+            for value in ('nan', 'inf'):
+                args = MODULE.build_parser().parse_args(base+[option,value])
+                with patch.object(MODULE, 'remote_snapshot', side_effect=AssertionError('unexpected remote call')):
+                    with self.assertRaisesRegex(MODULE.QualificationError, 'finite'):
+                        MODULE.run(args)
+
     def endpoint(self) -> object:
         return MODULE.Endpoint(
             "left",
