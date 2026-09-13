@@ -910,10 +910,24 @@ def _load_document_with_digest(path: Path) -> tuple[dict[str, Any], str]:
                 raise ConfigError(f"duplicate JSON key {key!r} in {path}")
             result[key] = value
         return result
+    def finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError(f"JSON number is outside the finite float range: {value}")
+        return number
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-standard JSON numeric constant: {value}")
+
     try:
         raw = path.read_bytes()
-        doc = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        doc = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=unique_keys,
+            parse_float=finite_float,
+            parse_constant=reject_constant,
+        )
+    except (OSError, ValueError) as exc:
         raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
     if not isinstance(doc, dict):
         raise ConfigError(f"top-level JSON in {path} is not an object")

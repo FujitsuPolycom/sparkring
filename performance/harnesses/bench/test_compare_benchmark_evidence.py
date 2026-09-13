@@ -1,8 +1,8 @@
 """Tests for the offline benchmark evidence comparison tool.
 
 Fixtures use the actual llm_decode_bench v0.4.31 raw JSON schema:
-``metadata``, ``results[]``, and ``summary_table``. Adversarial tests cover
-every fail-closed comparison requirement.
+``metadata``, ``results[]``, and ``summary_table``. Adversarial tests exercise
+metadata, coverage, validity, and JSON input rejection.
 """
 
 from __future__ import annotations
@@ -198,8 +198,8 @@ BOUNDED_GATE = _make_doc(
     ],
 )
 
-# Older protocol variant
-OLDER_PROTOCOL = _make_doc(
+# Protocol fixture with a 2048-token output cap and 3-second warmup
+WARMED_UNIQUE_CONTEXT_PROTOCOL = _make_doc(
     meta=_make_meta(
         max_tokens=2048,
         decode_warmup_seconds=3.0,
@@ -385,8 +385,8 @@ def test_settings_missing_on_both_counts_as_mismatch():
 
 
 def test_settings_mismatch_max_tokens():
-    """Older protocol (2048) vs post-upgrade (1024) must mismatch."""
-    result = cmp.compare_settings(SUSTAINED_BASELINE, OLDER_PROTOCOL)
+    """Output caps of 2048 and 1024 tokens must mismatch."""
+    result = cmp.compare_settings(SUSTAINED_BASELINE, WARMED_UNIQUE_CONTEXT_PROTOCOL)
     assert result["all_matched"] is False
 
 
@@ -875,8 +875,8 @@ def test_compare_settings_mismatch_no_deltas():
 
 
 def test_compare_protocol_mismatch_no_deltas():
-    """Post-upgrade vs older protocol: settings_mismatch, no deltas."""
-    result = cmp.compare_documents(SUSTAINED_BASELINE, OLDER_PROTOCOL)
+    """Different warmup, output-cap, and context-sharing settings emit no deltas."""
+    result = cmp.compare_documents(SUSTAINED_BASELINE, WARMED_UNIQUE_CONTEXT_PROTOCOL)
     assert result["status"] == "settings_mismatch"
     assert len(result["throughput"]["cells"]) == 0
 
@@ -1881,6 +1881,22 @@ def test_object_concurrency_no_exception_in_compare():
 
 
 def test_valid_concurrencies_pass():
-    """Normal valid document still passes after stricter validation."""
+    """Integer C1/C2/C4/C8 coverage passes validation."""
     result = cmp.validate_context_coverage(SUSTAINED_BASELINE)
     assert result["valid"] is True
+
+
+@pytest.mark.parametrize("numeric_text", ["NaN", "Infinity", "-Infinity", "1e999", "-1e999", "9" * 5000])
+def test_cli_rejects_unrepresentable_json_numbers(tmp_path, capsys, numeric_text):
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    baseline.write_text(json.dumps(SUSTAINED_BASELINE))
+    payload = json.dumps(SUSTAINED_CANDIDATE)
+    # Mutate one measured duration while preserving all other evidence fields.
+    payload = payload.replace('"measurement_seconds": 24.9',
+                              '"measurement_seconds": ' + numeric_text, 1)
+    candidate.write_text(payload)
+    assert cmp.main(["--baseline", str(baseline), "--candidate", str(candidate)]) == cmp.EXIT_CONFIG_ERROR
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "CONFIG ERROR" in captured.err
