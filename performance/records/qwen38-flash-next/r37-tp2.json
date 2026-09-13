@@ -1,0 +1,83 @@
+{
+  "schema": "sparkring-qwen-tp2-evidence/v1",
+  "status": "Experimental",
+  "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+  "model": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+  "revision": "ada4da32a583a78aa47299f45a70603c950490b8",
+  "topology": "TP2/DCP1, one direct cable, two PCI domains",
+  "profile_defaults": {
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_memory_bytes": 25769803776
+  },
+  "default_validation": {
+    "startup": "passed",
+    "inference": "deferred",
+    "prefix_cache": "deferred",
+    "performance": "deferred",
+    "multimodal": "not tested",
+    "reported_kv_pool_tokens": 2954103,
+    "reported_graph_gib_per_rank": [
+      1.0,
+      0.98
+    ],
+    "reported_available_memory_mib": [
+      20230,
+      22579
+    ]
+  },
+  "baseline": {
+    "max_model_len": 65536,
+    "max_num_seqs": 1,
+    "max_num_batched_tokens": 2048,
+    "kv_cache_memory_bytes_per_rank": 1610612736,
+    "loader": "b12x",
+    "mtp_tokens": 3,
+    "exact_json_requests_passed": 3,
+    "native_prefix_reused_tokens": 7871,
+    "prefix_request_seconds": [
+      3.813740865999989,
+      0.9310975839998719
+    ],
+    "decode_seconds_per_cell": 15.0,
+    "decode_c1_tokens_per_second": {
+      "0": {
+        "1": 46.83928998381794
+      },
+      "8192": {
+        "1": 47.14321007970797
+      }
+    },
+    "prefill_8k_scout": {
+      "ttft_seconds": 2.901,
+      "prefill_seconds": 2.901,
+      "tok_per_sec": 2825.0,
+      "client_ttft_seconds": 2.901,
+      "client_tok_per_sec": 2825.0,
+      "prompt_tokens": 8195,
+      "samples": 1,
+      "method": "integrated_scout",
+      "server_validation": {
+        "method": "prometheus:kv_computed",
+        "tok_per_sec": 2845.0,
+        "prefill_seconds": 2.88,
+        "prompt_tokens": 8195,
+        "request_prompt_tokens": 0,
+        "cached_tokens": 0,
+        "token_source": "",
+        "samples": 1,
+        "invalid_reason": ""
+      },
+      "hardware_summary": {}
+    }
+  },
+  "sparkcache": "disabled; prefix results use native vLLM caching",
+  "scope": "Reported startup-only native-262K profile and separately measured 64K/C1 baseline. No evidence transfer to expanded concurrency, long context, multimodal requests or long-duration stability.",
+  "evidence_sha256": {
+    "NATIVE_262K_IDLE.md": "d9a7d0544b7d8943e49891c3ff03cebfe446a5af2303f43587e44b9a6543a096",
+    "bounded-performance.json": "a6a2150a645f4a5344f260336f73204469886a9ebf3e54dafe45ebb1e9529868",
+    "correctness-prefix.json": "25f5aae7f260d04ae526df18fdf9287131f87932bcd292dee9a20aebbcd42d10",
+    "checkpoint-verification.json": "fca0e349143dfd07f183d85770711adda0c2eb7092ebd62b920467c81d4165f3"
+  }
+}

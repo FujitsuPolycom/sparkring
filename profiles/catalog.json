@@ -88,6 +88,10 @@
     {
       "id": "glm53-flash-spark-tp4-dcp4-sparkcache",
       "path": "profiles/glm53-flash-spark-tp4-dcp4-sparkcache/profile.json"
+    },
+    {
+      "id": "qwen38-flash-next-tp2",
+      "path": "profiles/qwen38-flash-next-tp2/profile.json"
     }
   ]
 }

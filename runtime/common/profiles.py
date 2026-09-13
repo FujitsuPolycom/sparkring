@@ -136,7 +136,7 @@ def configuration(p, root=ROOT):
         raise ValueError("Unsupported serving-profile schema")
     args = data["vllm_args"]
     serving = {}
-    for key in ("tensor_parallel_size", "decode_context_parallel_size", "max_model_len", "max_num_seqs", "max_num_batched_tokens"):
+    for key in ("tensor_parallel_size", "decode_context_parallel_size", "max_model_len", "max_num_seqs", "max_num_batched_tokens", "kv_cache_memory_bytes"):
         flag = "--" + key.replace("_", "-")
         for index, argument in enumerate(args):
             option, separator, value = argument.partition("=")
@@ -149,7 +149,7 @@ def configuration(p, root=ROOT):
             except (TypeError, ValueError):
                 raise ValueError(f"{flag}: expected an integer value") from None
     serving["node_count"] = serving["tensor_parallel_size"]
-    return data["model"], serving, "switched", data.get("qualification", {}), {"vllm_args": args, "environment": data["environment"]}
+    return data["model"], serving, data.get("topology", "switched"), data.get("qualification", {}), {"vllm_args": args, "environment": data["environment"]}
 
 
 def resolve(profile_id, overrides=None, site=None, root=ROOT):
