@@ -2,12 +2,14 @@
 
 Run [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)
 with MTP3 on a four-Spark ring. **DCP1 is the default; DCP4 is an alternative.**
-Context defaults to 1M tokens. SparkCache is optional.
+Context defaults to 1M tokens. SparkCache is optional. The primary procedure
+selects the published **R37 ARM64** image. Status: **Experimental**; bounded
+TP4/DCP1 cache-on checks passed, not long-duration stability qualification.
 
 | Selection | KV allocation per rank | KV evidence | Procedure |
 |---|---:|---:|---|
 | DCP1, with or without SparkCache | 24 GiB | [2.3M sizing reference](../../performance/capacity-references.md) | Deployment suite below |
-| DCP4, with or without SparkCache | 24 GiB | 8.4M with SparkCache | [DCP4 setup](#dcp4-alternative) |
+| DCP4, with or without SparkCache | 24 GiB | 8.4M with SparkCache (R33) | [R33 DCP4 reproduction](#dcp4-alternative) |
 
 Capacity depends on enabled features. The validated results are scoped to the
 [image and workload records](#validation-and-results), not every possible configuration.
@@ -28,20 +30,35 @@ and RDMA users first. This setup must not replace an unrelated deployment.
 
 ## 2. Select the published image
 
-The deployment suite downloads and distributes the image during staging.
-The tracked runtime receipt selects
-`ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef`.
-Validate it locally before staging:
+Use an ARM64 host to record the image, then retain its receipt on the controller.
+Set `IMAGE_HOST` to a configured Spark SSH alias from host setup. These commands
+pull and verify the image without loading a model; staging later pulls the same
+immutable registry digest on each host:
 
 ```bash
-SPARKRING_RECEIPT="$PWD/runtime/sparkring/jovian-r33/public-image-receipt.json"
-python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
-  --receipt "$SPARKRING_RECEIPT"
+IMAGE_HOST=spark0
+IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270'
+RECORD=$(mktemp -d "$HOME/sparkring-r37-receipt.XXXXXX")
+ssh "$IMAGE_HOST" "sudo -n docker pull --platform linux/arm64 '$IMAGE_REF'"
+IMAGE=$(ssh "$IMAGE_HOST" "sudo -n docker image inspect --format '{{.Id}}' '$IMAGE_REF'")
+ssh "$IMAGE_HOST" "sudo -n docker run --rm --network none --pull never --entrypoint cat '$IMAGE' /opt/sparkring/receipts/candidate-installed.json" > "$RECORD/installed.json"
+ssh "$IMAGE_HOST" "sudo -n docker run --rm --network none --pull never '$IMAGE' verify" > "$RECORD/verification.json"
+python3 runtime/common/candidate.py --composition lil-r37-glm-spark \
+  --image-id "$IMAGE" --image-reference "$IMAGE_REF" \
+  --installed-receipt "$RECORD/installed.json" \
+  --verification "$RECORD/verification.json" --output "$RECORD/image.json"
+SPARKRING_RECEIPT="$RECORD/image.json"
 ```
 
 The runtime receipt selects this image; `publication.json` is distribution
 metadata and cannot replace it. [Image building](../../runtime/images/README.md)
 is a separate workflow and is not needed for this quickstart.
+
+The human-readable tag is `ghcr.io/fujitsupolycom/sparkring:r37-arm64-beeb32253aa7`.
+Use the digest above for reproducibility. For the previous image, use the
+[R35 launch procedure](../../docs/operations/r35-local-launch.md); preserve its
+separate receipt and cache namespace. Catalog records retain their original
+release identities and evidence instead of being rewritten as R37 qualification.
 
 ## 3. Discover and plan DCP1
 
@@ -107,21 +124,19 @@ SparkCache setting. After the API is ready, run the
 If SparkCache is enabled, check cold requests, prefix reuse and restore;
 API health alone does not establish cache operation.
 
-For this pinned NVFP4-Spark checkpoint, leave reasoning enabled (omit the request
-override or use `chat_template_kwargs: {"enable_thinking": true}`). Its chat
-template always opens a thinking block. With this image, setting the flag to
-`false` disables reasoning parsing without changing that template and can put
-reasoning text and a closing tag in the visible answer. A non-thinking request
-needs a separately validated template/parser combination.
+For bounded requests, select reasoning effort explicitly and allow enough output
+tokens for the final answer. This checkpoint's template opens a thinking block;
+do not assume `enable_thinking=false` disables it. See
+[GLM conversation settings](../../docs/operations/r35-local-launch.md#bounded-glm-conversations).
 
 Use the deployment suite's coordinated `stop`/`recover` actions for operation
 and recovery. Preserve private site inputs, image receipts and cache roots.
 
 ## DCP4 alternative
 
-DCP4 uses the **same published image**, plus a profile-contract and entrypoint
-overlay. It requires the managed fabric installation. It is not a different
-model download or image rebuild.
+The procedure below reproduces **R33 DCP4**, with its pinned image, profile-contract
+and entrypoint overlay. It does not qualify R37 DCP4. Use the R33 receipt named
+by that procedure; do not apply its release overlay to the R37 image.
 
 The deployment-suite planner and staged-source selection are DCP1-only.
 For DCP4, use the separately documented
@@ -170,10 +185,12 @@ not run a serving test or replace the workload evidence.
 
 ## Validation and results
 
+- [R37 TP4 record](../../performance/records/glm53-flash/r37-tp4-source-upgrade.md): bounded DCP1 cache-on correctness, all-rank restart/restore and matched short performance checks.
 - [DCP1 record](../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md): bounded serving, cache and restore checks.
 - [DCP4 record](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md): 8,364,901-token KV pool, prefix-hit checks and planned/SIGKILL restore.
 - [Benchmark summaries](../../performance/benchmarks.md): measurements and their conditions.
 
+R37 cache-off and DCP4 selections do not inherit the cache-on DCP1 test results.
 The 1M context setting is distinct from a completed 1M-token test. The full
 blank-host deployment procedure has not been requalified from factory-reset
 Sparks. See the records for the exact tested configurations.

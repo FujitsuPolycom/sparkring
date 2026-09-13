@@ -7,7 +7,10 @@ long-duration stability or resolve the previously observed native TP4 stall.
 The [machine-readable record](r37-tp4-source-upgrade.json) binds image
 `sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97`
 to the integrated source trees, benchmark settings and worker-log hashes.
-The candidate is local; there is no registry pull command for it.
+The tested image is published under the immutable digest in its
+[publication record](../../../runtime/images/compositions/lil-r37-glm-spark/publication.json).
+Use the [four-Spark quickstart](../../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)
+to pull and launch it.
 
 ## Configuration and build
 
@@ -62,9 +65,9 @@ empty. No long soak was run.
 
 ## Adoption boundary
 
-The candidate remains separate from published R35 defaults. Its source archives,
-build context, original requests, benchmark outputs and rollback inputs are
-retained with the local evaluation workspace; this summary is not a standalone
-release recipe. Promote only after reviewing the desired model/topology scope
+The [source composition](../../../runtime/images/compositions/lil-r37-glm-spark/README.md)
+contains the source pins, reviewed patches and build procedure. Original requests,
+benchmark outputs and rollback inputs remain in the local evaluation workspace.
+Promote only after reviewing the desired model/topology scope
 and outstanding stability requirements. Preserve the R35 image, containers and
 cache for rollback; stop every candidate rank before restarting that deployment.

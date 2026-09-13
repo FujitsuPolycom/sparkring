@@ -32,6 +32,27 @@ def selection(spec, profile):
         raise ValueError("Unsupported runtime selection schema")
     module = profile_module(profile)
     document = module.validate_image_receipt(selected["image_receipt"])
+    if document["schema"] in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+        if spec.get("site", {}).get("runtime_profile") not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
+            raise ValueError("Candidate selection requires an explicit TP4 runtime profile")
+        contract = json.loads((profile.parent / "sparkring/jovian-r33/mesh-host-contract.json").read_text())
+        marker = json.loads((profile / "host-marker-artifact.json").read_text())
+        if document["bundle_manifest_sha256"] != contract["bundle_manifest_sha256"]:
+            raise ValueError("Selected mesh bundle differs from the host marker contract")
+        if marker["binary_sha256"] != contract["marker_binary_sha256"]:
+            raise ValueError("Host marker artifact differs from the download contract")
+        local = document["image_reference"] == document["image_id"]
+        return {"image_reference": document["image_reference"],
+                "config_image_id": document["image_id"], "local": local,
+                "registry_pull_each_host": not local,
+                "pins": dict(pins, target=contract["target"],
+                             canonical_bundle_manifest_sha256=contract["bundle_manifest_sha256"]),
+                "receipt": selected["image_receipt"], "inside_image": document["verification"],
+                "bundle_image_path": "/opt/sparkring/sircl/python",
+                "bundle_native_files": {
+                    "libspark_transport_capi.so": "/opt/sparkring/sircl/libspark_transport_capi.so"},
+                "marker_download_url": contract["marker_download_url"],
+                "marker_binary_sha256": marker["binary_sha256"]}
     if document["schema"] == "sparkring-r33-image-receipt/v1":
         if spec.get("site", {}).get("runtime_profile") not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
             raise ValueError("R33 selection requires an explicit TP4 runtime profile")

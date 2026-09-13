@@ -368,6 +368,22 @@ os.chown(p,0,0);p.parent.chmod(0o700)
 
 def stage_downloaded_assets(run, seed, public, hosts, spec, pins, identities, workspace):
     """Download and distribute image/model artifacts in the owned workspace."""
+    stage_selected_image(run, seed, public, hosts, workspace)
+    return stage_model_assets(run, seed, public, hosts, spec, pins, identities, workspace)
+
+
+def stage_selected_image(run, seed, public, hosts, workspace):
+    """Retain the selected immutable image reference on every target host."""
+    if public.get("registry_pull_each_host"):
+        # save/load does not preserve registry digest references. Each host must
+        # pull the reference used by the generated launcher.
+        for host in hosts:
+            run.remote(host["host"], ["docker", "pull", public["image_reference"]], timeout=14400)
+            actual = run.remote(host["host"], ["docker", "image", "inspect", "--format",
+                                "{{.Id}}", public["image_reference"]]).strip()
+            if actual != public["config_image_id"]:
+                raise ValueError("Image identity mismatch")
+        return
     if public["local"]:
         if run.remote(seed, ["docker", "image", "inspect", "--format", "{{.Id}}",
                              public["image_reference"]]).strip() != public["config_image_id"]:
@@ -416,6 +432,8 @@ def stage_downloaded_assets(run, seed, public, hosts, spec, pins, identities, wo
             != public["config_image_id"]
         ):
             raise ValueError("Image identity mismatch")
+def stage_model_assets(run, seed, public, hosts, spec, pins, identities, workspace):
+    """Download and verify the selected checkpoint independently of its image."""
     model = spec["site"]["model_roots"][0]
     run.remote(seed, ["mkdir", "-p", model])
     download = (

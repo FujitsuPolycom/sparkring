@@ -13,7 +13,7 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / 'runtime/sparkring/source_image/startup/scheduler_liveness.py'
 ENTRYPOINTS = {'/opt/sparkring/bin/sparkring-r33', '/opt/sparkring/bin/sparkring-r33-overlay',
-               '/opt/sparkring/bin/sparkring'}
+               '/opt/sparkring/bin/sparkring', '/opt/sparkring/bin/candidate-image.py'}
 
 
 def api_healthcheck(port):

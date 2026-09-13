@@ -26,8 +26,12 @@ configurations and workloads recorded with each profile.
 2. Follow its quickstart for host setup, image selection and launch commands.
 3. Run the [validation checks](docs/operations/profile-validation.md).
 
-An **Experimental R35 ARM64 image** is available with
-[TP2/TP4 pull and launch instructions](docs/operations/r35-local-launch.md).
+The **Experimental R37 ARM64 image** is published with
+[TP4](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) and
+[TP2](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) pull and launch
+instructions. R37 hardware evidence covers bounded GLM TP4/DCP1 cache-on tests;
+other selections have separate qualification requirements.
+[R35 remains available](docs/operations/r35-local-launch.md).
 
 ## Profiles
 
@@ -35,6 +39,8 @@ Bold entries are recommended. The guide describes the default; DCP alternatives
 link to their own KV evidence. Context is the per-request limit; counts are
 rounded. DCP and KV choices appear in the same order. See the
 [full catalog](profiles/README.md) for exact settings and alternatives.
+Catalog statuses describe the recorded release evidence; R37 testing scope is
+stated separately in each quickstart.
 
 <!-- BEGIN GENERATED PROFILES -->
 
@@ -54,7 +60,7 @@ rounded. DCP and KV choices appear in the same order. See the
 
 | Model | Quant | Runtime | DCP | Context / KV* | SparkCache | Status | Quickstart |
 |---|---|---|---|---|---|---|---|
-| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | DCP1 | 1M / [1.1M](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | DCP1 | 1M / [1.1M](performance/records/glm53-flash/r35-tp2-sparkcache.json) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | DCP1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
 | Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | DCP1 | 1M / [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
 

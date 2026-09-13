@@ -1,0 +1,10 @@
+{
+  "schema": "sparkring-image-publication/v1",
+  "status": "Experimental",
+  "tag": "ghcr.io/fujitsupolycom/sparkring:r37-arm64-beeb32253aa7",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270",
+  "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+  "platform": "linux/arm64",
+  "anonymous_pull_verified": true,
+  "scope": "Anonymous manifest/config identities and Docker pull verified. Bounded GLM TP4 checks passed; no long-duration stability or other-model qualification implied."
+}

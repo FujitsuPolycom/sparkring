@@ -81,17 +81,19 @@ def _remove_option(arguments, flag):
 
 def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
     verifier = _r33_verifier()
-    from runtime.common import r35
-    is_r35 = receipt.get('schema') == r35.SCHEMA
+    from runtime.common import candidate, r35
+    is_candidate = receipt.get("schema") == candidate.SCHEMA
+    adapter = candidate if is_candidate else r35
+    is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA)
     if is_r35:
-        r35.validate_receipt(receipt)
+        adapter.validate_receipt(receipt)
     else:
         verifier.validate_image_receipt(receipt)
-    release = 'r35' if is_r35 else 'r33'
+    release = receipt['installed']['composition_id'] if is_candidate else ('r35' if is_r35 else 'r33')
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
     if plan["image"] != expected_image:
         raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
-    contract = r35.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
+    contract = adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
     selected = contract["profiles"][profile_name]
     environment = dict(plan["environment"])
@@ -163,7 +165,7 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         arguments = _remove_option(arguments, "--model-loader-extra-config")
     if is_r35:
         arguments = _remove_option(arguments, '--gdn-decode-kernel')
-    container_args = (["/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
+    container_args = ([candidate.ENTRYPOINT if is_candidate else "/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
     command = list(plan["command"])
     name = f"sparkring-{release}-{profile_name}-r{environment['NODE_RANK']}"
     command[command.index("--name") + 1] = name
@@ -208,7 +210,7 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
                                  "request_context_target": 1048576, "reference_context_limit": 262144}
         try:
             if is_r35:
-                r35.validate_profile_capabilities(receipt, profile_name)
+                adapter.validate_profile_capabilities(receipt, profile_name)
             else:
                 verifier.validate_profile_image_capabilities(receipt, profile_name)
             plan["activation_blockers"] = []
@@ -373,6 +375,12 @@ def validate_source_image_receipt(receipt, plan, source_root=None):
 
 def validate_runtime_receipt(receipt, plan):
     """Require source compatibility evidence for this exact image and profile."""
+    from runtime.common import candidate
+    if receipt.get('schema') == candidate.SCHEMA:
+        candidate.validate_profile_capabilities(receipt, plan['profile'])
+        if plan.get('runtime_kind') != receipt['installed']['composition_id'] + '-candidate' or plan['image'] != (receipt['image_id'] if plan['image_identity_kind'] == 'local_config_id' else receipt['image_reference']):
+            raise ValueError('Candidate receipt differs from adapted TP2 plan')
+        return
     if receipt.get('schema') == 'sparkring-r35-image-receipt/v1':
         from runtime.common import r35
         r35.validate_profile_capabilities(receipt, plan['profile'])
@@ -406,6 +414,9 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     if action not in ("create", "start"):
         raise ValueError("Execution action must be create or start")
     validate_runtime_receipt(receipt, plan)
+    from runtime.common import candidate
+    if receipt.get("schema") == candidate.SCHEMA:
+        candidate.verify_local_image(receipt, run=run)
     if receipt.get('schema') == 'sparkring-r35-image-receipt/v1':
         from runtime.common import r35
         r35.verify_local_image(receipt, run=run)
@@ -464,7 +475,7 @@ def main():
                         help="Explicit TP2 R33 cache KV pin; default is the 7.5 GiB research configuration")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
-    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1") else None
+    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1") else None
     plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt,
                   r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes)
     print(json.dumps(plan, indent=2), flush=True)

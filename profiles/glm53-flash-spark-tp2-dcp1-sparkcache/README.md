@@ -2,15 +2,14 @@
 
 Run the [NVFP4-Spark checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)
 on two GB10 Sparks with MTP3 and DCP1. Context defaults to 1M tokens.
-SparkCache is optional. The commands below use the published **R35** image
-with SparkCache enabled, 7.5 GiB KV per rank and a recorded 1.1M-token pool.
-Status: **Experimental**. Bounded TP2 correctness, cache/restart and decode
-checks passed; long-duration TP2 stability and a complete 1M request are not
-established by that evidence.
+SparkCache is optional. These commands select the published **R37** image with
+SparkCache enabled and 7.5 GiB KV per rank. Status: **Experimental**. R37 TP2
+launch plans are software-checked; the R37 hardware record covers TP4, not TP2.
+Use the [R35 fallback](#r35-fallback) for the composition with bounded TP2 tests.
 
 Run commands in Bash on each Spark from the repository root. Use the same
 checkout revision on both hosts; record it with `git rev-parse HEAD`.
-The catalog's published defaults remain R33; these commands select R35
+The catalog's recorded defaults remain R33; these commands select R37
 explicitly through an image receipt. An R33 fallback is provided below.
 
 ## 1. Prepare the pair
@@ -33,18 +32,20 @@ not included here. A healthy API alone does not prove RoCEnante is active.
 On both Sparks:
 
 ```bash
-IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:3eb8138453e5cc5ce1f436caf232e03b84e23e094a49e376428d1ebfe26c4742'
+IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270'
+RELEASE=lil-r37-glm-spark
 MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4
-CACHE_DIR=/srv/cache/glm53-r35-tp2
+CACHE_DIR=/srv/cache/glm53-r37-tp2
 
 docker pull --platform linux/arm64 "$IMAGE_REF"
 SPARKRING_IMAGE=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
-RECORD=$(mktemp -d "$HOME/sparkring-r35-receipt.XXXXXX")
+RECORD=$(mktemp -d "$HOME/sparkring-r37-receipt.XXXXXX")
 docker run --rm --network none --pull never --entrypoint cat "$SPARKRING_IMAGE" \
-  /opt/sparkring/receipts/r35-installed.json > "$RECORD/installed.json"
+  /opt/sparkring/receipts/candidate-installed.json > "$RECORD/installed.json"
 docker run --rm --network none --pull never "$SPARKRING_IMAGE" verify \
   > "$RECORD/verification.json"
-python3 runtime/common/r35.py --image-id "$SPARKRING_IMAGE" \
+python3 runtime/common/candidate.py --composition "$RELEASE" \
+  --image-id "$SPARKRING_IMAGE" --image-reference "$IMAGE_REF" \
   --installed-receipt "$RECORD/installed.json" \
   --verification "$RECORD/verification.json" --output "$RECORD/image.json"
 SPARKRING_RECEIPT="$RECORD/image.json"
@@ -116,7 +117,7 @@ launch_rank() {
 launch_rank plan
 ```
 
-Inspect both plans for the resolved R35 image ID, 1,048,576 context tokens and
+Inspect both plans for the resolved R37 image ID, 1,048,576 context tokens and
 no activation blockers. Cache on selects `tp2-dcp1-sparkcache` and 8,053,063,680
 KV bytes per rank; cache off selects `tp2-dcp1` and 9,395,240,960 KV bytes.
 Stop any existing GPU workload explicitly before proceeding.
@@ -133,7 +134,7 @@ On each host, inspect the selected backend and engine logs:
 ```bash
 PROFILE=tp2-dcp1
 if ((${#CACHE_ARGS[@]})); then PROFILE=tp2-dcp1-sparkcache; fi
-docker logs --tail 150 "sparkring-r35-${PROFILE}-r${RANK}"
+docker logs --tail 150 "sparkring-${RELEASE}-${PROFILE}-r${RANK}"
 curl --fail "http://${MASTER}:8000/health"
 curl --fail "http://${MASTER}:8000/v1/chat/completions" \
   -H 'Content-Type: application/json' \
@@ -147,21 +148,40 @@ network or behind an authenticated gateway.
 
 ## SparkCache off
 
-Set `CACHE_ARGS=()` before planning and creating containers; retain the R35
+Set `CACHE_ARGS=()` before planning and creating containers; retain the selected
 image receipt. This selects `tp2-dcp1`, with InstantTensor loading, coalescing
 disabled and 8.75 GiB KV per rank. Both modes use MTP3, mHC, DCP1 and 1M
 configured context. Changing the array does not reconfigure a running container:
 stop the previous workload before creating the other mode.
 
+## R35 fallback
+
+Follow [R35 image recording](../../docs/operations/r35-local-launch.md#record-the-image),
+then set these variables on each host and reuse steps 3–6 above:
+
+```bash
+SPARKRING_IMAGE=$IMAGE
+SPARKRING_RECEIPT="$RECORD/image.json"
+RELEASE=r35
+CACHE_DIR=/srv/cache/glm53-r35-tp2
+mkdir -p "$CACHE_DIR"
+CACHE_ARGS=(--sparkcache)
+```
+
+For cache off, use `CACHE_ARGS=()`. The [R35 TP2 record](../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
+contains the bounded cache-on hardware evidence; it does not establish long-duration
+stability or a completed 1M request.
+
 ## R33 fallback
 
 During a stopped-serving maintenance window, use these inputs instead of the
-R35 image-recording commands. Use a separate cache directory and retain the
+image-recording commands above. Use a separate cache directory and retain the
 same model, memory guard and private rank inputs:
 
 ```bash
 SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
 SPARKRING_RECEIPT="$PWD/runtime/sparkring/jovian-r33/public-image-receipt.json"
+RELEASE=r33
 CACHE_DIR=/srv/cache/glm53-r33-tp2
 docker pull "$SPARKRING_IMAGE"
 python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
@@ -178,10 +198,9 @@ applies to that composition.
 
 ## Evidence and other builds
 
-The [R35 TP2 record](../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
-documents bounded correctness, cache restoration after process restart and
-decode checks. Startup reported 1,081,922 total KV tokens; this is pool
-capacity, not a completed 1M request. The cache-off selection does not inherit
-cache-on qualification.
+The [R37 record](../../performance/records/glm53-flash/r37-tp4-source-upgrade.md)
+covers TP4 and does not qualify this TP2 selection. The R35 TP2 cache-on record
+reported a 1,081,922-token pool; do not treat it as an R37 measurement or transfer
+its cache-on evidence to cache off.
 The [retained source-image guide](../../runtime/profiles/glm53-flash-spark-tp2/README.md)
 uses different settings and is only for reproducing that separate composition.

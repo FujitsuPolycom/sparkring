@@ -143,3 +143,18 @@ def test_duplicate_contract_fields_rejected(tmp_path):
     path.write_text('{"schema":"one","schema":"two"}', encoding='utf-8')
     with pytest.raises(ValueError, match='Duplicate contract field'):
         read(path)
+
+
+def test_published_r37_build_inputs_keep_exact_bytes():
+    recipe = Path(__file__).parent / 'compositions/lil-r37-glm-spark'
+    lock = read(recipe / 'source-lock.json')
+    descriptor = read(recipe / 'descriptor.json')
+    artifacts = read(recipe / 'runtime-artifacts.json')
+    publication = read(recipe / 'publication.json')
+    assert artifacts['image_id'] == publication['image_id']
+    assert hashlib.sha256((recipe / 'candidate-image.py').read_bytes()).hexdigest() == artifacts['files']['/opt/sparkring/bin/candidate-image.py']
+    for name, component in lock['components'].items():
+        assert component == descriptor['components'][name]
+        assert hashlib.sha256((recipe / component['patch']).read_bytes()).hexdigest() == component['patch_sha256']
+    for record in descriptor['integration_contracts'].values():
+        assert hashlib.sha256((recipe / record['file']).read_bytes()).hexdigest() == record['sha256']

@@ -277,3 +277,63 @@ def test_r33_selection_rejects_mesh_attestation_substitution(tmp_path):
     with pytest.raises(ValueError, match='mesh manifest'):
         create_spec(inventory(), 'r33-ring', '/srv/sparkring/r33-ring',
                     image_receipt=path, runtime_profile='tp4-dcp1-sparkcache')
+
+
+@pytest.mark.parametrize('local', [False, True])
+@pytest.mark.parametrize('runtime_profile', ['tp4-dcp1', 'tp4-dcp1-sparkcache'])
+def test_registered_candidate_selection_keeps_verified_receipt_and_explicit_profile(tmp_path, monkeypatch, local, runtime_profile):
+    # Candidate admission has separate contract tests; this test exercises the
+    # deployment suite's consumption of an already validated receipt.
+    from types import SimpleNamespace
+    import scripts.deploy_selection as selected
+    publication = json.loads((PROFILE.parent / 'images/compositions/lil-r37-glm-spark/publication.json').read_text())
+    contract = json.loads((PROFILE.parent / 'sparkring/jovian-r33/mesh-host-contract.json').read_text())
+    raw = {'schema': 'sparkring-candidate-image-receipt/v1',
+           'image_id': publication['image_id'],
+           'image_reference': publication['image_id'] if local else publication['image_reference'],
+           'verification': {'serving_qualified': False}}
+    normalized = {**raw, 'bundle_manifest_sha256': contract['bundle_manifest_sha256']}
+    monkeypatch.setattr(selected, 'profile_module', lambda _: SimpleNamespace(validate_image_receipt=lambda document: normalized))
+    receipt = tmp_path/'candidate.json'
+    receipt.write_text(json.dumps(raw))
+    spec = create_spec(inventory(), 'candidate-ring', '/srv/sparkring/candidate-ring',
+                       image_receipt=receipt, runtime_profile=runtime_profile)
+    chosen = selected.selection(spec, PROFILE)
+    assert chosen['receipt'] == raw and chosen['inside_image']['serving_qualified'] is False
+    assert chosen['local'] is local and chosen['registry_pull_each_host'] is (not local)
+    assert chosen['image_reference'] == raw['image_reference']
+    assert spec['site']['runtime_profile'] == runtime_profile
+    assert chosen['pins']['target'] == contract['target']
+    assert chosen['marker_download_url'] == contract['marker_download_url']
+    staged = tmp_path/'selected-image-receipt.json'
+    staged.write_text(json.dumps(raw))
+    assert selected.validate_selected_file(spec, tmp_path, PROFILE) == staged
+
+
+def test_registry_candidate_pulls_exact_reference_on_every_host():
+    from scripts.deploy_stage import stage_selected_image
+    image = {'local': False, 'registry_pull_each_host': True,
+             'image_reference': 'ghcr.io/example/image@sha256:'+'1'*64,
+             'config_image_id': 'sha256:'+'2'*64}
+    calls = []
+    class Runner:
+        def remote(self, host, argv, **kwargs):
+            calls.append((host, argv))
+            assert argv[:2] in (['docker', 'pull'], ['docker', 'image'])
+            assert argv[-1] == image['image_reference']
+            return image['config_image_id']
+    hosts = [{'host': f'rank{i}'} for i in range(4)]
+    stage_selected_image(Runner(), 'rank0', image, hosts, '/srv/candidate')
+    assert [host for host, argv in calls if argv[:2] == ['docker', 'pull']] == [h['host'] for h in hosts]
+    assert len(calls) == 8
+
+
+def test_registry_candidate_rejects_wrong_config_after_pull():
+    from scripts.deploy_stage import stage_selected_image
+    class Runner:
+        def remote(self, host, argv, **kwargs):
+            return 'sha256:'+'3'*64
+    with pytest.raises(ValueError, match='Image identity mismatch'):
+        stage_selected_image(Runner(), 'rank0', {'registry_pull_each_host': True,
+            'image_reference': 'ghcr.io/example/image@sha256:'+'1'*64,
+            'config_image_id': 'sha256:'+'2'*64}, [{'host':'rank0'}], '/srv/candidate')

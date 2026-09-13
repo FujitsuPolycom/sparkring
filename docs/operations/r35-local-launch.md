@@ -46,11 +46,10 @@ image verification with that receipt. It does not load a model for verification.
 
 ## TP2
 
-Follow the complete [two-Spark R35 quickstart](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md).
-It includes image receipt creation, model download, memory guard installation,
-private rank inputs and plan/create/start commands. Use `CACHE_ARGS=(--sparkcache)`
-for cache on or `CACHE_ARGS=()` for cache off, retaining the R35 receipt.
-The quickstart also provides an explicit R33 fallback; catalog defaults remain R33.
+After recording the R35 image above, use the [TP2 R35 fallback](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md#r35-fallback)
+and the shared memory-guard, private-input and launch steps in that quickstart.
+Use `CACHE_ARGS=(--sparkcache)` for cache on or `CACHE_ARGS=()` for cache off.
+Keep the R35 receipt; the primary quickstart otherwise selects R37.
 
 Both R35 modes use TP2/DCP1, MTP3, 1M context, mHC and two OMP threads.
 The GLM-incompatible GDN decode selector is omitted. Cache on uses B12X loading,

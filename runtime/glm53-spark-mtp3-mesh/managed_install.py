@@ -26,6 +26,12 @@ SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json',
     'spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c',
     'runtime/common/r35.py',
+    'runtime/common/candidate.py',
+    'runtime/images/candidate_image.py',
+    'runtime/images/compositions/lil-r37-glm-spark/descriptor.json',
+    'runtime/images/compositions/lil-r37-glm-spark/baseline-native.json',
+    'runtime/images/compositions/lil-r37-glm-spark/publication.json',
+    'runtime/images/compositions/lil-r37-glm-spark/runtime-artifacts.json',
     'runtime/common/managed_deployment.py',
     'runtime/images/sparkring-r35/source-lock.json',
     'runtime/images/sparkring-r35/entrypoint.py',
@@ -264,7 +270,7 @@ def canonical_container_spec(launch, image_receipt, rank, image, *, run=subproce
     if (site.get('runtime_profile') in ('tp4-dcp4', 'tp4-dcp4-sparkcache')
             and 'r33_profile_contract_roots' not in site
             and (not image_receipt.is_file()
-                 or profile.load_image_receipt(image_receipt).get('schema') != profile.r35.SCHEMA)):
+                 or profile.load_image_receipt(image_receipt).get('schema') not in (profile.r35.SCHEMA, profile.candidate.SCHEMA))):
         raise ValueError('Managed DCP4 requires r33_profile_contract_roots in the private site; an ambient shell export is not a persisted launch input')
     with tempfile.TemporaryDirectory(prefix='sparkring-container-spec-') as temporary:
         rendered = Path(temporary) / 'launch'
@@ -319,6 +325,9 @@ def external_marker_attestation(*, root=None, binary=None):
 
 def managed_image_attestation(receipt):
     """Return source-pinned managed-mesh helper identities for the selected runtime."""
+    if receipt.get('schema') == managed_units.service.mesh_profile.candidate.SCHEMA:
+        managed_units.service.mesh_profile.candidate.validate_receipt(receipt)
+        return {}
     if receipt.get('schema') == managed_units.service.mesh_profile.r35.SCHEMA:
         profile = managed_units.service.mesh_profile
         profile.r35.validate_receipt(receipt)
@@ -370,7 +379,7 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, depl
     site, _, _ = profile.load_site(launch / 'site.json')
     receipt = profile.load_image_receipt(image_receipt)
     inside = managed_image_attestation(receipt)
-    if receipt.get('schema') == profile.r35.SCHEMA:
+    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA):
         inside = external_marker_attestation(binary=Path(site['marker_binary']))
     expected_marker = profile.PINS['marker']['source_sha256']
     if receipt.get('schema') == 'sparkring-source-image-receipt/v1':
@@ -380,7 +389,7 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, depl
         raise ValueError('Managed profile requires the source-pinned image and host marker')
     # Release profiles record readiness after launch. Wrapper images must carry
     # their pre-launch warmup attestation here.
-    if (receipt.get('schema') not in ('sparkring-r33-image-receipt/v1', profile.r35.SCHEMA)
+    if (receipt.get('schema') not in ('sparkring-r33-image-receipt/v1', profile.r35.SCHEMA, profile.candidate.SCHEMA)
             and not inside.get('readiness_warmup')):
         raise ValueError('Managed MTP3 profile requires the temperature-one readiness image')
     result = subprocess.run(['docker', 'inspect', site['container_prefix'] + f'-r{rank}'],
@@ -392,8 +401,8 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, depl
     image = json.loads(result.stdout)[0]
     if image.get('Id') != receipt['image_id']:
         raise ValueError('Inspected image differs from the verified image receipt')
-    if receipt.get('schema') == profile.r35.SCHEMA:
-        profile.r35.verify_local_image(receipt)
+    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA):
+        (profile.candidate if receipt.get("schema") == profile.candidate.SCHEMA else profile.r35).verify_local_image(receipt)
     expected = canonical_container_spec(launch, image_receipt, rank, image)
     validate_container_spec(container, expected)
     if profile.sha(Path(site['marker_binary'])) != site['marker_binary_sha256']:

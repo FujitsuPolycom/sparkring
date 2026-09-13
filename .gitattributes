@@ -36,3 +36,7 @@ profiles/** text eol=lf
 runtime/releases/**/*.tar.gz -text
 # The preservation manifest binds the metadata's CRLF bytes.
 runtime/releases/glm53-dflash-sircl-overlay/source.json -text whitespace=cr-at-eol
+# The published R37 image binds this contract's original CRLF bytes.
+runtime/images/compositions/lil-r37-glm-spark/vllm-connector-jobs-lil-r37.json -text whitespace=cr-at-eol
+runtime/images/compositions/lil-r37-glm-spark/candidate-image.py -text whitespace=cr-at-eol
+runtime/images/compositions/lil-r37-glm-spark/*.patch whitespace=-trailing-space

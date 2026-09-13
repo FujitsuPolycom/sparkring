@@ -1,0 +1,7 @@
+{
+  "/opt/lmcache/lib/liblmcache_cumem_shareable.so": "6c3b32b7892571c0a6a94b7197f87a3bad9735eb897779fc9c9d5981a583499d",
+  "/opt/local-inference/nccl/lib/libnccl.so.2.31.2": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+  "/opt/sparkring/sircl/libspark_transport_capi.so": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+  "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+  "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953"
+}

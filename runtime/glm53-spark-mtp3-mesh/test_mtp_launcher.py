@@ -534,3 +534,42 @@ def test_dcp4_overlay_emits_both_readonly_mounts(launch_fixture, tmp_path):
     assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33-overlay"
     assert f"{root}:/opt/sparkring/profile-contract:ro" in arguments
     assert f"{root}/../image/entrypoint.py:/opt/sparkring/bin/sparkring-r33-overlay:ro" in arguments
+
+
+@pytest.mark.parametrize('rank', [0, 1])
+def test_registered_candidate_tp4_generated_launcher(launch_fixture, rank):
+    from runtime.common import candidate
+    launch, _, output = launch_fixture
+    descriptor, _ = candidate.composition('lil-r37-glm-spark')
+    installed = {'composition_id': descriptor['composition_id'], 'components': descriptor['components']}
+    script = output / 'launch-rank.sh'
+    script.write_text(candidate.adapt_launcher(script.read_text(), installed), newline='\n')
+    contract = candidate.profile_contract(installed)
+    native = contract['sparkcache_native']
+    template = HERE.parent / 'sparkring/jovian-r33/profiles/tp4-dcp1-sparkcache.env.example'
+    overrides = {**_r33_overrides(), **profile.defaults(template),
+        'SPARKRING_RUNTIME_RELEASE': 'candidate', 'SPARKRING_CREATE_ONLY': '1',
+        'DECODE_CONTEXT_PARALLEL_SIZE': '1', 'KV_CACHE_MEMORY_BYTES': '25769803776',
+        'OMP_NUM_THREADS': '1', 'SPARK_TP4_GRAPH_SUBMIT_CPU': '10', 'SPARK_TP4_GRAPH_PROGRESS_CPU': '11',
+        'SPARK_TP4_GRAPH_DIRECT_DOORBELL': '1', 'SPARKCACHE_CACHE_NAMESPACE': 'candidate-cache',
+        'JIT_CACHE_NAMESPACE': 'candidate-jit',
+        'SPARKCACHE_PLACEMENT_LIBRARY_PATH': native['placement_path'],
+        'SPARKCACHE_PLACEMENT_LIBRARY_SHA256': native['placement_sha256'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_PATH': native['snapshot_path'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_SHA256': native['snapshot_sha256'],
+        'SPARKCACHE_VLLM_ROOT': native['vllm_root'], 'SPARKCACHE_SOURCE_LEASE_CONTRACT': native['lease_contract']}
+    result, arguments, _ = launch(rank, overrides)
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, '--entrypoint') == '/opt/venv/bin/python'
+    assert candidate.ENTRYPOINT in arguments
+    assert ('--headless' in arguments) == bool(rank)
+    assert ('--health-cmd' in arguments) == (rank == 0)
+    extra = json.loads(_option(arguments, '--kv-transfer-config'))['kv_connector_extra_config']
+    assert extra['spark_cache_async_page_capture_lease_contract'] == native['lease_contract']
+    env = _docker_environment(arguments)
+    assert env['VLLM_CACHE_ROOT'].endswith('/candidate-jit')
+    assert env['NCCL_IB_PRESERVE_PCI_DOMAIN'] == '1'
+    assert env['SPARK_TP4_GRAPH_DIRECT_DOORBELL'] == '1'
+    from managed_liveness import requires_host_monitor
+    assert requires_host_monitor({'Config': {'Entrypoint': ['/opt/venv/bin/python'],
+        'Cmd': [candidate.ENTRYPOINT, 'serve'], 'Env': ['SPARKRING_LIVENESS_ENABLED=1']}}, rank) == (rank == 0)

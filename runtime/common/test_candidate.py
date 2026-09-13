@@ -111,3 +111,94 @@ def test_duplicate_receipt_key_rejected(inputs):
     inputs['installed_bytes'] = b'{"files":{},"files":{}}'
     with pytest.raises(ValueError, match='Duplicate'):
         m.validate(**inputs)
+
+
+def host_receipt(inputs, monkeypatch):
+    from runtime.common import candidate
+    installed = json.loads(inputs['installed_bytes'])
+    installed['files'][candidate.ENTRYPOINT] = hashlib.sha256((candidate.ROOT / 'runtime/images/candidate_image.py').read_bytes()).hexdigest()
+    installed['files']['/opt/sparkring/sircl/python/sparkring-overlay-manifest.json'] = '8' * 64
+    # Use the real GLM native contract so the rendered cache settings are realistic.
+    native = json.loads((candidate.ROOT / 'runtime/images/compositions/lil-r37-glm-spark/baseline-native.json').read_text())
+    installed['files'].update(native)
+    monkeypatch.setattr(candidate, 'composition', lambda identity: (inputs['descriptor'], native))
+    monkeypatch.setattr(candidate, 'registered_artifacts', lambda identity: {
+        'schema': 'sparkring-runtime-artifacts/v1', 'image_id': inputs['image_id'],
+        'files': {candidate.ENTRYPOINT: installed['files'][candidate.ENTRYPOINT]}})
+    raw = json.dumps(installed).encode()
+    verification = dict(inputs['verification'], receipt_sha256=hashlib.sha256(raw).hexdigest(), files_verified=len(installed['files']))
+    return candidate.make_receipt(inputs['image_id'], raw, verification)
+
+
+@pytest.mark.parametrize('rank', [0, 1])
+@pytest.mark.parametrize('cache', [False, True])
+def test_explicit_candidate_tp2_uses_own_entrypoint_and_lease(inputs, monkeypatch, tmp_path, rank, cache):
+    from runtime.common import candidate, tp2
+    document = host_receipt(inputs, monkeypatch)
+    model, cache_dir = tmp_path / 'model', tmp_path / 'cache'
+    model.mkdir()
+    cache_dir.mkdir()
+    (model / 'config.json').write_text('{}')
+    env = tmp_path / 'rank.env'
+    env.write_text('VLLM_HOST_IP=192.0.2.10\nNCCL_SOCKET_IFNAME=eth0\nGLOO_SOCKET_IFNAME=eth0\n')
+    plan = tp2.render(rank, '192.0.2.10', model, cache_dir, env, document['image_id'], document, r33_sparkcache=cache)
+    assert plan['container_args'][:2] == [candidate.ENTRYPOINT, 'serve']
+    assert plan['runtime_kind'] == 'fixture-candidate'
+    assert '--gdn-decode-kernel' not in plan['container_args']
+    assert ('--headless' in plan['container_args']) == bool(rank)
+    assert ('--health-cmd' in plan['command']) == (rank == 0)
+    tp2.validate_runtime_receipt(document, plan)
+    if cache:
+        assert plan['environment']['SPARKCACHE_SOURCE_LEASE_CONTRACT'] == '/opt/sparkring/contracts/fixture.json'
+        assert 'fixture' in plan['environment']['SPARKCACHE_CACHE_NAMESPACE']
+        assert plan['qualification']['gpu_qualified'] is False
+
+
+def test_candidate_generated_launcher_preserves_frozen_source(inputs, monkeypatch):
+    from runtime.common import candidate
+    document = host_receipt(inputs, monkeypatch)
+    source = (candidate.ROOT / 'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh').read_text()
+    rendered = candidate.adapt_launcher(source, document['installed'])
+    assert 'candidate) release_lease_contract=/opt/sparkring/contracts/fixture.json ;;' in rendered
+    assert 'serving_prefix=(/opt/sparkring/bin/candidate-image.py serve)' in rendered
+    assert 'serving_prefix=(/opt/sparkring/bin/sparkring serve)' in rendered
+    assert source == (candidate.ROOT / 'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh').read_text()
+    with pytest.raises(ValueError, match='changed'):
+        candidate.adapt_launcher(rendered, document['installed'])
+
+
+def test_host_receipt_rejects_divergent_parsed_and_raw_data(inputs, monkeypatch):
+    from runtime.common import candidate
+    document = host_receipt(inputs, monkeypatch)
+    document['installed']['composition_id'] = 'other'
+    with pytest.raises(ValueError, match='raw installed'):
+        candidate.validate_receipt(document)
+
+
+def test_registered_entrypoint_identity_survives_checkout_changes(inputs, monkeypatch):
+    from runtime.common import candidate
+    document = host_receipt(inputs, monkeypatch)
+    original = Path.read_bytes
+    helper = candidate.ROOT / 'runtime/images/candidate_image.py'
+    def changed_helper(path):
+        if path == helper:
+            return b'# different helper with LF\n'
+        return original(path)
+    monkeypatch.setattr(Path, 'read_bytes', changed_helper)
+    assert candidate.validate_receipt(document)['image_id'] == document['image_id']
+
+
+def test_pinned_entrypoint_rejects_candidate_payload_change(inputs):
+    inputs['expected_entrypoint_sha256'] = hashlib.sha256(inputs.pop('entrypoint_bytes')).hexdigest()
+    m.validate(**inputs)
+    mutate(inputs, lambda d: d['files'].update({m.ENTRYPOINT: '9' * 64}))
+    with pytest.raises(ValueError, match='entrypoint differs'):
+        m.validate(**inputs)
+
+
+@pytest.mark.parametrize('pin', ['invalid', '', 12])
+def test_pinned_entrypoint_requires_valid_hash(inputs, pin):
+    inputs.pop('entrypoint_bytes')
+    inputs['expected_entrypoint_sha256'] = pin
+    with pytest.raises(ValueError, match='valid reviewed'):
+        m.validate(**inputs)

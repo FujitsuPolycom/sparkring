@@ -217,8 +217,8 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
         if document.get("profile") is not None:
             result["site"]["runtime_profile"] = document["profile"]
         if runtime_profile is not None:
-            if document.get("schema") != "sparkring-r33-image-receipt/v1":
-                raise ValueError("Explicit runtime profile requires an R33 image receipt")
+            if document.get("schema") not in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+                raise ValueError("Explicit runtime profile requires an R33, R35 or registered candidate image receipt")
             result["site"]["runtime_profile"] = runtime_profile
         selected = selection(result, PROFILE)
         result["site"]["marker_binary_sha256"] = selected["marker_binary_sha256"]
@@ -313,7 +313,7 @@ def main(argv=None):
     p.add_argument("--reuse-existing-image", action="store_true",
                    help="Verify the selected image on all four hosts without saving or copying it")
     p.add_argument("--runtime-profile", choices=("tp4-dcp1", "tp4-dcp1-sparkcache"),
-                   help="Required topology/profile selection for an R33 image receipt")
+                   help="Required topology/profile selection for an R33, R35 or registered candidate image receipt")
     p.add_argument("--existing-model-root", type=str, action="append", default=[],
                    help="Read-only existing model directory; repeat in rank order exactly four times with --reuse-existing-image")
     p.add_argument("--output", type=Path, required=True)

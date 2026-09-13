@@ -22,7 +22,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 from spark_transport.fabric.cx7_hairpin_diagonal import fabric  # noqa: E402
 from integrations.vllm.rocenante import build_bundle  # noqa: E402
-from runtime.common import r35  # noqa: E402
+from runtime.common import candidate, r35  # noqa: E402
 
 PINS = json.loads((HERE / "pins.json").read_text())
 BASE = HERE.parent / "glm53-flash-jj-r8-gb10"
@@ -238,6 +238,8 @@ def _r33_profile_verifier():
 def validate_image_receipt(document: dict) -> dict:
     if not isinstance(document, dict):
         raise ValueError("Image receipt must be a JSON object")
+    if document.get('schema') == candidate.SCHEMA:
+        return candidate.validate_receipt(document)
     if document.get('schema') == r35.SCHEMA:
         return r35.validate_receipt(document)
     if document.get("schema") == "sparkring-r33-image-receipt/v1":
@@ -362,7 +364,7 @@ def verify_bundle(bundle: Path, image_record: dict | None = None) -> str:
     manifest = json.loads((bundle / "sparkring-overlay-manifest.json").read_text())
     for item in manifest["files"]:
         expected_hashes = {item["sha256"]}
-        if image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA):
+        if image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA, candidate.SCHEMA):
             # Release images retain the overlay lineage manifest and attest their
             # rebuilt native library and packaged Python files. Rendering and
             # installation accept the lineage bundle or verified image files.
@@ -384,8 +386,10 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     expected_bundle = verify_bundle(bundle, image_record)
     site, topology, plan = load_site(site_path)
     source_composition = image_record and image_record.get("schema") == "sparkring-source-image-receipt/v1"
-    r35_composition = image_record and image_record.get('schema') == r35.SCHEMA
-    r33_composition = image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA)
+    candidate_composition = image_record and image_record.get('schema') == candidate.SCHEMA
+    runtime_adapter = candidate if candidate_composition else r35
+    r35_composition = image_record and image_record.get('schema') in (r35.SCHEMA, candidate.SCHEMA)
+    r33_composition = image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA, candidate.SCHEMA)
     if r35_composition and 'r33_profile_contract_roots' in site:
         raise ValueError('R35 uses its verified installed contract; R33 contract overlays are not supported')
     if 'runtime_tuning' in site and not r35_composition:
@@ -440,10 +444,12 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                           NCCL_LIBRARY_SHA256=lock["runtime"]["nccl_sha256"])
         elif r33_composition:
             verifier = _r33_profile_verifier()
-            contract = r35.profile_contract(image_record['installed']) if r35_composition else verifier.load_contract()
+            contract = runtime_adapter.profile_contract(image_record['installed']) if r35_composition else verifier.load_contract()
             if r35_composition:
-                values['SPARKRING_RUNTIME_RELEASE'] = 'r35'
-                r35.validate_profile_capabilities(image_record, runtime_profile)
+                values['SPARKRING_RUNTIME_RELEASE'] = 'candidate' if candidate_composition else 'r35'
+                runtime_adapter.validate_profile_capabilities(image_record, runtime_profile)
+                if candidate_composition:
+                    values['JIT_CACHE_NAMESPACE'] = f"sparkring-{image_record['installed']['composition_id']}-{image_record['image_id'][7:19]}-{runtime_profile}"
             selected = contract["profiles"][runtime_profile]
             profile_values = verifier.parse_template(
                 ROOT / "runtime/sparkring/jovian-r33/profiles" / selected["template"]
@@ -487,7 +493,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                         or checked.get(native["snapshot_path"]) != native["snapshot_sha256"]):
                     raise ValueError("Selected image receipt does not bind SparkCache native libraries")
                 values.update({
-                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-{'r35' if r35_composition else 'r33'}-{image_record['image_id'][7:19]}-{runtime_profile}",
+                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-{image_record['installed']['composition_id'] if candidate_composition else ('r35' if r35_composition else 'r33')}-{image_record['image_id'][7:19]}-{runtime_profile}",
                     "SPARKCACHE_PLACEMENT_LIBRARY_PATH": native["placement_path"],
                     "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": native["placement_sha256"],
                     "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": native["snapshot_path"],
@@ -557,7 +563,10 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                                  "--source-port", "65535", "--replacement-ethertype", "0x88b5", "--attach", "--run-seconds", "7200"]}
                                  for m in plan.markers if m.source_rank == rank]}
         ranks.append(rank_plan)
-    shutil.copyfile(BASE / "launch-rank.sh", output / "launch-rank.sh")
+    if candidate_composition:
+        (output / "launch-rank.sh").write_text(candidate.adapt_launcher((BASE / "launch-rank.sh").read_text(), image_record["installed"]), newline="\n")
+    else:
+        shutil.copyfile(BASE / "launch-rank.sh", output / "launch-rank.sh")
     rendered_site = dict(site, topology_file="fabric.json")
     (output / "site.json").write_text(json.dumps(rendered_site, indent=2) + "\n", newline="\n")
     shutil.copyfile(topology.source_path, output / "fabric.json")
