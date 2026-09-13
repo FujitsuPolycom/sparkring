@@ -144,7 +144,8 @@ transport, memory-guard, and cache settings come from the profile.
 
 Confirm this hardware inventory maps to the intended physical cage:
 `rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1`. The reciprocal peer maps
-are rank 0 `1=0/2` and rank 1 `0=0/2`; both selected functions belong to p0.
+use positions in the rendered two-device list: rank 0 `1=0/1` and rank 1
+`0=0/1`. These still select inventory functions 0 and 2, both belonging to p0.
 Install the host memory-guard service and apply
 [memory-guard.conf](memory-guard.conf) as its systemd drop-in. Both `create`
 and `start` require the active guard's effective 2 GiB floor. The launcher
