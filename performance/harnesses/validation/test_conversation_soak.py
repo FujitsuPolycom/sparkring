@@ -69,6 +69,50 @@ def test_calibration_preserves_conversation_and_template(monkeypatch):
     assert all(payload["chat_template_kwargs"] == {"enable_thinking": True} for _, payload, _ in calls)
 
 
+def test_reasoning_alias_has_identical_tokenize_and_chat_counts(monkeypatch):
+    """Chat normalizes the legacy alias; tokenize can require the canonical field."""
+    calls = []
+
+    def send(url, payload, key, timeout, request_id=None):
+        messages = json.loads(json.dumps(payload["messages"]))
+        if url.endswith("/v1/chat/completions"):
+            for message in messages:
+                if message.get("reasoning") is None and message.get("reasoning_content") is not None:
+                    message["reasoning"] = message["reasoning_content"]
+        count = max(1, sum(len(m["content"]) + len(m.get("reasoning", "")) + 20
+                           for m in messages) // 5)
+        calls.append(payload)
+        if url.endswith("/tokenize"):
+            return io.BytesIO(json.dumps({"count": count}).encode())
+        events = [{"choices": [{"delta": {"content": "answer"}, "finish_reason": "stop"}]},
+                  {"usage": {"prompt_tokens": count, "completion_tokens": 1}}]
+        return io.BytesIO(("".join("data: " + json.dumps(event) + "\n" for event in events)
+                           + "data: [DONE]\n").encode())
+
+    monkeypatch.setattr(soak, "request", send)
+    history = [{"role": "user", "content": "original"},
+               {"role": "assistant", "content": "reply", "reasoning_content": "x" * 500}]
+    original = json.dumps(history)
+    messages, count = soak.calibrated_user(config(), history, "reasoning-alias", 1000)
+    record, _ = soak.stream_turn(config(), messages, count, 64, "reasoning-alias", "soak")
+    assert record["usage"]["prompt_tokens"] == count
+    assert json.dumps(history) == original
+    assert record["prompt_sha256"] == soak.digest(calls[-1]["messages"])
+
+
+def test_missing_stream_fields_have_safe_diagnostic_code(monkeypatch, tmp_path):
+    monkeypatch.setattr(soak, "request", fake_http([], missing_usage=True))
+    path = tmp_path / "missing-fields.jsonl"
+    assert soak.execute(config(), path) == 2
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    error = next(row for row in rows if row["type"] == "error")
+    assert error["code"] == "missing_content_or_prompt_usage"
+    assert error["stage"] == "stream"
+    assert error["details"]["content_seen"] is True
+    assert error["details"]["prompt_tokens"] is None
+    assert "test-key" not in path.read_text()
+
+
 def test_stream_records_ids_usage_reasoning_and_delta_clock(monkeypatch):
     calls = []
     monkeypatch.setattr(soak, "request", fake_http(calls, cached=1))
