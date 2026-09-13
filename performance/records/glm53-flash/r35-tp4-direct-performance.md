@@ -65,6 +65,11 @@ validation, with `kv_computed` accounting and no invalid result reason. Model
 kernels were warm; KV prefixes were cold. SparkCache remained enabled, but these
 measurements do not test cache reuse or restart restoration.
 
+A separate [managed restart record](r35-managed-restart.json) verifies one
+coordinated four-rank restart. Every worker restored the 8K prefix; the request
+returned the expected answer with 8,192 cached tokens and zero recreated cache
+tokens in 0.72 seconds. This bounded check does not establish long-run stability.
+
 Contexts through 128K use the unmodified 0.6.2 harness. The 512K and 900K runs
 use a task-local variant that honors requested standalone-prefill sizes up to
 the reported model limit minus 64 tokens, retaining a 128K fallback when the

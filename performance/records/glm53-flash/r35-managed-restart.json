@@ -1,0 +1,52 @@
+{
+  "schema": "sparkring-managed-restart-evidence/v1",
+  "status": "Experimental",
+  "image_id": "sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b",
+  "controller_source_commit": "3dbb25d702a134929f04064254e8f78d333bb537",
+  "model": "GLM-5.3-Flash-NVFP4-Spark",
+  "topology": "TP4/DCP1",
+  "behavior": "Named managed services stop and restart all four model processes; an exact-answer request restores its persistent prefix on every worker.",
+  "cached_tokens": 8192,
+  "created_cache_tokens": 0,
+  "request_elapsed_seconds": 0.7189999999827705,
+  "request_result_sha256": "fd519f728c43475b0bc7129284360e40154b1cb6ac0ea160a0c47687a78d973a",
+  "ranks": [
+    {
+      "rank": 0,
+      "same_container_new_processes": true,
+      "restore_tokens": 8192,
+      "restore_milliseconds": 97.7,
+      "before_inspect_sha256": "71741e8907793d655c3b748d462d6778a28d517bb029666c7948948e18fd672e",
+      "after_inspect_sha256": "4ede28b2e1b52f552a69f2bb3b27c19ab51998eeacc608d524769e1a275d631a",
+      "worker_log_sha256": "ce188efe1bd7d775ba474257d87fd38e2659ab704199f94510a896773fadc8ab"
+    },
+    {
+      "rank": 1,
+      "same_container_new_processes": true,
+      "restore_tokens": 8192,
+      "restore_milliseconds": 95.0,
+      "before_inspect_sha256": "cb7ec8cb229fbcb5fc5831b6f3c56b712ed629fa07a36b299a6e58c41e928c1e",
+      "after_inspect_sha256": "dac8e175ec6a5ef729d8b8744e27dc7a44b587bdf81315206771b924b0bb41b6",
+      "worker_log_sha256": "9c18792f3f681d1847704a33e73bc70adea6f21af1888fe882a38e28427a086f"
+    },
+    {
+      "rank": 2,
+      "same_container_new_processes": true,
+      "restore_tokens": 8192,
+      "restore_milliseconds": 96.0,
+      "before_inspect_sha256": "c9644094f71396092e867b3566a974b78b538ae2f1fae91c8baca84bf11a036d",
+      "after_inspect_sha256": "c1bd6c94aa6f83d34884bf3ce37677120cbc332cf9ffcb7b529e64ba37913716",
+      "worker_log_sha256": "5a2ef390d25e7bf3dbfd9a0a3462ca927a4cbd0603ebe7d42c9c5c7cd3345036"
+    },
+    {
+      "rank": 3,
+      "same_container_new_processes": true,
+      "restore_tokens": 8192,
+      "restore_milliseconds": 98.6,
+      "before_inspect_sha256": "dae67d6c649f24068473dae887235fdca9416f042b62adc6ebb3ee0bec079bfb",
+      "after_inspect_sha256": "10c273bcc58b28833d643cb8fac0dee62a6c7c22da7754deeb57ec9015337be9",
+      "worker_log_sha256": "10a7890869247785d487f45fd832de1c1cf73547b29590679665dbb321e8e27b"
+    }
+  ],
+  "scope": "One coordinated restart and one exact-answer cache restoration. Native stall remains unresolved; long-duration stability testing is deferred."
+}
