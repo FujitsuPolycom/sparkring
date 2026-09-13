@@ -1,0 +1,384 @@
+{
+  "schema": "sparkring-bounded-serving-measurement/v1",
+  "status": "performance evidence; stability qualification incomplete",
+  "image": "sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b",
+  "model": {
+    "name": "GLM-5.3-Flash",
+    "quant": "NVFP4-Spark",
+    "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+  },
+  "sources": {
+    "vllm_tree": "3d4284deab93cbdba8fab097c7f4f1321a547dc1",
+    "b12x_tree": "22de5a1a9f10b698428d9e22abc9b9d217b84152",
+    "native_source_commit": "3be025668705a9f72dd08a215230784e3c42c977",
+    "native_library_sha256": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+    "installed_receipt_sha256": "132c33d4e82d2b1c78d63e0cbd8f545f68936723b375f0bb7f1652ed5959243b"
+  },
+  "hardware": {
+    "gpu": "NVIDIA GB10",
+    "nodes": 4
+  },
+  "configuration": {
+    "tp": 4,
+    "dcp": 1,
+    "mtp": 3,
+    "max_model_len": 1048576,
+    "kv_bytes_per_rank": 25769803776,
+    "kv_dtype": "fp8",
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "omp_threads": 1,
+    "graph_submit_cpu": 10,
+    "graph_progress_cpu": 11,
+    "direct_doorbell": true,
+    "nccl": "dual-domain",
+    "sparkcache": "read-write",
+    "mhc": true,
+    "coalescing": true
+  },
+  "decode": {
+    "harness_version": "0.6.2",
+    "harness_sha256": "e8907f4930d1f3fc1cba3ad0d5b73d9e28e54b63bf27e4c300eae1371182dcb6",
+    "repetitions": 3,
+    "duration_seconds_per_cell": 60,
+    "global_decode_warmup_seconds": 30,
+    "temperature": 1.0,
+    "max_tokens": 8192,
+    "ignore_eos": true,
+    "num_errors": 0,
+    "cells": [
+      {
+        "context_tokens": 0,
+        "concurrency": 1,
+        "aggregate_tps": {
+          "median": 54.36666666666667,
+          "minimum": 54.3311549746365,
+          "maximum": 54.92929562433895
+        },
+        "server_steps_per_s": {
+          "median": 21.500000000000004,
+          "minimum": 21.389037076544533,
+          "maximum": 21.57817502668324
+        },
+        "server_accept_len_effective": {
+          "median": 2.540140296180826,
+          "minimum": 2.5286821705426354,
+          "maximum": 2.545595054095827
+        }
+      },
+      {
+        "context_tokens": 0,
+        "concurrency": 4,
+        "aggregate_tps": {
+          "median": 122.14211808686379,
+          "minimum": 120.26339918315712,
+          "maximum": 124.24525469527072
+        },
+        "server_steps_per_s": {
+          "median": 47.1969543487513,
+          "minimum": 47.01175293824551,
+          "maximum": 48.10354605197487
+        },
+        "server_accept_len_effective": {
+          "median": 2.582871012482663,
+          "minimum": 2.5581560283687943,
+          "maximum": 2.5879237288135593
+        }
+      },
+      {
+        "context_tokens": 0,
+        "concurrency": 8,
+        "aggregate_tps": {
+          "median": 172.3700464060703,
+          "minimum": 168.9372842635027,
+          "maximum": 177.0138703654404
+        },
+        "server_steps_per_s": {
+          "median": 66.41145677897302,
+          "minimum": 65.76731311176138,
+          "maximum": 66.6377324475143
+        },
+        "server_accept_len_effective": {
+          "median": 2.5866733466933867,
+          "minimum": 2.568711967545639,
+          "maximum": 2.6654116465863456
+        }
+      },
+      {
+        "context_tokens": 0,
+        "concurrency": 16,
+        "aggregate_tps": {
+          "median": 248.711146704017,
+          "minimum": 239.28333333333333,
+          "maximum": 257.33257699625244
+        },
+        "server_steps_per_s": {
+          "median": 93.16448938050787,
+          "minimum": 91.81454191575142,
+          "maximum": 96.09930261270839
+        },
+        "server_accept_len_effective": {
+          "median": 2.669591690544413,
+          "minimum": 2.6061594202898553,
+          "maximum": 2.6777777777777776
+        }
+      },
+      {
+        "context_tokens": 16384,
+        "concurrency": 1,
+        "aggregate_tps": {
+          "median": 54.0621664887999,
+          "minimum": 53.477630108904954,
+          "maximum": 60.24839543220541
+        },
+        "server_steps_per_s": {
+          "median": 21.394743863396137,
+          "minimum": 21.371047942523738,
+          "maximum": 21.53871801284156
+        },
+        "server_accept_len_effective": {
+          "median": 2.5268901013250193,
+          "minimum": 2.502340093603744,
+          "maximum": 2.7972136222910216
+        }
+      },
+      {
+        "context_tokens": 16384,
+        "concurrency": 4,
+        "aggregate_tps": {
+          "median": 120.7290433390932,
+          "minimum": 119.45677199774165,
+          "maximum": 121.29200173513713
+        },
+        "server_steps_per_s": {
+          "median": 46.04758250192276,
+          "minimum": 45.82367556572211,
+          "maximum": 46.18105375555152
+        },
+        "server_accept_len_effective": {
+          "median": 2.6340579710144927,
+          "minimum": 2.586705202312139,
+          "maximum": 2.6346433770014555
+        }
+      },
+      {
+        "context_tokens": 16384,
+        "concurrency": 8,
+        "aggregate_tps": {
+          "median": 176.282104771276,
+          "minimum": 172.8953251693571,
+          "maximum": 178.42067504211164
+        },
+        "server_steps_per_s": {
+          "median": 65.81999632849688,
+          "minimum": 64.60008675632064,
+          "maximum": 66.87021372440466
+        },
+        "server_accept_len_effective": {
+          "median": 2.6763946280991737,
+          "minimum": 2.6681636726546905,
+          "maximum": 2.6782454361054766
+        }
+      },
+      {
+        "context_tokens": 16384,
+        "concurrency": 16,
+        "aggregate_tps": {
+          "median": 253.02794901352888,
+          "minimum": 249.22696351268652,
+          "maximum": 253.8
+        },
+        "server_steps_per_s": {
+          "median": 92.79780708352462,
+          "minimum": 92.33929226736566,
+          "maximum": 93.01859369518874
+        },
+        "server_accept_len_effective": {
+          "median": 2.7201867816091956,
+          "minimum": 2.685698847262248,
+          "maximum": 2.7485590778097984
+        }
+      }
+    ],
+    "scope": "Sustained output throughput after cell readiness; concurrency is simultaneous requests. Context 0 means no added context, not an empty prompt. Prefill timing was skipped, not request prefill. Server step counters are aggregate verifier counters, not whole GPU batch forward passes."
+  },
+  "prefill": {
+    "repetitions": 3,
+    "concurrency": 1,
+    "requested_duration_seconds": 30,
+    "harness_sha256_through_128k": "e8907f4930d1f3fc1cba3ad0d5b73d9e28e54b63bf27e4c300eae1371182dcb6",
+    "harness_sha256_above_128k": "42b299ec85998cdcf8969e89df186c31df53d8306e1f931568bef3ab0d361738",
+    "large_variant_changes": [
+      "Label task-local version",
+      "For standalone prefill, honor requested contexts up to the reported model limit minus64tokens; retain131072fallback if no limit reported"
+    ],
+    "cold_cache_validation": "Nonce-based prompts; all run-level server validations report zero cached tokens, kv_computed token accounting, and empty invalid_reason. Kernels are warm; KV prefixes are cold. This is not SparkCache reuse or restore qualification.",
+    "aggregation": "Median and range of three run-level measurements, not a pooled sample median. Client throughput includes time to first token.",
+    "cells": [
+      {
+        "requested_context_tokens": 8192,
+        "actual_prompt_tokens": [
+          8194
+        ],
+        "repetitions": 3,
+        "total_samples": 21,
+        "client_tokens_per_second": {
+          "median": 3497.0,
+          "minimum": 3497.0,
+          "maximum": 3520.0
+        },
+        "client_ttft_seconds": {
+          "median": 2.343,
+          "minimum": 2.328,
+          "maximum": 2.343
+        },
+        "server_computed_tokens_per_second": {
+          "median": 3537.0,
+          "minimum": 3535.0,
+          "maximum": 3558.0
+        },
+        "cached_tokens": 0
+      },
+      {
+        "requested_context_tokens": 32768,
+        "actual_prompt_tokens": [
+          32770
+        ],
+        "repetitions": 3,
+        "total_samples": 9,
+        "client_tokens_per_second": {
+          "median": 3537.0,
+          "minimum": 3531.0,
+          "maximum": 3555.0
+        },
+        "client_ttft_seconds": {
+          "median": 9.265,
+          "minimum": 9.219,
+          "maximum": 9.281
+        },
+        "server_computed_tokens_per_second": {
+          "median": 3561.0,
+          "minimum": 3556.0,
+          "maximum": 3584.0
+        },
+        "cached_tokens": 0
+      },
+      {
+        "requested_context_tokens": 131072,
+        "actual_prompt_tokens": [
+          131074
+        ],
+        "repetitions": 3,
+        "total_samples": 3,
+        "client_tokens_per_second": {
+          "median": 3399.0,
+          "minimum": 3396.0,
+          "maximum": 3417.0
+        },
+        "client_ttft_seconds": {
+          "median": 38.563,
+          "minimum": 38.359,
+          "maximum": 38.594
+        },
+        "server_computed_tokens_per_second": {
+          "median": 3419.0,
+          "minimum": 3417.0,
+          "maximum": 3441.0
+        },
+        "cached_tokens": 0
+      },
+      {
+        "requested_context_tokens": 524288,
+        "actual_prompt_tokens": [
+          524290
+        ],
+        "repetitions": 3,
+        "total_samples": 3,
+        "client_tokens_per_second": {
+          "median": 2864.0,
+          "minimum": 2860.0,
+          "maximum": 2866.0
+        },
+        "client_ttft_seconds": {
+          "median": 183.078,
+          "minimum": 182.922,
+          "maximum": 183.328
+        },
+        "server_computed_tokens_per_second": {
+          "median": 2879.0,
+          "minimum": 2876.0,
+          "maximum": 2883.0
+        },
+        "cached_tokens": 0
+      },
+      {
+        "requested_context_tokens": 900000,
+        "actual_prompt_tokens": [
+          900002
+        ],
+        "repetitions": 3,
+        "total_samples": 3,
+        "client_tokens_per_second": {
+          "median": 2499.0,
+          "minimum": 2491.0,
+          "maximum": 2501.0
+        },
+        "client_ttft_seconds": {
+          "median": 360.078,
+          "minimum": 359.812,
+          "maximum": 361.281
+        },
+        "server_computed_tokens_per_second": {
+          "median": 2513.0,
+          "minimum": 2504.0,
+          "maximum": 2514.0
+        },
+        "cached_tokens": 0
+      }
+    ]
+  },
+  "raw_result_digests": [
+    {
+      "role": "decode-repeat-1",
+      "sha256": "f341d08f2c41c8c5716129a120700bbb62e0cc136591d835ba3fffecb80d58a5"
+    },
+    {
+      "role": "decode-repeat-2",
+      "sha256": "4c55925443dbe86d5ab7216c11cbd3946196accc684d1175009e9bc8a99d77b5"
+    },
+    {
+      "role": "decode-repeat-3",
+      "sha256": "94e4aaeff4791b358227fa61cfc79f61d9f7af48cb7ca10a9fcb03cd2cb7e015"
+    },
+    {
+      "role": "prefill-1",
+      "sha256": "98693c6f00cb7887d7b2d3d2b720dd3934acb35d0f2b59d9450d419f6eaea8dc"
+    },
+    {
+      "role": "prefill-2",
+      "sha256": "6aef97054e0f17c5826f1f62fea56c92dedb25d5c55e965c28ed792ad6a9c07b"
+    },
+    {
+      "role": "prefill-3",
+      "sha256": "4be04a8b51240baadea8fcdc1847ca362e81dc5f728d324d5cbfe4719132fea0"
+    },
+    {
+      "role": "prefill-4",
+      "sha256": "5c9a08e5907a9a1cd7e2d91eecbda71aab138bc3a3e3bac6fc7ca76712542413"
+    },
+    {
+      "role": "prefill-5",
+      "sha256": "8f2f2decd6c81ccb03ebfd209ec951b1129635a635af1e42caa8eaab9b231ebe"
+    },
+    {
+      "role": "prefill-6",
+      "sha256": "918aef4e06035fa0e268b8bae15b83c643bdbc0692011a3539c1a76062ce8680"
+    }
+  ],
+  "raw_artifact_availability": "Digests identify locally retained raw results; raw files contain private deployment metadata and are not included. Curated measurements are embedded here.",
+  "limits": [
+    "The original native TP4 collective stall remains unresolved. These completed benchmarks do not establish long-duration stability.",
+    "No matched R33 baseline or complete command-ring comparison is included.",
+    "Decode output is measured with ignore_eos; throughput is not a semantic-answer correctness result."
+  ]
+}

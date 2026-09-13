@@ -14,6 +14,7 @@ sys.path.insert(0, str(HERE))
 spec = importlib.util.spec_from_file_location('unit_mesh_service', HERE / 'managed_service.py')
 service = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(service)
+import managed_liveness  # noqa: E402 - loaded from the component path above
 
 
 def systemd_path(value):
@@ -22,7 +23,10 @@ def systemd_path(value):
     return value
 
 
-def unit_text(code_root, config_root, container_id):
+def unit_text(code_root, config_root, container_id, *, host_liveness=False, deployment_name=None):
+    selected=service.managed_deployment.layout(deployment_name)
+    if deployment_name is not None and (code_root!=selected['code_dir'] or config_root!=selected['config_dir']):
+        raise ValueError('Named deployment roots must match their derived paths')
     runner = systemd_path(code_root) + '/runtime/glm53-spark-mtp3-mesh/managed_service.py'
     config = systemd_path(config_root) + '/service.json'
     if not re.fullmatch('[0-9a-f]{64}', container_id):
@@ -78,10 +82,37 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 '''
-    return {'sparkring-mesh.service': mesh, 'sparkring-mesh-model.service': model}
+    units = {'sparkring-mesh.service': mesh, 'sparkring-mesh-model.service': model}
+    if host_liveness:
+        units['sparkring-mesh-model.service'] = model.replace(
+            'Requires=docker.service sparkring-mesh.service',
+            'Wants=sparkring-scheduler-liveness.service\nRequires=docker.service sparkring-mesh.service')
+        units['sparkring-scheduler-liveness.service'] = f'''[Unit]
+Description=SparkRing rank-zero scheduler liveness
+BindsTo=sparkring-mesh-model.service
+PartOf=sparkring-mesh-model.service
+After=sparkring-mesh-model.service
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 {systemd_path(code_root)}/runtime/glm53-spark-mtp3-mesh/managed_liveness.py --config {config}
+Restart=no
+TimeoutStopSec=20s
+UMask=0077
+'''
+    if deployment_name is not None:
+        defaults=service.managed_deployment.layout()
+        def rename(value):
+            for field in ('model_unit','mesh_unit','liveness_unit'):
+                value=value.replace(defaults[field],selected[field])
+            return value.replace('RuntimeDirectory='+defaults['runtime_directory']+'\n',
+                                 'RuntimeDirectory='+selected['runtime_directory']+'\n')
+        units={rename(name):rename(text) for name,text in units.items()}
+    return units
 
 
-def render(site_path, containers, output, code_root, config_root, epoch, health_port):
+def render(site_path, containers, output, code_root, config_root, epoch, health_port, deployment_name=None):
+    selected=service.managed_deployment.layout(deployment_name)
     if output.exists():
         raise ValueError('Managed unit output must not exist')
     if not re.fullmatch('[0-9a-f]{32}', epoch):
@@ -99,16 +130,20 @@ def render(site_path, containers, output, code_root, config_root, epoch, health_
             raise ValueError('Expected stopped rank-ordered profile containers')
         if item['HostConfig'].get('RestartPolicy', {}).get('Name') not in ('no', ''):
             raise ValueError('Docker auto-restart must be disabled; systemd owns model lifetime')
-        unit_text(code_root, config_root, item['Id'])
+        unit_text(code_root, config_root, item['Id'],deployment_name=deployment_name)
     output.mkdir(parents=True)
     for rank, item in enumerate(containers):
         directory = output / f'rank{rank}'
         directory.mkdir()
         config = {'schema': service.PROTOCOL, 'site_path': config_root + '/site.json', 'rank': rank,
                   'key_file': config_root + '/health.key', 'epoch': epoch, 'health_port': health_port,
-                  'state_dir': '/run/sparkring-mesh', 'container_id': item['Id'], 'container_image': item['Image']}
+                  'state_dir': selected['state_dir'], 'container_id': item['Id'], 'container_image': item['Image']}
+        if deployment_name is not None:
+            config['deployment_name']=deployment_name
         (directory / 'service.json').write_text(json.dumps(config, indent=2) + '\n', newline='\n')
-        for name, text in unit_text(code_root, config_root, item['Id']).items():
+        for name, text in unit_text(code_root, config_root, item['Id'],
+                                   host_liveness=managed_liveness.requires_host_monitor(item, rank),
+                                   deployment_name=deployment_name).items():
             (directory / name).write_text(text, newline='\n')
     (output / 'render.json').write_text(json.dumps({'status': 'implemented', 'epoch': epoch,
         'site_sha256': service.mesh_profile.sha(site_path), 'image': next(iter(image_ids)),
@@ -125,9 +160,11 @@ def main():
     parser.add_argument('--config-root', default='/etc/sparkring/managed-mesh')
     parser.add_argument('--epoch', default=None)
     parser.add_argument('--health-port', type=int, default=9975)
+    parser.add_argument('--deployment-name')
     args = parser.parse_args()
-    render(args.site, json.loads(args.containers.read_text()), args.output, systemd_path(args.code_root),
-           systemd_path(args.config_root), args.epoch or secrets.token_hex(16), args.health_port)
+    code_root,config_root=service.managed_deployment.command_roots(args.deployment_name,args.code_root,args.config_root)
+    render(args.site, json.loads(args.containers.read_text()), args.output, systemd_path(code_root),
+           systemd_path(config_root), args.epoch or secrets.token_hex(16), args.health_port,args.deployment_name)
 
 
 if __name__ == '__main__':

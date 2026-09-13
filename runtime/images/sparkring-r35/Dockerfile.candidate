@@ -1,0 +1,11 @@
+ARG SOURCE_STAGE
+FROM ${SOURCE_STAGE}
+SHELL ["/bin/sh", "-ec"]
+COPY finalize_image.py verify_image.py entrypoint.py vllm-connector-jobs.json tp2-sparkcache-capabilities.json r33-*-files.txt /r35-context/
+COPY profile-contract/ /r35-context/profile-contract/
+COPY capability-evidence/ /r35-context/capability-evidence/
+RUN /opt/venv/bin/python /r35-context/finalize_image.py \
+    && /opt/venv/bin/python /opt/sparkring/bin/verify-r35.py
+LABEL org.sparkring.release="r35-local-candidate"
+ENTRYPOINT ["/opt/venv/bin/python", "/opt/sparkring/bin/sparkring"]
+CMD ["--help"]

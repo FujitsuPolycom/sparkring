@@ -12,7 +12,10 @@ import time
 import managed_units
 
 
-def phases(action, code_root, config_root):
+def phases(action, code_root, config_root, deployment_name=None):
+    selected=managed_units.service.managed_deployment.layout(deployment_name)
+    if deployment_name is not None and (code_root,config_root)!=(selected['code_dir'],selected['config_dir']):
+        raise ValueError('Named lifecycle roots must match the derived deployment paths')
     runner = ['/usr/bin/python3', code_root + '/runtime/glm53-spark-mtp3-mesh/managed_service.py']
     def command(operation):
         return ['sudo', '-n', *runner, operation, '--config', config_root + '/service.json']
@@ -41,7 +44,12 @@ def phases(action, code_root, config_root):
         'status': [('systemd-state', [*systemctl, 'show', 'sparkring-mesh.service', 'sparkring-mesh-model.service',
                                      '--property=Id,ActiveState,SubState,Result,MainPID'])],
     }
-    return table[action]
+    steps=table[action]
+    if deployment_name is not None:
+        defaults=managed_units.service.managed_deployment.layout()
+        names={defaults[key]:selected[key] for key in ('mesh_unit','model_unit','liveness_unit')}
+        steps=[(phase,[names.get(value,value) for value in argv]) for phase,argv in steps]
+    return steps
 
 
 def execute(host, argv):
@@ -71,13 +79,15 @@ def main():
     parser.add_argument('--config-root', default='/etc/sparkring/managed-mesh')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--execute-authorized', action='store_true')
+    parser.add_argument('--deployment-name')
     args = parser.parse_args()
     _, topology, _ = managed_units.service.mesh_profile.load_site(args.site)
     hosts = [topology.rank(rank).ssh_alias for rank in range(4)]
     import re
     if any(not re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.@-]*', host) for host in hosts):
         raise ValueError('SSH aliases cannot contain shell syntax or options')
-    steps = phases(args.action, managed_units.systemd_path(args.code_root), managed_units.systemd_path(args.config_root))
+    code_root,config_root=managed_units.service.managed_deployment.command_roots(args.deployment_name,args.code_root,args.config_root)
+    steps = phases(args.action, managed_units.systemd_path(code_root), managed_units.systemd_path(config_root),args.deployment_name)
     if not args.execute_authorized:
         print(json.dumps({'action': args.action, 'hosts': hosts, 'phases': steps, 'executed': False}, indent=2))
         return

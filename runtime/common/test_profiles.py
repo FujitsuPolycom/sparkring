@@ -239,7 +239,7 @@ def test_catalog_pins_r33_receipt_and_cache_selection():
 
 
 @pytest.mark.parametrize('profile_id', ['glm53-flash-spark-tp2-dcp1', 'glm53-flash-spark-tp2-dcp1-sparkcache'])
-@pytest.mark.parametrize('flag', ['--r33-sparkcache', '--r33-spark'])
+@pytest.mark.parametrize('flag', ['--r33-sparkcache', '--r33-spark', '--sparkcache', '--spark'])
 def test_catalog_owns_cache_composition(profile_id, flag):
     with pytest.raises(ValueError, match='catalog owns SparkCache'):
         plan(profile_id, ['plan', flag])

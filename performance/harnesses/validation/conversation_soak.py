@@ -20,6 +20,47 @@ from prefill_probe import build_text, events, has_token, request, tokens  # noqa
 SCHEMA = "sparkring-conversation-soak/v1"
 
 
+class SoakValidationError(ValueError):
+    """A validation failure with controlled diagnostics that cannot echo credentials."""
+
+    def __init__(self, message, code, details=None):
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+
+
+def error_details(error):
+    result = {"error": type(error).__name__}
+    if isinstance(error, SoakValidationError):
+        result.update(code=error.code, details=error.details)
+    elif isinstance(error, ValueError):
+        # The shared SSE parser raises these fixed messages. Never emit an
+        # arbitrary exception string: an endpoint may echo credentials in it.
+        codes = {
+            "Streaming event must be a JSON object": "invalid_stream_event",
+            "Endpoint reported a streaming error": "server_error_event",
+            "Single-completion stream must contain at most one choice per event": "invalid_stream_choices",
+            "Stream ended without its completion terminator": "missing_stream_terminator",
+        }
+        code = codes.get(str(error))
+        if code:
+            result["code"] = code
+    return result
+
+
+def wire_messages(messages):
+    """Give tokenize and chat the same reasoning field while retaining legacy compatibility."""
+    result = []
+    for message in messages:
+        copied = dict(message)
+        if copied.get("role") == "assistant" and copied.get("reasoning") is None:
+            reasoning = copied.get("reasoning_content")
+            if reasoning is not None:
+                copied["reasoning"] = reasoning
+        result.append(copied)
+    return result
+
+
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -30,51 +71,68 @@ def fixture(identity, chars):
                         "Analyze these maintenance notes in detail and recommend next actions.", 1)
 
 
-def count_tokens(config, messages):
-    payload = {"model": config["model"], "messages": messages, "add_generation_prompt": True,
-               "chat_template_kwargs": config["chat_template_kwargs"]}
+def template_kwargs(config, phase):
+    """Match vLLM's phase-specific reasoning merge for tokenize and generation."""
+    values = dict(config["chat_template_kwargs"])
+    effort = config["probe_reasoning_effort"] if phase != "soak" else config["reasoning_effort"]
+    if effort:
+        # ChatCompletionRequest merges non-unset top-level effort over template
+        # kwargs, but preserves an explicitly supplied enable_thinking value.
+        if effort != "auto":
+            values["reasoning_effort"] = effort
+        if "enable_thinking" not in values:
+            values["enable_thinking"] = effort != "none"
+    return values
+
+
+def count_tokens(config, messages, phase="soak"):
+    payload = {"model": config["model"], "messages": wire_messages(messages), "add_generation_prompt": True,
+               "chat_template_kwargs": template_kwargs(config, phase)}
     with request(config["endpoint"] + "/tokenize", payload, config["api_key"], config["timeout"]) as response:
         count = json.load(response).get("count")
     if type(count) is not int or count <= 0:
-        raise ValueError("Tokenizer must return a positive integer count")
+        raise SoakValidationError("Tokenizer must return a positive integer count", "invalid_tokenizer_count")
     return count
 
 
-def calibrated_user(config, history, identity, target_total, image=None):
+def calibrated_user(config, history, identity, target_total, image=None, *, phase="soak"):
     """Calibrate the added user message while preserving every preceding message byte."""
-    previous = count_tokens(config, history) if history else 0
+    previous = count_tokens(config, history, phase) if history else 0
     chars = max(256, (target_total - previous) * 5)
     for _ in range(10):
         text = fixture(identity, chars)
         content = text if image is None else [
             {"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image}}]
         messages = history + [{"role": "user", "content": content}]
-        count = count_tokens(config, messages)
+        count = count_tokens(config, messages, phase)
         if abs(count - target_total) <= max(8, (target_total - previous) * 0.01):
             return messages, count
         chars = max(128, min(64 * 1024 * 1024, round(chars * max(1, target_total - previous)
                                                    / max(1, count - previous))))
-    raise ValueError("Token calibration did not converge")
+    raise SoakValidationError("Token calibration did not converge", "token_calibration_not_converged",
+                             {"target_tokens": target_total, "observed_tokens": count})
 
 
 def stream_turn(config, messages, count, max_tokens, identity, phase, *, request_id=None, clock=time.perf_counter):
     if count + max_tokens > config["context_limit"]:
-        raise ValueError("Tokenized prompt plus output exceeds the context limit")
+        raise SoakValidationError("Tokenized prompt plus output exceeds the context limit", "context_limit_exceeded")
     request_id = request_id or "soak-" + uuid.uuid4().hex
-    payload = {"model": config["model"], "messages": messages, "max_tokens": max_tokens,
+    payload = {"model": config["model"], "messages": wire_messages(messages), "max_tokens": max_tokens,
                "stream": True, "stream_options": {"include_usage": True},
                "temperature": config["temperature"], "seed": config["seed"], "top_p": 1,
-               "chat_template_kwargs": config["chat_template_kwargs"]}
+               "chat_template_kwargs": template_kwargs(config, phase)}
     effort = config["probe_reasoning_effort"] if phase != "soak" else config["reasoning_effort"]
     if effort:
         payload["reasoning_effort"] = effort
     chunks, content, reasoning, usage, response_id, finish = [], [], [], None, None, None
+    stream_error = False
     started_unix, started = time.time(), clock()
     with request(config["endpoint"] + "/v1/chat/completions", payload, config["api_key"],
                  config["timeout"], request_id=request_id) as response:
         header_id = response.headers.get("X-Request-ID") if hasattr(response, "headers") else None
         for event in events(response):
             now = clock()
+            stream_error = stream_error or bool(event.get("error"))
             if event.get("id"):
                 response_id = event["id"]
             if has_token(event):
@@ -89,21 +147,30 @@ def stream_turn(config, messages, count, max_tokens, identity, phase, *, request
                     reasoning.append(delta.get("reasoning_content") or delta["reasoning"])
                 finish = choice.get("finish_reason") or finish
     elapsed = clock() - started
+    safe_usage = usage if isinstance(usage, dict) else {}
+    details = {"content_seen": bool(chunks), "usage_seen": isinstance(usage, dict),
+               "prompt_tokens": safe_usage.get("prompt_tokens") if type(safe_usage.get("prompt_tokens")) is int else None,
+               "completion_tokens": safe_usage.get("completion_tokens") if type(safe_usage.get("completion_tokens")) is int else None,
+               "finish_reason": finish if finish in ("stop", "length", "tool_calls", "content_filter") else None}
+    if stream_error:
+        raise SoakValidationError("Server returned an error event", "server_error_event", details)
     if not chunks or not isinstance(usage, dict) or type(usage.get("prompt_tokens")) is not int or usage["prompt_tokens"] <= 0:
-        raise ValueError("Missing first delta or authoritative prompt usage")
+        raise SoakValidationError("Missing first delta or authoritative prompt usage",
+                                 "missing_content_or_prompt_usage", details)
     completion = usage.get("completion_tokens")
     if type(completion) is not int or completion < 1 or finish not in ("stop", "length"):
-        raise ValueError("Missing output usage or normal finish reason")
+        raise SoakValidationError("Missing output usage or normal finish reason", "invalid_output_usage_or_finish", details)
     cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
     if cached is not None and (type(cached) is not int or not 0 <= cached <= usage["prompt_tokens"]):
-        raise ValueError("Invalid reported cached-token count")
+        details["cached_tokens"] = cached if type(cached) is int else None
+        raise SoakValidationError("Invalid reported cached-token count", "invalid_cached_token_count", details)
     assistant = {"role": "assistant", "content": "".join(content)}
     if reasoning:
         assistant["reasoning_content"] = "".join(reasoning)
     span = chunks[-1] - chunks[0]
     record = {"type": "turn", "phase": phase, "identity": identity, "valid": True,
               "request_id": request_id, "server_request_id": header_id, "response_id": response_id,
-              "started_unix": started_unix, "prompt_sha256": digest(messages),
+              "started_unix": started_unix, "prompt_sha256": digest(payload["messages"]),
               "assistant": assistant, "tokenized_prompt_tokens": count, "usage": usage,
               "cached_tokens_reported": cached, "cached_fraction_reported": cached / usage["prompt_tokens"]
               if cached is not None and usage["prompt_tokens"] > 0 else None,
@@ -165,14 +232,16 @@ def execute(config, output):
         def probe(phase, index):
             identity = f"{config['seed']}-probe-{phase}-{index}"
             request_id = "soak-" + uuid.uuid4().hex
+            stage = "token_calibration"
             try:
-                messages, count = calibrated_user(config, [], identity, config["probe_tokens"])
+                messages, count = calibrated_user(config, [], identity, config["probe_tokens"], phase=phase)
+                stage = "stream"
                 record, _ = stream_turn(config, messages, count, config["probe_output_tokens"], identity,
                                         phase, request_id=request_id)
                 emit(record)
             except Exception as error:
                 emit({"type": "error", "phase": phase, "identity": identity,
-                      "request_id": request_id, "error": type(error).__name__})
+                      "request_id": request_id, "stage": stage, **error_details(error)})
                 stop.set()
 
         def worker(agent, deadline):
@@ -186,17 +255,19 @@ def execute(config, output):
                     conversation += 1
                 identity = f"{config['seed']}-agent-{agent}-conversation-{conversation}-turn-{turn}"
                 request_id = "soak-" + uuid.uuid4().hex
+                stage = "token_calibration"
                 try:
                     initial = config["start_tokens"][agent % len(config["start_tokens"])]
                     target = initial if prior_count is None else prior_count + config["tail_tokens"]
                     picture = image if image and turn > 0 and turn % config["image_every"] == 0 else None
-                    messages, count = calibrated_user(config, history, identity, target, picture)
+                    messages, count = calibrated_user(config, history, identity, target, picture, phase="soak")
                     if count + config["max_tokens"] > config["context_limit"]:
                         raise ValueError("Context limit exceeded")
                     with lock:
                         if stop.is_set() or time.monotonic() >= deadline or consumed + count > config["max_soak_prompt_tokens"]:
                             break
                         consumed += count
+                    stage = "stream"
                     record, assistant = stream_turn(config, messages, count, config["max_tokens"], identity,
                                                     "soak", request_id=request_id)
                     record.update(agent=agent, conversation=conversation, turn=turn,
@@ -207,7 +278,7 @@ def execute(config, output):
                     history, prior_count, turn = messages + [assistant], count, turn + 1
                 except Exception as error:
                     emit({"type": "error", "phase": "soak", "identity": identity,
-                          "request_id": request_id, "error": type(error).__name__})
+                          "request_id": request_id, "stage": stage, **error_details(error)})
                     stop.set()
                     break
 
@@ -225,7 +296,7 @@ def execute(config, output):
                     if stop.is_set():
                         break
         except Exception as error:
-            emit({"type": "error", "phase": "probe", "error": type(error).__name__})
+            emit({"type": "error", "phase": "probe", **error_details(error)})
         summary = summarize(records)
         summary["soak_prompt_tokens_admitted"] = consumed
         summary["success"] = not summary["errors"] and summary["soak_turns"] > 0

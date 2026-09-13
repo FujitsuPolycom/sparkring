@@ -66,7 +66,148 @@ def test_calibration_preserves_conversation_and_template(monkeypatch):
     assert abs(count - 1000) <= 10
     assert messages[:2] == history
     assert json.dumps(history) == original
-    assert all(payload["chat_template_kwargs"] == {"enable_thinking": True} for _, payload, _ in calls)
+    assert all(payload["chat_template_kwargs"] == {"enable_thinking": True, "reasoning_effort": "low"} for _, payload, _ in calls)
+
+
+@pytest.mark.parametrize('effort,kwargs,expected', [
+    ('low', {}, {'reasoning_effort':'low','enable_thinking':True}),
+    ('none', {}, {'reasoning_effort':'none','enable_thinking':False}),
+    ('none', {'enable_thinking':True}, {'reasoning_effort':'none','enable_thinking':True}),
+    ('high', {'reasoning_effort':'low','enable_thinking':False}, {'reasoning_effort':'high','enable_thinking':False}),
+    ('', {'reasoning_effort':'low','enable_thinking':False}, {'reasoning_effort':'low','enable_thinking':False}),
+    ('', {}, {}),
+])
+def test_reasoning_template_merge_matches_api_precedence_without_mutating_config(effort,kwargs,expected):
+    cfg=config(reasoning_effort=effort,chat_template_kwargs=kwargs)
+    original=json.dumps(cfg,sort_keys=True)
+    assert soak.template_kwargs(cfg,'soak')==expected
+    assert json.dumps(cfg,sort_keys=True)==original
+    assert soak.template_kwargs(cfg,'soak') is not cfg['chat_template_kwargs']
+
+
+def test_probe_and_soak_calibration_match_generation_template_semantics(monkeypatch,tmp_path):
+    calls=[]
+    def send(url,payload,key,timeout,request_id=None):
+        # Simulate the server's different endpoint merges. Header size varies
+        # with effort, so matching only raw conversation bytes is insufficient.
+        effective=dict(payload['chat_template_kwargs'])
+        if url.endswith('/v1/chat/completions'):
+            effort=payload.get('reasoning_effort')
+            if effort is not None:
+                if "enable_thinking" not in effective:
+                    effective["enable_thinking"] = effort != "none"
+                if effort != "auto":
+                    effective["reasoning_effort"] = effort
+        count = fake_count(payload["messages"]) + {"none": 5, "high": 45}.get(
+            effective.get("reasoning_effort"), 90
+        )
+        calls.append((url, payload, effective))
+        if url.endswith("/tokenize"):
+            return io.BytesIO(json.dumps({"count": count}).encode())
+        events = [
+            {"choices": [{"delta": {"content": "answer"}, "finish_reason": "stop"}]},
+            {"usage": {"prompt_tokens": count, "completion_tokens": 1}},
+        ]
+        return io.BytesIO(
+            (
+                "".join("data: " + json.dumps(event) + "\n" for event in events)
+                + "data: [DONE]\n"
+            ).encode()
+        )
+
+    monkeypatch.setattr(soak, "request", send)
+    cfg = config(
+        reasoning_effort="high", probe_reasoning_effort="none", chat_template_kwargs={}
+    )
+    original = json.dumps(cfg, sort_keys=True)
+    output = tmp_path / "effort-parity.jsonl"
+    assert soak.execute(cfg, output) == 0
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    turns = [row for row in rows if row["type"] == "turn"]
+    assert {row["phase"] for row in turns} >= {"soak", "before", "after"}
+    assert all(
+        row["tokenized_prompt_tokens"] == row["usage"]["prompt_tokens"] for row in turns
+    )
+    for url, payload, effective in calls:
+        first = payload["messages"][0]["content"]
+        probe = "-probe-" in first
+        assert effective["reasoning_effort"] == ("none" if probe else "high")
+        assert effective["enable_thinking"] is (not probe)
+    assert json.dumps(cfg, sort_keys=True) == original
+
+
+def test_empty_effort_keeps_request_kwargs_and_omits_top_level_effort(monkeypatch):
+    calls = []
+    monkeypatch.setattr(soak, "request", fake_http(calls))
+    cfg=config(reasoning_effort='',probe_reasoning_effort='',chat_template_kwargs={'enable_thinking':True})
+    messages=[{'role':'user','content':'question'}]
+    count=soak.count_tokens(cfg,messages)
+    soak.stream_turn(cfg,messages,count,64,'empty-effort','soak')
+    assert all(payload['chat_template_kwargs']=={'enable_thinking':True} for _,payload,_ in calls)
+    assert 'reasoning_effort' not in calls[-1][1]
+
+
+def test_reasoning_alias_has_identical_tokenize_and_chat_counts(monkeypatch):
+    """Chat normalizes the legacy alias; tokenize can require the canonical field."""
+    calls = []
+
+    def send(url, payload, key, timeout, request_id=None):
+        messages = json.loads(json.dumps(payload["messages"]))
+        if url.endswith("/v1/chat/completions"):
+            for message in messages:
+                if message.get("reasoning") is None and message.get("reasoning_content") is not None:
+                    message["reasoning"] = message["reasoning_content"]
+        count = max(1, sum(len(m["content"]) + len(m.get("reasoning", "")) + 20
+                           for m in messages) // 5)
+        calls.append(payload)
+        if url.endswith("/tokenize"):
+            return io.BytesIO(json.dumps({"count": count}).encode())
+        events = [{"choices": [{"delta": {"content": "answer"}, "finish_reason": "stop"}]},
+                  {"usage": {"prompt_tokens": count, "completion_tokens": 1}}]
+        return io.BytesIO(("".join("data: " + json.dumps(event) + "\n" for event in events)
+                           + "data: [DONE]\n").encode())
+
+    monkeypatch.setattr(soak, "request", send)
+    history = [{"role": "user", "content": "original"},
+               {"role": "assistant", "content": "reply", "reasoning_content": "x" * 500}]
+    original = json.dumps(history)
+    messages, count = soak.calibrated_user(config(), history, "reasoning-alias", 1000)
+    record, _ = soak.stream_turn(config(), messages, count, 64, "reasoning-alias", "soak")
+    assert record["usage"]["prompt_tokens"] == count
+    assert json.dumps(history) == original
+    assert record["prompt_sha256"] == soak.digest(calls[-1]["messages"])
+
+
+def test_missing_stream_fields_have_safe_diagnostic_code(monkeypatch, tmp_path):
+    monkeypatch.setattr(soak, "request", fake_http([], missing_usage=True))
+    path = tmp_path / "missing-fields.jsonl"
+    assert soak.execute(config(), path) == 2
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    error = next(row for row in rows if row["type"] == "error")
+    assert error["code"] == "missing_content_or_prompt_usage"
+    assert error["stage"] == "stream"
+    assert error["details"]["content_seen"] is True
+    assert error["details"]["prompt_tokens"] is None
+    assert "test-key" not in path.read_text()
+
+
+@pytest.mark.parametrize("body,code", [
+    ('data: {"error":{"message":"test-key"}}\n', "server_error_event"),
+    ('data: {"choices":[{"delta":{"content":"answer"}}]}\n', "missing_stream_terminator"),
+    ('data: {"choices":[{},{}]}\n', "invalid_stream_choices"),
+])
+def test_sse_failures_have_safe_codes(monkeypatch, tmp_path, body, code):
+    def send(url, payload, key, timeout, request_id=None):
+        if url.endswith("/tokenize"):
+            return io.BytesIO(json.dumps({"count": fake_count(payload["messages"])}).encode())
+        return io.BytesIO(body.encode())
+    monkeypatch.setattr(soak, "request", send)
+    path = tmp_path / "sse-error.jsonl"
+    assert soak.execute(config(), path) == 2
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    error = next(row for row in rows if row["type"] == "error")
+    assert error["stage"] == "stream" and error["code"] == code
+    assert "test-key" not in path.read_text()
 
 
 def test_stream_records_ids_usage_reasoning_and_delta_clock(monkeypatch):

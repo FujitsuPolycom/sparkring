@@ -25,6 +25,7 @@ _spec = importlib.util.spec_from_file_location('managed_mesh_profile', Path(__fi
 mesh_profile = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = mesh_profile
 _spec.loader.exec_module(mesh_profile)
+from runtime.common import managed_deployment  # noqa: E402
 
 PROTOCOL = 'sparkring-managed-mesh/v1'
 POLL_SECONDS = 1.0
@@ -62,8 +63,10 @@ def load_config(path):
     document = json.loads(Path(path).read_text())
     expected = {'schema', 'site_path', 'rank', 'key_file', 'epoch', 'health_port', 'state_dir',
                 'container_id', 'container_image'}
-    if not isinstance(document, dict) or set(document) != expected or document['schema'] != PROTOCOL:
+    if (not isinstance(document, dict) or not expected <= set(document) <= expected | {'deployment_name'}
+            or document['schema'] != PROTOCOL):
         raise ValueError('Unsupported managed mesh configuration')
+    managed_deployment.validate_config_paths(document)
     if type(document['rank']) is not int or document['rank'] not in range(4):
         raise ValueError('Mesh rank must be an integer from zero through three')
     if type(document['health_port']) is not int or not 1024 <= document['health_port'] <= 65535:
@@ -618,8 +621,9 @@ def model_intent(config_path, active):
     os.replace(temporary, state_dir / 'model-intent.json')
 
 
-def reset_units():
-    for name in ('sparkring-mesh.service', 'sparkring-mesh-model.service'):
+def reset_units(config=None):
+    selected=managed_deployment.layout((config or {}).get('deployment_name'))
+    for name in (selected['mesh_unit'], selected['model_unit']):
         result = subprocess.run(['systemctl', 'show', name, '--property=LoadState,ActiveState'],
                                 capture_output=True, text=True, check=True, timeout=5)
         fields = dict(line.split('=', 1) for line in result.stdout.splitlines())
@@ -672,7 +676,8 @@ def main():
             raise RuntimeError('Dependent model is still running')
         print(json.dumps({'stopped': True, 'container_id': config['container_id']}))
     elif args.action == 'reset-units':
-        reset_units()
+        config, *_ = load_config(args.config)
+        reset_units(config)
     else:
         config, site, *_ = load_config(args.config)
         stop_model(config['container_id'])
