@@ -1,0 +1,7 @@
+ARG PARENT
+FROM ${PARENT}
+COPY source-composition.json *.tar.gz install_sources.py /context/
+RUN /opt/venv/bin/python /context/install_sources.py
+# Explicit intermediate stage: inherited R33 serving admission must not be used.
+ENTRYPOINT ["/opt/venv/bin/python"]
+CMD ["-c", "print('R35 source integration stage; not serving-qualified')"]
