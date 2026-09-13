@@ -16,7 +16,7 @@ def candidate(entrypoint='/opt/sparkring/bin/sparkring-r33'):
     return {'Config': {'Entrypoint': [entrypoint], 'Env': [
         'SPARKRING_LIVENESS_ENABLED=1', 'PORT=8015', 'SPARKRING_LIVENESS_PORT=8016',
         'SPARKRING_IDLE_KV_WARN_SECONDS=330', 'SPARKRING_LIVENESS_OUTPUT_SECONDS=720',
-        'SPARKRING_WARMUP_API_KEY=private-test-key']}}
+        'SPARKRING_WARMUP_API_KEY=test-key']}}
 
 
 @pytest.mark.parametrize('entrypoint', sorted(monitor.ENTRYPOINTS))
@@ -34,7 +34,7 @@ def test_monitor_uses_pinned_local_api_and_existing_auth_without_emitting_secret
     assert result['metrics_url'] == 'http://127.0.0.1:8015/metrics'
     assert result['port'] == 8016 and result['output_timeout_seconds'] == 720
     assert result['idle_kv_warn_seconds'] == 330
-    assert result['credential'] == 'private-test-key'
+    assert result['credential'] == 'test-key'
 
 
 def test_r35_python_entrypoint_is_supported_but_shell_arguments_are_not():
@@ -87,7 +87,7 @@ def test_host_unit_follows_model_lifetime_and_preserves_default_units():
     assert "BindsTo=sparkring-mesh-model.service" in sidecar
     assert "PartOf=sparkring-mesh-model.service" in sidecar
     assert "--config /etc/config/service.json" in sidecar
-    assert "private-test-key" not in sidecar and "Restart=no" in sidecar
+    assert "test-key" not in sidecar and "Restart=no" in sidecar
 
 
 def test_wrong_container_identity_rejected_before_monitor_start(monkeypatch):
