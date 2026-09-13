@@ -345,40 +345,97 @@ class RouteReuseTest(unittest.TestCase):
         self.assertEqual(loaded, [fixture])
 
 
+class RouteReuseIdentityTest(unittest.TestCase):
+    def test_expert_ids_do_not_coerce_malformed_numeric_values(self):
+        for value in (True, 1.5, '1'):
+            fixture = record([[[value]] * 5])
+            with self.assertRaisesRegex(ValueError, 'expert ids must be integers'):
+                analyze_round(fixture)
+
+
+    def test_adjacent_rounds_require_typed_request_and_explicit_round(self):
+        import copy
+        from performance.harnesses.moe_round_floor.route_reuse import adjacent_round_reuse_summary
+        valid = record([[[1, 2]] * 5])
+        valid['round'] = 1
+        for key in (None, '', ' ', 123):
+            before = copy.deepcopy(valid)
+            before.update(request_key=key, round=0)
+            after = copy.deepcopy(before)
+            after['round'] = 1
+            result = adjacent_round_reuse_summary([before, after], 5)
+            assert result['round_pairs'] == 0
+            assert result['skipped_missing_request_key'] == 2
+        for value in (None, True, 0.0, '0', -1):
+            before = copy.deepcopy(valid)
+            before['round'] = value
+            result = adjacent_round_reuse_summary([before, valid], 5)
+            assert result['round_pairs'] == 0
+            assert result['skipped_invalid_round_records'] == 1
+        before = copy.deepcopy(valid)
+        del before['round']
+        assert adjacent_round_reuse_summary([before, valid], 5)['round_pairs'] == 0
+        before['round'] = 0
+        result = adjacent_round_reuse_summary([before, valid], 5)
+        assert result['round_pairs'] == 1
+        assert result['layer_observations'] == 1
+
+class RouteReuseInputTest(unittest.TestCase):
+    def test_source_identity_is_preserved_without_coercion(self):
+        for identity in ({}, {"request_key": None, "round": None},
+                         {"request_key": 123, "round": 7.9}):
+            fixture = record([[[1], [2]]])
+            fixture.pop("request_key")
+            fixture.pop("round")
+            fixture.update(identity, accepted_prefix_tokens=0, rejected_tokens=1)
+            result = summarize([fixture], 2)
+            for detail in (result["round_details"][0],
+                           result["rejected_route_waste"]["round_details"][0],
+                           result["rejected_route_waste"]["layer_round_details"][0]):
+                self.assertEqual(detail["request_key"], identity.get("request_key"))
+                self.assertEqual(detail["round"], identity.get("round"))
+            self.assertFalse(result["adjacent_round_reuse"]["available"])
+
+    def test_empty_and_nonobject_records_fail_clearly(self):
+        with self.assertRaisesRegex(ValueError, "trace contains no records"):
+            summarize(iter(()))
+        for value in (None, 1, [], "text"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "record must be an object"):
+                    summarize([value])
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "trace.jsonl"
+                    path.write_text("\n" + json.dumps(value), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "line 2: record must be an object"):
+                        load_jsonl(path)
+
+    def test_jsonl_rejects_ambiguous_or_nonfinite_metadata(self):
+        cases = (
+            ('{"round": 0, "round": 1}', "duplicate object key"),
+            ('{"provenance": {"rank": 0, "rank": 1}}', "duplicate object key"),
+            ('{"metadata": NaN}', "invalid JSON constant"),
+            ('{"metadata": Infinity}', "invalid JSON constant"),
+            ('{"metadata": -Infinity}', "invalid JSON constant"),
+            ('{"metadata": 1e400}', "JSON numbers must be finite"),
+            ('{"metadata": -1e400}', "JSON numbers must be finite"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "trace.jsonl"
+            for content, message in cases:
+                with self.subTest(content=content):
+                    path.write_text("\n" + content, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "line 2: " + message):
+                        load_jsonl(path)
+
+    def test_prefix_analysis_does_not_truncate_exact_rejections(self):
+        fixture = record([[[1], [1], [2]]])
+        fixture["width"] = 3
+        self.assertEqual(summarize([fixture], 2)["round_details"][0]["assignments"], 2)
+        fixture.pop("width")
+        fixture.update(accepted_prefix_tokens=1, rejected_tokens=0)
+        with self.assertRaisesRegex(ValueError, "exact acceptance requires exactly Q2"):
+            summarize([fixture], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
-
-def test_expert_ids_do_not_coerce_malformed_numeric_values():
-    import pytest
-    for value in (True, 1.5, '1'):
-        fixture = record([[[value]] * 5])
-        with pytest.raises(ValueError, match='expert ids must be integers'):
-            analyze_round(fixture)
-
-
-def test_adjacent_rounds_require_typed_request_and_explicit_round():
-    import copy
-    from performance.harnesses.moe_round_floor.route_reuse import adjacent_round_reuse_summary
-    valid = record([[[1, 2]] * 5])
-    valid['round'] = 1
-    for key in (None, '', ' ', 123):
-        before = copy.deepcopy(valid)
-        before.update(request_key=key, round=0)
-        after = copy.deepcopy(before)
-        after['round'] = 1
-        result = adjacent_round_reuse_summary([before, after], 5)
-        assert result['round_pairs'] == 0
-        assert result['skipped_missing_request_key'] == 2
-    for value in (None, True, 0.0, '0', -1):
-        before = copy.deepcopy(valid)
-        before['round'] = value
-        result = adjacent_round_reuse_summary([before, valid], 5)
-        assert result['round_pairs'] == 0
-        assert result['skipped_invalid_round_records'] == 1
-    before = copy.deepcopy(valid)
-    del before['round']
-    assert adjacent_round_reuse_summary([before, valid], 5)['round_pairs'] == 0
-    before['round'] = 0
-    result = adjacent_round_reuse_summary([before, valid], 5)
-    assert result['round_pairs'] == 1
-    assert result['layer_observations'] == 1
