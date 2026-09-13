@@ -163,3 +163,56 @@ def test_cpu_indexer_expectation_survives_optimized_python():
     with pytest.raises(RuntimeError, match="Barrier outcome differs"):
         exec(code, {"result": {"deadlocked": False}, "args": SimpleNamespace(expect="deadlock")})
     exec(code, {"result": {"deadlocked": True}, "args": SimpleNamespace(expect="deadlock")})
+
+
+def test_dry_run_cli_preserves_requested_seed(capsys):
+    from performance.harnesses.moe_round_floor import b12x_floor_benchmark as bench
+    assert bench.main(["--mode", "dry-run", "--seed", "42"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["seed"] == 42
+    assert report["routes"]["Q5-variable"] == deterministic_routes(5, seed=42)
+    assert report["routes"]["Q5-variable"] != deterministic_routes(5)
+
+
+def test_timing_initializes_events_and_excludes_output_validation_allocations(monkeypatch):
+    from unittest.mock import MagicMock
+    from performance.harnesses.moe_round_floor import b12x_floor_benchmark as bench
+    torch = MagicMock()
+    state = {"measuring": False, "peak": 100}
+    events = []
+
+    class Event:
+        def __init__(self, **kwargs):
+            self.records = 0
+            events.append(self)
+
+        def record(self):
+            assert self.records or not state["measuring"]
+            self.records += 1
+
+        def elapsed_time(self, other):
+            return 1.0
+
+    def begin():
+        assert all(event.records == 1 for event in events)
+        state["measuring"] = True
+
+    def validate(output):
+        state["peak"] = 999
+        return MagicMock()
+
+    torch.cuda.Event.side_effect = Event
+    torch.cuda.reset_peak_memory_stats.side_effect = begin
+    torch.cuda.memory_allocated.return_value = 100
+    torch.cuda.max_memory_allocated.side_effect = lambda: state["peak"]
+    torch.isfinite.side_effect = validate
+    monkeypatch.setattr(bench, "_make_launch", lambda *args: (lambda: None, None))
+    monkeypatch.setattr(bench, "_encoded_output", lambda *args: {})
+    result = bench._time_case(torch, None, CASES[0],
+                             {"output": MagicMock(), "implementation": "static"},
+                             warmup=1, iterations=2)
+    assert len(events) == 4
+    assert all(event.records == 2 for event in events)
+    assert state["peak"] == 999
+    assert result["allocator"]["peak_live_bytes"] == 100
+    assert result["timing"]["samples"] == 2

@@ -402,11 +402,12 @@ def build_plan(source_root: str | None = None, *, include_audit: bool = False) -
     return report
 
 
-def build_dry_run(source_root: str | None = None) -> dict:
+def build_dry_run(source_root: str | None = None, *, seed: int = SEED) -> dict:
     report = build_plan(source_root, include_audit=True)
     report["mode"] = "dry-run"
+    report["seed"] = seed
     report["routes"] = {
-        f"Q{width}-{style}": deterministic_routes(width, style=style)
+        f"Q{width}-{style}": deterministic_routes(width, style=style, seed=seed)
         for width in (5, 6)
         for style in ("variable", "identical")
     }
@@ -721,6 +722,11 @@ def _time_case(
 
     starts = [torch.cuda.Event(enable_timing=True) for _ in range(iterations)]
     ends = [torch.cuda.Event(enable_timing=True) for _ in range(iterations)]
+    # CUDA event handles initialize lazily on their first record. Materialize
+    # every handle outside the measured launches and allocator observation.
+    for event in starts + ends:
+        event.record()
+    torch.cuda.synchronize()
     allocated_before = int(torch.cuda.memory_allocated())
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.nvtx.range_push(f"glm52-moe-floor:{case.name}")
@@ -733,6 +739,7 @@ def _time_case(
         torch.cuda.nvtx.range_pop()
     torch.cuda.synchronize()
     allocated_after = int(torch.cuda.memory_allocated())
+    peak_live_bytes = int(torch.cuda.max_memory_allocated())
     samples = [float(start.elapsed_time(end)) for start, end in zip(starts, ends)]
     output = runtime["output"]
     finite = bool(torch.isfinite(output).all().item())
@@ -751,7 +758,7 @@ def _time_case(
             "live_bytes_before": allocated_before,
             "live_bytes_after": allocated_after,
             "live_bytes_delta": allocated_after - allocated_before,
-            "peak_live_bytes": int(torch.cuda.max_memory_allocated()),
+            "peak_live_bytes": peak_live_bytes,
             "note": (
                 "fixed caller-owned tensors; live-byte delta is not an allocation "
                 "event counter"
@@ -883,6 +890,8 @@ def _run_live_child(arguments: argparse.Namespace) -> dict:
         "mode": "live-child",
         "backend_child": arguments.backend,
         "seed": arguments.seed,
+        "warmup": arguments.warmup,
+        "iterations": arguments.iterations,
         "platform": platform,
         "source_audit": audit,
         "abi": abi,
@@ -972,6 +981,8 @@ def _run_live_parent(arguments: argparse.Namespace) -> dict:
         "mode": "live",
         "prototype": True,
         "seed": arguments.seed,
+        "warmup": arguments.warmup,
+        "iterations": arguments.iterations,
         "platform": child_reports[0]["platform"],
         "source_audit": child_reports[0]["source_audit"],
         "results": results,
@@ -983,6 +994,8 @@ def _run_live_parent(arguments: argparse.Namespace) -> dict:
             "CUDA-event time does not provide LPDDR bytes; collect Nsight counters",
             "coherent-micro remains unimplemented and was not simulated",
             "only profiler-attributed MoE savings may be projected into whole rounds",
+            "output comparisons are diagnostics without a numerical acceptance tolerance",
+            "event intervals enclose launches/replays and may include host submission gaps",
         ],
     }
 
@@ -1034,7 +1047,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.mode == "plan":
             report = build_plan(arguments.source_root)
         elif arguments.mode == "dry-run":
-            report = build_dry_run(arguments.source_root)
+            report = build_dry_run(arguments.source_root, seed=arguments.seed)
         elif arguments.mode == "live-child":
             report = _run_live_child(arguments)
         else:
