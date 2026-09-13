@@ -33,6 +33,18 @@ def error_details(error):
     result = {"error": type(error).__name__}
     if isinstance(error, SoakValidationError):
         result.update(code=error.code, details=error.details)
+    elif isinstance(error, ValueError):
+        # The shared SSE parser raises these fixed messages. Never emit an
+        # arbitrary exception string: an endpoint may echo credentials in it.
+        codes = {
+            "Streaming event must be a JSON object": "invalid_stream_event",
+            "Endpoint reported a streaming error": "server_error_event",
+            "Single-completion stream must contain at most one choice per event": "invalid_stream_choices",
+            "Stream ended without its completion terminator": "missing_stream_terminator",
+        }
+        code = codes.get(str(error))
+        if code:
+            result["code"] = code
     return result
 
 

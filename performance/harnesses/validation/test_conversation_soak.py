@@ -113,6 +113,25 @@ def test_missing_stream_fields_have_safe_diagnostic_code(monkeypatch, tmp_path):
     assert "test-key" not in path.read_text()
 
 
+@pytest.mark.parametrize("body,code", [
+    ('data: {"error":{"message":"test-key"}}\n', "server_error_event"),
+    ('data: {"choices":[{"delta":{"content":"answer"}}]}\n', "missing_stream_terminator"),
+    ('data: {"choices":[{},{}]}\n', "invalid_stream_choices"),
+])
+def test_sse_failures_have_safe_codes(monkeypatch, tmp_path, body, code):
+    def send(url, payload, key, timeout, request_id=None):
+        if url.endswith("/tokenize"):
+            return io.BytesIO(json.dumps({"count": fake_count(payload["messages"])}).encode())
+        return io.BytesIO(body.encode())
+    monkeypatch.setattr(soak, "request", send)
+    path = tmp_path / "sse-error.jsonl"
+    assert soak.execute(config(), path) == 2
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    error = next(row for row in rows if row["type"] == "error")
+    assert error["stage"] == "stream" and error["code"] == code
+    assert "test-key" not in path.read_text()
+
+
 def test_stream_records_ids_usage_reasoning_and_delta_clock(monkeypatch):
     calls = []
     monkeypatch.setattr(soak, "request", fake_http(calls, cached=1))
