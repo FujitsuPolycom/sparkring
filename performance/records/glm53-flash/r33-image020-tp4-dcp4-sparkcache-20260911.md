@@ -32,6 +32,19 @@ The RoCEnante overlay pins `decode_context_parallel_size: 4`; DCP4
 activations therefore require the managed fabric installation before
 launch. DCP1 activations disarm that overlay and do not require it.
 
+**Post-qualification restart event (2026-09-11 15:22:14 Central):** all
+four containers stopped simultaneously (containerd shim teardown on
+every host, coinciding with an SSH session logout and a transient
+withdrawal of the fabric interface addresses at 15:22:07). Every
+relaunch attempt since — including after full host reboots, managed
+network-plan reinstallation (routes, qdiscs, flower rules verified with
+`ib_read_bw` at ~109 Gb/s on every direct pair), memory-gate passes, and
+correct overlay mounting — dies silently during engine initialization's
+first cross-rank collective (determine-available-memory phase); no OOM,
+XID, cgroup limit, or kernel trace. The 13:09–14:20 qualifications ran
+before this event and are unaffected; later observations in this record
+are stamped and the ring has not served since 14:20 Central.
+
 ## Evidence
 
 - Engine initialization on rank 0 reported TP4/DCP4, `dcp_comm_backend=ag_rs`,
@@ -58,6 +71,18 @@ launch. DCP1 activations disarm that overlay and do not require it.
   exchange step — ownership is resolved after the all-gather, not
   exchanged — so the evidence is the gate line plus the
   all-gather/owner-mapping code path, not a distinct exchange primitive.
+
+  **Scope change vs the issuing requirement:** #264 asked for "DCP top-k
+  owner-exchange activation evidence from worker logs". This image
+  implements DCP4 prefill top-k **without** a distinct owner-exchange
+  primitive (ownership is arithmetic over the all-gathered cache), so the
+  original requirement is satisfied only under an amended reading: the
+  evidence establishes the DCP4 gate, the DCP-group all-gather, and the
+  owner-mapping kernel — not a separate exchange. The requirement was not
+  silently reinterpreted: this note records the implementation change and
+  that a different implementation does not automatically satisfy the
+  original acceptance item; any reviewer of this record should treat the
+  owner-exchange item as amended, not passed.
 - A repeated prompt with an identical 37,019-token prefix hit the cache on
   its second run: 36,352 cached tokens, 15.8 s → 5.0 s wall time.
 - mHC token sharding executed on every rank:
@@ -90,13 +115,23 @@ only (`spec_decode_num_drafts_total` delta per window); the effective
 acceptance length divides `spec_decode_num_accepted_tokens_total` deltas.
 Throughput values remain **research-only** observations: the harness does
 not pin clocks, warm-up policy, or a timing revision, so the tables are not
-a reproducible benchmark or a speedup claim. No concurrent heavy tenants
-were observed on the four measurement hosts during the windows: the only
-containers running were the four serving ranks of this start (verified by
-container census at each stop/launch cycle), the DeepSeek V4.1 cycle of
-#260 runs on a separate physical ring, and the second fabric NIC's byte
-counter was idle. No re-run after external transfers is therefore required
-on the overlap question.
+a reproducible benchmark or a speedup claim. **Fabric-overlap caveat:**
+the DeepSeek V4.1 distribution jobs (`deepseek-distribution-fabric.service`,
+~37–52 GB copies) ran on this ring's hosts from 13:09:30–13:42:50 Central
+on 2026-09-11 (ranks 0, 1, and 3; rank 2 none). The first measurement
+pass — the two 37K prefill probes, the prefill medians, and the C1/C4
+decode windows — ran between approximately 13:28 and 13:39 Central,
+**overlapping the tail of those jobs**, and the windows are labeled
+**potentially affected**: distribution copies saturate the same QSFP
+fabric links the DCP collectives use. Container census at each
+stop/launch cycle showed no second serving tenant, and #260's cycle
+ring is separate, but neither fact rules out host-level copy traffic.
+The RouteFinal diagnostic (13:39+), nocache pass (13:56+), and final
+decode windows (14:08+) started after the last job deactivated at
+13:42:50 and are not overlapping. A post-job rerun was attempted;
+the ring could not be restarted after the 15:22:14 Central multi-rank
+stop event (see Conditions note), so the affected windows have not yet
+been re-measured.
 
 | Prompt tokens (actual) | Cold prefill tok/s, median of 3 |
 |---:|---:|
@@ -114,11 +149,16 @@ on the overlap question.
 ## Result
 
 C1 decode matches the TP4/DCP1 record within 2–3%; C4 aggregate decode
-reaches 0.76–0.82× of DCP1, consistent with the cross-rank full-CKV gather
-(`Using full-CKV gather for GLM5Next B12X DCP prefill`) whose cost grows
-with scheduling pressure. Effective acceptance length is at or slightly
-above the DCP1 record (2.21–2.76). The DCP4 exchange buys ~3.7× KV
-capacity (8.36M vs 2.28M tokens on the same 24 GiB per rank).
+reaches 0.76–0.82× of DCP1. **No attribution is claimed for the C4 gap:**
+the full-CKV gather is a prefill-only path (`num_decode_tokens == 0` in
+its gate), so it cannot explain a decode-window difference, and no
+profiling evidence exists for any cause. Candidate explanations — the
+DCP4 cross-rank exchange in decode-path collectives, scheduling/overlap
+differences under concurrency, and (for the affected windows) the fabric
+overlap documented above — are unverified. Effective acceptance length
+is at or slightly above the DCP1 record (2.21–2.76). The DCP4 exchange
+buys ~3.7× KV capacity (8.36M vs 2.28M tokens on the same 24 GiB per
+rank).
 
 ## RouteFinal dual-domain diagnostic startup
 

@@ -1,5 +1,7 @@
 # SparkRing
 
+> **Repository restructuring in progress:** Work on `refactor/repository-layout` is simplifying the layout, profile management, quickstarts, and contributor documentation. Contributions remain welcome—we’ll carry ongoing fixes and profile improvements into the refactor as it’s tested and prepared for review. The branch is currently local; existing published profiles and images remain available.
+
 SparkRing is a vLLM-based inference-serving stack with low-latency collective
 communication for switchless clusters of NVIDIA GB10-based devices. 
 
