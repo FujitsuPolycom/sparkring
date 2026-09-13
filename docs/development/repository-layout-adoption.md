@@ -47,27 +47,30 @@ or byte changes.
 
 ## Verification
 
-Exhaustive semantic review is not established. Completion records must bind
-exact file revisions and distinguish source/prose review from provenance and
-generated-export verification. Passing tests do not close that review gap.
+The local review ledger covers all 1,578 tracked files, distinguishing authored
+source and prose from generated exports, vendored provenance and frozen inputs.
+This records review scope; it does not establish hardware qualification or
+prove that every defect has been found.
 
-Source snapshot `a0d7f36b082381337f353052d0f4a582064af6b4` passed the complete
+Source snapshot `ae3d60af4a9f1da55fb128b896930b3cf6644569` passed the complete
 maintained CI selection in Ubuntu WSL with Python 3.12.3 and CPU Torch 2.11.0.
 Its command was read from the archived workflow; Git archive metadata and JUnit
-bind the source and results. Later Markdown-checker changes have separate
-focused tests and require inclusion in final adoption validation.
+bind the source and results. This includes the capture, benchmark and
+test-isolation fixes. Subsequent adoption-report edits change documentation
+only and receive separate link and structural checks.
 
 | Check | Result |
 |---|---|
-| Full maintained pytest selection from CI | 4,681 passed; 105 skipped; zero failures/errors |
+| Full maintained pytest selection from CI at `ae3d60a` | 5,006 passed; 29 skipped; zero failures/errors |
 | Ruff over maintained Python trees | Passed |
-| Repository structural check | 22 profiles, 53 generated outputs, 430 preserved inputs, 22 locked profile assets, 453 Python sources, 8 builders |
-| Repository Markdown links | 1,053 local links checked at the test snapshot |
+| Repository structural check | 22 profiles, 53 generated outputs, 430 preserved inputs, 22 locked profile assets, 458 Python sources, 8 builders |
+| Repository Markdown links | 1,085 local links checked at `ae3d60a` |
 | Release-safety scan | Zero findings |
 | Launch compatibility | Existing TP2 entry point and maintained switched-renderer contracts pass |
 | Configuration equivalence | Omitted and explicit defaults agree; ENV assignments match the initial baseline except declared default changes; comment edits do not change compatibility |
 
-Skips include PowerShell and optional serving dependencies. Hosted GitHub
+Linux tests use PowerShell 7, so controller checks execute rather than skipping
+for a missing shell. Skips concern optional native/serving inputs. Hosted GitHub
 Actions has not run for this unpublished branch.
 
 Native source snapshot `06e4925046db3b8ae203f9f745d7dbe01d0dbe73`
