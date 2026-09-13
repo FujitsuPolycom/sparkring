@@ -73,11 +73,14 @@ if [[ -e "$INSTALL_DIR" ]]; then
     echo "refusing to update dirty managed checkout: $INSTALL_DIR" >&2
     exit 1
   fi
-  git -C "$INSTALL_DIR" fetch --tags origin
-  if git -C "$INSTALL_DIR" show-ref --verify --quiet "refs/remotes/origin/$REF"; then
+  # A single-branch clone's fetch configuration excludes other branches.
+  # Fetch the requested branch or tag explicitly before selecting it.
+  if git -C "$INSTALL_DIR" ls-remote --exit-code --heads origin "refs/heads/$REF" >/dev/null; then
+    git -C "$INSTALL_DIR" fetch origin "refs/heads/$REF:refs/remotes/origin/$REF"
     git -C "$INSTALL_DIR" checkout -B "$REF" "origin/$REF"
   else
-    git -C "$INSTALL_DIR" checkout --detach "$REF"
+    git -C "$INSTALL_DIR" fetch origin "refs/tags/$REF:refs/tags/$REF"
+    git -C "$INSTALL_DIR" checkout --detach "refs/tags/$REF"
   fi
 else
   mkdir -p "$(dirname "$INSTALL_DIR")"
