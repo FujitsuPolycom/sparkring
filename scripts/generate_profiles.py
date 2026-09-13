@@ -84,6 +84,8 @@ def profile_table(root=ROOT, *, compact=False):
         if repository not in names or repository not in quant_labels or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
             raise ValueError(f'Model repository needs a standard display name: {repository}')
     capacity = read_json(root/'performance/profile-capacity.json')['profiles']
+    if not compact:
+        return profile_catalog_table(rows, names, root)
     if not set(capacity) <= {p['id'] for p, _ in rows}:
         raise ValueError('Capacity records must name catalog profiles')
     for record in capacity.values():
@@ -169,6 +171,45 @@ def profile_table(root=ROOT, *, compact=False):
               'six-node work remains research-only and is outside this deployment catalog.', '', END]
     text = '\n'.join(lines)
     return text.replace('](profiles/', '](').replace('](docs/', '](../docs/')
+
+
+def profile_catalog_table(rows, names, root):
+    """Present deployment choices first and retain exact variant discovery below."""
+    summary = profile_table(root, compact=True).removesuffix(END)
+    lines = [summary, 'Status and context describe the linked default. DCP and KV figures follow the same order;',
+             'capacity depends on enabled features. Expand a deployment below for each option’s own status and guide.',
+             'Switched support is a separate network configuration and has no switched-hardware qualification.', '',
+             '## Configuration variants', '',
+             'These are saved configurations, not separate models. Profile IDs remain stable for scripts.', '']
+    groups, retired = {}, []
+    for p, r in rows:
+        if p['recommendation'] == 'retired':
+            retired.append((p, r))
+            continue
+        key = (r['model']['repository'], r['serving']['node_count'], r['runtime'].get('engine', 'vllm'))
+        groups.setdefault(key, []).append((p, r))
+    for (model, nodes, engine), variants in sorted(groups.items()):
+        engine_title = {'vllm': 'vLLM', 'sglang': 'SGLang'}[engine]
+        lines += ['<details>', f'<summary>{names[model]} · {nodes} Sparks · {engine_title}</summary>', '',
+                  '| Parallelism | Network | SparkCache | Status | Configuration and guide |',
+                  '|---|---|---|---|---|']
+        for p, r in sorted(variants, key=lambda item: (item[0]['recommendation'] != 'recommended', item[0]['id'])):
+            s = r['serving']
+            parallel = f"DCP{s['decode_context_parallel_size']}" if engine == 'vllm' else f"EP{s['expert_parallel_size']}"
+            config = p['configuration']
+            cached = (config['key'].endswith('-sparkcache') if config['format'] == 'release-profile'
+                      else bool(read_json(local_path(config['path'], root)).get('base_recipe')))
+            label = p['id'] + (' (default)' if p['recommendation'] == 'recommended' else '')
+            lines.append(f"| {parallel} | {r['topology']} | {'On' if cached else 'Off'} | {STATUS_LABELS[p['status']]} | [{label}](profiles/{p['id']}/README.md) |")
+        lines += ['', '</details>', '']
+    lines += ['<details>', '<summary>Retired configurations</summary>', '',
+              'Retained for compatibility and historical evidence; use an active deployment above for setup.', '']
+    for p, r in sorted(retired, key=lambda item: item[0]['id']):
+        lines.append(f"- [{p['id']}](profiles/{p['id']}/README.md) — {names[r['model']['repository']]}; {STATUS_LABELS[p['status']]}")
+    lines += ['', '[Additional historical variants](docs/history/deployment-variants.md)', '', '</details>', '',
+              'Qwen with SparkCache is unsupported. Six-node deployments remain experimental and are outside this catalog.', '', END]
+    text = '\n'.join(lines)
+    return re.sub(r'\]\((?!https?://|#)([^)]+)\)', lambda m: '](' + ('../' + m[1]) + ')', text)
 
 
 def generate(check=False, root=ROOT):

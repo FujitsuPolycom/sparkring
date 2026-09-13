@@ -11,51 +11,148 @@ in its configuration. “Stock” identifies the publisher’s original checkpoi
 
 <!-- BEGIN GENERATED PROFILES -->
 
-Configured context is a per-request limit, not measured KV capacity or a completed long-context test.
-Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.
-
 ### Four Sparks
 
-| Model | Quant | Runtime | Layout | Context / KV* (tokens) | Status | Navigation | Quickstart |
+| Model | Quant | Runtime | DCP | Context / KV* | SparkCache | Status | Quickstart |
 |---|---|---|---|---|---|---|---|
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP4/DCP1 | 1,048,576 / [2,280,000](../performance/capacity-references.md) | Validated | recommended | [Guide](glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | TP4/DCP1 | 1,048,576 / [1,000,000](../performance/capacity-references.md) | Development | alternative | [Guide](deepseek-v4-flash-0731/README.md) |
-| DeepSeek-V4-Flash-Vision-Exp | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | vLLM | TP4/DCP1 | 1,048,576 / — | Experimental | alternative | [Guide](deepseek-v4-flash-vision-exp-tp4/README.md) |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | vLLM | TP4/DCP1 | 1,048,576 / [2,182,642](../profiles/deepseek-v41-flash-cycle/recipe.json) | Development | alternative | [Guide](deepseek-v41-flash-cycle/README.md) |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | SGLang | TP4/EP4 | 262,144 / [1,499,904](../performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | Development | alternative | [Guide](deepseek-v41-flash-sglang-cycle/README.md) |
-| GLM-5.2 | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | vLLM | TP4/DCP4 | 1,048,576 / [1,156,864](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | Development | alternative | [Guide](glm52-exl3-r7-3.5bpw/README.md) |
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP4/DCP1 | 1,048,576 / [2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-dcp1/README.md) |
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP4/DCP4 | 1,048,576 / — | Development | alternative | [Guide](glm53-flash-spark-tp4-dcp4/README.md) |
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP4/DCP4 | 1,048,576 / [8,364,901](../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md) | Validated | alternative | [Guide](glm53-flash-spark-tp4-dcp4-sparkcache/README.md) |
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP4/DCP1 · switched | 1,048,576 / [2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-switched/README.md) |
-| Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | TP4/DCP1 | 1,048,576 / [8,743,342](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6/README.md) |
-| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | TP4/DCP1 | 1,048,576 / — | Development | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
-| GLM-5.2 | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | vLLM | TP4/DCP4 | 1,048,576 / — | Development | alternative | [Guide](sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
+| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | DCP1/DCP4 | 1M / ([2.3M](../performance/capacity-references.md)/[8.4M](../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)) | [Optional](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated | [Guide](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | DCP1 | 1M / [1M](../performance/capacity-references.md) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development | [Guide](../profiles/deepseek-v4-flash-0731/README.md) |
+| DeepSeek-V4-Flash-Vision-Exp | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | vLLM | DCP1 | 1M / — | No | Experimental | [Guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | vLLM | DCP1 | 1M / [2.2M](../profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development | [Guide](../profiles/deepseek-v41-flash-cycle/README.md) |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | SGLang | — | 262K / [1.5M](../performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | No | Development | [Guide](../profiles/deepseek-v41-flash-sglang-cycle/README.md) |
+| GLM-5.2 | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | vLLM | DCP4 | 1M / [1.2M](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](../profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development | [Guide](../profiles/glm52-exl3-r7-3.5bpw/README.md) |
+| Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | DCP1 | 1M / [8.7M](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development | [Guide](../profiles/qwen38-27b-exl3-k5k6/README.md) |
 
 ### Two Sparks
 
-| Model | Quant | Runtime | Layout | Context / KV* (tokens) | Status | Navigation | Quickstart |
+| Model | Quant | Runtime | DCP | Context / KV* | SparkCache | Status | Quickstart |
 |---|---|---|---|---|---|---|---|
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP2/DCP1 | 1,048,576 / [1,081,922](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | recommended | [Guide](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | TP2/DCP1 | 1,048,576 / [1,000,000](../performance/capacity-references.md) | Development | alternative | [Guide](deepseek-v4-flash-0731-pair/README.md) |
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP2/DCP1 | 1,048,576 / — | Experimental | alternative | [Guide](glm53-flash-spark-tp2-dcp1/README.md) |
-| Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | TP2/DCP1 | 1,048,576 / [4,130,233](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6-pair/README.md) |
-| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | TP2/DCP1 | 1,048,576 / — | Development | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
+| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | DCP1 | 1M / [1.1M](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | [Optional](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | DCP1 | 1M / [1M](../performance/capacity-references.md) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development | [Guide](../profiles/deepseek-v4-flash-0731-pair/README.md) |
+| Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | DCP1 | 1M / [4.1M](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development | [Guide](../profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
 
-### Retired profiles
 
-| Model | Quant | Runtime | Layout | Context / KV* (tokens) | Status | Navigation | Quickstart |
-|---|---|---|---|---|---|---|---|
-| GLM-5.3-Flash | [NVFP4](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4) | vLLM | TP4/DCP4 | 1,048,576 / [4,321,618](../profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json) | Development | retired | [Guide](glm53-flash-nvfp4-dflash2-bf16-tp4/README.md) |
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP4/DCP4 | 1,048,576 / — | Experimental | retired | [Guide](glm53-mtp3-cache-checkpoints-tp4/README.md) |
-| GLM-5.3-Flash | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | TP4/DCP4 | 1,048,576 / — | Experimental | retired | [Guide](glm53-spark-mtp3-managed-mesh-tp4/README.md) |
-| GLM-5.3-Flash | [NVFP4](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4) | vLLM | TP4/DCP4 | 1,048,576 / [4,321,618](../profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json) | Validated | retired | [Guide](sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) |
+Status and context describe the linked default. DCP and KV figures follow the same order;
+capacity depends on enabled features. Expand a deployment below for each option’s own status and guide.
+Switched support is a separate network configuration and has no switched-hardware qualification.
 
-Additional pinned historical variants, including original NVFP4 TP2, are in the [retained deployment index](../docs/history/deployment-variants.md).
+## Configuration variants
 
-Qualification applies only to the exact image, checkpoint, topology and workload in the selected guide.
-Switched deployments have no switched-hardware qualification. Qwen with SparkCache is unsupported;
-six-node work remains research-only and is outside this deployment catalog.
+These are saved configurations, not separate models. Profile IDs remain stable for scripts.
+
+<details>
+<summary>GLM-5.2 · 4 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP4 | direct-cycle-4 | Off | Development | [glm52-exl3-r7-3.5bpw](../profiles/glm52-exl3-r7-3.5bpw/README.md) |
+| DCP4 | direct-cycle-4 | On | Development | [sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4](../profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
+
+</details>
+
+<details>
+<summary>DeepSeek-V4-Flash-0731 · 2 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-pair-2 | Off | Development | [deepseek-v4-flash-0731-pair](../profiles/deepseek-v4-flash-0731-pair/README.md) |
+| DCP1 | direct-pair-2 | On | Development | [sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
+
+</details>
+
+<details>
+<summary>DeepSeek-V4-Flash-0731 · 4 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-4 | Off | Development | [deepseek-v4-flash-0731](../profiles/deepseek-v4-flash-0731/README.md) |
+| DCP1 | direct-cycle-4 | On | Development | [sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
+
+</details>
+
+<details>
+<summary>DeepSeek-V4-Flash-Vision-Exp · 4 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-4 | Off | Experimental | [deepseek-v4-flash-vision-exp-tp4](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
+
+</details>
+
+<details>
+<summary>DeepSeek-V4.1-Flash · 4 Sparks · SGLang</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| EP4 | direct-cycle-4 | Off | Development | [deepseek-v41-flash-sglang-cycle](../profiles/deepseek-v41-flash-sglang-cycle/README.md) |
+
+</details>
+
+<details>
+<summary>DeepSeek-V4.1-Flash · 4 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-4 | Off | Development | [deepseek-v41-flash-cycle](../profiles/deepseek-v41-flash-cycle/README.md) |
+
+</details>
+
+<details>
+<summary>GLM-5.3-Flash · 2 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | tp2-rocenante-adaptive | On | Validated | [glm53-flash-spark-tp2-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| DCP1 | tp2-rocenante-adaptive | Off | Experimental | [glm53-flash-spark-tp2-dcp1](../profiles/glm53-flash-spark-tp2-dcp1/README.md) |
+
+</details>
+
+<details>
+<summary>GLM-5.3-Flash · 4 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | sparkring-rocenante-mesh | On | Validated | [glm53-flash-spark-tp4-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| DCP1 | sparkring-rocenante-mesh | Off | Experimental | [glm53-flash-spark-tp4-dcp1](../profiles/glm53-flash-spark-tp4-dcp1/README.md) |
+| DCP4 | sparkring-rocenante-mesh | Off | Development | [glm53-flash-spark-tp4-dcp4](../profiles/glm53-flash-spark-tp4-dcp4/README.md) |
+| DCP4 | sparkring-rocenante-mesh | On | Validated | [glm53-flash-spark-tp4-dcp4-sparkcache](../profiles/glm53-flash-spark-tp4-dcp4-sparkcache/README.md) |
+| DCP1 | switched | Off | Experimental | [glm53-flash-spark-tp4-switched](../profiles/glm53-flash-spark-tp4-switched/README.md) |
+
+</details>
+
+<details>
+<summary>Qwen3.8-27B · 2 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-pair-2 | Off | Development | [qwen38-27b-exl3-k5k6-pair](../profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
+
+</details>
+
+<details>
+<summary>Qwen3.8-27B · 4 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-4 | Off | Development | [qwen38-27b-exl3-k5k6](../profiles/qwen38-27b-exl3-k5k6/README.md) |
+
+</details>
+
+<details>
+<summary>Retired configurations</summary>
+
+Retained for compatibility and historical evidence; use an active deployment above for setup.
+
+- [glm53-flash-nvfp4-dflash2-bf16-tp4](../profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/README.md) — GLM-5.3-Flash; Development
+- [glm53-mtp3-cache-checkpoints-tp4](../profiles/glm53-mtp3-cache-checkpoints-tp4/README.md) — GLM-5.3-Flash; Experimental
+- [glm53-spark-mtp3-managed-mesh-tp4](../profiles/glm53-spark-mtp3-managed-mesh-tp4/README.md) — GLM-5.3-Flash; Experimental
+- [sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4](../profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) — GLM-5.3-Flash; Validated
+
+[Additional historical variants](../docs/history/deployment-variants.md)
+
+</details>
+
+Qwen with SparkCache is unsupported. Six-node deployments remain experimental and are outside this catalog.
 
 <!-- END GENERATED PROFILES -->
 
