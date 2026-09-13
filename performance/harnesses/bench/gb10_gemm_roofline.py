@@ -335,19 +335,18 @@ def read_clock_state(
         }
     fields = dict(zip(NVIDIA_SMI_FIELDS, values))
     applied = fields["clocks.applications.graphics"]
-    pinned = applied not in UNREPORTED
+    reported = applied not in UNREPORTED
     return {
         "read": True,
         "fields": fields,
-        "application_clocks_pinned": pinned,
+        # Application clock settings do not establish GPU clock-lock state.
+        "application_clocks_pinned": None,
+        "application_clocks_reported": reported,
         "lock_note": (
-            f"application clocks pinned at {applied} MHz"
-            if pinned
-            else (
-                "application clocks are not pinned; the driver is free to "
-                "move the SM clock during the run, so compare the before and "
-                "after readings"
-            )
+            (f"application graphics clock setting: {applied} MHz; "
+             if reported else "application graphics clock setting unavailable; ")
+            + "clock-lock state is unknown from this query; compare observed "
+              "SM clocks and throttle reasons across the run"
         ),
     }
 

@@ -247,7 +247,7 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertIn("exec format error", state["reason"])
 
-    def test_pinned_application_clocks_are_reported_as_pinned(self) -> None:
+    def test_reported_application_clocks_do_not_prove_lock_state(self) -> None:
         row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
 
         def runner(_command, **_kwargs):
@@ -258,10 +258,11 @@ class ClockStateTest(unittest.TestCase):
         )
 
         self.assertTrue(state["read"])
-        self.assertTrue(state["application_clocks_pinned"])
+        self.assertIsNone(state["application_clocks_pinned"])
+        self.assertTrue(state["application_clocks_reported"])
         self.assertEqual(state["fields"]["clocks.sm"], "1400")
 
-    def test_unset_application_clocks_are_reported_as_not_pinned(self) -> None:
+    def test_unavailable_application_clocks_do_not_prove_unlocked_state(self) -> None:
         row = "NVIDIA GB10, 1400, 1400, [N/A], Not Active, Enabled, 61.2, 140.0, 48"
 
         def runner(_command, **_kwargs):
@@ -272,8 +273,9 @@ class ClockStateTest(unittest.TestCase):
         )
 
         self.assertTrue(state["read"])
-        self.assertFalse(state["application_clocks_pinned"])
-        self.assertIn("not pinned", state["lock_note"])
+        self.assertIsNone(state["application_clocks_pinned"])
+        self.assertFalse(state["application_clocks_reported"])
+        self.assertIn("clock-lock state is unknown", state["lock_note"])
 
     def test_an_unexpected_field_count_is_reported_rather_than_misparsed(self) -> None:
         def runner(_command, **_kwargs):
