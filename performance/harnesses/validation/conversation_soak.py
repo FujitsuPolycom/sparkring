@@ -71,9 +71,23 @@ def fixture(identity, chars):
                         "Analyze these maintenance notes in detail and recommend next actions.", 1)
 
 
-def count_tokens(config, messages):
+def template_kwargs(config, phase):
+    """Match vLLM's phase-specific reasoning merge for tokenize and generation."""
+    values = dict(config["chat_template_kwargs"])
+    effort = config["probe_reasoning_effort"] if phase != "soak" else config["reasoning_effort"]
+    if effort:
+        # ChatCompletionRequest merges non-unset top-level effort over template
+        # kwargs, but preserves an explicitly supplied enable_thinking value.
+        if effort != "auto":
+            values["reasoning_effort"] = effort
+        if "enable_thinking" not in values:
+            values["enable_thinking"] = effort != "none"
+    return values
+
+
+def count_tokens(config, messages, phase="soak"):
     payload = {"model": config["model"], "messages": wire_messages(messages), "add_generation_prompt": True,
-               "chat_template_kwargs": config["chat_template_kwargs"]}
+               "chat_template_kwargs": template_kwargs(config, phase)}
     with request(config["endpoint"] + "/tokenize", payload, config["api_key"], config["timeout"]) as response:
         count = json.load(response).get("count")
     if type(count) is not int or count <= 0:
@@ -81,16 +95,16 @@ def count_tokens(config, messages):
     return count
 
 
-def calibrated_user(config, history, identity, target_total, image=None):
+def calibrated_user(config, history, identity, target_total, image=None, *, phase="soak"):
     """Calibrate the added user message while preserving every preceding message byte."""
-    previous = count_tokens(config, history) if history else 0
+    previous = count_tokens(config, history, phase) if history else 0
     chars = max(256, (target_total - previous) * 5)
     for _ in range(10):
         text = fixture(identity, chars)
         content = text if image is None else [
             {"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image}}]
         messages = history + [{"role": "user", "content": content}]
-        count = count_tokens(config, messages)
+        count = count_tokens(config, messages, phase)
         if abs(count - target_total) <= max(8, (target_total - previous) * 0.01):
             return messages, count
         chars = max(128, min(64 * 1024 * 1024, round(chars * max(1, target_total - previous)
@@ -106,7 +120,7 @@ def stream_turn(config, messages, count, max_tokens, identity, phase, *, request
     payload = {"model": config["model"], "messages": wire_messages(messages), "max_tokens": max_tokens,
                "stream": True, "stream_options": {"include_usage": True},
                "temperature": config["temperature"], "seed": config["seed"], "top_p": 1,
-               "chat_template_kwargs": config["chat_template_kwargs"]}
+               "chat_template_kwargs": template_kwargs(config, phase)}
     effort = config["probe_reasoning_effort"] if phase != "soak" else config["reasoning_effort"]
     if effort:
         payload["reasoning_effort"] = effort
@@ -220,7 +234,7 @@ def execute(config, output):
             request_id = "soak-" + uuid.uuid4().hex
             stage = "token_calibration"
             try:
-                messages, count = calibrated_user(config, [], identity, config["probe_tokens"])
+                messages, count = calibrated_user(config, [], identity, config["probe_tokens"], phase=phase)
                 stage = "stream"
                 record, _ = stream_turn(config, messages, count, config["probe_output_tokens"], identity,
                                         phase, request_id=request_id)
@@ -246,7 +260,7 @@ def execute(config, output):
                     initial = config["start_tokens"][agent % len(config["start_tokens"])]
                     target = initial if prior_count is None else prior_count + config["tail_tokens"]
                     picture = image if image and turn > 0 and turn % config["image_every"] == 0 else None
-                    messages, count = calibrated_user(config, history, identity, target, picture)
+                    messages, count = calibrated_user(config, history, identity, target, picture, phase="soak")
                     if count + config["max_tokens"] > config["context_limit"]:
                         raise ValueError("Context limit exceeded")
                     with lock:
