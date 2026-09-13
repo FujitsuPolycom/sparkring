@@ -183,6 +183,49 @@ def _r33_overrides():
         "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
     }
 
+
+@pytest.mark.parametrize('rank', [0,1])
+@pytest.mark.parametrize('dcp', [1,4])
+@pytest.mark.parametrize('direct', [False,True])
+def test_r35_tp4_launch_uses_verified_python_entrypoint_and_cache_contract(launch_fixture, rank, dcp, direct):
+    from runtime.common import r35
+    from runtime.common.test_r35 import receipt
+    launch, _, _ = launch_fixture
+    contract=r35.profile_contract(receipt()['installed'])
+    template=HERE.parent/'sparkring/jovian-r33/profiles'/f'tp4-dcp{dcp}-sparkcache.env.example'
+    native=contract['sparkcache_native']
+    overrides={**_r33_overrides(),**profile.defaults(template),
+        'SPARKRING_RUNTIME_RELEASE':'r35','SPARKRING_CREATE_ONLY':'1','DECODE_CONTEXT_PARALLEL_SIZE':str(dcp),
+        'OMP_NUM_THREADS':'1','SPARK_TP4_GRAPH_SUBMIT_CPU':'10','SPARK_TP4_GRAPH_PROGRESS_CPU':'11',
+        'SPARK_TP4_GRAPH_DIRECT_DOORBELL':str(int(direct)),
+        'SPARKCACHE_CACHE_NAMESPACE':'r35-test-cache','KV_CACHE_MEMORY_BYTES':'25769803776',
+        'SPARKCACHE_PLACEMENT_LIBRARY_PATH':native['placement_path'],
+        'SPARKCACHE_PLACEMENT_LIBRARY_SHA256':native['placement_sha256'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_PATH':native['snapshot_path'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_SHA256':native['snapshot_sha256'],
+        'SPARKCACHE_VLLM_ROOT':native['vllm_root'],'SPARKCACHE_SOURCE_LEASE_CONTRACT':native['lease_contract']}
+    result,arguments,_=launch(rank,overrides)
+    assert result.returncode==0,result.stderr
+    assert _option(arguments,'--entrypoint')=='/opt/venv/bin/python'
+    assert '/opt/sparkring/bin/sparkring' in arguments
+    assert ('--health-cmd' in arguments)==(rank==0)
+    connector=json.loads(_option(arguments,'--kv-transfer-config'))['kv_connector_extra_config']
+    assert connector['spark_cache_async_page_capture_lease_contract']==r35.LEASE
+    assert _docker_labels(arguments)['org.sparkring.runtime']==f'glm53-flash-spark-jovian-r35-tp4-dcp{dcp}-sparkcache'
+    environment=_docker_environment(arguments)
+    assert [environment[key] for key in ('OMP_NUM_THREADS','SPARK_TP4_GRAPH_SUBMIT_CPU',
+        'SPARK_TP4_GRAPH_PROGRESS_CPU','SPARK_TP4_GRAPH_DIRECT_DOORBELL')]==['1','10','11',str(int(direct))]
+    import managed_install
+    from managed_liveness import requires_host_monitor
+    image_ref=profile.defaults(profile.BASE/'runtime.env.example')['IMAGE_REF']
+    image={'Id':'sha256:'+'f'*64,'RepoDigests':[image_ref],'Config':{}}
+    # Normalize the generated argv as Docker does; the script lives in Cmd,
+    # rather than in the overridden one-element Entrypoint array.
+    expected=managed_install.expected_container_spec(['docker',*arguments],image)
+    container={'Config':{'Entrypoint':expected['entrypoint'],'Cmd':expected['cmd'],
+                         'Env':[f'{k}={v}' for k,v in expected['env'].items()]}}
+    assert requires_host_monitor(container,rank)==(rank==0)
+
 def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture):
     launch, _, _ = launch_fixture
     nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"

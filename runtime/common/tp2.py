@@ -79,13 +79,19 @@ def _remove_option(arguments, flag):
     return result
 
 
-def adapt_r33_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
+def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
     verifier = _r33_verifier()
-    verifier.validate_image_receipt(receipt)
+    from runtime.common import r35
+    is_r35 = receipt.get('schema') == r35.SCHEMA
+    if is_r35:
+        r35.validate_receipt(receipt)
+    else:
+        verifier.validate_image_receipt(receipt)
+    release = 'r35' if is_r35 else 'r33'
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
     if plan["image"] != expected_image:
-        raise ValueError("R33 receipt does not identify the selected TP2 image")
-    contract = verifier.load_contract()
+        raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
+    contract = r35.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
     selected = contract["profiles"][profile_name]
     environment = dict(plan["environment"])
@@ -121,7 +127,7 @@ def adapt_r33_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=Non
             arguments = _replace_option(arguments, flag, str(serving[key]))
         arguments = _replace_option(arguments, "--limit-mm-per-prompt", json.dumps(serving["limit_mm_per_prompt"]))
         native = contract["sparkcache_native"]
-        namespace = f"sparkring-r33-{receipt['image_id'][7:19]}-tp2-cache"
+        namespace = f"sparkring-{release}-{receipt['image_id'][7:19]}-tp2-cache"
         environment.update(SPARKCACHE_CACHE_NAMESPACE=namespace,
                            SPARKCACHE_PLACEMENT_LIBRARY_PATH=native["placement_path"],
                            SPARKCACHE_PLACEMENT_LIBRARY_SHA256=native["placement_sha256"],
@@ -155,11 +161,14 @@ def adapt_r33_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=Non
             kv_role="kv_both", kv_load_failure_policy="recompute", kv_connector_extra_config=extra))]
     else:
         arguments = _remove_option(arguments, "--model-loader-extra-config")
-    container_args = ["serve", *arguments]
+    if is_r35:
+        arguments = _remove_option(arguments, '--gdn-decode-kernel')
+    container_args = (["/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
     command = list(plan["command"])
-    name = f"sparkring-r33-{profile_name}-r{environment['NODE_RANK']}"
+    name = f"sparkring-{release}-{profile_name}-r{environment['NODE_RANK']}"
     command[command.index("--name") + 1] = name
-    command[command.index("--entrypoint") + 1] = "/opt/sparkring/bin/sparkring-r33"
+    entrypoint = '/opt/venv/bin/python' if is_r35 else '/opt/sparkring/bin/sparkring-r33'
+    command[command.index("--entrypoint") + 1] = entrypoint
     labels = dict(plan["labels"])
     labels["org.sparkring.profile"] = profile_name
     image_index = len(command) - len(plan["container_args"]) - 1
@@ -177,24 +186,39 @@ def adapt_r33_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=Non
             if prefix[index] == "--label" and prefix[index + 1].startswith(assignment):
                 prefix[index + 1] = assignment + value
                 break
+    healthcheck = {'Test': ['NONE']}
+    if is_r35 and environment['NODE_RANK'] == '0':
+        prefix.remove('--no-healthcheck')
+        health_options, healthcheck = r35.api_healthcheck(int(arguments[arguments.index('--port')+1]))
+        for flag, value in health_options.items():
+            prefix.extend([flag, value])
     command = [*prefix, plan["image"], *container_args]
     plan.update(
         name=name,
         profile=profile_name, environment=environment, container_args=container_args,
-        command=command, labels=labels, entrypoint="/opt/sparkring/bin/sparkring-r33",
-        runtime_kind="r33-candidate",
+        command=command, labels=labels, entrypoint=entrypoint,
+        runtime_kind=release+"-candidate",
         sparkcache_enabled=sparkcache,
         kv_cache_memory_bytes=kv_memory_bytes,
     )
+    if is_r35:
+        plan['healthcheck'] = healthcheck
     if sparkcache:
         plan["qualification"] = {"status": "research-only", "gpu_qualified": False,
                                  "request_context_target": 1048576, "reference_context_limit": 262144}
         try:
-            verifier.validate_profile_image_capabilities(receipt, profile_name)
+            if is_r35:
+                r35.validate_profile_capabilities(receipt, profile_name)
+            else:
+                verifier.validate_profile_image_capabilities(receipt, profile_name)
             plan["activation_blockers"] = []
         except ValueError as error:
             plan["activation_blockers"] = [str(error)]
     return plan
+
+
+# Compatibility export for existing TP2 callers.
+adapt_r33_plan = adapt_release_plan
 
 
 def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None, *, r33_sparkcache=False,
@@ -284,7 +308,7 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         "qualification": profile["qualification"],
         "entrypoint": "python3", "runtime_kind": "legacy",
     }
-    return adapt_r33_plan(result, r33_receipt, sparkcache=r33_sparkcache,
+    return adapt_release_plan(result, r33_receipt, sparkcache=r33_sparkcache,
                           cache_kv_memory_bytes=r33_cache_kv_memory_bytes) if r33_receipt is not None else result
 
 
@@ -349,6 +373,12 @@ def validate_source_image_receipt(receipt, plan, source_root=None):
 
 def validate_runtime_receipt(receipt, plan):
     """Require source compatibility evidence for this exact image and profile."""
+    if receipt.get('schema') == 'sparkring-r35-image-receipt/v1':
+        from runtime.common import r35
+        r35.validate_profile_capabilities(receipt, plan['profile'])
+        if plan.get('runtime_kind') != 'r35-candidate' or plan['image'] != receipt['image_id']:
+            raise ValueError('R35 receipt differs from the adapted TP2 plan')
+        return
     if receipt.get("schema") == "sparkring-r33-image-receipt/v1":
         _r33_verifier().validate_image_receipt(receipt)
         expected = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
@@ -376,6 +406,9 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     if action not in ("create", "start"):
         raise ValueError("Execution action must be create or start")
     validate_runtime_receipt(receipt, plan)
+    if receipt.get('schema') == 'sparkring-r35-image-receipt/v1':
+        from runtime.common import r35
+        r35.verify_local_image(receipt, run=run)
     service = load_profile()["lifecycle"]["memory_guard_service"]
     run(["systemctl", "is-active", "--quiet", service], check=True)
     guard = run(["systemctl", "show", service, "--property=ExecStart", "--value"],
@@ -400,7 +433,8 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     matches = (
         config.get("Image") == plan["image"]
         and config.get("Entrypoint") == [plan["entrypoint"]]
-        and config.get("Healthcheck", {}).get("Test") == ["NONE"]
+        and (config.get('Healthcheck') == plan['healthcheck'] if 'healthcheck' in plan
+             else config.get("Healthcheck", {}).get("Test") == ["NONE"])
         and config.get("Cmd") == plan["container_args"]
         and all(config.get("Labels", {}).get(key) == value for key, value in plan["labels"].items())
         and all(actual_env.get(key) == value for key, value in plan["environment"].items())
@@ -425,12 +459,12 @@ def main():
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--runtime-receipt", type=Path)
-    parser.add_argument("--r33-sparkcache", action="store_true", help="Plan the source-capability-gated TP2 cache composition")
+    parser.add_argument("--sparkcache", "--r33-sparkcache", dest='r33_sparkcache', action="store_true", help="Plan the source-capability-gated TP2 cache composition")
     parser.add_argument("--r33-cache-kv-memory-bytes", type=int, choices=(7247757312, 8053063680, 9395240960),
                         help="Explicit TP2 R33 cache KV pin; default is the 7.5 GiB research configuration")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
-    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") == "sparkring-r33-image-receipt/v1" else None
+    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1") else None
     plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt,
                   r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes)
     print(json.dumps(plan, indent=2), flush=True)

@@ -164,6 +164,12 @@ esac
 : "${NCCL_DEBUG:=WARN}"
 : "${NCCL_DEBUG_SUBSYS:=NET,INIT,GRAPH}"
 : "${SOURCE_IMAGE_PROFILE:=}"
+: "${SPARKRING_RUNTIME_RELEASE:=r33}"
+case "${SPARKRING_RUNTIME_RELEASE}" in
+  r33) release_lease_contract=/opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json ;;
+  r35) release_lease_contract=/opt/sparkring/contracts/vllm-connector-jobs-r35.json ;;
+  *) printf '%s\n' 'SPARKRING_RUNTIME_RELEASE must be r33 or r35' >&2; exit 2 ;;
+esac
 : "${VLLM_BLOCK_SIZE:=256}"
 : "${OMP_NUM_THREADS:=16}"
 : "${TORCHINDUCTOR_COMPILE_THREADS:=1}"
@@ -291,7 +297,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
        "${SPARKCACHE_SNAPSHOT_LIBRARY_PATH}" == /opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so && \
        "${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256}" == 7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953 && \
        "${SPARKCACHE_VLLM_ROOT}" == /opt/venv/lib/python3.12/site-packages && \
-       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json ]] || \
+       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == "${release_lease_contract}" ]] || \
       die 'R33 SparkCache native and lease paths differ from its receipt' ;;
   *) die 'Unsupported source-composed runtime profile' ;;
 esac
@@ -1180,6 +1186,11 @@ if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
   if [[ "${r33_profile}" == 1 ]]; then
     serving_entrypoint=${overlay_entrypoint:-/opt/sparkring/bin/sparkring-r33}
     serving_prefix=(serve)
+    if [[ "${SPARKRING_RUNTIME_RELEASE}" == r35 ]]; then
+      [[ -z "${R33_PROFILE_CONTRACT_HOST_ROOT}" ]] || die 'R35 does not accept an R33 profile overlay'
+      serving_entrypoint=/opt/venv/bin/python
+      serving_prefix=(/opt/sparkring/bin/sparkring serve)
+    fi
   else
     serving_entrypoint=python3
     serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
@@ -1190,7 +1201,7 @@ fi
 r33_environment=()
 runtime_label=glm53-jj-r8-gb10-sparkcache
 if [[ "${r33_profile}" == 1 ]]; then
-  runtime_label="glm53-flash-spark-jovian-r33-${SOURCE_IMAGE_PROFILE}"
+  runtime_label="glm53-flash-spark-jovian-${SPARKRING_RUNTIME_RELEASE}-${SOURCE_IMAGE_PROFILE}"
   r33_environment=(
     -e "SIRCL_ENABLED=${SIRCL_ENABLED}"
     -e "SPARKCACHE_ENABLED=${SPARKCACHE_ENABLED}"

@@ -29,6 +29,77 @@ def _site(tmp_path):
     return path
 
 
+@pytest.mark.parametrize('selection', ['tp4-dcp1','tp4-dcp1-sparkcache','tp4-dcp4','tp4-dcp4-sparkcache'])
+def test_r35_site_render_uses_its_own_receipt_and_connector(tmp_path, monkeypatch, selection):
+    from runtime.common.test_r35 import receipt
+    document=receipt();path=tmp_path/'r35.json';path.write_text(json.dumps(document))
+    site=_site(tmp_path);settings=json.loads(site.read_text());settings['runtime_profile']=selection
+    site.write_text(json.dumps(settings))
+    # This test isolates profile planning; native bundle integrity has separate tests.
+    monkeypatch.setattr(mesh_profile,'verify_bundle',lambda bundle,record:record['bundle_manifest_sha256'])
+    output=tmp_path/'launch'
+    result=mesh_profile.render(site,tmp_path/'bundle',output,path)
+    assert result['image']['schema']=='sparkring-r35-image-receipt/v1'
+    for rank in range(4):
+        env=mesh_profile.defaults(output/f'rank{rank}.env')
+        assert env['SPARKRING_RUNTIME_RELEASE']=='r35'
+        assert env['IMAGE_ID']==document['image_id']
+        assert env['SOURCE_IMAGE_PROFILE']==selection
+        assert env['VLLM_GLM53_MHC_PREFILL_SHARD']=='1'
+        if selection.endswith('sparkcache'):
+            assert env['SPARKCACHE_SOURCE_LEASE_CONTRACT'].endswith('vllm-connector-jobs-r35.json')
+            assert env['SPARKCACHE_CACHE_NAMESPACE'].startswith('sparkring-r35-')
+
+
+@pytest.mark.parametrize('direct', [False,True])
+def test_r35_tuning_is_persisted_and_installer_rejects_argv_drift(tmp_path,monkeypatch,direct):
+    from runtime.common.test_r35 import receipt
+    import managed_install
+    document=receipt();receipt_path=tmp_path/'receipt.json';receipt_path.write_text(json.dumps(document))
+    site=_site(tmp_path);settings=json.loads(site.read_text())
+    tuning=dict(omp_threads=1,graph_submit_cpu=10,graph_progress_cpu=11,direct_doorbell=direct)
+    settings.update(runtime_profile='tp4-dcp1-sparkcache',runtime_tuning=tuning)
+    site.write_text(json.dumps(settings))
+    monkeypatch.setattr(mesh_profile,'verify_bundle',lambda bundle,record:record['bundle_manifest_sha256'])
+    output=tmp_path/'launch';mesh_profile.render(site,tmp_path/'bundle',output,receipt_path)
+    assert json.loads((output/'site.json').read_text())['runtime_tuning']==tuning
+    for rank in range(4):
+        env=mesh_profile.defaults(output/f'rank{rank}.env')
+        assert [env[key] for key in ('OMP_NUM_THREADS','SPARK_TP4_GRAPH_SUBMIT_CPU',
+                                    'SPARK_TP4_GRAPH_PROGRESS_CPU','SPARK_TP4_GRAPH_DIRECT_DOORBELL')]==['1','10','11',str(int(direct))]
+    monkeypatch.setattr(managed_install.managed_units.service,'mesh_profile',mesh_profile)
+    calls=[]
+    def runner(*args,**kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=0,stdout=json.dumps({'schema':'sparkring-container-command/v1',
+            'argv':['docker','create','--name','fixture-r0','--entrypoint','/opt/venv/bin/python',document['image_id'],'/opt/sparkring/bin/sparkring','serve','/models/target']}))
+    image={'Id':document['image_id'],'Config':{}}
+    managed_install.canonical_container_spec(output,receipt_path,0,image,run=runner)
+    assert len(calls)==1
+    with (output/'rank0.env').open('a') as stream:stream.write('\nOMP_NUM_THREADS=2\n')
+    with pytest.raises(ValueError,match='differs from the canonical'):
+        managed_install.canonical_container_spec(output,receipt_path,0,image,run=runner)
+    assert len(calls)==1
+
+
+@pytest.mark.parametrize('field,value', [('omp_threads',True),('omp_threads',0),('omp_threads',21),
+    ('graph_submit_cpu',-1),('graph_progress_cpu',20),('direct_doorbell',0),('direct_doorbell','false'),('environment','arbitrary')])
+def test_runtime_tuning_rejects_untyped_or_unbounded_inputs(tmp_path,field,value):
+    site=_site(tmp_path);settings=json.loads(site.read_text())
+    tuning=dict(omp_threads=1,graph_submit_cpu=10,graph_progress_cpu=11,direct_doorbell=True)
+    tuning[field]=value;settings['runtime_tuning']=tuning;site.write_text(json.dumps(settings))
+    with pytest.raises(ValueError,match='runtime_tuning'):
+        mesh_profile.load_site(site)
+
+
+def test_runtime_tuning_requires_r35_receipt(tmp_path,manifest_bundle):
+    site=_site(tmp_path);settings=json.loads(site.read_text())
+    settings['runtime_tuning']=dict(omp_threads=1,graph_submit_cpu=10,graph_progress_cpu=11,direct_doorbell=True)
+    site.write_text(json.dumps(settings))
+    with pytest.raises(ValueError,match='explicit R35 image receipt'):
+        mesh_profile.render(site,manifest_bundle,tmp_path/'launch')
+
+
 def test_example_has_only_benchmark_or_documentation_addresses(tmp_path):
     site, topology, plan = mesh_profile.load_site(_site(tmp_path))
     assert site["management_addresses"] == [f"192.0.2.{10+i}" for i in range(4)]

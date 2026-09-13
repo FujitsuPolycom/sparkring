@@ -23,6 +23,25 @@ UNIT_DIR = Path('/etc/systemd/system')
 SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/managed_memory.py',
     'runtime/glm53-spark-mtp3-mesh/managed_liveness.py',
+    'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json',
+    'spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c',
+    'runtime/common/r35.py',
+    'runtime/images/sparkring-r35/source-lock.json',
+    'runtime/images/sparkring-r35/entrypoint.py',
+    'runtime/images/sparkring-r35/verify_image.py',
+    'runtime/images/sparkring-r35/contracts/tp2-sparkcache-capabilities.json',
+    'runtime/images/sparkring-r35/contracts/vllm-connector-jobs.json',
+    'runtime/sparkring/jovian-r33/public-image-receipt.json',
+    'runtime/sparkring/jovian-r33/profiles/profile-contract.json',
+    'runtime/sparkring/jovian-r33/profiles/verify_profile.py',
+    'runtime/sparkring/jovian-r33/profiles/image.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp2-dcp1.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp2-dcp1-sparkcache.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp1.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp1-sparkcache.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp4.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp4-sparkcache.env.example',
+    'runtime/sparkring/jovian-r33/image/artifact-lock.json',
     'runtime/sparkring/source_image/startup/scheduler_liveness.py',
     'runtime/glm53-spark-mtp3-mesh/managed_service.py',
     'runtime/glm53-spark-mtp3-mesh/managed_network.py',
@@ -242,7 +261,9 @@ def canonical_container_spec(launch, image_receipt, rank, image, *, run=subproce
     profile = managed_units.service.mesh_profile
     site, _, _ = profile.load_site(launch / 'site.json')
     if (site.get('runtime_profile') in ('tp4-dcp4', 'tp4-dcp4-sparkcache')
-            and 'r33_profile_contract_roots' not in site):
+            and 'r33_profile_contract_roots' not in site
+            and (not image_receipt.is_file()
+                 or profile.load_image_receipt(image_receipt).get('schema') != profile.r35.SCHEMA)):
         raise ValueError('Managed DCP4 requires r33_profile_contract_roots in the private site; an ambient shell export is not a persisted launch input')
     with tempfile.TemporaryDirectory(prefix='sparkring-container-spec-') as temporary:
         rendered = Path(temporary) / 'launch'
@@ -266,8 +287,41 @@ def canonical_container_spec(launch, image_receipt, rank, image, *, run=subproce
         return expected_container_spec(output.get('argv'), image)
 
 
+def external_marker_attestation(*, root=None, binary=None):
+    """Verify the host helper separately from the inference image's payload."""
+    root = ROOT if root is None else root
+    profile = managed_units.service.mesh_profile
+    record_path = root/'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json'
+    if not record_path.is_file() or record_path.is_symlink():
+        raise ValueError('External host-marker artifact record is missing')
+    record = json.loads(record_path.read_text())
+    if record.get('schema') != 'sparkring-host-marker-artifact/v1':
+        raise ValueError('Unsupported external host-marker artifact record')
+    pins = json.loads((root/'runtime/glm53-spark-mtp3-mesh/pins.json').read_text())
+    for field, hash_field in (('source','source_sha256'),('artifact_receipt','artifact_receipt_sha256')):
+        path = profile.manifest_file(root, record.get(field))
+        if not path.is_file() or path.is_symlink() or profile.sha(path) != record.get(hash_field):
+            raise ValueError('External host marker has missing or changed '+field)
+    artifact = json.loads(profile.manifest_file(root,record['artifact_receipt']).read_text())
+    inside = artifact.get('inside_image', {})
+    if (artifact.get('checks_passed') is not True or inside.get('checks_passed') is not True
+            or record['source_sha256'] != pins['marker']['source_sha256']
+            or inside.get('marker_source_sha256') != record['source_sha256']
+            or inside.get('marker_binary_sha256') != record.get('binary_sha256')
+            or not re.fullmatch('[0-9a-f]{64}', record.get('binary_sha256',''))):
+        raise ValueError('External host-marker artifact does not bind the source and binary')
+    if binary is not None and (not binary.is_file() or binary.is_symlink() or profile.sha(binary) != record['binary_sha256']):
+        raise ValueError('Configured host marker differs from the reviewed external artifact')
+    return {'marker_source_sha256':record['source_sha256'], 'marker_binary_sha256':record['binary_sha256'],
+            'host_artifact_receipt_sha256':record['artifact_receipt_sha256']}
+
+
 def managed_image_attestation(receipt):
-    """Return the managed-mesh facts carried by a validated image receipt."""
+    """Return source-pinned managed-mesh helper identities for the selected runtime."""
+    if receipt.get('schema') == managed_units.service.mesh_profile.r35.SCHEMA:
+        profile = managed_units.service.mesh_profile
+        profile.r35.validate_receipt(receipt)
+        return {}
     if receipt.get('schema') != 'sparkring-r33-image-receipt/v1':
         inside = receipt.get('inside_image')
         if not isinstance(inside, dict):
@@ -314,15 +368,17 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     site, _, _ = profile.load_site(launch / 'site.json')
     receipt = profile.load_image_receipt(image_receipt)
     inside = managed_image_attestation(receipt)
+    if receipt.get('schema') == profile.r35.SCHEMA:
+        inside = external_marker_attestation(binary=Path(site['marker_binary']))
     expected_marker = profile.PINS['marker']['source_sha256']
     if receipt.get('schema') == 'sparkring-source-image-receipt/v1':
         expected_marker = json.loads(profile.SOURCE_LOCK.read_text())['runtime']['marker_source_sha256']
     if (inside.get('marker_source_sha256') != expected_marker
             or inside.get('marker_binary_sha256') != site['marker_binary_sha256']):
         raise ValueError('Managed profile requires the source-pinned image and host marker')
-    # R33 records readiness in its post-launch activation receipt. Older mesh
-    # images must carry their pre-launch warmup attestation here.
-    if (receipt.get('schema') != 'sparkring-r33-image-receipt/v1'
+    # Release profiles record readiness after launch. Wrapper images must carry
+    # their pre-launch warmup attestation here.
+    if (receipt.get('schema') not in ('sparkring-r33-image-receipt/v1', profile.r35.SCHEMA)
             and not inside.get('readiness_warmup')):
         raise ValueError('Managed MTP3 profile requires the temperature-one readiness image')
     result = subprocess.run(['docker', 'inspect', site['container_prefix'] + f'-r{rank}'],
@@ -334,10 +390,12 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     image = json.loads(result.stdout)[0]
     if image.get('Id') != receipt['image_id']:
         raise ValueError('Inspected image differs from the verified image receipt')
+    if receipt.get('schema') == profile.r35.SCHEMA:
+        profile.r35.verify_local_image(receipt)
     expected = canonical_container_spec(launch, image_receipt, rank, image)
     validate_container_spec(container, expected)
     if profile.sha(Path(site['marker_binary'])) != site['marker_binary_sha256']:
-        raise ValueError('Extracted host marker hash differs from the image receipt')
+        raise ValueError('Configured host marker hash differs from its verified artifact identity')
     help_result = subprocess.run([site['marker_binary'], '--help'], capture_output=True, text=True, check=True, timeout=5)
     if '--managed' not in help_result.stdout + help_result.stderr:
         raise ValueError('Extracted helper does not expose managed lifetime')

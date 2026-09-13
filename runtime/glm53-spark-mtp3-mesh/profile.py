@@ -22,6 +22,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 from spark_transport.fabric.cx7_hairpin_diagonal import fabric  # noqa: E402
 from integrations.vllm.rocenante import build_bundle  # noqa: E402
+from runtime.common import r35  # noqa: E402
 
 PINS = json.loads((HERE / "pins.json").read_text())
 BASE = HERE.parent / "glm53-flash-jj-r8-gb10"
@@ -125,7 +126,7 @@ def load_site(path: Path):
     data = json.loads(path.read_text())
     required = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
                 "bundle_root", "container_prefix", "marker_binary", "marker_binary_sha256", "state_root"}
-    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile", "cache_diagnostics", "nccl_debug", "r33_profile_contract_roots"}
+    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile", "cache_diagnostics", "nccl_debug", "r33_profile_contract_roots", "runtime_tuning"}
     if (not required <= set(data) <= required | optional
             or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1"):
         raise ValueError("Site fields do not match sparkring-glm53-mtp3-mesh-site/v1")
@@ -154,6 +155,15 @@ def load_site(path: Path):
             absolute(root, "r33_profile_contract_roots")
     if "api_keys_file" in data:
         absolute(data["api_keys_file"], "api_keys_file")
+    if 'runtime_tuning' in data:
+        tuning = data['runtime_tuning']
+        if (not isinstance(tuning, dict)
+                or set(tuning) != {'omp_threads','graph_submit_cpu','graph_progress_cpu','direct_doorbell'}
+                or type(tuning['omp_threads']) is not int or not 1 <= tuning['omp_threads'] <= 20
+                or any(type(tuning[name]) is not int or not 0 <= tuning[name] < 20
+                       for name in ('graph_submit_cpu','graph_progress_cpu'))
+                or type(tuning['direct_doorbell']) is not bool):
+            raise ValueError('runtime_tuning requires omp_threads 1..20, graph CPU indices 0..19 and a boolean direct_doorbell')
     if "liveness_output_seconds" in data:
         timeout = data["liveness_output_seconds"]
         if type(timeout) is not int or not 0 < timeout <= 2147483647:
@@ -162,7 +172,7 @@ def load_site(path: Path):
             data.get("runtime_profile")
             not in ("tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache")
             or data["nccl_debug"] != "INFO"):
-        raise ValueError("nccl_debug diagnostic mode requires an R33 TP4 profile and INFO")
+        raise ValueError("nccl_debug diagnostic mode requires a TP4 release profile and INFO")
     if "cache_diagnostics" in data:
         diagnostic = data["cache_diagnostics"]
         if (data.get("runtime_profile") not in ("tp4-dcp1-sparkcache", "tp4-dcp4-sparkcache")
@@ -173,7 +183,7 @@ def load_site(path: Path):
                 or "REPLACE" in diagnostic["namespace"]
                 or diagnostic["access_mode"] != "restore-only"
                 or type(diagnostic["trace_reuse"]) is not int or diagnostic["trace_reuse"] != 1):
-            raise ValueError("cache_diagnostics requires an R33 tp4-dcp1-sparkcache or tp4-dcp4-sparkcache profile, a concrete safe namespace, restore-only access and trace_reuse=1")
+            raise ValueError("cache_diagnostics requires a tp4-dcp1-sparkcache or tp4-dcp4-sparkcache release profile, a concrete safe namespace, restore-only access and trace_reuse=1")
     topology_path = path.parent / data["topology_file"]
     topology = fabric.load_topology(topology_path)
     for node in topology.ranks:
@@ -228,6 +238,8 @@ def _r33_profile_verifier():
 def validate_image_receipt(document: dict) -> dict:
     if not isinstance(document, dict):
         raise ValueError("Image receipt must be a JSON object")
+    if document.get('schema') == r35.SCHEMA:
+        return r35.validate_receipt(document)
     if document.get("schema") == "sparkring-r33-image-receipt/v1":
         _r33_profile_verifier().validate_image_receipt(document)
         expected = document.get("bundle_manifest_sha256")
@@ -350,8 +362,8 @@ def verify_bundle(bundle: Path, image_record: dict | None = None) -> str:
     manifest = json.loads((bundle / "sparkring-overlay-manifest.json").read_text())
     for item in manifest["files"]:
         expected_hashes = {item["sha256"]}
-        if image_record and image_record.get("schema") == "sparkring-r33-image-receipt/v1":
-            # R33 retains the overlay lineage manifest and separately attests its
+        if image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA):
+            # Release images retain the overlay lineage manifest and attest their
             # rebuilt native library and packaged Python files. Rendering and
             # installation accept the lineage bundle or verified image files.
             image_path = "/opt/sparkring/sircl/python/" + item["path"]
@@ -372,19 +384,24 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     expected_bundle = verify_bundle(bundle, image_record)
     site, topology, plan = load_site(site_path)
     source_composition = image_record and image_record.get("schema") == "sparkring-source-image-receipt/v1"
-    r33_composition = image_record and image_record.get("schema") == "sparkring-r33-image-receipt/v1"
+    r35_composition = image_record and image_record.get('schema') == r35.SCHEMA
+    r33_composition = image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA)
+    if r35_composition and 'r33_profile_contract_roots' in site:
+        raise ValueError('R35 uses its verified installed contract; R33 contract overlays are not supported')
+    if 'runtime_tuning' in site and not r35_composition:
+        raise ValueError('runtime_tuning requires an explicit R35 image receipt')
     if "r33_profile_contract_roots" in site and not r33_composition:
         raise ValueError("r33_profile_contract_roots requires an R33 image receipt")
     if "cache_diagnostics" in site and not r33_composition:
-        raise ValueError("cache_diagnostics requires an R33 image receipt")
+        raise ValueError("cache_diagnostics requires an R33 or R35 image receipt")
     if "nccl_debug" in site and not r33_composition:
-        raise ValueError("nccl_debug diagnostic mode requires an R33 image receipt")
+        raise ValueError("nccl_debug diagnostic mode requires an R33 or R35 image receipt")
     if r33_composition:
         runtime_profile = site.get("runtime_profile")
         if runtime_profile not in (
                 "tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"):
             raise ValueError(
-                "R33 managed site must select tp4-dcp1 or tp4-dcp4, with or without sparkcache")
+                "Managed release site must select tp4-dcp1 or tp4-dcp4, with or without SparkCache")
     elif site.get("runtime_profile") != (image_record["profile"] if source_composition else None):
         raise ValueError("Site runtime profile differs from the explicit image receipt")
     values = defaults(BASE / "runtime.env.example")
@@ -423,7 +440,10 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                           NCCL_LIBRARY_SHA256=lock["runtime"]["nccl_sha256"])
         elif r33_composition:
             verifier = _r33_profile_verifier()
-            contract = verifier.load_contract()
+            contract = r35.profile_contract(image_record['installed']) if r35_composition else verifier.load_contract()
+            if r35_composition:
+                values['SPARKRING_RUNTIME_RELEASE'] = 'r35'
+                r35.validate_profile_capabilities(image_record, runtime_profile)
             selected = contract["profiles"][runtime_profile]
             profile_values = verifier.parse_template(
                 ROOT / "runtime/sparkring/jovian-r33/profiles" / selected["template"]
@@ -465,9 +485,9 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                 checked = image_record.get("verification", {}).get("checked_files", {})
                 if (checked.get(native["placement_path"]) != native["placement_sha256"]
                         or checked.get(native["snapshot_path"]) != native["snapshot_sha256"]):
-                    raise ValueError("R33 image receipt does not bind SparkCache native libraries")
+                    raise ValueError("Selected image receipt does not bind SparkCache native libraries")
                 values.update({
-                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-r33-{image_record['image_id'][7:19]}-{runtime_profile}",
+                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-{'r35' if r35_composition else 'r33'}-{image_record['image_id'][7:19]}-{runtime_profile}",
                     "SPARKCACHE_PLACEMENT_LIBRARY_PATH": native["placement_path"],
                     "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": native["placement_sha256"],
                     "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": native["snapshot_path"],
@@ -475,6 +495,12 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                     "SPARKCACHE_VLLM_ROOT": native["vllm_root"],
                     "SPARKCACHE_SOURCE_LEASE_CONTRACT": native["lease_contract"],
                 })
+    if 'runtime_tuning' in site:
+        tuning = site['runtime_tuning']
+        values.update(OMP_NUM_THREADS=str(tuning['omp_threads']),
+                      SPARK_TP4_GRAPH_SUBMIT_CPU=str(tuning['graph_submit_cpu']),
+                      SPARK_TP4_GRAPH_PROGRESS_CPU=str(tuning['graph_progress_cpu']),
+                      SPARK_TP4_GRAPH_DIRECT_DOORBELL=str(int(tuning['direct_doorbell'])))
     if "cache_diagnostics" in site:
         diagnostic = site["cache_diagnostics"]
         if diagnostic["namespace"] == values["SPARKCACHE_CACHE_NAMESPACE"]:

@@ -35,7 +35,7 @@ def plan(profile_id, arguments, root=ROOT):
             option, separator, value = argument.partition('=')
             if not option.startswith('--'):
                 continue
-            if '--r33-sparkcache'.startswith(option):
+            if '--r33-sparkcache'.startswith(option) or '--sparkcache'.startswith(option):
                 raise ValueError('The catalog owns SparkCache selection; select the matching profile ID')
             if '--r33-cache-kv-memory-bytes'.startswith(option):
                 if not separator:

@@ -84,10 +84,12 @@ Do not repoint a published tag as part of these steps.
 
 ## Serving and qualification
 
-Render a compatible profile with the selected image ID. Preserve its model,
-topology, memory, cache and managed-mesh admission checks. Give the candidate a
-separate cache namespace; keep model mounts read-only. A transport or CPU-placement
-change requires a coordinated stop and start of all ranks.
+Use the [local R35 launch guide](../../../docs/operations/r35-local-launch.md)
+to record the image receipt and render TP2 or TP4 arguments. The receipt selects
+R35's entrypoint and cache contract while retaining model, topology, memory and
+managed-mesh admission checks. Give the candidate a separate cache namespace;
+keep model mounts read-only. A transport or CPU-placement change requires a
+coordinated stop and start of all ranks.
 
 Qualification must record the image, source trees, rendered arguments, hardware,
 cache state and benchmark harness identity. Check exact-answer requests, cache

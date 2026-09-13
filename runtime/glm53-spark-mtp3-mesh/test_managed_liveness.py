@@ -45,6 +45,13 @@ def test_r35_python_entrypoint_is_supported_but_shell_arguments_are_not():
     assert not monitor.requires_host_monitor(c, 0)
 
 
+@pytest.mark.parametrize('command', [['-c','/opt/sparkring/bin/sparkring'],
+    ['/opt/unrelated.py','serve'], ['/opt/sparkring/bin/sparkring','--help']])
+def test_python_entrypoint_requires_exact_serving_command_prefix(command):
+    c=candidate();c['Config']['Entrypoint']=['/opt/venv/bin/python'];c['Config']['Cmd']=command
+    assert not monitor.requires_host_monitor(c,0)
+
+
 @pytest.mark.parametrize('assignment', ['PORT=$(touch x)', 'PORT=65536', 'SPARKRING_LIVENESS_PORT=8015',
                                       'SPARKRING_LIVENESS_SAMPLE_SECONDS=0'])
 def test_bad_monitor_settings_rejected(assignment):

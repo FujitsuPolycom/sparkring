@@ -1,0 +1,8 @@
+{
+  "schema": "sparkring-host-marker-artifact/v1",
+  "source": "spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c",
+  "source_sha256": "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792",
+  "artifact_receipt": "runtime/glm53-spark-mtp3-mesh/image-receipt.json",
+  "artifact_receipt_sha256": "d79b52cf18a2900df0146f2b1a1877cbc9f18b174fde7d51c269009c57dd9641",
+  "binary_sha256": "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64"
+}

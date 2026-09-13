@@ -40,6 +40,9 @@ def requires_host_monitor(container, rank):
     env = environment(container)
     entrypoint = container.get('Config', {}).get('Entrypoint', [])
     direct = any(entrypoint in ([path], ['/opt/venv/bin/python', path]) for path in ENTRYPOINTS)
+    command = container.get('Config', {}).get('Cmd', [])
+    if entrypoint == ['/opt/venv/bin/python']:
+        direct = any(command[:2] == [path, 'serve'] for path in ENTRYPOINTS)
     return (rank == 0 and env.get('SPARKRING_LIVENESS_ENABLED') == '1'
             and direct)
 
