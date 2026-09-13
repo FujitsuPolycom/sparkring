@@ -43,7 +43,7 @@ def main():
         shutil.copy2(path, output/path.name)
     for name in ('vllm-connector-jobs.json', 'tp2-sparkcache-capabilities.json'):
         shutil.copy2(ROOT/'contracts'/name, output/name)
-    shutil.copytree(ROOT.parent/'jovian-r33/profiles',output/'profile-contract')
+    shutil.copytree(ROOT.parents[1]/'sparkring/jovian-r33/profiles',output/'profile-contract')
     shutil.copytree(ROOT/'contracts/evidence', output/'capability-evidence')
     files = {str(p.relative_to(output)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest()
              for p in output.rglob('*') if p.is_file()}

@@ -20,6 +20,12 @@
       "reason": "Published R33 composition; retain the exact construction inputs and installed paths."
     },
     {
+      "id": "sparkring-r35",
+      "path": "runtime/images/sparkring-r35/prepare_context.py",
+      "kind": "python",
+      "reason": "Offline assembly of pinned R35 sources with SparkRing checkpoint, cache and transport integration; does not run Docker."
+    },
+    {
       "id": "glm52-exl3",
       "path": "runtime/exl3-r7/build-image.sh",
       "kind": "bash",

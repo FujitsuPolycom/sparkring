@@ -44,11 +44,16 @@ The vLLM checkout must also contain the R33 upstream comparison commit
 From the repository root, with paths adjusted to those dedicated checkouts:
 
 ```sh
-python runtime/sparkring/jovian-r35/prepare_context.py \
+python runtime/images/sparkring-r35/prepare_context.py \
   --vllm-source /path/to/vllm-r35 \
   --b12x-source /path/to/b12x-r35 \
   --output /path/to/absent-build-context
 ```
+
+The shared entry point also exposes this context generator as the
+`sparkring-r35` builder. `python scripts/build_image.py sparkring-r35 -- --help`
+prints its command without executing it. Add `--execute` before the builder name
+to run context assembly; Docker construction remains a separate step.
 
 The context generator verifies the patched trees and patch hashes, packages the
 source, copies the shared profile contract, and records all context file hashes.
