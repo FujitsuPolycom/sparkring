@@ -10,8 +10,9 @@ Status: **experimental**. Component tests, TP4 functional/decode checks and
 [bounded TP2 cache/decode checks](../../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
 have passed. TP4's prolonged mixed workload encountered a native collective
 stall; long-duration stability qualification is deferred. Existing published
-image identities and profile defaults are unchanged. The TP2 test required an R35-specific launcher
-argument correction and does not establish long-duration TP2 stability.
+image identities and profile defaults are unchanged. The TP2 adapter omits the
+GLM-incompatible GDN decode selector. Bounded TP2 results do not establish
+long-duration TP2 stability.
 
 ## Source and build identity
 
@@ -91,12 +92,16 @@ Do not repoint a published tag as part of these steps.
 
 ## Serving and qualification
 
-Use the [local R35 launch guide](../../../docs/operations/r35-local-launch.md)
+Use the [R35 launch guide](../../../docs/operations/r35-local-launch.md)
 to record the image receipt and render TP2 or TP4 arguments. The receipt selects
 R35's entrypoint and cache contract while retaining model, topology, memory and
 managed-mesh admission checks. Give the candidate a separate cache namespace;
 keep model mounts read-only. A transport or CPU-placement change requires a
 coordinated stop and start of all ranks.
+
+For TP2, SparkCache is optional. Both modes retain mHC and 1M context;
+cache-on uses 7.5 GiB KV per rank with KDA coalescing, while cache-off uses
+8.75 GiB with coalescing disabled. The launch guide provides both selections.
 
 Qualification must record the image, source trees, rendered arguments, hardware,
 cache state and benchmark harness identity. Check exact-answer requests, cache

@@ -193,6 +193,14 @@ long-duration stability qualification is deferred. Performance results do not
 establish stability. Branch publication distributes recipes, code and evidence;
 container-registry publication and a reviewed main merge are separate actions.
 
+The Experimental ARM64 image is available under the immutable digest in its
+[publication record](../../runtime/images/sparkring-r35/publication.json).
+Anonymous manifest/config verification and Docker pull passed. The
+[TP2 launch instructions](../operations/r35-local-launch.md#tp2) support
+SparkCache on or off through an explicit R35 receipt; the catalog retains its
+published R33 defaults. Both TP2 modes enable mHC; only cache-on enables KDA
+coalescing. Image availability does not remove the stability qualification gap.
+
 ### Repository adoption
 
 1. Review the profile catalog, configuration/launch contracts, migration map and
