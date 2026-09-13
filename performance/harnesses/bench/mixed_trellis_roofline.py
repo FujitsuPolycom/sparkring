@@ -341,8 +341,13 @@ def enumerate_configurations(
     }
     order: list[tuple[int, int, int, int]] = [baseline.tile_config]
     seen = {(baseline.tile_config, baseline.moe_block_size)}
+    control_tiles = {tuple(tile) for tile in controls}
 
     def add(tile: tuple[int, int, int, int], block: int, role: str) -> None:
+        # Explicit reference controls retain that role even when the sweep
+        # generates the same tile before the control list is appended.
+        if tile in control_tiles:
+            role = ROLE_CONTROL
         key = (tile, block)
         if key in seen:
             return
@@ -2195,9 +2200,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEPLOYED_TILE_CONFIG,
         help=(
             "tile config the sweep ranks against, four integers: fc1_tile_k "
-            "fc1_tile_n fc2_tile_k fc2_tile_n. The vLLM EXL3 backend selects "
-            "it from hidden_size, which at 6144 gives '128 128 32 512' "
-            "(default: 128 128 32 512)"
+            "fc1_tile_n fc2_tile_k fc2_tile_n. Verify this against the "
+            "serving backend's selected tiles (default: 128 128 32 512)"
         ),
     )
     parser.add_argument(
@@ -2251,9 +2255,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-fc1-control",
         action="store_true",
         help=(
-            "also measure the 64x256 FC1 geometry the single-bitrate path "
-            "uses, labelled a control because it is documented as losing "
-            "partial reductions at large token counts"
+            "also measure the 64x256 FC1 geometry as a reference control; "
+            "this harness does not establish its partial-reduction "
+            "correctness at large token counts"
         ),
     )
     parser.add_argument(
@@ -2296,7 +2300,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = build_parser()
     arguments = parser.parse_args(argv)
     for name in ('hidden_size', 'intermediate_size', 'tier0_experts', 'tier1_experts',
-                 'tier0_bits', 'tier1_bits', 'top_k', 'sms'):
+                 'tier0_bits', 'tier1_bits', 'top_k', 'sms', 'baseline_moe_block_size'):
         if getattr(arguments, name) <= 0:
             parser.error('--' + name.replace('_', '-') + ' must be positive')
     if arguments.top_k > arguments.tier0_experts + arguments.tier1_experts:

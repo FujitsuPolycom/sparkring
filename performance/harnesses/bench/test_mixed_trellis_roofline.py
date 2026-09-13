@@ -425,6 +425,17 @@ class SizeResultTest(unittest.TestCase):
 
 
 class SweepEnumerationTest(unittest.TestCase):
+    def test_explicit_control_overlapping_sweep_is_never_a_candidate(self):
+        configurations, _ = bench.enumerate_configurations(
+            fc1_k_values=(64,), fc1_n_values=(256,),
+            fc2_k_values=(64,), fc2_n_values=(256,),
+            controls=(bench.FC1_CONTROL_TILE_CONFIG,),
+        )
+        overlapping = [item for item in configurations
+                       if item.tile_config == bench.FC1_CONTROL_TILE_CONFIG]
+        self.assertTrue(overlapping)
+        self.assertEqual({item.role for item in overlapping}, {bench.ROLE_CONTROL})
+
     def test_the_default_space_holds_fc1_at_128_and_sweeps_fc2(self) -> None:
         configurations, _ = bench.enumerate_configurations()
 
@@ -1395,6 +1406,12 @@ class TextRenderTest(unittest.TestCase):
 
 
 class ArgumentTest(unittest.TestCase):
+    def test_nonpositive_baseline_block_size_is_a_usage_error(self):
+        for value in ('0', '-1'):
+            with self.subTest(value=value), self.assertRaises(SystemExit) as caught:
+                bench.parse_args(['--baseline-moe-block-size', value])
+            self.assertEqual(caught.exception.code, 2)
+
     def test_invalid_geometry_is_rejected_before_device_access(self):
         for option, value in [('--hidden-size', '0'), ('--top-k', '257'),
                               ('--tier0-experts', '-1'), ('--sms', '0')]:
