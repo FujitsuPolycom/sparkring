@@ -129,6 +129,18 @@ class SpecifiedShapesTest(unittest.TestCase):
 
 
 class DistributionTest(unittest.TestCase):
+    def test_invalid_timing_samples_cannot_produce_rates_or_summaries(self) -> None:
+        for invalid in (float("nan"), float("inf"), -float("inf"), 0.0, -1.0, True, "1"):
+            for operation in (
+                lambda value: bench.summarize([1.0, value, 2.0]),
+                lambda value: bench.shape_result(bench.SHAPES[0], [value] * 4),
+                lambda value: bench.tflops(1024, value),
+                lambda value: bench.gigabytes_per_second(1024, value),
+            ):
+                with self.subTest(invalid=invalid, operation=operation):
+                    with self.assertRaisesRegex(ValueError, "finite positive"):
+                        operation(invalid)
+
     def test_percentile_interpolates_between_neighbours(self) -> None:
         self.assertAlmostEqual(bench.percentile([0.0, 10.0], 0.5), 5.0)
         self.assertAlmostEqual(bench.percentile([0.0, 10.0], 0.25), 2.5)
@@ -362,6 +374,17 @@ class ReportShapeTest(unittest.TestCase):
 
 
 class TextRenderTest(unittest.TestCase):
+    def test_report_does_not_turn_shape_estimates_into_profiling_evidence(self) -> None:
+        report = _report()
+        rendered = bench.render_text(report)
+        self.assertIn("does not isolate host", report["per_call_floor"]["note"])
+        self.assertIn("Profiling is required", rendered)
+        self.assertIn("not an established hardware peak", rendered)
+        self.assertNotIn("means most of the device is idle", rendered)
+        self.assertNotIn("upper bound", report["per_call_floor"]["note"])
+        self.assertIn("per_call_floor", report)
+        self.assertEqual(report["schema"], "gb10-dense-gemm-roofline/v1")
+
     def test_the_text_report_prints_the_flop_formula_with_the_numbers(self) -> None:
         rendered = bench.render_text(_report())
 

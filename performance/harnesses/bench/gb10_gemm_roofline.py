@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure the dense BF16 GEMM rate one GB10 GPU reaches through cuBLASLt.
+"""Measure the dense BF16 GEMM rate one GB10 GPU reaches through torch.mm.
 
 An efficiency percentage is only defensible against a rate the same device
 was observed to reach. A published peak figure does not state the clock
@@ -10,7 +10,8 @@ achieved rate directly rather than deriving one.
 WHAT IS MEASURED
 
     C[M, N] = A[M, K] @ B[K, N], BF16 operands and BF16 output, dispatched
-    by Torch to cuBLASLt. The B operand is a view of a row-major [N, K]
+    by Torch to its selected CUDA GEMM backend, which is not identified here.
+    The B operand is a view of a row-major [N, K]
     weight, which is the operand layout `torch.nn.functional.linear`
     produces. Layout is part of the result: a contiguous [K, N] B is a
     different GEMM and can reach a different rate.
@@ -20,34 +21,30 @@ WHAT IS MEASURED
     intermediate width at TP4 that
     `performance/harnesses/moe_round_floor/b12x_floor_benchmark.py`
     records; M spans a decode-sized to a prefill-sized token count. This is
-    a dense cuBLASLt GEMM at those dimensions, not the fused MoE binding,
+    a dense torch.mm GEMM at those dimensions, not the fused MoE binding,
     which that file measures instead.
 
     A 4096-cubed shape is measured in the same run and labelled `control`.
     It is not one of the three specified shapes. It exists so the skinny
     numbers can be read against a shape on the same device, in the same
-    process, under the same clocks, that is large enough to approach the
-    device's multiply-accumulate limit.
+    process. Clock readings bracket the run; they do not establish constant
+    clocks or that this shape reaches the device's arithmetic limit.
 
 WHY THE THREE SPECIFIED SHAPES ARE NOT A PEAK MEASUREMENT
 
     All three are small-M skinny GEMMs. Two reported properties make the
     regime visible:
 
-      * Arithmetic intensity, FLOP per compulsory byte. At M = 40 the B
-        operand is most of the traffic and is read once per call, so
-        intensity approaches M FLOP/byte and the shape is operand-traffic
-        bound long before it is arithmetic bound.
-      * Output tile count. With N = 512, a 128-wide output tile gives four
-        tile columns, so the launched grid is a small multiple of four
-        whatever M is. That is far below the device's streaming
-        multiprocessor count, so much of the device is idle by
-        construction.
+      * Arithmetic intensity counts every operand and output element once.
+        It is a shape-level traffic model, not measured memory traffic or
+        evidence of a bandwidth bottleneck; repeated calls may reuse caches.
+      * Output tile count assumes 128-by-128 output tiles. The backend may
+        select another tiling or split-K schedule. This estimate does not
+        establish the launched grid, occupancy, or idle multiprocessors.
 
-    A per-call floor is measured on the same code path with M = N = K = 1
-    and reported separately. It bounds how much of a small-M shape's
-    elapsed time can be attributed to per-call dispatch rather than to
-    work.
+    A tiny-GEMM reference with M = N = K = 1 is reported separately under
+    the compatibility key `per_call_floor`. Its device event interval does
+    not isolate host dispatch overhead or bound overhead for another shape.
 
 METHOD
 
@@ -58,7 +55,7 @@ METHOD
     are read only after that second synchronization.
 
     Warmup runs before every measured shape. The first call to a shape pays
-    workspace allocation and the cuBLASLt heuristic and algorithm selection
+    workspace allocation and backend algorithm selection
     for that shape; including it would report a one-time cost as a steady
     state rate.
 
@@ -176,8 +173,8 @@ def flop_count(shape: Shape) -> int:
 def compulsory_bytes(shape: Shape, element_bytes: int = BF16_BYTES) -> int:
     """Bytes moved if every operand and output element is touched once.
 
-    A lower bound on traffic, not a measurement of it. A kernel that
-    re-reads an operand because it does not fit in cache moves more.
+    This model does not identify a memory hierarchy level or measure traffic.
+    Cache reuse and repeated operand loads can change transferred bytes.
     """
 
     return element_bytes * (shape.m * shape.k + shape.k * shape.n + shape.m * shape.n)
@@ -198,16 +195,14 @@ def output_tiles(shape: Shape, tile: int = ASSUMED_TILE) -> int:
 def tflops(flop: int, milliseconds: float) -> float:
     """Achieved rate in TFLOP/s for `flop` completed in `milliseconds`."""
 
-    if milliseconds <= 0:
-        raise ValueError(f"elapsed time must be positive; got {milliseconds}")
+    _validate_times((milliseconds,))
     return flop / (milliseconds * 1e-3) / 1e12
 
 
 def gigabytes_per_second(byte_count: int, milliseconds: float) -> float:
     """Achieved compulsory-traffic rate in GB/s, 10^9 bytes per second."""
 
-    if milliseconds <= 0:
-        raise ValueError(f"elapsed time must be positive; got {milliseconds}")
+    _validate_times((milliseconds,))
     return byte_count / (milliseconds * 1e-3) / 1e9
 
 
@@ -231,11 +226,18 @@ def percentile(values: Sequence[float], fraction: float) -> float:
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
 
+def _validate_times(samples_ms: Sequence[float]) -> None:
+    if not samples_ms:
+        raise ValueError("cannot summarize an empty timing sample")
+    if any(isinstance(sample, bool) or not isinstance(sample, (int, float))
+           or not math.isfinite(sample) or sample <= 0 for sample in samples_ms):
+        raise ValueError("timing samples must be finite positive numbers")
+
+
 def summarize(samples_ms: Sequence[float]) -> dict[str, float]:
     """Median, interquartile range, and observed extremes of a timing sample."""
 
-    if not samples_ms:
-        raise ValueError("cannot summarize an empty timing sample")
+    _validate_times(samples_ms)
     ordered = sorted(float(sample) for sample in samples_ms)
     p25 = percentile(ordered, 0.25)
     p75 = percentile(ordered, 0.75)
@@ -457,6 +459,10 @@ def measure_shape(
     torch_module.cuda.synchronize(device)
 
     samples = [float(start.elapsed_time(end)) for start, end in zip(starts, ends)]
+    try:
+        _validate_times(samples)
+    except ValueError as error:
+        raise MeasurementUnavailable(f"{shape.name}: {error}") from error
     if not bool(torch_module.isfinite(out).all().item()):
         raise MeasurementUnavailable(
             f"{shape.name} produced non-finite output, so its timing is not a "
@@ -551,7 +557,8 @@ def build_report(
             "bytes_formula": BYTES_FORMULA,
             "bytes_note": (
                 "compulsory traffic: every operand and output element counted "
-                "once. A lower bound on traffic, not a measurement of it."
+                "once. A traffic model, not measured transfers at a specific "
+                "memory hierarchy level; cache reuse can change actual traffic."
             ),
             "timing": (
                 "one CUDA event pair per call; the device is synchronized "
@@ -577,9 +584,8 @@ def build_report(
             "k": LAUNCH_FLOOR.k,
             "timing": floor_timing,
             "note": (
-                "smallest GEMM on the same code path; an upper bound on how "
-                "much of a small-M shape's elapsed time is per-call dispatch "
-                "rather than work"
+                "tiny-GEMM device timing reference; does not isolate host "
+                "dispatch overhead or bound overhead for other shapes"
             ),
         },
         "shapes": list(results),
@@ -639,7 +645,7 @@ def render_text(report: dict[str, Any]) -> str:
         f"  {measurement['bytes_note']}",
         "  arithmetic intensity = flop / bytes",
         "",
-        "PER-CALL FLOOR",
+        "TINY-GEMM TIMING REFERENCE",
         f"  M=N=K=1 on the same path: median "
         f"{floor['timing']['median_ms']:.4f} ms, "
         f"min {floor['timing']['min_ms']:.4f} ms",
@@ -671,15 +677,12 @@ def render_text(report: dict[str, Any]) -> str:
         "",
         "HOW TO READ THIS",
         "  Rows marked `specified` are small-M skinny GEMMs. Their arithmetic",
-        "  intensity and tile count are printed above so the regime is visible:",
-        "  a low intensity means operand traffic bounds the row, and a tile",
-        f"  count far below the device's {environment['multi_processor_count']} SMs",
-        "  means most of the device is idle. Neither is a statement about the",
-        "  device's multiply-accumulate limit.",
-        "  The `control` row is not one of the specified shapes. It is a square",
-        "  shape large enough to approach that limit, measured on the same",
-        "  device in the same process under the same clocks, so the specified",
-        "  rows can be read against it.",
+        "  intensity and assumed tile count describe shape geometry. They do",
+        "  not measure memory traffic, the launched grid, or occupancy.",
+        "  Profiling is required to identify execution bottlenecks.",
+        "  The square `control` is a measured reference on the same device",
+        "  and process, not an established hardware peak. Clock readings",
+        "  bracket the run; clocks may vary between shapes.",
     ]
     if specified and control:
         best = max(entry["rate"]["tflops_at_median"] for entry in specified)
