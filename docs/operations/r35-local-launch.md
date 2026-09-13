@@ -46,69 +46,18 @@ image verification with that receipt. It does not load a model for verification.
 
 ## TP2
 
-Run Bash commands from the same repository revision on both Sparks. On each
-host, complete the image recording above, then use these sections of the pair
-quickstart:
+Follow the complete [two-Spark R35 quickstart](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md).
+It includes image receipt creation, model download, memory guard installation,
+private rank inputs and plan/create/start commands. Use `CACHE_ARGS=(--sparkcache)`
+for cache on or `CACHE_ARGS=()` for cache off, retaining the R35 receipt.
+The quickstart also provides an explicit R33 fallback; catalog defaults remain R33.
 
-- [Host prerequisites](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md#1-prepare-the-pair), including the RDMA device-selection limitation.
-- [Model download](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md#2-download-the-image-and-model): set `MODEL_DIR` and `CACHE_DIR`, download the pinned checkpoint and create the writable cache directory. Skip that section's R33 image and receipt commands.
-- [Memory guard](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md#3-install-the-memory-guard).
-- [Private rank inputs](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md#4-set-private-rank-inputs): set `RANK`, `MASTER` and `ENV_FILE`, and replace every environment placeholder.
-
-Choose the same mode on both hosts. `CACHE_ARGS=(--sparkcache)` enables
-SparkCache; use `CACHE_ARGS=()` to disable it. Keep the R35 receipt in either
-case; omitting the receipt selects a different source-image configuration.
-
-```bash
-CACHE_ARGS=(--sparkcache)
-launch_rank() {
-  python3 runtime/common/tp2.py "$1" --rank "$RANK" --master "$MASTER" \
-    --model-dir "$MODEL_DIR" --cache-dir "$CACHE_DIR" --env-file "$ENV_FILE" \
-    --image "$IMAGE" --runtime-receipt "$RECORD/image.json" "${CACHE_ARGS[@]}"
-}
-launch_rank plan
-```
-
-Both modes use TP2/DCP1, MTP3, 1M context, mHC, B12X KDA prefill and two OMP
-threads. The GLM-incompatible GDN decode selector is omitted.
-
-| SparkCache | Profile | KV allocation per rank | Loader | KDA coalescing |
-| --- | --- | --- | --- | --- |
-| On | `tp2-dcp1-sparkcache` | 7.5 GiB | B12X | Enabled |
-| Off | `tp2-dcp1` | 8.75 GiB | InstantTensor | Disabled |
-
-Inspect both plans for the selected profile, local image ID, 1,048,576 context
-tokens and no activation blockers. Stop existing GPU workloads explicitly.
-Run `launch_rank create` on both hosts, then `launch_rank start` on rank 1,
-followed by rank 0. The launcher does not replace existing containers. Changing
-`CACHE_ARGS` does not reconfigure a running container; choose the mode before
-creating it and stop the previous workload before switching modes.
-
-Check each rank's logs and the API on rank 0:
-
-```bash
-PROFILE=tp2-dcp1
-if ((${#CACHE_ARGS[@]})); then PROFILE=tp2-dcp1-sparkcache; fi
-docker logs --tail 150 "sparkring-r35-${PROFILE}-r${RANK}"
-curl --fail "http://${MASTER}:8000/health"
-curl --fail "http://${MASTER}:8000/v1/models"
-curl --fail "http://${MASTER}:8000/v1/chat/completions" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"GLM-5.3-Flash-NVFP4-Spark","messages":[{"role":"user","content":"What is 17 + 25?"}],"reasoning_effort":"low","max_tokens":1024}'
-```
-
-Require a final answer of 42 and healthy worker logs. An API response alone
-does not prove RoCEnante or cache restore is active. For cache-on evidence,
-see the [TP2 cache and restart checks](../../performance/records/glm53-flash/r35-tp2-sparkcache.md).
-Keep the unauthenticated API on a trusted network or behind an authenticated
-gateway. Rank zero gets an API readiness check; the headless rank does not.
-
-`--r33-sparkcache` remains a compatibility spelling; the receipt selects the
-runtime release.
-
-The catalog launcher intentionally keeps its published receipt and cache
-selection. Use this explicit release interface for local R35 testing rather
-than overriding a published catalog profile's identity.
+Both R35 modes use TP2/DCP1, MTP3, 1M context, mHC and two OMP threads.
+The GLM-incompatible GDN decode selector is omitted. Cache on uses B12X loading,
+7.5 GiB KV and KDA coalescing; cache off uses InstantTensor, 8.75 GiB KV and
+no coalescing. See the [bounded cache-on evidence](../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
+for the tested scope. Neither image receipts nor that record establish
+long-duration stability for every mode.
 
 ## TP4
 

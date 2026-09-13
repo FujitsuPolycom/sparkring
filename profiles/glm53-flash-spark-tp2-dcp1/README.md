@@ -1,12 +1,16 @@
 # GLM-5.3-Flash TP2 without SparkCache
 
-Use the [two-Spark quickstart](../glm53-flash-spark-tp2-dcp1-sparkcache/README.md)
-and its [SparkCache-off selection](../glm53-flash-spark-tp2-dcp1-sparkcache/README.md#sparkcache-off).
-Keep the published R33 image receipt; omitting it selects a different source-image configuration.
+Follow the [two-Spark quickstart](../glm53-flash-spark-tp2-dcp1-sparkcache/README.md)
+using its published R35 image and locally recorded image receipt. Select
+`CACHE_ARGS=()` before planning or creating containers, as described in
+[SparkCache off](../glm53-flash-spark-tp2-dcp1-sparkcache/README.md#sparkcache-off).
 
-This selection uses DCP1, InstantTensor loading and 8.75 GiB KV per rank.
-See [profile.json](profile.json) for its exact release and evidence scope.
+R35 is **Experimental**. This configuration uses MTP3, DCP1, 1M configured
+context, InstantTensor loading and 8.75 GiB KV per rank. Coalescing is disabled;
+mHC remains enabled. Cache-on test results do not qualify this cache-off mode.
 
-For **R35** without SparkCache, use the
-[R35 TP2 instructions](../../docs/operations/r35-local-launch.md#tp2) with
-`CACHE_ARGS=()`. Keep the R35 image receipt. R35 is Experimental.
+The [catalog profile](profile.json) retains its published R33 identity and
+defaults. For that release, use the quickstart's
+[R33 fallback](../glm53-flash-spark-tp2-dcp1-sparkcache/README.md#r33-fallback)
+with `CACHE_ARGS=()` and its R33 receipt. Omitting the receipt selects a
+different source-image configuration.

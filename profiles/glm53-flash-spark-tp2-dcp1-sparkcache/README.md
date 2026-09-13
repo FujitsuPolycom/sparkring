@@ -2,16 +2,16 @@
 
 Run the [NVFP4-Spark checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)
 on two GB10 Sparks with MTP3 and DCP1. Context defaults to 1M tokens.
-SparkCache is optional; the commands below select the validated cache-enabled
-configuration, with 7.5 GiB KV per rank and a recorded 1.1M-token pool.
-
-These commands use the published **R33** profile. For **R35**, follow the
-[R35 TP2 instructions](../../docs/operations/r35-local-launch.md#tp2), which
-support SparkCache on or off with the R35 image receipt. R35 is Experimental.
+SparkCache is optional. The commands below use the published **R35** image
+with SparkCache enabled, 7.5 GiB KV per rank and a recorded 1.1M-token pool.
+Status: **Experimental**. Bounded TP2 correctness, cache/restart and decode
+checks passed; long-duration TP2 stability and a complete 1M request are not
+established by that evidence.
 
 Run commands in Bash on each Spark from the repository root. Use the same
 checkout revision on both hosts; record it with `git rev-parse HEAD`.
-Do not switch to an integration branch or rebuild the published image for this setup.
+The catalog's published defaults remain R33; these commands select R35
+explicitly through an image receipt. An R33 fallback is provided below.
 
 ## 1. Prepare the pair
 
@@ -33,14 +33,22 @@ not included here. A healthy API alone does not prove RoCEnante is active.
 On both Sparks:
 
 ```bash
-SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
-SPARKRING_RECEIPT="$PWD/runtime/sparkring/jovian-r33/public-image-receipt.json"
+IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:3eb8138453e5cc5ce1f436caf232e03b84e23e094a49e376428d1ebfe26c4742'
 MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4
-CACHE_DIR=/srv/cache/glm53-tp2
+CACHE_DIR=/srv/cache/glm53-r35-tp2
 
-docker pull "$SPARKRING_IMAGE"
-python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
-  --receipt "$SPARKRING_RECEIPT"
+docker pull --platform linux/arm64 "$IMAGE_REF"
+SPARKRING_IMAGE=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
+RECORD=$(mktemp -d "$HOME/sparkring-r35-receipt.XXXXXX")
+docker run --rm --network none --pull never --entrypoint cat "$SPARKRING_IMAGE" \
+  /opt/sparkring/receipts/r35-installed.json > "$RECORD/installed.json"
+docker run --rm --network none --pull never "$SPARKRING_IMAGE" verify \
+  > "$RECORD/verification.json"
+python3 runtime/common/r35.py --image-id "$SPARKRING_IMAGE" \
+  --installed-receipt "$RECORD/installed.json" \
+  --verification "$RECORD/verification.json" --output "$RECORD/image.json"
+SPARKRING_RECEIPT="$RECORD/image.json"
+
 hf download local-inference-lab/GLM-5.3-Flash-NVFP4-Spark \
   --revision df116c4fb16b1d37ae43d2cfd624de26ffbc832e \
   --local-dir "$MODEL_DIR"
@@ -94,22 +102,24 @@ rank numbers and their own site files.
 
 ## 5. Plan, create and start
 
-Define the command once on each host:
+Choose the same cache mode on both hosts and define the command once:
 
 ```bash
+CACHE_ARGS=(--sparkcache)
 launch_rank() {
-  python3 runtime/profiles/glm53-flash-spark-tp2/launch.py "$1" \
+  python3 runtime/common/tp2.py "$1" \
     --rank "$RANK" --master "$MASTER" \
     --model-dir "$MODEL_DIR" --cache-dir "$CACHE_DIR" \
     --env-file "$ENV_FILE" --image "$SPARKRING_IMAGE" \
-    --runtime-receipt "$SPARKRING_RECEIPT" --r33-sparkcache
+    --runtime-receipt "$SPARKRING_RECEIPT" "${CACHE_ARGS[@]}"
 }
 launch_rank plan
 ```
 
-Inspect both plans. They must select `tp2-dcp1-sparkcache`, the published image,
-1,048,576 context tokens and 8,053,063,680 KV bytes per rank, without activation
-blockers. Stop any existing GPU workload explicitly before proceeding.
+Inspect both plans for the resolved R35 image ID, 1,048,576 context tokens and
+no activation blockers. Cache on selects `tp2-dcp1-sparkcache` and 8,053,063,680
+KV bytes per rank; cache off selects `tp2-dcp1` and 9,395,240,960 KV bytes.
+Stop any existing GPU workload explicitly before proceeding.
 
 Run `launch_rank create` on each host to create stopped containers. Then run
 `launch_rank start` on rank 1, followed by rank 0. These actions validate the
@@ -121,11 +131,13 @@ existing containers automatically.
 On each host, inspect the selected backend and engine logs:
 
 ```bash
-docker logs --tail 150 "sparkring-r33-tp2-dcp1-sparkcache-r${RANK}"
+PROFILE=tp2-dcp1
+if ((${#CACHE_ARGS[@]})); then PROFILE=tp2-dcp1-sparkcache; fi
+docker logs --tail 150 "sparkring-r35-${PROFILE}-r${RANK}"
 curl --fail "http://${MASTER}:8000/health"
 curl --fail "http://${MASTER}:8000/v1/chat/completions" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"GLM-5.3-Flash-NVFP4-Spark","messages":[{"role":"user","content":"What is 17 + 25? End with FINAL=42."}],"temperature":1,"max_tokens":256}'
+  -d '{"model":"GLM-5.3-Flash-NVFP4-Spark","messages":[{"role":"user","content":"What is 17 + 25? End with FINAL=42."}],"reasoning_effort":"low","max_tokens":1024}'
 ```
 
 Require the expected answer and healthy logs on both ranks. Check for a
@@ -135,15 +147,41 @@ network or behind an authenticated gateway.
 
 ## SparkCache off
 
-Remove `--r33-sparkcache` from `launch_rank` and repeat the plan/create/start
-procedure during a stopped-serving maintenance window. Keep the R33 image
-receipt. This selects `tp2-dcp1`, with InstantTensor loading, coalescing disabled
-and 8.75 GiB KV per rank. It is not the older 256K source-image profile.
+Set `CACHE_ARGS=()` before planning and creating containers; retain the R35
+image receipt. This selects `tp2-dcp1`, with InstantTensor loading, coalescing
+disabled and 8.75 GiB KV per rank. Both modes use MTP3, mHC, DCP1 and 1M
+configured context. Changing the array does not reconfigure a running container:
+stop the previous workload before creating the other mode.
+
+## R33 fallback
+
+During a stopped-serving maintenance window, use these inputs instead of the
+R35 image-recording commands. Use a separate cache directory and retain the
+same model, memory guard and private rank inputs:
+
+```bash
+SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
+SPARKRING_RECEIPT="$PWD/runtime/sparkring/jovian-r33/public-image-receipt.json"
+CACHE_DIR=/srv/cache/glm53-r33-tp2
+docker pull "$SPARKRING_IMAGE"
+python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
+  --receipt "$SPARKRING_RECEIPT"
+mkdir -p "$CACHE_DIR"
+CACHE_ARGS=(--r33-sparkcache)
+```
+
+Reuse `launch_rank` from step 5. For cache off, set `CACHE_ARGS=()`.
+The receipt selects R33; log names are `sparkring-r33-${PROFILE}-r${RANK}`,
+with `PROFILE` selected as in step 6. API port and model alias are unchanged.
+The [R33 evidence](../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
+applies to that composition.
 
 ## Evidence and other builds
 
-The [TP2 record](../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
-documents text checks, cold starts and cache restore. Startup reported
-1,081,922 total KV tokens; this is pool capacity, not a completed 1M request.
+The [R35 TP2 record](../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
+documents bounded correctness, cache restoration after process restart and
+decode checks. Startup reported 1,081,922 total KV tokens; this is pool
+capacity, not a completed 1M request. The cache-off selection does not inherit
+cache-on qualification.
 The [retained source-image guide](../../runtime/profiles/glm53-flash-spark-tp2/README.md)
 uses different settings and is only for reproducing that separate composition.
