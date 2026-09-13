@@ -6,3 +6,7 @@ Keep the published R33 image receipt; omitting it selects a different source-ima
 
 This selection uses DCP1, InstantTensor loading and 8.75 GiB KV per rank.
 See [profile.json](profile.json) for its exact release and evidence scope.
+
+For **R35** without SparkCache, use the
+[R35 TP2 instructions](../../docs/operations/r35-local-launch.md#tp2) with
+`CACHE_ARGS=()`. Keep the R35 image receipt. R35 is Experimental.

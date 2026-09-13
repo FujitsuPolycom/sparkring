@@ -5,6 +5,10 @@ on two GB10 Sparks with MTP3 and DCP1. Context defaults to 1M tokens.
 SparkCache is optional; the commands below select the validated cache-enabled
 configuration, with 7.5 GiB KV per rank and a recorded 1.1M-token pool.
 
+These commands use the published **R33** profile. For **R35**, follow the
+[R35 TP2 instructions](../../docs/operations/r35-local-launch.md#tp2), which
+support SparkCache on or off with the R35 image receipt. R35 is Experimental.
+
 Run commands in Bash on each Spark from the repository root. Use the same
 checkout revision on both hosts; record it with `git rev-parse HEAD`.
 Do not switch to an integration branch or rebuild the published image for this setup.
