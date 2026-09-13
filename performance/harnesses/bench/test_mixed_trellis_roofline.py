@@ -1355,6 +1355,11 @@ class ReportShapeTest(unittest.TestCase):
 
 
 class TextRenderTest(unittest.TestCase):
+    def test_sweep_selection_count_does_not_claim_skips_were_measured(self):
+        text = bench.render_text(_tune_report())
+        self.assertIn('4 selected of 5 enumerated', text)
+        self.assertNotIn('4 measured of', text)
+
     def test_the_measure_report_prints_both_formulas_with_the_numbers(self) -> None:
         rendered = bench.render_text(_measure_report())
 
@@ -1421,9 +1426,11 @@ class TextRenderTest(unittest.TestCase):
 class ArgumentTest(unittest.TestCase):
     def test_nonpositive_baseline_block_size_is_a_usage_error(self):
         for value in ('0', '-1'):
-            with self.subTest(value=value), self.assertRaises(SystemExit) as caught:
-                bench.parse_args(['--baseline-moe-block-size', value])
+            errors = io.StringIO()
+            with self.subTest(value=value), redirect_stderr(errors), self.assertRaises(SystemExit) as caught:
+                bench.parse_args(['measure', '--baseline-moe-block-size', value])
             self.assertEqual(caught.exception.code, 2)
+            self.assertIn('--baseline-moe-block-size must be positive', errors.getvalue())
 
     def test_invalid_geometry_is_rejected_before_device_access(self):
         for option, value in [('--hidden-size', '0'), ('--top-k', '257'),
@@ -1605,7 +1612,18 @@ class ArgumentTest(unittest.TestCase):
 
 
 class NoDeviceTest(unittest.TestCase):
-    """The path this repository's development machines actually take."""
+    """Failure paths without a usable CUDA device or runtime."""
+
+    def test_runtime_failure_emits_no_report_and_preserves_error_type(self):
+        def fail():
+            raise RuntimeError('CUDA allocation failed')
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            code = bench.main(['measure'], load_torch=fail)
+        self.assertEqual(code, bench.EXIT_UNAVAILABLE)
+        self.assertEqual(output.getvalue(), '')
+        self.assertIn('RuntimeError: CUDA allocation failed', errors.getvalue())
+        self.assertIn('no complete measurement report', errors.getvalue())
 
     def _torch_without_cuda(self):
         return SimpleNamespace(

@@ -136,8 +136,8 @@ from typing import Any, Callable, Iterable, Sequence
 SCHEMA = "gb10-mixed-trellis-roofline/v1"
 
 EXIT_OK = 0
-# The measurement could not be taken because the environment cannot support
-# it. That is distinct from a measurement that ran and produced numbers.
+# No complete measurement report is available. Argument-parser usage errors
+# also exit 2; stderr distinguishes usage errors from measurement failures.
 EXIT_UNAVAILABLE = 2
 
 KERNEL_MODULE = "b12x.moe._shared.kernels.w4a16.mixed_trellis"
@@ -1792,9 +1792,8 @@ def build_report(
             "timed_calls": arguments.iterations,
             "weight_pool": pool_record,
             "weight_pool_note": (
-                "one prepared weight set per timed call, round-robin, so "
-                "weights stream rather than remaining resident in cache "
-                "across calls"
+                "one prepared weight set per timed call, round-robin; "
+                "cache residency and DRAM traffic are not measured"
             ),
             "activation": arguments.activation,
             "rotation_input_dtype": arguments.dtype,
@@ -1965,7 +1964,7 @@ def _render_tune(report: dict[str, Any]) -> str:
     lines += [
         f"  {'baseline':<22}{tuple(baseline['tile_config'])}, moe_block_size "
         f"{baseline['moe_block_size']}",
-        f"  {'configurations':<22}{enumeration.get('measured', 0)} measured of "
+        f"  {'configurations':<22}{enumeration.get('measured', 0)} selected of "
         f"{enumeration.get('enumerated', 0)} enumerated, cap "
         f"{enumeration.get('cap', 0)}",
     ]
@@ -2007,9 +2006,9 @@ def _render_tune(report: dict[str, Any]) -> str:
         "VERDICT",
         f"  {ranking.get('verdict', 'no ranking was produced')}",
         "  speedup is the baseline median divided by the row's median, so a",
-        "  value above 1.000 is faster than the deployed configuration. Read",
-        "  it against the interquartile range in the same row: a speedup",
-        "  smaller than the spread is not a difference this run resolved.",
+        "  value above 1.000 means a lower median than the baseline.",
+        "  IQR describes timing spread in milliseconds, not uncertainty in",
+        "  the speedup ratio. Repeat controlled runs to assess reproducibility.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -2126,8 +2125,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         help=(
-            "prepared weight sets cycled one per timed call, so weights stream "
-            "cold. Each set holds every expert's packed weights: about 0.91 "
+            "prepared weight sets cycled one per timed call; cache residency "
+            "is not measured. Each set holds packed weights: about 0.91 "
             "GiB at the default geometry, so the default of 3 costs about 2.7 "
             "GiB of device memory (default: 3)"
         ),
@@ -2195,7 +2194,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--sms",
         type=int,
         default=DEPLOYED_GEOMETRY.sms,
-        help="streaming multiprocessor count the launch is planned for",
+        help=("streaming multiprocessor count the launch is planned for; may "
+              "differ from the physical count recorded in environment metadata"),
     )
     parser.add_argument(
         "--baseline-tile-config",
@@ -2441,6 +2441,12 @@ def main(
             )
     except MeasurementUnavailable as error:
         print(f"FAIL no measurement taken: {error}", file=sys.stderr)
+        return EXIT_UNAVAILABLE
+    except Exception as error:  # noqa: BLE001 - CLI reports an incomplete measurement
+        print(
+            f"FAIL no complete measurement report: {type(error).__name__}: {error}",
+            file=sys.stderr,
+        )
         return EXIT_UNAVAILABLE
 
     print(render_text(report), end="", file=sys.stderr if arguments.json == '-' else sys.stdout)
