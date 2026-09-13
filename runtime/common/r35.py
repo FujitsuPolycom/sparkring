@@ -31,7 +31,8 @@ def read(path):
 
 def api_healthcheck(port):
     spec = importlib.util.spec_from_file_location('release_api_health', ROOT/'runtime/glm53-spark-mtp3-mesh/managed_liveness.py')
-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
     options = module.api_healthcheck(port)
     return options, {'Test': ['CMD-SHELL', options['--health-cmd']], 'Interval': 10000000000,
                      'Timeout': 6000000000, 'StartPeriod': 1800000000000, 'Retries': 3}

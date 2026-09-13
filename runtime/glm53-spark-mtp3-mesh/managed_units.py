@@ -14,7 +14,7 @@ sys.path.insert(0, str(HERE))
 spec = importlib.util.spec_from_file_location('unit_mesh_service', HERE / 'managed_service.py')
 service = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(service)
-import managed_liveness
+import managed_liveness  # noqa: E402 - loaded from the component path above
 
 
 def systemd_path(value):

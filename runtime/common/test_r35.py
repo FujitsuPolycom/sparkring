@@ -1,7 +1,6 @@
 """Offline receipt and rendering regression checks for the pinned R35 composition."""
 from copy import deepcopy
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -44,49 +43,101 @@ def test_receipt_does_not_claim_serving_qualification():
 @pytest.mark.parametrize('change', ['image','platform','source','contract','lease','capability','payload','qualification','marker_claim','verification_marker_claim'])
 def test_receipt_rejects_drift(change):
     document = receipt()
-    if change == 'image': document['image_reference'] = 'latest'
-    elif change == 'platform': document['platform'] = 'linux/amd64'
-    elif change == 'source': document['installed']['components']['vllm']['tree'] = '0'*40
-    elif change in ('contract','lease','capability'):
-        document['installed']['files'][{'contract':r35.CONTRACT,'lease':r35.LEASE,'capability':r35.CAPABILITY}[change]] = '0'*64
-        document['verification']['source_lock_sha256'] = r35.digest(r35.json_bytes(document['installed']))
-    elif change == 'payload': document['verification']['source_lock_sha256'] = '0'*64
-    elif change=='marker_claim': document['marker_binary_sha256']='a'*64
-    elif change=='verification_marker_claim': document['verification']['marker_binary_sha256']='a'*64
-    else: document['verification']['serving_qualified'] = True
-    with pytest.raises(ValueError): r35.validate_receipt(document)
+    if change == "image":
+        document["image_reference"] = "latest"
+    elif change == "platform":
+        document["platform"] = "linux/amd64"
+    elif change == "source":
+        document["installed"]["components"]["vllm"]["tree"] = "0" * 40
+    elif change in ("contract", "lease", "capability"):
+        document["installed"]["files"][
+            {
+                "contract": r35.CONTRACT,
+                "lease": r35.LEASE,
+                "capability": r35.CAPABILITY,
+            }[change]
+        ] = "0" * 64
+        document["verification"]["source_lock_sha256"] = r35.digest(
+            r35.json_bytes(document["installed"])
+        )
+    elif change == "payload":
+        document["verification"]["source_lock_sha256"] = "0" * 64
+    elif change == "marker_claim":
+        document["marker_binary_sha256"] = "a" * 64
+    elif change == "verification_marker_claim":
+        document["verification"]["marker_binary_sha256"] = "a" * 64
+    else:
+        document["verification"]["serving_qualified"] = True
+    with pytest.raises(ValueError):
+        r35.validate_receipt(document)
 
 
-@pytest.mark.parametrize('rank', [0,1])
-@pytest.mark.parametrize('cache', [False,True])
-def test_tp2_r35_renderer_preserves_glm_kda_and_selects_verified_entrypoint(tmp_path, rank, cache):
+@pytest.mark.parametrize("rank", [0, 1])
+@pytest.mark.parametrize("cache", [False, True])
+def test_tp2_r35_renderer_preserves_glm_kda_and_selects_verified_entrypoint(
+    tmp_path, rank, cache
+):
     document = receipt()
-    model=tmp_path/'model';model.mkdir();(model/'config.json').write_text('{}')
-    cache_dir=tmp_path/'cache';cache_dir.mkdir()
-    env=tmp_path/'rank.env';env.write_text('VLLM_HOST_IP=192.0.2.10\nNCCL_SOCKET_IFNAME=eth0\nGLOO_SOCKET_IFNAME=eth0\n')
-    plan=tp2.render(rank,'192.0.2.10',model,cache_dir,env,document['image_id'],document,r33_sparkcache=cache)
-    assert plan['runtime_kind']=='r35-candidate'
-    assert plan['container_args'][:2]==['/opt/sparkring/bin/sparkring','serve']
-    assert '--gdn-decode-kernel' not in plan['container_args']
-    assert plan['container_args'][plan['container_args'].index('--kda-prefill-backend')+1]=='b12x'
-    assert ('--health-cmd' in plan['command']) == (rank==0)
-    assert plan['entrypoint']=='/opt/venv/bin/python'
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "config.json").write_text("{}")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    env = tmp_path / "rank.env"
+    env.write_text(
+        "VLLM_HOST_IP=192.0.2.10\nNCCL_SOCKET_IFNAME=eth0\nGLOO_SOCKET_IFNAME=eth0\n"
+    )
+    plan = tp2.render(
+        rank,
+        "192.0.2.10",
+        model,
+        cache_dir,
+        env,
+        document["image_id"],
+        document,
+        r33_sparkcache=cache,
+    )
+    assert plan["runtime_kind"] == "r35-candidate"
+    assert plan["container_args"][:2] == ["/opt/sparkring/bin/sparkring", "serve"]
+    assert "--gdn-decode-kernel" not in plan["container_args"]
+    assert (
+        plan["container_args"][
+            plan["container_args"].index("--kda-prefill-backend") + 1
+        ]
+        == "b12x"
+    )
+    assert ("--health-cmd" in plan["command"]) == (rank == 0)
+    assert plan["entrypoint"] == "/opt/venv/bin/python"
     # Docker retains the overridden Python entrypoint and the script in Cmd.
     # Verify monitor selection when the image supplies liveness enablement.
     import importlib.util
-    spec=importlib.util.spec_from_file_location('tp2_monitor',r35.ROOT/'runtime/glm53-spark-mtp3-mesh/managed_liveness.py')
-    monitor=importlib.util.module_from_spec(spec);spec.loader.exec_module(monitor)
-    container={'Config':{'Entrypoint':[plan['entrypoint']],'Cmd':plan['container_args'],
-        'Env':['SPARKRING_LIVENESS_ENABLED=1',*[f'{k}={v}' for k,v in plan['environment'].items()]]}}
-    assert monitor.requires_host_monitor(container,rank)==(rank==0)
+
+    spec = importlib.util.spec_from_file_location(
+        "tp2_monitor", r35.ROOT / "runtime/glm53-spark-mtp3-mesh/managed_liveness.py"
+    )
+    monitor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(monitor)
+    container = {
+        "Config": {
+            "Entrypoint": [plan["entrypoint"]],
+            "Cmd": plan["container_args"],
+            "Env": [
+                "SPARKRING_LIVENESS_ENABLED=1",
+                *[f"{k}={v}" for k, v in plan["environment"].items()],
+            ],
+        }
+    }
+    assert monitor.requires_host_monitor(container, rank) == (rank == 0)
     if cache:
-        assert plan['environment']['SPARKCACHE_SOURCE_LEASE_CONTRACT']==r35.LEASE
-        assert plan['activation_blockers']==[]
-    tp2.validate_runtime_receipt(document,plan)
+        assert plan["environment"]["SPARKCACHE_SOURCE_LEASE_CONTRACT"] == r35.LEASE
+        assert plan["activation_blockers"] == []
+    tp2.validate_runtime_receipt(document, plan)
 
 
 def test_actual_image_verification_is_required_and_must_match():
-    document=receipt();calls=[]
+    document = receipt()
+    calls = []
+
     def run(argv,**kwargs):
         calls.append(argv)
         if argv[1:3]==['image','inspect']:

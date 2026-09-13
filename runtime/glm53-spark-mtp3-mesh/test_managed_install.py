@@ -66,100 +66,176 @@ def test_r35_image_attestation_makes_no_host_marker_claim():
 @pytest.fixture
 def host_marker_files(tmp_path):
     for relative, data in managed_install.source_payloads().items():
-        target=tmp_path/relative;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
     return tmp_path
 
 
-def test_external_marker_binds_repository_source_and_artifact_receipt(host_marker_files):
-    expected=managed_install.external_marker_attestation(root=host_marker_files)
-    assert expected['marker_source_sha256']=='8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792'
-    assert expected['marker_binary_sha256']=='2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64'
+def test_external_marker_binds_repository_source_and_artifact_receipt(
+    host_marker_files,
+):
+    expected = managed_install.external_marker_attestation(root=host_marker_files)
+    assert (
+        expected["marker_source_sha256"]
+        == "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792"
+    )
+    assert (
+        expected["marker_binary_sha256"]
+        == "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64"
+    )
 
 
-@pytest.mark.parametrize('field', ['source','artifact_receipt'])
-@pytest.mark.parametrize('missing', [False,True])
-def test_external_marker_rejects_missing_or_changed_evidence(host_marker_files,field,missing):
-    root=host_marker_files
-    record=json.loads((root/'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json').read_text())
-    path=root/record[field]
-    if missing:path.unlink()
-    else:path.write_bytes(path.read_bytes()+b'changed')
-    with pytest.raises(ValueError,match=field):
+@pytest.mark.parametrize("field", ["source", "artifact_receipt"])
+@pytest.mark.parametrize("missing", [False, True])
+def test_external_marker_rejects_missing_or_changed_evidence(
+    host_marker_files, field, missing
+):
+    root = host_marker_files
+    record = json.loads(
+        (root / "runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json").read_text()
+    )
+    path = root / record[field]
+    if missing:
+        path.unlink()
+    else:
+        path.write_bytes(path.read_bytes() + b"changed")
+    with pytest.raises(ValueError, match=field):
         managed_install.external_marker_attestation(root=root)
 
 
-@pytest.mark.parametrize('missing', [False,True])
-def test_external_marker_rejects_missing_or_changed_host_binary(host_marker_files,missing):
-    path=host_marker_files/'configured-marker'
-    if not missing:path.write_bytes(b'unreviewed native helper')
-    with pytest.raises(ValueError,match='Configured host marker'):
-        managed_install.external_marker_attestation(root=host_marker_files,binary=path)
+@pytest.mark.parametrize("missing", [False, True])
+def test_external_marker_rejects_missing_or_changed_host_binary(
+    host_marker_files, missing
+):
+    path = host_marker_files / "configured-marker"
+    if not missing:
+        path.write_bytes(b"unreviewed native helper")
+    with pytest.raises(ValueError, match="Configured host marker"):
+        managed_install.external_marker_attestation(root=host_marker_files, binary=path)
 
 
 def test_external_marker_rejects_missing_artifact_record(host_marker_files):
-    (host_marker_files/'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json').unlink()
-    with pytest.raises(ValueError,match='artifact record is missing'):
+    (
+        host_marker_files / "runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json"
+    ).unlink()
+    with pytest.raises(ValueError, match="artifact record is missing"):
         managed_install.external_marker_attestation(root=host_marker_files)
 
 
 @pytest.fixture
 def exact_container_spec():
-    image_id = 'sha256:' + 'b' * 64
-    image = {'Id': image_id, 'Config': {'Env': ['PATH=/usr/bin', 'IMAGE_DEFAULT=yes', 'OVERRIDE=image'],
-                                       'Labels': {'image-label': 'kept'}, 'User': '', 'WorkingDir': '/workspace'}}
-    argv = ['docker', 'create', '--name', 'profile-r0', '--entrypoint', '/serve', '--init',
-            '-e', 'OVERRIDE=launcher', '-e', 'MTP_DEPTH=3', '-e', 'EMPTY=',
-            '-v', '/srv/model:/models/target:ro', '-v', '/srv/bundle:/opt/spark-sircl:ro',
-            '-v', '/srv/cache:/cache/jit', '--label', 'rank=0', image_id,
-            '/models/target', '--max-num-seqs', '16', '--speculative-config', '{"method":"mtp","num_speculative_tokens":3}']
+    image_id = "sha256:" + "b" * 64
+    image = {
+        "Id": image_id,
+        "Config": {
+            "Env": ["PATH=/usr/bin", "IMAGE_DEFAULT=yes", "OVERRIDE=image"],
+            "Labels": {"image-label": "kept"},
+            "User": "",
+            "WorkingDir": "/workspace",
+        },
+    }
+    argv = [
+        "docker",
+        "create",
+        "--name",
+        "profile-r0",
+        "--entrypoint",
+        "/serve",
+        "--init",
+        "-e",
+        "OVERRIDE=launcher",
+        "-e",
+        "MTP_DEPTH=3",
+        "-e",
+        "EMPTY=",
+        "-v",
+        "/srv/model:/models/target:ro",
+        "-v",
+        "/srv/bundle:/opt/spark-sircl:ro",
+        "-v",
+        "/srv/cache:/cache/jit",
+        "--label",
+        "rank=0",
+        image_id,
+        "/models/target",
+        "--max-num-seqs",
+        "16",
+        "--speculative-config",
+        '{"method":"mtp","num_speculative_tokens":3}',
+    ]
     expected = managed_install.expected_container_spec(argv, image)
-    actual = {'Name': '/profile-r0', 'Image': image_id, 'Config': {
-        'Cmd': expected['cmd'][:], 'Entrypoint': expected['entrypoint'][:],
-        'Env': [f'{key}={value}' for key, value in expected['env'].items()],
-        'Labels': expected['labels'].copy(), 'WorkingDir': '/workspace', 'User': ''},
-        'Mounts': [{'Destination': destination, **mount} for destination, mount in expected['mounts'].items()]}
+    actual = {
+        "Name": "/profile-r0",
+        "Image": image_id,
+        "Config": {
+            "Cmd": expected["cmd"][:],
+            "Entrypoint": expected["entrypoint"][:],
+            "Env": [f"{key}={value}" for key, value in expected["env"].items()],
+            "Labels": expected["labels"].copy(),
+            "WorkingDir": "/workspace",
+            "User": "",
+        },
+        "Mounts": [
+            {"Destination": destination, **mount}
+            for destination, mount in expected["mounts"].items()
+        ],
+    }
     return argv, image, expected, actual
 
 
-def test_complete_spec_accepts_exact_configuration_and_image_env_override(exact_container_spec):
+def test_complete_spec_accepts_exact_configuration_and_image_env_override(
+    exact_container_spec,
+):
     _, _, expected, actual = exact_container_spec
-    assert expected['env']['OVERRIDE'] == 'launcher'
-    assert expected['env']['IMAGE_DEFAULT'] == 'yes'
-    actual['Config']['Env'].reverse()
-    actual['Mounts'].reverse()
+    assert expected["env"]["OVERRIDE"] == "launcher"
+    assert expected["env"]["IMAGE_DEFAULT"] == "yes"
+    actual["Config"]["Env"].reverse()
+    actual["Mounts"].reverse()
     managed_install.validate_container_spec(actual, expected)
 
 
 def test_generated_health_envelope_is_exact_and_inspected(exact_container_spec):
     argv, image, _, actual = exact_container_spec
     health = managed_install.managed_units.managed_liveness.api_healthcheck(8015)
-    insertion = ['-e', 'PORT=8015', '-e', 'SPARKRING_NODE_RANK=0']
+    insertion = ["-e", "PORT=8015", "-e", "SPARKRING_NODE_RANK=0"]
     insertion += [value for pair in health.items() for value in pair]
-    position = argv.index(image['Id'])
+    position = argv.index(image["Id"])
     argv[position:position] = insertion
     expected = managed_install.expected_container_spec(argv, image)
-    actual['Config']['Env'] = [f'{k}={v}' for k, v in expected['env'].items()]
-    actual['Config']['Healthcheck'] = expected['healthcheck']
+    actual["Config"]["Env"] = [f"{k}={v}" for k, v in expected["env"].items()]
+    actual["Config"]["Healthcheck"] = expected["healthcheck"]
     managed_install.validate_container_spec(actual, expected)
     changed = deepcopy(actual)
-    changed['Config']['Healthcheck']['Test'] = ['CMD-SHELL', 'true']
-    with pytest.raises(ValueError, match='healthcheck'):
+    changed["Config"]["Healthcheck"]["Test"] = ["CMD-SHELL", "true"]
+    with pytest.raises(ValueError, match="healthcheck"):
         managed_install.validate_container_spec(changed, expected)
-    argv[argv.index('--health-cmd')+1] = 'true'
-    with pytest.raises(ValueError, match='health options'):
+    argv[argv.index("--health-cmd") + 1] = "true"
+    with pytest.raises(ValueError, match="health options"):
         managed_install.expected_container_spec(argv, image)
 
 
-@pytest.mark.parametrize('change', ['partial', 'duplicate', 'worker_rank', 'interval'])
-def test_health_options_cannot_expand_the_canonical_envelope(exact_container_spec, change):
+@pytest.mark.parametrize("change", ["partial", "duplicate", "worker_rank", "interval"])
+def test_health_options_cannot_expand_the_canonical_envelope(
+    exact_container_spec, change
+):
     argv, image, _, _ = exact_container_spec
     health = managed_install.managed_units.managed_liveness.api_healthcheck(8015)
-    insertion = ['-e', 'PORT=8015', '-e', 'SPARKRING_NODE_RANK='+('1' if change=='worker_rank' else '0')]
-    if change == 'partial': del health['--health-timeout']
-    if change == 'interval': health['--health-interval'] = '1s'
+    insertion = [
+        "-e",
+        "PORT=8015",
+        "-e",
+        "SPARKRING_NODE_RANK=" + ("1" if change == "worker_rank" else "0"),
+    ]
+    if change == "partial":
+        del health["--health-timeout"]
+    if change == "interval":
+        health["--health-interval"] = "1s"
     insertion += [value for pair in health.items() for value in pair]
-    if change == 'duplicate': insertion += ['--health-retries', '3']
-    position = argv.index(image['Id']); argv[position:position] = insertion
+    if change == "duplicate":
+        insertion += ["--health-retries", "3"]
+    position = argv.index(image["Id"])
+    argv[position:position] = insertion
     with pytest.raises(ValueError, match='health options'):
         managed_install.expected_container_spec(argv, image)
 

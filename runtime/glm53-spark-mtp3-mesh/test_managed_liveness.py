@@ -48,41 +48,69 @@ def test_r35_python_entrypoint_is_supported_but_shell_arguments_are_not():
 @pytest.mark.parametrize('command', [['-c','/opt/sparkring/bin/sparkring'],
     ['/opt/unrelated.py','serve'], ['/opt/sparkring/bin/sparkring','--help']])
 def test_python_entrypoint_requires_exact_serving_command_prefix(command):
-    c=candidate();c['Config']['Entrypoint']=['/opt/venv/bin/python'];c['Config']['Cmd']=command
-    assert not monitor.requires_host_monitor(c,0)
+    c = candidate()
+    c["Config"]["Entrypoint"] = ["/opt/venv/bin/python"]
+    c["Config"]["Cmd"] = command
+    assert not monitor.requires_host_monitor(c, 0)
 
 
-@pytest.mark.parametrize('assignment', ['PORT=$(touch x)', 'PORT=65536', 'SPARKRING_LIVENESS_PORT=8015',
-                                      'SPARKRING_LIVENESS_SAMPLE_SECONDS=0'])
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "PORT=$(touch x)",
+        "PORT=65536",
+        "SPARKRING_LIVENESS_PORT=8015",
+        "SPARKRING_LIVENESS_SAMPLE_SECONDS=0",
+    ],
+)
 def test_bad_monitor_settings_rejected(assignment):
-    c = candidate(); name = assignment.partition('=')[0]
-    c['Config']['Env'] = [v for v in c['Config']['Env'] if not v.startswith(name+'=')] + [assignment]
-    with pytest.raises(ValueError): monitor.settings(c)
+    c = candidate()
+    name = assignment.partition("=")[0]
+    c["Config"]["Env"] = [
+        v for v in c["Config"]["Env"] if not v.startswith(name + "=")
+    ] + [assignment]
+    with pytest.raises(ValueError):
+        monitor.settings(c)
 
 
 def test_host_unit_follows_model_lifetime_and_preserves_default_units():
-    baseline = managed_units.unit_text('/opt/code', '/etc/config', 'a'*64)
+    baseline = managed_units.unit_text("/opt/code", "/etc/config", "a" * 64)
     assert len(baseline) == 2
-    active = managed_units.unit_text('/opt/code', '/etc/config', 'a'*64, host_liveness=True)
-    assert 'Wants=sparkring-scheduler-liveness.service' in active['sparkring-mesh-model.service']
-    sidecar = active['sparkring-scheduler-liveness.service']
-    assert 'BindsTo=sparkring-mesh-model.service' in sidecar
-    assert 'PartOf=sparkring-mesh-model.service' in sidecar
-    assert '--config /etc/config/service.json' in sidecar
-    assert 'private-test-key' not in sidecar and 'Restart=no' in sidecar
+    active = managed_units.unit_text(
+        "/opt/code", "/etc/config", "a" * 64, host_liveness=True
+    )
+    assert (
+        "Wants=sparkring-scheduler-liveness.service"
+        in active["sparkring-mesh-model.service"]
+    )
+    sidecar = active["sparkring-scheduler-liveness.service"]
+    assert "BindsTo=sparkring-mesh-model.service" in sidecar
+    assert "PartOf=sparkring-mesh-model.service" in sidecar
+    assert "--config /etc/config/service.json" in sidecar
+    assert "private-test-key" not in sidecar and "Restart=no" in sidecar
 
 
 def test_wrong_container_identity_rejected_before_monitor_start(monkeypatch):
-    c = candidate(); c.update(Id='b'*64, Image='sha256:'+'c'*64, State={'Running': True})
-    monkeypatch.setattr(monitor.subprocess, 'run', lambda *a, **k: SimpleNamespace(stdout=json.dumps([c])))
-    with pytest.raises(ValueError, match='pinned'):
-        monitor.run({'rank': 0, 'container_id': 'a'*64, 'container_image': c['Image']})
+    c = candidate()
+    c.update(Id="b" * 64, Image="sha256:" + "c" * 64, State={"Running": True})
+    monkeypatch.setattr(
+        monitor.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(stdout=json.dumps([c])),
+    )
+    with pytest.raises(ValueError, match="pinned"):
+        monitor.run(
+            {"rank": 0, "container_id": "a" * 64, "container_image": c["Image"]}
+        )
 
 
 def test_monitor_waits_for_docker_start_and_closes_service(monkeypatch):
-    c = candidate(); c.update(Id='a'*64, Image='sha256:'+'c'*64, State={'Running': False})
-    running = deepcopy(c); running['State']['Running'] = True
-    replies = iter([c, running]); events = []
+    c = candidate()
+    c.update(Id="a" * 64, Image="sha256:" + "c" * 64, State={"Running": False})
+    running = deepcopy(c)
+    running["State"]["Running"] = True
+    replies = iter([c, running])
+    events = []
     monkeypatch.setattr(monitor.subprocess, 'run', lambda *a, **k: SimpleNamespace(stdout=json.dumps([next(replies)])))
     monkeypatch.setattr(monitor.time, 'sleep', lambda seconds: events.append(('sleep', seconds)))
     monkeypatch.setattr(monitor.signal, 'signal', lambda *a: None)
