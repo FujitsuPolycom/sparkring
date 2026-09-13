@@ -207,6 +207,15 @@ def _manager_query_len(manager: Any, fallback: Any = None) -> int:
     return value
 
 
+def _control_method(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Serialize lifecycle and reporting calls without locking model callbacks."""
+    @functools.wraps(method)
+    def wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._control_lock:
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
 class LiveQ2RSession:
     """Installed-but-unarmed live recorder with explicit lifecycle."""
 
@@ -223,6 +232,7 @@ class LiveQ2RSession:
         adaptive_window: int | None = None,
         nvtx: Any = None,
     ) -> None:
+        self._control_lock = threading.RLock()
         self._types = types
         self._pins = pins
         self._registry = ManagerRoleRegistry()
@@ -388,6 +398,7 @@ class LiveQ2RSession:
             ordinals=self._draft_ordinals,
         )
 
+    @_control_method
     def install(self) -> None:
         if self._installed:
             raise RuntimeError("live session is already installed")
@@ -464,6 +475,7 @@ class LiveQ2RSession:
         self._collector.register_descriptors(descriptors)
         self._descriptors_finalized = True
 
+    @_control_method
     def arm(self, epoch: str) -> None:
         if not self._installed:
             raise RuntimeError("install before arm")
@@ -477,13 +489,16 @@ class LiveQ2RSession:
             self._collector.disarm()
             raise
 
+    @_control_method
     def disarm(self) -> None:
         self._collector.disarm()
         self._draft_ordinals.disarm()
 
+    @_control_method
     def drain(self) -> DrainResult:
         return self._collector.drain()
 
+    @_control_method
     def snapshot(self) -> dict[str, Any]:
         # An empty registry is observable during startup. Once binding begins,
         # require the same complete role set and descriptors used by arm().
@@ -570,10 +585,12 @@ class LiveQ2RSession:
             },
         }
 
+    @_control_method
     def reset(self) -> None:
         self._collector.reset()
         self._draft_ordinals.reset()
 
+    @_control_method
     def uninstall(self) -> None:
         if not self._installed:
             return

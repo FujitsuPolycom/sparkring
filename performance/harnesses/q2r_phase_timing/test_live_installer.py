@@ -337,6 +337,124 @@ def session(
     )
 
 
+def test_concurrent_snapshots_finalize_descriptors_once(monkeypatch):
+    live = session()
+    live.install()
+    GPUModelRunner().initialize_kv_cache(None)
+    original = live._collector.register_descriptors
+    first_entered, second_entered, release = (threading.Event() for _ in range(3))
+    lock = threading.Lock()
+    calls, results, errors = [], [], []
+
+    def register(descriptors):
+        with lock:
+            calls.append(1)
+            number = len(calls)
+        if number == 1:
+            first_entered.set()
+            assert release.wait(3)
+        else:
+            second_entered.set()
+        original(descriptors)
+
+    def report():
+        try:
+            results.append(live.snapshot())
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(live._collector, 'register_descriptors', register)
+    workers = [threading.Thread(target=report) for _ in range(2)]
+    try:
+        workers[0].start()
+        assert first_entered.wait(2)
+        workers[1].start()
+        second_entered.wait(0.3)
+    finally:
+        release.set()
+        for worker in workers:
+            if worker.ident is not None:
+                worker.join(2)
+        live.uninstall()
+    assert not errors, errors
+    assert len(calls) == 1
+    assert len(results) == 2
+    assert all(result['lifecycle']['manager_binding_complete'] for result in results)
+
+
+def test_uninstall_cannot_leave_a_concurrent_arm_enabled(monkeypatch):
+    live = session()
+    live.install()
+    GPUModelRunner().initialize_kv_cache(None)
+    original = live._finalize_descriptors
+    entered, release, uninstalled = (threading.Event() for _ in range(3))
+    errors = []
+
+    def finalize():
+        entered.set()
+        assert release.wait(3)
+        original()
+
+    def arm():
+        try:
+            live.arm('control-race')
+        except BaseException as error:
+            errors.append(error)
+
+    def uninstall():
+        try:
+            live.uninstall()
+            uninstalled.set()
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(live, '_finalize_descriptors', finalize)
+    workers = [threading.Thread(target=arm), threading.Thread(target=uninstall)]
+    try:
+        workers[0].start()
+        assert entered.wait(2)
+        workers[1].start()
+        uninstalled.wait(0.3)
+    finally:
+        release.set()
+        for worker in workers:
+            if worker.ident is not None:
+                worker.join(2)
+        live.uninstall()
+    assert not errors, errors
+    assert all(not worker.is_alive() for worker in workers)
+    assert not live._installed
+    assert live._collector.snapshot()['armed'] is False
+
+
+def test_reporting_control_lock_does_not_cover_model_callbacks(monkeypatch):
+    live = session()
+    live.install()
+    runner = GPUModelRunner()
+    runner.initialize_kv_cache(None)
+    live.arm('model-progress')
+    runner.execute_model(None)
+    entered, release = threading.Event(), threading.Event()
+
+    def query():
+        entered.set()
+        assert release.wait(5)
+        return True
+
+    monkeypatch.setattr(live._collector._slots[0].end, 'query', query)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            report = workers.submit(live.drain)
+            try:
+                assert entered.wait(2)
+                assert workers.submit(runner.execute_model, None).result(timeout=2) == 'target-done'
+            finally:
+                release.set()
+            report.result(timeout=2)
+    finally:
+        live.uninstall()
+
+
 @pytest.mark.parametrize("adapter_name", ["_timing_adapter", "_draft_loop_adapter"])
 def test_interrupted_install_restores_prior_hooks(monkeypatch, adapter_name):
     live = session()

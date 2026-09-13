@@ -18,8 +18,9 @@ graph modes, eager transitions, and collectives outside that call unmeasured.
 The difference from whole-round wall time cannot be labelled CPU overhead
 without measuring those regions.
 
-This component provides the bounded recorder needed to measure those regions
-without adding a synchronization to the serving path.
+The installed hooks measure the execution envelopes, graph calls, and draft
+generation described below. Eager-transition and collective-boundary timing
+remain unimplemented. The recorder adds no CUDA synchronization to the serving path.
 
 ## Hot-path contract
 
@@ -36,21 +37,24 @@ without adding a synchronization to the serving path.
 - stops accepting samples at capacity and increments `dropped.capacity`;
 - executes operations with unregistered descriptors without recording timing
   and increments `dropped.unregistered_descriptor`;
-- propagates operation exceptions, increments `errors.operation`, and excludes
-  the aborted operation from timing aggregates.
+- propagates operation exceptions and excludes aborted operations from timing
+  aggregates; `errors.operation` counts failures after a start event is recorded.
 
 There is a small Python mutex around slot reservation and counter updates.
 That is a host bookkeeping lock, not a CUDA synchronization. The intended
 integration runs on the single model-execution thread; the lock protects
 low-rate snapshots from torn counters.
 
-`snapshot()` copies counters only and is safe for before/after evidence.
+`snapshot()` copies counters and completed timing samples without polling CUDA.
 The live-session snapshot also reports whether hooks are installed, cleanup
 is pending, and manager binding is complete. An empty startup registry can be
 reported before model initialization, but cannot be armed. Cleanup disarms the
 recorder; if cleanup fails, retry it before arming again.
 Module-level `live_installer.uninstall()` retries retained cleanup and clears
 the installed session only after successful hook restoration.
+Session lifecycle and reporting calls are serialized separately from model
+callbacks. Install, arm, disarm, reset, and uninstall outside measured model
+execution; this serialization does not wait for GPU work to finish.
 
 `drain()` is a separate, nonblocking completion poll: an unready event remains
 pending. It must run in the low-rate reporter or after timed execution, never
@@ -204,7 +208,7 @@ Both `run_fullgraph` and `run_pw_graph` should use a dynamic
 
 The implemented live ownership seam is
 `GPUModelRunner.initialize_kv_cache`. After the original returns, it requires
-two distinct objects and explicitly binds:
+three distinct objects and explicitly binds:
 
 ```text
 self.cudagraph_manager                         -> TARGET_VERIFY

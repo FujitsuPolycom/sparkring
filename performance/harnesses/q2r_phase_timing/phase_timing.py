@@ -377,7 +377,7 @@ class PhaseTimingCollector:
         )
 
     def snapshot(self) -> dict[str, Any]:
-        """Copy counters only; deliberately does not poll CUDA events."""
+        """Copy counters and completed samples without polling CUDA events."""
         with self._lock:
             descriptor_metrics = {
                 descriptor.key: self._aggregates[index].snapshot()
