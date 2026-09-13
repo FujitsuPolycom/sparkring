@@ -5,7 +5,8 @@ GB10 nodes using local image
 `sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b`.
 The [measurement record](r35-tp2-sparkcache.json) contains the source artifact
 hash, configuration and per-cell values. This is not a long-duration stability
-or completed 1M-request qualification. No image was published.
+or completed 1M-request qualification. The measured image is available through
+the [R35 publication record](../../../runtime/images/sparkring-r35/publication.json).
 
 The configuration uses TP2/DCP1, MTP3, FP8 KV, SparkCache, continuation-prefill
 coalescing and mHC prefill sharding. It permits 1M context, with a computed 1.1M
