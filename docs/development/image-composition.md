@@ -19,6 +19,9 @@ metadata checks.
   platform, framework, foundation, recorded native libraries and ABI evidence.
   Null values mean unmeasured, never a wildcard match. The library inventory
   covers five integration libraries, not the entire native dependency closure.
+  [Runtime ABI evidence](../../runtime/images/sparkring-r35/contracts/runtime-abi.json)
+  records Python/Torch measurements from the identified R35 application image,
+  not from its distinct parent image. GPU target coverage remains unmeasured.
 - [Patch ledger](../../runtime/images/sparkring-r35/patch-ledger.json): patch
   purpose, every changed path, preserved integrations and regression-test paths.
   Component tests live in the patched upstream checkouts; packaging tests live
@@ -47,6 +50,36 @@ python3 runtime/images/composition.py runtime/images/sparkring-r35 \
 This reads saved evidence; it does not contact Docker, authenticate a live image
 or establish serving correctness. Obtain admission receipts through the
 [R35 launch procedure](../operations/r35-local-launch.md#record-the-image).
+
+## Native artifact admission
+
+The [ABI inspector](../../runtime/images/inspect_abi.py) runs inside the image
+without initializing a GPU. Capture its JSON output using the image's Python
+interpreter and record the exact Docker image ID alongside it. It measures
+Python, SOABI, Torch build/CUDA, C++11 ABI and glibc; it does not infer compiled
+GPU targets from the toolkit version.
+
+The [artifact checker](../../runtime/images/artifact_compatibility.py) reads a
+`sparkring-native-artifact/v1` manifest containing `sha256`, `platform`, `abi`,
+`gpu_targets`, and `provenance`. Provenance requires `source_repository`, a full
+`source_commit`, `build_inputs_sha256`, and `compiler_identity`. ABI fields are
+exactly the seven emitted by the inspector. GPU target evidence must be supplied
+explicitly in both records; null coverage rejects admission.
+
+```bash
+python3 runtime/images/artifact_compatibility.py \
+  --manifest /private/component.json --runtime-abi /private/runtime-abi.json \
+  --artifact /private/component.so --gpu-target sm_121
+```
+
+The checker hashes the actual file and requires exact platform and ABI matches,
+including glibc and Python patch version. This conservative policy can reject
+binaries that would work; it does not guess compatibility. Additional ABI fields
+require a schema change rather than being silently ignored. A pass allows only
+isolated testing: supplier declarations are not authenticated, the full native
+dependency closure is not audited, and neither wheel installation nor serving
+promotion is performed. Artifact manifests must come from a reviewed build;
+do not fill missing values merely to obtain a pass.
 
 ## Updating LIL application components
 

@@ -46,12 +46,12 @@ def main():
         if hashlib.sha256(path.read_bytes()).hexdigest() != lock['baseline_file_lists'][name]['sha256']:
             raise ValueError(f'{name}: baseline file inventory mismatch')
         shutil.copy2(path, output/path.name)
-    for name in ('vllm-connector-jobs.json', 'tp2-sparkcache-capabilities.json'):
+    for name in ('vllm-connector-jobs.json', 'tp2-sparkcache-capabilities.json', 'runtime-abi.json'):
         shutil.copy2(ROOT/'contracts'/name, output/name)
     shutil.copytree(ROOT.parents[1]/'sparkring/jovian-r33/profiles',output/'profile-contract')
     shutil.copytree(ROOT/'contracts/evidence', output/'capability-evidence')
     files = {str(p.relative_to(output)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest()
-             for p in output.rglob('*') if p.is_file()}
+             for p in sorted(output.rglob('*')) if p.is_file()}
     (output/'build-context-receipt.json').write_text(json.dumps({'schema':'sparkring-r35-build-context/v1',
         'parent_image':lock['parent_image'], 'parent_image_id':lock['parent_image_id'],
         'files':files},indent=2)+'\n',encoding='utf-8')

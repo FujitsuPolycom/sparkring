@@ -28,8 +28,12 @@ def package(name: str, source: Path, output: Path) -> dict:
         raise ValueError(f"{name}: stage intended changes before packaging")
     tree = git(source, "write-tree").decode().strip()
     archive = output / f"{name}-{tree}.tar.gz"
-    subprocess.run(["git", "-C", str(source), "-c", "core.autocrlf=false", "archive", "--format=tar.gz",
-                    f"--output={archive}", tree], check=True)
+    # A tree has no commit timestamp; Git otherwise uses wall-clock time.
+    # Use an explicit UTC date accepted by Git's archive date parser.
+    # This changes archive metadata only, not the staged tree or patch identity.
+    subprocess.run(["git", "-C", str(source), "-c", "core.autocrlf=false",
+                    "-c", "tar.umask=0022", "archive", "--format=tar.gz",
+                    "--mtime=2000-01-01T00:00:00Z", f"--output={archive}", tree], check=True)
     patch = output / f"{name}-sparkring.patch"
     patch.write_bytes(git(source, "diff", "--cached", "--binary", base))
     record = {"base_commit": base, "base_tree": expected_tree, "tree": tree,

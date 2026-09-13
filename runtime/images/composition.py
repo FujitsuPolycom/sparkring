@@ -9,7 +9,14 @@ import re
 
 
 def read(path):
-    return json.loads(path.read_text(encoding='utf-8'))
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f'Duplicate contract field: {key}')
+            result[key] = value
+        return result
+    return json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=unique)
 
 
 def contained(root, name):
@@ -64,7 +71,9 @@ def validate_ledger(recipe, lock):
             raise ValueError(f'{name}: regression tests must identify patched source tests')
         if not entry.get('purpose') or not entry.get('integrations_preserved'):
             raise ValueError(f'{name}: patch purpose and preserved integrations are required')
-        for test in entry.get('regression_tests', []):
+        if not entry.get('regression_tests'):
+            raise ValueError(f'{name}: repository packaging tests are required')
+        for test in entry['regression_tests']:
             contained(recipe.parents[2], test)
     return ledger
 
@@ -89,6 +98,24 @@ def validate(recipe, receipt=None):
     if not native or any(not path.startswith('/') or not re.fullmatch('[0-9a-f]{64}', digest)
                          for path, digest in native.items()):
         raise ValueError('Inherited native libraries require absolute paths and SHA256 hashes')
+    abi_evidence = read(contained(recipe, compatibility['runtime_abi_evidence']))
+    if (abi_evidence.get('schema') != 'sparkring-image-abi-evidence/v1'
+            or abi_evidence.get('image_id') != compatibility['evidence']['image_id']):
+        raise ValueError('Runtime ABI evidence must identify the baseline image')
+    collector = contained(recipe.parents[2], abi_evidence['collector'])
+    if hashlib.sha256(collector.read_bytes()).hexdigest() != abi_evidence['collector_sha256']:
+        raise ValueError('Runtime ABI collector hash mismatch')
+    measured = abi_evidence['measurement']
+    if measured.get('platform') != {'os': 'linux', 'machine': 'aarch64'}:
+        raise ValueError('Runtime ABI measurement is not Linux ARM64')
+    if not measured.get('abi'):
+        raise ValueError('Runtime ABI measurement is empty')
+    for key, value in compatibility['abi'].items():
+        if value is not None and key not in measured['abi']:
+            raise ValueError(f'Runtime ABI claim lacks a measurement: {key}')
+    for key, value in measured['abi'].items():
+        if compatibility['abi'].get(key) != value:
+            raise ValueError(f'Runtime ABI manifest differs from measurement: {key}')
     if receipt is not None:
         if receipt.get('schema') != compatibility['evidence']['receipt_schema']:
             raise ValueError('Baseline receipt schema mismatch')

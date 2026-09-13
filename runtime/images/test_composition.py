@@ -16,6 +16,7 @@ RECIPE = Path(__file__).parent / 'sparkring-r35'
 def recipe(tmp_path):
     target = tmp_path / 'runtime/images/sparkring-r35'
     shutil.copytree(RECIPE, target)
+    shutil.copy2(RECIPE.parent / 'inspect_abi.py', target.parent / 'inspect_abi.py')
     return target
 
 
@@ -123,3 +124,22 @@ def test_update_reviews_inherited_file_removal_inventory():
     result = assess_update(baseline, candidate)
     assert result['other_lock_changes'] == ['baseline_file_lists']
     assert result['required_actions']
+
+
+def test_abi_claim_must_match_recorded_measurement(recipe):
+    change(recipe, 'compatibility.json', lambda x: x['abi'].update(cxx11_abi=False))
+    with pytest.raises(ValueError, match='differs from measurement'):
+        validate(recipe)
+
+
+def test_unmeasured_non_null_abi_claim_rejected(recipe):
+    change(recipe, 'compatibility.json', lambda x: x['abi'].update(cuda_toolkit_version='13.3'))
+    with pytest.raises(ValueError, match='lacks a measurement'):
+        validate(recipe)
+
+
+def test_duplicate_contract_fields_rejected(tmp_path):
+    path = tmp_path / 'duplicate.json'
+    path.write_text('{"schema":"one","schema":"two"}', encoding='utf-8')
+    with pytest.raises(ValueError, match='Duplicate contract field'):
+        read(path)

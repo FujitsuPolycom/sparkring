@@ -71,8 +71,9 @@ to run context assembly; Docker construction remains a separate step.
 
 The context generator verifies the patched trees and patch hashes, packages the
 source, copies the shared profile contract, and records all context file hashes.
-Archive timestamps can change archive hashes between builds; the pinned Git tree
-and installed file hashes identify the payload.
+Source archives use fixed timestamps and permissions so repeated packaging of
+the same staged tree produces identical bytes. Context receipts enumerate paths
+in sorted order. The pinned Git tree and installed file hashes identify the payload.
 
 ## Build locally on ARM64
 

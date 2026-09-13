@@ -21,13 +21,14 @@
     "image_id": "sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b"
   },
   "abi": {
-    "python_version": null,
-    "python_soabi": null,
-    "cxx11_abi": null,
-    "glibc_version": null,
     "cuda_toolkit_version": null,
-    "torch_cuda_version": null,
-    "torch_distribution_version": "2.13.0"
+    "python_version": "3.12.3",
+    "python_soabi": "cpython-312-aarch64-linux-gnu",
+    "cxx11_abi": true,
+    "glibc_version": "2.39",
+    "torch_distribution_version": "2.13.0",
+    "torch_build_version": "2.13.0",
+    "torch_cuda_version": "13.3"
   },
   "gpu": {
     "name": null,
@@ -59,11 +60,12 @@
     ]
   },
   "limitations": [
-    "Null ABI and GPU values mean the admission receipt does not record those measurements; they are not wildcard compatibility claims.",
+    "Null ABI and GPU values mean unmeasured; they are not wildcard compatibility claims. Measured Python/Torch ABI values are bound by runtime_abi_evidence.",
     "The Torch distribution version is package metadata, not a measurement of its CUDA or C++ ABI.",
     "CUDA Python package versions and filenames are not used to infer the loaded CUDA runtime, toolkit or GPU target.",
     "The inherited_native map records five standalone libraries, not every compiled extension or runtime dependency in the image.",
     "The receipt identifies one measured local candidate image. Rebuilds require fresh receipts and do not inherit its evidence automatically.",
     "This manifest does not describe an SGLang runtime or authorize reuse of AMD64 artifacts on ARM64."
-  ]
+  ],
+  "runtime_abi_evidence": "contracts/runtime-abi.json"
 }
