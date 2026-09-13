@@ -88,6 +88,24 @@ def _qualified_gate(plan: fabric.FabricPlan) -> dict[str, object]:
     }
 
 
+def test_topology_rejects_nonregular_input_before_reading(tmp_path, monkeypatch):
+    def unexpected_read(path):
+        pytest.fail('Nonregular topology input must not be read')
+    monkeypatch.setattr(Path, 'read_bytes', unexpected_read)
+    with pytest.raises(fabric.FabricError, match='regular file'):
+        fabric.load_topology(tmp_path)
+
+
+def test_topology_rejects_duplicate_function_indices(tmp_path):
+    document = _document()
+    for rank in document['ranks']:
+        for entries in rank['ports'].values():
+            entries[1]['function'] = 0
+            entries[1]['peer_function'] = 0
+    with pytest.raises(fabric.FabricError, match='function indices'):
+        fabric.load_topology(_write_topology(tmp_path, document))
+
+
 def test_topology_runtime_accepts_7200_and_rejects_7201(
     tmp_path: Path,
 ) -> None:

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Plan and orchestrate a four-rank ConnectX-7 hardware diagonal.
+"""Plan four-rank ConnectX-7 hardware-forwarded opposite-peer paths.
 
 Status: research-only. Local planning and validation are implemented. Remote
-operations are restricted to one configured helper on each of four topology
-hosts; this module contains no Docker or model command.
+command manifests contain routes, neighbors, traffic-control rules, and
+configured helper invocations. Callers own execution and resource ownership.
 """
 
 from __future__ import annotations
@@ -389,11 +389,11 @@ def load_topology(path: Path) -> FabricTopology:
         raise FabricError("topology path must not be a symbolic link")
     try:
         metadata = path.stat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise FabricError("topology must be a regular file")
         raw = path.read_bytes()
     except OSError as error:
         raise FabricError(f"topology cannot be read: {error}") from None
-    if not stat.S_ISREG(metadata.st_mode):
-        raise FabricError("topology must be a regular file")
     try:
         document = json.loads(raw)
     except json.JSONDecodeError as error:
@@ -461,6 +461,8 @@ def load_topology(path: Path) -> FabricTopology:
                 )
                 for port_index, entry in enumerate(entries)
             )
+            if {port.function for port in ports if port.direction == direction} != set(range(functions)):
+                raise FabricError(f"{field}.ports.{direction}: function indices must appear exactly once")
         ranks.append(
             Rank(
                 rank=rank_id,
