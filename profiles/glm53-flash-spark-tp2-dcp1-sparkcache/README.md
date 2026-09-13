@@ -117,7 +117,7 @@ launch_rank() {
 launch_rank plan
 ```
 
-Inspect both plans for the resolved R37 image ID, 1,048,576 context tokens and
+Inspect both plans for the selected image ID, 1,048,576 context tokens and
 no activation blockers. Cache on selects `tp2-dcp1-sparkcache` and 8,053,063,680
 KV bytes per rank; cache off selects `tp2-dcp1` and 9,395,240,960 KV bytes.
 Stop any existing GPU workload explicitly before proceeding.

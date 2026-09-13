@@ -1,8 +1,9 @@
 # GLM-5.3-Flash on four Sparks
 
 Use the [four-Spark quickstart](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md). DCP1 is the default;
-DCP4 is an alternative. Both use the published image, with an additional
-contract overlay for DCP4.
+DCP4 is an alternative. The guide distinguishes the R37 DCP1 deployment
+from the retained R33 DCP4 procedure and its required contract overlay.
+Validation of one image or parallelism setting does not transfer to another.
 
 ## Prepare the hosts and image
 

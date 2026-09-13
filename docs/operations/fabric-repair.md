@@ -5,10 +5,8 @@ ring. Complete the [host setup](../GLM53_SPARK_MESH_HOST_SETUP.md) first.
 
 ## Routing and forwarding across the fabric
 
-A switchless fabric has no shared broadcast domain: each node is directly
-cabled only to its neighbours, so traffic to any other node is **relayed by a
-neighbour**. Every node is therefore a router, and three conditions must hold
-on every node before a launch:
+For routed IP traffic between nonadjacent nodes, a transit node acts as a kernel
+router. Ring Doctor checks three conditions for those IP paths:
 
 - A kernel route to each fabric subnet the node is not directly attached to,
   via the neighbour that is.
@@ -17,6 +15,10 @@ on every node before a launch:
 - An unrestricted `DOCKER-USER` ACCEPT rule in both directions between the two
   fabric interfaces, reachable before any blocking rule. A `FORWARD` drop
   policy can leave non-adjacent nodes unreachable even when direct links work.
+
+These checks are distinct from the managed GLM mesh's RDMA data path, which
+uses hardware forwarding in the ConnectX ASICs. Passing IP-route and firewall
+checks does not establish RDMA forwarding or collective correctness.
 
 Ring Doctor checks rule order conservatively. It does not reorder existing
 user firewall policy; an earlier blocking or unknown chain rule must be reviewed
@@ -30,7 +32,7 @@ link mode, the configured RoCEv2 GID, and a don't-fragment jumbo ping. Run it
 read-only first:
 
 ```bash
-python scripts/ring_doctor.py \
+python3 scripts/ring_doctor.py \
   --site scripts/config/site.yaml \
   --verify
 ```
@@ -41,7 +43,7 @@ contacts the cluster. If rank 0 cannot run the tool, run it from a configured
 worker with the explicit recovery flag:
 
 ```bash
-python scripts/ring_doctor.py \
+python3 scripts/ring_doctor.py \
   --site scripts/config/site.yaml \
   --allow-worker-controller \
   --verify

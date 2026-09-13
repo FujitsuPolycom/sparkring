@@ -17,8 +17,9 @@ ordering; this complete workflow has not been tested on factory-reset Sparks.
   management connection. Do not reconfigure the link carrying SSH.
 - Reserve a maintenance window: network changes require stopped containers
   and no RDMA users. Native checks use GPUs/RDMA but do not run a model.
-- Provide enough disk space for source, the image archive, extracted image,
-  model, and caches. Model downloads may need access approved by its publisher.
+- Provide enough disk space for source, image layers, model and caches. Image
+  selections distributed by archive also need archive space. Model downloads
+  may need access approved by the publisher.
 
 **Runtime compatibility:** this suite uses the image and lifecycle code under
 [`runtime/glm53-spark-mtp3-mesh/`](../../runtime/glm53-spark-mtp3-mesh).
@@ -119,10 +120,12 @@ sr stage --preparation "$STATE/network-verified.json" \
 PREP="$STATE/runtime/prepared.json"
 ```
 
-Staging repeats the network check and packages tracked source. Unless existing
-assets were selected, it downloads the pinned image and model on rank 0 and
-verifies distributed copies. It preserves one
-shared mesh key, and renders launch files. Transfers pass through the
+Staging repeats the network check and packages tracked source. Registered public
+candidate images, including R37, are pulled by immutable digest on every host;
+each resulting image config ID is checked separately. Other image selections
+use the recorded archive or existing-image path. Unless existing models were
+selected, the model is downloaded on rank 0 and distributed copies are verified.
+Staging preserves one shared mesh key and renders launch files. File transfers pass through the
 controller using SCP; direct fabric fanout is not implemented here. The
 download helper runs without GPUs under the staging login user's UID/GID;
 no serving process starts. Destination trees are checked for symlinks,

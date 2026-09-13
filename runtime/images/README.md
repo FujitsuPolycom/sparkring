@@ -1,6 +1,6 @@
 # Image construction
 
-Use `python scripts/build_image.py BUILDER -- BUILDER_ARGUMENTS` to print a
+Use `python3 scripts/build_image.py BUILDER -- BUILDER_ARGUMENTS` to print a
 build command. Add `--execute` before the builder name only when you intend to
 run that build on the current host. Building consumes resources and may download
 dependencies; the default command planner performs neither action.
@@ -21,7 +21,8 @@ See the [release procedure](../../docs/development/releases.md).
 
 | Package / runtime | Profile | Details |
 |---|---|---|
-| Locally built SparkRing R35 ARM64 | GLM-5.3-Flash TP4/DCP1; stability qualification in progress, no public image | [Pinned source recipe](sparkring-r35/README.md) |
+| Published SparkRing R37 ARM64 | GLM-5.3-Flash TP4/DCP1 cache-on bounded checks; other selections experimental | [Published composition and quickstarts](compositions/lil-r37-glm-spark/README.md) |
+| Published SparkRing R35 ARM64 | GLM-5.3-Flash TP2/TP4 fallback; bounded checks do not establish long-duration stability | [Pull and launch instructions](../../docs/operations/r35-local-launch.md) |
 | Locally built SGLang / Mia adapter | DeepSeek-V4.1-Flash TP4/EP4; no public image | [Source-pinned build](../deepseek-v41-sglang/README.md#build-and-prepare) |
 | `ghcr.io/fujitsupolycom/sparkring` | Generic R33 ARM64 image; exact profiles select TP2/TP4 topology and optional components | [Source build and profile verification](../../runtime/sparkring/jovian-r33/image/README.md) |
 | `gb10-vllm-serving` | Profile-specific images, including DeepSeek | [Packages](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) |

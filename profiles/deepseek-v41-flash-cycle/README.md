@@ -81,9 +81,13 @@ NCCL from the pinned donor below and put it at the same path on every rank:
 
 ```bash
 donor_image=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987
-cid=$(docker create "$donor_image" true)
-docker cp -L "$cid":/opt/sparkring/nccl/libnccl.so.2 /path/to/libnccl.so.2
-docker rm "$cid"
+docker pull "$donor_image"
+(
+  set -eu
+  cid=$(docker create "$donor_image" true)
+  trap 'docker rm "$cid" >/dev/null' EXIT
+  docker cp -L "$cid":/opt/sparkring/nccl/libnccl.so.2 /path/to/libnccl.so.2
+)
 ```
 
 The image's own pip NCCL is also 2.30.7; vLLM logs a `Duplicate NCCL runtime` warning

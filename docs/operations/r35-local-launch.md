@@ -87,14 +87,14 @@ Setting `direct_doorbell` to `false` selects the experimental command-ring
 submission path for testing; it does not establish that path's stability.
 
 ```bash
-python runtime/glm53-spark-mtp3-mesh/profile.py render \
+python3 runtime/glm53-spark-mtp3-mesh/profile.py render \
   --site "$SITE" --bundle "$BUNDLE" --output "$LAUNCH" \
   --image-receipt "$RECORD/image.json"
 ```
 
 The generated rank environment selects R35's entrypoint and source-bound cache
 contract. The launcher supplies the fixed rank-zero API check. Follow the
-[managed mesh plan/create/install procedure](../../profiles/glm53-spark-mtp3-managed-mesh-tp4/README.md)
+[managed installation procedure](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#install-on-each-host)
 with this same image receipt.
 Its controller validates the image before accepting the container. Rank-zero
 scheduler observation runs as a managed host unit, separately from API readiness.

@@ -19,11 +19,17 @@ ssh <username>@<rank0-management-ip>
 ## 2. Download and inspect the installer
 
 ```bash
-curl -fLO \
-  https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/bootstrap.sh
+REF=refactor/repository-layout
+curl -fL \
+  "https://raw.githubusercontent.com/FujitsuPolycom/sparkring/$REF/bootstrap.sh" \
+  -o bootstrap.sh
 less bootstrap.sh
-bash bootstrap.sh
+bash bootstrap.sh --ref "$REF"
 ```
+
+Use the same ref for the downloaded installer and managed checkout. These
+instructions select the refactor branch explicitly; the installer's default is
+`main` when `--ref` is omitted.
 
 The installer checks for Git, Python, OpenSSH, `ssh-copy-id`, and PyYAML. If
 PyYAML is absent, it asks before installing Ubuntu's `python3-yaml` package.

@@ -213,10 +213,14 @@ scp qwen38-runtime.oci.tar qwen38-runtime.oci.tar.sha256 <user>@<rank3-host>:qwe
 On every receiving rank, verify before loading:
 
 ```bash
-cd "$HOME/qwen38/staging"
-sha256sum --check qwen38-runtime.oci.tar.sha256
-docker load --input qwen38-runtime.oci.tar
-docker image inspect --format '{{.Id}}' sparkring-qwen38:arm64-sm121
+# Run this block on each receiving host.
+(
+  set -eu
+  cd "$HOME/qwen38/staging"
+  sha256sum --check qwen38-runtime.oci.tar.sha256
+  docker load --input qwen38-runtime.oci.tar
+  docker image inspect --format '{{.Id}}' sparkring-qwen38:arm64-sm121
+)
 ```
 
 All four hosts must report the same `IMAGE_ID`. Building independently on each
