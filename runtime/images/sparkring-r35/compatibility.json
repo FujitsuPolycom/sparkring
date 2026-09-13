@@ -1,0 +1,69 @@
+{
+  "schema": "sparkring-image-compatibility/v1",
+  "status": "Experimental",
+  "qualification": "Composition metadata only; does not establish serving qualification or general ABI compatibility.",
+  "platform": "linux/arm64",
+  "framework": "vllm",
+  "foundation": {
+    "image": "ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef",
+    "image_id": "sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4"
+  },
+  "source_lock": {
+    "path": "source-lock.json",
+    "components": {
+      "vllm": "/components/vllm",
+      "b12x": "/components/b12x"
+    }
+  },
+  "evidence": {
+    "receipt_schema": "sparkring-r35-image-receipt/v1",
+    "receipt_sha256": "07b7bcb0e63c8370cef3373b8c87309746c02a5a906952c72ca767dfb08f2192",
+    "image_id": "sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b"
+  },
+  "abi": {
+    "python_version": null,
+    "python_soabi": null,
+    "cxx11_abi": null,
+    "glibc_version": null,
+    "cuda_toolkit_version": null,
+    "torch_cuda_version": null,
+    "torch_distribution_version": "2.13.0"
+  },
+  "gpu": {
+    "name": null,
+    "compute_capability": null,
+    "compiled_targets": null
+  },
+  "inherited_native": {
+    "/opt/lmcache/lib/liblmcache_cumem_shareable.so": "6c3b32b7892571c0a6a94b7197f87a3bad9735eb897779fc9c9d5981a583499d",
+    "/opt/local-inference/nccl/lib/libnccl.so.2.31.2": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+    "/opt/sparkring/sircl/libspark_transport_capi.so": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+    "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+    "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953"
+  },
+  "reuse_rules": {
+    "source_overlay": [
+      "Resolve component commits, trees and patches through source_lock; do not infer compatibility from package version labels.",
+      "Compare the vLLM native build inputs named by its source-lock component before reusing inherited extensions; installed payload verification and runtime tests remain required.",
+      "Verify the exact installed vLLM files against the SparkCache connector lease contract after applying source overlays."
+    ],
+    "inherited_native": [
+      "Reuse these measured libraries only with the pinned foundation and verified installed payload; a matching library hash does not prove compatibility with a different foundation.",
+      "Changes to architecture, Python ABI, Torch, CUDA, compiler ABI or native source require an explicit rebuild and compatibility review of affected extensions.",
+      "Preserve the selected patched NCCL identity; dependency installation must not silently replace it."
+    ],
+    "runtime_jit": [
+      "Use the pinned B12X source composition and its required runtime compiler dependencies.",
+      "Treat generated kernel caches as dependent on source, compiler, device and runtime identities; do not transfer qualification from an unrelated cache.",
+      "Run GPU correctness and serving checks for generated kernels; source and file hashes alone do not qualify execution."
+    ]
+  },
+  "limitations": [
+    "Null ABI and GPU values mean the admission receipt does not record those measurements; they are not wildcard compatibility claims.",
+    "The Torch distribution version is package metadata, not a measurement of its CUDA or C++ ABI.",
+    "CUDA Python package versions and filenames are not used to infer the loaded CUDA runtime, toolkit or GPU target.",
+    "The inherited_native map records five standalone libraries, not every compiled extension or runtime dependency in the image.",
+    "The receipt identifies one measured local candidate image. Rebuilds require fresh receipts and do not inherit its evidence automatically.",
+    "This manifest does not describe an SGLang runtime or authorize reuse of AMD64 artifacts on ARM64."
+  ]
+}

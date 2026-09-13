@@ -42,6 +42,10 @@ serving. Source archives use LF line endings even on Windows.
 
 ## Prepare sources
 
+The [composition contracts and update procedure](../../../docs/development/image-composition.md)
+record the foundation, patch ownership and native reuse limits. Context assembly
+validates these contracts before packaging sources.
+
 Use dedicated source checkouts. Fetch the commits recorded in the source lock
 from `https://github.com/voipmonitor/vllm.git` and
 `https://github.com/voipmonitor/b12x.git`. Check out each `base_commit` detached,

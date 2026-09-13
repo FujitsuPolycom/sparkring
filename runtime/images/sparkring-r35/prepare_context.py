@@ -4,10 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import sys
 
 from prepare_sources import package
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT.parents[2]))
+from runtime.images.composition import validate  # noqa: E402
 
 
 def main():
@@ -16,6 +19,7 @@ def main():
     parser.add_argument('--b12x-source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    validate(ROOT)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     lock = json.loads((ROOT/'source-lock.json').read_text(encoding='utf-8'))
@@ -34,7 +38,8 @@ def main():
                    'qualification':'Source packaging only; serving qualification belongs to the tested image and profile.'}
     (output/'source-composition.json').write_text(json.dumps(composition,indent=2)+'\n',encoding='utf-8')
     for name in ('Dockerfile.source-stage', 'Dockerfile.candidate', 'install_sources.py',
-                 'finalize_image.py', 'verify_image.py', 'entrypoint.py'):
+                 'finalize_image.py', 'verify_image.py', 'entrypoint.py',
+                 'compatibility.json', 'patch-ledger.json', 'source-lock.json'):
         shutil.copy2(ROOT/name, output/name)
     for path in (ROOT/'baseline-files').glob('r33-*-files.txt'):
         name = path.name.removeprefix('r33-').removesuffix('-files.txt')
