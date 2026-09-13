@@ -1,1 +1,1 @@
-"""Bounded GLM-5.2 MoE round-floor experiments."""
+"""Measure GLM-5.2 mixture-of-experts execution and expert-route reuse."""

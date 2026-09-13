@@ -46,6 +46,90 @@ class EventFactory:
         return event
 
 
+def test_concurrent_drains_count_a_ready_sample_once():
+    import threading
+    factory = EventFactory([2.0, 0.0])
+    timing = collector(factory, capacity=1)
+    timing.arm('concurrent-drain')
+    timing.measure(TARGET, object(), lambda: None)
+    first_entered, second_entered, release = (threading.Event() for _ in range(3))
+    query_lock = threading.Lock()
+    calls = []
+
+    def query():
+        with query_lock:
+            calls.append(1)
+            number = len(calls)
+        if number == 1:
+            first_entered.set()
+            assert release.wait(3)
+        else:
+            second_entered.set()
+        return True
+
+    factory.events[1].query = query
+    outcomes = []
+    threads = [threading.Thread(target=lambda: outcomes.append(timing.drain())) for _ in range(2)]
+    threads[0].start()
+    try:
+        assert first_entered.wait(2)
+        threads[1].start()
+        second_entered.wait(0.3)
+    finally:
+        release.set()
+        for thread in threads:
+            if thread.ident is not None:
+                thread.join(2)
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(outcomes) == 2
+    assert sum(result.completed for result in outcomes) == 1
+    snapshot = timing.snapshot()
+    assert snapshot['completed'] == 1 and snapshot['pending'] == 0
+    assert snapshot['descriptors'][TARGET.key]['total_ms'] == 2.0
+
+
+def test_event_polling_does_not_block_measurement():
+    import threading
+    factory = EventFactory([1.0, 0.0, 2.0, 0.0])
+    timing = collector(factory)
+    timing.arm('reporter-and-serving')
+    timing.measure(TARGET, object(), lambda: None)
+    entered, release, measured = (threading.Event() for _ in range(3))
+
+    def query():
+        entered.set()
+        assert release.wait(3)
+        return True
+
+    factory.events[1].query = query
+    reporter = threading.Thread(target=timing.drain)
+    serving = threading.Thread(target=lambda: timing.measure(DRAFT, object(), measured.set))
+    reporter.start()
+    try:
+        assert entered.wait(2)
+        serving.start()
+        assert measured.wait(1), 'Reporter held the measurement lock while querying'
+    finally:
+        release.set()
+        reporter.join(2)
+        if serving.ident is not None:
+            serving.join(2)
+    assert not reporter.is_alive() and not serving.is_alive()
+    timing.drain()
+    assert timing.snapshot()['completed'] == 2
+
+
+@pytest.mark.parametrize('field', ['before', 'after'])
+@pytest.mark.parametrize('invalid', [float('nan'), float('inf'), -1.0])
+def test_snapshot_delta_rejects_invalid_duration_totals(field, invalid):
+    timing = collector(EventFactory([1.0] * 4))
+    timing.arm('invalid-duration')
+    snapshots = {'before': timing.snapshot(), 'after': timing.snapshot()}
+    snapshots[field]['descriptors'][TARGET.key]['total_ms'] = invalid
+    with pytest.raises(SnapshotMismatch, match='finite and nonnegative'):
+        snapshot_delta(snapshots['before'], snapshots['after'])
+
+
 class FakeNvtx:
     def __init__(self) -> None:
         self.calls: list[str] = []
