@@ -34,6 +34,16 @@ spec.loader.exec_module(module)
 contract = module._source_receipt_contract()
 assert callable(contract.validate_receipt)
 assert 'native_files' not in sys.modules
+monitor_path = root / 'runtime/glm53-spark-mtp3-mesh/managed_liveness.py'
+spec = importlib.util.spec_from_file_location('installed_monitor', monitor_path)
+monitor = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(monitor)
+assert monitor.HELPER.is_file()
+assert monitor.HELPER.is_relative_to(root)
+spec = importlib.util.spec_from_file_location('installed_scheduler', monitor.HELPER)
+scheduler = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(scheduler)
+assert callable(scheduler.start_liveness_service)
 """
     result = subprocess.run([sys.executable, '-I', '-c', script, str(tmp_path)],
                             cwd=tmp_path, text=True, capture_output=True)
@@ -66,6 +76,40 @@ def test_complete_spec_accepts_exact_configuration_and_image_env_override(exact_
     actual['Config']['Env'].reverse()
     actual['Mounts'].reverse()
     managed_install.validate_container_spec(actual, expected)
+
+
+def test_generated_health_envelope_is_exact_and_inspected(exact_container_spec):
+    argv, image, _, actual = exact_container_spec
+    health = managed_install.managed_units.managed_liveness.api_healthcheck(8015)
+    insertion = ['-e', 'PORT=8015', '-e', 'SPARKRING_NODE_RANK=0']
+    insertion += [value for pair in health.items() for value in pair]
+    position = argv.index(image['Id'])
+    argv[position:position] = insertion
+    expected = managed_install.expected_container_spec(argv, image)
+    actual['Config']['Env'] = [f'{k}={v}' for k, v in expected['env'].items()]
+    actual['Config']['Healthcheck'] = expected['healthcheck']
+    managed_install.validate_container_spec(actual, expected)
+    changed = deepcopy(actual)
+    changed['Config']['Healthcheck']['Test'] = ['CMD-SHELL', 'true']
+    with pytest.raises(ValueError, match='healthcheck'):
+        managed_install.validate_container_spec(changed, expected)
+    argv[argv.index('--health-cmd')+1] = 'true'
+    with pytest.raises(ValueError, match='health options'):
+        managed_install.expected_container_spec(argv, image)
+
+
+@pytest.mark.parametrize('change', ['partial', 'duplicate', 'worker_rank', 'interval'])
+def test_health_options_cannot_expand_the_canonical_envelope(exact_container_spec, change):
+    argv, image, _, _ = exact_container_spec
+    health = managed_install.managed_units.managed_liveness.api_healthcheck(8015)
+    insertion = ['-e', 'PORT=8015', '-e', 'SPARKRING_NODE_RANK='+('1' if change=='worker_rank' else '0')]
+    if change == 'partial': del health['--health-timeout']
+    if change == 'interval': health['--health-interval'] = '1s'
+    insertion += [value for pair in health.items() for value in pair]
+    if change == 'duplicate': insertion += ['--health-retries', '3']
+    position = argv.index(image['Id']); argv[position:position] = insertion
+    with pytest.raises(ValueError, match='health options'):
+        managed_install.expected_container_spec(argv, image)
 
 
 @pytest.mark.parametrize('change', [

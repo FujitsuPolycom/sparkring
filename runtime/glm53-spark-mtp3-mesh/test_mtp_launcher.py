@@ -192,6 +192,9 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
     image_index = arguments.index(profile.defaults(profile.BASE / "runtime.env.example")["IMAGE_REF"])
     assert arguments[image_index + 1:image_index + 3] == ["serve", "/models/target"]
     assert _option(arguments, "--load-format") == "instanttensor"
+    from managed_liveness import api_healthcheck
+    for flag, value in api_healthcheck(8015).items():
+        assert _option(arguments, flag) == value
     # R33 admission must not dispatch through the retained source-image verifier.
     assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
     environment_map = _docker_environment(arguments)

@@ -1215,9 +1215,18 @@ if [[ "${r33_profile}" == 1 ]]; then
   fi
 fi
 
+# Direct-exec profiles do not inherit the warmup wrapper's readiness check.
+# This fixed command checks API readiness only; scheduler progress is separate.
+api_health_args=()
+if [[ "${r33_profile}" == 1 && "${rank}" == 0 ]]; then
+  api_health_command="python3 -S -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:${PORT}/health\", timeout=4).close()'"
+  api_health_args=(--health-cmd "${api_health_command}" --health-interval 10s \
+    --health-timeout 6s --health-start-period 1800s --health-retries 3)
+fi
 container_command=(docker "${container_action[@]}" \
   --name "${container}" \
   --entrypoint "${serving_entrypoint}" \
+  "${api_health_args[@]}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \

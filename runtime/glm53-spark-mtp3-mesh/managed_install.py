@@ -22,6 +22,8 @@ CONFIG_DIR = Path('/etc/sparkring/managed-mesh')
 UNIT_DIR = Path('/etc/systemd/system')
 SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/managed_memory.py',
+    'runtime/glm53-spark-mtp3-mesh/managed_liveness.py',
+    'runtime/sparkring/source_image/startup/scheduler_liveness.py',
     'runtime/glm53-spark-mtp3-mesh/managed_service.py',
     'runtime/glm53-spark-mtp3-mesh/managed_network.py',
     'runtime/glm53-spark-mtp3-mesh/managed_units.py',
@@ -149,7 +151,8 @@ def expected_container_spec(argv, image):
     mounts, options = {}, {}
     labels = dict(config.get('Labels') or {})
     value_options = {'--name', '--entrypoint', '--network', '--ipc', '--shm-size', '--gpus',
-                     '--ulimit', '--cap-add', '--device', '--security-opt', '-v', '-e', '--label'}
+                     '--ulimit', '--cap-add', '--device', '--security-opt', '-v', '-e', '--label',
+                     '--health-cmd', '--health-interval', '--health-timeout', '--health-start-period', '--health-retries'}
     index = 2
     while index < len(argv) and argv[index] not in image_names:
         flag = argv[index]
@@ -184,10 +187,20 @@ def expected_container_spec(argv, image):
     if len(options.get('--name', [])) != 1 or len(options.get('--entrypoint', [])) != 1:
         raise ValueError('Canonical command requires one name and entrypoint')
     env.update(environment_map(supplied_env, 'Launcher'))
+    healthcheck = config.get('Healthcheck')
+    health_options = {key: value for key, value in options.items() if key.startswith('--health-')}
+    if health_options:
+        canonical = managed_units.managed_liveness.api_healthcheck(env.get('PORT', ''))
+        if (env.get('SPARKRING_NODE_RANK') != '0'
+                or health_options != {key: [value] for key, value in canonical.items()}):
+            raise ValueError('Docker health options must match the generated rank-zero API check')
+        healthcheck = {'Test': ['CMD-SHELL', canonical['--health-cmd']], 'Interval': 10000000000,
+                       'Timeout': 6000000000, 'StartPeriod': 1800000000000, 'Retries': 3}
     return {'name': options['--name'][0], 'image': image_id,
             'cmd': argv[index + 1:], 'entrypoint': options['--entrypoint'],
             'env': env, 'mounts': mounts, 'labels': labels,
-            'working_dir': config.get('WorkingDir') or '', 'user': config.get('User') or ''}
+            'working_dir': config.get('WorkingDir') or '', 'user': config.get('User') or '',
+            'healthcheck': healthcheck}
 
 
 def validate_container_spec(container, expected):
@@ -200,6 +213,8 @@ def validate_container_spec(container, expected):
         raise ValueError('Container model arguments differ from the canonical launch')
     if config.get('Entrypoint') != expected['entrypoint']:
         raise ValueError('Container entrypoint differs from the canonical launch')
+    if config.get('Healthcheck') != expected['healthcheck']:
+        raise ValueError('Container healthcheck differs from the canonical launch')
     actual_env = environment_map(config.get('Env'), 'Container')
     if actual_env != expected['env']:
         names = sorted(name for name in actual_env.keys() | expected['env'].keys()
@@ -332,7 +347,8 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
               'rank': rank, 'key_file': str(CONFIG_DIR / 'health.key'), 'epoch': epoch,
               'health_port': health_port, 'state_dir': '/run/sparkring-mesh',
               'container_id': container['Id'], 'container_image': receipt['image_id']}
-    units = managed_units.unit_text(str(CODE_DIR), str(CONFIG_DIR), container['Id'])
+    units = managed_units.unit_text(str(CODE_DIR), str(CONFIG_DIR), container['Id'],
+        host_liveness=managed_units.managed_liveness.requires_host_monitor(container, rank))
     return {'schema': 'sparkring-managed-install/v1', 'rank': rank, 'config': config,
             'units': units, 'source_files': SOURCE_FILES, 'source_hashes': source_hashes(source_payloads()),
             'source_root': str(ROOT),

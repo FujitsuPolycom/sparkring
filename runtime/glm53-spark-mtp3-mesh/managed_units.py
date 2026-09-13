@@ -14,6 +14,7 @@ sys.path.insert(0, str(HERE))
 spec = importlib.util.spec_from_file_location('unit_mesh_service', HERE / 'managed_service.py')
 service = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(service)
+import managed_liveness
 
 
 def systemd_path(value):
@@ -22,7 +23,7 @@ def systemd_path(value):
     return value
 
 
-def unit_text(code_root, config_root, container_id):
+def unit_text(code_root, config_root, container_id, *, host_liveness=False):
     runner = systemd_path(code_root) + '/runtime/glm53-spark-mtp3-mesh/managed_service.py'
     config = systemd_path(config_root) + '/service.json'
     if not re.fullmatch('[0-9a-f]{64}', container_id):
@@ -78,7 +79,25 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 '''
-    return {'sparkring-mesh.service': mesh, 'sparkring-mesh-model.service': model}
+    units = {'sparkring-mesh.service': mesh, 'sparkring-mesh-model.service': model}
+    if host_liveness:
+        units['sparkring-mesh-model.service'] = model.replace(
+            'Requires=docker.service sparkring-mesh.service',
+            'Wants=sparkring-scheduler-liveness.service\nRequires=docker.service sparkring-mesh.service')
+        units['sparkring-scheduler-liveness.service'] = f'''[Unit]
+Description=SparkRing rank-zero scheduler liveness
+BindsTo=sparkring-mesh-model.service
+PartOf=sparkring-mesh-model.service
+After=sparkring-mesh-model.service
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 {systemd_path(code_root)}/runtime/glm53-spark-mtp3-mesh/managed_liveness.py --config {config}
+Restart=no
+TimeoutStopSec=20s
+UMask=0077
+'''
+    return units
 
 
 def render(site_path, containers, output, code_root, config_root, epoch, health_port):
@@ -108,7 +127,8 @@ def render(site_path, containers, output, code_root, config_root, epoch, health_
                   'key_file': config_root + '/health.key', 'epoch': epoch, 'health_port': health_port,
                   'state_dir': '/run/sparkring-mesh', 'container_id': item['Id'], 'container_image': item['Image']}
         (directory / 'service.json').write_text(json.dumps(config, indent=2) + '\n', newline='\n')
-        for name, text in unit_text(code_root, config_root, item['Id']).items():
+        for name, text in unit_text(code_root, config_root, item['Id'],
+                                   host_liveness=managed_liveness.requires_host_monitor(item, rank)).items():
             (directory / name).write_text(text, newline='\n')
     (output / 'render.json').write_text(json.dumps({'status': 'implemented', 'epoch': epoch,
         'site_sha256': service.mesh_profile.sha(site_path), 'image': next(iter(image_ids)),
