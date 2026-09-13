@@ -24,7 +24,7 @@ TWO MODES
 
     `measure` runs one configuration across the requested token counts and
     reports elapsed time, a dense-equivalent arithmetic rate, and an
-    achieved weight-stream rate over compressed bytes.
+    calculated weight-stream rate over compressed bytes.
 
     `tune` holds the geometry fixed, sweeps `force_tile_config` and
     `moe_block_size`, and ranks every configuration against the deployed
@@ -63,23 +63,23 @@ COMPRESSED WEIGHT TRAFFIC
         weight_stream_bytes     = that, summed over the experts the routing
                                   selected, per tier
 
-    The reported GB/s divides that by elapsed time. It assumes each
-    selected expert's compressed weight is read once per call; a kernel
-    that re-reads an expert across m-blocks moves more, so the figure is a
-    lower bound on traffic and therefore a lower bound on the achieved
-    rate. Whether the kernel is traffic-bound or decode-bound decides
-    whether the 3-bit and 4-bit tier mix affects elapsed time at all, so
-    the tier split of the traffic is reported alongside it.
+    The reported GB/s divides that logical byte count by elapsed time.
+    It counts each selected expert once. Repeated reads, cache hits,
+    rotations and intermediate buffers are not measured, so this is
+    neither measured DRAM bandwidth nor a bound on it. The tier split
+    describes the selected weights; identifying a memory or compute
+    bottleneck requires profiling or controlled measurements.
 
 WEIGHT-POOL CYCLING
 
     Compressed expert weights for this geometry are on the order of a
-    gigabyte, which is small enough that repeated calls on one weight set
-    can be served from cache and report a rate no deployment reaches.
-    Several independent weight sets are therefore prepared and one is used
+    gigabyte. Repeated calls may reuse cached data; the harness does not
+    measure cache residency or establish a deployment's reuse pattern.
+    Several independent weight sets are prepared and one is used
     per timed call, round-robin. `--pool-size` sets the count; the
     predicted device memory cost is computed, reported, and refused when it
     exceeds a stated fraction of device memory.
+    Cycling weight sets does not prove that each access reaches DRAM.
 
 METHOD
 
@@ -165,9 +165,9 @@ WEIGHT_BYTES_FORMULA = (
 )
 WEIGHT_BYTES_NOTE = (
     "compressed bytes at each tier's Trellis bit width, counted once per "
-    "expert the routing selected. A kernel that re-reads an expert across "
-    "m-blocks moves more, so this is a lower bound on traffic and the rate "
-    "derived from it is a lower bound on the achieved rate."
+    "expert the routing selected. This logical byte count does not measure "
+    "repeated reads, cache hits, rotations or intermediate buffers. Its rate "
+    "is neither measured DRAM bandwidth nor a bound on it."
 )
 
 # Weight coefficients an expert holds: gate and up, each hidden_size by
@@ -1935,12 +1935,10 @@ def _render_measure(report: dict[str, Any]) -> str:
         "  against a dense GEMM rate at the same hidden and intermediate",
         "  sizes. It is not this kernel's operation count.",
         "  GB/s counts compressed weight bytes for the experts the routing",
-        "  selected, once each. If that rate approaches the device's memory",
-        "  bandwidth the kernel is weight-traffic bound and the tier bit mix",
-        "  moves elapsed time; if it sits far below, decode and launch",
-        "  behaviour bound it and the mix does not.",
-        "  Both rates are lower bounds to the extent the kernel re-reads",
-        "  weights across m-blocks, which this harness does not observe.",
+        "  selected, once each. It does not measure DRAM traffic, cache hits",
+        "  or repeated reads. Neither rate alone identifies the bottleneck",
+        "  or predicts how changing tier bit widths affects elapsed time.",
+        "  Use profiling or controlled comparisons to test those claims.",
     ]
     return "\n".join(lines) + "\n"
 
