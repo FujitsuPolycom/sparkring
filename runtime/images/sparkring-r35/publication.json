@@ -1,0 +1,10 @@
+{
+  "schema": "sparkring-image-publication/v1",
+  "status": "Experimental",
+  "tag": "ghcr.io/fujitsupolycom/sparkring:r35-arm64-7b698d4299aa",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:3eb8138453e5cc5ce1f436caf232e03b84e23e094a49e376428d1ebfe26c4742",
+  "image_id": "sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b",
+  "platform": "linux/arm64",
+  "anonymous_pull_verified": true,
+  "scope": "Registry manifest/config identities verified. Performance and bounded functional checks are recorded separately; native serving stall unresolved and long-run stability deferred."
+}

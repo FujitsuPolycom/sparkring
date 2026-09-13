@@ -1,4 +1,4 @@
-# Launch a local R35 image
+# Launch the R35 ARM64 image
 
 Use the maintained TP2 and managed TP4 renderers with an explicit local R35
 receipt. This selects the pinned R35 source composition without changing published
@@ -7,9 +7,26 @@ image composition; it does not qualify a model, topology or workload.
 
 ## Record the image
 
-On an ARM64 Docker host with the locally built image, set `IMAGE` to its complete
-`sha256:` image ID and `RECORD` to an empty private directory. From the repository
-root, collect the installed receipt and verification result:
+The published image is **Experimental**. A native TP4 stall remains unresolved;
+long-duration stability testing is deferred. The
+[publication record](../../runtime/images/sparkring-r35/publication.json) binds
+the registry digest to the measured image.
+
+On a supported ARM64 Docker host, pull the immutable image and resolve its local
+image ID:
+
+```bash
+IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:3eb8138453e5cc5ce1f436caf232e03b84e23e094a49e376428d1ebfe26c4742
+docker pull --platform linux/arm64 "$IMAGE_REF"
+IMAGE=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
+```
+
+The human-readable tag is `ghcr.io/fujitsupolycom/sparkring:r35-arm64-7b698d4299aa`.
+Use the digest above for reproducible deployments. A locally rebuilt image can
+instead supply its verified local `sha256:` image ID.
+
+Set `RECORD` to an empty private directory. From the repository root, collect
+the installed receipt and verification result:
 
 ```bash
 docker run --rm --network none --pull never --entrypoint cat "$IMAGE" \

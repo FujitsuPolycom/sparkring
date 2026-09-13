@@ -15,6 +15,13 @@ argument correction and does not establish long-duration TP2 stability.
 
 ## Source and build identity
 
+The measured ARM64 image is published as
+`ghcr.io/fujitsupolycom/sparkring:r35-arm64-7b698d4299aa`.
+The [publication record](publication.json) contains its immutable registry digest,
+local image identity and validation scope. Follow the
+[launch guide](../../../docs/operations/r35-local-launch.md) to pull it and create
+a verified deployment receipt. Registry availability does not establish stability.
+
 [source-lock.json](source-lock.json) pins the immutable parent, upstream commits,
 patched Git trees and patches. The patches preserve SparkRing integrations
 across the R35 source changes. [baseline-files](baseline-files) lists the R33

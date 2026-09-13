@@ -26,6 +26,9 @@ configurations and workloads recorded with each profile.
 2. Follow its quickstart for host setup, image selection and launch commands.
 3. Run the [validation checks](docs/operations/profile-validation.md).
 
+An **Experimental R35 ARM64 image** is available with
+[TP2/TP4 pull and launch instructions](docs/operations/r35-local-launch.md).
+
 ## Profiles
 
 Bold entries are recommended. The guide describes the default; DCP alternatives
