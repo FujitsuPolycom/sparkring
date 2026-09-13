@@ -913,22 +913,25 @@ def resolve_api(
     signatures travel with the report so a reader can see what was bound.
     """
 
-    build_tiered_maps = _attribute(kernel_module, KERNEL_MODULE, "build_tiered_maps")
+    kernel_name = getattr(kernel_module, "__name__", KERNEL_MODULE)
+    prepare_name = getattr(prepare_module, "__name__", PREPARE_MODULE)
+    host_name = getattr(host_module, "__name__", HOST_MODULE)
+    build_tiered_maps = _attribute(kernel_module, kernel_name, "build_tiered_maps")
     compile_mixed_trellis = _attribute(
-        kernel_module, KERNEL_MODULE, "compile_mixed_trellis"
+        kernel_module, kernel_name, "compile_mixed_trellis"
     )
     make_buffers = _attribute(
-        kernel_module, KERNEL_MODULE, "make_mixed_trellis_buffers"
+        kernel_module, kernel_name, "make_mixed_trellis_buffers"
     )
-    run_mixed_trellis = _attribute(kernel_module, KERNEL_MODULE, "run_mixed_trellis")
+    run_mixed_trellis = _attribute(kernel_module, kernel_name, "run_mixed_trellis")
     prepare_weights = _attribute(
-        prepare_module, PREPARE_MODULE, "prepare_trellis256_moe_weights"
+        prepare_module, prepare_name, "prepare_trellis256_moe_weights"
     )
     max_packed_route_slots = _attribute(
-        host_module, HOST_MODULE, "max_packed_route_slots"
+        host_module, host_name, "max_packed_route_slots"
     )
     rotations_class = _attribute(
-        kernel_module, KERNEL_MODULE, "MixedTrellisRotations"
+        kernel_module, kernel_name, "MixedTrellisRotations"
     )
     combine_rotations = getattr(kernel_module, "combine_trellis_rotations", None)
 
@@ -979,9 +982,9 @@ def resolve_api(
         rotations_class=rotations_class,
     )
     discovery = {
-        "kernel_module": KERNEL_MODULE,
-        "prepare_module": PREPARE_MODULE,
-        "host_module": HOST_MODULE,
+        "kernel_module": kernel_name,
+        "prepare_module": prepare_name,
+        "host_module": host_name,
         "signatures": records,
         "rotations_source": (
             "combine_trellis_rotations"

@@ -813,6 +813,19 @@ class SignatureRecordTest(unittest.TestCase):
 
 
 class ResolveApiTest(unittest.TestCase):
+    def test_custom_module_identity_is_used_in_report_and_errors(self):
+        kernel, prepare, host = _fake_modules()
+        kernel.__name__ = 'fixture.custom_kernel'
+        prepare.__name__ = 'fixture.custom_prepare'
+        host.__name__ = 'fixture.custom_host'
+        _, discovery = bench.resolve_api(kernel, prepare, host)
+        self.assertEqual(discovery['kernel_module'], kernel.__name__)
+        self.assertEqual(discovery['prepare_module'], prepare.__name__)
+        self.assertEqual(discovery['host_module'], host.__name__)
+        del kernel.build_tiered_maps
+        with self.assertRaisesRegex(bench.MeasurementUnavailable, 'fixture.custom_kernel'):
+            bench.resolve_api(kernel, prepare, host)
+
     def test_a_matching_module_set_binds_and_records_every_signature(self) -> None:
         api, discovery = bench.resolve_api(*_fake_modules())
 
