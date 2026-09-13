@@ -98,7 +98,7 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(summary.median, 2.5)
         self.assertEqual(summary.minimum, 1.0)
         self.assertEqual(summary.maximum, 4.0)
-        self.assertEqual(summary.iqr, summary.q3 - summary.q1)
+        self.assertEqual((summary.q1, summary.q3, summary.iqr), (2.0, 3.0, 1.0))
 
     def test_summary_dictionary_carries_the_spread_not_only_the_median(self) -> None:
         payload = attribution.summarize([1.0, 2.0, 3.0, 4.0]).to_dict()
@@ -249,6 +249,12 @@ class ExposureFitTest(unittest.TestCase):
 
 
 class CaptureParsingTest(unittest.TestCase):
+    def test_display_label_collision_does_not_merge_distinct_keys(self):
+        first = _instance(family='a|b', communicator='c')
+        second = _instance(family='a', communicator='b|c')
+        capture = attribution.parse_capture(_capture(attribution.GATED_ARM, instances=[first, second]))
+        self.assertEqual(len(capture.instances), 2)
+
     def test_a_valid_gated_capture_parses(self) -> None:
         capture = attribution.parse_capture(_capture(attribution.GATED_ARM))
         self.assertEqual(capture.arm, attribution.GATED_ARM)
@@ -587,6 +593,37 @@ class ExampleDocumentTest(unittest.TestCase):
 
 
 class CommandLineTest(unittest.TestCase):
+    def test_ambiguous_or_unrepresentable_json_is_invalid(self):
+        for text in ('{"session":"a","session":"b"}', '{"x":NaN}',
+                     '{"x":1e999}', '{"x":' + '9' * 5000 + '}'):
+            with self.subTest(text=text[:40]), TemporaryDirectory() as directory:
+                path = Path(directory) / 'capture.json'
+                path.write_text(text, encoding='utf-8')
+                with self.assertRaises(attribution.DocumentInvalid):
+                    attribution.load_document(str(path))
+
+    def test_raised_threshold_applies_to_exposure_and_is_recorded(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {arm: self._write(root, arm+'.json', document)
+                     for arm, document in attribution.example_documents().items()}
+            code, out, _ = self._run(['--gated', paths['gated'], '--naked', paths['naked'],
+                '--exposure', paths['exposure'], '--detect-percent', '50', '--json', '-'])
+            report = json.loads(out)
+            self.assertEqual(code, attribution.EXIT_OK)
+            self.assertEqual(report['exposure']['detect_percent'], 50)
+            self.assertFalse(report['exposure']['determinate'])
+
+    def test_output_failure_returns_diagnostic_without_partial_report(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gated = self._write(root, 'g.json', _capture(attribution.GATED_ARM))
+            naked = self._write(root, 'n.json', _capture(attribution.NAKED_ARM))
+            code, out, err = self._run(['--gated', gated, '--naked', naked, '--json', str(root)])
+            self.assertEqual(code, attribution.EXIT_OUTPUT_ERROR)
+            self.assertEqual(out, '')
+            self.assertIn('output unavailable', err)
+
     def test_failed_validity_gates_return_not_comparable_with_diagnostics(self):
         for failure in ('gate_cost', 'rank_spread'):
             with self.subTest(failure=failure), TemporaryDirectory() as directory:
@@ -654,7 +691,7 @@ class CommandLineTest(unittest.TestCase):
         )
         self.assertEqual(code, attribution.EXIT_OK)
         self.assertIn("required repetitions", out)
-        self.assertIn("10", out)
+        self.assertIn(attribution._line("required repetitions", "10"), out)
 
     def test_a_missing_input_returns_the_input_exit_code(self) -> None:
         with TemporaryDirectory() as directory:

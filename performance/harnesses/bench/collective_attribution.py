@@ -43,9 +43,9 @@ WHAT THIS COMPUTES
     those into a floor, a transport-limited ceiling, and a residency ceiling,
     and reports the residency ceiling that the gated arm removes.
 
-    Every number is a median with its interquartile range and sample count.
-    A single value with no spread does not say whether a rank was in a steady
-    state.
+    Per-rank residency summaries include medians, interquartile ranges and
+    sample counts. Totals and skew differences are derived scalars; exposure
+    points are reduced to medians without retaining their per-point spread.
 
 DETECTION THRESHOLD
 
@@ -85,10 +85,12 @@ REPORT_SCHEMA = "sparkring-collective-attribution-report/v1"
 EXIT_OK = 0
 # The two documents are individually valid but cannot be compared: different
 # inventories, different layers, or a failed validity gate. Distinct from a
-# document that is malformed.
+# document that is malformed. Threshold refusals and argparse usage errors
+# also use 2; stderr distinguishes these conditions.
 EXIT_NOT_COMPARABLE = 2
 EXIT_INPUT_MISSING = 3
 EXIT_INVALID_DOCUMENT = 4
+EXIT_OUTPUT_ERROR = 5
 
 DEVICE_LAYER = "device"
 END_TO_END_LAYER = "end_to_end"
@@ -395,8 +397,8 @@ def fit_exposure(
             determinate=False,
             reason=(
                 f"delay span {span:.1f} us is below {minimum_span:.1f} us, "
-                f"which is {detect_percent:.1f}% of the undelayed median wall "
-                "time; the sweep cannot separate exposure from noise"
+                f"which is {detect_percent:.1f}% of the median wall time "
+                "at the smallest delay; the sweep cannot separate exposure from noise"
             ),
         )
     return ExposureFit(
@@ -491,7 +493,10 @@ def _require(document: Mapping[str, Any], field: str, where: str) -> Any:
 def _require_number(value: Any, field: str, where: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise DocumentInvalid(f"{where} field {field!r} must be a number")
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as error:
+        raise DocumentInvalid(f"{where} field {field!r} is outside the finite float range") from error
     if not math.isfinite(number):
         raise DocumentInvalid(f"{where} field {field!r} must be finite")
     return number
@@ -673,15 +678,15 @@ def parse_capture(document: Any) -> Capture:
         parse_instance(entry, arm, index)
         for index, entry in enumerate(instance_field)
     )
-    seen: set[str] = set()
+    seen: set[InstanceKey] = set()
     for instance in instances:
-        if instance.key.label in seen:
+        if instance.key in seen:
             raise DocumentInvalid(
                 f"instance {instance.key.label} appears twice; one occurrence "
                 "of a collective is one instance, and repeat counts belong in "
                 "'occurrences'"
             )
-        seen.add(instance.key.label)
+        seen.add(instance.key)
     return Capture(
         arm=arm,
         layer=layer,
@@ -1143,6 +1148,23 @@ def example_documents() -> dict[str, Any]:
 
 
 def load_document(path: str) -> Any:
+    def unique_keys(entries):
+        result = {}
+        for key, value in entries:
+            if key in result:
+                raise ValueError(f"duplicate JSON key {key!r}")
+            result[key] = value
+        return result
+
+    def finite_float(value):
+        result = float(value)
+        if not math.isfinite(result):
+            raise ValueError("JSON number must be finite")
+        return result
+
+    def reject_constant(value):
+        raise ValueError(f"invalid JSON constant {value}")
+
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError as error:
@@ -1150,8 +1172,9 @@ def load_document(path: str) -> Any:
     except UnicodeDecodeError as error:
         raise DocumentInvalid(f"{path} is not UTF-8: {error}") from error
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as error:
+        return json.loads(text, object_pairs_hook=unique_keys,
+                          parse_float=finite_float, parse_constant=reject_constant)
+    except ValueError as error:
         raise DocumentInvalid(f"{path} is not valid JSON: {error}") from error
 
 
@@ -1302,10 +1325,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     fit: ExposureFit | None = None
     exposure_layer = None
+    exposure_detect_percent = None
     if arguments.exposure:
         try:
             exposure_layer, points = parse_exposure(load_document(arguments.exposure))
-            fit = fit_exposure(points, resolve_detect_percent(exposure_layer, None))
+            exposure_detect_percent = max(detect_percent, resolve_detect_percent(exposure_layer, None))
+            fit = fit_exposure(points, exposure_detect_percent)
         except FileNotFoundError as error:
             print(f"FAIL input unavailable: {error}", file=sys.stderr)
             return EXIT_INPUT_MISSING
@@ -1314,13 +1339,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             return EXIT_INVALID_DOCUMENT
 
     report = build_report(gated, naked, detect_percent, fit, exposure_layer=exposure_layer)
+    if fit is not None:
+        report["exposure"]["detect_percent"] = exposure_detect_percent
+    if arguments.json:
+        try:
+            emit_json(report, arguments.json)
+        except OSError as error:
+            print(f"FAIL output unavailable: {error}", file=sys.stderr)
+            return EXIT_OUTPUT_ERROR
     print(
         render_report(report),
         end="",
         file=sys.stderr if arguments.json == "-" else sys.stdout,
     )
-    if arguments.json:
-        emit_json(report, arguments.json)
     return EXIT_NOT_COMPARABLE if report["status"] == "invalid_capture" else EXIT_OK
 
 
