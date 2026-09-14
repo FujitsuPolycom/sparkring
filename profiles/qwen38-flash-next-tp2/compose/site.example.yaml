@@ -1,0 +1,25 @@
+# Public documentation addresses. Copy to a private *.site.yaml and edit each host.
+schema: sparkring-compose-site/v1
+name: qwen-example
+master: 192.0.2.10
+ranks:
+  - rank: 0
+    host: spark0
+    host_ip: 192.0.2.10
+    interface: eth0
+    hcas: [rocep1s0f0, roceP2p1s0f0]
+    gid: 3
+    model: /srv/models/Qwen3.8-Flash-Next-NVFP4/ada4da32
+    cache: /srv/cache/qwen38-flash-next-r37
+    repository: /opt/sparkring
+    deployment_root: /srv/sparkring-deployments
+  - rank: 1
+    host: spark1
+    host_ip: 192.0.2.11
+    interface: eth0
+    hcas: [rocep1s0f0, roceP2p1s0f0]
+    gid: 3
+    model: /srv/models/Qwen3.8-Flash-Next-NVFP4/ada4da32
+    cache: /srv/cache/qwen38-flash-next-r37
+    repository: /opt/sparkring
+    deployment_root: /srv/sparkring-deployments

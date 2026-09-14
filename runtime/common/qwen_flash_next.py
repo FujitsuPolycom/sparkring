@@ -10,7 +10,7 @@ import argparse
 import hashlib
 import ipaddress
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.common import candidate  # noqa: E402
 from runtime.common import cache_candidate  # noqa: E402
+from runtime.common.container_spec import Bind, ContainerSpec, docker_create  # noqa: E402
 
 CONFIG_ROOT = ROOT / "profiles/qwen38-flash-next-tp2"
 CONFIG_NAMES = ("config.json", "sparkcache.json")
@@ -48,7 +49,7 @@ def canonical(profile):
     return profile
 
 
-def site_inputs(rank, master, host_ip, interface, model, cache):
+def site_inputs(rank, master, host_ip, interface, model, cache, *, remote=False):
     if type(rank) is not int or rank not in (0, 1):
         raise ValueError("Select rank0/1")
     try:
@@ -67,10 +68,12 @@ def site_inputs(rank, master, host_ip, interface, model, cache):
         value = str(value)
         if not value or "," in value or any(ord(c) < 32 or ord(c) == 127 for c in value):
             raise ValueError("Mount paths cannot contain delimiters or control characters")
-        path = Path(value)
+        path = PurePosixPath(value) if remote else Path(value)
+        if remote and (str(path) != value or ".." in path.parts or "\\" in value):
+            raise ValueError("Remote mount paths must be normalized Linux paths")
         if not path.is_absolute():
             raise ValueError("Model/cache paths must be absolute")
-        paths.append(path.resolve())
+        paths.append(path if remote else path.resolve())
     if paths[0].is_relative_to(paths[1]) or paths[1].is_relative_to(paths[0]):
         raise ValueError("Model/cache paths must be disjoint")
     return paths
@@ -98,9 +101,10 @@ def verify_image(image, *, cache_enabled=False, run=subprocess.run):
     return candidate.make_receipt(image, raw, verification)
 
 
-def render(profile, *, rank, master, host_ip, interface, image, model, cache):
+def container_spec(profile, *, rank, master, host_ip, interface, image, model, cache,
+                   remote=False, hcas=None, gid=None):
     canonical(profile)
-    model, cache = site_inputs(rank, master, host_ip, interface, model, cache)
+    model, cache = site_inputs(rank, master, host_ip, interface, model, cache, remote=remote)
     cache_enabled = profile.get('image_extension') == 'lil-r37-cache64'
     if cache_enabled and (not re.fullmatch(r'sha256:[0-9a-f]{64}', image) or image == publication()['image_id']):
         raise ValueError('Select an immutable cache-extension image, not the base R37 image')
@@ -123,40 +127,16 @@ def render(profile, *, rank, master, host_ip, interface, image, model, cache):
         B12X_COMPILE_CACHE_DIR=f"/cache/{namespace}/b12x",
         CUTE_DSL_CACHE_DIR=f"/cache/{namespace}/cute",
     )
-    command = [
-        "docker",
-        "create",
-        "--name",
-        f"qwen-flash-next-{'sparkcache-' if cache_enabled else ''}tp2-r{rank}",
-        "--entrypoint",
-        "/opt/venv/bin/python",
-        "--pull",
-        "never",
-        "--restart",
-        "no",
-        "--init",
-        "--no-healthcheck",
-        "--gpus",
-        "all",
-        "--network",
-        "host",
-        "--ipc",
-        "host",
-        "--device",
-        "/dev/infiniband",
-        "--ulimit",
-        "memlock=-1:-1",
-        "--memory",
-        "108g",
-        "--memory-swap",
-        "112g",
-        "--mount",
-        f"type=bind,src={model},dst=/models/target,readonly",
-        "--mount",
-        f"type=bind,src={cache},dst=/cache",
-    ]
-    for key, value in sorted(env.items()):
-        command += ["--env", key + "=" + value]
+    if hcas is not None:
+        if (not isinstance(hcas, list) or len(hcas) != 2 or len(set(hcas)) != 2
+                or any(not re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca) for hca in hcas)):
+            raise ValueError("Select two distinct HCA names in cable order")
+        env["B12X_ROCE_HCA"] = ",".join(hcas)
+        env["NCCL_IB_HCA"] = "=" + ",".join(hcas)
+    if gid is not None:
+        if type(gid) is not int or not 0 <= gid <= 255:
+            raise ValueError("GID index must be an integer from 0 to 255")
+        env["NCCL_IB_GID_INDEX"] = str(gid)
     args = [
         candidate.ENTRYPOINT,
         "serve",
@@ -171,7 +151,35 @@ def render(profile, *, rank, master, host_ip, interface, image, model, cache):
     ]
     if rank:
         args += ["--headless"]
-    return command + [image, *args]
+    port = profile["vllm_args"][profile["vllm_args"].index("--port") + 1]
+    health = () if rank else (
+        "/opt/venv/bin/python", "-c",
+        f"import urllib.request; urllib.request.urlopen('http://127.0.0.1:{port}/health', timeout=4).close()",
+    )
+    return ContainerSpec(
+        name=f"qwen-flash-next-{'sparkcache-' if cache_enabled else ''}tp2-r{rank}",
+        image_id=image, entrypoint=("/opt/venv/bin/python",), command=tuple(args),
+        environment=env, mounts=(Bind(str(model), "/models/target", True), Bind(str(cache), "/cache")),
+        health_command=health,
+    )
+
+
+def render(profile, **site):
+    return docker_create(container_spec(profile, **site))
+
+
+def verify_model_paths(profile, model, cache):
+    """Check local directories and checkpoint metadata; full shard checks remain explicit."""
+    model, cache = Path(model), Path(cache)
+    if not model.is_dir() or not cache.is_dir():
+        raise ValueError("Existing model and dedicated cache directories are required")
+    for filename, key in [
+        ("config.json", "config_sha256"),
+        ("model.safetensors.index.json", "index_sha256"),
+    ]:
+        with (model / filename).open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != profile["model"][key]:
+                raise ValueError("Checkpoint metadata mismatch: " + filename)
 
 
 def main():
@@ -184,17 +192,7 @@ def main():
     o = p.parse_args()
     profile = canonical(read(o.profile))
     model, cache = site_inputs(o.rank, o.master, o.host_ip, o.interface, o.model, o.cache)
-    if not model.is_dir() or not cache.is_dir():
-        raise ValueError("Existing model and dedicated cache directories are required")
-    for filename, key in [
-        ("config.json", "config_sha256"),
-        ("model.safetensors.index.json", "index_sha256"),
-    ]:
-        with (Path(o.model) / filename).open("rb") as stream:
-            if hashlib.file_digest(stream, "sha256").hexdigest() != profile["model"][key]:
-                raise ValueError("Checkpoint metadata mismatch: " + filename)
-    if not Path(o.cache).is_dir():
-        raise ValueError("Create a dedicated compilation cache directory")
+    verify_model_paths(profile, model, cache)
     command = render(
         profile,
         rank=o.rank,

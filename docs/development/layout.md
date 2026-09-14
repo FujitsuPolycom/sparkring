@@ -27,6 +27,12 @@ recipe and source exports. Edit their canonical source, then run
 paths serve published overlays and imported scripts; they are not additional
 implementation owners. Tests live with the canonical implementation.
 
+Generated Compose examples use [generate_compose_examples.py](../../scripts/generate_compose_examples.py).
+The profile adapter owns effective container settings through
+[container_spec.py](../../runtime/common/container_spec.py); the
+[Compose backend](../operations/compose.md) renders that specification and uses
+the shared deployment coordinator. Serving defaults belong in profiles, not YAML.
+
 Source-image assembly and version-specific builders remain at their original
 paths when relative inputs, source receipts or installed paths bind them there.
 The [builder catalog](../../runtime/images/builders.json) explains these

@@ -149,5 +149,6 @@ reject a snapshot below the configured 65536-token span ceiling; serving must
 continue without optional cache publication.
 
 [Image source/build recipe](../../runtime/images/compositions/lil-r37-cache64/README.md).
-[Offline-only Compose examples](compose/README.md) use the native-cache profile;
-they are not a separate qualified deployment.
+[Generated Compose deployments](../../docs/operations/compose.md) support both
+the native-cache and SparkCache profiles. Configuration checks pass; serving
+through Compose still requires hardware validation.
