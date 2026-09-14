@@ -84,6 +84,11 @@ services:
     - '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}'
     - --media-io-kwargs
     - '{"video":{"num_frames":16}}'
+    - --recurrent-checkpoint-policy
+    - aligned
+    - --enable-prompt-tokens-details
+    - --kv-transfer-config
+    - '{"kv_connector":"SparkContextCacheConnector","kv_connector_module_path":"sparkcache.spark_context_cache_connector","kv_role":"kv_both","kv_load_failure_policy":"recompute","kv_connector_extra_config":{"spark_cache_root":"/cache/persistent/qwen38-flash-next-qad-tp4-r37-cache64","spark_cache_model_profile":"qwen38-flash-next-hybrid","spark_cache_publication_schema":"tail-cow-v2","spark_cache_target_checkpoint_sha256":"036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba","spark_cache_draft_checkpoint_sha256":"036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba","spark_cache_draft_policy":"separate","spark_cache_access_mode":"read-write","spark_cache_max_bytes":4294967296,"spark_cache_low_watermark_bytes":3221225472,"spark_cache_min_span_tokens":4096,"spark_cache_max_span_tokens":65536,"spark_cache_scheduler_probe":"none","spark_cache_streaming_snapshots":false,"spark_cache_cuda_restore":true,"spark_cache_cuda_placement_library":"/opt/sparkring/sparkcache/lib/libspark_cache_placement.so","spark_cache_cuda_placement_library_sha256":"d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93","spark_cache_cuda_placement_arena_bytes":67108864,"spark_cache_cuda_restore_arena_budget_bytes":268435456,"spark_cache_cuda_restore_io_workers":2,"spark_cache_load_threads":2,"spark_cache_max_pending_restores":2,"spark_cache_async_page_capture":true,"spark_cache_async_page_capture_lease_mode":"connector-jobs","spark_cache_async_page_capture_library":"/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so","spark_cache_async_page_capture_library_sha256":"b50db45123c4faf0fdfb021da0a0f1b7f329869ae5dc13dcc7432dd4ce765b68","spark_cache_async_page_capture_slot_bytes":536870912,"spark_cache_async_page_capture_slot_count":2,"spark_cache_async_page_capture_vllm_root":"/opt/venv/lib/python3.12/site-packages","spark_cache_async_page_capture_lease_contract":"/opt/sparkring/contracts/vllm-connector-jobs-lil-r37.json","spark_cache_page_snapshot_interval_tokens":0}}'
     - --headless
     environment:
       B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-2540686d726a-629bc3218833/b12x
@@ -131,7 +136,7 @@ services:
       QWEN_DISPATCH_TRACE: '0'
       SIRCL_ENABLED: '0'
       SOURCE_IMAGE_PROFILE: ''
-      SPARKCACHE_ENABLED: '0'
+      SPARKCACHE_ENABLED: '1'
       SPARKRING_FEATURES: qwen-collectives,qwen-prefill
       SPARKRING_TRANSPORT_MANIFEST_SHA256: eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive
@@ -162,7 +167,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-2540686d726a-629bc3218833
     labels:
-      io.sparkring.deployment: d98b7ca708097deeea370384a2b1371da65220ebcfdf23776ba736277dbef941
+      io.sparkring.deployment: b14b25283f13acd57fa73094ca22dffb8b862ffcfd1e3dfadad4bb037880d9cb
       io.sparkring.rank: '3'
     network_mode: host
     ipc: host

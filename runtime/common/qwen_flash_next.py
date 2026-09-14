@@ -25,6 +25,7 @@ from runtime.common.container_spec import Bind, ContainerSpec, docker_create  # 
 CONFIG_ROOT = ROOT / "profiles/qwen38-flash-next-tp2"
 CONFIG_NAMES = ("config.json", "sparkcache.json")
 TP4_CONFIG = ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json"
+TP4_CACHE_CONFIG = ROOT / "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
 
 
 def read(path):
@@ -43,7 +44,8 @@ def publication():
 
 
 def canonical(profile):
-    if profile not in [read(CONFIG_ROOT / name) for name in CONFIG_NAMES] and profile != read(TP4_CONFIG):
+    if (profile not in [read(CONFIG_ROOT / name) for name in CONFIG_NAMES]
+            and profile not in [read(TP4_CONFIG), read(TP4_CACHE_CONFIG)]):
         raise ValueError("Select an unchanged canonical Qwen configuration")
     if profile.get("schema") != "sparkring-serving-profile/v1" or profile.get("topology") not in ("direct-pair-2", "direct-cycle-4"):
         raise ValueError("Invalid Qwen serving profile schema/topology")
@@ -177,8 +179,9 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         "/opt/venv/bin/python", "-c",
         f"import urllib.request; urllib.request.urlopen('http://127.0.0.1:{port}/health', timeout=4).close()",
     )
+    prefix = "qad-sparkcache-" if nodes == 4 and env.get("SPARKCACHE_ENABLED") == "1" else "qad-" if nodes == 4 else "sparkcache-" if cache_enabled else ""
     return ContainerSpec(
-        name=f"qwen-flash-next-{'qad-' if nodes == 4 else 'sparkcache-' if cache_enabled else ''}tp{nodes}-r{rank}",
+        name=f"qwen-flash-next-{prefix}tp{nodes}-r{rank}",
         image_id=image, entrypoint=("/opt/venv/bin/python",), command=tuple(args),
         environment=env, mounts=(Bind(str(model), "/models/target", True), Bind(str(cache), "/cache")),
         health_command=health,

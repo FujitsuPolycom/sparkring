@@ -22,7 +22,7 @@ in its configuration. “Stock” identifies the publisher’s original checkpoi
 | DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | SGLang | — | 262K / [1.5M](../performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | No | Development | [Guide](../profiles/deepseek-v41-flash-sglang-cycle/README.md) |
 | GLM-5.2 | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | vLLM | DCP4 | 1M / [1.2M](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](../profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development | [Guide](../profiles/glm52-exl3-r7-3.5bpw/README.md) |
 | Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | DCP1 | 1M / [8.7M](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development | [Guide](../profiles/qwen38-27b-exl3-k5k6/README.md) |
-| Qwen3.8-Flash-Next | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | vLLM | DCP1 | 262K / [3.2M](../performance/records/qwen38-flash-next/r37-shared-tp4.json) | No | Development | [Guide](../profiles/qwen38-flash-next-qad-tp4/README.md) |
+| Qwen3.8-Flash-Next | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | vLLM | DCP1 | 262K / [3.2M](../performance/records/qwen38-flash-next/r37-shared-tp4.json) | [Optional](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | Development | [Guide](../profiles/qwen38-flash-next-qad-tp4/README.md) |
 
 ### Two Sparks
 
@@ -138,6 +138,7 @@ These are saved configurations, not separate models. Profile IDs remain stable f
 | Parallelism | Network | SparkCache | Status | Configuration and guide |
 |---|---|---|---|---|
 | DCP1 | direct-cycle-4 | Off | Development | [qwen38-flash-next-qad-tp4](../profiles/qwen38-flash-next-qad-tp4/README.md) |
+| DCP1 | direct-cycle-4 | On | Experimental | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
 
 </details>
 

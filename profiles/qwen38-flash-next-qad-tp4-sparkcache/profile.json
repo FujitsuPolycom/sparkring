@@ -1,0 +1,21 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-qad-tp4-sparkcache",
+  "title": "Qwen3.8-Flash-Next NVFP4 QAD on four Sparks with persistent prefix caching",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
+  },
+  "release": "runtime/releases/qwen38-flash-next-qad-r37-shared/release.json",
+  "guide": "profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md",
+  "evidence_scope": "Research-only QAD TP4/DCP1 aligned SparkCache selection. Persistent restore and failed-restore recomputation require hardware qualification; cache-disabled results do not qualify this selection.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": ["plan", "check", "create"],
+    "fixed_args": ["--profile", "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"]
+  }
+}
