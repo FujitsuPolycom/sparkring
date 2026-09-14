@@ -44,6 +44,19 @@ def quickstart_path(profile):
     return f"profiles/{profile['id']}/README.md"
 
 
+def developing_cache_profiles(root=ROOT):
+    """Read table annotations without changing a profile's serving settings."""
+    path = root / 'profiles/capabilities.json'
+    if not path.is_file():
+        return set()
+    data = read_json(path)
+    if (set(data) != {'schema', 'profiles'} or data['schema'] != 'sparkring-capability-status/v1'
+            or not isinstance(data['profiles'], dict) or not set(data['profiles']) <= set(catalog(root))
+            or any(value != {'sparkcache': 'development'} for value in data['profiles'].values())):
+        raise ValueError('Capability annotations require catalog profiles and an explicit development status')
+    return set(data['profiles'])
+
+
 def compact_profile_rows(rows, root=ROOT):
     """Group explicit cache compositions with their base, retaining the default's values."""
     recipe_ids = {p['configuration']['path']: p['id'] for p, _ in rows
@@ -76,6 +89,7 @@ def compact_profile_rows(rows, root=ROOT):
                 key = base
         groups.setdefault(key, []).append((p, resolved, cached))
     result, cache_cells = [], {}
+    developing = developing_cache_profiles(root)
     for variants in groups.values():
         variants.sort(key=lambda item: (item[0]['recommendation'] != 'recommended', item[2]))
         p, resolved, cached = variants[0]
@@ -86,6 +100,8 @@ def compact_profile_rows(rows, root=ROOT):
             cell = f"[Optional]({quickstart_path(cache_profile)})"
         elif cached:
             cell = 'Included'
+        elif p['id'] in developing:
+            cell = '(in dev)'
         cache_cells[p['id']] = cell
         result.append((p, resolved))
     # A recommended configuration represents its model/topology on the landing
@@ -209,6 +225,7 @@ def profile_catalog_table(rows, names, root):
              '## Configuration variants', '',
              'These are saved configurations, not separate models. Profile IDs remain stable for scripts.', '']
     groups, retired = {}, []
+    developing = developing_cache_profiles(root)
     for p, r in rows:
         if p['recommendation'] == 'retired':
             retired.append((p, r))
@@ -228,7 +245,8 @@ def profile_catalog_table(rows, names, root):
                       else r['serving'].get('sparkcache', False) if config['format'] == 'serving-profile'
                       else bool(read_json(local_path(config['path'], root)).get('base_recipe')))
             label = p['id'] + (' (default)' if p['recommendation'] == 'recommended' else '')
-            lines.append(f"| {parallel} | {r['topology']} | {'On' if cached else 'Off'} | {STATUS_LABELS[p['status']]} | [{label}]({quickstart_path(p)}) |")
+            cache_cell = 'On' if cached else 'Off (in dev)' if p['id'] in developing else 'Off'
+            lines.append(f"| {parallel} | {r['topology']} | {cache_cell} | {STATUS_LABELS[p['status']]} | [{label}]({quickstart_path(p)}) |")
         lines += ['', '</details>', '']
     lines += ['### Retired profiles', '', '<details>', '<summary>Retired configurations</summary>', '',
               'Retained for compatibility and historical evidence; use an active deployment above for setup.', '']

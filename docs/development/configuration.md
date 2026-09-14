@@ -14,6 +14,9 @@ The catalog contains only stable IDs and definition paths. A definition uses
 references and invalid topology values are errors. Future incompatible schemas
 need a separate loader and migration; do not reinterpret v1 fields.
 
+Table-only capability annotations live in `profiles/capabilities.json`. They
+describe integration work and do not enable features or change serving defaults.
+
 ## Inspect and resolve
 
 ```bash
