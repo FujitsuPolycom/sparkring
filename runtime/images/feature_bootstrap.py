@@ -40,7 +40,7 @@ def prefill_environment(environment, digest):
         current = environment.get(key, "/cache/" + leaf).rstrip("/")
         suffix = "/" + namespace + "/" + leaf
         if not current.endswith(suffix):
-            environment[key] = str(PurePosixPath(current).parent / namespace / leaf)
+            environment[key] = str(PurePosixPath(current) / namespace / leaf)
     environment["SPARKRING_QWEN_PREFILL_MANIFEST_SHA256"] = digest
 
 

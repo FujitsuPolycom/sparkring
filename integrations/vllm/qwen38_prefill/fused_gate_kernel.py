@@ -1,6 +1,5 @@
 """BF16 Qwen HC up-projection with fused four-stream gating and mean."""
 
-import torch
 import triton
 import triton.language as tl
 

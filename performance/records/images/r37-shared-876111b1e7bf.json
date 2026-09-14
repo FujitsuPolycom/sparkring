@@ -1,0 +1,30 @@
+{
+  "added_image_bytes": 20162098,
+  "build_seconds_approx": 39,
+  "descriptor_sha256": "876111b1e7bf780e50345bdc663334d477343900ba5df32c8eef481e2808b11c",
+  "image_id": "sha256:8eada188146f651f2e076dd7548bc98235f1d4250656260b0a1fefbf48e898c9",
+  "image_tag": "sparkring-local:r37-arm64-876111b1e7bf",
+  "parent_image_id": "sha256:384bc56e4a1faa0d983d9e448ccb08731c1362b426c5d7926be5204cfc137ca8",
+  "platform": "linux/arm64",
+  "published": false,
+  "schema": "sparkring-local-image-build/v1",
+  "scope": "Image build, complete source/binary integrity and CPU import/activation checks only. Existing TP2/TP4 feature evidence does not qualify every combined serving profile. Request-boundary SparkCache support is not included.",
+  "source_descriptor_path": "runtime/images/compositions/lil-r37-shared/descriptor.json",
+  "source_revision": "72f62d1d2ebfcd4520ef723e752a3b9cc74a50ac",
+  "status": "Development",
+  "verification": {
+    "child_cache_namespace_idempotent": true,
+    "collective_activation": true,
+    "combined_activation": true,
+    "complete_inventory_files": 57240,
+    "default_off": true,
+    "entrypoint_preserved": true,
+    "existing_serving_processes_unchanged": true,
+    "gpu_serving_on_this_image": false,
+    "image_tests_passed": 184,
+    "parent_layers_preserved": true,
+    "parent_payload_retained": true,
+    "prefill_activation": true,
+    "unknown_feature_rejected": true
+  }
+}

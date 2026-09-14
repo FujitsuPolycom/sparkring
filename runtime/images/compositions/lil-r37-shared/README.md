@@ -8,6 +8,9 @@ are baked into the image; model weights and site configuration are external.
 The [descriptor](descriptor.json) pins the parent image/receipt and every
 addition. The [local build record](local-build.json) identifies the built image
 and verification scope. No publication or profile-default promotion is implied.
+The [earlier build record](../../../../performance/records/images/r37-shared-876111b1e7bf.json)
+retains its exact image and source revision; its evidence does not qualify this
+descriptor or transfer automatically to a rebuilt image.
 
 ## Included capabilities
 

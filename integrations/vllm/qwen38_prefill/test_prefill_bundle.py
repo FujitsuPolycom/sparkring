@@ -1,7 +1,6 @@
 """Fail-closed source and compiler-cache admission for Qwen prefill bundles."""
 
 import hashlib
-import json
 from pathlib import Path
 import subprocess
 import sys

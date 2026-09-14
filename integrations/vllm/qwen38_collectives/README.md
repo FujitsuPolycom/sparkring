@@ -1,10 +1,11 @@
-# Qwen TP4 collective selection
+# Qwen collective selection
 
 Status: **implemented**, with bounded DGX4 serving evidence. This optional
-selector targets Qwen3.8-Flash-Next NVFP4 QAD on the pinned SparkRing R37
-vLLM sources. It does not change GLM, TP2, published images, or profile defaults.
-It is not a request scheduler: it chooses a collective backend before an
-operation is submitted or captured into a CUDA graph.
+selector supports Qwen3.8-Flash-Next on the pinned SparkRing R37 vLLM sources
+at TP2 or TP4 when explicitly activated. The measurements below cover the QAD
+checkpoint at TP4; they do not establish the best TP2 cutoff. Profiles retain
+their own defaults. The selector chooses a collective backend before an operation
+is submitted or captured into a CUDA graph.
 
 ## Selection contract
 
@@ -74,7 +75,7 @@ Two trials per arm compare the same prompts with temperature zero and MTP3.
 With an idle API and a fresh server process for each arm, run:
 
 ```bash
-python integrations/vllm/qwen38_collectives/benchmark.py \
+python performance/harnesses/qwen_collectives.py \
   --base-url http://SERVER:8015/v1 --model Qwen3.8-Flash-Next-NVFP4-QAD \
   --label bounded --output /tmp/qwen38-results --trials 2
 ```

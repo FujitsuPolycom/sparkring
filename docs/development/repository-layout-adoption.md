@@ -2,243 +2,132 @@
 
 ## Result and base
 
-The restructuring branch is `refactor/repository-layout`. Its integration
-base is main commit `506c8db0c09c95a75467e006110242cb5d0bcc7d`, including
-PRs #259, #262, #265, #269 and #271. The initial preservation inventory is
-based on `c65a9981e2a69f821ac716f6f13484d99d23f4ea`. Local validation results
-and remaining review requirements are listed below; adoption includes no deployment.
+`refactor/repository-layout` is the public integration branch. Its local history
+includes main through `0b7c08d3e4b3b88c568fb719c365ab523de6db3b`, the canonical
+Qwen TP2 quickstart through `22a6dd1`, and shared Docker/Compose deployment.
+Repository adoption and image deployment are separate decisions.
 
-The branch provides 22 indexed deployment profiles, deterministic configuration
-resolution, a shared guarded launch entry point, ENV rendering for the DeepSeek
-and Qwen adapters, and a shared image-builder selector. Framework adapters and
-active fabric planning have explicit maintained owners. Documentation separates
-operations, architecture, development and retained historical configurations.
-AGENTS.md and the reusable maintainer prompt reference one writing policy.
+The [profile catalog](../../profiles/README.md) owns deployment discovery.
+Profiles select model settings and image releases; private site files select
+hosts, interfaces and paths. Shared adapters render effective settings for
+Docker and supported [Compose deployments](../operations/compose.md).
+[Repository ownership](layout.md) identifies implementation owners and retained
+compatibility paths. [AGENTS.md](../../AGENTS.md) and the
+[maintainer prompt](maintainer-prompt.md) reference one writing policy.
 
-Contributions remain open to people without Spark hardware. There is no
-mandatory issue before a PR, corporate paperwork, or requirement to supply a
-complete report. Only the observed-problem field is required in the bug form.
+Contributions require neither Spark hardware nor an issue before a PR.
+Incomplete reports are welcome; maintainers own hardware qualification.
 
 ## Compatibility and migration
 
-| Public surface | Result |
+| Surface | Contract |
 |---|---|
-| `recipes/*.json` and SparkCache composition recipes | Generated exports of the authoritative `profiles/` source; existing consumers keep their paths |
-| Six serving ENV examples | Generated from profile templates; ordered-assignment checks preserve baseline defaults except recorded changes |
-| TP2 Python launcher | Existing path delegates to `runtime/common/tp2.py`; plan/receipt/guard behavior is retained |
-| Switched Python launcher | Frozen image asset remains byte-identical; maintained host adapter lives in `runtime/common/switched.py` and produces an equivalent plan |
-| vLLM adapter source paths | Canonical owner is `integrations/vllm`; generated legacy exports preserve overlay/package consumers |
-| Fabric and RoCEnante integration | Maintained imports use their component owners; managed-service allowlist includes the relocated dependencies |
-| Moved Markdown guides | Original URLs and heading anchors remain as pointers; the migration map names canonical destinations |
-| Published source images, locks, receipts and evidence | 430 inputs protected by a preserved-content check; public image names/digests and installed paths are unchanged |
-| Native tiled-prefill substrate and incompatible image builders | Retained at identity-bound paths; their native/build dependencies justify the exception |
+| Recipes, serving ENV examples and legacy adapter imports | Generated from canonical owners; retain public paths and recorded defaults |
+| Retained GLM TP2 launcher | Delegates to `runtime/common/tp2.py`; exposes only selected HCA functions and indexes peer maps within that list |
+| Switched launcher | Frozen image source remains unchanged; the maintained host adapter owns development |
+| Docker and Compose | Share container specifications; Compose coordinates separate per-host projects and rejects project collisions |
+| Guides | Canonical instructions retain compatibility URLs and heading anchors |
+| Published images and source inputs | Preserve image identities, installed paths, 430 inventoried inputs and 22 locked profile assets |
+| Native substrate and incompatible builders | Retain identity-bound locations documented in the ownership guide |
 
-No documented command was intentionally removed. Some internal test filenames
-and source locations changed; the entire original CI suite remains selected,
-with tests for relocated owners added to discovery. Compatibility exports are
-not separate authored copies. Run `python scripts/generate_profiles.py` after
-editing their sources; CI rejects drift.
+Run `python scripts/generate_profiles.py` after changing compatibility sources
+and `python scripts/generate_compose_examples.py` after changing Compose inputs.
+Generated exports are not independent implementations. Retiring a public path
+requires a separate compatibility decision after its consumers migrate.
 
-The layout does not promise a lower tracked-file count. Published source-bound
-paths require compatibility exports. Removing those paths requires a separate
-announced compatibility change after package and release consumers migrate.
-The preserved-content check protects the 430 inventoried inputs against deletion
-or byte changes.
+GLM TP4/DCP1 remains the default; DCP4 is an alternative with its own evidence.
+The DeepSeek vLLM profile uses 1M context; its SGLang profile retains the
+contributor's 262K default. Measurements retain their actual configurations.
 
 ## Verification
 
-The local review ledger covers all 1,578 tracked files, distinguishing authored
-source and prose from generated exports, vendored provenance and frozen inputs.
-This records review scope; it does not establish hardware qualification or
-prove that every defect has been found.
+Evidence applies to the named source, image, model and topology. Passing CPU
+checks, publishing an image and qualifying model serving are distinct outcomes.
 
-Source snapshot `ae3d60af4a9f1da55fb128b896930b3cf6644569` passed the complete
-maintained CI selection in Ubuntu WSL with Python 3.12.3 and CPU Torch 2.11.0.
-Its command was read from the archived workflow; Git archive metadata and JUnit
-bind the source and results. This includes the capture, benchmark and
-test-isolation fixes. Subsequent adoption-report edits change documentation
-only and receive separate link and structural checks.
-
-| Check | Result |
+| Evidence | Proven scope |
 |---|---|
-| Full maintained pytest selection from CI at `ae3d60a` | 5,006 passed; 29 skipped; zero failures/errors |
-| Ruff over maintained Python trees | Passed |
-| Repository structural check | 22 profiles, 53 generated outputs, 430 preserved inputs, 22 locked profile assets, 458 Python sources, 8 builders |
-| Repository Markdown links | 1,085 local links checked at `ae3d60a` |
-| Release-safety scan | Zero findings |
-| Launch compatibility | Existing TP2 entry point and maintained switched-renderer contracts pass |
-| Configuration equivalence | Omitted and explicit defaults agree; ENV assignments match the initial baseline except declared default changes; comment edits do not change compatibility |
+| Integration at `4ac872b` | 354 shared/profile/Compose tests passed on Windows with real Compose resolution required; layout, 1,241 links and release-preservation checks passed |
+| [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and explicitly recorded feature checks; read its serving qualification field |
+| [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
+| [Qwen TP2 guide](../../profiles/qwen38-flash-next-tp2/README.md) | Published aligned-cache image and separate private request-boundary results are identified explicitly |
+| Historical Linux/native/serving checks | Revision-specific results summarized below; they do not establish current-head CI or serving qualification |
 
-Linux tests use PowerShell 7, so controller checks execute rather than skipping
-for a missing shell. Skips concern optional native/serving inputs. Hosted GitHub
-Actions has not run for this unpublished branch.
+### Historical validation snapshots
 
-Native source snapshot `06e4925046db3b8ae203f9f745d7dbe01d0dbe73`
-built on ARM64 GB10 with CUDA 13.0, architecture `sm_121`,
-Release mode and `BUILD_TESTING=ON`, including the optional fused probe and GPU
-smoke targets. All 31 CTests passed. Isolated four-rank tests established:
+- `ae3d60af4a9f1da55fb128b896930b3cf6644569`: maintained Linux CI selection
+  passed 5,006 tests, with 29 skips, using Python 3.12.3 and CPU Torch 2.11.0.
+- `3dbb25d702a134929f04064254e8f78d333bb537`: local Linux selection passed
+  5,135 tests, with 29 hardware/optional-input skips and the CI-pinned tools.
+- `06e4925046db3b8ae203f9f745d7dbe01d0dbe73`: ARM64 GB10/CUDA 13.0 native
+  build passed 31 CTests. Four-rank tiled-prefill, dual-rail, graph-reuse and
+  changing-input checks passed their recorded gates. Existing-image NCCL
+  2.31.2 DCP2/DCP4 checks do not qualify a separate NCCL rebuild.
+- `699e12bb82b863b211f85add10848ed65ccd495c`: GLM TP4/DCP1 restored an
+  8,192-token prefix after model restart; a 30-minute C4 run passed 956 checks;
+  a 1,047,552-token retrieval returned the requested value. These results do not
+  establish crash recovery, concurrent full-context capacity or model quality.
 
-- All 18 tiled-prefill cases passed their per-rank receipt gates, including
-  boundary sizes, backpressure and expected poison outcomes.
-- The fused dual-rail probe passed exact and noninteger input checks on all ranks.
-- Tiered mixed-query graph replay and two-slot reuse passed without mismatches
-  or command overflows. The ctypes/PyTorch boundary passed 100 alternating-input
-  all-reduces per rank using the rebuilt native library.
-- NCCL DCP4 passed 19 eager/graph result rows per rank, and DCP2 passed nine,
-  using the existing image's NCCL 2.31.2. This does not qualify a rebuild of the
-  separate NCCL 2.30.7 patch.
-- All four ring cables passed bidirectional 12,288-byte and 16,384-byte integrity
-  checks, 1,000 measured iterations per direction and size, with the latency
-  target met. The source-route checker fix at `1f439d0` passed 14 regression tests.
-
-Managed-serving source snapshot `699e12bb82b863b211f85add10848ed65ccd495c`
-was tested separately on four Sparks with TP4/DCP1, SparkCache, a 1M context
-limit, the existing published image, and read-only checkpoint mounts:
-
-- A coordinated model-process restart restored an 8,192-token prefix from an
-  identical 8,220-token request. Transfer counters and all four worker logs
-  confirmed the restore.
-- A 1,801.875-second mixed-prompt soak at concurrency four passed 956 exact-answer
-  and normal-finish checks with thinking enabled.
-- One retrieval request with 1,047,552 prompt tokens and a 1,024-token output
-  budget returned the exact requested value in 434.203 seconds.
-
-These are bounded restart, soak and capacity results, not crash-recovery,
-general long-context quality or throughput qualification. A separate
-thinking-disabled batch failed because responses exposed reasoning text;
-the profile guide documents the installed template limitation.
-
-The installed managed mesh services were in a failed state when inspected and remained
-untouched. Separately authorized temporary controllers and test containers were
-removed after testing. Cleanup receipts show no owned network objects remaining
-and six pre-existing adopted objects retained per host. Model files were not
-modified. Test evidence is retained locally; these results do not qualify
-arbitrary later source revisions or rebuilt images.
-
-SGLang launcher and integration tests are included in the Linux selection.
-The contributor's SGLang serving records remain separate from the GLM
-hardware results; the local GLM run does not qualify DeepSeek serving.
-
-The pinned
-[LIL deployment companion](../../integrations/lil/README.md) was built at revision
-`329cde801b847294005cb16765692032a6cdf206` with Go 1.26.0: its tests and
-vet passed, and all 87 SparkRing LIL integration tests passed in WSL without
-skips. These local checks do not constitute a hosted GitHub Actions run.
-
-The standalone DeepSeek Engram probe requires a serving image and
-model/packed-row inputs; it is outside hosted CPU CI. The GLM serving tests
-used read-only model mounts.
-
-Windows skips include POSIX mode/symlink behavior, Bash/native compilers, optional
-LIL integration and serving-runtime checks. Hosted Linux CI has not run because
-the reviewed changes have not been published. Native ARM64 image assembly,
-crash recovery and representative performance remain unverified. The near-limit
-retrieval check above does not establish concurrent full-context serving.
-Standalone hardware and CPU results do not authorize a deployment promotion.
+The R35 native TP4 stall remains unresolved; its
+[performance results](../../performance/records/glm53-flash/r35-tp4-direct-performance.md)
+do not establish long-duration stability. SGLang contributor evidence is separate
+from GLM tests. Hosted Linux CI, including the pinned LIL companion, must run on
+the adoption revision. The workflow runs on pull requests and pushes to main;
+a refactor-branch push alone does not run it.
 
 ## Pending contributions
 
-| PR | State at reconciliation | Adoption handling |
+At the 2026-09-14 source review:
+
+| PR | Head | Integration requirement |
 |---|---|---|
-| #258 | Open, head `5a00273a7ea12d41db965c50a3aedb02e23add83` | Preserve NVIDIA NVFP4 versus NVFP4-Spark identity, launcher overrides and cache namespaces; extend the profile catalog when the implementation lands |
-| #259 | Merged in the integration base | Preserve the 300-second peer-silence mitigation and bounded claim; no local-address recovery is implied |
-| #263 | Closed, head `2ae60f01774131d07e7370104599bacafb39473d` | Retain contributor wording improvements around the generated README region; edit the generator for table changes |
-| #265 | Merged in the integration base | TP4/DCP1 remains the default; TP4/DCP4 is a validated alternative; its contract/entrypoint overlay and activation record are pinned separately from the published image |
-| #266 | Open, head `544f498c6369a72c1afba0a856dfb870cfc0d302` | Review local-address recovery separately from peer-silence handling; relocation leaves its managed-service paths intact |
-| #267 | Open, head `fa77ac48f821a8c760129914f58158bb4700c3c4` | Integrated locally with contributor authorship, a separate SGLang catalog entry, builder, launcher and qualification records; retain the contributor's 262144-context default |
-| #269 | Merged in the integration base | Preserve the corrected DCP4 arithmetic-owner mapping; PR #271's overlap correction and attribution withdrawal are integrated locally |
-| #270 | Open, head `27d6b0dbd2b5a2113fb8c14923d70fb354d5a0ee` | Apply selected-HCA rendering to the maintained TP2 owner and regenerate its compatibility launcher if adopted; retain transport-change validation scope |
+| [#258](https://github.com/FujitsuPolycom/sparkring/pull/258) | `5a00273a7ea1` | Preserve NVIDIA NVFP4 versus NVFP4-Spark identity, overrides and cache namespaces |
+| [#266](https://github.com/FujitsuPolycom/sparkring/pull/266) | `544f498c6369` | Review local-address recovery separately from peer-silence mitigation |
+| [#267](https://github.com/FujitsuPolycom/sparkring/pull/267) | `fa77ac48f821` | Compare any merged SGLang changes with the contributor-authored local integration; retain its context default and image identity |
 
-PRs #258, #266, #267 and #270 remain open at the upstream recheck.
-The 2026-09-12 recheck found those same head revisions and main at
-`a48c862d9deba66c3cc1462095874a8ad4718811`. Its only change after the
-integration base is the separately approved README notice in PR #272.
-The refactor branch is published as `refactor/repository-layout`. Remove the temporary restructuring notice
-when adopting the completed layout; it is not part of the replacement README.
-
-Main commit `506c8db0c09c95a75467e006110242cb5d0bcc7d` adds merged
-[PR #271](https://github.com/FujitsuPolycom/sparkring/pull/271), which corrects
-the DCP4 measurement overlap and withdraws the C4 gather attribution. Its
-record and publication-reference changes are integrated locally, with the
-DCP4 release selection updated to bind the corrected evidence. The frozen
-published-input archive remains unchanged. The conflicting RouteFinal times
-in that historical correction do not establish an independently verified
-non-overlap result.
-
-PR #262 is already part of the initial base. No pending PR was merged, closed,
-rejected or rewritten by this branch. Maintainers should recheck main and open
-PR heads immediately before adoption; preserve contributor credit in normal
-Git history.
+Recheck main and open PR heads before adoption. Preserve contributor credit
+through normal history; adapt fixes to maintained owners instead of replacing
+compatibility shims with duplicate implementations.
 
 ## Review and adoption sequence
 
-### R35 image integration
+<a id="r35-image-integration"></a>
 
-The refactor includes the [R35 image recipe](../../runtime/images/sparkring-r35/README.md)
-and [explicit local-image launch interface](../operations/r35-local-launch.md).
-It retains the ARM64 CUDA 13.3/PyTorch 2.13 foundation, source-bound SparkCache,
-direct-doorbell SIRCL, dual-domain NCCL, mHC and continuation-prefill coalescing.
-Named managed installations use separate paths and units; existing deployments
-are not overwritten.
+### Image integration
 
-[TP4 decode/prefill measurements](../../performance/records/glm53-flash/r35-tp4-direct-performance.md)
-and [bounded TP2 results](../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
-identify the tested image and conditions. Source commit
-`3dbb25d702a134929f04064254e8f78d333bb537` passed 5,135 tests in local Linux,
-with 29 hardware/optional-input skips, using the CI-pinned CPU Torch and the
-verified PowerShell/LIL tools. Maintained-tree lint and preservation checks passed.
-
-R35 remains **Experimental**: a native TP4 serving stall is unresolved, and
-long-duration stability qualification is deferred. Performance results do not
-establish stability. Branch publication distributes recipes, code and evidence;
-container-registry publication and a reviewed main merge are separate actions.
-
-The Experimental ARM64 image is available under the immutable digest in its
-[publication record](../../runtime/images/sparkring-r35/publication.json).
-Anonymous manifest/config verification and Docker pull passed. The
-[TP2 launch instructions](../operations/r35-local-launch.md#tp2) support
-SparkCache on or off through an explicit R35 receipt; the catalog retains its
-published R33 defaults. Both TP2 modes enable mHC; only cache-on enables KDA
-coalescing. Image availability does not remove the stability qualification gap.
+1. Finish the shared-feature image's profile admission and maintained Qwen QAD
+   TP4 adapter/quickstart. Existing TP2 instructions keep their published pins.
+2. Migrate GLM TP4 to the shared specification while preserving fabric,
+   source-verification, readiness and recovery contracts.
+3. Validate the exact baked image through the documented path, without private
+   source mounts. Check effective features, inference, bounded performance and
+   rollback. Arrange TP2 Compose/cache-restore tests with the serving owner.
+4. Evaluate a pinned published ARM64 LIL base as a separate composition. Compare
+   installed sources and native libraries; retain required SparkRing features.
+   Promote a profile's image selection only after matching acceptance checks.
 
 ### Repository adoption
 
-1. Review the profile catalog, configuration/launch contracts, migration map and
-   retained-source exceptions. Compare default plans and generated legacy inputs.
-2. Reconcile main changes that landed after this report. Preserve upstream
-   contributor changes when integrating them into maintained owners. If PR #267
-   merges, compare its merged content with the locally integrated SGLang changes
-   and resolve overlaps without losing either contributor fixes or layout adapters.
-   Add release/profile selections rather than rewriting preserved inputs or
-   transferring evidence.
-3. With explicit authorization, push the branch and open a pull request against
-   main. Run hosted Linux CI, including the pinned LIL companion job, on the
-   resulting revision. Resolve failures and rerun affected checks after any
-   further source reconciliation before adopting the layout.
-4. Adopt through a normal reviewed merge. Do not replace or force-push main.
-5. Keep deployment promotion separate. Any rebuilt image or operational default
-   needs its exact source/image/model/topology checks and relevant qualification
-   on separately authorized hosts. This layout change starts no services.
+1. Review ownership, profiles, compatibility exports and configuration defaults.
+2. Reconcile contributor changes and run current-head Linux/CI checks. Report
+   skipped hardware checks separately; do not transfer historical results.
+3. With explicit authorization, push the refactor branch and open a draft PR for
+   hosted Linux/LIL CI and review. Keep image publication separate.
+4. Adopt through a normal reviewed merge. Do not force-push or replace main.
+5. Promote deployments separately with exact image/model/site evidence and an
+   operational rollback procedure. A repository merge starts no services.
 
 ## Rollback
 
-Before adoption, abandoning this isolated branch leaves main and deployments
-unchanged. After adoption, revert the adoption commit or merge through normal
-Git history. Keep the generated compatibility paths while the revert is reviewed.
-No cluster rollback is needed for adopting the repository layout. The isolated
-hardware tests have their own completed cleanup described above. A later
-operational promotion must carry its own image/site rollback procedure.
+Before adoption, the isolated branch leaves main and deployments unchanged.
+After adoption, revert through normal Git history while retaining compatibility
+paths. Deployment rollback follows the selected profile's procedure and image
+receipt. Retain known-working containers, model files and cache ownership until
+that deployment's acceptance and rollback checks are complete.
 
 ## Profile-default verification
 
-After incorporating main's DCP4 change, the relevant runtime, image, mesh and
-shared-profile suite passed 1,082 tests with 27 platform/optional skips. The
-published DCP4 activation receipt passed the verifier for all four ranks.
-The original entrypoint/contract/publication bytes are retained as archival
-inputs; the added release selection pins the merged overlay and its evidence.
-
-The vLLM DeepSeek-V4.1-Flash profile defaults to 1M context tokens in the recipe
-and generated ENV example. The SGLang profile retains its contributor's 262,144-token
-default. Measurements retain their actual settings. The ENV
-migration baseline records this intentional default change instead of rewriting
-its historical hash. KV displays carry a feature-dependent capacity footnote.
+Compare effective plans and generated exports after integration. Defaults,
+checkpoint identities, image selections and source hashes must agree with their
+canonical profiles. Feature-dependent KV capacity remains a measured estimate,
+not a per-request context limit. Software configuration checks do not promote a
+profile from Development or Experimental to Validated.

@@ -1,6 +1,11 @@
 """Source-bound Qwen MTP prefill GEMMs with BF16 projection/add boundaries."""
 
-import hashlib, importlib.abc, importlib.machinery, json, os, sys
+import hashlib
+import importlib.abc
+import importlib.machinery
+import json
+import os
+import sys
 from pathlib import Path
 
 TARGET = "b12x.sequence.mtp_feedback._kernels"

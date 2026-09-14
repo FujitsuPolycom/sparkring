@@ -125,11 +125,13 @@ def test_collective_overrides_are_not_replaced(inventory, overrides):
 
 
 @pytest.mark.parametrize("cache_values,expected_roots", [
-    ({}, {"VLLM_CACHE_ROOT": "/cache", "TORCHINDUCTOR_CACHE_DIR": "/cache"}),
+    ({}, {"VLLM_CACHE_ROOT": "/cache/vllm", "TORCHINDUCTOR_CACHE_DIR": "/cache/inductor"}),
     ({"VLLM_CACHE_ROOT": "/srv/model-qad/vllm", "TORCHINDUCTOR_CACHE_DIR": "/srv/model-qad/inductor"},
-     {"VLLM_CACHE_ROOT": "/srv/model-qad", "TORCHINDUCTOR_CACHE_DIR": "/srv/model-qad"}),
+     {"VLLM_CACHE_ROOT": "/srv/model-qad/vllm", "TORCHINDUCTOR_CACHE_DIR": "/srv/model-qad/inductor"}),
     ({"VLLM_CACHE_ROOT": "/cache/site/model/vllm/", "TORCHINDUCTOR_CACHE_DIR": "/fast/site/model/torch/"},
-     {"VLLM_CACHE_ROOT": "/cache/site/model", "TORCHINDUCTOR_CACHE_DIR": "/fast/site/model"}),
+     {"VLLM_CACHE_ROOT": "/cache/site/model/vllm", "TORCHINDUCTOR_CACHE_DIR": "/fast/site/model/torch"}),
+    ({"VLLM_CACHE_ROOT": "/mnt/vllm-cache", "TORCHINDUCTOR_CACHE_DIR": "/mnt/torch-cache"},
+     {"VLLM_CACHE_ROOT": "/mnt/vllm-cache", "TORCHINDUCTOR_CACHE_DIR": "/mnt/torch-cache"}),
 ])
 def test_prefill_cache_namespace_is_source_bound_and_idempotent(cache_values, expected_roots):
     digest = hashlib.sha256(b"prefill implementation identity").hexdigest()
@@ -150,8 +152,8 @@ def test_different_prefill_sources_receive_distinct_compiler_namespaces():
     second = dict(first)
     bootstrap.prefill_environment(first, "a" * 64)
     bootstrap.prefill_environment(second, "b" * 64)
-    assert first["VLLM_CACHE_ROOT"] == "/cache/site/model/qwen-prefill-aaaaaaaaaaaa/vllm"
-    assert second["VLLM_CACHE_ROOT"] == "/cache/site/model/qwen-prefill-bbbbbbbbbbbb/vllm"
+    assert first["VLLM_CACHE_ROOT"] == "/cache/site/model/vllm/qwen-prefill-aaaaaaaaaaaa/vllm"
+    assert second["VLLM_CACHE_ROOT"] == "/cache/site/model/vllm/qwen-prefill-bbbbbbbbbbbb/vllm"
 
 
 @pytest.mark.parametrize("selection,expected_order", [
@@ -165,7 +167,7 @@ def test_both_features_activate_with_prefill_environment_ready(inventory, select
     events = []
 
     def activate_prefill():
-        assert environment["VLLM_CACHE_ROOT"] == f"/cache/site/model/qwen-prefill-{digest[:12]}/vllm"
+        assert environment["VLLM_CACHE_ROOT"] == f"/cache/site/model/vllm/qwen-prefill-{digest[:12]}/vllm"
         assert environment["SPARKRING_QWEN_PREFILL_MANIFEST_SHA256"] == digest
 
     prefill_install = Mock(side_effect=activate_prefill)

@@ -1,6 +1,10 @@
 """Check rank agreement and collective eligibility without GPU execution."""
 
-import importlib.util, os, sys, types, unittest
+import importlib.util
+import os
+import sys
+import types
+import unittest
 import tempfile
 from unittest.mock import patch
 from pathlib import Path

@@ -1,6 +1,11 @@
 """Source-bound Qwen HC up-projection/gate fusion for local qualification."""
 
-import hashlib, importlib.abc, importlib.machinery, json, os, sys
+import hashlib
+import importlib.abc
+import importlib.machinery
+import json
+import os
+import sys
 from pathlib import Path
 
 TARGET = "vllm.models.qwen3_8_flash_next.hyperconnection"
