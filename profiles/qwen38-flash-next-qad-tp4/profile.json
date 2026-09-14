@@ -8,7 +8,7 @@
     "format": "serving-profile",
     "path": "profiles/qwen38-flash-next-qad-tp4/config.json"
   },
-  "release": "runtime/releases/qwen38-flash-next-qad-r37-shared/release.json",
+  "release": "runtime/releases/qwen38-flash-next-qad-r37-shared-registry/release.json",
   "guide": "profiles/qwen38-flash-next-qad-tp4/README.md",
   "evidence_scope": "Bounded QAD TP4 text, prefill and C1/C8 decode checks on the exact shared-feature image. No full-262K, QAD media or long-duration qualification. SparkCache is disabled.",
   "overrides": [],

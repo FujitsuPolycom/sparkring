@@ -36,11 +36,11 @@ serving defaults. A site cannot change them or select an arbitrary image. The
 selects its registered extension image. Image capabilities do not automatically
 enable GLM-specific features in Qwen.
 
-The QAD TP4 profile selects a local shared-feature image. Its reference build
-pins a descriptor and image ID. `render --local-image-id SHA256_ID` can select
-a source-equivalent rebuild, which must use the same tag and exact image ID on
-all ranks. The host verifier still checks the entire pinned payload before
-creation. Published profiles reject this override.
+The QAD TP4 profile selects the published shared-feature image by immutable
+registry digest. The host verifier checks its full pinned payload before
+creation. Published profiles reject `--local-image-id`; source-equivalent
+rebuilds use an explicitly local release selection with the same image ID and
+local tag installed on every rank.
 
 ## Prepare the hosts
 

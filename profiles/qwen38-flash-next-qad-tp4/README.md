@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next QAD on four Sparks
 
-Status: **Development**. This profile selects a locally built R37 shared image
+Status: **Development**. This profile selects the published R37 shared image
 with Qwen collective selection, HC fusion and MTP prefill GEMMs. The baked image
 passed inventory, four-rank Compose startup, bounded text checks and matched
 prefill/decode measurements. The [serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
@@ -26,22 +26,25 @@ GLM-specific mHC/KDA and SIRCL serving switches are disabled in this Qwen profil
 ## Prepare image, model and fabric
 
 Use four Linux ARM64 Sparks with Docker Compose and the
-[host prerequisites](../../docs/operations/prerequisites.md). Build the
+[host prerequisites](../../docs/operations/prerequisites.md). Pull the exact
 [shared feature image](../../runtime/images/compositions/lil-r37-shared/README.md)
-once, then copy that exact image to the other hosts. It is not published to a
-registry. Run from the SparkRing checkout on the build host:
+on every host:
 
 ```bash
-IMAGE_TAG=$(python3 -c "import json; print(json.load(open('runtime/images/compositions/lil-r37-shared/local-build.json'))['image_tag'])")
-IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_TAG")
-docker save --output "$HOME/sparkring-qwen-shared.tar" "$IMAGE_TAG"
-# Copy the archive to each other host, then run there:
-docker load --input "$HOME/sparkring-qwen-shared.tar"
+BASE_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270'
+IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:aef597a5ee70f7b4e0807901e43456b6ac8d2234247ab4df6a6cfe031e5169c6'
+# The base supplies the pinned parent receipt; Docker reuses shared layers.
+docker pull --platform linux/arm64 "$BASE_IMAGE"
+docker pull --platform linux/arm64 "$IMAGE_REF"
+docker image inspect --format '{{.Id}}' "$IMAGE_REF"
 ```
 
-Retain `IMAGE_ID` from this build. A source-equivalent rebuild can have a
-different image ID; the coordinator verifies its complete pinned contents
-before serving. Every rank must have the same copied image ID and tag.
+The image ID must be
+`sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2`.
+The readable tag is `ghcr.io/fujitsupolycom/sparkring:r37-shared-arm64-2540686d726a`;
+the [publication receipt](../../runtime/images/compositions/lil-r37-shared/publication.json)
+binds it to the immutable digest. The coordinator verifies the complete image
+contents before serving. Local image builds remain a separate developer workflow.
 
 Use an existing verified checkpoint or download the pinned revision into a
 dedicated directory on each host:
@@ -83,8 +86,7 @@ mkdir -p .sparkring
 cp profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml .sparkring/qwen-qad.site.yaml
 # Fill all four hosts, directories and the prepared fabric's actual identities.
 python3 scripts/sparkring.py compose render qwen38-flash-next-qad-tp4 \
-  --site .sparkring/qwen-qad.site.yaml --output .sparkring/deployments/qwen-qad \
-  --local-image-id "$IMAGE_ID"
+  --site .sparkring/qwen-qad.site.yaml --output .sparkring/deployments/qwen-qad
 python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/qwen-qad
 python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/qwen-qad --hosts
 python3 scripts/sparkring.py compose start --deployment .sparkring/deployments/qwen-qad

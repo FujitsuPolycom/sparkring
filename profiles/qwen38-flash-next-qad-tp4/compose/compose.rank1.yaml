@@ -3,7 +3,7 @@ name: sr-qwen-qad-example-r1
 services:
   model:
     container_name: sr-qwen-qad-example-r1
-    image: sparkring-local:r37-arm64-ba0f0f0b7045
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:aef597a5ee70f7b4e0807901e43456b6ac8d2234247ab4df6a6cfe031e5169c6
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -162,7 +162,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-2540686d726a-629bc3218833
     labels:
-      io.sparkring.deployment: 92d850037fe5efdbd1452464a63ede22a20dcab40ed4be264d33476641268995
+      io.sparkring.deployment: 97a5e12a7f0c07c808ebeae3a986b8e8c957194edfd43177e6a8b1f4dca1226f
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

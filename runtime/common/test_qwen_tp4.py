@@ -12,6 +12,7 @@ from scripts import sparkring_compose as coordinator
 
 PROFILE = "qwen38-flash-next-qad-tp4"
 BUILD = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/local-build.json"
+PUBLICATION = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/publication.json"
 MAPS = ["1=0/2,2=0/3,3=1/3", "0=1/3,2=0/2,3=0/3",
         "0=1/2,1=1/3,3=0/2", "0=0/2,1=1/2,2=1/3"]
 
@@ -26,7 +27,8 @@ def test_tp4_settings_and_peer_maps_reach_both_backends(site, rank):
     specs, image = compose.specifications(PROFILE, site)
     spec = specs[rank]
     argv = docker_create(spec)
-    assert image == adapter.read(BUILD)["image_tag"]
+    assert image == adapter.read(PUBLICATION)["image_reference"]
+    assert spec.image_id == adapter.read(BUILD)["image_id"]
     assert argv[argv.index(spec.image_id)+1:] == list(spec.command)
     for flag, value in [("--tensor-parallel-size", "4"), ("--nnodes", "4"),
                         ("--decode-context-parallel-size", "1"), ("--max-model-len", "262144"),
@@ -62,7 +64,11 @@ def test_tp4_incomplete_rank_or_fabric_selection_is_rejected(site, mutation):
         compose.specifications(PROFILE, site)
 
 
-def test_local_rebuild_identity_is_bound_to_export_and_plan(site, tmp_path):
+def test_local_rebuild_identity_is_bound_to_export_and_plan(site, tmp_path, monkeypatch):
+    metadata, _ = compose.profiles.load(PROFILE)
+    metadata = dict(metadata, release="runtime/releases/qwen38-flash-next-qad-r37-shared/release.json")
+    local_release = adapter.read(adapter.ROOT / metadata["release"])
+    monkeypatch.setattr(compose.profiles, "load", lambda *args, **kwargs: (metadata, local_release))
     image_id = "sha256:" + "a" * 64
     reference, _ = compose.build(PROFILE, site)
     selected, _ = compose.build(PROFILE, site, local_image_id=image_id)
@@ -80,10 +86,23 @@ def test_local_rebuild_identity_is_bound_to_export_and_plan(site, tmp_path):
     assert [a["host"] for a in phases["start-api"]["actions"]] == ["spark0"]
 
 
-def test_published_tp2_image_cannot_use_local_override():
-    site = compose.read_site(adapter.CONFIG_ROOT / "compose/site.example.yaml")
+@pytest.mark.parametrize("profile_id", ["qwen38-flash-next-tp2", PROFILE])
+def test_published_image_cannot_use_local_override(profile_id):
+    site = compose.read_site(adapter.ROOT / f"profiles/{profile_id}/compose/site.example.yaml")
     with pytest.raises(ValueError, match="cannot be overridden"):
-        compose.specifications("qwen38-flash-next-tp2", site, local_image_id="sha256:" + "a" * 64)
+        compose.specifications(profile_id, site, local_image_id="sha256:" + "a" * 64)
+
+
+def test_registry_selection_preserves_the_tested_image_and_serving_spec(site, monkeypatch):
+    published, image = compose.specifications(PROFILE, site)
+    metadata, _ = compose.profiles.load(PROFILE)
+    metadata = dict(metadata, release="runtime/releases/qwen38-flash-next-qad-r37-shared/release.json")
+    local_release = adapter.read(adapter.ROOT / metadata["release"])
+    monkeypatch.setattr(compose.profiles, "load", lambda *args, **kwargs: (metadata, local_release))
+    local, local_image = compose.specifications(PROFILE, site)
+    assert local == published
+    assert image != local_image
+    assert {spec.image_id for spec in published} == {adapter.read(BUILD)["image_id"]}
 
 
 def test_feature_verification_reads_chain_from_same_image(monkeypatch):

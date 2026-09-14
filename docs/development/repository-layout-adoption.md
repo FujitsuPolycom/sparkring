@@ -48,6 +48,7 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 |---|---|
 | [Linux integration at `622fe32`](../../performance/records/repository/local-ci.json) | 5,750 tests passed, 29 skipped; 185 image tests passed; real Compose resolution, layout, links, release preservation and pinned LIL companion checks passed |
 | [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and feature activation checks; serving evidence is recorded separately below |
+| [Shared image publication](../../runtime/images/compositions/lil-r37-shared/publication.json) | Anonymous manifest/configuration checks and a clean-credential pull match the tested ARM64 image; the QAD quickstart selects its registry digest |
 | [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
 | [Baked QAD TP4 serving](../../performance/records/qwen38-flash-next/r37-shared-tp4.json) | Complete image admission, four-rank Compose launch, matched repository-harness prefill/decode, text checks and coordinated stop/fresh-deployment restart |
 | [Qwen TP2 Compose smoke](../../performance/records/qwen38-flash-next/compose-tp2.json) | Native/cache-enabled startup and owned shutdown, matching text requests, both-rank disk restore of 5,696 tokens through fresh containers, and restoration of the original serving deployment |
@@ -98,7 +99,7 @@ compatibility shims with duplicate implementations.
 
 ### Image integration
 
-1. Retain the tested Qwen QAD TP4 shared-image admission and quickstart. Its
+1. Retain the tested Qwen QAD TP4 shared-image admission and registry quickstart. Its
    bounded serving record does not qualify other models or feature combinations.
    Existing TP2 instructions keep their published pins.
 2. Preserve GLM's recorded serving evidence and its fabric, source-verification,

@@ -7,7 +7,9 @@ are baked into the image; model weights and site configuration are external.
 
 The [descriptor](descriptor.json) pins the parent image/receipt and every
 addition. The [local build record](local-build.json) identifies the built image
-and verification scope. No publication or profile-default promotion is implied.
+and its build-time verification scope. The [publication receipt](publication.json)
+records the registry digest for those exact image bytes; model profiles select
+their supported features and validation scope independently.
 The [earlier build record](../../../../performance/records/images/r37-shared-876111b1e7bf.json)
 retains its exact image and source revision; its evidence does not qualify this
 descriptor or transfer automatically to a rebuilt image.
@@ -16,6 +18,18 @@ The [QAD TP4 serving record](../../../../performance/records/qwen38-flash-next/r
 covers bounded text and performance checks on image `2540686d726a` with both
 Qwen features. Other profile/feature combinations retain their own validation
 requirements; the local build record describes the build-time checks only.
+
+## Pull the image
+
+```bash
+docker pull --platform linux/arm64 \
+  ghcr.io/fujitsupolycom/sparkring@sha256:aef597a5ee70f7b4e0807901e43456b6ac8d2234247ab4df6a6cfe031e5169c6
+```
+
+Tag: `ghcr.io/fujitsupolycom/sparkring:r37-shared-arm64-2540686d726a`.
+Use the selected model's quickstart to configure the image; pulling it starts
+no model and does not enable optional features.
+The QAD quickstart also pulls the R37 base for independent receipt verification.
 
 ## Included capabilities
 
@@ -74,9 +88,9 @@ docker run --rm --network none --entrypoint /opt/venv/bin/python "$FEATURE_IMAGE
   -c 'import json,sparkring_features; print(json.dumps(sparkring_features.description(), indent=2))'
 ```
 
-Existing published profiles remain pinned to their existing releases. Adopting
-this image requires profile/release admission and serving checks for the exact
-selected combination; do not bypass an existing launcher's image validation.
+The QAD TP4 quickstart selects this registry image. Other profiles retain their
+own release selections. Adopting the image for another combination requires
+profile/release admission and the relevant serving checks.
 
 ## Checkpoint scheduling limitation
 
