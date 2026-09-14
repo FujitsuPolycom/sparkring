@@ -1,0 +1,77 @@
+{
+  "schema": "sparkring-foundation-evaluation/v1",
+  "status": "Experimental",
+  "image_reference": "ghcr.io/randomvariable/vllm-b12x-multi@sha256:72431d1f54507c621d7b8c4140c1620867b8a171bdacfb7fa76f4c075db90561",
+  "platform": "linux/arm64",
+  "builder_repository": "https://github.com/randomvariable/vllm-multiarch-oci",
+  "builder_reference": "36b70acaa5e108657c121c744617dee12538d96d",
+  "source_pins": {
+    "vllm": "b40673cd006bf3496fdd70361dad2ad29eff54e7",
+    "b12x": "9043b448622764a598969518d413b3fd8b3c0c07",
+    "torch": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+    "nccl": "dfab7c1ace32da250ba97757879429c341b7bcf9"
+  },
+  "probe_sha256": "2edbe2afa4a86289c56368e14fe600ecced1877c57fabec976d9e972cea38e0b",
+  "probe_conditions": {
+    "runtime": "runc",
+    "network": "none",
+    "root_filesystem": "read-only",
+    "host_mounts": false,
+    "gpu_devices": false,
+    "memory_limit_bytes": 4294967296,
+    "cpu_limit": 2
+  },
+  "observed": {
+    "imports": {
+      "b12x": {
+        "ok": true
+      },
+      "torch": {
+        "ok": true
+      },
+      "vllm": {
+        "ok": true
+      }
+    },
+    "machine": "aarch64",
+    "nccl": [
+      {
+        "path": "/opt/nccl/lib/libnccl.so.2.30.4",
+        "preserve_pci_domain_switch": false,
+        "sha256": "78cd56cd6d0463ad3787004b4df0bc96a5dd3c6a99f3fcaf5733330f09d0c6df",
+        "subnet_aware_routing_switch": false,
+        "version": 23004,
+        "version_status": 0
+      }
+    ],
+    "packages": {
+      "b12x": "1.3.0",
+      "flashinfer-python": "0.6.18",
+      "lmcache": "0.5.3.dev3",
+      "sparkcache": null,
+      "torch": "2.13.0",
+      "vllm": "0.1.dev1+vllmb12x.gb40673cd006b"
+    },
+    "python": "3.12.12",
+    "sources": {
+      "b12x/sequence/mtp_feedback/_kernels.py": "be326f7e8767f03ca3e4a1514191c42790b1795e72033f061f196489ba384d47",
+      "vllm/distributed/device_communicators/b12x_roce_all_reduce.py": "ea8a0f8515c82b7d57f4c085287f4dc106de745fbf2dd5721403072aeaf75114",
+      "vllm/models/qwen3_8_flash_next/hyperconnection.py": "adb84c0979921579c12dc8ab6496d9c64d1a3770cbbccd3bf3368bcdcdb3302e"
+    },
+    "sparkring_paths": {
+      "/opt/sparkring/receipts/candidate-installed.json": false,
+      "/opt/sparkring/sircl/libspark_transport_capi.so": false,
+      "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so": false
+    },
+    "torch_cuda": "13.3",
+    "visible_cuda_devices": 0
+  },
+  "gaps": [
+    "Packaged NCCL is 2.30.4 and lacks the SparkRing PCI-domain preservation and subnet-aware routing switches.",
+    "SparkCache, SIRCL and SparkRing image receipts are absent.",
+    "GLM mHC/KDA/source-lease patch reconciliation is required before preserving its enhancements.",
+    "Nominal Torch/CUDA compatibility and three matching Qwen files do not prove native ABI or GPU-serving compatibility."
+  ],
+  "decision": "Retain as a pinned foundation candidate. Do not select it directly in serving profiles; construct and validate a separate SparkRing application/transport layer first.",
+  "gpu_serving_qualified": false
+}
