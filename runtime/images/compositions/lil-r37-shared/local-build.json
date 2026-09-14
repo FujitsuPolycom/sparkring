@@ -16,7 +16,7 @@
     "combined_activation": true,
     "child_cache_namespace_idempotent": true,
     "unknown_feature_rejected": true,
-    "gpu_serving_on_this_image": false,
+    "gpu_serving_on_this_image": true,
     "parent_layers_preserved": true,
     "entrypoint_preserved": true,
     "independent_cache_mounts_writable": true,
@@ -24,6 +24,7 @@
     "image_and_feature_tests_passed": 197,
     "feature_admission_tests_passed": 62
   },
-  "scope": "Image build, complete source/binary inventory and CPU import/activation checks, including separate writable compiler-cache mounts. No GPU serving on this image yet. Request-boundary SparkCache support is not included.",
-  "installation_step_seconds": 22.5
+  "scope": "Image build, complete source/binary inventory and CPU import/activation checks, including separate writable compiler-cache mounts. Bounded GPU serving is covered by the linked Qwen QAD TP4 record, not every profile/feature combination. Request-boundary SparkCache support is not included.",
+  "installation_step_seconds": 22.5,
+  "serving_evidence": "performance/records/qwen38-flash-next/r37-shared-tp4.json"
 }
