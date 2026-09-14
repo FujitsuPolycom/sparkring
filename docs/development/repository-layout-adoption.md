@@ -49,6 +49,7 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 | Integration at `4ac872b` | 354 shared/profile/Compose tests passed on Windows with real Compose resolution required; layout, 1,241 links and release-preservation checks passed |
 | [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and explicitly recorded feature checks; read its serving qualification field |
 | [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
+| [Baked QAD TP4 serving](../../performance/records/qwen38-flash-next/r37-shared-tp4.json) | Complete image admission, four-rank Compose launch, matched repository-harness prefill/decode, text checks and coordinated stop/fresh-deployment restart |
 | [Qwen TP2 guide](../../profiles/qwen38-flash-next-tp2/README.md) | Published aligned-cache image and separate private request-boundary results are identified explicitly |
 | Historical Linux/native/serving checks | Revision-specific results summarized below; they do not establish current-head CI or serving qualification |
 
@@ -94,8 +95,9 @@ compatibility shims with duplicate implementations.
 
 ### Image integration
 
-1. Finish the shared-feature image's profile admission and maintained Qwen QAD
-   TP4 adapter/quickstart. Existing TP2 instructions keep their published pins.
+1. Retain the tested Qwen QAD TP4 shared-image admission and quickstart. Its
+   bounded serving record does not qualify other models or feature combinations.
+   Existing TP2 instructions keep their published pins.
 2. Migrate GLM TP4 to the shared specification while preserving fabric,
    source-verification, readiness and recovery contracts.
 3. Validate the exact baked image through the documented path, without private
