@@ -1,0 +1,61 @@
+{
+  "schema": "sparkring-feature-extension/v1",
+  "id": "lil-r37-shared",
+  "status": "Development",
+  "parent": {
+    "image_id": "sha256:384bc56e4a1faa0d983d9e448ccb08731c1362b426c5d7926be5204cfc137ca8",
+    "image_ref": "ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523",
+    "receipt_sha256": "6723e49be2104d7ae3782511498d93987c88772142106ceb660a6d8121ea5ccc"
+  },
+  "capabilities": [
+    "qwen-collectives",
+    "qwen-prefill"
+  ],
+  "installer_sha256": "00a4cec37bdab0f1e2a280b9ac56a979d64e22e18c95ff17c1431b06b3c93e37",
+  "assets": {
+    "/opt/sparkring/features/sparkring_features.py": {
+      "source": "runtime/images/feature_bootstrap.py",
+      "sha256": "10f4b599d1aa2748c287859aa52431c1ada843f4afeca68e8557d6ea7244f6d7"
+    },
+    "/opt/venv/lib/python3.12/site-packages/sparkring_features.pth": {
+      "text": "/opt/sparkring/features\nimport sparkring_features; sparkring_features.install_or_exit()\n",
+      "sha256": "cb84f8ace9cc8b3f21ecc262021233c751c5b62b88b5d816531259ee1b9a7dc4"
+    },
+    "/opt/venv/lib/python3.12/site-packages/sparkring_transport.pth": {
+      "text": "/opt/sparkring/transports\nimport sparkring_transport_selector; sparkring_transport_selector.install_from_environment()\n",
+      "sha256": "c4865202d229c0501368f6f31f810d97dda25e50c0afc12cc4edd4bb8a5695a6"
+    },
+    "/opt/sparkring/features/qwen-collectives/qwen38_collective_policy.py": {
+      "source": "integrations/vllm/qwen38_collectives/qwen38_collective_policy.py",
+      "sha256": "6b060a28d1c58d73149e88e6ef8cccd615c62da4d2645c4cf36d14f685c14408"
+    },
+    "/opt/sparkring/features/qwen-prefill/fused_gate_kernel.py": {
+      "source": "integrations/vllm/qwen38_prefill/fused_gate_kernel.py",
+      "sha256": "c27480889263a09690b282f23dc665e97e28beb0b0c54b16a35f6e5c0219df4b"
+    },
+    "/opt/sparkring/features/qwen-prefill/prefill_bootstrap.py": {
+      "source": "integrations/vllm/qwen38_prefill/prefill_bootstrap.py",
+      "sha256": "a7cd5229ed2781098b25fce63962198e7089dca12fef90596541be775f455de8"
+    },
+    "/opt/sparkring/features/qwen-prefill/qwen_hc_fusion.py": {
+      "source": "integrations/vllm/qwen38_prefill/qwen_hc_fusion.py",
+      "sha256": "a97ce84df7c01a8d4d6377b245c40a055a29376f65d66df6dc2af0eb64559f18"
+    },
+    "/opt/sparkring/features/qwen-prefill/qwen_mtp_gemm.py": {
+      "source": "integrations/vllm/qwen38_prefill/qwen_mtp_gemm.py",
+      "sha256": "d0d685aa15f0df3a8a62645a35196fa970ab375d38df949ed96d1b32a5e7618d"
+    },
+    "/opt/sparkring/features/qwen-prefill/qwen_prefill.pth": {
+      "text": "/opt/sparkring/qwen38-prefill\nimport prefill_bootstrap; prefill_bootstrap.install()\n",
+      "sha256": "2d1d53a046ddeb6cf6b6515b72ac0845baca228d6f39ee30f2f11b0556c8074c"
+    },
+    "/opt/sparkring/features/qwen-prefill/manifest.json": {
+      "text": "{\n  \"files\": {\n    \"fused_gate_kernel.py\": \"c27480889263a09690b282f23dc665e97e28beb0b0c54b16a35f6e5c0219df4b\",\n    \"prefill_bootstrap.py\": \"a7cd5229ed2781098b25fce63962198e7089dca12fef90596541be775f455de8\",\n    \"qwen_hc_fusion.py\": \"a97ce84df7c01a8d4d6377b245c40a055a29376f65d66df6dc2af0eb64559f18\",\n    \"qwen_mtp_gemm.py\": \"d0d685aa15f0df3a8a62645a35196fa970ab375d38df949ed96d1b32a5e7618d\",\n    \"qwen_prefill.pth\": \"2d1d53a046ddeb6cf6b6515b72ac0845baca228d6f39ee30f2f11b0556c8074c\"\n  },\n  \"image_source_preimages\": {\n    \"/opt/venv/lib/python3.12/site-packages/b12x/sequence/mtp_feedback/_kernels.py\": \"be326f7e8767f03ca3e4a1514191c42790b1795e72033f061f196489ba384d47\",\n    \"/opt/venv/lib/python3.12/site-packages/vllm/models/qwen3_8_flash_next/hyperconnection.py\": \"adb84c0979921579c12dc8ab6496d9c64d1a3770cbbccd3bf3368bcdcdb3302e\"\n  },\n  \"schema\": \"sparkring-qwen-prefill/v1\"\n}\n",
+      "sha256": "6180d96587efbeb33d3a6072fb10b7272ab35ca6c2a70cacc3a221b07f46104e"
+    },
+    "/opt/sparkring/features/capabilities.json": {
+      "text": "{\n  \"features\": {\n    \"qwen-collectives\": {\n      \"directory\": \"qwen-collectives\",\n      \"files\": {\n        \"qwen-collectives/qwen38_collective_policy.py\": \"6b060a28d1c58d73149e88e6ef8cccd615c62da4d2645c4cf36d14f685c14408\"\n      },\n      \"scope\": \"Size-bounded RoCEnante/NCCL routing. TP2 deployed policy bytes match TP4 tested source.\",\n      \"supported_tp\": [\n        2,\n        4\n      ]\n    },\n    \"qwen-prefill\": {\n      \"directory\": \"qwen-prefill\",\n      \"files\": {\n        \"qwen-prefill/fused_gate_kernel.py\": \"c27480889263a09690b282f23dc665e97e28beb0b0c54b16a35f6e5c0219df4b\",\n        \"qwen-prefill/manifest.json\": \"6180d96587efbeb33d3a6072fb10b7272ab35ca6c2a70cacc3a221b07f46104e\",\n        \"qwen-prefill/prefill_bootstrap.py\": \"a7cd5229ed2781098b25fce63962198e7089dca12fef90596541be775f455de8\",\n        \"qwen-prefill/qwen_hc_fusion.py\": \"a97ce84df7c01a8d4d6377b245c40a055a29376f65d66df6dc2af0eb64559f18\",\n        \"qwen-prefill/qwen_mtp_gemm.py\": \"d0d685aa15f0df3a8a62645a35196fa970ab375d38df949ed96d1b32a5e7618d\",\n        \"qwen-prefill/qwen_prefill.pth\": \"2d1d53a046ddeb6cf6b6515b72ac0845baca228d6f39ee30f2f11b0556c8074c\"\n      },\n      \"manifest_sha256\": \"6180d96587efbeb33d3a6072fb10b7272ab35ca6c2a70cacc3a221b07f46104e\",\n      \"scope\": \"Qwen H2560/S4/R320 HC fusion and MTP prefill GEMMs; bounded QAD TP4 evidence. TP2 compute activation is unsupported.\",\n      \"supported_tp\": [\n        4\n      ]\n    }\n  },\n  \"inherited_capabilities\": [\n    \"SparkCache 64-group Qwen hybrid capture/restore\",\n    \"Patched dual-domain NCCL\",\n    \"GLM mHC prefill sharding and KDA coalescing\",\n    \"SIRCL and adaptive RoCEnante source bundles\"\n  ],\n  \"qualification\": \"Feature code is included, not enabled globally. Combined image still requires profile-specific serving qualification.\",\n  \"schema\": \"sparkring-image-capabilities/v1\",\n  \"status\": \"Development\"\n}\n",
+      "sha256": "0c91433ea19a7d92db8243190bb82a7d8dded39d99926486a255c98a9a41b26a"
+    }
+  }
+}
