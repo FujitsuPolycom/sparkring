@@ -16,6 +16,7 @@ parser.add_argument("--model", required=True)
 parser.add_argument("--label", required=True)
 parser.add_argument("--output", required=True, type=Path)
 parser.add_argument("--trials", type=int, default=2)
+parser.add_argument("--fixture-id", default="", help="use the same fresh identifier for matched arms to avoid earlier prefix-cache entries")
 args = parser.parse_args()
 if not args.label.replace("-", "").isalnum() or args.trials < 1:
     parser.error("Use an alphanumeric label and positive trial count")
@@ -29,6 +30,8 @@ if (ROOT / (label + ".json")).exists():
 def request(index, barrier, trial):
     # Fixed text per trial/rank, identical across arms; disjoint leading content.
     prefix = f"Observatory station {index}, record series {trial}. "
+    if args.fixture_id:
+        prefix = f"{args.fixture_id}/{trial}/{index}. " + prefix
     prompt = (
         prefix
         + (
@@ -94,6 +97,7 @@ for trial in range(args.trials):
             decode = max(r["end"] for r in rows) - min(r["first"] for r in rows)
             tokens = sum(r["usage"]["completion_tokens"] for r in rows)
             summary = {
+                "fixture_id": args.fixture_id,
                 "trial": trial,
                 "c": c,
                 "phase": phase,

@@ -12,6 +12,11 @@ The [earlier build record](../../../../performance/records/images/r37-shared-876
 retains its exact image and source revision; its evidence does not qualify this
 descriptor or transfer automatically to a rebuilt image.
 
+The [QAD TP4 serving record](../../../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
+covers bounded text and performance checks on image `2540686d726a` with both
+Qwen features. Other profile/feature combinations retain their own validation
+requirements; the local build record describes the build-time checks only.
+
 ## Included capabilities
 
 | Capability | Selection and scope |

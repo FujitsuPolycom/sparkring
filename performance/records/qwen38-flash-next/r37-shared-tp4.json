@@ -1,0 +1,290 @@
+{
+  "schema": "sparkring-bounded-image-serving/v1",
+  "status": "Development",
+  "profile": "qwen38-flash-next-qad-tp4",
+  "source_revision": "bb8f0c2cb9b461c0154c9723071edfcf32cff615",
+  "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+  "descriptor_sha256": "ba0f0f0b7045071dbfb4be86eaafad548a192c3918f7135edf8b635c2ff206bf",
+  "baseline": {
+    "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+    "prefill_overlay_manifest_sha256": "6180d96587efbeb33d3a6072fb10b7272ab35ca6c2a70cacc3a221b07f46104e"
+  },
+  "conditions": {
+    "model_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "model_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+    "hardware": "four GB10 Sparks, ring with hardware-forwarded mesh paths",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "context": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_bytes_per_rank": 25769803776,
+    "kv_dtype": "fp8",
+    "mtp": 3,
+    "sparkcache": false,
+    "collective_cutoff_bytes": 20480,
+    "fixture_id": "qad-shared-image-20260914-bb8",
+    "transfers_idle_during_measurement": true
+  },
+  "method": {
+    "prefill": "Three exact-length token fixtures each at 16384/32768 tokens, one output token. Same fixture file in both arms. Disjoint leading case identifiers avoid prior bulk-prefix reuse. API cached-token details were unavailable.",
+    "decode": "Repository qwen_collectives.py harness, not DecodeBench. Two trials each at C1/C8, cold then warm, 256 output tokens. Decode-window rate is (output tokens minus request count)/(last stream end minus earliest first content).",
+    "collective_harness_sha256": "9a368ae5e42ab1efbba14014fae50d325af77bf02da4b70f9e4793ec1bf8c70f"
+  },
+  "measurements": {
+    "baseline": {
+      "prefill": [
+        {
+          "size": 16384,
+          "trial": 0,
+          "elapsed_seconds": 4.327999999979511,
+          "tokens_per_second": 3785.5822551011006
+        },
+        {
+          "size": 16384,
+          "trial": 1,
+          "elapsed_seconds": 4.297000000020489,
+          "tokens_per_second": 3812.8927158300853
+        },
+        {
+          "size": 16384,
+          "trial": 2,
+          "elapsed_seconds": 4.327999999979511,
+          "tokens_per_second": 3785.5822551011006
+        },
+        {
+          "size": 32768,
+          "trial": 0,
+          "elapsed_seconds": 8.969000000040978,
+          "tokens_per_second": 3653.473073904592
+        },
+        {
+          "size": 32768,
+          "trial": 1,
+          "elapsed_seconds": 8.98399999999674,
+          "tokens_per_second": 3647.3731077484294
+        },
+        {
+          "size": 32768,
+          "trial": 2,
+          "elapsed_seconds": 8.952999999979511,
+          "tokens_per_second": 3660.002233896458
+        }
+      ],
+      "decode": [
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 1,
+          "phase": "cold",
+          "aggregate_wall_tps": 53.53408615634692,
+          "aggregate_decode_window_tps": 85.42713567879176,
+          "mean_ttft": 1.797000000020489
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 1,
+          "phase": "warm",
+          "aggregate_wall_tps": 81.92,
+          "aggregate_decode_window_tps": 83.68887430202996,
+          "mean_ttft": 0.0779999999795109
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 8,
+          "phase": "cold",
+          "aggregate_wall_tps": 98.99937158613386,
+          "aggregate_decode_window_tps": 107.98793076066106,
+          "mean_ttft": 9.921249999992142
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 8,
+          "phase": "warm",
+          "aggregate_wall_tps": 259.5361804586433,
+          "aggregate_decode_window_tps": 260.60296372066165,
+          "mean_ttft": 0.37287500001548324
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 1,
+          "phase": "cold",
+          "aggregate_wall_tps": 53.72507869868824,
+          "aggregate_decode_window_tps": 85.45576407516037,
+          "mean_ttft": 1.7810000000172295
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 1,
+          "phase": "warm",
+          "aggregate_wall_tps": 82.74078862360233,
+          "aggregate_decode_window_tps": 84.1306499516488,
+          "mean_ttft": 0.06300000002374873
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 8,
+          "phase": "cold",
+          "aggregate_wall_tps": 96.8046889770435,
+          "aggregate_decode_window_tps": 105.29032258064517,
+          "mean_ttft": 9.910375000021304
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 8,
+          "phase": "warm",
+          "aggregate_wall_tps": 255.01182916145018,
+          "aggregate_decode_window_tps": 255.5110220441925,
+          "mean_ttft": 0.3671249999970314
+        }
+      ],
+      "fixture_sha256": "7b9c57ca7cee4c8d55f1ae4117cf6229416b79efc2cf5aa638f13d806a2bb893",
+      "prefill_harness_sha256": "1f0edce088b74469077983f0d3da0ccb02eaf97ff4e149838fb5e96e13d5fb77"
+    },
+    "candidate": {
+      "prefill": [
+        {
+          "size": 16384,
+          "trial": 0,
+          "elapsed_seconds": 4.35899999999674,
+          "tokens_per_second": 3758.660243177851
+        },
+        {
+          "size": 16384,
+          "trial": 1,
+          "elapsed_seconds": 4.328000000037719,
+          "tokens_per_second": 3785.582255050188
+        },
+        {
+          "size": 16384,
+          "trial": 2,
+          "elapsed_seconds": 4.312999999965541,
+          "tokens_per_second": 3798.7479712800605
+        },
+        {
+          "size": 32768,
+          "trial": 0,
+          "elapsed_seconds": 8.98399999999674,
+          "tokens_per_second": 3647.3731077484294
+        },
+        {
+          "size": 32768,
+          "trial": 1,
+          "elapsed_seconds": 9.01600000000326,
+          "tokens_per_second": 3634.427684115811
+        },
+        {
+          "size": 32768,
+          "trial": 2,
+          "elapsed_seconds": 9.03100000001723,
+          "tokens_per_second": 3628.3910973244915
+        }
+      ],
+      "decode": [
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 1,
+          "phase": "cold",
+          "aggregate_wall_tps": 47.354790972842046,
+          "aggregate_decode_window_tps": 82.84600389762026,
+          "mean_ttft": 2.327999999979511
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 1,
+          "phase": "warm",
+          "aggregate_wall_tps": 78.76923076923077,
+          "aggregate_decode_window_tps": 82.84600389762026,
+          "mean_ttft": 0.17199999996228144
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 8,
+          "phase": "cold",
+          "aggregate_wall_tps": 97.66798607476193,
+          "aggregate_decode_window_tps": 106.40517421227936,
+          "mean_ttft": 9.93374999997468
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 0,
+          "c": 8,
+          "phase": "warm",
+          "aggregate_wall_tps": 255.48902195598393,
+          "aggregate_decode_window_tps": 255.99196887996118,
+          "mean_ttft": 0.38087500000256114
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 1,
+          "phase": "cold",
+          "aggregate_wall_tps": 53.37781484600535,
+          "aggregate_decode_window_tps": 85.45576407516037,
+          "mean_ttft": 1.8119999999762513
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 1,
+          "phase": "warm",
+          "aggregate_wall_tps": 81.50270614445537,
+          "aggregate_decode_window_tps": 83.27890267863415,
+          "mean_ttft": 0.07900000002700835
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 8,
+          "phase": "cold",
+          "aggregate_wall_tps": 97.66798607449081,
+          "aggregate_decode_window_tps": 106.31644777973082,
+          "mean_ttft": 9.906375000020489
+        },
+        {
+          "fixture_id": "qad-shared-image-20260914-bb8",
+          "trial": 1,
+          "c": 8,
+          "phase": "warm",
+          "aggregate_wall_tps": 261.62493612740934,
+          "aggregate_decode_window_tps": 262.68349214513825,
+          "mean_ttft": 0.37700000000040745
+        }
+      ],
+      "fixture_sha256": "7b9c57ca7cee4c8d55f1ae4117cf6229416b79efc2cf5aa638f13d806a2bb893",
+      "prefill_harness_sha256": "1f0edce088b74469077983f0d3da0ccb02eaf97ff4e149838fb5e96e13d5fb77"
+    }
+  },
+  "functional": {
+    "arithmetic_correct": 16,
+    "arithmetic_concurrency": 8,
+    "retrieval_prompt_tokens": 13536,
+    "retrieval_correct": true,
+    "all_ranks_completed_compose_start": true,
+    "all_ranks_feature_markers_present": true,
+    "all_ranks_patched_nccl_2_31_2_mapped": true,
+    "source_mounts": false
+  },
+  "capacity": {
+    "tokens": 3179938,
+    "startup_line": "(EngineCore pid=450) INFO 09-14 17:43:46 [kv_cache_utils.py:2251] GPU KV cache size: 3,179,938 tokens, Maximum concurrency for 262,144 tokens per request: 12.13x",
+    "scope": "Startup allocator token pool, not a single-request limit or a completed full-context workload."
+  },
+  "limits": [
+    "No long soak, full-262K request or QAD TP4 media qualification.",
+    "This validates one Qwen capability selection, not all profiles in the shared image.",
+    "First start encountered a transient port-bind preflight failure before mutation; the reviewed plan succeeded on resume.",
+    "Existing managed fabric and opposite-peer neighbor entries were retained; fresh fabric installation was not tested.",
+    "Coordinated stop/restart acceptance is pending."
+  ]
+}

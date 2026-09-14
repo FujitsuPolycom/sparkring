@@ -10,7 +10,7 @@
   },
   "release": "runtime/releases/qwen38-flash-next-qad-r37-shared/release.json",
   "guide": "profiles/qwen38-flash-next-qad-tp4/README.md",
-  "evidence_scope": "Development. Baked-image serving acceptance pending; bounded overlay evidence applies only to its recorded image and sources. SparkCache is disabled.",
+  "evidence_scope": "Bounded QAD TP4 text, prefill and C1/C8 decode checks on the exact shared-feature image. No full-262K, QAD media or long-duration qualification. SparkCache is disabled.",
   "overrides": [],
   "launcher": {
     "kind": "python",

@@ -149,6 +149,7 @@ def source_inventory(profile_id):
         "runtime/common/compose.py",
         "runtime/common/__init__.py",
         "runtime/common/container_spec.py",
+        "runtime/common/ports.py",
         "runtime/common/qwen_flash_next.py",
         "runtime/common/profiles.py",
         "runtime/common/candidate.py",

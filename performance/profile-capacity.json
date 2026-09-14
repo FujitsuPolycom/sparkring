@@ -97,6 +97,12 @@
       "source": "performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md",
       "witness": "GPU KV cache size: 8,364,901 tokens",
       "conditions": "Published R33 image plus DCP4 contract/entrypoint overlay, TP4/DCP4, 24 GiB FP8 KV per rank, SparkCache enabled."
+    },
+    "qwen38-flash-next-qad-tp4": {
+      "tokens": 3179938,
+      "source": "performance/records/qwen38-flash-next/r37-shared-tp4.json",
+      "witness": "GPU KV cache size: 3,179,938 tokens",
+      "conditions": "QAD TP4/DCP1, shared image 2540686d726a, 24 GiB FP8 KV per rank, 262144 context, 16 sequences, 8192 batch, MTP3, HC/MTP prefill features, SparkCache disabled. Startup pool estimate, not full-context workload qualification."
     }
   }
 }

@@ -2,9 +2,10 @@
 
 Status: **Development**. This profile selects a locally built R37 shared image
 with Qwen collective selection, HC fusion and MTP prefill GEMMs. The baked image
-has passed inventory and CPU activation checks; serving acceptance is pending.
-[Recorded overlay measurements](../../performance/records/qwen38-flash-next/qad-tp4-prefill-compute.json)
-do not qualify the baked image automatically.
+passed inventory, four-rank Compose startup, bounded text checks and matched
+prefill/decode measurements. The [serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
+identifies the exact image, conditions and remaining limits. It is not a general
+media, full-context or long-duration qualification.
 
 | Setting | Selection |
 |---|---|
@@ -107,8 +108,8 @@ curl --fail http://127.0.0.1:8015/v1/chat/completions \
 
 Confirm a correct response and feature-activation evidence on every rank before
 benchmarking. API readiness alone does not establish correctness or throughput.
-Use the [bounded collective harness](../../performance/harnesses/qwen_collectives.py)
-and the profile's evidence conditions for comparisons.
+Use the [bounded image comparison](../../performance/qwen-image-comparison.md)
+for matched prefill/decode measurements and their interpretation.
 
 ## Stop and rollback
 

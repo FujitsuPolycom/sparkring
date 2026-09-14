@@ -9,7 +9,6 @@ import json
 import ipaddress
 import os
 from pathlib import Path
-import socket
 import subprocess
 import sys
 import time
@@ -19,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.common import compose, profiles, qwen_flash_next  # noqa: E402
+from runtime.common import compose, ports, profiles, qwen_flash_next  # noqa: E402
 from scripts import deploy_engine  # noqa: E402
 
 # Check repository inputs before importing host code. The controller provides
@@ -299,13 +298,7 @@ def preflight(rank, site, spec, image, profile, manifest):
                     else "0.0.0.0"
                 )
             )
-            family = (
-                socket.AF_INET6
-                if ipaddress.ip_address(bind_address).version == 6
-                else socket.AF_INET
-            )
-            with socket.socket(family) as sock:
-                sock.bind((bind_address, port))
+            ports.check_tcp_bind(bind_address, port)
     compose.check_equivalence(spec, image, compose.compose_text(spec, image), run=run)
 
 
@@ -536,6 +529,10 @@ def main(argv=None):
         subprocess.SubprocessError,
     ) as exc:
         print("Compose error: " + str(exc), file=sys.stderr)
+        if hasattr(args, "deployment"):
+            receipt = args.deployment / (args.operation + "-receipt.json")
+            if receipt.is_file():
+                print("Inspect the per-host failure in " + str(receipt), file=sys.stderr)
         return 2
 
 
