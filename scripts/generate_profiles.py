@@ -35,6 +35,15 @@ def deployment_family(resolved):
             resolved['serving']['node_count'], resolved['runtime'].get('engine', 'vllm'))
 
 
+def quickstart_path(profile):
+    """Use authored serving guides while retaining release-specific entry pages."""
+    if profile['configuration']['format'] == 'serving-profile':
+        return profile['guide']
+    # Recipe/release-profile guide fields can name retained release documents.
+    # Their per-profile README is the maintained user entry point.
+    return f"profiles/{profile['id']}/README.md"
+
+
 def compact_profile_rows(rows, root=ROOT):
     """Group explicit cache compositions with their base, retaining the default's values."""
     recipe_ids = {p['configuration']['path']: p['id'] for p, _ in rows
@@ -73,8 +82,8 @@ def compact_profile_rows(rows, root=ROOT):
         alternative = next((v for v in variants[1:] if v[2] != cached), None)
         cell = 'No'
         if alternative:
-            cache_profile = p['id'] if cached else alternative[0]['id']
-            cell = f"[Optional](profiles/{cache_profile}/README.md)"
+            cache_profile = p if cached else alternative[0]
+            cell = f"[Optional]({quickstart_path(cache_profile)})"
         elif cached:
             cell = 'Included'
         cache_cells[p['id']] = cell
@@ -174,9 +183,9 @@ def profile_table(root=ROOT, *, compact=False):
                 title = model_name
                 if p['recommendation'] == 'recommended':
                     title = f"**{title}**"
-                lines.append(f"| {title} | {quant} | {engine_title} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
+                lines.append(f"| {title} | {quant} | {engine_title} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide]({quickstart_path(p)}) |")
                 continue
-            lines.append(f"| {model_name} | {quant} | {engine_title} | {layout} | {context} / {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
+            lines.append(f"| {model_name} | {quant} | {engine_title} | {layout} | {context} / {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide]({quickstart_path(p)}) |")
         lines.append('')
     if compact:
         return '\n'.join(lines + [END])
@@ -215,12 +224,12 @@ def profile_catalog_table(rows, names, root):
                       else r['serving'].get('sparkcache', False) if config['format'] == 'serving-profile'
                       else bool(read_json(local_path(config['path'], root)).get('base_recipe')))
             label = p['id'] + (' (default)' if p['recommendation'] == 'recommended' else '')
-            lines.append(f"| {parallel} | {r['topology']} | {'On' if cached else 'Off'} | {STATUS_LABELS[p['status']]} | [{label}](profiles/{p['id']}/README.md) |")
+            lines.append(f"| {parallel} | {r['topology']} | {'On' if cached else 'Off'} | {STATUS_LABELS[p['status']]} | [{label}]({quickstart_path(p)}) |")
         lines += ['', '</details>', '']
     lines += ['### Retired profiles', '', '<details>', '<summary>Retired configurations</summary>', '',
               'Retained for compatibility and historical evidence; use an active deployment above for setup.', '']
     for p, r in sorted(retired, key=lambda item: item[0]['id']):
-        lines.append(f"- [{p['id']}](profiles/{p['id']}/README.md) — {names[r['model']['repository']]}; {STATUS_LABELS[p['status']]}")
+        lines.append(f"- [{p['id']}]({quickstart_path(p)}) — {names[r['model']['repository']]}; {STATUS_LABELS[p['status']]}")
     lines += ['', '[Additional historical variants](docs/history/deployment-variants.md)', '', '</details>', '',
               'Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-node deployments remain experimental and are outside this catalog.', '', END]
     text = '\n'.join(lines)
