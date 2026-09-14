@@ -2,6 +2,12 @@
   "schema": "sparkring-image-builders/v1",
   "builders": [
     {
+      "id": "lil-r37-cache64",
+      "path": "runtime/images/cache_extension.py",
+      "kind": "python",
+      "reason": "Prepare a pinned SparkCache native extension over the published R37 parent; the prepare action does not invoke Docker."
+    },
+    {
       "id": "deepseek-v41-sglang",
       "path": "runtime/deepseek-v41-sglang/build-image.sh",
       "kind": "bash",

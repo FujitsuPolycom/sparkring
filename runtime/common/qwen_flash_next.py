@@ -19,9 +19,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.common import candidate  # noqa: E402
+from runtime.common import cache_candidate  # noqa: E402
 
 CONFIG_ROOT = ROOT / "profiles/qwen38-flash-next-tp2"
-CONFIG_NAMES = ("config.json",)
+CONFIG_NAMES = ("config.json", "sparkcache.json")
 
 
 def read(path):
@@ -75,9 +76,9 @@ def site_inputs(rank, master, host_ip, interface, model, cache):
     return paths
 
 
-def verify_image(image, *, run=subprocess.run):
+def verify_image(image, *, cache_enabled=False, run=subprocess.run):
     expected = publication()
-    if image != expected["image_id"]:
+    if not cache_enabled and image != expected["image_id"]:
         raise ValueError("Image differs from the registered R37 publication")
     info = json.loads(run(["docker", "image", "inspect", image], check=True, capture_output=True, text=True).stdout)[0]
     if info.get("Id") != image or info.get("Os") != "linux" or info.get("Architecture") != "arm64":
@@ -88,13 +89,22 @@ def verify_image(image, *, run=subprocess.run):
                "/opt/sparkring/receipts/candidate-installed.json"], check=True, capture_output=True).stdout
     verification = json.loads(run(["docker", "run", "--rm", "--pull", "never", "--network", "none", image, "verify"],
                                   check=True, capture_output=True, text=True).stdout)
+    if cache_enabled:
+        parent = run(["docker", "run", "--rm", "--pull", "never", "--network", "none",
+                      "--entrypoint", "/bin/cat", expected["image_id"],
+                      "/opt/sparkring/receipts/candidate-installed.json"],
+                     check=True, capture_output=True).stdout
+        return cache_candidate.validate(image, raw, parent, verification)
     return candidate.make_receipt(image, raw, verification)
 
 
 def render(profile, *, rank, master, host_ip, interface, image, model, cache):
     canonical(profile)
     model, cache = site_inputs(rank, master, host_ip, interface, model, cache)
-    if image != publication()['image_id']:
+    cache_enabled = profile.get('image_extension') == 'lil-r37-cache64'
+    if cache_enabled and (not re.fullmatch(r'sha256:[0-9a-f]{64}', image) or image == publication()['image_id']):
+        raise ValueError('Select an immutable cache-extension image, not the base R37 image')
+    if not cache_enabled and image != publication()['image_id']:
         raise ValueError('Select the exact registered R37 image ID')
     namespace = f"qwen-flash-next-{image[7:19]}-{profile['model']['revision'][:12]}"
     env = dict(profile["environment"])
@@ -117,7 +127,7 @@ def render(profile, *, rank, master, host_ip, interface, image, model, cache):
         "docker",
         "create",
         "--name",
-        f"qwen-flash-next-tp2-r{rank}",
+        f"qwen-flash-next-{'sparkcache-' if cache_enabled else ''}tp2-r{rank}",
         "--entrypoint",
         "/opt/venv/bin/python",
         "--pull",
@@ -197,7 +207,7 @@ def main():
     )
     print(json.dumps(command), flush=True)
     if o.action != "plan":
-        verify_image(o.image)
+        verify_image(o.image, cache_enabled=profile.get('image_extension') == 'lil-r37-cache64')
     if o.action == "check":
         print("CLI help check only; no inference, cache or performance qualification.", flush=True)
         command[1] = "run"

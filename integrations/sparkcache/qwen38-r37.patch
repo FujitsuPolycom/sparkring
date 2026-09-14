@@ -1,0 +1,416 @@
+diff --git a/deploy/glm52_35bpw/profile.json b/deploy/glm52_35bpw/profile.json
+index 1bb563e..4fb8bc9 100644
+--- a/deploy/glm52_35bpw/profile.json
++++ b/deploy/glm52_35bpw/profile.json
+@@ -5,7 +5,7 @@
+   "published_runtime_base": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+   "base_image_requirement": "exact GLM-5.2 3.5-bpw R7 image recorded by the source container inspection",
+   "sparkcache": {
+-    "source_sha256": "ce0cacb42427d6fdebb20f613b67fda883973c5522ef5d4d049707e934ba9fe5"
++    "source_sha256": "5760647eec3d43083a4c6f0554cf2971053c4456f70c6101248307f76fe46348"
+   },
+   "model": {
+     "repository": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78",
+diff --git a/docs/qwen38-flash-next-cache.md b/docs/qwen38-flash-next-cache.md
+new file mode 100644
+index 0000000..def4af3
+--- /dev/null
++++ b/docs/qwen38-flash-next-cache.md
+@@ -0,0 +1,77 @@
++# Qwen3.8 Flash Next persistent cache
++
++Status: **implemented**, with bounded GPU validation on two GB10 nodes using
++the R37 vLLM composition described below. This is not long-duration or general
++multimodal accuracy qualification. The profile is `qwen38-flash-next-hybrid` in
++`sparkcache/spark_context_cache_profiles.py`.
++
++The profile uses opaque manager pages for attention KV and aligned recurrent
++GDN checkpoints. Registered engine groups determine page shape, layer coverage
++and reuse boundaries. External speculative-draft state and boundary hidden
++activations are recomputed; the draft checkpoint remains part of cache identity.
++TP ranks retain separate storage namespaces because Qwen attention KV is sharded,
++not replicated across TP ranks.
++
++## Geometry and identity
++
++Persistent chunks contain 32 logical tokens. The tested R37 TP2 configuration
++resolves its requested 16-token blocks to 2,848-token physical manager pages;
++32 divides both this physical geometry and the logical alignment relationship.
++The generic divisibility validator remains enabled. Storage and lookup still
++require valid complete page boundaries; a 32-token chunk does not imply that
++every 32-token prefix can be restored.
++
++The quantization layout `qwen38-flash-next-hybrid-block-pages-v1` and positional
++layout `qwen38-flash-next-mrope-v1` create a distinct namespace from GLM and
++DeepSeek profiles. Existing profile identities and wire formats are unchanged.
++Use verified checkpoint digests and a separate root for each serving composition.
++
++## Validation requirements
++
++The asynchronous manager-page capture interface admits up to 64 groups and
++256 layer sources. Python and CUDA bindings must advertise the same group
++capacity; a 16-group library is rejected. Descriptor structure sizes and the
++on-disk page format are unchanged. Applications must use the matching rebuilt
++snapshot library and its checksum, not an inherited binary with a different
++capacity. GPU-free Python and C++ tests cover group ordering and capacity
++boundaries; they do not prove CUDA copy correctness.
++
++- Verify the installed vLLM connector-job source contract and native libraries.
++- Publish an exact-answer prefix, restart both processes, and prove disk restore
++  occurred before accepting the answer as restore correctness evidence.
++- Verify incompatible input and corrupted state become misses and recomputation.
++- Exercise image/video requests without cross-media cache aliasing.
++- Confirm bounded cache work does not retain unsafe page references or prevent
++  serving progress, and record host memory during the workload.
++
++`sparkcache/test_qwen38_profile.py` covers layout separation, sharded ownership,
++and admission of logical and physical TP2 page geometry. These GPU-free checks
++do not establish runtime persistence correctness.
++
++## Bounded GPU evidence
++
++The serving composition used vLLM tree
++`8e0bb7da60e882c095385222d5878981a2666b60` and B12X tree
++`bd931d9e6b22ae21b92af0ab66ac45281658bf2c` over the SparkRing R37 image.
++The checkpoint was `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` revision
++`ada4da32a583a78aa47299f45a70603c950490b8`. Tests used TP2/DCP1, native 262144
++context, 16 sequences, 8192 batch, MTP3, 24 GiB FP8 KV per rank, and media
++limits of three images and one video with 16-frame sampling.
++
++| Condition | Measurement | Result |
++|---|---|---|
++| Text cold publication | 50804 prompt tokens, 48416 published; 19.81 s | Three retrieval keys correct; both ranks committed |
++| Same prompt after both processes restarted | 48416 cached tokens; 3.98 s | Three keys correct; both ranks logged disk restore |
++| First text key changed | Zero cached tokens | Changed key returned correctly |
++| Three images and a six-second video with filler | 13710 prompt tokens, 11392 published | Image colors and video order correct |
++| Same media after both processes restarted | 11392 cached tokens; 4.93 s | Colors and temporal order correct |
++| Blue image replaced with yellow | Zero cached tokens | Yellow returned correctly |
++| One bit flipped in a rank-zero text object | SHA mismatch, scheduler rescheduled 48416 tokens | Full recomputation, zero cached tokens, correct answer |
++| Sixteen concurrent short JSON requests | 16/16 exact matches | Requested concurrency completed |
++| Near-limit text retrieval | 257504 prompt tokens; 124.85 s | All three retrieval keys correct |
++
++Request times include generated output and are single observations, not matched
++performance benchmarks. Synthetic media checks do not qualify arbitrary video
++lengths, resolutions or concurrent-media memory use. Corruption was injected
++only into an isolated synthetic cache entry. Capture and publication queues
++were empty after the checks. Long-duration stability remains unqualified.
+diff --git a/sparkcache/native/include/spark_cache_page_capture.h b/sparkcache/native/include/spark_cache_page_capture.h
+index eb0cc86..7f91a91 100644
+--- a/sparkcache/native/include/spark_cache_page_capture.h
++++ b/sparkcache/native/include/spark_cache_page_capture.h
+@@ -13,7 +13,7 @@
+  * page IDs are transient and never enter persistent data.
+  */
+ #define SPARK_CACHE_PAGE_CAPTURE_CONTRACT_VERSION 1u
+-#define SPARK_CACHE_PAGE_CAPTURE_MAX_GROUPS 16u
++#define SPARK_CACHE_PAGE_CAPTURE_MAX_GROUPS 64u
+ #define SPARK_CACHE_PAGE_CAPTURE_MAX_SOURCES 256u
+ 
+ typedef struct SparkCachePageCaptureSource {
+diff --git a/sparkcache/native/tests/page_capture_layout_test.cpp b/sparkcache/native/tests/page_capture_layout_test.cpp
+index 7dc051e..f6a2777 100644
+--- a/sparkcache/native/tests/page_capture_layout_test.cpp
++++ b/sparkcache/native/tests/page_capture_layout_test.cpp
+@@ -144,9 +144,35 @@ void test_failure_leaves_caller_outputs_unchanged() {
+   assert(plan.used_bytes == 99);
+ }
+ 
++void test_group_capacity_and_output_order() {
++  constexpr std::uint32_t count = 64;
++  std::array<SparkCachePageCaptureSource, count> inventory{};
++  std::array<SparkCachePageCaptureGroup, count> request{};
++  std::array<std::uint32_t, count> pages{};
++  std::array<SparkCachePageCaptureSpan, count> spans{};
++  for (std::uint32_t i = 0; i < count; ++i) {
++    inventory[i] = {0x1000 + i * 1024, 8, 16, 16, i, 0, 0};
++    request[i] = {i, 1, {0, 0}};
++    pages[i] = 2;
++  }
++  SparkCachePageCapturePlan plan{};
++  std::string detail;
++  assert(validate_sources(inventory.data(), count, count, &detail));
++  assert(!validate_sources(inventory.data(), count, count + 1, &detail));
++  assert(plan_capture(inventory.data(), count, request.data(), count,
++      pages.data(), count, count * 16, spans.data(), count, &plan, &detail));
++  assert(plan.group_count == count);
++  assert(plan.used_bytes == count * 16);
++  for (std::uint32_t i = 0; i < count; ++i) {
++    assert(spans[i].source_index == i);
++    assert(spans[i].destination_offset_bytes == i * 16);
++  }
++}
++
+ }  // namespace
+ 
+ int main() {
++  test_group_capacity_and_output_order();
+   test_multigroup_layout_matches_block_page_body_order();
+   test_invalid_inventory_is_rejected();
+   test_request_geometry_is_exact_and_bounded();
+diff --git a/sparkcache/native/tests/test_page_capture_contract.py b/sparkcache/native/tests/test_page_capture_contract.py
+index 06fb61b..60dc1b5 100644
+--- a/sparkcache/native/tests/test_page_capture_contract.py
++++ b/sparkcache/native/tests/test_page_capture_contract.py
+@@ -21,7 +21,7 @@ LEASE_CONTRACT = (
+ def test_page_capture_contract_is_bounded_and_pointer_free_on_disk() -> None:
+     header = HEADER.read_text(encoding="utf-8")
+     assert "SPARK_CACHE_PAGE_CAPTURE_CONTRACT_VERSION 1u" in header
+-    assert "SPARK_CACHE_PAGE_CAPTURE_MAX_GROUPS 16u" in header
++    assert "SPARK_CACHE_PAGE_CAPTURE_MAX_GROUPS 64u" in header
+     assert "SPARK_CACHE_PAGE_CAPTURE_MAX_SOURCES 256u" in header
+     assert "physical" in header
+     assert "page IDs are transient" in header
+diff --git a/sparkcache/spark_context_cache_codec.py b/sparkcache/spark_context_cache_codec.py
+index 8c865db..a29f04b 100644
+--- a/sparkcache/spark_context_cache_codec.py
++++ b/sparkcache/spark_context_cache_codec.py
+@@ -228,9 +228,12 @@ def chunk_prefix_digests(
+     *,
+     boundaries: Iterable[int],
+     multimodal_features: Sequence[MultimodalFeatureIdentity] = (),
++    chunk_tokens: int = CHUNK_TOKENS,
+ ) -> tuple[tuple[int, str], ...]:
+     """Return exact token-and-media prefix digests in one token hash pass."""
+ 
++    if isinstance(chunk_tokens, bool) or not isinstance(chunk_tokens, int) or chunk_tokens <= 0:
++        raise CodecError("chunk_tokens must be a positive integer")
+     packed = _u32_array(token_ids, "token_ids")
+     try:
+         requested = tuple(boundaries)
+@@ -242,10 +245,10 @@ def chunk_prefix_digests(
+             isinstance(boundary, bool)
+             or not isinstance(boundary, int)
+             or boundary <= 0
+-            or boundary % CHUNK_TOKENS
++            or boundary % chunk_tokens
+         ):
+             raise CodecError(
+-                f"boundaries must be positive multiples of {CHUNK_TOKENS} tokens"
++                f"boundaries must be positive multiples of {chunk_tokens} tokens"
+             )
+         if boundary <= previous:
+             raise CodecError("boundaries must be strictly increasing")
+diff --git a/sparkcache/spark_context_cache_connector.py b/sparkcache/spark_context_cache_connector.py
+index e535cca..77f512c 100644
+--- a/sparkcache/spark_context_cache_connector.py
++++ b/sparkcache/spark_context_cache_connector.py
+@@ -1470,6 +1470,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+             signature[0],
+             self._context_digest_salt,
+             boundaries=range(first, span_ceiling + 1, self._chunk_tokens),
++            chunk_tokens=self._chunk_tokens,
+             multimodal_features=multimodal_features,
+         )
+         self._prefix_digest_candidates[request_id] = (signature, candidates)
+@@ -1506,6 +1507,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                 token_ids,
+                 self._context_digest_salt,
+                 boundaries=range(first, span_tokens, self._chunk_tokens),
++                chunk_tokens=self._chunk_tokens,
+                 multimodal_features=multimodal_features,
+             )
+         )
+diff --git a/sparkcache/spark_context_cache_profiles.py b/sparkcache/spark_context_cache_profiles.py
+index 796c594..a88928a 100644
+--- a/sparkcache/spark_context_cache_profiles.py
++++ b/sparkcache/spark_context_cache_profiles.py
+@@ -271,6 +271,24 @@ PROFILES: Mapping[str, ModelProfile] = {
+         cuda_page_restore=True,
+         kv_replicated_across_tp=True,
+     ),
++    "qwen38-flash-next-hybrid": ModelProfile(
++        name="qwen38-flash-next-hybrid",
++        description=(
++            "Qwen3.8 Flash Next attention pages and aligned GDN recurrent"
++            " checkpoints. External speculative-draft state is recomputed;"
++            " its checkpoint identity remains namespace-bound."
++        ),
++        quantization_layout="qwen38-flash-next-hybrid-block-pages-v1",
++        rope_layout="qwen38-flash-next-mrope-v1",
++        boundary_hidden_policy="live_forward",
++        default_draft_kv_policy="separate",
++        classification_rules=(),
++        required_families=frozenset({"target_ckv"}),
++        chunk_tokens=32,
++        storage_mode="block_pages_v1",
++        cuda_page_restore=True,
++        kv_replicated_across_tp=False,
++    ),
+     "deepseek-v4-fp8-hma": ModelProfile(
+         name="deepseek-v4-fp8-hma",
+         description=(
+diff --git a/sparkcache/streaming/manager_page_capture.py b/sparkcache/streaming/manager_page_capture.py
+index f85118b..0b98a93 100644
+--- a/sparkcache/streaming/manager_page_capture.py
++++ b/sparkcache/streaming/manager_page_capture.py
+@@ -13,7 +13,7 @@ from typing import Sequence
+ 
+ 
+ PAGE_CAPTURE_CONTRACT_VERSION = 1
+-MAX_CAPTURE_GROUPS = 16
++MAX_CAPTURE_GROUPS = 64
+ MAX_CAPTURE_SOURCES = 256
+ _UINT32_MAX = (1 << 32) - 1
+ _UINT64_MAX = (1 << 64) - 1
+diff --git a/sparkcache/streaming/manager_page_native_ring_ctypes.py b/sparkcache/streaming/manager_page_native_ring_ctypes.py
+index d81ca87..211a555 100644
+--- a/sparkcache/streaming/manager_page_native_ring_ctypes.py
++++ b/sparkcache/streaming/manager_page_native_ring_ctypes.py
+@@ -12,7 +12,7 @@ from .native_ring import NativeRingConfig, NativeStatus, RawReadyView, RawTicket
+ 
+ 
+ CONTRACT_VERSION = 1
+-MAX_GROUPS = 16
++MAX_GROUPS = 64
+ MAX_SOURCES = 256
+ 
+ 
+diff --git a/sparkcache/streaming/test_manager_page_group_capacity.py b/sparkcache/streaming/test_manager_page_group_capacity.py
+new file mode 100644
+index 0000000..e1a4777
+--- /dev/null
++++ b/sparkcache/streaming/test_manager_page_group_capacity.py
+@@ -0,0 +1,58 @@
++"""Group inventories preserve order and remain bounded for hybrid models."""
++import pytest
++import ctypes
++from types import SimpleNamespace
++from sparkcache.streaming import manager_page_native_ring_ctypes as binding
++from sparkcache.streaming.manager_page_capture import (
++    ManagerPageSource, ManagerPageCaptureError, plan_manager_page_capture,
++)
++
++
++@pytest.mark.parametrize('count', [17, 48, 64])
++def test_capture_hybrid_group_inventory(count):
++    sources = tuple(ManagerPageSource(4096 + i * 1024, 8, 16, 16, i, 0) for i in range(count))
++    plan = plan_manager_page_capture(sources, ((2, 5),) * count, slot_bytes=count * 32)
++    assert plan.used_bytes == count * 32
++    assert plan.group_offsets == tuple(2 * i for i in range(count))
++    assert [span.group_index for span in plan.spans] == list(range(count))
++    assert [span.destination_offset_bytes for span in plan.spans] == list(range(0, count * 32, 32))
++
++
++def test_capture_rejects_group_inventory_over_capacity():
++    sources = tuple(ManagerPageSource(4096 + i * 1024, 8, 16, 16, i, 0) for i in range(65))
++    with pytest.raises(ManagerPageCaptureError, match='group count'):
++        plan_manager_page_capture(sources, ((2, 5),) * 65, slot_bytes=65 * 32)
++
++
++@pytest.mark.parametrize('max_groups', [16, 64])
++def test_native_group_capacity_must_match_binding(max_groups):
++    class Function:
++        def __init__(self, callback=lambda *args: 0):
++            self.callback = callback
++
++        def __call__(self, *args):
++            return self.callback(*args)
++
++    def query(pointer):
++        info = ctypes.cast(pointer, ctypes.POINTER(binding.PageCaptureAbiInfo)).contents
++        info.contract_version = binding.CONTRACT_VERSION
++        info.max_groups = max_groups
++        info.max_sources = binding.MAX_SOURCES
++        for name, typ in [('source', binding.PageCaptureSource), ('group', binding.PageCaptureGroup),
++                          ('span', binding.PageCaptureSpan), ('plan', binding.PageCapturePlan),
++                          ('submission', binding.PageCaptureSubmission)]:
++            setattr(info, 'sizeof_' + name, ctypes.sizeof(typ))
++        info.capability_flags = binding.abi.CAP_MANAGER_PAGE_CAPTURE | binding.abi.CAP_LOW_PRIORITY_CAPTURE_STREAM
++        return binding.abi.STATUS_OK
++
++    library = SimpleNamespace(
++        spark_cache_snapshot_query_page_capture_abi=Function(query),
++        spark_cache_snapshot_configure_page_sources=Function(),
++        spark_cache_snapshot_try_submit_pages=Function(),
++        spark_cache_snapshot_drain_context=Function(),
++    )
++    if max_groups == 64:
++        assert binding._bind_page_api(library).max_groups == 64
++    else:
++        with pytest.raises(binding.abi.NativeSnapshotError, match='ABI differs'):
++            binding._bind_page_api(library)
+diff --git a/sparkcache/test_chunk_prefix_geometry.py b/sparkcache/test_chunk_prefix_geometry.py
+new file mode 100644
+index 0000000..465c6a3
+--- /dev/null
++++ b/sparkcache/test_chunk_prefix_geometry.py
+@@ -0,0 +1,23 @@
++"""Prefix digest batching honors declared persistent chunk geometry."""
++import pytest
++from sparkcache.spark_context_cache_codec import CodecError, chunk_prefix_digests, context_prefix_digest
++
++
++def test_profile_chunk_boundaries_hash_the_exact_prefix():
++    tokens = list(range(6000))
++    for size, boundaries in [(32, [32, 2848, 5696]), (256, [256, 512])]:
++        result = chunk_prefix_digests(tokens, 'test-identity', boundaries=boundaries, chunk_tokens=size)
++        assert result == tuple((end, context_prefix_digest(tokens, 'test-identity', token_count=end)) for end in boundaries)
++
++
++def test_default_digest_geometry_stays_256():
++    tokens = list(range(512))
++    assert chunk_prefix_digests(tokens, 'salt', boundaries=[256]) == chunk_prefix_digests(tokens, 'salt', boundaries=[256], chunk_tokens=256)
++    with pytest.raises(CodecError, match='multiples of 256'):
++        chunk_prefix_digests(tokens, 'salt', boundaries=[32])
++
++
++@pytest.mark.parametrize('size', [0, -1, True, 32.0, '32'])
++def test_invalid_chunk_geometry_is_rejected(size):
++    with pytest.raises(CodecError, match='chunk_tokens'):
++        chunk_prefix_digests([1] * 512, 'salt', boundaries=[256], chunk_tokens=size)
+diff --git a/sparkcache/test_qwen38_profile.py b/sparkcache/test_qwen38_profile.py
+new file mode 100644
+index 0000000..6977cb5
+--- /dev/null
++++ b/sparkcache/test_qwen38_profile.py
+@@ -0,0 +1,25 @@
++"""Qwen hybrid profiles isolate persistent bytes from other model layouts."""
++
++from sparkcache.spark_context_cache_profiles import resolve_profile
++
++
++def test_qwen38_hybrid_profile_isolates_layout_identity():
++    qwen = resolve_profile("qwen38-flash-next-hybrid")
++    glm = resolve_profile("glm53-flash-hybrid")
++    assert qwen.quantization_layout != glm.quantization_layout
++    assert qwen.rope_layout != glm.rope_layout
++    assert qwen.storage_mode == "block_pages_v1"
++    assert qwen.cuda_page_restore
++    assert not qwen.kv_replicated_across_tp
++    assert qwen.boundary_hidden_policy == "live_forward"
++    assert qwen.persisted_families("separate") == frozenset({"target_ckv"})
++
++
++def test_qwen38_profile_accepts_tp2_dcp1_page_geometry():
++    profile = resolve_profile("qwen38-flash-next-hybrid")
++    profile.validate_for_deployment(
++        dcp_degree=1, block_size=16, min_span_tokens=4096, cuda_restore=True
++    )
++    profile.validate_for_deployment(
++        dcp_degree=1, block_size=2848, min_span_tokens=4096, cuda_restore=True
++    )
+diff --git a/sparkcache/test_spark_context_cache_connector.py b/sparkcache/test_spark_context_cache_connector.py
+index edcfb8b..3fe93ae 100644
+--- a/sparkcache/test_spark_context_cache_connector.py
++++ b/sparkcache/test_spark_context_cache_connector.py
+@@ -34,6 +34,20 @@ from sparkcache.spark_context_cache_restore_timing import (
+ from sparkcache.page_base_read_flights import PageBaseReadEvidence
+ 
+ 
++def test_qwen_chunk_geometry_reaches_prefix_digest_call_site():
++    connector = object.__new__(SparkContextCacheConnector)
++    connector._chunk_tokens = 32
++    connector._min_span = 4096
++    connector._context_digest_salt = 'qwen-profile-identity'
++    connector._prefix_digest_candidates = {}
++    connector.counters = {'prefix_digest_cache_hits': 0, 'prefix_digest_cache_misses': 0}
++    tokens = list(range(6000))
++    candidates = connector._request_prefix_candidates('request', tokens, 5696)
++    assert candidates[-1] == (5696, codec.context_prefix_digest(tokens, 'qwen-profile-identity', token_count=5696))
++    assert connector._request_prefix_candidates('request', tokens, 5696) == candidates
++    assert connector.counters['prefix_digest_cache_hits'] == 1
++
++
+ def _install_vllm_stubs() -> None:
+     if "vllm" in sys.modules:
+         return

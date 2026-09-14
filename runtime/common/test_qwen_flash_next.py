@@ -190,7 +190,24 @@ def test_evidence_uses_one_native_context_profile():
     assert evidence['checks']['long_context']['prompt_tokens'] == 257504
     assert evidence['profile_defaults']['kv_cache_memory_bytes'] == 25769803776
     assert evidence['measurements']['profile_max_model_len'] == 262144
-    assert adapter.CONFIG_NAMES == ('config.json',)
+    assert adapter.CONFIG_NAMES == ('config.json', 'sparkcache.json')
+    for name in adapter.CONFIG_NAMES:
+        config = adapter.read(adapter.CONFIG_ROOT / name)
+        assert config['vllm_args'][config['vllm_args'].index('--max-model-len') + 1] == '262144'
+
+
+def test_sparkcache_requires_extension_and_preserves_capacity():
+    profile = adapter.read(adapter.CONFIG_ROOT / 'sparkcache.json')
+    values = options()
+    with pytest.raises(ValueError, match='cache-extension'):
+        adapter.render(profile, **values)
+    values['image'] = 'sha256:' + 'a' * 64
+    command = adapter.render(profile, **values)
+    assert command[command.index('--name') + 1] == 'qwen-flash-next-sparkcache-tp2-r0'
+    assert command[command.index('--kv-cache-memory-bytes') + 1] == '25769803776'
+    connector = json.loads(command[command.index('--kv-transfer-config') + 1])
+    assert connector['kv_load_failure_policy'] == 'recompute'
+    assert connector['kv_connector_extra_config']['spark_cache_model_profile'] == 'qwen38-flash-next-hybrid'
 
 
 def test_media_defaults_keep_fixed_capacity():

@@ -27,6 +27,10 @@ ARM64 image. This is distinct from Qwen3.8-27B EXL3.
 [config.json](config.json) owns the arguments and environment. Inspect catalog
 defaults with `python3 scripts/profiles.py resolve qwen38-flash-next-tp2`.
 
+For opt-in persistent prefix caching, see the
+[SparkCache extension profile](SPARKCACHE.md). It requires a locally built,
+verified R37 extension; the published base-image default remains cache-disabled.
+
 ## Image and checkpoint
 
 Run Bash from the same repository revision on both Sparks. Complete the

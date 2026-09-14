@@ -1,0 +1,339 @@
+{
+  "schema": "sparkring-qwen-cache-evidence/v1",
+  "status": "research-only",
+  "model": {
+    "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "revision": "ada4da32a583a78aa47299f45a70603c950490b8"
+  },
+  "sources": {
+    "sparkcache_base": "f220230a5a85b94af8a296187241b6aacc3ed724",
+    "sparkcache_integrated": "76598d1d368d7a8fad2ebd03b7a0550e09eb7f99",
+    "vllm_tree": "8e0bb7da60e882c095385222d5878981a2666b60",
+    "b12x_tree": "bd931d9e6b22ae21b92af0ab66ac45281658bf2c"
+  },
+  "conditions": {
+    "nodes": 2,
+    "hardware": "NVIDIA GB10",
+    "tp": 2,
+    "dcp": 1,
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_memory_bytes_per_rank": 25769803776,
+    "mtp_tokens": 3,
+    "loader": "b12x",
+    "allocator": "managed",
+    "image_limit": 3,
+    "video_limit": 1,
+    "video_frames": 16,
+    "recurrent_checkpoint_policy": "aligned",
+    "capture_buffers_bytes_per_rank": 1073741824,
+    "restore_buffers_bytes_per_rank": 268435456,
+    "persistent_limit_bytes_per_rank": 4294967296
+  },
+  "checks": {
+    "gpu_free": {
+      "passed": 1236,
+      "skipped": 8
+    },
+    "native_cpp_group_capacity": 64,
+    "seeded_gpu_capture_byte_cases": 9,
+    "seeded_gpu_capture_group_counts": [
+      17,
+      50,
+      64
+    ],
+    "initial_serving_snapshot_library_sha256": "4bf061c7ad85fb42df46afa8e033a3669986143a48d34c9150443413ea789274",
+    "seeded_snapshot_library_sha256": "b50db45123c4faf0fdfb021da0a0f1b7f329869ae5dc13dcc7432dd4ce765b68",
+    "restored_text_tokens": 48416,
+    "text_restore_ms_by_rank": [
+      322.9,
+      287
+    ],
+    "restored_media_tokens": 11392,
+    "changed_text_cached_tokens": 0,
+    "changed_image_cached_tokens": 0,
+    "corruption": {
+      "scope": "One rank-zero object of the synthetic text prefix",
+      "mutation": "one bit flipped",
+      "detection": "page object SHA-256 mismatch",
+      "recovery": "48416 affected tokens rescheduled for full recomputation",
+      "correct": true,
+      "cached_tokens": 0
+    },
+    "pending_retained_pages_after_checks": 0
+  },
+  "measurements": {
+    "persistent-cold.json": {
+      "sha256": "8e600b27304b0582b7ff1fa09d1a1e3395d953b8b1277b24e978e56ce4d3f55b",
+      "correct": true,
+      "seconds": 19.808207414000208,
+      "usage": {
+        "prompt_tokens": 50804,
+        "total_tokens": 50981,
+        "completion_tokens": 177,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 48416,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 127
+        }
+      }
+    },
+    "persistent-restore.json": {
+      "sha256": "b7933127b296df92b66755749bfe1b4b7cda7c2aee77ad129e55121ef515c3a7",
+      "correct": true,
+      "seconds": 3.9845556460004445,
+      "usage": {
+        "prompt_tokens": 50804,
+        "total_tokens": 50989,
+        "completion_tokens": 185,
+        "prompt_tokens_details": {
+          "cached_tokens": 48416,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 135
+        }
+      }
+    },
+    "persistent-changed.json": {
+      "sha256": "4358be2f4920d08b6788f86e29ea4c4bf7fb8efea08ae53c8f20b7c1098dcf60",
+      "correct": true,
+      "seconds": 20.36462094000126,
+      "usage": {
+        "prompt_tokens": 50804,
+        "total_tokens": 51002,
+        "completion_tokens": 198,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 48416,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 148
+        }
+      }
+    },
+    "persistent-corrupt.json": {
+      "sha256": "4c75692ce3f9c740dd3069a57a9fe49939342f0cfbaa78b1245fada0790db684",
+      "correct": true,
+      "seconds": 20.061539871001514,
+      "usage": {
+        "prompt_tokens": 50804,
+        "total_tokens": 50979,
+        "completion_tokens": 175,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 48416,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 125
+        }
+      }
+    },
+    "persistence-cold.json": {
+      "sha256": "7deaeb6dffae1108f8ebfa77d2f0108d510db6dfbd97d2f5972558fb9d728c29",
+      "correct": true,
+      "seconds": 14.705893229998765,
+      "usage": {
+        "prompt_tokens": 13710,
+        "total_tokens": 14102,
+        "completion_tokens": 392,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 11392,
+          "multimodal_tokens": {
+            "image": 192,
+            "video": 432
+          }
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 333
+        }
+      }
+    },
+    "persistence-restore.json": {
+      "sha256": "956d44a3298c37d38e825eb6772c0fd7928000b6066c237d8f3406b70a6aa7aa",
+      "correct": true,
+      "seconds": 4.925863165999544,
+      "usage": {
+        "prompt_tokens": 13710,
+        "total_tokens": 13974,
+        "completion_tokens": 264,
+        "prompt_tokens_details": {
+          "cached_tokens": 11392,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": {
+            "image": 192,
+            "video": 432
+          }
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 230
+        }
+      }
+    },
+    "persistence-changed.json": {
+      "sha256": "b8aa4c6472dc14259ef703a39b4f45d29e58858380259832a5a633fb2157fe1b",
+      "correct": true,
+      "seconds": 8.435593993999646,
+      "usage": {
+        "prompt_tokens": 13710,
+        "total_tokens": 13987,
+        "completion_tokens": 277,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 11392,
+          "multimodal_tokens": {
+            "image": 192,
+            "video": 432
+          }
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 243
+        }
+      }
+    },
+    "sparkcache-c16.json": {
+      "sha256": "1d2526d74ec68e6daad8c36e663c8e17c902c68d3923d778363eb1a36a58b6da",
+      "count": 16,
+      "correct": 16
+    },
+    "sparkcache-long-context.json": {
+      "sha256": "a6fd38311c5c26d696dbc25a86e6666bd5bdf5b488d7d82f3ddb97b0640d0667",
+      "correct": true,
+      "seconds": 124.84615357800067,
+      "usage": {
+        "prompt_tokens": 257504,
+        "total_tokens": 257673,
+        "completion_tokens": 169,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 256320,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 119
+        }
+      }
+    }
+  },
+  "qualification_limits": [
+    "Single-observation latency is not a controlled performance benchmark.",
+    "Media inputs were three 256x256 solid-color images and a six-second 256x256 RGB-phase clip with synthetic text filler.",
+    "Concurrent media, arbitrary long video and prolonged store-pressure stability are unqualified.",
+    "Source integration and seeded-image text/media persistence checks are separately identified; long-duration stability and broad multimedia quality are not established."
+  ],
+  "maintained_profile": {
+    "config": "profiles/qwen38-flash-next-tp2/sparkcache.json",
+    "launcher": "runtime/common/qwen_flash_next.py",
+    "image_contract": "runtime/images/compositions/lil-r37-cache64/descriptor.json",
+    "source_patch_reproduced_from_public_base": true,
+    "image_ids": [
+      "sha256:384bc56e4a1faa0d983d9e448ccb08731c1362b426c5d7926be5204cfc137ca8",
+      "sha256:c6688f6ece697b4ba7991510ff8ff54a3c7691f5653dc2ea9af7f18d9bf79b57"
+    ],
+    "text_restore_ms_by_rank": [
+      335.3,
+      312.7
+    ],
+    "media_restore_ms_by_rank": [
+      139.2,
+      115.8
+    ],
+    "minimum_sampled_available_gib": [
+      16.69,
+      19.27
+    ],
+    "checks": {
+      "canonical-persistent-cold.json": {
+        "sha256": "9ef77627d07bcdd626fe0ec5773a4fc492d0c24e8aa5def582db481b5d5cfd67",
+        "correct": true,
+        "seconds": 21.963970103000975,
+        "usage": {
+          "prompt_tokens": 50804,
+          "total_tokens": 50999,
+          "completion_tokens": 195,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "created_cache_tokens": 48416,
+            "multimodal_tokens": null
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 145
+          }
+        }
+      },
+      "canonical-persistent-restore.json": {
+        "sha256": "26106867d30441c549f54132463bfe783b2f740915a19c478502227d8da0f7e6",
+        "correct": true,
+        "seconds": 3.430351637000058,
+        "usage": {
+          "prompt_tokens": 50804,
+          "total_tokens": 50963,
+          "completion_tokens": 159,
+          "prompt_tokens_details": {
+            "cached_tokens": 48416,
+            "created_cache_tokens": 0,
+            "multimodal_tokens": null
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 109
+          }
+        }
+      },
+      "canonical-media-cold.json": {
+        "sha256": "ee3c73d0b9f55dace307327d75fbcf59542fb38b5e3c692686cb3a99f8312999",
+        "correct": true,
+        "seconds": 15.277076152000518,
+        "usage": {
+          "prompt_tokens": 13710,
+          "total_tokens": 13991,
+          "completion_tokens": 281,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "created_cache_tokens": 11392,
+            "multimodal_tokens": {
+              "image": 192,
+              "video": 432
+            }
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 247
+          }
+        }
+      },
+      "canonical-media-restore.json": {
+        "sha256": "3b0a2bd18bc56783d578be9acea484c32cb7993bc21fe8bbed938e446df36992",
+        "correct": true,
+        "seconds": 1.7418137399999978,
+        "usage": {
+          "prompt_tokens": 13710,
+          "total_tokens": 13765,
+          "completion_tokens": 55,
+          "prompt_tokens_details": {
+            "cached_tokens": 11392,
+            "created_cache_tokens": 0,
+            "multimodal_tokens": {
+              "image": 192,
+              "video": 432
+            }
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        }
+      }
+    }
+  },
+  "refactor_validation": {
+    "offline_tests": 244,
+    "repository_links_checked": 1186,
+    "release_safety_findings": 0
+  }
+}

@@ -1,5 +1,6 @@
 *.sh text eol=lf
 *.patch text eol=lf
+integrations/sparkcache/*.patch whitespace=-trailing-space
 # Qualification receipts bind the maintained conversation harness by file hash.
 performance/harnesses/validation/conversation_soak.py text eol=lf
 runtime/** text eol=lf
