@@ -127,6 +127,21 @@ def container(spec):
     return json.loads(run(["docker", "container", "inspect", spec.name]).stdout)[0]
 
 
+def check_project_containers(spec, *, owned_id=None):
+    """Compose selects a project by labels even when a container was renamed."""
+    result = run(
+        [
+            "docker", "container", "ls", "--all", "--no-trunc",
+            "--filter", "label=com.docker.compose.project=" + spec.name,
+            "--format", "{{.ID}}",
+        ]
+    )
+    if any(value != owned_id for value in result.stdout.splitlines()):
+        raise ValueError(
+            "Compose project already contains another container; refusing adoption or recreation"
+        )
+
+
 def owned(spec, manifest):
     info = container(spec)
     labels = info.get("Config", {}).get("Labels", {}) if info else {}
@@ -254,6 +269,7 @@ def preflight(rank, site, spec, image, profile, manifest):
     present = container(spec)
     if present is not None:
         owned(spec, manifest)
+    check_project_containers(spec, owned_id=present["Id"] if present else None)
     gpus = run(
         ["nvidia-smi", "--query-gpu=uuid", "--format=csv,noheader"]
     ).stdout.splitlines()
@@ -374,8 +390,9 @@ def host_operation(operation, payload):
             raise ValueError(
                 "Container name already exists; refusing adoption or recreation"
             )
+        check_project_containers(spec)
         compose.check_equivalence(spec, image, exports["compose.yaml"], run=run)
-        run(command + ["create", "--no-build", "--pull", "never", "model"])
+        run(command + ["create", "--no-build", "--no-recreate", "--pull", "never", "model"])
     elif operation == "created":
         if owned(spec, manifest)["State"]["Status"] not in ("created", "running"):
             raise ValueError("Created container has exited or changed state")

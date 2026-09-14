@@ -245,6 +245,68 @@ def test_existing_stage_directory_is_not_overwritten(deployment, tmp_path, monke
     assert sentinel.read_text() == "existing content"
 
 
+@pytest.mark.parametrize("owned_id", [None, "owned-container-id"])
+def test_project_collision_rejected_regardless_of_container_name(
+    deployment, monkeypatch, owned_id
+):
+    manifest, _ = deployment
+    spec = rank_spec(manifest)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout="renamed-container-id\n")
+
+    monkeypatch.setattr(coordinator, "run", run)
+    with pytest.raises(ValueError, match="project already contains"):
+        coordinator.check_project_containers(spec, owned_id=owned_id)
+    assert calls == [[
+        "docker", "container", "ls", "--all", "--no-trunc",
+        "--filter", "label=com.docker.compose.project=" + spec.name,
+        "--format", "{{.ID}}",
+    ]]
+
+
+def test_project_check_allows_only_exact_owned_container_on_resume(deployment, monkeypatch):
+    manifest, _ = deployment
+    spec = rank_spec(manifest)
+    monkeypatch.setattr(
+        coordinator, "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, stdout="owned-id\n"),
+    )
+    coordinator.check_project_containers(spec, owned_id="owned-id")
+
+
+@pytest.mark.parametrize("project_container", ["renamed-container-id", ""])
+def test_create_cannot_recreate_a_project_container(
+    deployment, tmp_path, monkeypatch, project_container
+):
+    manifest, files = deployment
+    monkeypatch.setattr(coordinator, "stage_path", lambda *_: tmp_path)
+    monkeypatch.setattr(coordinator, "staged", lambda *_: None)
+    monkeypatch.setattr(coordinator, "container", lambda _: None)
+    monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[1:3] == ["container", "ls"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=project_container)
+        return subprocess.CompletedProcess(argv, 0, stdout="")
+
+    monkeypatch.setattr(coordinator, "run", run)
+    payload = {"manifest": manifest, "files": files, "rank": 0}
+    if project_container:
+        with pytest.raises(ValueError, match="project already contains"):
+            coordinator.host_operation("create", payload)
+        assert len(calls) == 1
+    else:
+        coordinator.host_operation("create", payload)
+        assert calls[-1][-6:] == [
+            "create", "--no-build", "--no-recreate", "--pull", "never", "model"
+        ]
+
+
 def test_edited_stage_cannot_start_a_container(deployment, tmp_path, monkeypatch):
     manifest, files = deployment
     monkeypatch.setattr(coordinator, "stage_path", lambda *_: tmp_path)
