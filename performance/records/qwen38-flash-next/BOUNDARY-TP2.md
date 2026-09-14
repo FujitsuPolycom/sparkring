@@ -25,13 +25,23 @@ cache salts. All 32 scored cells across the two arms passed validity checks.
 | 64K | 2807 | 44.45 | 182.25 |
 | 128K | 2506 | — | — |
 
+The historical baseline is the `measurements` section of the
+[R37 native-cache record](r37-tp2.json). Its text tests used image 1/video 0;
+the matched cache-on/cache-off runs here both use image 3/video 1.
 Prefill is 0–0.61% below the matched cache-disabled control and 0.71–1.29%
-below the historical sample. Matched C1 normalized decode is 0.40–1.30% lower;
+below that historical baseline. Matched C1 normalized decode is 0.40–1.30% lower;
 other concurrency results are mixed. The operator accepted this trade-off.
 Strict parity is not claimed. All C1/C2/C4/C8 cells, acceptance lengths, control
 values, source identities and limitations are in [the measurement record](r37-boundary-tp2.json).
 One full pair is not a formal confidence bound; 128K lacks computed-token
 corroboration, and the historical sample is not a matched-seed control.
+
+Decode tok/s is aggregate output throughput across the concurrent requests.
+Normalized decode divides that rate by effective acceptance length: emitted
+tokens per inferred request step, including target-sampled tokens and
+non-speculative steps. Its units are inferred request-step equivalents/s,
+pooled across requests—not CUDA kernel time or batch-forward frequency.
+The measurement record defines the counter-based calculation and every field's units.
 
 ## Persistent state and memory
 

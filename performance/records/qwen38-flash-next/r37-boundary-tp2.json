@@ -47,6 +47,8 @@
     "persistent_low_watermark_bytes_per_rank": 3221225472
   },
   "benchmark": {
+    "version": "0.6.2",
+    "source_sha256": "e8907f4930d1f3fc1cba3ad0d5b73d9e28e54b63bf27e4c300eae1371182dcb6",
     "duration_seconds_per_cell": 17,
     "max_tokens": 2048,
     "temperature": 1,
@@ -83,6 +85,20 @@
       "The historical matrix is not a matched-seed control.",
       "The 128K scout has client timing and exact request tokens but no computed-token corroboration."
     ]
+  },
+  "historical_baseline": {
+    "record": "performance/records/qwen38-flash-next/r37-tp2.json",
+    "json_pointer": "/measurements",
+    "scope": "Native-cache text measurements; the record scopes its text tests to image=1/video=0. The matched boundary/control pair uses image=3/video=1. This historical record is not a matched-seed control."
+  },
+  "metric_definitions": {
+    "prefill_tps": "Prompt tokens divided by client time to first token; tokens/s for one request.",
+    "decode_tps": "Aggregate emitted output tokens/s across the concurrent requests in the measured window; *_tps fields in measurements.decode.",
+    "counter_scope": "Server generation and speculative-counter deltas over the same measurement window. O is output tokens, D is drafted request steps, and A is accepted draft tokens.",
+    "inferred_steps": "D + max(0, O - (A + D)); includes drafted steps and non-speculative one-token steps.",
+    "effective_acceptance": "O / inferred_steps; emitted tokens per inferred request step, including the target-sampled token. Stored as *_acceptance.",
+    "normalized_decode": "Aggregate decode_tps / effective_acceptance; inferred request-step equivalents/s, pooled across concurrent requests. Stored as *_steps; not direct GPU timing or batched forward-pass frequency.",
+    "percentage_change": "100 * (cache-on metric / cache-off metric - 1); historical_change_percent instead uses the explicitly linked historical baseline."
   },
   "measurements": {
     "seed": 701,
