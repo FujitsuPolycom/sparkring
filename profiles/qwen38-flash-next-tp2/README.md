@@ -1,5 +1,9 @@
 # Qwen3.8-Flash-Next NVFP4 on two Sparks
 
+[Experimental per-host Compose examples](compose/README.md) are available for the
+published R37 image on an already prepared fabric. They preserve the profile’s
+serving settings but have only been checked offline, not launched through Compose.
+
 Status: **Experimental**. The profile fixes **262K context, 16 sequences,
 8,192 batched tokens and 24 GiB KV per rank**. Bounded exact-answer, C16,
 near-limit retrieval and native prefix-cache checks passed at these settings.
