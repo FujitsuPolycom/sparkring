@@ -152,7 +152,11 @@ def profile_table(root=ROOT, *, compact=False):
             engine_title = {'vllm': 'vLLM', 'sglang': 'SGLang'}[engine]
             repository = r['model']['repository']
             model_name = names[repository]
-            quant = f"[{quant_labels[repository]}](https://huggingface.co/{repository})"
+            variant = model_labels.get('quant_variants', {}).get(repository + '@' + r['model'].get('revision', ''))
+            quant_url = f"https://huggingface.co/{repository}"
+            if variant:
+                quant_url += '/tree/' + r['model']['revision']
+            quant = f"[{variant or quant_labels[repository]}]({quant_url})"
             layout = f"TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']}"
             if engine == 'sglang':
                 layout = f"TP{s['tensor_parallel_size']}/EP{s['expert_parallel_size']}"

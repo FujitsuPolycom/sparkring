@@ -111,6 +111,7 @@ services:
       SPARKCACHE_ENABLED: '0'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive
+      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-beeb32253aa7-ada4da32a583/inductor
       TRANSFORMERS_OFFLINE: '1'
       TRITON_CACHE_DIR: /cache/qwen-flash-next-beeb32253aa7-ada4da32a583/triton
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
@@ -136,7 +137,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-beeb32253aa7-ada4da32a583
     labels:
-      io.sparkring.deployment: 7513432378da834ccb43363e39951ace625429cf3dbddff9b337a3baeb8baed2
+      io.sparkring.deployment: 15935ab1d262a32f42799952e1350dc648b14bfa33d5e7f9321f47a23ed17fad
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host

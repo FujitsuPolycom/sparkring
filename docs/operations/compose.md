@@ -8,6 +8,7 @@ Supported profiles:
 
 - `qwen38-flash-next-tp2`
 - `qwen38-flash-next-tp2-sparkcache`
+- `qwen38-flash-next-qad-tp4` ([Development quickstart](../../profiles/qwen38-flash-next-qad-tp4/README.md))
 
 Other profiles are rejected. GLM TP4 requires a structured adapter that preserves
 its managed fabric, source-verification and recovery contracts before it can use
@@ -31,20 +32,32 @@ serving defaults. A site cannot change them or select an arbitrary image. The
 selects its registered extension image. Image capabilities do not automatically
 enable GLM-specific features in Qwen.
 
+The QAD TP4 profile selects a local shared-feature image. Its reference build
+pins a descriptor and image ID. `render --local-image-id SHA256_ID` can select
+a source-equivalent rebuild, which must use the same tag and exact image ID on
+all ranks. The host verifier still checks the entire pinned payload before
+creation. Published profiles reject this override.
+
 ## Prepare the hosts
 
-Use two Linux ARM64 Sparks with a working direct cable and matching HCA/GID
-selection. Complete the selected profile's model download, full shard checksum,
+Use the profile's two or four Linux ARM64 Sparks with working fabric and matching
+HCA/GID selection. TP4 also requires the pinned mesh site, hardware rules and
+persistent source markers described in its quickstart. Complete the model download, full shard checksum,
 image pull and host prerequisites before generating a deployment:
 
 - [Qwen TP2 quickstart](../../profiles/qwen38-flash-next-tp2/README.md)
 - [Qwen TP2 with SparkCache](../../profiles/qwen38-flash-next-tp2/SPARKCACHE.md)
+- [Qwen QAD TP4](../../profiles/qwen38-flash-next-qad-tp4/README.md)
 
 Install the same SparkRing source files on the controller and each host, with
 Python 3.12, PyYAML and the Docker Compose plugin. The controller needs SSH access;
 the hosts need NVIDIA Container Toolkit, `nvidia-smi` and `ip`. The coordinator
 compares source fingerprints before importing the host helper. A matching branch
 name alone is insufficient. The controller can run on Windows or Linux.
+
+TP4 preflight uses `sudo -n` to inspect root-owned marker executables and live
+attachment logs. It performs read-only network checks and requires the mesh
+guide's RDMA/traffic-control inspection tools. It does not install or repair fabric.
 
 Create the cache and deployment-root directories yourself. Model, cache,
 repository and deployment-root directories must be disjoint. Deployment roots
@@ -122,8 +135,8 @@ that exact plan. This uses the shared deployment engine's barriers and receipts:
 3. Verify each image payload using the existing adapter's isolated verification
    containers, without GPU access, networking or host mounts.
 4. Create stopped containers after every image is admitted.
-5. Start rank 1, then rank 0; wait up to 15 minutes for rank 0's API health check.
-6. Confirm both ranks are running.
+5. Start all worker ranks, then rank 0; wait up to 15 minutes for rank 0's API health check.
+6. Confirm every rank is running.
 
 Each host has a separate Compose project. Cross-host barriers are implemented by
 SparkRing, not by Compose `depends_on`. Restart policy is `no`. Rank 0 has an API

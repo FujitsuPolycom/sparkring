@@ -1,0 +1,16 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "qwen38-flash-next-qad-r37-shared",
+  "inputs": [
+    {
+      "path": "runtime/images/compositions/lil-r37-shared/local-build.json",
+      "sha256": "40e5533457e711249a3b496c5abd0735917b018ade93602e05d7d07cfd2f80a4"
+    },
+    {
+      "path": "runtime/images/compositions/lil-r37-shared/descriptor.json",
+      "sha256": "ba0f0f0b7045071dbfb4be86eaafad548a192c3918f7135edf8b635c2ff206bf"
+    }
+  ],
+  "image": "sparkring-local:r37-arm64-ba0f0f0b7045",
+  "selection": "local-source-verified-shared-features"
+}

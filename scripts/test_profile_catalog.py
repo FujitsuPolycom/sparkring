@@ -7,7 +7,8 @@ from scripts.generate_profiles import profile_table
 def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
     table = profile_table()
     summary, variants = table.split('## Configuration variants', 1)
-    rows = [line for line in summary.splitlines() if line.startswith('| Qwen3.8-Flash-Next |')]
+    pair_summary = summary.split('### Two Sparks', 1)[1]
+    rows = [line for line in pair_summary.splitlines() if line.startswith('| Qwen3.8-Flash-Next |')]
     assert len(rows) == 1
     assert '[Optional](../profiles/qwen38-flash-next-tp2/README.md)' in rows[0]
     assert 'Qwen with SparkCache is unsupported' not in table
@@ -17,6 +18,14 @@ def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
     assert 'SparkCache is disabled' not in str(cached['evidence'])
     cache_row = next(line for line in variants.splitlines() if '[qwen38-flash-next-tp2-sparkcache](' in line)
     assert '| On | Experimental |' in cache_row
+
+
+def test_qad_quant_link_identifies_its_checkpoint_separately_from_tp2():
+    summary = profile_table().split('## Configuration variants', 1)[0]
+    ring, pair = summary.split('### Two Sparks', 1)
+    assert '[NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)' in ring
+    assert '[NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)' in pair
+    assert 'NVFP4 QAD' not in pair
 
 
 def test_catalog_groups_glm_choices_and_preserves_every_profile_link():

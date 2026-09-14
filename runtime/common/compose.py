@@ -13,7 +13,7 @@ import yaml
 from runtime.common import profiles, qwen_flash_next
 
 ROOT = Path(__file__).resolve().parents[2]
-SUPPORTED = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache")
+SUPPORTED = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4")
 LABEL = "io.sparkring.deployment"
 
 
@@ -63,7 +63,7 @@ def linux_path(value):
     return path
 
 
-def site_settings(site):
+def site_settings(site, *, nodes=2):
     if not isinstance(site, dict) or set(site) != {"schema", "name", "master", "ranks"}:
         raise ValueError(
             "Site requires only schema, name, master and ranks; secrets and overrides are not accepted"
@@ -76,8 +76,8 @@ def site_settings(site):
         raise ValueError(
             "Site name must be a lowercase deployment name, at most 40 characters"
         )
-    if not isinstance(site["ranks"], list) or len(site["ranks"]) != 2:
-        raise ValueError("Qwen TP2 requires exactly two hosts")
+    if nodes not in (2, 4) or not isinstance(site["ranks"], list) or len(site["ranks"]) != nodes:
+        raise ValueError(f"Qwen TP{nodes} requires exactly {nodes} hosts")
     hosts, addresses = set(), set()
     for number, rank in enumerate(site["ranks"]):
         keys = {
@@ -92,6 +92,8 @@ def site_settings(site):
             "repository",
             "deployment_root",
         }
+        if nodes == 4:
+            keys.add("fabric")
         if (
             not isinstance(rank, dict)
             or set(rank) != keys
@@ -99,7 +101,7 @@ def site_settings(site):
             or rank["rank"] != number
         ):
             raise ValueError(
-                "Site ranks must be ordered 0, 1 with the documented host fields"
+                "Site ranks must be ordered from zero with the documented host fields"
             )
         host = rank["host"]
         if (
@@ -131,7 +133,11 @@ def site_settings(site):
             rank["model"],
             rank["cache"],
             remote=True,
+            nodes=nodes,
         )
+        if nodes == 4:
+            from runtime.common import qwen_mesh
+            qwen_mesh.validate_site_reference(rank["fabric"])
     if site["master"] != site["ranks"][0]["host_ip"]:
         raise ValueError("Master must be the API rank's host_ip")
     return site
@@ -154,7 +160,16 @@ def source_inventory(profile_id):
         "profiles/qwen38-flash-next-tp2/config.json",
         "profiles/qwen38-flash-next-tp2/sparkcache.json",
     }
-    for folder in ("lil-r37-glm-spark", "lil-r37-cache64"):
+    metadata, _ = profiles.load(profile_id)
+    paths.add(metadata["configuration"]["path"])
+    if profile_id == "qwen38-flash-next-qad-tp4":
+        from runtime.common import qwen_mesh
+        paths.add("runtime/common/feature_candidate.py")
+        paths.update(qwen_mesh.SOURCE_FILES)
+    folders = ["lil-r37-glm-spark", "lil-r37-cache64"]
+    if profile_id == "qwen38-flash-next-qad-tp4":
+        folders.append("lil-r37-shared")
+    for folder in folders:
         paths.update(
             p.relative_to(ROOT).as_posix()
             for p in (ROOT / "runtime/images/compositions" / folder).glob("*.json")
@@ -166,22 +181,36 @@ def source_inventory(profile_id):
     }
 
 
-def specifications(profile_id, site):
+def specifications(profile_id, site, *, local_image_id=None):
     if profile_id not in SUPPORTED:
         raise ValueError(
             "Compose adapter unsupported for "
             + str(profile_id)
             + "; use its profile quickstart"
         )
-    site_settings(site)
     metadata, release = profiles.load(profile_id)
     profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
+    site_settings(site, nodes=qwen_flash_next.node_count(profile))
     publication = qwen_flash_next.read(ROOT / release["inputs"][0]["path"])
-    image = publication["image_reference"]
+    local = publication.get("schema") == "sparkring-local-image-build/v1"
+    image = publication["image_tag"] if local else publication["image_reference"]
+    image_id = publication["image_id"]
+    if local:
+        from runtime.common import feature_candidate
+        if (publication.get("published") is not False
+                or profile.get("image_extension") != "lil-r37-shared"
+                or publication.get("descriptor_sha256") != digest(feature_candidate.DESCRIPTOR.read_bytes())):
+            raise ValueError("Local image selection must bind the shared feature descriptor")
+        if local_image_id is not None:
+            if not isinstance(local_image_id, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", local_image_id):
+                raise ValueError("Local rebuild requires an exact image configuration ID")
+            image_id = local_image_id
+    elif local_image_id is not None:
+        raise ValueError("Published image selections cannot be overridden")
     if (
         release["image"] != image
         or publication["platform"] != "linux/arm64"
-        or not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image)
+        or not (local or re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image))
     ):
         raise ValueError(
             "Release must select its registered Linux ARM64 manifest digest"
@@ -198,7 +227,7 @@ def specifications(profile_id, site):
             cache=rank["cache"],
             hcas=rank["hcas"],
             gid=rank["gid"],
-            image=publication["image_id"],
+            image=image_id,
             remote=True,
         )
         specs.append(replace(spec, name=f"sr-{site['name']}-r{rank['rank']}"))
@@ -279,10 +308,13 @@ def compose_text(spec, image):
     )
 
 
-def build(profile_id, site):
-    specs, image = specifications(profile_id, site)
+def build(profile_id, site, *, local_image_id=None):
+    specs, image = specifications(profile_id, site, local_image_id=local_image_id)
     inputs = source_inventory(profile_id)
-    identity = digest(encoded({"profile": profile_id, "site": site, "inputs": inputs}))
+    identity_inputs = {"profile": profile_id, "site": site, "inputs": inputs}
+    if local_image_id is not None:
+        identity_inputs["local_image_id"] = local_image_id
+    identity = digest(encoded(identity_inputs))
     files = {}
     for number, spec in enumerate(specs):
         spec = replace(spec, labels={LABEL: identity, "io.sparkring.rank": str(number)})
@@ -299,11 +331,13 @@ def build(profile_id, site):
         "files": {name: digest(text) for name, text in files.items()},
         "qualification": "Generated configuration only; Compose serving is not qualified.",
     }
+    if local_image_id is not None:
+        manifest["local_image_id"] = local_image_id
     return manifest, files
 
 
-def render(profile_id, site, output):
-    manifest, files = build(profile_id, site)
+def render(profile_id, site, output, *, local_image_id=None):
+    manifest, files = build(profile_id, site, local_image_id=local_image_id)
     output = Path(output).resolve()
     if output.is_relative_to(ROOT) and not output.is_relative_to(ROOT / ".sparkring"):
         raise ValueError(
@@ -321,7 +355,7 @@ def render(profile_id, site, output):
 def load_deployment(output):
     output = Path(output)
     manifest = qwen_flash_next.read(output / "deployment.json")
-    expected, files = build(manifest["profile"], manifest["site"])
+    expected, files = build(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
     if manifest != expected:
         raise ValueError(
             "Deployment inputs changed; render a separate deployment and review it"
@@ -415,7 +449,7 @@ def check_equivalence(spec, image, text, *, run=subprocess.run):
 
 def check(output):
     manifest, files = load_deployment(output)
-    specs, image = specifications(manifest["profile"], manifest["site"])
+    specs, image = specifications(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
     for number, spec in enumerate(specs):
         spec = replace(
             spec, labels={LABEL: manifest["id"], "io.sparkring.rank": str(number)}

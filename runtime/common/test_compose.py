@@ -37,8 +37,8 @@ def compose_cli():
         pytest.skip("Docker Compose CLI unavailable; no daemon is required")
 
 
-@pytest.mark.parametrize("profile", compose.SUPPORTED)
-def test_both_backends_preserve_canonical_profile(site, profile, compose_cli):
+@pytest.mark.parametrize("profile", ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache"))
+def test_tp2_backends_preserve_canonical_profile(site, profile, compose_cli):
     specs, image = compose.specifications(profile, site)
     for number, spec in enumerate(specs):
         result = compose.check_equivalence(

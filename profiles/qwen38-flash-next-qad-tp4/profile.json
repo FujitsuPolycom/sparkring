@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-qad-tp4",
+  "title": "Qwen3.8-Flash-Next NVFP4 QAD on four Sparks",
+  "recommendation": "alternative",
+  "status": "implemented",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-qad-tp4/config.json"
+  },
+  "release": "runtime/releases/qwen38-flash-next-qad-r37-shared/release.json",
+  "guide": "profiles/qwen38-flash-next-qad-tp4/README.md",
+  "evidence_scope": "Development. Baked-image serving acceptance pending; bounded overlay evidence applies only to its recorded image and sources. SparkCache is disabled.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan",
+      "check",
+      "create"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/qwen38-flash-next-qad-tp4/config.json"
+    ]
+  }
+}

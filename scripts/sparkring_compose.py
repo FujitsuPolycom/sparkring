@@ -47,7 +47,9 @@ def unpacked(value):
 
 def host_argv(manifest, files, rank, operation):
     payload = {"manifest": manifest, "files": files, "rank": rank["rank"]}
-    return [
+    # The mesh check reads root-owned marker executable and attachment records.
+    prefix = ["sudo", "-n"] if "fabric" in rank and operation == "preflight" else []
+    return prefix + [
         "python3",
         "-I",
         "-B",
@@ -241,6 +243,9 @@ def preflight(rank, site, spec, image, profile, manifest):
     if not os.access(paths[1], os.W_OK):
         raise ValueError("Cache directory is not writable")
     qwen_flash_next.verify_model_paths(profile, paths[0], paths[1])
+    if qwen_flash_next.node_count(profile) == 4:
+        from runtime.common import qwen_mesh
+        qwen_mesh.check(rank["fabric"], rank["rank"], rank["hcas"], rank["gid"], rank["host_ip"])
     if not Path("/dev/infiniband").is_dir():
         raise ValueError("RDMA device directory is absent")
     addresses = json.loads(
@@ -322,12 +327,12 @@ def wait_ready(spec, manifest, *, seconds=900, clock=time.monotonic, sleep=time.
 
 def host_operation(operation, payload):
     manifest = payload["manifest"]
-    expected, files = compose.build(manifest["profile"], manifest["site"])
+    expected, files = compose.build(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
     if manifest != expected or files != payload["files"]:
         raise ValueError("Host/controller configuration differs")
     number = payload["rank"]
     rank = manifest["site"]["ranks"][number]
-    specs, image = compose.specifications(manifest["profile"], manifest["site"])
+    specs, image = compose.specifications(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
     spec = replace(
         specs[number],
         labels={compose.LABEL: manifest["id"], "io.sparkring.rank": str(number)},
@@ -355,6 +360,7 @@ def host_operation(operation, payload):
         result = qwen_flash_next.verify_image(
             spec.image_id,
             cache_enabled=profile.get("image_extension") == "lil-r37-cache64",
+            feature_enabled=profile.get("image_extension") == "lil-r37-shared",
             run=image_run,
         )
         receipt = {
@@ -432,6 +438,7 @@ def main(argv=None):
     render.add_argument("profile")
     render.add_argument("--site", type=Path, required=True)
     render.add_argument("--output", type=Path, required=True)
+    render.add_argument("--local-image-id", help="pin a source-equivalent local Development rebuild; published releases reject overrides")
     check = sub.add_parser(
         "check", help="check canonical inputs and resolved Compose equivalence"
     )
@@ -456,7 +463,8 @@ def main(argv=None):
     try:
         if args.operation == "render":
             manifest = compose.render(
-                args.profile, compose.read_site(args.site), args.output
+                args.profile, compose.read_site(args.site), args.output,
+                local_image_id=args.local_image_id,
             )
             print(
                 compose.encoded({"deployment": str(args.output), "id": manifest["id"]})

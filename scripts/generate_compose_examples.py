@@ -12,11 +12,12 @@ from runtime.common import compose  # noqa: E402
 
 
 def examples():
-    source = ROOT / "profiles/qwen38-flash-next-tp2/compose/site.example.yaml"
     for profile in compose.SUPPORTED:
+        owner = "qwen38-flash-next-tp2" if profile.endswith("-sparkcache") else profile
+        source = ROOT / "profiles" / owner / "compose/site.example.yaml"
         site = compose.read_site(source)
         _, files = compose.build(profile, site)
-        for rank in range(2):
+        for rank in range(len(site["ranks"])):
             yield ROOT / "profiles" / profile / "compose" / f"compose.rank{rank}.yaml", files[
                 f"rank{rank}/compose.yaml"
             ]
