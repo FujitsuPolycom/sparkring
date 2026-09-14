@@ -38,11 +38,14 @@ def transport_environment(rank: int) -> dict[str, str]:
         raise ValueError("The profile's transport manifest has changed")
     indices = transport["local_hca_indices"]
     inventory = transport["hca_inventory"]
+    # The proxy requires every listed device to be active. Peer indices refer
+    # to this selected list, not to uncabled functions in the host inventory.
+    selected = [inventory[index] for index in indices]
     return {
-        "B12X_ROCE_HCA": ",".join(inventory),
+        "B12X_ROCE_HCA": ",".join(selected),
         "B12X_ROCE_PAIR_PATHS": str(transport["path_count"]),
-        "B12X_ROCE_PEER_HCA_MAP": f"{1 - rank}=" + "/".join(map(str, indices)),
-        "NCCL_IB_HCA": "=" + ",".join(inventory[index] for index in indices),
+        "B12X_ROCE_PEER_HCA_MAP": f"{1 - rank}=" + "/".join(str(index) for index in range(len(selected))),
+        "NCCL_IB_HCA": "=" + ",".join(selected),
         "NCCL_IB_MERGE_NICS": "0",
         "NCCL_CROSS_NIC": "1",
         "NCCL_MIN_NCHANNELS": "8",

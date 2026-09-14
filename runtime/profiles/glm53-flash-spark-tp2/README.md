@@ -26,7 +26,7 @@ records the common-source requirements and reference-trial limits.
 | Scheduler | Eight sequences, 8,192 batched tokens, prefill interval 8 |
 | Prefill | Token-sharded mHC and recurrent-checkpoint coalescing; sequential KDA projection |
 | Graphs | `FULL_AND_PIECEWISE`, mode 0; `[1,2,4,8,12,16,20,24,28,32]` |
-| Transport | HCA indices 0/2; two RoCEnante paths; 16 MiB all-reduce and all-gather input-shard limits |
+| Transport | Inventory functions 0/2 (`rocep1s0f0`, `roceP2p1s0f0`) only; two RoCEnante paths; 16 MiB all-reduce and all-gather input-shard limits |
 | NCCL | Receipt-pinned 2.30.7; eight channels; `=rocep1s0f0,roceP2p1s0f0` |
 | Multimodal / SparkCache | Four images, zero videos; SparkCache disabled |
 | Lifecycle | Active 2 GiB host-memory guard; manual create/start; Docker restart `no` |
@@ -97,9 +97,9 @@ transport, memory-guard, and cache settings come from the profile.
 
 Confirm this hardware inventory maps to the intended physical cage:
 `rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1`. The reciprocal peer maps
-are rank 0 `1=0/2` and rank 1 `0=0/2`: the left-hand number identifies the
-peer rank, and `0/2` selects zero-based entries 0 and 2 in that inventory.
-Those functions expose the same physical cage through the two PCI domains.
+use positions in the selected two-device list: rank 0 `1=0/1` and rank 1
+`0=0/1`. These select inventory functions 0 and 2, which expose physical cage
+p0 through both PCI domains. Unselected functions may be uncabled.
 Install the host memory-guard service and apply
 [memory-guard.conf](memory-guard.conf) as its systemd drop-in. Both `create`
 and `start` require the active guard's effective 2 GiB floor. The launcher
