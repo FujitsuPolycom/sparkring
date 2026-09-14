@@ -1,0 +1,424 @@
+{
+  "schema": "sparkring-qwen-boundary-evidence/v1",
+  "status": "research-only",
+  "scope": "Maintainer-held source-pinned TP2 deployment. The published aligned-cache image does not contain this connector. This record is not a claim of public-image serving qualification.",
+  "publication": {
+    "source_branch_published": false,
+    "image_published": false
+  },
+  "model": {
+    "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "revision": "ada4da32a583a78aa47299f45a70603c950490b8",
+    "quantization": "original PTQ NVFP4, not QAD"
+  },
+  "sources": {
+    "sparkcache_commit": "5f536b0858fb4c3f2b3026edcd5f5dbc892a5616",
+    "vllm_tree": "8e0bb7da60e882c095385222d5878981a2666b60",
+    "b12x_tree": "bd931d9e6b22ae21b92af0ab66ac45281658bf2c",
+    "boundary_contract_sha256": "b4aa1c26633cc59eee6b76d159645ab40ef5c23fd8c61d3c4589c160b1f791ac"
+  },
+  "conditions": {
+    "nodes": 2,
+    "hardware": "NVIDIA GB10",
+    "tp": 2,
+    "dcp": 1,
+    "pp": 1,
+    "max_model_len": 262144,
+    "yarn": false,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_memory_bytes_per_rank": 25769803776,
+    "reported_logical_kv_tokens": 2954103,
+    "kv_dtype": "fp8",
+    "mtp_tokens": 3,
+    "loader": "b12x",
+    "allocator": "managed",
+    "image_limit": 3,
+    "video_limit": 1,
+    "video_frames": 16,
+    "checkpoint_policy": "request_boundaries",
+    "external_connector": "SparkBoundaryCacheConnector",
+    "media_checkpoint_policy": "aligned",
+    "data_fabric": "One direct cable using both Socket Direct functions",
+    "all_reduce_cutoff_bytes": 2097152,
+    "all_gather_shard_limit_bytes": 16777216,
+    "host_cache_buffers_bytes_per_rank": 2952790016,
+    "persistent_limit_bytes_per_rank": 4294967296,
+    "persistent_low_watermark_bytes_per_rank": 3221225472
+  },
+  "benchmark": {
+    "duration_seconds_per_cell": 17,
+    "max_tokens": 2048,
+    "temperature": 1,
+    "prompt_seed": 701,
+    "sampling_seed": 2026,
+    "concurrency": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "decode_context_tokens": [
+      8192,
+      16384,
+      32768,
+      65536
+    ],
+    "prefill_context_tokens": [
+      8192,
+      16384,
+      32768,
+      65536,
+      131072
+    ],
+    "warmup": "Benchmark pre-decode warmup; no discarded full-matrix warmup",
+    "matched_request_hashes_and_counts": true,
+    "distinct_cache_salts": true,
+    "valid_cells_per_arm": 16,
+    "errors": 0,
+    "loops": 0,
+    "underfilled_cells": 0,
+    "limitations": [
+      "One full matched pair is not a formal confidence bound.",
+      "The historical matrix is not a matched-seed control.",
+      "The 128K scout has client timing and exact request tokens but no computed-token corroboration."
+    ]
+  },
+  "measurements": {
+    "seed": 701,
+    "prefill": [
+      {
+        "context": 8192,
+        "historical_tps": 3140.0,
+        "uncached_tps": 3121.0,
+        "boundary_tps": 3102.0,
+        "change_percent": -0.6087792374239065,
+        "historical_change_percent": -1.2101910828025475
+      },
+      {
+        "context": 16384,
+        "historical_tps": 3121.0,
+        "uncached_tps": 3093.0,
+        "boundary_tps": 3093.0,
+        "change_percent": 0.0,
+        "historical_change_percent": -0.8971483498878552
+      },
+      {
+        "context": 32768,
+        "historical_tps": 3022.0,
+        "uncached_tps": 2996.0,
+        "boundary_tps": 2983.0,
+        "change_percent": -0.43391188251001855,
+        "historical_change_percent": -1.290536068828585
+      },
+      {
+        "context": 65536,
+        "historical_tps": 2838.0,
+        "uncached_tps": 2819.0,
+        "boundary_tps": 2807.0,
+        "change_percent": -0.4256828662646317,
+        "historical_change_percent": -1.0923185341790043
+      },
+      {
+        "context": 131072,
+        "historical_tps": 2524.0,
+        "uncached_tps": 2508.0,
+        "boundary_tps": 2506.0,
+        "change_percent": -0.07974481658692412,
+        "historical_change_percent": -0.7131537242472286
+      }
+    ],
+    "decode": [
+      {
+        "context": 8192,
+        "concurrency": 1,
+        "uncached_tps": 47.20372443856831,
+        "boundary_tps": 45.789380635165514,
+        "uncached_steps": 22.216983911785583,
+        "boundary_steps": 21.927309036558132,
+        "uncached_acceptance": 2.1246684350132625,
+        "boundary_acceptance": 2.088235294117647,
+        "step_change_percent": -1.3038442858744004,
+        "raw_change_percent": -2.9962546816479363
+      },
+      {
+        "context": 16384,
+        "concurrency": 1,
+        "uncached_tps": 43.294117647058826,
+        "boundary_tps": 48.08768931586001,
+        "uncached_steps": 22.087636682895685,
+        "boundary_steps": 21.981259944627187,
+        "uncached_acceptance": 1.9601063829787233,
+        "boundary_acceptance": 2.187667560321716,
+        "step_change_percent": -0.4816121335012413,
+        "raw_change_percent": 11.07210847413318
+      },
+      {
+        "context": 32768,
+        "concurrency": 1,
+        "uncached_tps": 47.57418747056966,
+        "boundary_tps": 42.92275082431347,
+        "uncached_steps": 21.902967498826627,
+        "boundary_steps": 21.69656856735845,
+        "uncached_acceptance": 2.172043010752688,
+        "boundary_acceptance": 1.978319783197832,
+        "step_change_percent": -0.9423331860362372,
+        "raw_change_percent": -9.777227722772286
+      },
+      {
+        "context": 65536,
+        "concurrency": 1,
+        "uncached_tps": 42.098445595863005,
+        "boundary_tps": 44.453603391435756,
+        "uncached_steps": 21.872376762096422,
+        "boundary_steps": 21.78520960904799,
+        "uncached_acceptance": 1.924731182795699,
+        "boundary_acceptance": 2.0405405405405403,
+        "step_change_percent": -0.39852620497782265,
+        "raw_change_percent": 5.594405594405583
+      },
+      {
+        "context": 8192,
+        "concurrency": 2,
+        "uncached_tps": 72.42110221386223,
+        "boundary_tps": 75.83161613168356,
+        "uncached_steps": 36.62270372115635,
+        "boundary_steps": 36.38504562840096,
+        "uncached_acceptance": 1.977491961414791,
+        "boundary_acceptance": 2.0841423948220066,
+        "step_change_percent": -0.6489365027904759,
+        "raw_change_percent": 4.7092819821354714
+      },
+      {
+        "context": 16384,
+        "concurrency": 2,
+        "uncached_tps": 81.38849599248766,
+        "boundary_tps": 77.77908619879024,
+        "uncached_steps": 38.071664309302705,
+        "boundary_steps": 37.918040508721354,
+        "uncached_acceptance": 2.137770897832817,
+        "boundary_acceptance": 2.051242236024845,
+        "step_change_percent": -0.403512174653764,
+        "raw_change_percent": -4.434791120885906
+      },
+      {
+        "context": 32768,
+        "concurrency": 2,
+        "uncached_tps": 74.53635560769519,
+        "boundary_tps": 75.58037026173045,
+        "uncached_steps": 36.620547541853405,
+        "boundary_steps": 36.32089332950966,
+        "uncached_acceptance": 2.035369774919614,
+        "boundary_acceptance": 2.0809061488673137,
+        "step_change_percent": -0.8182679737414489,
+        "raw_change_percent": 1.400678428028046
+      },
+      {
+        "context": 65536,
+        "concurrency": 2,
+        "uncached_tps": 75.9747537309949,
+        "boundary_tps": 74.44110186996551,
+        "uncached_steps": 37.22410654207942,
+        "boundary_steps": 36.8380472494849,
+        "uncached_acceptance": 2.0410094637223977,
+        "boundary_acceptance": 2.0207667731629395,
+        "step_change_percent": -1.0371217161602053,
+        "raw_change_percent": -2.018633540372672
+      },
+      {
+        "context": 8192,
+        "concurrency": 4,
+        "uncached_tps": 107.11968383153186,
+        "boundary_tps": 106.42937120642547,
+        "uncached_steps": 58.75066359923223,
+        "boundary_steps": 58.695267841417376,
+        "uncached_acceptance": 1.823293172690763,
+        "boundary_acceptance": 1.8132530120481927,
+        "step_change_percent": -0.09428958657001774,
+        "raw_change_percent": -0.6444311637364919
+      },
+      {
+        "context": 16384,
+        "concurrency": 4,
+        "uncached_tps": 124.2258007429549,
+        "boundary_tps": 128.41385005619247,
+        "uncached_steps": 58.27877071891711,
+        "boundary_steps": 60.23627231220389,
+        "uncached_acceptance": 2.1315789473684212,
+        "boundary_acceptance": 2.1318359375,
+        "step_change_percent": 3.358858756180627,
+        "raw_change_percent": 3.3713200383416186
+      },
+      {
+        "context": 32768,
+        "concurrency": 4,
+        "uncached_tps": 111.9288742345952,
+        "boundary_tps": 126.3516690173712,
+        "uncached_steps": 56.99481865286068,
+        "boundary_steps": 60.64880112833817,
+        "uncached_acceptance": 1.9638429752066116,
+        "boundary_acceptance": 2.0833333333333335,
+        "step_change_percent": 6.41107834333654,
+        "raw_change_percent": 12.885678410869051
+      },
+      {
+        "context": 65536,
+        "concurrency": 4,
+        "uncached_tps": 124.57196835500305,
+        "boundary_tps": 117.39053568283474,
+        "uncached_steps": 57.639532100048626,
+        "boundary_steps": 56.8094761035405,
+        "uncached_acceptance": 2.1612244897959183,
+        "boundary_acceptance": 2.066390041493776,
+        "step_change_percent": -1.4400810802338682,
+        "raw_change_percent": -5.764886568784711
+      },
+      {
+        "context": 8192,
+        "concurrency": 8,
+        "uncached_tps": 173.442855454228,
+        "boundary_tps": 163.901517388197,
+        "uncached_steps": 86.98735374058727,
+        "boundary_steps": 86.43797602893386,
+        "uncached_acceptance": 1.9938858695652173,
+        "boundary_acceptance": 1.8961748633879782,
+        "step_change_percent": -0.6315604372697181,
+        "raw_change_percent": -5.501142172183049
+      },
+      {
+        "context": 16384,
+        "concurrency": 8,
+        "uncached_tps": 190.35562882716795,
+        "boundary_tps": 182.91747773277578,
+        "uncached_steps": 87.14083843619196,
+        "boundary_steps": 86.82828997827988,
+        "uncached_acceptance": 2.1844594594594593,
+        "boundary_acceptance": 2.1066576086956523,
+        "step_change_percent": -0.35867047359308124,
+        "raw_change_percent": -3.9075025730631707
+      },
+      {
+        "context": 32768,
+        "concurrency": 8,
+        "uncached_tps": 171.3561021650157,
+        "boundary_tps": 174.0334747761159,
+        "uncached_steps": 86.8282899782799,
+        "boundary_steps": 85.80858085811877,
+        "uncached_acceptance": 1.9735054347826086,
+        "boundary_acceptance": 2.028159340659341,
+        "step_change_percent": -1.174397331118926,
+        "raw_change_percent": 1.5624612005482597
+      },
+      {
+        "context": 65536,
+        "concurrency": 8,
+        "uncached_tps": 169.2941176470588,
+        "boundary_tps": 182.25292242269876,
+        "uncached_steps": 85.6470588235294,
+        "boundary_steps": 87.37749439118696,
+        "uncached_acceptance": 1.9766483516483517,
+        "boundary_acceptance": 2.085810810810811,
+        "step_change_percent": 2.0204261435561977,
+        "raw_change_percent": 7.654610187139643
+      }
+    ]
+  },
+  "restart_checks": [
+    {
+      "case": "small",
+      "prompt_tokens": 5918,
+      "restored_tokens": 5918,
+      "cold_seconds": 2.5160000000032596,
+      "restore_seconds": 0.9369999999762513,
+      "request_sha256": "4a99b9317b28a5546966e8e97faffa92cf43c1b957a779d006b8943aa341fef5"
+    },
+    {
+      "case": "large",
+      "prompt_tokens": 50768,
+      "restored_tokens": 50768,
+      "cold_seconds": 18.23399999999674,
+      "restore_seconds": 1.562000000034459,
+      "request_sha256": "53ab97d8936ee6f36ccfaa76be1df4c829dbd7dfd830a5ee7f9fcae9fc6d74b8"
+    },
+    {
+      "case": "media",
+      "prompt_tokens": 13677,
+      "restored_tokens": 11392,
+      "cold_seconds": 10.172000000020489,
+      "restore_seconds": 1.6570000000065193,
+      "request_sha256": "566a271567228fba3822fb60b8c8b59d37f5c9c7b700deabe211eae5c756e285"
+    }
+  ],
+  "validation": {
+    "sparkcache_gpu_free_passed": 1342,
+    "sparkcache_gpu_free_skipped": 8,
+    "ruff_passed": true,
+    "private_diagnostic_tests_passed": 82,
+    "restart_request_hashes_matched": true,
+    "restart_answers_correct": true,
+    "changed_text_and_image_miss": true,
+    "one_rank_corruption_recomputed": true,
+    "missing_rank_manifest_miss": true,
+    "c16_exact_answers": 16,
+    "cancellation_import_not_admitted": true,
+    "cancellation_copies_drained": true,
+    "cancellation_limit": "The abort was observed after import reservation, not at a precise GPU memcpy instruction.",
+    "near_limit_prompt_tokens": 257468,
+    "near_limit_keys_correct": 3,
+    "minimum_host_available_gib_by_rank": [
+      15.64,
+      18.23
+    ],
+    "maximum_swap_mib_by_rank": [
+      0.633,
+      0.656
+    ]
+  },
+  "tuning": [
+    {
+      "method": "Aligned versus request-boundary controls",
+      "finding": "Approximately 1–2% prefill difference at 8K–32K; 128K effectively unchanged."
+    },
+    {
+      "method": "Collective size cutoff",
+      "finding": "2 MiB retained; several C4/C8 engine rates improved relative to 20 KiB controls."
+    },
+    {
+      "method": "11392 scheduled tokens",
+      "finding": "Prefill regression persisted in a warm repeat; 8192 retained."
+    },
+    {
+      "method": "OMP1 and restricted CPU placement",
+      "finding": "No consistent overall win; OMP16 and unrestricted node CPU access retained."
+    },
+    {
+      "method": "Executor reply-only control",
+      "finding": "No consistent isolated penalty; completion acknowledgements remain enabled."
+    },
+    {
+      "method": "Fused recurrent-state refresh",
+      "finding": "GPU byte/graph checks passed; ordered serving comparisons inconsistent; not retained."
+    },
+    {
+      "method": "Uniform recurrent-attention worklists",
+      "finding": "Metadata work reduced, but two ordered serving comparisons showed no consistent overall gain; not retained."
+    }
+  ],
+  "acceptance": "The operator accepted the measured performance trade-off: prefill 0.71–1.29% below the historical sample and C1 normalized decode 0.40–1.30% below the matched cache-disabled control. Strict parity is not claimed.",
+  "unqualified": [
+    "TP4",
+    "DCP2",
+    "QAD checkpoint",
+    "dynamic speculation",
+    "general multimodal answer quality",
+    "worst-case long-context concurrent media",
+    "long-duration store-pressure stability",
+    "boot automation"
+  ],
+  "raw_evidence_sha256": {
+    "cache_enabled_matrix": "e32209127200987eadeb28694883e9f31ebcac18fbf03e400ca6643197a31a9b",
+    "cache_disabled_matrix": "0649a90bc46515fe17a5537d2f6d40f6af00afdbb6664cf6ce3fb99ea6b3e88d",
+    "restart_and_live_state": "0cb14665ba7f4ee694b3417c5c9cfc0e4ec22058369f47e69a0df653cbbeb475"
+  },
+  "raw_evidence_scope": "Raw records are retained in the maintainer's private workspace. This site-free summary omits accounts, addresses, host paths and private image identifiers."
+}
