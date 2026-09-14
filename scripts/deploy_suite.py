@@ -354,6 +354,7 @@ def main(argv=None):
         ),
     )
     r.add_argument("--preparation", type=Path, required=True)
+    r.add_argument("--container-backend", choices=("docker", "compose"), default="docker")
     r.add_argument("--output", type=Path, required=True)
     a = sub.add_parser("apply-plan", help="execute an exact reviewed action plan")
     a.add_argument("--plan", type=Path, required=True)
@@ -414,7 +415,7 @@ def main(argv=None):
         elif args.command == "runtime-plan":
             from scripts.deploy_runtime import build_runtime_plan
 
-            result = build_runtime_plan(read(args.preparation), args.action)
+            result = build_runtime_plan(read(args.preparation), args.action, container_backend=args.container_backend)
             write_new(args.output, result)
             print(f"Runtime plan SHA-256: {result['sha256']}. No host changed.")
         else:

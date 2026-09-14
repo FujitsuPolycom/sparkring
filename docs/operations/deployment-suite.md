@@ -44,7 +44,7 @@ or cache directory.
 
 ```bash
 sr() { python3 scripts/sparkring.py deploy "$@"; }
-STATE="$PWD/.private/deploy-mesh"
+STATE="$PWD/.sparkring/deploy-mesh"
 
 sr discover --controller-address 192.0.2.10 \
   --node spark0=192.0.2.20 --node spark1=192.0.2.21 \
@@ -152,7 +152,9 @@ uses the staged preparation document and never starts anything by itself.
 
 ```bash
 runtime_plan() {
-  sr runtime-plan "$1" --preparation "$PREP" --output "$STATE/$1-plan.json"
+  local action=$1
+  shift
+  sr runtime-plan "$action" --preparation "$PREP" --output "$STATE/$action-plan.json" "$@"
 }
 
 runtime_plan create
@@ -170,6 +172,15 @@ apply_reviewed "$STATE/native-check-plan.json" "$STATE/native-check-execution.js
 refuses existing installation targets. `up` starts mesh supervisors, not the
 model. `native-check` runs bounded four-rank communication checks and rejects
 incomplete or failed results. Inspect failures before serving.
+
+Normal R35/R37 selections create containers from the shared GLM specification.
+To use Compose for creation, pass `--container-backend compose` to
+`runtime_plan create`. The generated per-rank YAML is stored under
+`WORKSPACE/launch-containers/rankN/compose.yaml`. Installation, memory preparation,
+fabric readiness, start, stop and recovery continue through the managed suite;
+Compose does not replace those phases. Other image selections retain their
+existing Docker creation path and reject the Compose option. Cache diagnostic
+sites also retain the Docker launcher; Compose rejects that diagnostic mode.
 
 ## Start, inspect, and stop serving
 

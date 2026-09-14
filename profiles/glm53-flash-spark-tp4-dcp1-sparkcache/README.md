@@ -1,8 +1,9 @@
 # GLM-5.3-Flash on four Sparks
 
-[Experimental per-host Compose examples](compose/README.md) are available for the
-published R37 image on an already prepared fabric. They preserve the profile’s
-serving settings but have only been checked offline, not launched through Compose.
+[Shared-spec Compose creation](compose/README.md) is available for the R37 path
+below. It creates stopped containers and retains managed startup/recovery.
+Configuration equivalence is tested; GLM serving through this backend still
+requires hardware acceptance.
 
 Run [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)
 with MTP3 on a four-Spark ring. **DCP1 is the default; DCP4 is an alternative.**

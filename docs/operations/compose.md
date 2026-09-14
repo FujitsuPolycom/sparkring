@@ -1,22 +1,25 @@
 # Compose deployments from SparkRing profiles
 
-Status: **implemented; Compose serving is unqualified**. Offline tests cover
-configuration equivalence and simulated coordinator failures. They do not prove
-GPU, RDMA, cache restore or inference behavior under Compose.
+Status: **Development**. The [Qwen QAD TP4 serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
+covers four-rank startup, bounded inference/performance checks and coordinated
+stop/restart. Qwen TP2 Compose serving and SparkCache restore remain unqualified.
+Offline tests cover configuration equivalence and coordinator failure handling.
 
-Supported profiles:
+The `sparkring compose` coordinator supports:
 
 - `qwen38-flash-next-tp2`
 - `qwen38-flash-next-tp2-sparkcache`
 - `qwen38-flash-next-qad-tp4` ([Development quickstart](../../profiles/qwen38-flash-next-qad-tp4/README.md))
 
-Other profiles are rejected. GLM TP4 requires a structured adapter that preserves
-its managed fabric, source-verification and recovery contracts before it can use
-this coordinator. Its existing quickstarts remain the supported launch paths.
+Other profiles are rejected by this coordinator. [GLM TP4 Compose creation](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
+uses the shared container specification through `sparkring deploy`. Its managed
+coordinator retains fabric, source-verification, readiness and recovery gates.
+GLM Docker/Compose creation has been checked on a host without starting a model;
+GLM serving through this creation path remains unqualified.
 
 ## Configuration ownership
 
-The Qwen adapter returns a shared container specification. Docker arguments and
+The model adapters return a shared container specification. Docker arguments and
 Compose YAML are rendered from that specification, without parsing shell commands.
 
 | Input | Owns |
@@ -182,9 +185,11 @@ python3 -m pytest runtime/common/test_compose.py scripts/test_sparkring_compose.
 ```
 
 The Linux CI job requires a real Compose CLI for equivalence tests; it does not
-start containers. Serving adoption still requires an isolated two-host launch of
-each supported profile, a text response, SparkCache restart/restore checks for the
-cache profile, and coordinated stop/recovery checks.
+start containers. Qwen TP2 serving adoption still requires isolated two-host
+launches with and without SparkCache, text responses, cache restart/restore checks,
+and coordinated stop/recovery. QAD TP4's four-host evidence is scoped to the image
+and bounded workloads in its serving record. GLM requires separate four-host
+acceptance through its managed lifecycle.
 
 To add another adapter, return a structured specification from that adapter,
 preserve its image admission and site contracts, and test both renderers. Do not

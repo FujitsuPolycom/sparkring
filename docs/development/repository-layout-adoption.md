@@ -50,6 +50,8 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 | [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and explicitly recorded feature checks; read its serving qualification field |
 | [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
 | [Baked QAD TP4 serving](../../performance/records/qwen38-flash-next/r37-shared-tp4.json) | Complete image admission, four-rank Compose launch, matched repository-harness prefill/decode, text checks and coordinated stop/fresh-deployment restart |
+| [GLM shared-spec creation](../../performance/records/glm53-flash/glm-container-creation.json) | Real Docker and Compose stopped-container creation on one GB10 host; no GLM serving claim |
+| [ARM64 LIL foundation](../../runtime/images/compositions/lil-bazel-arm64/README.md) | Pinned CPU imports and Qwen source-interface checks passed; required SparkRing transport/cache layers and GPU qualification remain separate work |
 | [Qwen TP2 guide](../../profiles/qwen38-flash-next-tp2/README.md) | Published aligned-cache image and separate private request-boundary results are identified explicitly |
 | Historical Linux/native/serving checks | Revision-specific results summarized below; they do not establish current-head CI or serving qualification |
 
@@ -98,14 +100,16 @@ compatibility shims with duplicate implementations.
 1. Retain the tested Qwen QAD TP4 shared-image admission and quickstart. Its
    bounded serving record does not qualify other models or feature combinations.
    Existing TP2 instructions keep their published pins.
-2. Migrate GLM TP4 to the shared specification while preserving fabric,
-   source-verification, readiness and recovery contracts.
+2. Complete GLM serving acceptance of the shared specification and its Docker
+   and Compose creation paths, preserving fabric, source-verification, readiness
+   and recovery contracts. Stopped-container checks do not cover these gates.
 3. Validate the exact baked image through the documented path, without private
    source mounts. Check effective features, inference, bounded performance and
    rollback. Arrange TP2 Compose/cache-restore tests with the serving owner.
-4. Evaluate a pinned published ARM64 LIL base as a separate composition. Compare
-   installed sources and native libraries; retain required SparkRing features.
-   Promote a profile's image selection only after matching acceptance checks.
+4. Retain the evaluated ARM64 LIL foundation as an experimental build option.
+   Its documented gaps must be resolved in a separate SparkRing composition
+   before any profile selects it. Promote image selections only after matching
+   acceptance checks.
 
 ### Repository adoption
 

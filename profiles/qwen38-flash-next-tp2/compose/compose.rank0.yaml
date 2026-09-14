@@ -137,12 +137,10 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-beeb32253aa7-ada4da32a583
     labels:
-      io.sparkring.deployment: 0d0528c075f8ddc723fe671e04a7ca5ea9a2ba18a7963169a0572b8774e51103
+      io.sparkring.deployment: baab6933a65ecb77dbf5782ff1e5939ad9fed83b7407932a3942768d947d84f8
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
-    mem_limit: 115964116992
-    memswap_limit: 120259084288
     ulimits:
       memlock:
         soft: -1
@@ -170,6 +168,8 @@ services:
       read_only: false
       bind:
         create_host_path: false
+    mem_limit: 115964116992
+    memswap_limit: 120259084288
     healthcheck:
       test:
       - CMD

@@ -27,6 +27,14 @@ SOURCE_FILES = (
     'spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c',
     'runtime/common/r35.py',
     'runtime/common/candidate.py',
+    'runtime/common/glm_tp4.py',
+    'runtime/common/glm_launch.py',
+    'runtime/common/container_spec.py',
+    'runtime/common/compose.py',
+    'runtime/common/profiles.py',
+    'runtime/common/qwen_flash_next.py',
+    'runtime/common/cache_candidate.py',
+    'runtime/common/__init__.py',
     'runtime/images/candidate_image.py',
     'runtime/images/compositions/lil-r37-glm-spark/descriptor.json',
     'runtime/images/compositions/lil-r37-glm-spark/baseline-native.json',
@@ -229,6 +237,17 @@ def expected_container_spec(argv, image):
             'healthcheck': healthcheck}
 
 
+def expected_fields_match(actual, expected):
+    """Compare specified Docker fields while retaining daemon metadata."""
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and expected_fields_match(actual[key], value) for key, value in expected.items())
+    if isinstance(expected, list):
+        return isinstance(actual, list) and len(actual) == len(expected) and all(
+            expected_fields_match(left, right) for left, right in zip(actual, expected))
+    return type(actual) is type(expected) and actual == expected
+
+
 def validate_container_spec(container, expected):
     """Compare effective configuration; mismatch errors never print secret values."""
     config = container.get('Config', {})
@@ -259,14 +278,50 @@ def validate_container_spec(container, expected):
     if (config.get('WorkingDir', '') != expected['working_dir']
             or config.get('User', '') != expected['user']):
         raise ValueError('Container working directory or user differs from the image contract')
-    if (config.get('Labels') or {}) != expected['labels']:
+    labels = dict(config.get('Labels') or {})
+    if 'com.docker.compose.project' in expected['labels']:
+        metadata = {'com.docker.compose.config-hash', 'com.docker.compose.container-number',
+                    'com.docker.compose.depends_on', 'com.docker.compose.image',
+                    'com.docker.compose.oneoff', 'com.docker.compose.project.config_files',
+                    'com.docker.compose.project.environment_file',
+                    'com.docker.compose.project.working_dir', 'com.docker.compose.version'}
+        labels = {key: value for key, value in labels.items() if key not in metadata or key in expected['labels']}
+    if labels != expected['labels']:
         raise ValueError('Container labels differ from the canonical launch')
+    if 'host_config' in expected:
+        actual = container.get('HostConfig', {})
+        for key, wanted in expected['host_config'].items():
+            observed = actual.get(key)
+            if key in ('CapAdd', 'SecurityOpt', 'Devices', 'DeviceRequests', 'Ulimits'):
+                observed = observed or []
+            if key == 'SecurityOpt':
+                observed = sorted(value.replace('=', ':', 1) for value in observed)
+                wanted = sorted(value.replace('=', ':', 1) for value in wanted)
+            elif key == 'CapAdd':
+                observed = sorted(value.upper().removeprefix('CAP_') for value in observed)
+                wanted = sorted(value.upper().removeprefix('CAP_') for value in wanted)
+            elif key == 'DeviceRequests':
+                observed = [{field: row.get(field) for field in expected_row}
+                            for row, expected_row in zip(observed, wanted)] if len(observed) == len(wanted) else observed
+            elif key == 'Ulimits':
+                observed = [row for row in observed if row.get('Name') in {entry['Name'] for entry in wanted}]
+            if not expected_fields_match(observed, wanted):
+                raise ValueError('Container host envelope differs for ' + key)
 
 
 def canonical_container_spec(launch, image_receipt, rank, image, *, run=subprocess.run):
     """Regenerate trusted launch inputs and inspect them without creating a container."""
     profile = managed_units.service.mesh_profile
     site, _, _ = profile.load_site(launch / 'site.json')
+    from runtime.common import glm_launch
+    plan_directory = glm_launch.plan_directory(launch, rank)
+    if plan_directory.exists():
+        if not (plan_directory / 'plan.json').is_file():
+            raise ValueError('Structured GLM creation plan is missing')
+        from runtime.common.container_spec import expected_inspection
+        spec, record, resolved = glm_launch.resolve_spec(launch, image_receipt, rank, owner=profile)
+        backend = glm_launch.check_plan(launch, image_receipt, rank, spec, record, resolved)
+        return expected_inspection(spec, image, backend=backend)
     if (site.get('runtime_profile') in ('tp4-dcp4', 'tp4-dcp4-sparkcache')
             and 'r33_profile_contract_roots' not in site
             and (not image_receipt.is_file()

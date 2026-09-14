@@ -197,6 +197,16 @@ def test_complete_spec_accepts_exact_configuration_and_image_env_override(
     managed_install.validate_container_spec(actual, expected)
 
 
+def test_capability_daemon_prefix_preserves_exact_permissions(exact_container_spec):
+    _, _, expected, actual = exact_container_spec
+    expected['host_config'] = {'CapAdd': ['IPC_LOCK']}
+    actual['HostConfig'] = {'CapAdd': ['CAP_IPC_LOCK']}
+    managed_install.validate_container_spec(actual, expected)
+    actual['HostConfig']['CapAdd'].append('CAP_SYS_ADMIN')
+    with pytest.raises(ValueError, match='CapAdd'):
+        managed_install.validate_container_spec(actual, expected)
+
+
 def test_generated_health_envelope_is_exact_and_inspected(exact_container_spec):
     argv, image, _, actual = exact_container_spec
     health = managed_install.managed_units.managed_liveness.api_healthcheck(8015)

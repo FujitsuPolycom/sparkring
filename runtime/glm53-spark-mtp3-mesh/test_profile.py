@@ -67,6 +67,7 @@ def test_r35_tuning_is_persisted_and_installer_rejects_argv_drift(
     tmp_path, monkeypatch, direct
 ):
     from runtime.common.test_r35 import receipt
+    from runtime.common import glm_launch
     import managed_install
 
     document = receipt()
@@ -104,41 +105,129 @@ def test_r35_tuning_is_persisted_and_installer_rejects_argv_drift(
     monkeypatch.setattr(
         managed_install.managed_units.service, "mesh_profile", mesh_profile
     )
+    monkeypatch.setattr(glm_launch, "profile_owner", lambda: mesh_profile)
+    assert glm_launch.main([
+        "plan", "--launch", str(output), "--image-receipt", str(receipt_path),
+        "--rank", "0",
+    ]) == 0
     calls = []
 
     def runner(*args, **kwargs):
         calls.append(args)
-        return SimpleNamespace(
-            returncode=0,
-            stdout=json.dumps(
-                {
-                    "schema": "sparkring-container-command/v1",
-                    "argv": [
-                        "docker",
-                        "create",
-                        "--name",
-                        "fixture-r0",
-                        "--entrypoint",
-                        "/opt/venv/bin/python",
-                        document["image_id"],
-                        "/opt/sparkring/bin/sparkring",
-                        "serve",
-                        "/models/target",
-                    ],
-                }
-            ),
-        )
+        raise AssertionError("Structured admission must not execute the legacy launcher")
 
     image = {"Id": document["image_id"], "Config": {}}
-    managed_install.canonical_container_spec(output, receipt_path, 0, image, run=runner)
-    assert len(calls) == 1
+    expected = managed_install.canonical_container_spec(output, receipt_path, 0, image, run=runner)
+    assert expected["env"]["OMP_NUM_THREADS"] == "1"
+    assert expected["env"]["SPARK_TP4_GRAPH_DIRECT_DOORBELL"] == str(int(direct))
+    assert calls == []
     with (output / "rank0.env").open("a") as stream:
         stream.write("\nOMP_NUM_THREADS=2\n")
     with pytest.raises(ValueError, match="differs from the canonical"):
         managed_install.canonical_container_spec(
             output, receipt_path, 0, image, run=runner
         )
+    assert calls == []
+
+
+@pytest.mark.parametrize("selection", ["tp4-dcp1", "tp4-dcp1-sparkcache"])
+def test_legacy_admission_retains_exact_cache_argument_bytes_and_rejects_lost_structured_plan(
+    tmp_path, monkeypatch, selection
+):
+    from runtime.common import glm_launch, glm_tp4, r35
+    from runtime.common.container_spec import expected_inspection
+    from runtime.common.test_glm_tp4 import oracle
+    from runtime.common.test_r35 import receipt
+
+    monkeypatch.syspath_prepend(str(HERE))
+    import managed_install
+
+    record = r35.validate_receipt(receipt())
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(record))
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    settings["runtime_profile"] = selection
+    site.write_text(json.dumps(settings))
+    monkeypatch.setattr(mesh_profile, "verify_bundle", lambda bundle, image: image["bundle_manifest_sha256"])
+    launch = tmp_path / "launch"
+    mesh_profile.render(site, tmp_path / "bundle", launch, receipt_path)
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(glm_launch, "profile_owner", lambda: mesh_profile)
+    values = mesh_profile.defaults(launch / "rank0.env")
+    legacy_argv = oracle(launch / "launch-rank.sh", values, 0, tmp_path)
+    image = {"Id": record["image_id"], "Config": {}}
+    legacy_expected = managed_install.expected_container_spec(legacy_argv, image)
+    typed = glm_tp4.build_spec(values, image_record=record, contract=r35.profile_contract(record["installed"]))
+    if selection.endswith("sparkcache"):
+        old_json = legacy_expected["cmd"][legacy_expected["cmd"].index("--kv-transfer-config") + 1]
+        typed_json = typed.command[typed.command.index("--kv-transfer-config") + 1]
+        assert json.loads(old_json) == json.loads(typed_json)
+        assert old_json != typed_json
+
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"schema": "sparkring-container-command/v1", "argv": legacy_argv}))
+
+    assert managed_install.canonical_container_spec(launch, receipt_path, 0, image, run=run) == legacy_expected
     assert len(calls) == 1
+    assert glm_launch.main(["plan", "--launch", str(launch), "--image-receipt", str(receipt_path), "--rank", "0"]) == 0
+    structured, _, _ = glm_launch.resolve_spec(launch, receipt_path, 0, owner=mesh_profile)
+    expected = expected_inspection(structured, image)
+    container = {
+        "Name": "/" + structured.name, "Image": structured.image_id,
+        "Config": {"Cmd": expected["cmd"], "Entrypoint": expected["entrypoint"],
+                   "Healthcheck": expected["healthcheck"], "Env": [f"{key}={value}" for key, value in expected["env"].items()],
+                   "Labels": expected["labels"], "User": expected["user"], "WorkingDir": expected["working_dir"]},
+        "Mounts": [{"Destination": target, **mount} for target, mount in expected["mounts"].items()],
+        "HostConfig": expected["host_config"],
+    }
+    plan_directory = glm_launch.plan_directory(launch, 0)
+    for path in plan_directory.iterdir():
+        path.unlink()
+    plan_directory.rmdir()
+    retained_expected = managed_install.canonical_container_spec(launch, receipt_path, 0, image, run=run)
+    assert glm_launch.STRUCTURED_LABEL in container["Config"]["Labels"]
+    with pytest.raises(ValueError, match="model arguments|labels"):
+        managed_install.validate_container_spec(container, retained_expected)
+
+
+@pytest.mark.parametrize("damage", ["missing", "tampered"])
+def test_installer_does_not_fall_back_when_structured_plan_is_incomplete_or_changed(
+    tmp_path, monkeypatch, damage
+):
+    from runtime.common import glm_launch
+    from runtime.common.test_r35 import receipt
+
+    monkeypatch.syspath_prepend(str(HERE))
+    import managed_install
+
+    record = receipt()
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(record))
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    settings["runtime_profile"] = "tp4-dcp1-sparkcache"
+    site.write_text(json.dumps(settings))
+    monkeypatch.setattr(mesh_profile, "verify_bundle", lambda bundle, image: image["bundle_manifest_sha256"])
+    launch = tmp_path / "launch"
+    mesh_profile.render(site, tmp_path / "bundle", launch, receipt_path)
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(glm_launch, "profile_owner", lambda: mesh_profile)
+    assert glm_launch.main(["plan", "--launch", str(launch), "--image-receipt", str(receipt_path), "--rank", "0"]) == 0
+    plan = glm_launch.plan_directory(launch, 0) / "plan.json"
+    if damage == "missing":
+        plan.unlink()
+    else:
+        saved = json.loads(plan.read_text())
+        saved["container"]["command"].append("--unreviewed")
+        plan.write_text(json.dumps(saved))
+    with pytest.raises(ValueError, match="creation plan is missing|creation plan changed"):
+        managed_install.canonical_container_spec(
+            launch, receipt_path, 0, {"Id": record["image_id"], "Config": {}},
+            run=lambda *args, **kwargs: pytest.fail("An incomplete structured plan must not use legacy admission"),
+        )
 
 
 @pytest.mark.parametrize(

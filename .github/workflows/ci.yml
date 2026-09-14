@@ -116,7 +116,7 @@ jobs:
           SPARKRING_REQUIRE_COMPOSE: '1'
         run: |
           python scripts/generate_compose_examples.py --check
-          python -m pytest runtime/common/test_compose.py scripts/test_sparkring_compose.py runtime/common/test_qwen_flash_next.py -q
+          python -m pytest runtime/common/test_compose.py runtime/common/test_compose_envelope.py scripts/test_sparkring_compose.py runtime/common/test_qwen_flash_next.py -q
 
   docs-links:
     name: docs links

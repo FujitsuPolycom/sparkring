@@ -130,17 +130,7 @@ def container(spec):
 
 def check_project_containers(spec, *, owned_id=None):
     """Compose selects a project by labels even when a container was renamed."""
-    result = run(
-        [
-            "docker", "container", "ls", "--all", "--no-trunc",
-            "--filter", "label=com.docker.compose.project=" + spec.name,
-            "--format", "{{.ID}}",
-        ]
-    )
-    if any(value != owned_id for value in result.stdout.splitlines()):
-        raise ValueError(
-            "Compose project already contains another container; refusing adoption or recreation"
-        )
+    compose.check_project_containers(spec.name, owned_id=owned_id, run=run)
 
 
 def owned(spec, manifest):

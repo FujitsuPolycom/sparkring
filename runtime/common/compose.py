@@ -237,7 +237,7 @@ def specifications(profile_id, site, *, local_image_id=None):
 
 def service(spec, image):
     """Compose representation before interpolation escaping or CLI normalization."""
-    return {
+    result = {
         "container_name": spec.name,
         "image": image,
         "platform": spec.platform,
@@ -250,8 +250,6 @@ def service(spec, image):
         "labels": dict(spec.labels),
         "network_mode": spec.network_mode,
         "ipc": spec.ipc_mode,
-        "mem_limit": spec.memory,
-        "memswap_limit": spec.memory_swap,
         "ulimits": {"memlock": {"soft": spec.memlock, "hard": spec.memlock}},
         "deploy": {
             "resources": {
@@ -277,18 +275,27 @@ def service(spec, image):
             }
             for mount in spec.mounts
         ],
-        "healthcheck": (
-            {
-                "test": ["CMD", *spec.health_command],
-                "interval": f"{spec.health_interval}s",
-                "timeout": f"{spec.health_timeout}s",
-                "start_period": f"{spec.health_start_period}s",
-                "retries": spec.health_retries,
-            }
-            if spec.health_command
-            else {"disable": True}
-        ),
     }
+    for name, value in (("mem_limit", spec.memory), ("memswap_limit", spec.memory_swap),
+                        ("shm_size", spec.shm_size), ("user", spec.user),
+                        ("working_dir", spec.working_dir)):
+        if value is not None:
+            result[name] = value
+    for name in ("cap_add", "security_opt"):
+        if getattr(spec, name):
+            result[name] = list(getattr(spec, name))
+    mode = spec.effective_health_mode
+    if mode == "disabled":
+        result["healthcheck"] = {"disable": True}
+    elif mode in ("exec", "shell"):
+        result["healthcheck"] = {
+            "test": ["CMD-SHELL" if mode == "shell" else "CMD", *spec.health_command],
+            "interval": f"{spec.health_interval}s",
+            "timeout": f"{spec.health_timeout}s",
+            "start_period": f"{spec.health_start_period}s",
+            "retries": spec.health_retries,
+        }
+    return result
 
 
 def escape(value):
@@ -387,12 +394,28 @@ def compose_command(project, file="-"):
     ]
 
 
+def check_project_containers(project, *, owned_id=None, run=subprocess.run):
+    """Reject existing Compose project containers except an explicitly owned ID."""
+    result = run(["docker", "container", "ls", "--all", "--no-trunc",
+                  "--filter", "label=com.docker.compose.project=" + project,
+                  "--format", "{{.ID}}"], check=True, capture_output=True, text=True)
+    if any(value != owned_id for value in result.stdout.splitlines()):
+        raise ValueError("Compose project already contains another container; refusing adoption or recreation")
+
+
 def normalize_service(value):
     """Normalize only documented Compose defaults; retain every unexpected field."""
     value = json.loads(json.dumps(value))
     value.setdefault("labels", {})
-    if value.get("healthcheck", {}).get("start_period") == "15m0s":
-        value["healthcheck"]["start_period"] = "900s"
+    value.setdefault("environment", {})
+    value.setdefault("volumes", [])
+    health = value.get("healthcheck", {})
+    for name in ("interval", "timeout", "start_period"):
+        if name in health:
+            parts = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", str(health[name]))
+            if parts and any(part is not None for part in parts.groups()):
+                hours, minutes, seconds = (int(part or 0) for part in parts.groups())
+                health[name] = f"{hours * 3600 + minutes * 60 + seconds}s"
     if isinstance(value.get("devices"), list):
         value["devices"] = [
             (
@@ -402,9 +425,11 @@ def normalize_service(value):
             )
             for d in value["devices"]
         ]
-    for key in ("mem_limit", "memswap_limit"):
+    for key in ("mem_limit", "memswap_limit", "shm_size"):
         if key in value:
             value[key] = int(value[key])
+    if "security_opt" in value:
+        value["security_opt"] = [option.replace("=", ":", 1) for option in value["security_opt"]]
     deploy = value.get("deploy", {})
     if deploy.get("placement") == {}:
         deploy.pop("placement")

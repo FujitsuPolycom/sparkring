@@ -379,9 +379,8 @@ def verify_bundle(bundle: Path, image_record: dict | None = None) -> str:
     return expected_bundle
 
 
-def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | None = None) -> dict:
-    if output.exists():
-        raise ValueError("Output directory exists; use an absent directory")
+def resolve_rank_environments(site_path: Path, bundle: Path, image_receipt: Path | None = None) -> dict:
+    """Resolve verified per-rank settings and fabric identities without writing launch files."""
     image_record = load_image_receipt(image_receipt) if image_receipt else None
     expected_bundle = verify_bundle(bundle, image_record)
     site, topology, plan = load_site(site_path)
@@ -514,8 +513,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         values.update(SPARKCACHE_CACHE_NAMESPACE=diagnostic["namespace"],
                       SPARKCACHE_ACCESS_MODE="restore-only", SPARKCACHE_ASYNC_PAGE_CAPTURE="0",
                       SPARK_CONTEXT_CACHE_TRACE_REUSE="1", SPARKCACHE_CLEAR_ONCE="")
-    output.mkdir(parents=True)
-    ranks = []
+    environments = []
     for rank in range(4):
         env = dict(values)
         if "r33_profile_contract_roots" in site:
@@ -549,6 +547,22 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
             env["SPARK_TP4_CONTROL_PORT1"] = env["SPARK_TP4_GRAPH_CONTROL_PORT1"]
         if any("REPLACE" in value for value in env.values()):
             raise ValueError("Rendered runtime still contains unresolved values")
+        environments.append(env)
+    return {"site": site, "topology": topology, "plan": plan, "image_record": image_record,
+            "bundle_manifest_sha256": expected_bundle, "environments": environments}
+
+
+def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | None = None) -> dict:
+    if output.exists():
+        raise ValueError("Output directory exists; use an absent directory")
+    resolved = resolve_rank_environments(site_path, bundle, image_receipt)
+    site, topology, plan = (resolved[key] for key in ("site", "topology", "plan"))
+    image_record = resolved["image_record"]
+    expected_bundle = resolved["bundle_manifest_sha256"]
+    candidate_composition = image_record and image_record.get("schema") == candidate.SCHEMA
+    output.mkdir(parents=True)
+    ranks = []
+    for rank, env in enumerate(resolved["environments"]):
         text = "# MTP3 mesh profile. Review before sourcing.\n"
         text += "\n".join(f"{key}={shlex.quote(value)}" for key, value in env.items()) + "\n"
         (output / f"rank{rank}.env").write_text(text, newline="\n")
