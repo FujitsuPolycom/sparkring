@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-tp2-compose-smoke/v1",
-  "status": "Validated",
+  "status": "qualified",
   "scope": "One TP2/DCP1 text fixture across process restart, native text readiness, and restoration of the accepted service.",
   "limitations": [
     "Four bounded text responses; no benchmark, concurrency, media, pressure or duration qualification.",
