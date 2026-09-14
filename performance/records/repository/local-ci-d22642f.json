@@ -1,0 +1,72 @@
+{
+  "schema": "sparkring-local-ci-evidence/v1",
+  "source_commit": "d22642f2e944b465c3322d671cd27323bfbbbe82",
+  "environment": "Ubuntu WSL; isolated archive of committed source",
+  "selection": ".github/workflows/ci.yml tests job: Test maintained Python trees",
+  "tests": {
+    "passed": 5689,
+    "skipped": 29,
+    "failures": 0,
+    "errors": 0
+  },
+  "skip_reasons": {
+    "vLLM is only available in the GLM runtime container": 2,
+    "requires a launched four-rank TP4 integration environment": 1,
+    "nvcc is unavailable; CUDA compilation is not claimed": 1,
+    "MARKER_TEST_BINARY must name a compiled native helper": 1,
+    "Only vocabulary allgather accepts an explicit Q": 3,
+    "Only tiled probe emits JSON receipts": 3,
+    "the optional composed R7 vLLM source tree is absent": 3,
+    "optional companion SparkCache source integration": 1,
+    "SPARKCACHE_SOURCE selects the companion token ledger": 10,
+    "Optional canonical native bundle is absent; portable synthetic-byte coverage still runs": 1,
+    "the supported R7 image carries no loose host artifacts": 3
+  },
+  "image_tests": {
+    "passed": 185
+  },
+  "checks": [
+    {
+      "check": "lint",
+      "exit_code": 0
+    },
+    {
+      "check": "layout",
+      "exit_code": 0
+    },
+    {
+      "check": "links",
+      "exit_code": 0
+    },
+    {
+      "check": "release",
+      "exit_code": 0
+    },
+    {
+      "check": "generated-compose",
+      "exit_code": 0
+    },
+    {
+      "check": "composition",
+      "exit_code": 0
+    },
+    {
+      "check": "image-tests",
+      "exit_code": 0
+    },
+    {
+      "check": "tests",
+      "exit_code": 0
+    }
+  ],
+  "compose_cli_required": true,
+  "lil_companion": {
+    "source_commit": "329cde801b847294005cb16765692032a6cdf206",
+    "go_version": "1.26.0",
+    "test_passed": true,
+    "vet_passed": true,
+    "build_passed": true,
+    "binary_used_by_integration_tests": true
+  },
+  "scope": "Local Linux software checks only; no hosted CI run or GPU/RDMA serving qualification is claimed."
+}
