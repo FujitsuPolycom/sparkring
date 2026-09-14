@@ -2,8 +2,8 @@
 
 ## Result and base
 
-`refactor/repository-layout` is the public integration branch. Its local history
-includes main through `0b7c08d3e4b3b88c568fb719c365ab523de6db3b`, the canonical
+`refactor/repository-layout` integrates main through
+`0b7c08d3e4b3b88c568fb719c365ab523de6db3b`, the canonical
 Qwen TP2 quickstart through `22a6dd1`, and shared Docker/Compose deployment.
 Repository adoption and image deployment are separate decisions.
 
@@ -47,11 +47,11 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 | Evidence | Proven scope |
 |---|---|
 | [Linux integration at `d22642f`](../../performance/records/repository/local-ci-d22642f.json) | 5,689 tests passed, 29 skipped; 185 image tests passed; real Compose resolution, layout, links, release preservation and pinned LIL companion checks passed |
-| [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and explicitly recorded feature checks; read its serving qualification field |
+| [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and feature activation checks; serving evidence is recorded separately below |
 | [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
 | [Baked QAD TP4 serving](../../performance/records/qwen38-flash-next/r37-shared-tp4.json) | Complete image admission, four-rank Compose launch, matched repository-harness prefill/decode, text checks and coordinated stop/fresh-deployment restart |
-| [GLM shared-spec creation](../../performance/records/glm53-flash/glm-container-creation.json) | Real Docker and Compose stopped-container creation on one GB10 host; no GLM serving claim |
-| [ARM64 LIL foundation](../../runtime/images/compositions/lil-bazel-arm64/README.md) | Pinned CPU imports and Qwen source-interface checks passed; required SparkRing transport/cache layers and GPU qualification remain separate work |
+| [GLM shared-spec creation](../../performance/records/glm53-flash/glm-container-creation.json) | Real Docker and Compose stopped rank-0 creation and managed-installer acceptance on one GB10 host; no GLM serving claim |
+| [ARM64 LIL evaluation at `84338b0`](../../runtime/images/compositions/lil-bazel-arm64/evaluation.json) | Pinned CPU imports and three Qwen source-interface checks passed; missing SparkRing transport/cache layers prevent direct serving-profile selection |
 | [Qwen TP2 guide](../../profiles/qwen38-flash-next-tp2/README.md) | Published aligned-cache image and separate private request-boundary results are identified explicitly |
 | Historical Linux/native/serving checks | Revision-specific results summarized below; they do not establish current-head CI or serving qualification |
 
@@ -103,10 +103,9 @@ compatibility shims with duplicate implementations.
 2. Preserve GLM's recorded serving evidence and its fabric, source-verification,
    readiness and recovery contracts. Shared-spec creation has separate Docker
    and Compose evidence; that record does not claim a full managed serving run.
-3. Validate the exact baked image through the documented path, without private
-   source mounts. Check effective features, inference, bounded performance and
-   rollback. Complete a bounded TP2 Compose start/stop and cache-restore smoke
-   test with its serving owner; repeating model benchmarks is unnecessary.
+3. Complete only the pending Qwen TP2 Compose start/stop and SparkCache
+   restart-restore smoke test with its serving owner. No additional GLM run,
+   benchmark, load test or soak is required for this adoption scope.
 4. Retain the evaluated ARM64 LIL foundation as an experimental build option.
    Its documented gaps must be resolved in a separate SparkRing composition
    before any profile selects it. Promote image selections only after matching

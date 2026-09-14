@@ -19,13 +19,9 @@ Face CLI, matching model files, and working direct-link RoCE. Check the
 [host prerequisites](../../docs/operations/prerequisites.md).
 Keep management access independent of the data cable.
 
-**Check the selected transport after startup.** The launcher currently lists
-all four RDMA functions. With only one physical DAC connected, an inactive
-function can prevent RoCEnante initialization and leave the engine serving
-through NCCL instead. [Issue #268](https://github.com/FujitsuPolycom/sparkring/issues/268)
-tracks this problem; [PR #270](https://github.com/FujitsuPolycom/sparkring/pull/270)
-proposes restricting the opened devices to the selected cable. That change is
-not included here. A healthy API alone does not prove RoCEnante is active.
+The launcher opens only the RDMA functions selected for the connected cable
+and indexes its peer map within that selection. **Check the active transport
+after startup:** a healthy API alone does not prove RoCEnante is active.
 
 ## 2. Download the image and model
 
