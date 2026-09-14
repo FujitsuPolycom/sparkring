@@ -30,7 +30,7 @@ in its configuration. “Stock” identifies the publisher’s original checkpoi
 | **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | DCP1 | 1M / [1.1M](../performance/records/glm53-flash/r35-tp2-sparkcache.json) | [Optional](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | DCP1 | 1M / [1M](../performance/capacity-references.md) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development | [Guide](../profiles/deepseek-v4-flash-0731-pair/README.md) |
 | Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | DCP1 | 1M / [4.1M](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development | [Guide](../profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
-| Qwen3.8-Flash-Next | [NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | vLLM | DCP1 | 262K / [3M](../performance/records/qwen38-flash-next/r37-tp2.json) | No | Experimental | [Guide](../profiles/qwen38-flash-next-tp2/README.md) |
+| Qwen3.8-Flash-Next | [NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | vLLM | DCP1 | 262K / [3M](../performance/records/qwen38-flash-next/r37-tp2.json) | [Optional](../profiles/qwen38-flash-next-tp2-sparkcache/README.md) | Experimental | [Guide](../profiles/qwen38-flash-next-tp2/README.md) |
 
 
 Status and context describe the linked default. DCP and KV figures follow the same order;
@@ -127,6 +127,7 @@ These are saved configurations, not separate models. Profile IDs remain stable f
 | Parallelism | Network | SparkCache | Status | Configuration and guide |
 |---|---|---|---|---|
 | DCP1 | direct-pair-2 | Off | Experimental | [qwen38-flash-next-tp2](../profiles/qwen38-flash-next-tp2/README.md) |
+| DCP1 | direct-pair-2 | On | Experimental | [qwen38-flash-next-tp2-sparkcache](../profiles/qwen38-flash-next-tp2-sparkcache/README.md) |
 
 </details>
 
@@ -164,7 +165,7 @@ Retained for compatibility and historical evidence; use an active deployment abo
 
 </details>
 
-Qwen with SparkCache is unsupported. Six-node deployments remain experimental and are outside this catalog.
+Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-node deployments remain experimental and are outside this catalog.
 
 <!-- END GENERATED PROFILES -->
 

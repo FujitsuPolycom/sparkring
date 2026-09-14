@@ -6,10 +6,23 @@ This opt-in configuration uses [sparkcache.json](sparkcache.json), the
 and the shared Qwen launcher. The default [config.json](config.json) remains
 cache-disabled and uses the published R37 image.
 
-Complete the [Qwen checkpoint and host setup](README.md) first. Build the
+Complete the [Qwen checkpoint and host setup](README.md) first. Pull the
 extension on each node; do not use the base image with the cache-enabled profile.
 The launcher rejects an extension whose runtime differs from its pinned parent
 or declared replacement files.
+
+```bash
+PARENT_REF=ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270
+IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523
+docker pull --platform linux/arm64 "$PARENT_REF"
+docker pull --platform linux/arm64 "$IMAGE_REF"
+```
+
+The parent is needed locally for the launcher's full-inventory verification and
+provides cache-disabled rollback. Its layers are shared with the extension;
+already downloaded layers are reused. Model weights are separate read-only
+mounts and are not downloaded by either image pull. To reproduce the image,
+use the [pinned source-build recipe](../../runtime/images/compositions/lil-r37-cache64/README.md).
 
 | Setting | Value |
 |---|---|
@@ -45,7 +58,7 @@ HOST_IP=192.0.2.10
 INTERFACE=eth0
 MODEL_DIR=/srv/models/Qwen3.8-Flash-Next-NVFP4/ada4da32
 CACHE_DIR=/srv/cache/qwen38-flash-next-r37
-IMAGE_ID=$(docker image inspect --format '{{.Id}}' sparkring-cache-extension:r37-cache64)
+IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
 launch_rank() {
   python3 runtime/common/qwen_flash_next.py "$1" \
     --profile profiles/qwen38-flash-next-tp2/sparkcache.json \

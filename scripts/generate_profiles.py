@@ -40,6 +40,7 @@ def compact_profile_rows(rows, root=ROOT):
     recipe_ids = {p['configuration']['path']: p['id'] for p, _ in rows
                   if p['configuration']['format'] == 'recipe'}
     groups = {}
+    rows_by_id = {p['id']: (p, resolved) for p, resolved in rows}
     for p, resolved in rows:
         config = p['configuration']
         key, cached = p['id'], False
@@ -51,6 +52,19 @@ def compact_profile_rows(rows, root=ROOT):
         elif config['format'] == 'release-profile':
             key = (config['path'], config['key'].removesuffix('-sparkcache'))
             cached = config['key'].endswith('-sparkcache')
+        elif config['format'] == 'serving-profile':
+            data = read_json(local_path(config['path'], root))
+            cached = resolved['serving'].get('sparkcache', False)
+            base = data.get('base_profile')
+            if base:
+                if base not in rows_by_id or not cached:
+                    raise ValueError('A cache variant must identify a catalog base profile')
+                base_profile, base_resolved = rows_by_id[base]
+                if (base_profile['configuration']['format'] != 'serving-profile'
+                        or deployment_family(base_resolved) != deployment_family(resolved)
+                        or base_resolved['model'] != resolved['model']):
+                    raise ValueError('A cache variant must retain its base deployment family')
+                key = base
         groups.setdefault(key, []).append((p, resolved, cached))
     result, cache_cells = [], {}
     for variants in groups.values():
@@ -167,7 +181,7 @@ def profile_table(root=ROOT, *, compact=False):
     if compact:
         return '\n'.join(lines + [END])
     lines += ['Additional pinned historical variants, including original NVFP4 TP2, are in the [retained deployment index](docs/history/deployment-variants.md).', '', 'Qualification applies only to the exact image, checkpoint, topology and workload in the selected guide.',
-              'Switched deployments have no switched-hardware qualification. Qwen with SparkCache is unsupported;',
+              'Switched deployments have no switched-hardware qualification. Qwen Flash Next TP2 has a bounded-validation SparkCache option;',
               'six-node work remains research-only and is outside this deployment catalog.', '', END]
     text = '\n'.join(lines)
     return text.replace('](profiles/', '](').replace('](docs/', '](../docs/')
@@ -198,6 +212,7 @@ def profile_catalog_table(rows, names, root):
             parallel = f"DCP{s['decode_context_parallel_size']}" if engine == 'vllm' else f"EP{s['expert_parallel_size']}"
             config = p['configuration']
             cached = (config['key'].endswith('-sparkcache') if config['format'] == 'release-profile'
+                      else r['serving'].get('sparkcache', False) if config['format'] == 'serving-profile'
                       else bool(read_json(local_path(config['path'], root)).get('base_recipe')))
             label = p['id'] + (' (default)' if p['recommendation'] == 'recommended' else '')
             lines.append(f"| {parallel} | {r['topology']} | {'On' if cached else 'Off'} | {STATUS_LABELS[p['status']]} | [{label}](profiles/{p['id']}/README.md) |")
@@ -207,7 +222,7 @@ def profile_catalog_table(rows, names, root):
     for p, r in sorted(retired, key=lambda item: item[0]['id']):
         lines.append(f"- [{p['id']}](profiles/{p['id']}/README.md) — {names[r['model']['repository']]}; {STATUS_LABELS[p['status']]}")
     lines += ['', '[Additional historical variants](docs/history/deployment-variants.md)', '', '</details>', '',
-              'Qwen with SparkCache is unsupported. Six-node deployments remain experimental and are outside this catalog.', '', END]
+              'Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-node deployments remain experimental and are outside this catalog.', '', END]
     text = '\n'.join(lines)
     return re.sub(r'\]\((?!https?://|#)([^)]+)\)', lambda m: '](' + ('../' + m[1]) + ')', text)
 

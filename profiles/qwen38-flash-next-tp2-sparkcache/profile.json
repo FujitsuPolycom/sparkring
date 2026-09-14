@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-tp2-sparkcache",
+  "title": "Qwen3.8-Flash-Next NVFP4 on two Sparks with persistent prefix caching",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-tp2/sparkcache.json"
+  },
+  "release": "runtime/releases/qwen38-flash-next-r37-sparkcache/release.json",
+  "guide": "profiles/qwen38-flash-next-tp2-sparkcache/README.md",
+  "evidence_scope": "Bounded TP2/R37 text and multimodal persistent-cache publication/restart/restore, changed-input misses, and corruption-recovery checks. C16 and near-limit text checks passed; general media and long-duration stability remain unqualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan",
+      "check",
+      "create"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/qwen38-flash-next-tp2/sparkcache.json"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "sparkring-image-publication/v1",
+  "status": "Experimental",
+  "tag": "ghcr.io/fujitsupolycom/sparkring:r37-cache64-arm64-384bc56e4a1f",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523",
+  "image_id": "sha256:384bc56e4a1faa0d983d9e448ccb08731c1362b426c5d7926be5204cfc137ca8",
+  "platform": "linux/arm64",
+  "anonymous_pull_verified": true,
+  "scope": "Bounded TP2/R37 text and multimodal persistent-cache publication/restart/restore, changed-input misses, and corruption-recovery checks. C16 and near-limit text checks passed; general media and long-duration stability remain unqualified."
+}

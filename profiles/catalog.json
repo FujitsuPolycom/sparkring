@@ -92,6 +92,10 @@
     {
       "id": "qwen38-flash-next-tp2",
       "path": "profiles/qwen38-flash-next-tp2/profile.json"
+    },
+    {
+      "id": "qwen38-flash-next-tp2-sparkcache",
+      "path": "profiles/qwen38-flash-next-tp2-sparkcache/profile.json"
     }
   ]
 }

@@ -32,8 +32,8 @@ ARM64 image.
 defaults with `python3 scripts/profiles.py resolve qwen38-flash-next-tp2`.
 
 For opt-in persistent prefix caching, see the
-[SparkCache extension profile](SPARKCACHE.md). It requires a locally built,
-verified R37 extension; the published base-image default remains cache-disabled.
+[SparkCache extension profile](SPARKCACHE.md). It uses a separately published,
+verified R37 extension; the base-image default remains cache-disabled.
 
 ## Image and checkpoint
 

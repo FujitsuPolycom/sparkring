@@ -7,8 +7,10 @@ R37 image. It changes no vLLM, B12X, NCCL, RoCEnante or SIRCL source. The
 native binary. [Qwen validation](../../../../performance/records/qwen38-flash-next/r37-sparkcache.json)
 states the tested conditions and limitations.
 
-The extension image is built locally; no registry publication is implied.
-Keep the published R37 image for cache-disabled rollback.
+The [publication receipt](publication.json) pins the anonymously pullable image:
+`ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523`.
+Keep the published R37 parent for full-inventory verification and cache-disabled
+rollback. The instructions below reproduce the extension from pinned source.
 
 ## Prepare the source and context
 

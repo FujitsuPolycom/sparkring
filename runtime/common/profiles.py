@@ -149,6 +149,16 @@ def configuration(p, root=ROOT):
             except (TypeError, ValueError):
                 raise ValueError(f"{flag}: expected an integer value") from None
     serving["node_count"] = serving["tensor_parallel_size"]
+    serving["sparkcache"] = False
+    for index, argument in enumerate(args):
+        option, separator, value = argument.partition("=")
+        if option == "--kv-transfer-config":
+            if not separator:
+                value = args[index + 1] if index + 1 < len(args) else ""
+            connector = json.loads(value)
+            if not isinstance(connector, dict):
+                raise ValueError("--kv-transfer-config must be a JSON object")
+            serving["sparkcache"] = connector.get("kv_connector") == "SparkContextCacheConnector"
     return data["model"], serving, data.get("topology", "switched"), data.get("qualification", {}), {"vllm_args": args, "environment": data["environment"]}
 
 
