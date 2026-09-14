@@ -32,12 +32,7 @@ configurations and workloads recorded with each profile.
 2. Follow its quickstart for host setup, image selection and launch commands.
 3. Run the [validation checks](docs/operations/profile-validation.md).
 
-The **Experimental R37 ARM64 image** is published with
-[TP4](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) and
-[TP2](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) pull and launch
-instructions. R37 hardware evidence covers bounded GLM TP4/DCP1 cache-on tests;
-other selections have separate qualification requirements.
-[R35 remains available](docs/operations/r35-local-launch.md).
+Each quickstart selects its image and states which configurations were tested.
 
 ## Profiles
 
@@ -45,8 +40,8 @@ Bold entries are recommended. The guide describes the default; DCP alternatives
 link to their own KV evidence. Context is the per-request limit; counts are
 rounded. DCP and KV choices appear in the same order. See the
 [full catalog](profiles/README.md) for exact settings and alternatives.
-Catalog statuses describe the recorded release evidence; R37 testing scope is
-stated separately in each quickstart.
+Statuses describe the evidence linked by each profile. Image-specific validation
+is stated in its quickstart.
 
 <!-- BEGIN GENERATED PROFILES -->
 

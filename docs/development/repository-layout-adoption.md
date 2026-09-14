@@ -46,7 +46,7 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 
 | Evidence | Proven scope |
 |---|---|
-| [Linux integration at `d22642f`](../../performance/records/repository/local-ci-d22642f.json) | 5,689 tests passed, 29 skipped; 185 image tests passed; real Compose resolution, layout, links, release preservation and pinned LIL companion checks passed |
+| [Linux integration at `622fe32`](../../performance/records/repository/local-ci.json) | 5,750 tests passed, 29 skipped; 185 image tests passed; real Compose resolution, layout, links, release preservation and pinned LIL companion checks passed |
 | [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and feature activation checks; serving evidence is recorded separately below |
 | [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
 | [Baked QAD TP4 serving](../../performance/records/qwen38-flash-next/r37-shared-tp4.json) | Complete image admission, four-rank Compose launch, matched repository-harness prefill/decode, text checks and coordinated stop/fresh-deployment restart |

@@ -1,10 +1,10 @@
 {
   "schema": "sparkring-local-ci-evidence/v1",
-  "source_commit": "d22642f2e944b465c3322d671cd27323bfbbbe82",
+  "source_commit": "622fe32eb9568dde3a75dcb4486e6a44b67dde7e",
   "environment": "Ubuntu WSL; isolated archive of committed source",
   "selection": ".github/workflows/ci.yml tests job: Test maintained Python trees",
   "tests": {
-    "passed": 5689,
+    "passed": 5750,
     "skipped": 29,
     "failures": 0,
     "errors": 0
