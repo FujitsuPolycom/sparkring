@@ -1,6 +1,8 @@
 # Generated Qwen TP2 Compose
 
-Status: **implemented; Compose serving is unqualified**.
+Status: **Development**. [Bounded TP2 checks](../../../performance/records/qwen38-flash-next/compose-tp2.json)
+cover coordinated startup/shutdown, text responses and SparkCache restore across
+a fresh deployment. They do not extend model or media qualification.
 
 [Rank 0](compose.rank0.yaml) and [rank 1](compose.rank1.yaml) are generated from
 [config.json](../config.json) and the [public site example](site.example.yaml).

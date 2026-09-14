@@ -50,6 +50,7 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 | [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and feature activation checks; serving evidence is recorded separately below |
 | [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
 | [Baked QAD TP4 serving](../../performance/records/qwen38-flash-next/r37-shared-tp4.json) | Complete image admission, four-rank Compose launch, matched repository-harness prefill/decode, text checks and coordinated stop/fresh-deployment restart |
+| [Qwen TP2 Compose smoke](../../performance/records/qwen38-flash-next/compose-tp2.json) | Native/cache-enabled startup and owned shutdown, matching text requests, both-rank disk restore of 5,696 tokens through fresh containers, and restoration of the original serving deployment |
 | [GLM shared-spec creation](../../performance/records/glm53-flash/glm-container-creation.json) | Real Docker and Compose stopped rank-0 creation and managed-installer acceptance on one GB10 host; no GLM serving claim |
 | [ARM64 LIL evaluation at `84338b0`](../../runtime/images/compositions/lil-bazel-arm64/evaluation.json) | Pinned CPU imports and three Qwen source-interface checks passed; missing SparkRing transport/cache layers prevent direct serving-profile selection |
 | [Qwen TP2 guide](../../profiles/qwen38-flash-next-tp2/README.md) | Published aligned-cache image and separate private request-boundary results are identified explicitly |
@@ -103,9 +104,9 @@ compatibility shims with duplicate implementations.
 2. Preserve GLM's recorded serving evidence and its fabric, source-verification,
    readiness and recovery contracts. Shared-spec creation has separate Docker
    and Compose evidence; that record does not claim a full managed serving run.
-3. Complete only the pending Qwen TP2 Compose start/stop and SparkCache
-   restart-restore smoke test with its serving owner. No additional GLM run,
-   benchmark, load test or soak is required for this adoption scope.
+3. Retain the completed Qwen TP2 Compose smoke record. It covers only the
+   recorded startup/shutdown and text-cache restore conditions. No additional
+   GLM run, benchmark, load test or soak is required for this adoption scope.
 4. Retain the evaluated ARM64 LIL foundation as an experimental build option.
    Its documented gaps must be resolved in a separate SparkRing composition
    before any profile selects it. Promote image selections only after matching

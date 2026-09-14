@@ -150,5 +150,5 @@ continue without optional cache publication.
 
 [Image source/build recipe](../../runtime/images/compositions/lil-r37-cache64/README.md).
 [Generated Compose deployments](../../docs/operations/compose.md) support both
-the native-cache and SparkCache profiles. Configuration checks pass; serving
-through Compose still requires hardware validation.
+configurations, with and without SparkCache. [Bounded TP2 checks](../../performance/records/qwen38-flash-next/compose-tp2.json)
+cover startup, shutdown, text responses and persistent-cache restore.

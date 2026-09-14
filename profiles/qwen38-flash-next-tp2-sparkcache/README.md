@@ -5,7 +5,8 @@ Its default selects the published persistent-cache configuration; it also
 contains the cache-disabled alternative and the restart procedure.
 
 [Generated Compose deployments](compose/README.md) are also available.
-Serving through Compose still requires hardware validation.
+[Bounded TP2 checks](../../performance/records/qwen38-flash-next/compose-tp2.json)
+cover startup, shutdown and persistent-cache restore through fresh containers.
 
 The configuration owner is
 [sparkcache.json](../qwen38-flash-next-tp2/sparkcache.json).

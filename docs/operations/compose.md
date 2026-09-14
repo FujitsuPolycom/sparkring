@@ -2,8 +2,9 @@
 
 Status: **Development**. The [Qwen QAD TP4 serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
 covers four-rank startup, bounded inference/performance checks and coordinated
-stop/restart. Qwen TP2 Compose serving and SparkCache restore remain unqualified.
-Offline tests cover configuration equivalence and coordinator failure handling.
+stop/restart. The [TP2 smoke record](../../performance/records/qwen38-flash-next/compose-tp2.json)
+covers native/cache-enabled startup, shutdown and persistent-cache restore in a
+fresh deployment. Offline tests cover configuration equivalence and coordinator failures.
 
 The `sparkring compose` coordinator supports:
 
@@ -14,8 +15,8 @@ The `sparkring compose` coordinator supports:
 Other profiles are rejected by this coordinator. [GLM TP4 Compose creation](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
 uses the shared container specification through `sparkring deploy`. Its managed
 coordinator retains fabric, source-verification, readiness and recovery gates.
-GLM Docker/Compose creation has been checked on a host without starting a model;
-GLM serving through this creation path remains unqualified.
+GLM Docker/Compose creation has been checked without starting a model; its
+quickstart carries the separate model-serving evidence.
 
 ## Configuration ownership
 
@@ -185,11 +186,12 @@ python3 -m pytest runtime/common/test_compose.py scripts/test_sparkring_compose.
 ```
 
 The Linux CI job requires a real Compose CLI for equivalence tests; it does not
-start containers. Qwen TP2 serving adoption still requires isolated two-host
-launches with and without SparkCache, text responses, cache restart/restore checks,
-and coordinated stop/recovery. QAD TP4's four-host evidence is scoped to the image
-and bounded workloads in its serving record. GLM requires separate four-host
-acceptance through its managed lifecycle.
+start containers. TP2's hardware smoke check restored a 5,696-token prefix on
+both ranks after creating fresh containers, with matching requests and correct
+answers. QAD TP4's four-host evidence is scoped to its recorded image and bounded
+workloads. GLM creation checks and model-serving evidence are scoped separately
+in its quickstart. These records do not qualify additional model/media settings
+or long-duration workloads.
 
 To add another adapter, return a structured specification from that adapter,
 preserve its image admission and site contracts, and test both renderers. Do not

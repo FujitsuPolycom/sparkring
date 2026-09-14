@@ -1,0 +1,476 @@
+{
+  "schema": "sparkring-tp2-compose-smoke/v1",
+  "status": "Validated",
+  "scope": "One TP2/DCP1 text fixture across process restart, native text readiness, and restoration of the accepted service.",
+  "limitations": [
+    "Four bounded text responses; no benchmark, concurrency, media, pressure or duration qualification.",
+    "Controller-observed full model checksum result; raw checksum stdout is not retained in this artifact set.",
+    "This record does not change profile-wide qualification or qualify other images and source revisions."
+  ],
+  "source_commit": "d22642f2e944b465c3322d671cd27323bfbbbe82",
+  "registered_image_source_pins": {
+    "vllm": {
+      "base_commit": "c687594b8a8082e18af9fe2f64eb5f9ee442e251",
+      "tree": "8e0bb7da60e882c095385222d5878981a2666b60",
+      "patch_sha256": "ce8fe827732c0aa9c093ba335aceeff477583079164eb98da22357ee4d9bc9aa"
+    },
+    "b12x": {
+      "base_commit": "f1c4e9dd5b1d841c10cda70ee49c3190cf3db0be",
+      "tree": "bd931d9e6b22ae21b92af0ab66ac45281658bf2c",
+      "patch_sha256": "9ee042ba1173ba7a49cd204411e233d76edf24e5c7cf6289843cf3c3e1ada854"
+    },
+    "sparkcache": {
+      "repository": "https://github.com/FujitsuPolycom/sparkcache",
+      "base_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
+      "integrated_commit": "76598d1d368d7a8fad2ebd03b7a0550e09eb7f99",
+      "integrated_tree": "ac45a7029c19df8d8752d87627d5c8b8ded34444",
+      "package_sha256": "5760647eec3d43083a4c6f0554cf2971053c4456f70c6101248307f76fe46348",
+      "patch": "integrations/sparkcache/qwen38-r37.patch"
+    }
+  },
+  "model": {
+    "revision": "ada4da32a583a78aa47299f45a70603c950490b8",
+    "config_sha256": "2d655dfa625c3c018f9685031367bc83f8532d3faf3333d7c838b2bdc13b8a7e",
+    "index_sha256": "435eef76fc10fc6e932a208a1f85a86bc9c7ffc389b27b34ba83bb6a5d0371e9",
+    "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
+  },
+  "model_checksum": {
+    "manifest": "profiles/qwen38-flash-next-tp2/SHA256SUMS",
+    "sha256": "14df0fb249ddff4a649532cc55a35a2249b143cf505a594b6a29de8292c605b8",
+    "entries": 40,
+    "verified_ranks": [
+      0,
+      1
+    ],
+    "evidence_kind": "controller observation",
+    "artifact": "model-checksums.json"
+  },
+  "deployments": {
+    "native": {
+      "deployment_id": "b8062ede024abaf86eb613d45430d3fcf6a886c9ff85f833aef0dc9c9283f650",
+      "profile": "qwen38-flash-next-tp2",
+      "image": "ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270",
+      "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+      "source_inputs": {
+        "profiles/catalog.json": "b7664923d69f4737b8558f8fc83afd8d5d6e4557bad17386faeef8e754973388",
+        "profiles/qwen38-flash-next-tp2/config.json": "d6109b16a7a3aecd8087b23b3597aaa9b42209fb43f001656c097fb3c8110a48",
+        "profiles/qwen38-flash-next-tp2/profile.json": "027ae32e21d1982c989f0bd7123f8157654ba5e7250bcb5861d48b6250cece10",
+        "profiles/qwen38-flash-next-tp2/sparkcache.json": "9d65ba9c638d1d4626e2cb69b0f22bb667248b196a9e84c23fdd3fd50685048e",
+        "runtime/common/__init__.py": "02e453308c32b608d5ecb8bb890f86094c507cc7803ef811a5ae090247cd4a3b",
+        "runtime/common/cache_candidate.py": "1af9a90a8d7ef9d6124f90f44a821f6c7c1094ce728a261e85f8de4c0a4e81c7",
+        "runtime/common/candidate.py": "0921996cbe72467b233e34031d22ad1ff90ca63e5bd26b0222ae01f517b45cd3",
+        "runtime/common/compose.py": "93c2c5e6cbe209c2a767a0b1e267b47ab67689eea2a5f70741126709966863ba",
+        "runtime/common/container_spec.py": "9fe2c09d1f7dc784eb25f4faf3ac53fb8c5b32377508cd450191109b0dbf6583",
+        "runtime/common/ports.py": "0a24e51fbf259204f2d34a65d4e145385b8989972ef21c1c4f14ee012e1f1854",
+        "runtime/common/profiles.py": "eeaf08505d8ced6358ba3322ec7c2a7c3f3c4bdd1821c6a13f7ced9e7574dcb3",
+        "runtime/common/qwen_flash_next.py": "bbb01757826ca837920e2be53eaa5a5a0e6421669529a95a4fba38324775f76d",
+        "runtime/images/compositions/lil-r37-cache64/descriptor.json": "630899dc792c7eb4512ee1fe9d73dcb9bf5130f38a189e71de0da7b1f2f5e726",
+        "runtime/images/compositions/lil-r37-cache64/publication.json": "86b30e4b397abf763b9593a0f38130c5a8cb5d102fefc478ab351ad6686cc1e7",
+        "runtime/images/compositions/lil-r37-glm-spark/baseline-native.json": "ef0e8d870a31674a6d221a11292307ab9a010c225a2aad993c932a58d53e886e",
+        "runtime/images/compositions/lil-r37-glm-spark/descriptor.json": "29d96c9c5eb7fb6880ff07b15423575173b2e9e1f29a2072b3dab6998509ba0e",
+        "runtime/images/compositions/lil-r37-glm-spark/publication.json": "31d893c1fa7f0071c59d6e281ce9b0bd1eb2e760c970786fc7e76ea800097e4d",
+        "runtime/images/compositions/lil-r37-glm-spark/runtime-artifacts.json": "1183e41fbe6d4fa8fa80be92c286ee0a31e4cf40e8f9e7b2dab93947ba031f22",
+        "runtime/images/compositions/lil-r37-glm-spark/source-lock.json": "55f2906064bcb590d989204dc68eb627de4fbf58041fbff69318a12e59ffd3c1",
+        "runtime/images/compositions/lil-r37-glm-spark/vllm-connector-jobs-lil-r37.json": "4af3fcbe044d884ee072445ef3896b842373334fd20b38ea7a2482d25a7bcde3",
+        "runtime/releases/qwen38-flash-next-r37/release.json": "346775efaa7c9ac662b002d19b54d6b3e730efe5d42ef834a9c4d72fcc602a77",
+        "scripts/deploy_engine.py": "610151b8105ddc031634b0b6572f7e12020068dd69c96cb9d20ac26745f6bacc",
+        "scripts/sparkring_compose.py": "1d332cce77c4f24a45ba08dc285cfa508c51a6559ec01dd2459509f8b576a777"
+      },
+      "receipts": [
+        {
+          "operation": "start",
+          "complete": true,
+          "actions": 13,
+          "plan_sha256": "0edd734638c5aacb3c565228bcabb8c56e752fb23a97c8d607ec3880a0ad4646",
+          "artifact": "native/start-receipt.json",
+          "sha256": "4ea3be0c1a8909a47dceda623ab33a5c99b045fa23ea2761cc7ad2dd8f53d7b1"
+        },
+        {
+          "operation": "stop",
+          "complete": true,
+          "actions": 4,
+          "plan_sha256": "8ecdbf16fc02b8ffb7a1351c28df54bd0f582eb21e4a5d737f453636599806d9",
+          "artifact": "native/stop-receipt.json",
+          "sha256": "b58e131412f1303ce5868509a792c942bb106fb9bbb3f5f24cbb37c72266ff83"
+        }
+      ],
+      "containers": [
+        {
+          "rank": 0,
+          "container_id": "9b9bb344d5a71eed227e036ff2b5a400c8a1d5156c6a35bdbfc54517e2b76d71",
+          "started_at": "2026-09-14T20:20:51.857934253Z"
+        },
+        {
+          "rank": 1,
+          "container_id": "4914bb9e7fb1c17d8fd8290a2584c1900fdfa77af1f9d0b37312000df21a5f78",
+          "started_at": "2026-09-14T20:20:50.699530196Z"
+        }
+      ],
+      "configuration": {
+        "tensor_parallel_size": 2,
+        "decode_context_parallel_size": 1,
+        "context_tokens": 262144,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 8192,
+        "kv_cache_memory_bytes": 25769803776,
+        "speculation": {
+          "method": "mtp",
+          "num_speculative_tokens": 3,
+          "moe_backend": "b12x",
+          "attention_backend": "B12X"
+        },
+        "persistent_sparkcache": false
+      }
+    },
+    "cache-cold": {
+      "deployment_id": "30e4d9a781a64ddf75749d936c80b4fa039f2c1fa9288c3e8244551964ad84cc",
+      "profile": "qwen38-flash-next-tp2-sparkcache",
+      "image": "ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523",
+      "image_id": "sha256:384bc56e4a1faa0d983d9e448ccb08731c1362b426c5d7926be5204cfc137ca8",
+      "source_inputs": {
+        "profiles/catalog.json": "b7664923d69f4737b8558f8fc83afd8d5d6e4557bad17386faeef8e754973388",
+        "profiles/qwen38-flash-next-tp2-sparkcache/profile.json": "beffe52c9b17bc450173b39b1efdbe16e943a4c49759801cd933dbf1ab7ac70f",
+        "profiles/qwen38-flash-next-tp2/config.json": "d6109b16a7a3aecd8087b23b3597aaa9b42209fb43f001656c097fb3c8110a48",
+        "profiles/qwen38-flash-next-tp2/sparkcache.json": "9d65ba9c638d1d4626e2cb69b0f22bb667248b196a9e84c23fdd3fd50685048e",
+        "runtime/common/__init__.py": "02e453308c32b608d5ecb8bb890f86094c507cc7803ef811a5ae090247cd4a3b",
+        "runtime/common/cache_candidate.py": "1af9a90a8d7ef9d6124f90f44a821f6c7c1094ce728a261e85f8de4c0a4e81c7",
+        "runtime/common/candidate.py": "0921996cbe72467b233e34031d22ad1ff90ca63e5bd26b0222ae01f517b45cd3",
+        "runtime/common/compose.py": "93c2c5e6cbe209c2a767a0b1e267b47ab67689eea2a5f70741126709966863ba",
+        "runtime/common/container_spec.py": "9fe2c09d1f7dc784eb25f4faf3ac53fb8c5b32377508cd450191109b0dbf6583",
+        "runtime/common/ports.py": "0a24e51fbf259204f2d34a65d4e145385b8989972ef21c1c4f14ee012e1f1854",
+        "runtime/common/profiles.py": "eeaf08505d8ced6358ba3322ec7c2a7c3f3c4bdd1821c6a13f7ced9e7574dcb3",
+        "runtime/common/qwen_flash_next.py": "bbb01757826ca837920e2be53eaa5a5a0e6421669529a95a4fba38324775f76d",
+        "runtime/images/compositions/lil-r37-cache64/descriptor.json": "630899dc792c7eb4512ee1fe9d73dcb9bf5130f38a189e71de0da7b1f2f5e726",
+        "runtime/images/compositions/lil-r37-cache64/publication.json": "86b30e4b397abf763b9593a0f38130c5a8cb5d102fefc478ab351ad6686cc1e7",
+        "runtime/images/compositions/lil-r37-glm-spark/baseline-native.json": "ef0e8d870a31674a6d221a11292307ab9a010c225a2aad993c932a58d53e886e",
+        "runtime/images/compositions/lil-r37-glm-spark/descriptor.json": "29d96c9c5eb7fb6880ff07b15423575173b2e9e1f29a2072b3dab6998509ba0e",
+        "runtime/images/compositions/lil-r37-glm-spark/publication.json": "31d893c1fa7f0071c59d6e281ce9b0bd1eb2e760c970786fc7e76ea800097e4d",
+        "runtime/images/compositions/lil-r37-glm-spark/runtime-artifacts.json": "1183e41fbe6d4fa8fa80be92c286ee0a31e4cf40e8f9e7b2dab93947ba031f22",
+        "runtime/images/compositions/lil-r37-glm-spark/source-lock.json": "55f2906064bcb590d989204dc68eb627de4fbf58041fbff69318a12e59ffd3c1",
+        "runtime/images/compositions/lil-r37-glm-spark/vllm-connector-jobs-lil-r37.json": "4af3fcbe044d884ee072445ef3896b842373334fd20b38ea7a2482d25a7bcde3",
+        "runtime/releases/qwen38-flash-next-r37-sparkcache/release.json": "c6034bff8f6b66f374da8bb79db8a20c47db4b31c30d5268eda8384676608738",
+        "scripts/deploy_engine.py": "610151b8105ddc031634b0b6572f7e12020068dd69c96cb9d20ac26745f6bacc",
+        "scripts/sparkring_compose.py": "1d332cce77c4f24a45ba08dc285cfa508c51a6559ec01dd2459509f8b576a777"
+      },
+      "receipts": [
+        {
+          "operation": "start",
+          "complete": true,
+          "actions": 13,
+          "plan_sha256": "31d331e60260d9b2179ad0eb7b0c5915cde4b582eeb28e140d7d3d7b57129540",
+          "artifact": "cache-cold/start-receipt.json",
+          "sha256": "19f73407b00f65d4e11ce70652d25722f45b07ef716ab686590e5d361ebf839e"
+        },
+        {
+          "operation": "stop",
+          "complete": true,
+          "actions": 4,
+          "plan_sha256": "38f0ad533e34b89f6b60256cc69f881688990b6517e8c879803650cfa593fd2c",
+          "artifact": "cache-cold/stop-receipt.json",
+          "sha256": "2e8d26a33e25a2453a628d782eb701259d302b5f3da1341d637261572e5ce4d6"
+        }
+      ],
+      "containers": [
+        {
+          "rank": 0,
+          "container_id": "b1b419f4532b64871182495578a3109597d1fdeab9862e4505e3ec3cf99fbf58",
+          "started_at": "2026-09-14T20:26:48.943973712Z"
+        },
+        {
+          "rank": 1,
+          "container_id": "ebf2b0975ac91a8c9fc5e2dc1c48bc7db8424bc794f29cbfd53d9b3ffc907604",
+          "started_at": "2026-09-14T20:26:47.786093526Z"
+        }
+      ],
+      "configuration": {
+        "tensor_parallel_size": 2,
+        "decode_context_parallel_size": 1,
+        "context_tokens": 262144,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 8192,
+        "kv_cache_memory_bytes": 25769803776,
+        "speculation": {
+          "method": "mtp",
+          "num_speculative_tokens": 3,
+          "moe_backend": "b12x",
+          "attention_backend": "B12X"
+        },
+        "persistent_sparkcache": true
+      }
+    },
+    "cache-restore": {
+      "deployment_id": "7872f10b1aa22f77f048a16aeb467af76fcf79ba25e9654fe130626052a953da",
+      "profile": "qwen38-flash-next-tp2-sparkcache",
+      "image": "ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523",
+      "image_id": "sha256:384bc56e4a1faa0d983d9e448ccb08731c1362b426c5d7926be5204cfc137ca8",
+      "source_inputs": {
+        "profiles/catalog.json": "b7664923d69f4737b8558f8fc83afd8d5d6e4557bad17386faeef8e754973388",
+        "profiles/qwen38-flash-next-tp2-sparkcache/profile.json": "beffe52c9b17bc450173b39b1efdbe16e943a4c49759801cd933dbf1ab7ac70f",
+        "profiles/qwen38-flash-next-tp2/config.json": "d6109b16a7a3aecd8087b23b3597aaa9b42209fb43f001656c097fb3c8110a48",
+        "profiles/qwen38-flash-next-tp2/sparkcache.json": "9d65ba9c638d1d4626e2cb69b0f22bb667248b196a9e84c23fdd3fd50685048e",
+        "runtime/common/__init__.py": "02e453308c32b608d5ecb8bb890f86094c507cc7803ef811a5ae090247cd4a3b",
+        "runtime/common/cache_candidate.py": "1af9a90a8d7ef9d6124f90f44a821f6c7c1094ce728a261e85f8de4c0a4e81c7",
+        "runtime/common/candidate.py": "0921996cbe72467b233e34031d22ad1ff90ca63e5bd26b0222ae01f517b45cd3",
+        "runtime/common/compose.py": "93c2c5e6cbe209c2a767a0b1e267b47ab67689eea2a5f70741126709966863ba",
+        "runtime/common/container_spec.py": "9fe2c09d1f7dc784eb25f4faf3ac53fb8c5b32377508cd450191109b0dbf6583",
+        "runtime/common/ports.py": "0a24e51fbf259204f2d34a65d4e145385b8989972ef21c1c4f14ee012e1f1854",
+        "runtime/common/profiles.py": "eeaf08505d8ced6358ba3322ec7c2a7c3f3c4bdd1821c6a13f7ced9e7574dcb3",
+        "runtime/common/qwen_flash_next.py": "bbb01757826ca837920e2be53eaa5a5a0e6421669529a95a4fba38324775f76d",
+        "runtime/images/compositions/lil-r37-cache64/descriptor.json": "630899dc792c7eb4512ee1fe9d73dcb9bf5130f38a189e71de0da7b1f2f5e726",
+        "runtime/images/compositions/lil-r37-cache64/publication.json": "86b30e4b397abf763b9593a0f38130c5a8cb5d102fefc478ab351ad6686cc1e7",
+        "runtime/images/compositions/lil-r37-glm-spark/baseline-native.json": "ef0e8d870a31674a6d221a11292307ab9a010c225a2aad993c932a58d53e886e",
+        "runtime/images/compositions/lil-r37-glm-spark/descriptor.json": "29d96c9c5eb7fb6880ff07b15423575173b2e9e1f29a2072b3dab6998509ba0e",
+        "runtime/images/compositions/lil-r37-glm-spark/publication.json": "31d893c1fa7f0071c59d6e281ce9b0bd1eb2e760c970786fc7e76ea800097e4d",
+        "runtime/images/compositions/lil-r37-glm-spark/runtime-artifacts.json": "1183e41fbe6d4fa8fa80be92c286ee0a31e4cf40e8f9e7b2dab93947ba031f22",
+        "runtime/images/compositions/lil-r37-glm-spark/source-lock.json": "55f2906064bcb590d989204dc68eb627de4fbf58041fbff69318a12e59ffd3c1",
+        "runtime/images/compositions/lil-r37-glm-spark/vllm-connector-jobs-lil-r37.json": "4af3fcbe044d884ee072445ef3896b842373334fd20b38ea7a2482d25a7bcde3",
+        "runtime/releases/qwen38-flash-next-r37-sparkcache/release.json": "c6034bff8f6b66f374da8bb79db8a20c47db4b31c30d5268eda8384676608738",
+        "scripts/deploy_engine.py": "610151b8105ddc031634b0b6572f7e12020068dd69c96cb9d20ac26745f6bacc",
+        "scripts/sparkring_compose.py": "1d332cce77c4f24a45ba08dc285cfa508c51a6559ec01dd2459509f8b576a777"
+      },
+      "receipts": [
+        {
+          "operation": "start",
+          "complete": true,
+          "actions": 13,
+          "plan_sha256": "5d9dbf0dfe7571f6204d56986a8eb5b59721e127315b140f1450b5f60ad675fe",
+          "artifact": "cache-restore/start-receipt.json",
+          "sha256": "08658ca7ac0ceb2a906563f60c21700ebaf1331c1fbf9f9eec5ebd166b2ffc43"
+        },
+        {
+          "operation": "stop",
+          "complete": true,
+          "actions": 4,
+          "plan_sha256": "acdedfb3494e2acfaee7a2efbd126696aaa7f371f83fe9d86e3fc3e1997e6ba6",
+          "artifact": "cache-restore/stop-receipt.json",
+          "sha256": "977c122a3fda64e21646ea27d464f7bc07bc7fd3f8f0762a1d985dabf3a1f295"
+        }
+      ],
+      "containers": [
+        {
+          "rank": 0,
+          "container_id": "140087156f1a623077424f204157e110f03a82f733f586744600af356b8069d0",
+          "started_at": "2026-09-14T20:33:40.119225697Z"
+        },
+        {
+          "rank": 1,
+          "container_id": "de0c559339c0964dfdac43e82328b6f0c062faecada8c87dd6a1e4261c415967",
+          "started_at": "2026-09-14T20:33:38.967382621Z"
+        }
+      ],
+      "configuration": {
+        "tensor_parallel_size": 2,
+        "decode_context_parallel_size": 1,
+        "context_tokens": 262144,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 8192,
+        "kv_cache_memory_bytes": 25769803776,
+        "speculation": {
+          "method": "mtp",
+          "num_speculative_tokens": 3,
+          "moe_backend": "b12x",
+          "attention_backend": "B12X"
+        },
+        "persistent_sparkcache": true
+      }
+    }
+  },
+  "responses": [
+    {
+      "case": "native",
+      "answer": "READY",
+      "http_status": 200,
+      "finish_reason": "stop",
+      "prompt_tokens": 15,
+      "completion_tokens": 2,
+      "cached_tokens": null,
+      "request_sha256": "bdcc4c55a732e544fd882ba0400b2ce26de100c7aba4cfdefa00f9f93e2016c1",
+      "started_at": "2026-09-14T20:26:03.418259+00:00",
+      "observed_response_seconds": 0.26500000001396984,
+      "artifact": "native-response.json",
+      "sha256": "2480b6b025250a83ab9e78ac3e9d4c7b35bd5e8316641d01d0e73a8a49f72630"
+    },
+    {
+      "case": "cache-cold",
+      "answer": "ORBIT-4827",
+      "http_status": 200,
+      "finish_reason": "stop",
+      "prompt_tokens": 7856,
+      "completion_tokens": 8,
+      "cached_tokens": 0,
+      "request_sha256": "f1486724b208071ae2fbb71ed6c74d0173c7cd2a4259638f6c649a16e1cba0ee",
+      "started_at": "2026-09-14T20:32:06.506559+00:00",
+      "observed_response_seconds": 6.327999999979511,
+      "artifact": "cache-cold-response.json",
+      "sha256": "7e74328f734b162cee5c464e2d8c6d9f7b7de488aae55fdd588712464dea2c56"
+    },
+    {
+      "case": "cache-restore",
+      "answer": "ORBIT-4827",
+      "http_status": 200,
+      "finish_reason": "stop",
+      "prompt_tokens": 7856,
+      "completion_tokens": 8,
+      "cached_tokens": 5696,
+      "request_sha256": "f1486724b208071ae2fbb71ed6c74d0173c7cd2a4259638f6c649a16e1cba0ee",
+      "started_at": "2026-09-14T20:37:01.588103+00:00",
+      "observed_response_seconds": 1.0320000000065193,
+      "artifact": "cache-restore-response.json",
+      "sha256": "f778b30458b447c269c1d0047d41780dbca026853c85c1aa3085c5694405a05e"
+    },
+    {
+      "case": "accepted",
+      "answer": "READY",
+      "http_status": 200,
+      "finish_reason": "stop",
+      "prompt_tokens": 15,
+      "completion_tokens": 2,
+      "cached_tokens": 0,
+      "request_sha256": "bdcc4c55a732e544fd882ba0400b2ce26de100c7aba4cfdefa00f9f93e2016c1",
+      "started_at": "2026-09-14T20:41:07.398266+00:00",
+      "observed_response_seconds": 0.25,
+      "artifact": "accepted-response.json",
+      "sha256": "9fcdb090312823fac0deca1293f30c230a70070f5e230b39aee19c45a18a30fc"
+    }
+  ],
+  "cache_process_restart": [
+    {
+      "rank": 0,
+      "publication": {
+        "rank": 0,
+        "artifact": "cache-cold-r0.log",
+        "sha256": "8d29e86b254b8e227aa0b9377ebdbef3fe746ef335d9031d3a240e7c7709a4ad",
+        "publications": [
+          {
+            "line": 176,
+            "tokens": 5696,
+            "digest_prefix": "ce31b361d939",
+            "manifest_prefix": "176517ca3b78",
+            "reported_dcp_rank": 0
+          }
+        ],
+        "placements": [],
+        "restores": [],
+        "verified_timings": [],
+        "scheduler_hits": []
+      },
+      "restore": {
+        "rank": 0,
+        "artifact": "cache-restore-r0.log",
+        "sha256": "57b557404f2ade2b5f582319c40e2067b0397daa3831fd3da73a9531a201030b",
+        "publications": [],
+        "placements": [],
+        "restores": [
+          {
+            "line": 172,
+            "tokens": 5696
+          }
+        ],
+        "verified_timings": [],
+        "scheduler_hits": [
+          {
+            "line": 171,
+            "tokens": 5696,
+            "digest_prefix": "ce31b361d939"
+          }
+        ]
+      },
+      "evidence_binding": "matching token span in the worker completion log emitted only after verified restore; scheduler digest is checked separately"
+    },
+    {
+      "rank": 1,
+      "publication": {
+        "rank": 1,
+        "artifact": "cache-cold-r1.log",
+        "sha256": "5877d1d6b7099085c87b586284c219725d5e62ca0da50891d279c9058773c645",
+        "publications": [
+          {
+            "line": 106,
+            "tokens": 5696,
+            "digest_prefix": "ce31b361d939",
+            "manifest_prefix": "b09ae628303b",
+            "reported_dcp_rank": 0
+          }
+        ],
+        "placements": [],
+        "restores": [],
+        "verified_timings": [],
+        "scheduler_hits": []
+      },
+      "restore": {
+        "rank": 1,
+        "artifact": "cache-restore-r1.log",
+        "sha256": "358c5d25198b8ff12af794905ac77ec3242f7d8757d18fec6ffb7d591f8f963c",
+        "publications": [],
+        "placements": [],
+        "restores": [
+          {
+            "line": 101,
+            "tokens": 5696
+          }
+        ],
+        "verified_timings": [],
+        "scheduler_hits": []
+      },
+      "evidence_binding": "matching token span in the worker completion log emitted only after verified restore; scheduler digest is checked separately"
+    }
+  ],
+  "restore_log_semantics": {
+    "commit": "76598d1d368d7a8fad2ebd03b7a0550e09eb7f99",
+    "path": "sparkcache/spark_context_cache_connector.py",
+    "sha256": "117c3dbae43936986a3061e06a17fb2701aaeda702fcab8d28f6df5ab5f018fe",
+    "verified_guard_line": 4350,
+    "completion_log_line": 4362,
+    "semantics": "The INFO restore summary is emitted only inside the verified branch after _load_one returns successfully. A failed restore follows the recompute branch and does not emit this summary."
+  },
+  "matched_scheduler_selection": {
+    "line": 171,
+    "tokens": 5696,
+    "digest_prefix": "ce31b361d939"
+  },
+  "accepted_service": [
+    {
+      "rank": 0,
+      "container_id": "779a2afb5b0591f5157a0ca54883f640a718c1e36b771b43b0f46fc952c3953c",
+      "image_id": "sha256:4497d7fd8fbec6e5c5c090f57aaf1bd3344ffde949c981281e2688984d24b865",
+      "configuration_and_mounts_sha256": "5ff3633e1d1d45ca6227f012708d7e14ce9af0f042adc8187f5607f614723fb0",
+      "hash_normalization": "Mounts array sorted by unique Destination; all mount attributes and other recorded fields retained unchanged.",
+      "identity_and_configuration_unchanged": true,
+      "running": true,
+      "before_snapshot": {
+        "artifact": "accepted-before-r0.inspect.json",
+        "sha256": "759bf118a211937e6006b6b7321e86fd5b478924aad7ad65110c0511d7f34a56"
+      },
+      "after_snapshot": {
+        "artifact": "accepted-after-r0.inspect.json",
+        "sha256": "e2901e9d0eb515d38a5fc8e3db01601fe9b5f267bd82ca99a604395ce42b987b"
+      },
+      "before_started_at": "2026-09-14T15:19:37.839043138Z",
+      "after_started_at": "2026-09-14T20:38:10.398133432Z"
+    },
+    {
+      "rank": 1,
+      "container_id": "34cda83907cf0af8007e1a34ec50efcf81045a9347a278774022d7066ec540f7",
+      "image_id": "sha256:a342fff655f8cfe2fd04a05ac4a2d99c8579a2345e6f22983aba7c22f1902140",
+      "configuration_and_mounts_sha256": "55fc27067a649cee333bf7fdbb3d70e2c4911283fa69d2fe8388821f24fed7ea",
+      "hash_normalization": "Mounts array sorted by unique Destination; all mount attributes and other recorded fields retained unchanged.",
+      "identity_and_configuration_unchanged": true,
+      "running": true,
+      "before_snapshot": {
+        "artifact": "accepted-before-r1.inspect.json",
+        "sha256": "8e4b018225057d6f74458d1f82b78427b48c633f184157ca4093a8c66e880319"
+      },
+      "after_snapshot": {
+        "artifact": "accepted-after-r1.inspect.json",
+        "sha256": "2a5f9acfe74add3d25a06c783985c654cd917c9dc117e1635d7923908b68305f"
+      },
+      "before_started_at": "2026-09-14T15:19:37.86648306Z",
+      "after_started_at": "2026-09-14T20:38:09.607318757Z"
+    }
+  ],
+  "evidence_note": "Raw controller receipts, worker logs and container snapshots are retained privately; their hashes identify the source observations.",
+  "report_provenance": {
+    "reducer_sha256": "d69e68eebce311ac8b446d09c31d1eaedf74cf3d7e8556688949ba8e46dbffa2",
+    "reducer_output_sha256": "0f5ea1624aae5ce8541b8942ad0aebb5e79e7148ca5b3ed62d58a0a4a5372d00"
+  }
+}
