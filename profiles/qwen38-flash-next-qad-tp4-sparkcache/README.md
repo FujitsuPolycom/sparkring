@@ -18,6 +18,11 @@ It adds aligned checkpoint persistence with 4 GiB disk capacity per rank,
 two 512 MiB capture slots and a 256 MiB restore budget per rank. Media limits are
 configuration, not media qualification.
 
+The cache selection requests 32-token attention blocks so the runtime rounds
+physical hybrid pages to the persistent connector's 32-token chunk alignment.
+The cache-disabled profile requests 16 tokens; its TP4 runtime produces
+1424-token pages, which the connector correctly rejects as incompatible.
+
 Checkpoint identity uses SHA-256 of the literal Hugging Face repository,
 `@`, and pinned QAD revision. Its value and TP degree separate these entries
 from the original TP2/PTQ composition. Existing cache identity wire values

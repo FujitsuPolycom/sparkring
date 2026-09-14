@@ -100,7 +100,7 @@
     "--kv-cache-dtype",
     "fp8",
     "--block-size",
-    "16",
+    "32",
     "--load-format",
     "b12x",
     "--gpu-memory-utilization",

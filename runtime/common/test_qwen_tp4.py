@@ -134,6 +134,8 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     expected_env = dict(base.environment, SPARKCACHE_ENABLED="1")
     assert spec.environment == expected_env
     args = list(spec.command)
+    assert args[args.index("--block-size") + 1] == "32"
+    assert base.command[base.command.index("--block-size") + 1] == "16"
     transfer = json.loads(args[args.index("--kv-transfer-config") + 1])
     assert transfer["kv_connector"] == "SparkContextCacheConnector"
     assert transfer["kv_load_failure_policy"] == "recompute"
@@ -153,6 +155,7 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
         index = args.index(flag)
         del args[index:index + 2]
     args.remove("--enable-prompt-tokens-details")
+    args[args.index("--block-size") + 1] = "16"
     assert args == list(base.command)
     assert spec.mounts == base.mounts
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap

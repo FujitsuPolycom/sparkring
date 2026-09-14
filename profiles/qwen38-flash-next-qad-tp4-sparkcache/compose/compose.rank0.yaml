@@ -49,7 +49,7 @@ services:
     - --kv-cache-dtype
     - fp8
     - --block-size
-    - '16'
+    - '32'
     - --load-format
     - b12x
     - --gpu-memory-utilization
@@ -166,7 +166,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-2540686d726a-629bc3218833
     labels:
-      io.sparkring.deployment: b14b25283f13acd57fa73094ca22dffb8b862ffcfd1e3dfadad4bb037880d9cb
+      io.sparkring.deployment: 633e39a6585509baf64b4a2f31a886cce900278d14b6903dbb7a8c143f3c300b
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
