@@ -12,6 +12,8 @@ The [layout guide](docs/development/layout.md) defines ownership; the
 - Find the existing owner before adding a file. Prefer configuration and shared
   implementation to copied launchers. Generated compatibility exports are edited
   through their source and [generator](scripts/generate_profiles.py).
+  Compose exports use [generate_compose_examples.py](scripts/generate_compose_examples.py)
+  and the adapter's shared container specification; do not edit generated YAML.
 - Preserve published identities and public entry points. Frozen release inputs
   remain immutable, including [locked Markdown assets](docs/development/layout.md#compatibility-and-frozen-inputs);
   do not update hashes to disguise a changed build.

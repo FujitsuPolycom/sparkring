@@ -1,5 +1,7 @@
 # Qwen3.8-Flash-Next with SparkCache on two Sparks
 
+[Generated Compose deployments](compose/README.md) are also available. Compose serving remains unqualified.
+
 Status: **Experimental**. This configuration uses the published R37 cache
 extension with managed B12X loading, MTP3, TP2/DCP1, native 262K context,
 16 sequences, 8192 batched tokens and 24 GiB KV per rank. It allows three

@@ -1,7 +1,7 @@
 # Qwen3.8-Flash-Next NVFP4 on two Sparks
 
 [Experimental per-host Compose examples](compose/README.md) are available for the
-published R37 image on an already prepared fabric. They preserve the profile’s
+published R37 image on an already prepared fabric. They preserve the profileâ€™s
 serving settings but have only been checked offline, not launched through Compose.
 
 Status: **Experimental**. The profile fixes **262K context, 16 sequences,
@@ -151,8 +151,8 @@ The following synthetic checks ran at C1 with all capacity settings unchanged:
 
 | Request | Result | Elapsed |
 | --- | --- | ---: |
-| Three 256×256 red/green/blue PNGs | Correct color order | 8.45 s |
-| Six-second 256×256 MP4, two seconds per color | Correct temporal order | 2.61 s |
+| Three 256Ã—256 red/green/blue PNGs | Correct color order | 8.45 s |
+| Six-second 256Ã—256 MP4, two seconds per color | Correct temporal order | 2.61 s |
 | Three images plus that video | Both orders correct; fenced JSON | 3.40 s |
 
 All returned HTTP 200. The combined answer was semantically correct but was
