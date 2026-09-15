@@ -460,6 +460,12 @@ The environment templates keep TileLang, Triton, vLLM, and B12X CuTeDSL
 compilation data under the persistent `CACHE_HOST_PATH` mount. Recreating a
 container therefore does not discard those caches.
 
+The pinned B12X 1.2.1 package reads `B12X_COMPILE_CACHE_DIR`; the template sets
+it to `/cache/jit/b12x/compile`, matching the package's persistent XDG fallback.
+`B12X_CUTE_COMPILE_CACHE_DIR` is not a cache-location setting in this image.
+For an existing rank ENV file, replace that setting with
+`B12X_COMPILE_CACHE_DIR=/cache/jit/b12x/compile`. Retain the existing cache files.
+
 The templates enable PyTorch's NCCL flight recorder and configure dumps beneath
 `CACHE_HOST_PATH/nccl-fr`. Its coverage is limited to operations submitted through
 PyTorch's ProcessGroupNCCL. The pinned vLLM runtime also calls NCCL directly through

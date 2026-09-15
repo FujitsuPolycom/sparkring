@@ -6,14 +6,28 @@
       "template": "profiles/deepseek-v4-flash-0731/runtime.env.template",
       "destination": "scripts/config/deepseek-v4-flash-0731.env.example",
       "migration_baseline_sha256": "123e91a38110578ea209e3171587e7e7292ebf7602d8fd84bb2d52edf57729e1",
-      "migration_assignment_sha256": "1ee158fe61c5fa5f774abfcba7d9f663fc968cd5a359524643cdae227d7eee58"
+      "migration_assignment_sha256": "1ee158fe61c5fa5f774abfcba7d9f663fc968cd5a359524643cdae227d7eee58",
+      "assignment_changes": [
+        {
+          "from": "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x-cute",
+          "to": "B12X_COMPILE_CACHE_DIR=/cache/jit/b12x/compile",
+          "reason": "B12X 1.2.1 reads B12X_COMPILE_CACHE_DIR; preserve its existing XDG fallback cache location."
+        }
+      ]
     },
     {
       "profile": "deepseek-v4-flash-0731-pair",
       "template": "profiles/deepseek-v4-flash-0731-pair/runtime.env.template",
       "destination": "scripts/config/deepseek-v4-flash-0731-pair.env.example",
       "migration_baseline_sha256": "c59f5ccbafc826de721abc520f2a11674f166f04fdf419be35c4aaf338d27fb5",
-      "migration_assignment_sha256": "7687ea0b0d05a5010d3ed66e12f373c633fd6f667e5a4d5b9349bad736adf1b2"
+      "migration_assignment_sha256": "7687ea0b0d05a5010d3ed66e12f373c633fd6f667e5a4d5b9349bad736adf1b2",
+      "assignment_changes": [
+        {
+          "from": "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x-cute",
+          "to": "B12X_COMPILE_CACHE_DIR=/cache/jit/b12x/compile",
+          "reason": "B12X 1.2.1 reads B12X_COMPILE_CACHE_DIR; preserve its existing XDG fallback cache location."
+        }
+      ]
     },
     {
       "profile": "deepseek-v41-flash-cycle",

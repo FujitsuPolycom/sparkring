@@ -218,7 +218,7 @@ def test_pair_env_explains_host_cache_mapping() -> None:
     assert "CACHE_HOST_PATH=/cache/test" in source
     assert "/cache/test/jit/triton" in source
     assert "/cache/test/jit/tilelang" in source
-    assert "/cache/test/jit/b12x-cute" in source
+    assert "/cache/test/jit/b12x/compile" in source
     assert "/cache/test/nccl-fr" in source
 
 
@@ -229,7 +229,7 @@ def test_deepseek_templates_persist_native_jit_and_flight_recorder_data(
     values = _env_values(template)
 
     assert values["TILELANG_CACHE_DIR"] == "/cache/jit/tilelang"
-    assert values["B12X_CUTE_COMPILE_CACHE_DIR"] == "/cache/jit/b12x-cute"
+    assert values["B12X_COMPILE_CACHE_DIR"] == "/cache/jit/b12x/compile"
     assert values["TORCH_NCCL_TRACE_BUFFER_SIZE"] == "2000"
     assert values["TORCH_NCCL_DUMP_ON_TIMEOUT"] == "1"
     assert values["TORCH_NCCL_ENABLE_MONITORING"] == "1"
@@ -263,7 +263,7 @@ case "$1 $2" in
   "run -d")
     cache={cache_for_bash}
     test -d "$cache/jit/tilelang" || exit 91
-    test -d "$cache/jit/b12x-cute" || exit 92
+    test -d "$cache/jit/b12x/compile" || exit 92
     test -d "$cache/nccl-fr" || exit 93
     printf '%s\n' fake-container-id
     ;;
@@ -285,7 +285,7 @@ esac
     assert result.returncode == 0, result.stderr
     assert "fake-container-id" in result.stdout
     assert (cache / "jit" / "tilelang").is_dir()
-    assert (cache / "jit" / "b12x-cute").is_dir()
+    assert (cache / "jit" / "b12x/compile").is_dir()
     assert (cache / "nccl-fr").is_dir()
 
 
