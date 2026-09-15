@@ -1,5 +1,6 @@
 """Four-rank QAD selection, image admission and shared deployment contracts."""
 import copy
+import hashlib
 import json
 import subprocess
 
@@ -86,9 +87,10 @@ def test_local_rebuild_identity_is_bound_to_export_and_plan(site, tmp_path, monk
     assert [a["host"] for a in phases["start-api"]["actions"]] == ["spark0"]
 
 
-@pytest.mark.parametrize("profile_id", ["qwen38-flash-next-tp2", PROFILE])
+@pytest.mark.parametrize("profile_id", ["qwen38-flash-next-tp2", PROFILE, PROFILE + "-sparkcache"])
 def test_published_image_cannot_use_local_override(profile_id):
-    site = compose.read_site(adapter.ROOT / f"profiles/{profile_id}/compose/site.example.yaml")
+    owner = profile_id.removesuffix("-sparkcache")
+    site = compose.read_site(adapter.ROOT / f"profiles/{owner}/compose/site.example.yaml")
     with pytest.raises(ValueError, match="cannot be overridden"):
         compose.specifications(profile_id, site, local_image_id="sha256:" + "a" * 64)
 
@@ -136,8 +138,71 @@ def test_feature_verification_reads_chain_from_same_image(monkeypatch):
     assert len(calls) == 6
 
 
-def test_canonical_tp4_config_cannot_enable_unqualified_cache():
+def test_base_tp4_config_cannot_enable_cache_by_toggling_an_environment_flag():
     profile = copy.deepcopy(adapter.read(adapter.TP4_CONFIG))
     profile["environment"]["SPARKCACHE_ENABLED"] = "1"
     with pytest.raises(ValueError, match="unchanged canonical"):
         adapter.canonical(profile)
+
+
+@pytest.mark.parametrize("rank", range(4))
+def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
+    native, native_image = compose.specifications(PROFILE, site)
+    cached, cache_image = compose.specifications(PROFILE + "-sparkcache", site)
+    base, spec = native[rank], cached[rank]
+    assert cache_image == native_image and spec.image_id == base.image_id
+    expected_env = dict(base.environment, SPARKCACHE_ENABLED="1")
+    assert spec.environment == expected_env
+    args = list(spec.command)
+    assert args[args.index("--block-size") + 1] == "32"
+    assert base.command[base.command.index("--block-size") + 1] == "16"
+    transfer = json.loads(args[args.index("--kv-transfer-config") + 1])
+    assert transfer["kv_connector"] == "SparkContextCacheConnector"
+    assert transfer["kv_load_failure_policy"] == "recompute"
+    extra = transfer["kv_connector_extra_config"]
+    config = adapter.read(adapter.TP4_CONFIG)
+    expected_identity = hashlib.sha256(
+        (config["model"]["repository"] + "@" + config["model"]["revision"]).encode()
+    ).hexdigest()
+    assert extra["spark_cache_target_checkpoint_sha256"] == expected_identity
+    assert extra["spark_cache_draft_checkpoint_sha256"] == expected_identity
+    assert extra["spark_cache_model_profile"] == "qwen38-flash-next-hybrid"
+    tp2 = adapter.read(adapter.CONFIG_ROOT / "sparkcache.json")["vllm_args"]
+    tp2_extra = json.loads(tp2[tp2.index("--kv-transfer-config") + 1])["kv_connector_extra_config"]
+    assert expected_identity != tp2_extra["spark_cache_target_checkpoint_sha256"]
+    assert extra["spark_cache_root"] != tp2_extra["spark_cache_root"]
+    for flag in ("--kv-transfer-config", "--recurrent-checkpoint-policy"):
+        index = args.index(flag)
+        del args[index:index + 2]
+    args.remove("--enable-prompt-tokens-details")
+    args[args.index("--block-size") + 1] = "16"
+    assert args == list(base.command)
+    assert spec.mounts == base.mounts
+    assert spec.memory == base.memory and spec.memory_swap == base.memory_swap
+
+
+def test_tp4_cache_compose_has_four_hosts_and_source_bound_feature_admission(site, compose_cli):
+    profile = PROFILE + "-sparkcache"
+    specs, image = compose.specifications(profile, site)
+    assert len(specs) == 4
+    for spec in specs:
+        compose.check_equivalence(spec, image, compose.compose_text(spec, image))
+    inputs = compose.source_inventory(profile)
+    assert "runtime/common/qwen_mesh.py" in inputs
+    assert "runtime/common/feature_candidate.py" in inputs
+    assert "runtime/images/compositions/lil-r37-shared/descriptor.json" in inputs
+    assert "profiles/qwen38-flash-next-qad-tp4/config.json" in inputs
+    assert "profiles/qwen38-flash-next-qad-tp4/sparkcache.json" in inputs
+    manifest, files = compose.build(profile, site)
+    phases = {phase["id"]: phase for phase in coordinator.plan(manifest, files, "start")["phases"]}
+    assert len(phases["preflight"]["actions"]) == 4
+    assert all(action["argv"][:2] == ["sudo", "-n"] for action in phases["preflight"]["actions"])
+
+
+def test_tp4_direct_cache_container_name_is_distinct():
+    site = dict(rank=0, master="192.0.2.1", host_ip="192.0.2.1", interface="test0",
+                image=adapter.read(BUILD)["image_id"], model="/models/qad", cache="/cache/qad", remote=True)
+    base = adapter.container_spec(adapter.read(adapter.TP4_CONFIG), **site)
+    cached = adapter.container_spec(adapter.read(adapter.TP4_CACHE_CONFIG), **site)
+    assert cached.name != base.name
+    assert cached.image_id == base.image_id

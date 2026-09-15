@@ -1,8 +1,4 @@
 {
   "schema": "sparkring-capability-status/v1",
-  "profiles": {
-    "qwen38-flash-next-qad-tp4": {
-      "sparkcache": "development"
-    }
-  }
+  "profiles": {}
 }

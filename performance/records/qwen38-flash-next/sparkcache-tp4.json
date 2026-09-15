@@ -1,0 +1,258 @@
+{
+  "schema": "sparkring-qwen-tp4-cache-smoke/v1",
+  "status": "qualified",
+  "scope": "Bounded QAD TP4/DCP1 cold/warm text reuse, four-rank process-restart disk restore, one-rank corrupted-object rejection/recomputation, and saved-service rollback.",
+  "source_commit": "901d6cdaf5190201cdd40d27902425b4873273f4",
+  "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+  "published_image": "ghcr.io/fujitsupolycom/sparkring@sha256:aef597a5ee70f7b4e0807901e43456b6ac8d2234247ab4df6a6cfe031e5169c6",
+  "sparkcache_source": {
+    "repository": "https://github.com/FujitsuPolycom/sparkcache",
+    "base_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
+    "integrated_commit": "76598d1d368d7a8fad2ebd03b7a0550e09eb7f99",
+    "integrated_tree": "ac45a7029c19df8d8752d87627d5c8b8ded34444",
+    "package_sha256": "5760647eec3d43083a4c6f0554cf2971053c4456f70c6101248307f76fe46348",
+    "patch": "integrations/sparkcache/qwen38-r37.patch"
+  },
+  "model": {
+    "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+    "checksummed_entries_per_rank": 38
+  },
+  "settings": {
+    "tp": 4,
+    "dcp": 1,
+    "mtp": 3,
+    "context": 262144,
+    "sequences": 16,
+    "batch": 8192,
+    "loader": "b12x",
+    "requested_block_size": 32,
+    "physical_page_tokens": 1440,
+    "persistent_chunk_tokens": 32,
+    "kv_bytes_per_rank": 25769803776,
+    "logical_kv_tokens": 3176400,
+    "capture_bytes_per_rank": 1073741824,
+    "restore_budget_per_rank": 268435456,
+    "disk_limit_per_rank": 4294967296,
+    "images": 3,
+    "videos": 1,
+    "video_frames": 16,
+    "features": [
+      "qwen-collectives",
+      "qwen-prefill"
+    ],
+    "allreduce_cutoff_bytes": 20480
+  },
+  "geometry": {
+    "native_requested_block": 16,
+    "native_page_tokens": 1424,
+    "native_page_rejected": true,
+    "cache_requested_block": 32,
+    "cache_page_tokens": 1440,
+    "cache_guard_unchanged": true
+  },
+  "deployments": {
+    "cold": {
+      "id": "4e0dd57ac2f04912db74d4866a55d7047ba7552a043fd555b32c1f3f20aedaa7",
+      "receipts": {
+        "start": {
+          "plan_sha256": "c27c2eb2ca304f2ffeed963d0ec29be618e00fb14e36dae177b994d05966d0d7",
+          "receipt_sha256": "cad920b221bb137fc680e51c0dd5c27bbee3977ed466c645d0c235b6002b9f8a"
+        },
+        "stop": {
+          "plan_sha256": "b9cbf5fda44fa7a6a29ea90b31ed3c3193501608bba2ca4b6023284d0497d09a",
+          "receipt_sha256": "cf2f793b6003f257d2953be9804acde3d15383dc320980e23ecfbb5adb403b1b"
+        }
+      }
+    },
+    "restore": {
+      "id": "84b0f2a89c6e6c0b5a59e3c60e81478c2d8ba29adc4ba915a0bc337aee1e4c7f",
+      "receipts": {
+        "start": {
+          "plan_sha256": "e8004cbe6ef5cac0c81474a32e5718a28c7ea12efd06172b005affe1fc75ae5c",
+          "receipt_sha256": "5aceacee55afe3fd52de76edc655fdd6487afd93cb5c0cebd0b7db5553123429"
+        },
+        "stop": {
+          "plan_sha256": "d31d5bd3bb72445e53142a4e15acf9ad123228e97c6aefacc541406881cdd842",
+          "receipt_sha256": "defd4dd12405cb2ef4aaded92e3002dbfc426706a8768fd8e3e7ccbfacb29532"
+        }
+      }
+    },
+    "reject": {
+      "id": "6eb1182abb1eba36cca1e086ebcfd69a1cfbea3bd0fcdc88d76ee29e0818368d",
+      "receipts": {
+        "start": {
+          "plan_sha256": "3063fde704f7f42f3f4df8b3b098a74933ea560163abca91f58264c4ab6ab076",
+          "receipt_sha256": "63b971cb0d2f471da161f252eb9a42fd30a34af0ba48bc348db88ee83159424f"
+        },
+        "stop": {
+          "plan_sha256": "202f9e64af40d199b0101322d785144bd53b70ad479bc9af87e1dffffefd0918",
+          "receipt_sha256": "5ba563cd20538c3fa2f0289ae20f8bcf34b78be6e3062c9364ea172c5c76a771"
+        }
+      }
+    }
+  },
+  "observations": [
+    {
+      "case": "cold",
+      "answer": "HARBOR-6392",
+      "finish_reason": "stop",
+      "http_status": 200,
+      "prompt_tokens": 7860,
+      "cached_tokens": 0,
+      "completion_tokens": 9,
+      "seconds": 7.75,
+      "started_at": "2026-09-14T23:39:55.307654+00:00",
+      "request_sha256": "bc0849f889f0fe8e83e1f6f986989678eea8a18d3f5b1c7d102f1d0ef667fc42",
+      "response_artifact_sha256": "e450e7b8bcb015ba70abbcec8ae93788ecc30c810c32a92d3ccf7a57cdcbbfb6"
+    },
+    {
+      "case": "warm",
+      "answer": "HARBOR-6392",
+      "finish_reason": "stop",
+      "http_status": 200,
+      "prompt_tokens": 7860,
+      "cached_tokens": 5760,
+      "completion_tokens": 9,
+      "seconds": 0.8599999999860302,
+      "started_at": "2026-09-14T23:40:03.175753+00:00",
+      "request_sha256": "bc0849f889f0fe8e83e1f6f986989678eea8a18d3f5b1c7d102f1d0ef667fc42",
+      "response_artifact_sha256": "7032d793e26a96dfeb4610c578dac3eed5924c77cd6e45e8c90ef9dcfa4d44ef"
+    },
+    {
+      "case": "restore",
+      "answer": "HARBOR-6392",
+      "finish_reason": "stop",
+      "http_status": 200,
+      "prompt_tokens": 7860,
+      "cached_tokens": 7200,
+      "completion_tokens": 9,
+      "seconds": 0.5470000000204891,
+      "started_at": "2026-09-14T23:44:36.118556+00:00",
+      "request_sha256": "bc0849f889f0fe8e83e1f6f986989678eea8a18d3f5b1c7d102f1d0ef667fc42",
+      "response_artifact_sha256": "b25493f409964c4cc241afa950f0fb88f1a77766a93c5711e1d879529a49c6cd"
+    },
+    {
+      "case": "reject",
+      "answer": "HARBOR-6392",
+      "finish_reason": "stop",
+      "http_status": 200,
+      "prompt_tokens": 7860,
+      "cached_tokens": 0,
+      "completion_tokens": 9,
+      "seconds": 2.64000000001397,
+      "started_at": "2026-09-14T23:49:52.537366+00:00",
+      "request_sha256": "bc0849f889f0fe8e83e1f6f986989678eea8a18d3f5b1c7d102f1d0ef667fc42",
+      "response_artifact_sha256": "4d91771017fee3c1b9ea96b6efa517098b7b6eeac7847168865883fe70affafc"
+    },
+    {
+      "case": "accepted",
+      "answer": "READY",
+      "finish_reason": "stop",
+      "http_status": 200,
+      "prompt_tokens": 15,
+      "cached_tokens": null,
+      "completion_tokens": 2,
+      "seconds": 0.23399999999674037,
+      "started_at": "2026-09-14T23:56:52.947192+00:00",
+      "request_sha256": "ea0c12578aa5d992368adce9f7830a1e56963d45dd40fa567080783c5240c19f",
+      "response_artifact_sha256": "f830d89e7346cc6b8df8d743ba9b9dde588fdf5287a2e8c73f3f9c5e3d084b7e"
+    }
+  ],
+  "workers": [
+    {
+      "rank": 0,
+      "published_tokens": 7200,
+      "restored_tokens": 7200,
+      "restore_ms": 81.4,
+      "cold_container": "9fd0e695169f7d378e92a3708204499935eff9414ff673287c3b5c3af75dae3b",
+      "restore_container": "ca144428e05654ef957afa08cab7d1e39af8670cb1c80eeb6c16113a59da5a14",
+      "cold_log_sha256": "5db18848418d31c7a4c02837f035f431e96ca3cd0f6662cf48735a5008bafb44",
+      "restore_log_sha256": "17ef2720c44e78eb2a2a0371b09532362c6d00764a0105e6ad0ce9f838a2ab8a"
+    },
+    {
+      "rank": 1,
+      "published_tokens": 7200,
+      "restored_tokens": 7200,
+      "restore_ms": 84.9,
+      "cold_container": "3a1cf6d6945bc742041d20a1749d05cc2c4ba2421c9463ca8915c074f13d30da",
+      "restore_container": "473f0c2c3947f30b3d0620c632c6c96eed22f022b95d1b618d6b1449e6bd6052",
+      "cold_log_sha256": "17e13dd000e2dc0176a077b455b2330fc89e65bbf1094d06b67a79f558a7af12",
+      "restore_log_sha256": "4d95140a74cf0c90bbccdb63d7253d506e109e0a26453de98b675a3ee39dfe1a"
+    },
+    {
+      "rank": 2,
+      "published_tokens": 7200,
+      "restored_tokens": 7200,
+      "restore_ms": 81.7,
+      "cold_container": "9c91562d626131fa3fc3e4803aa18ff64ca0b4ac7838e6ad7a6cc38160967fb6",
+      "restore_container": "aba884ed259bd8dec1eb0b9a5e444aa6f1d30086c8e5428d6abf6cb025d6796f",
+      "cold_log_sha256": "e5ab6716d97edbfad6fde66ad4b046fd9d11214847d7d0f1a88364784fde925f",
+      "restore_log_sha256": "d14b1b53e1687a0cd0ad2239550d7a08268e45a52d9b13f55d8185a335b9f3ff"
+    },
+    {
+      "rank": 3,
+      "published_tokens": 7200,
+      "restored_tokens": 7200,
+      "restore_ms": 85.6,
+      "cold_container": "4eead0297e0a5e92085655e39552ff62feaadf514f8b89485176b03b58af38df",
+      "restore_container": "64d941997a6ceaa3f74f41f3d7f622e67c5c457ec565daad3597ff9485184abc",
+      "cold_log_sha256": "a7146475993d9f71ef29269f7c735fe96e0333e82b49d14255315f89c060830f",
+      "restore_log_sha256": "906d3ec93925ff71d36a3e5b5a5e7fcaf1a8485efdefefbf918515ef745b7890"
+    }
+  ],
+  "corruption": {
+    "rank": 0,
+    "scope": "isolated synthetic prefix object only",
+    "context_digest": "3b78a76f50b69badff430d42b5a93f20bf7f4e039a81c83dc4765d0654265664",
+    "expected_sha256": "d7829bf314cc7814ecae58b3a0b04c9fed1460f65af55f5c9ce9f2ab67409e1d",
+    "corrupted_sha256": "54495a0a029c5893c054f24fb5a1ba6105d17fb14c95009229c2b0b0a5ba704a",
+    "offset": 4096,
+    "xor_mask": 1,
+    "bytes": 17494265,
+    "backup_sha256": "d7829bf314cc7814ecae58b3a0b04c9fed1460f65af55f5c9ce9f2ab67409e1d",
+    "backup_retained": true
+  },
+  "accepted_service": [
+    {
+      "rank": 0,
+      "container_id": "90d1b8d6400f2d31dd848d4c37aa8cc032ad8481a5566a03ed67effa5d0b633e",
+      "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+      "configuration_and_mounts_unchanged": true,
+      "running": true
+    },
+    {
+      "rank": 1,
+      "container_id": "2ff3aaa0487d876f0290bb756ded970e73d100d05d73e66adbb562872f8ecf33",
+      "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+      "configuration_and_mounts_unchanged": true,
+      "running": true
+    },
+    {
+      "rank": 2,
+      "container_id": "e3f72beaa54f9c68618f8a8f9877307dca827f0bbbe3d437c71053506d13a5be",
+      "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+      "configuration_and_mounts_unchanged": true,
+      "running": true
+    },
+    {
+      "rank": 3,
+      "container_id": "09ca5eb6d9d18c494e98e0f16b27ad62029a14c3ccd33eafe09430ae2b40a189",
+      "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+      "configuration_and_mounts_unchanged": true,
+      "running": true
+    }
+  ],
+  "limitations": [
+    "Single synthetic text fixture; no performance comparison, media, concurrent, full-context or pressure qualification.",
+    "Response times are single functional observations including different warmup/cache states, not benchmark speedups.",
+    "Only the optional cache profile requests block size 32; the saved native block-size-16/cache-off service was restored.",
+    "No image rebuild or SparkCache/vLLM kernel change; no PR merge or publication by this test task."
+  ],
+  "profile": "qwen38-flash-next-qad-tp4-sparkcache",
+  "evidence_note": "Raw controller receipts, worker logs and container snapshots are retained privately; hashes identify their source observations.",
+  "report_provenance": {
+    "finalizer_sha256": "ebeb1caada82ecac6d50aa0e8ecb170e30f9a27435e5cebcf6b8beb0aa63d2d5",
+    "source_report_sha256": "42c0ca409d96ae4936c610d61d6b27cd8d0497672c679429bc1cf764e93d6dfd"
+  }
+}

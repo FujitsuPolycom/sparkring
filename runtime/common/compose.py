@@ -13,7 +13,8 @@ import yaml
 from runtime.common import profiles, qwen_flash_next
 
 ROOT = Path(__file__).resolve().parents[2]
-SUPPORTED = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4")
+TP4_PROFILES = ("qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache")
+SUPPORTED = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", *TP4_PROFILES)
 LABEL = "io.sparkring.deployment"
 
 
@@ -163,12 +164,14 @@ def source_inventory(profile_id):
     }
     metadata, _ = profiles.load(profile_id)
     paths.add(metadata["configuration"]["path"])
-    if profile_id == "qwen38-flash-next-qad-tp4":
+    if profile_id in TP4_PROFILES:
         from runtime.common import qwen_mesh
         paths.add("runtime/common/feature_candidate.py")
+        paths.update(("profiles/qwen38-flash-next-qad-tp4/config.json",
+                      "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"))
         paths.update(qwen_mesh.SOURCE_FILES)
     folders = ["lil-r37-glm-spark", "lil-r37-cache64"]
-    if profile_id == "qwen38-flash-next-qad-tp4":
+    if profile_id in TP4_PROFILES:
         folders.append("lil-r37-shared")
     for folder in folders:
         paths.update(

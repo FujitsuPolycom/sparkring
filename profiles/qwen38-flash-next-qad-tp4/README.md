@@ -16,7 +16,7 @@ media, full-context or long-duration qualification.
 | Speculation | MTP3 |
 | Collectives | RoCEnante all-reduce up to 20 KiB; larger reductions use dual-domain NCCL |
 | Prefill | Qwen HC up/gate fusion and large-row MTP GEMMs |
-| SparkCache | In development; disabled in this profile. Native prefix caching remains enabled |
+| SparkCache | [Optional](../qwen38-flash-next-qad-tp4-sparkcache/README.md); disabled by default. Native prefix caching remains enabled |
 | Media | Three images / one video, 16 configured frames; QAD TP4 media acceptance is pending |
 
 The [configuration](config.json) owns these settings. The original PTQ checkpoint

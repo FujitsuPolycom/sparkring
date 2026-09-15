@@ -27,8 +27,9 @@ def test_qad_quant_link_identifies_its_checkpoint_separately_from_tp2():
     assert '[NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)' in pair
     assert 'NVFP4 QAD' not in pair
     qad = next(line for line in ring.splitlines() if '| Qwen3.8-Flash-Next |' in line)
-    assert '| (in dev) |' in qad
+    assert '[Optional](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md)' in qad
     assert resolve('qwen38-flash-next-qad-tp4')['serving']['sparkcache'] is False
+    assert resolve('qwen38-flash-next-qad-tp4-sparkcache')['serving']['sparkcache'] is True
 
 
 def test_catalog_groups_glm_choices_and_preserves_every_profile_link():

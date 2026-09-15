@@ -5,12 +5,15 @@ covers four-rank startup, bounded inference/performance checks and coordinated
 stop/restart. The [TP2 smoke record](../../performance/records/qwen38-flash-next/compose-tp2.json)
 covers native/cache-enabled startup, shutdown and persistent-cache restore in a
 fresh deployment. Offline tests cover configuration equivalence and coordinator failures.
+The [QAD TP4 cache record](../../performance/records/qwen38-flash-next/sparkcache-tp4.json)
+also covers four-rank disk restore and corrupted-object rejection/recomputation.
 
 The `sparkring compose` coordinator supports:
 
 - `qwen38-flash-next-tp2`
 - `qwen38-flash-next-tp2-sparkcache`
 - `qwen38-flash-next-qad-tp4` ([Development quickstart](../../profiles/qwen38-flash-next-qad-tp4/README.md))
+- `qwen38-flash-next-qad-tp4-sparkcache` ([cache quickstart](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md))
 
 Other profiles are rejected by this coordinator. [GLM TP4 Compose creation](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
 uses the shared container specification through `sparkring deploy`. Its managed
@@ -52,6 +55,7 @@ image pull and host prerequisites before generating a deployment:
 - [Qwen TP2 quickstart](../../profiles/qwen38-flash-next-tp2/README.md)
 - [Qwen TP2 with SparkCache](../../profiles/qwen38-flash-next-tp2/SPARKCACHE.md)
 - [Qwen QAD TP4](../../profiles/qwen38-flash-next-qad-tp4/README.md)
+- [Qwen QAD TP4 with SparkCache](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md)
 
 Install the same SparkRing source files on the controller and each host, with
 Python 3.12, PyYAML and the Docker Compose plugin. The controller needs SSH access;
