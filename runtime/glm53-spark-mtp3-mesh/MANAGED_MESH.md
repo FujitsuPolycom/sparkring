@@ -49,11 +49,13 @@ at a time; direct `docker start` bypasses the managed startup contract.
 ## Prerequisites and identities
 
 Prepare the target, verified transport bundle, image receipt, and rendered
-four-rank launch directory using the
-[model quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md). Use its
-model and collective-routing settings. The installer receipt at
-`/srv/sparkring/verified-image-receipt.json` in the examples is a staged copy
-of the repository's `image-receipt.json`, not `public-image.json`. Pull the
+four-rank launch directory using the selected [profile quickstart](../../profiles/README.md).
+Retain that profile's model, routing settings and verified rendering receipt.
+The [retained compute-image quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md)
+provides one complete example using this directory's `image-receipt.json`.
+Other profiles select different receipts; do not replace them with this example.
+`/srv/sparkring/verified-image-receipt.json` below names the staged receipt,
+not a requirement to select a different image. Pull the
 published image on each host before creating containers; Docker cannot
 resolve an absent local config ID by pulling it from a registry.
 For managed operation, use the
@@ -362,6 +364,7 @@ The bounded `--run-seconds` mode is for isolated diagnostics only.
 |---|---|
 | Child-process and peer checks | 1-second loop; peer HTTP timeout 2 seconds |
 | Unavailable peer connection | 300-second grace after the first transport failure (covers a management-switch reboot); degraded health blocks model startup |
+| Management-address probe | Startup: fail fast. Runtime: same grace bound as peer transport when the address matches the startup-validated identity; fabric checks continue and stay immediate; degraded health blocks model startup |
 | Docker container status | One background query at a time, 3-second timeout; unknown status blocks model startup |
 | MAC/IP, Ethernet MTU, sysfs GID/netdev, routes, qdiscs, TC state | 5-second periodic check |
 | Full RDMA active-MTU probe | Startup and approximately every 60 seconds |
@@ -375,6 +378,17 @@ responses clear that interval. Degraded peer health blocks model startup.
 An authentication failure, explicit negative readiness, or changed process
 generation does not receive transport-error grace: it triggers failure when
 observed. Local marker exits also trigger failure without that grace.
+
+A temporary loss of this rank's startup-validated management address has its
+own 300-second grace interval. A successful network check clears that interval;
+peer recovery does not. Fabric, marker and authentication failures still trigger
+failure when observed. Expiry is checked during polling, so detection includes
+poll and check latency. API clients may lose connectivity during address loss.
+
+Management and peer degradation block the group startup gate and the final local
+model-arm check. Planned quiesce remains allowed. CPU regressions cover address
+loss, recovery, repeated outages and admission after the group gate; real OS
+address-loss/recovery and simultaneous-fabric-fault qualification remain pending.
 
 Docker status queries run outside the fabric-monitor loop. A slow or failed
 query reports `docker_status_degraded: true`; it does not declare fabric
@@ -404,6 +418,11 @@ confirmation, the service reports failure and retains forwarding rather
 than assuming teardown is safe. This is containment machinery, not a promise
 that every host, NIC, kernel, or Docker failure can be recovered unattended.
 
+If a marker's exit cannot be confirmed after termination, its identity and
+network ownership remain recorded for explicit `recover`. The supervisor
+closes its HTTP server and lock and reports failure; it does not remove
+forwarding beneath a possibly surviving marker.
+
 Before public recommendation, retain live evidence for clean startup,
 planned model and fabric restart, helper loss, supervisor loss, peer failure,
 changed hardware rules, explicit recovery, temperature-one model output, and
@@ -420,8 +439,8 @@ remain unchanged. Removing the field restores the normal logging default.
 This is diagnostic evidence collection, not a performance configuration.
 
 Retain the diagnostic site, renderer/installer revision and rendered-file
-hashes separately from the image receipt. An image built from `c8646b0` does
-not imply that a later diagnostic renderer is also `c8646b0`. This option
+hashes separately from the image receipt. The image's build revision does
+not identify the external renderer used for a deployment. This option
 changes external orchestration only; it does not modify runtime binaries or
 require a new image. The managed installer must reproduce the diagnostic
 environment from the saved site; hand-edited rank environments are rejected.

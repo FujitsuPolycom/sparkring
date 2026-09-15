@@ -1,0 +1,73 @@
+{
+  "schema": "sparkring-local-ci-evidence/v1",
+  "source_commit": "d752bbe727a90a0309f8091013d155a1f36600ab",
+  "environment": "Ubuntu WSL; isolated archive of committed source",
+  "selection": ".github/workflows/ci.yml tests job: Test maintained Python trees",
+  "tests": {
+    "passed": 5842,
+    "skipped": 29,
+    "failures": 0,
+    "errors": 0
+  },
+  "skip_reasons": {
+    "collection skipped": 3,
+    "nvcc is unavailable; CUDA compilation is not claimed": 1,
+    "MARKER_TEST_BINARY must name a compiled native helper": 1,
+    "Only vocabulary allgather accepts an explicit Q": 3,
+    "Only tiled probe emits JSON receipts": 3,
+    "the optional composed R7 vLLM source tree is absent": 3,
+    "optional companion SparkCache source integration": 1,
+    "SPARKCACHE_SOURCE selects the companion token ledger": 10,
+    "Optional canonical native bundle is absent; portable synthetic-byte coverage still runs": 1,
+    "the supported R7 image carries no loose host artifacts": 3
+  },
+  "image_tests": {
+    "passed": 185
+  },
+  "checks": [
+    {
+      "check": "lint",
+      "exit_code": 0
+    },
+    {
+      "check": "layout",
+      "exit_code": 0
+    },
+    {
+      "check": "links",
+      "exit_code": 0
+    },
+    {
+      "check": "release",
+      "exit_code": 0
+    },
+    {
+      "check": "composition",
+      "exit_code": 0
+    },
+    {
+      "check": "image-tests",
+      "exit_code": 0
+    },
+    {
+      "check": "tests",
+      "exit_code": 0
+    }
+  ],
+  "lil_companion": {
+    "source_commit": "329cde801b847294005cb16765692032a6cdf206",
+    "binary_used_by_integration_tests": true,
+    "build_scope": "Reused the separately verified Go 1.26.0 companion binary; Go build/test/vet were not repeated."
+  },
+  "source_archive_sha256": "a8eecc2c19b6cf33e0ae6dda8720179b24d00f5551460f2d589498bf8dca79ea",
+  "output_sha256": {
+    "composition.log": "9f7f00bf035235d12c2105ac819977df7cc2347ad9f3757e4dae774c0e6a36b2",
+    "contributor-linux-image-tests.log": "997456a71f3de7d110d8263ac7cc97f47c39588facd4f03cad294216b056056a",
+    "contributor-linux-layout.log": "285b4da6fcb6a9530f3f667e6538c7e6fa9759420e16ba2820b93d7ceebb3bbf",
+    "contributor-linux-links.log": "a3aabe5651fa00620c235271d52fddac14bd418c7fd7d92599956c1f5c924e58",
+    "contributor-linux-lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "contributor-linux-release.log": "6323d81942bf93053888a9d11efbca1ce8a12335c139b1b39f0788af5a45b7b3",
+    "contributor-linux-tests.log": "39e862b16ce51fb83670571e9c8bd875c1df6dd11c4e7282460273858cd142d1"
+  },
+  "scope": "Local Linux software checks, including isolated Qwen TP4 source imports and NVIDIA metadata tamper rejection. No hosted CI or additional model/OS-network qualification."
+}

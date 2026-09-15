@@ -96,6 +96,9 @@ constexpr Tp4PrefillEndpoint tp4_prefill_outgoing_endpoint(
 
 constexpr Tp4PrefillEndpoint tp4_prefill_incoming_endpoint(
     std::uint32_t rank, Tp4PrefillDirection direction) {
+  if (!tp4_prefill_direction_valid(direction)) {
+    throw std::invalid_argument("invalid TP4 prefill direction");
+  }
   const auto opposite =
       direction == Tp4PrefillDirection::kClockwise
           ? Tp4PrefillDirection::kCounterClockwise

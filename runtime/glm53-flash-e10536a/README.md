@@ -7,7 +7,7 @@ does not inherit the qualification of the vLLM
 `da4d7be6c97434f6942292ed8abbf4b32dc44355` image recorded in
 `runtime/glm53-flash/pins.json`.
 
-The vLLM revision adds GLM-5.3 internal MTP5 and opt-in acceptance-length
+The vLLM revision implements GLM-5.3 internal MTP5 and opt-in acceptance-length
 adaptation. A static MTP configuration remains static unless the launch
 explicitly provides `adaptive_speculative_tokens_window`.
 
@@ -25,6 +25,9 @@ IMAGE='sparkring-glm53-runtime:e10536a-source-arm64' \
 BUILD_RECEIPT="$PWD/glm53-e10536a-runtime-receipt.json" \
 bash runtime/glm53-flash-e10536a/build-image.sh
 ```
+
+Receipt output paths must not exist. Use a separate `BUILD_RECEIPT` path for
+each build; the verifier also refuses to overwrite an existing receipt.
 
 The builder verifies source commits and Git trees, builds for SM121, verifies
 the output labels and imports, and writes an implemented-status receipt.

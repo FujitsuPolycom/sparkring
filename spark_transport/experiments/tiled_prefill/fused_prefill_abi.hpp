@@ -97,6 +97,14 @@ struct alignas(16) FusedPrefillDescriptor {
   std::uint32_t spin_limit{};
 };
 
+// The device barrier stores sequence+1 in a 32-bit sense word. Zero is
+// reserved, so sequence UINT32_MAX would wrap and must be rejected on host
+// and device before publishing any work.
+SPARK_FUSED_PREFILL_HD constexpr bool fused_prefill_sequence_valid(
+    std::uint64_t sequence) noexcept {
+  return sequence < UINT32_MAX;
+}
+
 SPARK_FUSED_PREFILL_HD constexpr std::uint64_t fused_prefill_stage_token(
     std::uint64_t operation_sequence, std::uint32_t stage) noexcept {
   return operation_sequence * kFusedPrefillStages + stage + 1U;

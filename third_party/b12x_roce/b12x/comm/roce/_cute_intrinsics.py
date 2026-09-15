@@ -121,7 +121,8 @@ def spin_until_eq_acquire_sys(
 ) -> Uint32:
     """Spin until the word at ``addr`` equals ``expected`` (system scope).
 
-    Returns 0 on success and 1 after ``limit`` polls without a match, so a
+    Checks at least once. Returns 0 on success and 1 after ``max(1, limit)``
+    polls without a match, so a
     dead peer or proxy surfaces as an error instead of a hung kernel.
     """
     return Uint32(
@@ -160,7 +161,7 @@ def spin_until_eq_acquire_sys(
 def ld_relaxed_sys_v4_u32(
     addr: Int64, *, loc=None, ip=None
 ) -> Tuple[Uint32, Uint32, Uint32, Uint32]:
-    """Load one 16-byte pack from NIC-written pinned memory without caching it."""
+    """System-scope relaxed load of one 16-byte pack from NIC-written pinned memory."""
     result = _asm(
         llvm.StructType.get_literal([T.i32(), T.i32(), T.i32(), T.i32()]),
         [Int64(addr).ir_value(loc=loc, ip=ip)],

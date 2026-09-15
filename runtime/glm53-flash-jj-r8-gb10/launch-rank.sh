@@ -164,6 +164,12 @@ esac
 : "${NCCL_DEBUG:=WARN}"
 : "${NCCL_DEBUG_SUBSYS:=NET,INIT,GRAPH}"
 : "${SOURCE_IMAGE_PROFILE:=}"
+: "${SPARKRING_RUNTIME_RELEASE:=r33}"
+case "${SPARKRING_RUNTIME_RELEASE}" in
+  r33) release_lease_contract=/opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json ;;
+  r35) release_lease_contract=/opt/sparkring/contracts/vllm-connector-jobs-r35.json ;;
+  *) printf '%s\n' 'SPARKRING_RUNTIME_RELEASE must be r33 or r35' >&2; exit 2 ;;
+esac
 : "${VLLM_BLOCK_SIZE:=256}"
 : "${OMP_NUM_THREADS:=16}"
 : "${TORCHINDUCTOR_COMPILE_THREADS:=1}"
@@ -179,7 +185,14 @@ die() {
 
 require_uint() {
   local name="$1" value="${!1}"
-  [[ "${value}" =~ ^[0-9]+$ ]] || die "${name} must be an unsigned integer"
+  # Canonical decimal values keep shell arithmetic and emitted arguments equal.
+  # Check the signed shell range as text before evaluating any arithmetic.
+  [[ "${value}" =~ ^(0|[1-9][0-9]*)$ ]] || \
+    die "${name} must be an unsigned integer without leading zeros"
+  if (( ${#value} > 19 )) || \
+     { (( ${#value} == 19 )) && [[ "${value}" > 9223372036854775807 ]]; }; then
+    die "${name} exceeds the supported integer range"
+  fi
 }
 
 require_positive_uint() {
@@ -221,7 +234,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
     [[ "${SPARKCACHE_ENABLED}" == 0 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 ]] || \
       die 'Source-composed prefill profiles require SparkCache and capture disabled'
     [[ "${SPECULATION_METHOD}" == mtp && "${NUM_SPECULATIVE_TOKENS}" == 3 && "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
-      die 'Source-composed prefill profiles require TP4 and native MTP3'
+      die 'Source-composed prefill profiles require TP4 and MTP3'
     [[ "${SOURCE_IMAGE_PROFILE}" == "tp4-dcp${DECODE_CONTEXT_PARALLEL_SIZE}-mtp3-prefill" ]] || \
       die 'DCP size differs from the source-composed profile'
     [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 ]] || \
@@ -231,7 +244,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
        "${TENSOR_PARALLEL_SIZE}" == 4 && "${DECODE_CONTEXT_PARALLEL_SIZE}" == 1 && \
        "${PIPELINE_PARALLEL_SIZE}" == 1 && "${NODE_COUNT}" == 4 && \
        "${DRAFT_TENSOR_PARALLEL_SIZE}" == 4 ]] || \
-      die 'Source SparkCache profile requires TP4/DCP1/PP1 and native MTP3'
+      die 'Source SparkCache profile requires TP4/DCP1/PP1 and MTP3'
     [[ "${TARGET_MODEL_VARIANT}" == nvfp4-spark && "${VLLM_BLOCK_SIZE}" == 512 ]] || \
       die 'Source SparkCache profile requires NVFP4-Spark and 512-token blocks'
     [[ "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json ]] || \
@@ -284,7 +297,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
        "${SPARKCACHE_SNAPSHOT_LIBRARY_PATH}" == /opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so && \
        "${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256}" == 7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953 && \
        "${SPARKCACHE_VLLM_ROOT}" == /opt/venv/lib/python3.12/site-packages && \
-       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json ]] || \
+       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == "${release_lease_contract}" ]] || \
       die 'R33 SparkCache native and lease paths differ from its receipt' ;;
   *) die 'Unsupported source-composed runtime profile' ;;
 esac
@@ -383,7 +396,7 @@ case "${B12X_FUSED_INDEXER}" in
   *) die 'B12X_FUSED_INDEXER must be 0 or 1' ;;
 esac
 
-[[ "${rank}" =~ ^[0-9]+$ ]] || die 'rank must be an unsigned integer'
+require_uint rank
 (( rank < NODE_COUNT )) || die "rank must be between 0 and $((NODE_COUNT - 1))"
 (( PORT <= 65535 && MASTER_PORT <= 65535 && SPARKRING_LIVENESS_PORT <= 65535 )) || \
   die 'ports must be at most 65535'
@@ -402,18 +415,43 @@ case "${SPECULATION_METHOD}" in
   mtp) ;;
   *) die 'SPECULATION_METHOD must be dflash or mtp' ;;
 esac
+# Each variant pins the checkpoint identity, selects the vLLM quantization
+# loader that matches its serialization, and states whether the native MTP
+# predictor layer must be excluded from quantization by an override.
 case "${TARGET_MODEL_VARIANT}" in
   nvfp4)
     target_config_sha256=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996
     target_index_sha256=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb
     TARGET_CHECKPOINT_FINGERPRINT=a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9
+    TARGET_QUANTIZATION=modelopt_mixed
+    TARGET_EXCLUDE_MTP_FROM_QUANTIZATION=0
     ;;
   nvfp4-spark)
     target_config_sha256=e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23
     target_index_sha256=db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544
     TARGET_CHECKPOINT_FINGERPRINT=357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4
+    TARGET_QUANTIZATION=modelopt_mixed
+    TARGET_EXCLUDE_MTP_FROM_QUANTIZATION=0
     ;;
-  *) die 'TARGET_MODEL_VARIANT must be nvfp4 or nvfp4-spark' ;;
+  nvidia-nvfp4)
+    if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
+      [[ "${r33_profile}" == 1 && "${SPARKRING_RUNTIME_RELEASE}" == candidate ]] || \
+        die 'nvidia-nvfp4 is unsupported by R33/R35 and frozen source-image contracts'
+    fi
+    # nvidia/GLM-5.3-Flash-NVFP4 @ 423acf37583782c51c142d145aef733d72943d93:
+    # ModelOpt 0.47 plain NVFP4 (quant_algo NVFP4 with an ignore list, FP8 KV
+    # scheme). Routed experts and the three dense MLPs are NVFP4; attention,
+    # shared experts, router gates, embeddings, lm_head and the vision tower
+    # are BF16. The native MTP layer is shipped BF16 but is absent from the
+    # checkpoint's ignore list, so the launcher derives an override for it.
+    target_config_sha256=e23c5d98f53e861d49a51bd3c68591621c5482ce829e42c31724152322fba03d
+    target_index_sha256=26765b2601fd246ef361cfb9f5e10f9fb291a59e05ad0a109062f3a4747c7fd1
+    # SparkCache identity: sha256 of "nvidia/GLM-5.3-Flash-NVFP4@<revision>".
+    TARGET_CHECKPOINT_FINGERPRINT=f44cb2423cf316987d1331a3ea45ce1a9ab2901d90b058d760a612c44ed2fb56
+    TARGET_QUANTIZATION=modelopt
+    TARGET_EXCLUDE_MTP_FROM_QUANTIZATION=1
+    ;;
+  *) die 'TARGET_MODEL_VARIANT must be nvfp4, nvfp4-spark, or nvidia-nvfp4' ;;
 esac
 # Native MTP loads its predictor from the target checkpoint. The separate
 # cache policy describes registered layer roles, not separate weight files.
@@ -701,12 +739,18 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   [[ -n "${SPARK_TP4_DEVICE0}" && -n "${SPARK_TP4_DEVICE1}" ]] || \
     die 'SIRCL requires SPARK_TP4_DEVICE0 and SPARK_TP4_DEVICE1'
   for name in \
-    SPARK_TP4_GID0 SPARK_TP4_GID1 \
     SPARK_TP4_GRAPH_CONTROL_PORT0 SPARK_TP4_GRAPH_CONTROL_PORT1 \
-    SPARK_TP4_GRAPH_SUBMIT_CPU SPARK_TP4_GRAPH_PROGRESS_CPU \
     SPARK_TP4_MAX_INFLIGHT SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS
   do
     require_positive_uint "${name}"
+  done
+  for name in SPARK_TP4_GID0 SPARK_TP4_GID1; do
+    require_uint "${name}"
+    (( ${!name} <= 255 )) || die "${name} must be at most 255"
+  done
+  for name in SPARK_TP4_GRAPH_SUBMIT_CPU SPARK_TP4_GRAPH_PROGRESS_CPU; do
+    require_uint "${name}"
+    (( ${!name} <= 2147483647 )) || die "${name} exceeds the native CPU index range"
   done
   (( SPARK_TP4_GRAPH_CONTROL_PORT0 <= 65535 && SPARK_TP4_GRAPH_CONTROL_PORT1 <= 65535 )) || \
     die 'SIRCL graph control ports must be at most 65535'
@@ -965,6 +1009,41 @@ verify_file_sha256 \
   'target model.safetensors.index.json' \
   "${TARGET_MODEL_HOST_PATH}/model.safetensors.index.json" \
   "${target_index_sha256}"
+# Checkpoints whose ignore list stops at the last base layer would have their
+# BF16 native-MTP predictor quantized by the loader. Extend the verified
+# config's quantization_config with the predictor layers and pass it as an
+# --hf-overrides replacement. The offline spec omits the override when the
+# checkpoint is not present; the identity check above already fails closed
+# for a live launch.
+hf_overrides_args=()
+if [[ "${TARGET_EXCLUDE_MTP_FROM_QUANTIZATION}" == 1 && -f "${TARGET_MODEL_HOST_PATH}/config.json" ]]; then
+  hf_overrides="$(python3 - "${TARGET_MODEL_HOST_PATH}/config.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = json.load(handle)
+text = config.get("text_config") or config
+quantization = config.get("quantization_config") or text.get("quantization_config")
+if not isinstance(quantization, dict):
+    sys.exit("target config.json has no quantization_config to extend")
+layers = int(text["num_hidden_layers"])
+predictors = int(text.get("num_nextn_predict_layers") or 0)
+if predictors < 1:
+    sys.exit("target config.json declares no native MTP predictor layers")
+ignore = list(quantization.get("ignore", []))
+for index in range(layers, layers + predictors):
+    # HF name, plus the loader-side name for models whose weight mapper drops
+    # the language_model prefix; the exclusion matcher applies both.
+    for pattern in (f"model.language_model.layers.{index}*", f"model.layers.{index}*"):
+        if pattern not in ignore:
+            ignore.append(pattern)
+override = {"quantization_config": dict(quantization, ignore=ignore)}
+print(json.dumps(override, separators=(",", ":"), sort_keys=True))
+PY
+)" || die 'failed to derive the MTP quantization override from the target config.json'
+  hf_overrides_args=(--hf-overrides "${hf_overrides}")
+fi
 draft_mount_args=()
 if [[ "${SPECULATION_METHOD}" == dflash ]]; then
 verify_file_sha256 \
@@ -1167,6 +1246,11 @@ if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
   if [[ "${r33_profile}" == 1 ]]; then
     serving_entrypoint=${overlay_entrypoint:-/opt/sparkring/bin/sparkring-r33}
     serving_prefix=(serve)
+    if [[ "${SPARKRING_RUNTIME_RELEASE}" == r35 ]]; then
+      [[ -z "${R33_PROFILE_CONTRACT_HOST_ROOT}" ]] || die 'R35 does not accept an R33 profile overlay'
+      serving_entrypoint=/opt/venv/bin/python
+      serving_prefix=(/opt/sparkring/bin/sparkring serve)
+    fi
   else
     serving_entrypoint=python3
     serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
@@ -1177,7 +1261,7 @@ fi
 r33_environment=()
 runtime_label=glm53-jj-r8-gb10-sparkcache
 if [[ "${r33_profile}" == 1 ]]; then
-  runtime_label="glm53-flash-spark-jovian-r33-${SOURCE_IMAGE_PROFILE}"
+  runtime_label="glm53-flash-spark-jovian-${SPARKRING_RUNTIME_RELEASE}-${SOURCE_IMAGE_PROFILE}"
   r33_environment=(
     -e "SIRCL_ENABLED=${SIRCL_ENABLED}"
     -e "SPARKCACHE_ENABLED=${SPARKCACHE_ENABLED}"
@@ -1202,9 +1286,18 @@ if [[ "${r33_profile}" == 1 ]]; then
   fi
 fi
 
+# Direct-exec profiles do not inherit the warmup wrapper's readiness check.
+# This fixed command checks API readiness only; scheduler progress is separate.
+api_health_args=()
+if [[ "${r33_profile}" == 1 && "${rank}" == 0 ]]; then
+  api_health_command="python3 -S -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:${PORT}/health\", timeout=4).close()'"
+  api_health_args=(--health-cmd "${api_health_command}" --health-interval 10s \
+    --health-timeout 6s --health-start-period 1800s --health-retries 3)
+fi
 container_command=(docker "${container_action[@]}" \
   --name "${container}" \
   --entrypoint "${serving_entrypoint}" \
+  "${api_health_args[@]}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \
@@ -1297,7 +1390,7 @@ container_command=(docker "${container_action[@]}" \
   "${source_recurrent_args[@]}" \
   "${chat_template_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
-  --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
+  --quantization "${TARGET_QUANTIZATION}" "${hf_overrides_args[@]}" --attention-backend "${ATTENTION_BACKEND}" \
   --block-size "${VLLM_BLOCK_SIZE}" --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
   --no-enable-flashinfer-autotune --load-format "${LOAD_FORMAT}" \
   --enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45 \
@@ -1315,8 +1408,8 @@ container_command=(docker "${container_action[@]}" \
   "${prompt_tokens_details[@]}" \
   "${kv_transfer_args[@]}" "${headless[@]}")
 
-# The inspection path emits the same argument array used for execution. It
-# performs identity checks above, but never creates a container or waits for a model.
+# Inspection emits the execution argument array without creating a container.
+# Online rendering checks identities; offline rendering records intended inputs.
 if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]]; then
   python3 - "${container_command[@]}" <<'PY'
 import json

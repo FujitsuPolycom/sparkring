@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4",
+  "inputs": [],
+  "image": {
+    "configuration_runtime": "profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

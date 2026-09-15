@@ -494,3 +494,109 @@ def test_process_global_controller_entrypoint_is_explicit_and_reversible() -> No
     finally:
         uninstall_opt_in()
     assert all(module.router.capture_fn is None for module in modules)
+
+def test_live_controller_rejects_unwired_stream_slots_before_capture():
+    from performance.harnesses.moe_round_floor.target_route_capture_live import LiveTargetRouteController
+    calls = []
+    capture = SimpleNamespace(begin_request=lambda **kwargs: calls.append(kwargs),
+        disarm=lambda **kwargs: calls.append(kwargs),
+        record_rejection=lambda *args, **kwargs: calls.append(kwargs))
+    controller = LiveTargetRouteController(capture, (), None, None)
+    for slot in (1, 2, 3, -1, False):
+        with pytest.raises(LiveInstallError, match='stream_slot=0'):
+            controller.arm_salted(request_slot=0, request_key='salted', stream_slot=slot)
+        with pytest.raises(LiveInstallError, match='stream_slot=0'):
+            controller.disarm(stream_slot=slot)
+        with pytest.raises(LiveInstallError, match='stream_slot=0'):
+            controller.record_rejection(None, None, stream_slot=slot)
+    assert calls == []
+    assert controller.armed is False
+    controller.arm_salted(request_slot=0, request_key='salted', stream_slot=0)
+    assert controller.armed is True
+    assert calls[0]['stream_slot'] == 0
+
+
+@pytest.mark.parametrize('other_index', [1, -1])
+def test_shared_target_or_draft_router_is_rejected_before_load(other_index):
+    modules = make_modules()
+    modules[other_index].router = modules[0].router
+    harness = make_harness(modules)
+    harness.installer.install()
+    try:
+        with pytest.raises(LiveInstallError, match='shared BaseRouter'):
+            FakeWorker(FakeGPUModelRunner(modules)).initialize_from_config('kv')
+        assert harness.events == []
+        assert all(module.router.capture_fn is None for module in modules)
+    finally:
+        harness.installer.uninstall()
+
+
+@pytest.mark.parametrize('target', ['router', 'worker', 'sample'])
+def test_uninstall_preserves_replacement_with_copied_marker(target):
+    import functools
+
+    original_initialize = FakeWorker.initialize_from_config
+    original_sample = FakeGPUModelRunner.sample
+    modules = make_modules()
+    harness = make_harness(modules)
+    harness.installer.install()
+    FakeWorker(FakeGPUModelRunner(modules)).initialize_from_config('kv')
+    owner, attribute = {
+        'router': (modules[0].router, 'capture_fn'),
+        'worker': (FakeWorker, 'initialize_from_config'),
+        'sample': (FakeGPUModelRunner, 'sample'),
+    }[target]
+    installed = getattr(owner, attribute)
+
+    @functools.wraps(installed)
+    def replacement(*args, **kwargs):
+        return installed(*args, **kwargs)
+
+    setattr(owner, attribute, replacement)
+    try:
+        with pytest.raises(LiveInstallError, match='changed after'):
+            harness.installer.uninstall()
+        assert getattr(owner, attribute) is replacement
+        assert all(module.router.capture_fn is not None for module in modules[:-1])
+    finally:
+        setattr(owner, attribute, installed)
+        try:
+            harness.installer.uninstall()
+        finally:
+            FakeWorker.initialize_from_config = original_initialize
+            FakeGPUModelRunner.sample = original_sample
+
+
+def test_callback_binding_failure_restores_all_touched_routers():
+    class FailingRouter(FakeBaseRouter):
+        def set_capture_fn(self, callback):
+            self.capture_fn = callback
+            if callback is not None:
+                raise RuntimeError('binding failed after mutation')
+
+    modules = make_modules()
+    modules[10].router = FailingRouter()
+    harness = make_harness(modules)
+    harness.installer.install()
+    try:
+        with pytest.raises(RuntimeError, match='binding failed'):
+            FakeWorker(FakeGPUModelRunner(modules)).initialize_from_config('kv')
+        assert all(module.router.capture_fn is None for module in modules)
+        with pytest.raises(LiveInstallError, match='unavailable'):
+            _ = harness.installer.controller
+    finally:
+        harness.installer.uninstall()
+
+
+def test_graph_capture_refuses_attachment_before_extension_load(monkeypatch):
+    modules = make_modules()
+    harness = make_harness(modules)
+    monkeypatch.setattr(FakeCuda, 'is_current_stream_capturing', staticmethod(lambda: True))
+    harness.installer.install()
+    try:
+        with pytest.raises(LiveInstallError, match='during graph capture'):
+            FakeWorker(FakeGPUModelRunner(modules)).initialize_from_config('kv')
+        assert harness.events == []
+        assert all(module.router.capture_fn is None for module in modules)
+    finally:
+        harness.installer.uninstall()

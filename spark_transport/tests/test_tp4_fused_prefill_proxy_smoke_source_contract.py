@@ -1,4 +1,4 @@
-"""Source contract for the opt-in fused fused prefill proxy smoke."""
+"""Source contract for the opt-in fused prefill mapped-memory proxy smoke."""
 
 from pathlib import Path
 
@@ -15,14 +15,23 @@ def test_proxy_smoke_is_isolated_and_opt_in() -> None:
     assert "COMMAND tp4_fused_prefill_proxy_smoke_test --operations=100" in cmake
 
 
-def test_proxy_models_exact_two_rail_retirement_protocol() -> None:
+def test_proxy_orders_two_rail_visibility_consumption_and_delayed_reuse() -> None:
     source = (EXPERIMENT / "fused_prefill_proxy_smoke_test.cu").read_text()
     assert "wait_exact(&control->producer[parity]" in source
     assert "primary_doorbell[parity]" in source
     assert "secondary_doorbell[parity]" in source
     assert "wait_exact(&control->consumer[parity]" in source
-    assert "local_cqe_retired" in source
-    assert "peer_credit_observed" in source
+    ordered_steps = (
+        'wait_exact(&control->producer[parity]',
+        'store_release(&control->primary_doorbell[parity], token)',
+        'store_release(&control->secondary_doorbell[parity], token)',
+        'wait_exact(&control->consumer[parity]',
+        'delay_us(config.cqe_delay_us)',
+        'delay_us(config.credit_delay_us)',
+        'store_release(&control->reuse[parity], token)',
+    )
+    positions = [source.index(step) for step in ordered_steps]
+    assert positions == sorted(positions)
     assert "control->reuse[parity]" in source
     assert "kFusedPrefillRailBytes" in source
     assert "flow_tile(flow_index) == 3U" in source

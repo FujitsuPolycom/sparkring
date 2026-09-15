@@ -1,23 +1,23 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 without an external KV cache
 
-Status: **qualified** for startup, semantic generation, and runtime health
+Status: **Validated** for startup, semantic generation, and runtime health
 using the immutable image, model revisions, and TP4/DCP1 settings in this
 guide. The configured 524,288-token request limit and 32-sequence limit were
 not exercised at their limits. The image is a FujitsuPolycom community
 derivative.
 
 This profile is the controlled comparison for the SparkCache-enabled service.
-It uses the same image, target checkpoint, BF16 DFlash2 checkpoint, 12 GiB FP8
+It uses the same image, target checkpoint, BF16 DFlash2 draft with seven
+proposal tokens, 12 GiB FP8
 GPU KV memory per rank, scheduler, CUDA graphs, asynchronous scheduling,
 chunked prefill, native prefix caching, Triton KDA prefill, and source-built
 NCCL. It omits only `--kv-transfer-config`.
 
 ## Prepare the four-rank service
 
-Complete the prerequisites, model acquisition, image pull or source-build,
-qualification-client checkout, cluster inventory, and provenance review in
+Complete the prerequisites, qualification-client checkout and SparkRing checkout in
 [`GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md`](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md).
-The qualified service image is:
+The recorded service image is:
 
 ```bash
 image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943'
@@ -56,31 +56,24 @@ python "${sparkring_root}/scripts/pull_glm53_image_cluster.py" \
 
 ## Start and verify
 
-The generic launcher rejects GLM-5.3 profiles that explicitly select
-`method: "dflash"` with TP4/DCP4 and a non-null
-`num_speculative_tokens_per_batch_size` or `adaptive_speculative_tokens_window`.
-These dynamic-depth settings are unsupported because they can hang CUDA-graph
+Keep this profile's TP4/DCP1 and fixed seven-token DFlash settings.
+Dynamic-depth DFlash on TP4/DCP4 is unsupported because it can hang graph
 capture ([issue #221](https://github.com/FujitsuPolycom/sparkring/issues/221)).
-Use a fixed `num_speculative_tokens` value on that configuration. This guide's
-TP4/DCP1 profile and fixed-depth native-MTP3 profiles retain their settings.
-
-This check runs while building the offline plan, before SSH or container
-creation. It reads explicit speculative JSON and dotted CLI fields, including
-vLLM's last-option precedence. TP/DCP aliases cannot override site-owned
-parallelism. Configuration hidden inside an image entrypoint or external vLLM
-config file, an inferred speculative method, and direct `docker`/`vllm`
-invocations remain outside this host-side check. The guard does not repair the
-underlying DFlash capture path or change an existing image.
+The [launcher guard](../scripts/sparkring_runtime.py) rejects explicit affected
+settings during offline planning; it cannot inspect configuration hidden in
+an image entrypoint or external vLLM config file.
 
 ```bash
 python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
-  --site site.yaml --profile profile.json start > start-plan.json
+  --site site.yaml --profile profile.json plan > start-plan.json
 python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
   --site site.yaml --profile profile.json \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start
 ```
 
-Tail the API rank using the container name in `profile.json`:
+Tail the API rank using the container name in `profile.json`. Replace the SSH
+target and API endpoint below with rank zero's management address and configured
+API port:
 
 ```bash
 ssh operator@rank0.example.net \
@@ -92,15 +85,18 @@ Wait for health and run the deterministic semantic canary:
 ```bash
 api_endpoint='http://rank0.example.net:8015'
 served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'
-until curl --fail --silent "${api_endpoint}/health" >/dev/null; do sleep 5; done
+startup_timeout=$(python -c 'import json; print(json.load(open("profile.json", encoding="utf-8"))["startup_timeout_seconds"])')
+timeout "$startup_timeout" bash -c 'until curl --fail --silent --show-error --max-time 10 "$1/health" >/dev/null; do sleep 5; done' _ "$api_endpoint" || {
+  echo "Readiness failed or timed out; inspect all rank logs before retrying" >&2; exit 1;
+}
 python "${sparkcache_root}/deploy/glm53_flash/qualification_request.py" \
   --endpoint "${api_endpoint}" --model "${served_model}" \
   --kind semantic --output no-external-cache-semantic.json
-curl --fail --silent "${api_endpoint}/metrics" > no-external-cache-metrics.prom
+curl --fail --silent --show-error --max-time 10 "${api_endpoint}/metrics" > no-external-cache-metrics.prom
 ```
 
 Require `semantic_match: true`, `finish_reason: stop`,
-`draft_tokens = 7 × drafts`, zero external-cache queries, zero preemptions,
+`draft_tokens = 7 Ã— drafts`, zero external-cache queries, zero preemptions,
 the same image ID on all ranks, no SparkCache connector log lines, no restarts
 or OOMs, and 24 RTS `VLLM::Worker` queue pairs per rank.
 
@@ -119,7 +115,8 @@ The draft is
 BF16, under CC BY-NC-ND 4.0. vLLM is
 `local-inference-lab/vllm` at
 `dev/jovian-judgement@da4d7be6c97434f6942292ed8abbf4b32dc44355`;
-B12X is `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`.
+The B12X kernel library (`local-inference-lab/b12x`) is at
+`2fcf23a0ce269be27b2e03fece73d46e90e6aeea`.
 
 Complete source, pull-request, patch, quantization, image, SBOM, and license
 attribution is in

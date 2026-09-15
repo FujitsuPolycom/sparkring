@@ -40,6 +40,8 @@ refused. Unlisted files are not checked. Image archives still require
 
 `fanout.py:copy_edge` transfers one file along an explicit authenticated route,
 using either a push or pull, and verifies both ends. Pull supports sites where
-SSH authorization works in only one direction. It has no operator CLI or
+peer-to-peer SSH authorization works only from the destination to the source.
+The controller still requires management SSH access to both hosts for setup,
+hash verification, publication and cleanup. The helper has no operator CLI or
 automatic route orchestration yet. A 1 MiB fixture across four ranks passed; bulk-transfer
 speed and interrupted-transfer behavior need further testing.

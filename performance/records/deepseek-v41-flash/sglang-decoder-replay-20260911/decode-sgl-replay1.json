@@ -1,0 +1,54 @@
+{
+  "api": "http://rank0:8000",
+  "model": "deepseek-v4.1-flash",
+  "mode": "decode",
+  "label": "sgl-replay1",
+  "gen": 256,
+  "thinking": false,
+  "started": "2026-09-11T18:35:54Z",
+  "samples": [
+    {
+      "c": 1,
+      "wall": 6.840591192245483,
+      "completion_tokens": 256,
+      "prompt_tokens": 263,
+      "agg_tok_s": 37.423665996910096,
+      "per_session_tok_s": 38.92745617985822,
+      "ttft_p50": 0.26373791694641113,
+      "ttft_max": 0.26373791694641113,
+      "steps_s": 0.0,
+      "acceptance": null,
+      "tok_per_step": null,
+      "preemptions": 0,
+      "errors": 0,
+      "finish": [
+        "length"
+      ],
+      "err_samples": [],
+      "max_wall": 6.840073108673096,
+      "run": 0
+    },
+    {
+      "c": 4,
+      "wall": 13.420984506607056,
+      "completion_tokens": 1024,
+      "prompt_tokens": 1052,
+      "agg_tok_s": 76.29842650484338,
+      "per_session_tok_s": 21.759539600812793,
+      "ttft_p50": 1.1422911882400513,
+      "ttft_max": 1.1427288055419922,
+      "steps_s": 0.0,
+      "acceptance": null,
+      "tok_per_step": null,
+      "preemptions": 0,
+      "errors": 0,
+      "finish": [
+        "length"
+      ],
+      "err_samples": [],
+      "max_wall": 13.420344352722168,
+      "run": 0
+    }
+  ],
+  "finished": "2026-09-11T18:36:14Z"
+}

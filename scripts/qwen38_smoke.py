@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -19,11 +20,7 @@ SMOKE_SEED = 17_023
 EXPECTED_MAX_MODEL_LEN = 1_048_576
 VISION_MARKER = "VISION_OK"
 PREFIX_MARKER = "PREFIX_OK"
-TINY_PNG_DATA_URL = (
-    "data:image/png;base64,"
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/"
-    "x8AAusB9Y9Wl1sAAAAASUVORK5CYII="
-)
+TINY_PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 
 
 class SmokeFailure(RuntimeError):
@@ -32,6 +29,8 @@ class SmokeFailure(RuntimeError):
 
 class _Client:
     def __init__(self, endpoint: str, timeout: float) -> None:
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise SmokeFailure("timeout must be positive and finite")
         parsed = urlsplit(endpoint)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise SmokeFailure("endpoint must be an absolute HTTP or HTTPS URL")
@@ -124,6 +123,8 @@ def _stable_choice(document: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(choice, dict) or not isinstance(choice.get("message"), dict):
         raise SmokeFailure("chat response choice is malformed")
     message = choice["message"]
+    if message.get("role") != "assistant":
+        raise SmokeFailure("chat response must contain an assistant message")
     return {
         "role": message.get("role"),
         "content": message.get("content"),
@@ -144,6 +145,8 @@ def _stable_hash(stable_choice: dict[str, Any]) -> str:
 
 
 def _content(stable_choice: dict[str, Any], expected: str, gate: str) -> str:
+    if stable_choice.get("finish_reason") != "stop":
+        raise SmokeFailure(f"{gate} did not complete normally")
     content = stable_choice.get("content")
     if not isinstance(content, str) or content.strip() != expected:
         raise SmokeFailure(f"{gate} did not return the expected marker")
@@ -270,9 +273,13 @@ def run_smoke(
             "function": {"name": "multiply"},
         }
         stable = _stable_choice(client.post_json("/v1/chat/completions", payload))
+        if stable["finish_reason"] != "tool_calls":
+            raise SmokeFailure("tool request did not complete with tool_calls")
         calls = stable["tool_calls"]
         if len(calls) != 1:
             raise SmokeFailure("tool request did not return exactly one call")
+        if calls[0]["type"] != "function":
+            raise SmokeFailure("tool request did not return a function call")
         function = calls[0]["function"]
         if function != {"name": "multiply", "arguments": {"a": 6, "b": 7}}:
             raise SmokeFailure("tool request returned the wrong function or arguments")
@@ -350,6 +357,7 @@ def run_smoke(
         "gates": gates,
         "limitations": [
             "No timing is collected or reported.",
+            "The vision gate checks image-input acceptance, not visual understanding; the expected marker is supplied in text.",
             "Repeated-prefix equality does not prove a native-prefix cache hit.",
             "The result contains no endpoint, response ID, timestamp, or raw model reasoning.",
         ],
@@ -376,8 +384,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--output", default="-", help="JSON path, or - for stdout")
     arguments = parser.parse_args(argv)
-    if arguments.timeout <= 0:
-        parser.error("--timeout must be positive")
+    if not math.isfinite(arguments.timeout) or arguments.timeout <= 0:
+        parser.error("--timeout must be positive and finite")
     if arguments.expected_max_model_len <= 0:
         parser.error("--expected-max-model-len must be positive")
     try:

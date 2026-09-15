@@ -1,0 +1,8 @@
+{
+  "schema": "sparkring-runtime-artifacts/v1",
+  "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+  "files": {
+    "/opt/sparkring/bin/candidate-image.py": "2ab62a3769bab745333af942f08e946ccbaf3e27ffc62d4f8f23661d4cc70deb"
+  },
+  "scope": "Exact published executable identity; independent of checkout line endings and subsequent helper edits. No serving qualification implied."
+}

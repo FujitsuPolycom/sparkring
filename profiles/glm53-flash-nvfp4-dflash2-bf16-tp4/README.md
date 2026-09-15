@@ -1,0 +1,16 @@
+# GLM-5.3-Flash-NVFP4
+
+This deployment uses the pinned [recipe](recipe.json). Status: **Development**.
+It is retained for reproducing that image and configuration; select the
+[profile catalog](../README.md) for maintained deployments.
+
+Inspect the resolved configuration without contacting a host:
+
+```bash
+python scripts/profiles.py resolve glm53-flash-nvfp4-dflash2-bf16-tp4
+```
+
+Follow the [deployment instructions](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md). Keep private site inputs outside Git. Follow the guide only with its named
+image, model revisions and topology.
+
+The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image. Configured context, allocated KV capacity and completed request tests are separate facts.

@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "deepseek-v4-flash-0731",
+  "title": "DeepSeek-V4-Flash-0731",
+  "recommendation": "alternative",
+  "status": "implemented",
+  "configuration": {
+    "format": "recipe",
+    "path": "profiles/deepseek-v4-flash-0731/recipe.json"
+  },
+  "release": "runtime/releases/deepseek-v4-flash-0731/release.json",
+  "guide": "docs/operations/deepseek-0731.md",
+  "evidence_scope": "The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.",
+  "overrides": [
+    "max_model_len",
+    "max_num_seqs",
+    "max_num_batched_tokens"
+  ],
+  "launcher": {
+    "kind": "bash",
+    "path": "scripts/deepseek_v4_cycle_serve.sh",
+    "actions": [
+      "--check",
+      "--run"
+    ],
+    "fixed_args": []
+  }
+}

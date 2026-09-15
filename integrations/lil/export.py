@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -37,11 +38,12 @@ OPTIONAL_FABRIC_KEYS = {
 
 
 def export(descriptor, site, fabric, bundle_id):
-    require(os.name == "posix", "run the exporter in Linux or WSL")
     require(
-        bundle_id.replace("-", "").isalnum() and len(bundle_id) <= 80,
-        "bundle id must be alphanumeric with hyphens",
+        isinstance(bundle_id, str)
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,79}", bundle_id),
+        "bundle id must start with an ASCII letter or digit and contain only ASCII letters, digits or hyphens (maximum 80 characters)",
     )
+    require(os.name == "posix", "run the exporter in Linux or WSL")
     plan = render(descriptor, site)
     keys(fabric, ("ranks",))
     require(
@@ -61,6 +63,13 @@ def export(descriptor, site, fabric, bundle_id):
         )
         values = dict(network)
         s = rank["settings"]
+        mesh_preflight = (
+            mesh_check.command(
+                rank["rank"], rank["host"],
+                runtime["operator_image"]["image_id"], network,
+            )
+            if s["speculator"] == "mtp" else None
+        )
         values.update(
             {
                 "IMAGE_REF": rank["image"],
@@ -190,15 +199,8 @@ def export(descriptor, site, fabric, bundle_id):
                     "expected": plan["native_identities"][role] + "  " + filename,
                 }
             )
-        if s["speculator"] == "mtp":
-            checks.append(
-                mesh_check.command(
-                    rank["rank"],
-                    rank["host"],
-                    runtime["operator_image"]["image_id"],
-                    network,
-                )
-            )
+        if mesh_preflight:
+            checks.append(mesh_preflight)
         ranks.append(
             {
                 "rank": rank["rank"],

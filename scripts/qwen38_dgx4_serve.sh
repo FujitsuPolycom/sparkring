@@ -92,6 +92,7 @@ chat_template=${QWEN_CHAT_TEMPLATE:-/ws/chat_template_agentic.jinja}
 venv=${QWEN_VENV:-/ws/venv}
 vllm_source=${QWEN_VLLM_SOURCE:-/ws/src/vllm-gg}
 exllamav3_source=${QWEN_EXLLAMAV3_SOURCE:-/ws/src/exllamav3}
+exllamav3_arm_patch=${QWEN_EXLLAMAV3_ARM_PATCH:-/ws/src/qwen38-spark-pair/patches/exllamav3-arm.patch}
 infiniband_dev_root=${QWEN_INFINIBAND_DEV_ROOT:-/dev/infiniband}
 infiniband_sys_root=${QWEN_INFINIBAND_SYS_ROOT:-/sys/class/infiniband}
 api_port=${API_PORT:-${QWEN_API_PORT:-8000}}
@@ -215,6 +216,8 @@ exllamav3_commit=$(git -c safe.directory="$exllamav3_source" \
     die "ExLlamaV3 base commit mismatch: expected $expected_exllamav3_commit, got ${exllamav3_commit:-unavailable}"
 }
 
+check_sha256 "ExLlamaV3 ARM patch" "$exllamav3_arm_patch" "$expected_exllamav3_patch_sha256"
+
 declare -A expected_exllamav3_paths=(
     ["exllamav3/exllamav3_ext/avx2_target.cpp"]=1
     ["exllamav3/exllamav3_ext/avx512_target.cpp"]=1
@@ -231,6 +234,10 @@ declare -A expected_exllamav3_sha256=(
     ["exllamav3/exllamav3_ext/parallel/all_reduce_cpu.cu"]="18e72f0c39c3a2447ab1d7de0f87c13e69f9216defa1c49f8bb5e31a40a9f14c"
     ["setup.py"]="29e339ee9205df20715d2cb876452569751270fbf62f4f045b358ed9949fb308"
 )
+if ! exllamav3_status=$(git -c safe.directory="$exllamav3_source" \
+    -C "$exllamav3_source" status --porcelain --untracked-files=all); then
+    die "could not inspect ExLlamaV3 source state"
+fi
 declare -A seen_exllamav3_paths=()
 while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -239,8 +246,7 @@ while IFS= read -r line; do
         die "ExLlamaV3 source tree contains an unexpected change: $line"
     }
     seen_exllamav3_paths["$path"]=1
-done < <(git -c safe.directory="$exllamav3_source" \
-    -C "$exllamav3_source" status --porcelain --untracked-files=all)
+done <<< "$exllamav3_status"
 
 for path in "${!expected_exllamav3_paths[@]}"; do
     [ "${seen_exllamav3_paths[$path]-}" = "1" ] || {
@@ -303,6 +309,8 @@ for value in sys.argv[3:]:
     port = int(value)
     if not 1 <= port <= 65535:
         raise ValueError(f"invalid port: {port}")
+if int(sys.argv[3]) == int(sys.argv[4]):
+    raise ValueError("API and master ports must differ")
 PY
 
 ip link show dev "$NCCL_SOCKET_IFNAME" >/dev/null 2>&1 || {

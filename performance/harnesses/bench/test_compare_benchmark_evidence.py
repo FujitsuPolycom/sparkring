@@ -1,8 +1,8 @@
 """Tests for the offline benchmark evidence comparison tool.
 
 Fixtures use the actual llm_decode_bench v0.4.31 raw JSON schema:
-``metadata``, ``results[]``, and ``summary_table``. Adversarial tests cover
-every fail-closed comparison requirement.
+``metadata``, ``results[]``, and ``summary_table``. Adversarial tests exercise
+metadata, coverage, validity, and JSON input rejection.
 """
 
 from __future__ import annotations
@@ -14,6 +14,43 @@ from typing import Any
 import pytest
 
 import compare_benchmark_evidence as cmp  # noqa: E402
+
+
+def test_duplicate_json_settings_are_rejected(tmp_path):
+    path = tmp_path / "evidence.json"
+    path.write_text('{"metadata":{"temperature":1,"temperature":2}}')
+    with pytest.raises(cmp.ConfigError, match="duplicate JSON key"):
+        cmp.load_document(path)
+
+
+def test_concurrency_metadata_order_does_not_change_set_coverage():
+    candidate = json.loads(json.dumps(SUSTAINED_CANDIDATE))
+    candidate["metadata"]["concurrency_levels"] = [1, 2, 4, 8]
+    report = cmp.compare_documents(SUSTAINED_BASELINE, candidate)
+    assert report["status"] == "compared"
+    assert len(report["throughput"]["cells"]) == 4
+
+
+def test_invalid_cells_are_not_hidden_by_boolean_integer_equality():
+    baseline = json.loads(json.dumps(SUSTAINED_BASELINE))
+    candidate = json.loads(json.dumps(SUSTAINED_BASELINE))
+    baseline["results"][0]["num_errors"] = True
+    candidate["results"][0]["num_errors"] = 1
+    report = cmp.compare_documents(baseline, candidate)
+    assert report["status"] == "invalid_cells"
+    assert report["throughput"]["cells"] == []
+
+
+def test_missing_cell_mode_cannot_classify_as_sustained():
+    document = _make_doc()
+    del document['results'][0]['benchmark_mode']
+    assert cmp.classify_document_type(document) == 'indeterminate'
+
+
+def test_summary_table_cannot_supply_missing_canonical_throughput():
+    document = _make_doc()
+    del document['results'][0]['aggregate_tps']
+    assert 'C8' not in cmp.extract_throughput(document)
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +198,8 @@ BOUNDED_GATE = _make_doc(
     ],
 )
 
-# Older protocol variant
-OLDER_PROTOCOL = _make_doc(
+# Protocol fixture with a 2048-token output cap and 3-second warmup
+WARMED_UNIQUE_CONTEXT_PROTOCOL = _make_doc(
     meta=_make_meta(
         max_tokens=2048,
         decode_warmup_seconds=3.0,
@@ -215,6 +252,14 @@ def test_classify_bounded_gate():
 
 def test_classify_indeterminate_empty():
     assert cmp.classify_document_type({}) == "indeterminate"
+
+
+def test_classify_indeterminate_without_result_cells():
+    assert cmp.classify_document_type(_make_doc(results=[])) == "indeterminate"
+    assert cmp.classify_document_type({"metadata": _make_meta()}) == "indeterminate"
+    assert cmp.classify_document_type(
+        {"metadata": _make_meta(), "results": ["not a result cell"]}
+    ) == "indeterminate"
 
 
 def test_classify_indeterminate_no_metadata():
@@ -340,8 +385,8 @@ def test_settings_missing_on_both_counts_as_mismatch():
 
 
 def test_settings_mismatch_max_tokens():
-    """Older protocol (2048) vs post-upgrade (1024) must mismatch."""
-    result = cmp.compare_settings(SUSTAINED_BASELINE, OLDER_PROTOCOL)
+    """Output caps of 2048 and 1024 tokens must mismatch."""
+    result = cmp.compare_settings(SUSTAINED_BASELINE, WARMED_UNIQUE_CONTEXT_PROTOCOL)
     assert result["all_matched"] is False
 
 
@@ -376,6 +421,18 @@ def test_extract_throughput_from_results_no_summary():
 
 def test_extract_throughput_empty():
     assert cmp.extract_throughput({}) == {}
+
+
+def test_extract_throughput_omits_non_finite_and_boolean_values():
+    doc = {
+        "results": [
+            _make_result(1, float("nan")),
+            _make_result(2, float("inf")),
+            _make_result(4, True),
+            _make_result(8, 40.0),
+        ]
+    }
+    assert cmp.extract_throughput(doc) == {"C8": 40.0}
 
 
 def test_extract_throughput_ignores_non_required_concurrencies():
@@ -818,8 +875,8 @@ def test_compare_settings_mismatch_no_deltas():
 
 
 def test_compare_protocol_mismatch_no_deltas():
-    """Post-upgrade vs older protocol: settings_mismatch, no deltas."""
-    result = cmp.compare_documents(SUSTAINED_BASELINE, OLDER_PROTOCOL)
+    """Different warmup, output-cap, and context-sharing settings emit no deltas."""
+    result = cmp.compare_documents(SUSTAINED_BASELINE, WARMED_UNIQUE_CONTEXT_PROTOCOL)
     assert result["status"] == "settings_mismatch"
     assert len(result["throughput"]["cells"]) == 0
 
@@ -906,6 +963,21 @@ def test_cli_matched(tmp_path, capsys):
     assert report["status"] == "compared"
     assert report["inputs"]["baseline_sha256"] == hashlib.sha256(base.read_bytes()).hexdigest()
     assert report["inputs"]["candidate_sha256"] == hashlib.sha256(cand.read_bytes()).hexdigest()
+
+
+def test_cli_hashes_the_bytes_actually_compared(tmp_path, capsys, monkeypatch):
+    base, cand = tmp_path / "base.json", tmp_path / "cand.json"
+    base.write_text(json.dumps(SUSTAINED_BASELINE))
+    cand.write_text(json.dumps(SUSTAINED_CANDIDATE))
+    expected = hashlib.sha256(cand.read_bytes()).hexdigest()
+    original = cmp.compare_documents
+    def compare_then_change(baseline, candidate):
+        result = original(baseline, candidate)
+        cand.write_text('{"changed_after_loading": true}')
+        return result
+    monkeypatch.setattr(cmp, "compare_documents", compare_then_change)
+    assert cmp.main(["--baseline", str(base), "--candidate", str(cand)]) == cmp.EXIT_OK
+    assert json.loads(capsys.readouterr().out)["inputs"]["candidate_sha256"] == expected
 
 
 def test_cli_identical_documents_exit_mismatch(tmp_path, capsys):
@@ -1809,6 +1881,22 @@ def test_object_concurrency_no_exception_in_compare():
 
 
 def test_valid_concurrencies_pass():
-    """Normal valid document still passes after stricter validation."""
+    """Integer C1/C2/C4/C8 coverage passes validation."""
     result = cmp.validate_context_coverage(SUSTAINED_BASELINE)
     assert result["valid"] is True
+
+
+@pytest.mark.parametrize("numeric_text", ["NaN", "Infinity", "-Infinity", "1e999", "-1e999", "9" * 5000])
+def test_cli_rejects_unrepresentable_json_numbers(tmp_path, capsys, numeric_text):
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    baseline.write_text(json.dumps(SUSTAINED_BASELINE))
+    payload = json.dumps(SUSTAINED_CANDIDATE)
+    # Mutate one measured duration while preserving all other evidence fields.
+    payload = payload.replace('"measurement_seconds": 24.9',
+                              '"measurement_seconds": ' + numeric_text, 1)
+    candidate.write_text(payload)
+    assert cmp.main(["--baseline", str(baseline), "--candidate", str(candidate)]) == cmp.EXIT_CONFIG_ERROR
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "CONFIG ERROR" in captured.err

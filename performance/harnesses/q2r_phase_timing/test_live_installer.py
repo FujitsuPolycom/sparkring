@@ -5,10 +5,131 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from . import live_installer
 from .live_installer import LivePins, LiveQ2RSession, LiveTypes
 from .vllm_adapter import AdapterValidationError, source_sha256
+
+
+def test_binding_uninstall_preserves_later_wrapper():
+    import functools
+
+    class Owner:
+        def initialize(self):
+            return "ready"
+
+    original = Owner.initialize
+    adapter = live_installer._PinnedBindingAdapter(live_installer._BindingHook(
+        Owner, "initialize", source_sha256(original), lambda *args: None
+    ))
+    adapter.install()
+    installed = Owner.initialize
+
+    @functools.wraps(installed)
+    def later(self):
+        return installed(self)
+
+    Owner.initialize = later
+    with pytest.raises(AdapterValidationError, match="changed"):
+        adapter.uninstall()
+    assert Owner.initialize is later
+    Owner.initialize = installed
+    adapter.uninstall()
+    assert Owner.initialize is original
+
+
+@pytest.mark.parametrize("after_assignment", [False, True])
+def test_binding_assignment_interrupt_is_rolled_back(monkeypatch, after_assignment):
+    import builtins
+    live = session()
+    original = GPUModelRunner.initialize_kv_cache
+    fired = False
+    def assign(owner, name, value):
+        nonlocal fired
+        if owner is GPUModelRunner and name == "initialize_kv_cache" and not fired:
+            fired = True
+            if after_assignment:
+                builtins.setattr(owner, name, value)
+            raise KeyboardInterrupt("binding assignment interrupted")
+        builtins.setattr(owner, name, value)
+    monkeypatch.setattr(live_installer, "setattr", assign, raising=False)
+    try:
+        with pytest.raises(KeyboardInterrupt, match="binding assignment interrupted"):
+            live.install()
+        assert GPUModelRunner.initialize_kv_cache is original
+    finally:
+        builtins.setattr(GPUModelRunner, "initialize_kv_cache", original)
+
+
+def test_concurrent_module_installers_create_only_one_session(monkeypatch):
+    monkeypatch.setenv('SPARK_Q2R_PHASE_TIMING', '1')
+    monkeypatch.delenv('SPARK_Q2R_PHASE_TIMING_NVTX', raising=False)
+    monkeypatch.setattr(live_installer, '_session', None)
+    monkeypatch.setitem(sys.modules, 'torch', SimpleNamespace(cuda=SimpleNamespace(current_stream=lambda: None)))
+    monkeypatch.setitem(sys.modules, 'vllm', SimpleNamespace(__version__=live_installer._EXPECTED_VLLM_VERSION))
+    monkeypatch.setattr(live_installer, '_load_types', lambda: None)
+    monkeypatch.setattr(live_installer, '_capacity', lambda: 1)
+    monkeypatch.setattr(live_installer, '_depth_attestation', lambda: SimpleNamespace(
+        configured_speculative_steps=5, attested_round_depths=(5,), adaptive_window=0))
+    rendezvous = threading.Barrier(2)
+    candidates = []
+    class Candidate:
+        def __init__(self, **kwargs):
+            candidates.append(self)
+        def install(self):
+            try:
+                rendezvous.wait(timeout=0.1)
+            except threading.BrokenBarrierError:
+                pass
+    monkeypatch.setattr(live_installer, 'LiveQ2RSession', Candidate)
+    def install():
+        try:
+            live_installer.install()
+            return 'installed'
+        except RuntimeError:
+            return 'refused'
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: install(), range(2)))
+    assert sorted(outcomes) == ['installed', 'refused']
+    assert len(candidates) == 1
+
+
+def test_module_retains_failed_rollback_session_for_cleanup(monkeypatch):
+    monkeypatch.setenv("SPARK_Q2R_PHASE_TIMING", "1")
+    monkeypatch.delenv("SPARK_Q2R_PHASE_TIMING_NVTX", raising=False)
+    monkeypatch.setattr(live_installer, "_session", None)
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(current_stream=lambda: None)))
+    monkeypatch.setitem(sys.modules, "vllm", SimpleNamespace(__version__=live_installer._EXPECTED_VLLM_VERSION))
+    monkeypatch.setattr(live_installer, "_load_types", lambda: None)
+    monkeypatch.setattr(live_installer, "_depth_attestation", lambda: SimpleNamespace(
+        configured_speculative_steps=5, attested_round_depths=(5,), adaptive_window=0))
+
+    class Candidate:
+        _cleanup_pending = True
+        def install(self):
+            raise RuntimeError("rollback incomplete")
+        def uninstall(self):
+            self._cleanup_pending = False
+
+    candidate = Candidate()
+    monkeypatch.setattr(live_installer, "LiveQ2RSession", lambda **kwargs: candidate)
+    with pytest.raises(RuntimeError, match="rollback incomplete"):
+        live_installer.install()
+    assert live_installer._required_session() is candidate
+    with monkeypatch.context() as patcher:
+        def fail_cleanup():
+            raise RuntimeError("still pending")
+        patcher.setattr(candidate, "uninstall", fail_cleanup)
+        with pytest.raises(RuntimeError, match="still pending"):
+            live_installer.uninstall()
+        assert live_installer._required_session() is candidate
+    live_installer.uninstall()
+    assert live_installer._session is None
+    assert not candidate._cleanup_pending
+    live_installer.uninstall()
 
 
 @dataclass
@@ -214,6 +335,209 @@ def session(
         attested_round_depths=attested_round_depths,
         adaptive_window=adaptive_window,
     )
+
+
+def test_concurrent_snapshots_finalize_descriptors_once(monkeypatch):
+    live = session()
+    live.install()
+    GPUModelRunner().initialize_kv_cache(None)
+    original = live._collector.register_descriptors
+    first_entered, second_entered, release = (threading.Event() for _ in range(3))
+    lock = threading.Lock()
+    calls, results, errors = [], [], []
+
+    def register(descriptors):
+        with lock:
+            calls.append(1)
+            number = len(calls)
+        if number == 1:
+            first_entered.set()
+            assert release.wait(3)
+        else:
+            second_entered.set()
+        original(descriptors)
+
+    def report():
+        try:
+            results.append(live.snapshot())
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(live._collector, 'register_descriptors', register)
+    workers = [threading.Thread(target=report) for _ in range(2)]
+    try:
+        workers[0].start()
+        assert first_entered.wait(2)
+        workers[1].start()
+        second_entered.wait(0.3)
+    finally:
+        release.set()
+        for worker in workers:
+            if worker.ident is not None:
+                worker.join(2)
+        live.uninstall()
+    assert not errors, errors
+    assert len(calls) == 1
+    assert len(results) == 2
+    assert all(result['lifecycle']['manager_binding_complete'] for result in results)
+
+
+def test_uninstall_cannot_leave_a_concurrent_arm_enabled(monkeypatch):
+    live = session()
+    live.install()
+    GPUModelRunner().initialize_kv_cache(None)
+    original = live._finalize_descriptors
+    entered, release, uninstalled = (threading.Event() for _ in range(3))
+    errors = []
+
+    def finalize():
+        entered.set()
+        assert release.wait(3)
+        original()
+
+    def arm():
+        try:
+            live.arm('control-race')
+        except BaseException as error:
+            errors.append(error)
+
+    def uninstall():
+        try:
+            live.uninstall()
+            uninstalled.set()
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(live, '_finalize_descriptors', finalize)
+    workers = [threading.Thread(target=arm), threading.Thread(target=uninstall)]
+    try:
+        workers[0].start()
+        assert entered.wait(2)
+        workers[1].start()
+        uninstalled.wait(0.3)
+    finally:
+        release.set()
+        for worker in workers:
+            if worker.ident is not None:
+                worker.join(2)
+        live.uninstall()
+    assert not errors, errors
+    assert all(not worker.is_alive() for worker in workers)
+    assert not live._installed
+    assert live._collector.snapshot()['armed'] is False
+
+
+def test_reporting_control_lock_does_not_cover_model_callbacks(monkeypatch):
+    live = session()
+    live.install()
+    runner = GPUModelRunner()
+    runner.initialize_kv_cache(None)
+    live.arm('model-progress')
+    runner.execute_model(None)
+    entered, release = threading.Event(), threading.Event()
+
+    def query():
+        entered.set()
+        assert release.wait(5)
+        return True
+
+    monkeypatch.setattr(live._collector._slots[0].end, 'query', query)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            report = workers.submit(live.drain)
+            try:
+                assert entered.wait(2)
+                assert workers.submit(runner.execute_model, None).result(timeout=2) == 'target-done'
+            finally:
+                release.set()
+            report.result(timeout=2)
+    finally:
+        live.uninstall()
+
+
+@pytest.mark.parametrize("adapter_name", ["_timing_adapter", "_draft_loop_adapter"])
+def test_interrupted_install_restores_prior_hooks(monkeypatch, adapter_name):
+    live = session()
+    original_binding = GPUModelRunner.initialize_kv_cache
+    original_timing = GPUModelRunner.execute_model
+    def interrupt():
+        raise KeyboardInterrupt("installation interrupted")
+    monkeypatch.setattr(getattr(live, adapter_name), "install", interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt, match="installation interrupted"):
+            live.install()
+        assert GPUModelRunner.initialize_kv_cache is original_binding
+        assert GPUModelRunner.execute_model is original_timing
+    finally:
+        live._draft_loop_adapter.uninstall()
+        live._timing_adapter.uninstall()
+        live._binding_adapter.uninstall()
+
+
+def test_failed_install_rollback_retains_cleanup_and_original_error(monkeypatch):
+    from builtins import BaseExceptionGroup
+    live = session()
+    original = GPUModelRunner.initialize_kv_cache
+    install_error = RuntimeError("draft install failed")
+    cleanup_error = RuntimeError("timing restore failed")
+    try:
+        with monkeypatch.context() as patcher:
+            def fail_install():
+                raise install_error
+            def fail_cleanup():
+                raise cleanup_error
+            patcher.setattr(live._draft_loop_adapter, "install", fail_install)
+            patcher.setattr(live._timing_adapter, "uninstall", fail_cleanup)
+            with pytest.raises(BaseExceptionGroup) as caught:
+                live.install()
+            assert caught.value.exceptions == (install_error, cleanup_error)
+            assert GPUModelRunner.initialize_kv_cache is original
+            with pytest.raises(RuntimeError, match="cleanup"):
+                live.arm("partial")
+        live.uninstall()
+        assert not live._installed
+    finally:
+        live._draft_loop_adapter.uninstall()
+        live._timing_adapter.uninstall()
+        live._binding_adapter.uninstall()
+
+
+def test_snapshot_reports_unbound_startup_without_claiming_readiness():
+    live = session()
+    live.install()
+    try:
+        snapshot = live.snapshot()
+        assert snapshot["lifecycle"] == {
+            "installed": True, "cleanup_pending": False, "manager_binding_complete": False,
+        }
+        assert snapshot["manager_roles"]["registered"] == 0
+        with pytest.raises(RuntimeError, match="target manager"):
+            live.arm("too-early")
+        GPUModelRunner().initialize_kv_cache(None)
+        assert live.snapshot()["lifecycle"]["manager_binding_complete"] is True
+    finally:
+        live.uninstall()
+
+
+def test_partial_uninstall_blocks_rearming_and_can_retry(monkeypatch):
+    live = session()
+    live.install()
+    try:
+        GPUModelRunner().initialize_kv_cache(None)
+        with monkeypatch.context() as patcher:
+            def fail():
+                raise RuntimeError("cleanup interrupted")
+            patcher.setattr(live._timing_adapter, "uninstall", fail)
+            with pytest.raises(RuntimeError, match="cleanup interrupted"):
+                live.uninstall()
+            with pytest.raises(RuntimeError, match="cleanup"):
+                live.arm("partial")
+        live.uninstall()
+        with pytest.raises(RuntimeError, match="install before arm"):
+            live.arm("removed")
+    finally:
+        live.disarm()
+        live.uninstall()
 
 
 def test_live_session_separates_same_q_target_and_draft() -> None:
@@ -450,6 +774,9 @@ def test_real_draft_generation_calls_get_positions_not_synthetic_steps(
             for position in range(1, 5)
         }
         assert not any("position=5," in key for key in coverage["observed"])
+        assert snapshot["coverage"]["graph_methods"]["counts"]["draft_decode"] == (
+            4 if dispatch == "full_graph" else 0
+        )
     finally:
         live.uninstall()
 

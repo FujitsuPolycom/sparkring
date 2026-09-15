@@ -24,5 +24,5 @@
     "max_num_batched_tokens": 2048,
     "gpu_memory_utilization": 0.85
   },
-  "note": "This foundation pins file is derived from recipes/glm52-exl3-r7-3.5bpw.json. The runtime/exl3-r7/ builder and its builder-specific pins are published in this checkout; scripts/glm35_profile.py transforms these foundation values into the 1048576-token, 16-sequence candidate operator contract."
+  "note": "Foundation values come from recipes/glm52-exl3-r7-3.5bpw.json. The runtime builder and its builder-specific pins reside under runtime/exl3-r7/. scripts/glm35_profile.py derives the 1M-token, 16-sequence operator contract from these values."
 }

@@ -8,7 +8,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from spark_transport.experiments.cx7_hairpin_diagonal.fabric import Port, Rank
+from spark_transport.fabric.cx7_hairpin_diagonal.fabric import Port, Rank
 
 spec = importlib.util.spec_from_file_location(
     "lil_mesh_check", Path(__file__).with_name("mesh_check.py")
@@ -137,3 +137,20 @@ def test_running_managed_model_rejected(monkeypatch):
 def test_mesh_check_is_bound_in_export():
     text = Path(__file__).with_name("export.py").read_text()
     assert "mesh_check.command(" in text
+
+
+@pytest.mark.parametrize("field", [
+    "NCCL_IB_GID_INDEX", "SPARK_TP4_GID0", "SPARK_TP4_GID1",
+    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0",
+    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1",
+])
+def test_nonmesh_gid_rejected_before_generating_host_command(field):
+    with pytest.raises(ValueError, match=field + "=3"):
+        module.command(0, "spark0", "sha256:" + "a" * 64, {field: "4"})
+
+
+def test_omitted_mesh_gids_resolve_to_fixed_indices():
+    network = {}
+    command = module.command(0, "spark0", "sha256:" + "a" * 64, network)
+    assert "'NCCL_IB_GID_INDEX': '3'" in command["argv"][-1]
+    assert network == {}

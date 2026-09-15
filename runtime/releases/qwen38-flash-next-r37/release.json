@@ -1,0 +1,12 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "qwen38-flash-next-r37",
+  "inputs": [
+    {
+      "path": "runtime/images/compositions/lil-r37-glm-spark/publication.json",
+      "sha256": "31d893c1fa7f0071c59d6e281ce9b0bd1eb2e760c970786fc7e76ea800097e4d"
+    }
+  ],
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270",
+  "selection": "registered-r37-qwen-tp2-experimental"
+}

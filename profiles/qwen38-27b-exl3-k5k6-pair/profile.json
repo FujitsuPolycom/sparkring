@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-27b-exl3-k5k6-pair",
+  "title": "Qwen3.8-27B-EXL3-K5K6-hydrated",
+  "recommendation": "alternative",
+  "status": "implemented",
+  "configuration": {
+    "format": "recipe",
+    "path": "profiles/qwen38-27b-exl3-k5k6-pair/recipe.json"
+  },
+  "release": "runtime/releases/qwen38-27b-exl3-k5k6-pair/release.json",
+  "guide": "profiles/qwen38-27b-exl3-k5k6-pair/README.md",
+  "evidence_scope": "The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.",
+  "overrides": [
+    "max_model_len",
+    "max_num_seqs",
+    "max_num_batched_tokens"
+  ],
+  "launcher": {
+    "kind": "bash",
+    "path": "scripts/qwen38_dgx2_serve.sh",
+    "actions": [
+      "--check",
+      "--run"
+    ],
+    "fixed_args": []
+  }
+}

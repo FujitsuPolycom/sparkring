@@ -1,0 +1,124 @@
+{
+  "schema": "sparkring.glm53-rocenante-overlay-contract/v1",
+  "status": "research-only",
+  "purpose": "Route eligible GLM-5.3-Flash TP4 all-reduces through the six-QP B12X virtual-diagonal runtime while preserving the mounted SIRCL and NCCL dispatch chain for every rejected signature.",
+  "source_references": {
+    "vllm_rocenante_pull_request": {
+      "url": "https://github.com/local-inference-lab/vllm/pull/597",
+      "commit": "a7935eb1d8fa51400cd13452b1d988197deef3b8"
+    },
+    "b12x_rocenante_pull_request": {
+      "url": "https://github.com/local-inference-lab/b12x/pull/295",
+      "base_commit": "ffb7442d04a9f50b950df1fb17280acad881b7d5"
+    },
+    "published_glm_runtime": {
+      "vllm_commit": "e02b174693e13859de61811b5e8cd13d5308e259",
+      "vllm_python_blobs": {
+        "vllm/distributed/device_communicators/cuda_communicator.py": "260dda5d899a319c767970c25a53c6ba2e2c0715",
+        "vllm/distributed/parallel_state.py": "9353dbfe36097fc12348cb055127e0caf798e2ac",
+        "vllm/v1/worker/gpu_worker.py": "1f6336478c3456138e37fd007917a25afab22b49"
+      },
+      "b12x_commit": "9ae41c5c",
+      "runtime_path": "runtime/glm53-flash-jj-r8-gb10"
+    }
+  },
+  "runtime": {
+    "world_size": 4,
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "dtype": "bfloat16",
+    "target_shape": "[Q,4096]",
+    "maximum_candidate_query_rows": 32,
+    "maximum_candidate_payload_bytes": 262144,
+    "all_gather_enabled": false,
+    "opposite_rank_paths": 2,
+    "origin_queue_pairs_per_rank": 6,
+    "origin_queue_pairs_total": 24,
+    "transport_slots": 2,
+    "wave_mode": "two",
+    "direct_then_diagonal_threshold_bytes": 196608,
+    "gid_index": 3,
+    "proxy_cpu": 13,
+    "forbidden_proxy_cpus": [
+      10,
+      11
+    ]
+  },
+  "canonical_hca_order": [
+    "rocep1s0f0",
+    "rocep1s0f1",
+    "roceP2p1s0f0",
+    "roceP2p1s0f1"
+  ],
+  "hca_index_semantics": {
+    "0": "physical port f0 through PCIe-domain-0",
+    "1": "physical port f1 through PCIe-domain-0",
+    "2": "physical port f0 through PCIe-domain-2",
+    "3": "physical port f1 through PCIe-domain-2"
+  },
+  "peer_hca_maps": {
+    "0": "1=0/2,2=0/3,3=1/3",
+    "1": "0=1/3,2=0/2,3=0/3",
+    "2": "0=1/2,1=1/3,3=0/2",
+    "3": "0=0/2,1=1/2,2=1/3"
+  },
+  "dispatch": {
+    "candidate": {
+      "group_name_prefix": "tp",
+      "world_size": 4,
+      "cuda": true,
+      "contiguous": true,
+      "dtype": "bfloat16",
+      "tensor_dimensions": 2,
+      "width": 4096,
+      "minimum_query_rows": 1,
+      "maximum_query_rows": 32
+    },
+    "fallback": "Call the already-installed SIRCL wrapper, which retains its own graph, fused eager, and NCCL routing rules.",
+    "known_sircl_graph_query_rows": [
+      64,
+      128
+    ]
+  },
+  "metadata": {
+    "process_group": "the TP GroupCoordinator cpu_group",
+    "required_backend": "gloo",
+    "create_device_process_group": false,
+    "create_nccl_communicator": false,
+    "rank_wide_vote": true
+  },
+  "health": {
+    "check_boundary": "after vLLM's synchronized synchronous output or asynchronous get_output",
+    "post_publication_fallback": false,
+    "worker_exit_code": 70
+  },
+  "sidecars": {
+    "source_marker_source": "spark_transport/experiments/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c",
+    "source_marker_runtime_seconds": 7200,
+    "source_marker_match_udp_port": 65535,
+    "source_marker_ether_type": "0x88b5",
+    "intermediate_rules": 8,
+    "cleanup_order": [
+      "source_markers",
+      "intermediate_rules",
+      "intermediate_qdiscs",
+      "endpoint_neighbors",
+      "endpoint_routes",
+      "mtu_restore",
+      "mtu_verify"
+    ],
+    "automatic_cleanup_on_apply_failure": true,
+    "automatic_cleanup_on_exit": true,
+    "qualified_topology_gate_required": true
+  },
+  "excluded_performance_arms": {
+    "hardware_qos": {
+      "status": "research-only",
+      "disposition": "rejected"
+    },
+    "four_opposite_paths_mesh32": {
+      "status": "research-only",
+      "disposition": "rejected"
+    }
+  }
+}

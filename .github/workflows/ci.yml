@@ -29,7 +29,7 @@ jobs:
       - name: Install development tools
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
       - name: Lint maintained Python trees
-        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance integrations/lil
+        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance integrations
 
   tests:
     name: tests
@@ -53,8 +53,17 @@ jobs:
           python -m pip install --disable-pip-version-check \
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
+      - name: Require PowerShell 7 for controller tests
+        shell: pwsh
+        run: |
+          if ($PSVersionTable.PSVersion.Major -lt 7) { throw "Controller tests require PowerShell 7" }
+          $PSVersionTable.PSVersion.ToString()
+      - name: Check image composition contracts
+        run: |
+          python runtime/images/composition.py runtime/images/sparkring-r35
+          python -m pytest runtime/images -q
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil -q -rs
+        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm runtime/common runtime/deepseek-v41-gb10/tools/test_packed_output_policy.py runtime/deepseek-v41-gb10/tools/test_prewarm5.py -q -rs
 
   lil-bridge:
     name: pinned LIL bridge
@@ -89,6 +98,26 @@ jobs:
           test -x "$LIL_TEST_BINARY"
           python -m pytest integrations/lil -q -rs
 
+  compose-profiles:
+    name: generated Compose equivalence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Require Compose and install CPU-only test dependencies
+        run: |
+          docker compose version
+          python -m pip install pytest==8.4.2 PyYAML==6.0.3
+      - name: Check generated examples and resolved container settings
+        env:
+          SPARKRING_REQUIRE_COMPOSE: '1'
+        run: |
+          python scripts/generate_compose_examples.py --check
+          python -m pytest runtime/common/test_compose.py runtime/common/test_compose_envelope.py scripts/test_sparkring_compose.py runtime/common/test_qwen_flash_next.py -q
+
   docs-links:
     name: docs links
     runs-on: ubuntu-latest
@@ -112,3 +141,15 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Scan tracked files without disclosing matched content
         run: python scripts/check_release_safety.py .
+
+  repository-layout:
+    name: profile and repository contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Validate profiles, exports, frozen inputs and build references
+        run: python scripts/check_repository_layout.py

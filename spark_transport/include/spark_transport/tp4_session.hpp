@@ -77,8 +77,8 @@ class Tp4AllreduceSession {
 
   // Enqueues a stream-ordered reduction and returns before it completes.
   // Later work on the same stream observes the completed output. One session
-  // accepts submissions from exactly one stable CUDA stream. Destruction
-  // drains submitted collectives and synchronizes that stream. Submission is
+  // orders a stream switch with a CUDA event dependency. Destruction drains
+  // submitted collectives and synchronizes the final linked stream. Submission is
   // bounded by SPARK_TP4_MAX_INFLIGHT (default 64) to prevent the caller from
   // saturating CUDA's launch queue.
   void all_reduce(const void* input, void* output, void* cuda_stream);
@@ -96,8 +96,8 @@ class Tp4AllreduceSession {
   // Adds one exact contiguous BF16 [q, elements_per_row] all-reduce to CUDA
   // stream capture. q must be in [1, 512] and the session capacity must be at
   // least q rows for the session's configured row geometry.
-  // arena and can serve decode plus bounded-prefill graph nodes while
-  // preserving one ordered sequence.
+  // One capacity-sized payload arena serves decode and bounded-prefill nodes
+  // while preserving a single ordered replay sequence.
   void capture_all_reduce(const void* input, void* output, std::uint32_t q,
                           void* cuda_stream);
 

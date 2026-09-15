@@ -1,7 +1,7 @@
-# ARM64 image with native-MTP3 compute and mesh bundle
+# ARM64 image with MTP3 compute and mesh bundle
 
 Status: **research-only**. This child image packages the complete compute and
-transport composition used by the GLM-5.3 Spark native-MTP3 profile. On top of
+transport composition used by the GLM-5.3 Spark MTP3 profile. On top of
 the pinned parent, it installs CUDA 13.3, the checksum-bound vLLM metadata and
 proposal-head and loader/RNG patches, B12X revision `ef308bac` with the
 source-checked top-k selector, the transport bundle,
@@ -22,7 +22,7 @@ allocation rather than a net model-memory reduction.
 
 The image contains no model weights. It does not provision NIC rules, select
 network interfaces, install host services, or start a model during construction.
-The site plan and native-MTP3 launch configuration remain separate inputs.
+The site plan and MTP3 launch configuration remain separate inputs.
 
 ## Published image
 
@@ -120,10 +120,12 @@ python3 runtime/glm53-spark-mtp3-mesh/build_image.py prepare \
   --context /var/tmp/mtp3-mesh-image-context
 ```
 
-The context path must not exist. Preparation copies only manifest-listed
-compute and transport files, source-pinned marker code, verification code,
-pins, and the RoCEnante license and provenance. It rejects unexpected bundle
-or compute files and writes a content manifest for every construction input.
+The context path must not exist. Preparation verifies the compute source lock and transport inventory, then
+copies the prepared compute directory, manifest-listed transport files,
+source-pinned marker code, verification code, pins, and license/provenance
+files. It rejects unexpected transport files and compute symlinks, and records
+every copied input. The in-image compute installer verifies the pinned archive
+and installed package hashes during the build.
 
 Build and verify without loading a model:
 

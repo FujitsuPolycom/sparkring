@@ -66,12 +66,14 @@ Reject, rather than adjust, a capture when any of these conditions fails:
 - the second gate costs more than 10% of the collective it precedes;
 - gated medians differ by more than 25% peak-to-peak across ranks;
 - a timed descriptor changes CUDA stream within the epoch;
-- the paired arms differ in inventory, layer, link rate, or session; or
+- the paired arms differ in inventory, layer, or link rate;
+- the two arms reuse the same session identifier instead of naming distinct
+  collections; or
 - the value-validating probe reports a mismatch.
 
 Collect enough independent sessions to measure the workload's own dispersion
-before choosing a detection threshold. Do not reuse thresholds from removed
-or unmatched benchmark records. No claim about concurrent serving, C8, tails,
+before choosing a detection threshold. Derive thresholds from records collected
+under the same conditions. No claim about concurrent serving, C8, tails,
 or another model profile follows from a C1 collection.
 
 ## Reporting and limits

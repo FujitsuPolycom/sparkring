@@ -7,6 +7,10 @@
 namespace research = spark_transport::tiled_prefill_research;
 
 int main() {
+  static_assert(research::fused_prefill_sequence_valid(0));
+  static_assert(research::fused_prefill_sequence_valid(UINT32_MAX - 1ULL));
+  static_assert(!research::fused_prefill_sequence_valid(UINT32_MAX));
+  static_assert(!research::fused_prefill_sequence_valid(UINT64_MAX));
   static_assert(research::kFusedPrefillEndpointCount == 4);
   static_assert(research::kFusedPrefillArenaBytes ==
                 64U * 1024U * 1024U + 1024U);

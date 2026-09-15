@@ -449,3 +449,38 @@ def test_live_receipt_records_all_secondary_rails_without_site_identity() -> Non
     assert "198.19." not in receipt_text
     assert '"hostname"' not in receipt_text
     assert '"ssh_target"' not in receipt_text
+
+
+def test_failed_link_query_cannot_use_plausible_stdout(tmp_path):
+    config = rail.rail_config(interface="enp2s0f1", management_interface="enp1s0",
+        address_cidr="198.51.100.1/30", peer_address="198.51.100.2", rdma_device="mlx5_1")
+    base, _ = _verification_runner(config)
+    def run(args, **kwargs):
+        result = base(args, **kwargs)
+        if args[:4] == ["ip", "-j", "link", "show"]:
+            return subprocess.CompletedProcess(args, 1, result.stdout, "query failed")
+        return result
+    net, rdma = _write_sysfs(tmp_path, config)
+    result = rail.verify_rail(config, runner=run, sys_net_root=net, sys_rdma_root=rdma)
+    assert not result["passed"]
+    assert all(not item["ok"] for item in result["checks"] if item["id"] in ("live.mtu", "live.link"))
+
+
+@pytest.mark.parametrize("inventory_code,inventory_text", [(1, ""), (0, "sparkring-sircl-enp2s0f1\n")])
+def test_profile_probe_failure_needs_positive_absence_before_mutation(tmp_path, monkeypatch, inventory_code, inventory_text):
+    config = rail.rail_config(interface="enp2s0f1", management_interface="enp1s0",
+        address_cidr="198.51.100.1/30", peer_address="198.51.100.2", rdma_device="mlx5_1")
+    base, _ = _verification_runner(config)
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[:3] == ["nmcli", "-g", "connection.interface-name"]:
+            return subprocess.CompletedProcess(args, 2, "", "query failed")
+        if args[:2] == ["nmcli", "--terse"]:
+            return subprocess.CompletedProcess(args, inventory_code, inventory_text, "")
+        return base(args, **kwargs)
+    net, rdma = _write_sysfs(tmp_path, config)
+    monkeypatch.setattr(rail.shutil, "which", lambda name: "/usr/bin/" + name)
+    with pytest.raises(rail.RailConfigError, match="Cannot prove"):
+        rail.apply_rail(config, runner=run, sys_net_root=net, sys_rdma_root=rdma)
+    assert not any(args[:2] == ["nmcli", "connection"] for args in calls)

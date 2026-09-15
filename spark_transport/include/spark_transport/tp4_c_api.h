@@ -29,8 +29,10 @@ typedef struct spark_tp4_config {
 
 /*
  * Versioned graph-row geometry. The embedded v1 configuration preserves the
- * established eager and GLM graph ABI. New callers set struct_size, then use
- * elements_per_row=4096 and bytes_per_row=8192 for DeepSeek BF16 tensors.
+ * established eager and 6144-element graph-row ABI. Callers set struct_size
+ * and describe their tensor rows; for a BF16 width of 4096, set
+ * elements_per_row=4096 and bytes_per_row=8192. Geometry alone does not
+ * establish support or qualification for a model deployment.
  * bytes_per_row must equal elements_per_row * 2.
  */
 typedef struct spark_tp4_config_v2 {
@@ -128,7 +130,9 @@ spark_tp4_handle spark_tp4_create(const spark_tp4_config* config,
  * Selects a protocol without extending the unversioned spark_tp4_config ABI.
  * The graph kernel remains FUSED. spark_tp4_create remains equivalent to
  * SERIAL_ACK plus FUSED. The two-slot protocol is experimental and accepted
- * only for graph-only sessions.
+ * only for graph-only sessions: configure both graph CPU fields and an exact
+ * supported row-capacity payload, submit through spark_tp4_capture_all_reduce
+ * or spark_tp4_capture_q1_all_reduce, and do not use eager spark_tp4_all_reduce.
  */
 spark_tp4_handle spark_tp4_create_with_protocol(
     const spark_tp4_config* config, uint32_t protocol, char* error,

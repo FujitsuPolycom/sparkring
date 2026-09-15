@@ -48,14 +48,22 @@ param(
     [string]$Python = "python",
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$Execute,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = @()
 
-# Status: research-only. Without -Execute this script only prints the exact
-# arm and never validates remote configuration, invokes SSH, or starts CUDA.
+# Status: research-only. Without -Execute this script validates the supplied
+# topology locally and prints the exact arm; it never contacts a remote host
+# over SSH or starts CUDA.
 $repositoryRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $qualificationModule =
     "spark_transport.experiments.tiled_prefill.qualification"
@@ -107,6 +115,35 @@ if (@($SubmitCpu, $Edge0ProgressCpu, $Edge1ProgressCpu |
     throw "SubmitCpu, Edge0ProgressCpu, and Edge1ProgressCpu must differ"
 }
 
+function Test-CpuInSet {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Set,
+
+        [Parameter(Mandatory)]
+        [int]$Cpu
+    )
+
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so every pinned CPU must lie inside it.
+foreach ($cpu in @($SubmitCpu, $Edge0ProgressCpu, $Edge1ProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+
 $configuredTargets = @($Targets | Where-Object { $_ })
 $configuredRankHosts = @($RankHosts | Where-Object { $_ })
 $nodes = @()
@@ -121,6 +158,10 @@ if ($configuredTargets.Count -ne 0 -or $configuredRankHosts.Count -ne 0) {
     }
     if (@($configuredRankHosts | Sort-Object -Unique).Count -ne 4) {
         throw "rank host addresses must be unique"
+    }
+    if (@($configuredTargets | Sort-Object -Unique).Count -ne 4) {
+        # Two ranks on one host would share the fixed control ports.
+        throw "SSH targets must be unique"
     }
 
     $nodes = @(
@@ -231,7 +272,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -241,8 +282,8 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-tiled-$ArmId-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $name = "spark-tp4-tiled-$ArmId-$runIdentity-r$($Node.Rank)"
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" `
         2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -253,8 +294,8 @@ function Get-ContainerState {
 
 $hashes = @()
 foreach ($node in $nodes) {
-    $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "test -x '$ProbeBinary' && sha256sum '$ProbeBinary'")
+    $hash = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        "test -x $(ConvertTo-PosixShellArgument $ProbeBinary) && sha256sum $(ConvertTo-PosixShellArgument $ProbeBinary)")
     if ($LASTEXITCODE -ne 0) {
         throw "rank $($node.Rank) is missing the tiled-prefill probe"
     }
@@ -270,7 +311,7 @@ if (@($hashes | Sort-Object -Unique).Count -ne 1) {
 Write-Output "preflight=pass ranks=4 identical_sha256=true sha256=$($hashes[0])"
 
 $probeArguments = @($arm.probe_arguments | ForEach-Object { [string]$_ })
-$probeArgumentString = $probeArguments -join " "
+$probeArgumentString = ($probeArguments | ForEach-Object { ConvertTo-PosixShellArgument $_ }) -join " "
 $failed = $false
 $timedOut = $false
 $receiptLines = @()
@@ -278,21 +319,20 @@ $expectedState = "exited:$($arm.expected_exit_code)"
 
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-tiled-$ArmId-r$($node.Rank)"
+        $name = "spark-tp4-tiled-$ArmId-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
             "--ulimit memlock=-1"
-            "-v ${ProbeBinary}:/probe:ro"
+            "-v $(ConvertTo-PosixShellArgument "${ProbeBinary}:/probe:ro")"
             "--entrypoint /usr/bin/env"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "env -u SPARK_TRANSPORT_TRACE"
             "taskset -c $SubmitCpu /probe"
             "--rank $($node.Rank) --world-size 4"
-            "--peer0 $($node.Peer0) --peer1 $($node.Peer1)"
+            "--peer0 $(ConvertTo-PosixShellArgument $node.Peer0) --peer1 $(ConvertTo-PosixShellArgument $node.Peer1)"
             "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"
@@ -303,6 +343,8 @@ try {
             $probeArgumentString
             ">/dev/null"
         ) -join " "
+        # A lost SSH reply may follow successful creation under this unique name.
+        $ownedNodes += $node
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch tiled-prefill probe rank $($node.Rank)"
@@ -327,9 +369,9 @@ try {
     }
 
     foreach ($node in $nodes) {
-        $name = "spark-tp4-tiled-$ArmId-r$($node.Rank)"
+        $name = "spark-tp4-tiled-$ArmId-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
-        $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        $log = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1")
         $rankReceipts = @($log | Where-Object {
             $_ -like "${receiptPrefix}*"
@@ -370,8 +412,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-tiled-$ArmId-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-tiled-$ArmId-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node -Command `
                 "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }

@@ -1,4 +1,4 @@
-"""Fixed-capacity, stream-ordered timing for the Q-2R phase census.
+"""Bounded CUDA-event timing for target verification and speculative generation.
 
 The serving path records preallocated CUDA events. It never queries an event,
 computes elapsed time, synchronizes a stream/device, or grows a result
@@ -176,14 +176,20 @@ class PhaseTimingCollector:
         self._aggregates = [_Aggregate() for _ in descriptors]
         self._nvtx = nvtx
         self._lock = threading.Lock()
+        # Reporter queries must not compete for the serving-path lock. Drain
+        # and reset share a separate lock so event pairs cannot be counted twice
+        # or reused while a reporter still examines them.
+        self._drain_lock = threading.Lock()
         self._armed = False
         self._epoch = ""
         self._next_slot = 0
+        self._inflight = 0
         self._pending_count = 0
         self._completed = 0
         self._dropped_capacity = 0
         self._dropped_unregistered = 0
         self._record_errors = 0
+        self._operation_errors = 0
         self._drain_errors = 0
         self._nvtx_errors = 0
 
@@ -265,44 +271,56 @@ class PhaseTimingCollector:
                     slot = self._slots[self._next_slot]
                     self._next_slot += 1
                     slot.descriptor_index = descriptor_index
+                    self._inflight += 1
         if slot is None:
             return operation()
 
         try:
-            slot.start.record(stream)
-        except Exception:
-            with self._lock:
-                self._record_errors += 1
-            return operation()
-
-        nvtx_pushed = False
-        if self._nvtx is not None:
             try:
-                self._nvtx.range_push(descriptor.key)
-                nvtx_pushed = True
-            except Exception:
-                with self._lock:
-                    self._nvtx_errors += 1
-
-        try:
-            return operation()
-        finally:
-            if nvtx_pushed:
-                try:
-                    assert self._nvtx is not None
-                    self._nvtx.range_pop()
-                except Exception:
-                    with self._lock:
-                        self._nvtx_errors += 1
-            try:
-                slot.end.record(stream)
+                slot.start.record(stream)
             except Exception:
                 with self._lock:
                     self._record_errors += 1
-            else:
-                with self._lock:
-                    slot.pending = True
-                    self._pending_count += 1
+                return operation()
+
+            nvtx_pushed = False
+            if self._nvtx is not None:
+                try:
+                    self._nvtx.range_push(descriptor.key)
+                    nvtx_pushed = True
+                except Exception:
+                    with self._lock:
+                        self._nvtx_errors += 1
+
+            succeeded = False
+            try:
+                result = operation()
+                succeeded = True
+                return result
+            finally:
+                if nvtx_pushed:
+                    try:
+                        assert self._nvtx is not None
+                        self._nvtx.range_pop()
+                    except Exception:
+                        with self._lock:
+                            self._nvtx_errors += 1
+                if not succeeded:
+                    with self._lock:
+                        self._operation_errors += 1
+                else:
+                    try:
+                        slot.end.record(stream)
+                    except Exception:
+                        with self._lock:
+                            self._record_errors += 1
+                    else:
+                        with self._lock:
+                            slot.pending = True
+                            self._pending_count += 1
+        finally:
+            with self._lock:
+                self._inflight -= 1
 
     def drain(self) -> DrainResult:
         """Poll and aggregate ready events without synchronizing.
@@ -311,6 +329,11 @@ class PhaseTimingCollector:
         ``query`` can return false; such samples remain pending. This method
         never calls ``synchronize`` on an event, stream, or device.
         """
+        with self._drain_lock:
+            return self._drain_ready()
+
+    def _drain_ready(self) -> DrainResult:
+        """Consume ready event pairs while holding exclusive drain ownership."""
         completed_now = 0
         errors_now = 0
         with self._lock:
@@ -354,7 +377,7 @@ class PhaseTimingCollector:
         )
 
     def snapshot(self) -> dict[str, Any]:
-        """Copy counters only; deliberately does not poll CUDA events."""
+        """Copy counters and completed samples without polling CUDA events."""
         with self._lock:
             descriptor_metrics = {
                 descriptor.key: self._aggregates[index].snapshot()
@@ -386,6 +409,7 @@ class PhaseTimingCollector:
                     "unregistered_descriptor": self._dropped_unregistered,
                 },
                 "errors": {
+                    "operation": self._operation_errors,
                     "record": self._record_errors,
                     "drain": self._drain_errors,
                     "nvtx": self._nvtx_errors,
@@ -396,9 +420,11 @@ class PhaseTimingCollector:
 
     def reset(self) -> None:
         """Clear a disarmed, fully drained epoch for event-pair reuse."""
-        with self._lock:
+        with self._drain_lock, self._lock:
             if self._armed:
                 raise RuntimeError("disarm before reset")
+            if self._inflight:
+                raise RuntimeError("all in-flight measurements must finish before reset")
             if self._pending_count:
                 raise RuntimeError("all pending events must drain before reset")
             for slot in self._slots:
@@ -416,6 +442,7 @@ class PhaseTimingCollector:
             self._dropped_capacity = 0
             self._dropped_unregistered = 0
             self._record_errors = 0
+            self._operation_errors = 0
             self._drain_errors = 0
             self._nvtx_errors = 0
 
@@ -455,7 +482,10 @@ def snapshot_delta(
         old = before_descriptors[key]
         new = after_descriptors[key]
         count = int(new["count"]) - int(old["count"])
-        total_ms = float(new["total_ms"]) - float(old["total_ms"])
+        old_total, new_total = float(old["total_ms"]), float(new["total_ms"])
+        if any(not math.isfinite(value) or value < 0 for value in (old_total, new_total)):
+            raise SnapshotMismatch("descriptor durations must be finite and nonnegative")
+        total_ms = new_total - old_total
         if count < 0 or total_ms < -1e-6:
             raise SnapshotMismatch("descriptor metrics moved backwards")
         descriptors[key] = {

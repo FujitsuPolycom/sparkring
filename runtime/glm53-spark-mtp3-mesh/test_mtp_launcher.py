@@ -113,6 +113,8 @@ printf '%s  %s\n' "$hash" "$2"
     def launch(rank, overrides=None, fixture_overrides=None):
         capture = tmp_path / f"docker-r{rank}.txt"
         hash_capture = tmp_path / f"hash-r{rank}.txt"
+        capture.unlink(missing_ok=True)
+        hash_capture.unlink(missing_ok=True)
         config = output / f"test-rank{rank}.env"
         variables = {
             "FIXTURE_IMAGE_ID": profile.defaults(profile.BASE / "runtime.env.example")["IMAGE_ID"],
@@ -156,10 +158,9 @@ def _docker_labels(arguments):
     return dict(value.split("=", 1) for value in values)
 
 
-def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture):
-    launch, _, _ = launch_fixture
-    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
-    result, arguments, _ = launch(0, {
+def _r33_overrides():
+    """Shared R33 image and cache-off environment; callers state their deltas."""
+    return {
         "DECODE_CONTEXT_PARALLEL_SIZE": "1",
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
         "LOAD_FORMAT": "instanttensor",
@@ -175,17 +176,69 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
         "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
         "SPARKCACHE_ENABLED": "0",
         "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
-        "NCCL_LIBRARY_PATH": nccl,
+        "NCCL_LIBRARY_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
         "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
         "SIRCL_BUNDLE_HOST_ROOT": "",
         "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
         "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
-    })
+    }
+
+
+@pytest.mark.parametrize('rank', [0,1])
+@pytest.mark.parametrize('dcp', [1,4])
+@pytest.mark.parametrize('direct', [False,True])
+def test_r35_tp4_launch_uses_verified_python_entrypoint_and_cache_contract(launch_fixture, rank, dcp, direct):
+    from runtime.common import r35
+    from runtime.common.test_r35 import receipt
+    launch, _, _ = launch_fixture
+    contract=r35.profile_contract(receipt()['installed'])
+    template=HERE.parent/'sparkring/jovian-r33/profiles'/f'tp4-dcp{dcp}-sparkcache.env.example'
+    native=contract['sparkcache_native']
+    overrides={**_r33_overrides(),**profile.defaults(template),
+        'SPARKRING_RUNTIME_RELEASE':'r35','SPARKRING_CREATE_ONLY':'1','DECODE_CONTEXT_PARALLEL_SIZE':str(dcp),
+        'OMP_NUM_THREADS':'1','SPARK_TP4_GRAPH_SUBMIT_CPU':'10','SPARK_TP4_GRAPH_PROGRESS_CPU':'11',
+        'SPARK_TP4_GRAPH_DIRECT_DOORBELL':str(int(direct)),
+        'SPARKCACHE_CACHE_NAMESPACE':'r35-test-cache','KV_CACHE_MEMORY_BYTES':'25769803776',
+        'SPARKCACHE_PLACEMENT_LIBRARY_PATH':native['placement_path'],
+        'SPARKCACHE_PLACEMENT_LIBRARY_SHA256':native['placement_sha256'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_PATH':native['snapshot_path'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_SHA256':native['snapshot_sha256'],
+        'SPARKCACHE_VLLM_ROOT':native['vllm_root'],'SPARKCACHE_SOURCE_LEASE_CONTRACT':native['lease_contract']}
+    result,arguments,_=launch(rank,overrides)
+    assert result.returncode==0,result.stderr
+    assert _option(arguments,'--entrypoint')=='/opt/venv/bin/python'
+    assert '/opt/sparkring/bin/sparkring' in arguments
+    assert ('--health-cmd' in arguments)==(rank==0)
+    connector=json.loads(_option(arguments,'--kv-transfer-config'))['kv_connector_extra_config']
+    assert connector['spark_cache_async_page_capture_lease_contract']==r35.LEASE
+    assert _docker_labels(arguments)['org.sparkring.runtime']==f'glm53-flash-spark-jovian-r35-tp4-dcp{dcp}-sparkcache'
+    environment=_docker_environment(arguments)
+    assert [environment[key] for key in ('OMP_NUM_THREADS','SPARK_TP4_GRAPH_SUBMIT_CPU',
+        'SPARK_TP4_GRAPH_PROGRESS_CPU','SPARK_TP4_GRAPH_DIRECT_DOORBELL')]==['1','10','11',str(int(direct))]
+    import managed_install
+    from managed_liveness import requires_host_monitor
+    image_ref=profile.defaults(profile.BASE/'runtime.env.example')['IMAGE_REF']
+    image={'Id':'sha256:'+'f'*64,'RepoDigests':[image_ref],'Config':{}}
+    # Normalize the generated argv as Docker does; the script lives in Cmd,
+    # rather than in the overridden one-element Entrypoint array.
+    expected=managed_install.expected_container_spec(['docker',*arguments],image)
+    container={'Config':{'Entrypoint':expected['entrypoint'],'Cmd':expected['cmd'],
+                         'Env':[f'{k}={v}' for k,v in expected['env'].items()]}}
+    assert requires_host_monitor(container,rank)==(rank==0)
+
+def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture):
+    launch, _, _ = launch_fixture
+    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
+    result, arguments, _ = launch(0, _r33_overrides())
     assert result.returncode == 0, result.stderr
     assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
     image_index = arguments.index(profile.defaults(profile.BASE / "runtime.env.example")["IMAGE_REF"])
     assert arguments[image_index + 1:image_index + 3] == ["serve", "/models/target"]
     assert _option(arguments, "--load-format") == "instanttensor"
+    from managed_liveness import api_healthcheck
+    for flag, value in api_healthcheck(8015).items():
+        assert _option(arguments, flag) == value
+    # R33 admission must not dispatch through the retained source-image verifier.
     assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
     environment_map = _docker_environment(arguments)
     for expected in (
@@ -218,29 +271,9 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
 
 def test_r33_tp4_dcp4_uses_candidate_entrypoint(launch_fixture):
     launch, _, _ = launch_fixture
-    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
-    result, arguments, _ = launch(0, {
+    result, arguments, _ = launch(0, {**_r33_overrides(),
         "DECODE_CONTEXT_PARALLEL_SIZE": "4",
-        "SOURCE_IMAGE_PROFILE": "tp4-dcp4",
-        "SPARKRING_PROFILE_MODE": "custom",
-        "LOAD_FORMAT": "instanttensor",
-        "SPARKRING_MANAGED_MESH_RENDERED": "1",
-        "VLLM_SPARK_TP4_MODE": "custom",
-        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
-        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
-        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
-        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
-        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
-        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
-        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
-        "SPARKCACHE_ENABLED": "0",
-        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
-        "NCCL_LIBRARY_PATH": nccl,
-        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
-        "SIRCL_BUNDLE_HOST_ROOT": "",
-        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
-        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
-    })
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp4"})
     assert result.returncode == 0, result.stderr
     assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
     environment_map = _docker_environment(arguments)
@@ -250,29 +283,8 @@ def test_r33_tp4_dcp4_uses_candidate_entrypoint(launch_fixture):
 
 def test_r33_rejects_profile_name_and_dcp_mismatch(launch_fixture):
     launch, _, _ = launch_fixture
-    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
-    result, _, _ = launch(0, {
-        "DECODE_CONTEXT_PARALLEL_SIZE": "4",
-        "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
-        "SPARKRING_PROFILE_MODE": "custom",
-        "LOAD_FORMAT": "instanttensor",
-        "SPARKRING_MANAGED_MESH_RENDERED": "1",
-        "VLLM_SPARK_TP4_MODE": "custom",
-        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
-        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
-        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
-        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
-        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
-        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
-        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
-        "SPARKCACHE_ENABLED": "0",
-        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
-        "NCCL_LIBRARY_PATH": nccl,
-        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
-        "SIRCL_BUNDLE_HOST_ROOT": "",
-        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
-        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
-    })
+    result, _, _ = launch(0, {**_r33_overrides(),
+        "DECODE_CONTEXT_PARALLEL_SIZE": "4"})
     assert result.returncode == 78
     assert "profile name differs from DECODE_CONTEXT_PARALLEL_SIZE" in result.stderr
 
@@ -280,24 +292,11 @@ def test_r33_rejects_profile_name_and_dcp_mismatch(launch_fixture):
 @pytest.mark.parametrize("diagnostic,clear_once", [(False, "auto"), (True, ""), (True, "auto"), (True, "none")])
 def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixture, diagnostic, clear_once):
     launch, _, _ = launch_fixture
-    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
     placement = "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
     snapshot = "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
     lease = "/opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json"
-    result, arguments, _ = launch(0, {
-        "DECODE_CONTEXT_PARALLEL_SIZE": "1",
+    result, arguments, _ = launch(0, {**_r33_overrides(),
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1-sparkcache",
-        "SPARKRING_PROFILE_MODE": "custom",
-        "LOAD_FORMAT": "instanttensor",
-        "SPARKRING_MANAGED_MESH_RENDERED": "1",
-        "VLLM_SPARK_TP4_MODE": "custom",
-        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
-        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
-        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
-        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
-        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
-        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
-        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
         "SPARKCACHE_ENABLED": "1",
         "SPARKCACHE_ACCESS_MODE": "restore-only" if diagnostic else "read-write",
         "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0" if diagnostic else "1",
@@ -323,19 +322,14 @@ def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixtur
         "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": snapshot,
         "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
         "SPARKCACHE_VLLM_ROOT": "/opt/venv/lib/python3.12/site-packages",
-        "SPARKCACHE_SOURCE_LEASE_CONTRACT": lease,
-        "NCCL_LIBRARY_PATH": nccl,
-        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
-        "SIRCL_BUNDLE_HOST_ROOT": "",
-        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
-        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
-    })
+        "SPARKCACHE_SOURCE_LEASE_CONTRACT": lease})
     if diagnostic and clear_once:
         assert result.returncode == 78
         assert "traced restore-only diagnostics" in result.stderr
         return
     assert result.returncode == 0, result.stderr
     assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
+    # R33 admission must not dispatch through the retained source-image verifier.
     assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
     connector = json.loads(_option(arguments, "--kv-transfer-config"))["kv_connector_extra_config"]
     assert connector["spark_cache_access_mode"] == ("restore-only" if diagnostic else "read-write")
@@ -463,6 +457,7 @@ def test_rendered_mtp_launcher_runs_without_external_draft(launch_fixture, rank)
                   "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE=dual",
                   "SPARK_TP4_CAPABILITY_VOTE=1", "SPARK_TP4_HEALTH_GATE=1", "SPARK_TP4_FLIGHT_RECORDER=0"):
         assert value in arguments
+    # serve_with_warmup.py consumes this shared setting for MTP and DFlash.
     assert "DFLASH_WARMUP_CONCURRENCIES=" + ",".join(map(str, range(1, 17))) in arguments
     assert "--max-num-scheduled-tokens" not in arguments
     assert "8200" not in arguments
@@ -489,7 +484,7 @@ def test_mtp_launcher_refuses_nonmatching_image_before_docker_run(launch_fixture
 
 @pytest.mark.parametrize("setting,value,message", [
     ("SPECULATION_METHOD", "unknown", "SPECULATION_METHOD must be dflash or mtp"),
-    ("TARGET_MODEL_VARIANT", "unknown", "TARGET_MODEL_VARIANT must be nvfp4 or nvfp4-spark"),
+    ("TARGET_MODEL_VARIANT", "unknown", "TARGET_MODEL_VARIANT must be nvfp4, nvfp4-spark, or nvidia-nvfp4"),
     ("MAX_CUDAGRAPH_CAPTURE_SIZE", "63", "must be divisible"),
 ])
 def test_mtp_launcher_fails_closed_on_invalid_contract(launch_fixture, setting, value, message):
@@ -497,6 +492,86 @@ def test_mtp_launcher_fails_closed_on_invalid_contract(launch_fixture, setting, 
     result, arguments, _ = launch(0, overrides={setting: value})
     assert result.returncode != 0
     assert message in result.stderr
+    assert arguments == []
+
+
+NVIDIA_NVFP4_CONFIG_SHA = "e23c5d98f53e861d49a51bd3c68591621c5482ce829e42c31724152322fba03d"
+NVIDIA_NVFP4_INDEX_SHA = "26765b2601fd246ef361cfb9f5e10f9fb291a59e05ad0a109062f3a4747c7fd1"
+NVIDIA_NVFP4_FINGERPRINT = "f44cb2423cf316987d1331a3ea45ce1a9ab2901d90b058d760a612c44ed2fb56"
+# Minimal stand-in for nvidia/GLM-5.3-Flash-NVFP4's config.json: a plain
+# ModelOpt NVFP4 quantization_config whose ignore list stops at layer 44.
+NVIDIA_NVFP4_CONFIG = {
+    "architectures": ["Glm5NextForConditionalGeneration"],
+    "text_config": {"num_hidden_layers": 45, "num_nextn_predict_layers": 1},
+    "quantization_config": {
+        "quant_method": "modelopt", "quant_algo": "NVFP4",
+        "kv_cache_scheme": {"dynamic": False, "num_bits": 8, "type": "float"},
+        "ignore": ["lm_head", "model.language_model.layers.44.self_attn*"],
+    },
+}
+
+
+def _nvidia_variant_launch(launch_fixture, config_text, overrides=None):
+    launch, site, output = launch_fixture
+    for rank in range(4):
+        (output.parent / f"target-r{rank}" / "config.json").write_text(config_text, encoding="utf-8")
+    variables = {"TARGET_MODEL_VARIANT": "nvidia-nvfp4"}
+    variables.update(overrides or {})
+    return launch(0, variables, {"FIXTURE_TARGET_CONFIG_SHA": NVIDIA_NVFP4_CONFIG_SHA,
+                                 "FIXTURE_TARGET_INDEX_SHA": NVIDIA_NVFP4_INDEX_SHA})
+
+
+def test_qualified_variant_passes_no_quantization_override(launch_fixture):
+    launch, _, _ = launch_fixture
+    result, arguments, _ = launch(0)
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--quantization") == "modelopt_mixed"
+    assert "--hf-overrides" not in arguments
+
+
+def test_nvidia_nvfp4_variant_selects_plain_modelopt_and_excludes_mtp_layer(launch_fixture):
+    result, arguments, hashes = _nvidia_variant_launch(launch_fixture, json.dumps(NVIDIA_NVFP4_CONFIG))
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--quantization") == "modelopt"
+    override = json.loads(_option(arguments, "--hf-overrides"))
+    assert set(override) == {"quantization_config"}
+    quantization = override["quantization_config"]
+    expected = NVIDIA_NVFP4_CONFIG["quantization_config"]
+    assert quantization["ignore"] == expected["ignore"] + [
+        "model.language_model.layers.45*", "model.layers.45*"]
+    assert {key: value for key, value in quantization.items() if key != "ignore"} == \
+        {key: value for key, value in expected.items() if key != "ignore"}
+    connector = json.loads(_option(arguments, "--kv-transfer-config"))
+    extra = connector["kv_connector_extra_config"]
+    assert extra["spark_cache_target_checkpoint_sha256"] == NVIDIA_NVFP4_FINGERPRINT
+    assert extra["spark_cache_draft_checkpoint_sha256"] == NVIDIA_NVFP4_FINGERPRINT
+    assert sorted(Path(path).name for path in hashes) == [
+        "config.json", "libspark_transport_capi.so", "model.safetensors.index.json", "sparkring-overlay-manifest.json"]
+
+
+def test_nvidia_nvfp4_variant_rejects_the_qualified_checkpoint_identity(launch_fixture):
+    launch, _, _ = launch_fixture
+    result, arguments, _ = launch(0, {"TARGET_MODEL_VARIANT": "nvidia-nvfp4"})
+    assert result.returncode == 78
+    assert "target config.json identity mismatch" in result.stderr
+    assert arguments == []
+
+
+def test_nvidia_nvfp4_variant_fails_closed_on_undecodable_config(launch_fixture):
+    result, arguments, _ = _nvidia_variant_launch(launch_fixture, "not json")
+    assert result.returncode != 0
+    assert "failed to derive the MTP quantization override" in result.stderr
+    assert arguments == []
+
+
+@pytest.mark.parametrize("config", [
+    dict(NVIDIA_NVFP4_CONFIG, quantization_config=None),
+    dict(NVIDIA_NVFP4_CONFIG, text_config={"num_hidden_layers": 45, "num_nextn_predict_layers": 0}),
+])
+def test_nvidia_nvfp4_variant_fails_closed_without_quantization_or_predictor(launch_fixture, config):
+    result, arguments, _ = _nvidia_variant_launch(launch_fixture, json.dumps(config))
+    assert result.returncode != 0
+    assert "failed to derive the MTP quantization override" in result.stderr
     assert arguments == []
 
 
@@ -511,3 +586,70 @@ def test_external_dflash_still_requires_its_checkpoint(launch_fixture):
 def test_rendered_shell_has_valid_bash_syntax(launch_fixture):
     _, _, output = launch_fixture
     subprocess.run(["bash", "-n", _bash_path(output / "launch-rank.sh")], check=True, timeout=10)
+
+
+def test_failed_launch_has_no_capture_from_prior_success(launch_fixture):
+    launch, _, _ = launch_fixture
+    good, previous, _ = launch(0)
+    assert good.returncode == 0 and previous
+    failed, arguments, _ = launch(0, {"SPARKRING_CREATE_ONLY": "invalid"})
+    assert failed.returncode != 0
+    assert arguments == []
+
+
+def test_dcp4_overlay_emits_both_readonly_mounts(launch_fixture, tmp_path):
+    launch, _, _ = launch_fixture
+    source = tmp_path / "source"
+    contract = source / "profiles"
+    contract.mkdir(parents=True)
+    (contract / "profile-contract.json").write_text("{}")
+    (contract / "verify_profile.py").write_text("# fixture")
+    (source / "image").mkdir()
+    (source / "image/entrypoint.py").write_text("# fixture")
+    root = _bash_path(contract)
+    result, arguments, _ = launch(0, {**_r33_overrides(),
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp4", "DECODE_CONTEXT_PARALLEL_SIZE": "4",
+        "R33_PROFILE_CONTRACT_HOST_ROOT": root})
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33-overlay"
+    assert f"{root}:/opt/sparkring/profile-contract:ro" in arguments
+    assert f"{root}/../image/entrypoint.py:/opt/sparkring/bin/sparkring-r33-overlay:ro" in arguments
+
+
+@pytest.mark.parametrize('rank', [0, 1])
+def test_registered_candidate_tp4_generated_launcher(launch_fixture, rank):
+    from runtime.common import candidate
+    launch, _, output = launch_fixture
+    descriptor, _ = candidate.composition('lil-r37-glm-spark')
+    installed = {'composition_id': descriptor['composition_id'], 'components': descriptor['components']}
+    script = output / 'launch-rank.sh'
+    script.write_text(candidate.adapt_launcher(script.read_text(), installed), newline='\n')
+    contract = candidate.profile_contract(installed)
+    native = contract['sparkcache_native']
+    template = HERE.parent / 'sparkring/jovian-r33/profiles/tp4-dcp1-sparkcache.env.example'
+    overrides = {**_r33_overrides(), **profile.defaults(template),
+        'SPARKRING_RUNTIME_RELEASE': 'candidate', 'SPARKRING_CREATE_ONLY': '1',
+        'DECODE_CONTEXT_PARALLEL_SIZE': '1', 'KV_CACHE_MEMORY_BYTES': '25769803776',
+        'OMP_NUM_THREADS': '1', 'SPARK_TP4_GRAPH_SUBMIT_CPU': '10', 'SPARK_TP4_GRAPH_PROGRESS_CPU': '11',
+        'SPARK_TP4_GRAPH_DIRECT_DOORBELL': '1', 'SPARKCACHE_CACHE_NAMESPACE': 'candidate-cache',
+        'JIT_CACHE_NAMESPACE': 'candidate-jit',
+        'SPARKCACHE_PLACEMENT_LIBRARY_PATH': native['placement_path'],
+        'SPARKCACHE_PLACEMENT_LIBRARY_SHA256': native['placement_sha256'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_PATH': native['snapshot_path'],
+        'SPARKCACHE_SNAPSHOT_LIBRARY_SHA256': native['snapshot_sha256'],
+        'SPARKCACHE_VLLM_ROOT': native['vllm_root'], 'SPARKCACHE_SOURCE_LEASE_CONTRACT': native['lease_contract']}
+    result, arguments, _ = launch(rank, overrides)
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, '--entrypoint') == '/opt/venv/bin/python'
+    assert candidate.ENTRYPOINT in arguments
+    assert ('--headless' in arguments) == bool(rank)
+    assert ('--health-cmd' in arguments) == (rank == 0)
+    extra = json.loads(_option(arguments, '--kv-transfer-config'))['kv_connector_extra_config']
+    assert extra['spark_cache_async_page_capture_lease_contract'] == native['lease_contract']
+    env = _docker_environment(arguments)
+    assert env['VLLM_CACHE_ROOT'].endswith('/candidate-jit')
+    assert env['NCCL_IB_PRESERVE_PCI_DOMAIN'] == '1'
+    assert env['SPARK_TP4_GRAPH_DIRECT_DOORBELL'] == '1'
+    from managed_liveness import requires_host_monitor
+    assert requires_host_monitor({'Config': {'Entrypoint': ['/opt/venv/bin/python'],
+        'Cmd': [candidate.ENTRYPOINT, 'serve'], 'Env': ['SPARKRING_LIVENESS_ENABLED=1']}}, rank) == (rank == 0)

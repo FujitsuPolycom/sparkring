@@ -42,8 +42,8 @@ creating a build context.
 
 ```bash
 BASE_IMAGE=ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028 \
-BASE_IMAGE_ID=<docker-image-id> \
-BASE_IMAGE_LICENSES=<audited-spdx-expression> \
+BASE_IMAGE_ID='<docker-image-id>' \
+BASE_IMAGE_LICENSES='<audited-spdx-expression>' \
   ./runtime/exl3-r7/build-image.sh
 ```
 
@@ -60,8 +60,9 @@ The build fails closed unless:
 3. the prepared dependency inventory matches its receipt;
 4. QuACK and Apache TVM FFI wheels match their pinned hashes;
 5. the SIRCL library and supported-profile overlay build from this checkout;
-6. installed runtime files match the hashes enforced by
-   `verify_runtime.py`.
+6. `verify_runtime.py` confirms installed source markers, collective-hook
+   signatures and ownership, required extension exports, and ARM64/SM121
+   compatibility. It does not attest every installed file by hash.
 
 The image records the parent ID, source receipt, component revisions, and SPDX
 license expression in OCI labels.

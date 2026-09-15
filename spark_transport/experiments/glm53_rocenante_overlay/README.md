@@ -2,11 +2,11 @@
 
 Status: **research-only**. This package composes a RoCEnante all-reduce wrapper
 with SIRCL and the existing NCCL fallback. It targets the exact GLM-5.3 vLLM
-Python sources identified in [`overlay_contract.json`](overlay_contract.json).
+Python sources identified in [`overlay_contract.json`](../../../integrations/vllm/rocenante/overlay_contract.json).
 It is not a generic vLLM command-line option or an unmodified installation of
 an upstream PR.
 
-The [native-MTP3 profile](../../../runtime/glm53-spark-mtp3-mesh/README.md)
+The [MTP3 profile](../../../runtime/glm53-spark-mtp3-mesh/README.md)
 selects the serving policy and creates the complete content-addressed bundle.
 Only `b12x.comm.roce` is overlaid; attention, MoE, KDA, and linear kernels stay
 in the pinned image's B12X package.
@@ -56,7 +56,7 @@ file hashes, and refuses an existing output directory. It makes no host or
 network changes.
 
 ```bash
-python -m pytest spark_transport/experiments/glm53_rocenante_overlay -q
+python -m pytest integrations/vllm/rocenante -q
 ```
 
 The tests cover source identity, signature routing, bundle manifests,
@@ -76,6 +76,5 @@ integration ideas, including rank-wide agreement and post-step health checks;
 the adapter here is bound to the separately pinned serving runtime. Neither
 link implies that the complete PR is installed unchanged.
 
-The two upstream PRs motivated SparkRing's hardware-forwarded diagonal
-exploration on a physical ring. The topology adaptation, hybrid SIRCL
-dispatch, and managed deployment are SparkRing's integration work.
+The topology adaptation, hybrid SIRCL dispatch, and managed deployment are
+SparkRing's integration work.

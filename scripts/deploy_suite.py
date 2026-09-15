@@ -95,7 +95,7 @@ def discover(nodes, controller_address, run=None):
 
 
 def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_receipt=None,
-                *, reuse_existing_image=False, existing_model_roots=None, runtime_profile=None):
+                *, reuse_existing_image=False, existing_model_roots=None, runtime_profile=None, preserve_existing_network=False, target_model_variant=None):
     """Derive network and profile inputs from host facts and the documented cable cycle."""
     if (
         inventory.get("schema") != "sparkring-deploy-inventory/v1"
@@ -148,6 +148,14 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
                 subnets[edge + function * 4].network_address + (1 if clockwise else 2)
             )
             netdev = mapping[device]["netdev"]
+            if preserve_existing_network:
+                observed = interfaces[netdev].get("ipv4", [])
+                if not isinstance(observed, list) or len(observed) != 1:
+                    raise ValueError(f"{host['host']}: {netdev} requires exactly one observed IPv4 /24 address")
+                endpoint = ipaddress.ip_interface(observed[0])
+                if endpoint.version != 4 or endpoint.network.prefixlen != 24:
+                    raise ValueError(f"{host['host']}: {netdev} requires an observed IPv4 /24 address")
+                address = str(endpoint.ip)
             host["data_interfaces"].append(
                 {
                     "role": role,
@@ -199,6 +207,10 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
         "fabric": template,
         "profile": "glm53-spark-mtp3-mesh",
     }
+    if target_model_variant is not None:
+        from runtime.common import glm_targets
+        glm_targets.target(target_model_variant)
+        result["site"]["target_model_variant"] = target_model_variant
     if image_receipt is not None:
         from scripts.deploy_selection import selection
         document = read(image_receipt)
@@ -209,13 +221,17 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
         if document.get("profile") is not None:
             result["site"]["runtime_profile"] = document["profile"]
         if runtime_profile is not None:
-            if document.get("schema") != "sparkring-r33-image-receipt/v1":
-                raise ValueError("Explicit runtime profile requires an R33 image receipt")
+            if document.get("schema") not in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+                raise ValueError("Explicit runtime profile requires an R33, R35 or registered candidate image receipt")
             result["site"]["runtime_profile"] = runtime_profile
         selected = selection(result, PROFILE)
         result["site"]["marker_binary_sha256"] = selected["marker_binary_sha256"]
         result["site"]["model_roots"] = [
             f"{workspace}/models/{selected['pins']['target']['revision']}"] * 4
+    if target_model_variant is not None and image_receipt is None:
+        from scripts.deploy_selection import selection
+        selected = selection(result, PROFILE)
+        result["site"]["model_roots"] = [f"{workspace}/models/{selected['pins']['target']['revision']}"] * 4
     if runtime_profile is not None and image_receipt is None:
         raise ValueError("Runtime profile requires an explicit image receipt")
     if reuse_existing_image or existing_model_roots:
@@ -226,6 +242,13 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
                   "model_roots": list(existing_model_roots)}
         result["site"]["model_roots"] = validate_existing_assets(assets)
         result["existing_assets"] = assets
+    if preserve_existing_network:
+        # Reuse the planner's cycle, management-isolation, and saved-state checks.
+        # Existing connection UUIDs remain external; adoption grants no replacement rights.
+        existing_plan = plan_network(result, inventory["hosts"])
+        if any(port["action"] != "none" for host in existing_plan["hosts"]
+               for port in host["interfaces"]):
+            raise ValueError("Preserving the existing network requires matching saved NetworkManager settings on all 16 endpoints")
     return result
 
 
@@ -291,12 +314,16 @@ def main(argv=None):
     p.add_argument("--name", required=True)
     p.add_argument("--workspace", required=True)
     p.add_argument("--fabric-range", default="198.18.0.0/21")
+    p.add_argument("--preserve-existing-network", action="store_true",
+                   help="Keep all 16 observed /24 endpoint addresses and existing connection UUIDs; require a coherent configured cycle")
     p.add_argument("--image-receipt", type=Path,
                    help="Explicit verified local source composition or canonical performance receipt; omission retains the base public image")
     p.add_argument("--reuse-existing-image", action="store_true",
                    help="Verify the selected image on all four hosts without saving or copying it")
+    p.add_argument("--target-model-variant", choices=("nvfp4-spark", "nvidia-nvfp4"),
+                   help="Select pinned target metadata; omitted keeps NVFP4-Spark")
     p.add_argument("--runtime-profile", choices=("tp4-dcp1", "tp4-dcp1-sparkcache"),
-                   help="Required topology/profile selection for an R33 image receipt")
+                   help="Required topology/profile selection for an R33, R35 or registered candidate image receipt")
     p.add_argument("--existing-model-root", type=str, action="append", default=[],
                    help="Read-only existing model directory; repeat in rank order exactly four times with --reuse-existing-image")
     p.add_argument("--output", type=Path, required=True)
@@ -337,6 +364,7 @@ def main(argv=None):
         ),
     )
     r.add_argument("--preparation", type=Path, required=True)
+    r.add_argument("--container-backend", choices=("docker", "compose"), default="docker")
     r.add_argument("--output", type=Path, required=True)
     a = sub.add_parser("apply-plan", help="execute an exact reviewed action plan")
     a.add_argument("--plan", type=Path, required=True)
@@ -358,7 +386,9 @@ def main(argv=None):
             spec = create_spec(inventory, args.name, args.workspace, args.fabric_range, args.image_receipt,
                                reuse_existing_image=args.reuse_existing_image,
                                existing_model_roots=args.existing_model_root,
-                               runtime_profile=args.runtime_profile)
+                               runtime_profile=args.runtime_profile,
+                               target_model_variant=args.target_model_variant,
+                               preserve_existing_network=args.preserve_existing_network)
             network = plan_network(spec, inventory["hosts"])
             result = {
                 "schema": "sparkring-deploy-preparation/v1",
@@ -396,7 +426,7 @@ def main(argv=None):
         elif args.command == "runtime-plan":
             from scripts.deploy_runtime import build_runtime_plan
 
-            result = build_runtime_plan(read(args.preparation), args.action)
+            result = build_runtime_plan(read(args.preparation), args.action, container_backend=args.container_backend)
             write_new(args.output, result)
             print(f"Runtime plan SHA-256: {result['sha256']}. No host changed.")
         else:

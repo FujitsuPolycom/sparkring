@@ -1,7 +1,7 @@
 from .fused_ring_simulator import classify_token, simulate
 
 
-def test_randomized_dual_rail_skew_closes_every_flow() -> None:
+def test_interleaved_exchange_stages_deliver_all_contributors() -> None:
     for seed in range(500):
         complete, flows = simulate(seed)
         assert complete

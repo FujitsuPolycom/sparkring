@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+from pathlib import Path
 import json
 
 import pytest
@@ -76,9 +77,7 @@ def test_standard_port_orientation_connects_f0_to_next_ranks_f1():
 
 def test_management_overlap_is_rejected():
     with pytest.raises(BootstrapError, match="overlaps a management address"):
-        build_cluster_document(
-            facts(4), name="overlap", fabric_supernet="192.0.0.0/21"
-        )
+        build_cluster_document(facts(4), name="overlap", fabric_supernet="192.0.0.0/21")
 
 
 def test_target_requires_username_and_literal_ipv4():
@@ -158,7 +157,7 @@ def test_network_apply_waits_for_the_recorded_management_address():
         "    management_ready=1\n"
         "    break\n"
         "  fi\n"
-        '  management_attempt=$((management_attempt + 1))\n'
+        "  management_attempt=$((management_attempt + 1))\n"
         "  sleep 0.1\n"
         "done"
     ) in apply_script
@@ -203,3 +202,105 @@ def test_head_self_authorization_is_idempotent_and_preserves_existing_keys(tmp_p
     assert len(lines) == 2
     assert lines.count(key) == 1
     assert any(ssh_dir.glob("authorized_keys.before-sparkring-*"))
+
+
+def test_privileged_netplan_staging_is_private_and_payload_bound():
+    import base64
+    import re
+
+    cluster = validate_cluster(
+        build_cluster_document(
+            facts(4), name="private-stage", fabric_supernet="198.18.0.0/21"
+        )
+    )
+    script = _network_apply_script(cluster, 0)
+    encoded = re.search(r"printf '%s' ([A-Za-z0-9+/=]+) \| base64 -d", script).group(1)
+    assert base64.b64decode(encoded).decode() == render_rank_netplan(cluster, 0)
+    assert "mktemp -d /tmp/sparkring-fabric.XXXXXX" in script
+    assert 'install -m 600 "$work/netplan.yaml" "$target"' in script
+    assert "/tmp/sparkring-fabric.yaml" not in script
+    assert 'rmdir "$work"' in script
+
+
+def test_apply_transmits_script_without_shared_remote_staging(monkeypatch):
+    import shlex
+    import subprocess
+    from scripts import sparkring_bootstrap as bootstrap
+
+    cluster = validate_cluster(
+        build_cluster_document(
+            facts(4), name="private-stage", fabric_supernet="198.18.0.0/21"
+        )
+    )
+    calls = []
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda argv, **kwargs: (
+            calls.append(argv) or subprocess.CompletedProcess(argv, 0, "", "")
+        ),
+    )
+    node_facts = facts(4)
+    monkeypatch.setattr(bootstrap, "probe_local", lambda rank, target: node_facts[rank])
+    monkeypatch.setattr(
+        bootstrap, "probe_remote", lambda rank, target: node_facts[rank]
+    )
+    bootstrap.apply_fabric_network(cluster)
+    assert len(calls) == 4
+    assert calls[0][:3] == ["sudo", "sh", "-c"]
+    for argv in calls[1:]:
+        remote = shlex.split(argv[-1])
+        assert remote[:3] == ["sudo", "sh", "-c"]
+        assert "mktemp -d" in remote[3]
+        assert "/tmp/sparkring-apply-fabric.sh" not in remote[3]
+
+
+@pytest.mark.parametrize("management_ok", [True, False])
+def test_generated_apply_restores_or_installs_only_fixture_netplan(
+    tmp_path, management_ok
+):
+    import shutil
+    import shlex
+    import subprocess
+    import os
+
+    shell = (
+        shutil.which("bash") if os.name != "nt" else "C:/Program Files/Git/bin/bash.exe"
+    )
+    if not shell or not Path(shell).is_file():
+        pytest.skip("Bash required")
+    cluster = validate_cluster(
+        build_cluster_document(
+            facts(4), name="fixture-apply", fabric_supernet="198.18.0.0/21"
+        )
+    )
+    target = tmp_path / "netplan.yaml"
+    target.write_text("prior netplan\n")
+    script = _network_apply_script(cluster, 0).replace(
+        "target=/etc/netplan/40-sparkring-fabric.yaml",
+        "target=" + shlex.quote(target.as_posix()),
+    )
+    stub = "netplan() { return 0; }; sleep() { :; }; "
+    stub += (
+        "mktemp() { command mktemp -d "
+        + shlex.quote((tmp_path / "stage.XXXXXX").as_posix())
+        + "; }; "
+    )
+    stub += (
+        "ip() { printf '2: enP7s7 inet 192.0.2.10/24 scope global enP7s7\\n'; }; "
+        if management_ok
+        else "ip() { return 1; }; "
+    )
+    result = subprocess.run(
+        [shell, "--noprofile", "--norc", "-c", stub + script],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == (0 if management_ok else 91), result.stderr
+    assert target.read_text() == (
+        render_rank_netplan(cluster, 0) if management_ok else "prior netplan\n"
+    )
+    assert not list(tmp_path.glob("stage.*"))
+    backups = list(tmp_path.glob("netplan.yaml.before-sparkring-*"))
+    assert len(backups) == 1 and backups[0].read_text() == "prior netplan\n"

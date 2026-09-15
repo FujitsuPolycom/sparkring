@@ -18,7 +18,8 @@ def copy_edge(
     """run(host, argv) executes on a management host; payload uses the peer address.
 
     The receiver publishes with a hard link, refusing to overwrite existing data.
-    Both push and pull support sites with asymmetric SSH authorization.
+    Push requires source-to-destination peer SSH; pull requires the reverse.
+    The controller must reach both management hosts in either mode.
     """
     for host in (source_host, destination_host, peer):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*", host):

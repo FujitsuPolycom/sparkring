@@ -201,3 +201,35 @@ def test_lease_rejects_impossible_clock_inputs(uptime, ticks, start):
 def test_malformed_proc_stat_fails_closed(stat):
     with pytest.raises(ValueError):
         inspector.remaining_seconds(["probe", "--run-seconds", "7200"], stat, 1250.0, 100)
+
+
+@pytest.mark.parametrize("mtu,gid", [(9000, 3), (1500, 7)])
+def test_inspection_uses_configured_link_mtu_and_gid(monkeypatch, mtu, gid):
+    import json
+    port = SimpleNamespace(netdev="fabric0", mtu=mtu, mac="02:00:00:00:00:01",
+                           ipv4="192.0.2.1", rdma_device="rdma0")
+    local = SimpleNamespace(management_netdev="management0", ports=[port])
+    topology = SimpleNamespace(rank=lambda rank: local)
+    plan = SimpleNamespace(expected_ethernet_mtu=mtu, roce_gid_index=gid,
+                           routes=[], tc_rules=[])
+    site = {"management_addresses": ["192.0.2.10"], "marker_binary": "/fixture/marker",
+            "marker_binary_sha256": "unused"}
+    monkeypatch.setattr(inspector.profile, "load_site", lambda path: (site, topology, plan))
+    def command(argv):
+        if argv[-1] == "management0":
+            return json.dumps([{"addr_info": [{"local": "192.0.2.10"}]}])
+        assert argv[-1] == "fabric0"
+        return json.dumps([{"mtu": mtu, "address": port.mac,
+                            "addr_info": [{"local": port.ipv4}]}])
+    monkeypatch.setattr(inspector, "command", command)
+    reads = []
+    def read_text(path, *args, **kwargs):
+        reads.append(path.as_posix())
+        return "::ffff:192.0.2.1"
+    monkeypatch.setattr(Path, "read_text", read_text)
+    def stop_before_marker_checks(path):
+        raise RuntimeError("link checks completed")
+    monkeypatch.setattr(inspector.profile, "sha", stop_before_marker_checks)
+    with pytest.raises(RuntimeError, match="link checks completed"):
+        inspector.inspect(Path("site.json"), 0, 0)
+    assert reads == [f"/sys/class/infiniband/rdma0/ports/1/gids/{gid}"]

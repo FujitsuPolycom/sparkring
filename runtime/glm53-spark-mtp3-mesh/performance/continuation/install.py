@@ -1,4 +1,4 @@
-"""Install four exact continuation sources after checkpoint ownership verification."""
+"""Install pinned continuation sources after verifying runtime and ownership preimages."""
 
 import hashlib
 import io
@@ -34,6 +34,7 @@ def package(context=HERE):
 
 
 def apply(site: Path, ownership: dict, context=HERE):
+    """Replace sources, verify written bytes, then update ownership hashes in place."""
     manifest, sources = package(context)
     rows = {row["path"]: row for row in ownership["files"]}
     if len(rows) != len(ownership["files"]):
@@ -52,6 +53,9 @@ def apply(site: Path, ownership: dict, context=HERE):
     # Validate all four source and ownership preimages before the first write.
     for target, source in writes:
         target.write_bytes(source)
+    for name, expected in manifest["files"].items():
+        if hashlib.sha256((site / name).read_bytes()).hexdigest() != expected["after_sha256"]:
+            raise ValueError(f"Continuation runtime postimage differs: {name}")
     for name, expected in manifest["files"].items():
         rows[name]["sha256"] = expected["after_sha256"]
     return {"manifest_sha256": MANIFEST_SHA256, "files": manifest["files"]}

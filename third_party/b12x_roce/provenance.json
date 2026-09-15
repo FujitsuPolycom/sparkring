@@ -5,11 +5,27 @@
   "upstream_base_commit": "ffb7442d04a9f50b950df1fb17280acad881b7d5",
   "license": "Apache-2.0",
   "scope": "Only b12x.comm.roce; no model kernels or other B12X package modules",
-  "roce_tree_sha256": "902a9dfd1a9c8ec379b002b13737701dd6bc58e240abcb5ab9b443455961a3a4",
-  "local_changes": ["Preserve capture-ID stream admission across Python contexts", "Order shared input staging and output copies across streams"],
+  "roce_tree_sha256": "23cddf72cbf9e2c1612d561e1f4b70c858547a10cf1de6e55d4beea04dcd1cd8",
+  "local_changes": [
+    "Preserve capture-ID stream admission across Python contexts",
+    "Order shared input staging and output copies across streams",
+    "Read and update proxy diagnostic counters atomically",
+    "Return independent storage from padded all-gather",
+    "Bound message capacities to signed 32-bit kernel counts",
+    "Serialize diagnostics and proxy teardown with the lifecycle lock",
+    "Reject unsupported HCA exclusions and non-port-one selectors",
+    "Clarify PTX memory scope and poll-budget documentation",
+    "Keep timeout detection independent of wrapping collective sequences"
+  ],
   "git_state": {
     "commit": "eac260a8257cc6b14e7d4ad674f51e9a09b8790f",
-    "roce_source_dirty": false,
-    "roce_status": []
+    "roce_source_dirty": true,
+    "roce_status": [
+      " M b12x/comm/roce/_roce_proxy.c",
+      " M b12x/comm/roce/roce_oneshot.py",
+      " M b12x/comm/roce/_cute_intrinsics.py",
+      " M b12x/comm/roce/_allgather_cute.py",
+      " M b12x/comm/roce/_oneshot_cute.py"
+    ]
   }
 }

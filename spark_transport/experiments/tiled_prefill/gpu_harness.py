@@ -5,6 +5,11 @@ through Q4096 be represented as exact 512-KiB transport tiles, with multiple
 64-KiB worker CTAs per tile and explicit slot-reuse dependencies?  It does not
 execute CUDA or RDMA and production transport code does not consume it.
 
+Its timing fields describe instrumentation required for a performance executor;
+that instrumentation is not implemented by the standalone native probe.
+``qualification.py`` owns that probe's v2 receipts, which contain host-clock
+samples only and reject device/component/credit-wait timing claims.
+
 Run the inspectable contract with::
 
     python -m spark_transport.experiments.tiled_prefill.gpu_harness \
@@ -251,6 +256,11 @@ class TiledGpuHarnessPlan:
             "pipeline_node_count": len(self.nodes),
             "output_ready_node": self.output_ready_node,
             "fully_retired_node": self.fully_retired_node,
+            "timing_instrumentation_status": "unimplemented",
+            "timing_scope": (
+                "required performance instrumentation, not measurements emitted "
+                "by the standalone correctness probe"
+            ),
             "timing_fields": {
                 field: TIMING_FIELD_SEMANTICS[field]
                 for field in self.timing_fields
@@ -602,16 +612,20 @@ def validate_harness_plan(plan: TiledGpuHarnessPlan) -> None:
             ):
                 raise ValueError("bulk phase worker geometry changed")
 
-    final_tile_start = max(0, plan.tile_count - SLOTS_PER_EDGE)
-    final_retirements = {
-        _tile_node_id(index, "retire_slot")
-        for index in range(final_tile_start, plan.tile_count)
-    }
+    expected_releases = tuple(
+        _tile_node_id(index, "release_output") for index in range(plan.tile_count)
+    )
+    expected_retirements = tuple(
+        _tile_node_id(index, "retire_slot") for index in range(plan.tile_count)
+    )
     output_ready = by_id[plan.output_ready_node]
-    if final_retirements & set(output_ready.dependencies):
-        raise ValueError(
-            "output readiness must not wait for final-generation retirement"
-        )
+    fully_retired = by_id[plan.fully_retired_node]
+    if (set(output_ready.dependencies) != set(expected_releases)
+            or len(output_ready.dependencies) != len(expected_releases)):
+        raise ValueError("output readiness requires every tile release and no retirement wait")
+    if (set(fully_retired.dependencies) != set(expected_retirements)
+            or len(fully_retired.dependencies) != len(expected_retirements)):
+        raise ValueError("full retirement requires every tile retirement")
     if set(plan.timing_fields) != set(TIMING_FIELD_SEMANTICS):
         raise ValueError("timing receipt fields changed")
 

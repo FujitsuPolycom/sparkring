@@ -1,0 +1,109 @@
+{
+  "schema": "sparkring-patch-ledger/v1",
+  "source_lock": "source-lock.json",
+  "path_conventions": {
+    "patch": "Basename under this recipe's patches directory.",
+    "changed_paths": "Paths relative to the component source root, in bundled diff-header order.",
+    "regression_tests": "Paths relative to the SparkRing repository root; these verify packaging, not serving correctness.",
+    "component_regression_tests": "Paths relative to the component source root, present in the bundled patch; execute after applying the pinned composition."
+  },
+  "scope": "Records bundled integration intent and existing test locations. It does not establish upstream acceptance, test execution or hardware qualification.",
+  "components": {
+    "vllm": {
+      "purpose": "Preserve GLM token-sharded mHC prefill, recurrent-checkpoint coalescing and external-cache recovery interfaces in the pinned R35 vLLM source composition.",
+      "patch": "vllm-sparkring.patch",
+      "patch_sha256": "3a969d2bb0f8294a163fe1cbef2e3b3387d7d8d5c0d6f678c0ad84e1cb796b9e",
+      "changed_paths": [
+        "docs/features/quantization/b12x.md",
+        "requirements/cuda.txt",
+        "tests/kernels/mamba/test_causal_conv1d.py",
+        "tests/models/test_glm5next_kda_gate_stream.py",
+        "tests/models/test_glm5next_mhc_prefill.py",
+        "tests/v1/attention/test_gdn_metadata_builder.py",
+        "tests/v1/core/test_prefix_caching.py",
+        "tests/v1/core/test_recurrent_prefill_checkpoint.py",
+        "tests/v1/core/test_scheduler.py",
+        "tests/v1/kv_connector/unit/test_hybrid_recovery_source.py",
+        "tests/v1/worker/test_kda_prefill_checkpoint_binding.py",
+        "vllm/config/vllm.py",
+        "vllm/envs.py",
+        "vllm/forward_context.py",
+        "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+        "vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py",
+        "vllm/model_executor/layers/linear.py",
+        "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py",
+        "vllm/model_executor/layers/mla.py",
+        "vllm/models/glm5next/model_state.py",
+        "vllm/models/glm5next/nvidia/attention.py",
+        "vllm/models/glm5next/nvidia/kda.py",
+        "vllm/models/glm5next/nvidia/mhc_prefill_sharding.py",
+        "vllm/models/glm5next/nvidia/model.py",
+        "vllm/v1/attention/backend.py",
+        "vllm/v1/attention/backends/gdn_attn.py",
+        "vllm/v1/core/kv_cache_manager.py",
+        "vllm/v1/core/recurrent_prefill_checkpoint.py",
+        "vllm/v1/core/sched/output.py",
+        "vllm/v1/core/sched/scheduler.py",
+        "vllm/v1/core/single_type_kv_cache_manager.py",
+        "vllm/v1/kv_cache_interface.py",
+        "vllm/v1/worker/gpu/model_runner.py",
+        "vllm/v1/worker/gpu/model_states/mamba_hybrid.py",
+        "vllm/v1/worker/gpu_model_runner.py"
+      ],
+      "integrations_preserved": [
+        "Token-sharded mHC prefill admission and deferred projection/MoE reductions with explicit residual and auxiliary-output ownership.",
+        "Coalesced fresh and continuation prefill with planned recurrent checkpoint boundaries propagated through scheduler and worker metadata.",
+        "Hybrid external-cache recovery and CUDA VMM connector capability checks, including SparkCache integration boundaries.",
+        "KDA convolution checkpoint history excludes speculative cells; checkpoint binding follows planned request metadata."
+      ],
+      "regression_tests": [
+        "runtime/images/sparkring-r35/test_prepare_sources.py",
+        "runtime/images/sparkring-r35/test_capability_evidence.py"
+      ],
+      "component_regression_tests": [
+        "tests/kernels/mamba/test_causal_conv1d.py",
+        "tests/models/test_glm5next_kda_gate_stream.py",
+        "tests/models/test_glm5next_mhc_prefill.py",
+        "tests/v1/attention/test_gdn_metadata_builder.py",
+        "tests/v1/core/test_prefix_caching.py",
+        "tests/v1/core/test_recurrent_prefill_checkpoint.py",
+        "tests/v1/core/test_scheduler.py",
+        "tests/v1/kv_connector/unit/test_hybrid_recovery_source.py",
+        "tests/v1/worker/test_kda_prefill_checkpoint_binding.py"
+      ],
+      "upstream_status": "not_assessed"
+    },
+    "b12x": {
+      "purpose": "Provide transactional multi-checkpoint KDA prefill exports and GB10 admission policy required by the vLLM recurrent-checkpoint composition.",
+      "patch": "b12x-sparkring.patch",
+      "patch_sha256": "a40c802a849091fba6834481088c9611b94aaaea8146bec8850997ca8503ddbb",
+      "changed_paths": [
+        "b12x/sequence/_shared/delta_prefill/_cute_kernels.py",
+        "b12x/sequence/_shared/delta_prefill/contract.py",
+        "b12x/sequence/kda_prefill/_impl.py",
+        "b12x/sequence/kda_prefill/_policy.py",
+        "b12x/sequence/kda_prefill/metadata.py",
+        "b12x/sequence/kda_prefill/reference.py",
+        "tests/sequence/test_kda_prefill.py",
+        "tests/sequence/test_kda_prefill_two_checkpoints_cpu.py",
+        "tests/sequence/test_kda_prefill_two_checkpoints_gpu.py"
+      ],
+      "integrations_preserved": [
+        "Two- and four-checkpoint recurrent-state export with final running-state preservation.",
+        "Checkpoint destination, count, offset and alias validation before mutating output state.",
+        "Explicit GB10 multi-checkpoint activation and capability/query schema checks.",
+        "GPU kernel and CPU reference behavior checked against independent prefix recurrences, including frozen replay and high pool offsets."
+      ],
+      "regression_tests": [
+        "runtime/images/sparkring-r35/test_prepare_sources.py",
+        "runtime/images/sparkring-r35/test_capability_evidence.py"
+      ],
+      "component_regression_tests": [
+        "tests/sequence/test_kda_prefill.py",
+        "tests/sequence/test_kda_prefill_two_checkpoints_cpu.py",
+        "tests/sequence/test_kda_prefill_two_checkpoints_gpu.py"
+      ],
+      "upstream_status": "not_assessed"
+    }
+  }
+}

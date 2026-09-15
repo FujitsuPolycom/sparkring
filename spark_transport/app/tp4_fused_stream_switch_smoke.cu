@@ -1,3 +1,6 @@
+// Verify completion of four writes on alternating nonblocking CUDA streams.
+// Host event synchronization retires each write before submitting the next;
+// this does not test overlapping streams or a fused transport operation.
 #include <cuda_runtime.h>
 #include <cstdint>
 

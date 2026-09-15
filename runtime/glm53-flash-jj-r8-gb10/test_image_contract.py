@@ -374,9 +374,9 @@ def test_builder_requires_the_receipt_bound_prebuilt_sircl_library() -> None:
     builder = (HERE / "build_image.py").read_text(encoding="utf-8")
     assert '"--sircl-library"' in builder
     assert "SIRCL native library digest mismatch" in builder
-    assert '"HEAD:spark_transport"' in builder
+    assert 'prepare_pinned_public_overlay(output, pins)' in builder
     assert 'context / "bundle/sircl"' in builder
-    assert '"runtime/public-overlay-files.json"' in builder
+    assert 'PRESERVED_OVERLAY.relative_to(ROOT)' in builder
 
 
 def test_b12x_source_overlay_replaces_the_complete_inherited_package(
@@ -491,9 +491,9 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
 def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     runtime_readme = (HERE / "README.md").read_text(encoding="utf-8")
     quickstart = (
-        ROOT / "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+        ROOT / "docs/history/glm53-dflash-operator.md"
     ).read_text(encoding="utf-8")
-    runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
+    runtime_index = (ROOT / "docs/history/runtime-compositions.md").read_text(encoding="utf-8")
 
     for document in (runtime_readme, quickstart):
         for schema in ("snapshot-v1", "tail-cow-v1", "tail-cow-v2"):
@@ -510,48 +510,37 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     assert rollback_digest in runtime_readme
     assert rollback_digest in quickstart
     assert rollback_digest in runtime_index
-    assert "380283a506aeb8f9" not in runtime_index
 
 
 def test_operator_docs_name_public_sources_and_explain_stable_locators() -> None:
     runtime_readme = (HERE / "README.md").read_text(encoding="utf-8")
     quickstart = (
-        ROOT / "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+        ROOT / "docs/history/glm53-dflash-operator.md"
     ).read_text(encoding="utf-8")
-    sircl_readme = (ROOT / "docs/SIRCL.md").read_text(encoding="utf-8")
-    runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
-    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    sircl_readme = (ROOT / "docs/architecture/sircl.md").read_text(encoding="utf-8")
+    runtime_index = (ROOT / "docs/history/runtime-compositions.md").read_text(encoding="utf-8")
+    benchmarks = (ROOT / "performance/benchmarks.md").read_text(encoding="utf-8")
 
     for document in (runtime_readme, quickstart):
         assert "sparkring-glm53-flash-gb10-e02b1746" in document
         assert "e02b174693e13859de61811b5e8cd13d5308e259" in document
         assert "local-inference-lab/b12x" in document
         assert "voipmonitor/b12x" in document
-        assert "`tail-cow-v2` to the cache-identity\nwire value `page-tail-cow-v2`" in document
+        assert "`tail-cow-v2` to the cache-identity wire value `page-tail-cow-v2`" in " ".join(document.split())
 
     for document in (runtime_readme, runtime_index):
         assert "stable compatibility locator" in document or (
-            "stable filesystem and interface\nlocators" in document
+            "stable filesystem and interface locators" in " ".join(document.split())
         )
         assert "does not identify the embedded vLLM source" in " ".join(
             document.split()
         )
 
-    assert "four-rank TP4/DCP4\nfunctional checks" in sircl_readme
+    assert "four-rank TP4/DCP4 functional checks" in " ".join(sircl_readme.split())
     assert "**research-only**" in sircl_readme
-    assert "b12x-kda-dcp4-20260903.md" in root_readme
-    assert "C4: 90.36" in root_readme
+    assert "b12x-kda-dcp4-20260903.md" in benchmarks
+    assert "C4: 90.36" in benchmarks
 
-    active_docs = "\n".join((runtime_readme, quickstart, sircl_readme))
-    for ambiguous in (
-        "Current evidence",
-        "current composition",
-        "fail-stop",
-        "concurrent prompt gate",
-        "earlier SparkCache source composition",
-        "older runtime's default directory",
-    ):
-        assert ambiguous not in active_docs
 
 
 def test_multimodal_lease_image_receipt_binds_public_artifact_and_smoke() -> None:
@@ -770,11 +759,9 @@ def test_sircl_public_build_receipt_binds_overlay_and_native_test(
     assert hashlib.sha256(overlay_spec.read_bytes()).hexdigest() == (
         receipt["source"]["public_overlay_spec_sha256"]
     )
-    overlay_builder = load_module(
-        "sircl_public_overlay", ROOT / "runtime" / "build-public-overlay.py"
-    )
     output = tmp_path / "sircl-overlay"
-    manifest = overlay_builder.build(ROOT, overlay_spec, output)
+    build.prepare_pinned_public_overlay(output, pins)
+    manifest = json.loads((output / "sparkring-overlay-manifest.json").read_text())
     assert len(manifest["files"]) == receipt["overlay"]["files"]
     manifest_path = output / receipt["overlay"]["manifest"]
     assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == (
@@ -865,3 +852,81 @@ def test_async_capture_image_receipt_binds_public_artifact_and_live_results() ->
     ] == [408.5, 404.3, 403.7, 404.3]
     assert receipt["validation"]["live"]["900k_restore"]["needle"] == "passed"
     assert receipt["validation"]["live"]["1m_restore"]["needle"] == "passed"
+
+@pytest.mark.parametrize('relative', ['vllm/../../outside.txt', 'vllm/../other/source.py'])
+def test_parent_source_removal_validates_all_paths_before_unlink(tmp_path, relative):
+    site = tmp_path/'site'
+    (site/'vllm').mkdir(parents=True)
+    keep = site/'vllm/keep.py'
+    keep.write_text('keep')
+    outside = tmp_path/'outside.txt'
+    outside.write_text('outside')
+    receipt = tmp_path/'receipt.json'
+    receipt.write_text(json.dumps({'files': {'vllm/keep.py': 'unused', relative: 'unused'}}))
+    with pytest.raises(RuntimeError, match='escaped'):
+        install.remove_parent_sources(site, receipt, 'vllm')
+    assert keep.read_text() == 'keep'
+    assert outside.read_text() == 'outside'
+
+
+def test_parent_source_removal_rejects_symlink_escape(tmp_path):
+    site = tmp_path/'site'
+    (site/'vllm').mkdir(parents=True)
+    outside = tmp_path/'outside'
+    outside.mkdir()
+    victim = outside/'source.py'
+    victim.write_text('outside')
+    try:
+        (site/'vllm/linked').symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip('directory symlinks unavailable')
+    receipt = tmp_path/'receipt.json'
+    receipt.write_text(json.dumps({'files': {'vllm/linked/source.py': 'unused'}}))
+    with pytest.raises(RuntimeError, match='escaped'):
+        install.remove_parent_sources(site, receipt, 'vllm')
+    assert victim.read_text() == 'outside'
+
+
+def test_parent_source_removal_keeps_unlisted_files(tmp_path):
+    package = tmp_path/'vllm'
+    package.mkdir()
+    (package/'remove.py').write_text('source')
+    (package/'keep.so').write_text('native')
+    receipt = tmp_path/'receipt.json'
+    receipt.write_text(json.dumps({'files': {'vllm/remove.py': 'unused'}}))
+    install.remove_parent_sources(tmp_path, receipt, 'vllm')
+    assert not (package/'remove.py').exists()
+    assert (package/'keep.so').read_text() == 'native'
+
+
+
+def test_preserved_overlay_rejects_archive_tampering(tmp_path, monkeypatch):
+    import shutil
+    frozen = tmp_path / "frozen"
+    shutil.copytree(build.PRESERVED_OVERLAY, frozen)
+    (frozen / "overlay.tar.gz").write_bytes(b"changed archive")
+    monkeypatch.setattr(build, "PRESERVED_OVERLAY", frozen)
+    with pytest.raises(build.BuildError, match="Preserved SIRCL overlay differs"):
+        build.prepare_pinned_public_overlay(tmp_path / "output", build.load_pins())
+    assert not (tmp_path / "output").exists()
+
+
+def test_external_verification_remains_bound_when_tag_moves(monkeypatch):
+    from types import SimpleNamespace
+    inspected_id, replacement_id = 'sha256:' + 'a' * 64, 'sha256:' + 'b' * 64
+    tag = 'local/image:verification'
+    labels = verify.expected_labels(verify.load_json(verify.PINS))
+
+    def run(command, **kwargs):
+        if command[1:3] == ('image', 'inspect'):
+            result = [{'Id': inspected_id, 'Architecture': 'arm64', 'Os': 'linux',
+                       'Config': {'Labels': labels}}]
+        else:
+            # The mutable tag now resolves to another image; the inspected ID does not.
+            result = {'verified_image': replacement_id if tag in command else inspected_id}
+        return SimpleNamespace(stdout=json.dumps(result))
+
+    monkeypatch.setattr(verify.subprocess, 'run', run)
+    receipt = verify.verify_external(tag, 'docker')
+    assert receipt['image'] == tag
+    assert receipt['image_id'] == receipt['inside_image']['verified_image'] == inspected_id

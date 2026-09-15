@@ -1,0 +1,59 @@
+{
+  "schema": "sparkring-candidate-source-composition/v1",
+  "composition_id": "lil-r37-glm-spark",
+  "components": {
+    "vllm": {
+      "base_commit": "c687594b8a8082e18af9fe2f64eb5f9ee442e251",
+      "base_tree": "3fb88fdfd0b5acdd4460076c6443a4299e5edf7d",
+      "tree": "8e0bb7da60e882c095385222d5878981a2666b60",
+      "patch_sha256": "ce8fe827732c0aa9c093ba335aceeff477583079164eb98da22357ee4d9bc9aa",
+      "archive": "vllm-8e0bb7da60e882c095385222d5878981a2666b60.tar.gz",
+      "archive_sha256": "35c7fba9383e44e6d1be51ae1b9bc19a466972d48b3b9cf148f468d89c07fd8d",
+      "patch": "vllm-sparkring.patch",
+      "native_comparison": {
+        "reference": "3d4284deab93cbdba8fab097c7f4f1321a547dc1",
+        "paths": [
+          "csrc",
+          "cmake",
+          "CMakeLists.txt",
+          "requirements",
+          "pyproject.toml",
+          "setup.py",
+          "rust",
+          "rust-toolchain.toml",
+          "build_rust.sh",
+          "MANIFEST.in"
+        ],
+        "unchanged": true,
+        "compared_tree": "8e0bb7da60e882c095385222d5878981a2666b60"
+      },
+      "qualification": "Source packaging only; runtime verification and serving qualification required."
+    },
+    "b12x": {
+      "base_commit": "f1c4e9dd5b1d841c10cda70ee49c3190cf3db0be",
+      "base_tree": "480ea232d52fff4271b0412470d4ec340196735a",
+      "tree": "bd931d9e6b22ae21b92af0ab66ac45281658bf2c",
+      "patch_sha256": "9ee042ba1173ba7a49cd204411e233d76edf24e5c7cf6289843cf3c3e1ada854",
+      "archive": "b12x-bd931d9e6b22ae21b92af0ab66ac45281658bf2c.tar.gz",
+      "archive_sha256": "c116aa19bc0de89407465fe57379569a8d96947c35363fa002ab3fb1f7024057",
+      "patch": "b12x-sparkring.patch",
+      "native_comparison": {
+        "reference": "22de5a1a9f10b698428d9e22abc9b9d217b84152",
+        "paths": [
+          "pyproject.toml"
+        ],
+        "unchanged": true,
+        "compared_tree": "bd931d9e6b22ae21b92af0ab66ac45281658bf2c"
+      },
+      "qualification": "Source packaging only; runtime verification and serving qualification required."
+    }
+  },
+  "scope": "Pinned source assembly. B12X Python-defined JIT kernels require fresh GPU tests.",
+  "repositories": {
+    "vllm": "https://github.com/local-inference-lab/vllm.git",
+    "b12x": "https://github.com/local-inference-lab/b12x.git"
+  },
+  "parent_image": "ghcr.io/fujitsupolycom/sparkring@sha256:3eb8138453e5cc5ce1f436caf232e03b84e23e094a49e376428d1ebfe26c4742",
+  "parent_image_id": "sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b",
+  "parent_installed_sha256": "132c33d4e82d2b1c78d63e0cbd8f545f68936723b375f0bb7f1652ed5959243b"
+}

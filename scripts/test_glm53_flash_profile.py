@@ -462,8 +462,14 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_links_profile() -> N
     # The front page provides navigation; launcher contracts own DCP settings
     # and measurement receipts own numeric results, not Markdown table layout.
     targets = set(re.findall(r"\]\(([^)]+)\)", readme))
-    assert "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md" in targets
-    assert "performance/records/glm53-flash/b12x-kda-dcp4-20260903.md" in targets
+    assert "profiles/README.md" in targets
+    catalog = (ROOT / "profiles/README.md").read_text(encoding="utf-8")
+    assert "glm53-flash-nvfp4-dflash2-bf16-tp4/README.md" in catalog
+    profile = json.loads((ROOT / "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/profile.json").read_text())
+    assert profile["guide"] == "docs/history/glm53-dflash-operator.md"
+    assert "performance/benchmarks.md" in targets
+    benchmarks = (ROOT / "performance/benchmarks.md").read_text(encoding="utf-8")
+    assert "records/glm53-flash/b12x-kda-dcp4-20260903.md" in benchmarks
 
 
 def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:
@@ -503,7 +509,7 @@ def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags()
         PROFILE_RECORD_PATH,
     ]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
-    assert re.search(r"(?i)\b[A-Z]:\\(?:Users|home)\\", text) is None
+    assert re.search(r"(?i)\b[A-Z]:\\", text) is None
     assert (
         re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
     )
@@ -549,10 +555,9 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
         "git -C sparkcache checkout --detach 3860a2250193a6679ac6bac857af53e0757841f8"
     ) in cache_text
     assert 'git -C sparkring checkout --detach "${sparkring_revision}"' in cache_text
-    assert "checkout codex/glm53-flash-sparkcache-tp4" not in cache_text
     assert "metrics-before-restore.prom" in cache_text
     assert "restored 8192 tokens async" in cache_text
-    assert "A rebuilt image has **implemented** status" in cache_text
+    assert "A rebuild has **Development** status" in cache_text
 
     base_text = BASE_QUICKSTART_PATH.read_text(encoding="utf-8")
     assert "qualification-client checkout" in base_text

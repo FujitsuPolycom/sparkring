@@ -37,7 +37,7 @@ def test_dcp4_default_summary_binds_runtime_and_results() -> None:
 def test_dcp4_default_public_record_is_sanitized() -> None:
     text = RECORD.read_text(encoding="utf-8") + SUMMARY.read_text(encoding="utf-8")
 
-    assert re.search(r"(?i)\b[A-Z]:\\", text) is None
+    assert re.search(r"(?i)\b[A-Z]:[\\/]", text) is None
     assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
-    assert "DESKTOP-" not in text
+    assert "desktop-" not in text.casefold()
     assert "api_key" not in text.casefold()

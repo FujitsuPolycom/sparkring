@@ -37,7 +37,7 @@ def sample_cluster(tmp_path: pathlib.Path) -> pathlib.Path:
     text = """\
 schema_version: 1
 cluster:
-  name: glm53-flash-four-rank-cycle
+  name: deepseek-v4-flash-four-rank-cycle
   description: offline test inventory for the cycle controller
 topology:
   mtu: 9000
@@ -196,6 +196,8 @@ class FakeSSH:
             return subprocess.CompletedProcess(["ssh"], 0, "", "")
 
         monkeypatch.setattr(ctl, "_run_ssh", fake_run)
+        # Fake launches update state synchronously; polling needs no wall-clock delay.
+        monkeypatch.setattr(ctl.time, "sleep", lambda _seconds: None)
 
 
 def _start_order(calls):
@@ -325,7 +327,7 @@ def test_status_reports_up_and_api(monkeypatch, fake_ranks, capsys):
     ssh.api_ready = True
     rc = ctl.status_ranks(fake_ranks, "deepseek-v4-flash-r", 8888)
     out = capsys.readouterr().out
-    assert rc == 0
+    assert rc == 1
     assert "rank0" in out and "UP" in out
     assert "rank1" in out and "down" in out
     assert "200 OK" in out
@@ -348,8 +350,39 @@ def test_main_missing_cluster(tmp_path):
     assert rc == 2
 
 
+def test_status_cli_uses_api_key_file(monkeypatch, sample_cluster):
+    """Authenticated status uses the same remote credential path as start."""
+    monkeypatch.setattr(ctl, "_container_running", lambda *_args: True)
+    probes = []
+
+    def ready(target, port, api_key_file=None):
+        probes.append((port, api_key_file))
+        return api_key_file == "/run/secrets/serving-api-key"
+
+    monkeypatch.setattr(ctl, "_head_api_ready", ready)
+    assert ctl.main([
+        "status", "--cluster", str(sample_cluster), "--repo", "/srv/sparkring",
+        "--api-key-file", "/run/secrets/serving-api-key",
+    ]) == 0
+    assert probes == [(8000, "/run/secrets/serving-api-key")]
+
+
+def test_failed_ssh_submission_checks_current_rank_ownership(monkeypatch, fake_ranks):
+    """A lost SSH acknowledgement does not prove the current launch did nothing."""
+    monkeypatch.setattr(ctl, "_container_running", lambda *_args: False)
+    monkeypatch.setattr(ctl, "_run_ssh", lambda *_args, **_kwargs:
+                        subprocess.CompletedProcess(["ssh"], 255, "", "connection lost"))
+    rollback = []
+    monkeypatch.setattr(ctl, "_rollback_started", lambda ranks, prefix, token:
+                        rollback.append([rank.id for rank in ranks]))
+    assert ctl.start_ranks(fake_ranks, "/srv/sparkring", "deepseek-v4-flash-r", "/tmp") == 1
+    assert rollback == [[1]]
+
+
 def test_main_loads_cluster_and_runs_status(monkeypatch, sample_cluster,
                                             capsys):
+    targets = {rank.ssh_target: rank.id for rank in ctl.load_cluster(sample_cluster).ranks}
+    monkeypatch.setitem(globals(), "_rank_of", lambda target: targets[target])
     ssh = FakeSSH(monkeypatch)
     ssh.containers_up = {0: True, 1: True, 2: True, 3: True}
     ssh.api_ready = True
@@ -386,3 +419,61 @@ def test_docker_failure_is_not_an_absent_container(monkeypatch):
     monkeypatch.setattr(ctl, "_run_ssh", lambda *a, **kw: subprocess.CompletedProcess([], 1, "", "daemon unavailable"))
     with pytest.raises(ctl.SSHTransportError):
         ctl._container_running("fixture-host", "model-r0")
+
+
+def test_stop_is_idempotent_when_all_containers_are_absent(monkeypatch, fake_ranks):
+    ssh = FakeSSH(monkeypatch)
+    for _ in range(2):
+        assert ctl.stop_ranks(fake_ranks, "deepseek-v4-flash-r") == 0
+        assert not any(ssh.containers_up.values())
+    assert len([c for c in ssh.calls if "docker ps" in c]) == 8
+    assert not _start_order(ssh.calls)
+
+
+@pytest.mark.parametrize("owner,removed", [("owned", True), ("foreign", False), ("<no value>", False)])
+def test_rollback_checks_ownership_then_removes_immutable_id(owner, removed):
+    import os
+    shell = "bash" if os.name != "nt" else "C:/Program Files/Git/bin/bash.exe"
+    identifier = "a" * 64
+    stub = f"""docker() {{
+    if [ "$1" = inspect ]; then printf '%s\\n' '{identifier} {owner}'; return 0; fi
+    [ "$1" = rm ] && [ "$2" = -f ] && [ "$3" = '{identifier}' ] || return 99
+    printf 'REMOVED\\n'
+}}
+"""
+    result = subprocess.run([shell, "-c", stub + ctl._rollback_command("stopped-model", "owned")], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert ("REMOVED" in result.stdout) is removed
+
+
+def test_custom_prefix_is_forwarded_with_unique_launch_owner(monkeypatch, fake_ranks):
+    commands = []
+    monkeypatch.setattr(ctl, "_container_running", lambda *args: bool(commands))
+    monkeypatch.setattr(ctl.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(ctl, "_run_ssh", lambda target, command, **kwargs:
+                        commands.append(command) or subprocess.CompletedProcess([], 0))
+    assert ctl.start_ranks(fake_ranks, "/repo", "custom-r", "/tmp", wait_api_minutes=0) == 0
+    assert "SPARKRING_CONTAINER_PREFIX=custom-r" in commands[0]
+    assert "SPARKRING_LAUNCH_ID=" in commands[0]
+
+
+def test_timeout_is_an_unknown_remote_state(monkeypatch):
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired("fixture", 1)
+    monkeypatch.setattr(ctl.subprocess, "run", timeout)
+    with pytest.raises(ctl.SSHTransportError):
+        ctl._run_ssh("fixture", "unused")
+
+
+def test_non_four_rank_inventory_rejected_before_remote_work(monkeypatch, sample_cluster):
+    monkeypatch.setattr(ctl, "load_cluster", lambda *_: SimpleNamespace(ranks=[SimpleNamespace(id=i) for i in range(6)]))
+    monkeypatch.setattr(ctl, "_run_ssh", lambda *a, **kw: pytest.fail("remote work forbidden"))
+    assert ctl.main(["start", "--cluster", str(sample_cluster), "--repo", "/repo"]) == 2
+
+
+@pytest.mark.parametrize("missing_rank,expected", [(None, 0), (2, 1)])
+def test_status_requires_every_worker_even_when_head_api_is_healthy(monkeypatch, fake_ranks, missing_rank, expected):
+    missing_target = next((rank.ssh_target for rank in fake_ranks if rank.id == missing_rank), None)
+    monkeypatch.setattr(ctl, "_container_running", lambda target, name: target != missing_target)
+    monkeypatch.setattr(ctl, "_head_api_ready", lambda *args: True)
+    assert ctl.status_ranks(fake_ranks, "deepseek-v4-flash-r", 8000) == expected

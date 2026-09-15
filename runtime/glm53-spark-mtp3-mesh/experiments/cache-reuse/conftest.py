@@ -1,11 +1,17 @@
-"""Make source-extracted tests self-contained using an attested temporary composition."""
+"""Compose manifest-verified Python fixtures for the CPU test session.
+
+Exports MTP3 source paths and restores prior environment values at teardown.
+The experiment import directory supports the tests' bare helper imports.
+"""
 import os
 from pathlib import Path
 import sys
 import tempfile
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+_ADDED_IMPORT_PATH = str(HERE) not in sys.path
+if _ADDED_IMPORT_PATH:
+    sys.path.insert(0, str(HERE))
 import compose  # noqa: E402
 
 
@@ -30,3 +36,5 @@ def pytest_unconfigure(config):
     temporary = getattr(config, '_mtp3_cache_reuse_temporary', None)
     if temporary:
         temporary.cleanup()
+    if _ADDED_IMPORT_PATH and str(HERE) in sys.path:
+        sys.path.remove(str(HERE))

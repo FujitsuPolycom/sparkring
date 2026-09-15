@@ -1,5 +1,7 @@
 """Contract tests for the shared SparkRing diagnostic receipt."""
 
+import pytest
+
 from scripts.sparkring_diagnostics import (
     SCHEMA,
     CheckStatus,
@@ -21,14 +23,15 @@ def check(status: CheckStatus) -> DiagnosticCheck:
     )
 
 
-def test_receipt_passes_only_when_every_check_passes():
+@pytest.mark.parametrize("nonpassing", [CheckStatus.FAIL, CheckStatus.UNKNOWN, CheckStatus.SKIPPED])
+def test_receipt_passes_only_when_every_check_passes(nonpassing):
     passed = build_receipt(
         [check(CheckStatus.PASS)],
         generated_at="2026-08-24T00:00:00Z",
         source="test",
     )
     unknown = build_receipt(
-        [check(CheckStatus.PASS), check(CheckStatus.UNKNOWN)],
+        [check(CheckStatus.PASS), check(nonpassing)],
         generated_at="2026-08-24T00:00:00Z",
         source="test",
     )
@@ -42,7 +45,7 @@ def test_receipt_passes_only_when_every_check_passes():
         "skipped": 0,
     }
     assert unknown["passed"] is False
-    assert unknown["totals"]["unknown"] == 1
+    assert unknown["totals"][nonpassing.value] == 1
 
 
 def test_empty_receipt_is_not_positive_evidence():

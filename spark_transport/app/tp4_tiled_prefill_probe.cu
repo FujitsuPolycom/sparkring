@@ -1,6 +1,8 @@
 // Research-only standalone native qualification probe for tiled TP4 prefill.
 // This binary is not linked by the production C ABI or the vLLM adapter.
 
+#include "probe_options.hpp"
+
 #include "spark_transport/control_channel.hpp"
 #include "spark_transport/memory_buffer.hpp"
 #include "spark_transport/statistics.hpp"
@@ -48,7 +50,7 @@ constexpr std::uint16_t kTiledEndpointTag = 0x5449;  // "TI"
 constexpr std::uint32_t kTiledGeometryMagic = 0x54494c45;  // "TILE"
 constexpr std::uint16_t kTiledGeometryVersion = 1;
 constexpr std::string_view kReceiptSchema =
-    "sparkring-tp4-tiled-prefill-probe/v1";
+    "sparkring-tp4-tiled-prefill-probe/v2";
 constexpr std::string_view kReceiptPrefix = "TP4_TILED_PREFILL_RECEIPT";
 
 enum class TimingMode { kIsolated, kSteady, kCorrectness, kPoison };
@@ -120,25 +122,10 @@ static_assert(std::is_trivially_copyable_v<TiledGeometryInfo>);
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed{};
-  const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return parsed;
-}
+using spark_transport::probe::unsigned_value;
 
 int signed_value(const char* value, const char* name) {
-  std::size_t consumed{};
-  const std::string text(value);
-  const auto parsed = std::stoll(text, &consumed);
-  if (consumed != text.size() || parsed < std::numeric_limits<int>::min() ||
-      parsed > std::numeric_limits<int>::max()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return static_cast<int>(parsed);
+  return std::string_view(value) == "-1" ? -1 : unsigned_value<int>(value, name);
 }
 
 TimingMode parse_timing_mode(std::string_view value) {
@@ -188,9 +175,9 @@ Options parse_options(int argc, char** argv) {
       return argv[index];
     };
     if (argument == "--rank") {
-      options.rank = static_cast<std::uint32_t>(unsigned_value(take_value(), "rank"));
+      options.rank = unsigned_value<std::uint32_t>(take_value(), "rank");
     } else if (argument == "--world-size") {
-      options.world_size = static_cast<std::uint32_t>(unsigned_value(take_value(), "world size"));
+      options.world_size = unsigned_value<std::uint32_t>(take_value(), "world size");
     } else if (argument == "--peer0") {
       options.peer0 = take_value();
     } else if (argument == "--peer1") {
@@ -200,26 +187,25 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--device1") {
       options.device1 = take_value();
     } else if (argument == "--gid0") {
-      options.gid0 = static_cast<std::uint8_t>(unsigned_value(take_value(), "gid0"));
+      options.gid0 = unsigned_value<std::uint8_t>(take_value(), "gid0");
     } else if (argument == "--gid1") {
-      options.gid1 = static_cast<std::uint8_t>(unsigned_value(take_value(), "gid1"));
+      options.gid1 = unsigned_value<std::uint8_t>(take_value(), "gid1");
     } else if (argument == "--control-port0") {
-      options.control_port0 = static_cast<std::uint16_t>(unsigned_value(take_value(), "control port0"));
+      options.control_port0 = unsigned_value<std::uint16_t>(take_value(), "control port0");
     } else if (argument == "--control-port1") {
-      options.control_port1 = static_cast<std::uint16_t>(unsigned_value(take_value(), "control port1"));
+      options.control_port1 = unsigned_value<std::uint16_t>(take_value(), "control port1");
     } else if (argument == "--arm-id") {
       options.arm_id = take_value();
     } else if (argument == "--query-rows") {
-      options.query_rows = static_cast<std::uint32_t>(unsigned_value(take_value(), "query rows"));
+      options.query_rows = unsigned_value<std::uint32_t>(take_value(), "query rows");
     } else if (argument == "--elements-per-row") {
-      options.elements_per_row = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "elements per row"));
+      options.elements_per_row = unsigned_value<std::uint32_t>(take_value(), "elements per row");
     } else if (argument == "--timing-mode") {
       options.timing_mode = parse_timing_mode(take_value());
     } else if (argument == "--warmup-operations") {
-      options.warmup_operations = static_cast<std::uint32_t>(unsigned_value(take_value(), "warmup operations"));
+      options.warmup_operations = unsigned_value<std::uint32_t>(take_value(), "warmup operations");
     } else if (argument == "--measured-operations") {
-      options.measured_operations = static_cast<std::uint32_t>(unsigned_value(take_value(), "measured operations"));
+      options.measured_operations = unsigned_value<std::uint32_t>(take_value(), "measured operations");
     } else if (argument == "--guard-bytes") {
       options.guard_bytes = unsigned_value(take_value(), "guard bytes");
     } else if (argument == "--credit-delay-edge") {
@@ -235,9 +221,9 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--expected-payload-tile-bytes") {
       options.expected_payload_tile_bytes = unsigned_value(take_value(), "tile bytes");
     } else if (argument == "--expected-slots-per-edge") {
-      options.expected_slots_per_edge = static_cast<std::uint32_t>(unsigned_value(take_value(), "slots"));
+      options.expected_slots_per_edge = unsigned_value<std::uint32_t>(take_value(), "slots");
     } else if (argument == "--expected-lanes-per-edge") {
-      options.expected_lanes_per_edge = static_cast<std::uint32_t>(unsigned_value(take_value(), "lanes"));
+      options.expected_lanes_per_edge = unsigned_value<std::uint32_t>(take_value(), "lanes");
     } else if (argument == "--expected-registered-tile-storage-bytes-per-edge") {
       options.expected_registered_bytes_per_edge = unsigned_value(take_value(), "registered bytes");
     } else if (argument == "--submit-cpu" ||
@@ -598,7 +584,7 @@ class VerbsTiledEdgePort final : public research::TiledEdgePort {
   }
 
   std::uint64_t* word(std::uint64_t offset) const {
-    if (offset + sizeof(std::uint64_t) > arena_.size()) {
+    if (offset > arena_.size() || arena_.size() - offset < sizeof(std::uint64_t)) {
       throw std::out_of_range("tiled edge control offset exceeds arena");
     }
     return reinterpret_cast<std::uint64_t*>(
@@ -622,19 +608,22 @@ std::string json_string(std::string_view value) {
   std::ostringstream stream;
   stream << '"';
   for (char character : value) {
-    if (character == '"' || character == '\\') stream << '\\';
-    stream << character;
+    const auto byte = static_cast<unsigned char>(character);
+    if (byte < 0x20) {
+      stream << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+             << static_cast<unsigned>(byte) << std::dec;
+    } else {
+      if (character == '"' || character == '\\') stream << '\\';
+      stream << character;
+    }
   }
   stream << '"';
   return stream.str();
 }
 
-double positive_or_epsilon(double value) {
-  return value > 0.0 ? value : 0.001;
-}
-
 std::string make_receipt(
-    const Options& options, const research::TiledCorrectnessReceipt& correctness,
+    const Options& options, const spark_transport::Tp4TiledPoolLayout& layout,
+    const research::TiledCorrectnessReceipt& correctness,
     const research::TiledExecutorStatus& status, bool passed, int exit_code,
     std::uint64_t completed_operations, std::uint64_t tiles_acquired,
     std::uint64_t tiles_recycled, std::uint64_t highest_ordinal,
@@ -651,16 +640,16 @@ std::string make_receipt(
       options.poison == PoisonInjection::kNone
           ? options.measured_operations
           : std::max<std::uint64_t>(completed_operations, 1U);
-  const double per_operation = positive_or_epsilon(
-      elapsed_us / timing_operations);
-  const double p50 = summary == nullptr ? per_operation : positive_or_epsilon(summary->p50_us);
-  const double p95 = summary == nullptr ? per_operation : positive_or_epsilon(summary->p95_us);
-  const double minimum = summary == nullptr ? per_operation : positive_or_epsilon(summary->minimum_us);
-  const double gib = static_cast<double>(operation.active_bytes) /
-                     (1024.0 * 1024.0 * 1024.0);
-  const double bandwidth = positive_or_epsilon(gib / (p50 * 1.0e-6));
-  const double steady_bandwidth =
-      positive_or_epsilon(gib / (per_operation * 1.0e-6));
+  // Operation samples span host advance/drain calls. The measured window also
+  // includes per-operation correctness checks when that arm enables them.
+  // Neither clock measures device readiness, credit waits, or launch overhead.
+  const double per_operation = elapsed_us / timing_operations;
+  const double p50 = summary == nullptr ? per_operation : summary->p50_us;
+  const double p95 = summary == nullptr ? per_operation : summary->p95_us;
+  const double minimum = summary == nullptr ? per_operation : summary->minimum_us;
+  // The executor exposes aggregate retirement, not independent edge watermarks.
+  // A drained operation proves both edges retired; poison does not.
+  const std::string retired = passed ? std::to_string(highest_ordinal) : "null";
   std::ostringstream out;
   out << std::setprecision(12) << '{'
       << "\"schema\":" << json_string(options.receipt_schema)
@@ -673,10 +662,11 @@ std::string make_receipt(
       << ",\"active_bytes\":" << operation.active_bytes
       << ",\"logical_tile_count\":" << operation.tile_count
       << ",\"tail_active_bytes\":" << tail.active_bytes
-      << ",\"payload_tile_bytes\":524288,\"slots_per_edge\":8"
-      << ",\"lanes_per_edge\":2"
+      << ",\"payload_tile_bytes\":" << layout.tile_payload_bytes
+      << ",\"slots_per_edge\":" << layout.slots_per_edge
+      << ",\"lanes_per_edge\":" << layout.lanes_per_edge
       << ",\"registered_tile_storage_bytes_per_edge\":"
-      << options.expected_registered_bytes_per_edge
+      << layout.total_bytes
       << ",\"descriptor_storage_included\":false"
       << ",\"guard_bytes\":" << options.guard_bytes
       << ",\"warmup_operations\":" << options.warmup_operations
@@ -698,8 +688,8 @@ std::string make_receipt(
       << ",\"tiles_acquired\":" << tiles_acquired
       << ",\"tiles_recycled\":" << tiles_recycled
       << ",\"highest_issued_ordinal\":" << highest_ordinal
-      << ",\"highest_retired_ordinal_edge0\":" << highest_ordinal
-      << ",\"highest_retired_ordinal_edge1\":" << highest_ordinal
+      << ",\"highest_retired_ordinal_edge0\":" << retired
+      << ",\"highest_retired_ordinal_edge1\":" << retired
       << ",\"teardown_state\":" << json_string(passed ? "drained" : "fatal_poisoned")
       << ",\"teardown_pending_tiles\":" << correctness.teardown_pending_tiles
       << ",\"teardown_pending_operations\":" << correctness.teardown_pending_operations
@@ -717,22 +707,13 @@ std::string make_receipt(
       << ",\"slot_credit_wait_events\":" << credit_wait_events
       << ",\"output_ready_before_final_retirement_count\":"
       << status.output_ready_before_final_retirement_count
-      << ",\"host_submit_us_per_operation\":" << per_operation
-      << ",\"device_output_ready_us_min\":" << minimum
-      << ",\"device_output_ready_us_p50\":" << p50
-      << ",\"device_output_ready_us_p95\":" << p95
-      << ",\"device_fully_retired_us_p50\":" << p50
-      << ",\"device_fully_retired_us_p95\":" << p95
-      << ",\"steady_state_device_us_per_operation\":" << per_operation
-      << ",\"active_payload_gib_per_s_p50\":" << bandwidth
-      << ",\"steady_state_active_payload_gib_per_s\":" << steady_bandwidth
-      << ",\"slot_credit_wait_us_p50\":" << positive_or_epsilon(options.credit_delay_us)
-      << ",\"slot_credit_wait_us_p95\":" << positive_or_epsilon(options.credit_delay_us)
-      << ",\"stage_phase1_gpu_us_p50\":0"
-      << ",\"phase1_remote_wait_us_p50\":0"
-      << ",\"reduce_phase1_gpu_us_p50\":0"
-      << ",\"phase2_remote_wait_us_p50\":0"
-      << ",\"reduce_phase2_gpu_us_p50\":0}"
+      << ",\"timing_clock\":\"host_steady_clock\""
+      << ",\"host_operation_us_min\":" << (passed ? std::to_string(minimum) : "null")
+      << ",\"host_operation_us_p50\":" << (passed ? std::to_string(p50) : "null")
+      << ",\"host_operation_us_p95\":" << (passed ? std::to_string(p95) : "null")
+      << ",\"host_measured_window_us_per_operation\":" << (passed ? std::to_string(per_operation) : "null")
+      << ",\"device_timing_measured\":false"
+      << ",\"slot_credit_wait_timing_measured\":false}"
       ;
   return out.str();
 }
@@ -756,6 +737,14 @@ int main(int argc, char** argv) {
       throw std::runtime_error("qualification geometry does not match native layout");
     }
 
+    const auto geometry = research::oracle_payload_geometry(
+        options.query_rows, options.elements_per_row);
+    if (options.guard_bytes > (std::numeric_limits<std::size_t>::max() - geometry.capacity_bytes) / 2U) {
+      throw std::invalid_argument("guard bytes overflow the bounded payload allocation");
+    }
+    const std::uint64_t allocation_bytes =
+        geometry.capacity_bytes + 2U * options.guard_bytes;
+
     auto arena0 = spark_transport::MemoryBuffer::allocate(
         spark_transport::MemoryKind::kCudaMapped, layout.total_bytes);
     auto arena1 = spark_transport::MemoryBuffer::allocate(
@@ -773,10 +762,6 @@ int main(int argc, char** argv) {
     exchange_and_connect(channel1, endpoint1, options, plan1, storage,
                          layout, operation);
 
-    const auto geometry = research::oracle_payload_geometry(
-        options.query_rows, options.elements_per_row);
-    const std::uint64_t allocation_bytes =
-        geometry.capacity_bytes + 2U * options.guard_bytes;
     std::uint8_t* guarded_input{};
     std::uint8_t* guarded_output{};
     research::TiledCorrectnessReceipt* device_correctness{};
@@ -850,6 +835,9 @@ int main(int argc, char** argv) {
         (void)executor.advance();
       }
       final_status = executor.status();
+      if (!final_status.poisoned) {
+        throw std::runtime_error("injected credit fault did not poison tiled executor");
+      }
       research::TiledCorrectnessReceipt correctness{};
       check_cuda(cudaStreamSynchronize(stream),
                  "synchronize poison correctness state");
@@ -859,7 +847,7 @@ int main(int argc, char** argv) {
           final_status.tile_count - final_status.retired_tiles;
       correctness.teardown_pending_operations = 1;
       std::cout << options.receipt_prefix << ' '
-                << make_receipt(options, correctness, final_status, false,
+                << make_receipt(options, layout, correctness, final_status, false,
                                 kPoisonExitCode, 0, final_status.acquired_tiles,
                                 final_status.retired_tiles,
                                 final_status.highest_issued_ordinal,
@@ -971,7 +959,7 @@ int main(int argc, char** argv) {
     const double elapsed =
         measured_stop - (measured_start == 0 ? all_start : measured_start);
     std::cout << options.receipt_prefix << ' '
-              << make_receipt(options, correctness, final_status, true, 0,
+              << make_receipt(options, layout, correctness, final_status, true, 0,
                               completed_operations, tiles_acquired,
                               tiles_recycled,
                               total_operations * operation.tile_count - 1U,

@@ -1,31 +1,24 @@
 #!/usr/bin/env python3
-"""SparkRing site configuration: loader and fail-closed validator.
+"""Load and validate SparkRing deployment-site configuration.
 
-A "site" is one supported ring: the ranks, the 200GbE cables that join them,
-the control-channel rendezvous addresses, the pinned runtime, and the paths
-and artifacts every rank must agree on. ``scripts/config/site.yaml``
-(copied from ``exl3-r7-site.example.yaml``) is the single source of truth for the
-public tooling; ``scripts/preflight.py`` is driven entirely by it.
+A site combines a four- or six-rank direct-cable ring inventory with runtime,
+serving, cache-path and artifact requirements. Each edge has its own /24 and
+exactly two endpoints; all edges must form one connected cycle. Validation
+checks the declared structure, not physical cabling or serving qualification.
+Pair serving uses its dedicated profile configuration.
 
-Design rules:
+Unknown keys, missing values, invalid identities and inconsistent topology
+raise SiteConfigError naming the field. IPv4 addresses/subnets normalize
+surrounding whitespace; pinned hashes and revisions must match exactly.
+PyYAML is required for YAML.
+Example: scripts/config/exl3-r7-site.example.yaml.
 
-* **Fail closed.**  Anything unrecognised, missing, out of range, or internally
-  inconsistent raises :class:`SiteConfigError` naming the exact field.  There is
-  no "best effort" mode and no silent defaulting of anything that describes
-  hardware.
-* **No third-party dependencies** beyond PyYAML.  If PyYAML is missing the
-  error says so plainly instead of surfacing as an ImportError traceback.
-* **Structure, not just types.** The ring edges must form one closed cycle
-  through all configured ranks, each edge must be claimed exactly once by
-  each of its two endpoints, and every address must live in its own edge's /24.
-  A mis-cabled or half-edited config fails here rather than at collective init.
+From the repository root::
 
-Usage::
+    python scripts/sparkring_site.py scripts/config/site.yaml --json
 
-    python scripts/sparkring_site.py scripts/config/exl3-r7-site.example.yaml
-    python -m sparkring_site scripts/config/site.yaml --json
-
-Exit status is 0 when the file validates, 1 when it does not.
+Exit status is 0 when validation succeeds, or 1 for invalid configuration.
+With --strict-placeholders, unresolved example values also produce status 1.
 """
 
 from __future__ import annotations
@@ -79,9 +72,9 @@ CONTIGUOUS_BLOCK_COUNT_RANGE = (1, 1 << 20)
 MTP_MODES = ("off", "static", "adaptive")
 
 # --------------------------------------------------------------------------
-# Character classes.  Every value that is later interpolated into a remote
-# shell command is restricted here, so command construction in preflight.py
-# cannot be turned into injection by an edited config.
+# Character classes for command-facing identifiers and paths. Consumers must
+# still quote shell arguments; descriptive text is not constrained by these
+# patterns and must not be interpolated as shell syntax.
 # --------------------------------------------------------------------------
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -261,7 +254,7 @@ def _sha256(data: Mapping[str, Any], where: str, key: str) -> str:
             f"expected a 64-character sha256 hex string, "
             f"got {type(raw).__name__}",
         )
-    if not _SHA256_RE.match(raw):
+    if not _SHA256_RE.fullmatch(raw):
         raise SiteConfigError(
             f"{where}.{key}",
             f"must be exactly 64 lowercase hex characters, got {raw!r}",
@@ -593,8 +586,8 @@ class SiteConfig:
     def placeholder_warnings(self) -> list[str]:
         """Fields that still look like the shipped example, not a real site.
 
-        These never fail validation - the example file has to validate - but
-        preflight surfaces them so a half-filled config is obvious.
+        Structural validation accepts these values. The CLI's
+        --strict-placeholders option turns reported placeholders into failure.
         """
         warnings: list[str] = []
         for rank in self.ranks:
@@ -855,8 +848,8 @@ def _require_single_cycle(
             "topology.edges",
             f"edges do not form a single closed ring through all {len(rank_ids)} ranks; "
             f"walking from rank {start} visited {visited} using "
-            f"{sorted(used)}. Check the endpoint pairs - a ring is "
-            "each rank must have exactly two neighbours in one connected cycle.",
+            f"{sorted(used)}. Check the endpoint pairs: every rank must "
+            "have exactly two neighbours in one connected cycle.",
         )
 
 
@@ -1164,10 +1157,12 @@ def _cross_validate(topology: Topology, ranks: Sequence[Rank]) -> None:
             )
         targets[rank.ssh_target] = rank.id
 
-    # 7. control-channel peers must be exactly the ring neighbours
+    # Control peers name ring neighbours. Reject contradictory known ownership;
+    # additional routable addresses require live preflight, not this inventory.
     mgmt_owner = {
         str(rank.management.address): rank.id for rank in ranks
     }
+    fabric_owner = {str(port.address): rank.id for rank in ranks for port in rank.ring_ports}
     for rank in ranks:
         neighbours = set(rank.neighbour_ranks)
         declared = {peer.rank for peer in rank.transport_peers}
@@ -1200,6 +1195,13 @@ def _cross_validate(topology: Topology, ranks: Sequence[Rank]) -> None:
                     "table like this points the control channel at the wrong "
                     "node",
                 )
+            owner = fabric_owner.get(key)
+            if owner is not None and owner != peer.rank:
+                raise SiteConfigError(
+                    f"{peer_where}.address",
+                    f"{key} is a ring address of rank {owner}, but this peer "
+                    f"entry names rank {peer.rank}",
+                )
 
 
 def _validate_runtime(raw: Any) -> Runtime:
@@ -1214,7 +1216,7 @@ def _validate_runtime(raw: Any) -> Runtime:
         "container image reference",
     )
     digest = data["container_image_digest"]
-    if not isinstance(digest, str) or not _DIGEST_RE.match(digest):
+    if not isinstance(digest, str) or not _DIGEST_RE.fullmatch(digest):
         raise SiteConfigError(
             "runtime.container_image_digest",
             "must be 'sha256:' followed by exactly 64 lowercase hex "
@@ -1225,7 +1227,7 @@ def _validate_runtime(raw: Any) -> Runtime:
     )
     model_repo = _string(data, "runtime", "model_repo")
     revision = data["model_revision"]
-    if not isinstance(revision, str) or not _REVISION_RE.match(revision):
+    if not isinstance(revision, str) or not _REVISION_RE.fullmatch(revision):
         raise SiteConfigError(
             "runtime.model_revision",
             "must be an immutable 40-character lowercase hex revision "
@@ -1537,7 +1539,37 @@ def parse_site_yaml(text: str, source: str | None = None) -> SiteConfig:
             f"(import failed with: {_YAML_IMPORT_ERROR})",
         )
     try:
-        document = _yaml.safe_load(text)
+        loader = _yaml.SafeLoader(text)
+        try:
+            root = loader.get_single_node()
+            visited = set()
+
+            def check_keys(node):
+                if node is None or id(node) in visited:
+                    return
+                visited.add(id(node))
+                if isinstance(node, _yaml.MappingNode):
+                    keys = set()
+                    for key, value in node.value:
+                        if isinstance(key, _yaml.ScalarNode):
+                            identity = (key.tag, key.value)
+                            if identity in keys:
+                                raise ValueError(
+                                    f"duplicate YAML key at line {key.start_mark.line + 1}"
+                                )
+                            keys.add(identity)
+                        check_keys(key)
+                        check_keys(value)
+                elif isinstance(node, _yaml.SequenceNode):
+                    for item in node.value:
+                        check_keys(item)
+
+            # Check explicit entries before SafeLoader expands merge keys.
+            # Inherited defaults may still be overridden by one explicit key.
+            check_keys(root)
+            document = None if root is None else loader.construct_document(root)
+        finally:
+            loader.dispose()
     except Exception as exc:  # yaml.YAMLError and friends
         raise SiteConfigError(
             source or "<yaml>", f"could not parse YAML: {exc}"
@@ -1611,7 +1643,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             for warning in warnings:
                 print(f"  [WARN] {warning}")
         print("")
-        print(f"OK: {args.site} is a valid SparkRing site configuration")
+        if not (warnings and args.strict_placeholders):
+            print(f"OK: {args.site} is a valid SparkRing site configuration")
 
     if warnings and args.strict_placeholders:
         print(

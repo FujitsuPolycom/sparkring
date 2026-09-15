@@ -1,31 +1,11 @@
 #!/usr/bin/env python3
 """SparkRing public preflight: a read-only cluster checker.
 
-Everything this tool knows about your cluster comes from the site
-configuration (``scripts/config/site.yaml``, see
-``exl3-r7-site.example.yaml``). It
-opens one ssh session per rank, runs a single read-only probe script, and
-turns the result into a table of pass/fail checks plus a machine-readable
-evidence file.
-
-Why it is worth running before every launch
--------------------------------------------
-The expensive failures on a small multi-node ring are almost never dramatic.
-They are a NIC that quietly stopped holding its address after a reboot, a
-cable that trained down to half speed, a GID table that shifted after a driver
-upgrade, one rank still running last week's binary, or a jumbo path that
-silently fragments.  Each of those surfaces hours later as an opaque hang.
-Every check below turns one of those into an immediate, attributable failure
-with a stable check id.
-
-Read-only by construction
--------------------------
-This tool never mutates remote state.  It does not start, stop, pull or remove
-containers, does not change interfaces or routes, and writes nothing on the
-nodes.  Every command is passed through :func:`assert_read_only` before it can
-reach ssh, so a future edit that introduces a mutating command fails loudly in
-this process instead of quietly on the cluster.  The only thing written
-anywhere is the local evidence JSON.
+Configuration comes from the site YAML; see
+``scripts/config/exl3-r7-site.example.yaml``. One SSH probe per rank checks
+host, fabric, image and artifact state. Results are printed and optionally
+saved as local JSON. The command guard detects common mutating commands;
+it is a development check, not a shell sandbox.
 
 Usage::
 
@@ -424,7 +404,11 @@ def build_probe_script(
             lines.append(f'echo "ART {index} $_h $_p $_x"')
 
         if site.preflight.required_free_ports:
-            lines.append("ss -ltnH 2>/dev/null | sed 's/^/SSROW /'")
+            lines.append(
+                "if _ss=$(ss -ltnH 2>/dev/null); then "
+                "printf '%s\\n' \"$_ss\" | sed 's/^/SSROW /'; "
+                "echo 'SS_STATUS ok'; else echo 'SS_STATUS failed'; fi"
+            )
 
         for index, (_label, path, _minimum) in enumerate(
             site.paths.remote_space_targets()
@@ -488,6 +472,8 @@ class ProbeState:
     peers: dict[int, str] = field(default_factory=dict)
     artifacts: dict[int, dict[str, str]] = field(default_factory=dict)
     listening_ports: set[int] = field(default_factory=set)
+    socket_snapshot_ok: bool = False
+    socket_rows_valid: bool = True
     directories: dict[int, str] = field(default_factory=dict)
     available_kib: dict[int, int] = field(default_factory=dict)
     memory_page_size: int | None = None
@@ -558,10 +544,16 @@ def parse_probe_output(text: str) -> ProbeState:
                 "presence": tokens[3],
                 "mode": tokens[4],
             }
-        elif key == "SSROW" and len(tokens) >= 5:
-            port = _port_of(tokens[4])
-            if port is not None:
+        elif key == "SS_STATUS":
+            state.socket_snapshot_ok = tokens == ["SS_STATUS", "ok"]
+        elif key == "SSROW":
+            if len(tokens) == 1:
+                continue
+            port = _port_of(tokens[4]) if len(tokens) >= 6 else None
+            if port is not None and 1 <= port <= 65535 and tokens[1] == "LISTEN":
                 state.listening_ports.add(port)
+            else:
+                state.socket_rows_valid = False
         elif key == "DIR" and len(tokens) >= 3:
             state.directories[int(tokens[1])] = tokens[2]
         elif key == "DFPATH" and len(tokens) >= 2:
@@ -769,10 +761,12 @@ def evaluate_rank(
             )
 
     for port_number in site.preflight.required_free_ports:
-        free = port_number not in state.listening_ports
+        snapshot_ok = state.socket_snapshot_ok and state.socket_rows_valid
+        free = snapshot_ok and port_number not in state.listening_ports
         record(
             "PORT.FREE", f"tcp/{port_number}", free,
-            "no listener" if free
+            "socket snapshot unavailable or malformed" if not snapshot_ok
+            else "no listener" if free
             else "a process is already listening on this port",
         )
 

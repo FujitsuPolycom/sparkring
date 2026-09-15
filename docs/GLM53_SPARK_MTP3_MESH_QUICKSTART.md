@@ -1,4 +1,11 @@
-# Run GLM-5.3 Flash Spark with native MTP3 and hardware-forwarded mesh
+# Run GLM-5.3 Flash Spark with MTP3 and hardware-forwarded mesh
+
+This guide reproduces the retained `glm53-spark-mtp3-managed-mesh-tp4` recipe
+with the `sparkring-glm53-sparkcache` image pinned below, DCP4, and a 40 GiB
+SparkCache ceiling. For deployment with the shared-image MTP3 profile, use the
+[maintained TP4 guide](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md),
+which defaults to DCP1 and offers optional SparkCache. Its host setup links
+here only for the hardware-forwarding instructions.
 
 Status: **research-only** profile with **implemented** source packaging and
 managed host services. The published image passed the native, GPU stream,
@@ -8,10 +15,10 @@ That record defines the qualified conditions; in-flight collective failure
 containment and unattended availability are not established.
 
 **Starting with four stock Sparks and no image?** Follow
-[the managed-mesh prerequisite section](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh)
+[the managed-mesh prerequisite section](operations/prerequisites.md#four-spark-managed-hardware-forwarded-mesh)
 first. It reuses the shared blank-cluster bootstrap and adds the secondary
 data interfaces, GID/MTU checks, and driver configuration required below.
-Return here to pull the published image and deploy the model.
+Return here only when reproducing the retained image and settings described above.
 
 **Preparing hosts that have already run GPU workloads?** Consider a reboot
 before installation and the first model start, after stopping active workloads.
@@ -36,8 +43,6 @@ The packaged RoCEnante runtime orders shared staging buffers across streams
 and preserves its one-stream-per-CUDA-capture guard. CPU regressions and
 four-rank GPU tests cover alternating streams, misaligned buffers,
 changed-input graph replay, and second-stream capture rejection.
-The [proposal-head throughput record](../performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
-reports observations, not a general performance guarantee.
 
 ## Attribution and design origins
 
@@ -47,50 +52,22 @@ including PR author `original-el8`, for the communication implementation in
 [B12X #295](https://github.com/local-inference-lab/b12x/pull/295) and its
 [vLLM integration in #597](https://github.com/local-inference-lab/vllm/pull/597).
 
-Those PRs motivated SparkRing's investigation of hardware-forwarded paths
-between opposite ranks on a four-node ring. SparkRing adapts the donor
-communication package to those paths and combines it with SIRCL routing and
-managed deployment. It does not claim to originate RoCEnante or install both
-complete PRs unchanged. The [vendored-source provenance](../third_party/b12x_roce/README.md)
+SparkRing adapts that communication package to hardware-forwarded paths
+between opposite ranks and combines it with SIRCL routing and managed
+deployment. The [vendored-source provenance](../third_party/b12x_roce/README.md)
 identifies the included code and retained license.
 
-The proposal-head and metadata implementation is derived from
-[Local Inference Lab vLLM revision `3512b066`](https://github.com/local-inference-lab/vllm/commit/3512b066e7796128c0c380ccc558182960f2f0ea),
-as retained in
-[revision `a8c796f3`](https://github.com/local-inference-lab/vllm/commit/a8c796f3af74106b2d8d441e9ec54588936a5388).
-The compute source uses Local Inference Lab B12X
-[revision `ef308bac`](https://github.com/local-inference-lab/b12x/commit/ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301)
-for shared native MoE scale storage, with three source-checked selector files
-from [PR 316](https://github.com/local-inference-lab/b12x/pull/316). The vLLM
-composition also includes deferred-weight ownership from `17e341b9` and
-independent draft/rejection randomness from
-[PR 653](https://github.com/local-inference-lab/vllm/pull/653). Exact source and
-file identities are in the compute source lock.
+The proposal-head, metadata and compute changes derive from Local Inference
+Lab's vLLM and B12X work. The [compute source composition](../runtime/glm53-spark-mtp3-mesh/compute/README.md)
+records contributor revisions, feature provenance and exact source identities.
 
 ## Recorded benchmark observations
 
-The [compute matrices](../performance/records/glm53-flash/spark-mtp3-compute-matrices-20260905.md)
-compare proposal-head, loader/RNG, scale-sharing, and selector configurations
-at C1/C2/C4/C8/C12/C16. They include averages across 8K/32K/64K context rows
-and source-hashed individual cells. Their compute images and transport bundle
-are identified separately from the combined image requiring qualification.
-
-See the [consolidated validation report](../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
-for completed checks, repeat counts, and the remaining test plan.
-
-The [profile results table](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
-shows the completed three-run C1/C2/C4/C8 screen. At 8K, aggregate decode means
-were **51.6, 76.9, 120.8, and 168.8 tok/s**. Against two shared-BF16-head
-controls using the same CUDA version, B12X kernels, metadata reuse, and dense-kernel
-integration, C1 improved **8.22% raw** and
-**4.90% in normalized sequence steps/s**. Higher concurrency was mixed and
-prefill means were flat within 0.36% over 8K–128K. The linked record provides
-the receipt hashes, exact settings, and limitations.
-
-A separate [Estonia long-context accuracy benchmark](../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
-completed **30/30 correct answers at C8** on one repeated 133,208-token prompt,
-with no output-budget hits. The records include both operator screenshots,
-numeric results, and distinct throughput definitions.
+The [profile results](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
+collect throughput and long-context accuracy measurements, their image and
+workload conditions, and limitations. The
+[validation report](../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
+records completed checks and remaining qualification gates.
 
 ## Preparation order and command locations
 
@@ -107,10 +84,9 @@ test -f runtime/glm53-spark-mtp3-mesh/managed_install.py
 ```
 
 Use the same reviewed Git revision on the management host and all four
-Sparks; keep it alongside the image receipt. If the profile is supplied in a
-draft PR rather than merged `main`, check out that PR's exact commit before
-continuing. A checkout that lacks `managed_install.py` cannot follow this
-guide. Do not substitute files from a private experiment directory.
+Sparks; keep it alongside the image receipt. The checkout must contain the
+source inputs required by that receipt and `managed_install.py`. Do not
+substitute files from a private experiment directory.
 Keep `set -euo pipefail` enabled in each shell running the following command
 blocks so a failed identity check prevents subsequent steps.
 
@@ -148,9 +124,10 @@ those private inputs or an executable host installer.
   configured 40 GiB persistent cache per rank and JIT/build cache headroom.
   Image export can require another tens-of-GiB archive. Confirm free disk
   and memory instead of deleting another workload's artifacts.
-- A trusted management network. This profile serves port 8015 without an API
-  key; restrict access to intended clients. Adding API authentication requires
-  a reviewed profile extension, not an untracked edit to a rendered rank file.
+- A trusted management network. Restrict port 8015 to intended clients.
+  API authentication is implemented through the optional `api_keys_file` site
+  field in [site configuration](#describe-and-render-the-site). Omitting it
+  leaves the API unauthenticated. Key changes require container recreation.
 - An operator-approved maintenance window for host networking and model
   startup. Preserve host routes, neighbor entries, traffic-control rules,
   qdiscs, MTUs, and process ownership before making changes.
@@ -318,8 +295,6 @@ The required source-bound child image uses temperature one with thinking
 disabled, selected by `SPARKRING_WARMUP_TEMPERATURE=1`. Its verified receipt
 must attest both the sampling warmup helper and the managed marker source.
 The parent image alone does not provide this managed quickstart contract.
-This addresses the greedy-only warmup gap tracked in
-[issue #214](https://github.com/FujitsuPolycom/sparkring/issues/214).
 Completed warmup establishes that its requests ran, not comprehensive
 sampling correctness or thinking-enabled generation coverage.
 
@@ -337,7 +312,7 @@ For a full MTP3 verification batch, target rows are approximately
 different shapes. A capture list is not proof that every live step replays a
 full graph.
 
-The scheduled-token budget is 8,192. Native MTP3 in the pinned runtime
+The scheduled-token budget is 8,192. MTP3 in the pinned runtime
 reserves zero extra parallel-drafting slots. This guide does not change
 the scheduler's input capacity independently of that budget.
 
@@ -506,6 +481,7 @@ Edit those private copies. At minimum, review every field below:
 | `container_prefix` | An unused prefix reserved for this deployment |
 | `state_root` | Retain the schema's planned state path; the managed service separately uses `/run/sparkring-mesh` |
 | `api_keys_file` | Optional. Absolute host path to a readable mode-0600 file of newline-separated API keys, present at the same path on every rank. The renderer sets `API_KEYS_FILE`; the launcher passes one `--api-key` option followed by all non-empty keys. Keys cannot contain whitespace. Omitting this field leaves the API unauthenticated. |
+| `target_model_variant` | Optional: `nvfp4-spark` (default) or `nvidia-nvfp4`. The [NVIDIA target guide](../profiles/glm53-nvidia-nvfp4.md) defines its model pins, loader, isolated cache namespace, image restrictions and evidence. |
 | `liveness_output_seconds` | Optional integer seconds from 1 through 2,147,483,647. Overrides the output-stall timeout on every rank; omission retains 300 seconds. Select above the longest legitimate measured output gap with margin. Requires an image containing the output-stall liveness rule; regenerate launch inputs and recreate containers after changing it |
 
 API keys are separate from the managed mesh health key. Container creation
@@ -584,8 +560,7 @@ The service installs only exact missing planned routes, neighbors, and
 hardware rules. Matching preexisting state is adopted, not owned for removal.
 It never flushes unrelated networking. The service monitors the configured
 paths and their helper processes for the lifetime of the deployment.
-The host installer copies an explicit allowlist of 16 required source files,
-not an entire checkout or user work directory. Private inputs are supplied
+The host installer copies only its [explicit source allowlist](../runtime/glm53-spark-mtp3-mesh/managed_install.py). Private inputs are supplied
 separately; do not place keys or cached results into source trees for transfer.
 
 The source ASIC changes Ethernet type `0x0800` to `0x88b5`. The intermediate
@@ -606,12 +581,30 @@ The tool requires all four containers to be running and Docker-health healthy,
 plus rank-zero API health and scheduler liveness HTTP 200. It is read-only
 and does not treat systemd active state as model readiness.
 
+Set optional authentication in the management shell. Leave `api_auth` empty
+for an API without keys. For an authenticated API, use the same private key file
+as the serving configuration; credentials are read from a file, not printed:
+
+```bash
+api_auth=()
+# When API keys are configured, uncomment and set the private path:
+# api_key_file=/path/to/private-api-keys
+if [[ -n "${api_key_file:-}" ]]; then
+  api_auth=(--api-key-file "$api_key_file")
+fi
+```
+
 With the example container prefix, inspect serving logs and endpoints:
 
 ```bash
 ssh spark-r0 'docker logs -f --tail 100 glm53-spark-mtp3-mesh-r0'
 curl --fail http://RANK0_MANAGEMENT_ADDRESS:8015/health
-curl --fail http://RANK0_MANAGEMENT_ADDRESS:8015/v1/models
+if [[ -n "${api_key_file:-}" ]]; then
+  curl --fail --header @<(awk 'NF { print "Authorization: Bearer " $0; exit }' "$api_key_file") \
+    http://RANK0_MANAGEMENT_ADDRESS:8015/v1/models
+else
+  curl --fail http://RANK0_MANAGEMENT_ADDRESS:8015/v1/models
+fi
 curl --fail http://RANK0_MANAGEMENT_ADDRESS:8016/liveness
 ```
 
@@ -702,11 +695,11 @@ mkdir -p /path/to/private-receipts
 python3 runtime/glm53-spark-mtp3-mesh/qualification/recall_prompt.py \
   --output /path/to/private-receipts/recall.txt
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind semantic --output /path/to/private-receipts/semantic-before \
   --execute-authorized
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind persistent --phase before-restart \
   --prompt-file /path/to/private-receipts/recall.txt \
   --expected-text 'cobalt orchard lantern' --max-tokens 512 --temperature 1 \
@@ -750,14 +743,14 @@ on all ranks, then run:
 
 ```bash
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind persistent --phase after-restart \
   --prompt-file /path/to/private-receipts/recall.txt \
   --expected-text 'cobalt orchard lantern' --max-tokens 512 --temperature 1 \
   --reference /path/to/private-receipts/prefix-before \
   --output /path/to/private-receipts/prefix-after --execute-authorized
 python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
-  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
+  --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark "${api_auth[@]}" \
   --kind semantic --output /path/to/private-receipts/semantic-after \
   --execute-authorized
 ```

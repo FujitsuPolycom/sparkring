@@ -30,10 +30,19 @@ class PublicationDocumentationTests(unittest.TestCase):
                 self.assertIn(f"## {heading}\n", document)
             self.assertIn("**research-only**", document)
 
-    def test_image_documentation_names_both_cache_profiles(self):
+    def test_preserved_image_documentation_names_its_dcp1_cache_profiles(self):
         document = (HERE / "README.md").read_text()
-        self.assertIn("`tp2-dcp1-sparkcache` and `tp4-dcp1-sparkcache`", document)
-        self.assertNotIn("only the canonical `tp4-dcp1-sparkcache`", document)
+        for name in ("tp2-dcp1-sparkcache", "tp4-dcp1-sparkcache"):
+            self.assertIn(f"`{name}`", document)
+
+    def test_canonical_tp4_guide_documents_dcp4_cache_alternative(self):
+        guide = HERE.parents[3] / "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md"
+        document = guide.read_text(encoding="utf-8")
+        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
+        profile = contract["profiles"]["tp4-dcp4-sparkcache"]
+        self.assertTrue(profile["sparkcache"])
+        self.assertEqual(profile["decode_context_parallel_size"], 4)
+        self.assertIn("`tp4-dcp4-sparkcache`", document)
 
 
 def load_entrypoint():
@@ -373,11 +382,20 @@ class CandidateImageContractTests(unittest.TestCase):
                     clear=True,
                 ),
                 mock.patch.object(sys, "path", [str(copied), *sys.path]),
+                mock.patch.dict(sys.modules),
             ):
                 for name in ("spark_tp4_backend", "spark_tp4_vocab_allgather_backend"):
                     sys.modules.pop(name, None)
                     module = __import__(name)
                     self.assertEqual(module._mode(), "custom")
+
+    def test_copied_adapter_import_restores_existing_module_cache(self):
+        names = ("spark_tp4_backend", "spark_tp4_vocab_allgather_backend")
+        sentinels = {name: object() for name in names}
+        with mock.patch.dict(sys.modules, sentinels):
+            self.test_copied_tp4_adapters_import_in_canonical_custom_mode()
+            for name, sentinel in sentinels.items():
+                self.assertIs(sys.modules[name], sentinel)
 
     def test_embedded_sitecustomize_loads_its_adjacent_sircl_hook(self):
         bundle_source = (

@@ -69,9 +69,6 @@ def _install_vllm(prepared: Path, site: Path, lock: dict) -> dict[str, str]:
             actual = _sha256(installed)
             if actual != base_hash:
                 raise ValueError(f"vLLM base hash mismatch for {relative}: {actual}")
-            staged = work / relative
-            staged.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(installed, staged)
         with tarfile.open(archive) as source:
             names = set(source.getnames())
             expected_names = {entry[0] for entry in entries}
@@ -84,8 +81,10 @@ def _install_vllm(prepared: Path, site: Path, lock: dict) -> dict[str, str]:
             actual = _sha256(staged)
             if actual != expected:
                 raise ValueError(f"vLLM result hash mismatch for {relative}: {actual}")
-            shutil.copyfile(staged, site / relative)
             result[relative] = actual
+        # Reject any malformed replacement before modifying installed sources.
+        for relative in result:
+            shutil.copyfile(work / relative, site / relative)
     return result
 
 

@@ -41,10 +41,13 @@ Copy `integrations/lil/site-mtp3.example.json` to `site.json` and
 `integrations/lil/fabric.example.json` to `fabric.json`. Enter your hosts,
 directories, peer addresses, and RDMA devices. The examples contain placeholders,
 not a usable cable map. Preserve the device/peer ordering from your working mesh;
-it can differ by rank. Optional NCCL and secondary-rail GID indices default to `3`.
+it can differ by rank. The MTP3 managed mesh fixes all NCCL and SIRCL GID indices
+at `3`; export rejects other values. The DFlash descriptor permits explicit
+indices, with optional NCCL and secondary-rail values defaulting to `3`.
 
 In `site.json`, `settings` overrides context, sequences, batching, KV bytes, and
-port. Use `"cache": {"enabled": false}` for vLLM caching alone. To use SparkCache,
+port. `"cache": {"enabled": false}` omits the SparkCache connector and its
+separate storage mount; vLLM's in-process prefix cache remains enabled. To use SparkCache,
 set `enabled: true`, a namespace, and `access_mode` to `read-write`, `restore-only`,
 or `store-only`. Mount source directories must exist on each host and not overlap.
 Model files must come from the pinned snapshot. See [file distribution](DISTRIBUTION.md).
@@ -98,8 +101,11 @@ This accepts a missing digest, never a conflicting one. Status, logs, and stop
 continue on reachable, verified ranks when another rank fails. An error therefore
 does not mean nothing happened; inspect the reported results before retrying.
 
-The optional DFlash7 profile uses `--descriptor integrations/lil/glm53.json` and
-`site.example.json`. The default MTP3 descriptor is `glm53-mtp3.json`.
+The optional external-draft profile uses the BF16 DFlash2 checkpoint with seven
+speculative tokens. Its stable ID is `glm53-flash-tp4-dflash7`; `dflash7` denotes
+the configured proposal depth. Select it with
+`--descriptor integrations/lil/glm53.json` and `site.example.json`.
+The default MTP3 descriptor is `glm53-mtp3.json`.
 
 ## Planned additions
 
@@ -115,7 +121,11 @@ The optional DFlash7 profile uses `--descriptor integrations/lil/glm53.json` and
 Run offline tests with `python -m pytest integrations/lil -q`.
 [Offline checks](VALIDATION.md) and [hardware results](HARDWARE_VALIDATION.md)
 describe their coverage. The hardware result covers a 12,288-token restore,
-not every context size or concurrency. `plan.py` remains a summary-only command.
+not every context size or concurrency. `plan.py` validates the descriptor and
+site inputs and prints a non-executable summary; `export.py` creates the launch bundle.
+The summary's `research-only` status applies to unresolved deployment intent,
+not to the qualification of its image. It has no resolved fabric or host checks;
+qualification remains scoped to the separate hardware record.
 
 SparkRing owns profiles, networking, caching, and support; the lil fork extension
 owns generic container operations. See [interface ownership and pins](OWNERSHIP.md).

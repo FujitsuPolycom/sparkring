@@ -35,7 +35,8 @@ def probe_readiness(launch, output_root, *, wait=None, load=None):
     if any(p.is_symlink() for p in (output_root, *output_root.parents)):
         raise ValueError("Readiness output cannot contain symlinks")
     output_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    result = wait(load(Path(launch)), 900)
+    plan = load(Path(launch))
+    result = wait(plan, plan.get("timeout_seconds", 900))
     output = output_root / ("ready-" + secrets.token_hex(16) + ".json")
     with output.open("x", encoding="utf-8") as stream:
         json.dump(result, stream, indent=2)
@@ -96,7 +97,7 @@ def verify_test_receipt(path, action):
     return {"passed": True}
 
 
-def build_runtime_plan(preparation, action):
+def build_runtime_plan(preparation, action, *, container_backend="docker"):
     """Use installed, reviewed source and artifacts; preparation and model start are separate."""
     if preparation.get("schema") != "sparkring-deploy-preparation/v1":
         raise ValueError("Expected a saved deployment preparation document")
@@ -118,6 +119,15 @@ def build_runtime_plan(preparation, action):
     )
     config = "/etc/sparkring/managed-mesh/service.json"
     public = selection(spec, PROFILE)
+    if container_backend not in ("docker", "compose") or (action != "create" and container_backend != "docker"):
+        raise ValueError("Container backend selects Docker or Compose creation; managed start/stop remain unchanged")
+    cache_diagnostics = "cache_diagnostics" in spec.get("site", {})
+    if action == "create" and container_backend == "compose" and cache_diagnostics:
+        raise ValueError("Compose creation does not support cache diagnostic sites; use the retained Docker launcher")
+    structured = (public["receipt"].get("schema") in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1")
+                  and not cache_diagnostics)
+    if action == "create" and container_backend == "compose" and not structured:
+        raise ValueError("Compose creation requires an explicit R35 or candidate image receipt")
     image_id = public["config_image_id"]
     phases = []
     capabilities = preparation.get("lifecycle_capabilities", [])
@@ -201,20 +211,25 @@ def build_runtime_plan(preparation, action):
         from scripts.deploy_suite import require_verified_network
 
         require_verified_network(preparation)
+        def creation_command(host, operation):
+            if not structured:
+                return ["env", "SPARKRING_CREATE_ONLY=1", "bash", launch + "/launch-rank.sh",
+                        str(host["rank"]), launch + f"/rank{host['rank']}.env"]
+            return trusted_script(workspace, plan_digest(preparation), "runtime/common/glm_launch.py",
+                                  [operation, "--launch", launch, "--image-receipt", receipt,
+                                   "--rank", str(host["rank"]), "--backend", container_backend])
+        if structured:
+            phases.append({"id": "plan-stopped-containers", "actions": [
+                _action(host["host"], creation_command(host, "plan"), "mutates-host",
+                        {"argv": creation_command(host, "check")}, timeout=180)
+                for host in hosts]})
         phases.append(
             {
                 "id": "create-stopped-containers",
                 "actions": [
                     _action(
                         h["host"],
-                        [
-                            "env",
-                            "SPARKRING_CREATE_ONLY=1",
-                            "bash",
-                            launch + "/launch-rank.sh",
-                            str(h["rank"]),
-                            launch + f"/rank{h['rank']}.env",
-                        ],
+                        creation_command(h, "create"),
                         "mutates-host",
                         {
                             "argv": [
@@ -629,10 +644,11 @@ def main(argv=None):
         ),
     )
     parser.add_argument("--preparation", type=Path, required=True)
+    parser.add_argument("--container-backend", choices=("docker", "compose"), default="docker")
     args = parser.parse_args(argv)
     print(
         json.dumps(
-            build_runtime_plan(json.loads(args.preparation.read_text()), args.action),
+            build_runtime_plan(json.loads(args.preparation.read_text()), args.action, container_backend=args.container_backend),
             indent=2,
         )
     )

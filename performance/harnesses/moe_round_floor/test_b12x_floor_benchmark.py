@@ -71,6 +71,8 @@ class B12xFloorPlanTest(unittest.TestCase):
 
     def test_weight_size_uses_tp4_local_intermediate(self) -> None:
         sizes = synthetic_weight_bytes()
+        # FP4 packs two weights per byte. FC1 combines gate/up outputs; FC2
+        # maps the local 512-wide intermediate back to the 6144-wide hidden state.
         self.assertEqual(sizes["w1_fp4"], 256 * 1024 * 3072)
         self.assertEqual(sizes["w2_fp4"], 256 * 6144 * 256)
         self.assertEqual(sizes["total"], sum(v for k, v in sizes.items() if k != "total"))
@@ -113,3 +115,104 @@ class B12xFloorPlanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_live_source_binding_rejects_a_different_imported_tree(tmp_path, monkeypatch):
+    import pytest
+    from types import SimpleNamespace
+    from performance.harnesses.moe_round_floor import b12x_floor_benchmark as bench
+    payload = b"pinned source"
+    audited = tmp_path / "audited" / "module.py"
+    imported = tmp_path / "imported" / "module.py"
+    for path in (audited, imported):
+        path.parent.mkdir()
+        path.write_bytes(payload)
+    monkeypatch.setattr(bench, "PINNED_SOURCES", {"fixture": ("b12x/module.py", hashlib.sha256(payload).hexdigest())})
+    audit = {"fixture": {"path": str(audited)}}
+    with pytest.raises(GateError, match="Imported B12X source differs"):
+        bench.require_imported_b12x_sources(audit, importer=lambda name: SimpleNamespace(__file__=str(imported)))
+    bench.require_imported_b12x_sources(audit, importer=lambda name: SimpleNamespace(__file__=str(audited)))
+    audited.write_bytes(b"modified after audit")
+    with pytest.raises(GateError, match="Imported B12X source differs"):
+        bench.require_imported_b12x_sources(audit, importer=lambda name: SimpleNamespace(__file__=str(audited)))
+
+
+def test_indexer_correctness_gates_survive_optimized_python():
+    import ast
+    import pytest
+    source = Path(__file__).parents[1] / "indexer_barrier" / "gpu_barrier_probe.py"
+    tree = ast.parse(source.read_text())
+    main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
+    # Execute the actual final gate statements without importing CUDA dependencies.
+    gates = ast.Module(body=main.body[-3:], type_ignores=[])
+    code = compile(ast.fix_missing_locations(gates), str(source), "exec", optimize=2)
+    for original, fixed in ((0, 0), (1, 1)):
+        with pytest.raises(RuntimeError):
+            exec(code, {"results": [{"incomplete_reads": original}, {"incomplete_reads": fixed}], "print": lambda *a, **k: None})
+    exec(code, {"results": [{"incomplete_reads": 1}, {"incomplete_reads": 0}], "print": lambda *a, **k: None})
+
+
+def test_cpu_indexer_expectation_survives_optimized_python():
+    import ast
+    import pytest
+    from types import SimpleNamespace
+    source = Path(__file__).parents[1] / "indexer_barrier" / "repro_indexer_barrier.py"
+    tree = ast.parse(source.read_text())
+    main = tree.body[-1]
+    code = compile(ast.fix_missing_locations(ast.Module(body=main.body[-1:], type_ignores=[])), str(source), "exec", optimize=2)
+    with pytest.raises(RuntimeError, match="Barrier outcome differs"):
+        exec(code, {"result": {"deadlocked": False}, "args": SimpleNamespace(expect="deadlock")})
+    exec(code, {"result": {"deadlocked": True}, "args": SimpleNamespace(expect="deadlock")})
+
+
+def test_dry_run_cli_preserves_requested_seed(capsys):
+    from performance.harnesses.moe_round_floor import b12x_floor_benchmark as bench
+    assert bench.main(["--mode", "dry-run", "--seed", "42"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["seed"] == 42
+    assert report["routes"]["Q5-variable"] == deterministic_routes(5, seed=42)
+    assert report["routes"]["Q5-variable"] != deterministic_routes(5)
+
+
+def test_timing_initializes_events_and_excludes_output_validation_allocations(monkeypatch):
+    from unittest.mock import MagicMock
+    from performance.harnesses.moe_round_floor import b12x_floor_benchmark as bench
+    torch = MagicMock()
+    state = {"measuring": False, "peak": 100}
+    events = []
+
+    class Event:
+        def __init__(self, **kwargs):
+            self.records = 0
+            events.append(self)
+
+        def record(self):
+            assert self.records or not state["measuring"]
+            self.records += 1
+
+        def elapsed_time(self, other):
+            return 1.0
+
+    def begin():
+        assert all(event.records == 1 for event in events)
+        state["measuring"] = True
+
+    def validate(output):
+        state["peak"] = 999
+        return MagicMock()
+
+    torch.cuda.Event.side_effect = Event
+    torch.cuda.reset_peak_memory_stats.side_effect = begin
+    torch.cuda.memory_allocated.return_value = 100
+    torch.cuda.max_memory_allocated.side_effect = lambda: state["peak"]
+    torch.isfinite.side_effect = validate
+    monkeypatch.setattr(bench, "_make_launch", lambda *args: (lambda: None, None))
+    monkeypatch.setattr(bench, "_encoded_output", lambda *args: {})
+    result = bench._time_case(torch, None, CASES[0],
+                             {"output": MagicMock(), "implementation": "static"},
+                             warmup=1, iterations=2)
+    assert len(events) == 4
+    assert all(event.records == 2 for event in events)
+    assert state["peak"] == 999
+    assert result["allocator"]["peak_live_bytes"] == 100
+    assert result["timing"]["samples"] == 2

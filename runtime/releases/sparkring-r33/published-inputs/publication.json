@@ -1,0 +1,39 @@
+{
+  "schema": "sparkring-ghcr-publication/v1",
+  "published_tag": "ghcr.io/fujitsupolycom/sparkring:r33-arm64-c8646b0",
+  "immutable_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef",
+  "manifest_digest": "sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef",
+  "config_image_id": "sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4",
+  "platform": "linux/arm64",
+  "manifest_size": 20251,
+  "config_size": 85143,
+  "layers": 95,
+  "source_lock_sha256": "fcfefba676c79c07e45b3a67e6ac8eacbf8c5d0793707c9dd13604334515fcbf",
+  "construction_receipt_sha256": "97dd159418da08b6e5d4c05ca36a7b7b7f02e0ec8b1cbad16cc6a3db564edbd6",
+  "anonymous_verification": {
+    "account_credentials_used": false,
+    "tag_http_status": 200,
+    "digest_http_status": 200,
+    "config_http_status": 200,
+    "tag_and_digest_bytes_match": true,
+    "manifest_sha256_matches": true,
+    "config_sha256_matches": true
+  },
+  "verified_at_utc": "2026-09-11T01:00:27.668404-05:00",
+  "latest_targeted": false,
+  "model_lifecycle_changed": false,
+  "construction_receipt_path": "image/image020-construction-receipt.json",
+  "runtime_receipt_path": "public-image-receipt.json",
+  "qualification": {
+    "tp2-dcp1-sparkcache": {
+      "status": "bounded-qualified",
+      "record": "performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md",
+      "sha256": "c46e190ed171af69dddf667d69ac75714599bd86f789474e1e19d621ae1c200c"
+    },
+    "tp4-dcp1-sparkcache": {
+      "status": "bounded-qualified",
+      "record": "performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md",
+      "sha256": "65458cfa88935a3bb6255f952ace1ed3f8b50bf778b7da46a6a6e65e1c572575"
+    }
+  }
+}

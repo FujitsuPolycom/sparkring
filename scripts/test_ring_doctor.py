@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 import ipaddress
 import os
 import shlex
 import subprocess
 import tempfile
 import unittest
+import pytest
 from pathlib import Path
 
 from scripts.ring_doctor import (
@@ -249,6 +251,39 @@ class SiteConfigInputTests(unittest.TestCase):
             enforce_controller_location(loaded, allow_worker=False, identity=worker)
         self.assertEqual(
             enforce_controller_location(loaded, allow_worker=True, identity=worker),
+            "rank2",
+        )
+
+    def test_serving_master_does_not_move_fabric_controller(self) -> None:
+        loaded = _load_inputs(
+            _build_parser().parse_args(["--site", str(self.SITE)])
+        )
+        assert loaded.site is not None
+        site = dataclasses.replace(
+            loaded.site,
+            serving=dataclasses.replace(loaded.site.serving, master_rank=2),
+        )
+        loaded = dataclasses.replace(
+            loaded, site=site, rendezvous_address=site.rank(2).management.address
+        )
+        head = ControllerIdentity(
+            frozenset(), frozenset({site.rank(0).management.address})
+        )
+        serving_master = ControllerIdentity(
+            frozenset(), frozenset({site.rank(2).management.address})
+        )
+        self.assertEqual(
+            enforce_controller_location(loaded, allow_worker=False, identity=head),
+            "rank0",
+        )
+        with self.assertRaisesRegex(ValueError, "head node rank0"):
+            enforce_controller_location(
+                loaded, allow_worker=False, identity=serving_master
+            )
+        self.assertEqual(
+            enforce_controller_location(
+                loaded, allow_worker=True, identity=serving_master
+            ),
             "rank2",
         )
 
@@ -1089,14 +1124,16 @@ class LaunchEndpointTests(unittest.TestCase):
             ),
             "operator@r1": probe_output(
                 "spark-ebb8",
-                ADDRESSED_WIFI_LISTING.replace("10.0.1.10/24", "10.0.2.10/24"),
+                FABRIC_ONLY_LISTING + f"\n{WIFI} UP 192.0.2.22/24",
                 FABRIC_ROUTE,
             ),
             "operator@r2": probe_output(
                 "spark-ebee", UNADDRESSED_WIFI_LISTING, FABRIC_ROUTE
             ),
             "operator@r3": probe_output(
-                "spark-e1a4", FABRIC_ONLY_LISTING, UNREACHABLE_ROUTE
+                "spark-e1a4",
+                f"{IF0} UP 10.0.4.13/24\n{IF1} UP 10.0.3.12/24",
+                UNREACHABLE_ROUTE
             ),
         }
         runner = FakeDiscoveryRunner(outputs, set())
@@ -1116,6 +1153,11 @@ class LaunchEndpointTests(unittest.TestCase):
         )
 
         self.assertEqual(len(runner.calls), len(specs))
+        self.assertTrue(topology.valid_cycle, topology.reason)
+        addresses = [address.ip for item in observations.values()
+                     for interface in item.host_interfaces.values()
+                     for address in interface.addresses if not address.ip.is_loopback]
+        self.assertEqual(len(addresses), len(set(addresses)))
         self.assertEqual(
             observations["r0"].host_interfaces[WIFI].addresses[0],
             ipaddress.ip_interface("192.0.2.21/24"),
@@ -1183,7 +1225,7 @@ class WifiResilienceTests(unittest.TestCase):
         self.assertIn(WIFI_PROFILE_NAME, findings[0].evidence)
         self.assertIn("retries=0", findings[0].evidence)
 
-    def test_default_retry_limit_is_reported_as_four_attempts(self) -> None:
+    def test_inherited_retry_policy_does_not_invent_global_limit(self) -> None:
         findings = self.wifi_findings(
             {"r0": wifi_section(), "r1": wifi_section(retries="-1")}
         )
@@ -1196,9 +1238,7 @@ class WifiResilienceTests(unittest.TestCase):
         )
         self.assertIn(WIFI, finding.message)
         self.assertIn(WIFI_PROFILE_NAME, finding.message)
-        self.assertIn("four", finding.message)
-        self.assertIn("blocks until a NetworkManager timeout", " ".join(finding.message.split()))
-        self.assertIn("off the management network", finding.message)
+        self.assertIn("effective global retry limit was not observed", finding.message)
         self.assertIn("connection.autoconnect-retries=-1", finding.evidence)
 
     def test_finite_retry_cap_is_reported_with_its_count(self) -> None:
@@ -1237,7 +1277,7 @@ class WifiResilienceTests(unittest.TestCase):
                     (finding.severity, finding.code, finding.node),
                     ("warning", "wifi-powersave-enabled", "r0"),
                 )
-                self.assertIn("de-association", finding.message)
+                self.assertIn("does not identify the cause", finding.message)
                 self.assertIn(
                     f"802-11-wireless.powersave={value}", finding.evidence
                 )
@@ -1496,3 +1536,94 @@ class WifiDiscoveryIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_longer_route_prefix_cannot_be_hidden_by_valid_covering_route():
+    from scripts import ring_doctor as doctor
+    routes = doctor.parse_routes("10.0.0.0/16 via 10.0.1.2 dev eth0\n10.0.2.0/24 via 10.99.0.1 dev wrong")
+    assert doctor._route_covering(routes, ipaddress.ip_network("10.0.2.0/24")) == [routes[1]]
+
+
+def test_accept_after_drop_or_return_is_not_reachable():
+    for target in ("DROP", "REJECT", "RETURN", "custom-chain"):
+        assert not docker_user_accepts(("-A DOCKER-USER -j " + target,
+            "-A DOCKER-USER -i eth0 -o eth1 -j ACCEPT"), "eth0", "eth1")
+    assert docker_user_accepts(("-A DOCKER-USER -i unrelated -j DROP",
+        "-A DOCKER-USER -i eth0 -o eth1 -j ACCEPT"), "eth0", "eth1")
+
+
+@pytest.mark.parametrize("post_failure", ["application", "topology", "management"])
+def test_failed_apply_never_persists_units(monkeypatch, tmp_path, capsys, post_failure):
+    from scripts import ring_doctor as doctor
+    observations = synthetic_cycle()
+    for index, observed in enumerate(observations.values()):
+        observed.spec = dataclasses.replace(observed.spec, socket_interfaces=("mgmt0",))
+        observed.host_interfaces["mgmt0"] = InterfaceState("mgmt0", (ipaddress.ip_interface(f"192.0.2.{index+10}/24"),), "UP", 1500)
+    specs = tuple(value.spec for value in observations.values())
+    topology = infer_topology(observations)
+    plans = build_plans(observations, topology)
+    loaded = doctor.LoadedInputs(specs, FABRIC_INTERFACES, 20, None)
+    monkeypatch.setattr(doctor, "_load_inputs", lambda args: loaded)
+    monkeypatch.setattr(doctor, "enforce_controller_location", lambda *args, **kwargs: "a")
+    monkeypatch.setattr(doctor, "SshRunner", lambda **kwargs: None)
+    import copy
+    post_observations = copy.deepcopy(observations)
+    post_topology = topology
+    if post_failure == "topology":
+        post_topology = dataclasses.replace(topology, valid_cycle=False, reason="post-repair topology changed")
+    if post_failure == "management":
+        post_observations["a"].host_interfaces["mgmt0"] = InterfaceState("mgmt0", (ipaddress.ip_interface("192.0.2.99/24"),), "UP", 1500)
+    snapshots = iter([(observations, topology, plans, []), (post_observations, post_topology, plans, [])])
+    monkeypatch.setattr(doctor, "_probe_by_name", lambda *args: next(snapshots))
+    failures = (doctor.Finding("error", "apply-failed", "a", "fixture failure", "fixture"),) if post_failure == "application" else ()
+    monkeypatch.setattr(doctor, "apply_plans", lambda *args: doctor.RepairApplication(True, failures))
+    monkeypatch.setattr(doctor, "emit_units", lambda *args: (_ for _ in ()).throw(AssertionError("persisted failed repair")))
+    assert doctor.main(["--node", "operator@a", "--apply", "--emit-unit", str(tmp_path), "--json"]) == (2 if post_failure == "topology" else 1)
+    report = __import__('json').loads(capsys.readouterr().out)
+    assert report["unit_files"] == []
+    assert any(item["code"] == "unit-withheld" for item in report["findings"])
+
+
+def test_wildcard_terminal_rule_shadows_later_accept():
+    assert not docker_user_accepts(("-A DOCKER-USER -i eth+ -j DROP",
+        "-A DOCKER-USER -i eth0 -o eth1 -j ACCEPT"), "eth0", "eth1")
+
+
+def test_apply_failure_stops_before_other_nodes_are_changed():
+    from scripts import ring_doctor as doctor
+    observations = synthetic_cycle()
+    for index, observed in enumerate(observations.values()):
+        observed.spec = dataclasses.replace(observed.spec, socket_interfaces=("mgmt0",))
+        observed.host_interfaces["mgmt0"] = InterfaceState("mgmt0", (ipaddress.ip_interface(f"192.0.2.{index+10}/24"),), "UP", 1500)
+    topology = infer_topology(observations)
+    plans = build_plans(observations, topology)
+    guards, issues = build_management_guards(tuple(value.spec for value in observations.values()), observations)
+    assert not issues
+    calls = []
+    class Runner:
+        def run(self, target, command, proxy_jump=None):
+            calls.append((target, command))
+            return CommandResult(command == "sudo -n true")
+    result = doctor.apply_plans(observations, plans, guards, Runner())
+    assert result.executed and len(result.findings) == 1
+    changes = [call for call in calls if call[1] != "sudo -n true"]
+    assert len(changes) == 1 and changes[0][0] == "operator@a"
+
+
+def test_unit_program_path_quotes_spaces_and_escapes_specifiers(tmp_path):
+    from scripts import ring_doctor as doctor
+    observed = ManagementRepairSafetyTests().guarded_observation()
+    guard = ManagementGuard("r0", (observed.host_interfaces["eth0"],))
+    directory = tmp_path / "unit files %n"
+    doctor.emit_units(directory, {"r0": observed}, {"r0": NodePlan("r0")}, {"r0": guard})
+    unit = (directory / "ring-doctor-r0.service").read_text()
+    assert 'ExecStart=/usr/bin/python3 "' in unit
+    assert "unit files %%n" in unit
+
+
+@pytest.mark.parametrize("transfer", ["-g custom-chain", "--goto custom-chain", "--jump DROP"])
+def test_unknown_chain_transfer_cannot_prove_firewall_acceptance(transfer):
+    assert not docker_user_accepts((
+        "-A DOCKER-USER " + transfer,
+        "-A DOCKER-USER -i eth0 -o eth1 -j ACCEPT",
+    ), "eth0", "eth1")

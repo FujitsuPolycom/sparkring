@@ -53,6 +53,7 @@ class DualRailStripedEdgePort final : public TiledEdgePort {
       const TiledCreditObserveRequest& request,
       std::uint64_t& wire_credit) override;
 
+  // One nonblocking pass advances every exchange and the credit publication.
   DualRailDrainState drain() noexcept;
   DualRailStripedEdgeStatus status() const noexcept;
 

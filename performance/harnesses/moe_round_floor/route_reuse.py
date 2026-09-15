@@ -1,8 +1,9 @@
 """Analyze expert reuse available inside a speculative verification batch.
 
 The analyzer is deliberately GPU-free.  It consumes the compact target-route
-records described by k8_two_block_prototype/README.md and answers the first
-question that gates an expert-coherent direct-micro kernel project: do
+records emitted by target_route_capture.py, with per-layer token-major expert
+IDs, and answers the first question that gates an expert-coherent direct-micro
+kernel project: do
 candidate positions route to enough of the same experts for weight reuse to
 matter?
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import statistics
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -39,19 +41,19 @@ class LayerReuse:
 
     @property
     def schedule_compaction_factor(self) -> float:
-        """Logical expert runs removable by an expert-grouped schedule.
+        """Ratio of route-order runs to unique experts in a grouped schedule.
 
-        This is not a cache-miss or speedup estimate. The deployed direct-micro
-        kernel distributes route chunks across resident CTAs, so hardware
-        overlap and cache behavior still require GPU counters.
+        This is not a cache-miss or speedup estimate. Hardware overlap and
+        cache behavior still require GPU counters.
         """
         return self.route_order_runs / self.unique_experts
 
 
 @dataclass(frozen=True)
 class RoundReuse:
-    request_key: str
-    round: int
+    # Preserve optional source identities; only adjacency requires typed identities.
+    request_key: object
+    round: object
     layers: int
     assignments: int
     unique_expert_layer_pairs: int
@@ -86,7 +88,9 @@ def _percentile(values: Sequence[float], percentile: float) -> float:
 def _validate_expert_ids(value: object, context: str) -> list[int]:
     if not isinstance(value, list) or not value:
         raise ValueError(f"{context}: expert_ids must be a non-empty list")
-    result = [int(item) for item in value]
+    if any(type(item) is not int for item in value):
+        raise ValueError(f"{context}: expert ids must be integers")
+    result = list(value)
     if any(item < 0 for item in result):
         raise ValueError(f"{context}: expert ids must be non-negative")
     if len(set(result)) != len(result):
@@ -95,7 +99,15 @@ def _validate_expert_ids(value: object, context: str) -> list[int]:
 
 
 def iter_layers(record: dict, width: int) -> Iterator[tuple[int, list[list[int]]]]:
-    """Yield ``(layer, positions[expert_ids])`` from the canonical schema."""
+    """Yield the first ``width`` positions of each layer for prefix analysis.
+
+    Exact acceptance records must contain exactly this width: their trailing
+    positions define rejection and cannot be silently omitted.
+    """
+    if type(width) is not int or width <= 0:
+        raise ValueError("width must be a positive integer")
+    if not isinstance(record, dict):
+        raise ValueError("record must be an object")
     if record.get("schema") != SCHEMA:
         raise ValueError(f"unsupported schema: {record.get('schema')!r}")
     layers = record.get("layers")
@@ -104,7 +116,9 @@ def iter_layers(record: dict, width: int) -> Iterator[tuple[int, list[list[int]]
 
     seen_layers: set[int] = set()
     for layer_record in layers:
-        layer = int(layer_record["layer"])
+        if not isinstance(layer_record, dict) or type(layer_record.get("layer")) is not int or layer_record["layer"] < 0:
+            raise ValueError("layer must be a nonnegative integer")
+        layer = layer_record["layer"]
         if layer in seen_layers:
             raise ValueError(f"duplicate layer {layer}")
         seen_layers.add(layer)
@@ -113,6 +127,12 @@ def iter_layers(record: dict, width: int) -> Iterator[tuple[int, list[list[int]]
             count = len(positions) if isinstance(positions, list) else 0
             raise ValueError(
                 f"layer {layer}: has {count} positions, requires Q{width}"
+            )
+        if (
+            "accepted_prefix_tokens" in record or "rejected_tokens" in record
+        ) and len(positions) != width:
+            raise ValueError(
+                f"layer {layer}: exact acceptance requires exactly Q{width} positions"
             )
         yield layer, [
             _validate_expert_ids(
@@ -148,8 +168,8 @@ def analyze_round(record: dict, width: int = 5) -> tuple[RoundReuse, list[LayerR
     route_order_runs = sum(layer.route_order_runs for layer in layer_results)
     reuse_values = [layer.reuse_factor for layer in layer_results]
     summary = RoundReuse(
-        request_key=str(record.get("request_key", "")),
-        round=int(record.get("round", 0)),
+        request_key=record.get("request_key"),
+        round=record.get("round"),
         layers=len(layer_results),
         assignments=assignments,
         unique_expert_layer_pairs=unique_pairs,
@@ -160,6 +180,26 @@ def analyze_round(record: dict, width: int = 5) -> tuple[RoundReuse, list[LayerR
     return summary, layer_results
 
 
+def _json_object(pairs: list[tuple[str, object]]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object key: {key!r}")
+        result[key] = value
+    return result
+
+
+def _json_float(value: str) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("JSON numbers must be finite")
+    return result
+
+
+def _json_constant(value: str) -> object:
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
 def load_jsonl(path: str | Path) -> list[dict]:
     records: list[dict] = []
     with Path(path).open("r", encoding="utf-8") as stream:
@@ -167,8 +207,14 @@ def load_jsonl(path: str | Path) -> list[dict]:
             if not line.strip():
                 continue
             try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError as error:
+                record = json.loads(
+                    line, object_pairs_hook=_json_object,
+                    parse_float=_json_float, parse_constant=_json_constant,
+                )
+                if not isinstance(record, dict):
+                    raise ValueError("record must be an object")
+                records.append(record)
+            except ValueError as error:
                 raise ValueError(f"line {line_number}: {error}") from error
     if not records:
         raise ValueError("trace contains no records")
@@ -186,8 +232,8 @@ def classify(reuse_factor: float) -> str:
 def expert_expansion_summary(records: Iterable[dict], width: int) -> dict:
     """Summarize E(k) across every layer-round observation.
 
-    E(k) is the number of unique experts touched by positions ``1..k``
-    divided by the unique experts touched by position 1 in the same layer and
+    E(k) is the number of unique experts touched by zero-based positions ``0..k-1``
+    divided by the unique experts touched by position 0 in the same layer and
     round.
     """
 
@@ -202,8 +248,8 @@ def expert_expansion_summary(records: Iterable[dict], width: int) -> dict:
     observations = len(values_by_k[0]) if values_by_k else 0
     return {
         "definition": (
-            "E(k) = unique experts in positions 1..k divided by unique "
-            "experts in position 1, measured per layer-round observation"
+            "E(k) = unique experts in zero-based positions 0..k-1 divided by unique "
+            "experts in position 0, measured per layer-round observation; k is a count"
         ),
         "observations": observations,
         "curve": [
@@ -245,6 +291,8 @@ def _exact_acceptance_counts(
     width: int,
     record_index: int,
 ) -> tuple[int, int] | None:
+    if not isinstance(record, dict):
+        raise ValueError(f"record {record_index}: record must be an object")
     accepted_present = "accepted_prefix_tokens" in record
     rejected_present = "rejected_tokens" in record
     if not accepted_present and not rejected_present:
@@ -339,8 +387,8 @@ def rejected_route_waste_summary(records: Iterable[dict], width: int) -> dict:
             all_experts = retained_experts | rejected_experts
             rejected_only_experts = rejected_experts - retained_experts
             detail = {
-                "request_key": str(record.get("request_key", "")),
-                "round": int(record.get("round", 0)),
+                "request_key": record.get("request_key"),
+                "round": record.get("round"),
                 "layer": layer,
                 "accepted_prefix_tokens": accepted,
                 "rejected_tokens": rejected,
@@ -366,8 +414,8 @@ def rejected_route_waste_summary(records: Iterable[dict], width: int) -> dict:
         )
         round_details.append(
             {
-                "request_key": str(record.get("request_key", "")),
-                "round": int(record.get("round", 0)),
+                "request_key": record.get("request_key"),
+                "round": record.get("round"),
                 "accepted_prefix_tokens": accepted,
                 "rejected_tokens": rejected,
                 "layers": len(current_round_layers),
@@ -462,12 +510,18 @@ def adjacent_round_reuse_summary(records: Iterable[dict], width: int) -> dict:
     candidates: list[tuple[str, int, dict[int, set[int]]]] = []
     occurrence_counts: dict[tuple[str, int], int] = {}
     skipped_missing_request_key = 0
+    skipped_invalid_round_records = 0
     for record in records:
-        request_key = str(record.get("request_key", ""))
-        if not request_key:
+        if not isinstance(record, dict):
+            raise ValueError("record must be an object")
+        request_key = record.get("request_key")
+        if not isinstance(request_key, str) or not request_key.strip():
             skipped_missing_request_key += 1
             continue
-        round_index = int(record.get("round", 0))
+        round_index = record.get("round")
+        if type(round_index) is not int or round_index < 0:
+            skipped_invalid_round_records += 1
+            continue
         key = (request_key, round_index)
         occurrence_counts[key] = occurrence_counts.get(key, 0) + 1
         candidates.append(
@@ -528,11 +582,12 @@ def adjacent_round_reuse_summary(records: Iterable[dict], width: int) -> dict:
         "available": bool(round_pairs),
         "definition": (
             "observations are matching layers in rounds r and r+1 within the "
-            "same request_key; each round-layer set unions positions 1..width"
+            "same request_key; each round-layer set unions zero-based positions 0..width-1"
         ),
         "round_pairs": round_pairs,
         "layer_observations": len(jaccard_values),
         "skipped_missing_request_key": skipped_missing_request_key,
+        "skipped_invalid_round_records": skipped_invalid_round_records,
         "skipped_duplicate_round_records": skipped_duplicate_round_records,
         "skipped_layer_mismatch_pairs": skipped_layer_mismatch_pairs,
         "intersection_experts": _distribution(intersection_values),
@@ -569,9 +624,9 @@ def _without_provenance(value: object) -> object:
 def canonical_route_digest(records: Iterable[dict]) -> str:
     """Return an order-stable SHA-256 for rank comparison.
 
-    Provenance objects are excluded because their rank and environment fields
-    are expected to differ. All route, request, round, layer, position, and
-    capture metadata remains covered.
+    Entire provenance objects are excluded, including image and checkpoint
+    identities. This compares route content within an independently identified
+    capture; callers must compare provenance separately across captures.
     """
 
     canonical_records = sorted(
@@ -588,6 +643,8 @@ def canonical_route_digest(records: Iterable[dict]) -> str:
 
 def summarize(records: Iterable[dict], width: int = 5) -> dict:
     record_list = list(records)
+    if not record_list:
+        raise ValueError("trace contains no records")
     rejected_route_waste = rejected_route_waste_summary(record_list, width)
     rounds = [analyze_round(record, width)[0] for record in record_list]
     reuse = [item.aggregate_reuse_factor for item in rounds]
@@ -617,7 +674,9 @@ def summarize(records: Iterable[dict], width: int = 5) -> dict:
             ),
         },
         "decision": classify(_percentile(reuse, 0.10)),
+        "decision_basis": "Heuristic triage using p10 reuse: GO >=1.8, MEASURE >=1.3, otherwise NO-GO; these thresholds are not measured speedup guarantees.",
         "canonical_route_sha256": canonical_route_digest(record_list),
+        "canonical_route_digest_scope": "Route content only; all provenance is excluded and must be compared separately.",
         "expert_expansion": expert_expansion_summary(record_list, width),
         "adjacent_round_reuse": adjacent_round_reuse_summary(
             record_list, width

@@ -1,3 +1,4 @@
+#include "probe_options.hpp"
 #include "spark_transport/tp4_session.hpp"
 #include "spark_transport/tp4_graph_command.hpp"
 
@@ -20,6 +21,8 @@
 #include <vector>
 
 namespace {
+
+using spark_transport::probe::unsigned_value;
 
 constexpr std::size_t kElements = 6144;
 constexpr std::size_t kPayloadBytes =
@@ -105,16 +108,6 @@ struct Options {
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed{};
-  const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
-    throw std::invalid_argument(std::string("invalid ") + name);
-  }
-  return parsed;
-}
-
 double positive_double(const char* value, const char* name) {
   std::size_t consumed{};
   const std::string text(value);
@@ -139,7 +132,7 @@ Options parse_options(int argc, char** argv) {
 
     if (argument == "--rank") {
       options.transport.rank =
-          static_cast<std::uint32_t>(unsigned_value(take_value(), "rank"));
+          unsigned_value<std::uint32_t>(take_value(), "rank");
     } else if (argument == "--peer0") {
       options.transport.peer0 = take_value();
     } else if (argument == "--peer1") {
@@ -150,25 +143,22 @@ Options parse_options(int argc, char** argv) {
       options.transport.device1 = take_value();
     } else if (argument == "--gid0") {
       options.transport.gid0 =
-          static_cast<std::uint8_t>(unsigned_value(take_value(), "GID 0"));
+          unsigned_value<std::uint8_t>(take_value(), "GID 0");
     } else if (argument == "--gid1") {
       options.transport.gid1 =
-          static_cast<std::uint8_t>(unsigned_value(take_value(), "GID 1"));
+          unsigned_value<std::uint8_t>(take_value(), "GID 1");
     } else if (argument == "--control-port0") {
-      options.transport.control_port0 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 0"));
+      options.transport.control_port0 = unsigned_value<std::uint16_t>(take_value(), "control port 0");
     } else if (argument == "--control-port1") {
-      options.transport.control_port1 = static_cast<std::uint16_t>(
-          unsigned_value(take_value(), "control port 1"));
+      options.transport.control_port1 = unsigned_value<std::uint16_t>(take_value(), "control port 1");
     } else if (argument == "--warmup") {
       options.warmup =
-          static_cast<int>(unsigned_value(take_value(), "warmup count"));
+          unsigned_value<int>(take_value(), "warmup count");
     } else if (argument == "--iterations") {
       options.iterations =
-          static_cast<int>(unsigned_value(take_value(), "iteration count"));
+          unsigned_value<int>(take_value(), "iteration count");
     } else if (argument == "--operations-per-graph") {
-      options.operations_per_graph = static_cast<int>(
-          unsigned_value(take_value(), "operations per graph"));
+      options.operations_per_graph = unsigned_value<int>(take_value(), "operations per graph");
     } else if (argument == "--multi-graph-validation") {
       options.multi_graph_validation = true;
     } else if (argument == "--mixed-q-validation") {
@@ -201,17 +191,13 @@ Options parse_options(int argc, char** argv) {
       }
       options.maximum_q = static_cast<std::uint32_t>(maximum_q);
     } else if (argument == "--graph-a-operations") {
-      options.graph_a_operations = static_cast<int>(
-          unsigned_value(take_value(), "graph A operations"));
+      options.graph_a_operations = unsigned_value<int>(take_value(), "graph A operations");
     } else if (argument == "--graph-b-operations") {
-      options.graph_b_operations = static_cast<int>(
-          unsigned_value(take_value(), "graph B operations"));
+      options.graph_b_operations = unsigned_value<int>(take_value(), "graph B operations");
     } else if (argument == "--graph-submit-cpu") {
-      options.transport.graph_submit_cpu = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "graph submit CPU"));
+      options.transport.graph_submit_cpu = unsigned_value<std::uint32_t>(take_value(), "graph submit CPU");
     } else if (argument == "--graph-progress-cpu") {
-      options.transport.graph_progress_cpu = static_cast<std::uint32_t>(
-          unsigned_value(take_value(), "graph progress CPU"));
+      options.transport.graph_progress_cpu = unsigned_value<std::uint32_t>(take_value(), "graph progress CPU");
     } else if (argument == "--allreduce-protocol") {
       options.transport.protocol =
           spark_transport::parse_tp4_allreduce_protocol(take_value());
@@ -967,6 +953,8 @@ int main(int argc, char** argv) {
         device_us = device_us_p50;
         device_us_per_collective = device_us_p50;
       } else {
+        // This interval spans input preparation, graph execution and captured
+        // validation (plus submission gaps); isolated timing excludes them.
         check_cuda(cudaEventRecord(start, stream),
                    "cudaEventRecord start");
         const auto host_start = std::chrono::steady_clock::now();
@@ -1132,6 +1120,8 @@ int main(int argc, char** argv) {
       if (isolated_timing) {
         std::cout
             << " timing_scope=device_output_ready_single_replay"
+            << " device_timing_includes_input_preparation=false"
+            << " device_timing_includes_validation=false"
             << " timing_samples=" << options.iterations
             << " device_output_ready_us_per_graph_min="
             << device_us_min
@@ -1143,12 +1133,14 @@ int main(int argc, char** argv) {
                "p95_device_output_ready_us_per_graph";
       } else {
         std::cout
-            << " timing_scope=device_output_ready_replay_throughput"
-            << " device_output_ready_us_per_graph=" << device_us
-            << " device_output_ready_us_per_collective="
+            << " timing_scope=device_graph_cycle_with_preparation_and_validation"
+            << " device_timing_includes_input_preparation=true"
+            << " device_timing_includes_validation=true"
+            << " device_graph_cycle_us=" << device_us
+            << " device_graph_cycle_us_per_collective="
             << device_us_per_collective
             << " device_gate_metric="
-               "mean_device_output_ready_us_per_collective";
+               "mean_device_graph_cycle_us_per_collective";
       }
       std::cout << " published=" << status.published_sequence
                 << " consumed=" << status.consumed_sequence

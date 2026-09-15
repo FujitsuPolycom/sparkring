@@ -26,6 +26,8 @@ class ScriptedRail final : public research::TiledEdgePort {
       --exchange_backpressure;
       return research::TiledSubmitState::kBackpressured;
     }
+    if (single_slot && pending_work != 0) return research::TiledSubmitState::kBackpressured;
+    if (single_slot) pending_work = request.work_id;
     exchanges.push_back(request);
     return research::TiledSubmitState::kAccepted;
   }
@@ -37,6 +39,7 @@ class ScriptedRail final : public research::TiledEdgePort {
       --exchange_pending;
       return research::TiledPollState::kPending;
     }
+    if (single_slot) pending_work = 0;
     return research::TiledPollState::kComplete;
   }
 
@@ -81,6 +84,8 @@ class ScriptedRail final : public research::TiledEdgePort {
   std::uint32_t credit_backpressure{};
   std::uint32_t credit_pending{};
   bool fatal{};
+  bool single_slot{};
+  std::uint64_t pending_work{};
 
  private:
   std::uint32_t edge_{};
@@ -231,6 +236,36 @@ void test_wrong_logical_edge_fails_closed_before_reaching_children() {
 }  // namespace
 
 int main() {
+  {
+    ScriptedRail rail0(0, 0x1234, 0x60), rail1(0, 0x1234, 0x61);
+    rail0.single_slot = rail1.single_slot = true;
+    research::DualRailStripedEdgePort edge(0, rail0, rail1);
+    auto first = exchange_request();
+    auto second = first;
+    second.ordinal = 19;
+    second.ticket = spark_transport::tp4_tiled_ticket_from_ordinal(19, 8);
+    second.work_id = 58;
+    second.doorbell_token = 20;
+    assert(edge.try_post_exchange(first) == research::TiledSubmitState::kAccepted);
+    assert(edge.try_post_exchange(second) == research::TiledSubmitState::kBackpressured);
+    for (int attempt = 0; attempt < 4; ++attempt) edge.drain();
+    assert(edge.status().pending_exchanges == 0);
+    assert(edge.status().safe_to_release_registered_storage);
+  }
+  {
+    ScriptedRail rail0(0, 0x1234, 0x70), rail1(0, 0x1234, 0x71);
+    research::DualRailStripedEdgePort edge(0, rail0, rail1);
+    research::TiledCreditObserveRequest observe{320, 0};
+    std::uint64_t wire{};
+    rail0.peer_credits.push_back(0);
+    rail1.peer_credits.push_back(3);
+    assert(edge.poll_peer_consumed_through(observe, wire) == research::TiledCreditPollState::kNoUpdate);
+    assert(!edge.status().poisoned);
+    rail0.peer_credits.push_back(3);
+    assert(edge.poll_peer_consumed_through(observe, wire) == research::TiledCreditPollState::kUpdate);
+    assert(wire == 3);
+  }
+
   test_exchange_splits_contiguous_aligned_ranges_and_retries_once();
   test_credit_publish_and_observe_require_both_rails();
   test_drain_is_observable_and_child_failure_poison_is_permanent();

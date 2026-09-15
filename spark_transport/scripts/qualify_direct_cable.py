@@ -12,6 +12,7 @@ import argparse
 import datetime as dt
 import ipaddress
 import json
+import math
 import os
 import re
 import shlex
@@ -114,10 +115,16 @@ if not result["interface_exists"]:
 for name in ("address", "mtu", "operstate", "carrier", "speed", "duplex"):
     result[name] = read_text(base + "/" + name)
 
-device_path = os.path.realpath(base + "/device")
-driver_path = os.path.realpath(base + "/device/driver")
-result["pci_device"] = os.path.basename(device_path)
-result["driver"] = os.path.basename(driver_path)
+# A virtual interface has no device or driver link; report None rather than
+# the basename of a path that does not exist.
+result["pci_device"] = (
+    os.path.basename(os.path.realpath(base + "/device"))
+    if os.path.exists(base + "/device") else None
+)
+result["driver"] = (
+    os.path.basename(os.path.realpath(base + "/device/driver"))
+    if os.path.exists(base + "/device/driver") else None
+)
 
 stats = {}
 stats_dir = base + "/statistics"
@@ -149,7 +156,9 @@ for line in ethtool_stats["stdout"].splitlines():
 result["counters"] = stats
 
 address = run(["ip", "-j", "address", "show", "dev", iface])
-route = run(["ip", "-j", "route", "get", peer_ip])
+# Bind the lookup to the address the ping and probe traffic use as source,
+# so policy routing cannot report a path the traffic does not take.
+route = run(["ip", "-j", "route", "get", peer_ip, "from", local_ip])
 result["address_query"] = address
 result["route_query"] = route
 try:
@@ -301,11 +310,15 @@ def remote_snapshot(
             f"{completed.stderr.strip() or completed.stdout.strip()}"
         )
     try:
-        return json.loads(completed.stdout)
+        value = json.loads(completed.stdout)
     except json.JSONDecodeError as error:
         raise QualificationError(
             f"{endpoint.label} snapshot returned invalid JSON"
         ) from error
+    if not isinstance(value, dict):
+        raise QualificationError(f"{endpoint.label} snapshot must be a JSON object")
+    require_finite_json(value)
+    return value
 
 
 def gate(
@@ -326,10 +339,21 @@ def gate(
 
 
 def integer_or_none(value: Any) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, bool):
         return None
+    try:
+        converted = int(value)
+        return None if isinstance(value, float) and converted != value else converted
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def latency_or_none(value: Any) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return result if math.isfinite(result) and result >= 0 and not isinstance(value, bool) else None
 
 
 def neighbour_state_usable(value: Any) -> bool:
@@ -338,6 +362,37 @@ def neighbour_state_usable(value: Any) -> bool:
     else:
         states = {str(value or "").upper()}
     return not states.intersection({"FAILED", "INCOMPLETE"})
+
+
+MAC_ADDRESS_RE = re.compile(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}")
+
+
+def l2_peers_exact(
+    left_neighbour: dict[str, Any],
+    left_address: Any,
+    right_neighbour: dict[str, Any],
+    right_address: Any,
+) -> bool:
+    """Both neighbour tables must name the other side's real MAC address.
+
+    Missing or unreadable addresses never match: an empty address on both
+    sides is an evidence failure, not an exact peer.
+    """
+
+    def normalized(value: Any) -> str | None:
+        text = str(value or "").lower()
+        return text if MAC_ADDRESS_RE.fullmatch(text) else None
+
+    left_expected = normalized(right_address)
+    right_expected = normalized(left_address)
+    return (
+        left_expected is not None
+        and right_expected is not None
+        and normalized(left_neighbour.get("lladdr")) == left_expected
+        and normalized(right_neighbour.get("lladdr")) == right_expected
+        and neighbour_state_usable(left_neighbour.get("state"))
+        and neighbour_state_usable(right_neighbour.get("state"))
+    )
 
 
 def evaluate_snapshot(
@@ -350,6 +405,19 @@ def evaluate_snapshot(
     gid_index: int,
 ) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
+    counters = snapshot.get("counters")
+    visible = isinstance(counters, dict) and bool(counters)
+    if visible:
+        visible = all(integer_or_none(value) is not None and integer_or_none(value) >= 0
+                      for value in counters.values()) and any(
+            any(marker in name.lower() for marker in PHY_COUNTER_MARKERS) for name in counters)
+        if tier == "roce200":
+            visible = visible and snapshot.get("ethtool_stats_status", {}).get("returncode") == 0 and any(
+                name.startswith("ethtool.") and any(marker in name.lower() for marker in PHY_COUNTER_MARKERS)
+                for name in counters)
+    checks.append(gate(f"{endpoint.label}.counter_visibility", visible,
+                       {"counter_count": len(counters) if isinstance(counters, dict) else 0},
+                       domain="instrumentation"))
     checks.append(
         gate(
             f"{endpoint.label}.interface_exists",
@@ -401,11 +469,17 @@ def evaluate_snapshot(
         )
     )
     route = snapshot.get("route") or {}
+    # An explicit `ip route get ... from ...` reports `from`; an inferred
+    # source reports `prefsrc`. Reject contradictory or absent source fields.
+    route_sources = [route[key] for key in ("from", "prefsrc") if key in route]
     checks.append(
         gate(
             f"{endpoint.label}.direct_route",
             route.get("dev") == endpoint.interface
-            and route.get("prefsrc") == endpoint.ip,
+            and bool(route_sources)
+            and all(source == endpoint.ip for source in route_sources)
+            and not route.get("gateway")
+            and not route.get("via"),
             {
                 "expected_interface": endpoint.interface,
                 "expected_source": endpoint.ip,
@@ -489,7 +563,20 @@ def counter_deltas(
     for name in sorted(set(before_counters) | set(after_counters)):
         old = integer_or_none(before_counters.get(name))
         new = integer_or_none(after_counters.get(name))
-        if old is None or new is None or old == new:
+        if old is None and new is None:
+            continue
+        if new is None:
+            # A counter that vanished between snapshots is an instrumentation
+            # reset; it must not pass the reset gate silently.
+            result["reset"][name] = -old
+            continue
+        if old is None:
+            # Newly visible error telemetry has no usable baseline. Do not
+            # interpret its absolute value as a clean measured delta.
+            category = "reset" if any(marker in name.lower() for marker in PHY_COUNTER_MARKERS) else "other"
+            result[category][name] = new
+            continue
+        if old == new:
             continue
         delta = new - old
         if delta < 0:
@@ -505,6 +592,18 @@ def counter_deltas(
     return result
 
 
+def require_finite_json(value: Any) -> None:
+    """Reject nonstandard numeric values before retaining remote evidence."""
+    if isinstance(value, float) and not math.isfinite(value):
+        raise QualificationError("remote evidence contains a non-finite number")
+    if isinstance(value, dict):
+        for child in value.values():
+            require_finite_json(child)
+    elif isinstance(value, list):
+        for child in value:
+            require_finite_json(child)
+
+
 def parse_json_object(output: str, role: str | None = None) -> dict[str, Any]:
     for line in reversed(output.splitlines()):
         try:
@@ -512,38 +611,37 @@ def parse_json_object(output: str, role: str | None = None) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
         if isinstance(value, dict) and (role is None or value.get("role") == role):
+            require_finite_json(value)
             return value
     raise QualificationError("probe did not emit the expected JSON object")
 
 
+def _result_fields(output: str, prefix: str) -> dict[str, str]:
+    lines = [line for line in output.splitlines() if line.startswith(prefix + " ")]
+    if len(lines) != 1:
+        raise QualificationError(f"RDMA probe requires exactly one {prefix} line")
+    fields: dict[str, str] = {}
+    for item in lines[0].split()[1:]:
+        key, separator, value = item.partition("=")
+        if not separator or not key or not value or key in fields:
+            raise QualificationError(f"Malformed or repeated field in {prefix} line")
+        fields[key] = value
+    return fields
+
+
 def parse_result_line(output: str) -> dict[str, Any]:
-    for line in output.splitlines():
-        if not line.startswith("RESULT "):
-            continue
-        parsed: dict[str, Any] = {}
-        for item in line.split()[1:]:
-            if "=" not in item:
-                continue
-            key, value = item.split("=", 1)
-            try:
-                parsed[key] = float(value) if "." in value else int(value)
-            except ValueError:
-                parsed[key] = value
-        return parsed
-    raise QualificationError("RDMA probe did not emit a RESULT line")
+    parsed: dict[str, Any] = {}
+    for key, value in _result_fields(output, "RESULT").items():
+        try:
+            parsed[key] = float(value) if "." in value else int(value)
+        except ValueError:
+            parsed[key] = value
+    require_finite_json(parsed)
+    return parsed
 
 
 def parse_verify_line(output: str) -> dict[str, Any]:
-    for line in output.splitlines():
-        if not line.startswith("VERIFY "):
-            continue
-        parsed: dict[str, Any] = {}
-        for item in line.split()[1:]:
-            if "=" in item:
-                key, value = item.split("=", 1)
-                parsed[key] = value
-        return parsed
-    raise QualificationError("RDMA server did not emit a VERIFY line")
+    return _result_fields(output, "VERIFY")
 
 
 def remote_binary_hash(endpoint: Endpoint, binary: str) -> str | None:
@@ -599,7 +697,10 @@ def collect_process(
             stdout, stderr = process.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
-            stdout, stderr = process.communicate()
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired as cleanup_error:
+                raise QualificationError("receiver output did not close after process termination") from cleanup_error
         raise QualificationError("remote receiver exceeded timeout") from error
     return process.returncode, stdout, stderr
 
@@ -640,17 +741,49 @@ def run_raw_direction(
     ]
     if receiver.cpu is not None:
         common_receiver.extend(["--cpu", str(receiver.cpu)])
+    # The receiver's remote budget covers the sender's whole run plus its
+    # own drain, so the remote timeout cannot end the receiver first.
+    timeout = max(60, int(total * 1.1) + 30)
     receiver_process = start_remote(
-        receiver, probe_command(binary, common_receiver, use_sudo)
+        receiver,
+        probe_command(binary, common_receiver, use_sudo),
+        remote_timeout_seconds=timeout + math.ceil(startup_delay) + 30,
     )
-    time.sleep(startup_delay)
-    if receiver_process.poll() is not None:
-        code, stdout, stderr = collect_process(receiver_process, 5)
-        raise QualificationError(
-            f"raw receiver exited before sender (rc={code}): "
-            f"{stderr.strip() or stdout.strip()}"
+    try:
+        time.sleep(startup_delay)
+        if receiver_process.poll() is not None:
+            code, stdout, stderr = collect_process(receiver_process, 5)
+            raise QualificationError(
+                f"raw receiver exited before sender (rc={code}): "
+                f"{stderr.strip() or stdout.strip()}"
+            )
+        return _run_raw_sender(
+            sender, receiver, receiver_process,
+            sender_snapshot=sender_snapshot, receiver_snapshot=receiver_snapshot,
+            binary=binary, payload_bytes=payload_bytes, warmup=warmup,
+            iterations=iterations, use_sudo=use_sudo, timeout=timeout,
         )
+    finally:
+        if receiver_process.poll() is None:
+            # A sender failure must not leave the remote receiver and its
+            # local ssh process uncollected.
+            collect_process(receiver_process, timeout=15)
 
+
+def _run_raw_sender(
+    sender: Endpoint,
+    receiver: Endpoint,
+    receiver_process: subprocess.Popen[str],
+    *,
+    sender_snapshot: dict[str, Any],
+    receiver_snapshot: dict[str, Any],
+    binary: str,
+    payload_bytes: int,
+    warmup: int,
+    iterations: int,
+    use_sudo: bool,
+    timeout: int,
+) -> dict[str, Any]:
     sender_arguments = [
         "sender",
         "--interface",
@@ -675,7 +808,6 @@ def run_raw_direction(
     ]
     if sender.cpu is not None:
         sender_arguments.extend(["--cpu", str(sender.cpu)])
-    timeout = max(60, int(total * 1.1) + 30)
     sender_completed = run_remote(
         sender,
         probe_command(binary, sender_arguments, use_sudo),
@@ -729,14 +861,43 @@ def run_rdma_direction(
         "--iterations",
         str(iterations),
     ]
-    server_process = start_remote(server, [binary, *server_arguments])
-    time.sleep(startup_delay)
-    if server_process.poll() is not None:
-        code, stdout, stderr = collect_process(server_process, 5)
-        raise QualificationError(
-            f"RDMA server exited before client (rc={code}): "
-            f"{stderr.strip() or stdout.strip()}"
+    # The server's remote budget covers the client's whole run.
+    timeout = max(60, int((warmup + iterations) / 100) + 30)
+    server_process = start_remote(
+        server, [binary, *server_arguments],
+        remote_timeout_seconds=timeout + math.ceil(startup_delay) + 30
+    )
+    try:
+        time.sleep(startup_delay)
+        if server_process.poll() is not None:
+            code, stdout, stderr = collect_process(server_process, 5)
+            raise QualificationError(
+                f"RDMA server exited before client (rc={code}): "
+                f"{stderr.strip() or stdout.strip()}"
+            )
+        return _run_rdma_client(
+            client, server, server_process, binary=binary,
+            payload_bytes=payload_bytes, warmup=warmup, iterations=iterations,
+            gid_index=gid_index, port=port, timeout=timeout,
         )
+    finally:
+        if server_process.poll() is None:
+            collect_process(server_process, timeout=15)
+
+
+def _run_rdma_client(
+    client: Endpoint,
+    server: Endpoint,
+    server_process: subprocess.Popen[str],
+    *,
+    binary: str,
+    payload_bytes: int,
+    warmup: int,
+    iterations: int,
+    gid_index: int,
+    port: int,
+    timeout: int,
+) -> dict[str, Any]:
     client_arguments = [
         "--client",
         server.ip,
@@ -755,7 +916,6 @@ def run_rdma_direction(
         "--iterations",
         str(iterations),
     ]
-    timeout = max(60, int((warmup + iterations) / 100) + 30)
     client_completed = run_remote(client, [binary, *client_arguments], timeout=timeout)
     server_code, server_stdout, server_stderr = collect_process(
         server_process, timeout=15
@@ -782,15 +942,16 @@ def raw_probe_gates(
         sender = run["sender"]
         receiver = run["receiver"]
         errors = {
-            f"sender.{name}": integer_or_none(sender.get(name)) or 0
+            f"sender.{name}": integer_or_none(sender.get(name, 0))
             for name in RAW_ERROR_FIELDS
         }
         errors.update(
             {
-                f"receiver.{name}": integer_or_none(receiver.get(name)) or 0
+                f"receiver.{name}": integer_or_none(receiver.get(name, 0))
                 for name in RAW_ERROR_FIELDS
             }
         )
+        valid_error_counts = all(value is not None and value >= 0 for value in errors.values())
         integrity = (
             run["sender_returncode"] == 0
             and run["receiver_returncode"] == 0
@@ -807,14 +968,14 @@ def raw_probe_gates(
                     "receiver_returncode": run["receiver_returncode"],
                     "errors": errors,
                 },
-                domain="cable_or_phy",
+                domain="cable_or_phy" if valid_error_counts else "instrumentation",
             )
         )
-        p99 = float(sender.get("p99_us", float("inf")))
+        p99 = latency_or_none(sender.get("p99_us"))
         checks.append(
             gate(
                 f"raw.{identity}.latency",
-                p99 <= max_p99_us,
+                p99 is not None and p99 <= max_p99_us,
                 {
                     "p99_us": p99,
                     "target_us": max_p99_us,
@@ -838,11 +999,17 @@ def rdma_probe_gates(
         identity = f"{run['direction']}.{run['payload_bytes']}"
         result = run["result"]
         verify = run["verify"]
+        matching_contract = (
+            integer_or_none(result.get("samples")) == run["iterations"]
+            and integer_or_none(result.get("bytes")) == run["payload_bytes"]
+            and result.get("memory") == verify.get("memory") == "host"
+            and result.get("producer") == verify.get("verifier") == "cpu"
+        )
         integrity = (
             run["client_returncode"] == 0
             and run["server_returncode"] == 0
             and verify.get("correct") == "true"
-            and integer_or_none(result.get("samples")) == run["iterations"]
+            and matching_contract
         )
         checks.append(
             gate(
@@ -854,15 +1021,17 @@ def rdma_probe_gates(
                     "verify": verify,
                     "samples": result.get("samples"),
                     "expected_samples": run["iterations"],
+                    "bytes": result.get("bytes"),
+                    "expected_bytes": run["payload_bytes"],
                 },
-                domain="cable_or_phy",
+                domain="cable_or_phy" if matching_contract else "instrumentation",
             )
         )
-        p99 = float(result.get("p99_us", float("inf")))
+        p99 = latency_or_none(result.get("p99_us"))
         checks.append(
             gate(
                 f"rdma.{identity}.latency",
-                p99 <= max_p99_us,
+                p99 is not None and p99 <= max_p99_us,
                 {
                     "p99_us": p99,
                     "target_us": max_p99_us,
@@ -916,6 +1085,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "absolute path present on both endpoints; defaults to "
             "/tmp/spark_transport_probe or /tmp/ten_gbe_raw_bench"
+        ),
+    )
+    parser.add_argument(
+        "--probe-binary-sha256",
+        help=(
+            "expected SHA-256 of the probe binary; without it, the run only "
+            "requires both endpoints to hold identical bytes"
         ),
     )
     parser.add_argument(
@@ -984,6 +1160,57 @@ def write_result(result: dict[str, Any], output: str | None) -> None:
     print(text)
 
 
+def postflight_gates(
+    deltas: dict[str, dict[str, dict[str, int]]],
+    labels: Sequence[str],
+    probe_completed: bool,
+) -> list[dict[str, Any]]:
+    """Return counter-delta gates for both endpoints.
+
+    Counter movement is a hard cable or instrumentation verdict only when the
+    payload probe ran; without traffic the deltas are recorded as warnings so
+    a run with no probe stays incomplete instead of becoming a cable failure.
+    """
+
+    gates: list[dict[str, Any]] = []
+    for label in labels:
+        endpoint_deltas = deltas[label]
+        gates.append(
+            gate(
+                f"{label}.no_phy_error_delta",
+                not endpoint_deltas["phy"],
+                endpoint_deltas["phy"],
+                domain="cable_or_phy",
+                hard=probe_completed,
+            )
+        )
+        gates.append(
+            gate(
+                f"{label}.no_counter_reset",
+                not endpoint_deltas["reset"],
+                endpoint_deltas["reset"],
+                domain="instrumentation",
+                hard=probe_completed,
+            )
+        )
+        gates.append(
+            gate(
+                f"{label}.no_pressure_delta",
+                not endpoint_deltas["pressure"],
+                {
+                    "deltas": endpoint_deltas["pressure"],
+                    "note": (
+                        "drop/miss/overrun counters usually indicate host or ring "
+                        "pressure, not a bad cable"
+                    ),
+                },
+                domain="software_pressure",
+                hard=False,
+            )
+        )
+    return gates
+
+
 def finalize(
     result: dict[str, Any],
     gates: Sequence[dict[str, Any]],
@@ -1048,17 +1275,18 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         raise QualificationError("warmup must be nonnegative and iterations positive")
     if not 1 <= args.base_port <= 65531:
         raise QualificationError("--base-port must leave room for all probe runs")
-    if args.startup_delay < 0:
-        raise QualificationError("--startup-delay must be nonnegative")
+    if not math.isfinite(args.startup_delay) or args.startup_delay < 0:
+        raise QualificationError("--startup-delay must be finite and nonnegative")
+    if args.probe_binary_sha256 is not None:
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", args.probe_binary_sha256):
+            raise QualificationError("--probe-binary-sha256 must be 64 hex digits")
+        args.probe_binary_sha256 = args.probe_binary_sha256.lower()
     if args.tier == "roce200" and (
         not args.left_rdma_device or not args.right_rdma_device
     ):
         raise QualificationError(
             "roce200 requires --left-rdma-device and --right-rdma-device"
         )
-    if args.tier == "diagonal10" and args.use_sudo not in (True, False):
-        raise QualificationError("invalid sudo option")
-
     left = make_endpoint(
         "left",
         args.left,
@@ -1081,8 +1309,8 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     max_p99 = args.max_p99_us
     if max_p99 is None:
         max_p99 = 20.0 if args.tier == "roce200" else 30.0
-    if max_p99 <= 0:
-        raise QualificationError("--max-p99-us must be positive")
+    if not math.isfinite(max_p99) or max_p99 <= 0:
+        raise QualificationError("--max-p99-us must be finite and positive")
 
     binary = args.probe_binary or (
         "/tmp/spark_transport_probe"
@@ -1169,12 +1397,12 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     gates.append(
         gate(
             "exact_l2_peers",
-            str(left_neighbour.get("lladdr") or "").lower()
-            == str(before["right"].get("address") or "").lower()
-            and str(right_neighbour.get("lladdr") or "").lower()
-            == str(before["left"].get("address") or "").lower()
-            and neighbour_state_usable(left_neighbour.get("state"))
-            and neighbour_state_usable(right_neighbour.get("state")),
+            l2_peers_exact(
+                left_neighbour,
+                before["left"].get("address"),
+                right_neighbour,
+                before["right"].get("address"),
+            ),
             {
                 "left_expected_peer_mac": before["right"].get("address"),
                 "left_neighbour": left_neighbour,
@@ -1217,6 +1445,18 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 )
             )
             result["probe"] = {"status": "not_run_hash_mismatch"}
+        elif args.probe_binary_sha256 and hashes["left"] != args.probe_binary_sha256:
+            # Identical bytes on both endpoints do not authenticate the
+            # binary; only the operator-supplied digest does.
+            gates.append(
+                gate(
+                    "probe_binary_expected",
+                    False,
+                    {"expected": args.probe_binary_sha256, **hashes},
+                    domain="configuration",
+                )
+            )
+            result["probe"] = {"status": "not_run_unexpected_binary"}
         else:
             gates.append(
                 gate(
@@ -1300,39 +1540,9 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "right": counter_deltas(before["right"], after["right"]),
     }
     result["counter_deltas"] = deltas
-    for endpoint in (left, right):
-        endpoint_deltas = deltas[endpoint.label]
-        gates.append(
-            gate(
-                f"{endpoint.label}.no_phy_error_delta",
-                not endpoint_deltas["phy"],
-                endpoint_deltas["phy"],
-                domain="cable_or_phy",
-            )
-        )
-        gates.append(
-            gate(
-                f"{endpoint.label}.no_counter_reset",
-                not endpoint_deltas["reset"],
-                endpoint_deltas["reset"],
-                domain="instrumentation",
-            )
-        )
-        gates.append(
-            gate(
-                f"{endpoint.label}.no_pressure_delta",
-                not endpoint_deltas["pressure"],
-                {
-                    "deltas": endpoint_deltas["pressure"],
-                    "note": (
-                        "drop/miss/overrun counters usually indicate host or ring "
-                        "pressure, not a bad cable"
-                    ),
-                },
-                domain="software_pressure",
-                hard=False,
-            )
-        )
+    gates.extend(
+        postflight_gates(deltas, (left.label, right.label), probe_completed)
+    )
 
     exit_code = finalize(
         result,

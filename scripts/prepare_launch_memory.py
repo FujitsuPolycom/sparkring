@@ -61,7 +61,9 @@ def _port_guard_lines(required_free_ports: Sequence[int]) -> list[str]:
         return []
     return [
         f"for _port in {ports}; do",
-        "  if ss -ltnH \"sport = :${_port}\" 2>/dev/null | grep -q .; then",
+        "  _listeners=$(ss -ltnH \"sport = :${_port}\" 2>/dev/null) || {",
+        "    echo 'cannot verify listening ports; refusing memory preparation' >&2; exit 74; }",
+        '  if [ -n "$_listeners" ]; then',
         "    printf 'refusing memory preparation: tcp/%s has a listener\\n' "
         '"${_port}" >&2',
         "    exit 73",
@@ -213,7 +215,9 @@ def build_receipt(
             )
         ],
         "recommended_action": (
-            "Proceed with the model launch."
+            "Memory thresholds recovered; require a passing full preflight before launch."
+            if passed and all(check.passed for check in checks) else
+            "Memory thresholds recovered, but other preflight checks failed; resolve them before launch."
             if passed else
             "Reboot every rank whose memory check failed, then rerun preflight."
         ),

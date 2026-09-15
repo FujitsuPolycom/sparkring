@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared diagnostic receipt types for SparkRing operator tooling.
 
-The receipt is the stable seam between check implementations and consumers.
+The versioned receipt separates check implementations from consumers.
 Ring Doctor, preflight, cable qualification, text renderers, saved evidence,
 and AI-assisted analysis can all describe results without sharing their probe
 or evaluation implementations.
@@ -52,7 +52,11 @@ def build_receipt(
     generated_at: str | None = None,
     source: str,
 ) -> dict[str, Any]:
-    """Build a versioned receipt without interpreting unknown as success."""
+    """Build a receipt; only a nonempty set of passing checks passes.
+
+    Receipt source identifies the assembling tool. Each check's optional source
+    identifies its producer; neither field overrides the other.
+    """
     counts = Counter(check.status.value for check in checks)
     passed = bool(checks) and all(check.status is CheckStatus.PASS for check in checks)
     return {

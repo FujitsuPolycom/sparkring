@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import math
 import subprocess
 import sys
 import time
@@ -17,7 +18,7 @@ RunCommand = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
 
 def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, check=False, capture_output=True, text=True)
+    return subprocess.run(command, check=False, capture_output=True, text=True, timeout=10)
 
 
 def read_mem_available(path: Path = Path("/proc/meminfo")) -> int:
@@ -55,7 +56,9 @@ def _running(container_id: str, run: RunCommand) -> bool:
             container_id,
         )
     )
-    return result.returncode == 0 and result.stdout.strip() == "true"
+    # Keep an uncertain container in the escalation set. Only a successful
+    # stopped-state response proves that KILL is unnecessary.
+    return not (result.returncode == 0 and result.stdout.strip() == "false")
 
 
 def terminate_guarded_containers(
@@ -114,6 +117,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--term-grace-seconds", type=float, default=5.0)
     parser.add_argument("--trip-cooldown-seconds", type=float, default=10.0)
     args = parser.parse_args()
+    for option, value in (
+        ("--poll-seconds", args.poll_seconds),
+        ("--term-grace-seconds", args.term_grace_seconds),
+        ("--trip-cooldown-seconds", args.trip_cooldown_seconds),
+    ):
+        if not math.isfinite(value):
+            parser.error(f"{option} must be finite")
     if args.available_floor_bytes <= 0:
         parser.error("--available-floor-bytes must be positive")
     if args.poll_seconds <= 0 or args.consecutive_samples <= 0:

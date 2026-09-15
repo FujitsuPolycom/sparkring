@@ -44,6 +44,12 @@ class Q40ExactStateAttestationTest(unittest.TestCase):
         call = text.index("self._attest_q40_exact_state_policy()")
         sampler = text.index("# Only run sampler/pooler", call)
         self.assertLess(call, sampler)
+        # Presence of the variable requests attestation; an empty value must
+        # not skip the gate, so the call site tests membership, not truthiness.
+        self.assertIn(
+            'if "SPARK_Q40_EXACT_STATE_ATTEST_PATH" in os.environ:', text[:call]
+        )
+        self.assertNotIn('os.getenv("SPARK_Q40_EXACT_STATE_ATTEST_PATH")', text)
         method = text.index("def _attest_q40_exact_state_policy")
         route_capture = text.index("def _init_q40_route_capturer", method)
         contract = text[method:route_capture]

@@ -197,10 +197,11 @@ void VerbsEndpoint::connect(const EndpointInfo& remote,
 void VerbsEndpoint::write(std::size_t local_offset,
                           std::size_t remote_offset, std::size_t bytes,
                           std::uint64_t work_id, bool signaled) {
-  if (local_offset + bytes > buffer_.size()) {
+  if (local_offset > buffer_.size() || bytes > buffer_.size() - local_offset) {
     throw std::out_of_range("local RDMA write exceeds its buffer");
   }
-  if (remote_offset + bytes > remote_.buffer_bytes) {
+  if (remote_offset > remote_.buffer_bytes ||
+      bytes > remote_.buffer_bytes - remote_offset) {
     throw std::out_of_range("remote RDMA write exceeds its buffer");
   }
   if (bytes > UINT32_MAX) {

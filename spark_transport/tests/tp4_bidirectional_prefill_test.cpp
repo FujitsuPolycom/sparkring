@@ -9,6 +9,15 @@
 #include <tuple>
 
 int main() {
+  for (int value : {0, 2}) {
+    bool rejected = false;
+    try {
+      (void)spark_transport::tp4_prefill_incoming_endpoint(
+          0, static_cast<spark_transport::Tp4PrefillDirection>(value));
+    } catch (const std::invalid_argument&) { rejected = true; }
+    assert(rejected);
+  }
+
   using namespace spark_transport;
 
   static_assert(kTp4PrefillStageCount == 6);

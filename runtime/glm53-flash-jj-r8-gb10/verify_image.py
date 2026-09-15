@@ -271,7 +271,7 @@ def verify_external(image: str, engine: str) -> dict[str, Any]:
             "--rm",
             "--entrypoint",
             "python3",
-            image,
+            document["Id"],
             "/opt/sparkring/bin/verify-jj-r8-sparkcache-image.py",
             "--inside-image",
         ),

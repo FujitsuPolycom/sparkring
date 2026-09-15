@@ -13,8 +13,8 @@ Safety class: OFFLINE. It opens files under the named model directory for
 reading, parses the safetensors header of each shard, and reads the JSON
 metadata files beside them. It contacts no host, starts no runtime, imports
 neither torch nor the safetensors package, and writes nothing. Tensor payload
-bytes are never read: a shard is touched only for its header prefix, so a
-checkpoint of hundreds of gigabytes costs kilobytes of I/O.
+bytes are never read: I/O depends on shard-header and JSON metadata sizes,
+rather than tensor payload size.
 
 Two quantities are reported side by side and are not interchangeable.
 
@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 from dataclasses import dataclass, field
@@ -53,9 +54,8 @@ from typing import Any, Iterable, Mapping, Sequence
 SCHEMA = "sparkring-expert-bitwidth-census/v1"
 
 # The safetensors container: 8 bytes of little-endian header length, then that
-# many bytes of JSON, then the tensor payload. A header is metadata for at most
-# a few hundred thousand tensors, so a length beyond this bound means the file
-# is not a safetensors container rather than that it is a large one.
+# many bytes of JSON, then the tensor payload. This census imposes a metadata
+# allocation bound; a larger header is unsupported by this reader.
 HEADER_LENGTH_BYTES = 8
 MAX_HEADER_BYTES = 256 * 1024 * 1024
 
@@ -87,8 +87,8 @@ UNPACKED_DTYPES = frozenset({"F8_E4M3", "F8_E5M2", "F16", "BF16", "F32", "F64"})
 # EXL3 stores a quantized matrix as an int16 trellis of shape
 # [K/16, N/16, 16*bits] beside float16 input/output rotation vectors (suh/svh,
 # or the packed sign bitfields su/sv) and an int32 codebook sentinel (mcg or
-# mul1). `runtime/exl3/overlay/vllm/model_executor/layers/quantization/exl3.py`
-# is the executable statement of that geometry and validates it at load time.
+# mul1). This is the packing convention this census recognizes; other layouts
+# remain undetermined unless their logical dimensions are independently known.
 EXL3_TRELLIS_SUFFIX = "trellis"
 EXL3_BLOCK = 16
 EXL3_MIN_BITS = 1
@@ -117,10 +117,8 @@ SIDECAR_SUFFIXES = frozenset(
     }
 )
 
-# Name classification, applied in a fixed order; the first rule that matches
-# owns the tensor. Order matters: a shared expert is named with the same
-# `experts` stem as a routed one, so it is excluded before the routed-expert
-# rule is tried.
+# Name classification uses the listed precedence; the first matching rule
+# owns the tensor. Shared experts are classified as always-active dense capacity.
 EMBEDDING_RE = re.compile(r"(?:^|\.)(embed_tokens|embed_out|lm_head|wte|wpe)(?:\.|$)")
 SHARED_EXPERT_RE = re.compile(r"(?:^|\.)shared_experts?(?:\.|$)")
 ROUTED_EXPERT_RE = re.compile(r"(?:^|\.)experts\.(?P<expert>\d+)(?:\.|$)")
@@ -171,7 +169,7 @@ DERIVATION_METHODS: Mapping[str, str] = {
         "int16 rank-3 tensor whose final name segment is trellis and whose "
         "last dimension is a multiple of 16: logical shape is "
         "[shape[0]*16, shape[1]*16] and the tier is shape[2]//16, the EXL3 "
-        "packing the EXL3 quantization backend validates at load time"
+        "packing convention recognized by this census"
     ),
     DERIVATION_UNPACKED: (
         "float dtype storing one logical weight per element: the logical "
@@ -268,7 +266,7 @@ def read_safetensors_header(path: Path) -> tuple[Mapping[str, Any], int]:
         if header_bytes > MAX_HEADER_BYTES:
             raise CensusError(
                 f"{path.name}: declares a {header_bytes}-byte header, beyond "
-                f"the {MAX_HEADER_BYTES}-byte bound a safetensors header has"
+            f"the {MAX_HEADER_BYTES}-byte header bound this census accepts"
             )
         if HEADER_LENGTH_BYTES + header_bytes > size:
             raise CensusError(
@@ -278,8 +276,15 @@ def read_safetensors_header(path: Path) -> tuple[Mapping[str, Any], int]:
         raw_header = handle.read(header_bytes)
     if len(raw_header) != header_bytes:
         raise CensusError(f"{path.name}: header is truncated")
+    def unique_keys(entries):
+        result = {}
+        for key, value in entries:
+            if key in result:
+                raise CensusError(f"{path.name}: duplicate header key {key!r}")
+            result[key] = value
+        return result
     try:
-        header = json.loads(raw_header.decode("utf-8"))
+        header = json.loads(raw_header.decode("utf-8"), object_pairs_hook=unique_keys)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise CensusError(f"{path.name}: header is not JSON ({error})") from error
     if not isinstance(header, dict):
@@ -384,7 +389,7 @@ def derive_geometry(
                 None,
                 None,
                 f"EXL3 trellis implies a {tier}-bit tier, outside the "
-                f"{EXL3_MIN_BITS}..{EXL3_MAX_BITS} range the format defines",
+                f"{EXL3_MIN_BITS}..{EXL3_MAX_BITS} range this census recognizes",
             )
         logical = int(shape[0]) * EXL3_BLOCK * int(shape[1]) * EXL3_BLOCK
         if logical <= 0:
@@ -443,6 +448,24 @@ def read_tensor_records(path: Path) -> tuple[list[TensorRecord], list[str]]:
             findings.append(f"unreadable shard: {error}")
             continue
         shard_size = shard.stat().st_size
+        ranges = []
+        for name, entry in header.items():
+            if name == "__metadata__" or not isinstance(entry, dict):
+                continue
+            offsets = entry.get("data_offsets")
+            if (not isinstance(offsets, list) or len(offsets) != 2
+                    or any(type(value) is not int for value in offsets)):
+                continue
+            start, end = offsets
+            if 0 <= start < end and payload_start + end <= shard_size:
+                ranges.append((start, end))
+        ranges.sort()
+        # Overlap makes byte ownership ambiguous; retain no tensors from that
+        # shard. Empty tensors have no payload interval and cannot overlap.
+        if any(start < previous_end
+               for (_, previous_end), (start, _) in zip(ranges, ranges[1:])):
+            findings.append(f"{shard.name}: overlapping tensor payload ranges; shard excluded")
+            continue
         for name, entry in header.items():
             if name == "__metadata__":
                 continue
@@ -450,9 +473,15 @@ def read_tensor_records(path: Path) -> tuple[list[TensorRecord], list[str]]:
                 findings.append(f"{shard.name}: {name} has a non-object header entry")
                 continue
             dtype = str(entry.get("dtype", ""))
-            shape = tuple(int(value) for value in entry.get("shape", ()) or ())
-            offsets = entry.get("data_offsets") or ()
-            if len(offsets) != 2:
+            shape_values = entry.get('shape')
+            if (not isinstance(shape_values, list)
+                    or any(type(value) is not int or value < 0 for value in shape_values)):
+                findings.append(f"{shard.name}: {name} has invalid shape dimensions")
+                continue
+            shape = tuple(shape_values)
+            offsets = entry.get("data_offsets")
+            if (not isinstance(offsets, list) or len(offsets) != 2
+                    or any(type(value) is not int for value in offsets)):
                 findings.append(f"{shard.name}: {name} has no data_offsets pair")
                 continue
             start, end = int(offsets[0]), int(offsets[1])
@@ -511,6 +540,9 @@ def summarize_classes(records: Iterable[TensorRecord]) -> dict[str, ClassTotals]
         bucket = totals[record.name_class]
         bucket.tensor_count += 1
         bucket.stored_bytes += record.stored_bytes
+        if not record.determined:
+            bucket.undetermined_tensor_count += 1
+            bucket.undetermined_bytes += record.stored_bytes
         if record.role == "sidecar":
             bucket.sidecar_tensor_count += 1
             bucket.sidecar_bytes += record.stored_bytes
@@ -518,8 +550,6 @@ def summarize_classes(records: Iterable[TensorRecord]) -> dict[str, ClassTotals]
         bucket.weight_tensor_count += 1
         bucket.weight_bytes += record.stored_bytes
         if not record.determined:
-            bucket.undetermined_tensor_count += 1
-            bucket.undetermined_bytes += record.stored_bytes
             continue
         assert record.logical_weights is not None
         assert record.bits_per_weight is not None
@@ -533,7 +563,7 @@ def summarize_classes(records: Iterable[TensorRecord]) -> dict[str, ClassTotals]
 
 
 def distribution(bucket: ClassTotals) -> dict[str, Any] | None:
-    """Min, median, max, and the tier histogram over one class's weights."""
+    """Unweighted tensor spread; histogram shares use logical weight counts."""
 
     if not bucket.bits_per_weight:
         return None
@@ -609,10 +639,14 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
     """Per (layer, expert) byte and bit-rate spread across routed experts.
 
     One routed expert is the unit an expert transfer moves, so its stored size
-    is the quantity a transfer-time estimate needs. Reporting the spread rather
+    is the quantity a transfer-time estimate needs. Bit rates exclude payload
+    with undetermined logical geometry; stored-byte totals still include it.
+    Reporting the spread rather
     than a single figure is the point: a uniform assumption predicts none.
     """
 
+    # Slots: total bytes, known logical weights, unknown payload bytes,
+    # and unknown weight-tensor count (including empty tensors).
     per_instance: dict[tuple[int, int], list[int]] = {}
     for record in records:
         if record.name_class != CLASS_EXPERT:
@@ -620,7 +654,7 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
         instance = _expert_instance(record.name)
         if instance is None:
             continue
-        slot = per_instance.setdefault(instance, [0, 0, 0])
+        slot = per_instance.setdefault(instance, [0, 0, 0, 0])
         slot[0] += record.stored_bytes
         if record.role == "sidecar":
             continue
@@ -629,22 +663,24 @@ def expert_instances(records: Sequence[TensorRecord]) -> dict[str, Any]:
             slot[1] += record.logical_weights
         else:
             slot[2] += record.stored_bytes
+            slot[3] += 1
 
     if not per_instance:
         return {"count": 0}
 
     sizes = sorted(slot[0] for slot in per_instance.values())
     rates = sorted(
-        slot[0] * 8 / slot[1] for slot in per_instance.values() if slot[1] > 0
+        (slot[0] - slot[2]) * 8 / slot[1]
+        for slot in per_instance.values() if slot[1] > 0
     )
     summary: dict[str, Any] = {
         "count": len(per_instance),
         "stored_bytes_total": sum(sizes),
         "stored_bytes_min": sizes[0],
-        "stored_bytes_median": int(statistics.median(sizes)),
+        "stored_bytes_median": statistics.median(sizes),
         "stored_bytes_max": sizes[-1],
         "instances_with_undetermined_tensors": sum(
-            1 for slot in per_instance.values() if slot[2] > 0
+            1 for slot in per_instance.values() if slot[3] > 0
         ),
     }
     if rates:
@@ -709,7 +745,8 @@ def read_declared(path: Path) -> dict[str, Any]:
         sources.append({"file": name, "present": True})
         for json_path, value in _walk(document):
             key = json_path.rsplit(".", 1)[-1]
-            if key in DECLARED_BIT_KEYS and isinstance(value, (int, float, str)):
+            if (key in DECLARED_BIT_KEYS and isinstance(value, (int, float, str))
+                    and not isinstance(value, bool)):
                 fields.append({"file": name, "path": json_path, "value": value})
             if name in TIER_VECTOR_SOURCES and _is_tier_vector(value):
                 tier_vector_sources.append(name)
@@ -719,10 +756,15 @@ def read_declared(path: Path) -> dict[str, Any]:
     declared_average: float | None = None
     declared_average_source: str | None = None
     for entry in fields:
-        if entry["path"].rsplit(".", 1)[-1] != "head_bits" and isinstance(
-            entry["value"], (int, float)
+        value = entry["value"]
+        if (
+            entry["path"].rsplit(".", 1)[-1] != "head_bits"
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+            and float(value) > 0.0
         ):
-            declared_average = float(entry["value"])
+            declared_average = float(value)
             declared_average_source = f"{entry['file']}:{entry['path']}"
             break
 
@@ -732,6 +774,11 @@ def read_declared(path: Path) -> dict[str, Any]:
         "bit_rate_fields": fields,
         "declared_average_bits_per_weight": declared_average,
         "declared_average_source": declared_average_source,
+        "declared_average_reading": (
+            "Heuristic: the first numeric bit-rate field in source traversal order, "
+            "excluding head_bits. It may describe one module rather than a global average; "
+            "bit_rate_fields lists all matched declarations."
+        ),
         "tier_vector_histogram": {
             "reading": (
                 "heuristic: every JSON array of at least "
@@ -759,6 +806,9 @@ def compare(
 ) -> dict[str, Any]:
     """State declared against measured without reconciling the two."""
 
+    if not math.isfinite(tolerance) or tolerance < 0.0:
+        raise CensusError("tolerance_bits_per_weight must be finite and nonnegative")
+
     stated = declared.get("declared_average_bits_per_weight")
     if stated is None or measured is None:
         return {
@@ -778,7 +828,7 @@ def compare(
         "declared_average_bits_per_weight": float(stated),
         "declared_average_source": declared.get("declared_average_source"),
         "measured_average_bits_per_weight": measured,
-        "difference_bits_per_weight": _round_bpw(difference),
+        "difference_bits_per_weight": difference,
         "tolerance_bits_per_weight": tolerance,
         "comparable": True,
         "agrees": abs(difference) <= tolerance,
@@ -803,8 +853,10 @@ def census(path: Path, tolerance: float) -> dict[str, Any]:
     totals = summarize_classes(records)
     aggregate = expert_aggregate(records)
     declared = read_declared(path)
+    measured = (aggregate["payload_bytes"] * 8 / aggregate["logical_weights"]
+                if aggregate["logical_weights"] else None)
     comparison = compare(
-        declared, aggregate["average_bits_per_weight_payload"], tolerance
+        declared, measured, tolerance
     )
 
     if comparison.get("comparable") and comparison.get("agrees") is False:
@@ -910,6 +962,7 @@ def render(report: Mapping[str, Any]) -> str:
         lines.append(f"  {method}: {description}")
     lines.append("")
 
+    lines.append("class min/median/max: unweighted over determined weight tensors")
     lines.append(
         f"{'class':<13} {'tensors':>8} {'stored bytes':>16} "
         f"{'logical weights':>16} {'min':>7} {'median':>7} {'max':>7}"
@@ -1072,7 +1125,7 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=0.01,
         help=(
-            "bits-per-weight difference below which declared and measured "
+            "bits-per-weight difference at or below which declared and measured "
             "rates are reported as agreeing (default: 0.01)"
         ),
     )

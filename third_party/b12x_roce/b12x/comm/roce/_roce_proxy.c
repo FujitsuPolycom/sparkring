@@ -114,9 +114,9 @@ typedef struct {
     pthread_t thread;
     atomic_int running;
     atomic_int failed;
-    uint32_t last_seq;
-    uint64_t ops_posted;
-    uint64_t writes_completed;
+    atomic_uint_least32_t last_seq;
+    atomic_uint_fast64_t ops_posted;
+    atomic_uint_fast64_t writes_completed;
     uint32_t two_wave_threshold_bytes;
     uint32_t wave_mode;
     atomic_uint_fast64_t two_wave_activations;

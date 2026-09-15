@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "glm53-mtp3-cache-checkpoints-tp4",
+  "inputs": [],
+  "image": {
+    "configuration_runtime": "profiles/glm53-mtp3-cache-checkpoints-tp4/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

@@ -71,6 +71,11 @@ def _pull_one(rank: Any, image: str, timeout: int) -> tuple[int, dict[str, Any]]
     if not isinstance(documents, list) or len(documents) != 1:
         raise PullError(f"rank {rank.id} returned an unexpected image inspection")
     document = documents[0]
+    if not isinstance(document, dict):
+        raise PullError(f"rank {rank.id} image inspection must be an object")
+    image_id = document.get("Id")
+    if not isinstance(image_id, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+        raise PullError(f"rank {rank.id} image inspection lacks a valid immutable image ID")
     if document.get("Architecture") != "arm64" or document.get("Os") != "linux":
         raise PullError(f"rank {rank.id} pulled a non-linux/arm64 image")
     return rank.id, {
@@ -94,7 +99,7 @@ def pull_cluster(site: Any, image: str, timeout: int) -> dict[str, Any]:
         raise PullError(f"ranks resolved different local image IDs: {sorted(image_ids)}")
     return {
         "schema": RECEIPT_SCHEMA,
-        "status": "implemented",
+        "status": "verified",
         "image": image,
         "image_id": next(iter(image_ids)),
         "ranks": [

@@ -6,6 +6,8 @@
 
 namespace spark_transport::tiled_prefill_research {
 
+// The identifier denotes 8192 query rows and four ranks, with BF16 width4096.
+// This probe is separate from gpu_harness.py's width6144 payload contract.
 // Launches exactly 8 flows x 4 CTAs cooperatively. The function refuses to
 // launch unless all 32 CTAs can be simultaneously resident: the per-flow
 // barriers intentionally make oversubscription unsafe.

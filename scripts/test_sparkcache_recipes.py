@@ -35,12 +35,17 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_recipe_indexes_link_every_machine_readable_recipe() -> None:
+def test_recipe_indexes_expose_every_compatibility_export() -> None:
     base_index = (BASE_RECIPE_DIR / "README.md").read_text(encoding="utf-8")
     composition_index = (RECIPE_DIR / "README.md").read_text(encoding="utf-8")
 
+    assert "../profiles/compatibility.json" in base_index
+    exports = {row["destination"]: row["source"] for row in
+               _load(ROOT / "profiles/compatibility.json")["mirrors"] if row["kind"] == "recipe"}
     for path in sorted(BASE_RECIPE_DIR.glob("*.json")):
-        assert f"]({path.name})" in base_index, path.name
+        relative = path.relative_to(ROOT).as_posix()
+        assert relative in exports, relative
+        assert (ROOT / exports[relative]).is_file()
     for path in RECIPE_PATHS:
         assert f"]({path.name})" in composition_index, path.name
 
@@ -67,10 +72,8 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
             assert artifact["wheel_sha256"] == wheel_sha256
             assert recipe["serving"]["max_num_batched_tokens"] == 4096
         else:
-            if "glm53" in path.name:
-                assert artifact["artifact_kind"] == "source-pinned OCI image"
-            else:
-                assert artifact["artifact_kind"] == "OCI image overlay"
+            assert path.name in SOURCE_ARTIFACTS
+            assert artifact["artifact_kind"] == "source-pinned OCI image"
             assert artifact["source_sha256"] == SOURCE_ARTIFACTS[path.name]
             assert artifact["source_commit"] == (
                 "66057174301a4759ca3a45207ea41016689449cb"
@@ -102,8 +105,8 @@ def test_scheduler_budget_records_evidence_without_an_operator_ceiling() -> None
         recipe = _load(path)
         limitations = " ".join(recipe["evidence"]["limitations"])
         assert "Operators may choose other values" in limitations
-        assert "8192 is known to work" in limitations
-        assert "8192 remains unsupported" not in limitations
+        budget = recipe["serving"]["max_num_batched_tokens"]
+        assert f"{budget}-token scheduler budget" in limitations
         assert "only qualified budget" not in limitations
 
 

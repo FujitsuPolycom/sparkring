@@ -1,0 +1,12 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "qwen38-flash-next-r37-sparkcache",
+  "inputs": [
+    {
+      "path": "runtime/images/compositions/lil-r37-cache64/publication.json",
+      "sha256": "86b30e4b397abf763b9593a0f38130c5a8cb5d102fefc478ab351ad6686cc1e7"
+    }
+  ],
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523",
+  "selection": "registered-r37-cache64-qwen-tp2"
+}

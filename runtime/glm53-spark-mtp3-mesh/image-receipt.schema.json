@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Receipt envelope only. Launch admission uses profile.validate_image_receipt to bind inside_image evidence to the selected source, bundle and parent; schema validation alone does not qualify a runtime.",
   "title": "SparkRing MTP3 mesh image verification receipt",
   "type": "object",
   "required": ["schema", "status", "checks_passed", "image", "image_id", "image_reference", "parent_image_id", "platform", "source_receipt_sha256", "bundle_manifest_sha256", "inside_image", "limitation"],

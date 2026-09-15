@@ -109,9 +109,17 @@ def send_warmup_request(
     )
     with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         result = json.load(response)
-    choices = result.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise RuntimeError("DFlash warmup response has no completion")
+    choices = result.get("choices") if isinstance(result, dict) else None
+    if (not isinstance(choices, list) or len(choices) != 1
+            or result.get("error") is not None or not isinstance(choices[0], dict)):
+        raise RuntimeError("DFlash warmup response has no valid completion")
+    choice = choices[0]
+    message = choice.get("message")
+    if (choice.get("finish_reason") not in ("stop", "length")
+            or not isinstance(message, dict)
+            or not any(isinstance(message.get(key), str)
+                       for key in ("content", "reasoning", "reasoning_content"))):
+        raise RuntimeError("DFlash warmup response did not complete generation")
 
 
 def run_warmup(

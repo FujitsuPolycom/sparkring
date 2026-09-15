@@ -29,9 +29,10 @@ int main() {
   int devices{};
   const cudaError_t device_result = cudaGetDeviceCount(&devices);
   if (device_result == cudaErrorNoDevice ||
-      device_result == cudaErrorInsufficientDriver || devices == 0) {
+      device_result == cudaErrorInsufficientDriver ||
+      (device_result == cudaSuccess && devices == 0)) {
     static_cast<void>(cudaGetLastError());
-    return 0;
+    return 77;  // CTest reports unavailable CUDA hardware as skipped.
   }
   check_cuda(device_result, "cudaGetDeviceCount");
 
@@ -42,8 +43,8 @@ int main() {
   {
     spark_transport::CudaEventGatePool gates(
         1, std::chrono::seconds(10), "test delayed stream");
-    // FULL custom capture held the caller stream for 6.1--6.7 seconds. This
-    // delay crosses the old five-second staging watchdog deterministically.
+    // Queued stream work lasting 5.5 seconds must complete within the gate
+    // timeout of 10 seconds rather than fail at a shorter fixed deadline.
     std::chrono::milliseconds delay(5500);
     check_cuda(
         cudaLaunchHostFunc(stream, delay_stream, &delay),

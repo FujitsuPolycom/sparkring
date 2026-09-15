@@ -93,6 +93,7 @@ def healthy_lines(site, rank) -> list[str]:
     for index, artifact in enumerate(site.artifacts):
         mode = "exec" if artifact.executable else "noexec"
         lines.append(f"ART {index} {artifact.sha256} present {mode}")
+    lines.append("SS_STATUS ok")
     lines.append("SSROW LISTEN 0     4096   0.0.0.0:22    0.0.0.0:*")
     lines.append("SSROW LISTEN 0     4096   [::]:22       [::]:*")
     for index, (_label, path, minimum) in enumerate(
@@ -231,7 +232,7 @@ READ_ONLY_COMMANDS = [
     "cat /sys/class/net/eth1/mtu",
     "cat /sys/class/net/eth1/operstate 2>/dev/null",
     "ip -o -4 addr 2>/dev/null | sed 's/^/IPROW /'",
-    "ss -ltnH 2>/dev/null | sed 's/^/SSROW /'",
+    "ss -ltnH 2>/dev/null",
     "df -Pk '/var/lib/sparkring/jit-cache' 2>/dev/null",
     "sha256sum -- '/opt/sparkring/lib/lib.so' 2>/dev/null | cut -d' ' -f1",
     "test -x '/opt/sparkring/bin/probe'",
@@ -1229,8 +1230,21 @@ def test_glm53_memory_preflight_receipt_records_rejection_recovery_and_launch():
     assert min(after["equivalent_32mib_blocks_by_rank"]) == 3686
     assert after["result"] == "passed"
     assert receipt["model_relaunch"]["sircl_capability_agreement_on_every_rank"]
-    assert receipt["model_relaunch"]["semantic_request"]["answer"] == "4"
+    arithmetic_probe = receipt["model_relaunch"]["semantic_request"]
+    assert arithmetic_probe["request"] == "What is 2 plus 2? Answer with one numeral."
+    assert arithmetic_probe["http_status"] == 200
+    assert arithmetic_probe["finish_reason"] == "stop"
+    assert arithmetic_probe["answer"] == "4"
     assert receipt["model_relaunch"]["result"] == "passed"
     assert "192.168." not in receipt_text
     assert '"ssh_target"' not in receipt_text
     assert '"hostname"' not in receipt_text
+
+
+@pytest.mark.parametrize("snapshot", ["", "SS_STATUS failed", "SS_STATUS ok\nSSROW broken"])
+def test_missing_or_malformed_socket_snapshot_cannot_prove_free_ports(site, snapshot):
+    transcript = "\n".join(line for line in healthy_lines(site, site.ranks[0])
+                           if not line.startswith(("SSROW", "SS_STATUS"))) + "\n" + snapshot
+    results = evaluate_rank(site, site.ranks[0], parse_probe_output(transcript))
+    ports = [result for result in results if result.check_id == "PORT.FREE"]
+    assert ports and all(not result.passed for result in ports)

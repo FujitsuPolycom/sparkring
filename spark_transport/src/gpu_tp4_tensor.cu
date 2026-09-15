@@ -948,49 +948,56 @@ GpuTp4TensorWorker::GpuTp4TensorWorker(
   if (!tp4_allreduce_schedule_valid(schedule_)) {
     throw std::invalid_argument("invalid TP4 all-reduce schedule");
   }
-  if (graph_direct_doorbell_) {
-    if (schedule_ != Tp4AllreduceSchedule::kSequential ||
-        !tp4_protocol_uses_deferred_ack(protocol_)) {
-      throw std::invalid_argument(
-          "direct-doorbell graph TP4 requires sequential two-slot "
-          "deferred ACK");
+  try {
+    if (graph_direct_doorbell_) {
+      if (schedule_ != Tp4AllreduceSchedule::kSequential ||
+          !tp4_protocol_uses_deferred_ack(protocol_)) {
+        throw std::invalid_argument(
+            "direct-doorbell graph TP4 requires sequential two-slot "
+            "deferred ACK");
+      }
+      int device{};
+      int cooperative_launch{};
+      check_cuda(cudaGetDevice(&device),
+                 "cudaGetDevice direct-doorbell graph TP4");
+      check_cuda(
+          cudaDeviceGetAttribute(
+              &cooperative_launch, cudaDevAttrCooperativeLaunch, device),
+          "cudaDeviceGetAttribute cooperative launch");
+      if (cooperative_launch == 0) {
+        throw std::runtime_error(
+            "direct-doorbell graph TP4 requires cooperative launch");
+      }
+      check_cuda(cudaMalloc(&direct_graph_sequence_,
+                            sizeof(DirectGraphOperationState)),
+                 "cudaMalloc direct-doorbell graph sequence");
+      check_cuda(cudaMemset(direct_graph_sequence_, 0,
+                            sizeof(DirectGraphOperationState)),
+                 "cudaMemset direct-doorbell graph sequence");
     }
-    int device{};
-    int cooperative_launch{};
-    check_cuda(cudaGetDevice(&device),
-               "cudaGetDevice direct-doorbell graph TP4");
-    check_cuda(
-        cudaDeviceGetAttribute(
-            &cooperative_launch, cudaDevAttrCooperativeLaunch, device),
-        "cudaDeviceGetAttribute cooperative launch");
-    if (cooperative_launch == 0) {
-      throw std::runtime_error(
-          "direct-doorbell graph TP4 requires cooperative launch");
+    if (schedule_ == Tp4AllreduceSchedule::kDualPortStriped) {
+      if (!tp4_protocol_uses_deferred_ack(protocol_) ||
+          graph_kernel_strategy_ != Tp4GraphKernelStrategy::kFused) {
+        throw std::invalid_argument(
+            "dual_port_striped graph TP4 requires fused kernel selection "
+            "and two_slot_deferred_ack");
+      }
+      static_cast<void>(
+          make_tp4_striped_endpoint_layout(payload_bytes_));
+      check_cuda(cudaMalloc(&striped_graph_state_,
+                            sizeof(StripedGraphOperationState)),
+                 "cudaMalloc striped graph TP4 state");
+    } else if (tp4_graph_kernel_strategy_is_graph_only(
+                   graph_kernel_strategy_)) {
+      check_cuda(cudaMalloc(&split_graph_state_,
+                            sizeof(SplitGraphOperationState)),
+                 "cudaMalloc split graph TP4 state");
     }
-    check_cuda(cudaMalloc(&direct_graph_sequence_,
-                          sizeof(DirectGraphOperationState)),
-               "cudaMalloc direct-doorbell graph sequence");
-    check_cuda(cudaMemset(direct_graph_sequence_, 0,
-                          sizeof(DirectGraphOperationState)),
-               "cudaMemset direct-doorbell graph sequence");
-  }
-  if (schedule_ == Tp4AllreduceSchedule::kDualPortStriped) {
-    if (!tp4_protocol_uses_deferred_ack(protocol_) ||
-        graph_kernel_strategy_ != Tp4GraphKernelStrategy::kFused) {
-      throw std::invalid_argument(
-          "dual_port_striped graph TP4 requires fused kernel selection "
-          "and two_slot_deferred_ack");
-    }
-    static_cast<void>(
-        make_tp4_striped_endpoint_layout(payload_bytes_));
-    check_cuda(cudaMalloc(&striped_graph_state_,
-                          sizeof(StripedGraphOperationState)),
-               "cudaMalloc striped graph TP4 state");
-  } else if (tp4_graph_kernel_strategy_is_graph_only(
-                 graph_kernel_strategy_)) {
-    check_cuda(cudaMalloc(&split_graph_state_,
-                          sizeof(SplitGraphOperationState)),
-               "cudaMalloc split graph TP4 state");
+  } catch (...) {
+    if (direct_graph_sequence_) (void)cudaFree(direct_graph_sequence_);
+    if (split_graph_state_) (void)cudaFree(split_graph_state_);
+    if (striped_graph_state_) (void)cudaFree(striped_graph_state_);
+    throw;
   }
 }
 
@@ -1146,6 +1153,10 @@ void GpuTp4TensorWorker::enqueue_graph(
   }
   if (tp4_graph_kernel_uses_split(graph_kernel_strategy_,
                                   active_payload_bytes)) {
+    if (active_payload_bytes % sizeof(__nv_bfloat162) != 0) {
+      throw std::invalid_argument(
+          "split graph TP4 requires an even number of BF16 elements");
+    }
     if (!split_graph_q_supported(q) || split_graph_state_ == nullptr) {
       throw std::invalid_argument(
           "split_64k graph TP4 requires Q1 through Q512 and initialized "

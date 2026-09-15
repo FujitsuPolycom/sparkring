@@ -7,12 +7,15 @@ repo_root="$(git -C "${here}" rev-parse --show-toplevel)"
 pins="${here}/pins.json"
 engine="${CONTAINER_ENGINE:-docker}"
 image="${IMAGE:-sparkring-glm53-runtime:e10536a-source-arm64}"
-receipt_path="${BUILD_RECEIPT:-${PWD}/glm53-runtime-image-receipt.json}"
+receipt_path="${BUILD_RECEIPT:-${PWD}/glm53-flash-e10536a-image-receipt.json}"
 
 fatal() {
   printf 'FATAL: %s\n' "$*" >&2
   exit 78
 }
+
+[[ ! -e "${receipt_path}" && ! -L "${receipt_path}" ]] ||
+  fatal "receipt output already exists: ${receipt_path}"
 
 read_pin() {
   python3 - "${pins}" "$1" <<'PY'

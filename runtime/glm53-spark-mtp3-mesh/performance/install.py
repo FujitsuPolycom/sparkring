@@ -1,4 +1,7 @@
-"""Install verified cache, recurrent checkpoints, and reasoning contracts."""
+"""Compose cache reuse, checkpoint, attribution, mHC, and startup runtime sources.
+
+The installed file inventory is /opt/sparkring/receipts/mtp3-performance.json.
+"""
 
 # ruff: noqa: E402
 import hashlib
@@ -64,8 +67,7 @@ if (
 ):
     raise ValueError("Checkpoint ownership-contract template differs")
 data = json.loads(contract_source.read_text())
-# Keep the complete checkpoint ownership surface and symbol requirements.
-# Every expected runtime digest must match before the contract is installed.
+# Validate every checkpoint ownership digest before applying source transforms.
 for row in data["files"]:
     path = SITE / row["path"]
     if row["sha256"] != hashlib.sha256(path.read_bytes()).hexdigest():
@@ -103,6 +105,8 @@ shutil.copyfile(
     ),
 )
 files = {}
+shutil.copyfile(SOURCE / "verify.py", Path("/opt/sparkring/bin/verify-performance.py"))
+shutil.copyfile(SOURCE / "start.py", Path("/opt/sparkring/bin/start-performance.py"))
 for root in (
     SITE / "sparkcache",
     SITE / "vllm",
@@ -113,6 +117,8 @@ for root in (
         if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
             files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
 for path in (
+    Path("/opt/sparkring/bin/verify-performance.py"),
+    Path("/opt/sparkring/bin/start-performance.py"),
     Path("/opt/sparkring/bin/warmup_dflash.py"),
     Path("/opt/sparkring/bin/serve-with-warmup.py"),
     Path("/opt/sparkring/bin/startup_admission.py"),
@@ -140,5 +146,3 @@ receipt.write_text(
     )
     + "\n"
 )
-shutil.copyfile(SOURCE / "verify.py", Path("/opt/sparkring/bin/verify-performance.py"))
-shutil.copyfile(SOURCE / "start.py", Path("/opt/sparkring/bin/start-performance.py"))

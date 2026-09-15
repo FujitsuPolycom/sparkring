@@ -6,11 +6,14 @@ Implemented native API and vLLM adapter for the GLM-5.2 tensor-parallel
 vocabulary seam. The interface is limited to the exact four-rank contract:
 
 ```text
-input per rank:  BF16 [Q, 38720], Q=1..5
+input per rank:  BF16 [Q, 38720], Q=1..configured query-row limit
 output per rank: BF16 [Q, 154880]
 group:           tp:0, world size 4
 gather dimension: -1 or 1
 ```
+
+`VLLM_SPARK_MAX_QUERY_ROWS` sets the adapter's row limit, defaults to 6, and
+accepts values from 1 through 40. The native session supports rows 1 through 40.
 
 The output is token-major:
 
@@ -36,6 +39,7 @@ cmake --build build/spark-transport --target \
   spark_transport_capi \
   spark_tp4_vocab_allgather_probe \
   tp4_vocab_allgather_c_api_test \
+  tp4_vocab_allgather_layout_test \
   --parallel
 ctest --test-dir build/spark-transport \
   -R tp4_vocab_allgather \
@@ -44,15 +48,19 @@ ctest --test-dir build/spark-transport \
 
 ## Fail-closed operation
 
-One native session supports all admitted `Q` values and requires a stable
-caller CUDA stream. The adapter uses the candidate only for the exact
-four-rank CUDA BF16 contract. Every near miss, including graph capture, uses
-the original vLLM/NCCL collective. Session creation failure also falls back
-before enqueue.
+One native session supports all admitted `Q` values. Eager calls use vLLM's
+current CUDA stream; the native session orders work across stream changes.
+Graph capture requires one stable stream and
+`VLLM_SPARK_SHARED_CAPTURE_STREAM=1`. The adapter uses the candidate only for the exact
+four-rank CUDA BF16 contract. Nonmatching signatures use the original
+vLLM/NCCL collective. With `VLLM_SPARK_TP4_GRAPH_Q1=1` and vocabulary mode
+`custom`, admitted captures use a prepared graph session; otherwise capture uses
+the original collective. Session creation failure falls back before enqueue only in shadow mode;
+custom mode terminates to prevent rank-split dispatch.
 
 Shadow mode compares the final output byte-for-byte and returns the reference
 result. `SPARK_TP4_VOCAB_SHADOW_PROMOTE=1` permits per-shape custom promotion
 only after its configured shadow window passes. A native failure after enqueue
 terminates the worker because its CUDA stream may contain an unfulfilled wait.
 
-The environment contract is maintained in [README.md](README.md).
+The environment contract is maintained in [README.md](../../../integrations/vllm/README.md).

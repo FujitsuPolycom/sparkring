@@ -98,7 +98,7 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(summary.median, 2.5)
         self.assertEqual(summary.minimum, 1.0)
         self.assertEqual(summary.maximum, 4.0)
-        self.assertEqual(summary.iqr, summary.q3 - summary.q1)
+        self.assertEqual((summary.q1, summary.q3, summary.iqr), (2.0, 3.0, 1.0))
 
     def test_summary_dictionary_carries_the_spread_not_only_the_median(self) -> None:
         payload = attribution.summarize([1.0, 2.0, 3.0, 4.0]).to_dict()
@@ -249,6 +249,12 @@ class ExposureFitTest(unittest.TestCase):
 
 
 class CaptureParsingTest(unittest.TestCase):
+    def test_display_label_collision_does_not_merge_distinct_keys(self):
+        first = _instance(family='a|b', communicator='c')
+        second = _instance(family='a', communicator='b|c')
+        capture = attribution.parse_capture(_capture(attribution.GATED_ARM, instances=[first, second]))
+        self.assertEqual(len(capture.instances), 2)
+
     def test_a_valid_gated_capture_parses(self) -> None:
         capture = attribution.parse_capture(_capture(attribution.GATED_ARM))
         self.assertEqual(capture.arm, attribution.GATED_ARM)
@@ -408,6 +414,46 @@ class ComparabilityTest(unittest.TestCase):
         with self.assertRaises(attribution.NotComparable):
             attribution.require_comparable(gated, naked)
 
+    def test_different_link_rate_bases_are_not_comparable(self) -> None:
+        gated, _ = self._pair()
+        naked_document = _capture(attribution.NAKED_ARM)
+        naked_document["link"]["rate_basis"] = "measured"
+        naked = attribution.parse_capture(naked_document)
+        with self.assertRaises(attribution.NotComparable):
+            attribution.require_comparable(gated, naked)
+
+    def test_instance_measurement_contract_must_match(self) -> None:
+        gated, _ = self._pair()
+        cases = {
+            "wire_bytes_multiplier": 1.25,
+            "multiplier_basis": "another algorithm",
+            "occurrences": 3,
+        }
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                naked_document = _capture(attribution.NAKED_ARM)
+                naked_document["instances"][0][field] = value
+                naked = attribution.parse_capture(naked_document)
+                with self.assertRaises(attribution.NotComparable):
+                    attribution.require_comparable(gated, naked)
+
+    def test_instance_rank_identities_must_match(self) -> None:
+        gated, _ = self._pair()
+        naked_document = _capture(attribution.NAKED_ARM)
+        ranks = naked_document["instances"][0]["ranks"]
+        ranks["4"] = ranks.pop("3")
+        naked = attribution.parse_capture(naked_document)
+        with self.assertRaises(attribution.NotComparable):
+            attribution.require_comparable(gated, naked)
+
+    def test_build_report_refuses_an_unchecked_mismatched_pair(self) -> None:
+        gated, _ = self._pair()
+        naked_document = _capture(attribution.NAKED_ARM)
+        naked_document["instances"][0]["occurrences"] = 3
+        naked = attribution.parse_capture(naked_document)
+        with self.assertRaises(attribution.NotComparable):
+            attribution.build_report(gated, naked, 5.0, None)
+
 
 class ReportTest(unittest.TestCase):
     def _report(self, detect_percent: float = 5.0) -> dict:
@@ -547,6 +593,80 @@ class ExampleDocumentTest(unittest.TestCase):
 
 
 class CommandLineTest(unittest.TestCase):
+    def test_ambiguous_or_unrepresentable_json_is_invalid(self):
+        for text in ('{"session":"a","session":"b"}', '{"x":NaN}',
+                     '{"x":1e999}', '{"x":' + '9' * 5000 + '}'):
+            with self.subTest(text=text[:40]), TemporaryDirectory() as directory:
+                path = Path(directory) / 'capture.json'
+                path.write_text(text, encoding='utf-8')
+                with self.assertRaises(attribution.DocumentInvalid):
+                    attribution.load_document(str(path))
+
+    def test_raised_threshold_applies_to_exposure_and_is_recorded(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {arm: self._write(root, arm+'.json', document)
+                     for arm, document in attribution.example_documents().items()}
+            code, out, _ = self._run(['--gated', paths['gated'], '--naked', paths['naked'],
+                '--exposure', paths['exposure'], '--detect-percent', '50', '--json', '-'])
+            report = json.loads(out)
+            self.assertEqual(code, attribution.EXIT_OK)
+            self.assertEqual(report['exposure']['detect_percent'], 50)
+            self.assertFalse(report['exposure']['determinate'])
+
+    def test_output_failure_returns_diagnostic_without_partial_report(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gated = self._write(root, 'g.json', _capture(attribution.GATED_ARM))
+            naked = self._write(root, 'n.json', _capture(attribution.NAKED_ARM))
+            code, out, err = self._run(['--gated', gated, '--naked', naked, '--json', str(root)])
+            self.assertEqual(code, attribution.EXIT_OUTPUT_ERROR)
+            self.assertEqual(out, '')
+            self.assertIn('output unavailable', err)
+
+    def test_failed_validity_gates_return_not_comparable_with_diagnostics(self):
+        for failure in ('gate_cost', 'rank_spread'):
+            with self.subTest(failure=failure), TemporaryDirectory() as directory:
+                root = Path(directory)
+                document = _capture(attribution.GATED_ARM)
+                ranks = document['instances'][0]['ranks']
+                if failure == 'gate_cost':
+                    for rank in ranks.values():
+                        rank['gate_second_us'] = [100.0] * 3
+                else:
+                    ranks['0']['residency_us'] = [1000.0] * 3
+                gated = self._write(root, 'g.json', document)
+                naked = self._write(root, 'n.json', _capture(attribution.NAKED_ARM))
+                code, out, _ = self._run(['--gated', gated, '--naked', naked, '--json', '-'])
+                self.assertEqual(code, attribution.EXIT_NOT_COMPARABLE)
+                self.assertEqual(json.loads(out)['status'], 'invalid_capture')
+
+    def test_zero_residency_median_is_a_structured_invalid_document(self):
+        for arm in (attribution.GATED_ARM, attribution.NAKED_ARM):
+            with self.subTest(arm=arm), TemporaryDirectory() as directory:
+                root = Path(directory)
+                documents = {a: _capture(a) for a in (attribution.GATED_ARM, attribution.NAKED_ARM)}
+                for rank in documents[arm]['instances'][0]['ranks'].values():
+                    rank['residency_us'] = [0.0, 0.0, 0.0]
+                paths = {a: self._write(root, a + '.json', doc) for a, doc in documents.items()}
+                code, out, err = self._run(['--gated', paths['gated'], '--naked', paths['naked']])
+                self.assertEqual(code, attribution.EXIT_INVALID_DOCUMENT)
+                self.assertIn('residency', err)
+                self.assertEqual(out, '')
+
+    def test_exposure_reports_both_measurement_layers(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            documents = attribution.example_documents()
+            paths = {a: self._write(root, a + '.json', doc) for a, doc in documents.items()}
+            output = root / 'report.json'
+            code, _, _ = self._run(['--gated', paths['gated'], '--naked', paths['naked'],
+                                     '--exposure', paths['exposure'], '--json', str(output)])
+            self.assertEqual(code, attribution.EXIT_OK)
+            exposure = json.loads(output.read_text())['exposure']
+            self.assertEqual(exposure['measurement_layer'], 'end_to_end')
+            self.assertEqual(exposure['transport_layer'], 'device')
+
     def _run(self, argv: list[str]) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -571,7 +691,7 @@ class CommandLineTest(unittest.TestCase):
         )
         self.assertEqual(code, attribution.EXIT_OK)
         self.assertIn("required repetitions", out)
-        self.assertIn("10", out)
+        self.assertIn(attribution._line("required repetitions", "10"), out)
 
     def test_a_missing_input_returns_the_input_exit_code(self) -> None:
         with TemporaryDirectory() as directory:
@@ -592,6 +712,16 @@ class CommandLineTest(unittest.TestCase):
             code, _, err = self._run(["--gated", gated, "--naked", str(broken)])
         self.assertEqual(code, attribution.EXIT_INVALID_DOCUMENT)
         self.assertIn("invalid document", err)
+
+    def test_non_utf8_input_returns_the_invalid_exit_code(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gated = self._write(root, "g.json", _capture(attribution.GATED_ARM))
+            broken = root / "n.json"
+            broken.write_bytes(b"\xff")
+            code, _, err = self._run(["--gated", gated, "--naked", str(broken)])
+        self.assertEqual(code, attribution.EXIT_INVALID_DOCUMENT)
+        self.assertIn("UTF-8", err)
 
     def test_swapped_arms_return_the_not_comparable_exit_code(self) -> None:
         with TemporaryDirectory() as directory:
@@ -627,6 +757,31 @@ class CommandLineTest(unittest.TestCase):
         self.assertIn("Per-request totals", out)
         self.assertEqual(written["schema"], attribution.REPORT_SCHEMA)
 
+    def test_json_stdout_contains_only_the_json_document(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gated = self._write(root, "g.json", _capture(attribution.GATED_ARM))
+            naked = self._write(root, "n.json", _capture(attribution.NAKED_ARM))
+            code, out, err = self._run(
+                ["--gated", gated, "--naked", naked, "--json", "-"]
+            )
+        self.assertEqual(code, attribution.EXIT_OK)
+        self.assertEqual(json.loads(out)["schema"], attribution.REPORT_SCHEMA)
+        self.assertIn("Per-request totals", err)
+
+    def test_non_finite_plan_thresholds_are_rejected(self) -> None:
+        for option, value in (
+            ("--detect-percent", "nan"),
+            ("--detect-percent", "inf"),
+            ("--dispersion-percent", "nan"),
+        ):
+            argv = ["--plan", "--dispersion-percent", "1", "--detect-percent", "5"]
+            argv[argv.index(option) + 1] = value
+            with self.subTest(option=option, value=value):
+                with self.assertRaises(SystemExit):
+                    with redirect_stderr(io.StringIO()):
+                        attribution.parse_args(argv)
+
     def test_plan_without_its_inputs_is_rejected_by_the_parser(self) -> None:
         with self.assertRaises(SystemExit):
             with redirect_stderr(io.StringIO()):
@@ -644,7 +799,7 @@ class SafetyClassTest(unittest.TestCase):
 
     def test_the_module_docstring_names_the_design_document(self) -> None:
         self.assertIn(
-            "docs/COLLECTIVE_CRITICAL_PATH_MEASUREMENT.md",
+            "performance/methodology/collective-critical-path.md",
             attribution.__doc__ or "",
         )
 

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Exercise concurrent GLM requests and require idle KV ownership to recover."""
+"""Exercise concurrent GLM requests and check scheduler/KV recovery.
+
+Use --require-capture-metrics for SparkCache ownership checks. Without it,
+missing capture metrics do not establish that cache ownership was released.
+"""
 
 from __future__ import annotations
 
 import argparse
 import concurrent.futures
 import json
+import math
 import re
 import time
 import urllib.request
@@ -15,15 +20,19 @@ from pathlib import Path
 
 def _metric_sum(text: str, name: str, *, required: bool = True) -> float:
     matches = re.findall(
-        rf"(?m)^{re.escape(name)}(?:\{{[^\n]*\}})?\s+([0-9.eE+-]+)$",
+        rf"(?m)^{re.escape(name)}(?:\{{[^\n]*\}})?\s+(\S+)\s*$",
         text,
     )
     if not matches and required:
         raise RuntimeError(f"metrics response does not contain {name}")
-    return sum(float(value) for value in matches)
+    values = [float(value) for value in matches]
+    total = sum(values)
+    if any(not math.isfinite(value) or value < 0 for value in values) or not math.isfinite(total):
+        raise RuntimeError(f"metric {name} must contain finite nonnegative values")
+    return total
 
 
-def parse_metrics(text: str) -> dict[str, float]:
+def parse_metrics(text: str, *, require_capture_metrics: bool = False) -> dict[str, float]:
     return {
         "running": _metric_sum(text, "vllm:num_requests_running"),
         "waiting": _metric_sum(text, "vllm:num_requests_waiting"),
@@ -31,17 +40,17 @@ def parse_metrics(text: str) -> dict[str, float]:
         "capture_delayed": _metric_sum(
             text,
             "vllm:sparkcache_capture_delayed_requests",
-            required=False,
+            required=require_capture_metrics,
         ),
         "capture_pages": _metric_sum(
             text,
             "vllm:sparkcache_capture_retained_manager_pages",
-            required=False,
+            required=require_capture_metrics,
         ),
         "capture_uncertain": _metric_sum(
             text,
             "vllm:sparkcache_capture_ownership_uncertain_ranks",
-            required=False,
+            required=require_capture_metrics,
         ),
     }
 
@@ -83,9 +92,10 @@ def idle_satisfied(
 
 
 class Client:
-    def __init__(self, endpoint: str, credential: str | None) -> None:
+    def __init__(self, endpoint: str, credential: str | None, *, require_capture_metrics=False) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.credential = credential
+        self.require_capture_metrics = require_capture_metrics
 
     def _request(
         self,
@@ -110,12 +120,25 @@ class Client:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read()
 
-    def metrics(self) -> dict[str, float]:
-        return parse_metrics(self._request("/metrics", timeout=10).decode())
+    def metrics(self, timeout=10) -> dict[str, float]:
+        return parse_metrics(self._request("/metrics", timeout=timeout).decode(),
+                             require_capture_metrics=self.require_capture_metrics)
 
     def chat(self, payload: dict[str, object]) -> float:
         started = time.monotonic()
-        self._request("/v1/chat/completions", payload=payload)
+        document = json.loads(self._request("/v1/chat/completions", payload=payload))
+        choices = document.get("choices") if isinstance(document, dict) else None
+        if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+            raise RuntimeError("Chat did not return one completed choice")
+        choice = choices[0]
+        usage = document.get("usage", {})
+        if (not isinstance(choice.get("message"), dict)
+                or choice["message"].get("role") != "assistant"
+                or choice.get("finish_reason") not in ("stop", "length")
+                or not isinstance(usage, dict)
+                or type(usage.get("completion_tokens")) is not int
+                or usage["completion_tokens"] < 1):
+            raise RuntimeError("Chat lacks normal completion and output-token usage")
         return time.monotonic() - started
 
 
@@ -130,8 +153,15 @@ def _credential(path: Path | None) -> str | None:
 
 
 def run(args: argparse.Namespace) -> dict[str, object]:
-    client = Client(args.endpoint, _credential(args.api_key_file))
+    for name, positive in (("duration_seconds", False), ("drain_timeout_seconds", True), ("kv_tolerance", False)):
+        value = getattr(args, name)
+        if not math.isfinite(value) or value < 0 or (positive and value == 0):
+            raise ValueError(f"{name} must be finite and {'positive' if positive else 'nonnegative'}")
+    require_capture = getattr(args, "require_capture_metrics", False)
+    client = Client(args.endpoint, _credential(args.api_key_file), require_capture_metrics=require_capture)
     baseline = client.metrics()
+    if not idle_satisfied(baseline, baseline, kv_tolerance=args.kv_tolerance):
+        raise RuntimeError("Liveness baseline must be idle before submitting requests")
     started = time.monotonic()
     cycles = []
     while len(cycles) < args.cycles or (
@@ -158,7 +188,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             )
         deadline = time.monotonic() + args.drain_timeout_seconds
         while True:
-            observed = client.metrics()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Idle drain deadline exceeded")
+            observed = client.metrics(timeout=min(10, remaining))
+            if time.monotonic() > deadline:
+                raise RuntimeError("Idle drain deadline exceeded")
             if idle_satisfied(
                 observed,
                 baseline,
@@ -186,6 +221,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "concurrency": args.concurrency,
         "prompt_words": args.prompt_words,
         "baseline": baseline,
+        "capture_metrics_required": require_capture,
+        "scope": "scheduler and KV recovery; capture ownership requires --require-capture-metrics",
         "cycles": cycles,
     }
 
@@ -202,6 +239,8 @@ def main() -> int:
     parser.add_argument("--duration-seconds", type=float, default=0)
     parser.add_argument("--drain-timeout-seconds", type=float, default=120)
     parser.add_argument("--kv-tolerance", type=float, default=0.005)
+    parser.add_argument("--require-capture-metrics", action="store_true",
+                        help="require SparkCache ownership metrics; use for cache-enabled profiles")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     for name in ("concurrency", "prompt_words", "max_tokens", "cycles"):

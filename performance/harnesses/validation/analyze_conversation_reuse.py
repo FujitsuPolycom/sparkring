@@ -81,7 +81,7 @@ def classify(turn, traces, expected, *, ambiguous=False):
                      and row.get("verified_span_tokens") == span
                      and bool(row["digest"]))
         identities.add((row.get("digest"), span, row.get("request_id")))
-    verified = bool(verified and len(identities) == 1 and turn.get("valid") and not ambiguous)
+    verified = bool(verified and len(identities) == 1 and turn.get("valid") is True and not ambiguous)
     attached = [row for row in traces if row.get("event") == "gpu_lease_attached"
                 and row.get("role") == "scheduler" and type(row.get("lease_span_tokens")) is int
                 and row["lease_span_tokens"] > 0]
@@ -89,7 +89,7 @@ def classify(turn, traces, expected, *, ambiguous=False):
     usage = turn.get("usage") or {}
     prompt = usage.get("prompt_tokens")
     positive_report = type(cached) is int and type(prompt) is int and 0 < cached <= prompt
-    if ambiguous or not turn.get("valid"):
+    if ambiguous or turn.get("valid") is not True:
         source = "unknown"
     elif verified:
         source = "verified_all_rank_external_restore"

@@ -172,6 +172,8 @@ def test_concurrent_filters_follow_c1_cases_with_fixed_decode_and_http_overlap(m
         return _stream()
 
     monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    # Any requested concurrency above one enables fixed two-request sampler
+    # pairs; separate shape warmup exercises the requested concurrency values.
     result = wrapper.warmup_sampling("http://localhost", "model", 16, 30, None, (1, 3))
     assert len(observed) == 12
     assert all("min_tokens" not in body and "ignore_eos" not in body for body in observed[:6])

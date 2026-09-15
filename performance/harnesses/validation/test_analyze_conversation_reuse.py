@@ -110,6 +110,14 @@ def test_malformed_completion_never_verifies():
     assert row["source"] == "unknown"
 
 
+@pytest.mark.parametrize('valid', ['false', 1, {}, None])
+def test_only_boolean_success_can_support_restore_classification(valid):
+    row = analysis.analyze([turn(valid=valid, cached_tokens_reported=8000)],
+                           [completion(0)], [0])['turns'][0]
+    assert row['source'] == 'unknown'
+    assert not row['all_rank_worker_verification']
+
+
 def test_phase_populations_remain_separate_and_retry_timings_retained():
     turns = [turn(), turn(phase="before", request_id="probe-id", response_id="chatcmpl-probe-id", elapsed_seconds=1)]
     report = analysis.analyze(turns, [completion(0, time_ns=50, outcome="recompute", verified_span_tokens=0), completion(0)], [0])

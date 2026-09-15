@@ -1,4 +1,4 @@
-"""GPU-free contracts for native-MTP3 configuration and mesh source composition."""
+"""GPU-free contracts for MTP3 configuration and mesh source composition."""
 import importlib.util
 import json
 from pathlib import Path
@@ -27,6 +27,242 @@ def _site(tmp_path):
     path = tmp_path / "site.json"
     path.write_text(json.dumps(make_example.site_example()))
     return path
+
+
+@pytest.mark.parametrize('selection', ['tp4-dcp1','tp4-dcp1-sparkcache','tp4-dcp4','tp4-dcp4-sparkcache'])
+def test_r35_site_render_uses_its_own_receipt_and_connector(tmp_path, monkeypatch, selection):
+    from runtime.common.test_r35 import receipt
+
+    document = receipt()
+    path = tmp_path / "r35.json"
+    path.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    settings["runtime_profile"] = selection
+    site.write_text(json.dumps(settings))
+    # This test isolates profile planning; native bundle integrity has separate tests.
+    monkeypatch.setattr(
+        mesh_profile,
+        "verify_bundle",
+        lambda bundle, record: record["bundle_manifest_sha256"],
+    )
+    output = tmp_path / "launch"
+    result = mesh_profile.render(site, tmp_path / "bundle", output, path)
+    assert result["image"]["schema"] == "sparkring-r35-image-receipt/v1"
+    for rank in range(4):
+        env = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert env["SPARKRING_RUNTIME_RELEASE"] == "r35"
+        assert env["IMAGE_ID"] == document["image_id"]
+        assert env["SOURCE_IMAGE_PROFILE"] == selection
+        assert env["VLLM_GLM53_MHC_PREFILL_SHARD"] == "1"
+        if selection.endswith("sparkcache"):
+            assert env["SPARKCACHE_SOURCE_LEASE_CONTRACT"].endswith(
+                "vllm-connector-jobs-r35.json"
+            )
+            assert env["SPARKCACHE_CACHE_NAMESPACE"].startswith("sparkring-r35-")
+
+
+@pytest.mark.parametrize("direct", [False, True])
+def test_r35_tuning_is_persisted_and_installer_rejects_argv_drift(
+    tmp_path, monkeypatch, direct
+):
+    from runtime.common.test_r35 import receipt
+    from runtime.common import glm_launch
+    import managed_install
+
+    document = receipt()
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    tuning = dict(
+        omp_threads=1,
+        graph_submit_cpu=10,
+        graph_progress_cpu=11,
+        direct_doorbell=direct,
+    )
+    settings.update(runtime_profile="tp4-dcp1-sparkcache", runtime_tuning=tuning)
+    site.write_text(json.dumps(settings))
+    monkeypatch.setattr(
+        mesh_profile,
+        "verify_bundle",
+        lambda bundle, record: record["bundle_manifest_sha256"],
+    )
+    output = tmp_path / "launch"
+    mesh_profile.render(site, tmp_path / "bundle", output, receipt_path)
+    assert json.loads((output / "site.json").read_text())["runtime_tuning"] == tuning
+    for rank in range(4):
+        env = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert [
+            env[key]
+            for key in (
+                "OMP_NUM_THREADS",
+                "SPARK_TP4_GRAPH_SUBMIT_CPU",
+                "SPARK_TP4_GRAPH_PROGRESS_CPU",
+                "SPARK_TP4_GRAPH_DIRECT_DOORBELL",
+            )
+        ] == ["1", "10", "11", str(int(direct))]
+    monkeypatch.setattr(
+        managed_install.managed_units.service, "mesh_profile", mesh_profile
+    )
+    monkeypatch.setattr(glm_launch, "profile_owner", lambda: mesh_profile)
+    assert glm_launch.main([
+        "plan", "--launch", str(output), "--image-receipt", str(receipt_path),
+        "--rank", "0",
+    ]) == 0
+    calls = []
+
+    def runner(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("Structured admission must not execute the legacy launcher")
+
+    image = {"Id": document["image_id"], "Config": {}}
+    expected = managed_install.canonical_container_spec(output, receipt_path, 0, image, run=runner)
+    assert expected["env"]["OMP_NUM_THREADS"] == "1"
+    assert expected["env"]["SPARK_TP4_GRAPH_DIRECT_DOORBELL"] == str(int(direct))
+    assert calls == []
+    with (output / "rank0.env").open("a") as stream:
+        stream.write("\nOMP_NUM_THREADS=2\n")
+    with pytest.raises(ValueError, match="differs from the canonical"):
+        managed_install.canonical_container_spec(
+            output, receipt_path, 0, image, run=runner
+        )
+    assert calls == []
+
+
+@pytest.mark.parametrize("selection", ["tp4-dcp1", "tp4-dcp1-sparkcache"])
+def test_legacy_admission_retains_exact_cache_argument_bytes_and_rejects_lost_structured_plan(
+    tmp_path, monkeypatch, selection
+):
+    from runtime.common import glm_launch, glm_tp4, r35
+    from runtime.common.container_spec import expected_inspection
+    from runtime.common.test_glm_tp4 import oracle
+    from runtime.common.test_r35 import receipt
+
+    monkeypatch.syspath_prepend(str(HERE))
+    import managed_install
+
+    record = r35.validate_receipt(receipt())
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(record))
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    settings["runtime_profile"] = selection
+    site.write_text(json.dumps(settings))
+    monkeypatch.setattr(mesh_profile, "verify_bundle", lambda bundle, image: image["bundle_manifest_sha256"])
+    launch = tmp_path / "launch"
+    mesh_profile.render(site, tmp_path / "bundle", launch, receipt_path)
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(glm_launch, "profile_owner", lambda: mesh_profile)
+    values = mesh_profile.defaults(launch / "rank0.env")
+    legacy_argv = oracle(launch / "launch-rank.sh", values, 0, tmp_path)
+    image = {"Id": record["image_id"], "Config": {}}
+    legacy_expected = managed_install.expected_container_spec(legacy_argv, image)
+    typed = glm_tp4.build_spec(values, image_record=record, contract=r35.profile_contract(record["installed"]))
+    if selection.endswith("sparkcache"):
+        old_json = legacy_expected["cmd"][legacy_expected["cmd"].index("--kv-transfer-config") + 1]
+        typed_json = typed.command[typed.command.index("--kv-transfer-config") + 1]
+        assert json.loads(old_json) == json.loads(typed_json)
+        assert old_json != typed_json
+
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"schema": "sparkring-container-command/v1", "argv": legacy_argv}))
+
+    assert managed_install.canonical_container_spec(launch, receipt_path, 0, image, run=run) == legacy_expected
+    assert len(calls) == 1
+    assert glm_launch.main(["plan", "--launch", str(launch), "--image-receipt", str(receipt_path), "--rank", "0"]) == 0
+    structured, _, _ = glm_launch.resolve_spec(launch, receipt_path, 0, owner=mesh_profile)
+    expected = expected_inspection(structured, image)
+    container = {
+        "Name": "/" + structured.name, "Image": structured.image_id,
+        "Config": {"Cmd": expected["cmd"], "Entrypoint": expected["entrypoint"],
+                   "Healthcheck": expected["healthcheck"], "Env": [f"{key}={value}" for key, value in expected["env"].items()],
+                   "Labels": expected["labels"], "User": expected["user"], "WorkingDir": expected["working_dir"]},
+        "Mounts": [{"Destination": target, **mount} for target, mount in expected["mounts"].items()],
+        "HostConfig": expected["host_config"],
+    }
+    plan_directory = glm_launch.plan_directory(launch, 0)
+    for path in plan_directory.iterdir():
+        path.unlink()
+    plan_directory.rmdir()
+    retained_expected = managed_install.canonical_container_spec(launch, receipt_path, 0, image, run=run)
+    assert glm_launch.STRUCTURED_LABEL in container["Config"]["Labels"]
+    with pytest.raises(ValueError, match="model arguments|labels"):
+        managed_install.validate_container_spec(container, retained_expected)
+
+
+@pytest.mark.parametrize("damage", ["missing", "tampered"])
+def test_installer_does_not_fall_back_when_structured_plan_is_incomplete_or_changed(
+    tmp_path, monkeypatch, damage
+):
+    from runtime.common import glm_launch
+    from runtime.common.test_r35 import receipt
+
+    monkeypatch.syspath_prepend(str(HERE))
+    import managed_install
+
+    record = receipt()
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(record))
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    settings["runtime_profile"] = "tp4-dcp1-sparkcache"
+    site.write_text(json.dumps(settings))
+    monkeypatch.setattr(mesh_profile, "verify_bundle", lambda bundle, image: image["bundle_manifest_sha256"])
+    launch = tmp_path / "launch"
+    mesh_profile.render(site, tmp_path / "bundle", launch, receipt_path)
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(glm_launch, "profile_owner", lambda: mesh_profile)
+    assert glm_launch.main(["plan", "--launch", str(launch), "--image-receipt", str(receipt_path), "--rank", "0"]) == 0
+    plan = glm_launch.plan_directory(launch, 0) / "plan.json"
+    if damage == "missing":
+        plan.unlink()
+    else:
+        saved = json.loads(plan.read_text())
+        saved["container"]["command"].append("--unreviewed")
+        plan.write_text(json.dumps(saved))
+    with pytest.raises(ValueError, match="creation plan is missing|creation plan changed"):
+        managed_install.canonical_container_spec(
+            launch, receipt_path, 0, {"Id": record["image_id"], "Config": {}},
+            run=lambda *args, **kwargs: pytest.fail("An incomplete structured plan must not use legacy admission"),
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("omp_threads", True),
+        ("omp_threads", 0),
+        ("omp_threads", 21),
+        ("graph_submit_cpu", -1),
+        ("graph_progress_cpu", 20),
+        ("direct_doorbell", 0),
+        ("direct_doorbell", "false"),
+        ("environment", "arbitrary"),
+    ],
+)
+def test_runtime_tuning_rejects_untyped_or_unbounded_inputs(tmp_path, field, value):
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    tuning = dict(
+        omp_threads=1, graph_submit_cpu=10, graph_progress_cpu=11, direct_doorbell=True
+    )
+    tuning[field] = value
+    settings["runtime_tuning"] = tuning
+    site.write_text(json.dumps(settings))
+    with pytest.raises(ValueError, match="runtime_tuning"):
+        mesh_profile.load_site(site)
+
+
+def test_runtime_tuning_requires_r35_receipt(tmp_path, manifest_bundle):
+    site = _site(tmp_path)
+    settings = json.loads(site.read_text())
+    settings['runtime_tuning']=dict(omp_threads=1,graph_submit_cpu=10,graph_progress_cpu=11,direct_doorbell=True)
+    site.write_text(json.dumps(settings))
+    with pytest.raises(ValueError,match='explicit R35 image receipt'):
+        mesh_profile.render(site,manifest_bundle,tmp_path/'launch')
 
 
 def test_example_has_only_benchmark_or_documentation_addresses(tmp_path):
@@ -151,6 +387,31 @@ def test_vendor_is_complete_and_content_bound():
     assert actual == provenance["roce_tree_sha256"]
     assert len(files) == 9
     assert (vendor / "LICENSE").is_file()
+
+
+def test_published_bundle_sources_preserve_released_proxy_and_adapter():
+    with mesh_profile.published_bundle_sources() as (vendor, adapter):
+        tree, files = mesh_profile.build_bundle._canonical_tree(vendor / "b12x/comm/roce")
+        assert tree == "902a9dfd1a9c8ec379b002b13737701dd6bc58e240abcb5ab9b443455961a3a4"
+        assert len(files) == 9
+        assert mesh_profile.sha(vendor / "b12x/comm/roce/_roce_proxy.c") == (
+            "b208f07d4bb12613a6aef3e8e59ac334b53028655b76f3f5c6e531bd354b369e"
+        )
+        assert adapter.read_bytes() != (mesh_profile.ROOT / "integrations/vllm/rocenante/rocenante_vllm_overlay.py").read_bytes()
+        development_tree, _ = mesh_profile.build_bundle._canonical_tree(
+            mesh_profile.ROOT / "third_party/b12x_roce/b12x/comm/roce"
+        )
+        assert development_tree != tree
+
+
+def test_published_bundle_source_archive_rejects_changed_bytes(tmp_path, monkeypatch):
+    archive = tmp_path / mesh_profile.RELEASE_SOURCES
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"changed archive")
+    monkeypatch.setattr(mesh_profile, "ROOT", tmp_path)
+    with pytest.raises(ValueError, match="source archive differs"):
+        with mesh_profile.published_bundle_sources():
+            pytest.fail("changed sources were accepted")
 
 
 def test_marker_source_matches_its_declared_pin():
@@ -282,7 +543,7 @@ def test_render_peer_devices_follow_topology(tmp_path, manifest_bundle):
         for marker in local_plan["markers"]:
             assert marker["argv"] == [site["marker_binary"], "--device", marker["device"],
                                       "--source-port", "65535", "--replacement-ethertype", "0x88b5",
-                                      "--attach", "--run-seconds", "7200"]
+                                      "--attach", "--run-seconds", str(topology.bounded_runtime_seconds)]
 
 
 def test_render_refuses_existing_output_without_changing_it(tmp_path, manifest_bundle):
@@ -691,6 +952,70 @@ def test_render_propagates_api_keys_file_to_every_rank(tmp_path, manifest_bundle
     mesh_profile.load_site(output / "site.json")
 
 
+def _site_with_variant(tmp_path, value="nvidia-nvfp4"):
+    path = _site(tmp_path)
+    data = json.loads(path.read_text())
+    data["target_model_variant"] = value
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_site_accepts_known_target_model_variant(tmp_path):
+    site, _, _ = mesh_profile.load_site(_site_with_variant(tmp_path))
+    assert site["target_model_variant"] == "nvidia-nvfp4"
+
+
+@pytest.mark.parametrize("value", ["nvfp4", "unknown", "", None, 1, "nvidia-nvfp4 ", ["nvidia-nvfp4"]])
+def test_site_rejects_unknown_target_model_variant(tmp_path, value):
+    with pytest.raises(ValueError):
+        mesh_profile.load_site(_site_with_variant(tmp_path, value))
+
+
+def test_render_defaults_to_qualified_variant_and_namespace(tmp_path, manifest_bundle):
+    output = tmp_path / "rendered-default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, output)
+    for rank in range(4):
+        values = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert values["TARGET_MODEL_VARIANT"] == "nvfp4-spark"
+        assert values["SPARKCACHE_CACHE_NAMESPACE"] == mesh_profile.PINS["cache_identity"]["namespace"]
+
+
+def test_render_explicit_qualified_variant_matches_default_render(tmp_path, manifest_bundle):
+    default = tmp_path / "default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, default)
+    explicit = tmp_path / "explicit"
+    mesh_profile.render(_site_with_variant(tmp_path, "nvfp4-spark"), manifest_bundle, explicit)
+    for rank in range(4):
+        assert (explicit / f"rank{rank}.env").read_bytes() == (default / f"rank{rank}.env").read_bytes()
+
+
+def test_render_propagates_target_model_variant_with_separate_namespace(tmp_path, manifest_bundle):
+    default = tmp_path / "default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, default)
+    selected = tmp_path / "selected"
+    repeated = tmp_path / "repeated"
+    mesh_profile.render(_site_with_variant(tmp_path), manifest_bundle, selected)
+    mesh_profile.render(selected / "site.json", manifest_bundle, repeated)
+    namespace = mesh_profile.PINS["cache_identity"]["namespace"]
+    for rank in range(4):
+        name = f"rank{rank}.env"
+        baseline = mesh_profile.defaults(default / name)
+        actual = mesh_profile.defaults(selected / name)
+        assert actual["TARGET_MODEL_VARIANT"] == "nvidia-nvfp4"
+        assert actual["SPARKCACHE_CACHE_NAMESPACE"] == namespace + "-nvidia-nvfp4"
+        assert actual["LOAD_FORMAT"] == "safetensors"
+        assert actual["DFLASH_WARMUP_TIMEOUT_SECONDS"] == "1500"
+        assert baseline["LOAD_FORMAT"] == "fastsafetensors"
+        assert baseline["DFLASH_WARMUP_TIMEOUT_SECONDS"] == "600"
+        assert (selected / name).read_bytes() == (repeated / name).read_bytes()
+        actual["TARGET_MODEL_VARIANT"] = "nvfp4-spark"
+        actual["SPARKCACHE_CACHE_NAMESPACE"] = namespace
+        actual["LOAD_FORMAT"] = baseline["LOAD_FORMAT"]
+        actual["DFLASH_WARMUP_TIMEOUT_SECONDS"] = baseline["DFLASH_WARMUP_TIMEOUT_SECONDS"]
+        assert actual == baseline
+    assert json.loads((selected / "site.json").read_text())["target_model_variant"] == "nvidia-nvfp4"
+
+
 @pytest.mark.parametrize("value", [True, False, None, 0, -1, 0.5, 900.0, "900", float("nan"), float("inf"), 2147483648])
 def test_site_rejects_invalid_liveness_output_seconds(tmp_path, value):
     path = _site(tmp_path)
@@ -746,3 +1071,43 @@ def test_r33_extracted_bundle_requires_receipt_for_rebuilt_files(tmp_path, manif
     else:
         with pytest.raises(ValueError, match='differs from its manifest'):
             mesh_profile.render(site, manifest_bundle, tmp_path / 'rendered', receipt)
+
+
+@pytest.mark.parametrize("selection", ["tp4-dcp4", "tp4-dcp4-sparkcache"])
+def test_dcp4_overlay_roots_survive_render_and_managed_regeneration(tmp_path, manifest_bundle, monkeypatch, selection):
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(_r33_image_receipt_document(mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json"))))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    roots = [f"/srv/rank{rank}/source/runtime/sparkring/jovian-r33/profiles" for rank in range(4)]
+    data.update(runtime_profile=selection, r33_profile_contract_roots=roots)
+    site.write_text(json.dumps(data))
+    launch = tmp_path / "launch"
+    mesh_profile.render(site, manifest_bundle, launch, receipt)
+    assert json.loads((launch / "site.json").read_text())["r33_profile_contract_roots"] == roots
+    for rank in range(4):
+        assert mesh_profile.defaults(launch / f"rank{rank}.env")["R33_PROFILE_CONTRACT_HOST_ROOT"] == roots[rank]
+    monkeypatch.syspath_prepend(str(HERE))
+    import managed_install
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(managed_install, "expected_container_spec", lambda argv, image: argv)
+    render = mesh_profile.render
+    monkeypatch.setattr(mesh_profile, "render", lambda site, bundle, output, receipt: render(site, manifest_bundle, output, receipt))
+    monkeypatch.setenv("R33_PROFILE_CONTRACT_HOST_ROOT", "/ambient/ignored")
+    def run(argv, **kwargs):
+        assert "R33_PROFILE_CONTRACT_HOST_ROOT" not in kwargs["env"]
+        rank = int(argv[2])
+        assert mesh_profile.defaults(Path(argv[3]))["R33_PROFILE_CONTRACT_HOST_ROOT"] == roots[rank]
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"schema": "sparkring-container-command/v1", "argv": [roots[rank]]}))
+    for rank in range(4):
+        assert managed_install.canonical_container_spec(launch, receipt, rank, {}, run=run) == [roots[rank]]
+
+
+@pytest.mark.parametrize("roots", [[], ["/one"], ["relative"] * 4, ["/a/../b"] * 4, ["/"] * 4])
+def test_r33_overlay_roots_require_four_safe_paths(tmp_path, roots):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp4", r33_profile_contract_roots=roots)
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="r33_profile_contract_roots"):
+        mesh_profile.load_site(site)

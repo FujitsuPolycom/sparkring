@@ -115,7 +115,7 @@ def run_host_checks(
         _command_check(
             runner,
             check_id="HOST.SYSTEMD",
-            command=("sh", "-c", "test -z \"$(systemctl --failed --no-legend)\""),
+            command=("sh", "-c", 'failed=$(systemctl --failed --no-legend) && test -z "$failed"'),
             summary="No systemd unit is failed.",
         ),
         _command_check(
@@ -129,6 +129,8 @@ def run_host_checks(
             summary="Root filesystem has at least 20 GiB free.",
         ),
     ]
+    if not require_telemetry_disabled:
+        return checks
     telemetry = runner.run(
         ("systemctl", "is-enabled", "nvidia-dgx-telemetry.service")
     )
@@ -139,16 +141,12 @@ def run_host_checks(
             "HOST.NVIDIA_TELEMETRY",
             (
                 CheckStatus.PASS
-                if disabled or not require_telemetry_disabled
+                if disabled
                 else CheckStatus.FAIL
             ),
             "host",
             "nvidia-dgx-telemetry.service",
-            (
-                "NVIDIA telemetry state was observed."
-                if not require_telemetry_disabled
-                else "NVIDIA telemetry is disabled or masked."
-            ),
+            "NVIDIA telemetry is disabled, masked, or absent.",
             f"is-enabled={telemetry_state}",
             source="spark-doctor",
         )

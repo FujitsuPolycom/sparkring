@@ -5,9 +5,10 @@ metadata and dispatches a no-output custom CUDA operator.  The operator claims
 round slots, copies expert IDs, and updates counters on the device.  It does
 not allocate tensors, inspect device values from the CPU, or write files.
 
-All synchronization, device-to-host transfer, validation, and JSONL output are
-confined to :meth:`TargetRouteCapture.drain_jsonl`, which must be called after
-the measured/model execution window.
+After execution, :meth:`TargetRouteCapture.drain_jsonl` and
+:meth:`TargetRouteCapture.read_counters` explicitly synchronize and copy device
+data to the host. The drain method validates the snapshot and writes JSONL;
+hot-path metadata validation remains on dispatch.
 """
 
 from __future__ import annotations
@@ -311,8 +312,10 @@ class TargetRouteCapture:
         self.layer_masks = torch.zeros(
             (config.capacity_rounds, 2), dtype=torch.int64, device=device
         )
-        # [request_slot, model_role, active_capture_slot, armed].  Request
-        # context is updated outside graph/timed execution; the graph reads it
+        # [request_slot, model_role, round_state, armed]. State -1 is idle,
+        # >=0 is an active slot, and <=-2 is -(completed_slot + 2), pending
+        # its sampler result. Each row must be used on one ordered CUDA stream.
+        # Request context is updated outside graph/timed execution; graphs read it
         # on replay.  An unarmed graph node is an intentional no-op.
         self.stream_control = torch.tensor(
             [
@@ -359,7 +362,7 @@ class TargetRouteCapture:
         prior = self._request_keys.get(request_slot)
         if prior is not None and prior != request_key:
             raise CaptureError(
-                "request slots cannot be reused before draining/resetting capture"
+                "request slots cannot be reused; drain evidence and create a fresh capture instance"
             )
         self._request_keys[request_slot] = request_key
         # This host-to-device update is deliberately outside timed execution.
@@ -428,11 +431,17 @@ class TargetRouteCapture:
         *,
         stream_slot: int = 0,
     ) -> None:
-        """Associate one sampler result with the latest target-route slot.
+        """Associate one sampler result with this stream's completed route slot.
 
+        Call once after all routed layers and before the next round on the same
+        stream slot. Every captured round requires a sampler result before drain.
+        Other stream slots may complete and associate results independently.
         Both inputs remain device tensors. Shape, dtype, route/sample ordering,
         and the ``sampled + rejected == width`` invariant are validated by the
         CUDA dispatcher/kernel without a host read or synchronization.
+        ``sampled`` counts retained output tokens including the anchor;
+        ``rejected`` counts discarded speculative positions. The accepted
+        speculative prefix therefore has ``sampled - 1`` tokens.
         """
 
         if not 0 <= stream_slot < self.config.max_stream_slots:
@@ -465,9 +474,9 @@ class TargetRouteCapture:
 
         def capture_fn(topk_ids: Any) -> None:
             width = topk_ids.shape[0]
-            # BaseRouter calls the callback for profile, prefill, and Q1
-            # forwards too.  Those are outside this bounded Q5/Q6 artifact and
-            # must remain unaffected, including while the arena is disarmed.
+            # Only five- or six-row target calls fit this arena. Width does not
+            # identify forward mode: the caller must isolate the armed request
+            # window, including any prefill with the same row count.
             if width != 5 and width != 6:
                 return
             self.record_target_routes(

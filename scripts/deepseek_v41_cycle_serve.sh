@@ -50,12 +50,11 @@ grep -q '"DeepseekV41ForCausalLM"' "$MODEL_HOST_PATH/config.json" || die "config
 [ -f "$NCCL_SO_HOST_PATH" ] || die "patched NCCL library missing: $NCCL_SO_HOST_PATH"
 [ -f "$PATCH_DIR/mounts.txt" ] || die "no mounts.txt in PATCH_DIR: $PATCH_DIR"
 [ -f "$PATCH_DIR/MD5SUMS" ] || die "no MD5SUMS in PATCH_DIR: $PATCH_DIR"
-if command -v md5sum >/dev/null 2>&1; then
-    (cd "$PATCH_DIR" && md5sum -c MD5SUMS --quiet) || die "patch md5 mismatch in $PATCH_DIR"
-fi
+command -v md5sum >/dev/null 2>&1 || die "md5sum is required to verify patch bytes"
+(cd "$PATCH_DIR" && md5sum -c MD5SUMS --quiet) || die "patch md5 mismatch in $PATCH_DIR"
 for name in MAX_MODEL_LEN MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS NUM_SPECULATIVE_TOKENS ENGRAM_DISK_THREADS ENGRAM_DISK_CHUNK; do require_positive_integer "$name"; done
 require_port API_PORT; require_port MASTER_PORT
-[ "$API_PORT" != "$MASTER_PORT" ] || die "API_PORT and MASTER_PORT must differ"
+[ "$((10#$API_PORT))" -ne "$((10#$MASTER_PORT))" ] || die "API_PORT and MASTER_PORT must differ"
 case "$GPU_MEMORY_UTILIZATION" in 0.[0-9]|0.[0-9][0-9]) ;; *) die "GPU_MEMORY_UTILIZATION must look like 0.80: $GPU_MEMORY_UTILIZATION" ;; esac
 case "$ENFORCE_EAGER" in 0|1) ;; *) die "ENFORCE_EAGER must be 0 or 1" ;; esac
 case "$TEXT_ONLY" in 0|1) ;; *) die "TEXT_ONLY must be 0 or 1" ;; esac
@@ -86,8 +85,13 @@ site=/usr/local/lib/python3.12/dist-packages/vllm
 headless=(); [ "$NODE_RANK" = 0 ] || headless=(--headless)
 
 patch_mounts=()
+declare -A patch_targets=()
 while read -r f rel; do
     [ -z "$f" ] && continue
+    [[ $f != */* && $f != . && $f != .. && -n $rel && $rel != /* && "/$rel/" != *"/../"* ]] \
+        || die "mounts.txt contains an unsafe patch path"
+    [ -z "${patch_targets[$rel]+present}" ] || die "mounts.txt repeats a patch destination"
+    patch_targets[$rel]=1
     [ -f "$PATCH_DIR/$f" ] || die "patch file missing: $PATCH_DIR/$f"
     patch_mounts+=(-v "$PATCH_DIR/$f:$site/$rel:ro")
 done < "$PATCH_DIR/mounts.txt"
@@ -118,6 +122,7 @@ if [ -n "${API_KEY_FILE:-}" ]; then
     [ -r "$API_KEY_FILE" ] || die "API_KEY_FILE is not readable: $API_KEY_FILE"
     api_keys=()
     while IFS= read -r line || [ -n "$line" ]; do
+        line=${line%$'\r'}
         case "$line" in *[![:space:]]*) api_keys+=("$line") ;; esac
     done < "$API_KEY_FILE"
     [ "${#api_keys[@]}" -gt 0 ] || die "API_KEY_FILE has no keys: $API_KEY_FILE"
@@ -164,7 +169,16 @@ command=(
 if [ "$mode" = --check ]; then
     echo "# rank $NODE_RANK image=$IMAGE model=$MODEL_HOST_PATH"
     echo "# MAX_MODEL_LEN=$MAX_MODEL_LEN MAX_NUM_SEQS=$MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS=$MAX_NUM_BATCHED_TOKENS GPU_MEMORY_UTILIZATION=$GPU_MEMORY_UTILIZATION NUM_SPECULATIVE_TOKENS=$NUM_SPECULATIVE_TOKENS ENFORCE_EAGER=$ENFORCE_EAGER TEXT_ONLY=$TEXT_ONLY"
-    printf '%q ' "${command[@]}"; echo
+    display=("${command[@]}")
+    for ((index = 0; index < ${#display[@]}; index++)); do
+        if [ "${display[index]}" = --api-key ]; then
+            for ((key_index = 1; key_index <= ${#api_keys[@]}; key_index++)); do
+                display[index + key_index]='<redacted>'
+            done
+            break
+        fi
+    done
+    printf '%q ' "${display[@]}"; echo
     exit 0
 fi
 

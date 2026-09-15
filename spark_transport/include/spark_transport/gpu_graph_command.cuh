@@ -111,8 +111,12 @@ __device__ __forceinline__ void wait_for_sequence_block(
     std::uint64_t graph_sequence) {
   if (threadIdx.x == 0) {
     while (true) {
-      const std::uint64_t observed =
-          reinterpret_cast<const volatile std::uint64_t*>(address)[0];
+      // Pair ordered remote payload/doorbell publication with system acquire.
+      std::uint64_t observed{};
+      asm volatile("ld.acquire.sys.global.u64 %0, [%1];"
+                   : "=l"(observed)
+                   : "l"(address)
+                   : "memory");
       if (observed == expected ||
           (graph_commands == nullptr && observed > expected)) {
         break;

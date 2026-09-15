@@ -12,7 +12,8 @@ constexpr std::uint32_t kTp4GraphElementsPerRow = 6144;
 constexpr std::uint32_t kTp4GraphBytesPerElement = 2;
 constexpr std::uint32_t kTp4GraphBytesPerRow =
     kTp4GraphElementsPerRow * kTp4GraphBytesPerElement;
-// Eight active sequences at maximum MTP4 produce at most Q40.
+// Multi-token prediction with four draft tokens plus one verification row per
+// sequence requires at most 8 * (4 + 1) = 40 rows for eight active sequences.
 constexpr std::uint32_t kTp4GraphMaximumQ = 40;
 // All-reduce alone admits the first bounded prefill tier. Vocabulary and
 // DCP descriptors remain capped by kTp4GraphMaximumQ.
@@ -145,6 +146,9 @@ static_assert(std::is_standard_layout_v<Tp4GraphCommandRing>);
 // These functions contain no CUDA or verbs calls. The CPU publisher is the
 // reference model used by layout tests; graph replay publishes from device
 // code and the production progress thread only consumes/completes commands.
+// Each ring has one ordered producer. Concurrent publication is unsupported;
+// the publication CAS detects a broken ordering invariant rather than waiting
+// for another producer that may never finish.
 // A false publish with overflow_sequence still zero means ring backpressure,
 // while a nonzero overflow_sequence denotes a broken ordering invariant.
 //

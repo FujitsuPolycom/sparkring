@@ -297,6 +297,8 @@ void GpuTp4VocabAllgatherWorker::enqueue_graph(
         "invalid graph TP4 vocabulary all-gather operation");
   }
   constexpr int threads = 256;
+  check_cuda(cudaGetLastError(),
+             "prior CUDA error before graph tp4_vocab_all_gather launch");
   tp4_vocab_all_gather<<<
       1, threads, 0, static_cast<cudaStream_t>(cuda_stream)>>>(
       rank_, static_cast<std::uint8_t*>(round0_buffer_),

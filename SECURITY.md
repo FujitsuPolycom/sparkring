@@ -1,6 +1,7 @@
 # Security Policy
 
-SparkRing is pre-release research software. There is no supported-versions table: the only supported version is the latest commit on `main`.
+No released version receives a security-maintenance guarantee.
+Accepted fixes land on the `main` branch.
 
 ## Reporting a vulnerability
 

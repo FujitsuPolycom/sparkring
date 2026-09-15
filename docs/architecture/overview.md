@@ -1,0 +1,91 @@
+# SparkRing architecture
+
+SparkRing provides inference profiles for two-Spark pairs and four-Spark rings.
+GLM-5.3-Flash supports both TP2 and TP4. The
+[profile catalog](../../profiles/README.md) identifies each model's available
+quantizations, parallelism and runtime configuration.
+
+## Topology
+
+```text
+management LAN ─┬─────────────┬─────────────┬─────────────┐
+            ┌───┴────┐    ┌───┴────┐    ┌───┴────┐    ┌───┴────┐
+     API ──>│ rank 0 ╞════╡ rank 1 ╞════╡ rank 2 ╞════╡ rank 3 │
+            └───╤────┘    └────────┘    └────────┘    └───╤────┘
+                ╚═════════════════════════════════════════╝
+
+  ═══  one 200 Gb/s ConnectX-7 DAC per edge (RoCEv2); the inference fabric
+  ───  management LAN: SSH, rendezvous, rank-0 API; never a fabric edge
+```
+
+Four ranks, numbered 0 through 3, are cabled as the cycle `0-1-2-3-0`. Each of
+those four edges is one direct 200 Gb/s ConnectX-7 link carrying RoCEv2, so
+every rank has exactly two fabric neighbors - rank 0 neighbors ranks 1 and 3,
+rank 1 neighbors ranks 0 and 2, and so on around the cycle - and no switch
+sits in the inference fabric. Ranks use both cycle neighbors for RDMA
+communication.
+
+The management network reaches all four ranks and carries SSH, rendezvous, and
+rank 0's API traffic. It is not an inference-fabric edge.
+
+A switchless fabric has no shared broadcast domain, so a rank reaches a
+non-adjacent fabric address only through a neighbor that forwards the traffic.
+Routes to each non-adjacent fabric subnet, `net.ipv4.ip_forward=1`, and an
+unrestricted `DOCKER-USER` forward rule are launch prerequisites on every rank;
+[prerequisites](../operations/prerequisites.md) states the conditions and
+[`scripts/ring_doctor.py`](../../scripts/ring_doctor.py) verifies them.
+
+Two-Spark profiles use ranks 0 and 1, with rank 0 serving the API and no
+relayed fabric hop. DeepSeek and Qwen pairs use patched NCCL. GLM-5.3-Flash
+TP2 selects RoCEnante for eligible collectives with NCCL fallback; its
+[pair quickstart](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)
+includes the device-selection checks and known single-DAC limitation.
+SIRCL's four-rank interfaces are not used for pair collectives.
+
+## Collective path
+
+SIRCL (Switchless Inference RDMA Collective Layer) owns persistent RDMA
+sessions and graph-replayable command rings for qualified tensor-parallel
+collectives. On the four-rank cycle, a collective is scheduled as the cycle's
+two perfect matchings - ranks 0-1 with 2-3, then 1-2 with 3-0 - so every step
+is a neighbor exchange and no rank relays another rank's collective data. See
+[SIRCL](sircl.md) for the transport boundary.
+
+Patched NCCL is the fallback for collective shapes and phases outside SIRCL's
+qualified path. The GLM-5.2 EXL3 profile uses SIRCL for qualified TP all-reduce and
+vocabulary families; its DCP and indexer collectives remain stock. The
+four-Spark DeepSeek profile uses
+`scripts/config/deepseek-v4-flash-0731.env.example`; the two-Spark profile uses
+`scripts/config/deepseek-v4-flash-0731-pair.env.example`. Both use patched
+NCCL. Width-4096 SIRCL graph collectives are research-only on the four-Spark
+cycle and unsupported on the pair.
+
+The Qwen pair and four-Spark profiles use their topology-specific environments
+in `scripts/config/` and patched NCCL. Their width-5,120 tensor-parallel path
+is not admitted by SIRCL, so neither loads a custom SparkRing collective
+adapter.
+
+## Profile composition
+
+The GLM-5.2 EXL3 deployment is generated from
+`recipes/glm52-exl3-r7-3.5bpw.json` and its tracked runtime inputs. It combines
+four-token speculation, dynamic NVFP4 MLA key-value cache, and a transient
+gather of compressed key-value state across decode-context ranks, bounded at
+1,048,576 logical tokens. Its
+target-model EXL3 routing handles exactly 40 query rows in eight-row blocks;
+the recipe names this policy `exact_q40_policy`. The DeepSeek deployment uses the immutable published
+runtime image in `runtime/faststart-lock.json`, its native DSpark speculation,
+and `fp8_ds_mla` key-value cache geometry.
+
+The Qwen deployments use the clean-checkout local ARM64 image builder in
+`runtime/qwen38/` and the pair/cycle model recipes. The image is built once and distributed
+with one content-addressed image ID. It combines EXL3 K5/K6 weights, Qwen MTP
+depth 3, FP8 key-value cache, native prefix caching with recurrent-state
+alignment, and full-decode CUDA graphs. External key-value caching is disabled
+in the base profile.
+
+The quickstarts own operational commands:
+[GLM-5.2 EXL3 3.5-bpw](../../profiles/glm52-exl3-r7-3.5bpw/README.md) and
+[DeepSeek-V4-Flash-0731](../operations/deepseek-0731.md), and
+[Qwen3.8-27B EXL3 K5/K6 pair](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md), and
+[Qwen3.8-27B EXL3 K5/K6 cycle](../../profiles/qwen38-27b-exl3-k5k6/README.md).

@@ -98,6 +98,10 @@ def command(rank, host, image, network):
         "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1",
     ):
         expected["network"].setdefault(name, "3")
+        if expected["network"][name] != "3":
+            raise ValueError(
+                f"MTP3 managed mesh requires {name}=3; other GID indices are unsupported"
+            )
     program = inspect.getsource(verify_installed_mesh)
     program += "\nprint(verify_installed_mesh(" + repr(expected) + "))\n"
     return {

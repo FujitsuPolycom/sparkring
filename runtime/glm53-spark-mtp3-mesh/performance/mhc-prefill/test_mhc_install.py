@@ -95,13 +95,13 @@ def test_altered_package_is_rejected(tmp_path, name):
         INSTALL.package(context, preimages=name == "preimages.tar.gz")
 
 
-def test_package_matches_serving_source_manifest_and_review_diff():
+def test_packaged_sources_match_manifest_and_source_patch():
     manifest, before = INSTALL.package(preimages=True)
     _, after = INSTALL.package()
     import difflib
 
     expected = []
-    # The review diff exposes all changes, including the added helper.
+    # source.patch exposes every archived file change, including the helper.
     for name in manifest["files"]:
         expected.extend(
             difflib.unified_diff(
@@ -147,3 +147,16 @@ def test_model_and_checkpoint_preimages_match_maintained_source_packages():
     result = module.verify()
     assert len(result["verified_files"]) == 2
     assert result["docker_build_exercised"] is False
+
+
+def test_failed_write_does_not_update_ownership(tmp_path, monkeypatch):
+    _, _, after, ownership = fixture(tmp_path)
+    original = copy.deepcopy(ownership)
+    victim = tmp_path / next(iter(after))
+    write = Path.write_bytes
+    def corrupt(path, data):
+        return write(path, b"corrupt" if path == victim else data)
+    monkeypatch.setattr(Path, "write_bytes", corrupt)
+    with pytest.raises(ValueError, match="postimage differs"):
+        INSTALL.apply(tmp_path, ownership)
+    assert ownership == original

@@ -39,7 +39,6 @@ MAX_QUERY_ROWS = MAX_CONCURRENT_SEQUENCES * (FIXED_MTP_DEPTH + 1)
 # C1 through C8. Query-width coverage is enforced separately by rejecting
 # stock vocabulary capture signatures for Q1 through Q24.
 MIN_VOCABULARY_CAPTURED_NODES = 2 * MAX_CONCURRENT_SEQUENCES
-EXPECTED_ANSWER = re.compile(r"(?<!\d)42(?!\d)")
 SPEC_COUNTERS = (
     "vllm:spec_decode_num_drafts_total",
     "vllm:spec_decode_num_draft_tokens_total",
@@ -255,13 +254,16 @@ def semantic_canary(base_url: str, model: str, timeout: float) -> dict[str, Any]
     message = choices[0].get("message")
     if not isinstance(message, dict):
         raise QualificationError("semantic canary returned no message")
+    if choices[0].get("finish_reason") != "stop" or message.get("role") != "assistant":
+        raise QualificationError("semantic canary must be a completed assistant response")
     fields = [
         value
         for name in ("reasoning", "reasoning_content", "content")
         if isinstance((value := message.get(name)), str)
     ]
     combined = "\n".join(fields)
-    if not EXPECTED_ANSWER.search(combined):
+    content = message.get("content")
+    if not isinstance(content, str) or content.strip() != "42":
         raise QualificationError("semantic canary did not contain the integer 42")
     return {"answer_present": True, "response_sha256": hashlib.sha256(combined.encode()).hexdigest()}
 
@@ -405,6 +407,27 @@ def greedy_equivalence_canaries(
     return {"prompt_token_ids_sha256": prompt_hash, "lengths": results}
 
 
+def validate_mtp0_baseline(baseline: Any, model: str) -> None:
+    """Require a passing no-speculation capture, not a candidate comparison."""
+    schemas = {f"sparkring-r7-fixed-mtp{depth}-qualification/v1" for depth in (2, 3, 4)}
+    if (not isinstance(baseline, dict) or baseline.get("schema") not in schemas
+            or baseline.get("status") != "pass" or baseline.get("mode") != "capture-mtp0"
+            or baseline.get("model") != model):
+        raise QualificationError("MTP0 baseline must be a passing capture-mtp0 artifact for this model")
+    speculation = baseline.get("speculation")
+    if not isinstance(speculation, dict) or speculation.get("enabled") is not False:
+        raise QualificationError("MTP0 baseline must record speculation disabled")
+    delta = speculation.get("counter_delta")
+    if (not isinstance(delta, dict) or not isinstance(delta.get("totals"), dict)
+            or set(delta["totals"]) != set(SPEC_COUNTERS)
+            or not isinstance(delta.get("positions"), dict)
+            or not isinstance(delta.get("position_keys"), list)):
+        raise QualificationError("MTP0 baseline omitted complete speculative-counter evidence")
+    values = (*delta["totals"].values(), *delta["positions"].values())
+    if any(type(value) not in (int, float) or value != 0 for value in values):
+        raise QualificationError("MTP0 baseline speculative counters must have zero deltas")
+
+
 def compare_greedy(candidate: dict[str, Any], baseline: dict[str, Any]) -> None:
     baseline_canaries = baseline.get("greedy_equivalence")
     if not isinstance(baseline_canaries, dict):
@@ -462,10 +485,7 @@ def run_http(args: argparse.Namespace) -> dict[str, Any]:
         baseline_bytes = baseline_path.read_bytes()
         baseline_sha256 = hashlib.sha256(baseline_bytes).hexdigest()
         baseline = json.loads(baseline_bytes)
-        if not isinstance(baseline, dict) or baseline.get("status") != "pass":
-            raise QualificationError("MTP0 baseline is not a passing qualification artifact")
-        if baseline.get("model") != model:
-            raise QualificationError("candidate and MTP0 baseline model IDs differ")
+        validate_mtp0_baseline(baseline, model)
         compare_greedy(greedy, baseline)
         speculation = {
             "enabled": True,
@@ -514,10 +534,15 @@ def _load_status(path: str, expected_rank: int) -> dict[str, Any]:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or payload.get("schema_version") != 3:
         raise QualificationError(f"{path} is not a graph-status v3 snapshot")
-    if payload.get("rank") != expected_rank:
+    if type(payload.get("rank")) is not int or payload["rank"] != expected_rank:
         raise QualificationError(
             f"{path} reports rank {payload.get('rank')}, expected {expected_rank}"
         )
+    for field in ("pid", "snapshot_start_unix_ns", "snapshot_end_unix_ns"):
+        if type(payload.get(field)) is not int or payload[field] <= 0:
+            raise QualificationError(f"{path} omitted a valid {field}")
+    if payload["snapshot_end_unix_ns"] < payload["snapshot_start_unix_ns"]:
+        raise QualificationError(f"{path} has a reversed collection interval")
     snapshot = payload.get("snapshot")
     if not isinstance(snapshot, dict):
         raise QualificationError(f"{path} omitted snapshot")
@@ -532,6 +557,12 @@ def _validate_transport_session(
     rank: int,
     minimum_captured_nodes: int,
 ) -> dict[str, Any]:
+    for phase, session in (("before", before), ("after", after)):
+        for field in ("published_sequence", "consumed_sequence", "completed_sequence", "overflow_sequence"):
+            if type(session.get(field)) is not int or session[field] < 0:
+                raise QualificationError(f"rank {rank} {family} {phase} omitted a valid {field}")
+        if session.get("fatal") is not False or session["overflow_sequence"] != 0:
+            raise QualificationError(f"rank {rank} {family} {phase} reported missing or fatal state")
     required_true = (
         "capture_configured",
         "polling_enabled",
@@ -543,7 +574,7 @@ def _validate_transport_session(
         if after.get(name) is not True:
             raise QualificationError(f"rank {rank} {family} did not prove {name}")
     captured = after.get("captured_nodes")
-    if not isinstance(captured, int) or captured < minimum_captured_nodes:
+    if type(captured) is not int or captured < minimum_captured_nodes:
         raise QualificationError(
             f"rank {rank} {family} captured only {captured!r} nodes; "
             f"at least {minimum_captured_nodes} are required"
@@ -553,7 +584,7 @@ def _validate_transport_session(
             raise QualificationError(f"rank {rank} {family} omitted {name}")
     published = after["published_sequence"]
     if not (
-        published > before.get("published_sequence", -1)
+        published > before["published_sequence"]
         and published == after["consumed_sequence"] == after["completed_sequence"]
     ):
         raise QualificationError(f"rank {rank} {family} replay did not advance and catch up")
@@ -562,9 +593,9 @@ def _validate_transport_session(
     return {
         "captured_nodes": captured,
         "minimum_captured_nodes": minimum_captured_nodes,
-        "published_before": before.get("published_sequence"),
+        "published_before": before["published_sequence"],
         "published_after": published,
-        "published_delta": published - before.get("published_sequence", 0),
+        "published_delta": published - before["published_sequence"],
     }
 
 

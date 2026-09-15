@@ -1,7 +1,7 @@
 # R33 TP2 SparkCache composition
 
-Status: **qualified** for the bounded startup, text and restart-restore checks
-identified below; throughput observations remain research-only. The launcher implements a separate
+Status: **Validated** for the bounded startup, text and restart-restore checks
+identified below; throughput observations remain experimental. The launcher implements a separate
 `tp2-dcp1-sparkcache` plan. Its default KV pool is 7.5 GiB per rank, matching
 the bounded R33 test configuration. It preserves the TP2 reference's
 managed B12X loader, TP2/DCP1, MTP3 with Humming draft MoE,
@@ -22,12 +22,13 @@ neither that reference nor this plan proves one-million-token serving capacity.
 The R33 startup capacity check rejected the 6.75 GiB reference pin at this
 request limit: it estimated 7.27 GiB required, about 6.74 GiB available, and
 a 962,560-token maximum. Those estimates are specific to that image/run.
-The packaged profile and launcher now default to 7.5 GiB
+The packaged profile and launcher default to 7.5 GiB
 (`8053063680` bytes). The contract records 6.75 GiB separately as the reference
 pin, not the R33 one-million-token default. Explicit overrides remain available
 for 6.75, 7.5 and 8.75 GiB; they do not inherit qualification from another pin.
 The 7.5 GiB configuration is bounded-qualified on generic R33 image
-`3c7779ad71dd…` for text correctness, three cold starts, managed loading,
+`sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4`
+for text correctness, three cold starts, managed loading,
 prefill and decode, native 8,192-token cache capture and restart restoration,
 and active memory guards. The
 [qualification record](../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
@@ -54,10 +55,10 @@ evidence before serving this profile.
 
 ## Prepare and validate a plan
 
-Use the existing launcher arguments and add `--r33-sparkcache`:
+Use the maintained TP2 launcher with `--r33-sparkcache`:
 
 ```bash
-python3 runtime/profiles/glm53-flash-spark-tp2/launch.py plan \
+python3 runtime/common/tp2.py plan \
   --rank 0 --master 198.18.200.1 \
   --model-dir /srv/models/nvfp4-spark-df116c4f \
   --cache-dir /srv/sparkring/r33-tp2-cache-r0 \
@@ -80,9 +81,13 @@ allocation, explicit B12X draft loader with empty extra configuration, and
 request scheduling/multimodal limits. The launcher reads these fields rather
 than inheriting the legacy profile's values for the cache composition.
 
-The published image contains the canonical profile bytes and has a matching
-verified image receipt. Its TP2 and TP4 bounded checks are recorded separately.
-Distribute an external launcher whose profile contract matches that receipt.
+The published image contains the [preserved profile contract](../../releases/sparkring-r33/published-inputs/profiles/profile-contract.json)
+and has a matching verified image receipt. The checkout's profile contract also
+defines the separately deployed DCP4 overlay; it is not byte-identical to the
+embedded contract. TP2 uses the published image without that overlay. Its
+bounded checks are recorded separately from TP4. Use
+`runtime/common/tp2.py` with the published image
+receipt and `--r33-sparkcache`, as shown above.
 Changing packaged profile bytes requires a matching context/source lock,
 image build, and verification receipt; a build alone does not qualify serving.
 Modified images require their own tests rather than inheriting the published
@@ -95,7 +100,8 @@ R33 profile directory before context preparation. The file records implemented
 source/component capabilities with live qualification pending. Its schema is
 `sparkring-r33-runtime-capabilities/v1`,
 its `profile` is `tp2-dcp1-sparkcache`, and its `sources` must exactly match the
-contract's `vllm_integrated_tree`, `b12x_tree`, and `sparkcache_tree`.
+source build's `profile-contract.json` fields `vllm_integrated_tree`,
+`b12x_tree`, and `sparkcache_tree`.
 
 Both `checks` and `evidence_sha256` must contain exactly these keys:
 
@@ -103,8 +109,9 @@ Both `checks` and `evidence_sha256` must contain exactly these keys:
 - `managed_b12x_loader`
 - `tp2_sparkcache`
 
-Each check must be `implemented` and backed by a retained source-bound CPU or
-component-test artifact's SHA-256. Set `evidence_kind` to
+Each check must be `implemented`. Its `evidence_sha256` value hashes the
+corresponding canonical JSON receipt described below; that receipt records the
+source-bound CPU or component-test evidence. Set `evidence_kind` to
 `source-component-tests` and `live_qualification` to `pending`. Loader evidence
 must establish registration and managed-allocation support; cache evidence
 must establish the TP2 connector/native interface and lease-contract support.
@@ -119,11 +126,15 @@ Each evidence digest identifies the matching canonical receipt under
 source revisions, test conditions, result, conclusion, and qualification limit.
 The resulting image receipt carries `runtime_capabilities.document` and its
 `sha256`, matching `verification.checked_files`. The launcher also requires
-both pinned SparkCache native library hashes in that image verification.
+both `libspark_cache_placement.so` and `libspark_cache_snapshot.so` hashes
+in that image verification. The `sparkcache_native` object in the
+[profile contract](../../sparkring/jovian-r33/profiles/profile-contract.json)
+owns their installed paths and SHA-256 values.
 These are source/package capability gates. Completed GPU/model/cache-recovery
 results belong in the separate activation receipt and remain release gates.
-Do not change admission status to `qualified` or use a live result as a
-substitute for a missing source/component compatibility check.
+Keep the capability document's `checks` values as `implemented` and its
+`live_qualification` as `pending`; the separate activation receipt records live
+results. A live result cannot replace a missing source/component compatibility check.
 
 Activation requires positive managed-B12X allocation, coalescing, mHC and
 RoCEnante activity on both ranks. For an 8,192-row TP2 prefill, each owner must

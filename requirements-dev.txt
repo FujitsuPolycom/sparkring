@@ -1,5 +1,5 @@
 # GPU-free development and CI dependencies.
-# Install torch separately from the CPU wheel index; see CONTRIBUTING.md.
+# Install torch separately from the CPU wheel index; see .github/workflows/ci.yml.
 numpy==2.4.4
 openai==2.29.0
 pydantic==2.12.5

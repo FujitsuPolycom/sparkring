@@ -20,13 +20,13 @@ WHAT THIS READS
       same communicator and stream immediately before each timed collective,
       and times all three regions separately. The first gate absorbs arrival
       skew plus its own cost; the second, entered by every rank at nearly the
-      same instant, measures its own cost alone. Their difference estimates
-      skew and subtracts the gate from itself.
+      same instant, measures gate cost plus any exit skew from the first.
+      Their difference is a lower bound on arrival skew.
     * An `exposure` sweep records end-to-end wall time against a calibrated
       delay injected into the collective's stream region. Its slope is the
       fraction of a marginal collective microsecond that reaches wall time.
 
-    `docs/COLLECTIVE_CRITICAL_PATH_MEASUREMENT.md` specifies the arms, the
+    `performance/methodology/collective-critical-path.md` specifies the arms, the
     validity gates, and what each arm does and does not establish.
 
 WHAT THIS COMPUTES
@@ -43,9 +43,9 @@ WHAT THIS COMPUTES
     those into a floor, a transport-limited ceiling, and a residency ceiling,
     and reports the residency ceiling that the gated arm removes.
 
-    Every number is a median with its interquartile range and sample count.
-    A single value with no spread does not say whether a rank was in a steady
-    state.
+    Per-rank residency summaries include medians, interquartile ranges and
+    sample counts. Totals and skew differences are derived scalars; exposure
+    points are reduced to medians without retaining their per-point spread.
 
 DETECTION THRESHOLD
 
@@ -85,10 +85,12 @@ REPORT_SCHEMA = "sparkring-collective-attribution-report/v1"
 EXIT_OK = 0
 # The two documents are individually valid but cannot be compared: different
 # inventories, different layers, or a failed validity gate. Distinct from a
-# document that is malformed.
+# document that is malformed. Threshold refusals and argparse usage errors
+# also use 2; stderr distinguishes these conditions.
 EXIT_NOT_COMPARABLE = 2
 EXIT_INPUT_MISSING = 3
 EXIT_INVALID_DOCUMENT = 4
+EXIT_OUTPUT_ERROR = 5
 
 DEVICE_LAYER = "device"
 END_TO_END_LAYER = "end_to_end"
@@ -176,7 +178,7 @@ class Summary:
 
 
 def quantile(values: Sequence[float], fraction: float) -> float:
-    """Nearest-rank quantile: an observed sample, never an interpolation."""
+    """Observed sample at index round((n-1)*fraction), with ties rounded to even."""
 
     if not values:
         raise ValueError("a quantile requires at least one sample")
@@ -281,9 +283,9 @@ def required_repetitions(
     paired differences replaces it, and the two can disagree.
     """
 
-    if dispersion_percent < 0.0:
+    if not math.isfinite(dispersion_percent) or dispersion_percent < 0.0:
         raise ValueError("dispersion_percent must be nonnegative")
-    if detect_percent <= 0.0:
+    if not math.isfinite(detect_percent) or detect_percent <= 0.0:
         raise ValueError("detect_percent must be positive")
     if multiplier <= 0.0:
         raise ValueError("multiplier must be positive")
@@ -357,6 +359,8 @@ def fit_exposure(
     assumes the exposure stays linear down to zero.
     """
 
+    if not math.isfinite(detect_percent) or detect_percent <= 0.0:
+        raise ValueError("detect_percent must be finite and positive")
     if len(points) < 3:
         raise ValueError("an exposure fit requires at least three delay points")
     delays = [delay for delay, _wall in points]
@@ -393,8 +397,8 @@ def fit_exposure(
             determinate=False,
             reason=(
                 f"delay span {span:.1f} us is below {minimum_span:.1f} us, "
-                f"which is {detect_percent:.1f}% of the undelayed median wall "
-                "time; the sweep cannot separate exposure from noise"
+                f"which is {detect_percent:.1f}% of the median wall time "
+                "at the smallest delay; the sweep cannot separate exposure from noise"
             ),
         )
     return ExposureFit(
@@ -489,7 +493,10 @@ def _require(document: Mapping[str, Any], field: str, where: str) -> Any:
 def _require_number(value: Any, field: str, where: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise DocumentInvalid(f"{where} field {field!r} must be a number")
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as error:
+        raise DocumentInvalid(f"{where} field {field!r} is outside the finite float range") from error
     if not math.isfinite(number):
         raise DocumentInvalid(f"{where} field {field!r} must be finite")
     return number
@@ -587,6 +594,8 @@ def parse_instance(document: Mapping[str, Any], arm: str, index: int) -> Instanc
         residency[rank] = _samples(
             _require(record, "residency_us", rank_where), "residency_us", rank_where
         )
+        if statistics.median(residency[rank]) <= 0.0:
+            raise DocumentInvalid(f"{rank_where} residency_us must have a positive median for relative timing comparisons")
         if arm == NAKED_ARM:
             for forbidden in ("gate_first_us", "gate_second_us"):
                 if forbidden in record:
@@ -669,15 +678,15 @@ def parse_capture(document: Any) -> Capture:
         parse_instance(entry, arm, index)
         for index, entry in enumerate(instance_field)
     )
-    seen: set[str] = set()
+    seen: set[InstanceKey] = set()
     for instance in instances:
-        if instance.key.label in seen:
+        if instance.key in seen:
             raise DocumentInvalid(
                 f"instance {instance.key.label} appears twice; one occurrence "
                 "of a collective is one instance, and repeat counts belong in "
                 "'occurrences'"
             )
-        seen.add(instance.key.label)
+        seen.add(instance.key)
     return Capture(
         arm=arm,
         layer=layer,
@@ -817,9 +826,12 @@ def build_report(
     naked: Capture,
     detect_percent: float,
     exposure: ExposureFit | None,
+    *,
+    exposure_layer: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the narrowed interval and every gate that qualifies it."""
 
+    require_comparable(gated, naked)
     naked_by_key = {instance.key: instance for instance in naked.instances}
     rows = [
         attribute_instance(
@@ -847,6 +859,7 @@ def build_report(
 
     report: dict[str, Any] = {
         "schema": REPORT_SCHEMA,
+        "status": "invalid_capture" if failures or gate_failures else "compared",
         "sessions": {"gated": gated.session, "naked": naked.session},
         "layer": gated.layer,
         "detect_percent": detect_percent,
@@ -878,6 +891,8 @@ def build_report(
     if exposure is not None:
         exposed_us = exposure.slope * transport_us if exposure.determinate else None
         report["exposure"] = exposure.to_dict()
+        report["exposure"]["measurement_layer"] = exposure_layer
+        report["exposure"]["transport_layer"] = gated.layer
         report["exposure"]["exposed_transport_seconds"] = (
             None
             if exposed_us is None
@@ -887,7 +902,9 @@ def build_report(
             "The slope is fitted over nonnegative injected delays. Applying it "
             "to the whole transport ceiling assumes the exposure stays linear "
             "down to a collective that costs nothing, which no injected delay "
-            "observes."
+            "observes. The sweep's wall-time layer may differ from the transport "
+            "timing layer; this product assumes its injected delays target the "
+            "same collective region and workload."
         )
     return report
 
@@ -910,6 +927,8 @@ def require_comparable(gated: Capture, naked: Capture) -> None:
         )
     if gated.rate_gbit_per_second != naked.rate_gbit_per_second:
         raise NotComparable("the two arms state different link rates")
+    if gated.rate_basis != naked.rate_basis:
+        raise NotComparable("the two arms state different link-rate bases")
     missing = sorted(
         key.label for key in set(gated.keys) - set(naked.keys)
     )
@@ -920,6 +939,25 @@ def require_comparable(gated: Capture, naked: Capture) -> None:
             f"only in gated: {missing or 'none'}; only in naked: "
             f"{extra or 'none'}"
         )
+    naked_by_key = {instance.key: instance for instance in naked.instances}
+    for gated_instance in gated.instances:
+        naked_instance = naked_by_key[gated_instance.key]
+        if gated_instance.wire_bytes_multiplier != naked_instance.wire_bytes_multiplier:
+            raise NotComparable(
+                f"instance {gated_instance.key.label} states different wire-byte multipliers"
+            )
+        if gated_instance.multiplier_basis != naked_instance.multiplier_basis:
+            raise NotComparable(
+                f"instance {gated_instance.key.label} states different multiplier bases"
+            )
+        if gated_instance.occurrences != naked_instance.occurrences:
+            raise NotComparable(
+                f"instance {gated_instance.key.label} states different occurrence counts"
+            )
+        if set(gated_instance.residency_us) != set(naked_instance.residency_us):
+            raise NotComparable(
+                f"instance {gated_instance.key.label} covers different rank identities"
+            )
 
 
 # --------------------------------------------------------------------------
@@ -937,6 +975,8 @@ def render_report(report: Mapping[str, Any]) -> str:
     totals = report["totals_seconds"]
     validity = report["validity"]
     out = ["Collective critical-path attribution\n\n"]
+    if report.get("status") == "invalid_capture":
+        out.append("INVALID CAPTURE: failed validity gates; numbers are diagnostic only.\n\n")
     out.append(
         _line("gated session", str(report["sessions"]["gated"]))
         + _line("naked session", str(report["sessions"]["naked"]))
@@ -1022,7 +1062,7 @@ def render_report(report: Mapping[str, Any]) -> str:
         "\nScope: every number above is arithmetic over timings another "
         "instrument recorded. The transport ceiling is a sum of per-instance "
         "slowest-rank medians, so it bounds the transport's contribution and "
-        "does not identify a critical path through the four ranks.\n"
+        "does not identify a critical path through the participating ranks.\n"
     )
     return "".join(out)
 
@@ -1108,13 +1148,33 @@ def example_documents() -> dict[str, Any]:
 
 
 def load_document(path: str) -> Any:
+    def unique_keys(entries):
+        result = {}
+        for key, value in entries:
+            if key in result:
+                raise ValueError(f"duplicate JSON key {key!r}")
+            result[key] = value
+        return result
+
+    def finite_float(value):
+        result = float(value)
+        if not math.isfinite(result):
+            raise ValueError("JSON number must be finite")
+        return result
+
+    def reject_constant(value):
+        raise ValueError(f"invalid JSON constant {value}")
+
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError as error:
         raise FileNotFoundError(f"{path}: {error}") from error
+    except UnicodeDecodeError as error:
+        raise DocumentInvalid(f"{path} is not UTF-8: {error}") from error
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as error:
+        return json.loads(text, object_pairs_hook=unique_keys,
+                          parse_float=finite_float, parse_constant=reject_constant)
+    except ValueError as error:
         raise DocumentInvalid(f"{path} is not valid JSON: {error}") from error
 
 
@@ -1189,10 +1249,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     if arguments.plan:
         if arguments.dispersion_percent is None or arguments.detect_percent is None:
             parser.error("--plan requires --dispersion-percent and --detect-percent")
-        if arguments.dispersion_percent < 0.0:
-            parser.error("--dispersion-percent must be nonnegative")
-        if arguments.detect_percent <= 0.0:
-            parser.error("--detect-percent must be positive")
+        if not math.isfinite(arguments.dispersion_percent) or arguments.dispersion_percent < 0.0:
+            parser.error("--dispersion-percent must be finite and nonnegative")
+        if not math.isfinite(arguments.detect_percent) or arguments.detect_percent <= 0.0:
+            parser.error("--detect-percent must be finite and positive")
         return arguments
     if not arguments.gated or not arguments.naked:
         parser.error("--gated and --naked are both required")
@@ -1211,6 +1271,8 @@ def resolve_detect_percent(layer: str, requested: float | None) -> float:
     floor = DETECT_FLOOR_PERCENT[layer]
     if requested is None:
         return floor
+    if not math.isfinite(requested) or requested <= 0.0:
+        raise ThresholdRefused("--detect-percent must be finite and positive")
     if requested < floor:
         raise ThresholdRefused(
             f"--detect-percent {requested} is below the {floor} floor this "
@@ -1262,10 +1324,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_NOT_COMPARABLE
 
     fit: ExposureFit | None = None
+    exposure_layer = None
+    exposure_detect_percent = None
     if arguments.exposure:
         try:
             exposure_layer, points = parse_exposure(load_document(arguments.exposure))
-            fit = fit_exposure(points, resolve_detect_percent(exposure_layer, None))
+            exposure_detect_percent = max(detect_percent, resolve_detect_percent(exposure_layer, None))
+            fit = fit_exposure(points, exposure_detect_percent)
         except FileNotFoundError as error:
             print(f"FAIL input unavailable: {error}", file=sys.stderr)
             return EXIT_INPUT_MISSING
@@ -1273,11 +1338,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"FAIL invalid exposure sweep: {error}", file=sys.stderr)
             return EXIT_INVALID_DOCUMENT
 
-    report = build_report(gated, naked, detect_percent, fit)
-    print(render_report(report), end="")
+    report = build_report(gated, naked, detect_percent, fit, exposure_layer=exposure_layer)
+    if fit is not None:
+        report["exposure"]["detect_percent"] = exposure_detect_percent
     if arguments.json:
-        emit_json(report, arguments.json)
-    return EXIT_OK
+        try:
+            emit_json(report, arguments.json)
+        except OSError as error:
+            print(f"FAIL output unavailable: {error}", file=sys.stderr)
+            return EXIT_OUTPUT_ERROR
+    print(
+        render_report(report),
+        end="",
+        file=sys.stderr if arguments.json == "-" else sys.stdout,
+    )
+    return EXIT_NOT_COMPARABLE if report["status"] == "invalid_capture" else EXIT_OK
 
 
 if __name__ == "__main__":

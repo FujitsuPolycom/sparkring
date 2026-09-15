@@ -29,6 +29,7 @@ PROFILE = (
 )
 SITE = CONFIG / "glm53-flash-b12x-kda-adaptive-mtp-tp4-site.example.yaml"
 QUICKSTART = ROOT / "docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md"
+VLLM_CONFIG_SOURCE_SHA256 = "9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994"
 TARGET = "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
 
 
@@ -84,10 +85,8 @@ def test_profile_pins_adaptive_mtp_fastsafetensors_and_sparkcache() -> None:
     attestation = " ".join(profile["attestation_hook"])
     assert SPARKCACHE_SOURCE_SHA256 in attestation
     assert LEASE_CONTRACT_SHA256 in attestation
-    assert (
-        "9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994"
-        in attestation
-    )
+    assert "vllm/config/vllm.py" in attestation
+    assert VLLM_CONFIG_SOURCE_SHA256 in attestation
 
 
 def test_runtime_bound_identity_does_not_alias_the_e105_adaptive_profile() -> None:
@@ -165,3 +164,33 @@ def test_quickstart_names_the_executable_builder_and_profile_contracts() -> None
     assert SPARKCACHE_SOURCE_SHA256 in guide
     assert VLLM_COMMIT in guide
     assert "START_GLM53_FLASH_MTP5_ADAPTIVE_FASTSAFETENSORS_TP4" in guide
+
+
+def test_missing_option_value_reports_resolver_error():
+    from prepare_glm53_b12x_kda_adaptive_mtp_profile import _argument as argument
+    with pytest.raises(ResolveError, match="missing its value"):
+        argument({"extra_vllm_args": ["--load-format"]}, "--load-format")
+
+
+def test_failed_site_resolution_does_not_mutate_caller():
+    profile = json.loads(PROFILE.read_text())
+    site = yaml.safe_load(SITE.read_text())
+    site["serving"]["kv_cache_bytes_per_rank"] = 1
+    before = copy.deepcopy(site)
+    with pytest.raises(ResolveError, match="20 GiB"):
+        resolve(profile, site, image="local/image", image_id="sha256:" + "a" * 64,
+                parent_image="local/parent", parent_image_id="sha256:" + "b" * 64,
+                native_library_sha256="c" * 64)
+    assert site == before
+
+
+@pytest.mark.parametrize("speculative", [None, True, 5, []])
+def test_scalar_speculation_reports_field_error(speculative):
+    profile = json.loads(PROFILE.read_text())
+    site = yaml.safe_load(SITE.read_text())
+    args = profile["extra_vllm_args"]
+    args[args.index("--speculative-config") + 1] = json.dumps(speculative)
+    with pytest.raises(ResolveError, match="speculative-config.*object"):
+        resolve(profile, site, image="local/image", image_id="sha256:" + "a" * 64,
+                parent_image="local/parent", parent_image_id="sha256:" + "b" * 64,
+                native_library_sha256="c" * 64)

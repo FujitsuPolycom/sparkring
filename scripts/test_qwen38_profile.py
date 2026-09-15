@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE_PATH = ROOT / "recipes" / "qwen38-27b-exl3-k5k6.json"
 ENV_PATH = ROOT / "scripts" / "config" / "qwen38-27b-exl3-k5k6.env.example"
-QUICKSTART_PATH = ROOT / "docs" / "QWEN38_27B_EXL3_K5K6_QUICKSTART.md"
+QUICKSTART_PATH = ROOT / "profiles/qwen38-27b-exl3-k5k6/README.md"
 PROFILE_PATH = ROOT / "docs" / "profiles" / "QWEN38_27B_EXL3_K5K6.md"
 LAUNCHER_PATH = ROOT / "scripts" / "qwen38_dgx4_serve.sh"
 SMOKE_PATH = ROOT / "scripts" / "qwen38_smoke.py"
@@ -307,7 +307,7 @@ def test_quickstart_command_matches_the_recipe() -> None:
         assert quickstart.count(shared_container_contract) == 2
 
 
-def test_profile_excludes_sparkcache_without_publishing_a_composition() -> None:
+def test_profile_documents_no_sparkcache_composition() -> None:
     profile = PROFILE_PATH.read_text(encoding="utf-8")
     compositions = ROOT / "recipes" / "sparkcache"
     assert "SparkCache" in profile

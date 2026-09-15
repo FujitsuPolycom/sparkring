@@ -36,6 +36,9 @@ BUILD_RECEIPT="$PWD/glm53-runtime-image-receipt.json" \
 bash sparkring/runtime/glm53-flash/build-image.sh
 ```
 
+Receipt output paths must not exist. Use a separate `BUILD_RECEIPT` path for
+each build; the verifier also refuses to overwrite an existing receipt.
+
 `build-image.sh` performs these checks before returning:
 
 1. clones vLLM, B12X, and NCCL at the commits and Git trees in `pins.json`;

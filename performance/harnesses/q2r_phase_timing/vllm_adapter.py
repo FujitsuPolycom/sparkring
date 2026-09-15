@@ -1,9 +1,13 @@
-"""All-or-nothing, source-pinned method adapter for Q-2R telemetry.
+"""Source-pinned instance-method hooks for CUDA phase timing.
 
 No vLLM method is patched until every requested owner/method/hash validates.
 The concrete deployed integration points beyond ``run_fullgraph`` still need
 one read-only source census; callers must supply them explicitly rather than
 letting this experiment guess.
+
+Installation failure restores every changed method where possible. Restoration
+errors retain the unfinished hooks for an explicit uninstall retry and report
+all errors together. Callers must stop instrumented execution before removal.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import functools
 import hashlib
 import inspect
 import re
+from builtins import BaseExceptionGroup
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -49,6 +54,14 @@ class MethodHook:
 class _Validated:
     hook: MethodHook
     original: Callable[..., Any]
+    locally_defined: bool
+
+
+def _restore(item: _Validated) -> None:
+    if item.locally_defined:
+        setattr(item.hook.owner, item.hook.method_name, item.original)
+    elif item.hook.method_name in vars(item.hook.owner):
+        delattr(item.hook.owner, item.hook.method_name)
 
 
 def source_sha256(function: Callable[..., Any]) -> str:
@@ -74,14 +87,15 @@ class FailClosedMethodAdapter:
         self._hooks = hooks
         self._validated: tuple[_Validated, ...] = ()
         self._installed = False
+        self._wrappers: tuple[Callable[..., Any], ...] = ()
 
     def validate(self) -> tuple[_Validated, ...]:
         validated: list[_Validated] = []
         for hook in self._hooks:
-            original = getattr(hook.owner, hook.method_name, None)
-            if original is None or not callable(original):
+            original = inspect.getattr_static(hook.owner, hook.method_name, None)
+            if not inspect.isfunction(original):
                 raise AdapterValidationError(
-                    f"{hook.owner.__qualname__}.{hook.method_name} is absent"
+                    f"{hook.owner.__qualname__}.{hook.method_name} must be a plain instance method"
                 )
             if getattr(original, "_spark_q2r_phase_timing", False):
                 raise AdapterValidationError(
@@ -101,7 +115,8 @@ class FailClosedMethodAdapter:
                     f"{hook.method_name}: expected "
                     f"{hook.expected_source_sha256}, got {actual_hash}"
                 )
-            validated.append(_Validated(hook=hook, original=original))
+            validated.append(_Validated(hook=hook, original=original,
+                                        locally_defined=hook.method_name in vars(hook.owner)))
         return tuple(validated)
 
     def install(self) -> None:
@@ -109,52 +124,80 @@ class FailClosedMethodAdapter:
             raise RuntimeError("adapter is already installed")
         validated = self.validate()
         installed: list[_Validated] = []
+        wrappers: list[Callable[..., Any]] = []
+        def make_wrapper(item: _Validated) -> Callable[..., Any]:
+            hook, original = item.hook, item.original
+
+            @functools.wraps(original)
+            def wrapped(instance: Any, *args: Any, **kwargs: Any) -> Any:
+                stream = hook.stream_for_call(instance, args, kwargs)
+                descriptor = hook.descriptor
+                if not isinstance(descriptor, PhaseDescriptor):
+                    descriptor = descriptor(instance, args, kwargs)
+                return self._collector.measure(
+                    descriptor, stream, lambda: original(instance, *args, **kwargs),
+                )
+
+            wrapped._spark_q2r_phase_timing = True  # type: ignore[attr-defined]
+            wrapped._spark_original = original  # type: ignore[attr-defined]
+            return wrapped
+
         try:
             for item in validated:
                 hook = item.hook
-                original = item.original
-
-                @functools.wraps(original)
-                def wrapped(
-                    instance: Any,
-                    *args: Any,
-                    __hook: MethodHook = hook,
-                    __original: Callable[..., Any] = original,
-                    **kwargs: Any,
-                ) -> Any:
-                    stream = __hook.stream_for_call(instance, args, kwargs)
-                    descriptor = __hook.descriptor
-                    if callable(descriptor):
-                        descriptor = descriptor(instance, args, kwargs)
-                    return self._collector.measure(
-                        descriptor,
-                        stream,
-                        lambda: __original(instance, *args, **kwargs),
-                    )
-
-                wrapped._spark_q2r_phase_timing = True  # type: ignore[attr-defined]
-                wrapped._spark_original = original  # type: ignore[attr-defined]
-                setattr(hook.owner, hook.method_name, wrapped)
+                wrapped = make_wrapper(item)
+                # Record rollback ownership before the assignment: a signal or
+                # metaclass can raise after the attribute has already changed.
                 installed.append(item)
-        except Exception:
-            for item in reversed(installed):
-                setattr(
-                    item.hook.owner, item.hook.method_name, item.original
-                )
+                wrappers.append(wrapped)
+                setattr(hook.owner, hook.method_name, wrapped)
+        except BaseException as installation_error:
+            self._validated = tuple(installed)
+            self._wrappers = tuple(wrappers)
+            errors = self._restore_pending()
+            if errors:
+                raise BaseExceptionGroup(
+                    "Telemetry installation and rollback failed",
+                    [installation_error, *errors],
+                ) from None
             raise
         self._validated = validated
+        self._wrappers = tuple(wrappers)
         self._installed = True
+
+    def _restore_pending(self) -> list[BaseException]:
+        errors: list[BaseException] = []
+        pending = []
+        for item, wrapper in reversed(tuple(zip(self._validated, self._wrappers, strict=True))):
+            try:
+                _restore(item)
+            except BaseException as error:
+                errors.append(error)
+                # A setter may raise after restoring the attribute. Retain only
+                # work that is still required so an explicit cleanup can retry.
+                local = vars(item.hook.owner)
+                restored = (local.get(item.hook.method_name) is item.original
+                            if item.locally_defined else item.hook.method_name not in local)
+                if not restored:
+                    pending.append((item, wrapper))
+        pending.reverse()
+        self._validated = tuple(item for item, _ in pending)
+        self._wrappers = tuple(wrapper for _, wrapper in pending)
+        self._installed = bool(pending)
+        return errors
 
     def uninstall(self) -> None:
         if not self._installed:
             return
-        for item in reversed(self._validated):
-            current = getattr(item.hook.owner, item.hook.method_name)
-            if not getattr(current, "_spark_q2r_phase_timing", False):
+        # Verify the whole set before removing any hook. Wrapper metadata can
+        # be copied by functools.wraps, so it does not prove ownership.
+        for item, wrapper in zip(self._validated, self._wrappers, strict=True):
+            current = inspect.getattr_static(item.hook.owner, item.hook.method_name, None)
+            if current is not wrapper:
                 raise AdapterValidationError(
                     f"{item.hook.owner.__qualname__}."
                     f"{item.hook.method_name} changed after installation"
                 )
-            setattr(item.hook.owner, item.hook.method_name, item.original)
-        self._validated = ()
-        self._installed = False
+        errors = self._restore_pending()
+        if errors:
+            raise BaseExceptionGroup("Telemetry hook restoration failed", errors)

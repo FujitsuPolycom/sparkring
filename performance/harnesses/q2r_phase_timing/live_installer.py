@@ -1,7 +1,8 @@
-"""Opt-in, source-pinned live installer for the Q-2R timing census.
+"""Opt-in, source-pinned installer for speculative-decoding phase timing.
 
 Importing this module has no side effects. ``install()`` additionally requires
-``SPARK_Q2R_PHASE_TIMING=1``. No launch or sitecustomize file imports it yet.
+``SPARK_Q2R_PHASE_TIMING=1``. The worker bootstrap in
+``spark_q2r_probe_bridge.install`` calls it when the combined probe is enabled.
 """
 
 from __future__ import annotations
@@ -9,6 +10,8 @@ from __future__ import annotations
 import functools
 import importlib
 import os
+import threading
+from builtins import BaseExceptionGroup
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -125,6 +128,7 @@ class _PinnedBindingAdapter:
     def __init__(self, hook: _BindingHook) -> None:
         self._hook = hook
         self._original: Callable[..., Any] | None = None
+        self._wrapper: Callable[..., Any] | None = None
         self._installed = False
 
     def validate(self) -> Callable[..., Any]:
@@ -158,23 +162,27 @@ class _PinnedBindingAdapter:
 
         wrapped._spark_q2r_manager_binding = True  # type: ignore[attr-defined]
         wrapped._spark_original = original  # type: ignore[attr-defined]
-        setattr(hook.owner, hook.method_name, wrapped)
+        # Publish rollback ownership before assignment can be interrupted.
         self._original = original
+        self._wrapper = wrapped
         self._installed = True
+        setattr(hook.owner, hook.method_name, wrapped)
 
     def uninstall(self) -> None:
         if not self._installed:
             return
-        current = getattr(self._hook.owner, self._hook.method_name)
-        if not getattr(current, "_spark_q2r_manager_binding", False):
+        current = getattr(self._hook.owner, self._hook.method_name, None)
+        if current is not self._wrapper and current is not self._original:
             raise AdapterValidationError(
                 "binding owner changed after installation"
             )
         assert self._original is not None
-        setattr(
-            self._hook.owner, self._hook.method_name, self._original
-        )
+        if current is self._wrapper:
+            setattr(
+                self._hook.owner, self._hook.method_name, self._original
+            )
         self._original = None
+        self._wrapper = None
         self._installed = False
 
 
@@ -199,6 +207,15 @@ def _manager_query_len(manager: Any, fallback: Any = None) -> int:
     return value
 
 
+def _control_method(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Serialize lifecycle and reporting calls without locking model callbacks."""
+    @functools.wraps(method)
+    def wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._control_lock:
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
 class LiveQ2RSession:
     """Installed-but-unarmed live recorder with explicit lifecycle."""
 
@@ -215,6 +232,7 @@ class LiveQ2RSession:
         adaptive_window: int | None = None,
         nvtx: Any = None,
     ) -> None:
+        self._control_lock = threading.RLock()
         self._types = types
         self._pins = pins
         self._registry = ManagerRoleRegistry()
@@ -239,6 +257,7 @@ class LiveQ2RSession:
         self._current_stream = current_stream
         self._descriptors_finalized = False
         self._installed = False
+        self._cleanup_pending = False
 
         def bind_managers(
             runner: Any,
@@ -379,6 +398,7 @@ class LiveQ2RSession:
             ordinals=self._draft_ordinals,
         )
 
+    @_control_method
     def install(self) -> None:
         if self._installed:
             raise RuntimeError("live session is already installed")
@@ -404,16 +424,23 @@ class LiveQ2RSession:
         self._binding_adapter.validate()
         self._timing_adapter.validate()
         self._draft_loop_adapter.validate()
-        self._binding_adapter.install()
         try:
+            self._binding_adapter.install()
             self._timing_adapter.install()
-            try:
-                self._draft_loop_adapter.install()
-            except Exception:
-                self._timing_adapter.uninstall()
-                raise
-        except Exception:
-            self._binding_adapter.uninstall()
+            self._draft_loop_adapter.install()
+        except BaseException as installation_error:
+            errors = [installation_error]
+            for adapter in (
+                self._draft_loop_adapter, self._timing_adapter, self._binding_adapter
+            ):
+                try:
+                    adapter.uninstall()
+                except BaseException as cleanup_error:
+                    errors.append(cleanup_error)
+            if len(errors) > 1:
+                self._installed = True
+                self._cleanup_pending = True
+                raise BaseExceptionGroup("Timing installation and rollback failed", errors)
             raise
         self._installed = True
 
@@ -448,9 +475,12 @@ class LiveQ2RSession:
         self._collector.register_descriptors(descriptors)
         self._descriptors_finalized = True
 
+    @_control_method
     def arm(self, epoch: str) -> None:
         if not self._installed:
             raise RuntimeError("install before arm")
+        if self._cleanup_pending:
+            raise RuntimeError("complete pending cleanup before arming")
         self._finalize_descriptors()
         self._collector.arm(epoch)
         try:
@@ -459,20 +489,21 @@ class LiveQ2RSession:
             self._collector.disarm()
             raise
 
+    @_control_method
     def disarm(self) -> None:
         self._collector.disarm()
         self._draft_ordinals.disarm()
 
+    @_control_method
     def drain(self) -> DrainResult:
         return self._collector.drain()
 
+    @_control_method
     def snapshot(self) -> dict[str, Any]:
-        # Status reporting starts before the first explicit arm.  Once
-        # initialize_kv_cache has bound all three managers, snapshots need the
-        # same finite descriptor registry that arm() would create; otherwise
-        # looking up graph counters below fails with a KeyError and makes the
-        # control bridge appear disabled.
-        self._finalize_descriptors()
+        # An empty registry is observable during startup. Once binding begins,
+        # require the same complete role set and descriptors used by arm().
+        if self._registry.manager_entries():
+            self._finalize_descriptors()
         phase_timing = self._collector.snapshot()
         descriptor_metrics = phase_timing["descriptors"]
         target_forward_samples = int(
@@ -500,10 +531,22 @@ class LiveQ2RSession:
                 )
                 for method in ("run_fullgraph", "run_pw_graph")
             )
+        # Scoped draft replays use generation-position descriptors instead of
+        # manager descriptors. Include them once in the graph-method total.
+        graph_counts["draft_decode"] += sum(
+            int(descriptor_metrics[descriptor.key]["count"])
+            for descriptor in self._draft_ordinals.descriptors
+            if descriptor.name.endswith(",dispatch=full_graph")
+        )
         step_samples = (
             target_forward_samples + sample_and_draft_samples
         )
         return {
+            "lifecycle": {
+                "installed": self._installed,
+                "cleanup_pending": self._cleanup_pending,
+                "manager_binding_complete": self._descriptors_finalized,
+            },
             "phase_timing": phase_timing,
             "manager_roles": self._registry.snapshot(),
             "coverage": {
@@ -542,17 +585,22 @@ class LiveQ2RSession:
             },
         }
 
+    @_control_method
     def reset(self) -> None:
         self._collector.reset()
         self._draft_ordinals.reset()
 
+    @_control_method
     def uninstall(self) -> None:
         if not self._installed:
             return
+        self._cleanup_pending = True
+        self.disarm()
         self._draft_loop_adapter.uninstall()
         self._timing_adapter.uninstall()
         self._binding_adapter.uninstall()
         self._installed = False
+        self._cleanup_pending = False
 
 
 def _load_types() -> LiveTypes:
@@ -643,10 +691,17 @@ def _depth_attestation() -> SpeculativeDepthAttestation:
 
 
 _session: LiveQ2RSession | None = None
+_install_lock = threading.Lock()
 
 
 def install() -> None:
     """Validate pins, preallocate events, then install all live hooks."""
+    with _install_lock:
+        _install_once()
+
+
+def _install_once() -> None:
+    """Install while the caller holds the module installation lock."""
     global _session
     if os.getenv("SPARK_Q2R_PHASE_TIMING") != "1":
         raise RuntimeError("SPARK_Q2R_PHASE_TIMING=1 is required")
@@ -676,8 +731,22 @@ def install() -> None:
         adaptive_window=depth.adaptive_window,
         nvtx=nvtx,
     )
-    candidate.install()
+    try:
+        candidate.install()
+    except BaseException:
+        if candidate._cleanup_pending:
+            _session = candidate
+        raise
     _session = candidate
+
+
+def uninstall() -> None:
+    """Remove live hooks; retain the session when cleanup needs a retry."""
+    global _session
+    with _install_lock:
+        if _session is not None:
+            _session.uninstall()
+            _session = None
 
 
 def _required_session() -> LiveQ2RSession:

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import mixed_trellis_roofline as bench
 
@@ -424,6 +425,17 @@ class SizeResultTest(unittest.TestCase):
 
 
 class SweepEnumerationTest(unittest.TestCase):
+    def test_explicit_control_overlapping_sweep_is_never_a_candidate(self):
+        configurations, _ = bench.enumerate_configurations(
+            fc1_k_values=(64,), fc1_n_values=(256,),
+            fc2_k_values=(64,), fc2_n_values=(256,),
+            controls=(bench.FC1_CONTROL_TILE_CONFIG,),
+        )
+        overlapping = [item for item in configurations
+                       if item.tile_config == bench.FC1_CONTROL_TILE_CONFIG]
+        self.assertTrue(overlapping)
+        self.assertEqual({item.role for item in overlapping}, {bench.ROLE_CONTROL})
+
     def test_the_default_space_holds_fc1_at_128_and_sweeps_fc2(self) -> None:
         configurations, _ = bench.enumerate_configurations()
 
@@ -517,6 +529,15 @@ class SweepEnumerationTest(unittest.TestCase):
 
 
 class SkipAndRankingTest(unittest.TestCase):
+    def test_control_is_reported_without_becoming_a_candidate(self):
+        entries = _sweep_entries()
+        fastest = min((entry for entry in entries if entry['status'] == 'measured'),
+                      key=lambda entry: entry['timing']['median_ms'])
+        fastest['configuration']['role'] = bench.ROLE_CONTROL
+        ranking = bench.rank_configurations(entries)
+        self.assertEqual(ranking['faster_than_baseline'], 0)
+        self.assertNotIn(fastest['configuration']['name'], ranking['verdict'])
+
     def test_a_failed_configuration_is_recorded_with_its_exception_type(self) -> None:
         entry = bench.skipped_entry(
             bench.Configuration((128, 128, 32, 128), 16),
@@ -792,6 +813,19 @@ class SignatureRecordTest(unittest.TestCase):
 
 
 class ResolveApiTest(unittest.TestCase):
+    def test_custom_module_identity_is_used_in_report_and_errors(self):
+        kernel, prepare, host = _fake_modules()
+        kernel.__name__ = 'fixture.custom_kernel'
+        prepare.__name__ = 'fixture.custom_prepare'
+        host.__name__ = 'fixture.custom_host'
+        _, discovery = bench.resolve_api(kernel, prepare, host)
+        self.assertEqual(discovery['kernel_module'], kernel.__name__)
+        self.assertEqual(discovery['prepare_module'], prepare.__name__)
+        self.assertEqual(discovery['host_module'], host.__name__)
+        del kernel.build_tiered_maps
+        with self.assertRaisesRegex(bench.MeasurementUnavailable, 'fixture.custom_kernel'):
+            bench.resolve_api(kernel, prepare, host)
+
     def test_a_matching_module_set_binds_and_records_every_signature(self) -> None:
         api, discovery = bench.resolve_api(*_fake_modules())
 
@@ -1045,6 +1079,10 @@ class FakeTorch:
 
 
 class TimedLoopTest(unittest.TestCase):
+    def test_warmup_touches_every_pool_entry_before_timing(self):
+        _, calls = self._drive(FakeTorch(), FakeOutput(), warmup=1, iterations=4, pool_size=3)
+        self.assertEqual(calls[:3], ['tier0_0', 'tier0_1', 'tier0_2'])
+        self.assertEqual(len(calls), 7)
     def _drive(self, torch_module, output, warmup=3, iterations=6, pool_size=2):
         calls = []
 
@@ -1106,7 +1144,7 @@ class TimedLoopTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            calls,
+            calls[2:],
             ["tier0_0", "tier0_1", "tier0_0", "tier0_1", "tier0_0"],
         )
 
@@ -1139,10 +1177,9 @@ class PoolFitTest(unittest.TestCase):
 
         self.assertIn("--pool-size", str(raised.exception))
 
-    def test_an_unknown_device_memory_size_does_not_block_the_run(self) -> None:
-        record = bench.require_pool_fits(GEOMETRY, 3, 0, 0.25)
-
-        self.assertIsNone(record["fraction_of_device_memory"])
+    def test_unknown_device_memory_size_refuses_an_unbounded_pool(self) -> None:
+        with self.assertRaises(bench.MeasurementUnavailable):
+            bench.require_pool_fits(GEOMETRY, 3, 0, 0.25)
 
 
 class ClockStateTest(unittest.TestCase):
@@ -1163,7 +1200,20 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertEqual(state["reason"], "GPU is lost")
 
-    def test_pinned_application_clocks_are_reported_as_pinned(self) -> None:
+    def test_a_device_uuid_is_passed_to_nvidia_smi_unchanged(self) -> None:
+        commands = []
+
+        def runner(command, **_kwargs):
+            commands.append(command)
+            return SimpleNamespace(returncode=9, stdout="", stderr="unavailable")
+
+        bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertEqual(commands[0][commands[0].index("-i") + 1], "GPU-abc")
+
+    def test_reported_application_clocks_do_not_prove_lock_state(self) -> None:
         row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
 
         def runner(_command, **_kwargs):
@@ -1174,10 +1224,11 @@ class ClockStateTest(unittest.TestCase):
         )
 
         self.assertTrue(state["read"])
-        self.assertTrue(state["application_clocks_pinned"])
+        self.assertIsNone(state["application_clocks_pinned"])
+        self.assertTrue(state["application_clocks_reported"])
         self.assertEqual(state["fields"]["clocks.sm"], "1400")
 
-    def test_unset_application_clocks_are_reported_as_not_pinned(self) -> None:
+    def test_unavailable_application_clocks_do_not_prove_unlocked_state(self) -> None:
         row = "NVIDIA GB10, 1400, 1400, [N/A], Not Active, Enabled, 61.2, 140.0, 48"
 
         def runner(_command, **_kwargs):
@@ -1187,8 +1238,9 @@ class ClockStateTest(unittest.TestCase):
             0, which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
         )
 
-        self.assertFalse(state["application_clocks_pinned"])
-        self.assertIn("not pinned", state["lock_note"])
+        self.assertIsNone(state["application_clocks_pinned"])
+        self.assertFalse(state["application_clocks_reported"])
+        self.assertIn("clock-lock state is unknown", state["lock_note"])
 
     def test_an_unexpected_field_count_is_reported_rather_than_misparsed(self) -> None:
         def runner(_command, **_kwargs):
@@ -1200,6 +1252,19 @@ class ClockStateTest(unittest.TestCase):
 
         self.assertFalse(state["read"])
         self.assertIn("fields", state["reason"])
+
+    def test_multiple_device_rows_are_refused(self) -> None:
+        row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
+
+        def runner(_command, **_kwargs):
+            return SimpleNamespace(returncode=0, stdout=f"{row}\n{row}\n", stderr="")
+
+        state = bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertFalse(state["read"])
+        self.assertIn("2 rows", state["reason"])
 
 
 class ReportShapeTest(unittest.TestCase):
@@ -1286,8 +1351,17 @@ class ReportShapeTest(unittest.TestCase):
 
         self.assertEqual(json.loads(stream.getvalue())["schema"], bench.SCHEMA)
 
+    def test_emit_json_rejects_unknown_value_types(self) -> None:
+        with self.assertRaises(TypeError):
+            bench.emit_json({"bad": object()}, "-")
+
 
 class TextRenderTest(unittest.TestCase):
+    def test_sweep_selection_count_does_not_claim_skips_were_measured(self):
+        text = bench.render_text(_tune_report())
+        self.assertIn('4 selected of 5 enumerated', text)
+        self.assertNotIn('4 measured of', text)
+
     def test_the_measure_report_prints_both_formulas_with_the_numbers(self) -> None:
         rendered = bench.render_text(_measure_report())
 
@@ -1352,6 +1426,38 @@ class TextRenderTest(unittest.TestCase):
 
 
 class ArgumentTest(unittest.TestCase):
+    def test_nonpositive_baseline_block_size_is_a_usage_error(self):
+        for value in ('0', '-1'):
+            errors = io.StringIO()
+            with self.subTest(value=value), redirect_stderr(errors), self.assertRaises(SystemExit) as caught:
+                bench.parse_args(['measure', '--baseline-moe-block-size', value])
+            self.assertEqual(caught.exception.code, 2)
+            self.assertIn('--baseline-moe-block-size must be positive', errors.getvalue())
+
+    def test_invalid_geometry_is_rejected_before_device_access(self):
+        for option, value in [('--hidden-size', '0'), ('--top-k', '257'),
+                              ('--tier0-experts', '-1'), ('--sms', '0')]:
+            with self.subTest(option=option), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                bench.parse_args(['measure', option, value])
+
+    def test_json_stdout_contains_only_the_report(self):
+        output, errors = io.StringIO(), io.StringIO()
+        with patch.object(bench, 'open_device', return_value=('device', {})), \
+             patch.object(bench, 'module_path_record', return_value={'matches': True}), \
+             patch.object(bench, 'resolve_api', return_value=(None, {})), \
+             patch.object(bench, 'run_measure', return_value=_measure_report()), \
+             redirect_stdout(output), redirect_stderr(errors):
+            result = bench.main(['measure', '--json', '-'], load_torch=lambda: None,
+                                load_kernel=lambda **kwargs: (None, None, None))
+        self.assertEqual(result, bench.EXIT_OK)
+        self.assertIsInstance(json.loads(output.getvalue()), dict)
+        self.assertTrue(errors.getvalue())
+
+    def test_missing_device_properties_refuse_measurement(self):
+        torch = SimpleNamespace(cuda=SimpleNamespace(get_device_properties=lambda index: SimpleNamespace()))
+        with self.assertRaises(bench.MeasurementUnavailable):
+            bench.describe_environment(torch, 0)
+
     def test_defaults_measure_the_deployed_geometry_on_device_zero(self) -> None:
         arguments = bench.parse_args(["measure"])
 
@@ -1508,7 +1614,18 @@ class ArgumentTest(unittest.TestCase):
 
 
 class NoDeviceTest(unittest.TestCase):
-    """The path this repository's development machines actually take."""
+    """Failure paths without a usable CUDA device or runtime."""
+
+    def test_runtime_failure_emits_no_report_and_preserves_error_type(self):
+        def fail():
+            raise RuntimeError('CUDA allocation failed')
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            code = bench.main(['measure'], load_torch=fail)
+        self.assertEqual(code, bench.EXIT_UNAVAILABLE)
+        self.assertEqual(output.getvalue(), '')
+        self.assertIn('RuntimeError: CUDA allocation failed', errors.getvalue())
+        self.assertIn('no complete measurement report', errors.getvalue())
 
     def _torch_without_cuda(self):
         return SimpleNamespace(

@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -70,8 +71,13 @@ __global__ void receiver_doorbell_kernel(std::uint8_t* payload,
                                          bool verify_payload) {
   __shared__ unsigned int mismatch;
   for (std::uint64_t sequence = 1; sequence <= final_sequence; ++sequence) {
-    while (reinterpret_cast<volatile std::uint64_t*>(
-               &control->remote_sequence)[0] < sequence) {
+    // Every payload-reading thread acquires the peer's publication doorbell.
+    while (true) {
+      std::uint64_t observed;
+      asm volatile("ld.acquire.sys.global.u64 %0, [%1];"
+                   : "=l"(observed)
+                   : "l"(&control->remote_sequence) : "memory");
+      if (observed >= sequence) break;
       __nanosleep(64);
     }
 
@@ -120,6 +126,9 @@ __global__ void receiver_doorbell_kernel(std::uint8_t* payload,
 
 std::size_t aligned_control_offset(std::size_t payload_bytes) {
   constexpr std::size_t alignment = alignof(DoorbellControl);
+  if (payload_bytes > std::numeric_limits<std::size_t>::max() - (alignment - 1)) {
+    throw std::overflow_error("doorbell alignment exceeds addressable size");
+  }
   return (payload_bytes + alignment - 1) & ~(alignment - 1);
 }
 
@@ -135,8 +144,14 @@ ExchangeBufferLayout make_exchange_buffer_layout(
   ExchangeBufferLayout layout{};
   layout.send_offset = 0;
   layout.receive_offset = aligned_control_offset(payload_bytes);
+  if (payload_bytes > std::numeric_limits<std::size_t>::max() - layout.receive_offset) {
+    throw std::overflow_error("exchange payload spans exceed addressable size");
+  }
   layout.control_offset =
       aligned_control_offset(layout.receive_offset + payload_bytes);
+  if (layout.control_offset > std::numeric_limits<std::size_t>::max() - sizeof(DoorbellControl)) {
+    throw std::overflow_error("exchange control exceeds addressable size");
+  }
   layout.total_bytes = layout.control_offset + sizeof(DoorbellControl);
   return layout;
 }

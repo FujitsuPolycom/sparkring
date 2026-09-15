@@ -24,7 +24,7 @@ TWO MODES
 
     `measure` runs one configuration across the requested token counts and
     reports elapsed time, a dense-equivalent arithmetic rate, and an
-    achieved weight-stream rate over compressed bytes.
+    calculated weight-stream rate over compressed bytes.
 
     `tune` holds the geometry fixed, sweeps `force_tile_config` and
     `moe_block_size`, and ranks every configuration against the deployed
@@ -63,23 +63,23 @@ COMPRESSED WEIGHT TRAFFIC
         weight_stream_bytes     = that, summed over the experts the routing
                                   selected, per tier
 
-    The reported GB/s divides that by elapsed time. It assumes each
-    selected expert's compressed weight is read once per call; a kernel
-    that re-reads an expert across m-blocks moves more, so the figure is a
-    lower bound on traffic and therefore a lower bound on the achieved
-    rate. Whether the kernel is traffic-bound or decode-bound decides
-    whether the 3-bit and 4-bit tier mix affects elapsed time at all, so
-    the tier split of the traffic is reported alongside it.
+    The reported GB/s divides that logical byte count by elapsed time.
+    It counts each selected expert once. Repeated reads, cache hits,
+    rotations and intermediate buffers are not measured, so this is
+    neither measured DRAM bandwidth nor a bound on it. The tier split
+    describes the selected weights; identifying a memory or compute
+    bottleneck requires profiling or controlled measurements.
 
 WEIGHT-POOL CYCLING
 
     Compressed expert weights for this geometry are on the order of a
-    gigabyte, which is small enough that repeated calls on one weight set
-    can be served from cache and report a rate no deployment reaches.
-    Several independent weight sets are therefore prepared and one is used
+    gigabyte. Repeated calls may reuse cached data; the harness does not
+    measure cache residency or establish a deployment's reuse pattern.
+    Several independent weight sets are prepared and one is used
     per timed call, round-robin. `--pool-size` sets the count; the
     predicted device memory cost is computed, reported, and refused when it
     exceeds a stated fraction of device memory.
+    Cycling weight sets does not prove that each access reaches DRAM.
 
 METHOD
 
@@ -96,11 +96,10 @@ METHOD
 API DISCOVERY
 
     The kernel entry points are resolved by introspection at run time, and
-    every signature this harness relies on is checked before a call is made
-    and recorded in the report. A signature that does not match is a stated
-    refusal naming what was found. Argument order is never assumed
-    silently: `run_mixed_trellis` is called positionally only after its
-    first ten parameter names are confirmed in the expected order.
+    required positional counts and keyword names are checked and recorded
+    before calls. `run_mixed_trellis` also requires its first ten parameter
+    names in the expected order. The other helpers rely on the positional
+    order documented at their call sites; arity checks do not prove that order.
 
     The resolved `__file__` of the kernel module is compared against the
     path the report names. Import hooks can bind a different implementation
@@ -137,8 +136,8 @@ from typing import Any, Callable, Iterable, Sequence
 SCHEMA = "gb10-mixed-trellis-roofline/v1"
 
 EXIT_OK = 0
-# The measurement could not be taken because the environment cannot support
-# it. That is distinct from a measurement that ran and produced numbers.
+# No complete measurement report is available. Argument-parser usage errors
+# also exit 2; stderr distinguishes usage errors from measurement failures.
 EXIT_UNAVAILABLE = 2
 
 KERNEL_MODULE = "b12x.moe._shared.kernels.w4a16.mixed_trellis"
@@ -166,9 +165,9 @@ WEIGHT_BYTES_FORMULA = (
 )
 WEIGHT_BYTES_NOTE = (
     "compressed bytes at each tier's Trellis bit width, counted once per "
-    "expert the routing selected. A kernel that re-reads an expert across "
-    "m-blocks moves more, so this is a lower bound on traffic and the rate "
-    "derived from it is a lower bound on the achieved rate."
+    "expert the routing selected. This logical byte count does not measure "
+    "repeated reads, cache hits, rotations or intermediate buffers. Its rate "
+    "is neither measured DRAM bandwidth nor a bound on it."
 )
 
 # Weight coefficients an expert holds: gate and up, each hidden_size by
@@ -236,17 +235,15 @@ class Geometry:
 
 DEPLOYED_GEOMETRY = Geometry()
 
-# The four-tuple is (fc1_tile_k, fc1_tile_n, fc2_tile_k, fc2_tile_n). The vLLM
-# EXL3 backend selects it from hidden_size alone: a hidden size divisible by
-# 512 gives (128, 128, 32, 512), one divisible by 256 gives (128, 128, 64,
-# 256), and any other gives (128, 128, 128, 128). Hidden size 6144 is
-# divisible by 512, so the deployed value is the first of those.
+# The four-tuple is (fc1_tile_k, fc1_tile_n, fc2_tile_k, fc2_tile_n).
+# This is the harness's baseline for hidden size 6144. It does not inspect
+# the serving backend's tile selector; use --baseline-tile-config when the
+# deployment being compared selects another geometry.
 DEPLOYED_TILE_CONFIG: tuple[int, int, int, int] = (128, 128, 32, 512)
 DEPLOYED_MOE_BLOCK_SIZE = 8
 
-# The tile geometry the single-bitrate rank-sliced path uses. The backend
-# documents it as losing partial reductions at large prefill token counts, so
-# it is swept only as a labelled control, never as a recommendation.
+# The 64-wide FC1 K tile is a reference control. This harness does not establish
+# its partial-reduction correctness at large prefill token counts.
 FC1_CONTROL_TILE_CONFIG: tuple[int, int, int, int] = (64, 256, 64, 256)
 
 DEPLOYED_SIZES_M: tuple[int, ...] = (40, 128, 512)
@@ -256,8 +253,8 @@ DECODE_SIZE_M = 40
 # The FC1 half of the tile config is held at (128, 128) by default: the mixed
 # three-and-four-bit megakernel requires a 128-wide FC1 K tile. The FC2 half is
 # the swept axis, because the 512-wide FC2 tile is the deployed choice and the
-# claim behind it, that it removes a second persistent wave, is a claim about
-# wave quantization against the device's 48 streaming multiprocessors.
+# hypothesis that it removes a second persistent wave concerns wave
+# quantization against the device's 48 streaming multiprocessors.
 DEFAULT_FC1_K_VALUES: tuple[int, ...] = (128,)
 DEFAULT_FC1_N_VALUES: tuple[int, ...] = (128,)
 DEFAULT_FC2_K_VALUES: tuple[int, ...] = (32, 64, 128)
@@ -270,8 +267,8 @@ ROLE_CANDIDATE = "candidate"
 ROLE_CONTROL = "control"
 
 CONTROL_NOTE = (
-    "labelled control: a 64-wide FC1 K tile is documented in the vLLM EXL3 "
-    "backend as losing partial reductions at large token counts, so it is "
+    "labelled control: correctness of partial reductions with a 64-wide FC1 K tile "
+    "at large token counts is not established by this harness, so it is "
     "measured for reference and not offered as a candidate"
 )
 
@@ -344,8 +341,13 @@ def enumerate_configurations(
     }
     order: list[tuple[int, int, int, int]] = [baseline.tile_config]
     seen = {(baseline.tile_config, baseline.moe_block_size)}
+    control_tiles = {tuple(tile) for tile in controls}
 
     def add(tile: tuple[int, int, int, int], block: int, role: str) -> None:
+        # Explicit reference controls retain that role even when the sweep
+        # generates the same tile before the control list is appended.
+        if tile in control_tiles:
+            role = ROLE_CONTROL
         key = (tile, block)
         if key in seen:
             return
@@ -672,13 +674,13 @@ def rank_configurations(entries: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 "speedup_over_baseline": baseline_median / entry["timing"]["median_ms"],
             }
         )
-    candidates = [row for row in ranked if row["role"] != ROLE_BASELINE]
+    candidates = [row for row in ranked if row["role"] == ROLE_CANDIDATE]
     faster = [row for row in candidates if row["speedup_over_baseline"] > 1.0]
     best = max(candidates, key=lambda row: row["speedup_over_baseline"], default=None)
     if best is None:
         verdict = (
-            "only the baseline was measured, so the sweep states nothing about "
-            "alternatives"
+            "no candidate was measured, so the sweep states nothing about "
+            "candidate alternatives; controls remain reference measurements"
         )
     elif not faster:
         verdict = (
@@ -911,22 +913,25 @@ def resolve_api(
     signatures travel with the report so a reader can see what was bound.
     """
 
-    build_tiered_maps = _attribute(kernel_module, KERNEL_MODULE, "build_tiered_maps")
+    kernel_name = getattr(kernel_module, "__name__", KERNEL_MODULE)
+    prepare_name = getattr(prepare_module, "__name__", PREPARE_MODULE)
+    host_name = getattr(host_module, "__name__", HOST_MODULE)
+    build_tiered_maps = _attribute(kernel_module, kernel_name, "build_tiered_maps")
     compile_mixed_trellis = _attribute(
-        kernel_module, KERNEL_MODULE, "compile_mixed_trellis"
+        kernel_module, kernel_name, "compile_mixed_trellis"
     )
     make_buffers = _attribute(
-        kernel_module, KERNEL_MODULE, "make_mixed_trellis_buffers"
+        kernel_module, kernel_name, "make_mixed_trellis_buffers"
     )
-    run_mixed_trellis = _attribute(kernel_module, KERNEL_MODULE, "run_mixed_trellis")
+    run_mixed_trellis = _attribute(kernel_module, kernel_name, "run_mixed_trellis")
     prepare_weights = _attribute(
-        prepare_module, PREPARE_MODULE, "prepare_trellis256_moe_weights"
+        prepare_module, prepare_name, "prepare_trellis256_moe_weights"
     )
     max_packed_route_slots = _attribute(
-        host_module, HOST_MODULE, "max_packed_route_slots"
+        host_module, host_name, "max_packed_route_slots"
     )
     rotations_class = _attribute(
-        kernel_module, KERNEL_MODULE, "MixedTrellisRotations"
+        kernel_module, kernel_name, "MixedTrellisRotations"
     )
     combine_rotations = getattr(kernel_module, "combine_trellis_rotations", None)
 
@@ -977,9 +982,9 @@ def resolve_api(
         rotations_class=rotations_class,
     )
     discovery = {
-        "kernel_module": KERNEL_MODULE,
-        "prepare_module": PREPARE_MODULE,
-        "host_module": HOST_MODULE,
+        "kernel_module": kernel_name,
+        "prepare_module": prepare_name,
+        "host_module": host_name,
         "signatures": records,
         "rotations_source": (
             "combine_trellis_rotations"
@@ -996,7 +1001,7 @@ def resolve_api(
 
 
 def read_clock_state(
-    device_index: int = 0,
+    device_index: int | str = 0,
     *,
     which: Callable[[str], str | None] = shutil.which,
     runner: Callable[..., Any] = subprocess.run,
@@ -1030,6 +1035,11 @@ def read_clock_state(
     rows = (result.stdout or "").strip().splitlines()
     if not rows:
         return {"read": False, "reason": "nvidia-smi returned no rows"}
+    if len(rows) != 1:
+        return {
+            "read": False,
+            "reason": f"nvidia-smi returned {len(rows)} rows for one device",
+        }
     values = [value.strip() for value in rows[0].split(",")]
     if len(values) != len(NVIDIA_SMI_FIELDS):
         return {
@@ -1041,19 +1051,18 @@ def read_clock_state(
         }
     fields = dict(zip(NVIDIA_SMI_FIELDS, values))
     applied = fields["clocks.applications.graphics"]
-    pinned = applied not in UNREPORTED
+    reported = applied not in UNREPORTED
     return {
         "read": True,
         "fields": fields,
-        "application_clocks_pinned": pinned,
+        # Application clock settings do not establish GPU clock-lock state.
+        "application_clocks_pinned": None,
+        "application_clocks_reported": reported,
         "lock_note": (
-            f"application clocks pinned at {applied} MHz"
-            if pinned
-            else (
-                "application clocks are not pinned; the driver is free to "
-                "move the SM clock during the run, so compare the before and "
-                "after readings"
-            )
+            (f"application graphics clock setting: {applied} MHz; "
+             if reported else "application graphics clock setting unavailable; ")
+            + "clock-lock state is unknown from this query; compare observed "
+              "SM clocks and throttle reasons across the run"
         ),
     }
 
@@ -1062,11 +1071,18 @@ def describe_environment(torch_module: Any, device_index: int) -> dict[str, Any]
     """Torch, CUDA, and device facts a reader needs to interpret the numbers."""
 
     properties = torch_module.cuda.get_device_properties(device_index)
+    for name in ('total_memory', 'shared_memory_per_block_optin', 'multi_processor_count'):
+        value = getattr(properties, name, None)
+        if type(value) is not int or value <= 0:
+            raise MeasurementUnavailable(f"CUDA device property {name} must be a known positive integer")
     capability = tuple(torch_module.cuda.get_device_capability(device_index))
     return {
         "torch_version": str(torch_module.__version__),
         "torch_cuda_version": str(torch_module.version.cuda),
         "device_index": device_index,
+        "device_uuid": (
+            str(properties.uuid) if getattr(properties, "uuid", None) else None
+        ),
         "device_name": torch_module.cuda.get_device_name(device_index),
         "compute_capability": list(capability),
         "multi_processor_count": int(getattr(properties, "multi_processor_count", 0)),
@@ -1142,6 +1158,8 @@ def require_pool_fits(
 ) -> dict[str, Any]:
     """Refuse a weight pool that would claim too much of device memory."""
 
+    if type(total_memory_bytes) is not int or total_memory_bytes <= 0:
+        raise MeasurementUnavailable('Device memory capacity is unavailable; cannot bound the weight pool')
     predicted = weight_pool_bytes(geometry, pool_size)
     limit = int(total_memory_bytes * fraction)
     if total_memory_bytes and predicted > limit:
@@ -1361,7 +1379,7 @@ def time_calls(
 
     # Warmup absorbs the kernel's compilation, which the first call to a
     # configuration pays, and touches every weight set in the pool.
-    for index in range(warmup):
+    for index in range(max(warmup, len(pool))):
         call(pool[index % len(pool)])
     torch_module.cuda.synchronize(device)
 
@@ -1549,7 +1567,8 @@ def run_measure(
         environment["total_memory_bytes"],
         arguments.max_pool_fraction,
     )
-    clocks_before = read_clock_state(arguments.device)
+    clock_selector = environment.get("device_uuid") or arguments.device
+    clocks_before = read_clock_state(clock_selector)
     maps, map_record = build_tier_maps(torch_module, api, geometry, device)
     torch_dtype = (
         torch_module.bfloat16 if arguments.dtype == "bf16" else torch_module.float16
@@ -1585,7 +1604,7 @@ def run_measure(
     ]
     del pool
     torch_module.cuda.empty_cache()
-    clocks_after = read_clock_state(arguments.device)
+    clocks_after = read_clock_state(clock_selector)
     return build_report(
         mode="measure",
         geometry=geometry,
@@ -1629,7 +1648,8 @@ def run_tune(
         environment["total_memory_bytes"],
         arguments.max_pool_fraction,
     )
-    clocks_before = read_clock_state(arguments.device)
+    clock_selector = environment.get("device_uuid") or arguments.device
+    clocks_before = read_clock_state(clock_selector)
     maps, map_record = build_tier_maps(torch_module, api, geometry, device)
     torch_dtype = (
         torch_module.bfloat16 if arguments.dtype == "bf16" else torch_module.float16
@@ -1693,7 +1713,7 @@ def run_tune(
                 torch_module.cuda.empty_cache()
         del pool
         torch_module.cuda.empty_cache()
-    clocks_after = read_clock_state(arguments.device)
+    clocks_after = read_clock_state(clock_selector)
     return build_report(
         mode="tune",
         geometry=geometry,
@@ -1767,13 +1787,12 @@ def build_report(
             "statistic": (
                 "median with interquartile range, plus observed min and max"
             ),
-            "warmup_calls": arguments.warmup,
+            "warmup_calls": max(arguments.warmup, arguments.pool_size),
             "timed_calls": arguments.iterations,
             "weight_pool": pool_record,
             "weight_pool_note": (
-                "one prepared weight set per timed call, round-robin, so "
-                "weights stream rather than remaining resident in cache "
-                "across calls"
+                "one prepared weight set per timed call, round-robin; "
+                "cache residency and DRAM traffic are not measured"
             ),
             "activation": arguments.activation,
             "rotation_input_dtype": arguments.dtype,
@@ -1922,12 +1941,10 @@ def _render_measure(report: dict[str, Any]) -> str:
         "  against a dense GEMM rate at the same hidden and intermediate",
         "  sizes. It is not this kernel's operation count.",
         "  GB/s counts compressed weight bytes for the experts the routing",
-        "  selected, once each. If that rate approaches the device's memory",
-        "  bandwidth the kernel is weight-traffic bound and the tier bit mix",
-        "  moves elapsed time; if it sits far below, decode and launch",
-        "  behaviour bound it and the mix does not.",
-        "  Both rates are lower bounds to the extent the kernel re-reads",
-        "  weights across m-blocks, which this harness does not observe.",
+        "  selected, once each. It does not measure DRAM traffic, cache hits",
+        "  or repeated reads. Neither rate alone identifies the bottleneck",
+        "  or predicts how changing tier bit widths affects elapsed time.",
+        "  Use profiling or controlled comparisons to test those claims.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1946,7 +1963,7 @@ def _render_tune(report: dict[str, Any]) -> str:
     lines += [
         f"  {'baseline':<22}{tuple(baseline['tile_config'])}, moe_block_size "
         f"{baseline['moe_block_size']}",
-        f"  {'configurations':<22}{enumeration.get('measured', 0)} measured of "
+        f"  {'configurations':<22}{enumeration.get('measured', 0)} selected of "
         f"{enumeration.get('enumerated', 0)} enumerated, cap "
         f"{enumeration.get('cap', 0)}",
     ]
@@ -1988,9 +2005,9 @@ def _render_tune(report: dict[str, Any]) -> str:
         "VERDICT",
         f"  {ranking.get('verdict', 'no ranking was produced')}",
         "  speedup is the baseline median divided by the row's median, so a",
-        "  value above 1.000 is faster than the deployed configuration. Read",
-        "  it against the interquartile range in the same row: a speedup",
-        "  smaller than the spread is not a difference this run resolved.",
+        "  value above 1.000 means a lower median than the baseline.",
+        "  IQR describes timing spread in milliseconds, not uncertainty in",
+        "  the speedup ratio. Repeat controlled runs to assess reproducibility.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1998,7 +2015,7 @@ def _render_tune(report: dict[str, Any]) -> str:
 def emit_json(report: dict[str, Any], destination: str) -> None:
     """Write the report as JSON to a path, or to stdout for `-`."""
 
-    rendered = json.dumps(report, indent=2, sort_keys=True, default=str)
+    rendered = json.dumps(report, indent=2, sort_keys=True)
     if destination == "-":
         print(rendered)
         return
@@ -2092,8 +2109,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=20,
         help=(
-            "untimed calls per configuration before measuring, absorbing the "
-            "kernel's compilation (default: 20)"
+            "minimum untimed calls per configuration; at least one call per "
+            "weight-pool entry runs before timing (default: 20)"
         ),
     )
     parser.add_argument(
@@ -2107,8 +2124,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         help=(
-            "prepared weight sets cycled one per timed call, so weights stream "
-            "cold. Each set holds every expert's packed weights: about 0.91 "
+            "prepared weight sets cycled one per timed call; cache residency "
+            "is not measured. Each set holds packed weights: about 0.91 "
             "GiB at the default geometry, so the default of 3 costs about 2.7 "
             "GiB of device memory (default: 3)"
         ),
@@ -2176,7 +2193,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--sms",
         type=int,
         default=DEPLOYED_GEOMETRY.sms,
-        help="streaming multiprocessor count the launch is planned for",
+        help=("streaming multiprocessor count the launch is planned for; may "
+              "differ from the physical count recorded in environment metadata"),
     )
     parser.add_argument(
         "--baseline-tile-config",
@@ -2184,9 +2202,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEPLOYED_TILE_CONFIG,
         help=(
             "tile config the sweep ranks against, four integers: fc1_tile_k "
-            "fc1_tile_n fc2_tile_k fc2_tile_n. The vLLM EXL3 backend selects "
-            "it from hidden_size, which at 6144 gives '128 128 32 512' "
-            "(default: 128 128 32 512)"
+            "fc1_tile_n fc2_tile_k fc2_tile_n. Verify this against the "
+            "serving backend's selected tiles (default: 128 128 32 512)"
         ),
     )
     parser.add_argument(
@@ -2225,8 +2242,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=_int_list,
         default=DEFAULT_FC2_N_VALUES,
         help=(
-            "FC2 output tile widths to sweep. The deployed 512 is chosen to "
-            "remove a second persistent wave, which is a claim about wave "
+            "FC2 output tile widths to sweep. Test the hypothesis that 512 "
+            "removes a second persistent wave through wave "
             "quantization against the device's SM count (default: 128 256 512)"
         ),
     )
@@ -2240,9 +2257,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-fc1-control",
         action="store_true",
         help=(
-            "also measure the 64x256 FC1 geometry the single-bitrate path "
-            "uses, labelled a control because it is documented as losing "
-            "partial reductions at large token counts"
+            "also measure the 64x256 FC1 geometry as a reference control; "
+            "this harness does not establish its partial-reduction "
+            "correctness at large token counts"
         ),
     )
     parser.add_argument(
@@ -2284,6 +2301,12 @@ def build_parser() -> argparse.ArgumentParser:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = build_parser()
     arguments = parser.parse_args(argv)
+    for name in ('hidden_size', 'intermediate_size', 'tier0_experts', 'tier1_experts',
+                 'tier0_bits', 'tier1_bits', 'top_k', 'sms', 'baseline_moe_block_size'):
+        if getattr(arguments, name) <= 0:
+            parser.error('--' + name.replace('_', '-') + ' must be positive')
+    if arguments.top_k > arguments.tier0_experts + arguments.tier1_experts:
+        parser.error('--top-k cannot exceed the total expert count')
     if arguments.warmup < 1:
         parser.error(
             "--warmup must be at least 1; this kernel is compiled, so the "
@@ -2418,8 +2441,14 @@ def main(
     except MeasurementUnavailable as error:
         print(f"FAIL no measurement taken: {error}", file=sys.stderr)
         return EXIT_UNAVAILABLE
+    except Exception as error:  # noqa: BLE001 - CLI reports an incomplete measurement
+        print(
+            f"FAIL no complete measurement report: {type(error).__name__}: {error}",
+            file=sys.stderr,
+        )
+        return EXIT_UNAVAILABLE
 
-    print(render_text(report), end="")
+    print(render_text(report), end="", file=sys.stderr if arguments.json == '-' else sys.stdout)
     if arguments.json:
         emit_json(report, arguments.json)
     return EXIT_OK

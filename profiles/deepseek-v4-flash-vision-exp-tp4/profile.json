@@ -1,0 +1,22 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "deepseek-v4-flash-vision-exp-tp4",
+  "title": "DeepSeek-V4-Flash-Vision-Exp",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "recipe",
+    "path": "profiles/deepseek-v4-flash-vision-exp-tp4/recipe.json"
+  },
+  "release": "runtime/releases/deepseek-v4-flash-vision-exp-tp4/release.json",
+  "guide": "profiles/deepseek-v4-flash-vision-exp-tp4/README.md",
+  "evidence_scope": "The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.",
+  "overrides": [
+    "max_model_len",
+    "max_num_seqs",
+    "max_num_batched_tokens"
+  ],
+  "launcher": {
+    "kind": "guide"
+  }
+}

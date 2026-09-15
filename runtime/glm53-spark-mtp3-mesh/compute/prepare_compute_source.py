@@ -68,6 +68,8 @@ def _package_map(root: Path, package: str) -> dict[str, str]:
 
 
 def _normalize_b12x_bytes(root: Path) -> None:
+    # The locked installed package hashes use CRLF for these text suffixes.
+    # Normalize LF and CRLF inputs alike; changing this requires a new byte lock.
     suffixes = set(LOCK["b12x"]["normalized_text_suffixes"])
     for path in sorted((root / "b12x").rglob("*")):
         if path.is_file() and path.suffix in suffixes:

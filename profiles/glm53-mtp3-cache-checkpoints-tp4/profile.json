@@ -1,0 +1,22 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-mtp3-cache-checkpoints-tp4",
+  "title": "GLM-5.3-Flash-NVFP4-Spark",
+  "recommendation": "retired",
+  "status": "research-only",
+  "configuration": {
+    "format": "recipe",
+    "path": "profiles/glm53-mtp3-cache-checkpoints-tp4/recipe.json"
+  },
+  "release": "runtime/releases/glm53-mtp3-cache-checkpoints-tp4/release.json",
+  "guide": "docs/history/glm53-cache-checkpoints.md",
+  "evidence_scope": "The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.",
+  "overrides": [
+    "max_model_len",
+    "max_num_seqs",
+    "max_num_batched_tokens"
+  ],
+  "launcher": {
+    "kind": "guide"
+  }
+}

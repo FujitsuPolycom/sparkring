@@ -1,4 +1,4 @@
-"""Record bounded native-MTP model requests and cache evidence without host changes."""
+"""Send bounded MTP requests to a serving endpoint and record cache evidence."""
 from __future__ import annotations
 
 import argparse
@@ -8,13 +8,34 @@ import math
 import re
 import time
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 
-def fetch(url, payload=None):
+class _NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, newurl):
+        raise urllib.error.HTTPError(request.full_url, code,
+                                     "Authenticated requests do not follow redirects", headers, response)
+
+
+def read_api_key(path):
+    """Use the first nonempty key from the operator's private newline-separated file."""
+    keys = [line for line in path.read_text(encoding="utf-8").splitlines() if line]
+    if not keys or any(any(character.isspace() or ord(character) < 33 or ord(character) > 126
+                           for character in key) for key in keys):
+        raise ValueError("API key file requires nonempty printable ASCII keys without whitespace")
+    return keys[0]
+
+
+def fetch(url, payload=None, *, credential=None):
     data = None if payload is None else json.dumps(payload).encode()
-    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=120) as response:
+    headers = {"Content-Type": "application/json"}
+    if credential is not None:
+        headers["Authorization"] = "Bearer " + credential
+    request = urllib.request.Request(url, data=data, headers=headers)
+    open_request = (urllib.request.urlopen if credential is None else
+                    urllib.request.build_opener(_NoCredentialRedirect()).open)
+    with open_request(request, timeout=120) as response:
         return response.read().decode()
 
 
@@ -25,7 +46,12 @@ def cache_metrics(text):
             continue
         match = re.fullmatch(r'(.+?)\s+([-+0-9.eE]+)(?:\s+\d+)?', line)
         if match:
-            result[match[1]] = float(match[2])
+            try:
+                value = float(match[2])
+            except ValueError:
+                continue
+            if math.isfinite(value):
+                result[match[1]] = value
     return result
 
 
@@ -36,10 +62,17 @@ def temperature_value(text):
     return value
 
 
+def cache_metric_deltas(before, after):
+    """Omit unrepresentable differences, as for non-finite metric samples."""
+    return {key: delta for key, value in after.items() if key in before
+            and math.isfinite(delta := value - before[key])}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--api-key-file", type=Path, help="Private newline-separated API keys; use the first nonempty key")
     parser.add_argument("--temperature", type=temperature_value, default=1.0)
     parser.add_argument("--prompt-file", type=Path)
     parser.add_argument("--expected-text", default="SPARKCACHE_GLM53_OK")
@@ -54,7 +87,7 @@ def main():
         raise SystemExit("Output directory must be absent")
     if not 1 <= args.max_tokens <= 2048:
         raise SystemExit("Output budget must be between 1 and 2048 tokens")
-    suffix = "Respond with exactly SPARKCACHE_GLM53_OK and no other text."
+    suffix = f"Respond with exactly {args.expected_text} and no other text."
     prompt = suffix if args.kind == "semantic" else "benchmark " * 8192 + "\n" + suffix
     if args.prompt_file:
         prompt = args.prompt_file.read_text(encoding="utf-8")
@@ -75,16 +108,19 @@ def main():
                           "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                           "request_characters": len(prompt), "executed": False}, indent=2))
         return
+    authentication = {} if args.api_key_file is None else {
+        "credential": read_api_key(args.api_key_file)
+    }
     args.output.mkdir(parents=True)
     base = args.endpoint.rstrip("/")
-    metrics_before = fetch(base + "/metrics")
+    metrics_before = fetch(base + "/metrics", **authentication)
     (args.output / "metrics-before.txt").write_text(metrics_before, encoding="utf-8")
     (args.output / "request.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     started = time.monotonic()
-    response = json.loads(fetch(base + "/v1/chat/completions", payload))
+    response = json.loads(fetch(base + "/v1/chat/completions", payload, **authentication))
     elapsed = time.monotonic() - started
     (args.output / "response.json").write_text(json.dumps(response, indent=2), encoding="utf-8")
-    metrics_after = fetch(base + "/metrics")
+    metrics_after = fetch(base + "/metrics", **authentication)
     (args.output / "metrics-after.txt").write_text(metrics_after, encoding="utf-8")
     choice = response["choices"][0]
     content = choice["message"].get("content")
@@ -95,7 +131,7 @@ def main():
                "semantic_passed": passed, "semantic_status": "passed" if passed else "inconclusive",
                "elapsed_seconds": elapsed,
                "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-               "cache_metric_deltas": {key: value - before[key] for key, value in after.items() if key in before},
+               "cache_metric_deltas": cache_metric_deltas(before, after),
                "finish_reason": choice.get("finish_reason"), "usage": response.get("usage"),
                "content": content, "persistent_restore_proven": False,
                "limitation": "Require per-rank external restore logs and external-hit metric deltas; latency alone is insufficient. One stochastic canary does not establish model or cache correctness; a mismatch needs repeated controls."}

@@ -72,7 +72,7 @@ class PrefillCapacityPoolSelectorTest(unittest.TestCase):
         )
         self.assertEqual(audit["capacity_pool"]["control_port_count_per_rank"], 2)
         self.assertTrue(
-            audit["capacity_pool"]["ports_disjoint_from_exact_decode_q1_q40"]
+            audit["capacity_pool"]["ports_disjoint_from_exact_q1_q40"]
         )
         self.assertEqual(
             audit["q4096_physical_engine_reduction_factor"], 4096.0

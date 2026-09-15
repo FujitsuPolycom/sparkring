@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status: implemented and live-benchmarked; not qualified.**
+Status: **Development**. Measurements are scoped to the records below.
 DeepSeek-V4-Flash loads and serves as either two or four tensor-parallel ranks
 on directly cabled DGX Sparks. The TP2 benchmark used the DSpark package at
 `913f0657…`; TP4 used the plain 0731 package at `7872f01…`. Use the
@@ -15,12 +15,11 @@ on directly cabled DGX Sparks. The TP2 benchmark used the DSpark package at
 | Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd` |
 | Rollback image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
 | Parallelism | TP2 across a directly cabled pair or TP4 across a four-Spark cycle |
-| TP2 checkpoint | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` |
-| TP4 checkpoint | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` |
+| Checkpoint, TP2 and TP4 | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` |
 | Activations | `bfloat16` |
 | Request limit | 1,048,576 tokens |
 | Maximum sequences | 32 |
-| Key-value reservation | 17,179,869,184 bytes per rank in both base targets; SparkCache TP4 retains 34,359,738,368 bytes per rank |
+| Key-value reservation | 17,179,869,184 bytes per rank in both base targets; the optional [SparkCache TP4 composition](../../performance/records/deepseek-v4-flash/sparkcache-tp4-public-reproduction-20260822.md) retains 34,359,738,368 bytes per rank |
 | Scheduler budget | 4,096 tokens |
 | Block size | 256 tokens |
 | Key-value dtype | `fp8_ds_mla` |
@@ -37,18 +36,28 @@ Every rank within one deployment must use the same package and revision.
 
 ## Evidence boundary
 
+The TP2 throughput record used
+`deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7`.
+That benchmark checkpoint differs from the plain 0731 package selected by the
+pair recipe; its throughput does not establish same-checkpoint TP2/TP4 scaling.
+
 The implemented pair and cycle launches exercised API health, chat
 completions, tool calling, and DSpark speculative decoding. Both topologies
 completed prefill and sustained-decode matrices through 128K,
-with C1/C2 measured at least five times and every other applicable cell at
+with one and two concurrent streams (C1/C2) measured at least five times and every other applicable cell at
 least three times. The [TP2 record](../../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md)
 and [TP4 record](../../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md)
 retain the conditions, variability, and source-receipt hashes. These results
 remain evidence for the recorded image/checkpoint objects; they do not qualify
 an unrecorded model revision or locally built image.
 
-The hardened runtime lane adds malformed-DSML recovery and the Python/Triton
-plus native sparse-row repairs. A diagnostic TP4/K5 build from that lane passed
+The 1,048,576-token request limit is the configured serving default. The
+throughput records exercise contexts through 128K; they do not establish a
+successful 1M request. The contract's published runtime digest also awaits an
+exact-digest TP2 and TP4 replay, as described below.
+
+The [runtime](../../runtime/deepseek0731-gb10/README.md) includes malformed-DSML
+recovery and Python/Triton plus native sparse-row repairs. A diagnostic TP4/K5 build passed
 100 strict max-reasoning streams and cold tool calls near 98K and 262K prompt
 tokens on 2026-08-24. That run did not attest the published digest. The
 throughput matrices above predate the hardened image and remain historical

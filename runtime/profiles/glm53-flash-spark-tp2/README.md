@@ -1,63 +1,13 @@
-# GLM-5.3 Flash NVFP4-Spark on two Sparks
+# Retained GLM-5.3-Flash TP2 source-image configuration
 
-Status: **R33 SparkCache composition bounded-qualified**. Generic R33 image
-`3c7779ad71dd…` completed the bounded checks in the
-[qualification record](../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md).
-The tested `tp2-dcp1-sparkcache` composition uses 7.5 GiB FP8 KV per rank,
-managed B12X target and draft loading, static MTP3, and both PCI functions of
-one physical DAC. Its configured request limit is 1,048,576 tokens; no
-completed one-million-token request was run.
-
-## Generic R33 image
-
-Run the commands from the R33 integration checkout:
-
-```bash
-git clone --branch feat/jj-r33-integration https://github.com/FujitsuPolycom/sparkring.git sparkring-r33
-cd sparkring-r33
-```
-
-Select the immutable digest and the tracked R33
-image receipt. Mutable tags are not launch inputs:
-
-```bash
-SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
-SPARKRING_RECEIPT='runtime/sparkring/jovian-r33/public-image-receipt.json'
-docker pull "$SPARKRING_IMAGE"
-python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
-  --receipt "$SPARKRING_RECEIPT"
-```
-
-Copy `runtime.env.example` to a private rank-local file and resolve its three
-site fields. Plan each rank with the tested cache profile:
-
-```bash
-python3 runtime/profiles/glm53-flash-spark-tp2/launch.py plan \
-  --rank 0 --master rank0.example \
-  --model-dir /srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4 \
-  --cache-dir /srv/cache/glm53-spark-tp2 \
-  --env-file /srv/config/glm53-rank0.env \
-  --image "$SPARKRING_IMAGE" \
-  --runtime-receipt "$SPARKRING_RECEIPT" \
-  --r33-sparkcache
-```
-
-Repeat for rank 1. Inspect both plans, use `create` with the same arguments,
-then start rank 1 before rank 0. The launcher requires the exact public image
-receipt, active 2 GiB memory guard, managed B12X loading, TP2 coalescing, and
-the packaged SparkCache capability record. It rejects a local construction
-receipt when the selected image is a registry digest.
-
-The tested startup reported 1,081,922 total KV tokens. That pool is shared
-among requests and is not a demonstrated request length. The profile permits
-three images and one video per prompt, but multimodal correctness remains
-unqualified.
+For the published image and 1M context, use the [two-Spark quickstart](../../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md).
+The commands below reproduce the separate 256K source-image configuration.
 
 ## Retained cache-disabled composition
 
-The profile below describes the earlier cache-disabled source-image
-composition. Its source and loader settings are separate from the bounded R33
-SparkCache result above.
+The profile below describes the cache-disabled source-image composition.
+Its source and loader settings differ from the bounded
+[shared-image SparkCache composition](R33_SPARKCACHE.md).
 
 Select `glm53-flash-spark-tp2-mtp3` and the checkpoint
 `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` at full revision
@@ -76,8 +26,8 @@ records the common-source requirements and reference-trial limits.
 | Scheduler | Eight sequences, 8,192 batched tokens, prefill interval 8 |
 | Prefill | Token-sharded mHC and recurrent-checkpoint coalescing; sequential KDA projection |
 | Graphs | `FULL_AND_PIECEWISE`, mode 0; `[1,2,4,8,12,16,20,24,28,32]` |
-| Transport | HCA indices 0/2 (`rocep1s0f0`, `roceP2p1s0f0`); only these two functions are rendered into `B12X_ROCE_HCA`, so the other cage may be uncabled; two RoCEnante paths; 16 MiB all-reduce and all-gather input-shard limits |
-| NCCL | Verified 2.30.7; eight channels; `=rocep1s0f0,roceP2p1s0f0` |
+| Transport | Inventory functions 0/2 (`rocep1s0f0`, `roceP2p1s0f0`) only; two RoCEnante paths; 16 MiB all-reduce and all-gather input-shard limits |
+| NCCL | Receipt-pinned 2.30.7; eight channels; `=rocep1s0f0,roceP2p1s0f0` |
 | Multimodal / SparkCache | Four images, zero videos; SparkCache disabled |
 | Lifecycle | Active 2 GiB host-memory guard; manual create/start; Docker restart `no` |
 
@@ -92,7 +42,8 @@ Use the same source revision for this checkout, its prepared image context,
 and its receipt. The [shared-image recipe](../../sparkring/source_image/README.md)
 uses public source bases and the repository's locked native archive. With
 the declared parent image present on an ARM64 Docker build host, download the
-native archive as documented there and run:
+native archive as documented there. Create `/srv/config` before writing the
+receipt, then run:
 
 ```bash
 python3 runtime/sparkring/source_image/prepare_image.py \
@@ -111,13 +62,15 @@ python3 runtime/sparkring/source_image/verify_image.py \
 
 The context and source-cache directories must initially be absent. For a
 verified existing source cache, add `--reuse-source-cache` and select a fresh
-context directory. Create `/srv/config` before writing the receipt. The CPU
+context directory. The preparation command verifies cached source identities
+before reuse. The CPU
 verifier checks installed packages, native files, this profile's hash, and
 its transport bundle before producing the receipt; it does not load a model.
 
 A published shared image is usable when its source lock and TP2 profile hash
 match this checkout. Pull its immutable digest, obtain its local config ID
-with `docker image inspect`, and run the same verifier against the matching
+with `docker image inspect`, assign it to `SPARKRING_LOCAL_IMAGE_ID`, and run
+the same verifier against the matching
 prepared context. An image with an older TP2 profile cannot pass this source
 lock. Do not relabel an old receipt or infer compatibility from a tag name.
 
@@ -144,8 +97,9 @@ transport, memory-guard, and cache settings come from the profile.
 
 Confirm this hardware inventory maps to the intended physical cage:
 `rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1`. The reciprocal peer maps
-use positions in the rendered two-device list: rank 0 `1=0/1` and rank 1
-`0=0/1`. These still select inventory functions 0 and 2, both belonging to p0.
+use positions in the selected two-device list: rank 0 `1=0/1` and rank 1
+`0=0/1`. These select inventory functions 0 and 2, which expose physical cage
+p0 through both PCI domains. Unselected functions may be uncabled.
 Install the host memory-guard service and apply
 [memory-guard.conf](memory-guard.conf) as its systemd drop-in. Both `create`
 and `start` require the active guard's effective 2 GiB floor. The launcher
@@ -185,12 +139,14 @@ manually before admitting traffic:
 curl --fail http://rank0.example:8000/health
 curl --fail http://rank0.example:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"GLM-5.3-Flash-NVFP4-Spark","messages":[{"role":"user","content":"What is 17 + 25? End with FINAL=42."}],"temperature":1,"max_tokens":256}'
+  -d '{"model":"GLM-5.3-Flash-NVFP4-Spark","messages":[{"role":"user","content":"What is 17 + 25? End with FINAL= followed by the sum."}],"temperature":1,"max_tokens":256}'
 ```
 
 Rank 0 serves `GLM-5.3-Flash-NVFP4-Spark` on port 8000. It binds all interfaces
 without API authentication; use a trusted network or authenticated gateway.
 There is no automatic boot start or restart after a guard stop.
+
+Require the response to end with `FINAL=42`; HTTP success alone is insufficient.
 
 ## Reference evidence and limits
 
@@ -207,7 +163,8 @@ ranks; the allocator estimated 1,050,118 KV tokens. Available host memory
 after the response was 8,184/9,025 MiB. These are single observations.
 
 **Conclusion and limits.** The reference establishes startup and one arithmetic
-answer. It does not qualify the guarded shared image, throughput, sustained
+response to a prompt that supplied the expected answer, so it does not establish
+independent arithmetic accuracy. It does not qualify the guarded shared image, throughput, sustained
 memory stability, full-context/concurrent capacity, or multimodal accuracy.
 All indexed model shards existed and config/index hashes matched; full shard
 hashes were not recomputed during the checkpoint swap. Video remains disabled;

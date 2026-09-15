@@ -1,0 +1,4 @@
+# Contracts and component-test artifacts are verified as exact recorded bytes.
+contracts/** -text whitespace=cr-at-eol
+baseline-files/* -text
+patches/*.patch -text whitespace=-trailing-space

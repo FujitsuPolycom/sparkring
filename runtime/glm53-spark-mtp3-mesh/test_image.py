@@ -390,3 +390,32 @@ def test_warmup_verifier_requires_matching_source_and_temperature(tmp_path):
         verifier.verify_warmup(helper, digest, {"SPARKRING_WARMUP_TEMPERATURE": "0"})
     with pytest.raises(ValueError, match="content pin"):
         verifier.verify_warmup(helper, "0" * 64, {"SPARKRING_WARMUP_TEMPERATURE": "1"})
+
+
+def test_complete_package_rejects_extra_symlink_module(tmp_path):
+    package = tmp_path / "b12x"
+    package.mkdir()
+    source = package / "__init__.py"
+    source.write_text("VALUE = 1\n")
+    records = {"b12x/__init__.py": verifier.sha256(source)}
+    try:
+        (package / "unexpected.py").symlink_to(source)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+    with pytest.raises(ValueError, match="symbolic link"):
+        verifier.verify_complete_package_file_map(tmp_path, "b12x", records)
+
+
+def test_manifest_rejects_parent_symlink_escape(tmp_path):
+    root = tmp_path / "package"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    source = outside / "module.py"
+    source.write_text("VALUE = 1\n")
+    try:
+        (root / "linked").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+    with pytest.raises(ValueError, match="escapes manifest root"):
+        verifier.verify_file_map(root, {"linked/module.py": verifier.sha256(source)})

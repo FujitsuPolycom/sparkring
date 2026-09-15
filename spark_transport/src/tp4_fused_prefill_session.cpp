@@ -116,7 +116,10 @@ void connect(ControlChannel& channel, VerbsEndpoint& endpoint,
 class ProxyWorker {
  public:
   explicit ProxyWorker(research::FusedPrefillVerbsProxy& proxy)
-      : proxy_(proxy), thread_([this] { loop(); }) {}
+      : proxy_(proxy) {
+    // Start only after every synchronization and queue member is constructed.
+    thread_ = std::thread([this] { loop(); });
+  }
   ~ProxyWorker() {
     wait_idle();
     { std::lock_guard<std::mutex> lock(mutex_); stop_ = true; }
@@ -142,9 +145,10 @@ class ProxyWorker {
     std::lock_guard<std::mutex> lock(mutex_);
     if (slot_busy_[slot])
       throw std::logic_error("fused proxy slot is still busy");
+    // Allocation must succeed before publishing ownership of this slot.
+    queue_.push_back({sequence, rail_bytes, slot});
     slot_busy_[slot] = true;
     submitted_sequence_.store(sequence, std::memory_order_release);
-    queue_.push_back({sequence, rail_bytes, slot});
     cv_.notify_one();
   }
   Tp4FusedPrefillHealthStatus health_status() const noexcept {
@@ -261,31 +265,30 @@ class Tp4FusedPrefillSession::Impl {
                     {endpoints_[cw].get(), endpoints_[cw + 2].get(),
                      endpoints_[ccw].get(), endpoints_[ccw + 2].get()}});
     worker_ = std::make_unique<ProxyWorker>(*proxy_);
-    check_cuda(cudaMalloc(&device_sync_,
-                          sizeof(*device_sync_) * 8 * kOperationSlots),
-               "allocate fused sync");
-    check_cuda(cudaMemset(device_sync_, 0,
-                          sizeof(*device_sync_) * 8 * kOperationSlots),
-               "initialize fused sync");
-    check_cuda(cudaMalloc(&device_descriptors_,
-                          sizeof(*device_descriptors_) * 8 * kOperationSlots),
-               "allocate fused descriptors");
-    for (auto& event : kernel_done_) {
-      check_cuda(cudaEventCreateWithFlags(&event, cudaEventDisableTiming),
-                 "create fused kernel completion event");
+    try {
+      check_cuda(cudaMalloc(&device_sync_,
+                            sizeof(*device_sync_) * 8 * kOperationSlots),
+                 "allocate fused sync");
+      check_cuda(cudaMemset(device_sync_, 0,
+                            sizeof(*device_sync_) * 8 * kOperationSlots),
+                 "initialize fused sync");
+      check_cuda(cudaMalloc(&device_descriptors_,
+                            sizeof(*device_descriptors_) * 8 * kOperationSlots),
+                 "allocate fused descriptors");
+      for (auto& event : kernel_done_) {
+        check_cuda(cudaEventCreateWithFlags(&event, cudaEventDisableTiming),
+                   "create fused kernel completion event");
+      }
+      for (auto& channel : channels_) channel->barrier();
+    } catch (...) {
+      release_cuda_resources();
+      throw;
     }
-    for (auto& channel : channels_) channel->barrier();
   }
 
   ~Impl() {
     worker_.reset();
-    for (std::uint32_t slot = 0; slot < kOperationSlots; ++slot) {
-      if (kernel_done_armed_[slot])
-        (void)cudaEventSynchronize(kernel_done_[slot]);
-      if (kernel_done_[slot]) (void)cudaEventDestroy(kernel_done_[slot]);
-    }
-    if (device_descriptors_) (void)cudaFree(device_descriptors_);
-    if (device_sync_) (void)cudaFree(device_sync_);
+    release_cuda_resources();
     proxy_.reset();
     for (auto& endpoint : endpoints_) endpoint.reset();
     arena_buffer_.reset();
@@ -380,6 +383,16 @@ class Tp4FusedPrefillSession::Impl {
   }
 
  private:
+  void release_cuda_resources() noexcept {
+    for (std::uint32_t slot = 0; slot < kOperationSlots; ++slot) {
+      if (kernel_done_armed_[slot])
+        (void)cudaEventSynchronize(kernel_done_[slot]);
+      if (kernel_done_[slot]) (void)cudaEventDestroy(kernel_done_[slot]);
+    }
+    if (device_descriptors_) (void)cudaFree(device_descriptors_);
+    if (device_sync_) (void)cudaFree(device_sync_);
+  }
+
   Tp4BidirectionalPrefillOptions options_;
   std::unique_ptr<MemoryBuffer> arena_buffer_;
   std::array<research::FusedPrefillArenaView, kOperationSlots> arenas_{};

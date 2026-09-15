@@ -163,7 +163,10 @@ def _parser() -> argparse.ArgumentParser:
     doctor.add_argument("--cluster", default=str(DEFAULT_CLUSTER_PATH))
 
     host = subcommands.add_parser("host", help="diagnose one blank DGX Spark")
+    # Advertise the delegated CLI in root help; main passes all its arguments
+    # directly to deploy_suite so that module owns subcommand help and parsing.
     subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
+    subcommands.add_parser("compose", help="generate and coordinate profile-owned Compose deployments")
     host_commands = host.add_subparsers(dest="host_command", required=True)
     host_check = host_commands.add_parser("check", help="run read-only host checks")
     host_check.add_argument("--json", action="store_true")
@@ -173,6 +176,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw = list(argv if argv is not None else sys.argv[1:])
+    if raw and raw[0] == "compose":
+        try:
+            from .sparkring_compose import main as compose_main
+        except ImportError:
+            from sparkring_compose import main as compose_main
+        return compose_main(raw[1:])
     if raw and raw[0] == "deploy":
         try:
             from .deploy_suite import main as deploy_main

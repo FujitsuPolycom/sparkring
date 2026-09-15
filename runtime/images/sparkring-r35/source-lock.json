@@ -1,0 +1,46 @@
+{
+  "schema": "sparkring-r35-pinned-sources/v1",
+  "parent_image": "ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef",
+  "parent_image_id": "sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4",
+  "components": {
+    "vllm": {
+      "base_commit": "de982a50c6a3e4718e5cf9f00423a92192718da1",
+      "base_tree": "6d5cc3490735a53e849a4f0909183cb5e3a22e8b",
+      "tree": "3d4284deab93cbdba8fab097c7f4f1321a547dc1",
+      "patch": "vllm-sparkring.patch",
+      "patch_sha256": "3a969d2bb0f8294a163fe1cbef2e3b3387d7d8d5c0d6f678c0ad84e1cb796b9e",
+      "native_base_comparison": {
+        "reference": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
+        "paths": [
+          "csrc",
+          "CMakeLists.txt",
+          "cmake",
+          "requirements",
+          "pyproject.toml",
+          "setup.py"
+        ],
+        "unchanged": true,
+        "runtime_verification_required": true
+      }
+    },
+    "b12x": {
+      "base_commit": "98086604c86ec1e78977e5023ce282ecb97ab8a7",
+      "base_tree": "d963f030c72a426753d2afa412b35d29eeb045f7",
+      "tree": "22de5a1a9f10b698428d9e22abc9b9d217b84152",
+      "patch": "b12x-sparkring.patch",
+      "patch_sha256": "a40c802a849091fba6834481088c9611b94aaaea8146bec8850997ca8503ddbb"
+    }
+  },
+  "baseline_file_lists": {
+    "vllm": {
+      "git_ref": "547f7091841728f21ab419012a766fd1df70a569",
+      "command": "git ls-tree -r --name-only 547f7091841728f21ab419012a766fd1df70a569 -- vllm",
+      "sha256": "5bd815e69e3b680e85cfc850fc77b50f148ee2e7fd2f0220b6f821a55f6eec32"
+    },
+    "b12x": {
+      "git_ref": "68acfc14893c087aa9b3120bb984fde4c4e7a21f",
+      "command": "git ls-tree -r --name-only 68acfc14893c087aa9b3120bb984fde4c4e7a21f -- b12x",
+      "sha256": "3d7efc6042de882a08c5c9c0b958e1182ff2c41314b776a7d87066d806319556"
+    }
+  }
+}

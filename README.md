@@ -1,182 +1,90 @@
 # SparkRing
 
-> **Repository restructuring in progress:** Work on `refactor/repository-layout` is simplifying the layout, profile management, quickstarts, and contributor documentation. Contributions remain welcome—we’ll carry ongoing fixes and profile improvements into the refactor as it’s tested and prepared for review. The branch is currently local; existing published profiles and images remain available.
+> **Repository restructuring in progress:** Work on
+> [`refactor/repository-layout`](https://github.com/FujitsuPolycom/sparkring/tree/refactor/repository-layout)
+> simplifies the layout, profile management, quickstarts and contributor documentation.
+> Contributions remain welcome; ongoing fixes and profile improvements are integrated
+> as the branch is tested and prepared for review. Published profiles and images remain available.
 
-SparkRing is a vLLM-based inference-serving stack with low-latency collective
-communication for switchless clusters of NVIDIA GB10-based devices. 
+SparkRing is an inference-serving stack with low-latency collective communication
+for switchless clusters of NVIDIA GB10-based devices. It supports two-node pairs
+and four-node rings; six-node rings are experimental. Model profiles use vLLM
+and [SGLang](runtime/deepseek-v41-sglang/README.md).
 
-SparkRing supports pairs, four-node rings, and six-node rings (in dev).
+The collective communication stack combines SIRCL, RoCEnante, and patched NCCL.
+The high-speed data fabric needs no external Ethernet or InfiniBand switch;
+administration and inference API traffic use the management network, typically
+through each node's 10GbE NIC.
 
-The collective communication stack combines [SIRCL](docs/SIRCL.md), [RoCEnante](third_party/b12x_roce/README.md), and [patched NCCL](spark_transport/nccl/README.md). The high-speed data fabric
-needs no external Ethernet or InfiniBand switch; administration and vLLM api serving occur over a node/s 10Gbe NIC.
-
-Four- and six-node rings use a virtual mesh built on custom RoCE RDMA routing and hardware forwarding in the ConnectX network ASICs. This creates paths between nodes that aren’t directly connected, carrying traffic over the existing ring cables without routing it through host CPUs. The result is mesh connectivity over a physical ring. 
+Profiles that need communication between nonadjacent nodes can use a virtual
+mesh over the four-node ring. Custom RoCE RDMA routing and hardware forwarding
+in the ConnectX network ASICs create those paths over the existing ring cables,
+without routing the traffic through host CPUs. This provides mesh connectivity
+over a physical ring; the selected profile defines its transport requirements.
 
 The repository provides setup guides, launch tooling, model profiles,
-reproducible benchmarks, and [test results](performance/).
-
-> SparkRing is experimental. This repo is changing rapidly.
+reproducible benchmarks, and test results. Validation applies to the exact
+configurations and workloads recorded with each profile.
 
 ## Setup
 
-1. Choose a [profile](#profiles) and check the [prerequisites](docs/PREREQUISITES.md).
-2. For a shared-image GLM four-node ring, follow the [mesh host setup guide](docs/GLM53_SPARK_MESH_HOST_SETUP.md).
-   Other four-node profiles use the [bootstrap guide](docs/BOOTSTRAP.md).
-   Two-node profiles include their own direct-link setup.
-3. Follow the profile's quickstart, then run the
-   [validation checks](docs/PROFILE_VALIDATION.md).
+1. Choose a deployment below and check the [prerequisites](docs/operations/prerequisites.md).
+2. Follow its quickstart for host setup, image selection and launch commands.
+3. Run the [validation checks](docs/operations/profile-validation.md).
+
+Each quickstart selects its image and states which configurations were tested.
 
 ## Profiles
-KV is approximate total token capacity. The shared TP4 figures are per
-layout: DCP1 ~2.28M, DCP4 ~8.36M (both 24 GiB FP8 KV per rank). The TP2
-figure is a reference estimate. `—` means no capacity
-is recorded. Startup reports the actual capacity, which is separate from the
-per-request Context limit.
+
+[Full profile catalog](profiles/README.md).
+
+<!-- BEGIN GENERATED PROFILES -->
 
 ### Four Sparks
 
-| Model / predictor | Serving stack | Transport | Layout | Context | Sequences | KV (tokens) | Guide |
-|---|---|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | [Generic R33 SparkRing image](runtime/sparkring/jovian-r33/image/README.md) | [Mesh + dual-domain NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP1 | 1M | 16 | ~2.28M | [Ring quickstart](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | [Generic R33 SparkRing image](runtime/sparkring/jovian-r33/image/README.md) | [Mesh + dual-domain NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP4 | 1M | 16 | ~8.36M | [DCP4 record](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md) |
-| GLM-5.3 Flash NVFP4-Spark · native MTP3, switched | [Shared SparkRing source image](runtime/sparkring/source_image/README.md) | Operator-selected NCCL links | TP4/DCP1 | 1M | 16 | — | [Switched quickstart](docs/GLM53_SWITCHED_TP4_QUICKSTART.md) |
-| GLM-5.2 EXL3 3.5-bpw | [SparkRing vLLM/ExLlamaV3 build](runtime/exl3-r7/README.md) | [SIRCL + NCCL](docs/SIRCL.md) | TP4/DCP4 | 1M | 16 | ~1.2M | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 32 | ~1M | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4.1-Flash · Engram on NVMe · DSpark k=5 | [Self-built stock vLLM `dsv41-feat` image](runtime/deepseek-v41-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 430,080 | 8 | ~2.18M | [Quickstart](docs/DEEPSEEK_V41_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 64 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-| DeepSeek-V4-Flash-Vision-Exp with DSpark (research-only) | [Anemll image / MiaAI-Lab recipe](runtime/deepseek-vision-exp/profile.json) | [SparkRing patched NCCL](spark_transport/nccl/README.md) | TP4 | 1M | 48 | — | [Quickstart](docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
-
-The Vision-Exp [artifact contract](runtime/deepseek-vision-exp/profile.json)
-identifies the Anemll image, MiaAI-Lab recipe, and SparkRing transport separately.
-Contributor-reported results are linked from the guide; independent reproduction
-of the selected artifacts is not claimed.
-
-The bounded-qualified generic-image GLM ring profile enables continuation
-coalescing, token-sharded mHC, hardware-forwarded mesh paths, NCCL across both
-host PCIe domains, and SparkCache. Its exact evidence does not qualify the
-packaged alternatives. Switched deployments are provided as-is and have not
-been validated on switched hardware.
-Shared-image GLM ring deployment requires the [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+| Model | Quant | DCP | Context / KV* | SparkCache | Status |
+|---|---|---|---|---|---|
+| **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1/4 | 1M / ([2.3M](performance/capacity-references.md)/[8.4M](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Experimental |
+| [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development |
+| [DeepSeek-V4-Flash-Vision-Exp](profiles/deepseek-v4-flash-vision-exp-tp4/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | 1 | 1M / — | No | Experimental |
+| [DeepSeek-V4.1-Flash](profiles/deepseek-v41-flash-cycle/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 1 | 1M / [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development |
+| [DeepSeek-V4.1-Flash](profiles/deepseek-v41-flash-sglang-cycle/README.md)<br>SGLang | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | — | 262K / [1.5M](performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | No | Development |
+| [GLM-5.2](profiles/glm52-exl3-r7-3.5bpw/README.md)<br>vLLM | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | 4 | 1M / [1.2M](profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development |
+| [Qwen3.8-27B](profiles/qwen38-27b-exl3-k5k6/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [8.7M](profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development |
+| [Qwen3.8-Flash-Next](profiles/qwen38-flash-next-qad-tp4/README.md)<br>vLLM | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | 1 | 262K / [3.2M](performance/records/qwen38-flash-next/r37-shared-tp4.json) | [Optional](profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | Development |
 
 ### Two Sparks
 
-| Model / predictor | Serving stack | Transport | Layout | Context | Sequences | KV (tokens) | Guide |
-|---|---|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | [Generic R33 SparkRing image](runtime/sparkring/jovian-r33/image/README.md) | [Adaptive RoCEnante + dual-domain NCCL](runtime/profiles/glm53-flash-spark-tp2/README.md) | TP2/DCP1 | 1M | 8 | ~1.08M | [Quickstart](runtime/profiles/glm53-flash-spark-tp2/README.md) |
-| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | ~1M | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
+| Model | Quant | DCP | Context / KV* | SparkCache | Status |
+|---|---|---|---|---|---|
+| **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / [1.1M](performance/records/glm53-flash/r35-tp2-sparkcache.json) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Experimental |
+| [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
+| [Qwen3.8-27B](profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
+| [Qwen3.8-Flash-Next](profiles/qwen38-flash-next-tp2/README.md)<br>vLLM | [NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 1 | 262K / [3M](performance/records/qwen38-flash-next/r37-tp2.json) | [Optional](profiles/qwen38-flash-next-tp2/README.md) | Experimental |
 
-The bounded-qualified R33 NVFP4-Spark pair uses 7.5 GiB KV per rank, one DAC,
-both host PCIe domains, managed B12X loading, coalescing, mHC, and SparkCache.
-Startup reported 1,081,922 KV tokens; that is pool capacity, not a completed
-one-million-token request or tested maximum concurrent workload.
+<!-- END GENERATED PROFILES -->
 
-See the [profile index](docs/profiles/README.md) for evidence scopes and
-[SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
-support.
+\* KV capacity changes with configuration and enabled features, including
+SparkCache. Linked sources provide the settings and basis for each figure.
 
-Qwen with SparkCache is unsupported; six-node profiles are research-only.
+## Documentation
 
-### Retired GLM-5.3 profiles
-
-These guides retain their pinned configurations and evidence for reproduction.
-For deployment with the shared image, use the matching two- or four-Spark entry above.
-
-| Profile | Layout | Retained guide | Replacement |
-|---|---|---|---|
-| NVFP4-Spark MTP3 cache/checkpoint mesh | TP4/DCP4 | [Pinned cache/checkpoint setup](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) | [R33 DCP4 SparkCache](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md) |
-| NVFP4 with BF16 DFlash2 | TP4/DCP1, DCP2 or DCP4 | [Pinned DFlash2 setup](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) | [Shared-image native MTP3](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
-| NVFP4-Spark MTP3 with 5 GiB KV per rank | TP2/DCP1 | [Pinned TP2 setup](https://github.com/FujitsuPolycom/sparkring/blob/2f01b6ee8f6173745c4b6b165498bbef82fc03f1/docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) | [Shared-image NVFP4-Spark TP2](runtime/profiles/glm53-flash-spark-tp2/README.md) |
-| Original NVFP4 MTP3 with 6.75 GiB KV per rank | TP2/DCP1 | [Pinned original-NVFP4 setup](https://github.com/FujitsuPolycom/sparkring/blob/2f01b6ee8f6173745c4b6b165498bbef82fc03f1/runtime/profiles/glm53-flash-nvfp4-tp2/README.md) | [Shared-image NVFP4-Spark TP2](runtime/profiles/glm53-flash-spark-tp2/README.md) |
-
-The retired 5 GiB TP2 configuration has a recorded
-[blue-video recognition issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
-
-DFlash2 uses a separate draft checkpoint with
-[CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
-
-## Container images
-
-| Package / runtime | Profile | Details |
-|---|---|---|
-| `ghcr.io/fujitsupolycom/sparkring` | Generic R33 ARM64 image; exact profiles select TP2/TP4 topology and optional components | [Source build and profile verification](runtime/sparkring/jovian-r33/image/README.md) |
-| `gb10-vllm-serving` | Profile-specific images, including DeepSeek | [Packages](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) |
-| Anemll `dspark-vllm-gx10` | DeepSeek-V4-Flash-Vision-Exp with the MiaAI-Lab recipe | [Image, recipe, and transport provenance](runtime/deepseek-vision-exp/profile.json) |
-
-Use the exact digest in the selected quickstart. Images sharing a package
-name are not interchangeable; a model-neutral name does not qualify every profile.
-Retired profiles retain their image references in their linked guides.
-The [R33 publication record](runtime/sparkring/jovian-r33/publication.json)
-contains the download digest and profile verification scope.
-
-## Benchmark results
-
-Each row links the exact measured configuration. These records include retired
-profiles and are not benchmark results for the shared-image build.
-
-Decode is sustained aggregate output at temperature 1.0.
-Results attempt to reflect real world use-case numbers in all instances unless otherwise noted.
-*structured data sweeps*,*temperature 0 and/or other out-of-spec configurations are not provided or recommended*
-
-| Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
-|---|---:|---:|---:|---:|---:|---:|
-| [GLM-5.3 NVFP4-Spark · native MTP3 + mesh · 4 Sparks](performance/records/glm53-flash/spark-mtp3-mesh-20260905.md) | 8K | 2,703 (8K scout) | 48.2 | 168.8 | C16: 231.3 | — |
-| [GLM-5.3 NVFP4-Spark · DFlash2 exact request-batch graphs · 4 Sparks](performance/records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md) | 16K | 2,717 (16K scout) | 43.05 | 134.3 | C16: 187.0 | — |
-| [GLM-5.3 NVFP4 · DFlash2/B12X-KDA DCP4 · 4 Sparks](performance/records/glm53-flash/b12x-kda-dcp4-20260903.md) | 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |
-| [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 16K | 671 (16K) | 20.15 | 64.13 | C8: 64.13 | 25.39 |
-| [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 16K | 1,926 (16K) | 58.36 | 162.69 | C32: 307.13 | 59.31 |
-| [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 16K | 2,488 (16K) | 68.84 | 265.16 | C32: 508.11 | 95.77 |
-| [DeepSeek-V4.1-Flash · Engram on NVMe · DSpark k=5 · 4 Sparks](performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md) | short prompts, temp 0 | 1,873 (16K) / 2,058 (64K) | 56.2 | — | C6: 159.9 | 77.3 |
-| [Qwen3.8-27B EXL3 K5/K6 · 2 Sparks](performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | 16K | 1,367 (16K) | 29.50 | 142.20 | C16: 184.39 | 39.95 |
-| [Qwen3.8-27B EXL3 K5/K6 · 4 Sparks](performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | 16K | 1,964 (16K) | 35.07 | 191.02 | C8: 191.02 | 48.46 |
-
-See [full results](docs/RESULTS.md) and the
-[mesh validation report](performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
-for repeat counts, accuracy checks, settings, and limitations.
-
-### R33 throughput observations
-
-Status: **research-only**. These reported values lack a complete public
-harness/method record and must not be treated as matched comparisons with the
-benchmarks above. Their linked records separately qualify bounded functional
-checks and describe the missing measurement details.
-
-| NVFP4-Spark MTP3 + SparkCache profile | Context | Prefill tok/s, median of 3 | C1 output tok/s | C4 aggregate output tok/s |
-|---|---:|---:|---:|---:|
-| [R33 four-Spark ring](performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md) | 8K | 3,274 | 51.4 | 132.5 |
-| [R33 two-Spark pair](performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md) | 8K | 2,340 | 33.1 | 66.1 |
-
-## Architecture
-
-[Architecture](docs/ARCHITECTURE.md) · [SIRCL](docs/SIRCL.md) ·
-[RoCEnante](third_party/b12x_roce/README.md) ·
-[Mesh prerequisites](docs/PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh)
-
-## Resources
-
-[Validation](docs/PROFILE_VALIDATION.md) · [Deployment tooling](docs/DEPLOYMENT_SUITE.md) ·
-[Contributing](CONTRIBUTING.md) · [Discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
-
-## Repository map
-
-| Path | Purpose |
-|---|---|
-| `spark_transport/` | Communication backends and vLLM adapters |
-| `runtime/` | Pinned images, builders, and serving profiles |
-| `scripts/` | Preflight, deployment, and validation tools |
-| [`recipes/`](recipes/) | Machine-readable serving recipes |
-| [`performance/`](performance/) | Measurement methods, evidence, and receipts |
-| `docs/` | Operator guides and architecture |
-| [`integrations/lil/`](integrations/lil/README.md) | Companion lifecycle and deployment integration |
+- [Benchmarks and test results](performance/benchmarks.md)
+- [Architecture](docs/architecture/overview.md) and [mesh host setup](docs/GLM53_SPARK_MESH_HOST_SETUP.md)
+- [Container images](runtime/images/README.md#container-images)
+- [Contributing](CONTRIBUTING.md) and [repository layout](docs/development/layout.md)
+- [Community discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
 
 ## Acknowledgements
 
-Built on vLLM, NVIDIA NCCL, B12X, ExLlamaV3, and the
-[local inference community](https://github.com/local-inference-lab/).
-Luke and Local Inference Lab's [RoCEnante implementation](https://github.com/local-inference-lab/b12x/pull/295)
-and [vLLM integration](https://github.com/local-inference-lab/vllm/pull/597)
-underpin the adapted mesh communication.
-See [third-party notices](THIRD_PARTY_NOTICES.md).
+Thanks to the contributors to vLLM, NVIDIA NCCL, B12X and ExLlamaV3, whose
+serving, communication and kernel components are used by SparkRing profiles.
+
+The RoCEnante integration adapts communication work by Luke (`lukealonso`)
+and other [Local Inference Lab](https://github.com/local-inference-lab/) contributors.
+See the [RoCEnante provenance](third_party/b12x_roce/README.md#attribution-and-design-origins)
+and [third-party notices](THIRD_PARTY_NOTICES.md) for source origins, adaptations
+and licensing.
 
 ## License
 

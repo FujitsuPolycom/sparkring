@@ -1,7 +1,7 @@
 # Mesh indexer publication-barrier image
 
 Status: research-only serving artifact with qualified bounded indexer GPU tests.
-The child image preserves the published native-MTP3 mesh parent's compute,
+The child image preserves the published MTP3 mesh parent's compute,
 CUDA 13.3, transport bundle, marker, and native libraries. Its only executable
 runtime change adds block-wide synchronization before histogram publication
 and increases the fused-indexer compile revision from 1 to 2.

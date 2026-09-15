@@ -16,7 +16,7 @@ from pathlib import Path
 
 
 INPUT_SHA256 = "992486a1a70fd0cb54c54cf3f70af0f09b4bcc6ae3bbf433e66b1296415015b4"
-OUTPUT_SHA256 = "0e2e0150702029b3c09bd117c33101d90d8197386d278dc6008973b314ae9997"
+OUTPUT_SHA256 = "3bdc82230a21658362e90c268b6b72bb6fc55544f1fbeaed5df73c955726017e"
 PATCHED_EXL3_SHA256 = (
     "8fad5330c88f55dc57e4d8e298f2af23e16390b97153b569a2e572e0fb5065c2"
 )
@@ -47,7 +47,9 @@ CALL_REPLACEMENT = """\
             self.max_num_tokens, skip_attn=True, is_profile=True
         )
 
-        if os.getenv("SPARK_Q40_EXACT_STATE_ATTEST_PATH"):
+        # Presence of the variable requests attestation; an empty value is
+        # rejected inside the method rather than skipping the gate.
+        if "SPARK_Q40_EXACT_STATE_ATTEST_PATH" in os.environ:
             self._attest_q40_exact_state_policy()
 
         # Only run sampler/pooler on last PP rank (non-last ranks return None).
@@ -122,7 +124,12 @@ METHOD_REPLACEMENT = '''\
                 mixed = getattr(routed, "exl3_mixed_trellis", None)
                 uniform = getattr(routed, "exl3_trellis_weights", None)
                 if not isinstance(mixed, dict) and uniform is None:
-                    continue
+                    # An EXL3 routed layer without either weight form cannot
+                    # be classified; skipping it would hide it from the
+                    # inventory gates below.
+                    raise RuntimeError(
+                        f"{role} EXL3 routed layer has neither mixed nor uniform weights"
+                    )
                 seen.add(id(routed))
                 layer_id = getattr(module, "layer_id", None)
                 if layer_id is None:
@@ -133,6 +140,8 @@ METHOD_REPLACEMENT = '''\
                         if item.isdigit()
                     ]
                     layer_id = int(pieces[-1]) if pieces else None
+                if role == "target" and layer_id is None:
+                    raise RuntimeError("target EXL3 routed layer has no numeric layer id")
                 found.append((layer_id, routed, quant, role, isinstance(mixed, dict)))
             return found
 

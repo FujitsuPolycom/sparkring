@@ -13,13 +13,17 @@ HERE = Path(__file__).resolve().parent
 
 
 def _module():
-    sys.path.insert(0, str(HERE))
     spec = importlib.util.spec_from_file_location(
         "gb10_native_receipt", HERE / "native_artifact_receipt.py"
     )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    previous_path = sys.path[:]
+    try:
+        sys.path.insert(0, str(HERE))
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = previous_path
     return module
 
 
@@ -40,10 +44,9 @@ def test_native_contract_pins_owning_build_and_artifact() -> None:
     assert native["result_size_bytes"] == 164090840
     patch = HERE / native["path"]
     assert hashlib.sha256(patch.read_bytes()).hexdigest() == native["sha256"]
-    sys.path.insert(0, str(HERE))
-    import apply_runtime_overlay
-
-    parsed = apply_runtime_overlay.parse_unified_patch(
+    _module()  # Load the colocated overlay dependency without leaking sys.path.
+    overlay = sys.modules["apply_runtime_overlay"]
+    parsed = overlay.parse_unified_patch(
         patch.read_text(encoding="utf-8")
     )
     assert set(parsed) == {
@@ -74,3 +77,10 @@ def test_abi_comparison_rejects_surface_drift() -> None:
         module.compare_abi(old, {**new, "needed": ["libnew.so"]})
     with pytest.raises(module.OverlayError, match="build ID"):
         module.compare_abi(old, old)
+
+
+def test_loading_native_receipt_restores_import_path():
+    before = sys.path[:]
+    _module()
+    _module()
+    assert sys.path == before

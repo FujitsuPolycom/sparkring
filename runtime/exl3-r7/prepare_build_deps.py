@@ -95,10 +95,14 @@ def checkout(source: dict, destination: Path) -> None:
 
 
 def prepare(output: Path) -> dict:
-    try:
-        return verify(output)
-    except (OSError, ValueError, RuntimeError, json.JSONDecodeError):
-        pass
+    if output.exists() or output.is_symlink():
+        try:
+            return verify(output)
+        except (OSError, ValueError, RuntimeError) as error:
+            raise RuntimeError(
+                f"existing build-dependency directory is not verified: {output}; "
+                "preserve it and select an unused output path"
+            ) from error
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{output.name}-", dir=output.parent))
     try:
@@ -124,13 +128,9 @@ def prepare(output: Path) -> dict:
             json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         verify(staging)
-        if output.exists():
-            replaced = output.with_name(f".{output.name}.replaced-{os.getpid()}")
-            os.replace(output, replaced)
-            os.replace(staging, output)
-            remove_tree(replaced)
-        else:
-            os.replace(staging, output)
+        if output.exists() or output.is_symlink():
+            raise RuntimeError(f"output appeared during preparation; preserving existing path: {output}")
+        os.rename(staging, output)
         return verify(output)
     finally:
         if staging.exists():

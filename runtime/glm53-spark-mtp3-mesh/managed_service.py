@@ -25,6 +25,7 @@ _spec = importlib.util.spec_from_file_location('managed_mesh_profile', Path(__fi
 mesh_profile = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = mesh_profile
 _spec.loader.exec_module(mesh_profile)
+from runtime.common import managed_deployment  # noqa: E402
 
 PROTOCOL = 'sparkring-managed-mesh/v1'
 POLL_SECONDS = 1.0
@@ -32,6 +33,7 @@ PEER_TIMEOUT = 2.0
 PEER_OUTAGE_GRACE = 300.0
 NETWORK_POLL_SECONDS = 5.0
 HEALTH_MAX_AGE = 10.0
+MARKERS_PER_RANK = 2  # One managed source marker for each cycle-facing device.
 
 
 def canonical(value):
@@ -61,23 +63,27 @@ def load_config(path):
     document = json.loads(Path(path).read_text())
     expected = {'schema', 'site_path', 'rank', 'key_file', 'epoch', 'health_port', 'state_dir',
                 'container_id', 'container_image'}
-    if set(document) != expected or document['schema'] != PROTOCOL:
+    if (not isinstance(document, dict) or not expected <= set(document) <= expected | {'deployment_name'}
+            or document['schema'] != PROTOCOL):
         raise ValueError('Unsupported managed mesh configuration')
+    managed_deployment.validate_config_paths(document)
     if type(document['rank']) is not int or document['rank'] not in range(4):
         raise ValueError('Mesh rank must be an integer from zero through three')
     if type(document['health_port']) is not int or not 1024 <= document['health_port'] <= 65535:
         raise ValueError('Mesh health port must be an unprivileged TCP port')
     if not isinstance(document['epoch'], str) or not re.fullmatch('[0-9a-f]{32}', document['epoch']):
         raise ValueError('Mesh epoch must be a shared 128-bit hexadecimal identifier')
-    if not re.fullmatch('[0-9a-f]{64}', str(document['container_id'])):
+    if not isinstance(document['container_id'], str) or not re.fullmatch('[0-9a-f]{64}', document['container_id']):
         raise ValueError('Pin the full pre-created model container ID')
-    if not re.fullmatch('sha256:[0-9a-f]{64}', str(document['container_image'])):
+    if not isinstance(document['container_image'], str) or not re.fullmatch('sha256:[0-9a-f]{64}', document['container_image']):
         raise ValueError('Pin the immutable model image ID')
     for name in ('site_path', 'key_file', 'state_dir'):
         mesh_profile.absolute(document[name], name)
     site, topology, plan = mesh_profile.load_site(Path(document['site_path']))
     sources = {name: mesh_profile.sha(Path(__file__).with_name(name))
                for name in ('managed_service.py', 'managed_network.py', 'managed_memory.py', 'profile.py', 'inspect_fabric.py')}
+    for name in ('runtime/common/glm_targets.py', 'profiles/glm53-target-variants.json'):
+        sources[name] = mesh_profile.sha(mesh_profile.ROOT / name)
     identity = digest({'protocol': PROTOCOL, 'site': site, 'topology': topology.sha256,
                        'epoch': document['epoch'], 'port': document['health_port'], 'sources': sources,
                        'image': document['container_image']})
@@ -127,16 +133,23 @@ def validate_group(rows):
     view = digest(generations)
     if any(row.get('phase') != 'armed' or row.get('view_digest') != view
            or row.get('peer_health_degraded', False)
+           or row.get('management_degraded', False)
            or row.get('docker_status_degraded', False) for row in rows):
         raise RuntimeError('Mesh ranks have not armed the same process generation set')
     return view
 
 
 class PeerWatch:
-    """Tolerate short connection loss, never authenticated negative readiness or a new generation."""
+    """Tolerate short connection loss, never authenticated negative readiness or a new generation.
+
+    Peer transport and local management-address outages carry independent
+    latches: a successful peer poll clears only the peer latch, and a clean
+    fabric/management check clears only the management latch.
+    """
     def __init__(self):
         self.generations = None
         self.outage_started = None
+        self.mgmt_outage_started = None
 
     def observe(self, rows):
         observed = {str(row['rank']): row['generation'] for row in rows}
@@ -151,6 +164,16 @@ class PeerWatch:
             self.outage_started = now
         if now - self.outage_started >= PEER_OUTAGE_GRACE:
             raise RuntimeError('Authenticated peer transport remained unavailable beyond its grace interval')
+
+    def management_error(self, now):
+        """Latch a local management-address outage; clears only on its own recovery."""
+        if self.mgmt_outage_started is None:
+            self.mgmt_outage_started = now
+        if now - self.mgmt_outage_started >= PEER_OUTAGE_GRACE:
+            raise RuntimeError('Local management address remained unavailable beyond its grace interval')
+
+    def management_recovered(self):
+        self.mgmt_outage_started = None
 
 
 def notify(message):
@@ -247,8 +270,16 @@ def conflicting_markers(devices, proc_root=Path('/proc')):
     return found
 
 
+def require_no_markers(result, found_message):
+    """Distinguish a positive process match from an unavailable process scan."""
+    if result.returncode == 0:
+        raise RuntimeError(found_message)
+    if result.returncode != 1:
+        raise RuntimeError(f"Cannot enumerate marker processes: pgrep exited {result.returncode}")
+
+
 def cleanup_orphans(config_path):
-    """Reap only recorded child identities after the cluster's model-stop barrier."""
+    """Reap recorded marker identities only after the pinned model is stopped."""
     config, site, _, plan, _ = load_config(config_path)
     if docker_running(config['container_id']):
         raise RuntimeError('Stop the dependent model before orphan cleanup')
@@ -285,8 +316,7 @@ def cleanup_orphans(config_path):
                 os.close(descriptor)
         remaining = subprocess.run(['pgrep', '-f', '^' + re.escape(site['marker_binary']) + ' '],
                                    capture_output=True, timeout=3)
-        if remaining.returncode != 1:
-            raise RuntimeError('Unrecorded marker processes remain; explicit operator inspection is required')
+        require_no_markers(remaining, 'Unrecorded marker processes remain; explicit operator inspection is required')
         from managed_network import NetworkManager
         result = NetworkManager(Path(config['site_path']), config['rank'], state_dir / 'network').down()
         print(json.dumps({'orphan_cleanup': result}))
@@ -303,7 +333,8 @@ class MeshService:
         self.model = self.config['container_id']
         self.state = {'protocol': PROTOCOL, 'rank': self.rank, 'epoch': self.config['epoch'],
                       'identity': self.identity, 'generation': self.generation,
-                      'local_ready': False, 'phase': 'starting', 'view_digest': None}
+                      'local_ready': False, 'phase': 'starting', 'view_digest': None,
+                      'management_degraded': False}
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.children = []
@@ -336,7 +367,7 @@ class MeshService:
         with self.lock:
             body = dict(self.state, nonce=nonce)
         if (time.monotonic() - self.last_progress > HEALTH_MAX_AGE
-                or len(self.children) != 2 or any(child.poll() is not None for child in self.children)):
+                or len(self.children) != MARKERS_PER_RANK or any(child.poll() is not None for child in self.children)):
             body['local_ready'] = False
         return body
 
@@ -378,6 +409,9 @@ class MeshService:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def start_markers(self):
+        markers = tuple(marker for marker in self.plan.markers if marker.source_rank == self.rank)
+        if len(markers) != MARKERS_PER_RANK:
+            raise RuntimeError('Expected exactly two configured source markers before launch')
         binary = self.site['marker_binary']
         if mesh_profile.sha(Path(binary)) != self.site['marker_binary_sha256']:
             raise ValueError('Managed marker digest differs from the site')
@@ -386,11 +420,8 @@ class MeshService:
         if conflicts:
             raise RuntimeError(f'An existing marker uses reserved devices: {conflicts}')
         existing = subprocess.run(['pgrep', '-f', '^' + re.escape(binary) + ' '], capture_output=True, timeout=3)
-        if existing.returncode != 1:
-            raise RuntimeError('Configured marker already exists outside this service')
-        for marker in self.plan.markers:
-            if marker.source_rank != self.rank:
-                continue
+        require_no_markers(existing, 'Configured marker already exists outside this service')
+        for marker in markers:
             path = self.state_dir / f'{marker.rdma_device}-{self.generation}.log'
             output = path.open('xb')
             self.logfiles.append(output)
@@ -421,8 +452,38 @@ class MeshService:
                     break
                 if self.stop.wait(0.05) or time.monotonic() > deadline:
                     raise RuntimeError('Managed marker readiness deadline exceeded')
-        if len(self.children) != 2:
+        if len(self.children) != MARKERS_PER_RANK:
             raise RuntimeError('Expected exactly two managed source markers')
+
+    def stop_markers(self):
+        """Confirm child exit; preserve network ownership if any exit is unknown."""
+        for child in self.children:
+            try:
+                if child.poll() is None:
+                    child.terminate()
+            except ProcessLookupError:
+                pass
+            except OSError as error:
+                self.failed = True
+                print(json.dumps({'event': 'marker_signal_failed', 'pid': child.pid,
+                                  'error': str(error)}), flush=True)
+        unconfirmed = []
+        for child in self.children:
+            try:
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired) as error:
+                unconfirmed.append(child.pid)
+                self.failed = True
+                print(json.dumps({'event': 'marker_stop_unconfirmed', 'pid': child.pid,
+                                  'error': str(error)}), flush=True)
+        self.publish(best_effort=True, marker_stop_unconfirmed=unconfirmed)
+        if not unconfirmed:
+            self.marker_records = []
+        return not unconfirmed
 
     def run(self):
         if os.geteuid() != 0:
@@ -443,7 +504,7 @@ class MeshService:
             if docker_running(self.model):
                 raise RuntimeError('Stop the dependent model before starting mesh ownership')
             self.owns_guard = True
-            from managed_network import NetworkManager
+            from managed_network import NetworkManager, ManagementAddressLoss
             self.network = NetworkManager(Path(self.config['site_path']), self.rank, self.state_dir / 'network')
             self.network.up()
             self.start_markers()
@@ -460,7 +521,14 @@ class MeshService:
                     raise RuntimeError('A managed source marker exited')
                 if time.monotonic() - last_network >= NETWORK_POLL_SECONDS:
                     full = time.monotonic() - last_full_network >= 60
-                    self.network.check(verify_rdma_mtu=full)
+                    try:
+                        self.network.check(verify_rdma_mtu=full)
+                    except ManagementAddressLoss:
+                        peer_watch.management_error(time.monotonic())
+                        self.publish(management_degraded=True)
+                    else:
+                        peer_watch.management_recovered()
+                        self.publish(management_degraded=False)
                     if full:
                         last_full_network = time.monotonic()
                     last_network = time.monotonic()
@@ -515,19 +583,13 @@ class MeshService:
                     self.failed = True
                     notify('WATCHDOG=1\nSTATUS=Failed; retaining forwarding until model stop is confirmed')
                     time.sleep(1)
-            for child in self.children:
-                if child.poll() is None:
-                    child.terminate()
-            for child in self.children:
-                try:
-                    child.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    child.kill()
-                    child.wait(timeout=2)
+            markers_stopped = self.stop_markers()
             for output in self.logfiles:
                 output.close()
-            self.marker_records = []
-            if self.network is not None:
+            if self.network is not None and not markers_stopped:
+                print(json.dumps({'event': 'network_cleanup_deferred',
+                                  'reason': 'marker exit unconfirmed; retain state for orphan cleanup'}), flush=True)
+            if self.network is not None and markers_stopped:
                 try:
                     cleanup = self.network.down()
                     if cleanup.get('clean') is False:
@@ -576,6 +638,8 @@ def model_intent(config_path, active):
         return
     status = json.loads(status_path.read_text())
     if active and (status.get('phase') != 'armed' or status.get('local_ready') is not True
+                   or status.get('management_degraded', False)
+                   or status.get('peer_health_degraded', False)
                    or status.get('docker_status_degraded', False)):
         raise RuntimeError('Mesh is not armed for model startup')
     record = {'generation': status['generation'], 'active': active,
@@ -586,8 +650,9 @@ def model_intent(config_path, active):
     os.replace(temporary, state_dir / 'model-intent.json')
 
 
-def reset_units():
-    for name in ('sparkring-mesh.service', 'sparkring-mesh-model.service'):
+def reset_units(config=None):
+    selected=managed_deployment.layout((config or {}).get('deployment_name'))
+    for name in (selected['mesh_unit'], selected['model_unit']):
         result = subprocess.run(['systemctl', 'show', name, '--property=LoadState,ActiveState'],
                                 capture_output=True, text=True, check=True, timeout=5)
         fields = dict(line.split('=', 1) for line in result.stdout.splitlines())
@@ -640,7 +705,8 @@ def main():
             raise RuntimeError('Dependent model is still running')
         print(json.dumps({'stopped': True, 'container_id': config['container_id']}))
     elif args.action == 'reset-units':
-        reset_units()
+        config, *_ = load_config(args.config)
+        reset_units(config)
     else:
         config, site, *_ = load_config(args.config)
         stop_model(config['container_id'])

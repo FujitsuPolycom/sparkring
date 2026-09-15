@@ -15,6 +15,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import gb10_gemm_roofline as bench
 
@@ -128,6 +129,18 @@ class SpecifiedShapesTest(unittest.TestCase):
 
 
 class DistributionTest(unittest.TestCase):
+    def test_invalid_timing_samples_cannot_produce_rates_or_summaries(self) -> None:
+        for invalid in (float("nan"), float("inf"), -float("inf"), 0.0, -1.0, True, "1"):
+            for operation in (
+                lambda value: bench.summarize([1.0, value, 2.0]),
+                lambda value: bench.shape_result(bench.SHAPES[0], [value] * 4),
+                lambda value: bench.tflops(1024, value),
+                lambda value: bench.gigabytes_per_second(1024, value),
+            ):
+                with self.subTest(invalid=invalid, operation=operation):
+                    with self.assertRaisesRegex(ValueError, "finite positive"):
+                        operation(invalid)
+
     def test_percentile_interpolates_between_neighbours(self) -> None:
         self.assertAlmostEqual(bench.percentile([0.0, 10.0], 0.5), 5.0)
         self.assertAlmostEqual(bench.percentile([0.0, 10.0], 0.25), 2.5)
@@ -210,6 +223,19 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertEqual(state["reason"], "GPU is lost")
 
+    def test_a_device_uuid_is_passed_to_nvidia_smi_unchanged(self) -> None:
+        commands = []
+
+        def runner(command, **_kwargs):
+            commands.append(command)
+            return SimpleNamespace(returncode=9, stdout="", stderr="unavailable")
+
+        bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertEqual(commands[0][commands[0].index("-i") + 1], "GPU-abc")
+
     def test_a_failure_to_execute_is_reported_rather_than_raised(self) -> None:
         def runner(_command, **_kwargs):
             raise OSError("exec format error")
@@ -221,7 +247,7 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertIn("exec format error", state["reason"])
 
-    def test_pinned_application_clocks_are_reported_as_pinned(self) -> None:
+    def test_reported_application_clocks_do_not_prove_lock_state(self) -> None:
         row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
 
         def runner(_command, **_kwargs):
@@ -232,10 +258,11 @@ class ClockStateTest(unittest.TestCase):
         )
 
         self.assertTrue(state["read"])
-        self.assertTrue(state["application_clocks_pinned"])
+        self.assertIsNone(state["application_clocks_pinned"])
+        self.assertTrue(state["application_clocks_reported"])
         self.assertEqual(state["fields"]["clocks.sm"], "1400")
 
-    def test_unset_application_clocks_are_reported_as_not_pinned(self) -> None:
+    def test_unavailable_application_clocks_do_not_prove_unlocked_state(self) -> None:
         row = "NVIDIA GB10, 1400, 1400, [N/A], Not Active, Enabled, 61.2, 140.0, 48"
 
         def runner(_command, **_kwargs):
@@ -246,8 +273,9 @@ class ClockStateTest(unittest.TestCase):
         )
 
         self.assertTrue(state["read"])
-        self.assertFalse(state["application_clocks_pinned"])
-        self.assertIn("not pinned", state["lock_note"])
+        self.assertIsNone(state["application_clocks_pinned"])
+        self.assertFalse(state["application_clocks_reported"])
+        self.assertIn("clock-lock state is unknown", state["lock_note"])
 
     def test_an_unexpected_field_count_is_reported_rather_than_misparsed(self) -> None:
         def runner(_command, **_kwargs):
@@ -260,6 +288,19 @@ class ClockStateTest(unittest.TestCase):
         self.assertFalse(state["read"])
         self.assertIn("fields", state["reason"])
 
+    def test_multiple_device_rows_are_refused(self) -> None:
+        row = "NVIDIA GB10, 1400, 1400, 1400, Not Active, Enabled, 61.2, 140.0, 48"
+
+        def runner(_command, **_kwargs):
+            return SimpleNamespace(returncode=0, stdout=f"{row}\n{row}\n", stderr="")
+
+        state = bench.read_clock_state(
+            "GPU-abc", which=lambda _name: "/usr/bin/nvidia-smi", runner=runner
+        )
+
+        self.assertFalse(state["read"])
+        self.assertIn("2 rows", state["reason"])
+
 
 class ReportShapeTest(unittest.TestCase):
     def test_the_report_names_its_schema_and_both_formulas(self) -> None:
@@ -270,6 +311,7 @@ class ReportShapeTest(unittest.TestCase):
         self.assertEqual(
             report["measurement"]["bytes_formula"], "bytes = 2 * (M*K + K*N + M*N)"
         )
+        self.assertIn("does not identify", report["measurement"]["dispatch"])
 
     def test_the_report_records_the_conditions_a_reader_needs(self) -> None:
         report = _report()
@@ -334,6 +376,17 @@ class ReportShapeTest(unittest.TestCase):
 
 
 class TextRenderTest(unittest.TestCase):
+    def test_report_does_not_turn_shape_estimates_into_profiling_evidence(self) -> None:
+        report = _report()
+        rendered = bench.render_text(report)
+        self.assertIn("does not isolate host", report["per_call_floor"]["note"])
+        self.assertIn("Profiling is required", rendered)
+        self.assertIn("not an established hardware peak", rendered)
+        self.assertNotIn("means most of the device is idle", rendered)
+        self.assertNotIn("upper bound", report["per_call_floor"]["note"])
+        self.assertIn("per_call_floor", report)
+        self.assertEqual(report["schema"], "gb10-dense-gemm-roofline/v1")
+
     def test_the_text_report_prints_the_flop_formula_with_the_numbers(self) -> None:
         rendered = bench.render_text(_report())
 
@@ -419,6 +472,18 @@ class ArgumentTest(unittest.TestCase):
         self.assertEqual(code, bench.EXIT_OK)
         self.assertIn("m4096_k4096_n4096", stream.getvalue())
 
+    def test_json_stdout_contains_only_the_json_document(self) -> None:
+        output = io.StringIO()
+        errors = io.StringIO()
+        with patch.object(bench, "measure", return_value=_report()), redirect_stdout(
+            output
+        ), redirect_stderr(errors):
+            code = bench.main(["--json", "-"], load_torch=lambda: object())
+
+        self.assertEqual(code, bench.EXIT_OK)
+        self.assertEqual(json.loads(output.getvalue())["schema"], bench.SCHEMA)
+        self.assertIn("dense BF16 GEMM", errors.getvalue())
+
 
 class NoDeviceTest(unittest.TestCase):
     """The path this repository's development machines actually take."""
@@ -454,7 +519,7 @@ class NoDeviceTest(unittest.TestCase):
 
         self.assertEqual(code, bench.EXIT_UNAVAILABLE)
         self.assertNotEqual(code, 0)
-        self.assertIn("no measurement taken", errors.getvalue())
+        self.assertIn("no valid measurement available", errors.getvalue())
         self.assertIn("no CUDA device", errors.getvalue())
 
     def test_main_exits_non_zero_and_explains_when_torch_is_absent(self) -> None:

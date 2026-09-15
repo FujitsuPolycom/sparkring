@@ -111,13 +111,13 @@ def inspect(site_path, rank, minimum_remaining):
         raise ValueError("Management address does not identify this rank")
     for port in local.ports:
         links = json.loads(command(["ip", "-j", "addr", "show", "dev", port.netdev]))
-        if len(links) != 1 or links[0]["mtu"] != 9000 or links[0]["address"].lower() != port.mac.lower():
+        if len(links) != 1 or links[0]["mtu"] != plan.expected_ethernet_mtu or links[0]["address"].lower() != port.mac.lower():
             raise ValueError(f"Link identity or Ethernet MTU differs: {port.netdev}")
         if port.ipv4 not in {x.get("local") for x in links[0].get("addr_info", [])}:
             raise ValueError(f"Configured address is absent: {port.netdev}")
-        gid = Path("/sys/class/infiniband") / port.rdma_device / "ports/1/gids/3"
+        gid = Path("/sys/class/infiniband") / port.rdma_device / f"ports/1/gids/{plan.roce_gid_index}"
         if ipaddress.IPv6Address(gid.read_text().strip()).ipv4_mapped != ipaddress.IPv4Address(port.ipv4):
-            raise ValueError(f"RoCE GID 3 differs from the configured source: {port.rdma_device}")
+            raise ValueError(f"RoCE GID {plan.roce_gid_index} differs from the configured source: {port.rdma_device}")
     for route in plan.routes:
         if route.source_rank != rank:
             continue

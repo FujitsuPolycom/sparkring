@@ -119,6 +119,27 @@ def build_model(root: Path) -> None:
 
 
 class HeaderParsingTest(unittest.TestCase):
+    def test_duplicate_header_keys_are_not_silently_replaced(self):
+        with TemporaryDirectory() as raw:
+            path = Path(raw) / "fixture.safetensors"
+            header = b'{"weight":{"shape":[1]},"weight":{"shape":[2]}}'
+            path.write_bytes(len(header).to_bytes(8, "little") + header)
+            with self.assertRaisesRegex(census.CensusError, "duplicate header key"):
+                census.read_safetensors_header(path)
+
+    def test_malformed_tensor_metadata_does_not_suppress_other_records(self):
+        for field, value in [('shape', 7), ('shape', ['invalid']),
+                             ('data_offsets', 7), ('data_offsets', ['invalid', 2])]:
+            with self.subTest(field=field, value=value), TemporaryDirectory() as directory:
+                root = Path(directory)
+                entry = {'dtype': 'F16', 'shape': [1], 'data_offsets': [0, 2], field: value}
+                raw = json.dumps({'bad.weight': entry}).encode()
+                (root / 'bad.safetensors').write_bytes(len(raw).to_bytes(8, 'little') + raw + b'00')
+                write_shard(root / 'good.safetensors', {'good.weight': ('F16', [1])})
+                records, findings = census.read_tensor_records(root)
+                self.assertEqual(len(records), 1)
+                self.assertTrue(any('bad.weight' in finding for finding in findings))
+
     def test_reads_dtype_shape_and_offsets_without_payload(self) -> None:
         with TemporaryDirectory() as raw:
             shard = Path(raw) / "one.safetensors"
@@ -378,6 +399,28 @@ class CensusTest(unittest.TestCase):
         self.assertEqual(instances["bits_per_weight_with_sidecars_median"], 3.875)
         self.assertEqual(instances["bits_per_weight_with_sidecars_max"], 5.375)
 
+    def test_even_instance_size_median_preserves_the_half_byte(self) -> None:
+        records = [
+            census.TensorRecord(
+                name=f"model.layers.0.experts.{expert}.weight",
+                shard="model.safetensors",
+                dtype="U8",
+                shape=(size,),
+                stored_bytes=size,
+                name_class=census.CLASS_EXPERT,
+                role="weight",
+                derivation=census.DERIVATION_UNPACKED,
+                logical_weights=size,
+                bits_per_weight=8.0,
+                layer_index=0,
+                expert_index=expert,
+                note=None,
+            )
+            for expert, size in enumerate((10, 11))
+        ]
+
+        self.assertEqual(census.expert_instances(records)["stored_bytes_median"], 10.5)
+
     def test_other_classes_measure_their_stored_width(self) -> None:
         classes = self.report["classes"]
 
@@ -412,6 +455,26 @@ class CensusTest(unittest.TestCase):
         )
         self.assertEqual(declared["tier_vector_histogram"]["mean_declared_tier"], 3.5)
 
+    def test_boolean_bit_rate_is_not_selected_as_a_declared_average(self) -> None:
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "config.json").write_text(
+                json.dumps({"quantization_config": {"bits": True}}),
+                encoding="utf-8",
+            )
+
+            declared = census.read_declared(root)
+
+        self.assertIsNone(declared["declared_average_bits_per_weight"])
+        self.assertEqual(declared["bit_rate_fields"], [])
+
+    def test_invalid_comparison_tolerance_is_rejected(self) -> None:
+        declared = {"declared_average_bits_per_weight": 3.5}
+        for tolerance in (-0.01, float("nan"), float("inf")):
+            with self.subTest(tolerance=tolerance):
+                with self.assertRaises(census.CensusError):
+                    census.compare(declared, 3.5, tolerance)
+
     def test_a_declared_measured_disagreement_is_the_headline_finding(self) -> None:
         comparison = self.report["comparison"]
 
@@ -442,6 +505,60 @@ class CensusTest(unittest.TestCase):
 
 
 class UndeterminedTest(unittest.TestCase):
+    def test_empty_unknown_tensor_still_marks_instance_undetermined(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.proj.qweight": ("U8", [0]),
+            })
+            records, _ = census.read_tensor_records(root)
+            instances = census.expert_instances(records)
+            self.assertEqual(instances["stored_bytes_total"], 0)
+            self.assertEqual(instances["instances_with_undetermined_tensors"], 1)
+            self.assertNotIn("bits_per_weight_with_sidecars_median", instances)
+
+    def test_undetermined_sidecar_counts_reconcile_with_class_totals(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.proj.weight": ("F16", [2]),
+                "model.layers.0.mlp.experts.0.proj.su": ("U8", [1]),
+            })
+            report = census.census(root, 0.01)
+            bucket = report["classes"][census.CLASS_EXPERT]
+            self.assertEqual(report["totals"]["undetermined_tensor_count"], 1)
+            self.assertEqual(bucket["undetermined_tensor_count"], 1)
+            self.assertEqual(bucket["undetermined_bytes"], 1)
+            self.assertEqual(bucket["logical_weights"], 2)
+
+    def test_overlapping_payload_ranges_exclude_the_ambiguous_shard(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "good.safetensors", {"good.weight": ("F16", [2])})
+            header = json.dumps({
+                "first.weight": {"dtype": "F16", "shape": [2], "data_offsets": [0, 4]},
+                "second.weight": {"dtype": "F16", "shape": [2], "data_offsets": [0, 4]},
+            }).encode()
+            (root / "overlap.safetensors").write_bytes(len(header).to_bytes(8, "little") + header + bytes(4))
+            records, findings = census.read_tensor_records(root)
+            self.assertEqual([record.name for record in records], ["good.weight"])
+            self.assertTrue(any("overlap" in finding for finding in findings))
+
+    def test_mixed_instance_excludes_unknown_payload_from_bit_rate(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.down_proj.trellis": trellis(3),
+                "model.layers.0.mlp.experts.0.down_proj.suh": ("F16", [64]),
+                "model.layers.0.mlp.experts.0.up_proj.qweight": ("U8", [64, 32]),
+            })
+            records, findings = census.read_tensor_records(root)
+            self.assertFalse(findings)
+            instances = census.expert_instances(records)
+            self.assertEqual(instances["stored_bytes_total"], 3072 + 128 + 2048)
+            self.assertEqual(instances["instances_with_undetermined_tensors"], 1)
+            self.assertEqual(instances["bits_per_weight_with_sidecars_min"], 3.125)
+
     def test_an_underivable_expert_tensor_is_excluded_and_reported(self) -> None:
         with TemporaryDirectory() as raw:
             root = Path(raw)
@@ -525,6 +642,18 @@ class UndeterminedTest(unittest.TestCase):
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_tolerance_uses_unrounded_measured_rate(self):
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_shard(root / "fixture.safetensors", {
+                "model.layers.0.mlp.experts.0.proj.trellis": trellis(3),
+                "model.layers.0.mlp.experts.0.bias.weight": ("F16", [1]),
+            })
+            (root / "config.json").write_text(json.dumps({"bits": 3.0016}))
+            report = census.census(root, 0.000001)
+            self.assertFalse(report["comparison"]["agrees"])
+            self.assertNotEqual(report["comparison"]["difference_bits_per_weight"], 0)
+
     def test_a_checkpoint_without_declared_metadata_is_not_comparable(self) -> None:
         with TemporaryDirectory() as raw:
             root = Path(raw)

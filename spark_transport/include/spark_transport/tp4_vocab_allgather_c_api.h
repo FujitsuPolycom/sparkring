@@ -60,7 +60,10 @@ enum {
 /*
  * Creates one dynamic-Q session for a fixed per-rank vocabulary shard.
  * Each call accepts BF16 [Q, 38720], Q in [1, 40]; 38,720 is the per-rank
- * shard width of the GLM-5.2 reference deployment's vocabulary.
+ * shard width for the GLM-5.2 deployment's 154880-entry vocabulary at TP4.
+ * This ABI has a compiled fixed width, not a model-dependent default. A
+ * caller using another model must establish this exact shard geometry and
+ * qualify its adapter separately.
  */
 spark_tp4_vocab_allgather_handle spark_tp4_vocab_allgather_create(
     const spark_tp4_vocab_allgather_config* config, char* error,

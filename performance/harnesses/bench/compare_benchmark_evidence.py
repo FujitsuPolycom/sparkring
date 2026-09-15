@@ -13,9 +13,11 @@ contact the cluster, run benchmarks, or mutate anything.
 
 ## Raw schema (llm_decode_bench v0.4.31)
 
-- ``metadata``: top-level object with ``version``, ``decode_mode``,
+- ``metadata``: top-level object with ``engine``, ``model``, ``version``,
+  ``primary_decode_layer``, ``decode_mode``,
   ``duration_per_test``, ``max_tokens``, ``temperature``,
-  ``decode_warmup_seconds``, ``cell_warmup_timeout_seconds``,
+  ``decode_warmup_seconds``, ``decode_warmup_context``,
+  ``decode_warmup_concurrency``, ``cell_warmup_timeout_seconds``,
   ``unique_context_percent``, ``shared_context_percent``, ``dcp_size``,
   ``max_total_tokens``, ``skip_prefill``, ``ignore_eos``,
   ``concurrency_levels``, ``context_lengths``.
@@ -305,12 +307,11 @@ def classify_document_type(doc: dict[str, Any]) -> str:
 
     # Verify every result cell has benchmark_mode == "duration"
     results = doc.get("results")
-    if isinstance(results, list):
-        for cell in results:
-            if isinstance(cell, dict):
-                bmode = cell.get("benchmark_mode")
-                if bmode is not None and bmode != "duration":
-                    return "indeterminate"
+    if not isinstance(results, list) or not results:
+        return "indeterminate"
+    for cell in results:
+        if not isinstance(cell, dict) or cell.get("benchmark_mode") != "duration":
+            return "indeterminate"
 
     if max_tokens >= 256 and duration >= 10:
         return "sustained_matrix"
@@ -509,29 +510,11 @@ def extract_throughput(doc: dict[str, Any]) -> dict[str, float]:
                 continue
             conc = cell.get("concurrency")
             agg = cell.get("aggregate_tps")
-            if conc is not None and agg is not None:
+            if conc is not None and _is_finite_number(agg):
                 if not _is_int_not_bool(conc):
                     continue
-                try:
-                    nk = f"C{int(conc)}"
-                    val = float(agg)
-                except (ValueError, TypeError):
-                    continue
-                if nk in required_labels and nk not in tps:
-                    tps[nk] = val
-
-    # Fallback: summary_table (only if results didn't provide a value)
-    summary = doc.get("summary_table")
-    if isinstance(summary, dict):
-        for _ctx_key, conc_map in summary.items():
-            if not isinstance(conc_map, dict):
-                continue
-            for k, v in conc_map.items():
-                try:
-                    nk = f"C{int(k)}"
-                    val = float(v)
-                except (ValueError, TypeError):
-                    continue
+                nk = f"C{int(conc)}"
+                val = float(agg)
                 if nk in required_labels and nk not in tps:
                     tps[nk] = val
 
@@ -721,6 +704,13 @@ def compare_settings(
     for _meta_key, display_name in MATCHED_SETTINGS:
         base_val = base_settings.get(display_name)
         cand_val = cand_settings.get(display_name)
+        if display_name == "concurrencies":
+            # Coverage is a set contract. Sorting preserves duplicate entries
+            # for the separate metadata validator to reject.
+            if isinstance(base_val, list) and all(_is_int_not_bool(v) for v in base_val):
+                base_val = sorted(base_val)
+            if isinstance(cand_val, list) and all(_is_int_not_bool(v) for v in cand_val):
+                cand_val = sorted(cand_val)
 
         if base_val is None and cand_val is None:
             missing_both.append(display_name)
@@ -842,22 +832,26 @@ def compare_documents(
     cand_coverage = validate_context_coverage(candidate)
 
     # Determine overall status — deltas are NOT computed until all pass
-    if type_mismatch:
+    if (
+        (base_validity.get("zero_cells") or cand_validity.get("zero_cells"))
+        and base_metadata["valid"]
+        and cand_metadata["valid"]
+    ):
+        status = "no_cells"
+    elif type_mismatch:
         status = "type_mismatch"
-    elif baseline == candidate:
-        status = "identical_documents"
     elif not base_metadata["valid"] or not cand_metadata["valid"]:
         status = "invalid_metadata"
     elif not settings_comparison["all_matched"]:
         status = "settings_mismatch"
-    elif base_validity.get("zero_cells") or cand_validity.get("zero_cells"):
-        status = "no_cells"
     elif not base_coverage["valid"] or not cand_coverage["valid"]:
         status = "coverage_error"
     elif not base_validity.get("all_cells_valid", False) or not cand_validity.get(
         "all_cells_valid", False
     ):
         status = "invalid_cells"
+    elif baseline == candidate:
+        status = "identical_documents"
     else:
         status = "compared"
 
@@ -905,21 +899,44 @@ def compare_documents(
     }
 
 
-def load_document(path: Path) -> dict[str, Any]:
+def _load_document_with_digest(path: Path) -> tuple[dict[str, Any], str]:
+    """Parse and hash the same input buffer."""
     if not path.is_file():
         raise ConfigError(f"file not found: {path}")
+    def unique_keys(entries):
+        result = {}
+        for key, value in entries:
+            if key in result:
+                raise ConfigError(f"duplicate JSON key {key!r} in {path}")
+            result[key] = value
+        return result
+    def finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError(f"JSON number is outside the finite float range: {value}")
+        return number
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-standard JSON numeric constant: {value}")
+
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        raw = path.read_bytes()
+        doc = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=unique_keys,
+            parse_float=finite_float,
+            parse_constant=reject_constant,
+        )
+    except (OSError, ValueError) as exc:
         raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
     if not isinstance(doc, dict):
         raise ConfigError(f"top-level JSON in {path} is not an object")
-    return doc
+    return doc, hashlib.sha256(raw).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
-    """Return the SHA-256 digest of an input evidence file."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def load_document(path: Path) -> dict[str, Any]:
+    """Load and validate one benchmark JSON document."""
+    return _load_document_with_digest(path)[0]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -936,8 +953,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         baseline_path = Path(args.baseline)
         candidate_path = Path(args.candidate)
-        baseline = load_document(baseline_path)
-        candidate = load_document(candidate_path)
+        baseline, baseline_digest = _load_document_with_digest(baseline_path)
+        candidate, candidate_digest = _load_document_with_digest(candidate_path)
     except ConfigError as exc:
         print(f"compare-benchmark-evidence: CONFIG ERROR: {exc}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
@@ -949,8 +966,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_INVALID
 
     report["inputs"] = {
-        "baseline_sha256": _sha256_file(baseline_path),
-        "candidate_sha256": _sha256_file(candidate_path),
+        "baseline_sha256": baseline_digest,
+        "candidate_sha256": candidate_digest,
     }
 
     print(json.dumps(report, indent=2, sort_keys=True))

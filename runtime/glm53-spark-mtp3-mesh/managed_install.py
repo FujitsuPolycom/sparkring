@@ -21,7 +21,45 @@ CODE_DIR = Path('/opt/sparkring/managed-mesh')
 CONFIG_DIR = Path('/etc/sparkring/managed-mesh')
 UNIT_DIR = Path('/etc/systemd/system')
 SOURCE_FILES = (
+    "runtime/common/glm_targets.py",
+    "profiles/glm53-target-variants.json",
     'runtime/glm53-spark-mtp3-mesh/managed_memory.py',
+    'runtime/glm53-spark-mtp3-mesh/managed_liveness.py',
+    'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json',
+    'spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c',
+    'runtime/common/r35.py',
+    'runtime/common/candidate.py',
+    'runtime/common/glm_tp4.py',
+    'runtime/common/glm_launch.py',
+    'runtime/common/container_spec.py',
+    'runtime/common/compose.py',
+    'runtime/common/profiles.py',
+    'runtime/common/qwen_flash_next.py',
+    'runtime/common/cache_candidate.py',
+    'runtime/common/__init__.py',
+    'runtime/images/candidate_image.py',
+    'runtime/images/compositions/lil-r37-glm-spark/descriptor.json',
+    'runtime/images/compositions/lil-r37-glm-spark/baseline-native.json',
+    'runtime/images/compositions/lil-r37-glm-spark/publication.json',
+    'runtime/images/compositions/lil-r37-glm-spark/runtime-artifacts.json',
+    'runtime/common/managed_deployment.py',
+    'runtime/images/sparkring-r35/source-lock.json',
+    'runtime/images/sparkring-r35/entrypoint.py',
+    'runtime/images/sparkring-r35/verify_image.py',
+    'runtime/images/sparkring-r35/contracts/tp2-sparkcache-capabilities.json',
+    'runtime/images/sparkring-r35/contracts/vllm-connector-jobs.json',
+    'runtime/sparkring/jovian-r33/public-image-receipt.json',
+    'runtime/sparkring/jovian-r33/profiles/profile-contract.json',
+    'runtime/sparkring/jovian-r33/profiles/verify_profile.py',
+    'runtime/sparkring/jovian-r33/profiles/image.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp2-dcp1.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp2-dcp1-sparkcache.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp1.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp1-sparkcache.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp4.env.example',
+    'runtime/sparkring/jovian-r33/profiles/tp4-dcp4-sparkcache.env.example',
+    'runtime/sparkring/jovian-r33/image/artifact-lock.json',
+    'runtime/sparkring/source_image/startup/scheduler_liveness.py',
     'runtime/glm53-spark-mtp3-mesh/managed_service.py',
     'runtime/glm53-spark-mtp3-mesh/managed_network.py',
     'runtime/glm53-spark-mtp3-mesh/managed_units.py',
@@ -41,9 +79,9 @@ SOURCE_FILES = (
     'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh',
     'runtime/glm53-flash-jj-r8-gb10/runtime.env.example',
     'runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example',
-    'spark_transport/experiments/cx7_hairpin_diagonal/__init__.py',
-    'spark_transport/experiments/cx7_hairpin_diagonal/fabric.py',
-    'spark_transport/experiments/glm53_rocenante_overlay/build_bundle.py',
+    'spark_transport/fabric/cx7_hairpin_diagonal/__init__.py',
+    'spark_transport/fabric/cx7_hairpin_diagonal/fabric.py',
+    'integrations/vllm/rocenante/build_bundle.py',
 )
 
 
@@ -149,7 +187,8 @@ def expected_container_spec(argv, image):
     mounts, options = {}, {}
     labels = dict(config.get('Labels') or {})
     value_options = {'--name', '--entrypoint', '--network', '--ipc', '--shm-size', '--gpus',
-                     '--ulimit', '--cap-add', '--device', '--security-opt', '-v', '-e', '--label'}
+                     '--ulimit', '--cap-add', '--device', '--security-opt', '-v', '-e', '--label',
+                     '--health-cmd', '--health-interval', '--health-timeout', '--health-start-period', '--health-retries'}
     index = 2
     while index < len(argv) and argv[index] not in image_names:
         flag = argv[index]
@@ -184,10 +223,31 @@ def expected_container_spec(argv, image):
     if len(options.get('--name', [])) != 1 or len(options.get('--entrypoint', [])) != 1:
         raise ValueError('Canonical command requires one name and entrypoint')
     env.update(environment_map(supplied_env, 'Launcher'))
+    healthcheck = config.get('Healthcheck')
+    health_options = {key: value for key, value in options.items() if key.startswith('--health-')}
+    if health_options:
+        canonical = managed_units.managed_liveness.api_healthcheck(env.get('PORT', ''))
+        if (env.get('SPARKRING_NODE_RANK') != '0'
+                or health_options != {key: [value] for key, value in canonical.items()}):
+            raise ValueError('Docker health options must match the generated rank-zero API check')
+        healthcheck = {'Test': ['CMD-SHELL', canonical['--health-cmd']], 'Interval': 10000000000,
+                       'Timeout': 6000000000, 'StartPeriod': 1800000000000, 'Retries': 3}
     return {'name': options['--name'][0], 'image': image_id,
             'cmd': argv[index + 1:], 'entrypoint': options['--entrypoint'],
             'env': env, 'mounts': mounts, 'labels': labels,
-            'working_dir': config.get('WorkingDir') or '', 'user': config.get('User') or ''}
+            'working_dir': config.get('WorkingDir') or '', 'user': config.get('User') or '',
+            'healthcheck': healthcheck}
+
+
+def expected_fields_match(actual, expected):
+    """Compare specified Docker fields while retaining daemon metadata."""
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and expected_fields_match(actual[key], value) for key, value in expected.items())
+    if isinstance(expected, list):
+        return isinstance(actual, list) and len(actual) == len(expected) and all(
+            expected_fields_match(left, right) for left, right in zip(actual, expected))
+    return type(actual) is type(expected) and actual == expected
 
 
 def validate_container_spec(container, expected):
@@ -200,6 +260,8 @@ def validate_container_spec(container, expected):
         raise ValueError('Container model arguments differ from the canonical launch')
     if config.get('Entrypoint') != expected['entrypoint']:
         raise ValueError('Container entrypoint differs from the canonical launch')
+    if config.get('Healthcheck') != expected['healthcheck']:
+        raise ValueError('Container healthcheck differs from the canonical launch')
     actual_env = environment_map(config.get('Env'), 'Container')
     if actual_env != expected['env']:
         names = sorted(name for name in actual_env.keys() | expected['env'].keys()
@@ -218,14 +280,55 @@ def validate_container_spec(container, expected):
     if (config.get('WorkingDir', '') != expected['working_dir']
             or config.get('User', '') != expected['user']):
         raise ValueError('Container working directory or user differs from the image contract')
-    if (config.get('Labels') or {}) != expected['labels']:
+    labels = dict(config.get('Labels') or {})
+    if 'com.docker.compose.project' in expected['labels']:
+        metadata = {'com.docker.compose.config-hash', 'com.docker.compose.container-number',
+                    'com.docker.compose.depends_on', 'com.docker.compose.image',
+                    'com.docker.compose.oneoff', 'com.docker.compose.project.config_files',
+                    'com.docker.compose.project.environment_file',
+                    'com.docker.compose.project.working_dir', 'com.docker.compose.version'}
+        labels = {key: value for key, value in labels.items() if key not in metadata or key in expected['labels']}
+    if labels != expected['labels']:
         raise ValueError('Container labels differ from the canonical launch')
+    if 'host_config' in expected:
+        actual = container.get('HostConfig', {})
+        for key, wanted in expected['host_config'].items():
+            observed = actual.get(key)
+            if key in ('CapAdd', 'SecurityOpt', 'Devices', 'DeviceRequests', 'Ulimits'):
+                observed = observed or []
+            if key == 'SecurityOpt':
+                observed = sorted(value.replace('=', ':', 1) for value in observed)
+                wanted = sorted(value.replace('=', ':', 1) for value in wanted)
+            elif key == 'CapAdd':
+                observed = sorted(value.upper().removeprefix('CAP_') for value in observed)
+                wanted = sorted(value.upper().removeprefix('CAP_') for value in wanted)
+            elif key == 'DeviceRequests':
+                observed = [{field: row.get(field) for field in expected_row}
+                            for row, expected_row in zip(observed, wanted)] if len(observed) == len(wanted) else observed
+            elif key == 'Ulimits':
+                observed = [row for row in observed if row.get('Name') in {entry['Name'] for entry in wanted}]
+            if not expected_fields_match(observed, wanted):
+                raise ValueError('Container host envelope differs for ' + key)
 
 
 def canonical_container_spec(launch, image_receipt, rank, image, *, run=subprocess.run):
     """Regenerate trusted launch inputs and inspect them without creating a container."""
     profile = managed_units.service.mesh_profile
     site, _, _ = profile.load_site(launch / 'site.json')
+    from runtime.common import glm_launch
+    plan_directory = glm_launch.plan_directory(launch, rank)
+    if plan_directory.exists():
+        if not (plan_directory / 'plan.json').is_file():
+            raise ValueError('Structured GLM creation plan is missing')
+        from runtime.common.container_spec import expected_inspection
+        spec, record, resolved = glm_launch.resolve_spec(launch, image_receipt, rank, owner=profile)
+        backend = glm_launch.check_plan(launch, image_receipt, rank, spec, record, resolved)
+        return expected_inspection(spec, image, backend=backend)
+    if (site.get('runtime_profile') in ('tp4-dcp4', 'tp4-dcp4-sparkcache')
+            and 'r33_profile_contract_roots' not in site
+            and (not image_receipt.is_file()
+                 or profile.load_image_receipt(image_receipt).get('schema') not in (profile.r35.SCHEMA, profile.candidate.SCHEMA))):
+        raise ValueError('Managed DCP4 requires r33_profile_contract_roots in the private site; an ambient shell export is not a persisted launch input')
     with tempfile.TemporaryDirectory(prefix='sparkring-container-spec-') as temporary:
         rendered = Path(temporary) / 'launch'
         profile.render(launch / 'site.json', Path(site['bundle_root']), rendered, image_receipt)
@@ -248,8 +351,44 @@ def canonical_container_spec(launch, image_receipt, rank, image, *, run=subproce
         return expected_container_spec(output.get('argv'), image)
 
 
+def external_marker_attestation(*, root=None, binary=None):
+    """Verify the host helper separately from the inference image's payload."""
+    root = ROOT if root is None else root
+    profile = managed_units.service.mesh_profile
+    record_path = root/'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json'
+    if not record_path.is_file() or record_path.is_symlink():
+        raise ValueError('External host-marker artifact record is missing')
+    record = json.loads(record_path.read_text())
+    if record.get('schema') != 'sparkring-host-marker-artifact/v1':
+        raise ValueError('Unsupported external host-marker artifact record')
+    pins = json.loads((root/'runtime/glm53-spark-mtp3-mesh/pins.json').read_text())
+    for field, hash_field in (('source','source_sha256'),('artifact_receipt','artifact_receipt_sha256')):
+        path = profile.manifest_file(root, record.get(field))
+        if not path.is_file() or path.is_symlink() or profile.sha(path) != record.get(hash_field):
+            raise ValueError('External host marker has missing or changed '+field)
+    artifact = json.loads(profile.manifest_file(root,record['artifact_receipt']).read_text())
+    inside = artifact.get('inside_image', {})
+    if (artifact.get('checks_passed') is not True or inside.get('checks_passed') is not True
+            or record['source_sha256'] != pins['marker']['source_sha256']
+            or inside.get('marker_source_sha256') != record['source_sha256']
+            or inside.get('marker_binary_sha256') != record.get('binary_sha256')
+            or not re.fullmatch('[0-9a-f]{64}', record.get('binary_sha256',''))):
+        raise ValueError('External host-marker artifact does not bind the source and binary')
+    if binary is not None and (not binary.is_file() or binary.is_symlink() or profile.sha(binary) != record['binary_sha256']):
+        raise ValueError('Configured host marker differs from the reviewed external artifact')
+    return {'marker_source_sha256':record['source_sha256'], 'marker_binary_sha256':record['binary_sha256'],
+            'host_artifact_receipt_sha256':record['artifact_receipt_sha256']}
+
+
 def managed_image_attestation(receipt):
-    """Return the managed-mesh facts carried by a validated image receipt."""
+    """Return source-pinned managed-mesh helper identities for the selected runtime."""
+    if receipt.get('schema') == managed_units.service.mesh_profile.candidate.SCHEMA:
+        managed_units.service.mesh_profile.candidate.validate_receipt(receipt)
+        return {}
+    if receipt.get('schema') == managed_units.service.mesh_profile.r35.SCHEMA:
+        profile = managed_units.service.mesh_profile
+        profile.r35.validate_receipt(receipt)
+        return {}
     if receipt.get('schema') != 'sparkring-r33-image-receipt/v1':
         inside = receipt.get('inside_image')
         if not isinstance(inside, dict):
@@ -287,7 +426,8 @@ def managed_image_attestation(receipt):
     }
 
 
-def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
+def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, deployment_name=None):
+    selected=managed_units.service.managed_deployment.layout(deployment_name)
     if rank not in range(4) or not re.fullmatch('[0-9a-f]{32}', epoch):
         raise ValueError('Rank and common 128-bit hexadecimal epoch are required')
     if not 1024 <= health_port <= 65535:
@@ -296,15 +436,17 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     site, _, _ = profile.load_site(launch / 'site.json')
     receipt = profile.load_image_receipt(image_receipt)
     inside = managed_image_attestation(receipt)
+    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA):
+        inside = external_marker_attestation(binary=Path(site['marker_binary']))
     expected_marker = profile.PINS['marker']['source_sha256']
     if receipt.get('schema') == 'sparkring-source-image-receipt/v1':
         expected_marker = json.loads(profile.SOURCE_LOCK.read_text())['runtime']['marker_source_sha256']
     if (inside.get('marker_source_sha256') != expected_marker
             or inside.get('marker_binary_sha256') != site['marker_binary_sha256']):
         raise ValueError('Managed profile requires the source-pinned image and host marker')
-    # R33 records readiness in its post-launch activation receipt. Older mesh
-    # images must carry their pre-launch warmup attestation here.
-    if (receipt.get('schema') != 'sparkring-r33-image-receipt/v1'
+    # Release profiles record readiness after launch. Wrapper images must carry
+    # their pre-launch warmup attestation here.
+    if (receipt.get('schema') not in ('sparkring-r33-image-receipt/v1', profile.r35.SCHEMA, profile.candidate.SCHEMA)
             and not inside.get('readiness_warmup')):
         raise ValueError('Managed MTP3 profile requires the temperature-one readiness image')
     result = subprocess.run(['docker', 'inspect', site['container_prefix'] + f'-r{rank}'],
@@ -316,30 +458,93 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     image = json.loads(result.stdout)[0]
     if image.get('Id') != receipt['image_id']:
         raise ValueError('Inspected image differs from the verified image receipt')
+    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA):
+        (profile.candidate if receipt.get("schema") == profile.candidate.SCHEMA else profile.r35).verify_local_image(receipt)
     expected = canonical_container_spec(launch, image_receipt, rank, image)
     validate_container_spec(container, expected)
     if profile.sha(Path(site['marker_binary'])) != site['marker_binary_sha256']:
-        raise ValueError('Extracted host marker hash differs from the image receipt')
+        raise ValueError('Configured host marker hash differs from its verified artifact identity')
     help_result = subprocess.run([site['marker_binary'], '--help'], capture_output=True, text=True, check=True, timeout=5)
     if '--managed' not in help_result.stdout + help_result.stderr:
         raise ValueError('Extracted helper does not expose managed lifetime')
     bundle = Path(site['bundle_root'])
-    if profile.sha(bundle / 'sparkring-overlay-manifest.json') != receipt['bundle_manifest_sha256']:
-        raise ValueError('Host transport bundle manifest differs')
-    manifest = json.loads((bundle / 'sparkring-overlay-manifest.json').read_text())
-    for item in manifest['files']:
-        if profile.sha(profile.manifest_file(bundle, item['path'])) != item['sha256']:
-            raise ValueError('Host bundle entry differs')
-    config = {'schema': managed_units.service.PROTOCOL, 'site_path': str(CONFIG_DIR / 'site.json'),
-              'rank': rank, 'key_file': str(CONFIG_DIR / 'health.key'), 'epoch': epoch,
-              'health_port': health_port, 'state_dir': '/run/sparkring-mesh',
+    profile.verify_bundle(bundle, receipt)
+    config = {'schema': managed_units.service.PROTOCOL, 'site_path': selected['config_dir']+'/site.json',
+              'rank': rank, 'key_file': selected['config_dir']+'/health.key', 'epoch': epoch,
+              'health_port': health_port, 'state_dir': selected['state_dir'],
               'container_id': container['Id'], 'container_image': receipt['image_id']}
-    units = managed_units.unit_text(str(CODE_DIR), str(CONFIG_DIR), container['Id'])
-    return {'schema': 'sparkring-managed-install/v1', 'rank': rank, 'config': config,
+    host_liveness=managed_units.managed_liveness.requires_host_monitor(container,rank)
+    if deployment_name is not None:
+        config['deployment_name']=deployment_name
+    units = managed_units.unit_text(selected['code_dir'], selected['config_dir'], container['Id'],
+        host_liveness=host_liveness,deployment_name=deployment_name)
+    result = {'schema': 'sparkring-managed-install/v1', 'rank': rank, 'config': config,
             'units': units, 'source_files': SOURCE_FILES, 'source_hashes': source_hashes(source_payloads()),
             'source_root': str(ROOT),
-            'code_dir': str(CODE_DIR), 'config_dir': str(CONFIG_DIR), 'unit_dir': str(UNIT_DIR),
+            'code_dir': selected['code_dir'], 'config_dir': selected['config_dir'], 'unit_dir': selected['unit_dir'],
             'key_source': str(key_file), 'image': receipt['image_id'], 'applied': False}
+    if deployment_name is not None:
+        result.update(deployment_name=deployment_name,host_liveness=host_liveness)
+    return result
+
+
+def validate_plan_layout(plan):
+    """Regenerate owned paths and unit text before accepting installation writes."""
+    name=plan.get('deployment_name')
+    selected=managed_units.service.managed_deployment.layout(name)
+    if any(plan.get(key)!=selected[key] for key in ('code_dir','config_dir','unit_dir')):
+        raise ValueError('Installation paths differ from the derived deployment layout')
+    config=plan['config']
+    if (plan.get('schema')!='sparkring-managed-install/v1' or config.get('schema')!=managed_units.service.PROTOCOL
+            or type(config.get('rank')) is not int or config['rank'] not in range(4)
+            or plan.get('rank')!=config['rank'] or plan.get('image')!=config.get('container_image')
+            or not re.fullmatch('sha256:[0-9a-f]{64}',config.get('container_image',''))
+            or not re.fullmatch('[0-9a-f]{32}',config.get('epoch',''))
+            or type(config.get('health_port')) is not int or not 1024<=config['health_port']<=65535):
+        raise ValueError('Installation identity differs from the managed deployment contract')
+    if (config.get('deployment_name')!=name or config.get('state_dir')!=selected['state_dir']
+            or config.get('site_path')!=selected['config_dir']+'/site.json'
+            or config.get('key_file')!=selected['config_dir']+'/health.key'):
+        raise ValueError('Installation config differs from the derived deployment layout')
+    host_liveness=plan.get('host_liveness',selected['liveness_unit'] in plan['units'])
+    if type(host_liveness) is not bool or (name is not None and 'host_liveness' not in plan):
+        raise ValueError('Host liveness selection must be boolean')
+    expected=managed_units.unit_text(selected['code_dir'],selected['config_dir'],config['container_id'],
+        host_liveness=host_liveness,deployment_name=name)
+    if plan['units']!=expected:
+        raise ValueError('Installation units differ from canonical deployment rendering')
+    return selected
+
+
+def validate_named_container(plan, *, run=subprocess.run):
+    """Recheck the immutable stopped container before installing named units."""
+    if plan.get('deployment_name') is None:
+        return
+    config=plan['config']
+    result=run(['docker','inspect',config['container_id']],check=True,capture_output=True,text=True,timeout=10)
+    container=json.loads(result.stdout)[0]
+    if (container.get('Id')!=config['container_id'] or container.get('Image')!=config['container_image']
+            or container.get('State',{}).get('Running') is not False):
+        raise ValueError('Named installation requires the pinned stopped container')
+    expected=managed_units.managed_liveness.requires_host_monitor(container,config['rank'])
+    env=managed_units.managed_liveness.environment(container)
+    if env.get('SPARKRING_NODE_RANK')!=str(config['rank']):
+        raise ValueError('Named installation rank differs from the pinned container')
+    if plan['host_liveness']!=expected:
+        raise ValueError('Named observer selection differs from the pinned container')
+
+
+def validate_named_ancestors(selected):
+    """Refuse existing symlinks or non-directory ancestors before named writes."""
+    for key in ('code_dir','config_dir','state_dir','unit_dir'):
+        target=Path(selected[key])
+        for path in (*reversed(target.parents),target):
+            try:
+                mode=path.lstat().st_mode
+            except FileNotFoundError:
+                continue
+            if not stat.S_ISDIR(mode):
+                raise ValueError('Named deployment paths require nonsymlink directory ancestors')
 
 
 def apply(plan, launch, key_file):
@@ -349,29 +554,34 @@ def apply(plan, launch, key_file):
     payloads = source_payloads()
     if tuple(plan['source_files']) != SOURCE_FILES or source_hashes(payloads) != plan['source_hashes']:
         raise ValueError('Managed source differs from the reviewed installation plan')
-    targets = [CODE_DIR, CONFIG_DIR, *[UNIT_DIR / name for name in plan['units']]]
+    selected=validate_plan_layout(plan)
+    if plan.get('deployment_name') is not None:
+        validate_named_ancestors(selected)
+    validate_named_container(plan)
+    code_dir,config_dir,unit_dir=(Path(selected[key]) for key in ('code_dir','config_dir','unit_dir'))
+    targets = [code_dir, config_dir, *[unit_dir / name for name in plan['units']]]
     if any(path.exists() or path.is_symlink() for path in targets):
         raise ValueError('Installation target exists; preserve and remove only a reviewed inactive deployment before reinstalling')
-    installed_hashes = install_code(payloads, CODE_DIR)
-    CONFIG_DIR.mkdir(mode=0o700, parents=True)
+    installed_hashes = install_code(payloads, code_dir)
+    config_dir.mkdir(mode=0o700, parents=True)
     for name in ('site.json', 'fabric.json'):
-        shutil.copyfile(launch / name, CONFIG_DIR / name)
-        (CONFIG_DIR / name).chmod(0o600)
-    (CONFIG_DIR / 'service.json').write_text(json.dumps(plan['config'], indent=2) + '\n')
-    (CONFIG_DIR / 'service.json').chmod(0o600)
-    (CONFIG_DIR / 'health.key').write_bytes(key)
-    (CONFIG_DIR / 'health.key').chmod(0o600)
+        shutil.copyfile(launch / name, config_dir / name)
+        (config_dir / name).chmod(0o600)
+    (config_dir / 'service.json').write_text(json.dumps(plan['config'], indent=2) + '\n')
+    (config_dir / 'service.json').chmod(0o600)
+    (config_dir / 'health.key').write_bytes(key)
+    (config_dir / 'health.key').chmod(0o600)
     for name, content in plan['units'].items():
-        (UNIT_DIR / name).write_text(content)
-        (UNIT_DIR / name).chmod(0o644)
-    subprocess.run(['systemd-analyze', 'verify', *[str(UNIT_DIR / name) for name in plan['units']]], check=True)
+        (unit_dir / name).write_text(content)
+        (unit_dir / name).chmod(0o644)
+    subprocess.run(['systemd-analyze', 'verify', *[str(unit_dir / name) for name in plan['units']]], check=True)
     subprocess.run(['systemctl', 'daemon-reload'], check=True)
     receipt = {key: value for key, value in plan.items() if key != 'key_source'}
     receipt['applied'] = True
     receipt['installed_source_sha256'] = installed_hashes
-    receipt['unit_hashes'] = {name: hashlib.sha256((UNIT_DIR / name).read_bytes()).hexdigest() for name in plan['units']}
+    receipt['unit_hashes'] = {name: hashlib.sha256((unit_dir / name).read_bytes()).hexdigest() for name in plan['units']}
     receipt['enabled'] = receipt['started'] = False
-    (CONFIG_DIR / 'installation.json').write_text(json.dumps(receipt, indent=2) + '\n')
+    (config_dir / 'installation.json').write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps({'applied': True, 'started': False, 'enabled': False, 'rank': plan['rank']}))
 
 
@@ -384,8 +594,9 @@ def main():
     parser.add_argument('--health-port', type=int, default=9975)
     parser.add_argument('--key-file', type=Path, required=True)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--deployment-name')
     args = parser.parse_args()
-    plan = prepare_plan(args.launch, args.image_receipt, args.rank, args.epoch, args.health_port, args.key_file)
+    plan = prepare_plan(args.launch, args.image_receipt, args.rank, args.epoch, args.health_port, args.key_file,args.deployment_name)
     if args.apply:
         apply(plan, args.launch, args.key_file)
     else:

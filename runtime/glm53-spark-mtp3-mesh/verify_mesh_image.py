@@ -54,7 +54,10 @@ def verify_file_map(root: Path, records: dict) -> int:
         path = PurePosixPath(relative)
         if path.is_absolute() or ".." in path.parts or "\\" in relative or ":" in relative:
             raise ValueError(f"Unsafe source file path: {relative}")
-        check_file(root.joinpath(*path.parts), expected)
+        candidate = root.joinpath(*path.parts)
+        if not candidate.resolve().is_relative_to(root.resolve()):
+            raise ValueError(f"Source file escapes manifest root: {relative}")
+        check_file(candidate, expected)
     return len(records)
 
 
@@ -90,6 +93,9 @@ def verify_complete_package_file_map(root: Path, package: str,
     if any(not relative.startswith(prefix) for relative in records):
         raise ValueError(f"{package} source manifest contains an invalid path")
     verify_file_map(root, records)
+    package_root = root / package
+    if package_root.is_symlink() or any(path.is_symlink() for path in package_root.rglob("*")):
+        raise ValueError(f"{package} contains an unmanifested symbolic link")
     observed = {
         path.relative_to(root).as_posix()
         for path in (root / package).rglob("*")
@@ -228,6 +234,9 @@ def verify_compute(profile: dict, base: dict, source: dict, environment: dict,
         "b12x_files": b12x_count,
         "cuda_version": lock["cuda"]["version"],
         "environment": verified_environment,
+        # Source hashes bind the MTP constructor and verified environment sets
+        # VLLM_MTP_NVFP4_LM_HEAD=1. This reports selected construction policy,
+        # not inspection of loaded model tensors (no model is loaded here).
         "proposal_head_nvfp4": True,
         "target_head_quantization": False,
     }

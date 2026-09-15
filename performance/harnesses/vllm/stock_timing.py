@@ -1,14 +1,24 @@
-"""Low-overhead CUDA-event timing for one fixed-K4 stock-collective round.
+"""CUDA-event timing for one GLM-5.2 round with four speculative tokens.
 
-This diagnostic never changes a collective's inputs, outputs, or ordering. It
+This diagnostic preserves inputs, outputs and intra-stream operation order.
+Each enabled call reads the arm file synchronously; event recording and
+reporting also add overhead. Reporting synchronizes the host once. These
+operations can perturb arrivals, so results are instrumented timings. It
 records CUDA events around the original vLLM operation and reports once the
-known GLM-5.2 MTP4 Q1/Q5 inventory for one target round has completed.
+fixed call inventory in _EXPECTED has completed. Query-row counts Q5 and Q1
+represent a five-row target step and single-row draft steps for MTP4. This
+inventory is specific to that execution shape, not a model-independent timer.
+SPARK_TP4_STOCK_TIMING=1 enables instrumentation; an arm-file run ID selects
+the measured round after the three-row startup call has been observed.
+An unreadable arm file invalidates an armed measurement. CUDA events remain
+allocated until process exit or an explicit test reset.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 import logging
+import math
 import os
 from pathlib import Path
 import time
@@ -56,12 +66,23 @@ def _complete() -> bool:
     )
 
 
+def _log(level: int, message: str, *arguments: Any) -> None:
+    """Keep diagnostic sink failures out of the collective call path."""
+    global _invalid
+    try:
+        logger.log(level, message, *arguments)
+    except Exception:
+        _invalid = True
+        _invalid_reasons.add("diagnostic_log_failed")
+
+
 def _invalidate(reason: str) -> None:
     global _invalid
     _invalid = True
     if reason not in _invalid_reasons:
         _invalid_reasons.add(reason)
-        logger.error(
+        _log(
+            logging.ERROR,
             "SPARK_STOCK_TIMING invalid reason=%s rank=%s run_id=%s",
             reason,
             os.getenv("RANK", "unknown"),
@@ -77,14 +98,23 @@ def _initialize_event_pool(torch_module: Any, stream: Any) -> None:
     calibration_stop = torch_module.cuda.Event(enable_timing=True)
     calibration_start.record(stream)
     calibration_stop.record(stream)
-    _calibration_events = (calibration_start, calibration_stop)
+    pairs = []
     for _ in range(_TOTAL_WRAPPER_CALLS):
-        _event_pairs.append(
+        pairs.append(
             (
                 torch_module.cuda.Event(enable_timing=True),
                 torch_module.cuda.Event(enable_timing=True),
             )
         )
+    _event_pairs.extend(pairs)
+    _calibration_events = (calibration_start, calibration_stop)
+
+
+def _elapsed_ms(start: Any, stop: Any) -> float:
+    value = float(start.elapsed_time(stop))
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("CUDA event duration must be finite and nonnegative")
+    return value
 
 
 def _report() -> None:
@@ -94,7 +124,7 @@ def _report() -> None:
     _last_stop.synchronize()
 
     assert _calibration_events is not None
-    calibration_ms = _calibration_events[0].elapsed_time(_calibration_events[1])
+    calibration_ms = _elapsed_ms(*_calibration_events)
     total_device_ms = 0.0
     total_host_enqueue_us = 0.0
     total_calls = 0
@@ -103,13 +133,13 @@ def _report() -> None:
         family, q = key
         samples = _samples[key]
         expected_calls, logical_collectives = _EXPECTED[key]
-        device_ms = sum(start.elapsed_time(stop) for start, stop, _ in samples)
+        device_ms = sum(_elapsed_ms(start, stop) for start, stop, _ in samples)
         host_enqueue_us = sum(host_us for _, _, host_us in samples)
         total_device_ms += device_ms
         total_host_enqueue_us += host_enqueue_us
         total_calls += expected_calls
         total_logical += logical_collectives
-        logger.warning(
+        _log(logging.WARNING,
             "SPARK_STOCK_TIMING rank=%s run_id=%s family=%s q=%d "
             "wrapper_calls=%d "
             "logical_collectives=%d device_ms=%.6f device_us_per_call=%.3f "
@@ -125,8 +155,8 @@ def _report() -> None:
             host_enqueue_us,
         )
 
-    covered_span_ms = _first_start.elapsed_time(_last_stop)
-    logger.warning(
+    covered_span_ms = _elapsed_ms(_first_start, _last_stop)
+    _log(logging.WARNING,
         "SPARK_STOCK_TIMING rank=%s run_id=%s total wrapper_calls=%d "
         "logical_collectives=%d "
         "device_ms=%.6f covered_span_ms=%.6f host_enqueue_us=%.3f "
@@ -162,7 +192,7 @@ def _requested_run_id() -> str | None:
         return None
     try:
         value = Path(arm_path).read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeError):
         return None
     return value or None
 
@@ -177,7 +207,7 @@ def time_original(
     """Run an original collective unchanged and optionally time its GPU span."""
 
     global _armed, _first_host_ns, _first_start, _last_host_ns, _last_stop
-    global _run_id, _startup_q3_seen, _stream_id
+    global _run_id, _startup_q3_seen, _stream_id, _reported
     if not enabled() or _reported:
         return operation()
 
@@ -186,7 +216,7 @@ def time_original(
         if requested_run_id is not None:
             _invalidate("operator_arm_before_startup_q3")
         _startup_q3_seen = True
-        logger.warning(
+        _log(logging.WARNING,
             "SPARK_STOCK_TIMING startup_q3_seen rank=%s",
             os.getenv("RANK", "unknown"),
         )
@@ -198,7 +228,7 @@ def time_original(
             return operation()
         _armed = True
         _run_id = requested_run_id
-        logger.warning(
+        _log(logging.WARNING,
             "SPARK_STOCK_TIMING armed rank=%s run_id=%s path=%s",
             os.getenv("RANK", "unknown"),
             _run_id,
@@ -224,25 +254,40 @@ def time_original(
             _invalidate(f"overflow:{family}:q{q}")
         return operation()
 
-    if torch_module is None:
-        import torch as torch_module
-
-    current_stream_id = int(stream.cuda_stream)
+    try:
+        if torch_module is None:
+            import torch as torch_module
+        current_stream_id = int(stream.cuda_stream)
+    except Exception:
+        _invalidate("instrument_setup_failed")
+        return operation()
     if _stream_id is None:
         _stream_id = current_stream_id
     elif _stream_id != current_stream_id:
         _invalidate("stream_changed")
         return operation()
 
-    _initialize_event_pool(torch_module, stream)
-    event_index = sum(len(samples) for samples in _samples.values())
-    start, stop = _event_pairs[event_index]
-    host_before_ns = time.perf_counter_ns()
-    start.record(stream)
+    try:
+        _initialize_event_pool(torch_module, stream)
+        event_index = sum(len(samples) for samples in _samples.values())
+        start, stop = _event_pairs[event_index]
+        host_before_ns = time.perf_counter_ns()
+        start.record(stream)
+    except Exception:
+        _invalidate('event_record_failed')
+        return operation()
     host_start_ns = time.perf_counter_ns()
-    result = operation()
+    try:
+        result = operation()
+    except BaseException:
+        _invalidate('operation_failed')
+        raise
     host_enqueue_us = (time.perf_counter_ns() - host_start_ns) / 1000.0
-    stop.record(stream)
+    try:
+        stop.record(stream)
+    except Exception:
+        _invalidate('event_record_failed')
+        return result
     host_after_ns = time.perf_counter_ns()
 
     if _first_start is None:
@@ -251,7 +296,10 @@ def time_original(
     _last_stop = stop
     _last_host_ns = host_after_ns
     _samples[key].append((start, stop, host_enqueue_us))
-    max_span_ms = float(os.getenv("SPARK_TP4_STOCK_TIMING_MAX_HOST_SPAN_MS", "2000"))
+    try:
+        max_span_ms = float(os.getenv("SPARK_TP4_STOCK_TIMING_MAX_HOST_SPAN_MS", "2000"))
+    except ValueError:
+        max_span_ms = float("nan")
     if (
         not 0.0 < max_span_ms <= 60_000.0
         or _first_host_ns is None
@@ -261,7 +309,12 @@ def time_original(
     elif (_last_host_ns - _first_host_ns) / 1_000_000.0 > max_span_ms:
         _invalidate("host_span_limit_exceeded")
     if _complete():
-        _report()
+        try:
+            _report()
+        except Exception:
+            _invalidate("report_failed")
+        finally:
+            _reported = True
     return result
 
 

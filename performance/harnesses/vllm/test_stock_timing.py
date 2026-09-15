@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import logging
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -54,6 +57,99 @@ _ENV = {
 
 
 class StockTimingTests(unittest.TestCase):
+    def test_stream_metadata_failure_does_not_skip_collective(self):
+        calls = []
+        with patch.dict(os.environ, _ENV, clear=True):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, "read_text", return_value="run-1"):
+                result = timing.time_original(
+                    "query", 5, object(), lambda: calls.append(1) or "result", _Torch
+                )
+        self.assertEqual(result, "result")
+        self.assertEqual(calls, [1])
+        self.assertIn("instrument_setup_failed", timing.snapshot_for_test()["invalid_reasons"])
+
+    def test_event_allocation_failure_does_not_skip_the_collective(self):
+        calls = []
+        with patch.dict(os.environ, _ENV, clear=True):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, 'read_text', return_value='run-1'), \
+                 patch.object(timing, '_initialize_event_pool', side_effect=RuntimeError('event failure')):
+                result = timing.time_original('query', 5, _STREAM, lambda: calls.append(1) or 'result', _Torch)
+        self.assertEqual(result, 'result')
+        self.assertEqual(calls, [1])
+        self.assertTrue(timing.snapshot_for_test()['invalid'])
+
+    def test_failed_operation_invalidates_the_round_without_a_sample(self):
+        def fail():
+            raise RuntimeError('synthetic operation failure')
+        with patch.dict(os.environ, _ENV, clear=True):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, 'read_text', return_value='run-1'):
+                with self.assertRaisesRegex(RuntimeError, 'synthetic operation'):
+                    timing.time_original('query', 5, _STREAM, fail, _Torch)
+        snapshot = timing.snapshot_for_test()
+        self.assertTrue(snapshot['invalid'])
+        self.assertIn('operation_failed', snapshot['invalid_reasons'])
+        self.assertEqual(sum(snapshot['counts'].values()), 0)
+
+    def test_malformed_span_limit_preserves_collective_result(self):
+        with patch.dict(os.environ, {**_ENV, "SPARK_TP4_STOCK_TIMING_MAX_HOST_SPAN_MS": "broken"}, clear=True):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, "read_text", return_value="run"):
+                result = timing.time_original("query", 5, _STREAM, lambda: "ok", _Torch)
+        self.assertEqual(result, "ok")
+        self.assertIn("invalid_host_span_limit", timing.snapshot_for_test()["invalid_reasons"])
+
+    def test_unreadable_arm_text_does_not_skip_collective(self):
+        with patch.dict(os.environ, _ENV, clear=True), patch.object(
+            timing.Path, "read_text", side_effect=UnicodeDecodeError("utf8", b"x", 0, 1, "invalid")
+        ):
+            self.assertEqual(timing.time_original("query", 5, _STREAM, lambda: "ok", _Torch), "ok")
+
+    def test_report_failure_preserves_result_and_is_not_retried(self):
+        with patch.dict(os.environ, _ENV, clear=True), patch.object(timing, "_EXPECTED", {("query", 5): (1, 1)}):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, "read_text", return_value="run"), patch.object(
+                timing, "_report", side_effect=RuntimeError("event query failed")
+            ) as report:
+                self.assertEqual(timing.time_original("query", 5, _STREAM, lambda: "first", _Torch), "first")
+                self.assertEqual(timing.time_original("query", 5, _STREAM, lambda: "second", _Torch), "second")
+                self.assertEqual(report.call_count, 1)
+        self.assertTrue(timing.snapshot_for_test()["reported"])
+        self.assertIn("report_failed", timing.snapshot_for_test()["invalid_reasons"])
+
+    def test_nonfinite_event_duration_cannot_report_valid(self):
+        with patch.dict(os.environ, _ENV, clear=True), patch.object(timing, "_EXPECTED", {("query", 5): (1, 1)}):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, "read_text", return_value="run"), patch.object(
+                _Event, "elapsed_time", return_value=float("nan")
+            ):
+                self.assertEqual(timing.time_original("query", 5, _STREAM, lambda: "ok", _Torch), "ok")
+        self.assertTrue(timing.snapshot_for_test()["invalid"])
+
+    def test_failed_log_sink_preserves_startup_result_and_original_exception(self):
+        with tempfile.TemporaryDirectory() as raw:
+            blocker = Path(raw) / "blocker"
+            blocker.write_text("not a directory")
+            handler = logging.FileHandler(blocker / "log.txt", delay=True)
+            timing.logger.addHandler(handler)
+            try:
+                with patch.dict(os.environ, _ENV, clear=True):
+                    with patch.object(timing.Path, "read_text", side_effect=OSError):
+                        self.assertEqual(timing.time_original("query", 3, _STREAM, lambda: "startup", _Torch), "startup")
+                    original = RuntimeError("original collective error")
+                    def operation():
+                        raise original
+                    with patch.object(timing.Path, "read_text", return_value="run"):
+                        with self.assertRaises(RuntimeError) as raised:
+                            timing.time_original("query", 5, _STREAM, operation, _Torch)
+                    self.assertIs(raised.exception, original)
+                    self.assertIn("diagnostic_log_failed", timing.snapshot_for_test()["invalid_reasons"])
+            finally:
+                timing.logger.removeHandler(handler)
+                handler.close()
+
     def setUp(self) -> None:
         timing.reset_for_test()
         _Event._clock = 0.0

@@ -1,5 +1,7 @@
 #pragma once
 
+// Test-only declarations for host syntax checks; no SDK ABI or runtime behavior.
+
 typedef void* cudaStream_t;
 typedef void* cudaEvent_t;
 typedef int cudaError_t;

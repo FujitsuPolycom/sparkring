@@ -48,7 +48,8 @@ class Tp4VocabAllgatherSession {
   ~Tp4VocabAllgatherSession();
 
   // Gathers BF16 [Q, 38720] into token-major BF16 [Q, 154880].
-  // Q must be in [1, 40]. Work is enqueued on one stable caller stream.
+  // Q must be in [1, 40]. A stream switch inserts a CUDA event dependency
+  // on the preceding submission stream.
   void all_gather(const void* input, void* output,
                   std::uint32_t query_rows, void* cuda_stream);
 

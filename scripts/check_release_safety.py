@@ -29,8 +29,8 @@ def main(root):
     try:
         paths = subprocess.run(
             ["git", "ls-files", "-z"], cwd=root, check=True,
-            capture_output=True, text=True,
-        ).stdout.split("\0")
+            capture_output=True,
+        ).stdout.decode("utf-8", "surrogateescape").split("\0")
         count = 0
         for relative in filter(None, paths):
             if relative in EXCLUDES:

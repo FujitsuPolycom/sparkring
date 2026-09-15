@@ -27,6 +27,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Unique names keep independent runs and retained containers outside this cleanup scope.
+$runIdentity = [Guid]::NewGuid().ToString("N")
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -124,9 +126,10 @@ function Invoke-ReplayMode {
 
     $failed = $false
     $timedOut = $false
+    $startedNodes = [System.Collections.Generic.List[object]]::new()
     try {
         foreach ($node in $nodes) {
-            $name = "spark-model-replay-$ReplayMode-r$($node.Rank)"
+            $name = "spark-model-replay-$runIdentity-$ReplayMode-r$($node.Rank)"
             $environment = if ($ReplayMode -eq "socket") {
                 @(
                     "-e NCCL_NET=Socket"
@@ -146,7 +149,6 @@ function Invoke-ReplayMode {
             $command = @(
                 "chmod 0755 ${Binary};"
                 "test -r ${Library};"
-                "docker rm -f $name >/dev/null 2>&1 || true;"
                 "docker run -d --name $name"
                 "--privileged --gpus all --network host --ipc host"
                 "--ulimit memlock=-1"
@@ -174,15 +176,16 @@ function Invoke-ReplayMode {
 
             $exitCode = Invoke-NodeSsh -Node $node -Command $command
             if ($exitCode -ne 0) {
-                throw "failed to launch $ReplayMode rank $($node.Rank)"
+                throw "failed to launch $ReplayMode rank $($node.Rank); inspect $name for an uncertain remote outcome"
             }
+            $startedNodes.Add($node)
         }
 
         $deadline = [DateTime]::UtcNow.AddSeconds($WatchdogSeconds + 15)
         do {
             $running = 0
             foreach ($node in $nodes) {
-                $name = "spark-model-replay-$ReplayMode-r$($node.Rank)"
+                $name = "spark-model-replay-$runIdentity-$ReplayMode-r$($node.Rank)"
                 if ((Get-ContainerState -Node $node -ContainerName $name) `
                     -like "running:*") {
                     ++$running
@@ -200,7 +203,7 @@ function Invoke-ReplayMode {
         }
 
         foreach ($node in $nodes) {
-            $name = "spark-model-replay-$ReplayMode-r$($node.Rank)"
+            $name = "spark-model-replay-$runIdentity-$ReplayMode-r$($node.Rank)"
             $state = Get-ContainerState -Node $node -ContainerName $name
             Write-Output "mode=$ReplayMode rank=$($node.Rank) state=$state"
             & ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
@@ -215,8 +218,8 @@ function Invoke-ReplayMode {
     }
     finally {
         if (-not $KeepContainers) {
-            foreach ($node in $nodes) {
-                $name = "spark-model-replay-$ReplayMode-r$($node.Rank)"
+            foreach ($node in $startedNodes) {
+                $name = "spark-model-replay-$runIdentity-$ReplayMode-r$($node.Rank)"
                 Invoke-NodeSsh -Node $node `
                     -Command "docker rm -f $name >/dev/null 2>&1 || true" |
                     Out-Null

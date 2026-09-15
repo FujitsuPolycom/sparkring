@@ -36,11 +36,23 @@ param(
     [string]$Image = "<your-vllm-image>",
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
+    [ValidateSet("documented-cycle")]
+    [string]$DevicePreset,
+    [string[]]$Device0 = @(),
+    [string[]]$Device1 = @(),
 
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = @()
+$ownedStages = @()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -63,6 +75,42 @@ if (@($SubmitCpu, $TpProgressCpu, $VocabProgressCpu |
         Sort-Object -Unique).Count -ne 3) {
     throw "submit, TP progress, and vocabulary progress CPUs must differ"
 }
+
+function Test-CpuInSet {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Set,
+
+        [Parameter(Mandatory)]
+        [int]$Cpu
+    )
+
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so every pinned CPU must lie inside it.
+foreach ($cpu in @($SubmitCpu, $TpProgressCpu, $VocabProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+# Index only the non-empty entries so an embedded empty element cannot shift
+# the rank-to-target mapping after the count check.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
+
+. "$PSScriptRoot/tp4_device_mapping.ps1"
+$deviceMapping = @(Resolve-Tp4DeviceMapping -Preset $DevicePreset -Device0 $Device0 -Device1 $Device1)
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $probeSource = Join-Path $repoRoot `
@@ -93,29 +141,37 @@ $stageId = (
     "$($adapterHash.Substring(0, 12))-" +
     "$($queryContractHash.Substring(0, 12))"
 )
-$remoteStage = "/tmp/spark-vocab-stream-switch-$stageId"
+$remoteStage = "/tmp/spark-vocab-stream-switch-$stageId-$runIdentity"
 
 $nodes = @(
     [pscustomobject]@{
         Rank = 0
+        Device0 = $deviceMapping[0].Device0
+        Device1 = $deviceMapping[0].Device1
         Target = $Targets[0]
         Peer0 = $RankHosts[1]
         Peer1 = $RankHosts[3]
     },
     [pscustomobject]@{
         Rank = 1
+        Device0 = $deviceMapping[1].Device0
+        Device1 = $deviceMapping[1].Device1
         Target = $Targets[1]
         Peer0 = $RankHosts[0]
         Peer1 = $RankHosts[2]
     },
     [pscustomobject]@{
         Rank = 2
+        Device0 = $deviceMapping[2].Device0
+        Device1 = $deviceMapping[2].Device1
         Target = $Targets[2]
         Peer0 = $RankHosts[3]
         Peer1 = $RankHosts[1]
     },
     [pscustomobject]@{
         Rank = 3
+        Device0 = $deviceMapping[3].Device0
+        Device1 = $deviceMapping[3].Device1
         Target = $Targets[3]
         Peer0 = $RankHosts[2]
         Peer1 = $RankHosts[0]
@@ -131,7 +187,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -141,8 +197,8 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-vocab-stream-switch-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $name = "spark-vocab-stream-switch-$runIdentity-r$($Node.Rank)"
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" `
         2>$null)
     if ($LASTEXITCODE -ne 0) {
@@ -151,73 +207,74 @@ function Get-ContainerState {
     return $state.Trim()
 }
 
-$artifactHashes = @()
-foreach ($node in $nodes) {
-    $runningModel = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
-        $node.Target `
-        "docker ps --filter name=^/glm52-trace$ --format '{{.Names}}'")
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to inspect running containers on rank $($node.Rank)"
-    }
-    if (($runningModel -join "`n").Trim() -eq "glm52-trace") {
-        throw "rank $($node.Rank) still runs glm52-trace; the stream-switch probe requires the model-down memory window"
-    }
-
-    $mkdirExit = Invoke-NodeSsh -Node $node `
-        -Command "mkdir -p '$remoteStage'"
-    if ($mkdirExit -ne 0) {
-        throw "failed to create stage directory on rank $($node.Rank)"
-    }
-    & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
-        $probeSource "$($node.Target):$remoteStage/probe.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to stage probe on rank $($node.Rank)"
-    }
-    & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
-        $adapterSource "$($node.Target):$remoteStage/adapter.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to stage adapter on rank $($node.Rank)"
-    }
-    & scp -q -o BatchMode=yes -o ConnectTimeout=8 `
-        $queryContractSource `
-        "$($node.Target):$remoteStage/spark_tp4_query_contract.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to stage query-width contract on rank $($node.Rank)"
-    }
-    $hashCommand = (
-        "test -f '$Library' && sha256sum '$remoteStage/probe.py' " +
-        "'$remoteStage/adapter.py' " +
-        "'$remoteStage/spark_tp4_query_contract.py' '$Library'"
-    )
-    $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
-        $node.Target $hashCommand)
-    if ($LASTEXITCODE -ne 0) {
-        throw "rank $($node.Rank) is missing a staged probe artifact"
-    }
-    $hashLines = @($hash)
-    if ($hashLines.Count -ne 4 `
-        -or $hashLines[0] -notmatch "^$probeHash\s" `
-        -or $hashLines[1] -notmatch "^$adapterHash\s" `
-        -or $hashLines[2] -notmatch "^$queryContractHash\s" `
-        -or $hashLines[3] -notmatch "^$ExpectedLibrarySha256\s") {
-        throw "rank $($node.Rank) staged source hash mismatch"
-    }
-    $artifactHashes += ,(($hashLines -join "`n").Trim())
-}
-
-if (@($artifactHashes | Sort-Object -Unique).Count -ne 1) {
-    throw "stream-switch probe artifact SHA-256 values differ across ranks"
-}
-Write-Output "preflight=pass model_down=true identical_sha256=true"
-Write-Output $artifactHashes[0]
-
 $failed = $false
 $timedOut = $false
 try {
+    $artifactHashes = @()
     foreach ($node in $nodes) {
-        $name = "spark-vocab-stream-switch-r$($node.Rank)"
+        $runningModel = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 `
+            $node.Target `
+            "docker ps --filter name=^/glm52-trace$ --format '{{.Names}}'")
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to inspect running containers on rank $($node.Rank)"
+        }
+        if (($runningModel -join "`n").Trim() -eq "glm52-trace") {
+            throw "rank $($node.Rank) still runs glm52-trace; stop that serving container explicitly before the stream-switch probe"
+        }
+
+        $mkdirExit = Invoke-NodeSsh -Node $node `
+            -Command "mkdir '$remoteStage'"
+        if ($mkdirExit -ne 0) {
+            throw "failed to create stage directory on rank $($node.Rank)"
+        }
+        $ownedStages += $node
+        Invoke-ProbeScp -q -o BatchMode=yes -o ConnectTimeout=8 `
+            $probeSource "$($node.Target):$remoteStage/probe.py"
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to stage probe on rank $($node.Rank)"
+        }
+        Invoke-ProbeScp -q -o BatchMode=yes -o ConnectTimeout=8 `
+            $adapterSource "$($node.Target):$remoteStage/adapter.py"
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to stage adapter on rank $($node.Rank)"
+        }
+        Invoke-ProbeScp -q -o BatchMode=yes -o ConnectTimeout=8 `
+            $queryContractSource `
+            "$($node.Target):$remoteStage/spark_tp4_query_contract.py"
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to stage query-width contract on rank $($node.Rank)"
+        }
+        $hashCommand = (
+            "test -f $(ConvertTo-PosixShellArgument $Library) && sha256sum '$remoteStage/probe.py' " +
+            "'$remoteStage/adapter.py' " +
+            "'$remoteStage/spark_tp4_query_contract.py' $(ConvertTo-PosixShellArgument $Library)"
+        )
+        $hash = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 `
+            $node.Target $hashCommand)
+        if ($LASTEXITCODE -ne 0) {
+            throw "rank $($node.Rank) is missing a staged probe artifact"
+        }
+        $hashLines = @($hash)
+        if ($hashLines.Count -ne 4 `
+            -or $hashLines[0] -notmatch "^$probeHash\s" `
+            -or $hashLines[1] -notmatch "^$adapterHash\s" `
+            -or $hashLines[2] -notmatch "^$queryContractHash\s" `
+            -or $hashLines[3] -notmatch "^$ExpectedLibrarySha256\s") {
+            throw "rank $($node.Rank) staged source hash mismatch"
+        }
+        $artifactHashes += ,(($hashLines -join "`n").Trim())
+    }
+
+    if (@($artifactHashes | Sort-Object -Unique).Count -ne 1) {
+        throw "stream-switch probe artifact SHA-256 values differ across ranks"
+    }
+    # This guard checks one named container, not all GPU users on the host.
+    Write-Output "preflight=pass model_container=glm52-trace model_container_running=false identical_sha256=true"
+    Write-Output $artifactHashes[0]
+
+    foreach ($node in $nodes) {
+        $name = "spark-vocab-stream-switch-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
@@ -225,21 +282,21 @@ try {
             "-v ${remoteStage}/probe.py:/probe/probe.py:ro"
             "-v ${remoteStage}/adapter.py:/probe/spark_tp4_vocab_allgather_backend.py:ro"
             "-v ${remoteStage}/spark_tp4_query_contract.py:/probe/spark_tp4_query_contract.py:ro"
-            "-v ${Library}:/opt/spark/lib/libspark_transport_capi.so:ro"
+            "-v $(ConvertTo-PosixShellArgument "${Library}:/opt/spark/lib/libspark_transport_capi.so:ro")"
             "-e PYTHONPATH=/probe"
             "-e SPARK_TP4_LIBRARY=/opt/spark/lib/libspark_transport_capi.so"
             "-e VLLM_SPARK_TP4_VOCAB_MODE=custom"
             "-e VLLM_SPARK_TP4_GRAPH_Q1=1"
-            "-e SPARK_TP4_PEER0=$($node.Peer0)"
-            "-e SPARK_TP4_PEER1=$($node.Peer1)"
-            "-e SPARK_TP4_DEVICE0=rocep1s0f0"
-            "-e SPARK_TP4_DEVICE1=rocep1s0f1"
+            "-e $(ConvertTo-PosixShellArgument "SPARK_TP4_PEER0=$($node.Peer0)")"
+            "-e $(ConvertTo-PosixShellArgument "SPARK_TP4_PEER1=$($node.Peer1)")"
+            "-e SPARK_TP4_DEVICE0=$($node.Device0)"
+            "-e SPARK_TP4_DEVICE1=$($node.Device1)"
             "-e SPARK_TP4_GID0=3"
             "-e SPARK_TP4_GID1=3"
             "-e SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0=$ControlPort0"
             "-e SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1=$ControlPort1"
             "-e SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU=$VocabProgressCpu"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "taskset -c $SubmitCpu python3 /probe/probe.py"
             "--rank $($node.Rank)"
@@ -250,6 +307,8 @@ try {
             ">/dev/null"
         ) -join " "
 
+        # The invocation-specific name also identifies a launch whose SSH reply is lost.
+        $ownedNodes += $node
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch stream-switch rank $($node.Rank)"
@@ -282,9 +341,9 @@ try {
         @($expectedNodes) + (@(1L) * $MtpTokens)
     ) -join ","
     foreach ($node in $nodes) {
-        $name = "spark-vocab-stream-switch-r$($node.Rank)"
+        $name = "spark-vocab-stream-switch-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
-        $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 `
+        $log = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 `
             $node.Target "docker logs $name 2>&1")
         $result = @($log | Where-Object {
             $_ -like "TP4_VOCAB_STREAM_SWITCH*"
@@ -292,8 +351,9 @@ try {
         Write-Output "rank=$($node.Rank) state=$state"
         $result | Write-Output
 
-        $gate = $result -join " "
-        if ($state -ne "exited:0" `
+        # One probe invocation must produce one complete result record.
+        $gate = if ($result.Count -eq 1) { $result[0] } else { "" }
+        if ($result.Count -ne 1 -or $state -ne "exited:0" `
             -or $gate -notmatch "pattern=$expectedPattern(?:\s|$)" `
             -or $gate -notmatch "stock_warmups=$expectedWarmups(?:\s|$)" `
             -or $gate -notmatch "captured_nodes=$expectedNodes(?:\s|$)" `
@@ -315,11 +375,14 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-vocab-stream-switch-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-vocab-stream-switch-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" |
                 Out-Null
+        }
+        foreach ($node in $ownedStages) {
+            Invoke-NodeSsh -Node $node -Command "rm -rf '$remoteStage'" | Out-Null
         }
     }
 }

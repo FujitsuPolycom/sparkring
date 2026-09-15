@@ -21,7 +21,7 @@ def digest(data: bytes) -> str:
 
 def checked_name(name: str) -> str:
     path = PurePosixPath(name)
-    if not name or path.is_absolute() or ".." in path.parts or "\\" in name or str(path) != name:
+    if not name or path.is_absolute() or ".." in path.parts or "\\" in name or ":" in name or str(path) != name:
         raise ValueError("Archive or manifest contains an unsafe path")
     return name
 

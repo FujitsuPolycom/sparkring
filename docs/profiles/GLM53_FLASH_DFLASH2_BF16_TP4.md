@@ -1,20 +1,24 @@
 # GLM-5.3 Flash with BF16 DFlash2 on a four-Spark cycle
 
-Status: **qualified** with and without the SparkCache connector for startup,
+Status: **Validated** with and without the SparkCache connector for startup,
 semantic generation, runtime health, and the exact OCI image and configuration
 recorded below. SparkCache restore qualification covers one 8,192-token span.
 The 524,288-token request limit and 32-sequence limit are configured values,
 not fully exercised request and concurrency measurements.
 
+This record describes the DCP1 measurement configuration. Use the
+[catalog profile](../../profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/profile.json)
+for the separately selected deployment defaults and evidence scope.
+
 ## Serving contract
 
-| Property | Qualified value |
+| Property | Recorded value |
 |---|---|
 | Hardware | four NVIDIA DGX Spark systems; direct RoCE cycle |
 | Parallelism | TP4, DCP1, PP1 |
 | Target | `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc` |
 | Draft | `incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, BF16, seven tokens, TP4 |
-| Limits | 524,288 model tokens; 8,192 batched tokens; 32 sequences |
+| Configured limits | 524,288 context tokens; 8,192 batched tokens; 32 sequences |
 | GPU KV | 12,884,901,888 FP8 bytes per rank; measured 549,950-token capacity |
 | Execution | B12X target attention/MoE/linear; Triton KDA prefill; async scheduling; chunked prefill; native prefix caching |
 | Graphs | `FULL_AND_PIECEWISE` target; FULL DFlash; capture sizes 8–256 |
@@ -32,12 +36,12 @@ on all four ranks. Its source-built parent is
 With SparkCache enabled, every rank committed the same 8,192-token context,
 the four containers were replaced, and every rank restored the context in
 156.8–171.8 ms. vLLM attributed 8,192 prompt tokens to external KV transfer.
-The restored request completed in 1.902 seconds. DFlash emitted 504 tokens
-from 72 drafts, the semantic canary passed, every rank retained 24 RTS worker
+The restored request completed in 1.902 seconds. DFlash proposed 504 tokens
+across 72 drafts and accepted 170; the semantic canary passed, every rank retained 24 RTS worker
 QPs, and no preemption, restart, OOM, or fatal-log match occurred.
 
 With the connector omitted, the semantic canary passed in 2.703 seconds,
-DFlash emitted 231 tokens from 33 drafts, external-cache queries stayed at
+DFlash proposed 231 tokens across 33 drafts and accepted 87; external-cache queries stayed at
 zero, and the same process and RDMA health conditions passed.
 
 The detailed conditions and measurements are in
@@ -65,7 +69,7 @@ SparkCache source is
 on branch `codex/glm53-public-image`, source-tree SHA-256
 `6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2`.
 [`runtime/glm53-flash/pins.json`](../../runtime/glm53-flash/pins.json) is the
-complete machine-readable source, patch, image, SBOM, and license record.
+machine-readable source, patch, image, SBOM, and license record.
 
 ## Limitations
 

@@ -1,0 +1,19 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-spark-tp4-dcp4",
+  "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 MTP3",
+  "recommendation": "alternative",
+  "status": "implemented",
+  "configuration": {
+    "format": "release-profile",
+    "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+    "key": "tp4-dcp4"
+  },
+  "release": "runtime/releases/sparkring-r33-dcp4/release.json",
+  "guide": "profiles/glm53-flash-spark-tp4-dcp4/README.md",
+  "evidence_scope": "A separate cache-disabled TP4/DCP4 startup passed semantic generation and 1M admission. This is an observation, not the cache-enabled recovery qualification.",
+  "overrides": [],
+  "launcher": {
+    "kind": "guide"
+  }
+}

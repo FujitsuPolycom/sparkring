@@ -1,14 +1,16 @@
-# Native MTP3 cache and checkpoint performance composition
+# MTP3 cache and checkpoint performance composition
 
 Status: **implemented** source composition; performance is **research-only**.
-The build combines GLM-5.3 native MTP3 compute, verified persistent caching,
+The build combines GLM-5.3 MTP3 compute, verified persistent caching,
 explicit recurrent checkpoints, and stream-ordered hardware mesh transport.
 The recipe preserves the parent model weights and does not change host fabric.
 
 This optional research builder uses its own pinned parent and source overlays.
-The shared GLM image and its topology profiles are defined separately in
+The retained GLM source-image profiles are defined separately in
 [`runtime/sparkring/source_image`](../../sparkring/source_image/README.md).
 This builder does not replace those profiles or their image receipts.
+Use the [profile catalog](../../../profiles/README.md) for maintained
+published-image deployments.
 
 ## Build inputs
 
@@ -17,7 +19,7 @@ It contains the merged restore/publication improvements, periodic-capture
 option, and backlog gauges. Periodic full capture defaults off; enabling it
 trades more writes for shorter history reconstruction.
 
-The compute parent is the published native-MTP3 image with config ID
+The compute parent is the published MTP3 image with config ID
 `2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f`.
 `Dockerfile` identifies its immutable registry reference.
 

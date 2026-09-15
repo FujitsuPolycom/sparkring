@@ -7,8 +7,9 @@ kernels, and stable edge adapters are exercised by the standalone
 claim. The bidirectional-ring executor and fused-prefill kernels and verbs
 proxy are linked into `libspark_transport_capi.so` for the GLM-5.3 research
 transport. The public C ABI and vLLM adapter select those serving components
-through explicit shape and topology gates. Delayed-credit backpressure remains
-unsupported by the generic correctness executor.
+through explicit shape and topology gates. CPU tests cover delayed-credit retry
+and retirement ordering in the generic correctness executor. Its four-rank
+delayed-credit arms still require hardware qualification receipts.
 
 `substrate.py` models a bounded replacement for exact-shape transport
 sessions. BF16 `[Q, 6144]` all-reduce widths from Q1 through Q4096 map onto
@@ -129,10 +130,18 @@ teardown. The runner defaults to plan-only; remote execution requires the
 explicit `-Execute` switch and still does not start a serving model.
 
 The native correctness executor is constrained to
-`single_stream_correctness_only`. Timing fields are useful instrumentation,
-but cannot support a performance claim until a reviewed multi-stream mapping
-preserves the dependency DAG and concrete GPU/edge ports bind every executor
-protocol seam.
+`single_stream_correctness_only`. Its v2 receipts report host-clock operation
+min/p50/p95 and a measured-window average. Operation samples span executor
+advance/drain calls; the window also includes enabled correctness checks.
+Poison arms report null timings because no operation completes. Device,
+component and credit-wait timings are unmeasured and rejected by the receipt
+validator.
+
+The `gpu_harness.py` timing fields specify unimplemented instrumentation for
+a performance executor; they are not standalone-probe receipt fields.
+Performance qualification requires that instrumentation and a reviewed
+multi-stream mapping that preserves the dependency DAG and completion
+ownership.
 
 Compile and run the standalone native executor test without CUDA or verbs:
 

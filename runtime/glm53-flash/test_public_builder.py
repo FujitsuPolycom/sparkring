@@ -89,3 +89,122 @@ def test_builder_uses_public_context_and_source_built_nccl() -> None:
     assert 'ENTRYPOINT ["vllm"]' in containerfile
     assert "COPY bundle/runtime/SparkRing-LICENSE" in containerfile
     assert "COPY bundle/sources/vllm/LICENSE" in containerfile
+
+@pytest.mark.parametrize('family', ['qwen', 'glm'])
+@pytest.mark.parametrize('damage', ['missing', 'extra', 'embedded-pins', 'untracked', 'valid'])
+def test_prepared_context_rejects_incomplete_or_contaminated_inputs(tmp_path, monkeypatch, family, damage):
+    from runtime.qwen38 import prepare_context as qwen
+    module = qwen if family == 'qwen' else prepare
+    pins_path = HERE.parent / 'qwen38/pins.json' if family == 'qwen' else PINS
+    pins = module.load_pins(pins_path)
+    names = ['pins.json', 'verify_runtime.py', 'qwen38_dgx2_serve.sh', 'qwen38_dgx4_serve.sh', 'chat_template_agentic.jinja', 'requirements-public.txt'] if family == 'qwen' else ['pins.json', 'verify_image.py', 'Containerfile', 'Containerfile.seed', 'build-image.sh', 'LICENSES.md', 'SparkRing-LICENSE']
+    files = {'bundle/runtime/'+name: b'payload' for name in names}
+    files['bundle/runtime/pins.json'] = pins_path.read_bytes()
+    if family == 'glm':
+        files['bundle/sources/instanttensor-'+pins['public_image_build']['instanttensor']['version']+'.tar.gz'] = b'archive'
+    for relative, data in files.items():
+        path = tmp_path/relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    receipt = {'schema': module.RECEIPT_SCHEMA, 'pins_sha256': module.sha256_file(pins_path), 'files': {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}
+    if damage == 'missing':
+        receipt['files'].pop('bundle/runtime/pins.json')
+    elif damage == 'extra':
+        receipt['files']['../outside'] = 'a'*64
+    elif damage == 'embedded-pins':
+        path = tmp_path/'bundle/runtime/pins.json'
+        path.write_text('{}')
+        receipt['files']['bundle/runtime/pins.json'] = module.sha256_file(path)
+    (tmp_path/'receipt.json').write_text(json.dumps(receipt))
+    def fake_run(argv, **kwargs):
+        if 'ls-files' in argv:
+            return 'injected.py' if damage == 'untracked' else ''
+        if 'write-tree' in argv:
+            name = Path(argv[argv.index('-C')+1]).name
+            source = pins['companion'] if name == 'qwen38-spark-pair' else (pins['sources'] if family == 'qwen' else pins['public_image_build']['sources'])[name]
+            return source.get('patched_tree', source.get('tree'))
+        return ''
+    def fake_git(repo, revision):
+        source = pins['companion'] if repo.name == 'qwen38-spark-pair' else (pins['sources'] if family == 'qwen' else pins['public_image_build']['sources'])[repo.name]
+        return source['commit'] if revision == 'HEAD' else source['tree']
+    monkeypatch.setattr(module, 'run', fake_run)
+    monkeypatch.setattr(module, 'git_value', fake_git)
+    if damage == 'valid':
+        assert module.verify_context(tmp_path, pins_path=pins_path) == receipt
+    else:
+        with pytest.raises(module.PrepareError):
+            module.verify_context(tmp_path, pins_path=pins_path)
+
+
+def test_image_probe_rejects_receipt_presence_without_identity(monkeypatch):
+    monkeypatch.setattr(verify, 'run', lambda argv: json.dumps({'nccl_sha256': 'a'*64, 'source_receipt_present': True, 'pins_present': True}))
+    with pytest.raises(verify.VerifyError):
+        verify.runtime_probe('unused', 'sha256:'+'b'*64)
+
+
+@pytest.mark.parametrize('damage', ['pins', 'receipt-label', 'sources', 'inventory', 'valid'])
+def test_image_verification_binds_installed_documents(monkeypatch, damage):
+    pins = verify.load_pins(PINS)
+    digest = hashlib.sha256(PINS.read_bytes()).hexdigest()
+    receipt = {'schema': prepare.RECEIPT_SCHEMA, 'pins_sha256': digest,
+               'sources': {name: {'commit': row['commit'], 'tree': row.get('patched_tree', row.get('tree'))}
+                           for name, row in pins['public_image_build']['sources'].items()}}
+    receipt['files'] = {name: 'd'*64 for name in prepare.payload_files(pins)}
+    receipt['files']['bundle/runtime/pins.json'] = digest
+    probe = {'nccl_sha256': pins['public_image_build']['outputs']['nccl_library_sha256'],
+             'source_receipt_sha256': 'a'*64, 'pins_sha256': digest, 'source_receipt': receipt,
+             'imports': ['vllm', 'b12x', 'instanttensor']}
+    labels = verify.expected_labels(pins) | {'org.sparkring.source-receipt-sha256': 'a'*64}
+    inspection = {'Id': 'sha256:'+'b'*64, 'Architecture': 'arm64', 'Os': 'linux', 'Config': {'Labels': labels}}
+    if damage == 'pins':
+        probe['pins_sha256'] = 'c'*64
+    if damage == 'receipt-label':
+        labels['org.sparkring.source-receipt-sha256'] = 'c'*64
+    if damage == 'sources':
+        receipt['sources']['vllm']['commit'] = 'c'*40
+    if damage == 'inventory':
+        receipt['files'].pop('bundle/runtime/Containerfile')
+    monkeypatch.setattr(verify, 'run', lambda argv: json.dumps([inspection]))
+    def mock_probe(engine, image):
+        assert image == inspection['Id']
+        return probe
+    monkeypatch.setattr(verify, 'runtime_probe', mock_probe)
+    if damage == 'valid':
+        assert verify.verify_image('unused', 'mutable-tag', PINS)['image_id'] == inspection['Id']
+    else:
+        with pytest.raises(verify.VerifyError):
+            verify.verify_image('unused', 'mutable-tag', PINS)
+
+@pytest.mark.parametrize('failing_module', [None, 'b12x'])
+def test_probe_executes_required_package_imports(tmp_path, monkeypatch, failing_module):
+    import contextlib
+    import importlib
+    import importlib.metadata
+    import io
+    imports = []
+    def import_package(name):
+        imports.append(name)
+        if name == failing_module:
+            raise ImportError('unloadable runtime package')
+        return object()
+    monkeypatch.setattr(importlib, 'import_module', import_package)
+    monkeypatch.setattr(importlib.metadata, 'version', lambda name: 'test-version')
+    for name, data in [('nccl', b'library'), ('receipt', b'{}'), ('pins', b'{}')]:
+        (tmp_path/name).write_bytes(data)
+    def execute_probe(argv):
+        program = argv[-1]
+        for original, name in [('/opt/sparkring/nccl/libnccl.so.2.30.7', 'nccl'),
+                               ('/opt/sparkring/runtime/source-receipt.json', 'receipt'),
+                               ('/opt/sparkring/runtime/pins.json', 'pins')]:
+            program = program.replace(original, (tmp_path/name).as_posix())
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            exec(program, {})
+        return output.getvalue()
+    monkeypatch.setattr(verify, 'run', execute_probe)
+    if failing_module:
+        with pytest.raises(ImportError, match='unloadable'):
+            verify.runtime_probe('unused', 'unused')
+    else:
+        result = verify.runtime_probe('unused', 'unused')
+        assert result['imports'] == imports == ['vllm', 'b12x', 'instanttensor']

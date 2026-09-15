@@ -17,12 +17,89 @@ SIRCL_ENVIRONMENT = HERE / "sircl-fused.env.example"
 IMAGE_ID = "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
 
 
+def _offline_integer_spec(tmp_path: Path, rank: str, setting: str = ""):
+    fake_bin, capture, _ = _launcher_fixture(tmp_path)
+    config = tmp_path / "integer-spec.env"
+    config.write_text("\n".join((
+        "HOST_IP=rank0.example.net", "MASTER_ADDR=rank0.example.net",
+        "TARGET_MODEL_HOST_PATH=/nonexistent-target",
+        "DFLASH_MODEL_HOST_PATH=/nonexistent-draft",
+        "CACHE_HOST_ROOT=/nonexistent-cache",
+        f"PATH={_bash_path(fake_bin)}:$PATH",
+        f"export CAPTURE_PATH={_bash_path(capture)}",
+        "SPARKRING_PRINT_CONTAINER_SPEC=1", "SPARKRING_OFFLINE_SPEC=1",
+        "SPARKCACHE_ENABLED=0", setting,
+    )), encoding="utf-8", newline="\n")
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), rank, _bash_path(config)],
+        cwd=ROOT, text=True, capture_output=True, check=False, timeout=15,
+    )
+    assert not capture.exists(), "offline rendering must not run a container"
+    return result
+
+
+@pytest.mark.parametrize("rank,headless", [("0", False), ("1", True)])
+def test_canonical_rank_preserves_api_role(tmp_path, rank, headless):
+    result = _offline_integer_spec(tmp_path, rank, "PORT=65535")
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(result.stdout)["argv"]
+    assert ("--headless" in argv) is headless
+    assert argv[argv.index("--node-rank") + 1] == rank
+    assert argv[argv.index("--port") + 1] == "65535"
+
+
+@pytest.mark.parametrize("rank,setting,diagnostic", [
+    ("00", "", "rank must be an unsigned integer without leading zeros"),
+    ("01", "", "rank must be an unsigned integer without leading zeros"),
+    ("18446744073709551616", "", "rank exceeds the supported integer range"),
+    ("0", "PORT=18446744073709559631", "PORT exceeds the supported integer range"),
+    ("0", "PORT=9223372036854775808", "PORT exceeds the supported integer range"),
+    ("0", "PORT=08015", "PORT must be an unsigned integer without leading zeros"),
+    ("0", "PORT=65536", "ports must be at most 65535"),
+    ("0", "NODE_COUNT=18446744073709551620", "NODE_COUNT exceeds the supported integer range"),
+])
+def test_invalid_integers_fail_before_container_execution(tmp_path, rank, setting, diagnostic):
+    result = _offline_integer_spec(tmp_path, rank, setting)
+    assert result.returncode == 78
+    assert diagnostic in result.stderr
+    assert '"schema": "sparkring-container-command/v1"' not in result.stdout
+
+
+@pytest.mark.parametrize("gid,submit_cpu,progress_cpu,diagnostic", [
+    ("0", "0", "1", None),
+    ("255", "1", "0", None),
+    ("256", "0", "1", "SPARK_TP4_GID0 must be at most 255"),
+    ("0", "2147483648", "1", "SPARK_TP4_GRAPH_SUBMIT_CPU exceeds the native CPU index range"),
+    ("0", "0", "0", "SIRCL graph submit and progress CPUs must be distinct"),
+])
+def test_sircl_indices_use_native_ranges(tmp_path, gid, submit_cpu, progress_cpu, diagnostic):
+    result = _offline_integer_spec(tmp_path, "0", "\n".join((
+        "SIRCL_ENABLED=1", "SPARK_TP4_PEER0=rank1.example.net",
+        "SPARK_TP4_PEER1=rank2.example.net", f"SPARK_TP4_GID0={gid}",
+        "SPARK_TP4_GID1=0", f"SPARK_TP4_GRAPH_SUBMIT_CPU={submit_cpu}",
+        f"SPARK_TP4_GRAPH_PROGRESS_CPU={progress_cpu}",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256=" + "a" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256=" + "b" * 64,
+    )))
+    if diagnostic is not None:
+        assert result.returncode == 78
+        assert diagnostic in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        argv = json.loads(result.stdout)["argv"]
+        assert f"SPARK_TP4_GID0={gid}" in argv
+        assert f"SPARK_TP4_GRAPH_SUBMIT_CPU={submit_cpu}" in argv
+        assert f"SPARK_TP4_GRAPH_PROGRESS_CPU={progress_cpu}" in argv
+
+
 def _defaults(path: Path = ENVIRONMENT) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([A-Z0-9_]+)=(?:'([^']*)'|([^#\s]+))", line)
         if match:
-            values[match.group(1)] = match.group(2) or match.group(3)
+            values[match.group(1)] = (
+                match.group(2) if match.group(2) is not None else match.group(3)
+            )
     return values
 
 
@@ -181,55 +258,7 @@ def test_launcher_resolves_dcp_profiles_and_prompt_token_details(
     tmp_path: Path, capture_mode: str, access_mode: str, capture_enabled: bool,
 ) -> None:
     subprocess.run(["bash", "-n", _bash_path(LAUNCHER)], check=True, cwd=ROOT)
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    capture = tmp_path / "docker-arguments.txt"
-    docker = fake_bin / "docker"
-    docker.write_text(
-        """#!/bin/sh
-if [ "$1" = image ] && [ "$2" = inspect ]; then
-  printf '%s\n' "$EXPECTED_IMAGE_ID"
-elif [ "$1" = container ] && [ "$2" = inspect ]; then
-  exit 1
-elif [ "$1" = run ]; then
-  printf '%s\n' "$@" > "$CAPTURE_PATH"
-else
-  exit 97
-fi
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(docker, 0o755)
-    sha256sum = fake_bin / "sha256sum"
-    sha256sum.write_text(
-        """#!/bin/sh
-case "$2" in
-  */target/config.json) hash=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 ;;
-  */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
-  */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
-  */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
-  */libspark_transport_capi.so) hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
-  */sparkring-overlay-manifest.json) hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
-  *) exit 95 ;;
-esac
-printf '%s  %s\n' "$hash" "$2"
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(sha256sum, 0o755)
-
-    directories = {name: tmp_path / name for name in ("target", "draft", "cache")}
-    for directory in directories.values():
-        directory.mkdir()
-    for path in (
-        directories["target"] / "config.json",
-        directories["target"] / "model.safetensors.index.json",
-        directories["draft"] / "config.json",
-        directories["draft"] / "model.safetensors",
-    ):
-        path.write_text("fixture", encoding="utf-8")
+    fake_bin, capture, directories = _launcher_fixture(tmp_path)
 
     for dcp, interleave, gather, kv_bytes in (
         (1, "1", "0", "25769803776"),
@@ -454,53 +483,7 @@ def test_launcher_rejects_shared_prefix_retention_above_five_minutes(
     reason="WSL DrvFS reports Windows temporary files as mode 0777",
 )
 def test_launcher_renders_optional_multi_key_authentication(tmp_path: Path) -> None:
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    capture = tmp_path / "docker-arguments.txt"
-    docker = fake_bin / "docker"
-    docker.write_text(
-        """#!/bin/sh
-if [ "$1" = image ] && [ "$2" = inspect ]; then
-  printf '%s\n' "$EXPECTED_IMAGE_ID"
-elif [ "$1" = container ] && [ "$2" = inspect ]; then
-  exit 1
-elif [ "$1" = run ]; then
-  printf '%s\n' "$@" > "$CAPTURE_PATH"
-else
-  exit 97
-fi
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(docker, 0o755)
-    sha256sum = fake_bin / "sha256sum"
-    sha256sum.write_text(
-        """#!/bin/sh
-case "$2" in
-  */target/config.json) hash=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 ;;
-  */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
-  */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
-  */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
-  *) exit 95 ;;
-esac
-printf '%s  %s\n' "$hash" "$2"
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(sha256sum, 0o755)
-
-    directories = {name: tmp_path / name for name in ("target", "draft", "cache")}
-    for directory in directories.values():
-        directory.mkdir()
-    for path in (
-        directories["target"] / "config.json",
-        directories["target"] / "model.safetensors.index.json",
-        directories["draft"] / "config.json",
-        directories["draft"] / "model.safetensors",
-    ):
-        path.write_text("fixture", encoding="utf-8")
+    fake_bin, capture, directories = _launcher_fixture(tmp_path)
 
     def launch(name: str, *overrides: str) -> subprocess.CompletedProcess[str]:
         config = tmp_path / f"{name}.env"
@@ -628,7 +611,7 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
     documents = (
         HERE / "README.md",
         HERE / "LIVE_VALIDATION.md",
-        ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md",
+        ROOT / "docs/history/glm53-dflash-operator.md",
     )
     private_address = re.compile(
         r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)"
@@ -1001,7 +984,7 @@ def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
     values = _defaults(SIRCL_ENVIRONMENT)
     assert values == {
         "SIRCL_ENABLED": "1",
-        "SIRCL_BUNDLE_HOST_ROOT": None,
+        "SIRCL_BUNDLE_HOST_ROOT": "",
         "SPARK_TP4_PEER0": "REPLACE_WITH_PRIMARY_PEER_0_ADDRESS",
         "SPARK_TP4_PEER1": "REPLACE_WITH_PRIMARY_PEER_1_ADDRESS",
         "SPARK_TP4_DEVICE0": "rocep1s0f0",

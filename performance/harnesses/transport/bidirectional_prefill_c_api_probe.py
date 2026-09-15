@@ -108,6 +108,9 @@ def invoke(
 def validate_noninteger(output, query_rows: int) -> tuple[float, int]:
     import torch
 
+    actual = output.reshape(-1).float()
+    if not bool(torch.isfinite(actual).all().item()):
+        raise RuntimeError('Noninteger collective output contains non-finite values')
     count = query_rows * 4096
     index = torch.arange(count, device="cuda", dtype=torch.int32)
     expected = torch.zeros(count, device="cuda", dtype=torch.float32)
@@ -117,7 +120,6 @@ def validate_noninteger(output, query_rows: int) -> tuple[float, int]:
         values += ((index + 3 * rank).remainder(11)).float() / 512.0
         expected += values.to(torch.bfloat16).float()
     expected = expected.to(torch.bfloat16).float()
-    actual = output.reshape(-1).float()
     difference = (actual - expected).abs()
     tolerance = 0.0625 + 0.02 * expected.abs()
     return float(difference.max().item()), int((difference > tolerance).sum().item())
@@ -247,6 +249,7 @@ def run_shape(args, query_rows: int, library: ctypes.CDLL) -> dict[str, object]:
         "noninteger_mismatches": noninteger_mismatches,
         "noninteger_max_abs": noninteger_max_abs,
         "stream_zero_exact_mismatches": stream_zero_exact_mismatches,
+        "stream_zero_tested": args.include_stream_zero,
         "stream_zero_noninteger_mismatches": (
             stream_zero_noninteger_mismatches
         ),

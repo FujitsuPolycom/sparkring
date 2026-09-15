@@ -68,10 +68,17 @@ param(
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
     [switch]$ValidateOnly,
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = @()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -93,6 +100,39 @@ if ($ControlPort0 -eq $ControlPort1) {
 if ($SubmitCpu -eq $ProgressCpu) {
     throw "SubmitCpu and ProgressCpu must differ"
 }
+
+function Test-CpuInSet {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Set,
+
+        [Parameter(Mandatory)]
+        [int]$Cpu
+    )
+
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so both pinned CPUs must lie inside it.
+foreach ($cpu in @($SubmitCpu, $ProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+# Index only the non-empty entries so an embedded empty element cannot shift
+# the rank-to-target mapping after the count check.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
 if ($MultiGraphValidation -and -not $DisablePerformanceGates) {
     throw "MultiGraphValidation requires DisablePerformanceGates because it synchronizes and verifies every replay"
 }
@@ -187,7 +227,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -197,8 +237,8 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-graph-q1-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $name = "spark-tp4-graph-q1-$runIdentity-r$($Node.Rank)"
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
         return "missing"
@@ -208,8 +248,8 @@ function Get-ContainerState {
 
 $hashes = @()
 foreach ($node in $nodes) {
-    $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "test -x '$ProbeBinary' && sha256sum '$ProbeBinary'")
+    $hash = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        "test -x $(ConvertTo-PosixShellArgument $ProbeBinary) && sha256sum $(ConvertTo-PosixShellArgument $ProbeBinary)")
     if ($LASTEXITCODE -ne 0) {
         throw "rank $($node.Rank) is missing the staged graph probe"
     }
@@ -244,22 +284,21 @@ if ($MixedQValidation) {
 
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-graph-q1-r$($node.Rank)"
+        $name = "spark-tp4-graph-q1-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
             "--ulimit memlock=-1"
-            "-v ${ProbeBinary}:/probe:ro"
+            "-v $(ConvertTo-PosixShellArgument "${ProbeBinary}:/probe:ro")"
             "--entrypoint /usr/bin/env"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "env -u SPARK_TRANSPORT_TRACE"
             "taskset -c $SubmitCpu /probe"
             "--rank $($node.Rank)"
-            "--peer0 $($node.Peer0)"
-            "--peer1 $($node.Peer1)"
+            "--peer0 $(ConvertTo-PosixShellArgument $node.Peer0)"
+            "--peer1 $(ConvertTo-PosixShellArgument $node.Peer1)"
             "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"
@@ -280,6 +319,8 @@ try {
             ">/dev/null"
         ) -join " "
 
+        # The invocation-specific name also identifies a launch whose SSH reply is lost.
+        $ownedNodes += $node
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch graph probe rank $($node.Rank)"
@@ -380,9 +421,15 @@ try {
         $expectedKernelSplitNodes = $expectedCapturedNodes
     }
     else {
+        # tiered_64k keeps a node fused only while its active bytes fit in
+        # 64 KiB (kTp4TieredFusedMaximumBytes); wider nodes use the split
+        # kernel. Q5 is the last fused width at 12,288 bytes per row.
+        $tieredFusedMaximumBytes = 64L * 1024L
         $expectedKernelFusedNodes = 0L
-        for ($q = 1; $q -le 6; $q++) {
-            $expectedKernelFusedNodes += $expectedQHistogram[$q - 1]
+        for ($q = 1; $q -le 512; $q++) {
+            if (([long]$q * 6144L * 2L) -le $tieredFusedMaximumBytes) {
+                $expectedKernelFusedNodes += $expectedQHistogram[$q - 1]
+            }
         }
         $expectedKernelSplitNodes = `
             $expectedCapturedNodes - $expectedKernelFusedNodes
@@ -403,22 +450,23 @@ try {
     }
     else {
         $expectedTimingScope = `
-            "device_output_ready_replay_throughput"
+            "device_graph_cycle_with_preparation_and_validation"
         $expectedDeviceGateMetric = `
-            "mean_device_output_ready_us_per_collective"
+            "mean_device_graph_cycle_us_per_collective"
     }
 
     foreach ($node in $nodes) {
-        $name = "spark-tp4-graph-q1-r$($node.Rank)"
+        $name = "spark-tp4-graph-q1-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
-        $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        $log = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1")
         $result = @($log | Where-Object { $_ -like "TP4_GRAPH_Q1*" })
         Write-Output "rank=$($node.Rank) state=$state"
         $result | Write-Output
 
-        $gate = $result -join " "
-        if ($state -ne "exited:0" `
+        # One probe invocation must produce one complete result record.
+        $gate = if ($result.Count -eq 1) { $result[0] } else { "" }
+        if ($result.Count -ne 1 -or $state -ne "exited:0" `
             -or $gate -notmatch "publisher=device" `
             -or $gate -notmatch "mode=$expectedMode(?:\s|$)" `
             -or $gate -notmatch "mixed_q=$expectedMixedQ(?:\s|$)" `
@@ -471,6 +519,12 @@ try {
             Write-Output "rank=$($node.Rank) failure_log:"
             $log | Select-Object -Last 40 | Write-Output
         }
+        if ($TimingMode -eq "burst" -and `
+            ($gate -notmatch "device_graph_cycle_us=[0-9.eE+-]+(?:\s|$)" `
+            -or $gate -notmatch "device_graph_cycle_us_per_collective=[0-9.eE+-]+(?:\s|$)")) {
+            $failed = $true
+            Write-Output "rank=$($node.Rank) missing burst graph-cycle timing fields"
+        }
         if ($TimingMode -eq "isolated" -and `
             ($gate -notmatch "timing_samples=$Iterations(?:\s|$)" `
                 -or $gate -notmatch "device_output_ready_us_per_graph_min=[0-9.eE+-]+(?:\s|$)" `
@@ -488,8 +542,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-graph-q1-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-graph-q1-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }

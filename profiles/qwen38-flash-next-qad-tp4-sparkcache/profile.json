@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-qad-tp4-sparkcache",
+  "title": "Qwen3.8-Flash-Next NVFP4 QAD on four Sparks with persistent prefix caching",
+  "recommendation": "alternative",
+  "status": "implemented",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
+  },
+  "release": "runtime/releases/qwen38-flash-next-qad-r37-shared-registry/release.json",
+  "guide": "profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md",
+  "evidence_scope": "Bounded QAD TP4/DCP1 text cold/warm reuse, four-rank disk restore through fresh processes, corrupted-object rejection with full recomputation, and original-service rollback. No media, full-context, concurrent, performance or long-duration qualification.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan",
+      "check",
+      "create"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
+    ]
+  }
+}

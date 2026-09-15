@@ -160,6 +160,17 @@ def copy_file(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
+def payload_files(pins):
+    return (
+        "bundle/runtime/pins.json",
+        "bundle/runtime/verify_runtime.py",
+        "bundle/runtime/qwen38_dgx2_serve.sh",
+        "bundle/runtime/qwen38_dgx4_serve.sh",
+        "bundle/runtime/chat_template_agentic.jinja",
+        "bundle/runtime/requirements-public.txt",
+    )
+
+
 def prepare(output: Path, *, repo_root: Path, pins_path: Path) -> dict[str, Any]:
     if output.exists():
         raise PrepareError(f"output already exists: {output}")
@@ -258,14 +269,7 @@ def prepare(output: Path, *, repo_root: Path, pins_path: Path) -> dict[str, Any]
     copy_file(repo_root / "scripts" / "qwen38_dgx2_serve.sh", runtime / "qwen38_dgx2_serve.sh")
     copy_file(repo_root / "scripts" / "qwen38_dgx4_serve.sh", runtime / "qwen38_dgx4_serve.sh")
 
-    receipt_files = (
-        "bundle/runtime/pins.json",
-        "bundle/runtime/verify_runtime.py",
-        "bundle/runtime/qwen38_dgx2_serve.sh",
-        "bundle/runtime/qwen38_dgx4_serve.sh",
-        "bundle/runtime/chat_template_agentic.jinja",
-        "bundle/runtime/requirements-public.txt",
-    )
+    receipt_files = payload_files(pins)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "pins_sha256": sha256_file(pins_path),
@@ -304,8 +308,14 @@ def verify_context(context: Path, *, pins_path: Path) -> dict[str, Any]:
         raise PrepareError(f"unsupported receipt schema: {receipt.get('schema')!r}")
     if receipt.get("pins_sha256") != sha256_file(pins_path):
         raise PrepareError("prepared context was produced from different pins")
+    if not isinstance(receipt.get("files"), dict) or set(receipt["files"]) != set(payload_files(pins)):
+        raise PrepareError("prepared receipt must contain the complete payload inventory")
     for relative, expected in receipt["files"].items():
-        require_hash(context / relative, expected, relative)
+        path = context / relative
+        if not path.resolve().is_relative_to(context.resolve()):
+            raise PrepareError("prepared payload escapes context: " + relative)
+        require_hash(path, expected, relative)
+    require_hash(context / "bundle/runtime/pins.json", sha256_file(pins_path), "embedded pins")
 
     sources = context / "bundle" / "sources"
     source_pins = {
@@ -334,6 +344,8 @@ def verify_context(context: Path, *, pins_path: Path) -> dict[str, Any]:
             raise PrepareError(f"prepared {name} tree drift")
         if run(("git", "-C", str(repo), "diff", "--name-only")):
             raise PrepareError(f"prepared {name} has unstaged changes")
+        if run(("git", "-C", str(repo), "ls-files", "--others")):
+            raise PrepareError(f"prepared {name} contains untracked source files")
     return receipt
 
 

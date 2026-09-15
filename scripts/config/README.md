@@ -1,7 +1,8 @@
 # Serving configuration templates
 
-This directory contains sanitized inputs for the supported GLM-5.2 EXL3
-3.5-bpw, GLM-5.3 Flash, DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving
+This directory contains sanitized deployment and reproduction inputs for GLM-5.2 EXL3
+3.5-bpw, GLM-5.3 Flash, DeepSeek-V4-Flash-0731, DeepSeek-V4.1-Flash, and
+Qwen3.8-27B EXL3 K5/K6 serving
 configurations. Templates describe contracts; they are not deployment receipts
 or evidence of a healthy cluster.
 
@@ -49,9 +50,11 @@ python -m pytest \
   runtime/exl3-r7/test_exl3_r7_verify_runtime.py -q
 ```
 
-## GLM-5.3 Flash with BF16 DFlash2
+## Retained BF16 DFlash2 reproduction
 
-The operator template is
+These inputs reproduce the retired BF16 DFlash2 operator configuration.
+Choose a maintained deployment from the [profile catalog](../../profiles/README.md).
+The retained operator template is
 [`runtime/glm53-flash-jj-r8-gb10/runtime.env.example`](../../runtime/glm53-flash-jj-r8-gb10/runtime.env.example).
 It configures one published Linux/ARM64 image for TP4 with DCP1, DCP2, or
 DCP4. Its defaults are TP4/DCP4, a 1,048,576-token request limit, 16 sequences,
@@ -69,7 +72,7 @@ developer override.
 `SPARKCACHE_ENABLED=1` enables persistent SparkCache plus vLLM prefix caching.
 `SPARKCACHE_ENABLED=0` omits the persistent connector and retains vLLM prefix
 caching. Both modes use the same image and
-[`GLM-5.3 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md).
+[retained configuration reference](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md).
 
 `glm53-flash-tp4-site.example.yaml` is the companion topology and preflight
 input. Its image identity and DCP4 memory settings match the operator image.
@@ -143,6 +146,20 @@ The template's immutable image digest is also represented in
 [`runtime/faststart-lock.json`](../../runtime/faststart-lock.json). If those
 inputs differ, stop and resolve the identity drift before launching.
 
+## DeepSeek-V4.1-Flash
+
+Status: **implemented**. `deepseek-v41-flash-cycle.env.example` selects the
+four-rank cycle launcher, local image ID, runtime patch directory, patched NCCL
+library, and rank-local model/cache paths. Fill every placeholder independently
+on each host; image, checkpoint and serving settings must agree across ranks.
+
+The configured request limit is 1,048,576 tokens, with eight sequences and an
+8,192-token scheduler budget. Engram lookup tables remain on local NVMe.
+The recorded capacity and serving measurements used request limits through
+430,080 tokens; they do not qualify a completed 1M-token request. Follow the
+[DeepSeek-V4.1 quickstart](../../profiles/deepseek-v41-flash-cycle/README.md)
+and [runtime build instructions](../../runtime/deepseek-v41-gb10/README.md).
+
 ## Qwen3.8-27B EXL3 K5/K6
 
 `qwen38-27b-exl3-k5k6-pair.env.example` is the per-rank environment for the
@@ -207,5 +224,5 @@ for planning, verification, create-only, and image-import behavior.
 Copying or validating a template is **OFFLINE**. Contacting configured ranks
 without changing them is **READ-ONLY REMOTE**. Pulling an image, creating a
 container, changing host files, or stopping a serving stack is **MUTATES HOST**
-or **STOPS SERVING** and requires explicit authorization for the named hosts
-and action.
+or **STOPS SERVING** and requires applicable authorization for the hosts and
+actions, including authorization already given.

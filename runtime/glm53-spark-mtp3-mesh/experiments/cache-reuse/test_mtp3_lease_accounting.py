@@ -70,6 +70,7 @@ def attach(runtime, prompt, lease, *, accepted=True, preempted=0, stats=True):
     return scheduler, request, events
 
 
+# Full-prompt leases leave the final token for execution: cached tokens stop at prompt-1.
 @pytest.mark.parametrize("prompt,lease,expected", [(40000, 32768, 32768), (32768, 32768, 32767)])
 def test_attached_gpu_prefix_reaches_api_total_without_external_transfer(runtime, prompt, lease, expected):
     scheduler, request, events = attach(runtime, prompt, lease)

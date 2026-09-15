@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "deepseek-v41-flash-cycle",
+  "inputs": [],
+  "image": {
+    "configuration_runtime": "profiles/deepseek-v41-flash-cycle/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

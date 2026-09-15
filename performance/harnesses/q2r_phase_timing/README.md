@@ -1,24 +1,26 @@
-# Q-2R bounded phase timing
+# Bounded speculative-decoding phase timing
 
 ## Status
 
-Offline component only. It does not install itself, edit the launch path, or
-touch a Spark.
+Status: implemented with synthetic CPU tests. Importing the package does not
+install hooks or access a GPU. Live measurement requires the explicit probe
+bootstrap, matching source fingerprints, and CUDA event allocation.
 
-`live_installer.py` is an opt-in installer candidate, but nothing imports it.
+The worker bootstrap in `spark_q2r_probe_bridge.py` calls `live_installer.py`
+when the combined probe is enabled with `SPARK_Q2R_PROBE=1`.
 Calling its module-level `install()` requires
 `SPARK_Q2R_PHASE_TIMING=1`. It pins the exact deployed vLLM version and every
 source seam before mutating one method, then preallocates all events before
 arming.
 
-The existing live diagnostic times only
-`CudaGraphManager.run_fullgraph`. Q-2 showed that this accounts for
-146.740 ms of a 323.614 ms MTP5 round, but the remainder contains draft and
-multistep execution, other graph modes, eager transitions, and cached-prefix
-stock collectives. Calling that remainder CPU overhead would be incorrect.
+Timing only `CudaGraphManager.run_fullgraph` leaves draft generation, other
+graph modes, eager transitions, and collectives outside that call unmeasured.
+The difference from whole-round wall time cannot be labelled CPU overhead
+without measuring those regions.
 
-This component provides the bounded recorder needed to measure those regions
-without adding a synchronization to the serving path.
+The installed hooks measure the execution envelopes, graph calls, and draft
+generation described below. Eager-transition and collective-boundary timing
+remain unimplemented. The recorder adds no CUDA synchronization to the serving path.
 
 ## Hot-path contract
 
@@ -33,15 +35,27 @@ without adding a synchronization to the serving path.
 - never calls `query` or `elapsed_time` in `measure`;
 - never allocates another CUDA event or grows a duration list while armed;
 - stops accepting samples at capacity and increments `dropped.capacity`;
-- passes unregistered descriptors through and increments
-  `dropped.unregistered_descriptor`.
+- executes operations with unregistered descriptors without recording timing
+  and increments `dropped.unregistered_descriptor`;
+- propagates operation exceptions and excludes aborted operations from timing
+  aggregates; `errors.operation` counts failures after a start event is recorded.
 
 There is a small Python mutex around slot reservation and counter updates.
 That is a host bookkeeping lock, not a CUDA synchronization. The intended
 integration runs on the single model-execution thread; the lock protects
 low-rate snapshots from torn counters.
 
-`snapshot()` copies counters only and is safe for before/after evidence.
+`snapshot()` copies counters and completed timing samples without polling CUDA.
+The live-session snapshot also reports whether hooks are installed, cleanup
+is pending, and manager binding is complete. An empty startup registry can be
+reported before model initialization, but cannot be armed. Cleanup disarms the
+recorder; if cleanup fails, retry it before arming again.
+Module-level `live_installer.uninstall()` retries retained cleanup and clears
+the installed session only after successful hook restoration.
+Session lifecycle and reporting calls are serialized separately from model
+callbacks. Install, arm, disarm, reset, and uninstall outside measured model
+execution; this serialization does not wait for GPU work to finish.
+
 `drain()` is a separate, nonblocking completion poll: an unready event remains
 pending. It must run in the low-rate reporter or after timed execution, never
 inside a model phase. `reset()` reuses the preallocated event pairs only after
@@ -58,20 +72,23 @@ The seven phase families are:
 7. `collective`
 
 Sublabels must be finite and registered at construction. Recommended initial
-labels are target `Q5`/`Q6`, observed draft manager stage
+labels are target query lengths five and six (`Q5`/`Q6`), observed draft manager stage
 (`prefill`/`decode`), graph mode plus token count, eager boundary reason, and
 collective family plus eligibility reason. Do not synthesize per-step draft
 counts from the configured speculative depth.
 
 ## Fail-closed adapter
 
-`vllm_adapter.py` is intentionally generic and all-or-nothing. Every
+`vllm_adapter.py` validates the complete hook set before mutation. Every
 owner/method/source SHA-256 is validated before any monkeypatch occurs. A
 missing method, changed source, uninspectable function, duplicate target, or
 pre-existing wrapper aborts installation without mutating vLLM. Uninstall
 also refuses to overwrite a method changed by somebody else.
+An assignment failure triggers rollback. If restoration also fails, the
+adapter reports the failure and retains pending cleanup for an explicit retry;
+it does not guarantee atomic restoration under arbitrary setter failures.
 
-The only currently pinned deployed seam is:
+The pinned runtime version and graph-replay seam are:
 
 ```text
 vLLM:
@@ -80,10 +97,10 @@ CudaGraphManager.run_fullgraph source SHA-256:
   4d58b8ef1a5023af0c11eb7a659620faca15f8a0303b37774ed0d28f4a5919db
 ```
 
-Do not infer target versus draft solely from `num_tokens`. The Q-2 trace
-proved two FULL Q6 replays per target round, and the first draft vocabulary
-operation can also be captured. A semantic context must be set at the caller
-that owns the target verification or MTP iteration.
+Do not infer target versus draft solely from `num_tokens`. Target and draft
+managers may share a query length, and the first draft vocabulary operation
+can also be captured. Set semantic context at the caller that owns target
+verification or the draft iteration.
 
 Live source inspection confirmed that this deployed `CudaGraphManager` has
 both `run_fullgraph(desc)` and `run_pw_graph(model, model_inputs)`, and that
@@ -101,12 +118,10 @@ decode_cudagraph_manager  -> draft positions 1..K-1, Q = 1
 
 The target uses a third `ModelCudaGraphManager`. Query length remains metadata,
 not semantic ownership. Manager ownership also does not prove invocation:
-the live Q-2R run observed draft-prefill once per round and zero calls through
-the registered draft-decode manager.
+an eager draft loop need not call the registered draft-decode graph manager.
 
-That zero is now explained by the exact imported V2 source, not by an inferred
-five-step count. A read-only census of the live rank-0 container resolved
-`AutoRegressiveSpeculator` to:
+The source identity associated with the pinned `AutoRegressiveSpeculator`
+call boundaries is:
 
 ```text
 /opt/venv/lib/python3.12/site-packages/vllm/v1/worker/gpu/spec_decode/
@@ -126,16 +141,16 @@ for step in range(1, self.num_speculative_steps):
 
 For configured MTP5, draft position 0 is produced by `_prefill`; the loop has
 four real positions, 1--4. There is no fifth decode-loop invocation. Fixed
-MTP4 similarly has three continuation positions, 1--3. The deployed non-FULL
-path explains why the graph-manager census saw zero decode calls.
+MTP4 similarly has three continuation positions, 1--3. The non-FULL path
+does not invoke the draft-decode graph manager.
 
 `draft_step_timing.py` establishes an ordinal context around that exact loop.
 It records the actual callable taken for each position: either the FULL graph
 replay or `_generate_draft`. It uses host loop ordinals and preallocated CUDA
 events; it never reads `current_draft_step`, queries an event, or synchronizes
 in the hot path. A successful fixed-depth loop must expose exactly `K - 1`
-real continuation calls: four for MTP5 or three for MTP4. Existing fixed MTP4
-and MTP5 launch contracts remain single-depth attestations.
+real continuation calls: four for MTP5 or three for MTP4. With adaptive depths
+disabled, `live_installer.py` accepts only the configured fixed depth in each round.
 
 Adaptive timing is accepted only for the exact attested contract
 `configured=4`, `depths={2,4}`, and `window=32`. The installer derives that
@@ -193,7 +208,7 @@ Both `run_fullgraph` and `run_pw_graph` should use a dynamic
 
 The implemented live ownership seam is
 `GPUModelRunner.initialize_kv_cache`. After the original returns, it requires
-two distinct objects and explicitly binds:
+three distinct objects and explicitly binds:
 
 ```text
 self.cudagraph_manager                         -> TARGET_VERIFY
@@ -201,7 +216,7 @@ self.speculator.prefill_cudagraph_manager      -> DRAFT_PREFILL
 self.speculator.decode_cudagraph_manager       -> DRAFT_DECODE
 ```
 
-V2 splits one speculative round across two sequential runner calls.
+The pinned `GPUModelRunner` splits a speculative round across two sequential calls.
 `GPUModelRunner.execute_model` is the target-forward envelope, while
 `GPUModelRunner.sample_tokens` contains sampling and the later draft proposal.
 Both are independently source-pinned `step_envelope` descriptors. Their
@@ -252,7 +267,7 @@ After all managers have registered, resolve the finite manager/method/step
 descriptor set and pass it to `register_descriptors` before arming. Descriptor
 registration is rejected during or after an epoch.
 
-## Exact integration census for the next immutable bundle
+## Source verification before enabling a runtime bundle
 
 Before enabling this component, inspect and hash these methods from the exact
 running image:
@@ -260,8 +275,8 @@ running image:
 1. `vllm.v1.worker.gpu.cudagraph_utils.CudaGraphManager.run_fullgraph`
 2. `CudaGraphManager.run_pw_graph(model, model_inputs)`
 3. `CudaGraphManager.__init__`, specifically the stored
-   `decode_query_len`, to register an `UNKNOWN` manager before any replay;
-   this value is metadata, never semantic classification
+   `decode_query_len`; this value is metadata, never semantic classification.
+   The live installer binds explicit roles after `initialize_kv_cache`
 4. `AutoRegressiveSpeculator.init_cudagraph_manager`, which owns the
    draft-prefill and draft-decode managers
 5. the target manager's owning construction seam, which must explicitly
@@ -289,7 +304,7 @@ assert the vLLM version and immutable source-bundle manifest before calling
 `install`.
 
 For graph dispatch the stream expression should be equivalent to the existing
-known-good timer:
+timed graph call:
 
 ```python
 torch.cuda.current_stream(instance.device)
@@ -308,11 +323,11 @@ that implementation; do not silently substitute the default stream.
 6. Drain from the reporter until `pending == 0`; never synchronize to force
    completion.
 7. Take the after snapshot and compute `snapshot_delta`.
-8. Reject the evidence if any `record`/`drain` errors, capacity drops, unknown
+8. Reject the evidence if any operation, record, or drain errors, capacity drops, unknown
    descriptor drops, or cross-rank count disagreement exists.
 9. Reconcile whole-round wall time against the mutually exclusive semantic
    phases. Nested graph and collective timers are useful attribution but must
    not be summed as if they were disjoint.
 
-The first objective is to explain the 146.740 ms FULL / at-most 176.874 ms
-boundary. It is not yet a performance optimization.
+This probe attributes elapsed time to measured call boundaries. It does not
+establish a performance improvement.

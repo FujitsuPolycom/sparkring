@@ -33,10 +33,24 @@ param(
     [string]$Image = "<your-vllm-image>",
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
+    [ValidateSet("documented-cycle")]
+    [string]$DevicePreset,
+    [string[]]$Device0 = @(),
+    [string[]]$Device1 = @(),
+    # Named serving-container guard; this does not inventory other GPU users.
+    [ValidatePattern("^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")]
+    [string]$ModelContainer = "glm52-trace",
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = [System.Collections.Generic.List[object]]::new()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -52,6 +66,10 @@ if ($Image -eq "<your-vllm-image>") {
     throw "set -Image to your vLLM container image tag"
 }
 
+# Keep rank indices aligned with the non-empty entries validated above.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
+
 if ($ControlPort0 -eq $ControlPort1) {
     throw "ControlPort0 and ControlPort1 must differ"
 }
@@ -59,27 +77,60 @@ if ($SubmitCpu -eq $ProgressCpu) {
     throw "SubmitCpu and ProgressCpu must differ"
 }
 
+function Test-CpuInSet {
+    param([string]$Set, [int]$Cpu)
+    foreach ($part in ($Set -split ",")) {
+        if ($part -match "^(\d+)-(\d+)$") {
+            if ($Cpu -ge [int]$Matches[1] -and $Cpu -le [int]$Matches[2]) {
+                return $true
+            }
+        }
+        elseif ($part -match "^\d+$" -and $Cpu -eq [int]$part) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# The container is confined to CpuSet, so both pinned CPUs must lie inside it.
+foreach ($cpu in @($SubmitCpu, $ProgressCpu)) {
+    if (-not (Test-CpuInSet -Set $CpuSet -Cpu $cpu)) {
+        throw "CPU $cpu is outside -CpuSet $CpuSet"
+    }
+}
+
+. "$PSScriptRoot/tp4_device_mapping.ps1"
+$deviceMapping = @(Resolve-Tp4DeviceMapping -Preset $DevicePreset -Device0 $Device0 -Device1 $Device1)
+
 $nodes = @(
     [pscustomobject]@{
         Rank = 0
+        Device0 = $deviceMapping[0].Device0
+        Device1 = $deviceMapping[0].Device1
         Target = $Targets[0]
         Peer0 = $RankHosts[1]
         Peer1 = $RankHosts[3]
     },
     [pscustomobject]@{
         Rank = 1
+        Device0 = $deviceMapping[1].Device0
+        Device1 = $deviceMapping[1].Device1
         Target = $Targets[1]
         Peer0 = $RankHosts[0]
         Peer1 = $RankHosts[2]
     },
     [pscustomobject]@{
         Rank = 2
+        Device0 = $deviceMapping[2].Device0
+        Device1 = $deviceMapping[2].Device1
         Target = $Targets[2]
         Peer0 = $RankHosts[3]
         Peer1 = $RankHosts[1]
     },
     [pscustomobject]@{
         Rank = 3
+        Device0 = $deviceMapping[3].Device0
+        Device1 = $deviceMapping[3].Device1
         Target = $Targets[3]
         Peer0 = $RankHosts[2]
         Peer1 = $RankHosts[0]
@@ -95,7 +146,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -105,8 +156,8 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-vocab-graph-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $name = "spark-tp4-vocab-graph-$runIdentity-r$($Node.Rank)"
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
         return "missing"
@@ -116,17 +167,17 @@ function Get-ContainerState {
 
 $artifactHashes = @()
 foreach ($node in $nodes) {
-    $runningModel = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "docker ps --filter name=^/glm52-trace$ --format '{{.Names}}'")
+    $runningModel = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        "docker ps --filter name=^/${ModelContainer}$ --format '{{.Names}}'")
     if ($LASTEXITCODE -ne 0) {
         throw "failed to inspect running containers on rank $($node.Rank)"
     }
-    if (($runningModel -join "`n").Trim() -eq "glm52-trace") {
-        throw "rank $($node.Rank) still runs glm52-trace; the vocabulary graph probe requires the model-down memory window"
+    if (@($runningModel | ForEach-Object { $_.Trim() }) -contains $ModelContainer) {
+        throw "rank $($node.Rank) still runs $ModelContainer; stop that serving container explicitly before the vocabulary graph probe"
     }
 
-    $hash = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "test -x '$ProbeBinary' && test -f '$Library' && sha256sum '$ProbeBinary' '$Library'")
+    $hash = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        "test -x $(ConvertTo-PosixShellArgument $ProbeBinary) && test -f $(ConvertTo-PosixShellArgument $Library) && sha256sum $(ConvertTo-PosixShellArgument $ProbeBinary) $(ConvertTo-PosixShellArgument $Library)")
     if ($LASTEXITCODE -ne 0) {
         throw "rank $($node.Rank) is missing a staged vocabulary graph artifact"
     }
@@ -135,31 +186,30 @@ foreach ($node in $nodes) {
 if (@($artifactHashes | Sort-Object -Unique).Count -ne 1) {
     throw "vocabulary graph artifact SHA-256 values differ across ranks"
 }
-Write-Output "preflight=pass model_down=true identical_sha256=true"
+Write-Output "preflight=pass model_container=$ModelContainer model_container_running=false identical_sha256=true"
 Write-Output $artifactHashes[0]
 
 $failed = $false
 $timedOut = $false
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-vocab-graph-r$($node.Rank)"
+        $name = "spark-tp4-vocab-graph-$runIdentity-r$($node.Rank)"
         $command = @(
-            "docker rm -f $name >/dev/null 2>&1 || true;"
             "docker run -d --name $name"
             "--privileged --gpus all --network host --ipc host"
             "--cpuset-cpus=$CpuSet"
             "--ulimit memlock=-1"
-            "-v ${ProbeBinary}:/probe:ro"
-            "-v ${Library}:/opt/spark/lib/libspark_transport_capi.so:ro"
+            "-v $(ConvertTo-PosixShellArgument "${ProbeBinary}:/probe:ro")"
+            "-v $(ConvertTo-PosixShellArgument "${Library}:/opt/spark/lib/libspark_transport_capi.so:ro")"
             "-e LD_LIBRARY_PATH=/opt/spark/lib"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "env -u SPARK_TRANSPORT_TRACE"
             "taskset -c $SubmitCpu /probe"
             "--rank $($node.Rank)"
-            "--peer0 $($node.Peer0)"
-            "--peer1 $($node.Peer1)"
-            "--device0 rocep1s0f0 --device1 rocep1s0f1"
+            "--peer0 $(ConvertTo-PosixShellArgument $node.Peer0)"
+            "--peer1 $(ConvertTo-PosixShellArgument $node.Peer1)"
+            "--device0 $($node.Device0) --device1 $($node.Device1)"
             "--gid0 3 --gid1 3"
             "--control-port0 $ControlPort0"
             "--control-port1 $ControlPort1"
@@ -171,6 +221,9 @@ try {
             ">/dev/null"
         ) -join " "
 
+        # An SSH failure may follow a successful remote launch. The unique
+        # invocation name remains ours to clean up when its reply is lost.
+        $ownedNodes.Add($node)
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch vocabulary graph rank $($node.Rank)"
@@ -201,16 +254,17 @@ try {
         @($targetQ) + (@(1L) * $MtpTokens)
     ) -join ","
     foreach ($node in $nodes) {
-        $name = "spark-tp4-vocab-graph-r$($node.Rank)"
+        $name = "spark-tp4-vocab-graph-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
-        $log = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        $log = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1")
         $result = @($log | Where-Object { $_ -like "TP4_VOCAB_GRAPH*" })
         Write-Output "rank=$($node.Rank) state=$state"
         $result | Write-Output
 
-        $gate = $result -join " "
-        if ($state -ne "exited:0" `
+        # One probe invocation must produce one complete result record.
+        $gate = if ($result.Count -eq 1) { $result[0] } else { "" }
+        if ($result.Count -ne 1 -or $state -ne "exited:0" `
             -or $gate -notmatch "mtp_tokens=$MtpTokens(?:\s|$)" `
             -or $gate -notmatch "pattern=$expectedPattern(?:\s|$)" `
             -or $gate -notmatch "captured_nodes=$expectedNodes(?:\s|$)" `
@@ -230,8 +284,8 @@ try {
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-vocab-graph-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-vocab-graph-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }

@@ -292,13 +292,13 @@ def test_dedicated_graph_progress_cpu_never_enters_scheduler() -> None:
     source = _read("src/tp4_session.cpp")
     pause = _function(
         source,
-        "void adaptive_graph_poll_pause(",
+        "void graph_poll_pause(",
         "void require_exclusive_current_cpu(",
     )
 
     assert '"yield"' in pause
     assert "std::this_thread::yield" not in pause
-    assert "std::numeric_limits<std::uint32_t>::max()" in pause
+    assert "poll_misses" not in source
 
 
 def test_direct_doorbell_bypasses_mapped_command_publication() -> None:

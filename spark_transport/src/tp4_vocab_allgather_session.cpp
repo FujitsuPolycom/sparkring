@@ -56,7 +56,13 @@ std::uint64_t max_inflight_collectives() {
   }
   std::size_t consumed{};
   const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
+  std::uint64_t parsed{};
+  try {
+    parsed = std::stoull(text, &consumed);
+  } catch (const std::logic_error&) {
+    throw std::invalid_argument(
+        "SPARK_TP4_MAX_INFLIGHT must be an integer in [1, 4096]");
+  }
   if (consumed != text.size() || parsed == 0 ||
       parsed > kMaximumMaxInflight) {
     throw std::invalid_argument(

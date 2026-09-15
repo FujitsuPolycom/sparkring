@@ -202,3 +202,36 @@ def test_vocab_mode_requires_vocab_marker_in_group_chain(
     assert evidence["sircl"]["targets"][  # type: ignore[index]
         "GroupCoordinator._all_gather_out_place"
     ] == ["self", "input_", "dim"]
+
+
+@pytest.mark.parametrize("mode,enabled", [("", False), ("disabled", False), ("DISABLED", False), ("custom", True)])
+def test_allreduce_environment_matches_hook_installer(monkeypatch, tmp_path, mode, enabled):
+    def all_reduce(self, input_):
+        pass
+
+    def all_gather(self, output_tensor, input_tensor, stream):
+        pass
+
+    def group_gather(self, input_, dim):
+        pass
+
+    for name, attribute, target in (
+        ("vllm.distributed.device_communicators.cuda_communicator", "CudaCommunicator", types.SimpleNamespace(all_reduce=all_reduce)),
+        ("vllm.distributed.device_communicators.pynccl", "PyNcclCommunicator", types.SimpleNamespace(all_gather=all_gather)),
+        ("vllm.distributed.parallel_state", "GroupCoordinator", types.SimpleNamespace(_all_gather_out_place=group_gather)),
+    ):
+        module = types.ModuleType(name)
+        setattr(module, attribute, target)
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(verify_runtime, "module_source", lambda name: (
+        tmp_path / "fixture.py", "\n".join(verify_runtime.SIRCL_HOOK_MARKERS[name])))
+    library = tmp_path / "transport.so"
+    library.write_bytes(b"fixture")
+    monkeypatch.setenv("SPARK_TP4_LIBRARY", str(library))
+    monkeypatch.setenv("VLLM_SPARK_TP4_MODE", mode)
+    monkeypatch.delenv("VLLM_SPARK_TP4_VOCAB_MODE", raising=False)
+    if enabled:
+        with pytest.raises(RuntimeError, match="_spark_tp4_backend is absent"):
+            verify_runtime.verify_sircl_hooks({})
+    else:
+        verify_runtime.verify_sircl_hooks({})

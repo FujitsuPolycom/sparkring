@@ -189,3 +189,39 @@ def test_vllm_install_fails_before_patch_when_base_hash_drifts(
     }
     with pytest.raises(ValueError, match="vLLM base hash mismatch"):
         apply_compute._install_vllm(prepared, site, lock)
+
+
+@pytest.mark.parametrize("fault", [None, "base", "result"])
+def test_vllm_replacements_are_all_verified_before_install(tmp_path, fault):
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    patch = prepared / "change.patch"
+    patch.write_bytes(b"fixture patch")
+    site = tmp_path / "site"
+    (site / "vllm").mkdir(parents=True)
+    entries = []
+    archive = prepared / "files.tar.gz"
+    with tarfile.open(archive, "w:gz") as output:
+        for index in range(2):
+            name = f"vllm/file{index}.py"
+            before = f"before{index}".encode()
+            after = f"after{index}".encode()
+            (site / name).write_bytes(before)
+            row = [name, hashlib.sha256(before).hexdigest(), hashlib.sha256(after).hexdigest()]
+            if index == 1 and fault:
+                row[1 if fault == "base" else 2] = "0" * 64
+            entries.append(row)
+            member = tarfile.TarInfo(name)
+            member.size = len(after)
+            output.addfile(member, io.BytesIO(after))
+    lock = {"vllm": {"patch": patch.name, "patch_sha256": apply_compute._sha256(patch),
+                      "replacement_archive": archive.name,
+                      "replacement_archive_sha256": apply_compute._sha256(archive), "files": entries}}
+    if fault:
+        with pytest.raises(ValueError, match=f"vLLM {fault} hash mismatch"):
+            apply_compute._install_vllm(prepared, site, lock)
+        assert [(site / row[0]).read_bytes() for row in entries] == [b"before0", b"before1"]
+    else:
+        result = apply_compute._install_vllm(prepared, site, lock)
+        assert result == {name: digest for name, _, digest in entries}
+        assert [(site / row[0]).read_bytes() for row in entries] == [b"after0", b"after1"]

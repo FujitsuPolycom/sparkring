@@ -1,0 +1,12 @@
+{
+  "schema": "sparkring-image-publication/v1",
+  "status": "Development",
+  "tag": "ghcr.io/fujitsupolycom/sparkring:r37-shared-arm64-2540686d726a",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:aef597a5ee70f7b4e0807901e43456b6ac8d2234247ab4df6a6cfe031e5169c6",
+  "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+  "platform": "linux/arm64",
+  "anonymous_pull_verified": true,
+  "descriptor_sha256": "ba0f0f0b7045071dbfb4be86eaafad548a192c3918f7135edf8b635c2ff206bf",
+  "serving_evidence": "performance/records/qwen38-flash-next/r37-shared-tp4.json",
+  "scope": "Registry distribution of the byte-identical shared feature image. Serving support is defined by each profile and its recorded conditions; publication does not qualify additional model, cache or media combinations."
+}

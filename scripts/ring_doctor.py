@@ -59,7 +59,7 @@ class ConfigurationError(ValueError):
 
 @dataclasses.dataclass(frozen=True)
 class LoadedInputs:
-    """One validated Ring Doctor invocation, optionally backed by SiteConfig."""
+    """One validated invocation with optional site or cluster configuration."""
 
     specs: tuple[NodeSpec, ...]
     interfaces: tuple[str, ...]
@@ -88,6 +88,8 @@ class NodeSpec:
     ``socket_interfaces`` holds the interface names a distributed launch gives
     to ``NCCL_SOCKET_IFNAME`` and ``GLOO_SOCKET_IFNAME`` on this node. They are
     inputs to be checked against the node, never values this tool sets.
+    Site and cluster inputs use the management interface, matching the
+    NCCL/GLOO environment produced by ``sparkring_runtime.base_environment``.
 
     ``fabric_interfaces`` is empty for the legacy discovery interface, which
     applies the invocation-wide defaults. Site-driven discovery fills it from
@@ -370,7 +372,12 @@ class Finding:
         return dataclasses.asdict(self)
 
     def to_diagnostic_check(self) -> DiagnosticCheck:
-        """Represent the legacy finding in the shared diagnostic receipt."""
+        """Adapt a finding to the diagnostic receipt's four outcome statuses.
+
+        Advisory warnings map to UNKNOWN because this schema has no warning
+        status. Their code and evidence distinguish diagnosed advisories from
+        missing observations; neither counts as a passing check.
+        """
         status = {
             "info": CheckStatus.PASS,
             "warning": CheckStatus.UNKNOWN,
@@ -611,7 +618,7 @@ def node_specs_from_configuration(
 
 
 def node_specs_from_site(site: SiteConfig) -> tuple[NodeSpec, ...]:
-    """Compatibility name for existing callers."""
+    """Site-only public alias for ``node_specs_from_configuration``."""
     return node_specs_from_configuration(site)
 
 
@@ -697,7 +704,13 @@ def enforce_controller_location(
     allow_worker: bool,
     identity: ControllerIdentity | None = None,
 ) -> str:
-    """Require rank 0 unless explicit worker-controller recovery is enabled."""
+    """Require the fabric controller unless worker recovery is enabled.
+
+    Site/cluster ranks are sorted by ID, so rank 0 controls fabric repair as
+    defined by the bootstrap procedure. ``serving.master_rank`` independently
+    selects the rendezvous endpoint; it does not move the fabric controller.
+    For node-list inputs, the first declared node is the fabric controller.
+    """
     controller = identify_controller_node(
         loaded, identity if identity is not None else read_controller_identity()
     )
@@ -1440,7 +1453,10 @@ def _route_covering(
         for route in routes
         if route.destination.prefixlen > 0 and network.subnet_of(route.destination)
     ]
-    return sorted(covering, key=lambda route: route.destination.prefixlen, reverse=True)
+    if not covering:
+        return []
+    longest = max(route.destination.prefixlen for route in covering)
+    return [route for route in covering if route.destination.prefixlen == longest]
 
 
 def _observed_gateway(
@@ -1465,7 +1481,11 @@ def _observed_gateway(
 def docker_user_accepts(
     rules: Sequence[str] | None, ingress: str, egress: str
 ) -> bool:
-    """Return whether an unrestricted ACCEPT covers one cross-interface flow."""
+    """Prove an ACCEPT precedes any potentially blocking rule for this flow.
+
+    Unknown matches or chain jumps cannot establish unrestricted acceptance.
+    Repair inserts missing rules but does not reorder existing user policy.
+    """
     if rules is None:
         return False
     for rule in rules:
@@ -1486,13 +1506,21 @@ def docker_user_accepts(
                 break
             constraints[option] = fields[index + 1]
             index += 2
-        if not supported or constraints.get("-j") != "ACCEPT":
+        if not supported:
+            # A constrained ACCEPT cannot establish unrestricted access. An
+            # earlier terminal/custom-chain rule may block some of this flow.
+            if _field_after(fields, "-j") not in ("ACCEPT", "LOG", "NFLOG"):
+                return False
             continue
-        if constraints.get("-i", ingress) != ingress:
+        if any(selector != actual and not (selector.endswith("+") and actual.startswith(selector[:-1]))
+               for selector, actual in ((constraints.get("-i", ingress), ingress),
+                                        (constraints.get("-o", egress), egress))):
             continue
-        if constraints.get("-o", egress) != egress:
-            continue
-        return True
+        target = constraints.get("-j")
+        if target == "ACCEPT":
+            return True
+        if target not in (None, "LOG", "NFLOG"):
+            return False
     return False
 
 
@@ -1630,26 +1658,12 @@ def diagnose_wifi_resilience(
     specs: Sequence[NodeSpec],
     observations: Mapping[str, NodeObservation],
 ) -> list[Finding]:
-    """Check that wireless management interfaces survive an access-point blip.
+    """Inspect wireless management reconnection settings without changing them.
 
-    A wireless management interface recovers from an access-point restart on
-    its own only when its active NetworkManager profile autoconnects, retries
-    without a cap, and runs with Wi-Fi power save disabled. Any other
-    combination is a latent fault: every reachability check passes while the
-    interface is associated, then one blip leaves the node off the management
-    network until someone reconnects it by hand. Every wireless interface with
-    an active NetworkManager connection on a reachable node is checked, from
-    evidence the discovery probe gathered in its single contact per node. The
-    check reports observations only and never proposes a profile change. A
-    node with no such interface contributes nothing, because wired management
-    is not a fault; a node without ``nmcli`` is reported as unobserved,
-    because nothing about its wireless configuration could be read.
-
-    When at least one wireless interface was checked and nothing was faulted
-    or unreadable, the result carries one ``info`` finding recording the
-    affirmative outcome, so a passing check is distinguishable from a site
-    with wired-only management, where the check contributes nothing. An
-    ``info`` finding does not affect the process exit code.
+    Active profiles are checked for autoconnect, an explicit unlimited retry
+    policy and power-save settings. Missing observations remain warnings. These
+    settings do not prove recovery from an access-point restart or diagnose
+    the cause of a disconnect; that requires an outage test and driver evidence.
     """
     findings: list[Finding] = []
     sound: list[str] = []
@@ -1739,17 +1753,14 @@ def diagnose_wifi_resilience(
             elif retries != 0:
                 faulted = True
                 if retries == -1:
-                    cap_clause = (
-                        "connection.autoconnect-retries=-1, the global "
-                        "default of four reconnection attempts"
-                    )
-                    count = "four"
+                    cap_clause = "connection.autoconnect-retries=-1, an inherited global policy"
+                    consequence = "The effective global retry limit was not observed."
                 else:
                     cap_clause = (
                         f"connection.autoconnect-retries={retries}, a finite "
                         f"cap of {retries} reconnection attempts"
                     )
-                    count = str(retries)
+                    consequence = f"Autoconnect may pause after {retries} failed attempts."
                 findings.append(
                     Finding(
                         "warning",
@@ -1757,11 +1768,7 @@ def diagnose_wifi_resilience(
                         spec.name,
                         f"NetworkManager profile {interface.connection} on "
                         f"wireless interface {interface.device} sets "
-                        f"{cap_clause}. nm-settings defines zero as retry "
-                        f"forever; after {count} failed attempts autoconnect "
-                        "blocks until a NetworkManager timeout expires, so an "
-                        "access-point outage that outlasts them leaves the "
-                        "node off the management network for that window.",
+                        f"{cap_clause}. {consequence} Zero explicitly selects unlimited retries.",
                         "connection.autoconnect-retries="
                         f"{interface.autoconnect_retries}",
                     )
@@ -1790,10 +1797,7 @@ def diagnose_wifi_resilience(
                         "warning",
                         "wifi-powersave-enabled",
                         spec.name,
-                        f"{cause}. Wi-Fi power save causes silent "
-                        "de-association from the access point, so the node "
-                        "can drop off the management network with no failure "
-                        "recorded.",
+                        f"{cause}. This setting alone does not identify the cause of a disconnect.",
                         f"802-11-wireless.powersave={interface.powersave}; "
                         "iw power_save="
                         + (interface.driver_power_save or "unobserved"),
@@ -1816,10 +1820,8 @@ def diagnose_wifi_resilience(
             "wifi-resilience-observed",
             None,
             "Every wireless interface with an active NetworkManager "
-            "connection on a reachable node autoconnects, retries without "
-            "limit, and runs with Wi-Fi power save disabled, so management "
-            "over Wi-Fi survives an access-point restart without manual "
-            "action.",
+            "connection has autoconnect and unlimited retries configured; "
+            "no enabled power-save setting was observed. Outage recovery was not tested.",
             " | ".join(sound),
         )
     )
@@ -1930,7 +1932,7 @@ def diagnose(
                             "ip -4 route show returned no covering prefix",
                         )
                     )
-                elif not any(
+                elif not all(
                     _observed_gateway(name, route, observations, topology)
                     for route in covering
                 ):
@@ -2228,7 +2230,7 @@ def apply_plans(
                     + (result.detail or result.stderr.strip() or "remote command failed"),
                 )
             )
-            break
+            return RepairApplication(True, tuple(findings))
     return RepairApplication(True, tuple(findings))
 
 
@@ -2350,7 +2352,11 @@ def emit_units(
     plans: Mapping[str, NodePlan],
     guards: Mapping[str, ManagementGuard],
 ) -> list[str]:
-    """Write one fail-closed systemd service and program per observed node."""
+    """Write per-node boot programs guarded by exact local address checks.
+
+    Boot has no active SSH session; these programs do not check a controller
+    return route. Interactive repair additionally guards that session's route.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
     for name, plan in sorted(plans.items()):
@@ -2372,7 +2378,7 @@ After=network-online.target docker.service
 Type=oneshot
 Restart=on-failure
 RestartSec=10
-ExecStart=/usr/bin/python3 {program_path}
+ExecStart=/usr/bin/python3 {json.dumps(str(program_path).replace("%", "%%"), ensure_ascii=False)}
 RemainAfterExit=yes
 
 [Install]
@@ -2783,7 +2789,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ring-doctor",
         description=(
-            "Discover and diagnose a 4- or 6-node switchless SparkRing fabric. "
+            "Discover and diagnose a supported switchless SparkRing fabric. "
             "The default operation is read-only and prints a repair plan."
         ),
     )
@@ -2795,7 +2801,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "and SSH timeout"
         ),
     )
-    parser.add_argument("--config", help="legacy JSON file containing node SSH targets")
+    parser.add_argument(
+        "--config",
+        help="JSON nodes and optional fabric interfaces, SSH timeout, and rendezvous; "
+        "use --site or --cluster for canonical rank configuration",
+    )
     parser.add_argument(
         "--node", action="append", metavar="USER@HOST", help="seed SSH target; repeatable"
     )
@@ -2918,6 +2928,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     apply_executed = False
     enough = discovery_sufficient(specs, observations, topology)
     repair_safe = enough and fabric_preflight_ok and management_repair_safe
+    persistence_blocker = ""
     if args.apply:
         if repair_safe:
             application = apply_plans(
@@ -2930,9 +2941,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                     specs, runner, interfaces, rendezvous_address
                 )
                 enough = discovery_sufficient(specs, observations, topology)
-                repair_safe = (
-                    enough and fabric_preflight_ok and management_repair_safe
+                if fabric_configuration is not None:
+                    fabric_preflight = run_preflight(
+                        fabric_configuration, ReadOnlyRunnerAdapter(runner), scope="fabric"
+                    )
+                    fabric_preflight_ok = bool(fabric_preflight) and all(result.passed for result in fabric_preflight)
+                original_guards = management_guards
+                management_guards, management_guard_findings = build_management_guards(specs, observations)
+                unchanged_management = all(
+                    name in original_guards and guard.address_map() == original_guards[name].address_map()
+                    for name, guard in management_guards.items()
                 )
+                management_repair_safe = (not management_guard_findings and unchanged_management
+                    and len(management_guards) == len(specs))
+                if application.findings:
+                    persistence_blocker = "repair reported a failure; persistence was withheld"
+                elif not unchanged_management:
+                    persistence_blocker = "management address state changed after repair"
+                elif any(item.severity == "error" for item in findings):
+                    persistence_blocker = "post-repair diagnosis contains errors"
+                repair_safe = (enough and fabric_preflight_ok and management_repair_safe
+                    and not persistence_blocker)
         else:
             if not enough:
                 reason = topology.reason
@@ -2975,7 +3004,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     None,
                     "No systemd files were written because the complete supported "
                     "cycle and canonical fabric checks did not both pass.",
-                    (
+                    persistence_blocker or (
                         topology.reason
                         if not enough
                         else (

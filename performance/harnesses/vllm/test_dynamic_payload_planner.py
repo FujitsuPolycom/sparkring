@@ -99,6 +99,13 @@ def test_noncontiguous_payload_fails_closed() -> None:
     assert decision.code is prototype.DecisionCode.REJECT_NONCONTIGUOUS
 
 
+@pytest.mark.parametrize('contiguous', ['false', 1, None])
+def test_contiguity_requires_boolean_evidence(contiguous):
+    decision = prototype.admit_payload(prototype.descriptor_for('indexer', 3, contiguous=contiguous))
+    assert decision.code is prototype.DecisionCode.REJECT_INVALID_DESCRIPTOR
+    assert not decision.admitted
+
+
 def test_arena_boundary_chunks_then_fails_closed_on_overflow() -> None:
     family = prototype.FAMILY_REGISTRY["vocabulary"]
     bytes_per_q = family.byte_geometry(1)[2]
@@ -202,6 +209,40 @@ def test_census_proposal_is_restart_only_and_deterministic() -> None:
     )
 
 
+def test_padded_census_row_without_covering_bucket_fails_closed() -> None:
+    sample = prototype.CensusSample(
+        "indexer", 25, 10, prototype.CensusRoute.PADDED
+    )
+    with pytest.raises(ValueError, match="no covering bucket"):
+        prototype.padding_metrics((24,), (sample,))
+    with pytest.raises(ValueError, match="no covering bucket"):
+        prototype.propose_next_restart_plan((24,), (sample,))
+    eager = prototype.CensusSample(
+        "indexer", 25, 10, prototype.CensusRoute.EAGER
+    )
+    metric = prototype.padding_metrics((24,), (eager,))[0]
+    assert metric.target_bucket is None
+    assert metric.padding_waste_bytes == 0
+
+
+def test_census_width_beyond_arena_cap_cannot_become_a_bucket() -> None:
+    family = prototype.FAMILY_REGISTRY["vocabulary"]
+    maximum_fitting_q = family.arena.capacity_bytes // family.byte_geometry(1)[2]
+    assert prototype.admit_payload(
+        prototype.descriptor_for("vocabulary", maximum_fitting_q + 1)
+    ).code is prototype.DecisionCode.REJECT_OVERFLOW
+    oversized = prototype.CensusSample(
+        "vocabulary", maximum_fitting_q + 1, 1_000, prototype.CensusRoute.EAGER
+    )
+    with pytest.raises(ValueError, match="arena cap"):
+        prototype.propose_next_restart_plan((1, 2, 4), (oversized,))
+    fitting = prototype.CensusSample(
+        "vocabulary", maximum_fitting_q, 1_000, prototype.CensusRoute.EAGER
+    )
+    plan = prototype.propose_next_restart_plan((1, 2, 4), (fitting,))
+    assert plan["proposed_buckets"] == [1, 2, 4, maximum_fitting_q]
+
+
 def test_census_unknown_family_fails_closed() -> None:
     with pytest.raises(ValueError, match="unknown family"):
         prototype.propose_next_restart_plan(
@@ -215,3 +256,15 @@ def test_census_unknown_family_fails_closed() -> None:
                 ),
             ),
         )
+
+
+@pytest.mark.parametrize("overflow_formula", [False, True])
+def test_padded_target_bucket_must_fit_family_arena(overflow_formula):
+    family = prototype.FAMILY_REGISTRY["vocabulary"]
+    maximum_q = family.arena.capacity_bytes // family.byte_geometry(1)[2]
+    target = (1 << 64) if overflow_formula else maximum_q + 1
+    sample = prototype.CensusSample("vocabulary", maximum_q, 100, prototype.CensusRoute.PADDED)
+    assert prototype.admit_payload(prototype.descriptor_for("vocabulary", maximum_q)).admitted
+    for operation in (prototype.padding_metrics, prototype.propose_next_restart_plan):
+        with pytest.raises(ValueError, match="padded census target"):
+            operation((target,), (sample,))

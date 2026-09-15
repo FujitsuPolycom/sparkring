@@ -1,5 +1,5 @@
 """Validate immutable container ownership and the cluster stop barrier."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from copy import deepcopy
 import hashlib
 import json
@@ -18,6 +18,8 @@ import managed_install  # noqa: E402
 
 
 def test_installed_source_closure_loads_receipt_without_checkout_imports(tmp_path):
+    from runtime.common.test_r35 import receipt
+    (tmp_path/'r35-receipt.json').write_text(json.dumps(receipt()))
     for relative, data in managed_install.source_payloads().items():
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -34,38 +36,220 @@ spec.loader.exec_module(module)
 contract = module._source_receipt_contract()
 assert callable(contract.validate_receipt)
 assert 'native_files' not in sys.modules
+verifier = module._r33_profile_verifier()
+release_contract = verifier.load_contract()
+for selected in release_contract['profiles'].values():
+    verifier.parse_template(root / 'runtime/sparkring/jovian-r33/profiles' / selected['template'])
+import json
+module.r35.validate_receipt(json.loads((root/'r35-receipt.json').read_text()))
+from runtime.common import managed_deployment
+assert managed_deployment.layout('r35-trial')['config_dir']=='/etc/sparkring/deployments/r35-trial'
+monitor_path = root / 'runtime/glm53-spark-mtp3-mesh/managed_liveness.py'
+spec = importlib.util.spec_from_file_location('installed_monitor', monitor_path)
+monitor = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(monitor)
+assert monitor.HELPER.is_file()
+assert monitor.HELPER.is_relative_to(root)
+spec = importlib.util.spec_from_file_location('installed_scheduler', monitor.HELPER)
+scheduler = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(scheduler)
+assert callable(scheduler.start_liveness_service)
 """
     result = subprocess.run([sys.executable, '-I', '-c', script, str(tmp_path)],
                             cwd=tmp_path, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
 
 
+def test_r35_image_attestation_makes_no_host_marker_claim():
+    from runtime.common.test_r35 import receipt
+    assert managed_install.managed_image_attestation(receipt()) == {}
+
+
+@pytest.fixture
+def host_marker_files(tmp_path):
+    for relative, data in managed_install.source_payloads().items():
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    return tmp_path
+
+
+def test_external_marker_binds_repository_source_and_artifact_receipt(
+    host_marker_files,
+):
+    expected = managed_install.external_marker_attestation(root=host_marker_files)
+    assert (
+        expected["marker_source_sha256"]
+        == "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792"
+    )
+    assert (
+        expected["marker_binary_sha256"]
+        == "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64"
+    )
+
+
+@pytest.mark.parametrize("field", ["source", "artifact_receipt"])
+@pytest.mark.parametrize("missing", [False, True])
+def test_external_marker_rejects_missing_or_changed_evidence(
+    host_marker_files, field, missing
+):
+    root = host_marker_files
+    record = json.loads(
+        (root / "runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json").read_text()
+    )
+    path = root / record[field]
+    if missing:
+        path.unlink()
+    else:
+        path.write_bytes(path.read_bytes() + b"changed")
+    with pytest.raises(ValueError, match=field):
+        managed_install.external_marker_attestation(root=root)
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_external_marker_rejects_missing_or_changed_host_binary(
+    host_marker_files, missing
+):
+    path = host_marker_files / "configured-marker"
+    if not missing:
+        path.write_bytes(b"unreviewed native helper")
+    with pytest.raises(ValueError, match="Configured host marker"):
+        managed_install.external_marker_attestation(root=host_marker_files, binary=path)
+
+
+def test_external_marker_rejects_missing_artifact_record(host_marker_files):
+    (
+        host_marker_files / "runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json"
+    ).unlink()
+    with pytest.raises(ValueError, match="artifact record is missing"):
+        managed_install.external_marker_attestation(root=host_marker_files)
+
+
 @pytest.fixture
 def exact_container_spec():
-    image_id = 'sha256:' + 'b' * 64
-    image = {'Id': image_id, 'Config': {'Env': ['PATH=/usr/bin', 'IMAGE_DEFAULT=yes', 'OVERRIDE=image'],
-                                       'Labels': {'image-label': 'kept'}, 'User': '', 'WorkingDir': '/workspace'}}
-    argv = ['docker', 'create', '--name', 'profile-r0', '--entrypoint', '/serve', '--init',
-            '-e', 'OVERRIDE=launcher', '-e', 'MTP_DEPTH=3', '-e', 'EMPTY=',
-            '-v', '/srv/model:/models/target:ro', '-v', '/srv/bundle:/opt/spark-sircl:ro',
-            '-v', '/srv/cache:/cache/jit', '--label', 'rank=0', image_id,
-            '/models/target', '--max-num-seqs', '16', '--speculative-config', '{"method":"mtp","num_speculative_tokens":3}']
+    image_id = "sha256:" + "b" * 64
+    image = {
+        "Id": image_id,
+        "Config": {
+            "Env": ["PATH=/usr/bin", "IMAGE_DEFAULT=yes", "OVERRIDE=image"],
+            "Labels": {"image-label": "kept"},
+            "User": "",
+            "WorkingDir": "/workspace",
+        },
+    }
+    argv = [
+        "docker",
+        "create",
+        "--name",
+        "profile-r0",
+        "--entrypoint",
+        "/serve",
+        "--init",
+        "-e",
+        "OVERRIDE=launcher",
+        "-e",
+        "MTP_DEPTH=3",
+        "-e",
+        "EMPTY=",
+        "-v",
+        "/srv/model:/models/target:ro",
+        "-v",
+        "/srv/bundle:/opt/spark-sircl:ro",
+        "-v",
+        "/srv/cache:/cache/jit",
+        "--label",
+        "rank=0",
+        image_id,
+        "/models/target",
+        "--max-num-seqs",
+        "16",
+        "--speculative-config",
+        '{"method":"mtp","num_speculative_tokens":3}',
+    ]
     expected = managed_install.expected_container_spec(argv, image)
-    actual = {'Name': '/profile-r0', 'Image': image_id, 'Config': {
-        'Cmd': expected['cmd'][:], 'Entrypoint': expected['entrypoint'][:],
-        'Env': [f'{key}={value}' for key, value in expected['env'].items()],
-        'Labels': expected['labels'].copy(), 'WorkingDir': '/workspace', 'User': ''},
-        'Mounts': [{'Destination': destination, **mount} for destination, mount in expected['mounts'].items()]}
+    actual = {
+        "Name": "/profile-r0",
+        "Image": image_id,
+        "Config": {
+            "Cmd": expected["cmd"][:],
+            "Entrypoint": expected["entrypoint"][:],
+            "Env": [f"{key}={value}" for key, value in expected["env"].items()],
+            "Labels": expected["labels"].copy(),
+            "WorkingDir": "/workspace",
+            "User": "",
+        },
+        "Mounts": [
+            {"Destination": destination, **mount}
+            for destination, mount in expected["mounts"].items()
+        ],
+    }
     return argv, image, expected, actual
 
 
-def test_complete_spec_accepts_exact_configuration_and_image_env_override(exact_container_spec):
+def test_complete_spec_accepts_exact_configuration_and_image_env_override(
+    exact_container_spec,
+):
     _, _, expected, actual = exact_container_spec
-    assert expected['env']['OVERRIDE'] == 'launcher'
-    assert expected['env']['IMAGE_DEFAULT'] == 'yes'
-    actual['Config']['Env'].reverse()
-    actual['Mounts'].reverse()
+    assert expected["env"]["OVERRIDE"] == "launcher"
+    assert expected["env"]["IMAGE_DEFAULT"] == "yes"
+    actual["Config"]["Env"].reverse()
+    actual["Mounts"].reverse()
     managed_install.validate_container_spec(actual, expected)
+
+
+def test_capability_daemon_prefix_preserves_exact_permissions(exact_container_spec):
+    _, _, expected, actual = exact_container_spec
+    expected['host_config'] = {'CapAdd': ['IPC_LOCK']}
+    actual['HostConfig'] = {'CapAdd': ['CAP_IPC_LOCK']}
+    managed_install.validate_container_spec(actual, expected)
+    actual['HostConfig']['CapAdd'].append('CAP_SYS_ADMIN')
+    with pytest.raises(ValueError, match='CapAdd'):
+        managed_install.validate_container_spec(actual, expected)
+
+
+def test_generated_health_envelope_is_exact_and_inspected(exact_container_spec):
+    argv, image, _, actual = exact_container_spec
+    health = managed_install.managed_units.managed_liveness.api_healthcheck(8015)
+    insertion = ["-e", "PORT=8015", "-e", "SPARKRING_NODE_RANK=0"]
+    insertion += [value for pair in health.items() for value in pair]
+    position = argv.index(image["Id"])
+    argv[position:position] = insertion
+    expected = managed_install.expected_container_spec(argv, image)
+    actual["Config"]["Env"] = [f"{k}={v}" for k, v in expected["env"].items()]
+    actual["Config"]["Healthcheck"] = expected["healthcheck"]
+    managed_install.validate_container_spec(actual, expected)
+    changed = deepcopy(actual)
+    changed["Config"]["Healthcheck"]["Test"] = ["CMD-SHELL", "true"]
+    with pytest.raises(ValueError, match="healthcheck"):
+        managed_install.validate_container_spec(changed, expected)
+    argv[argv.index("--health-cmd") + 1] = "true"
+    with pytest.raises(ValueError, match="health options"):
+        managed_install.expected_container_spec(argv, image)
+
+
+@pytest.mark.parametrize("change", ["partial", "duplicate", "worker_rank", "interval"])
+def test_health_options_cannot_expand_the_canonical_envelope(
+    exact_container_spec, change
+):
+    argv, image, _, _ = exact_container_spec
+    health = managed_install.managed_units.managed_liveness.api_healthcheck(8015)
+    insertion = [
+        "-e",
+        "PORT=8015",
+        "-e",
+        "SPARKRING_NODE_RANK=" + ("1" if change == "worker_rank" else "0"),
+    ]
+    if change == "partial":
+        del health["--health-timeout"]
+    if change == "interval":
+        health["--health-interval"] = "1s"
+    insertion += [value for pair in health.items() for value in pair]
+    if change == "duplicate":
+        insertion += ["--health-retries", "3"]
+    position = argv.index(image["Id"])
+    argv[position:position] = insertion
+    with pytest.raises(ValueError, match='health options'):
+        managed_install.expected_container_spec(argv, image)
 
 
 @pytest.mark.parametrize('change', [
@@ -243,6 +427,60 @@ def test_r33_managed_attestation_uses_source_bound_marker_identity():
         'marker_source_sha256': marker['marker_source_sha256'],
         'marker_binary_sha256': marker['marker_binary_sha256'],
     }
+
+
+@pytest.mark.parametrize('bundle_state', ['lineage', 'attested-python', 'attested-native',
+                                         'unattested', 'tampered', 'changed-manifest'])
+def test_install_plan_verifies_receipt_bound_bundle(tmp_path, monkeypatch, exact_container_spec, bundle_state):
+    profile = managed_install.managed_units.service.mesh_profile
+    monkeypatch.setattr(managed_install, 'CODE_DIR', PurePosixPath('/opt/sparkring/managed-mesh'))
+    monkeypatch.setattr(managed_install, 'CONFIG_DIR', PurePosixPath('/etc/sparkring/managed-mesh'))
+    _, image, expected, actual = exact_container_spec
+    actual.update(container())
+    bundle = tmp_path / 'bundle'
+    bundle.mkdir()
+    filename = 'libspark_transport_capi.so' if bundle_state == 'attested-native' else 'backend.py'
+    payload = bundle / filename
+    payload.write_bytes(b'lineage bytes')
+    manifest = bundle / 'sparkring-overlay-manifest.json'
+    manifest.write_text(json.dumps({'files': [{'path': filename, 'sha256': profile.sha(payload)}]}))
+    receipt = r33_managed_receipt()
+    receipt['image_id'] = image['Id']
+    receipt['bundle_manifest_sha256'] = profile.sha(manifest)
+    checked = receipt['verification']['checked_files']
+    checked['/opt/sparkring/sircl/python/sparkring-overlay-manifest.json'] = profile.sha(manifest)
+    if bundle_state != 'lineage':
+        payload.write_bytes(b'rebuilt bytes')
+    if bundle_state in ('attested-python', 'attested-native', 'tampered', 'changed-manifest'):
+        image_path = '/opt/sparkring/sircl/' + filename if filename.endswith('.so') else '/opt/sparkring/sircl/python/' + filename
+        checked[image_path] = profile.sha(payload)
+    if bundle_state == 'tampered':
+        payload.write_bytes(b'unattested replacement')
+    if bundle_state == 'changed-manifest':
+        manifest.write_text(manifest.read_text() + '\n')
+    marker = tmp_path / 'marker'
+    marker.write_bytes(b'marker fixture')
+    marker_facts = {'marker_source_sha256': profile.PINS['marker']['source_sha256'],
+                    'marker_binary_sha256': profile.sha(marker)}
+    site = {'bundle_root': str(bundle), 'marker_binary': str(marker),
+            'marker_binary_sha256': profile.sha(marker), 'container_prefix': 'profile'}
+    monkeypatch.setattr(profile, 'load_site', lambda path: (site, None, None))
+    monkeypatch.setattr(profile, 'load_image_receipt', lambda path: receipt)
+    monkeypatch.setattr(managed_install, 'managed_image_attestation', lambda document: marker_facts)
+    monkeypatch.setattr(managed_install, 'canonical_container_spec', lambda *args: expected)
+    def run(argv, **kwargs):
+        outputs = {('docker', 'inspect', 'profile-r0'): json.dumps([actual]),
+                   ('docker', 'image', 'inspect', image['Id']): json.dumps([image]),
+                   (str(marker), '--help'): '--managed'}
+        assert tuple(argv) in outputs, argv
+        return SimpleNamespace(stdout=outputs[tuple(argv)], stderr='')
+    monkeypatch.setattr(managed_install.subprocess, 'run', run)
+    arguments = (tmp_path, tmp_path / 'receipt.json', 0, 'a' * 32, 9975, tmp_path / 'key')
+    if bundle_state in ('lineage', 'attested-python', 'attested-native'):
+        assert managed_install.prepare_plan(*arguments)['applied'] is False
+    else:
+        with pytest.raises(ValueError, match='[Bb]undle'):
+            managed_install.prepare_plan(*arguments)
 
 
 @pytest.mark.parametrize('change', [
@@ -459,3 +697,83 @@ def test_envelope_scan_accepts_registry_port_in_repository_digest():
     reference = 'registry.example:5000/team/image@sha256:' + 'b' * 64
     image = {'Id': image_id, 'RepoDigests': [reference], 'Config': {}}
     assert managed_install.expected_container_spec(_envelope_argv(reference), image)['image'] == image_id
+
+
+def test_managed_dcp4_requires_persisted_overlay_roots(tmp_path, monkeypatch):
+    profile = managed_install.managed_units.service.mesh_profile
+    monkeypatch.setattr(profile, "load_site", lambda path: ({"runtime_profile": "tp4-dcp4", "bundle_root": "/bundle"}, None, None))
+    monkeypatch.setenv("R33_PROFILE_CONTRACT_HOST_ROOT", "/ambient/overlay")
+    with pytest.raises(ValueError, match="r33_profile_contract_roots"):
+        managed_install.canonical_container_spec(tmp_path, tmp_path / "receipt", 0, {},
+                                               run=lambda *a, **kw: pytest.fail("Missing overlay must fail before execution"))
+
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError(2, "fixture SSH executable missing", "ssh"), PermissionError(13, "fixture permission denied", "ssh")])
+def test_coordinator_local_spawn_failure_is_a_rank_result(monkeypatch, error):
+    def fail(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(managed_cluster.subprocess, "run", fail)
+    result = managed_cluster.execute("fixture-rank", ["true"])
+    assert result["returncode"] == 127
+    assert result["ssh_started"] is False
+    assert "Local SSH process could not start" in result["error"]
+
+
+def test_coordinator_retains_mixed_phase_results_after_spawn_failure(tmp_path, monkeypatch):
+    receipt = tmp_path / "phase.json"
+    monkeypatch.setattr(managed_cluster.managed_units.service.mesh_profile, "load_site",
+        lambda path: ({}, SimpleNamespace(rank=lambda rank: SimpleNamespace(ssh_alias=f"rank{rank}")), None))
+    monkeypatch.setattr(managed_cluster, "phases", lambda *args: [("first", ["first"]), ("later", ["later"])])
+    calls = []
+    def run(argv, **kwargs):
+        assert receipt.is_file(), "receipt must be exclusively reserved before dispatch"
+        assert json.loads(receipt.read_text())["phases"] == []
+        calls.append(argv)
+        if argv[-2] == "rank1":
+            raise FileNotFoundError(2, "fixture spawn failure", "ssh")
+        return SimpleNamespace(returncode=0, stdout="completed", stderr="")
+    monkeypatch.setattr(managed_cluster.subprocess, "run", run)
+    monkeypatch.setattr(sys, "argv",
+        ["managed_cluster.py", "up", "--site", str(tmp_path / "site.json"),
+         "--output", str(receipt), "--execute-authorized"])
+    with pytest.raises(SystemExit, match="Phase failed"):
+        managed_cluster.main()
+    observed = json.loads(receipt.read_text())
+    assert len(observed["phases"]) == 1
+    ranks = observed["phases"][0]["ranks"]
+    assert [row["returncode"] for row in ranks] == [0, 127, 0, 0]
+    assert ranks[1]["ssh_started"] is False
+    assert all(row["stdout"] == "completed" for row in (ranks[0], ranks[2], ranks[3]))
+    assert len(calls) == 4 and all(argv[-1] == "first" for argv in calls)
+
+
+
+def test_coordinator_receipt_collision_refuses_dispatch(tmp_path, monkeypatch):
+    receipt = tmp_path / "phase.json"
+    monkeypatch.setattr(managed_cluster.managed_units.service.mesh_profile, "load_site",
+        lambda path: ({}, SimpleNamespace(rank=lambda rank: SimpleNamespace(ssh_alias=f"rank{rank}")), None))
+    monkeypatch.setattr(managed_cluster, "execute", lambda *args: pytest.fail("remote dispatch before receipt ownership"))
+    monkeypatch.setattr(sys, "argv", ["managed_cluster.py", "up", "--site", str(tmp_path / "site.json"),
+                                     "--output", str(receipt), "--execute-authorized"])
+    original = Path.open
+    def raced_open(path, mode="r", *args, **kwargs):
+        if path == receipt and mode == "x":
+            with original(path, "w", encoding="utf-8") as competing:
+                competing.write("other invocation")
+        return original(path, mode, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", raced_open)
+    with pytest.raises(FileExistsError):
+        managed_cluster.main()
+    assert receipt.read_text() == "other invocation"
+
+
+@pytest.mark.parametrize("error", [OSError(5, "I/O failure"), FileNotFoundError(2, "missing unrelated file", "other")])
+def test_coordinator_io_error_preserves_unknown_remote_state(monkeypatch, error):
+    def fail(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(managed_cluster.subprocess, "run", fail)
+    result = managed_cluster.execute("fixture-rank", ["true"])
+    assert result["returncode"] == 127
+    assert result["ssh_started"] is None
+    assert "remote operation state is unknown" in result["error"]

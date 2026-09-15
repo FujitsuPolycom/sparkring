@@ -1,0 +1,77 @@
+# Documentation addresses and placeholder fabric hashes; replace from the prepared mesh site.
+schema: sparkring-compose-site/v1
+name: qwen-qad-example
+master: 192.0.2.10
+ranks:
+- rank: 0
+  host: spark0
+  host_ip: 192.0.2.10
+  interface: eth0
+  hcas:
+  - rocep1s0f0
+  - rocep1s0f1
+  - roceP2p1s0f0
+  - roceP2p1s0f1
+  gid: 3
+  model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
+  cache: /srv/cache/qwen38-qad-r37
+  repository: /opt/sparkring
+  deployment_root: /srv/sparkring-deployments
+  fabric:
+    site_path: /srv/sparkring/mesh-site.json
+    site_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+    plan_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+- rank: 1
+  host: spark1
+  host_ip: 192.0.2.11
+  interface: eth0
+  hcas:
+  - rocep1s0f0
+  - rocep1s0f1
+  - roceP2p1s0f0
+  - roceP2p1s0f1
+  gid: 3
+  model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
+  cache: /srv/cache/qwen38-qad-r37
+  repository: /opt/sparkring
+  deployment_root: /srv/sparkring-deployments
+  fabric:
+    site_path: /srv/sparkring/mesh-site.json
+    site_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+    plan_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+- rank: 2
+  host: spark2
+  host_ip: 192.0.2.12
+  interface: eth0
+  hcas:
+  - rocep1s0f0
+  - rocep1s0f1
+  - roceP2p1s0f0
+  - roceP2p1s0f1
+  gid: 3
+  model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
+  cache: /srv/cache/qwen38-qad-r37
+  repository: /opt/sparkring
+  deployment_root: /srv/sparkring-deployments
+  fabric:
+    site_path: /srv/sparkring/mesh-site.json
+    site_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+    plan_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+- rank: 3
+  host: spark3
+  host_ip: 192.0.2.13
+  interface: eth0
+  hcas:
+  - rocep1s0f0
+  - rocep1s0f1
+  - roceP2p1s0f0
+  - roceP2p1s0f1
+  gid: 3
+  model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
+  cache: /srv/cache/qwen38-qad-r37
+  repository: /opt/sparkring
+  deployment_root: /srv/sparkring-deployments
+  fabric:
+    site_path: /srv/sparkring/mesh-site.json
+    site_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+    plan_sha256: '0000000000000000000000000000000000000000000000000000000000000000'

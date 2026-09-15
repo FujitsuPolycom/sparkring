@@ -103,7 +103,7 @@ python scripts/fanout_image_archive.py \
 
 ## Import one image on every rank
 
-Omit `--create-only`, provide the image reference stored in the archive, and
+Omit `--create-only`, provide a local tag or the exact image config ID, and
 require its local image ID:
 
 ```bash
@@ -113,7 +113,7 @@ python scripts/fanout_image_archive.py \
   --archive-name runtime-arm64.tar.zst \
   --expected-sha256 <64-lowercase-hex> \
   --target-directory /var/lib/sparkring/images \
-  --image registry.example/runtime@sha256:<manifest-digest> \
+  --image registry.example/runtime:archive-import \
   --expected-image-id sha256:<config-digest> \
   --execute \
   --confirmation FANOUT_IMAGE_ARCHIVE \
@@ -123,7 +123,9 @@ python scripts/fanout_image_archive.py \
 An archive created with `docker image save sha256:<image-id>` may contain no
 repository tag. After loading such an archive, the tool verifies that the
 expected image ID exists locally before applying the requested tag. An
-existing tag that points at another image remains a conflict.
+existing tag that points at another image remains a conflict. A registry
+digest cannot be created by tagging an imported config ID; digest-form inputs
+work only if that exact reference is already present or restored by the archive.
 
 ## File and interruption behavior
 

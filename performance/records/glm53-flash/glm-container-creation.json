@@ -1,0 +1,45 @@
+{
+  "schema": "sparkring-container-creation-check/v1",
+  "status": "Development",
+  "conditions": {
+    "host_platform": "linux/arm64",
+    "gpu_model": "GB10",
+    "ranks_checked": [
+      0
+    ],
+    "profile": "tp4-dcp1-sparkcache",
+    "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+    "image_composition": "lil-r37-glm-spark",
+    "model_started": false,
+    "network_configuration_changed": false,
+    "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270"
+  },
+  "source_sha256": {
+    "runtime/common/glm_launch.py": "c1736c0c39ab94fe09b6798403a7f16103268b3d92203d329e8439e9bd4b6c7b",
+    "runtime/common/glm_tp4.py": "bd3d9a589ac9e175414634673af977093a5c53b324ab9a52390b159d62783adb",
+    "runtime/common/container_spec.py": "9fe2c09d1f7dc784eb25f4faf3ac53fb8c5b32377508cd450191109b0dbf6583",
+    "runtime/common/compose.py": "93c2c5e6cbe209c2a767a0b1e267b47ab67689eea2a5f70741126709966863ba",
+    "runtime/glm53-spark-mtp3-mesh/profile.py": "5194136c21d2c4f3fc3ddcb6a225b2c23b3cdec017c112ecec3976be09e2be08",
+    "runtime/glm53-spark-mtp3-mesh/managed_install.py": "29e6dbb0d70039def4732595abfd27f564a439479866c2e486183bcd5016ce5f"
+  },
+  "results": {
+    "docker": {
+      "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+      "running": false,
+      "status": "created",
+      "effective_spec_verified": true,
+      "managed_canonical_acceptance": true,
+      "authenticated_launch_unchanged": true
+    },
+    "compose": {
+      "image_id": "sha256:beeb32253aa754cf8e22f7c054b21d659e041388a06c0427473bebe77d564f97",
+      "running": false,
+      "status": "created",
+      "effective_spec_verified": true,
+      "managed_canonical_acceptance": true,
+      "authenticated_launch_unchanged": true
+    }
+  },
+  "conclusion": "Docker and Compose created stopped rank-0 containers accepted by the managed installer against the shared GLM specification. Authenticated launch files were unchanged. This check does not qualify GLM serving, four-rank coordination or SparkCache restore.",
+  "serving_qualified": false
+}

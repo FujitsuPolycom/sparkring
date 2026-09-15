@@ -1,0 +1,29 @@
+{
+  "schema": "sparkring-local-image-build/v1",
+  "status": "Development",
+  "image_tag": "sparkring-local:r37-arm64-ba0f0f0b7045",
+  "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+  "platform": "linux/arm64",
+  "published": false,
+  "parent_image_id": "sha256:384bc56e4a1faa0d983d9e448ccb08731c1362b426c5d7926be5204cfc137ca8",
+  "descriptor_sha256": "ba0f0f0b7045071dbfb4be86eaafad548a192c3918f7135edf8b635c2ff206bf",
+  "verification": {
+    "complete_inventory_files": 57240,
+    "parent_payload_retained": true,
+    "default_off": true,
+    "collective_activation": true,
+    "prefill_activation": true,
+    "combined_activation": true,
+    "child_cache_namespace_idempotent": true,
+    "unknown_feature_rejected": true,
+    "gpu_serving_on_this_image": false,
+    "parent_layers_preserved": true,
+    "entrypoint_preserved": true,
+    "independent_cache_mounts_writable": true,
+    "host_admission_against_real_receipts": true,
+    "image_and_feature_tests_passed": 197,
+    "feature_admission_tests_passed": 62
+  },
+  "scope": "Image build, complete source/binary inventory and CPU import/activation checks, including separate writable compiler-cache mounts. No GPU serving on this image yet. Request-boundary SparkCache support is not included.",
+  "installation_step_seconds": 22.5
+}

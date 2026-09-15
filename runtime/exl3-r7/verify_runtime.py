@@ -161,12 +161,16 @@ def verify_sircl_hooks(evidence: dict[str, object]) -> None:
     )
     target_signatures: dict[str, list[str]] = {}
     for name, target, expected, installed_marker, mode_variable in contracts:
+        mode_enabled = bool(os.environ.get(mode_variable))
+        if mode_variable == "VLLM_SPARK_TP4_MODE":
+            # Match sitecustomize's all-reduce hook installation policy.
+            mode_enabled = os.environ.get(mode_variable, "").lower() not in {"", "disabled"}
         actual = verify_hook_chain(
             name,
             target,
             expected,
             installed_marker,
-            bool(os.environ.get(mode_variable)),
+            mode_enabled,
         )
         target_signatures[name] = list(actual)
 

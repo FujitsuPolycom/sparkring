@@ -1,14 +1,15 @@
-"""Test-first hardening of build-image.sh and prepare_context.py.
+"""Check EXL3 builder input identities and prepared-source verification.
 
-These tests assert the immutable identity contract before the implementation
-lands: the parent image must be identified by digest or image ID (never a
-mutable tag alone), PREPARED_SOURCES must be verified against its receipt
-(not just existence), and prepare_context.py must verify its own output.
+The parent image must resolve to its required immutable ID. Prepared sources
+must match the pinned receipt, Git trees and complete source inventory.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -18,6 +19,54 @@ HERE = Path(__file__).resolve().parent
 BUILD_SCRIPT = (HERE / "build-image.sh").read_text(encoding="utf-8")
 PINS = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
 PREPARE_CONTEXT = (HERE / "prepare_context.py").read_text(encoding="utf-8")
+
+
+def _shell_path(path: Path) -> str:
+    value = str(path.resolve()).replace("\\", "/")
+    return "/mnt/" + value[0].lower() + value[2:] if os.name == "nt" else value
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="Bash is unavailable")
+@pytest.mark.parametrize("dependency", [
+    "scripts/glm35_q40/prepare_q40_overlay_inputs.py",
+    "scripts/glm35_q40/q40_v2_route_capture.patch",
+])
+@pytest.mark.parametrize("damage", ["dirty", "untracked"])
+def test_q40_dependency_drift_blocks_before_engine_or_preparation(tmp_path, dependency, damage):
+    builder = tmp_path / "build-image.sh"
+    builder.write_text(BUILD_SCRIPT, encoding="utf-8", newline="\n")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    marker = tmp_path / "unexpected-operation"
+    fake_git = """#!/bin/bash
+shift 2
+case "$1" in
+  rev-parse) printf '%s\\n' fixture; exit 0 ;;
+esac
+for argument in "$@"; do
+  if [[ "$argument" == "$DEPENDENCY" ]]; then
+    if [[ "$1" == diff && "$DAMAGE" == dirty ]]; then exit 1; fi
+    if [[ "$1" == ls-files && "$DAMAGE" == untracked ]]; then printf '%s\\n' "$DEPENDENCY"; fi
+  fi
+done
+"""
+    for name, body in {"git": fake_git, "docker": '#!/bin/sh\ntouch "$MARKER"\nexit 97\n',
+                       "python3": '#!/bin/sh\ntouch "$MARKER"\nexit 97\n'}.items():
+        path = fake_bin / name
+        path.write_text(body, encoding="utf-8", newline="\n")
+        path.chmod(0o755)
+    command = "\n".join((
+        "export PATH=" + shlex.quote(_shell_path(fake_bin)) + ':"$PATH"',
+        "export DEPENDENCY=" + shlex.quote(dependency),
+        "export DAMAGE=" + shlex.quote(damage),
+        "export MARKER=" + shlex.quote(_shell_path(marker)),
+        "export BASE_IMAGE=fixture BASE_IMAGE_ID=fixture BASE_IMAGE_LICENSES=MIT",
+        "bash " + shlex.quote(_shell_path(builder)),
+    ))
+    result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 78, result.stderr
+    assert ("inputs differ" if damage == "dirty" else "inputs include untracked") in result.stderr
+    assert not marker.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -333,3 +382,20 @@ def test_oci_license_expression_covers_bundled_license_families() -> None:
     assert 'org.opencontainers.image.licenses="${IMAGE_LICENSES}"' in containerfile
     assert "BASE_IMAGE_LICENSES" in BUILD_SCRIPT
     assert "Apache-2.0 AND MIT AND BSD-3-Clause" in BUILD_SCRIPT
+
+@pytest.mark.parametrize('ignored', [False, True])
+def test_verify_component_rejects_all_additional_source_files(tmp_path, monkeypatch, ignored):
+    import importlib.util
+    from types import SimpleNamespace
+    spec = importlib.util.spec_from_file_location('r7_source_inventory', HERE/'prepare_context.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    (tmp_path/'component').mkdir()
+    monkeypatch.setattr(module.subprocess, 'run', lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    def git(*args, **kwargs):
+        if 'ls-files' in args:
+            return '' if ignored and '--exclude-standard' in args else 'extra.py'
+        return 'expected'
+    monkeypatch.setattr(module, 'run', git)
+    with pytest.raises(module.PreparationError, match='untracked source'):
+        module.verify_component('component', {'base_commit': 'expected', 'result_tree': 'expected'}, tmp_path)

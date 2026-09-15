@@ -313,6 +313,8 @@ def _collect_local(
         "interface": "connection.interface-name",
         "owner": "connection.permissions",
         "ipv4_method": "ipv4.method",
+        "ipv4_addresses": "ipv4.addresses",
+        "ethernet_mtu": "802-3-ethernet.mtu",
         "ipv4_never_default": "ipv4.never-default",
         "ipv4_ignore_auto_dns": "ipv4.ignore-auto-dns",
         "ipv6_method": "ipv6.method",
@@ -338,6 +340,15 @@ def _collect_local(
                 output = yes_no(output)
             elif key == "owner" and output == "":
                 output = "system"
+            elif key == "ipv4_addresses" and output is not None:
+                try:
+                    output = [str(ipaddress.IPv4Interface(value.strip()))
+                              for value in output.split(',') if value.strip()]
+                except ValueError:
+                    output = None
+                    faults.append('nmcli returned invalid saved IPv4 addresses')
+            elif key == "ethernet_mtu":
+                output = int(output) if output is not None and output.isdecimal() else None
             result[key] = output
         result["name"] = result["connection_name"]
         result["error"] = "; ".join(dict.fromkeys(faults)) or None
@@ -632,6 +643,35 @@ def _collect_local(
             details.update(exists=False, nonempty=False)
         except OSError as error:
             details["error"] = type(error).__name__
+            # Only backup-directory metadata may require root. Never read
+            # connection contents or escalate arbitrary requested paths.
+            if (isinstance(error, PermissionError)
+                    and name in ('/etc/NetworkManager/system-connections', '/etc/netplan')
+                    and privilege['sudo_noninteractive'] is True):
+                program = """import json, pathlib, stat, sys
+name=sys.argv[1]
+if name not in ('/etc/NetworkManager/system-connections','/etc/netplan'):
+ raise SystemExit('Unsupported backup metadata path')
+path=pathlib.Path(name)
+if any(p.is_symlink() for p in (path,*path.parents)):
+ raise SystemExit('Backup metadata path contains a symlink')
+info=path.lstat()
+if not stat.S_ISDIR(info.st_mode):
+ raise SystemExit('Backup source is not a directory')
+print(json.dumps({'exists':True,'type':'directory','nonempty':next(path.iterdir(),None) is not None,
+ 'mode':format(stat.S_IMODE(info.st_mode),'04o'),'owner_uid':info.st_uid}))
+"""
+                metadata, metadata_error = json_command(['sudo', '-n', 'python3', '-I', '-c', program, name])
+                if (not metadata_error and isinstance(metadata, dict)
+                        and set(metadata) == {'exists', 'type', 'nonempty', 'mode', 'owner_uid'}
+                        and metadata['exists'] is True and metadata['type'] == 'directory'
+                        and type(metadata['nonempty']) is bool
+                        and type(metadata['owner_uid']) is int and metadata['owner_uid'] >= 0
+                        and isinstance(metadata['mode'], str)
+                        and re.fullmatch(r'[0-7]{4}', metadata['mode'])):
+                    details.update(metadata, error=None)
+                else:
+                    details['error'] = metadata_error or 'Invalid privileged backup-directory metadata'
         try:
             ancestor = target
             while not ancestor.exists() and ancestor != ancestor.parent:

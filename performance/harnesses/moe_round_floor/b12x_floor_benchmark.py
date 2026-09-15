@@ -246,6 +246,22 @@ def audit_sources(source_root: str | None = None) -> dict[str, dict[str, Any]]:
     return result
 
 
+def require_imported_b12x_sources(audit, *, importer=None):
+    """Bind live B12X execution to the audited files before allocating GPU inputs."""
+    if importer is None:
+        from importlib import import_module
+        importer = import_module
+    for name, (relative, expected) in PINNED_SOURCES.items():
+        if not relative.startswith("b12x/"):
+            continue  # The vLLM pin is context evidence; this child executes B12X directly.
+        module = importer(relative.removesuffix(".py").replace("/", "."))
+        source = getattr(module, "__file__", None)
+        audited = audit[name].get("path")
+        if (not source or not audited or Path(source).resolve() != Path(audited).resolve()
+                or _sha256(Path(source)) != expected):
+            raise GateError(f"Imported B12X source differs from audited input: {name}")
+
+
 def require_pinned_sources(audit: dict[str, dict[str, Any]]) -> None:
     failures = [
         f"{name}:{entry['state']}"
@@ -356,6 +372,9 @@ def build_plan(source_root: str | None = None, *, include_audit: bool = False) -
         "dispatch_contract": {
             "deployed_direct_micro_name": "static",
             "direct_condition": "num_tokens <= 8 and num_tokens * topk < 64",
+            "effective_direct_limit_at_topk8": "num_tokens <= 7; both conditions apply",
+            "direct_child_environment": {"B12X_STATIC_COMPACT_CUTOVER_PAIRS": "64"},
+            "cutover_scope": "Each child sets the route-pair cutover explicitly: 64 for direct/static and 1 for forced dynamic. The live assertion checks the resulting binding implementation.",
             "forced_dynamic_environment": {
                 "B12X_STATIC_COMPACT_CUTOVER_PAIRS": "1"
             },
@@ -383,11 +402,12 @@ def build_plan(source_root: str | None = None, *, include_audit: bool = False) -
     return report
 
 
-def build_dry_run(source_root: str | None = None) -> dict:
+def build_dry_run(source_root: str | None = None, *, seed: int = SEED) -> dict:
     report = build_plan(source_root, include_audit=True)
     report["mode"] = "dry-run"
+    report["seed"] = seed
     report["routes"] = {
-        f"Q{width}-{style}": deterministic_routes(width, style=style)
+        f"Q{width}-{style}": deterministic_routes(width, style=style, seed=seed)
         for width in (5, 6)
         for style in ("variable", "identical")
     }
@@ -702,6 +722,11 @@ def _time_case(
 
     starts = [torch.cuda.Event(enable_timing=True) for _ in range(iterations)]
     ends = [torch.cuda.Event(enable_timing=True) for _ in range(iterations)]
+    # CUDA event handles initialize lazily on their first record. Materialize
+    # every handle outside the measured launches and allocator observation.
+    for event in starts + ends:
+        event.record()
+    torch.cuda.synchronize()
     allocated_before = int(torch.cuda.memory_allocated())
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.nvtx.range_push(f"glm52-moe-floor:{case.name}")
@@ -714,6 +739,7 @@ def _time_case(
         torch.cuda.nvtx.range_pop()
     torch.cuda.synchronize()
     allocated_after = int(torch.cuda.memory_allocated())
+    peak_live_bytes = int(torch.cuda.max_memory_allocated())
     samples = [float(start.elapsed_time(end)) for start, end in zip(starts, ends)]
     output = runtime["output"]
     finite = bool(torch.isfinite(output).all().item())
@@ -732,7 +758,7 @@ def _time_case(
             "live_bytes_before": allocated_before,
             "live_bytes_after": allocated_after,
             "live_bytes_delta": allocated_after - allocated_before,
-            "peak_live_bytes": int(torch.cuda.max_memory_allocated()),
+            "peak_live_bytes": peak_live_bytes,
             "note": (
                 "fixed caller-owned tensors; live-byte delta is not an allocation "
                 "event counter"
@@ -767,6 +793,7 @@ def _run_live_child(arguments: argparse.Namespace) -> dict:
 
     import torch
     import b12x.integration.tp_moe as tp_moe
+    require_imported_b12x_sources(audit)
 
     platform = _check_live_platform(torch)
     abi = _assert_live_abi(tp_moe)
@@ -863,6 +890,8 @@ def _run_live_child(arguments: argparse.Namespace) -> dict:
         "mode": "live-child",
         "backend_child": arguments.backend,
         "seed": arguments.seed,
+        "warmup": arguments.warmup,
+        "iterations": arguments.iterations,
         "platform": platform,
         "source_audit": audit,
         "abi": abi,
@@ -952,6 +981,8 @@ def _run_live_parent(arguments: argparse.Namespace) -> dict:
         "mode": "live",
         "prototype": True,
         "seed": arguments.seed,
+        "warmup": arguments.warmup,
+        "iterations": arguments.iterations,
         "platform": child_reports[0]["platform"],
         "source_audit": child_reports[0]["source_audit"],
         "results": results,
@@ -963,6 +994,8 @@ def _run_live_parent(arguments: argparse.Namespace) -> dict:
             "CUDA-event time does not provide LPDDR bytes; collect Nsight counters",
             "coherent-micro remains unimplemented and was not simulated",
             "only profiler-attributed MoE savings may be projected into whole rounds",
+            "output comparisons are diagnostics without a numerical acceptance tolerance",
+            "event intervals enclose launches/replays and may include host submission gaps",
         ],
     }
 
@@ -1014,7 +1047,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.mode == "plan":
             report = build_plan(arguments.source_root)
         elif arguments.mode == "dry-run":
-            report = build_dry_run(arguments.source_root)
+            report = build_dry_run(arguments.source_root, seed=arguments.seed)
         elif arguments.mode == "live-child":
             report = _run_live_child(arguments)
         else:

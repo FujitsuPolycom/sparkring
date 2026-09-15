@@ -14,10 +14,20 @@ param(
     [string[]]$Targets = ($env:SPARKRING_TARGETS -split ",").Trim(),
     [string[]]$RankHosts = ($env:SPARKRING_RANK_HOSTS -split ",").Trim(),
     [string]$ManagementNic = "wlP9s9",
+    # Named serving-container guard; this does not inventory other GPU users.
+    [ValidatePattern("^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")]
+    [string]$ModelContainer = "glm52-trace",
+    [ValidateRange(1, 3600)]
+    [int]$RemoteTimeoutSeconds = 60,
+    [scriptblock]$RemoteExecutor,
     [switch]$KeepContainers
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/posix_shell_argument.ps1"
+. "$PSScriptRoot/probe_process.ps1"
+$runIdentity = [Guid]::NewGuid().ToString("N")
+$ownedNodes = [System.Collections.Generic.List[object]]::new()
 
 if (@($Targets | Where-Object { $_ }).Count -ne 4) {
     throw ("SPARKRING_TARGETS (or -Targets) must be a comma-separated " +
@@ -32,6 +42,10 @@ if (@($RankHosts | Where-Object { $_ }).Count -ne 4) {
 if ($Image -eq "<your-vllm-image>") {
     throw "set -Image to your vLLM container image tag"
 }
+
+# Keep rank indices aligned with the non-empty entries validated above.
+$Targets = @($Targets | Where-Object { $_ })
+$RankHosts = @($RankHosts | Where-Object { $_ })
 
 $nodes = @(
     [pscustomobject]@{ Rank = 0; Target = $Targets[0] },
@@ -50,7 +64,7 @@ function Invoke-NodeSsh {
         [string]$Command
     )
 
-    & ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
+    Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target $Command
     return $LASTEXITCODE
 }
 
@@ -60,8 +74,8 @@ function Get-ContainerState {
         [pscustomobject]$Node
     )
 
-    $name = "spark-tp4-numerical-r$($Node.Rank)"
-    $state = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
+    $name = "spark-tp4-numerical-$runIdentity-r$($Node.Rank)"
+    $state = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $Node.Target `
         "docker inspect $name --format '{{.State.Status}}:{{.State.ExitCode}}'" 2>$null)
     if ($LASTEXITCODE -ne 0) {
         return "missing"
@@ -70,10 +84,13 @@ function Get-ContainerState {
 }
 
 foreach ($node in $nodes) {
-    $runningGlm = (& ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
-        "docker inspect glm52-trace --format '{{.State.Running}}' 2>/dev/null || echo false")
-    if ($runningGlm.Trim() -eq "true") {
-        throw "glm52-trace is still running on rank $($node.Rank); stop the model explicitly before this audit"
+    $runningGlm = (Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        "docker ps --filter name=^/${ModelContainer}$ --format '{{.Names}}'")
+    if ($LASTEXITCODE -ne 0) {
+        throw "failed to inspect running containers on rank $($node.Rank)"
+    }
+    if (@($runningGlm | ForEach-Object { $_.Trim() }) -contains $ModelContainer) {
+        throw "$ModelContainer is still running on rank $($node.Rank); stop the model explicitly before this audit"
     }
 }
 
@@ -82,32 +99,35 @@ $timedOut = $false
 
 try {
     foreach ($node in $nodes) {
-        $name = "spark-tp4-numerical-r$($node.Rank)"
+        $name = "spark-tp4-numerical-$runIdentity-r$($node.Rank)"
         $command = @(
-            "test -f $Source/tp4_numerical_audit.py"
-            "&& test -f $Library"
-            "&& docker rm -f $name >/dev/null 2>&1 || true;"
+            "test -f $(ConvertTo-PosixShellArgument "$Source/tp4_numerical_audit.py")"
+            "&& test -f $(ConvertTo-PosixShellArgument $Library)"
+            "&&"
             "docker run -d --name $name"
             "--network host --ipc host --gpus all"
             "--cap-add IPC_LOCK --ulimit memlock=-1:-1"
             "--ulimit nofile=1048576:1048576"
             "--device /dev/infiniband:/dev/infiniband"
-            "-v ${Source}:/opt/spark-vllm:ro"
-            "-v ${Library}:/opt/spark-transport/libspark_transport_capi.so:ro"
+            "-v $(ConvertTo-PosixShellArgument "${Source}:/opt/spark-vllm:ro")"
+            "-v $(ConvertTo-PosixShellArgument "${Library}:/opt/spark-transport/libspark_transport_capi.so:ro")"
             "-e PYTHONPATH=/opt/spark-vllm"
             "-e SPARK_TP4_LIBRARY=/opt/spark-transport/libspark_transport_capi.so"
             "-e RANK=$($node.Rank) -e WORLD_SIZE=4"
-            "-e MASTER_ADDR=$headIp -e MASTER_PORT=$MasterPort"
+            "-e $(ConvertTo-PosixShellArgument "MASTER_ADDR=$headIp") -e MASTER_PORT=$MasterPort"
             "-e ITERATIONS=$Iterations"
             "-e NCCL_NET=Socket -e NCCL_IB_DISABLE=1"
-            "-e NCCL_SOCKET_IFNAME=$ManagementNic"
-            "-e GLOO_SOCKET_IFNAME=$ManagementNic"
+            "-e $(ConvertTo-PosixShellArgument "NCCL_SOCKET_IFNAME=$ManagementNic")"
+            "-e $(ConvertTo-PosixShellArgument "GLOO_SOCKET_IFNAME=$ManagementNic")"
             "-e NCCL_CUMEM_ENABLE=0 -e NCCL_PROTO=Simple"
-            $Image
+            (ConvertTo-PosixShellArgument $Image)
             "timeout --signal=TERM --kill-after=5s ${WatchdogSeconds}s"
             "python3 /opt/spark-vllm/tp4_numerical_audit.py >/dev/null"
         ) -join " "
 
+        # An SSH failure may follow a successful remote launch. The unique
+        # invocation name remains ours to clean up when its reply is lost.
+        $ownedNodes.Add($node)
         $exitCode = Invoke-NodeSsh -Node $node -Command $command
         if ($exitCode -ne 0) {
             throw "failed to launch numerical-audit rank $($node.Rank)"
@@ -134,23 +154,23 @@ try {
     }
 
     foreach ($node in $nodes) {
-        $name = "spark-tp4-numerical-r$($node.Rank)"
+        $name = "spark-tp4-numerical-$runIdentity-r$($node.Rank)"
         $state = Get-ContainerState -Node $node
         Write-Output "rank=$($node.Rank) state=$state"
-        & ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+        Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
             "docker logs $name 2>&1 | grep '^TP4_NUMERICAL' || true"
         if ($state -ne "exited:0") {
             $failed = $true
             Write-Output "rank=$($node.Rank) failure_log:"
-            & ssh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
+            Invoke-ProbeSsh -o BatchMode=yes -o ConnectTimeout=8 $node.Target `
                 "docker logs --tail 60 $name 2>&1"
         }
     }
 }
 finally {
     if (-not $KeepContainers) {
-        foreach ($node in $nodes) {
-            $name = "spark-tp4-numerical-r$($node.Rank)"
+        foreach ($node in $ownedNodes) {
+            $name = "spark-tp4-numerical-$runIdentity-r$($node.Rank)"
             Invoke-NodeSsh -Node $node `
                 -Command "docker rm -f $name >/dev/null 2>&1 || true" | Out-Null
         }

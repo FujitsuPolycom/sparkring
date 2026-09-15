@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
@@ -184,9 +185,9 @@ def test_cuda_correctness_kernels_use_the_qualification_receipt_abi() -> None:
     cmake = (directory.parents[1] / "CMakeLists.txt").read_text(
         encoding="utf-8"
     )
-    library_start = cmake.index("add_library(spark_transport")
-    library_end = cmake.index("\n)", library_start)
-    production_library = cmake[library_start:library_end]
+    library = re.search(r"add_library\s*\(\s*spark_transport(?=\s|\))([^)]*)\)", cmake)
+    assert library is not None, "production spark_transport target is missing"
+    production_library = library.group(1)
     assert "tiled_correctness_kernels" not in production_library
     assert "tiled_correctness_oracle" not in production_library
 
@@ -241,3 +242,15 @@ def test_cuda_correctness_translation_unit_compiles_when_nvcc_is_available(
         check=True,
         cwd=directory,
     )
+
+
+@pytest.mark.parametrize("offset", ["input", "output"])
+def test_negative_tile_offsets_are_rejected_before_guard_mutation(offset):
+    geometry = payload_geometry(1)
+    buffers = initialize_guarded_buffers(geometry, guard_bytes=16)
+    before = (bytes(buffers.input), bytes(buffers.output))
+    tile = OracleTile(-2 if offset == "input" else 0,
+                      -2 if offset == "output" else 0, 4, 1)
+    with pytest.raises(ValueError):
+        fill_expected_output(buffers, tile)
+    assert (bytes(buffers.input), bytes(buffers.output)) == before

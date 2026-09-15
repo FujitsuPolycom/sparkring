@@ -1,5 +1,6 @@
 import importlib.util
 import io
+import json
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,12 @@ def test_stream_error_rejected():
         list(probe.events(io.BytesIO(b'data: {"error":{"message":"failed"}}\ndata: [DONE]\n')))
 
 
+def test_single_completion_request_cannot_merge_multiple_choices():
+    raw = b'data: {"choices":[{"delta":{"content":"one"}},{"delta":{"content":"two"}}]}\ndata: [DONE]\n'
+    with pytest.raises(ValueError, match='choice'):
+        list(probe.events(io.BytesIO(raw)))
+
+
 def test_context_guard_sends_no_completion(monkeypatch):
     calls = []
     def request(url, *args):
@@ -51,10 +58,37 @@ def test_temperature_usage_and_cache_evidence(monkeypatch):
         payloads.append(payload)
         if url.endswith('/tokenize'):
             return io.BytesIO(b'{"count":1000}')
-        return io.BytesIO(b'data: {"choices":[{"delta":{"content":"OK"}}]}\n'
-                          b'data: {"usage":{"prompt_tokens":1000,"prompt_tokens_details":{"cached_tokens":0}}}\n'
+        return io.BytesIO(b'data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"length"}]}\n'
+                          b'data: {"usage":{"prompt_tokens":1000,"completion_tokens":1,"prompt_tokens_details":{"cached_tokens":0}}}\n'
                           b'data: [DONE]\n')
     monkeypatch.setattr(probe, 'request', request)
     result = probe.measure('http://example', 'model', 1000, 2048, 1, '', 1)
     assert payloads[-1]['temperature'] == 1 and payloads[-1]['max_tokens'] == 1
     assert result['valid'] and result['cold_prefix_confirmed']
+
+
+@pytest.mark.parametrize('change', ['missing-finish', 'failed-finish', 'missing-completion',
+                                   'bool-prompt', 'bool-cache', 'negative-cache'])
+def test_incomplete_or_invalid_usage_cannot_qualify_prefill(monkeypatch, change):
+    choice = {'delta': {'content': 'OK'}, 'finish_reason': 'length'}
+    usage = {'prompt_tokens': 1000, 'completion_tokens': 1, 'prompt_tokens_details': {'cached_tokens': 0}}
+    if change == 'missing-finish':
+        choice.pop('finish_reason')
+    elif change == 'failed-finish':
+        choice['finish_reason'] = 'error'
+    elif change == 'missing-completion':
+        usage.pop('completion_tokens')
+    elif change == 'bool-prompt':
+        usage['prompt_tokens'] = True
+    elif change == 'bool-cache':
+        usage['prompt_tokens_details']['cached_tokens'] = False
+    else:
+        usage['prompt_tokens_details']['cached_tokens'] = -1
+    def request(url, *args):
+        if url.endswith('/tokenize'):
+            return io.BytesIO(b'{"count":1000}')
+        return io.BytesIO(('data: ' + json.dumps({'choices': [choice], 'usage': usage})
+                           + '\ndata: [DONE]\n').encode())
+    monkeypatch.setattr(probe, 'request', request)
+    with pytest.raises(ValueError):
+        probe.measure('http://example', 'model', 1000, 2048, 1, '', 1)

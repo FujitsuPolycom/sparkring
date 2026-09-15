@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-tp2",
+  "title": "Qwen3.8-Flash-Next NVFP4 on two Sparks",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-tp2/config.json"
+  },
+  "release": "runtime/releases/qwen38-flash-next-r37/release.json",
+  "guide": "profiles/qwen38-flash-next-tp2/README.md",
+  "evidence_scope": "Bounded native-262K text checks and synthetic C1 image/video checks. No general video, concurrent-media or long-duration stability qualification. SparkCache is disabled.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan",
+      "check",
+      "create"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/qwen38-flash-next-tp2/config.json"
+    ]
+  }
+}

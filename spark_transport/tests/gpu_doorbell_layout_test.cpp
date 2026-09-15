@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cstddef>
 #include <type_traits>
+#include <limits>
+#include <stdexcept>
 
 int main() {
   using spark_transport::DoorbellControl;
@@ -24,6 +26,14 @@ int main() {
   assert(aligned_control_offset(64) == 64);
   assert(aligned_control_offset(65) == 128);
   assert(aligned_control_offset(16 * 1024) == 16 * 1024);
+  bool rejected = false;
+  try { (void)aligned_control_offset(std::numeric_limits<std::size_t>::max()); }
+  catch (const std::overflow_error&) { rejected = true; }
+  assert(rejected);
+  rejected = false;
+  try { (void)spark_transport::make_exchange_buffer_layout(std::numeric_limits<std::size_t>::max() / 2 + 1); }
+  catch (const std::overflow_error&) { rejected = true; }
+  assert(rejected);
   const auto exchange =
       spark_transport::make_exchange_buffer_layout(16 * 1024);
   assert(exchange.send_offset == 0);

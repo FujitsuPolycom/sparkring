@@ -1,3 +1,6 @@
+// Occupancy estimate for a synthetic eight-flow, six-stage control skeleton.
+// This is not the fused-prefill kernel: its register/shared-memory usage and
+// occupancy do not qualify that kernel's cooperative launch. No kernel launches.
 #include <cuda_runtime.h>
 
 #include <cstdint>
@@ -29,10 +32,14 @@ __global__ void fused_skeleton(FusedKernelState* state) {
 }
 
 template <int CtasPerFlow>
-void report(int sms) {
+bool report(int sms) {
   int active{};
-  cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+  const auto status = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       &active, fused_skeleton<CtasPerFlow>, 256, 0);
+  if (status != cudaSuccess) {
+    std::fprintf(stderr, "Occupancy query failed: %s\n", cudaGetErrorString(status));
+    return false;
+  }
   const int requested = 8 * CtasPerFlow;
   const int capacity = active * sms;
   std::printf("FUSED_OCCUPANCY ctas_per_flow=%d requested=%d "
@@ -40,6 +47,7 @@ void report(int sms) {
               "state_bytes=%zu\n",
               CtasPerFlow, requested, active, sms, capacity,
               capacity >= requested, sizeof(FusedKernelState));
+  return true;
 }
 
 int main() {
@@ -50,7 +58,5 @@ int main() {
       cudaDeviceGetAttribute(&concurrent, cudaDevAttrConcurrentKernels, 0) !=
           cudaSuccess) return 1;
   std::printf("FUSED_DEVICE sms=%d concurrent_kernels=%d\n", sms, concurrent);
-  report<1>(sms);
-  report<2>(sms);
-  report<4>(sms);
+  return report<1>(sms) && report<2>(sms) && report<4>(sms) ? 0 : 1;
 }

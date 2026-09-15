@@ -1,0 +1,108 @@
+{
+  "schema": "sparkring-profile-capacity/v1",
+  "profiles": {
+    "qwen38-flash-next-tp2": {
+      "tokens": 2954103,
+      "source": "performance/records/qwen38-flash-next/r37-tp2.json",
+      "witness": "\"reported_kv_pool_tokens\": 2954103",
+      "conditions": "Reported startup allocator estimate for R37 TP2/DCP1 at 262144 context, 16 sequences, 8192 batched tokens and 24 GiB KV per rank. Bounded C16 and near-limit checks are recorded separately; not proof that sixteen full-context requests fit.",
+      "approximate": true
+    },
+    "deepseek-v41-flash-sglang-cycle": {
+      "tokens": 1499904,
+      "source": "performance/records/deepseek-v41-flash/sglang-soak-20260912.md",
+      "witness": "token pool 1500000 (actual 1499904)",
+      "conditions": "Contributor-recorded SGLang TP4/EP4 pool at 430080 context, chunk 4096, eight requests and memory fraction 0.90. Sizing reference for the separate 262144-context recipe default; not qualification of a rebuilt image."
+    },
+    "glm53-flash-spark-tp2-dcp1-sparkcache": {
+      "tokens": 1081922,
+      "source": "performance/records/glm53-flash/r35-tp2-sparkcache.json",
+      "witness": "\"kv_pool_tokens\": 1081922",
+      "conditions": "Recorded R35 TP2/DCP1 SparkCache pool at 7.5 GiB KV per rank. Sizing reference for the retained profile; not R37 TP2 qualification."
+    },
+    "glm52-exl3-r7-3.5bpw": {
+      "tokens": 1156864,
+      "source": "profiles/glm52-exl3-r7-3.5bpw/recipe.json",
+      "witness": "\"reported_kv_tokens\": 1156864",
+      "conditions": "Recorded EXL3 TP4/DCP4 profile, 9,250,000,000 KV bytes per rank."
+    },
+    "deepseek-v41-flash-cycle": {
+      "tokens": 2182642,
+      "source": "profiles/deepseek-v41-flash-cycle/recipe.json",
+      "witness": "10.94 GiB = 2,182,642 tokens",
+      "conditions": "TP4, Engram on NVMe, gpu_memory_utilization 0.83 and 430,080 configured context tokens. This is a sizing reference for the 1M request default; enabled features and context settings affect the resulting pool.",
+      "approximate": true
+    },
+    "qwen38-27b-exl3-k5k6": {
+      "tokens": 8743342,
+      "source": "profiles/qwen38-27b-exl3-k5k6/recipe.json",
+      "witness": "8743342-token logical KV pool",
+      "conditions": "Reported startup for the normalized TP4 profile; maximum configured sequences 64."
+    },
+    "qwen38-27b-exl3-k5k6-pair": {
+      "tokens": 4130233,
+      "source": "profiles/qwen38-27b-exl3-k5k6-pair/recipe.json",
+      "witness": "4130233-token logical KV pool",
+      "conditions": "Reported startup for the normalized TP2 profile; maximum configured sequences 32."
+    },
+    "glm53-flash-spark-tp4-dcp1-sparkcache": {
+      "tokens": 2280000,
+      "source": "performance/capacity-references.md",
+      "witness": "2.28M",
+      "conditions": "Published R33 TP4/DCP1 SparkCache profile; 24 GiB FP8 KV per rank; retained README approximation.",
+      "approximate": true
+    },
+    "deepseek-v4-flash-0731": {
+      "tokens": 1000000,
+      "source": "performance/capacity-references.md",
+      "witness": "| TP4/DCP1 | 1M |",
+      "conditions": "DeepSeek-0731 TP4/DCP1; retained README approximation at the documented 16 GiB per-rank allocation.",
+      "approximate": true
+    },
+    "deepseek-v4-flash-0731-pair": {
+      "tokens": 1000000,
+      "source": "performance/capacity-references.md",
+      "witness": "| TP2/DCP1 | 1M |",
+      "conditions": "DeepSeek-0731 TP2/DCP1; retained README approximation at the documented 16 GiB per-rank allocation.",
+      "approximate": true
+    },
+    "glm53-flash-nvfp4-dflash2-bf16-tp4": {
+      "tokens": 4321618,
+      "source": "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json",
+      "witness": "\"logical_kv_capacity_tokens\": 4321618",
+      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe."
+    },
+    "sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4": {
+      "tokens": 4321618,
+      "source": "profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json",
+      "witness": "\"logical_kv_capacity_tokens\": 4321618",
+      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe."
+    },
+    "glm53-flash-spark-tp4-dcp1": {
+      "tokens": 2300000,
+      "source": "performance/capacity-references.md",
+      "witness": "cache-disabled MTP3 TP4/DCP1 profile at 2.3M tokens",
+      "conditions": "Reference from the shared-image MTP3 TP4/DCP1 layout at 24 GiB per rank; not a separate R33 startup measurement.",
+      "approximate": true
+    },
+    "glm53-flash-spark-tp4-switched": {
+      "tokens": 2300000,
+      "source": "performance/capacity-references.md",
+      "witness": "Its table uses the shared-image table's 2.3M",
+      "conditions": "Sizing estimate using the same target checkpoint, TP4/DCP1, FP8 KV and 24 GiB per rank. Transport and source-image composition differ; not a measured switched-startup pool.",
+      "approximate": true
+    },
+    "glm53-flash-spark-tp4-dcp4-sparkcache": {
+      "tokens": 8364901,
+      "source": "performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md",
+      "witness": "GPU KV cache size: 8,364,901 tokens",
+      "conditions": "Published R33 image plus DCP4 contract/entrypoint overlay, TP4/DCP4, 24 GiB FP8 KV per rank, SparkCache enabled."
+    },
+    "qwen38-flash-next-qad-tp4": {
+      "tokens": 3179938,
+      "source": "performance/records/qwen38-flash-next/r37-shared-tp4.json",
+      "witness": "GPU KV cache size: 3,179,938 tokens",
+      "conditions": "QAD TP4/DCP1, shared image 2540686d726a, 24 GiB FP8 KV per rank, 262144 context, 16 sequences, 8192 batch, MTP3, HC/MTP prefill features, SparkCache disabled. Startup pool estimate, not full-context workload qualification."
+    }
+  }
+}

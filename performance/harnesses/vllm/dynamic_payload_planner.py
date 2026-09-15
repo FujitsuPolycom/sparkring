@@ -1,8 +1,7 @@
-"""PROTOTYPE: formula admission and restart-only capture planning.
+"""Research-only formula admission and restart-only capture planning.
 
-Question: can every positive width of a known collective family be admitted
-without an exact-shape whitelist, while unknown semantics, malformed layouts,
-and arena overflow still fail closed?
+Known collective families are admitted by byte geometry and arena capacity.
+Unknown semantics, malformed layouts, and arena overflow are rejected.
 
 This GPU-free module is deliberately not imported by a live adapter.  It
 builds on ``decode_payload_contract`` and emits planning evidence only.
@@ -353,11 +352,12 @@ def admit_payload(descriptor: PayloadDescriptor) -> AdmissionDecision:
         or isinstance(descriptor.payload_bytes, bool)
         or not isinstance(descriptor.payload_bytes, int)
         or descriptor.payload_bytes < 1
+        or type(descriptor.contiguous) is not bool
     ):
         return _rejection(
             DecisionCode.REJECT_INVALID_DESCRIPTOR,
             descriptor,
-            "query_rows and payload_bytes must be positive integers",
+            "query_rows and payload_bytes must be positive integers; contiguous must be boolean",
             family=family,
         )
     if (
@@ -466,6 +466,22 @@ def _aggregate_census(
             or not isinstance(sample.route, CensusRoute)
         ):
             raise ValueError("census samples must be positive and typed")
+        # A census row describes an admitted collective. Admission rejects
+        # widths whose arena footprint exceeds the family cap, so such a row
+        # is inconsistent evidence rather than a proposal candidate.
+        family = FAMILY_REGISTRY[sample.family_tag]
+        try:
+            arena_bytes = family.byte_geometry(sample.query_rows)[2]
+        except OverflowError as error:
+            raise ValueError(
+                f"census width {sample.family_tag} Q{sample.query_rows} "
+                f"is not admissible: {error}"
+            ) from error
+        if arena_bytes > family.arena.capacity_bytes:
+            raise ValueError(
+                f"census width {sample.family_tag} Q{sample.query_rows} "
+                "exceeds the family arena cap; admission rejects it"
+            )
         key = (sample.family_tag, sample.query_rows, sample.route)
         totals[key] = totals.get(key, 0) + sample.count
     return tuple(
@@ -500,6 +516,13 @@ def _padding_metrics(
             ),
             None,
         )
+        if sample.route is CensusRoute.PADDED and target is None:
+            # A padded route requires a bucket at or above the logical width.
+            # Reporting zero waste here would hide padding of unknown size.
+            raise ValueError(
+                f"padded census row {sample.family_tag} Q{sample.query_rows} "
+                "has no covering bucket"
+            )
         if (
             sample.route is CensusRoute.EAGER
             and sample.query_rows not in exact_eager_promotions
@@ -511,7 +534,16 @@ def _padding_metrics(
             waste_ppm = 0
         else:
             padding_rows = target - sample.query_rows
-            padded = family.byte_geometry(target)[2]
+            try:
+                padded = family.byte_geometry(target)[2]
+            except OverflowError as error:
+                raise ValueError(
+                    f"padded census target {sample.family_tag} Q{target} is not admissible"
+                ) from error
+            if padded > family.arena.capacity_bytes:
+                raise ValueError(
+                    f"padded census target {sample.family_tag} Q{target} exceeds the family arena cap"
+                )
             waste = padded - logical
             waste_ppm = (
                 (waste * 1_000_000 + logical - 1) // logical
@@ -576,7 +608,14 @@ def propose_next_restart_plan(
     maximum_new_buckets: int = 4,
     maximum_padding_waste_ppm: int = 80_000,
 ) -> dict[str, object]:
-    """Propose, but never apply, exact-Q buckets for the next restart."""
+    """Propose, but never apply, exact-Q buckets for the next restart.
+
+    Census rows must describe collectives admitted under ``current_buckets``:
+    every width must fit the family arena cap, and every padded row needs a
+    bucket at or above its logical width. ``maximum_padding_waste_ppm`` ranks
+    candidates whose per-row waste exceeds it ahead of others; it does not
+    cap or reject candidates.
+    """
 
     current = _validated_buckets(current_buckets)
     if (

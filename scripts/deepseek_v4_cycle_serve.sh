@@ -35,6 +35,13 @@ if grep -Ev '^[[:space:]]*(#|$)' "$env_file" \
     die "environment file contains unresolved placeholders: $env_file"
 fi
 
+# Capture controller ownership before operator configuration is sourced.
+readonly controller_launch_id=${SPARKRING_LAUNCH_ID-}
+readonly controller_container_prefix=${SPARKRING_CONTAINER_PREFIX:-deepseek-v4-flash-r}
+[[ $controller_container_prefix =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$ ]] \
+    || die "SPARKRING_CONTAINER_PREFIX must use 1 to 120 Docker name characters"
+[[ -z $controller_launch_id || $controller_launch_id =~ ^[0-9a-f]{32}$ ]] \
+    || die "SPARKRING_LAUNCH_ID must be a 32-character lowercase hex identifier"
 # shellcheck disable=SC1090
 . "$env_file"
 # Keep the container-only preload value available for validation without
@@ -100,7 +107,7 @@ for name in NUM_SPECULATIVE_TOKENS MAX_MODEL_LEN MAX_NUM_SEQS \
 done
 require_port API_PORT
 require_port MASTER_PORT
-[ "$API_PORT" != "$MASTER_PORT" ] || die "API_PORT and MASTER_PORT must differ"
+[ "$((10#$API_PORT))" -ne "$((10#$MASTER_PORT))" ] || die "API_PORT and MASTER_PORT must differ"
 
 [ "$NCCL_SOCKET_IFNAME" = "$GLOO_SOCKET_IFNAME" ] \
     || die "NCCL_SOCKET_IFNAME and GLOO_SOCKET_IFNAME must match"
@@ -134,9 +141,8 @@ sparkring_validate_nccl_gid_policy
 if [ "$NCCL_IB_GID_AUTO" = 1 ]; then
     [ "$SPARKRING_NCCL_SELECTED_COUNT" = 2 ] \
         || die "the cycle NCCL_IB_HCA selector must resolve to exactly two active HCA/ports; resolved $SPARKRING_NCCL_SELECTED_COUNT"
-    # A bare --env overrides the env-file entry. Automatic policy unsets the
-    # host NCCL_IB_GID_INDEX, so Docker omits it instead of treating an empty
-    # value as NCCL's index 0.
+    # The filtered env-file removes configured pins. A bare --env also
+    # prevents the image ENV from supplying a default; the host key is unset.
     gid_env_args=(--env NCCL_IB_GID_INDEX)
 else
     IFS=',' read -r -a hca_specs <<< "$NCCL_IB_HCA"
@@ -148,7 +154,7 @@ else
 fi
 
 image=ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
-container_name="deepseek-v4-flash-r$NODE_RANK"
+container_name="${controller_container_prefix}${NODE_RANK}"
 model_container_path=/models/deepseek-v4-flash-0731
 served_model_name=${SERVED_MODEL_NAME:-deepseek-v4-flash-0731}
 
@@ -176,9 +182,16 @@ speculative_config=$(printf \
     '{"method":"dspark","num_speculative_tokens":%s,"moe_backend":"b12x"}' \
     "$NUM_SPECULATIVE_TOKENS")
 
+sparkring_prepare_docker_gid_env "$env_file"
+controller_labels=()
+if [ -n "$controller_launch_id" ]; then
+    controller_labels=(--label "org.sparkring.launch-id=$controller_launch_id")
+fi
+
 command=(
     docker run -d
     --name "$container_name"
+    "${controller_labels[@]}"
     --pull never
     --network host
     --ipc host
@@ -189,7 +202,7 @@ command=(
     -v "$MODEL_HOST_PATH:$model_container_path:ro"
     "${blobs_mount[@]}"
     -v "$CACHE_HOST_PATH:/cache"
-    --env-file "$env_file"
+    --env-file "$SPARKRING_DOCKER_ENV_FILE"
     "${gid_env_args[@]}"
     --entrypoint /opt/venv/bin/vllm
     "$image"
@@ -237,7 +250,12 @@ printf '  command:'
 printf ' %q' "${command[@]}"
 printf '\n'
 
-[ "$mode" = --run ] || exit 0
+if [ "$mode" != --run ]; then
+    if [ "$NCCL_IB_GID_AUTO" = 1 ]; then
+        printf '  The filtered env-file is temporary; launch with --run to recreate it.\n'
+    fi
+    exit 0
+fi
 command -v docker >/dev/null 2>&1 || die "docker is unavailable"
 docker image inspect "$image" >/dev/null 2>&1 \
     || die "pinned image is not present; pull it before launching: $image"
@@ -252,4 +270,5 @@ for cache_directory in \
         echo "deepseek cycle launcher: warning: could not create $cache_directory" >&2
     fi
 done
-exec "${command[@]}"
+# Keep the shell alive so its EXIT trap removes the filtered env-file.
+"${command[@]}"

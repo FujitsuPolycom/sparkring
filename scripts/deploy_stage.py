@@ -68,12 +68,14 @@ def source_archive(root, output):
     )
     selected = []
     for name in filter(None, names):
+        # Managed profile rendering imports framework adapters and bundle
+        # composition from their integrations/vllm owner.
         if name.split("/")[0] not in (
             "scripts",
             "runtime",
             "spark_transport",
             "third_party",
-        ):
+        ) and not name.startswith("integrations/vllm/") and name != "profiles/glm53-target-variants.json":
             continue
         p = root / name
         if any(part in (".private", "__pycache__") for part in p.parts) or p.suffix in (
@@ -366,6 +368,22 @@ os.chown(p,0,0);p.parent.chmod(0o700)
 
 def stage_downloaded_assets(run, seed, public, hosts, spec, pins, identities, workspace):
     """Download and distribute image/model artifacts in the owned workspace."""
+    stage_selected_image(run, seed, public, hosts, workspace)
+    return stage_model_assets(run, seed, public, hosts, spec, pins, identities, workspace)
+
+
+def stage_selected_image(run, seed, public, hosts, workspace):
+    """Retain the selected immutable image reference on every target host."""
+    if public.get("registry_pull_each_host"):
+        # save/load does not preserve registry digest references. Each host must
+        # pull the reference used by the generated launcher.
+        for host in hosts:
+            run.remote(host["host"], ["docker", "pull", public["image_reference"]], timeout=14400)
+            actual = run.remote(host["host"], ["docker", "image", "inspect", "--format",
+                                "{{.Id}}", public["image_reference"]]).strip()
+            if actual != public["config_image_id"]:
+                raise ValueError("Image identity mismatch")
+        return
     if public["local"]:
         if run.remote(seed, ["docker", "image", "inspect", "--format", "{{.Id}}",
                              public["image_reference"]]).strip() != public["config_image_id"]:
@@ -414,6 +432,8 @@ def stage_downloaded_assets(run, seed, public, hosts, spec, pins, identities, wo
             != public["config_image_id"]
         ):
             raise ValueError("Image identity mismatch")
+def stage_model_assets(run, seed, public, hosts, spec, pins, identities, workspace):
+    """Download and verify the selected checkpoint independently of its image."""
     model = spec["site"]["model_roots"][0]
     run.remote(seed, ["mkdir", "-p", model])
     download = (
@@ -472,6 +492,8 @@ print(json.dumps(rows))
         != pins["target"]["index_sha256"]
     ):
         raise ValueError("Target metadata mismatch")
+    from runtime.common import glm_targets
+    glm_targets.verify_download(spec["site"].get("target_model_variant", glm_targets.DEFAULT), model_files)
     for h in hosts[1:]:
         run.remote(h["host"], ["mkdir", "-p", model])
         present = json.loads(

@@ -231,3 +231,19 @@ def test_gpu_contract_is_not_linked_into_production_transport() -> None:
     ]
     assert "experiments/tiled_prefill" not in production_interfaces
     assert "tiled_executor" not in production_interfaces
+
+
+def test_aggregate_completion_requires_every_tile_dependency():
+    from dataclasses import replace
+    import pytest
+
+    plan = build_harness_plan(512)
+    for identity, message in ((plan.output_ready_node, "every tile release"),
+                              (plan.fully_retired_node, "every tile retirement")):
+        node = next(item for item in plan.nodes if item.node_id == identity)
+        for dependencies in ((), node.dependencies[:-1]):
+            changed = replace(plan, nodes=tuple(
+                replace(item, dependencies=dependencies) if item.node_id == identity else item
+                for item in plan.nodes))
+            with pytest.raises(ValueError, match=message):
+                validate_harness_plan(changed)

@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-image-abi-evidence/v1",
+  "image_id": "sha256:7b698d4299aaaebb359e287d75c7f18275311b6a6d56322d9767b0b4f35cd60b",
+  "collector": "runtime/images/inspect_abi.py",
+  "collector_sha256": "3dfeabbd712fbdef3d4c3e6132e755f1ae31445a786ad3f449c629719a1b4ba3",
+  "execution": "docker run --rm -i --network none --pull never --entrypoint /opt/venv/bin/python IMAGE_ID -",
+  "measurement": {
+    "schema": "sparkring-runtime-abi/v1",
+    "platform": {
+      "os": "linux",
+      "machine": "aarch64"
+    },
+    "abi": {
+      "python_version": "3.12.3",
+      "python_soabi": "cpython-312-aarch64-linux-gnu",
+      "cxx11_abi": true,
+      "glibc_version": "2.39",
+      "torch_distribution_version": "2.13.0",
+      "torch_build_version": "2.13.0",
+      "torch_cuda_version": "13.3"
+    },
+    "cuda_compiler_output": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Tue_Jun_09_02:45:27_PM_PDT_2026\nCuda compilation tools, release 13.3, V13.3.73\nBuild cuda_13.3.r13.3/compiler.38244171_0",
+    "gpu_targets": null,
+    "scope": "No GPU initialized. GPU target coverage and native dependency closure are not established."
+  }
+}

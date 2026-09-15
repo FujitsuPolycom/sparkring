@@ -54,8 +54,8 @@ def apply(site: Path, ownership: dict, context=HERE):
     rows = {row["path"]: row for row in ownership["files"]}
     if len(rows) != len(ownership["files"]):
         raise ValueError("Duplicate ownership dependency")
-    # The checkpoint exporter is a mandatory ownership dependency even though
-    # most mHC/projection sources are covered by the whole-image inventory.
+    # GDN attention exports recurrent checkpoint state. Its installed source
+    # must match the checkpoint ownership contract before mHC changes it.
     checkpoint = "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py"
     if checkpoint not in rows:
         raise ValueError("Missing mHC checkpoint ownership dependency")
@@ -81,6 +81,9 @@ def apply(site: Path, ownership: dict, context=HERE):
     for target, source in writes:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(source)
+    for name, expected in manifest["files"].items():
+        if hashlib.sha256((site / name).read_bytes()).hexdigest() != expected["after_sha256"]:
+            raise ValueError(f"mHC runtime postimage differs: {name}")
     for name, expected in manifest["files"].items():
         if name in rows:
             rows[name]["sha256"] = expected["after_sha256"]

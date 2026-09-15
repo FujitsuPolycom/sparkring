@@ -148,6 +148,9 @@ def select_capacity_plan(
 def _projected_exact_q_ports(
     query_rows: int, environ: Mapping[str, str]
 ) -> tuple[int, int]:
+    # Mirrors the eager all-reduce base pair and stride-two formula owned by
+    # spark_tp4_port_namespace; test_executable_cache_and_namespace_are_exact_
+    # payload_indexed proves the two agree.
     base0 = _integer(environ, "SPARK_TP4_CONTROL_PORT0", 11000)
     base1 = _integer(environ, "SPARK_TP4_CONTROL_PORT1", 11001)
     offset = (query_rows - 1) * 2
@@ -164,6 +167,10 @@ def transport_engine_audit(
 
     Q1024 and Q4096 entries are projections of the present stride-two port
     formula, not claims that the executable adapter admits those shapes.
+    The compatibility field ``executable_today`` means within the exact-Q
+    adapter's opt-in Q512 bound (spark_tp4_backend._ALLREDUCE_PREFILL_MAX_QUERY_ROWS).
+    It does not assert that VLLM_SPARK_TP4_PREFILL_Q512 is enabled or that
+    capacity-pool dispatch is implemented.
     """
 
     environment = _environment(environ)
@@ -189,7 +196,9 @@ def transport_engine_audit(
         for value in CAPACITY_QUERY_ROWS
     ]
     pool_ports = set(transport_key.control_ports)
-    exact_decode_ports = {
+    # Exact-Q sessions Q1-Q40 share one eager all-reduce port formula for
+    # decode and for prefill within the adapter's default bound.
+    exact_q1_q40_ports = {
         port
         for query_rows in range(1, CAPACITY_QUERY_ROWS[0] + 1)
         for port in _projected_exact_q_ports(query_rows, environment)
@@ -217,8 +226,8 @@ def transport_engine_audit(
             "physical_transport_engines_per_rank": 1,
             "logical_capacity_plan_count": len(CAPACITY_QUERY_ROWS),
             "control_port_count_per_rank": len(pool_ports),
-            "ports_disjoint_from_exact_decode_q1_q40": pool_ports.isdisjoint(
-                exact_decode_ports
+            "ports_disjoint_from_exact_q1_q40": pool_ports.isdisjoint(
+                exact_q1_q40_ports
             ),
             "coexistence_contract": (
                 "capacity mode must replace exact-Q sessions above Q40 with one "

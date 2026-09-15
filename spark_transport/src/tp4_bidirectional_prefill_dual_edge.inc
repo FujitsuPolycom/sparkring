@@ -14,11 +14,11 @@ class DualRailEdgePort final : public research::BidirectionalRingEdgePort {
     }
     if (rail_count_ == 2) {
       for (const auto& neighbor : endpoints_) {
-        if (neighbor[0] == nullptr || neighbor[1] == nullptr ||
-            neighbor[0]->active_mtu_bytes() != 4096 ||
-            neighbor[1]->active_mtu_bytes() != 4096 ||
-            neighbor[0]->active_mtu_bytes() !=
-                neighbor[1]->active_mtu_bytes()) {
+        if (neighbor[0] == nullptr || neighbor[1] == nullptr) {
+          throw std::invalid_argument("dual rail endpoints must be non-null");
+        }
+        if (neighbor[0]->active_mtu_bytes() != 4096 ||
+            neighbor[1]->active_mtu_bytes() != 4096) {
           throw std::runtime_error(
               "dual rail requires equal active MTU 4096");
         }

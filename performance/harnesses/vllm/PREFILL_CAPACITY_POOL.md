@@ -3,8 +3,10 @@
 ## Status
 
 The capacity selector in `prefill_capacity_pool.py` is
-**implemented** and **offline-validated**. Native dispatch is **unsupported**.
-The serving adapter defaults `VLLM_SPARK_TP4_PREFILL_CAPACITY_POOL` to `0` and
+**implemented** with synthetic CPU tests. Native dispatch is **unsupported**.
+The serving adapter in
+[`integrations/vllm/spark_tp4_backend.py`](../../../integrations/vllm/spark_tp4_backend.py)
+defaults `VLLM_SPARK_TP4_PREFILL_CAPACITY_POOL` to `0` and
 fails before loading native code when an operator sets it to `1`.
 
 This contract does not claim a live result. It defines the adapter surface and
@@ -26,12 +28,12 @@ The stride-two port formula projects as follows with the default base pair
 
 | Maximum Q | Possible exact sessions/rank | Reserved or projected ports/rank | Last pair | Executable status |
 |---:|---:|---:|---:|---|
-| 40 | 40 | 80 | 11078/11079 | Admitted when the decode contract is configured through Q40 |
+| 40 | 40 | 80 | 11078/11079 | Admitted by the exact-Q adapter's default prefill bound, the configured maximum query rows (Q40) |
 | 512 | 512 | 1,024 | 12022/12023 | Admitted only with `VLLM_SPARK_TP4_PREFILL_Q512=1` |
 | 1,024 | 1,024 | 2,048 | 13046/13047 | Unsupported projection |
 | 4,096 | 4,096 | 8,192 | 19190/19191 | Unsupported projection |
 
-Q1024 and Q4096 are not eligible for the current adapter. Their rows quantify
+Q1024 and Q4096 are not eligible for the exact-Q adapter. Their rows quantify
 what extending the exact-Q formula would cost; they are not executable claims.
 
 ## One transport engine with four logical capacity plans
@@ -94,12 +96,12 @@ The Python adapter intentionally contains no tiled-engine native symbol lookup.
 
 ## Port coexistence
 
-The proposed shared pair is disjoint from exact decode Q1-Q40 under both the
-default exact base `11000/11001` and the canary base `11100/11101`. It cannot
+The proposed shared pair is disjoint from the exact Q1-Q40 sessions under both the
+default exact base `11000/11001` and the alternate base `11100/11101`. It cannot
 coexist with an arbitrarily extended exact-Q prefill family:
 
 - default exact base: the first projected collision is Q751;
-- canary exact base: the first projected collision is Q701.
+- alternate exact base: the first projected collision is Q701.
 
 Capacity mode must replace exact-Q reservations above Q40. Before live use,
 the shared namespace validator must reserve the one tiled-engine pair and prove
@@ -144,12 +146,11 @@ host:
 python -m pytest performance/harnesses/vllm/test_prefill_capacity_pool.py -q
 ```
 
-The tracked tree does not provide a standalone planner command. The test
-above validates the offline selector in
-[`prefill_capacity_pool.py`](prefill_capacity_pool.py)
-and the plan contract it returns; emitting a plan as JSON from a command
-line is separate implementation work, and no such command may be quoted
-here until it is tracked in this repository.
+The test above is the only tracked entry point for the offline selector in
+[`prefill_capacity_pool.py`](prefill_capacity_pool.py) and the plan
+contract it returns. No tracked command emits that capacity-pool plan as
+JSON. The restart-plan demo in `dynamic_payload_planner.py` is a separate
+decode census tool and does not produce this plan.
 
 After all prerequisites are implemented, the live harness must run bracketed
 baseline/candidate arms for Q40, Q512, Q1024, and Q4096. It must also exercise

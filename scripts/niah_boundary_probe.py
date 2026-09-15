@@ -10,14 +10,14 @@ classifies the outcome:
   PASS           needle retrieved, request completed (finish=stop)
   NEEDLE-MISS    prompt processed but needle not retrievable
   TIMEOUT        wall deadline hit first
-  STALL          opt-in watchdog: prompt counter frozen while admitted
+  STALL          opt-in watchdog: global prompt counter unchanged
 
 The request runs in a background thread. By default the wall deadline is
 the authoritative limiter; the prompt-counter watchdog is opt-in via
 --stall-ticks N: it samples the engine's Prometheus counter
 (`vllm:prompt_tokens_total` on <api>/metrics) from the main thread and
-reports the deep prefill wedge signature only after the counter stays
-frozen for N polls. Trust that signal only on an IDLE lane: under
+reports an unchanged counter after N successful polls. It does not establish
+request admission or diagnose a prefill failure. Use an idle endpoint: under
 concurrent load the global counter advances from unrelated traffic, and
 this vLLM runtime may leave the counter unchanged until a healthy long
 prefill completes, so watchdog-off is the default.
@@ -31,7 +31,8 @@ Example:
     python3 niah_boundary_probe.py --api http://<rank-0>:8015 \
         --model GLM-5.3-Flash-Ring --depth 400000 --frac 0.5 --deadline 300
 
-Multiple boundary walks can be driven by hashing same-seed depths, e.g.:
+Reuse --seed for reproducible filler lines across depths. The inserted needle
+and its position vary with depth; complete prompts are not prefix extensions:
     for d in 100000 200000 300000 350000 375000 400000 450000; do
         python3 niah_boundary_probe.py --api ... --model ... --depth $d; done
 
@@ -78,9 +79,9 @@ def build_archive(rng, target_tokens):
     return prompt, code
 
 
-def prompt_counter(metrics_url):
+def prompt_counter(metrics_url, timeout=8):
     try:
-        for line in urllib.request.urlopen(metrics_url, timeout=8).read().decode().split("\n"):
+        for line in urllib.request.urlopen(metrics_url, timeout=timeout).read().decode().split("\n"):
             if line.startswith("vllm:prompt_tokens_total{"):
                 return int(float(line.split()[-1]))
     except Exception:
@@ -116,31 +117,49 @@ def main():
             box["http_error"] = e.code
         except Exception as e:
             box["request_error"] = str(e)
+        finally:
+            box["completed_at"] = time.monotonic()
 
     before = prompt_counter(metrics)
     print(f"prompt_counter_before={before}", flush=True)
-    t0 = time.time()
+    t0 = time.monotonic()
     thread = threading.Thread(target=request, daemon=True)
     thread.start()
     last = before
     stuck = 0
-    while time.time() - t0 < ARGS.deadline:
-        thread.join(timeout=20)
+    deadline = t0 + ARGS.deadline
+    while thread.is_alive():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        thread.join(timeout=min(20, remaining))
         if not thread.is_alive():
             break
-        cur = prompt_counter(metrics)
-        print(f"t={time.time()-t0:.0f}s counter={cur}", flush=True)
-        if cur is None or cur == last:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        if not ARGS.stall_ticks:
+            continue
+        cur = prompt_counter(metrics, timeout=min(8, remaining))
+        print(f"t={time.monotonic()-t0:.0f}s counter={cur}", flush=True)
+        if cur is None:
+            stuck = 0
+        elif last is not None and cur == last:
             stuck += 1
         else:
-            stuck, last = 0, cur
-        if ARGS.stall_ticks and stuck >= ARGS.stall_ticks:
-            print("STALL: prompt counter frozen while a request is admitted "
-                  "(deep prefill wedge signature)", flush=True)
+            stuck = 0
+        last = cur
+        if not thread.is_alive():
+            break
+        if stuck >= ARGS.stall_ticks:
+            print("STALL: global prompt counter unchanged during the request; "
+                  "this does not prove admission or a prefill failure", flush=True)
             sys.exit(3)
 
-    thread.join(timeout=60)
-    elapsed = time.time() - t0
+    elapsed = time.monotonic() - t0
+    if box.get("completed_at", float("inf")) > deadline:
+        print(f"TIMEOUT after {elapsed:.1f}s (deadline={ARGS.deadline}s)", flush=True)
+        sys.exit(4)
     if "http_error" in box:
         print(f"HTTPError {box['http_error']} after {elapsed:.1f}s "
               "(admission rejection is the expected behavior above the cap)",
@@ -182,4 +201,6 @@ if __name__ == "__main__":
     ap.add_argument("--api-key", default=os.environ.get("DSPARK_API_KEY", ""),
                     help="bearer key (default $DSPARK_API_KEY)")
     ARGS = ap.parse_args()
+    if ARGS.depth <= 0 or ARGS.deadline <= 0 or ARGS.stall_ticks < 0 or not 0 <= ARGS.frac <= 1:
+        ap.error("depth/deadline must be positive, stall-ticks nonnegative and frac in 0..1")
     main()

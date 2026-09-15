@@ -136,7 +136,7 @@ def create_receipt(
     old = elf_profile(old_path)
     new = elf_profile(new_path)
     if old["sha256"] != native["installed_preimage_sha256"]:
-        raise OverlayError("installed native library is not the contracted 6fc preimage")
+        raise OverlayError("installed native library differs from the required preimage SHA-256: " + native["installed_preimage_sha256"])
     if new["size_bytes"] != native["result_size_bytes"]:
         raise OverlayError("rebuilt native library size differs from the qualified artifact")
     compare_abi(old, new)

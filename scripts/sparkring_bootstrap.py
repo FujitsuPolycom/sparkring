@@ -15,7 +15,7 @@ import json
 import os
 import re
 import subprocess
-import tempfile
+import shlex
 import time
 from pathlib import Path
 from typing import Callable, Sequence
@@ -337,6 +337,7 @@ def build_cluster_document(
         for subnet in subnets
     ):
         raise BootstrapError("fabric supernet overlaps a management address")
+    # Edge rN-r(N+1) uses subnet[N]: outgoing endpoint .10, incoming .11.
     edges = [
         {
             "id": f"r{rank}-r{(rank + 1) % size}",
@@ -364,7 +365,7 @@ def build_cluster_document(
                     {
                         "edge": f"r{rank}-r{following}",
                         "interface": fact.fabric_interfaces[0],
-                        "address": str(list(outgoing.hosts())[9]),
+                        "address": str(outgoing.network_address + 10),
                         "rdma_device": fact.rdma_devices[0],
                         "rdma_port": 1,
                         "roce_gid_index": 3,
@@ -372,7 +373,7 @@ def build_cluster_document(
                     {
                         "edge": f"r{previous}-r{rank}",
                         "interface": fact.fabric_interfaces[1],
-                        "address": str(list(incoming.hosts())[10]),
+                        "address": str(incoming.network_address + 11),
                         "rdma_device": fact.rdma_devices[1],
                         "rdma_port": 1,
                         "roce_gid_index": 3,
@@ -490,8 +491,7 @@ def render_rank_netplan(cluster: ClusterConfig, rank_id: int) -> str:
 def _network_apply_script(cluster: ClusterConfig, rank_id: int) -> str:
     rank = cluster.rank(rank_id)
     target = "/etc/netplan/40-sparkring-fabric.yaml"
-    timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    backup = f"{target}.before-sparkring-{timestamp}"
+    encoded = base64.b64encode(render_rank_netplan(cluster, rank_id).encode()).decode("ascii")
     management_cidr_fragment = f" {rank.management.address}/"
     management_check = (
         f"ip -4 -o addr show dev {rank.management.interface} | "
@@ -501,12 +501,15 @@ def _network_apply_script(cluster: ClusterConfig, rank_id: int) -> str:
         [
             "set -eu",
             f"target={target}",
-            f"backup={backup}",
+            "work=$(mktemp -d /tmp/sparkring-fabric.XXXXXX)",
+            'trap \'rm -f "$work/netplan.yaml"; rmdir "$work"\' EXIT',
+            'backup="$target.before-sparkring-${work##*/}"',
+            f"printf '%s' {encoded} | base64 -d > \"$work/netplan.yaml\"",
             "had_previous=0",
             'if test -f "$target"; then cp -a "$target" "$backup"; had_previous=1; fi',
             'rollback() { if test "$had_previous" -eq 1; then '
             'cp -a "$backup" "$target"; else rm -f "$target"; fi; }',
-            "install -m 600 /tmp/sparkring-fabric.yaml \"$target\"",
+            'install -m 600 "$work/netplan.yaml" "$target"',
             "if ! netplan generate; then",
             "  rollback",
             "  exit 1",
@@ -537,7 +540,6 @@ def _network_apply_script(cluster: ClusterConfig, rank_id: int) -> str:
             "  echo 'management invariant failed; fabric netplan rolled back' >&2",
             "  exit 91",
             "fi",
-            "rm -f /tmp/sparkring-fabric.yaml",
         ]
     )
 
@@ -545,48 +547,16 @@ def _network_apply_script(cluster: ClusterConfig, rank_id: int) -> str:
 def apply_fabric_network(cluster: ClusterConfig) -> None:
     """Install fabric-only netplan on each rank with management rollback."""
     for rank in cluster.ranks:
-        content = render_rank_netplan(cluster, rank.id)
-        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
-        stage_command = (
-            f"printf '%s' {encoded} | base64 -d > /tmp/sparkring-fabric.yaml && "
-            "chmod 600 /tmp/sparkring-fabric.yaml"
-        )
+        # The privileged shell creates a private staging directory and receives
+        # its payload directly. Concurrent invocations cannot overwrite shared
+        # /tmp files or replace the script between upload and sudo execution.
         script = _network_apply_script(cluster, rank.id)
         if rank.id == 0:
-            with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", delete=False, suffix=".yaml"
-            ) as handle:
-                handle.write(content)
-                staged = Path(handle.name)
-            try:
-                copy = _run(
-                    ["sudo", "install", "-m", "600", str(staged), "/tmp/sparkring-fabric.yaml"],
-                    capture=False,
-                )
-                if copy.returncode:
-                    raise BootstrapError("could not stage rank 0 fabric netplan")
-                result = _run(["sudo", "sh", "-c", script], capture=False)
-            finally:
-                staged.unlink(missing_ok=True)
+            result = _run(["sudo", "sh", "-c", script], capture=False)
         else:
-            stage = _run(
-                ["ssh", "-o", "BatchMode=yes", rank.ssh_target, stage_command]
-            )
-            if stage.returncode:
-                raise BootstrapError(
-                    f"could not stage rank {rank.id} fabric netplan: "
-                    f"{stage.stderr.strip()}"
-                )
-            encoded_script = base64.b64encode(script.encode("utf-8")).decode("ascii")
-            remote_apply = (
-                f"printf '%s' {encoded_script} | base64 -d > "
-                "/tmp/sparkring-apply-fabric.sh && "
-                "chmod 700 /tmp/sparkring-apply-fabric.sh && "
-                "sudo /tmp/sparkring-apply-fabric.sh; "
-                "rc=$?; rm -f /tmp/sparkring-apply-fabric.sh; exit $rc"
-            )
             result = _run(
-                ["ssh", "-t", rank.ssh_target, remote_apply], capture=False
+                ["ssh", "-t", rank.ssh_target, shlex.join(("sudo", "sh", "-c", script))],
+                capture=False,
             )
         if result.returncode:
             raise BootstrapError(

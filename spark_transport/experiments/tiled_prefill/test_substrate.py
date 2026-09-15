@@ -341,3 +341,37 @@ def test_schedule_verifiers_reject_incomplete_or_acausal_plans() -> None:
     )
     with pytest.raises(ValueError, match="unavailable segments"):
         verify_allgather_schedule(acausal)
+
+
+@pytest.mark.parametrize("watermark", [float("nan"), float("inf"), True, 0.0, -2])
+def test_credit_watermark_requires_integer_evidence(watermark):
+    with pytest.raises(ValueError, match="integer watermark"):
+        validate_tile_acquisition(TileTicket(2, 0), expected_ordinal=8,
+                                  consumed_through=watermark, slots_per_edge=8)
+
+
+def test_allreduce_rejects_repeated_contributors():
+    schedule = sequential_allreduce_schedule(64)
+    repeated = replace(schedule, exchanges=schedule.exchanges +
+                       (replace(schedule.exchanges[-1], stage=2),))
+    with pytest.raises(ValueError, match="repeats a contributor"):
+        verify_allreduce_schedule(repeated)
+
+
+def test_ring_rejects_reducing_instead_of_copying_complete_shards():
+    schedule = bidirectional_ring_allreduce_schedule(64)
+    repeated = replace(schedule, transfers=tuple(
+        replace(transfer, phase="reduce_scatter")
+        if transfer.phase == "all_gather" else transfer
+        for transfer in schedule.transfers))
+    with pytest.raises(ValueError, match="repeats a contributor"):
+        verify_bidirectional_ring_allreduce_schedule(repeated)
+
+
+def test_allgather_cannot_hide_duplicate_wire_segments():
+    schedule = split_relay_allgather_schedule(64)
+    first = schedule.transfers[0]
+    repeated = replace(schedule, transfers=(replace(first, segments=first.segments + first.segments),)
+                       + schedule.transfers[1:])
+    with pytest.raises(ValueError, match="repeats a segment"):
+        verify_allgather_schedule(repeated)

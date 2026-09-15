@@ -73,11 +73,14 @@ if [[ -e "$INSTALL_DIR" ]]; then
     echo "refusing to update dirty managed checkout: $INSTALL_DIR" >&2
     exit 1
   fi
-  git -C "$INSTALL_DIR" fetch --tags origin
-  if git -C "$INSTALL_DIR" show-ref --verify --quiet "refs/remotes/origin/$REF"; then
+  # A single-branch clone's fetch configuration excludes other branches.
+  # Fetch the requested branch or tag explicitly before selecting it.
+  if git -C "$INSTALL_DIR" ls-remote --exit-code --heads origin "refs/heads/$REF" >/dev/null; then
+    git -C "$INSTALL_DIR" fetch origin "refs/heads/$REF:refs/remotes/origin/$REF"
     git -C "$INSTALL_DIR" checkout -B "$REF" "origin/$REF"
   else
-    git -C "$INSTALL_DIR" checkout --detach "$REF"
+    git -C "$INSTALL_DIR" fetch origin "refs/tags/$REF:refs/tags/$REF"
+    git -C "$INSTALL_DIR" checkout --detach "refs/tags/$REF"
   fi
 else
   mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -99,10 +102,11 @@ elif [[ -e "$launcher" ]]; then
   mv "$launcher" "$backup"
   echo "backed up existing launcher to $backup"
 fi
+# The launcher runs the tracked script through python3, so the checkout keeps
+# its committed file modes and stays clean for later --ref updates.
 printf '#!/usr/bin/env bash\nexec python3 %q "$@"\n' \
   "$INSTALL_DIR/scripts/sparkring.py" > "$launcher"
 chmod 0755 "$launcher"
-chmod 0755 "$INSTALL_DIR/scripts/sparkring.py"
 
 echo
 echo "SparkRing installed at $INSTALL_DIR"

@@ -97,7 +97,13 @@ std::uint64_t max_inflight_collectives() {
   }
   std::size_t consumed{};
   const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
+  std::uint64_t parsed{};
+  try {
+    parsed = std::stoull(text, &consumed);
+  } catch (const std::logic_error&) {
+    throw std::invalid_argument(
+        "SPARK_TP4_MAX_INFLIGHT must be an integer in [1, 4096]");
+  }
   if (consumed != text.size() || parsed == 0 ||
       parsed > kMaximumMaxInflight) {
     throw std::invalid_argument(
@@ -339,8 +345,9 @@ void exchange_round(VerbsEndpoint& endpoint, DoorbellControl& control,
   std::abort();
 }
 
-void adaptive_graph_poll_pause(std::uint32_t& misses) noexcept {
-  ++misses;
+// The progress thread owns a dedicated CPU. Pause without entering the OS
+// scheduler between collectives so replay does not incur wakeup latency.
+void graph_poll_pause() noexcept {
 #if defined(__aarch64__)
   __asm__ __volatile__("yield");
 #elif defined(__x86_64__) || defined(__i386__)
@@ -348,15 +355,7 @@ void adaptive_graph_poll_pause(std::uint32_t& misses) noexcept {
 #else
   std::atomic_signal_fence(std::memory_order_seq_cst);
 #endif
-  if (misses == std::numeric_limits<std::uint32_t>::max()) {
-    // The graph progress thread owns an exclusively pinned CPU. Entering the
-    // scheduler between model-layer collectives adds exposed wake latency to
-    // every replay; retain only the architecture pause hint and wrap the
-    // diagnostic counter without yielding that dedicated core.
-    misses = 0;
-  }
 }
-
 void require_exclusive_current_cpu(std::uint32_t expected_cpu) {
 #if defined(__linux__)
   if (expected_cpu >= CPU_SETSIZE) {
@@ -983,7 +982,7 @@ class Tp4AllreduceSession::Impl {
       progress_direct_graph_doorbells();
       return;
     }
-    std::uint32_t poll_misses{};
+
     while (!stop_requested_.load(std::memory_order_acquire)) {
       if (tp4_graph_command_overflow(graph_commands_host_) != 0) {
         fatal_async_failure("CUDA Graph command ring overflow");
@@ -994,10 +993,10 @@ class Tp4AllreduceSession::Impl {
       if (!tp4_graph_command_try_consume_layout(
               graph_commands_host_, expected, options_.bytes_per_row,
               kTp4GraphAllreduceMaximumQ, &command)) {
-        adaptive_graph_poll_pause(poll_misses);
+        graph_poll_pause();
         continue;
       }
-      poll_misses = 0;
+
       graph_consumed_sequence_ = command.sequence;
       try {
         if (!tp4_graph_doorbell_token_valid(
@@ -1019,7 +1018,7 @@ class Tp4AllreduceSession::Impl {
   }
 
   void progress_direct_graph_doorbells() noexcept {
-    std::uint32_t poll_misses{};
+
     while (!stop_requested_.load(std::memory_order_acquire)) {
       if (tp4_graph_command_overflow(graph_commands_host_) != 0) {
         fatal_async_failure("direct-doorbell graph TP4 overflow");
@@ -1035,10 +1034,10 @@ class Tp4AllreduceSession::Impl {
       const std::uint64_t observed_sequence =
           doorbell_token >> kTp4GraphDoorbellQBits;
       if (observed_sequence < expected) {
-        adaptive_graph_poll_pause(poll_misses);
+        graph_poll_pause();
         continue;
       }
-      poll_misses = 0;
+
       if (observed_sequence != expected) {
         fatal_async_failure(
             "direct-doorbell graph TP4 skipped a slot generation");

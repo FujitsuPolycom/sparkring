@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-spark-tp4-switched",
+  "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 switched",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "runtime/profiles/glm53-flash-spark-tp4-switched/profile.json"
+  },
+  "release": "runtime/releases/glm53-source/release.json",
+  "guide": "profiles/glm53-flash-spark-tp4-switched/README.md",
+  "evidence_scope": "Provided as-is. No switched-hardware qualification; operators must verify their HCA and GID selection.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/switched.py",
+    "actions": [
+      "plan",
+      "create",
+      "start"
+    ],
+    "fixed_args": []
+  }
+}
