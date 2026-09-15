@@ -46,6 +46,7 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 
 | Evidence | Proven scope |
 |---|---|
+| [Contributor integration at `001fddd`](../../performance/records/repository/contributor-adoption-ci.json) | 5,836 Linux tests passed, 29 skipped; 185 image tests passed; source staging, metadata, readiness and contributor regressions included |
 | [Linux integration at `622fe32`](../../performance/records/repository/local-ci.json) | 5,750 tests passed, 29 skipped; 185 image tests passed; real Compose resolution, layout, links, release preservation and pinned LIL companion checks passed |
 | [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and feature activation checks; serving evidence is recorded separately below |
 | [Shared image publication](../../runtime/images/compositions/lil-r37-shared/publication.json) | Anonymous manifest/configuration checks and a clean-credential pull match the tested ARM64 image; the QAD quickstart selects its registry digest |

@@ -1,0 +1,68 @@
+{
+  "schema": "sparkring-local-ci-evidence/v1",
+  "source_commit": "001fddd4d5692b486d62becf2a4787d69387b668",
+  "environment": "Ubuntu WSL; isolated archive of committed source",
+  "selection": ".github/workflows/ci.yml tests job: Test maintained Python trees",
+  "tests": {
+    "passed": 5836,
+    "skipped": 29,
+    "failures": 0,
+    "errors": 0
+  },
+  "skip_reasons": {
+    "collection skipped": 3,
+    "nvcc is unavailable; CUDA compilation is not claimed": 1,
+    "MARKER_TEST_BINARY must name a compiled native helper": 1,
+    "Only vocabulary allgather accepts an explicit Q": 3,
+    "Only tiled probe emits JSON receipts": 3,
+    "the optional composed R7 vLLM source tree is absent": 3,
+    "optional companion SparkCache source integration": 1,
+    "SPARKCACHE_SOURCE selects the companion token ledger": 10,
+    "Optional canonical native bundle is absent; portable synthetic-byte coverage still runs": 1,
+    "the supported R7 image carries no loose host artifacts": 3
+  },
+  "image_tests": {
+    "passed": 185
+  },
+  "checks": [
+    {
+      "check": "lint",
+      "exit_code": 0
+    },
+    {
+      "check": "layout",
+      "exit_code": 0
+    },
+    {
+      "check": "links",
+      "exit_code": 0
+    },
+    {
+      "check": "release",
+      "exit_code": 0
+    },
+    {
+      "check": "image-tests",
+      "exit_code": 0
+    },
+    {
+      "check": "tests",
+      "exit_code": 0
+    }
+  ],
+  "lil_companion": {
+    "source_commit": "329cde801b847294005cb16765692032a6cdf206",
+    "binary_used_by_integration_tests": true,
+    "build_scope": "Reused the Go 1.26.0 binary from the separately recorded companion build; Go test/vet/build were not repeated."
+  },
+  "source_archive_sha256": "c9946bed69d07107a96a64cc6d309a157433e49c184fd6e8bdc9fd31b3b9f3f7",
+  "output_sha256": {
+    "contributor-linux-image-tests.log": "997456a71f3de7d110d8263ac7cc97f47c39588facd4f03cad294216b056056a",
+    "contributor-linux-layout.log": "285b4da6fcb6a9530f3f667e6538c7e6fa9759420e16ba2820b93d7ceebb3bbf",
+    "contributor-linux-links.log": "9cd3a217ab3cfca061ea2b6e4271c0c9f47aeec4f081559dc7d5913f81a0235a",
+    "contributor-linux-lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "contributor-linux-release.log": "6323d81942bf93053888a9d11efbca1ce8a12335c139b1b39f0788af5a45b7b3",
+    "contributor-linux-tests.log": "d34de6cd774b989f2a817553938b767891b3fadaceb9074c5a11afb844ef0321"
+  },
+  "scope": "Local Linux software checks only. No hosted CI, NVIDIA GLM serving on R37 or real management-address outage qualification is claimed."
+}
