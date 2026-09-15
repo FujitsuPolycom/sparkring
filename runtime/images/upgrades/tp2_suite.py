@@ -366,7 +366,19 @@ def run(
     success = False
     assertions = 0
     evidence = {}
+    phase = "startup"
+
+    def checkpoint(name):
+        nonlocal phase
+        phase = name
+        write_json(
+            output / "progress.json",
+            {"phase": phase, "assertions": assertions, "evidence": evidence},
+            replace=True,
+        )
+
     try:
+        checkpoint("startup")
         for rank in (0, 1):
             remote_cache_roots(pair, rank, locations[rank])
             created.append(rank)
@@ -375,6 +387,7 @@ def run(
             print(pair.start(rank, specs[rank].name), flush=True)
         wait_ready(base, site["model"], seconds=timeout)
         assertions += 1
+        checkpoint("text")
         answer = chat(
             base,
             site["model"],
@@ -394,33 +407,46 @@ def run(
                 "Cache checks need a selected connector",
             )
             fixture = needle_fixture(run_id)
+            checkpoint("cache-cold")
             cold = verify_needle(
                 chat(base, site["model"], fixture["messages"]), fixture
             )
             assertions += 1
+            evidence["cache"] = {"fixture_sha256": fixture["sha256"], "cold": cold}
+            checkpoint("cache-publication")
             publication = wait_publication(pair, locations)
+            evidence["cache"]["publication"] = publication
+            checkpoint("cache-warm")
             warm = verify_needle(
                 chat(base, site["model"], fixture["messages"]),
                 fixture,
                 minimum_cached=4096,
             )
             assertions += 1
+            evidence["cache"]["warm"] = warm
+            checkpoint("cache-restart")
             restarted = restart(pair, specs, base, site["model"], timeout)
+            evidence["cache"]["restart"] = restarted
+            checkpoint("cache-restored")
             restored = verify_needle(
                 chat(base, site["model"], fixture["messages"]),
                 fixture,
                 minimum_cached=4096,
             )
             assertions += 1
+            evidence["cache"]["restored"] = restored
+            checkpoint("cache-corruption")
             for rank in (0, 1):
                 pair.stop(rank, specs[rank].name)
             faults = [
                 fault(pair, rank, item, "corrupt")
                 for rank, item in enumerate(locations)
             ]
+            evidence["cache"]["faults"] = faults
             for rank in (1, 0):
                 print(pair.start(rank, specs[rank].name), flush=True)
             wait_ready(base, site["model"], seconds=timeout)
+            checkpoint("cache-recompute")
             recomputed = verify_needle(
                 chat(base, site["model"], fixture["messages"]), fixture
             )
@@ -441,6 +467,7 @@ def run(
             }
             for rank in (0, 1):
                 pair.stop(rank, specs[rank].name)
+            checkpoint("cache-repair")
             evidence["cache"]["repair"] = [
                 fault(pair, rank, item, "repair") for rank, item in enumerate(locations)
             ]
@@ -449,9 +476,11 @@ def run(
                     print(pair.start(rank, specs[rank].name), flush=True)
                 wait_ready(base, site["model"], seconds=timeout)
         if site.get("media_checks"):
+            checkpoint("media")
             evidence["media"] = media_check.run(pair, specs[0], base, site["model"])
             assertions += 4
         if site.get("performance"):
+            checkpoint("performance")
             comparison = performance_gate.run(
                 site["performance"],
                 host=site["api_host"],
@@ -467,6 +496,16 @@ def run(
                 "Candidate failed the protected performance comparison",
             )
         success = True
+        checkpoint("completed")
+    except BaseException as error:
+        success = False
+        evidence["failure"] = {
+            "phase": phase,
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+        checkpoint(phase)
+        raise
     finally:
         if not (success and leave_running):
             for rank in created:

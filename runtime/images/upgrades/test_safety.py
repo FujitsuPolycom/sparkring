@@ -313,6 +313,43 @@ def test_agent_response_is_data_not_actions():
         validate({"command": "anything"})
     with pytest.raises(contracts.Refused):
         validate(dict(disposition="retire", reason="No test", patch="a diff"))
+
+
+def test_runner_rejects_agent_edits_to_opaque_carried_asset(fixture):
+    policy, repository, _ = fixture
+    asset = repository / "engine/calibration.gz"
+    original = b"\0approved-calibration"
+    asset.write_bytes(original)
+    sources.git(repository, "add", "-N", "engine/calibration.gz")
+    addition = sources.git(
+        repository, "diff", "--binary", "--", "engine/calibration.gz"
+    )
+    patch_path = policy.parent / "geometry.patch"
+    patch_path.write_bytes(patch_path.read_bytes() + addition)
+    update(
+        policy,
+        lambda p: p["sources"][0].update(
+            patch_sha256=contracts.sha(patch_path.read_bytes())
+        ),
+    )
+    commit_source(repository, REFACTORED)
+    asset.write_bytes(b"\0unreviewed-calibration")
+    replacement = sources.git(
+        repository, "diff", "--binary", "--", "engine/calibration.gz"
+    ).decode()
+    asset.write_bytes(original)
+
+    class AssetEditor(DemoAgent):
+        def propose(self, request, **kwargs):
+            assert "engine/calibration.gz" in request["protected_paths"]
+            assert "GIT binary patch" not in request["carried_patch"]
+            result = super().propose(request, **kwargs)
+            result["patch"] += replacement
+            return result
+
+    result = execute(fixture, agent=AssetEditor())
+    assert result["status"] == "blocked"
+    assert "native or protected path" in result["reason"]
     with pytest.raises(contracts.Refused):
         ChatAgent(dict(endpoint="http://example.org/v1", model="fixture"))
     with pytest.raises(contracts.Refused):

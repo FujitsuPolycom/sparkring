@@ -512,11 +512,17 @@ def _reconcile(
             patch, applied = b"", True
         else:
             candidate = sources.copy_snapshot(candidate, folder / f"adapted-{attempt}")
+            from .opaque_patch import protected_paths
+
             applied, feedback = sources.apply_patch(
                 candidate,
                 proposal["patch"].encode(),
                 source["editable_paths"],
-                [*source["native_paths"], *source.get("protected_paths", [])],
+                [
+                    *source["native_paths"],
+                    *source.get("protected_paths", []),
+                    *protected_paths(patch),
+                ],
             )
         row["candidate_path"] = str(candidate)
 

@@ -198,12 +198,31 @@ reused through read-only binds, not downloaded by the qualification adapter.
 These adapters are implemented but require live qualification for the selected
 image/site. Keep API access restricted to the trusted management network.
 
+[tp2_gate.py](tp2_gate.py) exposes the ordered experiment as an operator hardware
+gate. It requires cache, selected media and matched performance checks for both
+model sites, then requires successful restoration of the saved deployment. It
+has no promotion option. Its composite receipt retains each model's distinct
+performance control; it does not invent a single control-image identity for two
+different models. Register the site and control files as hashed gate inputs.
+
+The model suite writes `progress.json` as stages advance. Failure receipts retain
+completed responses and identify the failed stage, including a cold-cache answer
+when publication fails. Progress records are diagnostic evidence, not passing
+qualification receipts.
+
 ## Supply semantic reconciliation
 
 Mechanical application is attempted file by file. Clean approved fragments are
 retained. Conflicts produce a bounded request containing the behavior contracts,
 relevant source views, carried patch and gate results. Oversized context is
 rejected, not silently truncated. Large files use explicitly labeled diff views.
+
+Binary assets such as compressed kernel-calibration tables are represented by
+their patch and file hashes, sizes, paths and presence in each source snapshot.
+Their opaque payloads are not repeated in the LLM request. The complete approved
+patch remains hash-bound, textual source views are preserved, and proposals
+cannot edit those binary-asset paths. This encoding does not establish semantic
+compatibility of a binary asset; an unresolved migration remains a blocker.
 
 Two proposal transports are implemented:
 

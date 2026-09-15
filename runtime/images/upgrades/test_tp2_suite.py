@@ -78,3 +78,93 @@ def test_multiple_active_source_lease_contracts_require_explicit_selection():
 def test_duplicate_serving_options_are_not_silently_replaced():
     with pytest.raises(Refused, match="occur once"):
         option(["--port", "1", "--port", "2"], "--port", 18000)
+
+
+def test_publication_failure_preserves_cold_response_and_stops_workers(
+    tmp_path, monkeypatch
+):
+    from runtime.common.container_spec import ContainerSpec
+    from runtime.images.upgrades import tp2_suite as suite
+
+    site = dict(
+        hosts=["u@h0", "u@h1"],
+        hostnames=["h0", "h1"],
+        api_host="192.0.2.1",
+        port=18016,
+        model="fixture",
+        cache_checks=True,
+    )
+    specs = [
+        ContainerSpec(
+            name=f"test-r{rank}",
+            image_id="sha256:" + "a" * 64,
+            entrypoint=("python",),
+            command=("serve",),
+            environment={},
+            mounts=(),
+        )
+        for rank in (0, 1)
+    ]
+    stops = []
+
+    class FakePair:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def call(self, rank, argv, **kwargs):
+            if argv[:3] == ["docker", "ps", "-q"]:
+                return b""
+            if argv[-1] == "verify":
+                return (
+                    b'{"schema":"sparkring-native-verification/v1","files_verified":1}'
+                )
+            return b"{}"
+
+        def create(self, *args):
+            pass
+
+        def start(self, *args):
+            return "fixture log command"
+
+        def stop(self, rank, name):
+            stops.append(rank)
+
+    monkeypatch.setattr(suite, "Pair", FakePair)
+    monkeypatch.setattr(suite, "load_policy", lambda p: {})
+    monkeypatch.setattr(suite, "load_site", lambda p: (site, []))
+    monkeypatch.setattr(
+        suite, "prepare_specs", lambda *a: (specs, [{"persistent": "cache"}] * 2, [])
+    )
+    monkeypatch.setattr(suite, "remote_cache_roots", lambda *a: None)
+    monkeypatch.setattr(suite, "wait_ready", lambda *a, **k: None)
+    monkeypatch.setattr(
+        suite,
+        "needle_fixture",
+        lambda *a: {"messages": [], "expected": "SR-CODE", "sha256": "b" * 64},
+    )
+    replies = iter(
+        [{"content": "42"}, {"content": "SR-CODE", "usage": {"prompt_tokens": 5000}}]
+    )
+    monkeypatch.setattr(suite, "chat", lambda *a, **k: next(replies))
+
+    def no_publication(*a, **k):
+        raise ValueError("No persisted chunks")
+
+    monkeypatch.setattr(suite, "wait_publication", no_publication)
+    with pytest.raises(ValueError, match="No persisted"):
+        suite.run(
+            tmp_path / "site.json",
+            tmp_path / "policy.json",
+            tmp_path / "lease.json",
+            "sha256:" + "a" * 64,
+            tmp_path / "out",
+            run_id="fixture",
+            input_sha256="c" * 64,
+            gate_id="models",
+        )
+    result = json.loads((tmp_path / "out/result.json").read_text())
+    assert result["outcome"] == "failed"
+    assert result["evidence"]["cache"]["cold"]["content"] == "SR-CODE"
+    assert result["evidence"]["failure"]["phase"] == "cache-publication"
+    assert "restored" not in result["evidence"]["cache"]
+    assert stops == [0, 1]
