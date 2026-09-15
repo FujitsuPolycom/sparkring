@@ -103,3 +103,23 @@ def test_target_shard_manifest_is_revision_bound():
     shards = [value for path, value in record["source_files"].items() if path.endswith(".safetensors")]
     assert len(shards) == 33
     assert all(len(shard["sha256"]) == 64 and shard["size"] > 0 for shard in shards)
+
+
+@pytest.mark.parametrize("corruption", ["shard", "missing", "metadata", "none"])
+def test_nvidia_download_rejects_changed_or_incomplete_model(corruption):
+    record = json.loads(glm_targets.RECORD.read_bytes())["nvidia-nvfp4"]
+    files = {name: identity.get("sha256", "0" * 64) for name, identity in record["source_files"].items()}
+    files["config.json"] = record["target"]["config_sha256"]
+    files["model.safetensors.index.json"] = record["target"]["index_sha256"]
+    shard = next(name for name in files if name.endswith(".safetensors"))
+    if corruption == "shard":
+        files[shard] = "0" * 64
+    elif corruption == "missing":
+        del files[shard]
+    elif corruption == "metadata":
+        files["config.json"] = "0" * 64
+    if corruption == "none":
+        glm_targets.verify_download("nvidia-nvfp4", files)
+    else:
+        with pytest.raises(ValueError, match="pinned"):
+            glm_targets.verify_download("nvidia-nvfp4", files)

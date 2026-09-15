@@ -38,6 +38,22 @@ def readiness_timeout(variant=DEFAULT):
     return 1500 if variant == "nvidia-nvfp4" else 900
 
 
+def verify_download(variant, files):
+    """Reject an incomplete file set or changed LFS shard before distribution."""
+    selected = target(variant)
+    if variant == DEFAULT:
+        return
+    expected = json.loads(RECORD.read_text())[variant]["source_files"]
+    if set(files) != set(expected):
+        raise ValueError("NVIDIA model file set differs from the pinned revision")
+    for name, identity in expected.items():
+        if "sha256" in identity and files[name] != identity["sha256"]:
+            raise ValueError("NVIDIA model shard differs from its pinned identity: " + name)
+    for name, field in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
+        if files[name] != selected[field]:
+            raise ValueError("NVIDIA model metadata differs from its pinned identity: " + name)
+
+
 def environment(variant, values, image):
     """Return an isolated variant mapping; the Spark default remains identical."""
     require_image(variant, image)

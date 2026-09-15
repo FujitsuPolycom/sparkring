@@ -492,6 +492,8 @@ print(json.dumps(rows))
         != pins["target"]["index_sha256"]
     ):
         raise ValueError("Target metadata mismatch")
+    from runtime.common import glm_targets
+    glm_targets.verify_download(spec["site"].get("target_model_variant", glm_targets.DEFAULT), model_files)
     for h in hosts[1:]:
         run.remote(h["host"], ["mkdir", "-p", model])
         present = json.loads(
