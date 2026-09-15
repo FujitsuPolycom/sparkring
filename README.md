@@ -1,11 +1,5 @@
 # SparkRing
 
-> **Repository restructuring in progress:** Work on
-> [`refactor/repository-layout`](https://github.com/FujitsuPolycom/sparkring/tree/refactor/repository-layout)
-> simplifies the layout, profile management, quickstarts and contributor documentation.
-> Contributions remain welcome; ongoing fixes and profile improvements are integrated
-> as the branch is tested and prepared for review. Published profiles and images remain available.
-
 SparkRing is an inference-serving stack with low-latency collective communication
 for switchless clusters of NVIDIA GB10-based devices. It supports two-node pairs
 and four-node rings; six-node rings are experimental. Model profiles use vLLM
