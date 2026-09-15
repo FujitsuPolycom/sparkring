@@ -1,6 +1,8 @@
 """Loopback-only image transport, exact identities and owned-resource cleanup."""
 
 import json
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -212,3 +214,31 @@ def test_fabric_endpoint_must_be_the_approved_receiving_host(scenario):
     with pytest.raises(Refused, match="Fabric peer differs"):
         run()
     assert "create-directory" not in actions
+
+
+@pytest.mark.parametrize("wrong_marker", [False, True])
+def test_staging_filesystem_cleanup_requires_the_exact_owner(tmp_path, wrong_marker):
+    class LocalScript:
+        def call(self, rank, argv):
+            assert rank == 1 and argv[:2] == ["python3", "-c"]
+            # Exercise the Linux helper's filesystem operations on CPU-only hosts.
+            compatibility = "import os; os.getuid=lambda:1000; os.getgid=lambda:1000;\n"
+            return subprocess.check_output(
+                [sys.executable, "-c", compatibility + argv[2], *argv[3:]],
+                stderr=subprocess.PIPE,
+            )
+
+    config = {"temporary_parent": str(tmp_path)}
+    pair = LocalScript()
+    created = module.temporary_directory(pair, config, "owned-test")
+    assert created["user"] == "1000:1000"
+    path = tmp_path / "owned-test"
+    (path / "payload").write_bytes(b"preserve-unless-owned")
+    if wrong_marker:
+        (path / ".owner").write_text("another-owner")
+        with pytest.raises(subprocess.CalledProcessError):
+            module.temporary_directory(pair, config, "owned-test", remove=True)
+        assert (path / "payload").read_bytes() == b"preserve-unless-owned"
+    else:
+        module.temporary_directory(pair, config, "owned-test", remove=True)
+        assert not path.exists()
