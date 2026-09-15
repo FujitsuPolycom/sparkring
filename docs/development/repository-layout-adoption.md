@@ -46,8 +46,7 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 
 | Evidence | Proven scope |
 |---|---|
-| [Contributor integration at `001fddd`](../../performance/records/repository/contributor-adoption-ci.json) | 5,836 Linux tests passed, 29 skipped; 185 image tests passed; source staging, metadata, readiness and contributor regressions included |
-| [Linux integration at `622fe32`](../../performance/records/repository/local-ci.json) | 5,750 tests passed, 29 skipped; 185 image tests passed; real Compose resolution, layout, links, release preservation and pinned LIL companion checks passed |
+| [Local Linux adoption checks at `d752bbe`](../../performance/records/repository/adoption-review-ci.json) | 5,842 tests passed, 29 skipped; 185 image tests passed; isolated source bundles, metadata verification, lifecycle checks, Compose resolution and pinned LIL companion coverage |
 | [R37 shared image build](../../runtime/images/compositions/lil-r37-shared/local-build.json) | Exact descriptor/image identity, full installed inventory and feature activation checks; serving evidence is recorded separately below |
 | [Shared image publication](../../runtime/images/compositions/lil-r37-shared/publication.json) | Anonymous manifest/configuration checks and a clean-credential pull match the tested ARM64 image; the QAD quickstart selects its registry digest |
 | [Qwen TP4 prefill evidence](../../integrations/vllm/qwen38_prefill/README.md) | Bounded compute-bundle correctness and performance on the recorded overlay deployment; not automatic qualification of a baked image |
@@ -60,6 +59,9 @@ checks, publishing an image and qualifying model serving are distinct outcomes.
 | Historical Linux/native/serving checks | Revision-specific results summarized below; they do not establish current-head CI or serving qualification |
 
 ### Historical validation snapshots
+
+- [Contributor integration at `001fddd`](../../performance/records/repository/contributor-adoption-ci.json): 5,836 Linux tests passed, 29 skipped; 185 image tests passed.
+- [Shared deployment integration at `622fe32`](../../performance/records/repository/local-ci.json): 5,750 Linux tests passed, 29 skipped; 185 image tests passed.
 
 - `ae3d60af4a9f1da55fb128b896930b3cf6644569`: maintained Linux CI selection
   passed 5,006 tests, with 29 skips, using Python 3.12.3 and CPU Torch 2.11.0.
