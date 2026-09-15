@@ -235,6 +235,42 @@ completed responses and identify the failed stage, including a cold-cache answer
 when publication fails. Progress records are diagnostic evidence, not passing
 qualification receipts.
 
+## Build-time serving maintenance
+
+Status: **implemented**, covered by GPU-free lifecycle tests; hardware execution
+requires qualification for the selected site.
+
+[maintenance_build.py](maintenance_build.py) wraps the source/image runner on its
+leased builder host. It verifies an idle saved serving pair, stops both workers
+before source tests or compilation, and restarts the same container IDs after a
+terminal build result. It never deletes or recreates those containers. Transfer
+and model qualification are separate operations; this wrapper rejects hardware
+gates and always disables publication. It does not promote a candidate.
+
+Its policy-relative `--config` uses `sparkring-build-maintenance/v1`, with ordered
+`hosts` and `hostnames`, a leased `gate_id`, two `rollback_snapshots`, two lists
+of `infrastructure_snapshots`, `rollback_api`, `rollback_model`, and a
+`startup_seconds` deadline. Snapshot files contain Docker inspection objects.
+Declare the configuration and every snapshot as hash-pinned policy build inputs.
+Only the saved workers and exact infrastructure container IDs may be running;
+the infrastructure containers are inspected but never stopped. Non-container
+work is excluded by the operator's exclusive builder/hardware leases, not inferred
+from Docker inventory. Hosts with unregistered containers or active requests are
+left unchanged.
+
+Invoke with `--policy`, `--state`, `--config`, `--builder-lease`,
+`--hardware-lease`, `--output`, `--approved-policy`, `--run-id`, and `--execute`;
+`--proposal-dir` selects request-bound file proposals. The wrapper emits SSH tail
+commands when restoring the saved workers and records `maintenance.json` in the
+unique output directory. A non-mutating discovery run should precede maintenance
+so the operator can skip inputs already built successfully.
+
+Missing terminal build evidence, a timed-out external action, unexpected running
+containers, or expired rollback authorization requires inspection. In those
+conditions, the wrapper retains the stopped serving containers and does not
+restart them alongside a potentially live compiler. The nightly operator must
+resolve exact owned work before retrying; a quiet log is not termination evidence.
+
 ## Supply semantic reconciliation
 
 Mechanical application is attempted file by file. Clean approved fragments are
