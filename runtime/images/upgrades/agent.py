@@ -86,14 +86,21 @@ class ChatAgent:
         return validate(json.loads(envelope["choices"][0]["message"]["content"]))
 
 
+def request_identity(request):
+    """Bind source/policy inputs, not timing noise from repeated gate observations."""
+    return sha(
+        encoded({key: value for key, value in request.items() if key != "feedback"})
+    )
+
+
 class FileAgent:
-    """Consume operator/LLM patch data bound to the exact reconciliation request."""
+    """Consume patch data bound to the exact reconciliation source and policy."""
 
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
 
     def propose(self, request, **kwargs):
-        digest = sha(encoded(request))
+        digest = request_identity(request)
         path = self.directory / (digest + ".json")
         require(
             path.is_file() and not path.is_symlink(),
@@ -135,7 +142,15 @@ def validate(value):
 
 
 def request_for(
-    source, record, upstream, baseline, patch, feedback, limit=300000, candidate=None
+    source,
+    record,
+    upstream,
+    baseline,
+    patch,
+    feedback,
+    limit=300000,
+    candidate=None,
+    policy_sha256=None,
 ):
     def patch_paths(raw):
         return {
@@ -187,6 +202,7 @@ def request_for(
         )
         files[name] = row
     result = {
+        "policy_sha256": policy_sha256,
         "source": source["id"],
         "baseline_commit": record["baseline"],
         "target_commit": record["target"],

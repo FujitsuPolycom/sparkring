@@ -321,3 +321,26 @@ def test_gate_cannot_preplant_host_log_destination(tmp_path, monkeypatch):
     with pytest.raises(contracts.Refused, match="safely record"):
         executor._run(["fixture-only"], output, time.monotonic() + 60)
     assert existing.read_bytes() == b"preserve"
+
+
+def test_file_proposal_survives_measurement_noise_not_policy_or_source_drift(tmp_path):
+    request = dict(
+        source="engine",
+        policy_sha256="a" * 64,
+        files={"engine.py": "source"},
+        feedback={"seconds": 1.1},
+    )
+    digest = agent.request_identity(request)
+    proposal = dict(
+        disposition="unresolved", reason="Requires interface review.", patch=""
+    )
+    write_json(
+        tmp_path / (digest + ".json"), {"request_sha256": digest, "proposal": proposal}
+    )
+    transport = agent.FileAgent(tmp_path)
+    request["feedback"] = {"seconds": 1.2}
+    assert transport.propose(request) == proposal
+    assert agent.request_identity({**request, "policy_sha256": "b" * 64}) != digest
+    request["files"]["engine.py"] = "different source"
+    with pytest.raises(contracts.Refused, match="proposal required"):
+        transport.propose(request)

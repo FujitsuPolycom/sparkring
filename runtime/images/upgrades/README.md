@@ -153,13 +153,16 @@ Two proposal transports are implemented:
   [LLM operator recipe](nightly-recipe.md). No model service is called by this
   transport.
 
-A file proposal is named `SHA256_OF_CANONICAL_REQUEST.json`, where canonical JSON
-uses sorted keys, compact separators and no nonfinite values, as implemented by
-`contracts.encoded`. Its content is:
+A file proposal is named `REQUEST_INPUT_SHA256.json`. Compute that identity with
+`agent.request_identity`: canonical JSON uses sorted keys, compact separators
+and no nonfinite values, excluding only the diagnostic `feedback` field. The
+policy digest, source pins, contracts, source views and carried patch remain
+bound. Observation timing may change on a retry; every acceptance gate must
+still run against the proposed source. Its content is:
 
 ```json
 {
-  "request_sha256": "SHA256_OF_CANONICAL_REQUEST",
+  "request_sha256": "REQUEST_INPUT_SHA256",
   "proposal": {
     "disposition": "adapt",
     "reason": "Explain the preserved behavior and relevant upstream interface.",

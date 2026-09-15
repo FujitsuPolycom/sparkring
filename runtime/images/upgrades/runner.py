@@ -384,6 +384,7 @@ def _reconcile(
                 feedback,
                 policy.get("agent", {}).get("context_bytes", 1000000),
                 candidate=candidate,
+                policy_sha256=policy["_digest"],
             ),
         )
         return
@@ -467,7 +468,7 @@ def _reconcile(
         )
         require(
             agent is not None,
-            "Semantic reconciliation requires an explicitly configured agent endpoint",
+            "Semantic reconciliation requires an agent endpoint or --proposal-dir",
         )
         require(time.monotonic() < deadline, "Agent time budget exhausted")
         request = agents.request_for(
@@ -479,6 +480,7 @@ def _reconcile(
             feedback,
             policy.get("agent", {}).get("context_bytes", 1000000),
             candidate=candidate,
+            policy_sha256=policy["_digest"],
         )
         write_json(folder / f"agent-request-{attempt}.json", request)
         proposal = agents.validate(
