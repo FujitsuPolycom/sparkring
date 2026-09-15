@@ -122,6 +122,40 @@ def prepare_source_binding(policy, bundle, paths, parent, context):
     }, sorted(active)
 
 
+def select_native_cache(policy, native_inputs, compiler_id, recipe):
+    """Reuse exact native inputs or take an explicitly authorized full-build path."""
+    cached = policy["foundation"].get("native_cache")
+    if cached is None:
+        return None, None, {"mode": "compile", "reason": "No native cache selected"}
+    cache_path = Path(cached["manifest"])
+    require(
+        sha(cache_path.read_bytes()) == cached["sha256"],
+        "Native-cache manifest differs",
+    )
+    record = read(cache_path)
+    require(
+        record.get("schema") == "sparkring-native-cache/v1",
+        "Unsupported native cache manifest",
+    )
+    expected = {
+        "native_inputs": native_inputs,
+        "compiler_image_id": compiler_id,
+        "architecture": recipe["architecture"],
+        "torch_version": recipe["torch_version"],
+    }
+    require(set(expected) <= set(record), "Native-cache compatibility fields missing")
+    changed = sorted(key for key, value in expected.items() if record[key] != value)
+    decision = {"manifest_sha256": cached["sha256"], "changed_inputs": changed}
+    if changed:
+        require(
+            cached.get("on_input_change", "refuse") == "rebuild"
+            and policy.get("build", {}).get("supports_native_rebuild") is True,
+            "Native build inputs or compiler image changed; rebuild is required",
+        )
+        return None, None, {**decision, "mode": "compile"}
+    return record, cache_path.parent, {**decision, "mode": "reuse"}
+
+
 def build(policy_path, bundle_path, output, result_path):
     policy, bundle = load_policy(policy_path), read(bundle_path)
     recipe = validate_recipe(policy.get("native"))
@@ -194,26 +228,12 @@ def build(policy_path, bundle_path, output, result_path):
         for source in policy["sources"]
     }
     source_descriptor["native_inputs"] = native_inputs
-    cached = policy["foundation"].get("native_cache")
-    cache_directory = None
-    if cached:
-        cache_path = Path(cached["manifest"])
-        require(
-            sha(cache_path.read_bytes()) == cached["sha256"],
-            "Native-cache manifest differs",
-        )
-        record = read(cache_path)
-        require(
-            record.get("schema") == "sparkring-native-cache/v1",
-            "Unsupported native cache manifest",
-        )
-        require(
-            record["native_inputs"] == native_inputs
-            and record["compiler_image_id"] == compiler_id,
-            "Native build inputs or compiler image changed; rebuild is required",
-        )
+    record, cache_directory, decision = select_native_cache(
+        policy, native_inputs, compiler_id, recipe
+    )
+    source_descriptor["native_cache_decision"] = decision
+    if record is not None:
         source_descriptor["native_cache"] = record
-        cache_directory = cache_path.parent
     descriptor_path = output / "compiler-descriptor.json"
     write_json(descriptor_path, source_descriptor)
     worker = Path(__file__).with_name("native_worker.py")

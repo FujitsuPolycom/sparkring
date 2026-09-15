@@ -175,6 +175,15 @@ The result reports `native_rebuilt: false` and retains the compiled artifact's
 provenance. Changed native inputs require compilation; a Python-only change does
 not justify relabeling old binaries as rebuilt.
 
+Native input drift stops the build by default. A policy may set
+`foundation.native_cache.on_input_change` to `rebuild` when its build adapter
+declares `supports_native_rebuild: true`. That selection uses the approved native
+recipe's CPU, memory, network and time limits when the compiler image, native
+inputs, Torch ABI or architecture differ. The compiler descriptor records the
+reuse/compile decision and differing fields. It does not change source pins or
+the recipe. Missing, malformed or hash-mismatched cache manifests still stop the
+build; they are not evidence of ordinary input drift.
+
 Carried patches must describe the **complete retained feature closure** relative
 to their declared baseline commit. A published image can contain source older
 than the operational reference. Mechanical patch success is insufficient if the

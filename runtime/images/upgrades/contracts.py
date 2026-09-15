@@ -464,6 +464,33 @@ def load_policy(path):
                     f"{key} input hash differs",
                 )
                 inputs[item["path"]] = item["sha256"]
+    native_cache = policy.get("foundation", {}).get("native_cache")
+    if native_cache is not None:
+        require(
+            isinstance(native_cache, dict)
+            and {"manifest", "sha256"} <= set(native_cache)
+            and set(native_cache) <= {"manifest", "sha256", "on_input_change"},
+            "Unknown native-cache configuration",
+        )
+        require(
+            native_cache.get("on_input_change", "refuse") in ("refuse", "rebuild"),
+            "Native-cache input-change action must be refuse or rebuild",
+        )
+        require(
+            native_cache.get("on_input_change") != "rebuild"
+            or policy.get("build", {}).get("supports_native_rebuild") is True,
+            "Native-cache rebuild requires a native build adapter",
+        )
+        require(
+            isinstance(native_cache["manifest"], str)
+            and PurePosixPath(native_cache["manifest"]).is_absolute()
+            and ".." not in PurePosixPath(native_cache["manifest"]).parts,
+            "Native-cache manifest must be an explicit builder path",
+        )
+        require(
+            identifier(native_cache["sha256"], r"[0-9a-f]{64}"),
+            "Native-cache manifest digest is invalid",
+        )
     binding = policy.get("foundation", {}).get("source_binding")
     if binding is not None:
         require(

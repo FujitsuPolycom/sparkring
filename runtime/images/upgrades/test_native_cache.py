@@ -1,6 +1,10 @@
 """Native reuse includes build metadata and native-language files outside csrc."""
 
 from .sources import native_digest
+from runtime.images.upgrades.build_native import select_native_cache
+from runtime.images.upgrades.contracts import Refused, sha
+import json
+import pytest
 
 
 def test_python_edits_do_not_alias_changed_native_inputs(tmp_path):
@@ -21,3 +25,70 @@ def test_build_metadata_changes_require_recompilation(tmp_path):
     before = native_digest(tmp_path, ["setup.py"])
     (tmp_path / "setup.py").write_text("two")
     assert native_digest(tmp_path, ["setup.py"]) != before
+
+
+@pytest.fixture
+def cache_selection(tmp_path):
+    inputs = {"vllm": "a" * 64, "b12x": "b" * 64}
+    compiler = "sha256:" + "c" * 64
+    recipe = {"architecture": "12.1a", "torch_version": "2.13.0"}
+    record = {
+        "schema": "sparkring-native-cache/v1",
+        "native_inputs": inputs,
+        "compiler_image_id": compiler,
+        **recipe,
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(record))
+    policy = {
+        "foundation": {
+            "native_cache": {"manifest": str(path), "sha256": sha(path.read_bytes())}
+        },
+        "build": {"supports_native_rebuild": True},
+    }
+    return policy, inputs, compiler, recipe, path
+
+
+def test_exact_native_inputs_reuse_without_rebuild_permission(cache_selection):
+    policy, inputs, compiler, recipe, path = cache_selection
+    policy["build"]["supports_native_rebuild"] = False
+    record, directory, decision = select_native_cache(policy, inputs, compiler, recipe)
+    assert record == json.loads(path.read_text())
+    assert directory == path.parent
+    assert decision["mode"] == "reuse"
+
+
+@pytest.mark.parametrize(
+    "changed", ["native_inputs", "compiler_image_id", "architecture", "torch_version"]
+)
+def test_input_drift_requires_explicit_bounded_rebuild(cache_selection, changed):
+    policy, inputs, compiler, recipe, _ = cache_selection
+    if changed == "native_inputs":
+        inputs = {**inputs, "vllm": "d" * 64}
+    elif changed == "compiler_image_id":
+        compiler = "sha256:" + "d" * 64
+    else:
+        recipe = {**recipe, changed: "different"}
+    with pytest.raises(Refused, match="rebuild is required"):
+        select_native_cache(policy, inputs, compiler, recipe)
+    policy["foundation"]["native_cache"]["on_input_change"] = "rebuild"
+    record, directory, decision = select_native_cache(policy, inputs, compiler, recipe)
+    assert record is directory is None
+    assert decision["mode"] == "compile"
+    assert decision["changed_inputs"] == [changed]
+
+
+def test_corrupt_manifest_never_becomes_automatic_rebuild(cache_selection):
+    policy, inputs, compiler, recipe, path = cache_selection
+    policy["foundation"]["native_cache"]["on_input_change"] = "rebuild"
+    path.write_text("{}")
+    with pytest.raises(Refused, match="manifest differs"):
+        select_native_cache(policy, inputs, compiler, recipe)
+
+
+def test_no_cache_selects_full_compile(cache_selection):
+    policy, inputs, compiler, recipe, _ = cache_selection
+    policy["foundation"].pop("native_cache")
+    record, directory, decision = select_native_cache(policy, inputs, compiler, recipe)
+    assert record is directory is None
+    assert decision["mode"] == "compile"

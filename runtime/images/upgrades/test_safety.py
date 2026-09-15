@@ -95,6 +95,49 @@ def test_policy_binds_oracle_and_controller(fixture):
         contracts.check_policy(policy)
 
 
+@pytest.mark.parametrize("action", [None, "refuse", "rebuild"])
+def test_native_cache_rebuild_action_is_policy_bound(fixture, action):
+    path, _, _ = fixture
+    cache = {"manifest": "/build/cache/manifest.json", "sha256": "a" * 64}
+    if action is not None:
+        cache["on_input_change"] = action
+    update(path, lambda p: p.setdefault("foundation", {}).update(native_cache=cache))
+    update(path, lambda p: p["build"].update(supports_native_rebuild=True))
+    policy = contracts.load_policy(path)
+    assert policy["foundation"]["native_cache"] == cache
+    update(path, lambda p: p["foundation"]["native_cache"].update(sha256="b" * 64))
+    with pytest.raises(contracts.Refused, match="policy or oracle changed"):
+        contracts.check_policy(policy)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda p: p["foundation"]["native_cache"].update(on_input_change="ignore"),
+        lambda p: p["foundation"]["native_cache"].update(manifest="../manifest.json"),
+        lambda p: p["foundation"]["native_cache"].update(sha256="not-a-digest"),
+        lambda p: p["foundation"]["native_cache"].update(extra=True),
+        lambda p: p["build"].update(supports_native_rebuild=False),
+    ],
+)
+def test_native_cache_fallback_requires_valid_explicit_policy(fixture, change):
+    path, _, _ = fixture
+    update(
+        path,
+        lambda p: p.setdefault("foundation", {}).update(
+            native_cache={
+                "manifest": "/build/cache/manifest.json",
+                "sha256": "a" * 64,
+                "on_input_change": "rebuild",
+            }
+        ),
+    )
+    update(path, lambda p: p["build"].update(supports_native_rebuild=True))
+    update(path, change)
+    with pytest.raises(contracts.Refused):
+        contracts.load_policy(path)
+
+
 def test_baseline_failure_blocks(fixture):
     policy, _, _ = fixture
     oracle = policy.parent / "oracle.py"
