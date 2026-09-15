@@ -446,9 +446,18 @@ The environment templates keep TileLang, Triton, vLLM, and B12X CuTeDSL
 compilation data under the persistent `CACHE_HOST_PATH` mount. Recreating a
 container therefore does not discard those caches.
 
-PyTorch's NCCL flight recorder writes each rank's timeout dump beneath
-`CACHE_HOST_PATH/nccl-fr`. Archive every rank's `comm_lib_trace_rank_*` file
-together after a timeout; a later dump overwrites the static per-rank name.
+The templates enable PyTorch's NCCL flight recorder and configure dumps beneath
+`CACHE_HOST_PATH/nccl-fr`. Its coverage is limited to operations submitted through
+PyTorch's ProcessGroupNCCL. The pinned vLLM runtime also calls NCCL directly through
+PyNCCL; those calls and custom SIRCL/RoCEnante operations are not automatically
+recorded by ProcessGroupNCCL. An absent dump does not rule out a collective hang.
+See the [PyTorch recorder settings](https://docs.pytorch.org/docs/2.12/torch_nccl_environment_variables.html)
+and [vLLM's direct NCCL calls](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/distributed/device_communicators/pynccl.py).
+
+Archive every rank's available `comm_lib_trace_rank_*` file together with its
+container log after a timeout; a later dump overwrites the static per-rank name.
+Environment configuration alone does not verify dump generation or coverage;
+confirm that an on-demand dump can be produced and parsed on the deployed image.
 
 An on-demand pipe request is asynchronous. After writing to
 `/tmp/fr_dump_pipe_<rank>.pipe` inside a container, wait for the rank log to
