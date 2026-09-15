@@ -89,6 +89,77 @@ def selected_boundary_identity(parent):
     return path
 
 
+def install_source_binding(context, descriptor, compiler):
+    selected = descriptor.get("source_binding")
+    if selected is None:
+        return {}
+    for name in ("file", "proof_file"):
+        require(
+            Path(selected[name]).name == selected[name],
+            "Binding artifact is not a context file",
+        )
+    contract_file, proof_file = (
+        context / selected["file"],
+        context / selected["proof_file"],
+    )
+    require(
+        sha(contract_file) == selected["sha256"]
+        and sha(proof_file) == selected["proof_sha256"],
+        "Binding artifacts differ from installation inputs",
+    )
+    contract, proof = read(contract_file), read(proof_file)
+    require(
+        proof.get("schema") == "sparkring-binding-equivalence/v1"
+        and proof.get("candidate_tree_sha256") == compiler["source_trees"]["vllm"]
+        and proof.get("oracle", {}).get("input_sha256") == descriptor["input_sha256"]
+        and proof["oracle"].get("subject_sha256") == compiler["source_trees"]["vllm"]
+        and proof["oracle"].get("variant") == "candidate"
+        and proof["oracle"].get("outcome") == "passed"
+        and proof["oracle"].get("skipped") == 0
+        and type(proof["oracle"].get("assertions")) is int
+        and proof["oracle"]["assertions"] > 0
+        and proof.get("serving_qualified") is False,
+        "Binding proof does not describe the compiled source",
+    )
+    require(
+        contract.get("schema") == "sparkring-vllm-kv-block-lease-contract/v1",
+        "Unknown installed source-binding schema",
+    )
+    require(
+        isinstance(contract.get("files"), list) and contract["files"],
+        "Source binding has no verified files",
+    )
+    expected_name = (
+        "vllm-connector-jobs-source-" + proof["candidate_tree_sha256"][:16] + ".json"
+    )
+    destination = ROOT / "contracts" / expected_name
+    require(
+        str(destination) == selected["destination"] and not destination.exists(),
+        "Binding destination is not a fresh owned identity",
+    )
+    for row in contract["files"]:
+        path = (SITE / row["path"]).resolve()
+        require(
+            path.is_relative_to(SITE.resolve()), "Bound source escapes site-packages"
+        )
+        require(
+            sha(path) == row["sha256"],
+            "Installed source differs from its rebound contract",
+        )
+    proof_destination = (
+        ROOT
+        / "receipts"
+        / ("source-binding-" + descriptor["input_sha256"][:16] + ".json")
+    )
+    require(not proof_destination.exists(), "Binding proof destination already exists")
+    destination.write_bytes(contract_file.read_bytes())
+    proof_destination.write_bytes(proof_file.read_bytes())
+    return {
+        str(destination): sha(destination),
+        str(proof_destination): sha(proof_destination),
+    }
+
+
 def install(context):
     context = Path(context)
     descriptor = read(context / "descriptor.json")
@@ -191,6 +262,7 @@ def install(context):
         for path in (SITE / name).rglob("*"):
             if path.is_file() and path.suffix not in (".pyc", ".pyo"):
                 files[str(path)] = sha(path)
+    files.update(install_source_binding(context, descriptor, compiler))
     # Optional cache/feature additions remain unchanged and receive explicit hashes.
     for directory in (
         SITE / "sparkcache",

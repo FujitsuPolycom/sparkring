@@ -1,10 +1,12 @@
 """Contract hash refresh is not permission to skip compatibility evidence."""
 
 import pytest
+import json
 
 from .contract_rebind import rebind
 from .contracts import Refused, sha
 from .sources import tree_digest
+from .build_native import prepare_source_binding
 
 
 def fixture(tmp_path, before, after):
@@ -70,3 +72,84 @@ def test_oracle_for_other_source_cannot_authorize_rebinding(tmp_path):
     oracle["subject_sha256"] = "b" * 64
     with pytest.raises(Refused, match="exact source"):
         rebind(contract, baseline, candidate, "a" * 40, oracle, input_sha256="f" * 64)
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_byte_only_contract_files_must_remain_identical(tmp_path, changed):
+    before = "VALUE = 1\n"
+    contract, baseline, candidate, oracle = fixture(
+        tmp_path, before, before + "# changed\n" if changed else before
+    )
+    contract["files"][0]["required_symbols"] = []
+    if changed:
+        with pytest.raises(Refused, match="Byte-only"):
+            rebind(
+                contract, baseline, candidate, "a" * 40, oracle, input_sha256="f" * 64
+            )
+    else:
+        _, proof = rebind(
+            contract, baseline, candidate, "a" * 40, oracle, input_sha256="f" * 64
+        )
+        assert proof["files"][0]["byte_identical"] is True
+
+
+def test_rebound_contract_does_not_retain_stale_source_metadata(tmp_path):
+    source = "class Lease:\n def read(self): pass\n"
+    contract, baseline, candidate, oracle = fixture(tmp_path, source, source)
+    contract.update(
+        vllm_commit="b" * 40,
+        vllm_tree="c" * 40,
+        semantic_review={"comparison_tree": "d" * 40},
+    )
+    result, proof = rebind(
+        contract, baseline, candidate, "a" * 40, oracle, input_sha256="f" * 64
+    )
+    assert result["vllm_commit"] == "a" * 40
+    assert "vllm_tree" not in result
+    assert (
+        result["semantic_review"]["candidate_tree_sha256"]
+        == proof["candidate_tree_sha256"]
+    )
+
+
+def test_native_builder_installs_versioned_binding_from_accepted_oracle(tmp_path):
+    source = "class Lease:\n def read(self): pass\n"
+    contract, baseline, candidate, oracle = fixture(
+        tmp_path, source, source + "# text\n"
+    )
+    path = tmp_path / "reference.json"
+    path.write_text(json.dumps(contract))
+    oracle["gate"] = "source-oracle"
+    old_path = "/opt/sparkring/contracts/reference.json"
+    parent = {
+        "integration_contracts": {old_path: {}},
+        "files": {old_path: sha(path.read_bytes())},
+    }
+    policy = {
+        "_root": str(tmp_path),
+        "foundation": {
+            "source_binding": {
+                "contract": path.name,
+                "reference_source": str(baseline),
+                "oracle": "source-oracle",
+            }
+        },
+    }
+    bundle = {
+        "input_sha256": "f" * 64,
+        "sources": {"vllm": {"oracles": [oracle], "target_commit": "a" * 40}},
+    }
+    context = tmp_path / "context"
+    context.mkdir()
+    binding, active = prepare_source_binding(
+        policy, bundle, {"vllm": candidate}, parent, context
+    )
+    assert active == [binding["destination"]]
+    assert old_path not in active
+    assert json.loads((context / binding["file"]).read_text())["files"][0][
+        "sha256"
+    ] == sha((candidate / "module.py").read_bytes())
+    assert (
+        json.loads((context / binding["proof_file"]).read_text())["serving_qualified"]
+        is False
+    )

@@ -44,6 +44,65 @@ def test_explicit_native_recipe_is_admitted():
     assert build_native.validate_recipe(recipe()) == recipe()
 
 
+@pytest.mark.parametrize("tamper", [False, True])
+def test_install_source_binding_requires_matching_installed_bytes(
+    tmp_path, monkeypatch, tamper
+):
+    root, site, context = tmp_path / "runtime", tmp_path / "site", tmp_path / "context"
+    (root / "contracts").mkdir(parents=True)
+    (root / "receipts").mkdir()
+    (site / "vllm").mkdir(parents=True)
+    context.mkdir()
+    source = site / "vllm/module.py"
+    source.write_text("VALUE = 1\n")
+    contract = {
+        "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+        "files": [{"path": "vllm/module.py", "sha256": native_install.sha(source)}],
+    }
+    proof = {
+        "schema": "sparkring-binding-equivalence/v1",
+        "candidate_tree_sha256": "b" * 64,
+        "serving_qualified": False,
+        "oracle": {
+            "input_sha256": "a" * 64,
+            "subject_sha256": "b" * 64,
+            "variant": "candidate",
+            "outcome": "passed",
+            "assertions": 1,
+            "skipped": 0,
+        },
+    }
+    (context / "binding.json").write_text(json.dumps(contract))
+    (context / "proof.json").write_text(json.dumps(proof))
+    destination = (
+        root / "contracts" / ("vllm-connector-jobs-source-" + "b" * 16 + ".json")
+    )
+    descriptor = {
+        "input_sha256": "a" * 64,
+        "source_binding": {
+            "file": "binding.json",
+            "proof_file": "proof.json",
+            "sha256": native_install.sha(context / "binding.json"),
+            "proof_sha256": native_install.sha(context / "proof.json"),
+            "destination": str(destination),
+        },
+    }
+    monkeypatch.setattr(native_install, "ROOT", root)
+    monkeypatch.setattr(native_install, "SITE", site)
+    if tamper:
+        source.write_text("VALUE = 2\n")
+        with pytest.raises(ValueError, match="Installed source differs"):
+            native_install.install_source_binding(
+                context, descriptor, {"source_trees": {"vllm": "b" * 64}}
+            )
+        assert not destination.exists()
+    else:
+        result = native_install.install_source_binding(
+            context, descriptor, {"source_trees": {"vllm": "b" * 64}}
+        )
+        assert str(destination) in result and len(result) == 2
+
+
 def test_versioned_boundary_selector_requires_owned_unchanged_identity(
     tmp_path, monkeypatch
 ):

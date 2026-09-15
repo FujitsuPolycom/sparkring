@@ -464,6 +464,30 @@ def load_policy(path):
                     f"{key} input hash differs",
                 )
                 inputs[item["path"]] = item["sha256"]
+    binding = policy.get("foundation", {}).get("source_binding")
+    if binding is not None:
+        require(
+            isinstance(binding, dict)
+            and set(binding) == {"contract", "sha256", "reference_source", "oracle"},
+            "Unknown source-binding configuration",
+        )
+        file = beneath(path.parent, binding["contract"])
+        require(
+            sha(file.read_bytes()) == binding["sha256"],
+            "Source-binding contract differs",
+        )
+        require(
+            binding["oracle"] in gate_ids
+            and next(gate for gate in gates if gate["id"] == binding["oracle"])["stage"]
+            == "oracle",
+            "Source binding requires a protected source oracle",
+        )
+        reference = PurePosixPath(binding["reference_source"])
+        require(
+            reference.is_absolute() and ".." not in reference.parts,
+            "Source-binding reference must be an explicit builder path",
+        )
+        inputs[binding["contract"]] = binding["sha256"]
     policy["_root"] = str(path.parent)
     policy["_path"] = str(path)
     policy["_inputs"] = inputs

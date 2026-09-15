@@ -157,6 +157,16 @@ package files before construction. Required external mount identities remain
 unchanged even when their files are absent during the image build; the selected
 runtime must satisfy them. Identity regeneration is not serving qualification.
 
+For an engine change outside the named cache-ownership interfaces,
+`foundation.source_binding` may declare a policy-relative `contract` and its
+`sha256`, an absolute builder-side `reference_source` directory, and the source
+`oracle` identifier. The builder requires that contract to be the foundation's
+active owned binding. It checks the declared interfaces and module globals
+against the reference, requires byte-only files to remain identical, and binds
+the result to a passing oracle for the exact accepted source tree. Changed
+interfaces or missing evidence stop the build. The resulting contract and proof
+receive separate identities; retained published contracts are not overwritten.
+
 An operator-pinned `foundation.native_cache` manifest can reference an earlier
 compiled wheel. Reuse requires exact equality of declared native/build inputs,
 native-language files elsewhere in each source tree, compiler image, Torch ABI

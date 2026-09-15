@@ -1,0 +1,104 @@
+diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
+--- a/vllm/v1/core/single_type_kv_cache_manager.py
++++ b/vllm/v1/core/single_type_kv_cache_manager.py
+@@ -2144,11 +2144,15 @@
+             num_required_blocks = (
+                 cdiv(num_tokens, self.block_size) + self.num_speculative_blocks
+             )
+-            num_new_blocks = (
+-                num_required_blocks
+-                - len(new_computed_blocks)
+-                - len(self.req_to_blocks[request_id])
++            # External-prefix allocation pads skipped state positions with
++            # nulls before allocating its boundary state. These logical slots
++            # need no physical blocks, just like a local hit's padded table.
++            num_covered_blocks = max(
++                len(new_computed_blocks) + len(self.req_to_blocks[request_id]),
++                max(self.get_num_skipped_tokens(total_computed_tokens), 0)
++                // self.block_size,
+             )
++            num_new_blocks = num_required_blocks - num_covered_blocks
+             has_partial_hit = (
+                 self._has_partial_local_hit(
+                     new_computed_blocks, num_local_computed_tokens
+diff --git a/tests/v1/kv_connector/unit/test_hybrid_recovery_source.py b/tests/v1/kv_connector/unit/test_hybrid_recovery_source.py
+--- a/tests/v1/kv_connector/unit/test_hybrid_recovery_source.py
++++ b/tests/v1/kv_connector/unit/test_hybrid_recovery_source.py
+@@ -2,8 +2,8 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ """CPU behavior of exact source methods, without importing GPU-only vLLM modules.
+ 
+-The fixture models allocation references; it does not execute the full scheduler,
+-native CUDA copies, or the packed recurrent checkpoint allocator.
++The fixture models allocation references and executes packed-state admission
++counts. It does not execute the full scheduler or native CUDA copies.
+ """
+ 
+ from __future__ import annotations
+@@ -13,7 +13,7 @@
+ import os
+ import sys
+ import time
+-from collections import deque
++from collections import defaultdict, deque
+ from pathlib import Path
+ from types import ModuleType
+ from types import SimpleNamespace as NS
+@@ -66,6 +66,57 @@
+     }
+     exec(compile(ast.fix_missing_locations(module), str(path), "exec"), env)
+     return env[name]
++
++
++@pytest.mark.parametrize("speculative_blocks", [0, 1, 3])
++@pytest.mark.parametrize("prefix_source", ["external", "local", "running", "empty"])
++def test_external_packed_prefix_admission_counts_resident_slots(
++    speculative_blocks, prefix_source
++):
++    mamba_spec = source_class(
++        "vllm/v1/kv_cache_interface.py", "MambaSpec", {"prefill_checkpoint_indices"}
++    )
++    manager_type = source_class(
++        "vllm/v1/core/single_type_kv_cache_manager.py",
++        "MambaManager",
++        {
++            "get_num_blocks_to_allocate",
++            "get_num_skipped_tokens",
++            "_needs_internal_checkpoint",
++        },
++        MambaSpec=mamba_spec,
++        cdiv=lambda value, divisor: (value + divisor - 1) // divisor,
++    )
++    manager = manager_type()
++    manager.kv_cache_spec = mamba_spec()
++    manager.kv_cache_spec.block_size = 256
++    manager.kv_cache_spec.num_prefill_checkpoint_blocks = 4
++    manager.block_size = 256
++    manager.num_speculative_blocks = speculative_blocks
++    manager.mamba_cache_mode = "align"
++    manager._planned_recurrent_checkpoints = {}
++    manager.cached_blocks_this_step = set()
++    manager.block_pool = NS(num_gpu_blocks=584)
++    manager.req_to_blocks = defaultdict(list)
++    manager._allocated_block_reqs = set()
++    manager._packed_prefill_checkpoint_reqs = set()
++    manager._num_checkpoint_blocks = {}
++    manager._partial_hit_reqs = {}
++    manager._has_partial_local_hit = lambda *args: False
++    manager._get_num_evictable_blocks = lambda *args: 0
++    total = 0 if prefix_source == "empty" else 30720
++    local = total if prefix_source == "local" else 0
++    blocks = [NS(block_hash=None)] * 120 if local else []
++    if prefix_source == "running":
++        manager.req_to_blocks["request"] = [NS(block_hash=None)] * 121
++    count = manager.get_num_blocks_to_allocate(
++        "request", 31124, blocks, total, local, 31124, apply_admission_cap=True
++    )
++    expected = {"external": 3, "local": 2, "running": 1, "empty": 5}
++    assert count == expected[prefix_source] + speculative_blocks
++    # Six recurrent groups plus sixteen attention pages fit the real TP2 pool.
++    assert 6 * count + 16 < manager.block_pool.num_gpu_blocks
++    assert manager._num_checkpoint_blocks == {}
+ 
+ 
+ def scheduler_case(dcp=1, *, asynchronous=True, policy="recompute", single=False):

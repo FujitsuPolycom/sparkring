@@ -117,14 +117,29 @@ def rebind(
             sha(previous) == row["sha256"],
             "Binding does not describe the baseline source: " + relative,
         )
+        names = row.get("required_symbols", [])
+        if not names:
+            require(
+                previous == replacement,
+                "Byte-only contract file changed; explicit migration required: "
+                + relative,
+            )
+            evidence.append(
+                {
+                    "path": relative,
+                    "baseline_sha256": row["sha256"],
+                    "candidate_sha256": row["sha256"],
+                    "equivalent_symbols": [],
+                    "byte_identical": True,
+                }
+            )
+            continue
         old_tree, new_tree = ast.parse(previous), ast.parse(replacement)
         require(
             globals_digest(old_tree) == globals_digest(new_tree),
             "Module globals changed; explicit interface migration required: "
             + relative,
         )
-        names = row.get("required_symbols", [])
-        require(names, "Binding file has no named interfaces")
         for name in names:
             require(
                 symbol(old_tree, name) == symbol(new_tree, name),
@@ -140,6 +155,20 @@ def rebind(
         )
         row["sha256"] = sha(replacement)
     result["base_commit"] = target_commit
+    if "vllm_commit" in result:
+        result["vllm_commit"] = target_commit
+    result.pop("vllm_tree", None)
+    result["qualification"] = (
+        "Implemented source binding: declared interfaces and module globals match "
+        "the protected reference; byte-only files remain identical. A passing exact-source "
+        "CPU oracle is recorded separately. GPU serving and cache recovery require qualification."
+    )
+    result["semantic_review"] = {
+        "parent_contract_canonical_sha256": sha(encoded(contract)),
+        "target_commit": target_commit,
+        "candidate_tree_sha256": target_tree,
+        "scope": "Named interfaces and byte-only files; not whole-program equivalence.",
+    }
     proof = {
         "schema": "sparkring-binding-equivalence/v1",
         "candidate_tree_sha256": target_tree,

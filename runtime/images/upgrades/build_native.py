@@ -13,7 +13,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from runtime.images.upgrades.contracts import load_policy, read, require, sha  # noqa: E402
+from runtime.images.upgrades.contracts import beneath, load_policy, read, require, sha  # noqa: E402
+from runtime.images.upgrades.contract_rebind import rebind  # noqa: E402
 from runtime.images.upgrades.io import checked, write_json  # noqa: E402
 from runtime.images.upgrades.sources import tree_digest, native_digest  # noqa: E402
 
@@ -70,6 +71,55 @@ def validate_recipe(recipe):
         "Explicit compiler Torch ABI required",
     )
     return recipe
+
+
+def prepare_source_binding(policy, bundle, paths, parent, context):
+    config = policy["foundation"].get("source_binding")
+    if config is None:
+        return None, None
+    contract_path = beneath(policy["_root"], config["contract"])
+    original_destination = "/opt/sparkring/contracts/" + contract_path.name
+    active = set(parent.get("integration_contracts", {}))
+    require(
+        original_destination in active
+        and parent["files"].get(original_destination)
+        == sha(contract_path.read_bytes()),
+        "Source binding does not name the active parent contract",
+    )
+    source = bundle["sources"]["vllm"]
+    oracle = next(
+        (
+            item
+            for item in source.get("oracles", [])
+            if item["gate"] == config["oracle"]
+        ),
+        None,
+    )
+    require(oracle is not None, "Accepted vLLM source lacks its binding oracle")
+    contract, proof = rebind(
+        read(contract_path),
+        config["reference_source"],
+        paths["vllm"],
+        source["target_commit"],
+        oracle,
+        input_sha256=bundle["input_sha256"],
+    )
+    destination = (
+        "/opt/sparkring/contracts/vllm-connector-jobs-source-"
+        + proof["candidate_tree_sha256"][:16]
+        + ".json"
+    )
+    write_json(context / "source-binding.json", contract)
+    write_json(context / "source-binding-proof.json", proof)
+    active.remove(original_destination)
+    active.add(destination)
+    return {
+        "file": "source-binding.json",
+        "sha256": sha((context / "source-binding.json").read_bytes()),
+        "proof_file": "source-binding-proof.json",
+        "proof_sha256": sha((context / "source-binding-proof.json").read_bytes()),
+        "destination": destination,
+    }, sorted(active)
 
 
 def build(policy_path, bundle_path, output, result_path):
@@ -299,6 +349,12 @@ def build(policy_path, bundle_path, output, result_path):
         "compiler_descriptor_sha256": compiled["descriptor_sha256"],
         "source_trees": source_trees,
     }
+    binding, active = prepare_source_binding(
+        policy, bundle, paths, parent_receipt, context
+    )
+    if binding is not None:
+        install_descriptor["source_binding"] = binding
+        install_descriptor["active_contracts"] = active
     write_json(context / "descriptor.json", install_descriptor)
     write_json(context / "compiler-result.json", compiled)
     shutil.copyfile(
