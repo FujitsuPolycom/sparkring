@@ -17,6 +17,11 @@ actual container assembly and its release-specific options.
 A successful local build is not a published or hardware-qualified image.
 See the [release procedure](../../docs/development/releases.md).
 
+For isolated upstream catch-up trials, use the
+[bounded upgrade runner](upgrades/README.md). It discovers source changes,
+reconciles approved patches and can build explicitly authorized candidates.
+It does not change published image selections or serving deployments.
+
 ## Container images
 
 | Package / runtime | Profile | Details |
