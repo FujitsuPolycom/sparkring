@@ -451,3 +451,37 @@ def test_composition_does_not_invent_a_missing_model_revision():
     result = profiles.resolve('sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1')
     assert 'checkpoint_sha256' in result['model']
     assert 'revision' not in result['model']
+
+
+
+def test_python_env_adapter_keeps_effective_settings_unresolved(tmp_path):
+    from scripts.test_deepseek_v41_sglang_launcher import environment, launch
+    env = environment(tmp_path, CONTEXT_LENGTH="430080", MAX_RUNNING_REQUESTS="4")
+    actual = launch.read_config(env)
+    assert actual["CONTEXT_LENGTH"] == "430080" and actual["MAX_RUNNING_REQUESTS"] == "4"
+    result = plan("deepseek-v41-flash-sglang-cycle", ["--check", str(env)])
+    assert result["configuration_status"] == "unresolved"
+    assert result["serving"] is None and result["modified_defaults"] is None
+    assert result["catalog_defaults"]["serving"]["max_model_len"] == 262144
+    assert result["catalog_defaults"]["serving"]["max_num_seqs"] == 8
+    assert result["command"][-2:] == ["--check", str(env)]
+
+
+@pytest.mark.parametrize("value", [None, True, [], {}, "hardware-tested"])
+def test_quickstart_status_requires_a_known_status(repository, value):
+    path = repository / "profiles/example/profile.json"
+    profile = profiles.read_json(path)
+    profile["quickstart_status"] = value
+    write(path, profile)
+    with pytest.raises(ValueError, match="quickstart_status"):
+        profiles.load("example", root=repository)
+
+
+@pytest.mark.parametrize("value", [None, True, [], {}, "shell"])
+def test_adapter_configuration_input_requires_a_known_contract(repository, value):
+    path = repository / "profiles/example/profile.json"
+    profile = profiles.read_json(path)
+    profile["launcher"]["configuration_input"] = value
+    write(path, profile)
+    with pytest.raises(ValueError, match="configuration_input"):
+        profiles.load("example", root=repository)

@@ -358,3 +358,84 @@ def test_check_plan_contains_only_read_only_preflight(deployment):
     document = coordinator.plan(manifest, files, "check")
     assert [p["id"] for p in document["phases"]] == ["preflight"]
     assert all(a["risk"] == "read-only" for a in document["phases"][0]["actions"])
+
+
+@pytest.mark.parametrize("state", [None, "created", "exited", "running"])
+@pytest.mark.parametrize("busy", [False, True])
+def test_preflight_checks_idle_gpu_for_every_stopped_owner(deployment, tmp_path, monkeypatch, state, busy):
+    manifest, _ = deployment
+    spec = rank_spec(manifest)
+    rank = dict(manifest["site"]["ranks"][0])
+    for name in ("model", "cache", "repository", "deployment_root"):
+        path = tmp_path / name
+        path.mkdir()
+        rank[name] = str(path)
+    metadata, _ = coordinator.profiles.load(manifest["profile"])
+    profile = coordinator.qwen_flash_next.read(coordinator.ROOT / metadata["configuration"]["path"])
+    present = inspected(spec, manifest) if state is not None else None
+    if present:
+        present["State"].update(Running=state == "running", Status=state)
+    monkeypatch.setattr(coordinator.sys, "platform", "linux")
+    monkeypatch.setattr(coordinator, "container", lambda _: present)
+    monkeypatch.setattr(coordinator.qwen_flash_next, "verify_model_paths", lambda *a: None)
+    monkeypatch.setattr(coordinator.ports, "check_tcp_bind", lambda *a: None)
+    monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
+    path_type = type(tmp_path)
+    original_is_dir, original_read = path_type.is_dir, path_type.read_text
+    monkeypatch.setattr(path_type, "is_dir", lambda path: path.as_posix() == "/dev/infiniband" or original_is_dir(path))
+    def read(path, *args, **kwargs):
+        if path.as_posix().startswith("/sys/class/infiniband/"):
+            return "4: ACTIVE" if path.name == "state" else "0000:0000:0000:0000:0000:ffff:c000:0214"
+        return original_read(path, *args, **kwargs)
+    monkeypatch.setattr(path_type, "read_text", read)
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[0] == "ip":
+            output = json.dumps([{"addr_info": [{"local": rank["host_ip"]}]}])
+        elif argv[:3] == ["docker", "image", "inspect"]:
+            output = json.dumps([{"Id": spec.image_id, "Os": "linux", "Architecture": "arm64"}])
+        elif argv[:3] == ["docker", "container", "ls"]:
+            output = present["Id"] if present else ""
+        elif argv[0] == "nvidia-smi":
+            output = "GPU-fixture" if argv[1] == "--query-gpu=uuid" else "1234" if busy else ""
+        else:
+            pytest.fail("Unexpected host operation: " + str(argv))
+        return subprocess.CompletedProcess(argv, 0, stdout=output)
+    monkeypatch.setattr(coordinator, "run", run)
+    if busy and state != "running":
+        with pytest.raises(ValueError, match="compute workload"):
+            coordinator.preflight(rank, manifest["site"], spec, spec.image_id, profile, manifest)
+    else:
+        coordinator.preflight(rank, manifest["site"], spec, spec.image_id, profile, manifest)
+    queried = any("--query-compute-apps=pid" in argv for argv in calls)
+    assert queried is (state != "running")
+
+
+@pytest.mark.parametrize("operation,rank", [("start-api", 0), ("start-worker", 1)])
+@pytest.mark.parametrize("busy", [False, True])
+def test_start_rechecks_gpu_after_creation(deployment, tmp_path, monkeypatch, operation, rank, busy):
+    manifest, files = deployment
+    spec = rank_spec(manifest, rank)
+    present = inspected(spec, manifest)
+    present["State"].update(Running=False, Status="created")
+    monkeypatch.setattr(coordinator, "stage_path", lambda *a: tmp_path / "staged")
+    monkeypatch.setattr(coordinator, "container", lambda _: present)
+    payload = {"manifest": manifest, "files": files, "rank": rank}
+    coordinator.host_operation("stage", payload)
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[0] == "nvidia-smi":
+            return subprocess.CompletedProcess(argv, 0, stdout="1234" if busy else "")
+        assert argv[-2:] == ["start", "model"]
+        return subprocess.CompletedProcess(argv, 0, stdout="")
+    monkeypatch.setattr(coordinator, "run", run)
+    if busy:
+        with pytest.raises(ValueError, match="compute workload"):
+            coordinator.host_operation(operation, payload)
+        assert all(argv[-2:] != ["start", "model"] for argv in calls)
+    else:
+        coordinator.host_operation(operation, payload)
+        assert calls[0][1] == "--query-compute-apps=pid"
+        assert calls[-1][-2:] == ["start", "model"]

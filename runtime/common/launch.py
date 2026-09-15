@@ -69,7 +69,7 @@ def plan(profile_id, arguments, root=ROOT):
             'execution_status': 'not-run', 'guide': p['guide'],
             'command': command, 'working_directory': str(root),
             'effect': 'host-action' if args[0] in ('create', 'start', '--run', '--prepare', '--pack') else 'adapter-check-or-plan'}
-    if adapter['kind'] == 'bash':
+    if adapter.get('configuration_input', 'env' if adapter['kind'] == 'bash' else 'profile') == 'env':
         # ENV contents belong to the adapter. An argv plan cannot establish
         # their effective serving settings or inherit catalog qualification.
         result['catalog_defaults'] = {'serving': resolved['serving'],

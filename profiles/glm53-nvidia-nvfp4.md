@@ -45,10 +45,11 @@ rechecks that metadata and the plan's source identities. The normal readiness
 budget is 900 seconds; this target uses 1500 seconds to accommodate its loader.
 Fabric-failure timers and readiness requirements are unchanged.
 
-The [DCP4 procedure](glm53-flash-spark-tp4-dcp1-sparkcache/README.md#dcp4-alternative)
-also accepts `"target_model_variant": "nvidia-nvfp4"` in the private site file.
-Use the pinned NVIDIA model revision and distinct model/cache roots on all
-four ranks. The deployment-suite CLI remains DCP1-only.
+DCP4 is not supported by this quickstart or the deployment-suite CLI. The
+NVFP4-Spark DCP4 reproduction requires an R33 receipt and overlay, which reject
+this NVIDIA target. An R37-specific DCP4 staging/launch procedure is required
+before documenting that selection. The contributor's DCP4 results remain scoped
+to the separately identified image in the [evidence record](../performance/records/glm53-flash/nvidia-nvfp4.md).
 
 ## Image and validation limits
 

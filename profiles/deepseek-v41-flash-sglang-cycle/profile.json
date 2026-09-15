@@ -11,6 +11,7 @@
   "overrides": [],
   "launcher": {
     "kind": "python",
+    "configuration_input": "env",
     "path": "scripts/deepseek_v41_sglang_cycle_serve.py",
     "actions": ["--check", "--prepare", "--pack", "--run"],
     "fixed_args": []

@@ -14,6 +14,11 @@ The catalog contains only stable IDs and definition paths. A definition uses
 references and invalid topology values are errors. Future incompatible schemas
 need a separate loader and migration; do not reinterpret v1 fields.
 
+The optional `quickstart_status` field describes a primary guide that selects a
+different release. Tables use that status; `status`, release selection and
+configuration evidence retain their original meaning. The resolver exposes both
+statuses when they differ, and the detailed catalog links to the retained record.
+
 Table-only capability annotations live in `profiles/capabilities.json`. They
 describe integration work and do not enable features or change serving defaults.
 
@@ -69,8 +74,10 @@ supply the catalog's exact runtime receipt. Compositions requiring managed
 multi-host steps direct the operator to their guide instead of inventing a
 single unsafe start command.
 
-For Bash adapters, the argv plan does not read or validate the supplied ENV
-file. Its `catalog_defaults` field identifies the profile's baseline settings
+Adapters whose private ENV file owns serving settings declare
+`launcher.configuration_input: "env"`. This includes the SGLang Python adapter;
+Bash adapters retain that input contract by default. Their argv plan does not
+read or validate the supplied ENV file. Its `catalog_defaults` field identifies the profile's baseline settings
 and status; `configuration_status` is `unresolved`, and `serving` and
 `modified_defaults` are `null`. This applies even when the ENV uses the defaults.
 Run the adapter's `--check` action to inspect its input. The JSON printed before
