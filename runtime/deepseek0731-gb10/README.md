@@ -7,6 +7,21 @@ outstanding. The published native derivative at digest
 `sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd`
 does not contain these API changes.
 
+To add the API policies while preserving that published derivative's compiled
+native library, select the `api-upgrade` build target:
+
+```bash
+SPARKRING_DEEPSEEK_GB10_TARGET=api-upgrade \
+  bash runtime/deepseek0731-gb10/build-image.sh sparkring/deepseek-api:local
+```
+
+The target pins its parent by digest, checks the native library hash and runtime
+patch prerequisites, and applies the API changes to both installed and retained
+vLLM sources. Altered or partially upgraded inputs are rejected. The resulting
+image still needs bounded API qualification before adoption; building it does
+not update any profile's image reference. The default `native` target rebuilds
+the native extension from the earlier pinned source image.
+
 The Responses request and response models accept `reasoning.effort: "max"` in addition to
 `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. They retain the OpenAI
 SDK reasoning model's other fields and validation. Unknown effort values remain
