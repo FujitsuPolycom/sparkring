@@ -206,7 +206,68 @@ for item in sys.argv[3:]:
     )
 
 
-def fault(pair, rank, location, action):
+def fault_command(run_id, location, action, image_id):
+    require(
+        isinstance(image_id, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", image_id),
+        "Fault helper requires an immutable image",
+    )
+    require(action in ("corrupt", "repair"), "Unknown mutating cache-fault action")
+    root = PurePosixPath(location["root"])
+    require(
+        root.is_absolute()
+        and ".." not in root.parts
+        and root.parent.name == run_id
+        and root.parent.parent.name.startswith("sparkring-upgrade-"),
+        "Fault helper mount escapes its qualification root",
+    )
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "-i",
+        "--runtime",
+        "runc",
+        "--network",
+        "none",
+        "--read-only",
+        "--user",
+        "0:0",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "DAC_OVERRIDE",
+        "--security-opt",
+        "no-new-privileges",
+        "--memory",
+        str(256 * 1024**2),
+        "--cpus",
+        "1",
+        "--pids-limit",
+        "64",
+        "--env",
+        "NVIDIA_VISIBLE_DEVICES=void",
+        "--env",
+        "CUDA_VISIBLE_DEVICES=",
+        "--label",
+        "sparkring.upgrade.run=" + run_id,
+        "--mount",
+        f"type=bind,src={root},dst={root}",
+        "--entrypoint",
+        "/opt/venv/bin/python",
+        image_id,
+        "-",
+        action,
+        "--root",
+        str(root),
+        "--owner",
+        run_id,
+        "--persistent",
+        location["persistent"],
+        "--workers-stopped",
+    ]
+
+
+def fault(pair, rank, location, action, *, image_id=None):
     argv = [
         "python3",
         "-",
@@ -219,7 +280,24 @@ def fault(pair, rank, location, action):
         location["persistent"],
     ]
     if action in ("corrupt", "repair"):
-        argv.append("--workers-stopped")
+        for worker in (0, 1):
+            active = pair.call(
+                worker,
+                [
+                    "docker",
+                    "ps",
+                    "-q",
+                    "--filter",
+                    "label=sparkring.upgrade.run=" + pair.run_id,
+                ],
+            )
+            require(
+                not active.strip(), "Stop all run-owned workers before fault injection"
+            )
+        # The host check observes symlinks before Docker resolves the bind mount.
+        script = "import pathlib,sys; p=pathlib.Path(sys.argv[1]); assert p==p.resolve() and not any(x.is_symlink() for x in (p,*p.parents)); assert (p/'.sparkring-test-cache-owner').read_text()==sys.argv[2]"
+        pair.call(rank, ["python3", "-c", script, location["root"], pair.run_id])
+        argv = fault_command(pair.run_id, location, action, image_id)
     return json.loads(
         pair.call(
             rank,
@@ -445,7 +523,7 @@ def run(
             for rank in (0, 1):
                 pair.stop(rank, specs[rank].name)
             faults = [
-                fault(pair, rank, item, "corrupt")
+                fault(pair, rank, item, "corrupt", image_id=image_id)
                 for rank, item in enumerate(locations)
             ]
             evidence["cache"]["faults"] = faults
@@ -473,7 +551,8 @@ def run(
                 pair.stop(rank, specs[rank].name)
             checkpoint("cache-repair")
             evidence["cache"]["repair"] = [
-                fault(pair, rank, item, "repair") for rank, item in enumerate(locations)
+                fault(pair, rank, item, "repair", image_id=image_id)
+                for rank, item in enumerate(locations)
             ]
             if leave_running or site.get("performance") or site.get("media_checks"):
                 for rank in (1, 0):

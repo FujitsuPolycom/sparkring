@@ -6,6 +6,7 @@ import pytest
 
 from runtime.images.upgrades.contracts import Refused
 from runtime.images.upgrades.tp2_suite import native_arguments, option
+from runtime.images.upgrades.tp2_suite import fault_command
 
 
 def metadata():
@@ -78,6 +79,26 @@ def test_multiple_active_source_lease_contracts_require_explicit_selection():
 def test_duplicate_serving_options_are_not_silently_replaced():
     with pytest.raises(Refused, match="occur once"):
         option(["--port", "1", "--port", "2"], "--port", 18000)
+
+
+def test_fault_helper_mounts_only_the_owned_test_root_without_gpu_or_network():
+    root = "/var/tmp/sparkring-upgrade-qualification/trial/glm-r0"
+    argv = fault_command(
+        "trial", {"root": root, "persistent": "cache"}, "corrupt", "sha256:" + "a" * 64
+    )
+    assert argv.count("--mount") == 1
+    assert argv[argv.index("--mount") + 1] == f"type=bind,src={root},dst={root}"
+    assert argv[argv.index("--network") + 1] == "none"
+    assert "--privileged" not in argv and "--gpus" not in argv
+    assert "--read-only" in argv and "DAC_OVERRIDE" in argv
+    assert "--workers-stopped" in argv
+    with pytest.raises(Refused, match="qualification root"):
+        fault_command(
+            "trial",
+            {"root": "/home/user", "persistent": "cache"},
+            "corrupt",
+            "sha256:" + "a" * 64,
+        )
 
 
 def test_publication_failure_preserves_cold_response_and_stops_workers(
