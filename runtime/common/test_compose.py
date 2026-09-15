@@ -15,6 +15,46 @@ from runtime.common.container_spec import Bind, ContainerSpec, docker_create
 from scripts import generate_compose_examples
 
 
+@pytest.mark.parametrize("bind", [{}, {"create_host_path": False}])
+def test_resolved_bind_options_preserve_omitted_false(bind):
+    from types import SimpleNamespace
+
+    spec = ContainerSpec(name="bind-options", image_id="sha256:" + "a" * 64,
+                         entrypoint=("/python",), command=("serve",), environment={},
+                         mounts=(Bind("/model", "/model", True), Bind("/cache", "/cache")))
+    image = "example.invalid/model@sha256:" + "a" * 64
+    actual = compose.escape({"name": spec.name, "services": {"model": compose.service(spec, image)}})
+    for mount in actual["services"]["model"]["volumes"]:
+        mount["bind"] = dict(bind)
+
+    def run(argv, **kwargs):
+        submitted = yaml.safe_load(kwargs["input"])["services"]["model"]["volumes"]
+        assert all(mount["bind"]["create_host_path"] is False for mount in submitted)
+        return SimpleNamespace(stdout=json.dumps(actual))
+
+    result = compose.check_equivalence(spec, image, compose.compose_text(spec, image), run=run)
+    assert all(mount["bind"]["create_host_path"] is False
+               for mount in result["services"]["model"]["volumes"])
+
+
+@pytest.mark.parametrize("bind", [{}, {"create_host_path": True}, {"create_host_path": "false"}])
+def test_bind_creation_requires_explicit_false_in_input(bind):
+    from types import SimpleNamespace
+
+    spec = ContainerSpec(name="bind-input", image_id="sha256:" + "a" * 64,
+                         entrypoint=("/python",), command=("serve",), environment={},
+                         mounts=(Bind("/model", "/model", True),))
+    image = "example.invalid/model@sha256:" + "a" * 64
+    submitted = yaml.safe_load(compose.compose_text(spec, image))
+    submitted["services"]["model"]["volumes"][0]["bind"] = bind
+    # Omitted output flags cannot prove the policy requested by the input.
+    resolved = compose.escape({"name": spec.name, "services": {"model": compose.service(spec, image)}})
+    resolved["services"]["model"]["volumes"][0]["bind"] = {}
+    with pytest.raises(ValueError, match="explicitly disable"):
+        compose.check_equivalence(spec, image, yaml.safe_dump(submitted),
+                                  run=lambda *a, **k: SimpleNamespace(stdout=json.dumps(resolved)))
+
+
 @pytest.mark.parametrize("profile_id", sorted(compose.TP4_PROFILES))
 def test_tp4_fabric_imports_from_only_its_packaged_inventory(tmp_path, profile_id):
     snapshot = tmp_path / "source"

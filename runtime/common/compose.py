@@ -407,7 +407,7 @@ def check_project_containers(project, *, owned_id=None, run=subprocess.run):
 
 
 def normalize_service(value):
-    """Normalize only documented Compose defaults; retain every unexpected field."""
+    """Normalize resolved output after bind intent is checked; retain unexpected fields."""
     value = json.loads(json.dumps(value))
     value.setdefault("labels", {})
     value.setdefault("environment", {})
@@ -443,11 +443,26 @@ def normalize_service(value):
             device["count"] = -1
     for mount in value.get("volumes", []):
         mount.setdefault("read_only", False)
-        mount.setdefault("bind", {}).setdefault("create_host_path", True)
+        # Compose-go's boolean omitempty encoding can render an explicitly
+        # disabled CreateHostPath as bind: {}. Keep absent bind options distinct.
+        # https://github.com/compose-spec/compose-go/blob/v2.7.1/types/types.go
+        if mount.get("type") == "bind" and isinstance(mount.get("bind"), dict):
+            mount["bind"].setdefault("create_host_path", False)
     return value
 
 
 def check_equivalence(spec, image, text, *, run=subprocess.run):
+    # JSON encoders can omit different boolean defaults. Require the safe
+    # literal in the submitted YAML before interpreting an omitted bind flag.
+    try:
+        submitted = yaml.safe_load(text)["services"]["model"].get("volumes", [])
+    except (yaml.YAMLError, KeyError, TypeError, AttributeError):
+        raise ValueError("Compose input requires a model service and literal bind options") from None
+    if (not isinstance(submitted, list) or len(submitted) != len(spec.mounts)
+            or any(not isinstance(mount, dict) or mount.get("type") != "bind"
+                   or not isinstance(mount.get("bind"), dict)
+                   or mount["bind"].get("create_host_path") is not False for mount in submitted)):
+        raise ValueError("Compose bind mounts must explicitly disable host-directory creation")
     result = run(
         compose_command(spec.name)
         + ["config", "--format", "json", "--no-path-resolution"],
