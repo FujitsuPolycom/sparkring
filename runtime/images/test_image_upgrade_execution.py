@@ -43,6 +43,8 @@ def test_docker_oracle_is_readonly_isolated_and_subject_bound(tmp_path, monkeypa
         )
 
     monkeypatch.setattr(execution.sys, "platform", "linux")
+    monkeypatch.setattr(execution.os, "getuid", lambda: 1000, raising=False)
+    monkeypatch.setattr(execution.os, "getgid", lambda: 1000, raising=False)
     monkeypatch.setattr(executor, "_run", fake)
     result = executor.gate(
         gate, tmp_path / "source", tmp_path / "out", context, time.monotonic() + 10

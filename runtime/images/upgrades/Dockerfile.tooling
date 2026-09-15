@@ -1,0 +1,13 @@
+ARG PARENT
+FROM ${PARENT}
+COPY inputs/ /build-tooling-inputs/
+COPY tooling.py /build-tooling-inputs/tooling.py
+RUN /opt/venv/bin/python -S /build-tooling-inputs/tooling.py verify --root /build-tooling-inputs
+RUN /opt/venv/bin/python -m pip install --no-index --no-deps /build-tooling-inputs/wheels/*.whl
+RUN mkdir /tmp/rust-install && \
+    tar -xf /build-tooling-inputs/rust-1.95.0-aarch64-unknown-linux-gnu.tar.xz -C /tmp/rust-install && \
+    /tmp/rust-install/rust-1.95.0-aarch64-unknown-linux-gnu/install.sh --prefix=/opt/rust --without=rust-docs --disable-ldconfig && \
+    /opt/rust/bin/rustc --version && /opt/rust/bin/cargo --version && \
+    rm -rf -- /tmp/rust-install
+ENV PATH=/opt/rust/bin:${PATH}
+ENTRYPOINT ["/opt/venv/bin/python"]

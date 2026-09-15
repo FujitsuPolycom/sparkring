@@ -24,6 +24,11 @@ def main(argv=None):
     init.add_argument("--output", required=True, type=Path)
     init.add_argument("--agent-endpoint")
     init.add_argument("--agent-model")
+    init.add_argument(
+        "--native",
+        action="store_true",
+        help="Select the bounded GB10 source-wheel compiler recipe",
+    )
     validate = sub.add_parser("validate")
     validate.add_argument("--policy", required=True, type=Path)
     demo = sub.add_parser("trial")
@@ -62,7 +67,10 @@ def main(argv=None):
     try:
         if args.action == "init-r37":
             result = initialize(
-                args.output, endpoint=args.agent_endpoint, model=args.agent_model
+                args.output,
+                endpoint=args.agent_endpoint,
+                model=args.agent_model,
+                native=args.native,
             )
         elif args.action == "trial":
             result = trial(args.output)

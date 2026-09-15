@@ -26,9 +26,21 @@ def verify_bindings(root=Path("/")):
                 ):
                     failed.append("Feature source preimage changed: " + name)
                 assertions += 1
-    for contract in (root / "opt/sparkring/contracts").glob(
-        "vllm-connector-jobs-*.json"
-    ):
+    installed_path = root / "opt/sparkring/receipts/native-installed.json"
+    if not installed_path.exists():
+        installed_path = root / "opt/sparkring/receipts/candidate-installed.json"
+    active = None
+    if installed_path.exists():
+        installed = json.loads(installed_path.read_text())
+        active = installed.get(
+            "active_contracts", list(installed.get("integration_contracts", {}))
+        )
+    contracts = (
+        [root / name.lstrip("/") for name in active if "vllm-connector-jobs-" in name]
+        if active is not None
+        else (root / "opt/sparkring/contracts").glob("vllm-connector-jobs-*.json")
+    )
+    for contract in contracts:
         value = json.loads(contract.read_text())
         if (
             value.get("schema") != "sparkring-vllm-kv-block-lease-contract/v1"
@@ -51,7 +63,12 @@ def verify_bindings(root=Path("/")):
 
 
 def main():
-    path = Path("/opt/sparkring/bin/candidate-image.py")
+    native = Path("/opt/sparkring/receipts/native-installed.json").exists()
+    path = Path(
+        "/opt/sparkring/bin/native-image.py"
+        if native
+        else "/opt/sparkring/bin/candidate-image.py"
+    )
     spec = importlib.util.spec_from_file_location("candidate_verifier", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

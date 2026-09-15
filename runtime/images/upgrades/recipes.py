@@ -10,7 +10,7 @@ from .io import write_json
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def initialize(output, *, endpoint=None, model=None):
+def initialize(output, *, endpoint=None, model=None, native=False):
     output = Path(output).resolve()
     require(not output.exists(), "Recipe directory already exists")
     output.mkdir(parents=True)
@@ -132,6 +132,29 @@ def initialize(output, *, endpoint=None, model=None):
             "supports_native_rebuild": False,
         },
     }
+    if native:
+        policy["native"] = {
+            "schema": "sparkring-native-recipe/v1",
+            "architecture": "12.1a",
+            "jobs": 8,
+            "cpus": 12,
+            "memory_bytes": 80 * 1024**3,
+            "build_seconds": 21600,
+            "torch_version": "2.13.0",
+            "network": "bridge",
+        }
+        policy["build"]["argv"][1] = (
+            "{controller_root}/runtime/images/upgrades/build_native.py"
+        )
+        policy["build"]["supports_native_rebuild"] = True
+        policy["budgets"].update(
+            run_seconds=43200,
+            command_seconds=21600,
+            output_bytes=64 * 1024**2,
+            state_bytes=64 * 1024**3,
+        )
+        for gate in gates:
+            gate["timeout_seconds"] = 900 if gate["stage"] == "oracle" else 1800
     if endpoint or model:
         require(endpoint and model, "Provide both agent endpoint and model")
         policy["agent"] = {
@@ -146,5 +169,9 @@ def initialize(output, *, endpoint=None, model=None):
     return {
         "policy": str(output / "policy.json"),
         "policy_sha256": result["_digest"],
-        "scope": "Pinned source-overlay candidate recipe. Native-input changes and changed feature/connector bindings block adoption; hardware qualification is not configured.",
+        "scope": (
+            "Native GB10 wheel candidate; serving qualification is not configured."
+            if native
+            else "Pinned source-overlay candidate recipe. Native-input changes and changed feature/connector bindings block adoption; hardware qualification is not configured."
+        ),
     }

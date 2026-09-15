@@ -101,9 +101,11 @@ def controller_inputs():
     root = Path(__file__).resolve().parents[3]
     files = [
         *Path(__file__).parent.glob("*.py"),
+        *Path(__file__).parent.glob("Dockerfile.*"),
         root / "scripts/image_upgrade.py",
         root / "runtime/images/candidate_image.py",
         root / "runtime/images/Dockerfile.candidate",
+        root / "runtime/common/container_spec.py",
     ]
     return {p.relative_to(root).as_posix(): sha(p.read_bytes()) for p in sorted(files)}
 
@@ -128,6 +130,7 @@ def load_policy(path):
             "agent",
             "local_sources",
             "foundation",
+            "native",
         },
         "Unknown policy field",
     )
@@ -299,6 +302,7 @@ def load_policy(path):
                 "resources",
                 "memory_bytes",
                 "cpus",
+                "timeout_seconds",
             },
             "Unknown gate fields",
         )

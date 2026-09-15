@@ -281,7 +281,7 @@ def service(spec, image):
     }
     for name, value in (("mem_limit", spec.memory), ("memswap_limit", spec.memory_swap),
                         ("shm_size", spec.shm_size), ("user", spec.user),
-                        ("working_dir", spec.working_dir)):
+                        ("working_dir", spec.working_dir), ("cpuset", spec.cpuset_cpus)):
         if value is not None:
             result[name] = value
     for name in ("cap_add", "security_opt"):

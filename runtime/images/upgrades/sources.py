@@ -148,6 +148,19 @@ def tree_digest(root):
     return sha(encoded(inventory(root)))
 
 
+def native_digest(root, prefixes):
+    """Bind declared build inputs plus native-language files anywhere in the tree."""
+    files = inventory(root)
+    extensions = {".c", ".cc", ".cpp", ".cuh", ".cu", ".h", ".hpp", ".rs"}
+    selected = {
+        name: value
+        for name, value in files.items()
+        if allowed(name, prefixes) or Path(name).suffix in extensions
+    }
+    require(selected, "Native source inventory is empty")
+    return sha(encoded(selected))
+
+
 def copy_snapshot(source, target):
     require(not Path(target).exists(), "Candidate snapshot already exists")
     shutil.copytree(source, target)

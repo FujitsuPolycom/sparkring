@@ -4,11 +4,24 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+
+
+def protected_test_path(baseline, name):
+    filename, *selectors = name.split("::")
+    path = (Path(baseline) / filename).resolve()
+    if not path.is_relative_to(Path(baseline).resolve()) or not path.is_file():
+        raise ValueError("Missing protected baseline test: " + name)
+    if any(
+        not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", selector) for selector in selectors
+    ):
+        raise ValueError("Protected test selector must name a test/class explicitly")
+    return "::".join((str(path), *selectors))
 
 
 def main():
@@ -36,14 +49,12 @@ def main():
                     target.symlink_to(original)
     paths = []
     for name in args.tests:
-        path = (args.baseline / name).resolve()
-        if not path.is_relative_to(args.baseline.resolve()) or not path.is_file():
-            raise ValueError("Missing protected baseline test: " + name)
-        paths.append(str(path))
+        paths.append(protected_test_path(args.baseline, name))
     junit = Path("/tmp/upgrade-oracle.xml")
     env = dict(
         os.environ,
-        PYTHONPATH=str(overlay),
+        PYTHONPATH=os.pathsep.join((str(overlay), str(args.baseline))),
+        XDG_CACHE_HOME="/tmp/upgrade-oracle-cache",
         PYTHONDONTWRITEBYTECODE="1",
         HF_HUB_OFFLINE="1",
         TRANSFORMERS_OFFLINE="1",

@@ -201,6 +201,7 @@ class Executor:
 
     def gate(self, gate, source, output, context, deadline):
         context = {**context, "baseline_image": gate.get("baseline_image", "")}
+        deadline = min(deadline, time.monotonic() + gate.get("timeout_seconds", 1800))
         require(
             self.execute,
             "Execution is disabled; run with --execute after reviewing the plan",
@@ -252,6 +253,8 @@ class Executor:
                 "--network",
                 "none",
                 "--read-only",
+                "--user",
+                f"{os.getuid()}:{os.getgid()}",
                 "--cap-drop",
                 "ALL",
                 "--security-opt",
@@ -294,6 +297,9 @@ class Executor:
                 argv += ["--env", name + "=" + value]
             if gate["stage"] == "hardware":
                 argv += ["--gpus", "all"]
+            else:
+                argv += ["--runtime", "runc", "--env", "NVIDIA_VISIBLE_DEVICES=void", "--env", "CUDA_VISIBLE_DEVICES=",
+                         "--env", "OMP_NUM_THREADS=1", "--env", "MKL_NUM_THREADS=1"]
             inner_argv = expand(gate["argv"], inner)
             argv += ["--entrypoint", inner_argv[0], image, *inner_argv[1:]]
         else:

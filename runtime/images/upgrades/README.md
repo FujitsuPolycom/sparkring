@@ -1,8 +1,8 @@
 # Bounded image upgrade runner
 
 Status: **research-only**. The controller implements upstream discovery,
-bounded patch reconciliation, protected acceptance gates, source-overlay image
-construction and private run receipts. GPU-free tests exercise its state machine
+bounded patch reconciliation, protected acceptance gates, source-overlay and
+native-wheel image construction, TP2 qualification adapters and private run receipts. GPU-free tests exercise its state machine
 and failure handling. Neither those tests nor the simulated trial establish GPU
 correctness, performance, unattended native builds or serving qualification.
 
@@ -133,6 +133,71 @@ this adapter. A full native rebuild requires a separately reviewed fixed build
 adapter; this implementation does not pretend a changed dependency lock or CUDA
 extension is a Python-only update.
 
+## Native compilation and verified reuse
+
+Use `init-r37 --native` to select the GB10 wheel compiler. Its private policy
+declares SM121a, eight compiler jobs, a CPU/memory limit, the Torch ABI and a
+compiler deadline. `foundation.compiler_image_id` may select an immutable
+tooling image separately from the serving foundation. The
+[tool preparation adapter](tooling.py) supplies checksum-verified Rust 1.95.0
+and pinned Python test/build wheels; it does not install tools on serving hosts.
+Build the prepared context with [Dockerfile.tooling](Dockerfile.tooling) and
+record its actual local image ID in the private policy.
+
+The compiler has no GPU devices, model mounts or Docker socket. It builds wheels
+from read-only accepted sources in an owned writable directory. The installer
+checks wheel hashes, preserves unrelated foundation files and Torch versions,
+rejects introduced dependency conflicts, and records installed files and native
+provenance. It creates a distinct boundary-cache runtime attestation; prior
+attestations are not evidence for different compiled bytes.
+
+An operator-pinned `foundation.native_cache` manifest can reference an earlier
+compiled wheel. Reuse requires exact equality of declared native/build inputs,
+native-language files elsewhere in each source tree, compiler image, Torch ABI
+and architecture. Repackaging must preserve the complete native-member hash map.
+The result reports `native_rebuilt: false` and retains the compiled artifact's
+provenance. Changed native inputs require compilation; a Python-only change does
+not justify relabeling old binaries as rebuilt.
+
+Carried patches must describe the **complete retained feature closure** relative
+to their declared baseline commit. A published image can contain source older
+than the operational reference. Mechanical patch success is insufficient if the
+selection drops unlisted improvements. Compare source changes and add missing
+feature contracts before treating that selection as an upgrade.
+
+## Supervised TP2 qualification
+
+[tp2_suite.py](tp2_suite.py) consumes a private site file using
+`sparkring-tp2-qualification/v1`: ordered SSH hosts/hostnames, two saved container
+inspection files, model name, dedicated cache parent, test API/rendezvous ports,
+and selected cache/media/performance checks. It uses the shared container
+renderer, preserving CPU affinity and memory settings. Unsupported snapshot
+settings fail rather than being silently discarded.
+
+The suite creates run-owned containers on separate test ports and marked cache
+directories. Its checks cover text, persisted-prefix credit after both worker
+processes restart, and corrupted synthetic chunks falling back to recomputation.
+Fault injection preserves byte-for-byte backups and never targets an unmarked
+serving cache. Optional media checks send three solid-color images and one red
+video; they do not establish general video accuracy.
+
+The optional performance adapter requires a hash-pinned benchmark script,
+hash-pinned baseline JSON records, identical sampling/output/workload settings,
+three repetitions and explicit prefill/decode/normalized-step thresholds. It
+uses measured throughput and at least 95% observed concurrency. Transient
+queue/underfill display badges remain visible in evidence; errors, loops,
+readiness failures and inadequate measured fill fail the gate.
+
+[tp2_experiment.py](tp2_experiment.py) orders GLM before Qwen, preserves exact
+rollback container IDs, and restores that deployment after unsuccessful trials
+or ordinary nightly tests. `--leave-qualified` is a separate supervised-only
+action: both model suites must pass before Qwen is started on the declared
+serving port. Nightly recipes must not supply that option. Model weights are
+reused through read-only binds, not downloaded by the qualification adapter.
+
+These adapters are implemented but require live qualification for the selected
+image/site. Keep API access restricted to the trusted management network.
+
 ## Supply semantic reconciliation
 
 Mechanical application is attempted file by file. Clean approved fragments are
@@ -185,8 +250,8 @@ a proof that an LLM preserved every semantic property.
 | Layer | Implemented admission | Evidence not supplied by the initializer |
 |---|---|---|
 | Source | Baseline, upstream and candidate oracle runs; source-digest binding; bounded repair | Whole-runtime behavioral equivalence |
-| Image | Parent inventory, accepted source identities, installed inventory, capability presence, feature/cache source preimages | Native rebuilds or dependency migration |
-| GPU/profile | Fixed operator adapters and separately scoped hardware leases | Registered serving/correctness/performance workloads for every profile |
+| Image | Parent inventory, accepted source identities, native wheel/reuse checks, installed inventory, feature/cache bindings | Arbitrary dependency or compiler-family migration |
+| GPU/profile | TP2 text/cache/media/performance adapters, rollback and separately scoped hardware leases | Qualification of every profile or TP4 topology |
 | Publication | Explicit candidate-only action permission and immutable image receipt | Publisher adapter, provenance/license review or stable promotion |
 
 The supplied source recipe runs the retained recurrent-checkpoint and hybrid

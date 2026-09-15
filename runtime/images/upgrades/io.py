@@ -187,13 +187,17 @@ def storage_check(root, budgets):
     if "state_bytes" in budgets:
         total = 0
         for path in root.rglob("*"):
-            require(not path.is_symlink(), "State artifacts must not contain symlinks")
-            if path.is_file():
+            if path.is_symlink():
+                # CMake/compiler outputs can contain links. Budget their inode,
+                # never traverse or read the target; source inputs have a
+                # separate strict inventory check.
+                total += path.lstat().st_size
+            elif path.is_file():
                 total += path.stat().st_size
-                require(
-                    total <= budgets["state_bytes"],
-                    "Retained state exceeds storage budget; archive exact runs after review",
-                )
+            require(
+                total <= budgets["state_bytes"],
+                "Retained state exceeds storage budget; archive exact runs after review",
+            )
 
 
 @contextmanager
