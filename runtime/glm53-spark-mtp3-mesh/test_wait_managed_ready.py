@@ -327,3 +327,15 @@ def test_nvidia_budget_permits_slow_loader_without_changing_default():
     assert ready.wait(plan, 1500, probe=lambda *args: {"ready": True})["ready"]
     with pytest.raises(ValueError):
         ready.wait(PLAN, 1500)
+
+
+
+def test_nvidia_readiness_plan_owns_the_loader_budget(tmp_path, monkeypatch):
+    topology = SimpleNamespace(rank=lambda rank: SimpleNamespace(ssh_alias=f"spark-r{rank}"))
+    monkeypatch.setattr(ready.profile, "load_site", lambda path:
+                        ({"management_addresses": ["192.0.2.1"], "container_prefix": "model",
+                          "target_model_variant": "nvidia-nvfp4"}, topology, None))
+    (tmp_path / "rank0.env").write_text("PORT=8015\nSPARKRING_LIVENESS_PORT=8016\nSPARKRING_LIVENESS_ENABLED=1\nTARGET_MODEL_VARIANT=nvidia-nvfp4\n")
+    plan = ready.load_launch(tmp_path)
+    assert plan["timeout_seconds"] == 1500
+    assert plan["target_model_variant"] == "nvidia-nvfp4"

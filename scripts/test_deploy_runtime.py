@@ -344,5 +344,5 @@ def test_nvidia_readiness_budget_reaches_outer_deployment_gate(tmp_path):
         calls.append(timeout)
         return {"ready": True}
     probe_readiness(tmp_path / "launch", tmp_path / "results", wait=wait,
-                    load=lambda path: {"target_model_variant": "nvidia-nvfp4"})
+                    load=lambda path: {"target_model_variant": "nvidia-nvfp4", "timeout_seconds": 1500})
     assert calls == [1500]

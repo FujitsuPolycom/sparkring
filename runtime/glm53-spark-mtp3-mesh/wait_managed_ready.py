@@ -89,7 +89,8 @@ def load_launch(launch):
         raise ValueError("Readiness target differs from the rendered site")
 
     return {
-        **({"target_model_variant": variant} if variant != profile.glm_targets.DEFAULT else {}),
+        **({"target_model_variant": variant, "timeout_seconds": profile.glm_targets.readiness_timeout(variant)}
+           if variant != profile.glm_targets.DEFAULT else {}),
         "containers": targets,
         "urls": [f"http://{address}:{ports[0]}/health", f"http://{address}:{ports[1]}/liveness"],
         "stable_samples_required": 2 if registered else 1,

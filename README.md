@@ -36,6 +36,8 @@ Each quickstart selects its image and states which configurations were tested.
 
 ## Profiles
 
+[Full profile catalog](profiles/README.md).
+
 <!-- BEGIN GENERATED PROFILES -->
 
 ### Four Sparks
