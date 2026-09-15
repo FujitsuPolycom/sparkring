@@ -1,5 +1,6 @@
 """GPU-free authentication, readiness, and lifecycle contract checks."""
 import importlib.util
+import json
 from pathlib import Path
 import threading
 import time
@@ -219,14 +220,24 @@ def test_unknown_docker_status_blocks_model_admission():
         service.validate_group(changed)
 
 
-def test_model_arm_rechecks_local_docker_status_after_group_gate(tmp_path, monkeypatch):
+@pytest.mark.parametrize('degraded', [
+    'docker_status_degraded', 'management_degraded', 'peer_health_degraded',
+])
+def test_model_arm_rechecks_degradation_after_group_gate(tmp_path, monkeypatch, degraded):
     monkeypatch.setattr(service, 'load_config', lambda path: ({'state_dir': str(tmp_path)},))
-    (tmp_path / 'status.json').write_bytes(service.canonical({
-        'phase': 'armed', 'local_ready': True, 'generation': 'g', 'docker_status_degraded': True,
-    }))
+    healthy = rows()
+    service.validate_group(healthy)
+    status = {**healthy[0], 'local_ready': True, degraded: True}
+    (tmp_path / 'status.json').write_bytes(service.canonical(status))
     with pytest.raises(RuntimeError, match='not armed'):
         service.model_intent('unused', True)
     assert not (tmp_path / 'model-intent.json').exists()
+    service.model_intent('unused', False)
+    assert json.loads((tmp_path / 'model-intent.json').read_text())['active'] is False
+    status[degraded] = False
+    (tmp_path / 'status.json').write_bytes(service.canonical(status))
+    service.model_intent('unused', True)
+    assert json.loads((tmp_path / 'model-intent.json').read_text())['active'] is True
 
 
 @pytest.mark.parametrize('message, missing', [
@@ -507,7 +518,8 @@ def test_degraded_management_blocks_new_model_admission():
         service.validate_group(changed)
 
 
-def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch):
+@pytest.mark.parametrize("recovery", [False, True])
+def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch, recovery):
     """Drive the actual run loop: a typed management loss defers failure,
     keeps peer checks, model-exit detection and the watchdog alive, and a
     sustained loss expires into fail-closed. The fabric check runs on its
@@ -521,12 +533,16 @@ def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch):
     result.failed, result.owns_guard, result.model_seen = False, False, True
     loss = type('ManagementAddressLoss', (RuntimeError,), {})
     fabric_checks = [0]
+    recovering = [recovery]
+    def network_check(**kwargs):
+        fabric_checks[0] += 1
+        if not recovering[0] or fabric_checks[0] != 2:
+            raise loss()
     monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
         ManagementAddressLoss=loss,
         NetworkManager=lambda *args: SimpleNamespace(
             up=lambda: None,
-            check=lambda **kw: fabric_checks.__setitem__(0, fabric_checks[0] + 1)
-                or (_ for _ in ()).throw(loss()),
+            check=network_check,
             down=lambda: {'clean': True},
         ),
     ))
@@ -541,10 +557,15 @@ def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch):
             return rounds[0] >= 4
         def wait(self, seconds):
             rounds[0] += 1
-            clock[0] += 2.0
+            clock[0] += 6.0 if recovery else 2.0
 
     result.stop = Stop()
-    result.publish = lambda **changes: result.state.update(changes)
+    transitions = []
+    def publish(**changes):
+        if "management_degraded" in changes:
+            transitions.append(changes["management_degraded"])
+        result.state.update(changes)
+    result.publish = publish
     result.children = [SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda **kw: None)
                        for _ in range(2)]
     (tmp_path / 'model-intent.json').write_bytes(service.canonical({
@@ -570,10 +591,8 @@ def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch):
 
     monkeypatch.setattr(service, 'group_check', group_check)
     assert result.run() == 0
-    # One fabric check fired (2.0 s steps reach the 5 s poll threshold on the
-    # fourth round), the management latch armed and stayed inside the grace
-    # bound, and peer/watchdog legs ran every round regardless.
-    assert fabric_checks[0] == 1
+    assert fabric_checks[0] == (3 if recovery else 1)
+    assert transitions == ([True, False, True] if recovery else [True])
     assert events.count('peer-check') == 4
     assert events.count('watchdog') == 5  # READY=1 plus one per round
     assert result.state['management_degraded'] is True
@@ -582,6 +601,7 @@ def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch):
     # Sustained loss: clock steps beyond the bound expire the latch into the
     # fail-closed path.
     fabric_checks[0] = 0
+    recovering[0] = False
     events.clear()
     clock[0] = 100.0
     rounds[0] = 0

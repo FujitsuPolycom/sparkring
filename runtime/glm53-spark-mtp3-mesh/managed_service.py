@@ -636,6 +636,8 @@ def model_intent(config_path, active):
         return
     status = json.loads(status_path.read_text())
     if active and (status.get('phase') != 'armed' or status.get('local_ready') is not True
+                   or status.get('management_degraded', False)
+                   or status.get('peer_health_degraded', False)
                    or status.get('docker_status_degraded', False)):
         raise RuntimeError('Mesh is not armed for model startup')
     record = {'generation': status['generation'], 'active': active,
