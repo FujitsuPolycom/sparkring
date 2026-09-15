@@ -15,7 +15,7 @@ def profile_module(profile):
     return module
 
 
-def selection(spec, profile):
+def _image_selection(spec, profile):
     """Keep canonical defaults; explicit local receipts never become registry digests."""
     profile = Path(profile)
     selected = spec.get("runtime_selection")
@@ -89,6 +89,18 @@ def selection(spec, profile):
                          canonical_bundle_manifest_sha256=lock["runtime"]["bundle_manifest_sha256"]),
             "receipt": selected["image_receipt"], "inside_image": document["inside_image"],
             "marker_binary_sha256": document["inside_image"]["marker_binary_sha256"]}
+
+
+def selection(spec, profile):
+    """Bind target pins after image selection without changing fabric contracts."""
+    from runtime.common import glm_targets
+
+    selected = _image_selection(spec, profile)
+    variant = spec.get("site", {}).get("target_model_variant", glm_targets.DEFAULT)
+    glm_targets.require_image(variant, selected["receipt"])
+    if variant != glm_targets.DEFAULT:
+        selected["pins"] = dict(selected["pins"], target=glm_targets.target(variant))
+    return selected
 
 
 def receipt_path(spec, root):

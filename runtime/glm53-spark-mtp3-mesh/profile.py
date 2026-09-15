@@ -22,7 +22,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 from spark_transport.fabric.cx7_hairpin_diagonal import fabric  # noqa: E402
 from integrations.vllm.rocenante import build_bundle  # noqa: E402
-from runtime.common import candidate, r35  # noqa: E402
+from runtime.common import candidate, glm_targets, r35  # noqa: E402
 
 PINS = json.loads((HERE / "pins.json").read_text())
 BASE = HERE.parent / "glm53-flash-jj-r8-gb10"
@@ -122,10 +122,7 @@ def absolute(value: object, label: str) -> str:
     return value
 
 
-# Launcher target variants a site may select. The first is the qualified
-# target every receipt describes; the others are research-only checkpoints
-# whose identities the launcher pins.
-TARGET_MODEL_VARIANTS = ("nvfp4-spark", "nvidia-nvfp4")
+TARGET_MODEL_VARIANTS = glm_targets.VARIANTS
 
 
 def load_site(path: Path):
@@ -521,22 +518,7 @@ def resolve_rank_environments(site_path: Path, bundle: Path, image_receipt: Path
         values.update(SPARKCACHE_CACHE_NAMESPACE=diagnostic["namespace"],
                       SPARKCACHE_ACCESS_MODE="restore-only", SPARKCACHE_ASYNC_PAGE_CAPTURE="0",
                       SPARK_CONTEXT_CACHE_TRACE_REUSE="1", SPARKCACHE_CLEAR_ONCE="")
-    variant = site.get("target_model_variant", TARGET_MODEL_VARIANTS[0])
-    if variant != TARGET_MODEL_VARIANTS[0]:
-        values["TARGET_MODEL_VARIANT"] = variant
-        # A different target checkpoint keeps its own cache root. SparkCache
-        # already binds page identity to the checkpoint fingerprint; a separate
-        # namespace keeps two checkpoints' pages out of one eviction pool and
-        # out of the qualified target's persisted state.
-        values["SPARKCACHE_CACHE_NAMESPACE"] += "-" + variant
-    if variant == "nvidia-nvfp4":
-        # The official checkpoint ships 33 shards of ~6.2 GB (the qualified target:
-        # 58 of ~3.2 GB); fastsafetensors stages whole shards in unified memory and
-        # drove every GB10 rank to NV_ERR_NO_MEMORY ~30 s into the load. The host-mmap
-        # loader takes ~500 s for the 50 GiB per rank, so the readiness deadline that
-        # serve-with-warmup.py enforces from container start must cover it.
-        values["LOAD_FORMAT"] = "safetensors"
-        values["DFLASH_WARMUP_TIMEOUT_SECONDS"] = "1500"
+    values = glm_targets.environment(site.get("target_model_variant", glm_targets.DEFAULT), values, image_record)
     environments = []
     for rank in range(4):
         env = dict(values)

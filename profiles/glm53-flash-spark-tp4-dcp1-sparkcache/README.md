@@ -20,6 +20,9 @@ Capacity depends on enabled features. The validated results are scoped to the
 [image and workload records](#validation-and-results), not every possible configuration.
 For a switch-connected fabric, use the [switched setup](../glm53-flash-spark-tp4-switched/README.md).
 
+The [NVIDIA NVFP4 target](../glm53-nvidia-nvfp4.md) is an opt-in Development
+adaptation with separate model pins and evidence. NVFP4-Spark stays the default.
+
 ## 1. Prepare the hosts
 
 Use a Linux or WSL controller with Python 3, PyYAML, Git, SSH and SCP. Run the

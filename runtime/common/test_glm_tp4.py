@@ -210,3 +210,89 @@ def test_image_and_native_contract_must_match(rendered):
     changed["sparkcache_native"]["snapshot_sha256"] = "0" * 64
     with pytest.raises(ValueError, match="native contract"):
         glm_tp4.build_spec(values, image_record=image, contract=changed)
+
+
+def test_nvidia_structured_docker_and_compose_preserve_target_and_mtp(rendered, monkeypatch):
+    from runtime.common import compose, glm_targets
+    from runtime.common.test_glm_targets import CONFIG
+    import hashlib
+
+    image, contract, profiles = rendered
+    image = deepcopy(image)
+    image["installed"]["composition_id"] = "lil-r37-glm-spark"
+    target = glm_targets.target("nvidia-nvfp4")
+    index = b'{"weight_map":{}}'
+    target["index_sha256"] = hashlib.sha256(index).hexdigest()
+    original_target = glm_targets.target
+    monkeypatch.setattr(glm_targets, "target", lambda variant=glm_targets.DEFAULT:
+                        target if variant == "nvidia-nvfp4" else original_target(variant))
+    for profile, (_, ranks) in profiles.items():
+        for rank, values in enumerate(ranks):
+            if image["schema"] == r35.SCHEMA:
+                with pytest.raises(ValueError, match="unsupported"):
+                    glm_targets.environment("nvidia-nvfp4", values, image)
+                continue
+            values = glm_targets.environment("nvidia-nvfp4", values, image)
+            with pytest.raises(ValueError, match="metadata"):
+                glm_tp4.build_spec(values, image_record=image, contract=contract)
+            spec = glm_tp4.build_spec(values, image_record=image, contract=contract,
+                                     model_config=CONFIG.read_bytes(), model_index=index)
+            command = spec.command
+            assert command[command.index("--quantization") + 1] == "modelopt"
+            assert command[command.index("--load-format") + 1] == "safetensors"
+            assert json.loads(command[command.index("--hf-overrides") + 1]) == glm_targets.mtp_override(json.loads(CONFIG.read_bytes()))
+            assert command.count("--headless") == int(rank != 0)
+            assert spec.environment["DFLASH_WARMUP_TIMEOUT_SECONDS"] == "1500"
+            if profile.endswith("-sparkcache"):
+                cache = json.loads(command[command.index("--kv-transfer-config") + 1])["kv_connector_extra_config"]
+                assert cache["spark_cache_target_checkpoint_sha256"] == target["checkpoint_identity"]
+                assert cache["spark_cache_draft_checkpoint_sha256"] == target["checkpoint_identity"]
+                assert cache["spark_cache_root"].endswith("-nvidia-nvfp4")
+            service = compose.service(spec, image["image_reference"])
+            assert service["command"] == list(command)
+            assert service["environment"] == spec.environment
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Canonical host model paths require POSIX")
+def test_nvidia_model_bytes_are_rechecked_by_structured_plan(rendered, tmp_path, monkeypatch):
+    from runtime.common import glm_launch, glm_targets
+    from runtime.common.test_glm_targets import CONFIG
+    import hashlib
+
+    image, _, _ = rendered
+    if image["schema"] == r35.SCHEMA:
+        return
+    record = json.loads(glm_targets.RECORD.read_bytes())
+    selected = record["nvidia-nvfp4"]
+    selected["candidate_compositions"].append(image["installed"]["composition_id"])
+    index = b'{"weight_map":{}}'
+    selected["target"]["index_sha256"] = hashlib.sha256(index).hexdigest()
+    registry = tmp_path / "variants.json"
+    registry.write_text(json.dumps(record))
+    monkeypatch.setattr(glm_targets, "RECORD", registry)
+    model = tmp_path / "nvidia-model"
+    model.mkdir()
+    (model / "config.json").write_bytes(CONFIG.read_bytes())
+    (model / "model.safetensors.index.json").write_bytes(index)
+    site = dict(example.site_example(), runtime_profile="tp4-dcp1-sparkcache",
+                target_model_variant="nvidia-nvfp4", model_roots=[str(model)] * 4)
+    site_path = tmp_path / "nvidia-site.json"
+    site_path.write_text(json.dumps(site))
+    launch = tmp_path / "nvidia-launch"
+    receipt = tmp_path / "image.json"
+    mesh.render(site_path, tmp_path / "bundle", launch, receipt)
+    spec, checked, resolved = glm_launch.resolve_spec(launch, receipt, 0, owner=mesh)
+    saved = glm_launch.document(launch, receipt, 0, "compose", spec, checked, resolved)
+    assert saved["model_metadata_sha256"]["model_config"] == selected["target"]["config_sha256"]
+    assert saved["model_metadata_sha256"]["model_index"] == selected["target"]["index_sha256"]
+    directory = glm_launch.plan_directory(launch, 0)
+    directory.mkdir(parents=True)
+    (directory / "plan.json").write_text(json.dumps(saved))
+    assert glm_launch.check_plan(launch, receipt, 0, spec, checked, resolved) == "compose"
+    (model / "config.json").write_bytes(CONFIG.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="pinned identity"):
+        glm_launch.resolve_spec(launch, receipt, 0, owner=mesh)
+    (model / "config.json").write_bytes(CONFIG.read_bytes())
+    (model / "model.safetensors.index.json").unlink()
+    with pytest.raises(FileNotFoundError):
+        glm_launch.resolve_spec(launch, receipt, 0, owner=mesh)

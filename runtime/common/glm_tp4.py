@@ -15,6 +15,7 @@ from pathlib import PurePosixPath
 import re
 
 from runtime.common.container_spec import Bind, ContainerSpec
+from runtime.common import glm_targets
 
 PROFILES = frozenset(("tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"))
 NCCL_PATH = "/opt/local-inference/nccl/lib/libnccl.so.2"
@@ -152,6 +153,8 @@ def normalize_environment(environment: Mapping[str, str]) -> dict[str, str]:
 
 
 def _validate(values, image_record, contract):
+    variant = values.get("TARGET_MODEL_VARIANT", glm_targets.DEFAULT)
+    glm_targets.require_image(variant, image_record)
     profile = values.get("SOURCE_IMAGE_PROFILE")
     if profile not in PROFILES:
         raise ValueError("Unsupported source-bound GLM TP4 profile")
@@ -175,7 +178,7 @@ def _validate(values, image_record, contract):
         _require(values, key, "")
     fixed = {
         "SPARKRING_PROFILE_MODE": "custom", "SPARKRING_MANAGED_MESH_RENDERED": "1",
-        "SPECULATION_METHOD": "mtp", "TARGET_MODEL_VARIANT": "nvfp4-spark",
+        "SPECULATION_METHOD": "mtp", "TARGET_MODEL_VARIANT": variant,
         "NUM_SPECULATIVE_TOKENS": "3", "DRAFT_TENSOR_PARALLEL_SIZE": "4",
         "PIPELINE_PARALLEL_SIZE": "1", "SIRCL_ENABLED": "1", "VLLM_SPARK_TP4_MODE": "custom",
         "VLLM_SPARK_TP4_VOCAB_MODE": "custom", "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
@@ -187,7 +190,7 @@ def _validate(values, image_record, contract):
         "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
         "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE": "fused",
         "CUDAGRAPH_MODE": "FULL_AND_PIECEWISE", "ATTENTION_BACKEND": "B12X",
-        "LOAD_FORMAT": contract["model"]["loader"]["load_format"],
+        "LOAD_FORMAT": "safetensors" if variant == "nvidia-nvfp4" else contract["model"]["loader"]["load_format"],
     }
     for key, value in fixed.items():
         _require(values, key, value)
@@ -320,8 +323,8 @@ def _cache_config(values):
         "spark_cache_root": "/cache/jit/sparkcache-context/" + values["SPARKCACHE_CACHE_NAMESPACE"],
         "spark_cache_model_profile": "glm53-flash-hybrid",
         "spark_cache_publication_schema": values["SPARKCACHE_PUBLICATION_SCHEMA"],
-        "spark_cache_target_checkpoint_sha256": TARGET_FINGERPRINT,
-        "spark_cache_draft_checkpoint_sha256": TARGET_FINGERPRINT,
+        "spark_cache_target_checkpoint_sha256": glm_targets.target(values["TARGET_MODEL_VARIANT"])["checkpoint_identity"],
+        "spark_cache_draft_checkpoint_sha256": glm_targets.target(values["TARGET_MODEL_VARIANT"])["checkpoint_identity"],
         "spark_cache_draft_policy": "separate", "spark_cache_access_mode": values["SPARKCACHE_ACCESS_MODE"],
         "spark_cache_scheduler_probe": "none", "spark_cache_streaming_snapshots": False,
         "spark_cache_cuda_restore": True, "spark_cache_clear_once": values["SPARKCACHE_CLEAR_ONCE"],
@@ -348,7 +351,8 @@ def _cache_config(values):
 
 
 def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contract: Mapping,
-               api_keys: tuple[str, ...] = ()) -> ContainerSpec:
+               api_keys: tuple[str, ...] = (), model_config: bytes | None = None,
+               model_index: bytes | None = None) -> ContainerSpec:
     """Construct the effective container from a canonical rank and verified inputs.
 
     Secret-file permission checks and reads belong to the caller. A selected key
@@ -356,6 +360,8 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
     """
     values = normalize_environment(environment)
     profile, rank, release = _validate(values, image_record, contract)
+    variant = values["TARGET_MODEL_VARIANT"]
+    override = glm_targets.verified_override(variant, model_config, model_index) if variant != glm_targets.DEFAULT else None
     if (not isinstance(api_keys, tuple) or bool(api_keys) != bool(values["API_KEYS_FILE"])
             or any(not isinstance(key, str) or not key or key.startswith("-")
                    or any(c.isspace() or c == "\0" for c in key) for key in api_keys)):
@@ -435,10 +441,12 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
         mounts.append(Bind(values["CHAT_TEMPLATE_HOST_PATH"], "/opt/sparkring/chat_template.jinja", True))
         command.extend(("--chat-template", "/opt/sparkring/chat_template.jinja"))
     command.extend(("--enable-chunked-prefill", "--dtype", "bfloat16", "--kv-cache-dtype", values["KV_CACHE_DTYPE"],
-                    "--quantization", "modelopt_mixed", "--attention-backend", values["ATTENTION_BACKEND"],
+                    "--quantization", "modelopt" if variant == "nvidia-nvfp4" else "modelopt_mixed", "--attention-backend", values["ATTENTION_BACKEND"],
                     "--block-size", values["VLLM_BLOCK_SIZE"], "--moe-backend", values["MOE_BACKEND"],
                     "--linear-backend", values["LINEAR_BACKEND"], "--no-enable-flashinfer-autotune", "--load-format", values["LOAD_FORMAT"],
                     "--enable-auto-tool-choice", "--tool-call-parser", "glm47", "--reasoning-parser", "glm45"))
+    if override is not None:
+        command.extend(("--hf-overrides", _json(override)))
     for key in ("KDA_PREFILL_BACKEND", "GPU_MEMORY_UTILIZATION", "KV_CACHE_MEMORY_BYTES", "MAX_MODEL_LEN", "MAX_NUM_SEQS",
                 "MAX_NUM_BATCHED_TOKENS", "PREFILL_SCHEDULE_INTERVAL"):
         command.extend(("--" + key.lower().replace("_", "-"), values[key]))

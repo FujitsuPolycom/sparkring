@@ -21,6 +21,8 @@ CODE_DIR = Path('/opt/sparkring/managed-mesh')
 CONFIG_DIR = Path('/etc/sparkring/managed-mesh')
 UNIT_DIR = Path('/etc/systemd/system')
 SOURCE_FILES = (
+    "runtime/common/glm_targets.py",
+    "profiles/glm53-target-variants.json",
     'runtime/glm53-spark-mtp3-mesh/managed_memory.py',
     'runtime/glm53-spark-mtp3-mesh/managed_liveness.py',
     'runtime/glm53-spark-mtp3-mesh/host-marker-artifact.json',

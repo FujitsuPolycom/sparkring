@@ -75,7 +75,7 @@ def source_archive(root, output):
             "runtime",
             "spark_transport",
             "third_party",
-        ) and not name.startswith("integrations/vllm/"):
+        ) and not name.startswith("integrations/vllm/") and name != "profiles/glm53-target-variants.json":
             continue
         p = root / name
         if any(part in (".private", "__pycache__") for part in p.parts) or p.suffix in (

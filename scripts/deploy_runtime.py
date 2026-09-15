@@ -35,7 +35,9 @@ def probe_readiness(launch, output_root, *, wait=None, load=None):
     if any(p.is_symlink() for p in (output_root, *output_root.parents)):
         raise ValueError("Readiness output cannot contain symlinks")
     output_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    result = wait(load(Path(launch)), 900)
+    from runtime.common import glm_targets
+    plan = load(Path(launch))
+    result = wait(plan, glm_targets.readiness_timeout(plan.get("target_model_variant", glm_targets.DEFAULT)))
     output = output_root / ("ready-" + secrets.token_hex(16) + ".json")
     with output.open("x", encoding="utf-8") as stream:
         json.dump(result, stream, indent=2)

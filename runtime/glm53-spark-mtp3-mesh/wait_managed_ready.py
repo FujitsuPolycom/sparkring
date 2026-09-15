@@ -84,7 +84,12 @@ def load_launch(launch):
     targets = [{"rank": rank, "ssh_alias": aliases[rank],
                 "name": site["container_prefix"] + f"-r{rank}"} for rank in range(4)]
     registered = registered_targets(launch, site, topology, targets)
+    variant = site.get("target_model_variant", profile.glm_targets.DEFAULT)
+    if environment.get("TARGET_MODEL_VARIANT", profile.glm_targets.DEFAULT) != variant:
+        raise ValueError("Readiness target differs from the rendered site")
+
     return {
+        **({"target_model_variant": variant} if variant != profile.glm_targets.DEFAULT else {}),
         "containers": targets,
         "urls": [f"http://{address}:{ports[0]}/health", f"http://{address}:{ports[1]}/liveness"],
         "stable_samples_required": 2 if registered else 1,
@@ -209,8 +214,9 @@ def sample(plan, deadline, *, inspect=inspect_container, request=http_ready, clo
 
 
 def wait(plan, timeout, *, probe=sample, clock=time.monotonic, sleep=time.sleep):
-    if not math.isfinite(timeout) or not 0 < timeout <= 900:
-        raise ValueError("Timeout must be finite and greater than zero through 900 seconds")
+    maximum = profile.glm_targets.readiness_timeout(plan.get("target_model_variant", profile.glm_targets.DEFAULT))
+    if not math.isfinite(timeout) or not 0 < timeout <= maximum:
+        raise ValueError(f"Timeout must be finite and greater than zero through {maximum} seconds")
     started = clock()
     deadline = started + timeout
     receipt = {"schema": "sparkring-managed-model-readiness/v1", "ready": False, "samples": []}
@@ -240,14 +246,17 @@ def wait(plan, timeout, *, probe=sample, clock=time.monotonic, sleep=time.sleep)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--launch", type=Path, required=True, help="Rendered directory containing site.json and rank0.env")
-    parser.add_argument("--timeout", type=float, default=900)
+    parser.add_argument("--timeout", type=float, help="Defaults to the selected target readiness budget")
     parser.add_argument("--output", type=Path, help="Optional absent receipt path; never overwrite an existing file")
     args = parser.parse_args()
     if args.output is not None and (args.output.exists() or args.output.is_symlink()):
         parser.error("Output receipt must not already exist")
-    if not math.isfinite(args.timeout) or not 0 < args.timeout <= 900:
-        parser.error("Timeout must be finite and greater than zero through 900 seconds")
-    receipt = wait(load_launch(args.launch), args.timeout)
+    plan = load_launch(args.launch)
+    maximum = profile.glm_targets.readiness_timeout(plan.get("target_model_variant", profile.glm_targets.DEFAULT))
+    timeout = maximum if args.timeout is None else args.timeout
+    if not math.isfinite(timeout) or not 0 < timeout <= maximum:
+        parser.error(f"Timeout must be finite and greater than zero through {maximum} seconds")
+    receipt = wait(plan, timeout)
     if args.output is not None:
         with args.output.open("x", encoding="utf-8") as stream:
             json.dump(receipt, stream, indent=2)

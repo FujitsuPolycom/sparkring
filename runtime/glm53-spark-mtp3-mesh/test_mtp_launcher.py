@@ -512,9 +512,9 @@ NVIDIA_NVFP4_CONFIG = {
 
 
 def _nvidia_variant_launch(launch_fixture, config_text, overrides=None):
-    launch, site, _ = launch_fixture
+    launch, site, output = launch_fixture
     for rank in range(4):
-        Path(site["model_roots"][rank], "config.json").write_text(config_text, encoding="utf-8")
+        (output.parent / f"target-r{rank}" / "config.json").write_text(config_text, encoding="utf-8")
     variables = {"TARGET_MODEL_VARIANT": "nvidia-nvfp4"}
     variables.update(overrides or {})
     return launch(0, variables, {"FIXTURE_TARGET_CONFIG_SHA": NVIDIA_NVFP4_CONFIG_SHA,

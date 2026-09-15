@@ -314,3 +314,16 @@ def test_global_http_gate_remains_required_with_headless_workers(registered_laun
         raise OSError("scheduler is not ready")
     assert not ready.sample(plan, 10, request=failed_http, clock=lambda: 1)["ready"]
     assert ready.sample(plan, 10, request=http_ok, clock=lambda: 1)["ready"]
+
+
+@pytest.mark.parametrize("timeout", [1501, float("inf"), float("nan"), -1])
+def test_nvidia_budget_still_rejects_unbounded_timeouts(timeout):
+    with pytest.raises(ValueError):
+        ready.wait(dict(PLAN, target_model_variant="nvidia-nvfp4"), timeout)
+
+
+def test_nvidia_budget_permits_slow_loader_without_changing_default():
+    plan = dict(PLAN, target_model_variant="nvidia-nvfp4")
+    assert ready.wait(plan, 1500, probe=lambda *args: {"ready": True})["ready"]
+    with pytest.raises(ValueError):
+        ready.wait(PLAN, 1500)

@@ -80,16 +80,20 @@ from GLM tests. Hosted Linux CI, including the pinned LIL companion, must run on
 the adoption revision. The workflow runs on pull requests and pushes to main;
 a refactor-branch push alone does not run it.
 
-## Pending contributions
+<a id="pending-contributions"></a>
 
-At the 2026-09-14 source review:
+## Contributor integration
+
+Contributor history and adaptation scope:
 
 | PR | Head | Integration requirement |
 |---|---|---|
-| [#258](https://github.com/FujitsuPolycom/sparkring/pull/258) | `5a00273a7ea1` | Preserve NVIDIA NVFP4 versus NVFP4-Spark identity, overrides and cache namespaces |
-| [#266](https://github.com/FujitsuPolycom/sparkring/pull/266) | `544f498c6369` | Review local-address recovery separately from peer-silence mitigation |
-| [#267](https://github.com/FujitsuPolycom/sparkring/pull/267) | `fa77ac48f821` | Compare any merged SGLang changes with the contributor-authored local integration; retain its context default and image identity |
+| [#258](https://github.com/FujitsuPolycom/sparkring/pull/258) | `5a00273a7ea1` | Original commit retained; canonical NVIDIA target, verified MTP override, staging, Docker/Compose and readiness adaptation included. R37 serving qualification remains separate. |
+| [#266](https://github.com/FujitsuPolycom/sparkring/pull/266) | `544f498c6369` | All four commits retained; independent address-loss grace and final model-arm degradation guard included. CPU checks cover recovery and admission; real OS outage drill remains pending. |
+| [#267](https://github.com/FujitsuPolycom/sparkring/pull/267) | `fa77ac48f821` | Contributor changes already incorporated with attribution and additional path/authentication/image protections. The larger-context report requires separately pinned overlays. |
 
+See the [NVIDIA target guide](../../profiles/glm53-nvidia-nvfp4.md) and
+[management grace contract](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
 Recheck main and open PR heads before adoption. Preserve contributor credit
 through normal history; adapt fixes to maintained owners instead of replacing
 compatibility shims with duplicate implementations.

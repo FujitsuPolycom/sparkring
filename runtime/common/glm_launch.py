@@ -14,7 +14,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from runtime.common import candidate, glm_tp4, r35  # noqa: E402
+from runtime.common import candidate, glm_targets, glm_tp4, r35  # noqa: E402
 from runtime.common.container_spec import docker_create, expected_inspection  # noqa: E402
 
 STRUCTURED_LABEL = "io.sparkring.container-spec"
@@ -63,9 +63,16 @@ def resolve_spec(launch, image_receipt, rank, *, owner=None):
         raise ValueError("Structured GLM creation supports R35 and registered candidate images; use the retained launcher for other releases")
     adapter = candidate if record["schema"] == candidate.SCHEMA else r35
     environment = resolved["environments"][rank]
+    metadata = {}
+    if environment["TARGET_MODEL_VARIANT"] != glm_targets.DEFAULT:
+        root = Path(environment["TARGET_MODEL_HOST_PATH"])
+        metadata = {"model_config": (root / "config.json").read_bytes(),
+                    "model_index": (root / "model.safetensors.index.json").read_bytes()}
+        resolved["model_metadata_sha256"] = {key: hashlib.sha256(value).hexdigest()
+                                             for key, value in metadata.items()}
     spec = glm_tp4.build_spec(environment, image_record=record,
                              contract=adapter.profile_contract(record["installed"]),
-                             api_keys=read_api_keys(environment.get("API_KEYS_FILE")))
+                             api_keys=read_api_keys(environment.get("API_KEYS_FILE")), **metadata)
     spec = replace(spec, labels={**spec.labels, STRUCTURED_LABEL: STRUCTURED_SCHEMA})
     return spec, record, resolved
 
@@ -77,10 +84,13 @@ def document(launch, image_receipt, rank, backend, spec, record, resolved):
             "image_reference": record["image_reference"], "container": spec.document(),
             "site_sha256": hashlib.sha256((Path(launch) / "site.json").read_bytes()).hexdigest(),
             "topology_sha256": resolved["topology"].sha256,
+            **({"model_metadata_sha256": resolved["model_metadata_sha256"]}
+               if "model_metadata_sha256" in resolved else {}),
             "image_receipt_sha256": hashlib.sha256(Path(image_receipt).read_bytes()).hexdigest(),
             "source_sha256": {name: hashlib.sha256((ROOT / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
                               for name in ("runtime/common/glm_launch.py", "runtime/common/glm_tp4.py",
                                            "runtime/common/container_spec.py", "runtime/common/compose.py",
+                                           "runtime/common/glm_targets.py", "profiles/glm53-target-variants.json",
                                            "runtime/glm53-spark-mtp3-mesh/profile.py")}}
 
 

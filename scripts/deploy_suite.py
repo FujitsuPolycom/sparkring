@@ -95,7 +95,7 @@ def discover(nodes, controller_address, run=None):
 
 
 def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_receipt=None,
-                *, reuse_existing_image=False, existing_model_roots=None, runtime_profile=None, preserve_existing_network=False):
+                *, reuse_existing_image=False, existing_model_roots=None, runtime_profile=None, preserve_existing_network=False, target_model_variant=None):
     """Derive network and profile inputs from host facts and the documented cable cycle."""
     if (
         inventory.get("schema") != "sparkring-deploy-inventory/v1"
@@ -207,6 +207,10 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
         "fabric": template,
         "profile": "glm53-spark-mtp3-mesh",
     }
+    if target_model_variant is not None:
+        from runtime.common import glm_targets
+        glm_targets.target(target_model_variant)
+        result["site"]["target_model_variant"] = target_model_variant
     if image_receipt is not None:
         from scripts.deploy_selection import selection
         document = read(image_receipt)
@@ -224,6 +228,10 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
         result["site"]["marker_binary_sha256"] = selected["marker_binary_sha256"]
         result["site"]["model_roots"] = [
             f"{workspace}/models/{selected['pins']['target']['revision']}"] * 4
+    if target_model_variant is not None and image_receipt is None:
+        from scripts.deploy_selection import selection
+        selected = selection(result, PROFILE)
+        result["site"]["model_roots"] = [f"{workspace}/models/{selected['pins']['target']['revision']}"] * 4
     if runtime_profile is not None and image_receipt is None:
         raise ValueError("Runtime profile requires an explicit image receipt")
     if reuse_existing_image or existing_model_roots:
@@ -312,6 +320,8 @@ def main(argv=None):
                    help="Explicit verified local source composition or canonical performance receipt; omission retains the base public image")
     p.add_argument("--reuse-existing-image", action="store_true",
                    help="Verify the selected image on all four hosts without saving or copying it")
+    p.add_argument("--target-model-variant", choices=("nvfp4-spark", "nvidia-nvfp4"),
+                   help="Select pinned target metadata; omitted keeps NVFP4-Spark")
     p.add_argument("--runtime-profile", choices=("tp4-dcp1", "tp4-dcp1-sparkcache"),
                    help="Required topology/profile selection for an R33, R35 or registered candidate image receipt")
     p.add_argument("--existing-model-root", type=str, action="append", default=[],
@@ -377,6 +387,7 @@ def main(argv=None):
                                reuse_existing_image=args.reuse_existing_image,
                                existing_model_roots=args.existing_model_root,
                                runtime_profile=args.runtime_profile,
+                               target_model_variant=args.target_model_variant,
                                preserve_existing_network=args.preserve_existing_network)
             network = plan_network(spec, inventory["hosts"])
             result = {

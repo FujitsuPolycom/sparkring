@@ -82,6 +82,8 @@ def load_config(path):
     site, topology, plan = mesh_profile.load_site(Path(document['site_path']))
     sources = {name: mesh_profile.sha(Path(__file__).with_name(name))
                for name in ('managed_service.py', 'managed_network.py', 'managed_memory.py', 'profile.py', 'inspect_fabric.py')}
+    for name in ('runtime/common/glm_targets.py', 'profiles/glm53-target-variants.json'):
+        sources[name] = mesh_profile.sha(mesh_profile.ROOT / name)
     identity = digest({'protocol': PROTOCOL, 'site': site, 'topology': topology.sha256,
                        'epoch': document['epoch'], 'port': document['health_port'], 'sources': sources,
                        'image': document['container_image']})

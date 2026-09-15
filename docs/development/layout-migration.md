@@ -32,8 +32,8 @@ It includes PRs #259, #262, #265 and #269. The DCP4 evidence describes the
 verified global-KV gather and arithmetic owner mapping; it does not claim a
 separate top-k owner-exchange primitive.
 
-The [adoption report](repository-layout-adoption.md#pending-contributions)
-records pending PR heads and how their work fits the maintained owners.
+The [adoption report](repository-layout-adoption.md#contributor-integration)
+records contributor commits, their maintained owners and remaining qualification.
 Increasing peer-silence tolerance does not recover loss of the local
 management address. Contributor credit remains in Git history.
 

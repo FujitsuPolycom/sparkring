@@ -434,6 +434,10 @@ case "${TARGET_MODEL_VARIANT}" in
     TARGET_EXCLUDE_MTP_FROM_QUANTIZATION=0
     ;;
   nvidia-nvfp4)
+    if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
+      [[ "${r33_profile}" == 1 && "${SPARKRING_RUNTIME_RELEASE}" == candidate ]] || \
+        die 'nvidia-nvfp4 is unsupported by R33/R35 and frozen source-image contracts'
+    fi
     # nvidia/GLM-5.3-Flash-NVFP4 @ 423acf37583782c51c142d145aef733d72943d93:
     # ModelOpt 0.47 plain NVFP4 (quant_algo NVFP4 with an ignore list, FP8 KV
     # scheme). Routed experts and the three dense MLPs are NVFP4; attention,

@@ -337,3 +337,38 @@ def test_registry_candidate_rejects_wrong_config_after_pull():
         stage_selected_image(Runner(), 'rank0', {'registry_pull_each_host': True,
             'image_reference': 'ghcr.io/example/image@sha256:'+'1'*64,
             'config_image_id': 'sha256:'+'2'*64}, [{'host':'rank0'}], '/srv/candidate')
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_nvidia_selection_reaches_download_and_model_roots(tmp_path, explicit):
+    from runtime.common import glm_targets
+    receipt_path = tmp_path / "public.json"
+    receipt_path.write_bytes((PROFILE / "performance/public-image.json").read_bytes())
+    selected = create_spec(inventory(), "nvidia-mesh", "/srv/sparkring/nvidia",
+                           image_receipt=receipt_path if explicit else None,
+                           target_model_variant="nvidia-nvfp4")
+    result = selection(selected, PROFILE)
+    expected = glm_targets.target("nvidia-nvfp4")
+    assert result["pins"]["target"] == expected
+    assert selected["site"]["model_roots"] == ["/srv/sparkring/nvidia/models/" + expected["revision"]] * 4
+    default = create_spec(inventory(), "nvidia-mesh", "/srv/sparkring/nvidia",
+                          image_receipt=receipt_path if explicit else None)
+    baseline = selection(default, PROFILE)
+    assert baseline["pins"]["target"] == glm_targets.target()
+    assert result["config_image_id"] == baseline["config_image_id"]
+
+
+def test_explicit_spark_target_keeps_download_selection():
+    default = create_spec(inventory(), "glm", "/srv/sparkring/glm")
+    explicit = create_spec(inventory(), "glm", "/srv/sparkring/glm", target_model_variant="nvfp4-spark")
+    assert selection(default, PROFILE) == selection(explicit, PROFILE)
+    del explicit["site"]["target_model_variant"]
+    assert default == explicit
+
+
+def test_source_contract_rejects_nvidia_before_staging(tmp_path):
+    receipt_path = tmp_path / "source.json"
+    receipt_path.write_text(json.dumps(local_receipt()))
+    with pytest.raises(ValueError, match="unsupported"):
+        create_spec(inventory(), "nvidia", "/srv/sparkring/nvidia", image_receipt=receipt_path,
+                    target_model_variant="nvidia-nvfp4")

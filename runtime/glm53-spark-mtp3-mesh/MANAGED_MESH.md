@@ -379,14 +379,16 @@ An authentication failure, explicit negative readiness, or changed process
 generation does not receive transport-error grace: it triggers failure when
 observed. Local marker exits also trigger failure without that grace.
 
-A temporary loss of this rank's own management address shares the peer-transport
-grace bound and does not itself stop serving. Fabric, marker, authentication,
-generation and readiness checks continue during that interval and keep their
-immediate-failure semantics; a management identity that differs from the
-startup-validated one never receives grace. The model process survives the
-outage, but API clients routed over the management network can still lose
-connectivity for its duration, and a peer fault visible only through the
-management path takes up to the grace interval to detect.
+A temporary loss of this rank's startup-validated management address has its
+own 300-second grace interval. A successful network check clears that interval;
+peer recovery does not. Fabric, marker and authentication failures still trigger
+failure when observed. Expiry is checked during polling, so detection includes
+poll and check latency. API clients may lose connectivity during address loss.
+
+Management and peer degradation block the group startup gate and the final local
+model-arm check. Planned quiesce remains allowed. CPU regressions cover address
+loss, recovery, repeated outages and admission after the group gate; real OS
+address-loss/recovery and simultaneous-fabric-fault qualification remain pending.
 
 Docker status queries run outside the fabric-monitor loop. A slow or failed
 query reports `docker_status_degraded: true`; it does not declare fabric
