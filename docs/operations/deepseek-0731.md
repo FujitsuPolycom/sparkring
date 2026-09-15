@@ -440,6 +440,20 @@ remove only the stopped deployment container with `docker rm "$CONTAINER_ID"`,
 then rerun `--check` and `--run` with the updated environment on every rank.
 Do not remove model or cache directories to recover a failed launch.
 
+## Diagnose execution timeouts
+
+The pinned runtime defaults `VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS` to 300 seconds.
+It bounds the executor's wait for worker responses to model execution and token
+sampling. ProcessGroupNCCL uses a separate distributed timeout; increasing the
+executor limit does not extend its watchdog or custom transport deadlines.
+See the [worker-response timeout](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/v1/executor/multiproc_executor.py)
+and [distributed timeout configuration](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/distributed/utils.py).
+
+Before raising a timeout, collect every rank's logs and identify whether a worker
+is compiling, waiting for a collective, or no longer running. A larger executor
+budget also delays reporting a genuinely stalled worker. Keep persistent JIT
+caches enabled and measure the affected operation before choosing a timeout.
+
 ## Preserve JIT and collective-hang evidence
 
 The environment templates keep TileLang, Triton, vLLM, and B12X CuTeDSL
