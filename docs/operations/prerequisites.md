@@ -28,6 +28,9 @@ The selected quickstart gives model-specific storage and memory requirements.
 - Working RoCEv2, link state, addressing and MTU on the selected fabric interfaces.
 - SSH access from the controller, plus the profile's rendezvous and control ports.
 - Rank 0's API port reachable by intended clients.
+- The configured GID index resolves to the intended address after reboot;
+  automatic interface configuration can change GID ordering. See the
+  [reported secondary-port constraint](../../performance/records/transport/nccl-dual-domain-deepseek.md#serving-measurements-and-library-compatibility).
 
 ### Four-Spark managed hardware-forwarded mesh
 

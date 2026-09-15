@@ -15,6 +15,27 @@ from runtime.common.container_spec import Bind, ContainerSpec, docker_create
 from scripts import generate_compose_examples
 
 
+@pytest.mark.parametrize("profile_id", sorted(compose.TP4_PROFILES))
+def test_tp4_fabric_imports_from_only_its_packaged_inventory(tmp_path, profile_id):
+    snapshot = tmp_path / "source"
+    for relative in compose.source_inventory(profile_id):
+        destination = snapshot / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(compose.ROOT / relative, destination)
+    script = """
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from runtime.common import qwen_mesh, glm_targets
+assert Path(qwen_mesh.__file__).is_relative_to(Path(sys.argv[1]))
+assert qwen_mesh._network().NetworkManager
+assert glm_targets.target('nvidia-nvfp4')['repository'] == 'nvidia/GLM-5.3-Flash-NVFP4'
+"""
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(snapshot)],
+                            cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.fixture
 def site():
     return compose.read_site(

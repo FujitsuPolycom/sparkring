@@ -9,6 +9,9 @@ Model names come from `model-names.json`. The quant column links the
 checkpoint repository selected by the profile; exact revisions remain pinned
 in its configuration. “Stock” identifies the publisher’s original checkpoint.
 
+The [NVIDIA GLM NVFP4 target](glm53-nvidia-nvfp4.md) is an optional Development
+variant of the GLM TP4 settings below; NVFP4-Spark remains their default.
+
 <!-- BEGIN GENERATED PROFILES -->
 
 ### Four Sparks

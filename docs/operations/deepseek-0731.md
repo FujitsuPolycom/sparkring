@@ -76,6 +76,11 @@ Pull the immutable ARM64 runtime image on every rank before launching any rank:
 docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
 ```
 
+The published image above does not contain the
+[Responses and required-tool API overlay](../../runtime/deepseek0731-gb10/README.md#api-reasoning-and-required-tool-policies).
+Setting `SPARKRING_REJECT_EMPTY_REQUIRED_TOOL_CALLS=1` on it has no effect;
+that source fix requires a separately built and validated image.
+
 On the download host, use the image's Hugging Face client without loading a model:
 
 ```bash

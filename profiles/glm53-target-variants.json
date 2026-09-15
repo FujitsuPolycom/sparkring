@@ -14,31 +14,38 @@
     "source_files": {
       ".gitattributes": {
         "size": 1635,
-        "git_blob_sha1": "a09db2ea4d1bd1fc1c09f6fca45e8e4054953535"
+        "git_blob_sha1": "a09db2ea4d1bd1fc1c09f6fca45e8e4054953535",
+        "sha256": "fe81d528e7ee055bbcf6a310afe0f2808423a4a16d45225f29c285926abef08d"
       },
       ".quant_summary.txt": {
         "size": 616642,
-        "git_blob_sha1": "388d3ad297bef5d95516a0400716d27af6e0eec7"
+        "git_blob_sha1": "388d3ad297bef5d95516a0400716d27af6e0eec7",
+        "sha256": "3c4fdaad52375daf5e9695aa2f6e46339b5582831f2cc396abe1c71041b26111"
       },
       "README.md": {
         "size": 9709,
-        "git_blob_sha1": "22c73d370d6b87cf81937c57706b36185c5cc892"
+        "git_blob_sha1": "22c73d370d6b87cf81937c57706b36185c5cc892",
+        "sha256": "b23e89ce0729faf602988871227f158be4a627ab7ec6067d8bf38174ebb42558"
       },
       "chat_template.jinja": {
         "size": 10644,
-        "git_blob_sha1": "fb94d40d72a2eefa0c7140cb66d941656be16969"
+        "git_blob_sha1": "fb94d40d72a2eefa0c7140cb66d941656be16969",
+        "sha256": "34d5ee66b12fa6446cdae131c352b8f68cd85369e0e6fda115583805fada3891"
       },
       "config.json": {
         "size": 16691,
-        "git_blob_sha1": "d0e8e75de453199e1b655fa12120b0d923c87ca8"
+        "git_blob_sha1": "d0e8e75de453199e1b655fa12120b0d923c87ca8",
+        "sha256": "e23c5d98f53e861d49a51bd3c68591621c5482ce829e42c31724152322fba03d"
       },
       "generation_config.json": {
         "size": 215,
-        "git_blob_sha1": "46d04e68002526d394949f63d65f93ac4ac8abeb"
+        "git_blob_sha1": "46d04e68002526d394949f63d65f93ac4ac8abeb",
+        "sha256": "a07de3408f578c6a7ca8a1646aa91a41df55d539349fda15fb8b611eb007e9b7"
       },
       "hf_quant_config.json": {
         "size": 7997,
-        "git_blob_sha1": "559a76e5dc63ca06fda08e160c77c359924965c6"
+        "git_blob_sha1": "559a76e5dc63ca06fda08e160c77c359924965c6",
+        "sha256": "1277df937b780e7de8eace66286ffad207f57d33b536b40c9c35635b235c17c6"
       },
       "model-00001-of-00033.safetensors": {
         "size": 8945680672,
@@ -178,7 +185,8 @@
       },
       "processor_config.json": {
         "size": 909,
-        "git_blob_sha1": "3ec2a058b2cdec556eca0f621e8c5164eec213c2"
+        "git_blob_sha1": "3ec2a058b2cdec556eca0f621e8c5164eec213c2",
+        "sha256": "aae38374c94b08cc9b0547c6e64f05b951bd9735cea571c6988f5ed552bed3ed"
       },
       "tokenizer.json": {
         "size": 20217442,
@@ -186,7 +194,8 @@
       },
       "tokenizer_config.json": {
         "size": 761,
-        "git_blob_sha1": "e375fa0a4e16660ce0e2026e39374d35dad4c079"
+        "git_blob_sha1": "e375fa0a4e16660ce0e2026e39374d35dad4c079",
+        "sha256": "98b1271574f41abf89427ae2dda030d94dc9478f0edc5a8bd240db213c6fd5fc"
       }
     }
   }

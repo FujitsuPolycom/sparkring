@@ -1,5 +1,8 @@
 # Repository layout migration inventory
 
+Historical migration inventory. The [adoption report](repository-layout-adoption.md)
+specifies the integrated branch, contributor work and validation.
+
 Base: `c65a9981e2a69f821ac716f6f13484d99d23f4ea`, fetched from
 FujitsuPolycom/sparkring main on 2026-09-11. Work is isolated on
 `refactor/repository-layout`. No deployment or publication is part of this change.

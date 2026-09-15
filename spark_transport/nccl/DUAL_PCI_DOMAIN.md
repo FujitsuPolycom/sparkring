@@ -18,7 +18,8 @@ Do not layer it over the separate
 [switchless-cycle patch](nccl-2.30.7-switchless-cycle.patch),
 [Tree/PAT patch](nccl-2.30.7-skip-tree-pat.patch), or
 [two-GID patch](nccl-2.30.7-advertise-all-listener-gids.patch).
-The flags default off. Generic InfiniBand and IPv6
+The patch defaults these flags off; profiles select their effective settings.
+Generic InfiniBand and IPv6
 retain legacy publication. Unknown handle formats are rejected. Compatible
 legacy handles do not read the unused tail bytes.
 
@@ -59,7 +60,19 @@ NCCL_MAX_NCHANNELS=4
 NCCL_IB_QPS_PER_CONNECTION=1
 ```
 
-Both `LD_PRELOAD` and `VLLM_NCCL_SO_PATH` must reference the verified library.
+### Runtime library selection
+
+For vLLM, both `LD_PRELOAD` and `VLLM_NCCL_SO_PATH` must reference the verified library.
+For SGLang, follow its [library substitution procedure](../../runtime/deepseek-v41-sglang/README.md#build-and-prepare):
+the adapter mounts one library over the image's pip NCCL path and rejects a
+second loaded runtime. Its shipped configuration does not admit the dual-domain
+flags; an opt-in selection needs its own adapter contract and evidence.
+
+Build against the target image's userspace and CUDA libraries, and check the
+loaded library inside that image. A matching NCCL version or ARM64 architecture
+alone does not establish loader compatibility. Keep the produced library hash
+separate from the manifest's CUDA 13.3 reference binary.
+
 Retain the [four-rank cycle environment](README.md#four-rank-cycle), including
 subnet-aware routing and the no-Tree connection setting.
 Use INFO NET connection logs to verify final connected QPs use both domains
@@ -75,8 +88,9 @@ custom mesh transport has separate routing and submission code.
 
 `git apply --check` establishes source applicability; the handle test checks
 CPU compatibility. Neither qualifies a compiled NCCL library or serving image.
-The manifest's measured-library hash identifies prior bytes, but this page
-does not provide raw cluster receipts that establish their serving scope.
+The [contributor measurements](../../performance/records/transport/nccl-dual-domain-deepseek.md)
+identify independent CUDA 13.0 transport and DeepSeek serving results, including
+runtime-loader and persistent GID constraints. They do not qualify other images.
 Qualify a rebuild against its own binary and image receipts before publishing
-performance claims. Keep these routing settings specific to the selected
-profile, topology and NCCL version.
+performance claims. Keep routing settings specific to the selected profile,
+topology and NCCL version.

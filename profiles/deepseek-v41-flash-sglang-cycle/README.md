@@ -48,3 +48,10 @@ proven equivalent to full prefill. Report its quality and workload limits
 alongside performance measurements. This profile does not include SparkCache or an unattended
 recovery service. The source contribution and its qualification records originate
 from [PR #267](https://github.com/FujitsuPolycom/sparkring/pull/267).
+
+The contributor's [655360-context report](https://github.com/FujitsuPolycom/sparkring/pull/267#issuecomment-5653279829)
+uses additional SGLang memory and execution overlays from #39187 and #39068.
+Those overlays are absent from the pinned builder; raising context alone does
+not reproduce the report. The recipe retains 262K until a separately identified
+runtime selection is qualified. [Dual-domain NCCL results](../../performance/records/transport/nccl-dual-domain-deepseek.md)
+also describe a separate transport configuration, not this adapter's defaults.

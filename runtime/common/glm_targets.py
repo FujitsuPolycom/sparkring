@@ -39,7 +39,7 @@ def readiness_timeout(variant=DEFAULT):
 
 
 def verify_download(variant, files):
-    """Reject an incomplete file set or changed LFS shard before distribution."""
+    """Check every checkpoint and metadata file before distributing the seed."""
     selected = target(variant)
     if variant == DEFAULT:
         return
@@ -47,8 +47,10 @@ def verify_download(variant, files):
     if set(files) != set(expected):
         raise ValueError("NVIDIA model file set differs from the pinned revision")
     for name, identity in expected.items():
-        if "sha256" in identity and files[name] != identity["sha256"]:
-            raise ValueError("NVIDIA model shard differs from its pinned identity: " + name)
+        if "sha256" not in identity:
+            raise ValueError("NVIDIA manifest lacks a pinned SHA256 identity: " + name)
+        if files[name] != identity["sha256"]:
+            raise ValueError("NVIDIA model file differs from its pinned identity: " + name)
     for name, field in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
         if files[name] != selected[field]:
             raise ValueError("NVIDIA model metadata differs from its pinned identity: " + name)

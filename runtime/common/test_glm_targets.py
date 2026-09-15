@@ -103,6 +103,7 @@ def test_target_shard_manifest_is_revision_bound():
     shards = [value for path, value in record["source_files"].items() if path.endswith(".safetensors")]
     assert len(shards) == 33
     assert all(len(shard["sha256"]) == 64 and shard["size"] > 0 for shard in shards)
+    assert all(len(value["sha256"]) == 64 for value in record["source_files"].values())
 
 
 @pytest.mark.parametrize("corruption", ["shard", "missing", "metadata", "none"])
@@ -123,3 +124,16 @@ def test_nvidia_download_rejects_changed_or_incomplete_model(corruption):
     else:
         with pytest.raises(ValueError, match="pinned"):
             glm_targets.verify_download("nvidia-nvfp4", files)
+
+
+
+def test_nvidia_manifest_cannot_leave_metadata_unchecked(tmp_path, monkeypatch):
+    record = json.loads(glm_targets.RECORD.read_bytes())
+    entries = record["nvidia-nvfp4"]["source_files"]
+    files = {name: value["sha256"] for name, value in entries.items()}
+    del entries["chat_template.jinja"]["sha256"]
+    path = tmp_path / "variants.json"
+    path.write_text(json.dumps(record))
+    monkeypatch.setattr(glm_targets, "RECORD", path)
+    with pytest.raises(ValueError, match="lacks a pinned SHA256"):
+        glm_targets.verify_download("nvidia-nvfp4", files)

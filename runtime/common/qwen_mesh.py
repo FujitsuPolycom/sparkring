@@ -16,6 +16,8 @@ SOURCE_FILES = (
     "runtime/common/__init__.py",
     "runtime/common/candidate.py",
     "runtime/common/r35.py",
+    "runtime/common/glm_targets.py",
+    "profiles/glm53-target-variants.json",
     "runtime/glm53-spark-mtp3-mesh/managed_network.py",
     "runtime/glm53-spark-mtp3-mesh/inspect_fabric.py",
     "runtime/glm53-spark-mtp3-mesh/profile.py",

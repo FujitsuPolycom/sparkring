@@ -532,20 +532,22 @@ def test_host_marker_download_preserves_existing_file(tmp_path):
 
 
 
-def test_nvidia_corrupt_seed_shard_is_not_copied_to_peers():
+@pytest.mark.parametrize("changed", ["shard", "tokenizer_config.json", "chat_template.jinja", "hf_quant_config.json"])
+def test_nvidia_corrupt_seed_file_is_not_copied_to_peers(changed):
     from runtime.common import glm_targets
     from scripts.deploy_stage import stage_model_assets
     record = json.loads(glm_targets.RECORD.read_bytes())["nvidia-nvfp4"]
     files = {name: value.get("sha256", "0" * 64) for name, value in record["source_files"].items()}
     files["config.json"] = record["target"]["config_sha256"]
     files["model.safetensors.index.json"] = record["target"]["index_sha256"]
-    files[next(name for name in files if name.endswith(".safetensors"))] = "0" * 64
+    name = next(name for name in files if name.endswith(".safetensors")) if changed == "shard" else changed
+    files[name] = "0" * 64
     calls = []
     class Runner:
         def remote(self, host, argv, **kwargs):
             calls.append(host)
             return json.dumps(files) if argv[0] == "python3" else ""
-    with pytest.raises(ValueError, match="shard"):
+    with pytest.raises(ValueError, match="pinned identity"):
         stage_model_assets(Runner(), "seed", {"image_reference": "fixture-image"},
                            [{"host": "seed"}, {"host": "peer"}],
                            {"site": {"model_roots": ["/models/nvidia"] * 4, "target_model_variant": "nvidia-nvfp4"}},

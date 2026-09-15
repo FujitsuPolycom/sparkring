@@ -87,7 +87,7 @@ a refactor-branch push alone does not run it.
 
 Contributor history and adaptation scope:
 
-| PR | Head | Integration requirement |
+| PR | Head | Integration and evidence |
 |---|---|---|
 | [#258](https://github.com/FujitsuPolycom/sparkring/pull/258) | `5a00273a7ea1` | Original commit retained; canonical NVIDIA target, verified MTP override, staging, Docker/Compose and readiness adaptation included. R37 serving qualification remains separate. |
 | [#266](https://github.com/FujitsuPolycom/sparkring/pull/266) | `544f498c6369` | All four commits retained; independent address-loss grace and final model-arm degradation guard included. CPU checks cover recovery and admission; real OS outage drill remains pending. |
@@ -98,6 +98,19 @@ See the [NVIDIA target guide](../../profiles/glm53-nvidia-nvfp4.md) and
 Recheck main and open PR heads before adoption. Preserve contributor credit
 through normal history; adapt fixes to maintained owners instead of replacing
 compatibility shims with duplicate implementations.
+
+## Runtime follow-ups
+
+| Work | Scope before promotion |
+|---|---|
+| SGLang larger context | The [655360-context report](../../profiles/deepseek-v41-flash-sglang-cycle/README.md#evidence-and-limits) requires additional pinned overlays; the recipe stays at 262K. |
+| SGLang dual-domain transport | [Contributor NCCL measurements](../../performance/records/transport/nccl-dual-domain-deepseek.md) are recorded; the adapter still needs an explicit optional contract and image-specific library checks. |
+| DeepSeek0731 API policies | The [published-image limitation](../operations/deepseek-0731.md) remains explicit. Source fixes require a separately built image and bounded API qualification. |
+| Transport tuning | The channel-count and Engram leads in the [measurement record](../../performance/records/transport/nccl-dual-domain-deepseek.md#adoption-boundary) do not change defaults or establish a general performance gain. |
+| GLM dynamic DFlash at DCP4 | Retain the admission guard and its regression; the [runtime defect](https://github.com/FujitsuPolycom/sparkring/issues/221) remains unresolved. |
+
+These runtime promotions are separate from adopting the repository layout.
+Preserve their source, image and configuration boundaries when implementing them.
 
 ## Review and adoption sequence
 

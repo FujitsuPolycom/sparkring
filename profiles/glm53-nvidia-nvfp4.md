@@ -34,8 +34,8 @@ sr plan --inventory "$STATE/inventory.json" --name glm-nvidia-tp4 \
 
 Select `tp4-dcp1` to disable SparkCache. Continue with network planning, staging
 and managed Docker or Compose creation from the same quickstart, using this
-`STATE` throughout. Staging downloads or verifies NVIDIA weights at the pinned
-revision. Model and cache directories are distinct from the Spark default;
+`STATE` throughout. Staging verifies every checkpoint and metadata file
+against its pinned hash before distributing the download. Model and cache directories are distinct from the Spark default;
 the cache namespace also receives the `-nvidia-nvfp4` suffix. Both target and
 MTP cache identities use the NVIDIA fingerprint.
 
