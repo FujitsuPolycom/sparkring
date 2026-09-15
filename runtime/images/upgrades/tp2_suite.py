@@ -368,6 +368,14 @@ def run(
     evidence = {}
     phase = "startup"
 
+    def request(messages):
+        return chat(
+            base,
+            site["model"],
+            messages,
+            chat_template_kwargs=site.get("chat_template_kwargs"),
+        )
+
     def checkpoint(name):
         nonlocal phase
         phase = name
@@ -388,9 +396,7 @@ def run(
         wait_ready(base, site["model"], seconds=timeout)
         assertions += 1
         checkpoint("text")
-        answer = chat(
-            base,
-            site["model"],
+        answer = request(
             [
                 {
                     "role": "user",
@@ -398,7 +404,9 @@ def run(
                 }
             ],
         )
-        require(re.search(r"\b42\b", answer["content"]), "Text arithmetic smoke failed")
+        require(
+            answer["content"].strip() == "42", "Text arithmetic/format smoke failed"
+        )
         assertions += 1
         evidence["text"] = answer
         if site.get("cache_checks"):
@@ -408,9 +416,7 @@ def run(
             )
             fixture = needle_fixture(run_id)
             checkpoint("cache-cold")
-            cold = verify_needle(
-                chat(base, site["model"], fixture["messages"]), fixture
-            )
+            cold = verify_needle(request(fixture["messages"]), fixture)
             assertions += 1
             evidence["cache"] = {"fixture_sha256": fixture["sha256"], "cold": cold}
             checkpoint("cache-publication")
@@ -418,7 +424,7 @@ def run(
             evidence["cache"]["publication"] = publication
             checkpoint("cache-warm")
             warm = verify_needle(
-                chat(base, site["model"], fixture["messages"]),
+                request(fixture["messages"]),
                 fixture,
                 minimum_cached=4096,
             )
@@ -429,7 +435,7 @@ def run(
             evidence["cache"]["restart"] = restarted
             checkpoint("cache-restored")
             restored = verify_needle(
-                chat(base, site["model"], fixture["messages"]),
+                request(fixture["messages"]),
                 fixture,
                 minimum_cached=4096,
             )
@@ -447,9 +453,7 @@ def run(
                 print(pair.start(rank, specs[rank].name), flush=True)
             wait_ready(base, site["model"], seconds=timeout)
             checkpoint("cache-recompute")
-            recomputed = verify_needle(
-                chat(base, site["model"], fixture["messages"]), fixture
-            )
+            recomputed = verify_needle(request(fixture["messages"]), fixture)
             require(
                 recomputed["usage"]["prompt_tokens_details"]["cached_tokens"] == 0,
                 "Corrupted test store received cache credit",
@@ -477,7 +481,13 @@ def run(
                 wait_ready(base, site["model"], seconds=timeout)
         if site.get("media_checks"):
             checkpoint("media")
-            evidence["media"] = media_check.run(pair, specs[0], base, site["model"])
+            evidence["media"] = media_check.run(
+                pair,
+                specs[0],
+                base,
+                site["model"],
+                chat_template_kwargs=site.get("chat_template_kwargs"),
+            )
             assertions += 4
         if site.get("performance"):
             checkpoint("performance")

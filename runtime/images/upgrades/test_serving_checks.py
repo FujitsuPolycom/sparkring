@@ -1,6 +1,7 @@
 """Qualification fixtures and measurements fail closed without a live model."""
 
 import json
+import io
 
 import pytest
 
@@ -10,6 +11,7 @@ from .serving_checks import (
     cached_tokens,
     needle_fixture,
     verify_needle,
+    chat,
 )
 
 
@@ -18,6 +20,31 @@ def test_needle_fixture_is_reproducible_but_not_shared_across_seeds():
     assert first == needle_fixture("trial-A")
     assert first["expected"] != needle_fixture("trial-B")["expected"]
     assert first["messages"][0]["content"].count(first["expected"]) == 1
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected",
+    [
+        (None, {"enable_thinking": False}),
+        ({}, {}),
+        ({"enable_thinking": True}, {"enable_thinking": True}),
+    ],
+)
+def test_model_template_arguments_are_not_overwritten(monkeypatch, kwargs, expected):
+    captured = []
+
+    def reply(request, **options):
+        captured.append(json.loads(request.data))
+        return io.BytesIO(
+            json.dumps(
+                {"choices": [{"message": {"content": "42"}, "finish_reason": "stop"}]}
+            ).encode()
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", reply)
+    result = chat("http://192.0.2.1:18016", "fixture", [], chat_template_kwargs=kwargs)
+    assert result["content"] == "42"
+    assert captured[0]["chat_template_kwargs"] == expected
 
 
 def test_restart_credit_and_answer_are_both_required():

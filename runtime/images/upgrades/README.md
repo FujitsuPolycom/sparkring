@@ -151,6 +151,12 @@ rejects introduced dependency conflicts, and records installed files and native
 provenance. It creates a distinct boundary-cache runtime attestation; prior
 attestations are not evidence for different compiled bytes.
 
+A Python cache extension may supply a distinct, hash-bound boundary-runtime
+identity. The native installer selects that owned identity and verifies its
+package files before construction. Required external mount identities remain
+unchanged even when their files are absent during the image build; the selected
+runtime must satisfy them. Identity regeneration is not serving qualification.
+
 An operator-pinned `foundation.native_cache` manifest can reference an earlier
 compiled wheel. Reuse requires exact equality of declared native/build inputs,
 native-language files elsewhere in each source tree, compiler image, Torch ABI

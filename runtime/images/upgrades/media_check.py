@@ -78,7 +78,7 @@ def verify_answer(content):
     return parsed
 
 
-def run(pair, spec, base, model):
+def run(pair, spec, base, model, *, chat_template_kwargs=None):
     path = "/tmp/sparkring-media-" + pair.run_id + ".mp4"
     pair.owned(0, spec.name)
     pair.call(
@@ -113,7 +113,9 @@ def run(pair, spec, base, model):
         "Synthetic video exceeds the bounded fixture budget",
     )
     messages, identity = fixture(video)
-    response = chat(base, model, messages, max_tokens=256)
+    response = chat(
+        base, model, messages, max_tokens=256, chat_template_kwargs=chat_template_kwargs
+    )
     response["parsed"] = verify_answer(response["content"])
     return {
         "fixture": identity,

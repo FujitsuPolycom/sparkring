@@ -13,14 +13,20 @@ import urllib.request
 from .contracts import require, sha
 
 
-def chat(base, model, messages, *, max_tokens=128, timeout=180):
+def chat(
+    base, model, messages, *, max_tokens=128, timeout=180, chat_template_kwargs=None
+):
     payload = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": 0,
         "seed": 41,
-        "chat_template_kwargs": {"enable_thinking": False},
+        "chat_template_kwargs": (
+            {"enable_thinking": False}
+            if chat_template_kwargs is None
+            else dict(chat_template_kwargs)
+        ),
     }
     request = urllib.request.Request(
         base.rstrip("/") + "/v1/chat/completions",

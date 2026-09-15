@@ -5,7 +5,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 
 SITE = '/opt/venv/lib/python3.12/site-packages'
@@ -105,6 +105,67 @@ def verify_parent(descriptor):
     return json.loads(raw), verifier
 
 
+def boundary_identity_update(receipt, payloads, descriptor_sha256, filesystem_root=Path('/'), expected_parent_sha256=None):
+    """Create a distinct identity for declared Python replacements, not ABI proof."""
+    def located(name):
+        path = PurePosixPath(name)
+        if not path.is_absolute() or '..' in path.parts:
+            raise ValueError('Boundary identity path is not absolute and contained')
+        return Path(filesystem_root) / name.lstrip('/')
+
+    previous = receipt.get('cache_extension', {}).get('boundary_runtime')
+    original_name = previous['path'] if previous else '/opt/sparkring/contracts/boundary-runtime.json'
+    if PurePosixPath(original_name).parent != PurePosixPath('/opt/sparkring/contracts'):
+        raise ValueError('Boundary identity escapes its contracts owner')
+    original_path = located(original_name)
+    if not original_path.exists() and previous is None:
+        return None
+    original_raw = original_path.read_bytes()
+    approved = receipt['files'].get(original_name, expected_parent_sha256)
+    if approved != sha(original_raw):
+        raise ValueError('Boundary parent lacks verified installed ownership')
+    if previous is not None and previous['sha256'] != sha(original_raw):
+        raise ValueError('Selected parent boundary identity differs')
+    original = json.loads(original_raw)
+    if original.get('schema') != 'sparkcache-boundary-runtime/v1':
+        raise ValueError('Unknown boundary identity schema')
+    files = dict(original['files'])
+    for relative, expected in files.items():
+        parts = PurePosixPath(relative)
+        if parts.is_absolute() or '..' in parts.parts or ':' in relative:
+            raise ValueError('Boundary package path escapes site-packages')
+        name = SITE + '/' + relative
+        if sha(located(name).read_bytes()) != expected:
+            raise ValueError('Boundary parent package identity differs: ' + name)
+        if name in payloads:
+            if not relative.startswith('sparkcache/') or not relative.endswith('.py'):
+                raise ValueError('Boundary extension may replace only declared cache Python files')
+            files[relative] = sha(payloads[name])
+    runtime_external = {}
+    for name, expected in original['external'].items():
+        external = located(name)
+        if external.exists():
+            if sha(external.read_bytes()) != expected:
+                raise ValueError('Boundary external identity differs: ' + name)
+        else:
+            # Profiles may supply these immutable files through read-only
+            # mounts. Preserve the requirement; build-time absence is not
+            # evidence that the runtime will satisfy it.
+            runtime_external[name] = expected
+        if name in payloads and sha(payloads[name]) != expected:
+            raise ValueError('Boundary external replacement needs a separately qualified adapter')
+    name = '/opt/sparkring/contracts/boundary-cache-' + descriptor_sha256[:16] + '.json'
+    if located(name).exists():
+        raise ValueError('Boundary identity destination already exists')
+    data = (json.dumps({'schema': original['schema'], 'files': files,
+                       'external': original['external']}, indent=2, sort_keys=True) + '\n').encode()
+    return {
+        'record': {'path': name, 'sha256': sha(data), 'parent_sha256': sha(original_raw),
+                   'serving_qualified': False, 'required_runtime_external': runtime_external},
+        'data': data,
+    }
+
+
 def install(context, native_build):
     context = Path(context)
     descriptor = read_descriptor(context / 'descriptor.json')
@@ -130,12 +191,21 @@ def install(context, native_build):
         if receipt['files'].get(name) != previous:
             raise ValueError('Replacement lacks verified inherited ownership: ' + name)
         changes.append({'path': name, 'parent_sha256': previous, 'installed_sha256': sha(data)})
+    boundary = boundary_identity_update(
+        receipt, payloads, sha((context / 'descriptor.json').read_bytes()),
+        expected_parent_sha256=descriptor['parent'].get('boundary_runtime_sha256'),
+    )
     for name, data in payloads.items():
         Path(name).write_bytes(data)
         receipt['files'][name] = sha(data)
     receipt['cache_extension'] = {'descriptor_sha256': sha((context / 'descriptor.json').read_bytes()),
         'id': descriptor['id'], 'source': descriptor['source'], 'changes': changes,
         'native': native, 'status': 'research-only'}
+    if boundary is not None:
+        path = Path(boundary['record']['path'])
+        path.write_bytes(boundary['data'])
+        receipt['files'][str(path)] = boundary['record']['sha256']
+        receipt['cache_extension']['boundary_runtime'] = boundary['record']
     Path(RECEIPT).write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
     verifier.verify()
     from sparkcache.streaming.manager_page_native_ring_ctypes import CtypesManagerPageRingBackend

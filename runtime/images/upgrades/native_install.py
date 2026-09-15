@@ -72,6 +72,23 @@ def package_owned(path, package_names, metadata_roots):
     return path in (Path("/opt/venv/bin/vllm"),)
 
 
+def selected_boundary_identity(parent):
+    """Use an owned versioned cache identity when the foundation declares one."""
+    selected = parent.get("cache_extension", {}).get("boundary_runtime")
+    if selected is None:
+        return ROOT / "contracts/boundary-runtime.json"
+    path = Path(selected["path"])
+    require(
+        path.parent == ROOT / "contracts" and not path.is_symlink(),
+        "Selected boundary identity escapes its owner",
+    )
+    require(
+        parent["files"].get(str(path)) == selected["sha256"] == sha(path),
+        "Selected boundary identity differs from the installed receipt",
+    )
+    return path
+
+
 def install(context):
     context = Path(context)
     descriptor = read(context / "descriptor.json")
@@ -92,7 +109,7 @@ def install(context):
     )
     parent = read(RECEIPT)
     verify_files(parent["files"])
-    boundary_path = ROOT / "contracts/boundary-runtime.json"
+    boundary_path = selected_boundary_identity(parent)
     boundary = read(boundary_path) if boundary_path.exists() else None
     if boundary is not None:
         require(

@@ -44,6 +44,28 @@ def test_explicit_native_recipe_is_admitted():
     assert build_native.validate_recipe(recipe()) == recipe()
 
 
+def test_versioned_boundary_selector_requires_owned_unchanged_identity(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "contracts/boundary-cache-example.json"
+    path.parent.mkdir()
+    path.write_text("{}")
+    digest = native_install.sha(path)
+    parent = {
+        "files": {str(path): digest},
+        "cache_extension": {"boundary_runtime": {"path": str(path), "sha256": digest}},
+    }
+    monkeypatch.setattr(native_install, "ROOT", tmp_path)
+    assert native_install.selected_boundary_identity(parent) == path
+    path.write_text('{"changed":true}')
+    with pytest.raises(ValueError, match="differs"):
+        native_install.selected_boundary_identity(parent)
+    assert (
+        native_install.selected_boundary_identity({})
+        == tmp_path / "contracts/boundary-runtime.json"
+    )
+
+
 def test_native_image_checks_inventory_versions_and_feature_files(
     tmp_path, monkeypatch
 ):
