@@ -271,6 +271,38 @@ conditions, the wrapper retains the stopped serving containers and does not
 restart them alongside a potentially live compiler. The nightly operator must
 resolve exact owned work before retrying; a quiet log is not termination evidence.
 
+## Fabric image transfer
+
+Status: **implemented**, covered by GPU-free transport/lifecycle tests; verify
+the selected registry image and fabric route on the receiving host before
+qualifying a site.
+
+[image_transfer.py](image_transfer.py) runs on rank 0 and transfers an exact local
+ARM64 image through a temporary registry bound to rank 1's loopback interface.
+An SSH local-forward tunnel carries image layers over the configured fabric
+endpoint. The management and fabric identities must resolve to the same approved
+rank-1 hostname. SSH host-key verification is mandatory. Docker calls select the
+local Unix socket explicitly; a saved Docker context cannot redirect the transfer.
+There is no external registry destination or public-image promotion.
+
+The policy-bound `sparkring-image-transfer/v1` configuration declares `hosts`,
+`hostnames`, a leased `gate_id`, `fabric_peer`, `host_key_alias`, the preinstalled
+`registry_image_id`, a dedicated existing `temporary_parent`, a loopback `port`
+and bounded `transfer_seconds`. The registry runs without GPU access, as the
+receiving SSH user's UID/GID, with a read-only root filesystem and only its
+run-specific storage bind writable. Model weights and serving caches are not
+mounted. Cleanup verifies container labels and the directory's ownership marker;
+ambiguous ownership leaves the resource intact for inspection.
+
+Invoke with `--policy`, `--config`, `--approved-policy`, `--builder-lease`,
+`--hardware-lease`, `--image-id`, `--run-id`, `--output` and `--execute`.
+`transfer.json` records the exact image ID verified on rank 1, any failure, and
+cleanup errors. A successful push alone does not establish successful transfer.
+The adapter leaves image layers available in both local Docker stores and removes
+its temporary registry, tunnel and marked staging directory. It does not delete
+the copied image or modify serving containers. Schedule transfer outside measured
+inference workloads because copying layers consumes shared memory/disk bandwidth.
+
 ## Supply semantic reconciliation
 
 Mechanical application is attempted file by file. Clean approved fragments are
