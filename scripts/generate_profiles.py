@@ -159,7 +159,7 @@ def profile_table(root=ROOT, *, compact=False):
             continue
         lines += ['### '+title, '', '| Model | Quant | Runtime | Layout | Context / KV* (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---|---|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model | Quant | Runtime | DCP | Context / KV* | SparkCache | Status | Quickstart |', '|---|---|---|---|---|---|---|---|']
+            lines[-2:] = ['| Model | Quant | DCP | Context / KV* | SparkCache | Status |', '|---|---|---|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r) or (compact and r['topology'] == 'switched'):
                 continue
@@ -185,7 +185,7 @@ def profile_table(root=ROOT, *, compact=False):
                 key = deployment_family(r)
                 default_dcp = s['decode_context_parallel_size']
                 choices = [default_dcp, *sorted(dcp_options[key] - {default_dcp})]
-                layout = '/'.join(f'DCP{value}' for value in choices)
+                layout = '/'.join(str(value) for value in choices)
                 if engine == 'sglang':
                     layout = '—'
                 context = compact_tokens(s['max_model_len']) if 'max_model_len' in s else '—'
@@ -200,10 +200,10 @@ def profile_table(root=ROOT, *, compact=False):
                         entry = selected[1] if selected else None
                         counts.append(f"[{compact_tokens(entry['tokens'])}]({entry['source']})" if entry else '—')
                     kv = '(' + '/'.join(counts) + ')'
-                title = model_name
+                title = f"[{model_name}]({quickstart_path(p)})"
                 if p['recommendation'] == 'recommended':
                     title = f"**{title}**"
-                lines.append(f"| {title} | {quant} | {engine_title} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide]({quickstart_path(p)}) |")
+                lines.append(f"| {title}<br>{engine_title} | {quant} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} |")
                 continue
             lines.append(f"| {model_name} | {quant} | {engine_title} | {layout} | {context} / {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide]({quickstart_path(p)}) |")
         lines.append('')

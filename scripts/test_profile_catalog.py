@@ -8,7 +8,7 @@ def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
     table = profile_table()
     summary, variants = table.split('## Configuration variants', 1)
     pair_summary = summary.split('### Two Sparks', 1)[1]
-    rows = [line for line in pair_summary.splitlines() if line.startswith('| Qwen3.8-Flash-Next |')]
+    rows = [line for line in pair_summary.splitlines() if line.startswith('| [Qwen3.8-Flash-Next](')]
     assert len(rows) == 1
     assert '[Optional](../profiles/qwen38-flash-next-tp2/README.md)' in rows[0]
     assert 'Qwen with SparkCache is unsupported' not in table
@@ -26,7 +26,7 @@ def test_qad_quant_link_identifies_its_checkpoint_separately_from_tp2():
     assert '[NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)' in ring
     assert '[NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)' in pair
     assert 'NVFP4 QAD' not in pair
-    qad = next(line for line in ring.splitlines() if '| Qwen3.8-Flash-Next |' in line)
+    qad = next(line for line in ring.splitlines() if '| [Qwen3.8-Flash-Next](' in line)
     assert '[Optional](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md)' in qad
     assert resolve('qwen38-flash-next-qad-tp4')['serving']['sparkcache'] is False
     assert resolve('qwen38-flash-next-qad-tp4-sparkcache')['serving']['sparkcache'] is True
@@ -35,9 +35,9 @@ def test_qad_quant_link_identifies_its_checkpoint_separately_from_tp2():
 def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
     table = profile_table()
     summary, variants = table.split('## Configuration variants', 1)
-    glm_rows = [line for line in summary.splitlines() if line.startswith('| **GLM-5.3-Flash**')]
+    glm_rows = [line for line in summary.splitlines() if line.startswith('| **[GLM-5.3-Flash](')]
     assert len(glm_rows) == 2  # Four-Spark and two-Spark deployments.
-    assert 'DCP1/DCP4' in glm_rows[0]
+    assert '| 1/4 |' in glm_rows[0]
     assert all('[Optional]' in row for row in glm_rows)
     assert '1,048,576' not in summary
     for profile_id in catalog():
@@ -52,10 +52,10 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
 def test_catalog_keeps_separate_deepseek_engines_and_variant_validation():
     table = profile_table()
     summary, variants = table.split('## Configuration variants', 1)
-    rows = [line for line in summary.splitlines() if line.startswith('| DeepSeek-V4.1-Flash |')]
+    rows = [line for line in summary.splitlines() if line.startswith('| [DeepSeek-V4.1-Flash](')]
     assert len(rows) == 2
-    assert any('| vLLM |' in row for row in rows)
-    assert any('| SGLang |' in row for row in rows)
+    assert any('<br>vLLM |' in row for row in rows)
+    assert any('<br>SGLang |' in row for row in rows)
     for profile_id, status, cache in (
         ('glm53-flash-spark-tp4-dcp1', 'Experimental', 'Off'),
         ('glm53-flash-spark-tp4-dcp1-sparkcache', 'Validated', 'On'),

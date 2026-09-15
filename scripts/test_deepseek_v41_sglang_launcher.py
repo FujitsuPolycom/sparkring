@@ -167,10 +167,10 @@ def test_invalid_mounts_and_endpoints_fail_before_host_access(tmp_path, override
 def test_profile_table_keeps_both_deepseek_engines():
     from scripts.generate_profiles import profile_table
     table = profile_table(compact=True)
-    rows = [line for line in table.splitlines() if line.startswith("| DeepSeek-V4.1-Flash |")]
+    rows = [line for line in table.splitlines() if line.startswith("| [DeepSeek-V4.1-Flash](")]
     assert len(rows) == 2
-    assert any("| SGLang |" in row and "| 262K /" in row for row in rows)
-    assert any("| vLLM |" in row and "| 1M /" in row for row in rows)
+    assert any("<br>SGLang |" in row and "| 262K /" in row for row in rows)
+    assert any("<br>vLLM |" in row and "| 1M /" in row for row in rows)
 
 
 def test_image_drift_rejected_before_host_actions(tmp_path, monkeypatch):

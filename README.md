@@ -42,25 +42,25 @@ Each quickstart selects its image and states which configurations were tested.
 
 ### Four Sparks
 
-| Model | Quant | Runtime | DCP | Context / KV* | SparkCache | Status | Quickstart |
-|---|---|---|---|---|---|---|---|
-| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | DCP1/DCP4 | 1M / ([2.3M](performance/capacity-references.md)/[8.4M](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | DCP1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731/README.md) |
-| DeepSeek-V4-Flash-Vision-Exp | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | vLLM | DCP1 | 1M / — | No | Experimental | [Guide](profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | vLLM | DCP1 | 1M / [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | SGLang | — | 262K / [1.5M](performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | No | Development | [Guide](profiles/deepseek-v41-flash-sglang-cycle/README.md) |
-| GLM-5.2 | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | vLLM | DCP4 | 1M / [1.2M](profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development | [Guide](profiles/glm52-exl3-r7-3.5bpw/README.md) |
-| Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | DCP1 | 1M / [8.7M](profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development | [Guide](profiles/qwen38-27b-exl3-k5k6/README.md) |
-| Qwen3.8-Flash-Next | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | vLLM | DCP1 | 262K / [3.2M](performance/records/qwen38-flash-next/r37-shared-tp4.json) | [Optional](profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | Development | [Guide](profiles/qwen38-flash-next-qad-tp4/README.md) |
+| Model | Quant | DCP | Context / KV* | SparkCache | Status |
+|---|---|---|---|---|---|
+| **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1/4 | 1M / ([2.3M](performance/capacity-references.md)/[8.4M](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated |
+| [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development |
+| [DeepSeek-V4-Flash-Vision-Exp](profiles/deepseek-v4-flash-vision-exp-tp4/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | 1 | 1M / — | No | Experimental |
+| [DeepSeek-V4.1-Flash](profiles/deepseek-v41-flash-cycle/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 1 | 1M / [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development |
+| [DeepSeek-V4.1-Flash](profiles/deepseek-v41-flash-sglang-cycle/README.md)<br>SGLang | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | — | 262K / [1.5M](performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | No | Development |
+| [GLM-5.2](profiles/glm52-exl3-r7-3.5bpw/README.md)<br>vLLM | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | 4 | 1M / [1.2M](profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development |
+| [Qwen3.8-27B](profiles/qwen38-27b-exl3-k5k6/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [8.7M](profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development |
+| [Qwen3.8-Flash-Next](profiles/qwen38-flash-next-qad-tp4/README.md)<br>vLLM | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | 1 | 262K / [3.2M](performance/records/qwen38-flash-next/r37-shared-tp4.json) | [Optional](profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | Development |
 
 ### Two Sparks
 
-| Model | Quant | Runtime | DCP | Context / KV* | SparkCache | Status | Quickstart |
-|---|---|---|---|---|---|---|---|
-| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | vLLM | DCP1 | 1M / [1.1M](performance/records/glm53-flash/r35-tp2-sparkcache.json) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | vLLM | DCP1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
-| Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | vLLM | DCP1 | 1M / [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
-| Qwen3.8-Flash-Next | [NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | vLLM | DCP1 | 262K / [3M](performance/records/qwen38-flash-next/r37-tp2.json) | [Optional](profiles/qwen38-flash-next-tp2/README.md) | Experimental | [Guide](profiles/qwen38-flash-next-tp2/README.md) |
+| Model | Quant | DCP | Context / KV* | SparkCache | Status |
+|---|---|---|---|---|---|
+| **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / [1.1M](performance/records/glm53-flash/r35-tp2-sparkcache.json) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated |
+| [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
+| [Qwen3.8-27B](profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
+| [Qwen3.8-Flash-Next](profiles/qwen38-flash-next-tp2/README.md)<br>vLLM | [NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 1 | 262K / [3M](performance/records/qwen38-flash-next/r37-tp2.json) | [Optional](profiles/qwen38-flash-next-tp2/README.md) | Experimental |
 
 <!-- END GENERATED PROFILES -->
 
