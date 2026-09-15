@@ -15,5 +15,6 @@
   "overrides": [],
   "launcher": {
     "kind": "guide"
-  }
+  },
+  "quickstart_status": "research-only"
 }

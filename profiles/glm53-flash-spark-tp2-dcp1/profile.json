@@ -23,5 +23,6 @@
     ],
     "fixed_args": [],
     "receipt": "runtime/sparkring/jovian-r33/public-image-receipt.json"
-  }
+  },
+  "quickstart_status": "research-only"
 }

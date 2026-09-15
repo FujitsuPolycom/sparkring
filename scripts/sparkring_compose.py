@@ -214,6 +214,11 @@ def staged(target, expected):
             raise ValueError("Staged deployment differs: " + name)
 
 
+def require_idle_gpu():
+    if run(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"]).stdout.strip():
+        raise ValueError("GPU already has a compute workload")
+
+
 def preflight(rank, site, spec, image, profile, manifest):
     if sys.platform != "linux":
         raise ValueError("Compose serving requires Linux hosts")
@@ -269,13 +274,8 @@ def preflight(rank, site, spec, image, profile, manifest):
     ).stdout.splitlines()
     if len(gpus) != 1:
         raise ValueError("This adapter requires one GPU per host")
-    if (
-        present is None
-        and run(
-            ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"]
-        ).stdout.strip()
-    ):
-        raise ValueError("GPU already has a compute workload")
+    if not (present and present["State"].get("Running")):
+        require_idle_gpu()
     if rank["rank"] == 0 and not (present and present["State"].get("Running")):
         for flag in ("--port", "--master-port"):
             port = int(profile["vllm_args"][profile["vllm_args"].index(flag) + 1])
@@ -391,6 +391,8 @@ def host_operation(operation, payload):
             raise ValueError(
                 "Start requires the exact stopped container created by this plan"
             )
+        # Creation and image admission can finish well before startup or resume.
+        require_idle_gpu()
         run(command + ["start", "model"])
     elif operation == "running":
         if not owned(spec, manifest)["State"].get("Running"):

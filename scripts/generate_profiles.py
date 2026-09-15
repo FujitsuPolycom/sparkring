@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve, legacy_recipe_bytes  # noqa: E402
+from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve, legacy_recipe_bytes, quickstart_status  # noqa: E402
 
 from runtime.common.environment import render_environment  # noqa: E402
 
@@ -203,7 +203,7 @@ def profile_table(root=ROOT, *, compact=False):
                 title = f"[{model_name}]({quickstart_path(p)})"
                 if p['recommendation'] == 'recommended':
                     title = f"**{title}**"
-                lines.append(f"| {title}<br>{engine_title} | {quant} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} |")
+                lines.append(f"| {title}<br>{engine_title} | {quant} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[quickstart_status(p)]} |")
                 continue
             lines.append(f"| {model_name} | {quant} | {engine_title} | {layout} | {context} / {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide]({quickstart_path(p)}) |")
         lines.append('')
@@ -223,7 +223,8 @@ def profile_catalog_table(rows, names, root):
              'capacity depends on enabled features. Expand a deployment below for each option’s own status and guide.',
              'Switched support is a separate network configuration and has no switched-hardware qualification.', '',
              '## Configuration variants', '',
-             'These are saved configurations, not separate models. Profile IDs remain stable for scripts.', '']
+             'Profile IDs identify saved configurations. Guide status describes the primary quickstart;',
+             'record links preserve configuration evidence when the guide selects a different release.', '']
     groups, retired = {}, []
     developing = developing_cache_profiles(root)
     for p, r in rows:
@@ -235,7 +236,7 @@ def profile_catalog_table(rows, names, root):
     for (model, nodes, engine), variants in sorted(groups.items()):
         engine_title = {'vllm': 'vLLM', 'sglang': 'SGLang'}[engine]
         lines += ['<details>', f'<summary>{names[model]} · {nodes} Sparks · {engine_title}</summary>', '',
-                  '| Parallelism | Network | SparkCache | Status | Configuration and guide |',
+                  '| Parallelism | Network | SparkCache | Guide status | Configuration and guide |',
                   '|---|---|---|---|---|']
         for p, r in sorted(variants, key=lambda item: (item[0]['recommendation'] != 'recommended', item[0]['id'])):
             s = r['serving']
@@ -246,7 +247,8 @@ def profile_catalog_table(rows, names, root):
                       else bool(read_json(local_path(config['path'], root)).get('base_recipe')))
             label = p['id'] + (' (default)' if p['recommendation'] == 'recommended' else '')
             cache_cell = 'On' if cached else 'Off (in dev)' if p['id'] in developing else 'Off'
-            lines.append(f"| {parallel} | {r['topology']} | {cache_cell} | {STATUS_LABELS[p['status']]} | [{label}]({quickstart_path(p)}) |")
+            record_link = f" · [record](profiles/{p['id']}/profile.json)" if 'quickstart_status' in p else ''
+            lines.append(f"| {parallel} | {r['topology']} | {cache_cell} | {STATUS_LABELS[quickstart_status(p)]} | [{label}]({quickstart_path(p)}){record_link} |")
         lines += ['', '</details>', '']
     lines += ['### Retired profiles', '', '<details>', '<summary>Retired configurations</summary>', '',
               'Retained for compatibility and historical evidence; use an active deployment above for setup.', '']

@@ -55,17 +55,22 @@ def load(profile_id, root=ROOT):
     if profile_id not in entries:
         raise ValueError(f"Unknown profile: {profile_id}; use list to discover IDs")
     p = read_json(entries[profile_id])
-    if set(p) != PROFILE_FIELDS or p["schema"] != "sparkring-deployment/v1":
+    if not PROFILE_FIELDS <= set(p) <= PROFILE_FIELDS | {"quickstart_status"} or p["schema"] != "sparkring-deployment/v1":
         raise ValueError(f"{profile_id}: expected exact sparkring-deployment/v1 fields")
     if p["id"] != profile_id or not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", profile_id):
         raise ValueError(f"{profile_id}: invalid or mismatched profile id")
     if p["status"] not in STATUS or p["recommendation"] not in {"recommended", "alternative", "retired"}:
         raise ValueError(f"{profile_id}: invalid evidence status or recommendation")
+    if "quickstart_status" in p and (not isinstance(p["quickstart_status"], str) or p["quickstart_status"] not in STATUS):
+        raise ValueError(f"{profile_id}: invalid quickstart_status")
     if not p["evidence_scope"] or not isinstance(p["overrides"], list) or not set(p["overrides"]) <= OVERRIDES:
         raise ValueError(f"{profile_id}: specify evidence scope and supported overrides")
     adapter = p["launcher"]
     if adapter.get("kind") not in {"guide", "python", "bash"}:
         raise ValueError(f"{profile_id}: unsupported launcher")
+    if "configuration_input" in adapter and (not isinstance(adapter["configuration_input"], str)
+            or adapter["configuration_input"] not in {"env", "profile"}):
+        raise ValueError(f"{profile_id}: launcher configuration_input must be env or profile")
     if adapter["kind"] != "guide":
         local_path(adapter["path"], root)
         if adapter.get("receipt"):
@@ -89,6 +94,11 @@ def load(profile_id, root=ROOT):
         if hashlib.sha256(local_path(item["path"], root).read_bytes()).hexdigest() != item["sha256"]:
             raise ValueError(f"{item['path']}: release input changed; select a distinct release instead of relabeling evidence")
     return p, release
+
+
+def quickstart_status(profile):
+    """Describe the primary guide without changing retained configuration evidence."""
+    return profile.get("quickstart_status", profile["status"])
 
 
 def configuration(p, root=ROOT):
@@ -208,6 +218,7 @@ def resolve(profile_id, overrides=None, site=None, root=ROOT):
             raise ValueError("Model and writable cache directories must be distinct")
     changed = any(values[k] != {**COMMON, **defaults}.get(k) for k in overrides)
     return {"schema": "sparkring-resolved/v1", "profile": profile_id, "model": model,
+            **({"quickstart_status": p["quickstart_status"]} if "quickstart_status" in p else {}),
             "topology": topology, "serving": values, "origins": origin, "release": release,
             "runtime": runtime, "site": site, "status": "research-only" if changed else p["status"],
             "recommendation": p["recommendation"], "evidence_scope": p["evidence_scope"],

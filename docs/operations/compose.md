@@ -170,6 +170,10 @@ cache directories, models and networks in place. It does not call `compose down`
 
 Local `start-receipt.json` and `stop-receipt.json` record outcomes. A phase failure
 blocks later phases; it does not automatically stop a partially launched group.
+GPU occupancy is checked whenever the owned container is stopped, including
+resume, and immediately before each worker/API start. An already running owned
+container can pass read-only checks without being mistaken for another workload.
+
 Inspect receipts and rank logs before recovery. `--resume` rechecks completed
 actions and refuses any mutation with an uncertain outcome. It does not silently
 retry a possibly running model. Keep the matching source checkout available for

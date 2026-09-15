@@ -58,7 +58,7 @@ def test_catalog_keeps_separate_deepseek_engines_and_variant_validation():
     assert any('<br>SGLang |' in row for row in rows)
     for profile_id, status, cache in (
         ('glm53-flash-spark-tp4-dcp1', 'Experimental', 'Off'),
-        ('glm53-flash-spark-tp4-dcp1-sparkcache', 'Validated', 'On'),
+        ('glm53-flash-spark-tp4-dcp1-sparkcache', 'Experimental', 'On'),
     ):
         row = next(line for line in variants.splitlines() if f'](../profiles/{profile_id}/README.md)' in line)
         assert f'| {cache} | {status} |' in row
@@ -70,3 +70,16 @@ def test_shared_qwen_guide_is_used_for_cache_links_and_variant_navigation():
     assert '[qwen38-flash-next-tp2-sparkcache](../profiles/qwen38-flash-next-tp2/README.md)' in catalog
     assert 'profiles/qwen38-flash-next-tp2-sparkcache/README.md' not in compact
     assert 'profiles/qwen38-flash-next-tp2-sparkcache/README.md' not in catalog
+
+
+
+def test_glm_discovery_uses_quickstart_status_without_relabelling_r33():
+    summary = profile_table(compact=True)
+    glm = [row for row in summary.splitlines() if row.startswith("| **[GLM-5.3-Flash](")]
+    assert len(glm) == 2
+    assert all(row.endswith("| Experimental |") for row in glm)
+    for profile_id in ("glm53-flash-spark-tp2-dcp1-sparkcache", "glm53-flash-spark-tp4-dcp1-sparkcache"):
+        resolved = resolve(profile_id)
+        assert resolved["status"] == "qualified"
+        assert resolved["quickstart_status"] == "research-only"
+        assert resolved["release"]["id"] == "sparkring-r33-dcp4"
