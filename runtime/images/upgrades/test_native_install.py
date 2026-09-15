@@ -16,6 +16,7 @@ def recipe():
         memory_bytes=80 * 1024**3,
         build_seconds=21600,
         torch_version="2.13.0",
+        build_type="Release",
         network="bridge",
     )
 

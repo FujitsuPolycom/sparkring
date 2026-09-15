@@ -187,3 +187,21 @@ def test_inventory_checks_image_identity_not_just_container_name():
 
     with pytest.raises(Refused, match="identity differs"):
         module.inventory(Pair(), saved, [[], []])
+
+
+def test_invalid_native_recipe_is_rejected_before_serving_shutdown(
+    scenario, monkeypatch
+):
+    run, _, actions, _ = scenario
+    monkeypatch.setattr(
+        module,
+        "load_policy",
+        lambda *a: {
+            "_digest": "digest",
+            "gates": [],
+            "native": {"build_type": "Debug"},
+        },
+    )
+    with pytest.raises(Refused, match="Native recipe"):
+        run()
+    assert not actions

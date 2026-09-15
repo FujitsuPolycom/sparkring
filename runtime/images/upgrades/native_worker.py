@@ -134,6 +134,39 @@ def run_checked(argv, *, cwd=None, env=None):
     subprocess.run(argv, cwd=cwd, env=env, check=True)
 
 
+def cmake_build_evidence(source, expected):
+    """Require the generated vLLM CMake configuration to match the recipe."""
+    source = Path(source)
+    records = []
+    for path in sorted(source.rglob("CMakeCache.txt")):
+        values = {}
+        for line in path.read_text(errors="replace").splitlines():
+            if not line or line.startswith(("#", "//")) or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.split(":", 1)[0]] = value
+        if values.get("CMAKE_PROJECT_NAME") != "vllm_extensions":
+            continue
+        require(
+            values.get("CMAKE_BUILD_TYPE") == expected,
+            "Generated vLLM CMake build mode differs from the recipe",
+        )
+        records.append(
+            {
+                "path": path.relative_to(source).as_posix(),
+                "sha256": sha(path),
+                "build_type": expected,
+                "flags": {
+                    key: value
+                    for key, value in values.items()
+                    if key.startswith(("CMAKE_CXX_FLAGS", "CMAKE_CUDA_FLAGS"))
+                },
+            }
+        )
+    require(records, "Missing generated vLLM CMake build-mode evidence")
+    return records
+
+
 def build(descriptor_path, source_root, work):
     descriptor = json.loads(Path(descriptor_path).read_text())
     require(
@@ -147,6 +180,10 @@ def build(descriptor_path, source_root, work):
     require(
         descriptor["architecture"] in ("12.1", "12.1a"),
         "This compiler recipe targets GB10",
+    )
+    require(
+        descriptor.get("build_type") in ("Release", "RelWithDebInfo"),
+        "An explicit supported native build_type is required",
     )
     require(
         type(descriptor["jobs"]) is int and 1 <= descriptor["jobs"] <= 20,
@@ -233,6 +270,7 @@ def build(descriptor_path, source_root, work):
         os.environ,
         MAX_JOBS=str(descriptor["jobs"]),
         CMAKE_BUILD_PARALLEL_LEVEL=str(descriptor["jobs"]),
+        CMAKE_BUILD_TYPE=descriptor["build_type"],
         NVCC_THREADS="1",
         TORCH_CUDA_ARCH_LIST=descriptor["architecture"],
         VLLM_TARGET_DEVICE="cuda",
@@ -260,8 +298,9 @@ def build(descriptor_path, source_root, work):
     if cached:
         require(
             cached["architecture"] == descriptor["architecture"]
-            and cached["torch_version"] == descriptor["torch_version"],
-            "Cached native ABI differs",
+            and cached["torch_version"] == descriptor["torch_version"]
+            and cached.get("build_type") == descriptor["build_type"],
+            "Cached native ABI or build mode differs",
         )
         cached_wheel = Path("/native-cache") / cached["wheel"]["file"]
         require(
@@ -306,6 +345,16 @@ def build(descriptor_path, source_root, work):
             source_digest(source_root / name) == expected,
             "Compiler changed its read-only source inputs",
         )
+    mode_evidence = (
+        {"source": "verified-native-cache", "build_type": cached["build_type"]}
+        if cached
+        else {
+            "source": "generated-cmake",
+            "configurations": cmake_build_evidence(
+                work / "source/vllm", descriptor["build_type"]
+            ),
+        }
+    )
     result = {
         "schema": "sparkring-native-wheel-result/v1",
         "descriptor_sha256": identity,
@@ -314,6 +363,8 @@ def build(descriptor_path, source_root, work):
         "wheels": records,
         "torch_version": metadata.version("torch"),
         "architecture": descriptor["architecture"],
+        "build_type": descriptor["build_type"],
+        "build_mode_evidence": mode_evidence,
         "jobs": descriptor["jobs"],
         "elapsed_seconds": time.time() - started,
         "serving_qualified": False,

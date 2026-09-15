@@ -169,8 +169,9 @@ receive separate identities; retained published contracts are not overwritten.
 
 An operator-pinned `foundation.native_cache` manifest can reference an earlier
 compiled wheel. Reuse requires exact equality of declared native/build inputs,
-native-language files elsewhere in each source tree, compiler image, Torch ABI
-and architecture. Repackaging must preserve the complete native-member hash map.
+native-language files elsewhere in each source tree, compiler image, Torch ABI,
+architecture and CMake build mode. Repackaging must preserve the complete
+native-member hash map.
 The result reports `native_rebuilt: false` and retains the compiled artifact's
 provenance. Changed native inputs require compilation; a Python-only change does
 not justify relabeling old binaries as rebuilt.
@@ -183,6 +184,23 @@ inputs, Torch ABI or architecture differ. The compiler descriptor records the
 reuse/compile decision and differing fields. It does not change source pins or
 the recipe. Missing, malformed or hash-mismatched cache manifests still stop the
 build; they are not evidence of ordinary input drift.
+
+Native recipes must set `native.build_type` to `Release` or `RelWithDebInfo`.
+The initializer selects `Release`. The worker supplies that value explicitly as
+`CMAKE_BUILD_TYPE` for both wheel builds, overriding inherited environment values,
+and records it in the compiler descriptor/result. This prevents a source
+package's implicit build-mode default from changing optimization or debug data.
+Full compilations also verify the generated `vllm_extensions` CMake configuration
+and retain its hash and flag settings; another dependency's cache cannot supply
+that evidence.
+The choice does not establish performance parity; matched hardware measurements
+remain required.
+
+Wheel-cache manifests must record `build_type` to prove reuse compatibility.
+A legacy manifest without that field is not reused. With the separately approved
+`on_input_change: rebuild` option it selects a full compilation; otherwise the
+build stops. Existing image receipts and external KV-cache identity formats are
+not rewritten by this change.
 
 Carried patches must describe the **complete retained feature closure** relative
 to their declared baseline commit. A published image can contain source older
@@ -241,7 +259,8 @@ Status: **implemented**, covered by GPU-free lifecycle tests; hardware execution
 requires qualification for the selected site.
 
 [maintenance_build.py](maintenance_build.py) wraps the source/image runner on its
-leased builder host. It verifies an idle saved serving pair, stops both workers
+leased builder host. It validates the native recipe before any serving shutdown,
+verifies an idle saved serving pair, stops both workers
 before source tests or compilation, and restarts the same container IDs after a
 terminal build result. It never deletes or recreates those containers. Transfer
 and model qualification are separate operations; this wrapper rejects hardware

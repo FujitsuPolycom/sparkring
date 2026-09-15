@@ -1,7 +1,7 @@
 """Native reuse includes build metadata and native-language files outside csrc."""
 
 from .sources import native_digest
-from runtime.images.upgrades.build_native import select_native_cache
+from runtime.images.upgrades.build_native import select_native_cache, validate_recipe
 from runtime.images.upgrades.contracts import Refused, sha
 import json
 import pytest
@@ -31,7 +31,11 @@ def test_build_metadata_changes_require_recompilation(tmp_path):
 def cache_selection(tmp_path):
     inputs = {"vllm": "a" * 64, "b12x": "b" * 64}
     compiler = "sha256:" + "c" * 64
-    recipe = {"architecture": "12.1a", "torch_version": "2.13.0"}
+    recipe = {
+        "architecture": "12.1a",
+        "torch_version": "2.13.0",
+        "build_type": "Release",
+    }
     record = {
         "schema": "sparkring-native-cache/v1",
         "native_inputs": inputs,
@@ -59,7 +63,14 @@ def test_exact_native_inputs_reuse_without_rebuild_permission(cache_selection):
 
 
 @pytest.mark.parametrize(
-    "changed", ["native_inputs", "compiler_image_id", "architecture", "torch_version"]
+    "changed",
+    [
+        "native_inputs",
+        "compiler_image_id",
+        "architecture",
+        "torch_version",
+        "build_type",
+    ],
 )
 def test_input_drift_requires_explicit_bounded_rebuild(cache_selection, changed):
     policy, inputs, compiler, recipe, _ = cache_selection
@@ -92,3 +103,40 @@ def test_no_cache_selects_full_compile(cache_selection):
     record, directory, decision = select_native_cache(policy, inputs, compiler, recipe)
     assert record is directory is None
     assert decision["mode"] == "compile"
+
+
+def test_cache_without_build_mode_is_never_reused(cache_selection):
+    policy, inputs, compiler, recipe, path = cache_selection
+    record = json.loads(path.read_text())
+    record.pop("build_type")
+    path.write_text(json.dumps(record))
+    policy["foundation"]["native_cache"]["sha256"] = sha(path.read_bytes())
+    with pytest.raises(Refused, match="rebuild is required"):
+        select_native_cache(policy, inputs, compiler, recipe)
+    policy["foundation"]["native_cache"]["on_input_change"] = "rebuild"
+    record, directory, decision = select_native_cache(policy, inputs, compiler, recipe)
+    assert record is directory is None
+    assert decision["changed_inputs"] == ["build_type"]
+
+
+@pytest.mark.parametrize(
+    "mode", ["Release", "RelWithDebInfo", None, "Debug", "release"]
+)
+def test_recipe_requires_an_explicit_supported_build_mode(mode):
+    recipe = {
+        "schema": "sparkring-native-recipe/v1",
+        "architecture": "12.1a",
+        "jobs": 1,
+        "cpus": 1,
+        "memory_bytes": 8 * 1024**3,
+        "build_seconds": 60,
+        "torch_version": "2.13.0",
+        "network": "none",
+    }
+    if mode is not None:
+        recipe["build_type"] = mode
+    if mode in ("Release", "RelWithDebInfo"):
+        assert validate_recipe(recipe)["build_type"] == mode
+    else:
+        with pytest.raises(Refused):
+            validate_recipe(recipe)

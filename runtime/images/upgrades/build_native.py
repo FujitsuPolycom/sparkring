@@ -39,11 +39,16 @@ def validate_recipe(recipe):
             "memory_bytes",
             "build_seconds",
             "torch_version",
+            "build_type",
             "network",
         },
         "Native recipe fields differ",
     )
     require(recipe["schema"] == "sparkring-native-recipe/v1", "Unknown native recipe")
+    require(
+        recipe["build_type"] in ("Release", "RelWithDebInfo"),
+        "Native build_type must explicitly select Release or RelWithDebInfo",
+    )
     require(recipe["architecture"] in ("12.1", "12.1a"), "Select the GB10 architecture")
     require(
         type(recipe["jobs"]) is int and 1 <= recipe["jobs"] <= 20,
@@ -142,9 +147,14 @@ def select_native_cache(policy, native_inputs, compiler_id, recipe):
         "compiler_image_id": compiler_id,
         "architecture": recipe["architecture"],
         "torch_version": recipe["torch_version"],
+        "build_type": recipe["build_type"],
     }
-    require(set(expected) <= set(record), "Native-cache compatibility fields missing")
-    changed = sorted(key for key, value in expected.items() if record[key] != value)
+    require(
+        set(expected) - {"build_type"} <= set(record),
+        "Native-cache compatibility fields missing",
+    )
+    # Legacy manifests do not prove optimization mode and cannot be reused.
+    changed = sorted(key for key, value in expected.items() if record.get(key) != value)
     decision = {"manifest_sha256": cached["sha256"], "changed_inputs": changed}
     if changed:
         require(
@@ -220,6 +230,7 @@ def build(policy_path, bundle_path, output, result_path):
         "architecture": recipe["architecture"],
         "jobs": recipe["jobs"],
         "torch_version": recipe["torch_version"],
+        "build_type": recipe["build_type"],
         "distribution_version": "0.26.1rc0+sparkring.native."
         + bundle["input_sha256"][:12],
     }
@@ -327,7 +338,8 @@ def build(policy_path, bundle_path, output, result_path):
         compiled = read(work / "result.json")
         require(
             compiled["descriptor_sha256"] == sha(descriptor_path.read_bytes())
-            and compiled["source_trees"] == source_trees,
+            and compiled["source_trees"] == source_trees
+            and compiled["build_type"] == recipe["build_type"],
             "Compiler receipt identifies other inputs",
         )
     except BaseException:

@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.images.upgrades import runner  # noqa: E402
 from runtime.images.upgrades.agent import FileAgent  # noqa: E402
+from runtime.images.upgrades.build_native import validate_recipe  # noqa: E402
 from runtime.images.upgrades.contracts import (  # noqa: E402
     Uncertain,
     beneath,
@@ -111,6 +112,8 @@ def run(
 ):
     policy = load_policy(policy_path)
     require(policy["_digest"] == approved_policy, "Approved build policy differs")
+    if "native" in policy:
+        validate_recipe(policy["native"])
     require(
         re.fullmatch(r"[a-z0-9][a-z0-9-]{1,35}", run_id),
         "Invalid build-maintenance run identifier",
