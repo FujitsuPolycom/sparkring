@@ -9,8 +9,8 @@ ranks:
     interface: eth0
     hcas: [rocep1s0f0, roceP2p1s0f0]
     gid: 3
-    model: /srv/models/Qwen3.8-Flash-Next-NVFP4/ada4da32
-    cache: /srv/cache/qwen38-flash-next-r37
+    model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
+    cache: /srv/cache/qwen38-flash-next-qad-tp2-r37
     repository: /opt/sparkring
     deployment_root: /srv/sparkring-deployments
   - rank: 1
@@ -19,7 +19,7 @@ ranks:
     interface: eth0
     hcas: [rocep1s0f0, roceP2p1s0f0]
     gid: 3
-    model: /srv/models/Qwen3.8-Flash-Next-NVFP4/ada4da32
-    cache: /srv/cache/qwen38-flash-next-r37
+    model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
+    cache: /srv/cache/qwen38-flash-next-qad-tp2-r37
     repository: /opt/sparkring
     deployment_root: /srv/sparkring-deployments

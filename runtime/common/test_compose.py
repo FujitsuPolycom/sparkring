@@ -212,7 +212,7 @@ def test_resolved_semantic_drift_is_rejected(site, compose_cli, mutation):
         lambda s: s["ranks"][0].update(model="/models/../other"),
         lambda s: s["ranks"][0].update(cache="/srv/models"),
         lambda s: s["ranks"][0].update(
-            repository="/srv/cache/qwen38-flash-next-r37/repo"
+            repository=s["ranks"][0]["cache"] + "/repo"
         ),
         lambda s: s["ranks"][0].update(deployment_root="/"),
         lambda s: s["ranks"][0].update(hcas=["mlx5_0", "mlx5_0"]),

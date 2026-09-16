@@ -3,9 +3,9 @@
   "profiles": {
     "qwen38-flash-next-tp2": {
       "tokens": 2954103,
-      "source": "performance/records/qwen38-flash-next/r37-tp2.json",
-      "witness": "\"reported_kv_pool_tokens\": 2954103",
-      "conditions": "Reported startup allocator estimate for R37 TP2/DCP1 at 262144 context, 16 sequences, 8192 batched tokens and 24 GiB KV per rank. Bounded C16 and near-limit checks are recorded separately; not proof that sixteen full-context requests fit.",
+      "source": "performance/records/qwen38-flash-next/qad-tp2-startup-20260916.json",
+      "witness": "\"logical_kv_tokens\": 2954103",
+      "conditions": "Sizing reference from the separate QAD request-boundary TP2/DCP1 runtime at 262144 context, 16 sequences, 8192 batched tokens and 24 GiB KV per rank. Not qualification of the published aligned-cache or cache-disabled images, or proof that sixteen full-context requests fit.",
       "approximate": true
     },
     "deepseek-v41-flash-sglang-cycle": {

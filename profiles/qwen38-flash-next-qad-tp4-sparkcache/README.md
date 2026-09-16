@@ -38,8 +38,9 @@ The test restored 7,200 cached tokens from an identical 7,860-token request.
 One corrupted rank-zero object caused full recomputation with zero cached credit.
 These are correctness checks, not performance, media or full-context qualification.
 
-Cache entries are bound to the QAD checkpoint and TP degree, separately from
-the TP2/PTQ profile. Invalid restores recompute.
+Cache entries are bound to the QAD checkpoint and TP degree. TP2 and TP4 use
+separate cache roots and incompatible rank layouts even when their checkpoint
+revision matches. Invalid restores recompute.
 
 The API has no configured authentication; restrict it to trusted clients or
 an authenticated gateway. Use the coordinator's inspected-ID stop procedure;
