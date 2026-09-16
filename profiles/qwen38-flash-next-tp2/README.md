@@ -12,12 +12,6 @@ request-boundary checkpoint support and its measurements are a separate
 composition whose publication is pending; do not attribute those measurements
 to the image below. See the [boundary-checkpoint findings](../../performance/records/qwen38-flash-next/BOUNDARY-TP2.md).
 
-[QAD TP2 startup evidence](../../performance/records/qwen38-flash-next/qad-tp2-startup-20260916.json)
-covers verified weights, startup, SparkCache initialization and a text smoke check
-on that separate request-boundary runtime. The published images selected below
-have not been requalified with QAD. Prior non-QAD cache-restore, media and performance
-measurements do not establish QAD qualification.
-
 | Setting | Published SparkCache profile |
 |---|---|
 | Parallelism | TP2/DCP1; one DAC, both Socket Direct functions |

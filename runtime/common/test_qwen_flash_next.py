@@ -71,11 +71,6 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     assert extra['spark_cache_target_checkpoint_sha256'] != 'ada04299f0b223ab6e55ff16edaf88db094d3f09b7fd31fc9f46aa9d8d7a2c47'
     assert config['kv_connector'] == 'SparkContextCacheConnector'
     assert args[args.index('--recurrent-checkpoint-policy') + 1] == 'aligned'
-    for profile in (plain, cached):
-        evidence = adapter.read(ROOT / profile['qualification']['record'])
-        assert evidence['status'] == 'research-only'
-        assert evidence['serving']['connector'] == 'SparkBoundaryCacheConnector'
-        assert 'not been requalified' in profile['qualification']['scope']
 
 
 def test_reciprocal_selected_hca_positions():

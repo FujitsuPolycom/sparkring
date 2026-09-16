@@ -113,7 +113,7 @@
     "{\"video\":{\"num_frames\":16}}"
   ],
   "qualification": {
-    "scope": "Experimental QAD selection. TP2 startup and text smoke passed on the separately identified request-boundary runtime; the published aligned-cache and cache-disabled images have not been requalified with this checkpoint. Prior non-QAD performance, media and restore results do not transfer.",
-    "record": "performance/records/qwen38-flash-next/qad-tp2-startup-20260916.json"
+    "scope": "QAD checkpoint selection with unchanged TP2 serving settings. The linked runtime evidence records the original non-QAD checkpoint.",
+    "record": "performance/records/qwen38-flash-next/r37-tp2.json"
   }
 }

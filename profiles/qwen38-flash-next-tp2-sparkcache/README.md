@@ -12,5 +12,4 @@ with the original non-QAD checkpoint, not the QAD selection in the quickstart.
 The configuration owner is
 [sparkcache.json](../qwen38-flash-next-tp2/sparkcache.json).
 [Validation scope](../../performance/records/qwen38-flash-next/r37-sparkcache.json)
-remains specific to its recorded image and checkpoint. QAD startup evidence is
-scoped separately in the single quickstart; the public QAD selection is Experimental.
+remains specific to its recorded image and checkpoint.

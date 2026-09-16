@@ -2,8 +2,7 @@
 
 Status: **Development**. [Bounded TP2 checks](../../../performance/records/qwen38-flash-next/compose-tp2.json)
 cover coordinated startup/shutdown, text responses and SparkCache restore across
-a fresh deployment with the original non-QAD checkpoint. Generated examples
-select QAD; those historical checks do not qualify QAD serving or cache restore.
+a fresh deployment with the original non-QAD checkpoint. These examples select QAD.
 
 [Rank 0](compose.rank0.yaml) and [rank 1](compose.rank1.yaml) are generated from
 [config.json](../config.json) and the [public site example](site.example.yaml).
