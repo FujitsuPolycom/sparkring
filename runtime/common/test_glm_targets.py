@@ -96,6 +96,36 @@ def test_variant_preserves_default_and_isolates_cache_after_image_binding():
     assert glm_targets.readiness_timeout("nvidia-nvfp4") == 1500
 
 
+@pytest.mark.parametrize("schema", [None, "sparkring-r33-image-receipt/v1",
+    "sparkring-source-image-receipt/v1", "sparkring-r35-image-receipt/v1",
+    "sparkring-candidate-image-receipt/v1"])
+def test_spark_revision_and_cache_namespace_follow_image_contract(schema):
+    image = {"schema": schema} if schema else None
+    maintained = schema in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1")
+    selected = glm_targets.target_for_image(image=image)
+    expected = "ec0c3ce05787aa471121235af483b098f11d3570" if maintained else "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+    assert selected["revision"] == expected
+    identity = (hashlib.sha256(f"{selected['repository']}@{expected}".encode()).hexdigest()
+                if maintained else "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4")
+    assert selected["checkpoint_identity"] == identity
+    values = {"SPARKCACHE_CACHE_NAMESPACE": "image-cache"}
+    env = glm_targets.environment(glm_targets.DEFAULT, values, image)
+    assert env["SPARKCACHE_CACHE_NAMESPACE"] == "image-cache" + ("-" + expected[:12] if maintained else "")
+
+
+@pytest.mark.parametrize("file", ["config.json", "model.safetensors.index.json",
+                                  "chat_template.jinja", "generation_config.json"])
+def test_spark_download_rejects_stale_metadata_for_maintained_images(file):
+    files = json.loads(glm_targets.RECORD.read_bytes())["nvfp4-spark"]["metadata_sha256"]
+    image = {"schema": "sparkring-candidate-image-receipt/v1"}
+    glm_targets.verify_download(glm_targets.DEFAULT, files, image)
+    files[file] = "0" * 64
+    with pytest.raises(ValueError, match="pinned identity"):
+        glm_targets.verify_download(glm_targets.DEFAULT, files, image)
+    # Frozen recipe reproduction retains its recorded metadata contract.
+    glm_targets.verify_download(glm_targets.DEFAULT, files, {"schema": "sparkring-r33-image-receipt/v1"})
+
+
 def test_target_shard_manifest_is_revision_bound():
     record = json.loads(glm_targets.RECORD.read_bytes())["nvidia-nvfp4"]
     target = record["target"]
@@ -104,6 +134,21 @@ def test_target_shard_manifest_is_revision_bound():
     assert len(shards) == 33
     assert all(len(shard["sha256"]) == 64 and shard["size"] > 0 for shard in shards)
     assert all(len(value["sha256"]) == 64 for value in record["source_files"].values())
+
+
+@pytest.mark.parametrize("schema", ["sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"])
+def test_emitted_launcher_updates_identity_and_rejects_source_drift(schema):
+    path = glm_targets.ROOT / "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh"
+    source = path.read_text()
+    recorded = glm_targets.target_for_image()["checkpoint_identity"]
+    selected = glm_targets.target()["checkpoint_identity"]
+    rendered = glm_targets.adapt_launcher(source, {"schema": schema})
+    assert "TARGET_CHECKPOINT_FINGERPRINT=" + selected in rendered
+    assert recorded not in rendered
+    assert path.read_text() == source
+    assert glm_targets.adapt_launcher(source, {"schema": "sparkring-r33-image-receipt/v1"}) == source
+    with pytest.raises(ValueError, match="fingerprint changed"):
+        glm_targets.adapt_launcher(rendered, {"schema": schema})
 
 
 @pytest.mark.parametrize("corruption", ["shard", "missing", "metadata", "none"])

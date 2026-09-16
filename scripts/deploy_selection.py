@@ -98,8 +98,9 @@ def selection(spec, profile):
     selected = _image_selection(spec, profile)
     variant = spec.get("site", {}).get("target_model_variant", glm_targets.DEFAULT)
     glm_targets.require_image(variant, selected["receipt"])
-    if variant != glm_targets.DEFAULT:
-        selected["pins"] = dict(selected["pins"], target=glm_targets.target(variant))
+    if variant != glm_targets.DEFAULT or selected["receipt"]["schema"] in (
+            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+        selected["pins"] = dict(selected["pins"], target=glm_targets.target_for_image(variant, selected["receipt"]))
     return selected
 
 

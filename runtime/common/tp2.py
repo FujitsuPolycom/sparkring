@@ -84,7 +84,7 @@ def _remove_option(arguments, flag):
 
 def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
     verifier = _r33_verifier()
-    from runtime.common import candidate, r35
+    from runtime.common import candidate, glm_targets, r35
     is_candidate = receipt.get("schema") == candidate.SCHEMA
     adapter = candidate if is_candidate else r35
     is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA)
@@ -97,6 +97,7 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
     if plan["image"] != expected_image:
         raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
     contract = adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
+    target = glm_targets.target_for_image(image=receipt)
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
     selected = contract["profiles"][profile_name]
     environment = dict(plan["environment"])
@@ -133,6 +134,8 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         arguments = _replace_option(arguments, "--limit-mm-per-prompt", json.dumps(serving["limit_mm_per_prompt"]))
         native = contract["sparkcache_native"]
         namespace = f"sparkring-{release}-{receipt['image_id'][7:19]}-tp2-cache"
+        if is_r35:
+            namespace += "-" + target["revision"][:12]
         environment.update(SPARKCACHE_CACHE_NAMESPACE=namespace,
                            SPARKCACHE_PLACEMENT_LIBRARY_PATH=native["placement_path"],
                            SPARKCACHE_PLACEMENT_LIBRARY_SHA256=native["placement_sha256"],
@@ -140,7 +143,7 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
                            SPARKCACHE_SNAPSHOT_LIBRARY_SHA256=native["snapshot_sha256"],
                            SPARKCACHE_VLLM_ROOT=native["vllm_root"],
                            SPARKCACHE_SOURCE_LEASE_CONTRACT=native["lease_contract"])
-        fingerprint = "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4"
+        fingerprint = target["checkpoint_identity"]
         extra = dict(
             spark_cache_root="/cache/jit/sparkcache-context/" + namespace,
             spark_cache_model_profile="glm53-flash-hybrid", spark_cache_publication_schema="tail-cow-v2",
@@ -205,6 +208,7 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         runtime_kind=release+"-candidate",
         sparkcache_enabled=sparkcache,
         kv_cache_memory_bytes=kv_memory_bytes,
+        model=target,
     )
     if is_r35:
         plan['healthcheck'] = healthcheck

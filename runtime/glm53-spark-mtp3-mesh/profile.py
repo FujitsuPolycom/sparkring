@@ -583,8 +583,11 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                                  "--source-port", "65535", "--replacement-ethertype", "0x88b5", "--attach", "--run-seconds", "7200"]}
                                  for m in plan.markers if m.source_rank == rank]}
         ranks.append(rank_plan)
-    if candidate_composition:
-        (output / "launch-rank.sh").write_text(candidate.adapt_launcher((BASE / "launch-rank.sh").read_text(), image_record["installed"]), newline="\n")
+    if image_record and image_record.get("schema") in (r35.SCHEMA, candidate.SCHEMA):
+        launcher = (BASE / "launch-rank.sh").read_text()
+        if candidate_composition:
+            launcher = candidate.adapt_launcher(launcher, image_record["installed"])
+        (output / "launch-rank.sh").write_text(glm_targets.adapt_launcher(launcher, image_record), newline="\n")
     else:
         shutil.copyfile(BASE / "launch-rank.sh", output / "launch-rank.sh")
     rendered_site = dict(site, topology_file="fabric.json")

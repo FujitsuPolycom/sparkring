@@ -1,5 +1,20 @@
 {
   "schema": "sparkring-glm-target-variants/v1",
+  "nvfp4-spark": {
+    "target": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+      "revision": "ec0c3ce05787aa471121235af483b098f11d3570",
+      "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+      "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
+      "checkpoint_identity": "c132eef529c66a95a4910a8dca42902a2bcf96e093822a2abaf51735fed140f4"
+    },
+    "metadata_sha256": {
+      "config.json": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+      "model.safetensors.index.json": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
+      "chat_template.jinja": "0c4099f3382d6c92700dfb99725025360966fd73032f0ecf32377c0d9e6309c5",
+      "generation_config.json": "230c30609ecbbb9e6583bedde8e7bdda0c6eb8fe5fad0eaeb3d1b293d751cb4f"
+    }
+  },
   "nvidia-nvfp4": {
     "target": {
       "repository": "nvidia/GLM-5.3-Flash-NVFP4",

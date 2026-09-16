@@ -133,7 +133,7 @@ def host_receipt(inputs, monkeypatch):
 @pytest.mark.parametrize('rank', [0, 1])
 @pytest.mark.parametrize('cache', [False, True])
 def test_explicit_candidate_tp2_uses_own_entrypoint_and_lease(inputs, monkeypatch, tmp_path, rank, cache):
-    from runtime.common import candidate, tp2
+    from runtime.common import candidate, glm_targets, tp2
     document = host_receipt(inputs, monkeypatch)
     model, cache_dir = tmp_path / 'model', tmp_path / 'cache'
     model.mkdir()
@@ -144,6 +144,7 @@ def test_explicit_candidate_tp2_uses_own_entrypoint_and_lease(inputs, monkeypatc
     plan = tp2.render(rank, '192.0.2.10', model, cache_dir, env, document['image_id'], document, r33_sparkcache=cache)
     assert plan['container_args'][:2] == [candidate.ENTRYPOINT, 'serve']
     assert plan['runtime_kind'] == 'fixture-candidate'
+    assert plan['model'] == glm_targets.target()
     assert '--gdn-decode-kernel' not in plan['container_args']
     assert ('--headless' in plan['container_args']) == bool(rank)
     assert ('--health-cmd' in plan['command']) == (rank == 0)
@@ -151,6 +152,11 @@ def test_explicit_candidate_tp2_uses_own_entrypoint_and_lease(inputs, monkeypatc
     if cache:
         assert plan['environment']['SPARKCACHE_SOURCE_LEASE_CONTRACT'] == '/opt/sparkring/contracts/fixture.json'
         assert 'fixture' in plan['environment']['SPARKCACHE_CACHE_NAMESPACE']
+        assert plan['environment']['SPARKCACHE_CACHE_NAMESPACE'].endswith('-' + plan['model']['revision'][:12])
+        args = plan['container_args']
+        extra = json.loads(args[args.index('--kv-transfer-config') + 1])['kv_connector_extra_config']
+        assert extra['spark_cache_target_checkpoint_sha256'] == plan['model']['checkpoint_identity']
+        assert extra['spark_cache_draft_checkpoint_sha256'] == plan['model']['checkpoint_identity']
         assert plan['qualification']['gpu_qualified'] is False
 
 

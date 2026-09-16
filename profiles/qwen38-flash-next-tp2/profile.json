@@ -2,7 +2,7 @@
   "schema": "sparkring-deployment/v1",
   "id": "qwen38-flash-next-tp2",
   "title": "Qwen3.8-Flash-Next NVFP4 on two Sparks",
-  "recommendation": "alternative",
+  "recommendation": "recommended",
   "status": "research-only",
   "configuration": {
     "format": "serving-profile",

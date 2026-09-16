@@ -164,6 +164,10 @@ def test_legacy_admission_retains_exact_cache_argument_bytes_and_rejects_lost_st
         typed_json = typed.command[typed.command.index("--kv-transfer-config") + 1]
         assert json.loads(old_json) == json.loads(typed_json)
         assert old_json != typed_json
+        from runtime.common import glm_targets
+        extra = json.loads(old_json)["kv_connector_extra_config"]
+        assert extra["spark_cache_target_checkpoint_sha256"] == glm_targets.target()["checkpoint_identity"]
+        assert extra["spark_cache_draft_checkpoint_sha256"] == glm_targets.target()["checkpoint_identity"]
 
     calls = []
     def run(argv, **kwargs):

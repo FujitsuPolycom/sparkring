@@ -1,6 +1,6 @@
 # GLM-5.3-Flash on two Sparks
 
-Run the [NVFP4-Spark checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)
+Run the [NVFP4-Spark checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/ec0c3ce05787aa471121235af483b098f11d3570)
 on two GB10 Sparks with MTP3 and DCP1. Context defaults to 1M tokens.
 SparkCache is optional. These commands select the published **R37** image with
 SparkCache enabled and 7.5 GiB KV per rank. Status: **Experimental**. R37 TP2
@@ -30,7 +30,7 @@ On both Sparks:
 ```bash
 IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270'
 RELEASE=lil-r37-glm-spark
-MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4
+MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/ec0c3ce
 CACHE_DIR=/srv/cache/glm53-r37-tp2
 
 docker pull --platform linux/arm64 "$IMAGE_REF"
@@ -47,7 +47,7 @@ python3 runtime/common/candidate.py --composition "$RELEASE" \
 SPARKRING_RECEIPT="$RECORD/image.json"
 
 hf download local-inference-lab/GLM-5.3-Flash-NVFP4-Spark \
-  --revision df116c4fb16b1d37ae43d2cfd624de26ffbc832e \
+  --revision ec0c3ce05787aa471121235af483b098f11d3570 \
   --local-dir "$MODEL_DIR"
 mkdir -p "$CACHE_DIR"
 ```
@@ -55,6 +55,10 @@ mkdir -p "$CACHE_DIR"
 Use directories your account can write, or create them with appropriate
 ownership first. A verified existing model directory can be reused. The
 launcher checks for `config.json`; it does not authenticate model shards.
+The [model pin](../glm53-target-variants.json) includes the tool-result template
+and generation defaults. R35/R37 cache identities include this revision.
+Recorded benchmarks retain their tested revision; they do not validate the
+updated template. Check text and tool-call responses before relying on it.
 Keep the image receipt above distinct from `publication.json`, which is not
 accepted as a launch receipt.
 
@@ -172,12 +176,16 @@ stability or a completed 1M request.
 
 During a stopped-serving maintenance window, use these inputs instead of the
 image-recording commands above. Use a separate cache directory and retain the
-same model, memory guard and private rank inputs:
+memory guard and private rank inputs. R33 reproduction uses its recorded model
+revision and a separate model directory:
 
 ```bash
 SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
 SPARKRING_RECEIPT="$PWD/runtime/sparkring/jovian-r33/public-image-receipt.json"
 RELEASE=r33
+MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4
+hf download local-inference-lab/GLM-5.3-Flash-NVFP4-Spark \
+  --revision df116c4fb16b1d37ae43d2cfd624de26ffbc832e --local-dir "$MODEL_DIR"
 CACHE_DIR=/srv/cache/glm53-r33-tp2
 docker pull "$SPARKRING_IMAGE"
 python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
