@@ -24,6 +24,18 @@ def target_for_image(variant=DEFAULT, image=None):
     return target(variant)
 
 
+def adapt_launcher(text, image):
+    """Bind an emitted compatibility launcher without editing its frozen source."""
+    recorded = target_for_image()["checkpoint_identity"]
+    selected = target_for_image(image=image)["checkpoint_identity"]
+    if selected == recorded:
+        return text
+    assignment = "TARGET_CHECKPOINT_FINGERPRINT=" + recorded
+    if text.count(assignment) != 1:
+        raise ValueError("Source launcher fingerprint changed; model adaptation requires review")
+    return text.replace(assignment, "TARGET_CHECKPOINT_FINGERPRINT=" + selected)
+
+
 def require_image(variant, image):
     """Admit host configuration only; image admission does not qualify serving."""
     target(variant)

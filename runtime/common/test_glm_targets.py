@@ -136,6 +136,21 @@ def test_target_shard_manifest_is_revision_bound():
     assert all(len(value["sha256"]) == 64 for value in record["source_files"].values())
 
 
+@pytest.mark.parametrize("schema", ["sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"])
+def test_emitted_launcher_updates_identity_and_rejects_source_drift(schema):
+    path = glm_targets.ROOT / "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh"
+    source = path.read_text()
+    recorded = glm_targets.target_for_image()["checkpoint_identity"]
+    selected = glm_targets.target()["checkpoint_identity"]
+    rendered = glm_targets.adapt_launcher(source, {"schema": schema})
+    assert "TARGET_CHECKPOINT_FINGERPRINT=" + selected in rendered
+    assert recorded not in rendered
+    assert path.read_text() == source
+    assert glm_targets.adapt_launcher(source, {"schema": "sparkring-r33-image-receipt/v1"}) == source
+    with pytest.raises(ValueError, match="fingerprint changed"):
+        glm_targets.adapt_launcher(rendered, {"schema": schema})
+
+
 @pytest.mark.parametrize("corruption", ["shard", "missing", "metadata", "none"])
 def test_nvidia_download_rejects_changed_or_incomplete_model(corruption):
     record = json.loads(glm_targets.RECORD.read_bytes())["nvidia-nvfp4"]
