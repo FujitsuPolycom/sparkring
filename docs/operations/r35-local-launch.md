@@ -139,7 +139,9 @@ alter a published profile.
 
 ## Bounded GLM conversations
 
-GLM checkpoint revision `df116c4fb16b1d37ae43d2cfd624de26ffbc832e` defaults
+The host launcher selects GLM checkpoint revision
+`ec0c3ce05787aa471121235af483b098f11d3570` from the
+[model pins](../../profiles/glm53-target-variants.json). Its template defaults
 to Max reasoning effort when effort is omitted. Its template retains earlier
 reasoning by default (`clear_thinking=false`) and ignores `enable_thinking`.
 An experimental client configuration for bounded conversations is explicit

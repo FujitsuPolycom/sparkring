@@ -46,8 +46,10 @@ the [publication receipt](../../runtime/images/compositions/lil-r37-shared/publi
 binds it to the immutable digest. The coordinator verifies the complete image
 contents before serving. Local image builds remain a separate developer workflow.
 
-Use an existing verified checkpoint or download the pinned revision into a
-dedicated directory on each host:
+Use an existing verified checkpoint or download the pinned
+[`qad-step-4000` revision](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)
+into a dedicated directory on each host. The repository's `main` branch contains
+the separate PTQ checkpoint; it does not substitute for this QAD revision.
 
 ```bash
 hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 \

@@ -303,7 +303,11 @@ def test_registered_candidate_selection_keeps_verified_receipt_and_explicit_prof
     assert chosen['local'] is local and chosen['registry_pull_each_host'] is (not local)
     assert chosen['image_reference'] == raw['image_reference']
     assert spec['site']['runtime_profile'] == runtime_profile
-    assert chosen['pins']['target'] == contract['target']
+    from runtime.common import glm_targets
+    target = glm_targets.target()
+    assert chosen['pins']['target'] == target
+    assert spec['site']['model_roots'] == ['/srv/sparkring/candidate-ring/models/' + target['revision']] * 4
+    assert chosen['pins']['canonical_bundle_manifest_sha256'] == contract['bundle_manifest_sha256']
     assert chosen['marker_download_url'] == contract['marker_download_url']
     staged = tmp_path/'selected-image-receipt.json'
     staged.write_text(json.dumps(raw))
@@ -354,7 +358,7 @@ def test_nvidia_selection_reaches_download_and_model_roots(tmp_path, explicit):
     default = create_spec(inventory(), "nvidia-mesh", "/srv/sparkring/nvidia",
                           image_receipt=receipt_path if explicit else None)
     baseline = selection(default, PROFILE)
-    assert baseline["pins"]["target"] == glm_targets.target()
+    assert baseline["pins"]["target"] == glm_targets.target_for_image(image=baseline["receipt"])
     assert result["config_image_id"] == baseline["config_image_id"]
 
 

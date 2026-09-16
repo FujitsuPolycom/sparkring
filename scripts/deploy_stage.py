@@ -493,7 +493,7 @@ print(json.dumps(rows))
     ):
         raise ValueError("Target metadata mismatch")
     from runtime.common import glm_targets
-    glm_targets.verify_download(spec["site"].get("target_model_variant", glm_targets.DEFAULT), model_files)
+    glm_targets.verify_download(spec["site"].get("target_model_variant", glm_targets.DEFAULT), model_files, public.get("receipt"))
     for h in hosts[1:]:
         run.remote(h["host"], ["mkdir", "-p", model])
         present = json.loads(

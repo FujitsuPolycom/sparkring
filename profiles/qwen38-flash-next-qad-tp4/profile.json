@@ -2,7 +2,7 @@
   "schema": "sparkring-deployment/v1",
   "id": "qwen38-flash-next-qad-tp4",
   "title": "Qwen3.8-Flash-Next NVFP4 QAD on four Sparks",
-  "recommendation": "alternative",
+  "recommendation": "recommended",
   "status": "implemented",
   "configuration": {
     "format": "serving-profile",

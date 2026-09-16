@@ -11,11 +11,17 @@ VARIANTS = (DEFAULT, "nvidia-nvfp4")
 
 
 def target(variant=DEFAULT):
-    if variant == DEFAULT:
-        return json.loads((ROOT / "runtime/glm53-spark-mtp3-mesh/pins.json").read_text())["target"]
-    if variant != "nvidia-nvfp4":
+    if variant not in VARIANTS:
         raise ValueError("target_model_variant must be nvfp4-spark or nvidia-nvfp4")
-    return json.loads(RECORD.read_text())["nvidia-nvfp4"]["target"]
+    return json.loads(RECORD.read_text())[variant]["target"]
+
+
+def target_for_image(variant=DEFAULT, image=None):
+    """Select maintained host model pins while preserving frozen image recipes."""
+    if variant == DEFAULT and (image or {}).get("schema") not in (
+            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+        return json.loads((ROOT / "runtime/glm53-spark-mtp3-mesh/pins.json").read_text())["target"]
+    return target(variant)
 
 
 def require_image(variant, image):
@@ -38,10 +44,15 @@ def readiness_timeout(variant=DEFAULT):
     return 1500 if variant == "nvidia-nvfp4" else 900
 
 
-def verify_download(variant, files):
-    """Check every checkpoint and metadata file before distributing the seed."""
+def verify_download(variant, files, image=None):
+    """Verify pinned metadata and the variant's shard manifest when available."""
     selected = target(variant)
     if variant == DEFAULT:
+        if target_for_image(variant, image)["revision"] == selected["revision"]:
+            expected = json.loads(RECORD.read_text())[variant]["metadata_sha256"]
+            for name, identity in expected.items():
+                if files.get(name) != identity:
+                    raise ValueError("Spark model metadata differs from its pinned identity: " + name)
         return
     expected = json.loads(RECORD.read_text())[variant]["source_files"]
     if set(files) != set(expected):
@@ -57,13 +68,15 @@ def verify_download(variant, files):
 
 
 def environment(variant, values, image):
-    """Return an isolated variant mapping; the Spark default remains identical."""
+    """Bind model-specific loader settings and persistent cache namespaces."""
     require_image(variant, image)
     result = dict(values)
     if variant != DEFAULT:
         result.update(TARGET_MODEL_VARIANT=variant, LOAD_FORMAT="safetensors",
                       DFLASH_WARMUP_TIMEOUT_SECONDS="1500")
         result["SPARKCACHE_CACHE_NAMESPACE"] += "-" + variant
+    elif target_for_image(variant, image)["revision"] == target(variant)["revision"]:
+        result["SPARKCACHE_CACHE_NAMESPACE"] += "-" + target(variant)["revision"][:12]
     return result
 
 

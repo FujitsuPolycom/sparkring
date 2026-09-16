@@ -104,8 +104,18 @@ def split_oracle(argv, image_ref):
     return options, env, labels, mounts, argv[index + 1:]
 
 
-def semantic_command(argv):
-    return [json.loads(value) if value.startswith("{") else value for value in argv]
+def semantic_command(argv, *, retained_model=False):
+    result = [json.loads(value) if value.startswith("{") else value for value in argv]
+    for value in result:
+        if isinstance(value, dict) and value.get("kv_connector") == "SparkContextCacheConnector":
+            from runtime.common import glm_targets
+            extra = value["kv_connector_extra_config"]
+            for key in ("spark_cache_target_checkpoint_sha256", "spark_cache_draft_checkpoint_sha256"):
+                expected = (glm_targets.target_for_image() if retained_model else glm_targets.target())["checkpoint_identity"]
+                assert extra[key] == expected
+                # Compare the remaining behavior with the frozen shell oracle.
+                del extra[key]
+    return result
 
 
 def test_all_profiles_and_ranks_match_legacy_semantics(rendered, tmp_path):
@@ -116,7 +126,7 @@ def test_all_profiles_and_ranks_match_legacy_semantics(rendered, tmp_path):
             spec = glm_tp4.build_spec(values, image_record=image, contract=contract)
             args = oracle(output / "legacy-oracle.sh", values, rank, tmp_path)
             options, env, labels, mounts, command = split_oracle(args, values["IMAGE_REF"])
-            assert semantic_command(spec.command) == semantic_command(command), (profile, rank)
+            assert semantic_command(spec.command) == semantic_command(command, retained_model=True), (profile, rank)
             assert spec.environment == env, (profile, rank)
             assert spec.labels == labels
             assert [f"{bind.source}:{bind.target}" + (":ro" if bind.read_only else "") for bind in spec.mounts] == mounts
@@ -155,7 +165,7 @@ def test_normal_tuning_and_text_mode_preserve_shell_semantics(rendered, tmp_path
     _, env, labels, _, command = split_oracle(oracle(output / "legacy-oracle.sh", values, 0, tmp_path), values["IMAGE_REF"])
     assert spec.environment == env
     assert spec.labels == labels
-    assert semantic_command(spec.command) == semantic_command(command)
+    assert semantic_command(spec.command) == semantic_command(command, retained_model=True)
 
 
 @pytest.mark.parametrize("key,value", [

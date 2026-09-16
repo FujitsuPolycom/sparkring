@@ -318,13 +318,14 @@ def _json(value):
     return json.dumps(value, separators=(",", ":"))
 
 
-def _cache_config(values):
+def _cache_config(values, image_record):
+    target = glm_targets.target_for_image(values["TARGET_MODEL_VARIANT"], image_record)
     extra = {
         "spark_cache_root": "/cache/jit/sparkcache-context/" + values["SPARKCACHE_CACHE_NAMESPACE"],
         "spark_cache_model_profile": "glm53-flash-hybrid",
         "spark_cache_publication_schema": values["SPARKCACHE_PUBLICATION_SCHEMA"],
-        "spark_cache_target_checkpoint_sha256": glm_targets.target(values["TARGET_MODEL_VARIANT"])["checkpoint_identity"],
-        "spark_cache_draft_checkpoint_sha256": glm_targets.target(values["TARGET_MODEL_VARIANT"])["checkpoint_identity"],
+        "spark_cache_target_checkpoint_sha256": target["checkpoint_identity"],
+        "spark_cache_draft_checkpoint_sha256": target["checkpoint_identity"],
         "spark_cache_draft_policy": "separate", "spark_cache_access_mode": values["SPARKCACHE_ACCESS_MODE"],
         "spark_cache_scheduler_probe": "none", "spark_cache_streaming_snapshots": False,
         "spark_cache_cuda_restore": True, "spark_cache_clear_once": values["SPARKCACHE_CLEAR_ONCE"],
@@ -461,7 +462,7 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
         if values[key] == "1":
             command.append(option)
     if values["SPARKCACHE_ENABLED"] == "1":
-        command.extend(("--kv-transfer-config", _json(_cache_config(values))))
+        command.extend(("--kv-transfer-config", _json(_cache_config(values, image_record))))
     if rank:
         command.append("--headless")
     labels = {"org.sparkring.runtime": f"glm53-flash-spark-jovian-{release}-{profile}", "org.sparkring.rank": str(rank),
