@@ -20,12 +20,12 @@ def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
     assert '| On | Experimental |' in cache_row
 
 
-def test_qad_quant_link_identifies_its_checkpoint_separately_from_tp2():
+def test_qad_quant_link_identifies_the_pinned_checkpoint_for_tp2_and_tp4():
     summary = profile_table().split('## Configuration variants', 1)[0]
     ring, pair = summary.split('### Two Sparks', 1)
     assert '[NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)' in ring
-    assert '[NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)' in pair
-    assert 'NVFP4 QAD' not in pair
+    assert '[NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)' in pair
+    assert '[NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)' not in pair
     qad = next(line for line in ring.splitlines() if '| [Qwen3.8-Flash-Next](' in line.replace('**', ''))
     assert '[Optional](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md)' in qad
     assert resolve('qwen38-flash-next-qad-tp4')['serving']['sparkcache'] is False

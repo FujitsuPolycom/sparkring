@@ -2,13 +2,13 @@
   "schema": "sparkring-serving-profile/v1",
   "status": "research-only",
   "model": {
-    "revision": "ada4da32a583a78aa47299f45a70603c950490b8",
+    "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
     "config_sha256": "2d655dfa625c3c018f9685031367bc83f8532d3faf3333d7c838b2bdc13b8a7e",
-    "index_sha256": "435eef76fc10fc6e932a208a1f85a86bc9c7ffc389b27b34ba83bb6a5d0371e9",
+    "index_sha256": "c528e5628a0f448edc52023933c207a8dbded850afdd960d893c9171a7665dde",
     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
   },
   "topology": "direct-pair-2",
-  "served_model_name": "Qwen3.8-Flash-Next-NVFP4",
+  "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD",
   "environment": {
     "VLLM_USE_V2_MODEL_RUNNER": "1",
     "VLLM_SSM_CONV_STATE_LAYOUT": "DS",
@@ -113,7 +113,7 @@
     "{\"video\":{\"num_frames\":16}}"
   ],
   "qualification": {
-    "scope": "Bounded native-262K text checks and synthetic C1 image/video checks. No general video, concurrent-media or long-duration stability qualification. SparkCache is disabled.",
+    "scope": "QAD checkpoint selection with unchanged TP2 serving settings. The linked runtime evidence records the original non-QAD checkpoint.",
     "record": "performance/records/qwen38-flash-next/r37-tp2.json"
   }
 }

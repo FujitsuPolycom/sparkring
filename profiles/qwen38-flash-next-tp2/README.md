@@ -1,8 +1,9 @@
-# Qwen3.8-Flash-Next NVFP4 on two Sparks
+# Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
 Status: **Experimental**. The commands select the published SparkCache profile;
 the cache-disabled alternative shares the same procedure. This uses the
-original NVFP4 checkpoint, not QAD. Complete the
+QAD checkpoint pinned to revision `629bc3218833a38b475b719f34aa571666f4a03e`
+in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`. Complete the
 [host prerequisites](../../docs/operations/prerequisites.md) and prepare one
 direct cable on cage p0 before starting; the launcher does not configure networking.
 
@@ -32,8 +33,8 @@ PROFILE=profiles/qwen38-flash-next-tp2/sparkcache.json
 CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
 BASE_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270
 IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523
-MODEL_DIR=/srv/models/Qwen3.8-Flash-Next-NVFP4/ada4da32
-CACHE_DIR=/srv/cache/qwen38-flash-next-r37
+MODEL_DIR=/srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
+CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-r37
 
 # The parent supports full-inventory verification and native-cache rollback.
 docker pull --platform linux/arm64 "$BASE_IMAGE"
@@ -48,12 +49,18 @@ Reuse an existing verified model copy. Otherwise download the approximately
 ```bash
 # Skip this download when MODEL_DIR already contains the verified checkpoint.
 hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 \
-  --revision ada4da32a583a78aa47299f45a70603c950490b8 --local-dir "$MODEL_DIR"
+  --revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir "$MODEL_DIR"
 (cd "$MODEL_DIR" && sha256sum --check "$REPO/profiles/qwen38-flash-next-tp2/SHA256SUMS")
 ```
 
 Directory names do not prove model identity. Model mounts are read-only; do not
 put the writable cache inside the model directory.
+
+When switching from plain NVFP4, recreate the serving containers with this
+profile; restarting an existing container does not change its model mount.
+Preserve the original containers and weights for rollback. QAD uses a distinct
+served name, checkpoint identity and persistent-cache namespace. Do not carry
+the plain-NVFP4 checkpoint digests into the QAD cache configuration.
 
 ## Plan and create
 
@@ -101,11 +108,11 @@ curl --fail "http://${MASTER_ADDR}:8000/health"
 curl --fail "http://${MASTER_ADDR}:8000/v1/models"
 curl --fail "http://${MASTER_ADDR}:8000/v1/chat/completions" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen3.8-Flash-Next-NVFP4","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
+  -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
 ```
 
 The API is `http://RANK0_ADDRESS:8000/v1`, with model name
-`Qwen3.8-Flash-Next-NVFP4`. It has no configured authentication: restrict access
+`Qwen3.8-Flash-Next-NVFP4-QAD`. It has no configured authentication: restrict access
 to trusted clients or an authenticated gateway. The short completion checks basic
 generation, not cache persistence or capacity.
 
@@ -137,7 +144,8 @@ IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
 
 Configuration is owned by [sparkcache.json](sparkcache.json) and
 [config.json](config.json), not this table. Capacity overrides are intentionally
-not accepted. The [SparkCache record](../../performance/records/qwen38-flash-next/r37-sparkcache.json)
+not accepted. The following records concern the original non-QAD checkpoint,
+not this QAD selection. The [SparkCache record](../../performance/records/qwen38-flash-next/r37-sparkcache.json)
 covers bounded publication, process-restart text/media restore, changed-input
 misses and corruption recovery. The [native-cache record](../../performance/records/qwen38-flash-next/r37-tp2.json)
 covers native prefix reuse, C16 short answers, near-limit text and synthetic media.

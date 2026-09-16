@@ -169,7 +169,10 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert extra["spark_cache_model_profile"] == "qwen38-flash-next-hybrid"
     tp2 = adapter.read(adapter.CONFIG_ROOT / "sparkcache.json")["vllm_args"]
     tp2_extra = json.loads(tp2[tp2.index("--kv-transfer-config") + 1])["kv_connector_extra_config"]
-    assert expected_identity != tp2_extra["spark_cache_target_checkpoint_sha256"]
+    assert expected_identity == tp2_extra["spark_cache_target_checkpoint_sha256"]
+    assert extra["spark_cache_root"] != tp2_extra["spark_cache_root"]
+    assert args[args.index("--tensor-parallel-size") + 1] == "4"
+    assert tp2[tp2.index("--tensor-parallel-size") + 1] == "2"
     assert extra["spark_cache_root"] != tp2_extra["spark_cache_root"]
     for flag in ("--kv-transfer-config", "--recurrent-checkpoint-policy"):
         index = args.index(flag)

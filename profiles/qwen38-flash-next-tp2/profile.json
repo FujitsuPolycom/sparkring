@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-deployment/v1",
   "id": "qwen38-flash-next-tp2",
-  "title": "Qwen3.8-Flash-Next NVFP4 on two Sparks",
+  "title": "Qwen3.8-Flash-Next NVFP4 QAD on two Sparks",
   "recommendation": "recommended",
   "status": "research-only",
   "configuration": {
@@ -10,7 +10,7 @@
   },
   "release": "runtime/releases/qwen38-flash-next-r37/release.json",
   "guide": "profiles/qwen38-flash-next-tp2/README.md",
-  "evidence_scope": "Bounded native-262K text checks and synthetic C1 image/video checks. No general video, concurrent-media or long-duration stability qualification. SparkCache is disabled.",
+  "evidence_scope": "QAD checkpoint selection with unchanged TP2 serving settings. The linked runtime evidence records the original non-QAD checkpoint.",
   "overrides": [],
   "launcher": {
     "kind": "python",

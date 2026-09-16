@@ -5,7 +5,7 @@
       "tokens": 2954103,
       "source": "performance/records/qwen38-flash-next/r37-tp2.json",
       "witness": "\"reported_kv_pool_tokens\": 2954103",
-      "conditions": "Reported startup allocator estimate for R37 TP2/DCP1 at 262144 context, 16 sequences, 8192 batched tokens and 24 GiB KV per rank. Bounded C16 and near-limit checks are recorded separately; not proof that sixteen full-context requests fit.",
+      "conditions": "Sizing reference from the original NVFP4 TP2/DCP1 profile at 262144 context, 16 sequences, 8192 batched tokens and 24 GiB KV per rank; QAD retains these settings. Not proof that sixteen full-context requests fit.",
       "approximate": true
     },
     "deepseek-v41-flash-sglang-cycle": {

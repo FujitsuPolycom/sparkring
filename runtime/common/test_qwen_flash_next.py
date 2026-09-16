@@ -27,7 +27,7 @@ def plan(rank=0):
 def test_qwen_model_and_native_prefix_only():
     command = plan()
     assert (
-        command[command.index("--served-model-name") + 1] == "Qwen3.8-Flash-Next-NVFP4"
+        command[command.index("--served-model-name") + 1] == "Qwen3.8-Flash-Next-NVFP4-QAD"
     )
     assert "--kv-transfer-config" not in command
     assert "--device-ids" not in command
@@ -48,6 +48,29 @@ def test_direct_loader_avoids_fastsafetensors_staging():
     assert command[command.index("--load-format") + 1] == "b12x"
     assert "VLLM_PLUGINS=b12x_loader" in command
     assert not any(value.startswith("SAFETENSORS_FAST_GPU=") for value in command)
+
+
+def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
+    root = PROFILE.parent
+    plain = adapter.read(root / 'config.json')
+    cached = adapter.read(root / 'sparkcache.json')
+    tp4 = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/config.json')
+    assert plain['model'] == cached['model'] == tp4['model']
+    assert plain['model']['revision'] == '629bc3218833a38b475b719f34aa571666f4a03e'
+    assert plain['served_model_name'] == cached['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD'
+    manifest = (root / 'SHA256SUMS').read_text().splitlines()
+    hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in manifest}
+    assert hashes['config.json'] == plain['model']['config_sha256']
+    assert hashes['model.safetensors.index.json'] == plain['model']['index_sha256']
+    assert (root / 'SHA256SUMS').read_bytes() == (ROOT / 'profiles/qwen38-flash-next-qad-tp4/SHA256SUMS').read_bytes()
+    args = cached['vllm_args']
+    config = json.loads(args[args.index('--kv-transfer-config') + 1])
+    extra = config['kv_connector_extra_config']
+    assert extra['spark_cache_root'] == '/cache/persistent/qwen38-flash-next-qad-tp2-r37-cache64'
+    assert extra['spark_cache_target_checkpoint_sha256'] == extra['spark_cache_draft_checkpoint_sha256'] == '036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba'
+    assert extra['spark_cache_target_checkpoint_sha256'] != 'ada04299f0b223ab6e55ff16edaf88db094d3f09b7fd31fc9f46aa9d8d7a2c47'
+    assert config['kv_connector'] == 'SparkContextCacheConnector'
+    assert args[args.index('--recurrent-checkpoint-policy') + 1] == 'aligned'
 
 
 def test_reciprocal_selected_hca_positions():
@@ -120,7 +143,7 @@ def test_explicit_entrypoint_and_compile_identity():
     command = plan()
     assert command[command.index('--entrypoint') + 1] == '/opt/venv/bin/python'
     assert adapter.candidate.ENTRYPOINT in command
-    namespace = f"qwen-flash-next-{publication()['image_id'][7:19]}-ada4da32a583"
+    namespace = f"qwen-flash-next-{publication()['image_id'][7:19]}-629bc3218833"
     assert f'VLLM_CACHE_ROOT=/cache/{namespace}/vllm' in command
     assert 'VLLM_SPARK_TP4_MODE=' in command
     assert 'VLLM_SPARK_TP4_VOCAB_MODE=' in command
