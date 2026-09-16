@@ -1,7 +1,7 @@
 """Copy an exact local image through a fabric-tunneled loopback registry.
 
 Run on rank 0. Registry traffic never uses an external publication destination.
-The receiving registry runs as the receiving SSH user and owns only a marked,
+The registry runs as the selected rank's SSH user and owns only a marked,
 run-specific temporary directory. Model-serving containers are not modified.
 """
 
@@ -36,7 +36,7 @@ from runtime.images.upgrades.maintenance_build import bound_document  # noqa: E4
 def validate(config):
     require(
         config.get("schema") == "sparkring-image-transfer/v1"
-        and set(config)
+        and set(config) - {"registry_rank"}
         == {
             "schema",
             "hosts",
@@ -50,6 +50,11 @@ def validate(config):
             "transfer_seconds",
         },
         "Unknown image-transfer configuration",
+    )
+    require(
+        type(config.get("registry_rank", 1)) is int
+        and config.get("registry_rank", 1) in (0, 1),
+        "Registry storage must select rank 0 or rank 1",
     )
     require(
         len(config["hosts"]) == len(config["hostnames"]) == 2,
@@ -175,7 +180,7 @@ print(json.dumps({'path':str(path),'user':str(os.getuid())+':'+str(os.getgid())}
 """
     return json.loads(
         pair.call(
-            1,
+            config.get("registry_rank", 1),
             [
                 "python3",
                 "-c",
@@ -197,8 +202,9 @@ def transfer(pair, config, image_id, run_id, output):
         and getpass.getuser() == config["hosts"][0].split("@")[0],
         "Image transfer must run as rank 0's leased SSH user",
     )
+    registry_rank = config.get("registry_rank", 1)
     image_info(pair, 0, image_id)
-    image_info(pair, 1, config["registry_image_id"])
+    image_info(pair, registry_rank, config["registry_image_id"])
     # The approved management identity and fabric endpoint must reach the same host.
     fabric = pair.call(0, [*ssh_prefix(config), config["fabric_peer"], "hostname"])
     require(
@@ -215,6 +221,7 @@ def transfer(pair, config, image_id, run_id, output):
         "image_id": image_id,
         "rank1_verified": False,
         "registry": tag,
+        "registry_rank": registry_rank,
         "external_publication": False,
         "failure": None,
         "cleanup_errors": [],
@@ -224,8 +231,8 @@ def transfer(pair, config, image_id, run_id, output):
     try:
         directory = temporary_directory(pair, config, name)
         write_json(output / "transfer.json", result, replace=True)
-        pair.call(1, registry_command(config, name=name, **directory))
-        container = inspect(pair, 1, name)
+        pair.call(registry_rank, registry_command(config, name=name, **directory))
+        container = inspect(pair, registry_rank, name)
         require(
             container["Image"] == config["registry_image_id"]
             and container["Config"]["Labels"].get("sparkring.upgrade.transfer") == name,
@@ -233,7 +240,7 @@ def transfer(pair, config, image_id, run_id, output):
         )
         result["registry_container_id"] = container["Id"]
         write_json(output / "transfer.json", result, replace=True)
-        pair.call(1, docker("start", container["Id"]))
+        pair.call(registry_rank, docker("start", container["Id"]))
         port = config["port"]
         tunnel = subprocess.Popen(
             [
@@ -241,7 +248,7 @@ def transfer(pair, config, image_id, run_id, output):
                 "-o",
                 "ExitOnForwardFailure=yes",
                 "-N",
-                "-L",
+                "-L" if registry_rank == 1 else "-R",
                 f"127.0.0.1:{port}:127.0.0.1:{port}",
                 config["fabric_peer"],
             ],
@@ -250,6 +257,22 @@ def transfer(pair, config, image_id, run_id, output):
         )
         for _ in range(20):
             require(tunnel.poll() is None, "Fabric registry tunnel exited")
+            if registry_rank == 0:
+                # Probe through the reverse tunnel on the receiving host, not
+                # directly against the sender's already-listening registry.
+                probe = """import sys,urllib.request
+try:
+ with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+  'http://127.0.0.1:'+sys.argv[1]+'/v2/',timeout=2) as response:
+  print(response.status)
+except OSError:
+ pass
+"""
+                ready = pair.call(1, ["python3", "-c", probe, str(port)], seconds=5)
+                if ready.strip() == b"200":
+                    break
+                time.sleep(0.5)
+                continue
             try:
                 with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
                     f"http://127.0.0.1:{port}/v2/", timeout=2
@@ -281,19 +304,21 @@ def transfer(pair, config, image_id, run_id, output):
                     tunnel.kill()
                     tunnel.wait(timeout=10)
             if container is not None:
-                actual = inspect(pair, 1, container["Id"])
+                actual = inspect(pair, registry_rank, container["Id"])
                 require(
                     actual["Image"] == config["registry_image_id"]
                     and actual["Config"]["Labels"].get("sparkring.upgrade.transfer")
                     == name,
                     "Refusing cleanup of a registry with different ownership",
                 )
-                pair.call(1, docker("stop", "--time", "30", container["Id"]))
-                pair.call(1, docker("rm", container["Id"]))
+                pair.call(
+                    registry_rank, docker("stop", "--time", "30", container["Id"])
+                )
+                pair.call(registry_rank, docker("rm", container["Id"]))
             if directory is not None:
                 # A failed create can leave a container even when inspect failed.
                 ids = pair.call(
-                    1,
+                    registry_rank,
                     docker(
                         "ps",
                         "--all",

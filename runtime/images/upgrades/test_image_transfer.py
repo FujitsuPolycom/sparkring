@@ -43,6 +43,9 @@ def config():
         {"fabric_peer": "other@fabric1"},
         {"fabric_peer": "-o ProxyCommand=bad"},
         {"host_key_alias": "host -p 4"},
+        {"registry_rank": 2},
+        {"registry_rank": True},
+        {"registry_rank": "0"},
     ],
 )
 def test_unbounded_or_ambiguous_transfer_configuration_is_rejected(config, change):
@@ -76,6 +79,7 @@ def scenario(config, monkeypatch, tmp_path):
         "create_unknown": False,
         "fabric_host": "host1",
         "container": False,
+        "probe_ready": True,
     }
     name = "sr-upgrade-transfer-trial-test"
 
@@ -87,6 +91,9 @@ def scenario(config, monkeypatch, tmp_path):
             actions.append((rank, list(args)))
             if args[0] == "ssh":
                 return state["fabric_host"].encode()
+            if args[0] == "python3":
+                assert rank == 1 and config.get("registry_rank") == 0
+                return b"200\n" if state["probe_ready"] else b""
             assert args[:3] == module.docker()
             args = args[3:]
             if args[:2] == ["image", "inspect"]:
@@ -134,6 +141,7 @@ def scenario(config, monkeypatch, tmp_path):
             assert "127.0.0.1:19555:127.0.0.1:19555" in argv
             assert "HostKeyAlias=host1" in argv
             assert "StrictHostKeyChecking=yes" in argv
+            assert ("-R" if config.get("registry_rank", 1) == 0 else "-L") in argv
             actions.append("start-tunnel")
 
         def poll(self):
@@ -183,6 +191,35 @@ def test_success_proves_exact_image_and_removes_only_its_registry(scenario):
             assert action[1][-1].startswith("127.0.0.1:19555/")
 
 
+def test_sender_registry_uses_reverse_tunnel_and_sender_owned_storage(config, scenario):
+    config["registry_rank"] = 0
+    run, _, actions, _ = scenario
+    result = run()
+    assert result["registry_rank"] == 0 and result["rank1_verified"]
+    for action in actions:
+        if isinstance(action, tuple) and action[1][:3] == module.docker():
+            operation = action[1][3]
+            if operation in ("create", "start", "stop", "rm", "inspect", "push"):
+                assert action[0] == 0
+            if operation == "pull":
+                assert action[0] == 1
+    assert "remove-directory" in actions
+
+
+def test_sender_registry_requires_receiving_tunnel_readiness(
+    config, scenario, monkeypatch
+):
+    config["registry_rank"] = 0
+    run, state, actions, root = scenario
+    state["probe_ready"] = False
+    monkeypatch.setattr(module.time, "sleep", lambda _: None)
+    with pytest.raises(Refused, match="startup deadline"):
+        run()
+    assert not any(isinstance(a, tuple) and a[1][3:4] == ["push"] for a in actions)
+    assert "remove-directory" in actions
+    assert not json.loads((root / "out/transfer.json").read_text())["rank1_verified"]
+
+
 @pytest.mark.parametrize("field", ["bad_hash", "fail_push"])
 def test_transfer_failure_cleans_owned_resources_without_qualifying(scenario, field):
     run, state, actions, root = scenario
@@ -217,10 +254,13 @@ def test_fabric_endpoint_must_be_the_approved_receiving_host(scenario):
 
 
 @pytest.mark.parametrize("wrong_marker", [False, True])
-def test_staging_filesystem_cleanup_requires_the_exact_owner(tmp_path, wrong_marker):
+@pytest.mark.parametrize("registry_rank", [0, 1])
+def test_staging_filesystem_cleanup_requires_the_exact_owner(
+    tmp_path, wrong_marker, registry_rank
+):
     class LocalScript:
         def call(self, rank, argv):
-            assert rank == 1 and argv[:2] == ["python3", "-c"]
+            assert rank == registry_rank and argv[:2] == ["python3", "-c"]
             # Exercise the Linux helper's filesystem operations on CPU-only hosts.
             compatibility = "import os; os.getuid=lambda:1000; os.getgid=lambda:1000;\n"
             return subprocess.check_output(
@@ -228,7 +268,7 @@ def test_staging_filesystem_cleanup_requires_the_exact_owner(tmp_path, wrong_mar
                 stderr=subprocess.PIPE,
             )
 
-    config = {"temporary_parent": str(tmp_path)}
+    config = {"temporary_parent": str(tmp_path), "registry_rank": registry_rank}
     pair = LocalScript()
     created = module.temporary_directory(pair, config, "owned-test")
     assert created["user"] == "1000:1000"

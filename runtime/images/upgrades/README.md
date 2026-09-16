@@ -297,7 +297,12 @@ the selected registry image and fabric route on the receiving host before
 qualifying a site.
 
 [image_transfer.py](image_transfer.py) runs on rank 0 and transfers an exact local
-ARM64 image through a temporary registry bound to rank 1's loopback interface.
+ARM64 image through a temporary loopback registry, hosted on rank 1 by default.
+Set `registry_rank: 0` to stage compressed layers on the sending host instead;
+omitting the field retains rank-1 storage. Sender-side staging uses a reverse
+SSH tunnel and verifies readiness from rank 1. It avoids storing a complete
+compressed copy on rank 1 while that host extracts its missing image layers.
+The registry image and dedicated staging parent must exist on the selected rank.
 An SSH local-forward tunnel carries image layers over the configured fabric
 endpoint. The management and fabric identities must resolve to the same approved
 rank-1 hostname. SSH host-key verification is mandatory. Docker calls select the
@@ -307,8 +312,8 @@ There is no external registry destination or public-image promotion.
 The policy-bound `sparkring-image-transfer/v1` configuration declares `hosts`,
 `hostnames`, a leased `gate_id`, `fabric_peer`, `host_key_alias`, the preinstalled
 `registry_image_id`, a dedicated existing `temporary_parent`, a loopback `port`
-and bounded `transfer_seconds`. The registry runs without GPU access, as the
-receiving SSH user's UID/GID, with a read-only root filesystem and only its
+and bounded `transfer_seconds`. The registry runs without GPU access, as its
+hosting rank's SSH user's UID/GID, with a read-only root filesystem and only its
 run-specific storage bind writable. Model weights and serving caches are not
 mounted. Cleanup verifies container labels and the directory's ownership marker;
 ambiguous ownership leaves the resource intact for inspection.
