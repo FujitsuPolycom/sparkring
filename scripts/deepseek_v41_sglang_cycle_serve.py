@@ -29,11 +29,12 @@ DEFAULTS = {
     "API_PORT": "8000", "MASTER_PORT": "20000", "CONTEXT_LENGTH": str(SERVING["context_length"]),
     "CHUNKED_PREFILL_SIZE": str(SERVING["chunked_prefill_size"]),
     "MAX_RUNNING_REQUESTS": str(SERVING["max_running_requests"]),
+    "MIN_FREE_SLOTS_DELAY": str(SERVING["min_free_slots_delay"]),
     "MAX_TOTAL_TOKENS": str(SERVING["max_total_tokens"]),
     "MEM_FRACTION_STATIC": str(SERVING["mem_fraction_static"]),
     "DSPARK_SPS_TABLE": "/state/dspark_sps.json", "DSPARK_STS_TABLE": "/state/dspark_sts.json",
     # Image defaults unless a site sets them (runtime/deepseek-v41-sglang/README.md#serving-controls).
-    "MOE_RUNNER_BACKEND": "flashinfer_mxfp4", "MIN_FREE_SLOTS_DELAY": "0",
+    "MOE_RUNNER_BACKEND": "flashinfer_mxfp4",
     "DSV41_MAX_NEW_TOKENS": "32768", "DSV41_LOOP_ABORT": "1", "NVFP4_DRAFT_OVERLAY": "0",
 }
 MOE_RUNNER_BACKENDS = {"flashinfer_mxfp4", "flashinfer_cutlass"}

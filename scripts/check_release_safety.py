@@ -21,7 +21,15 @@ EXCLUDES = {"scripts/check_release_safety.py"}
 def findings(text):
     for number, line in enumerate(text.splitlines(), 1):
         for name, pattern in RULES.items():
-            if re.search(pattern, line, re.I):
+            matches = list(re.finditer(pattern, line, re.I))
+            if name == "credential-assignment":
+                # Token-score JSON may contain "Bearer": -12.345678901234.
+                # Only unquoted negative fractional JSON numbers are exempt;
+                # credential strings and integer-shaped values remain scanned.
+                matches = [match for match in matches if not re.fullmatch(
+                    r'[^:=]+:\s*-\d+\.\d+(?:[eE][+-]?\d+)?\s*', match.group()
+                ) or not re.match(r'\s*[,}]', line[match.end():])]
+            if matches:
                 yield number, name
 
 

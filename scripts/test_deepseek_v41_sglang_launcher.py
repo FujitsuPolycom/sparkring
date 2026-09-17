@@ -34,9 +34,27 @@ def test_default_plan_keeps_keys_in_file(tmp_path):
     assert "CONTEXT_LENGTH=262144" in cmd
     assert "CHUNKED_PREFILL_SIZE=4096" in cmd
     assert "MAX_RUNNING_REQUESTS=8" in cmd
+    extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay 1")
+    assert extra.count("--min-free-slots-delay") == 1
+    assert int(cfg["MIN_FREE_SLOTS_DELAY"]) == launch.SERVING["min_free_slots_delay"] == 1
     assert any(launch.PINS["nccl_target"] + ":ro" in arg for arg in cmd)
     assert cmd[-2:] == ["/operator/entrypoint.py", "run"]
     assert cmd[-3] == cfg["IMAGE_ID"]
+
+
+@pytest.mark.parametrize("value", ["2", "8", "64"])
+def test_explicit_admission_threshold(tmp_path, value):
+    cfg = launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY=value))
+    extra = next(arg for arg in launch.command(cfg) if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay " + value)
+    assert extra.count("--min-free-slots-delay") == 1
+
+
+@pytest.mark.parametrize("value", ["-1", "65", "1.5", "auto", "1 --disable-radix-cache"])
+def test_invalid_admission_threshold(tmp_path, value):
+    with pytest.raises(ValueError, match="MIN_FREE_SLOTS_DELAY"):
+        launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY=value))
 
 
 @pytest.mark.parametrize("values", [
@@ -270,14 +288,20 @@ def test_library_drift_rejected(tmp_path, monkeypatch):
         launch.verify_host(cfg)
 
 
-def test_serving_controls_default_to_image_behaviour(tmp_path):
+def test_serving_controls_keep_image_defaults_except_single_slot_admission(tmp_path):
     cmd = launch.command(launch.read_config(environment(tmp_path)))
     assert "MOE_RUNNER_BACKEND=flashinfer_mxfp4" in cmd
     assert "DSV41_MAX_NEW_TOKENS=32768" in cmd
     assert "DSV41_LOOP_ABORT=1" in cmd
     extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
-    assert "--min-free-slots-delay" not in extra
+    assert extra.endswith("--min-free-slots-delay 1")
     assert not any(launch.PINS["nvfp4_draft_path"] in arg for arg in cmd)
+
+
+def test_explicit_zero_uses_automatic_image_admission(tmp_path):
+    cfg = launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY="0"))
+    extra = next(arg for arg in launch.command(cfg) if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert "--min-free-slots-delay" not in extra
 
 
 def test_serving_controls_render_when_set(tmp_path):

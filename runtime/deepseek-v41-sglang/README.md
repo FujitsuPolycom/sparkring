@@ -124,14 +124,14 @@ transfer automatically to this implementation.
 
 ## Serving controls
 
-Five optional environment settings pass through to the image; omitted, each keeps the
-image's own default so the recipe's measured behaviour is unchanged. Measurements for every
-one are in the [2026-09-17 record](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917.md).
+The environment settings below select serving controls. Admission defaults to
+one free slot; the other settings retain the image defaults. Contributor measurements
+are in the [2026-09-17 record](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917.md).
 
 | Setting | Default | Effect |
 |---|---|---|
 | `MOE_RUNNER_BACKEND` | `flashinfer_mxfp4` | MoE runner for the routed experts. `flashinfer_cutlass` is required for the NVFP4 checkpoint below: `ModelOptNvFp4FusedMoEMethod` only slices the per-expert `input_scale` to the EP-local experts on the CUTLASS/TRT-LLM branch, and the MXFP4 runner fails at weight post-processing with a 384-vs-96 shape error |
-| `MIN_FREE_SLOTS_DELAY` | `0` (SGLang default) | With `MAX_RUNNING_REQUESTS` at 8 or more, SGLang classes DSpark as DFlash-family and holds new prefills until `min(4, max(2, (n+5)//6))` slots are free — two at eight requests — so steady load sustains about seven of eight and one stream can wait ~17 s for its first token. `1` disables the delayer: on the recorded cycle, eight-stream decode rose from 86 to 106 tok/s and the worst eight-stream first-token wait fell from 17 s to 1.1 s |
+| `MIN_FREE_SLOTS_DELAY` | `1` (single-slot admission) | Disables admission batching so one free slot can accept a prefill. `0` omits the flag and restores SGLang's automatic policy, which waits for two free slots at eight DFlash-family requests. Larger values request an explicit threshold. The contributor measured eight-stream decode at 86 → 106 tok/s and worst first-token wait at 17 → 1.1 s with single-slot admission; see the linked record for scope |
 | `DSV41_MAX_NEW_TOKENS` | `32768` (image default) | Fills an omitted `max_tokens` and clamps larger values. The image default was sized for short trials; the recorded site uses 131072 because thinking-on audit traces exceed 32768. `0` restores the engine's fill-the-remaining-context behaviour, which let one request run to 714K tokens upstream |
 | `DSV41_LOOP_ABORT` | `1` (image default) | Finishes a request whose output cycles (four copies of a ≥32-token n-gram, 64 identical tokens, or eight identical lines) with `finish_reason=stop`, `matched=repetition`. `--watchdog-timeout` never fires on a live stream |
 | `NVFP4_DRAFT_OVERLAY` | `0` | Mounts the prepared overlay described below. Requires `--prepare` with the same value |
