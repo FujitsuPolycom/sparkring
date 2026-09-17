@@ -1,7 +1,9 @@
 # Chat Completions tool-result contract
 
 Status: implemented; CPU source replay covers all three admitted serving
-modules. Serving qualification is required for each image before adoption.
+modules. The [serving evidence](serving-evidence.json) qualifies the empty-result
+regression on the local Qwen TP4 R37 image with the optional wrapper. Other
+images and model parsers require their own serving qualification.
 
 This optional API policy addresses [issue #217](https://github.com/FujitsuPolycom/sparkring/issues/217):
 named or required tool requests can finish with an empty, malformed, or
@@ -90,3 +92,10 @@ model emits a complete valid call or fails earlier, inspect the recorded body
 and retain the exact source replay as the deterministic contract regression.
 These requests do not qualify model quality, all tool schemas, or transport
 performance.
+
+The recorded Qwen test reproduced HTTP 200 with empty calls in all four
+one-token baseline requests. The wrapper returned two HTTP 500 full-response
+errors and two explicit SSE errors under HTTP 200. All four positive tool
+requests and an ordinary arithmetic request passed. Existing model, image,
+transport and cache settings were retained; this result does not qualify a
+different image or external-cache restoration.

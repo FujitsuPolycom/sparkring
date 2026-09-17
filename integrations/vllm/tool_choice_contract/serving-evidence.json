@@ -1,0 +1,44 @@
+{
+  "schema": "sparkring-tool-contract-serving-evidence/v1",
+  "status": "qualified",
+  "scope": "Optional API wrapper; bounded Qwen TP4 named/required empty-result regression. Not a published image release.",
+  "date_utc": "2026-09-17",
+  "source_commit": "7325492b7adf0c177be7efbd742d0da7eba8b80c",
+  "image_id": "sha256:5bd9d05327d4c3bf2c205b2b946e6fc2954ad079637245b6eace0aa846662b59",
+  "serving_sha256": "9982953285e9df469032a82fffa4095d0e9d86278bede6e2b91d03d02373d182",
+  "mounted_wrapper_sha256": {
+    "contract.py": "4bd3c41e03d629416ff4ecdf076da712aed7be1dcf9505e63e896f00b3284b3a",
+    "serve.py": "c8b39938f5c10966d13f8e6506b0b17ed66044b28a890a6dac33b7d8f018607b"
+  },
+  "conditions": {
+    "model": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "model_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "speculative_method": "mtp",
+    "speculative_tokens": 3,
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_gib_per_rank": 40,
+    "kv_cache_dtype": "fp8",
+    "tool_parser": "qwen3_xml",
+    "sparkcache": true,
+    "request_concurrency": 1
+  },
+  "results": {
+    "baseline_positive_tool_requests_passed": 4,
+    "baseline_one_token_requests_http_200_empty_calls": 4,
+    "wrapper_positive_tool_requests_passed": 4,
+    "wrapper_one_token_full_requests_http_500_contract_error": 2,
+    "wrapper_one_token_stream_requests_http_200_sse_contract_error_and_done": 2,
+    "ordinary_chat_answer": "42",
+    "image_inventories_verified": 4
+  },
+  "limitations": [
+    "Malformed and wrong-name parser outputs are covered by source fixtures, not injected into the live model.",
+    "DeepSeek-specific live parser behavior is unqualified by this Qwen result.",
+    "This test does not validate external-cache restoration, performance, broad model quality or JSON Schema compliance.",
+    "Streaming errors follow HTTP 200 headers; clients must process SSE error events."
+  ]
+}
