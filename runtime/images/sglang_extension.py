@@ -89,7 +89,8 @@ def prepare(mia_source, nccl, output):
     changes = adapt_mia(mia, manifest)
     shutil.copy2(nccl, output / 'libnccl.so.2')
     shutil.copytree(RUNTIME / 'patches', output / 'patches')
-    shutil.copytree(PACKAGE, output / 'runtime')
+    # A build result is evidence about an image, never an input to its successor.
+    shutil.copytree(PACKAGE, output / 'runtime', ignore=shutil.ignore_patterns('local-build.json'))
     for name in ('entrypoint.py', 'patch-multikey.py'):
         shutil.copy2(RUNTIME / name, output / 'runtime' / name)
     (output / 'Dockerfile').write_bytes((PACKAGE / 'Dockerfile').read_bytes().replace(b'\r\n', b'\n'))

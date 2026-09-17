@@ -95,6 +95,13 @@ def test_archive_reads_committed_sources_and_ignores_dirty_untracked_files(fixtu
     assert b"VALUE = 'committed'" in (fixture.output / "mia/boot.py").read_bytes()
 
 
+def test_build_result_is_not_an_input_to_the_packaged_runtime(fixture):
+    put(fixture.package, "local-build.json", b'{"image_id":"prior-result"}\n')
+    receipt = extension.prepare(fixture.source, fixture.nccl, fixture.output)
+    assert not (fixture.output / "runtime/local-build.json").exists()
+    assert "runtime/local-build.json" not in receipt["inputs"]
+
+
 def test_wrong_adapter_head_rejected_before_context_creation(fixture, monkeypatch):
     manifest = copy.deepcopy(fixture.manifest)
     manifest["adapter"]["commit"] = "f" * 40
