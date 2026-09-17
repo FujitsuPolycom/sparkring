@@ -125,7 +125,11 @@ Both DeepSeek templates default to `NCCL_IB_GID_AUTO=1`. Each launcher checks
 the active HCA/port members selected by `NCCL_IB_HCA` against the local sysfs
 GID table. Every selected member must expose a RoCE v2 entry for its own IPv4
 address. The launcher then removes `NCCL_IB_GID_INDEX` from the container so
-NCCL selects an index independently for each HCA. Set `NCCL_IB_GID_AUTO=0`
+NCCL selects an index independently for each HCA. Automatic mode rejects
+conflicting address-family/RoCE-version settings and validates any
+`NCCL_IB_ADDR_RANGE` IPv4 CIDR against every selected member. See the
+[GID policy and limitations](../../docs/operations/deepseek-0731.md#1-prepare-the-ranks).
+Set `NCCL_IB_GID_AUTO=0`
 and a decimal `NCCL_IB_GID_INDEX` only for an intentional pinned override.
 
 `deepseek-v4-flash-0731.env.example` is the corresponding host launch contract

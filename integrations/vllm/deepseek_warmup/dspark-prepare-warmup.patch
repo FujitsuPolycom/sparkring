@@ -1,0 +1,189 @@
+--- a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
+@@ -258,0 +259,28 @@
++        if self._speculator_name == "DSpark":
++            # Tiles and the padded-context scalar's Triton specialization both
++            # contribute to the preparation key. Adjacent boundary lengths cover
++            # scalar alignment without assuming a shared draft anchor convention.
++            target_query_lens = {
++                length for length in target_query_lens if length <= self.max_num_tokens
++            }
++            for draft_query_len in draft_query_lens:
++                for exponent in range(9):
++                    tile = 1 << exponent
++                    length = max(1, tile // 2 + 1 - draft_query_len)
++                    boundary_lengths = {length, length + 1}
++                    for alignment in (1, 2, 4, 8, 16):
++                        aligned_length = ((length + alignment - 1) // alignment) * alignment
++                        aligned_requests = 16 // min(16, aligned_length & -aligned_length)
++                        if (
++                            aligned_requests <= self.max_num_reqs
++                            and aligned_requests * aligned_length <= self.max_num_tokens
++                            and min(256, 1 << (aligned_length + draft_query_len - 1).bit_length()) == tile
++                        ):
++                            boundary_lengths.add(aligned_length)
++                            break
++                    for candidate_length in boundary_lengths:
++                        if (
++                            candidate_length <= self.max_num_tokens
++                            and min(256, 1 << (candidate_length + draft_query_len - 1).bit_length()) == tile
++                        ):
++                            target_query_lens.add(candidate_length)
+@@ -267,21 +295,25 @@
+-            num_tokens = num_reqs * target_query_len
+-            positions = torch.arange(
+-                num_tokens,
+-                dtype=torch.int64,
+-                device=self.device,
+-            )
+-            query_start_loc = torch.arange(
+-                0,
+-                num_tokens + 1,
+-                target_query_len,
+-                dtype=torch.int32,
+-                device=self.device,
+-            )
+-            idx_mapping = torch.arange(
+-                num_reqs,
+-                dtype=torch.int32,
+-                device=self.device,
+-            )
+-            input_batch = _DFlashInputBatch(
+-                num_reqs,
+-                np.full(
++            request_counts = {num_reqs}
++            if self._speculator_name == "DSpark":
++                # Match scalar==1, ordinary integers, and divisibility-by-16
++                # specializations that occur in real single/batched requests.
++                request_counts.add(1)
++                if target_query_len == 1 and num_reqs >= 2:
++                    request_counts.add(2)
++                aligned_count = 16 // min(16, target_query_len & -target_query_len)
++                if aligned_count <= num_reqs:
++                    request_counts.add(aligned_count)
++            for num_reqs in sorted(request_counts):
++                num_tokens = num_reqs * target_query_len
++                positions = torch.arange(
++                    num_tokens,
++                    dtype=torch.int64,
++                    device=self.device,
++                )
++                query_start_loc = torch.arange(
++                    0,
++                    num_tokens + 1,
++                    target_query_len,
++                    dtype=torch.int32,
++                    device=self.device,
++                )
++                idx_mapping = torch.arange(
+@@ -289,19 +321,2 @@
+-                    target_query_len,
+-                    dtype=np.int32,
+-                ),
+-                positions,
+-                query_start_loc,
+-                idx_mapping,
+-            )
+-            num_sampled = torch.zeros(num_reqs, dtype=torch.int32, device=self.device)
+-            num_rejected = torch.zeros_like(num_sampled)
+-            last_sampled = torch.zeros(
+-                self.max_num_reqs,
+-                dtype=torch.int32,
+-                device=self.device,
+-            )
+-            next_prefill_tokens = torch.zeros_like(last_sampled)
+-
+-            for draft_query_len in draft_query_lens:
+-                num_speculative_steps = self._speculative_steps_for_query_len(
+-                    draft_query_len
++                    dtype=torch.int32,
++                    device=self.device,
+@@ -309,24 +324,26 @@
+-                for i, gid in enumerate(self.draft_kv_cache_group_ids):
+-                    prepare_dflash_inputs(
+-                        self.input_buffers,
+-                        self.block_tables.slot_mappings[gid],
+-                        self.context_positions,
+-                        self._context_slot_mappings[i],
+-                        self.sample_indices,
+-                        self.sample_pos,
+-                        self.sample_idx_mapping,
+-                        input_batch,
+-                        num_sampled,
+-                        num_rejected,
+-                        last_sampled,
+-                        next_prefill_tokens,
+-                        self.block_tables.input_block_tables[gid],
+-                        self.block_tables.kernel_block_sizes[gid],
+-                        self.num_cached_tokens,
+-                        self.parallel_drafting_token_id,
+-                        draft_query_len,
+-                        num_speculative_steps,
+-                        self.max_num_reqs,
+-                        self.max_num_tokens,
+-                        self.max_model_len,
+-                        self.sample_from_anchor,
++                input_batch = _DFlashInputBatch(
++                    num_reqs,
++                    np.full(
++                        num_reqs,
++                        target_query_len,
++                        dtype=np.int32,
++                    ),
++                    positions,
++                    query_start_loc,
++                    idx_mapping,
++                )
++                num_sampled = torch.zeros(num_reqs, dtype=torch.int32, device=self.device)
++                num_rejected = torch.zeros_like(num_sampled)
++                # ReqStates keeps sampled IDs as int64 and prefill IDs as int32.
++                last_sampled = torch.zeros(
++                    self.max_num_reqs,
++                    dtype=torch.int64 if self._speculator_name == "DSpark" else torch.int32,
++                    device=self.device,
++                )
++                next_prefill_tokens = torch.zeros(
++                    self.max_num_reqs, dtype=torch.int32, device=self.device
++                )
++
++                for draft_query_len in draft_query_lens:
++                    num_speculative_steps = self._speculative_steps_for_query_len(
++                        draft_query_len
+@@ -333,0 +351,25 @@
++                    for i, gid in enumerate(self.draft_kv_cache_group_ids):
++                        prepare_dflash_inputs(
++                            self.input_buffers,
++                            self.block_tables.slot_mappings[gid],
++                            self.context_positions,
++                            self._context_slot_mappings[i],
++                            self.sample_indices,
++                            self.sample_pos,
++                            self.sample_idx_mapping,
++                            input_batch,
++                            num_sampled,
++                            num_rejected,
++                            last_sampled,
++                            next_prefill_tokens,
++                            self.block_tables.input_block_tables[gid],
++                            self.block_tables.kernel_block_sizes[gid],
++                            self.num_cached_tokens,
++                            self.parallel_drafting_token_id,
++                            draft_query_len,
++                            num_speculative_steps,
++                            self.max_num_reqs,
++                            self.max_num_tokens,
++                            self.max_model_len,
++                            self.sample_from_anchor,
++                        )
+--- a/vllm/v1/worker/gpu/warmup.py
++++ b/vllm/v1/worker/gpu/warmup.py
+@@ -356,0 +357,9 @@
++        elif (
++            model_runner.speculator is not None
++            and model_runner.speculative_config is not None
++            and model_runner.speculative_config.method == "dspark"
++        ):
++            # DSpark prepares draft inputs even when confidence-based pruning
++            # is disabled. Use the established scratch lane before readiness.
++            with use_workspace_lane(1):
++                model_runner.speculator.warmup_capacity_kernels()

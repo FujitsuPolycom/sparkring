@@ -75,6 +75,13 @@ SparkRing implementation.
 
 ## 3. vLLM (referenced, patched, and selected source included)
 
+`integrations/vllm/deepseek_warmup/fixtures/` contains compressed DFlash
+speculator, GPU warmup and request-state sources extracted from the DeepSeek image identified
+by the adjacent `source.json`. Their vLLM contributor headers and Apache-2.0
+license are retained. The adjacent patch changes DSpark startup preparation;
+the fixtures support offline branch and shape-planning tests. Their provenance
+is the exact image and file hashes, not a claim of an unmodified upstream tree.
+
 `runtime/glm53-spark-mtp3-mesh/compute/vllm-compute-files.tar.gz` includes
 24 vLLM Python files for GLM metadata reuse, dense-kernel integration,
 the NVFP4 proposal head, deferred-weight ownership, and independent draft
@@ -99,6 +106,12 @@ protocol files from Local Inference Lab revision
 `e2666d9a65f41fc376607531453cbd57c4c71016`, their source/hash manifest, and the
 upstream Apache-2.0 license. The files retain their contributor notices and
 serve as offline inputs for Responses API model and streaming-event tests.
+
+`integrations/vllm/ipc_wait/upstream/` contains compressed SHM broadcast source
+fixtures from that same revision and the identified ARM64 R37 image, with their
+original contributor headers. Its source manifest records each origin and hash;
+the Apache-2.0 license is included. These files support CPU IPC tests and are
+not runtime replacement modules.
 
 vLLM is licensed under the Apache License, Version 2.0, Copyright the vLLM team
 and contributors. Obtaining and running vLLM is subject to its own license and

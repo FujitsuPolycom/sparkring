@@ -25,7 +25,9 @@ EOF
         case "$octet" in
             ''|*[!0-9]*) return 1 ;;
         esac
-        [ "$((10#$octet))" -le 255 ] || return 1
+        [ "${#octet}" -le 3 ] && [ "$((10#$octet))" -le 255 ] || return 1
+        # NCCL uses inet_pton, which rejects ambiguous leading-zero octets.
+        [ "$octet" = 0 ] || [ "${octet#0}" = "$octet" ] || return 1
     done
     printf '%02x%02x:%02x%02x' \
         "$((10#$octet1))" "$((10#$octet2))" \
@@ -79,15 +81,22 @@ _sparkring_validate_selected_gids() {
         =*) exact=1; selector=${selector#=} ;;
     esac
 
+    # NCCL's atoi-based parser accepts malformed numeric fields and empty
+    # name lists can select every HCA. Refuse ambiguous operator input before
+    # matching; valid port/rail/plane fields retain NCCL's documented meaning.
+    local valid_token='^[a-zA-Z0-9_.-]+(:([+-]?[0-9]+)?){0,3}$'
+
     local -a raw_tokens=()
     IFS=, read -r -a raw_tokens <<< "$selector"
     for token in "${raw_tokens[@]}"; do
-        name=${token%%:*}
-        [ -n "$name" ] || continue
+        [ -n "$token" ] || continue
         if [ "$token_count" -ge 32 ]; then
             selector_truncated=1
             continue
         fi
+        [[ $token =~ $valid_token ]] \
+            || { printf '  GID policy: invalid NCCL_IB_HCA selector: %s\n' "$selector_text" >&2; return 1; }
+        name=${token%%:*}
         LC_ALL=C printf -v name '%.63s' "$name"
         port=-1
         if [[ $token == *:* ]]; then
@@ -101,6 +110,8 @@ _sparkring_validate_selected_gids() {
     done
     [ "$selector_truncated" = 0 ] || printf \
         '  GID policy note: NCCL uses only the first 32 non-empty NCCL_IB_HCA entries and ignores later entries.\n' >&2
+    [ "$token_count" -gt 0 ] \
+        || { printf '  GID policy: invalid NCCL_IB_HCA selector: %s\n' "$selector_text" >&2; return 1; }
 
     for dev_dir in "$sysfs_root"/*; do
         [ -d "$dev_dir/ports" ] || continue
@@ -186,6 +197,11 @@ _sparkring_validate_selected_gids() {
             else
                 continue
             fi
+            [ "$gid_suffix" != 0000:0000 ] || continue
+            if [ -n "${NCCL_IB_ADDR_RANGE-}" ]; then
+                [ "$((16#${gid_suffix/:/} & SPARKRING_NCCL_GID_RANGE_MASK))" \
+                    -eq "$SPARKRING_NCCL_GID_RANGE_NETWORK" ] || continue
+            fi
             usable=0
             [ -z "$preferred_suffix" ] || [ "$gid_suffix" != "$preferred_suffix" ] \
                 || usable=1
@@ -234,6 +250,28 @@ sparkring_validate_nccl_gid_policy() {
             ;;
         1)
             local configured_index=${NCCL_IB_GID_INDEX-}
+            case "${NCCL_IB_ADDR_FAMILY-AF_INET}" in
+                AF_INET) ;;
+                *) die 'automatic RoCEv2/IPv4 validation requires NCCL_IB_ADDR_FAMILY=AF_INET or unset' ;;
+            esac
+            case "${NCCL_IB_ROCE_VERSION_NUM-2}" in
+                2) ;;
+                *) die 'automatic RoCEv2/IPv4 validation requires NCCL_IB_ROCE_VERSION_NUM=2 or unset' ;;
+            esac
+            if [ -n "${NCCL_IB_ADDR_RANGE-}" ]; then
+                local range_address range_bits range_suffix
+                [[ $NCCL_IB_ADDR_RANGE =~ ^([^/]+)/([0-9]{1,2})$ ]] \
+                    || die 'NCCL_IB_ADDR_RANGE must be an IPv4 CIDR with prefix length 0..32'
+                range_address=${BASH_REMATCH[1]}
+                range_bits=$((10#${BASH_REMATCH[2]}))
+                [ "$range_bits" -le 32 ] \
+                    || die 'NCCL_IB_ADDR_RANGE must be an IPv4 CIDR with prefix length 0..32'
+                range_suffix=$(_sparkring_ipv4_gid_suffix "$range_address") \
+                    || die 'NCCL_IB_ADDR_RANGE must contain a valid IPv4 address'
+                SPARKRING_NCCL_GID_RANGE_MASK=$(((0xffffffff << (32 - range_bits)) & 0xffffffff))
+                SPARKRING_NCCL_GID_RANGE_NETWORK=$((16#${range_suffix/:/} & SPARKRING_NCCL_GID_RANGE_MASK))
+                printf '  GID policy: filtering candidates by NCCL_IB_ADDR_RANGE=%s\n' "$NCCL_IB_ADDR_RANGE"
+            fi
             _sparkring_validate_selected_gids \
                 || die 'automatic RoCEv2 GID validation failed'
             [ -z "$configured_index" ] || printf \
@@ -255,7 +293,8 @@ sparkring_cleanup_docker_gid_env() {
 
 sparkring_prepare_docker_gid_env() {
     # Docker's bare --env suppresses image defaults, but does not erase a key
-    # already appended from --env-file. Filter that key before CLI parsing.
+    # already appended from --env-file. Remove the pin and write the checked
+    # family/version/range explicitly, including an unrestricted empty range.
     # The caller must keep its shell alive until Docker has read this file.
     SPARKRING_DOCKER_ENV_FILE=$1
     SPARKRING_DOCKER_ENV_TEMP=
@@ -265,9 +304,12 @@ sparkring_prepare_docker_gid_env() {
     trap sparkring_cleanup_docker_gid_env EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    if ! awk '!/^[[:space:]]*NCCL_IB_GID_INDEX(=|[[:space:]]*$)/' \
+    if ! awk '!/^[[:space:]]*NCCL_IB_(GID_INDEX|ADDR_FAMILY|ROCE_VERSION_NUM|ADDR_RANGE)(=|[[:space:]]*$)/' \
         "$1" > "$SPARKRING_DOCKER_ENV_TEMP"; then
         die 'could not prepare Docker environment file'
     fi
+    printf 'NCCL_IB_ADDR_FAMILY=AF_INET\nNCCL_IB_ROCE_VERSION_NUM=2\nNCCL_IB_ADDR_RANGE=%s\n' \
+        "${NCCL_IB_ADDR_RANGE-}" >> "$SPARKRING_DOCKER_ENV_TEMP" \
+        || die 'could not write checked Docker GID policy'
     SPARKRING_DOCKER_ENV_FILE=$SPARKRING_DOCKER_ENV_TEMP
 }

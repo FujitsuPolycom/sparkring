@@ -2,10 +2,38 @@
 
 ## API reasoning and required-tool policies
 
-Status: implemented in the source overlay; rebuilt-image qualification is
-outstanding. The published native derivative at digest
+Status: **implemented** in the source overlay. The
+[TP2 API record](../../performance/records/deepseek-v4-flash/api-ipc-tp2-k5-20260917.md)
+qualifies bounded Responses and tool-result checks on the identified derivative
+images. The standalone `api-upgrade` target still needs its own serving receipt
+before profile promotion. The published native derivative at digest
 `sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd`
 does not contain these API changes.
+
+To add the API policies while preserving that published derivative's compiled
+native library, select the `api-upgrade` build target:
+
+```bash
+SPARKRING_DEEPSEEK_GB10_TARGET=api-upgrade \
+  bash runtime/deepseek0731-gb10/build-image.sh sparkring/deepseek-api:local
+```
+
+The target pins its parent by digest, checks the native library hash and runtime
+patch prerequisites, and applies the API changes to both installed and retained
+vLLM sources. Altered or partially upgraded inputs are rejected. The resulting
+image still needs bounded API qualification before adoption; building it does
+not update any profile's image reference. The default `native` target rebuilds
+the native extension from the source image identified by `base_image` in
+`runtime-contract.json`.
+
+The [TP2 API/IPC observation](../../performance/records/deepseek-v4-flash/api-ipc-tp2-k5-20260917.md)
+records bounded tool-contract and Responses `max` checks on local derivatives
+with five-token DSpark speculation. It preserves the native library identity
+and the limits of the short IPC comparison; it does not promote an image or
+change the shared-memory spin default.
+The [static depth comparison](../../performance/records/deepseek-v4-flash/dspark-depth-tp2-20260917.md)
+records bounded TP2 results for five and seven DSpark tokens. Five remains the
+default; unmatched warmup and absent cycle/quality/soak evidence prevent promotion.
 
 The Responses request and response models accept `reasoning.effort: "max"` in addition to
 `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. They retain the OpenAI
@@ -27,6 +55,11 @@ A streaming HTTP response may already have started before a missing tool
 call is detectable; streaming requires a separate event-level policy.
 Clients should bound retries and may increase the output-token budget when
 reasoning exhausts the available generation length.
+
+For declared-function and complete-JSON checks covering both response modes,
+use the optional [Chat Completions tool-result policy](../../integrations/vllm/tool_choice_contract/README.md).
+It runs at the API frontend without changing the published native image's
+sources and preserves the streaming HTTP/SSE distinction described above.
 
 The runtime patch and per-file hashes are bound by `runtime-contract.json`.
 The image label `local-inference.vllm.gb10-runtime-overlay` is
@@ -73,9 +106,10 @@ python runtime/deepseek0731-gb10/tool_choice_method_probe.py \
 The Responses probe substitutes rendering, sampling, and Harmony interfaces;
 their optional request fields are outside its coverage. These checks do not
 execute HTTP routing, a model, streaming generation, or the installed ARM64
-image. Rebuilt-image qualification requires the named/required
-tool-result and Responses-effort reproductions against an image carrying the
-combined overlay label above. The published native derivative remains unchanged.
+image. Each image proposed for profile promotion needs the named/required
+tool-result and Responses-effort checks against its exact installed sources.
+The TP2 API record supplies bounded evidence for its identified image pair;
+it does not qualify other builds. The published native derivative remains unchanged.
 
 ## Published native runtime
 
@@ -83,8 +117,11 @@ Status: **research-only**. The builder is implemented; its recorded diagnostic
 used four tensor-parallel ranks (TP4) and five speculative tokens.
 This directory derives one ARM64 image from the exact published runtime
 `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028`.
-It does not contain model weights. The published child image requires exact
-two-rank (TP2) and TP4 live replays with five speculative tokens.
+It does not contain model weights. The
+[cached published-image TP2 replay](../../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json)
+records startup and bounded serving with five speculative tokens. Fresh-pull
+verification, full weight checksums, 1M-token output quality and an exact TP4
+replay remain outside that evidence.
 
 Published image:
 

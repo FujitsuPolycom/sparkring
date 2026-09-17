@@ -218,7 +218,7 @@ def test_pair_env_explains_host_cache_mapping() -> None:
     assert "CACHE_HOST_PATH=/cache/test" in source
     assert "/cache/test/jit/triton" in source
     assert "/cache/test/jit/tilelang" in source
-    assert "/cache/test/jit/b12x-cute" in source
+    assert "/cache/test/jit/b12x/compile" in source
     assert "/cache/test/nccl-fr" in source
 
 
@@ -229,7 +229,7 @@ def test_deepseek_templates_persist_native_jit_and_flight_recorder_data(
     values = _env_values(template)
 
     assert values["TILELANG_CACHE_DIR"] == "/cache/jit/tilelang"
-    assert values["B12X_CUTE_COMPILE_CACHE_DIR"] == "/cache/jit/b12x-cute"
+    assert values["B12X_COMPILE_CACHE_DIR"] == "/cache/jit/b12x/compile"
     assert values["TORCH_NCCL_TRACE_BUFFER_SIZE"] == "2000"
     assert values["TORCH_NCCL_DUMP_ON_TIMEOUT"] == "1"
     assert values["TORCH_NCCL_ENABLE_MONITORING"] == "1"
@@ -263,7 +263,7 @@ case "$1 $2" in
   "run -d")
     cache={cache_for_bash}
     test -d "$cache/jit/tilelang" || exit 91
-    test -d "$cache/jit/b12x-cute" || exit 92
+    test -d "$cache/jit/b12x/compile" || exit 92
     test -d "$cache/nccl-fr" || exit 93
     printf '%s\n' fake-container-id
     ;;
@@ -285,7 +285,7 @@ esac
     assert result.returncode == 0, result.stderr
     assert "fake-container-id" in result.stdout
     assert (cache / "jit" / "tilelang").is_dir()
-    assert (cache / "jit" / "b12x-cute").is_dir()
+    assert (cache / "jit" / "b12x/compile").is_dir()
     assert (cache / "nccl-fr").is_dir()
 
 
@@ -438,6 +438,92 @@ def test_pinned_gid_escape_hatch_requires_a_decimal_index(pair_env: Path) -> Non
 
     assert result.returncode != 0
     assert "requires a decimal NCCL_IB_GID_INDEX" in result.stderr
+
+
+@pytest.mark.parametrize("setting", [
+    "NCCL_IB_ADDR_FAMILY=AF_INET6", "NCCL_IB_ADDR_FAMILY=invalid",
+    "NCCL_IB_ROCE_VERSION_NUM=1", "NCCL_IB_ROCE_VERSION_NUM=invalid",
+])
+def test_auto_gid_rejects_conflicting_selection_policy(pair_env: Path, setting: str) -> None:
+    with pair_env.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(setting + "\n")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 20
+    assert setting.split("=", 1)[0] in result.stderr
+
+
+@pytest.mark.parametrize("address_range", ["10.42.0.0/24", "10.42.0.1/32", "0.0.0.0/0"])
+def test_auto_gid_accepts_matching_address_range(pair_env: Path, address_range: str) -> None:
+    with pair_env.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write("NCCL_IB_ADDR_RANGE=" + address_range + "\n")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 0, result.stderr
+    assert "usable RoCEv2/IPv4 indexes: 3" in result.stdout
+
+
+def test_auto_gid_address_range_must_cover_every_cycle_member(cycle_env: Path) -> None:
+    with cycle_env.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write("NCCL_IB_ADDR_RANGE=10.43.0.0/24\n")
+    result = _run_launcher(cycle_env, launcher=CYCLE_LAUNCHER)
+    assert result.returncode == 20
+    assert "rocep1s0f0:1 usable RoCEv2/IPv4 indexes: 3" in result.stdout
+    assert "rocep1s0f1:1 usable RoCEv2/IPv4 indexes: none" in result.stderr
+    assert "10.43.0.0/24" in result.stdout
+
+
+@pytest.mark.parametrize("address_range", ["garbage", "10.42.0.1", "10.42.0.0/33", "10.42.0.0/-1", "::/0", "10.042.0.0/24", "999999999999999999999999.1.1.1/24"])
+def test_auto_gid_rejects_invalid_address_range(pair_env: Path, address_range: str) -> None:
+    with pair_env.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write("NCCL_IB_ADDR_RANGE=" + address_range + "\n")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 20
+    assert "NCCL_IB_ADDR_RANGE" in result.stderr
+
+
+@pytest.mark.parametrize("selector", [
+    "=:", "=", ",,", "rocep1s0f0:1junk", "rocep1s0f0:-1junk",
+    "rocep1s0f0:1:rail", "rocep1s0f0:1:0:plane", "rocep1s0f0:1:0:0:7",
+])
+def test_auto_gid_rejects_malformed_selector(pair_env: Path, selector: str) -> None:
+    content = pair_env.read_text(encoding="utf-8").replace(
+        "NCCL_IB_HCA=rocep1s0f0", "NCCL_IB_HCA=" + selector
+    )
+    pair_env.write_text(content, encoding="utf-8", newline="\n")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 20
+    assert "invalid NCCL_IB_HCA selector" in result.stderr
+
+
+def test_auto_gid_does_not_accept_unspecified_ipv4(pair_env: Path) -> None:
+    _write_gid(pair_env.parent / "infiniband", hca="rocep1s0f0", port=1,
+               index=3, address="0.0.0.0", netdev="fabric0")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 20
+    assert "usable RoCEv2/IPv4 indexes: none" in result.stderr
+
+
+@pytest.mark.parametrize("selector", ["rocep1s0f0:-1", "rocep1s0f0:+01:0:-1", "^missing", "=rocep1s0f0::0:1"])
+def test_auto_gid_preserves_valid_selector_fields(pair_env: Path, selector: str) -> None:
+    content = pair_env.read_text(encoding="utf-8").replace(
+        "NCCL_IB_HCA=rocep1s0f0", "NCCL_IB_HCA=" + selector
+    )
+    pair_env.write_text(content, encoding="utf-8", newline="\n")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 0, result.stderr
+    assert "rocep1s0f0:1 usable RoCEv2/IPv4 indexes: 3" in result.stdout
+
+
+def test_auto_gid_checks_requested_port_only(pair_env: Path) -> None:
+    _write_gid(pair_env.parent / "infiniband", hca="rocep1s0f0", port=2,
+               index=9, address="10.42.0.2", netdev="fabric1")
+    content = pair_env.read_text(encoding="utf-8").replace(
+        "NCCL_IB_HCA=rocep1s0f0", "NCCL_IB_HCA==rocep1s0f0:2"
+    )
+    pair_env.write_text(content, encoding="utf-8", newline="\n")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 0, result.stderr
+    assert "rocep1s0f0:2 usable RoCEv2/IPv4 indexes: 9" in result.stdout
+    assert "rocep1s0f0:1" not in result.stdout
 
 
 def test_auto_gid_mode_rejects_a_selected_member_without_rocev2(cycle_env: Path) -> None:
@@ -817,9 +903,18 @@ def test_bare_docker_override_does_not_remove_envfile_pin():
 @pytest.mark.parametrize("kind", ["pair", "cycle"])
 @pytest.mark.parametrize("automatic", [True, False])
 @pytest.mark.parametrize("outcome", ["success", "failure", "preflight_failure", "check"])
-def test_docker_gid_env_file_is_filtered_and_cleaned(request, tmp_path, kind, automatic, outcome):
+@pytest.mark.parametrize("policy_range", [None, "10.0.0.0/8"])
+def test_docker_gid_env_file_is_filtered_and_cleaned(request, tmp_path, kind, automatic, outcome, policy_range):
     env_file = request.getfixturevalue(kind + "_env")
     content = env_file.read_text().replace("NCCL_IB_GID_INDEX=", "NCCL_IB_GID_INDEX=3")
+    if policy_range:
+        # Source and Docker must agree on the last assignment, including
+        # duplicate keys that would otherwise survive --env-file parsing.
+        content += (
+            "NCCL_IB_ADDR_FAMILY=AF_INET6\nNCCL_IB_ADDR_FAMILY=AF_INET\n"
+            "NCCL_IB_ROCE_VERSION_NUM=1\nNCCL_IB_ROCE_VERSION_NUM=2\n"
+            "NCCL_IB_ADDR_RANGE=10.99.0.0/24\nNCCL_IB_ADDR_RANGE=" + policy_range + "\n"
+        )
     if not automatic:
         content = content.replace("NCCL_IB_GID_AUTO=1", "NCCL_IB_GID_AUTO=0")
     env_file.write_text(content, encoding="utf-8", newline="\n")
@@ -848,7 +943,12 @@ def test_docker_gid_env_file_is_filtered_and_cleaned(request, tmp_path, kind, au
     if outcome not in {"check", "preflight_failure"}:
         rows = [v.strip() for v in captured.read_text().splitlines() if v.strip() and not v.lstrip().startswith("#")]
         assert _moby_effective_gid(rows, "--env" in command) == ([] if automatic else ["NCCL_IB_GID_INDEX=3"])
-        expected = [v for v in content.splitlines() if not v.startswith("NCCL_IB_GID_INDEX=")] if automatic else content.splitlines()
+        if automatic:
+            gid_keys = ("NCCL_IB_GID_INDEX=", "NCCL_IB_ADDR_FAMILY=", "NCCL_IB_ROCE_VERSION_NUM=", "NCCL_IB_ADDR_RANGE=")
+            expected = [v for v in content.splitlines() if not v.startswith(gid_keys)]
+            expected += ["NCCL_IB_ADDR_FAMILY=AF_INET", "NCCL_IB_ROCE_VERSION_NUM=2", "NCCL_IB_ADDR_RANGE=" + (policy_range or "")]
+        else:
+            expected = content.splitlines()
         assert captured.read_text().splitlines() == expected
     if automatic:
         assert docker_env != _bash_path(env_file)

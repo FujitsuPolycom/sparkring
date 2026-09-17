@@ -5,4 +5,5 @@ openai==2.29.0
 pydantic==2.12.5
 PyYAML==6.0.3
 pytest==8.4.2
+pyzmq==27.2.0
 ruff==0.15.17
