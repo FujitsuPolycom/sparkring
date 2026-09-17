@@ -36,8 +36,11 @@ def credential_scan_text(text):
             result[key] = value
         return result
 
+    class JsonNumber(str):
+        """Retain numeric spelling so unrelated assignments cannot shrink."""
+
     try:
-        panel = json.loads(text, object_pairs_hook=unique)
+        panel = json.loads(text, object_pairs_hook=unique, parse_float=JsonNumber)
         if not isinstance(panel, dict) or not {'model', 'label', 'k', 'panel', 'n_records', 'wall_s', 'records'} <= panel.keys():
             return text
         rows = panel['records']
@@ -48,14 +51,16 @@ def credential_scan_text(text):
                 return text
             top = row['top']
             if not isinstance(top, dict) or not all(
-                type(value) in (int, float) and math.isfinite(value) and value <= 0
+                type(value) in (int, JsonNumber) and math.isfinite(float(value)) and float(value) <= 0
                 for value in top.values()
             ):
                 return text
         for row in rows:
             for token, score in row['top'].items():
-                if token.strip().lower() == 'bearer' and type(score) is float:
+                if token.strip().lower() == 'bearer' and type(score) is JsonNumber:
                     row['top'][token] = 0
+        # Unrelated fractional numbers serialize as strings with their exact
+        # lexemes. This keeps credential-shaped values visible to the scanner.
         return json.dumps(panel, ensure_ascii=False)
     except (ValueError, TypeError, OverflowError):
         return text

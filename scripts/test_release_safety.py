@@ -47,3 +47,12 @@ def test_panel_string_scores_and_duplicate_keys_remain_flagged():
     raw = json.dumps(panel({'Bearer': SCORE}))
     duplicate = raw[:-1] + ', "secret": ' + json.dumps(value) + ', "secret": 0}'
     assert (1, 'credential-assignment') in findings(duplicate)
+
+
+def test_panel_normalization_preserves_other_numeric_assignments():
+    raw = json.dumps(panel({'Bearer': SCORE}))
+    value = '-0.000000000001'
+    outside = raw[:-1] + ', "password": ' + value + '}'
+    inside = raw.replace('"top": {', '"top": {"secret": ' + value + ', ')
+    for text in (outside, inside):
+        assert (1, 'credential-assignment') in findings(text)
