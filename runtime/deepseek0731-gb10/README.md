@@ -22,6 +22,12 @@ image still needs bounded API qualification before adoption; building it does
 not update any profile's image reference. The default `native` target rebuilds
 the native extension from the earlier pinned source image.
 
+The [TP2 API/IPC observation](../../performance/records/deepseek-v4-flash/api-ipc-tp2-k5-20260917.md)
+records bounded tool-contract and Responses `max` checks on local derivatives
+with five-token DSpark speculation. It preserves the native library identity
+and the limits of the short IPC comparison; it does not promote an image or
+change the shared-memory spin default.
+
 The Responses request and response models accept `reasoning.effort: "max"` in addition to
 `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. They retain the OpenAI
 SDK reasoning model's other fields and validation. Unknown effort values remain
