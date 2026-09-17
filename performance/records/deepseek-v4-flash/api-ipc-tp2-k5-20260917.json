@@ -1949,5 +1949,38 @@
     "control_calibration_report": "72b9ca033ef614bfbbf04384d1fd74346da348a5232855f80f2c0028551543cb",
     "build_context_receipt": "c28d541d98550730cce2d317cdde39d2d1a72b1a1fe7c89ea26c0943390fb27a",
     "preparation_specialization_analysis": "744acbc77354116b9700e15da464dd512ade99830320f58482d821935042b059"
+  },
+  "b12x_cache_recreation": {
+    "scope": "Same cache mount and per-rank image IDs across independently created serving containers; sampled files only, measured workload only.",
+    "ranks": [
+      {
+        "rank": 0,
+        "cache_directory": "/cache/jit/b12x/compile",
+        "file_counts_before_after": [
+          282,
+          282
+        ],
+        "sampled_common_files": 12,
+        "matching_content_and_mtime": 12,
+        "post_engine_start_disk_hit_lines": 4,
+        "post_engine_start_compile_miss_lines": 0,
+        "snapshot_sha256_before": "25f95173393680d2b12e13d3b0d014e5fe60827c5ad74635363df957a07e9aef",
+        "snapshot_sha256_after": "01a24376476c01dd9b66ca7539088b21585e08299660120c85a5f7fc20eb6499"
+      },
+      {
+        "rank": 1,
+        "cache_directory": "/cache/jit/b12x/compile",
+        "file_counts_before_after": [
+          282,
+          282
+        ],
+        "sampled_common_files": 12,
+        "matching_content_and_mtime": 12,
+        "post_engine_start_disk_hit_lines": 4,
+        "post_engine_start_compile_miss_lines": 0,
+        "snapshot_sha256_before": "83b68bfe4d20c4a22de532cd4a903b088751a82ee3c1d5d7cd2bf87a98f621a8",
+        "snapshot_sha256_after": "757cbc152c20a3454fdab7ea6e093daaf98baf873e2d6169af138142ed78b6d0"
+      }
+    ]
   }
 }
