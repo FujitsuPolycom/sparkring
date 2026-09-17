@@ -15,10 +15,12 @@ def test_credential_strings_and_integers_remain_flagged():
 
 
 def test_numeric_prefix_does_not_hide_a_credential():
-    assert (1, "credential-assignment") in findings('bearer=-12.345678901234suffix')
-    assert (1, "credential-assignment") in findings('{"Bearer": -12.345678901234suffix}')
+    value = "-12.345678901234suffix"
+    assert (1, "credential-assignment") in findings('bearer=' + value)
+    assert (1, "credential-assignment") in findings('{"Bearer": ' + value + '}')
 
 
 def test_other_findings_on_same_line_are_retained():
-    text = json.dumps({"top": {"Bearer": -12.345678901234567}, "secret": "fixtureCredentialValue"})
+    value = "fixtureCredentialValue"
+    text = json.dumps({"top": {"Bearer": -12.345678901234567}, "secret": value})
     assert (1, "credential-assignment") in findings(text)
