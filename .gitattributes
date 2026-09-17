@@ -41,3 +41,4 @@ runtime/releases/glm53-dflash-sircl-overlay/source.json -text whitespace=cr-at-e
 runtime/images/compositions/lil-r37-glm-spark/vllm-connector-jobs-lil-r37.json -text whitespace=cr-at-eol
 runtime/images/compositions/lil-r37-glm-spark/candidate-image.py -text whitespace=cr-at-eol
 runtime/images/compositions/lil-r37-glm-spark/*.patch whitespace=-trailing-space
+runtime/images/compositions/lil-r37-qwen-prefill/*.patch whitespace=-trailing-space

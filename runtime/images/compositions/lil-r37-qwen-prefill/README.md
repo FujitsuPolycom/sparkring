@@ -8,7 +8,7 @@ Model weights and site configuration remain external.
 
 The [source provenance](provenance.json) identifies the upstream contributions
 and the R37 compatibility adaptations. The [patch](runtime.patch) reconstructs
-14 Python files from exact installed preimages. The [descriptor](descriptor.json)
+15 Python files from exact installed preimages. The [descriptor](descriptor.json)
 pins the parent image and receipt, patch, resulting files and installer.
 The inherited dual-domain NCCL, SIRCL, RoCEnante, GLM integrations, Qwen HC fusion,
 MTP GEMMs and SparkCache binaries are unchanged.
@@ -115,3 +115,10 @@ The QSA checks compare exact scalar scores, selected positions, attention output
 and persistent state, including FP8 KV, invalid pages, large pool offsets and
 CUDA graph replay. PLE checks cover interior-state export and graph replay.
 The test mount is not required by serving containers.
+
+The allocator fix preserves interior checkpoints that overlap private speculative
+scratch during aligned continuation. It retains worker-visible block IDs and
+reserves replacement scratch; shared or hashed blocks remain ineligible. Run
+its CPU checks inside the image with `SPARKRING_TEST_SOURCE_ROOT` set to
+`/opt/venv/lib/python3.12/site-packages`, selecting
+`/checks/mamba_checkpoint_reservation.py` with pytest.

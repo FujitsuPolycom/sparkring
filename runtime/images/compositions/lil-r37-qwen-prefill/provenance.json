@@ -23,6 +23,8 @@
   ],
   "adaptation": "Backported to the installed R37 interfaces. Preserves page-error guards, 64-bit addressing, eager compilation before graph capture, and existing feature hooks. This is not an unmodified upstream source upgrade.",
   "upstream_author": "original-el8 (Jason)",
-  "local_source_record": "22a70e506729efb8d5ce35aa6ac1d2a4034ff9dc",
-  "native_library_changes": false
+  "local_source_record": "c3cbb22ef8e2acd8655e0738fed21fd96e61b1a3",
+  "native_library_changes": false,
+  "qualification": "Development. Component tests and overlay serving checks passed; packaged-image serving qualification is recorded separately.",
+  "allocator_fix": "Preserve a recurrent checkpoint when aligned MTP continuation reuses private speculative scratch. No generic lease callback or native library changes."
 }

@@ -58,9 +58,10 @@
         "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
         "MambaManager.cache_blocks",
         "MambaManager.allocate_new_blocks",
-        "MambaManager.pop_blocks_for_free"
+        "MambaManager.pop_blocks_for_free",
+        "MambaManager._needs_internal_checkpoint"
       ],
-      "sha256": "d8a6aa7b722d795fb21a88b46116d47ad7bb8a4ccfe82f5c7c8f185a4593e072"
+      "sha256": "de36ff296d0c4bc5f303142e1301ad4370a3ad6c20192f2b7d88732162fd15a6"
     },
     {
       "path": "vllm/v1/core/block_pool.py",
@@ -185,7 +186,7 @@
       "mtp_has_independent_draft_state = speculative_config is not None and speculative_config.method == 'mtp' and (speculative_config.draft_model_config is not None) and bool({'Glm5NextMTPModel', 'Qwen3_8FlashNextMTP'} & set(speculative_config.draft_model_config.hf_config.architectures or ()))",
       "self.mamba_has_prefill_checkpoint_blocks = self.has_mamba_layers and (not self.use_eagle or (speculative_config is not None and speculative_config.use_dflash()) or mtp_has_independent_draft_state) and all((not isinstance(group.kv_cache_spec, MambaSpec) or group.kv_cache_spec.num_prefill_checkpoint_blocks > 0 for group in kv_cache_config.kv_cache_groups))"
     ],
-    "conclusion": "The only AST changes classify independent Qwen MTP draft state and enable existing checkpoint capacity. All other scheduler AST nodes and the other nine lease-contract files retain identity. No lease acquisition, release, dispatch, fence, invalidation or post-forward callback changes."
+    "conclusion": "Scheduler initialization classifies independent Qwen MTP draft state and enables existing checkpoint capacity. Its remaining AST, lease acquisition, release, dispatch, fence, invalidation and post-forward callbacks are unchanged. The separate allocator review below covers checkpoint reservation."
   },
   "base_vllm_commit": "c687594b8a8082e18af9fe2f64eb5f9ee442e251",
   "base_vllm_tree": "8e0bb7da60e882c095385222d5878981a2666b60",
@@ -193,5 +194,15 @@
     "upstream_head": "3ee490bc198dee9c24fd96cfa88dcc3e93c201c2",
     "scope": "Paired representative scoring retains the R37 state_errors and bounded-page interface. The checkpoint and lease implementations are unchanged by this scorer patch."
   },
-  "source_patch_sha256": "331b3c005d7b0170913a5a22374f5148f087c8baeacafa25f29e7263658e65b8"
+  "source_patch_sha256": "acdcf4e042c150bda388af862a67f5be5120c0b0fb1d0527f4c6a15fdca7f722",
+  "allocator_review": {
+    "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+    "changed_symbols": [
+      "MambaManager._needs_internal_checkpoint",
+      "MambaManager.allocate_new_blocks"
+    ],
+    "condition": "An aligned continuation targets an interior checkpoint column occupied by private speculative scratch.",
+    "behavior": "Retain that exclusively owned unhashed block at the checkpoint column and reserve replacement scratch at the tail. Existing worker-visible block IDs and lease/reference callbacks remain unchanged.",
+    "validation": "32 actual-method CPU regressions and 23040 additional allocation replays passed; GPU content and external restore require serving evidence."
+  }
 }

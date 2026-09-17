@@ -1319,3 +1319,39 @@ index 570aa77..93c008d 100644
              )
              and all(
                  not isinstance(group.kv_cache_spec, MambaSpec)
+diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
+index 7122ce7..9023805 100644
+--- a/vllm/v1/core/single_type_kv_cache_manager.py
++++ b/vllm/v1/core/single_type_kv_cache_manager.py
+@@ -2044,7 +2044,16 @@ class MambaManager(SingleTypeKVCacheManager):
+             and num_tokens % self.block_size != 0
+             and num_computed_tokens % self.block_size == 0
+             and checkpoint_idx >= 0
+-            and (checkpoint_idx >= len(blocks) or blocks[checkpoint_idx].is_null)
++            and (
++                checkpoint_idx >= len(blocks)
++                or blocks[checkpoint_idx].is_null
++                # An occupied speculative column is not a retained checkpoint.
++                # Consuming it requires a replacement scratch block at the tail.
++                or (
++                    request_id in self._allocated_block_reqs
++                    and checkpoint_idx >= len(blocks) - self.num_speculative_blocks
++                )
++            )
+         )
+ 
+     def get_num_blocks_to_allocate(
+@@ -2305,6 +2314,13 @@ class MambaManager(SingleTypeKVCacheManager):
+                         prev_block_len - self.num_speculative_blocks, prev_block_len
+                     ):
+                         if block_idx < num_skipped_blocks:
++                            if checkpoint_block and block_idx == num_skipped_blocks - 1:
++                                # Keep the worker-visible column as the checkpoint;
++                                # the reservation replaces its scratch slot below.
++                                assert self.block_pool.is_block_writable(
++                                    req_blocks[block_idx]
++                                ), "A speculative checkpoint must be exclusively owned"
++                                continue
+                             self._relocate_speculative_block(req_blocks, block_idx)
+                         else:
+                             break
