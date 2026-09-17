@@ -141,248 +141,7 @@
         "elapsed_seconds": 3.156,
         "text_sha256": "1ca37ab4baa0e0f70c7b9f89ddfc25918056b43dc217d41138dd516bd4aeb25f",
         "finish_reason": "length",
-        "usage": {
-          "prompt_tokens": 26,
-          "total_tokens": 146,
-          "completion_tokens": 120,
-          "prompt_tokens_details": {
-            "cached_tokens": 0,
-            "created_cache_tokens": 0,
-            "multimodal_tokens": null
-          },
-          "completion_tokens_details": {
-            "reasoning_tokens": 120
-          }
-        },
         "logprob_tokens": 120,
-        "smallest_gaps": [
-          {
-            "index": 40,
-            "token": " (",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": " (",
-                "logprob": -0.6947730779647827,
-                "bytes": [
-                  32,
-                  40
-                ]
-              },
-              {
-                "token": ":\n",
-                "logprob": -0.6947730779647827,
-                "bytes": [
-                  58,
-                  10
-                ]
-              }
-            ]
-          },
-          {
-            "index": 54,
-            "token": " Rust",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": " Rust",
-                "logprob": -1.7076709270477295,
-                "bytes": [
-                  32,
-                  82,
-                  117,
-                  115,
-                  116
-                ]
-              },
-              {
-                "token": " Midnight",
-                "logprob": -1.7076709270477295,
-                "bytes": [
-                  32,
-                  77,
-                  105,
-                  100,
-                  110,
-                  105,
-                  103,
-                  104,
-                  116
-                ]
-              }
-            ]
-          },
-          {
-            "index": 110,
-            "token": "\n",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": "\n",
-                "logprob": -0.6960824728012085,
-                "bytes": [
-                  10
-                ]
-              },
-              {
-                "token": "\n\n",
-                "logprob": -0.6960824728012085,
-                "bytes": [
-                  10,
-                  10
-                ]
-              }
-            ]
-          },
-          {
-            "index": 108,
-            "token": " Ghost",
-            "gap": 0.0625,
-            "top2": [
-              {
-                "token": " Ghost",
-                "logprob": -1.9250192642211914,
-                "bytes": [
-                  32,
-                  71,
-                  104,
-                  111,
-                  115,
-                  116
-                ]
-              },
-              {
-                "token": " Tigers",
-                "logprob": -1.9875192642211914,
-                "bytes": [
-                  32,
-                  84,
-                  105,
-                  103,
-                  101,
-                  114,
-                  115
-                ]
-              }
-            ]
-          },
-          {
-            "index": 59,
-            "token": " Harvest",
-            "gap": 0.1875,
-            "top2": [
-              {
-                "token": " Harvest",
-                "logprob": -1.475396990776062,
-                "bytes": [
-                  32,
-                  72,
-                  97,
-                  114,
-                  118,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "token": " Orchard",
-                "logprob": -1.662896990776062,
-                "bytes": [
-                  32,
-                  79,
-                  114,
-                  99,
-                  104,
-                  97,
-                  114,
-                  100
-                ]
-              }
-            ]
-          },
-          {
-            "index": 96,
-            "token": "\n",
-            "gap": 0.25,
-            "top2": [
-              {
-                "token": "\n",
-                "logprob": -0.5763806700706482,
-                "bytes": [
-                  10
-                ]
-              },
-              {
-                "token": "\n\n",
-                "logprob": -0.8263806700706482,
-                "bytes": [
-                  10,
-                  10
-                ]
-              }
-            ]
-          },
-          {
-            "index": 117,
-            "token": " Concrete",
-            "gap": 0.3125,
-            "top2": [
-              {
-                "token": " Concrete",
-                "logprob": -2.730673313140869,
-                "bytes": [
-                  32,
-                  67,
-                  111,
-                  110,
-                  99,
-                  114,
-                  101,
-                  116,
-                  101
-                ]
-              },
-              {
-                "token": " Glass",
-                "logprob": -3.043173313140869,
-                "bytes": [
-                  32,
-                  71,
-                  108,
-                  97,
-                  115,
-                  115
-                ]
-              }
-            ]
-          },
-          {
-            "index": 87,
-            "token": " Line",
-            "gap": 0.375,
-            "top2": [
-              {
-                "token": " Line",
-                "logprob": -0.9316060543060303,
-                "bytes": [
-                  32,
-                  76,
-                  105,
-                  110,
-                  101
-                ]
-              },
-              {
-                "token": "\n",
-                "logprob": -1.3066060543060303,
-                "bytes": [
-                  10
-                ]
-              }
-            ]
-          }
-        ],
         "idle_before": {
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
@@ -392,7 +151,12 @@
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
           "vllm:kv_cache_usage_perc": 0.0
-        }
+        },
+        "tokens": {
+          "prompt_tokens": 26,
+          "completion_tokens": 120
+        },
+        "minimum_reported_top_two_gap": 0.0
       },
       {
         "index": 1,
@@ -401,245 +165,7 @@
         "elapsed_seconds": 3.359,
         "text_sha256": "d97e10f189f102a1f403644754fe8c88443e6773afe9f9d667c59b08f8d89a6d",
         "finish_reason": "length",
-        "usage": {
-          "prompt_tokens": 26,
-          "total_tokens": 146,
-          "completion_tokens": 120,
-          "prompt_tokens_details": {
-            "cached_tokens": 0,
-            "created_cache_tokens": 0,
-            "multimodal_tokens": null
-          },
-          "completion_tokens_details": {
-            "reasoning_tokens": 120
-          }
-        },
         "logprob_tokens": 120,
-        "smallest_gaps": [
-          {
-            "index": 77,
-            "token": " W",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": " W",
-                "logprob": -1.7597754001617432,
-                "bytes": [
-                  32,
-                  87
-                ]
-              },
-              {
-                "token": " Ghost",
-                "logprob": -1.7597754001617432,
-                "bytes": [
-                  32,
-                  71,
-                  104,
-                  111,
-                  115,
-                  116
-                ]
-              }
-            ]
-          },
-          {
-            "index": 72,
-            "token": " Mer",
-            "gap": 0.0625,
-            "top2": [
-              {
-                "token": " Mer",
-                "logprob": -1.116875410079956,
-                "bytes": [
-                  32,
-                  77,
-                  101,
-                  114
-                ]
-              },
-              {
-                "token": "water",
-                "logprob": -1.179375410079956,
-                "bytes": [
-                  119,
-                  97,
-                  116,
-                  101,
-                  114
-                ]
-              }
-            ]
-          },
-          {
-            "index": 86,
-            "token": " Fault",
-            "gap": 0.0625,
-            "top2": [
-              {
-                "token": " Fault",
-                "logprob": -1.8133474588394165,
-                "bytes": [
-                  32,
-                  70,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "token": " Circuit",
-                "logprob": -1.8758474588394165,
-                "bytes": [
-                  32,
-                  67,
-                  105,
-                  114,
-                  99,
-                  117,
-                  105,
-                  116
-                ]
-              }
-            ]
-          },
-          {
-            "index": 37,
-            "token": "Band",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": "Band",
-                "logprob": -1.013490915298462,
-                "bytes": [
-                  66,
-                  97,
-                  110,
-                  100
-                ]
-              },
-              {
-                "token": "Two",
-                "logprob": -1.138490915298462,
-                "bytes": [
-                  84,
-                  119,
-                  111
-                ]
-              }
-            ]
-          },
-          {
-            "index": 40,
-            "token": " (",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " (",
-                "logprob": -0.6352783441543579,
-                "bytes": [
-                  32,
-                  40
-                ]
-              },
-              {
-                "token": ":\n",
-                "logprob": -0.7602783441543579,
-                "bytes": [
-                  58,
-                  10
-                ]
-              }
-            ]
-          },
-          {
-            "index": 21,
-            "token": " fun",
-            "gap": 0.25,
-            "top2": [
-              {
-                "token": " fun",
-                "logprob": -0.8745157718658447,
-                "bytes": [
-                  32,
-                  102,
-                  117,
-                  110
-                ]
-              },
-              {
-                "token": " simple",
-                "logprob": -1.1245157718658447,
-                "bytes": [
-                  32,
-                  115,
-                  105,
-                  109,
-                  112,
-                  108,
-                  101
-                ]
-              }
-            ]
-          },
-          {
-            "index": 98,
-            "token": " Paper",
-            "gap": 0.25,
-            "top2": [
-              {
-                "token": " Paper",
-                "logprob": -1.9504647254943848,
-                "bytes": [
-                  32,
-                  80,
-                  97,
-                  112,
-                  101,
-                  114
-                ]
-              },
-              {
-                "token": " F",
-                "logprob": -2.2004647254943848,
-                "bytes": [
-                  32,
-                  70
-                ]
-              }
-            ]
-          },
-          {
-            "index": 54,
-            "token": " Rust",
-            "gap": 0.3125,
-            "top2": [
-              {
-                "token": " Rust",
-                "logprob": -1.5207583904266357,
-                "bytes": [
-                  32,
-                  82,
-                  117,
-                  115,
-                  116
-                ]
-              },
-              {
-                "token": " Neon",
-                "logprob": -1.8332583904266357,
-                "bytes": [
-                  32,
-                  78,
-                  101,
-                  111,
-                  110
-                ]
-              }
-            ]
-          }
-        ],
         "idle_before": {
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
@@ -649,7 +175,12 @@
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
           "vllm:kv_cache_usage_perc": 0.0
-        }
+        },
+        "tokens": {
+          "prompt_tokens": 26,
+          "completion_tokens": 120
+        },
+        "minimum_reported_top_two_gap": 0.0
       },
       {
         "index": 2,
@@ -658,259 +189,7 @@
         "elapsed_seconds": 3.047,
         "text_sha256": "72230522655f5c6bae30271051033d861e9962232859b5856a002a222df22826",
         "finish_reason": "length",
-        "usage": {
-          "prompt_tokens": 26,
-          "total_tokens": 146,
-          "completion_tokens": 120,
-          "prompt_tokens_details": {
-            "cached_tokens": 0,
-            "created_cache_tokens": 0,
-            "multimodal_tokens": null
-          },
-          "completion_tokens_details": {
-            "reasoning_tokens": 120
-          }
-        },
         "logprob_tokens": 120,
-        "smallest_gaps": [
-          {
-            "index": 21,
-            "token": " fun",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": " fun",
-                "logprob": -1.0623703002929688,
-                "bytes": [
-                  32,
-                  102,
-                  117,
-                  110
-                ]
-              },
-              {
-                "token": " simple",
-                "logprob": -1.0623703002929688,
-                "bytes": [
-                  32,
-                  115,
-                  105,
-                  109,
-                  112,
-                  108,
-                  101
-                ]
-              }
-            ]
-          },
-          {
-            "index": 104,
-            "token": "Static",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": "Static",
-                "logprob": -1.1653971672058105,
-                "bytes": [
-                  83,
-                  116,
-                  97,
-                  116,
-                  105,
-                  99
-                ]
-              },
-              {
-                "token": "Mid",
-                "logprob": -1.1653971672058105,
-                "bytes": [
-                  77,
-                  105,
-                  100
-                ]
-              }
-            ]
-          },
-          {
-            "index": 112,
-            "token": "M",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": "M",
-                "logprob": -1.290054202079773,
-                "bytes": [
-                  77
-                ]
-              },
-              {
-                "token": "Glass",
-                "logprob": -1.290054202079773,
-                "bytes": [
-                  71,
-                  108,
-                  97,
-                  115,
-                  115
-                ]
-              }
-            ]
-          },
-          {
-            "index": 28,
-            "token": " brainstorm",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " brainstorm",
-                "logprob": -0.6387372612953186,
-                "bytes": [
-                  32,
-                  98,
-                  114,
-                  97,
-                  105,
-                  110,
-                  115,
-                  116,
-                  111,
-                  114,
-                  109
-                ]
-              },
-              {
-                "token": " think",
-                "logprob": -0.7637372612953186,
-                "bytes": [
-                  32,
-                  116,
-                  104,
-                  105,
-                  110,
-                  107
-                ]
-              }
-            ]
-          },
-          {
-            "index": 75,
-            "token": " too",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " too",
-                "logprob": -0.7993849515914917,
-                "bytes": [
-                  32,
-                  116,
-                  111,
-                  111
-                ]
-              },
-              {
-                "token": " a",
-                "logprob": -0.9243849515914917,
-                "bytes": [
-                  32,
-                  97
-                ]
-              }
-            ]
-          },
-          {
-            "index": 92,
-            "token": "C",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": "C",
-                "logprob": -1.1979601383209229,
-                "bytes": [
-                  67
-                ]
-              },
-              {
-                "token": "R",
-                "logprob": -1.3229601383209229,
-                "bytes": [
-                  82
-                ]
-              }
-            ]
-          },
-          {
-            "index": 46,
-            "token": " original",
-            "gap": 0.2500000596046448,
-            "top2": [
-              {
-                "token": " original",
-                "logprob": -0.7918466925621033,
-                "bytes": [
-                  32,
-                  111,
-                  114,
-                  105,
-                  103,
-                  105,
-                  110,
-                  97,
-                  108
-                ]
-              },
-              {
-                "token": " memorable",
-                "logprob": -1.041846752166748,
-                "bytes": [
-                  32,
-                  109,
-                  101,
-                  109,
-                  111,
-                  114,
-                  97,
-                  98,
-                  108,
-                  101
-                ]
-              }
-            ]
-          },
-          {
-            "index": 63,
-            "token": " something",
-            "gap": 0.3749999403953552,
-            "top2": [
-              {
-                "token": " something",
-                "logprob": -0.8671558499336243,
-                "bytes": [
-                  32,
-                  115,
-                  111,
-                  109,
-                  101,
-                  116,
-                  104,
-                  105,
-                  110,
-                  103
-                ]
-              },
-              {
-                "token": " soft",
-                "logprob": -1.2421557903289795,
-                "bytes": [
-                  32,
-                  115,
-                  111,
-                  102,
-                  116
-                ]
-              }
-            ]
-          }
-        ],
         "idle_before": {
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
@@ -920,7 +199,12 @@
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
           "vllm:kv_cache_usage_perc": 0.0
-        }
+        },
+        "tokens": {
+          "prompt_tokens": 26,
+          "completion_tokens": 120
+        },
+        "minimum_reported_top_two_gap": 0.0
       },
       {
         "index": 3,
@@ -929,277 +213,7 @@
         "elapsed_seconds": 3.141,
         "text_sha256": "3811c76d8deb701aa78cc1c935f0422df700b43295ac53c373cc9348c5fc9cb1",
         "finish_reason": "length",
-        "usage": {
-          "prompt_tokens": 26,
-          "total_tokens": 146,
-          "completion_tokens": 120,
-          "prompt_tokens_details": {
-            "cached_tokens": 0,
-            "created_cache_tokens": 0,
-            "multimodal_tokens": null
-          },
-          "completion_tokens_details": {
-            "reasoning_tokens": 120
-          }
-        },
         "logprob_tokens": 120,
-        "smallest_gaps": [
-          {
-            "index": 37,
-            "token": "Two",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": "Two",
-                "logprob": -1.0180397033691406,
-                "bytes": [
-                  84,
-                  119,
-                  111
-                ]
-              },
-              {
-                "token": "Band",
-                "logprob": -1.0180397033691406,
-                "bytes": [
-                  66,
-                  97,
-                  110,
-                  100
-                ]
-              }
-            ]
-          },
-          {
-            "index": 55,
-            "token": " original",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": " original",
-                "logprob": -1.0499916076660156,
-                "bytes": [
-                  32,
-                  111,
-                  114,
-                  105,
-                  103,
-                  105,
-                  110,
-                  97,
-                  108
-                ]
-              },
-              {
-                "token": " invented",
-                "logprob": -1.0499916076660156,
-                "bytes": [
-                  32,
-                  105,
-                  110,
-                  118,
-                  101,
-                  110,
-                  116,
-                  101,
-                  100
-                ]
-              }
-            ]
-          },
-          {
-            "index": 21,
-            "token": " fun",
-            "gap": 0.12499994039535522,
-            "top2": [
-              {
-                "token": " fun",
-                "logprob": -0.948695957660675,
-                "bytes": [
-                  32,
-                  102,
-                  117,
-                  110
-                ]
-              },
-              {
-                "token": " simple",
-                "logprob": -1.0736958980560303,
-                "bytes": [
-                  32,
-                  115,
-                  105,
-                  109,
-                  112,
-                  108,
-                  101
-                ]
-              }
-            ]
-          },
-          {
-            "index": 47,
-            "token": " plausible",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " plausible",
-                "logprob": -0.6770383715629578,
-                "bytes": [
-                  32,
-                  112,
-                  108,
-                  97,
-                  117,
-                  115,
-                  105,
-                  98,
-                  108,
-                  101
-                ]
-              },
-              {
-                "token": " like",
-                "logprob": -0.8020383715629578,
-                "bytes": [
-                  32,
-                  108,
-                  105,
-                  107,
-                  101
-                ]
-              }
-            ]
-          },
-          {
-            "index": 71,
-            "token": " taken",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " taken",
-                "logprob": -0.6449827551841736,
-                "bytes": [
-                  32,
-                  116,
-                  97,
-                  107,
-                  101,
-                  110
-                ]
-              },
-              {
-                "token": " exists",
-                "logprob": -0.7699827551841736,
-                "bytes": [
-                  32,
-                  101,
-                  120,
-                  105,
-                  115,
-                  116,
-                  115
-                ]
-              }
-            ]
-          },
-          {
-            "index": 78,
-            "token": " Midnight",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " Midnight",
-                "logprob": -1.0504355430603027,
-                "bytes": [
-                  32,
-                  77,
-                  105,
-                  100,
-                  110,
-                  105,
-                  103,
-                  104,
-                  116
-                ]
-              },
-              {
-                "token": " Neon",
-                "logprob": -1.1754355430603027,
-                "bytes": [
-                  32,
-                  78,
-                  101,
-                  111,
-                  110
-                ]
-              }
-            ]
-          },
-          {
-            "index": 83,
-            "token": " Glass",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " Glass",
-                "logprob": -1.5464379787445068,
-                "bytes": [
-                  32,
-                  71,
-                  108,
-                  97,
-                  115,
-                  115
-                ]
-              },
-              {
-                "token": " Hollow",
-                "logprob": -1.6714379787445068,
-                "bytes": [
-                  32,
-                  72,
-                  111,
-                  108,
-                  108,
-                  111,
-                  119
-                ]
-              }
-            ]
-          },
-          {
-            "index": 87,
-            "token": " Static",
-            "gap": 0.1875,
-            "top2": [
-              {
-                "token": " Static",
-                "logprob": -1.5779372453689575,
-                "bytes": [
-                  32,
-                  83,
-                  116,
-                  97,
-                  116,
-                  105,
-                  99
-                ]
-              },
-              {
-                "token": " Salt",
-                "logprob": -1.7654372453689575,
-                "bytes": [
-                  32,
-                  83,
-                  97,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        ],
         "idle_before": {
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
@@ -1209,7 +223,12 @@
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
           "vllm:kv_cache_usage_perc": 0.0
-        }
+        },
+        "tokens": {
+          "prompt_tokens": 26,
+          "completion_tokens": 120
+        },
+        "minimum_reported_top_two_gap": 0.0
       },
       {
         "index": 4,
@@ -1218,262 +237,7 @@
         "elapsed_seconds": 3.25,
         "text_sha256": "e28464bd9135a08c3b7ff9bd470f443272bf9b5e1ea9d754a63a4248cab369c7",
         "finish_reason": "length",
-        "usage": {
-          "prompt_tokens": 26,
-          "total_tokens": 146,
-          "completion_tokens": 120,
-          "prompt_tokens_details": {
-            "cached_tokens": 0,
-            "created_cache_tokens": 0,
-            "multimodal_tokens": null
-          },
-          "completion_tokens_details": {
-            "reasoning_tokens": 120
-          }
-        },
         "logprob_tokens": 120,
-        "smallest_gaps": [
-          {
-            "index": 40,
-            "token": " (",
-            "gap": 0.0,
-            "top2": [
-              {
-                "token": " (",
-                "logprob": -0.6949179172515869,
-                "bytes": [
-                  32,
-                  40
-                ]
-              },
-              {
-                "token": ":\n",
-                "logprob": -0.6949179172515869,
-                "bytes": [
-                  58,
-                  10
-                ]
-              }
-            ]
-          },
-          {
-            "index": 12,
-            "token": " one",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " one",
-                "logprob": -0.8026644587516785,
-                "bytes": [
-                  32,
-                  111,
-                  110,
-                  101
-                ]
-              },
-              {
-                "token": " write",
-                "logprob": -0.9276644587516785,
-                "bytes": [
-                  32,
-                  119,
-                  114,
-                  105,
-                  116,
-                  101
-                ]
-              }
-            ]
-          },
-          {
-            "index": 77,
-            "token": " Ghost",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " Ghost",
-                "logprob": -1.5350606441497803,
-                "bytes": [
-                  32,
-                  71,
-                  104,
-                  111,
-                  115,
-                  116
-                ]
-              },
-              {
-                "token": " Wolves",
-                "logprob": -1.6600606441497803,
-                "bytes": [
-                  32,
-                  87,
-                  111,
-                  108,
-                  118,
-                  101,
-                  115
-                ]
-              }
-            ]
-          },
-          {
-            "index": 85,
-            "token": " Amber",
-            "gap": 0.125,
-            "top2": [
-              {
-                "token": " Amber",
-                "logprob": -2.0918493270874023,
-                "bytes": [
-                  32,
-                  65,
-                  109,
-                  98,
-                  101,
-                  114
-                ]
-              },
-              {
-                "token": " Wax",
-                "logprob": -2.2168493270874023,
-                "bytes": [
-                  32,
-                  87,
-                  97,
-                  120
-                ]
-              }
-            ]
-          },
-          {
-            "index": 92,
-            "token": " with",
-            "gap": 0.24999994039535522,
-            "top2": [
-              {
-                "token": " with",
-                "logprob": -0.9038861393928528,
-                "bytes": [
-                  32,
-                  119,
-                  105,
-                  116,
-                  104
-                ]
-              },
-              {
-                "token": " ev",
-                "logprob": -1.153886079788208,
-                "bytes": [
-                  32,
-                  101,
-                  118
-                ]
-              }
-            ]
-          },
-          {
-            "index": 66,
-            "token": " Midnight",
-            "gap": 0.25,
-            "top2": [
-              {
-                "token": " Midnight",
-                "logprob": -1.2052339315414429,
-                "bytes": [
-                  32,
-                  77,
-                  105,
-                  100,
-                  110,
-                  105,
-                  103,
-                  104,
-                  116
-                ]
-              },
-              {
-                "token": " Copper",
-                "logprob": -1.4552339315414429,
-                "bytes": [
-                  32,
-                  67,
-                  111,
-                  112,
-                  112,
-                  101,
-                  114
-                ]
-              }
-            ]
-          },
-          {
-            "index": 91,
-            "token": " something",
-            "gap": 0.25,
-            "top2": [
-              {
-                "token": " something",
-                "logprob": -0.576642632484436,
-                "bytes": [
-                  32,
-                  115,
-                  111,
-                  109,
-                  101,
-                  116,
-                  104,
-                  105,
-                  110,
-                  103
-                ]
-              },
-              {
-                "token": " one",
-                "logprob": -0.826642632484436,
-                "bytes": [
-                  32,
-                  111,
-                  110,
-                  101
-                ]
-              }
-            ]
-          },
-          {
-            "index": 111,
-            "token": " aged",
-            "gap": 0.25,
-            "top2": [
-              {
-                "token": " aged",
-                "logprob": -1.1219594478607178,
-                "bytes": [
-                  32,
-                  97,
-                  103,
-                  101,
-                  100
-                ]
-              },
-              {
-                "token": " weather",
-                "logprob": -1.3719594478607178,
-                "bytes": [
-                  32,
-                  119,
-                  101,
-                  97,
-                  116,
-                  104,
-                  101,
-                  114
-                ]
-              }
-            ]
-          }
-        ],
         "idle_before": {
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
@@ -1483,7 +247,12 @@
           "vllm:num_requests_running": 0.0,
           "vllm:num_requests_waiting": 0.0,
           "vllm:kv_cache_usage_perc": 0.0
-        }
+        },
+        "tokens": {
+          "prompt_tokens": 26,
+          "completion_tokens": 120
+        },
+        "minimum_reported_top_two_gap": 0.0
       }
     ],
     "first_divergence_logprobs": [
@@ -1497,123 +266,45 @@
         "base_top5": [
           {
             "token": " Harvest",
-            "logprob": -1.475396990776062,
-            "bytes": [
-              32,
-              72,
-              97,
-              114,
-              118,
-              101,
-              115,
-              116
-            ]
+            "logprob": -1.475396990776062
           },
           {
             "token": " Orchard",
-            "logprob": -1.662896990776062,
-            "bytes": [
-              32,
-              79,
-              114,
-              99,
-              104,
-              97,
-              114,
-              100
-            ]
+            "logprob": -1.662896990776062
           },
           {
             "token": " Mon",
-            "logprob": -1.662896990776062,
-            "bytes": [
-              32,
-              77,
-              111,
-              110
-            ]
+            "logprob": -1.662896990776062
           },
           {
             "token": " Hollow",
-            "logprob": -3.2253971099853516,
-            "bytes": [
-              32,
-              72,
-              111,
-              108,
-              108,
-              111,
-              119
-            ]
+            "logprob": -3.2253971099853516
           },
           {
             "token": " H",
-            "logprob": -3.5378971099853516,
-            "bytes": [
-              32,
-              72
-            ]
+            "logprob": -3.5378971099853516
           }
         ],
         "other_top5": [
           {
             "token": " Orchard",
-            "logprob": -1.0959159135818481,
-            "bytes": [
-              32,
-              79,
-              114,
-              99,
-              104,
-              97,
-              114,
-              100
-            ]
+            "logprob": -1.0959159135818481
           },
           {
             "token": " Harvest",
-            "logprob": -1.4709159135818481,
-            "bytes": [
-              32,
-              72,
-              97,
-              114,
-              118,
-              101,
-              115,
-              116
-            ]
+            "logprob": -1.4709159135818481
           },
           {
             "token": " Mon",
-            "logprob": -2.2209157943725586,
-            "bytes": [
-              32,
-              77,
-              111,
-              110
-            ]
+            "logprob": -2.2209157943725586
           },
           {
             "token": " Hollow",
-            "logprob": -2.9709157943725586,
-            "bytes": [
-              32,
-              72,
-              111,
-              108,
-              108,
-              111,
-              119
-            ]
+            "logprob": -2.9709157943725586
           },
           {
             "token": " F",
-            "logprob": -3.5959157943725586,
-            "bytes": [
-              32,
-              70
-            ]
+            "logprob": -3.5959157943725586
           }
         ]
       },
@@ -1627,127 +318,45 @@
         "base_top5": [
           {
             "token": " think",
-            "logprob": -0.4358726441860199,
-            "bytes": [
-              32,
-              116,
-              104,
-              105,
-              110,
-              107
-            ]
+            "logprob": -0.4358726441860199
           },
           {
             "token": " brainstorm",
-            "logprob": -1.0608726739883423,
-            "bytes": [
-              32,
-              98,
-              114,
-              97,
-              105,
-              110,
-              115,
-              116,
-              111,
-              114,
-              109
-            ]
+            "logprob": -1.0608726739883423
           },
           {
             "token": " come",
-            "logprob": -5.060872554779053,
-            "bytes": [
-              32,
-              99,
-              111,
-              109,
-              101
-            ]
+            "logprob": -5.060872554779053
           },
           {
             "token": " brain",
-            "logprob": -7.560872554779053,
-            "bytes": [
-              32,
-              98,
-              114,
-              97,
-              105,
-              110
-            ]
+            "logprob": -7.560872554779053
           },
           {
             "token": " be",
-            "logprob": -8.560873031616211,
-            "bytes": [
-              32,
-              98,
-              101
-            ]
+            "logprob": -8.560873031616211
           }
         ],
         "other_top5": [
           {
             "token": " brainstorm",
-            "logprob": -0.6387372612953186,
-            "bytes": [
-              32,
-              98,
-              114,
-              97,
-              105,
-              110,
-              115,
-              116,
-              111,
-              114,
-              109
-            ]
+            "logprob": -0.6387372612953186
           },
           {
             "token": " think",
-            "logprob": -0.7637372612953186,
-            "bytes": [
-              32,
-              116,
-              104,
-              105,
-              110,
-              107
-            ]
+            "logprob": -0.7637372612953186
           },
           {
             "token": " come",
-            "logprob": -5.263737201690674,
-            "bytes": [
-              32,
-              99,
-              111,
-              109,
-              101
-            ]
+            "logprob": -5.263737201690674
           },
           {
             "token": " brain",
-            "logprob": -7.263737201690674,
-            "bytes": [
-              32,
-              98,
-              114,
-              97,
-              105,
-              110
-            ]
+            "logprob": -7.263737201690674
           },
           {
             "token": " be",
-            "logprob": -8.888737678527832,
-            "bytes": [
-              32,
-              98,
-              101
-            ]
+            "logprob": -8.888737678527832
           }
         ]
       },
@@ -1761,99 +370,45 @@
         "base_top5": [
           {
             "token": "Band",
-            "logprob": -0.9841467142105103,
-            "bytes": [
-              66,
-              97,
-              110,
-              100
-            ]
+            "logprob": -0.9841467142105103
           },
           {
             "token": "Two",
-            "logprob": -1.6091467142105103,
-            "bytes": [
-              84,
-              119,
-              111
-            ]
+            "logprob": -1.6091467142105103
           },
           {
             "token": "Some",
-            "logprob": -1.6091467142105103,
-            "bytes": [
-              83,
-              111,
-              109,
-              101
-            ]
+            "logprob": -1.6091467142105103
           },
           {
             "token": "Ide",
-            "logprob": -1.9841467142105103,
-            "bytes": [
-              73,
-              100,
-              101
-            ]
+            "logprob": -1.9841467142105103
           },
           {
             "token": "Let",
-            "logprob": -2.9841465950012207,
-            "bytes": [
-              76,
-              101,
-              116
-            ]
+            "logprob": -2.9841465950012207
           }
         ],
         "other_top5": [
           {
             "token": "Two",
-            "logprob": -1.0180397033691406,
-            "bytes": [
-              84,
-              119,
-              111
-            ]
+            "logprob": -1.0180397033691406
           },
           {
             "token": "Band",
-            "logprob": -1.0180397033691406,
-            "bytes": [
-              66,
-              97,
-              110,
-              100
-            ]
+            "logprob": -1.0180397033691406
           },
           {
             "token": "Some",
-            "logprob": -2.1430397033691406,
-            "bytes": [
-              83,
-              111,
-              109,
-              101
-            ]
+            "logprob": -2.1430397033691406
           },
           {
             "token": "Ide",
-            "logprob": -2.2680397033691406,
-            "bytes": [
-              73,
-              100,
-              101
-            ]
+            "logprob": -2.2680397033691406
           },
           {
             "token": "Let",
-            "logprob": -3.8930397033691406,
-            "bytes": [
-              76,
-              101,
-              116
-            ]
+            "logprob": -3.8930397033691406
           }
         ]
       },
@@ -1867,117 +422,45 @@
         "base_top5": [
           {
             "token": " W",
-            "logprob": -0.8821988105773926,
-            "bytes": [
-              32,
-              87
-            ]
+            "logprob": -0.8821988105773926
           },
           {
             "token": " Ghost",
-            "logprob": -1.6946988105773926,
-            "bytes": [
-              32,
-              71,
-              104,
-              111,
-              115,
-              116
-            ]
+            "logprob": -1.6946988105773926
           },
           {
             "token": " Wolves",
-            "logprob": -2.1946988105773926,
-            "bytes": [
-              32,
-              87,
-              111,
-              108,
-              118,
-              101,
-              115
-            ]
+            "logprob": -2.1946988105773926
           },
           {
             "token": " Weather",
-            "logprob": -2.5071988105773926,
-            "bytes": [
-              32,
-              87,
-              101,
-              97,
-              116,
-              104,
-              101,
-              114
-            ]
+            "logprob": -2.5071988105773926
           },
           {
             "token": " Ve",
-            "logprob": -3.2571988105773926,
-            "bytes": [
-              32,
-              86,
-              101
-            ]
+            "logprob": -3.2571988105773926
           }
         ],
         "other_top5": [
           {
             "token": " Ghost",
-            "logprob": -1.5350606441497803,
-            "bytes": [
-              32,
-              71,
-              104,
-              111,
-              115,
-              116
-            ]
+            "logprob": -1.5350606441497803
           },
           {
             "token": " Wolves",
-            "logprob": -1.6600606441497803,
-            "bytes": [
-              32,
-              87,
-              111,
-              108,
-              118,
-              101,
-              115
-            ]
+            "logprob": -1.6600606441497803
           },
           {
             "token": " W",
-            "logprob": -1.9725606441497803,
-            "bytes": [
-              32,
-              87
-            ]
+            "logprob": -1.9725606441497803
           },
           {
             "token": " Weather",
-            "logprob": -2.4100606441497803,
-            "bytes": [
-              32,
-              87,
-              101,
-              97,
-              116,
-              104,
-              101,
-              114
-            ]
+            "logprob": -2.4100606441497803
           },
           {
             "token": " Ve",
-            "logprob": -2.8475606441497803,
-            "bytes": [
-              32,
-              86,
-              101
-            ]
+            "logprob": -2.8475606441497803
           }
         ]
       }
@@ -2073,241 +556,57 @@
   "jit_events": [
     {
       "rank": 0,
-      "events": [
-        {
-          "time": "2026-09-17T05:35:08.419733+00:00",
-          "after_ready": false,
-          "text": " _expand_c4_block_table_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.440325+00:00",
-          "after_ready": false,
-          "text": " _pool_seq_lens_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.509294+00:00",
-          "after_ready": false,
-          "text": " _prepare_dflash_inputs_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.611235+00:00",
-          "after_ready": false,
-          "text": " _compute_local_logits_stats_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.679185+00:00",
-          "after_ready": false,
-          "text": " _rejection_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.685695+00:00",
-          "after_ready": false,
-          "text": " _resample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.662292+00:00",
-          "after_ready": false,
-          "text": " _prefill_pool_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.766181+00:00",
-          "after_ready": false,
-          "text": " _prefill_tail_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.775388+00:00",
-          "after_ready": false,
-          "text": " _gather_c4_block_table_rows_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
+      "before_readiness_count": 9,
+      "after_readiness": [
         {
           "time": "2026-09-17T05:36:01.550549+00:00",
-          "after_ready": true,
-          "text": " _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_gumbel_sample_kernel"
         },
         {
           "time": "2026-09-17T05:36:03.506246+00:00",
-          "after_ready": true,
-          "text": " _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_topk_topp_kernel"
         }
       ]
     },
     {
       "rank": 1,
-      "events": [
-        {
-          "time": "2026-09-17T05:35:08.428339+00:00",
-          "after_ready": false,
-          "text": " _expand_c4_block_table_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.434367+00:00",
-          "after_ready": false,
-          "text": " _pool_seq_lens_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.506097+00:00",
-          "after_ready": false,
-          "text": " _prepare_dflash_inputs_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.608521+00:00",
-          "after_ready": false,
-          "text": " _compute_local_logits_stats_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.675123+00:00",
-          "after_ready": false,
-          "text": " _rejection_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.679080+00:00",
-          "after_ready": false,
-          "text": " _resample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.670779+00:00",
-          "after_ready": false,
-          "text": " _prefill_pool_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.763457+00:00",
-          "after_ready": false,
-          "text": " _prefill_tail_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.766742+00:00",
-          "after_ready": false,
-          "text": " _gather_c4_block_table_rows_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
+      "before_readiness_count": 9,
+      "after_readiness": [
         {
           "time": "2026-09-17T05:36:01.518254+00:00",
-          "after_ready": true,
-          "text": " _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_gumbel_sample_kernel"
         },
         {
           "time": "2026-09-17T05:36:03.503243+00:00",
-          "after_ready": true,
-          "text": " _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_topk_topp_kernel"
         }
       ]
     },
     {
       "rank": 2,
-      "events": [
-        {
-          "time": "2026-09-17T05:35:08.429018+00:00",
-          "after_ready": false,
-          "text": " _expand_c4_block_table_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.432239+00:00",
-          "after_ready": false,
-          "text": " _pool_seq_lens_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.505757+00:00",
-          "after_ready": false,
-          "text": " _prepare_dflash_inputs_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.610051+00:00",
-          "after_ready": false,
-          "text": " _compute_local_logits_stats_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.675989+00:00",
-          "after_ready": false,
-          "text": " _rejection_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.680004+00:00",
-          "after_ready": false,
-          "text": " _resample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.667034+00:00",
-          "after_ready": false,
-          "text": " _prefill_pool_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.761198+00:00",
-          "after_ready": false,
-          "text": " _prefill_tail_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.764138+00:00",
-          "after_ready": false,
-          "text": " _gather_c4_block_table_rows_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
+      "before_readiness_count": 9,
+      "after_readiness": [
         {
           "time": "2026-09-17T05:36:01.544049+00:00",
-          "after_ready": true,
-          "text": " _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_gumbel_sample_kernel"
         },
         {
           "time": "2026-09-17T05:36:03.507662+00:00",
-          "after_ready": true,
-          "text": " _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_topk_topp_kernel"
         }
       ]
     },
     {
       "rank": 3,
-      "events": [
-        {
-          "time": "2026-09-17T05:35:08.426512+00:00",
-          "after_ready": false,
-          "text": " _expand_c4_block_table_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.432410+00:00",
-          "after_ready": false,
-          "text": " _pool_seq_lens_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.503533+00:00",
-          "after_ready": false,
-          "text": " _prepare_dflash_inputs_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.610116+00:00",
-          "after_ready": false,
-          "text": " _compute_local_logits_stats_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.676648+00:00",
-          "after_ready": false,
-          "text": " _rejection_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:08.680827+00:00",
-          "after_ready": false,
-          "text": " _resample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.669545+00:00",
-          "after_ready": false,
-          "text": " _prefill_pool_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.761676+00:00",
-          "after_ready": false,
-          "text": " _prefill_tail_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
-        {
-          "time": "2026-09-17T05:35:11.765467+00:00",
-          "after_ready": false,
-          "text": " _gather_c4_block_table_rows_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
-        },
+      "before_readiness_count": 9,
+      "after_readiness": [
         {
           "time": "2026-09-17T05:36:01.540431+00:00",
-          "after_ready": true,
-          "text": " _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_gumbel_sample_kernel"
         },
         {
           "time": "2026-09-17T05:36:03.500717+00:00",
-          "after_ready": true,
-          "text": " _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config."
+          "kernel": "_topk_topp_kernel"
         }
       ]
     }
