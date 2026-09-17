@@ -1,17 +1,20 @@
 # DeepSeek DSpark preparation warmup
 
-Status: **implemented**, with [bounded TP2/K5 preparation qualification](../../../performance/records/deepseek-v4-flash/dspark-prepare-warmup-tp2.json).
-This optional image-build overlay extends DSpark's startup preparation. Profile
+Status: **implemented**, with [bounded preparation qualification on two Sparks using five-token speculation](../../../performance/records/deepseek-v4-flash/dspark-prepare-warmup-tp2.json).
+DSpark speculative decoding proposes candidate tokens for verification by the
+target model. This optional image-build overlay initializes the kernel variants
+that prepare those proposals before the API becomes ready. Profile
 defaults and published images remain unchanged. Packaging remains research-only;
 other kernel coverage in [issue 188](https://github.com/FujitsuPolycom/sparkring/issues/188) is still open.
 
 ## Behavior
 
-The supported source creates a verification-capacity manager only when
+The [admitted source](fixtures/source.json) creates a verification-capacity manager only when
 confidence-based draft pruning is enabled. Its startup warmup calls DSpark's
-preparation sweep through that manager, so a fixed K5 profile with pruning
+preparation sweep through that manager, so a fixed five-token profile with pruning
 disabled skips the explicit sweep. The overlay calls the existing DSpark
-warmup in scratch lane 1 before readiness even when the manager is absent.
+warmup before readiness in a separate scratch-allocation workspace
+(`use_workspace_lane(1)`), including when the manager is absent.
 Capacity-enabled DSpark and other speculative methods retain their call paths.
 
 The preparation kernel chooses its tile from the maximum scheduled tokens
@@ -21,8 +24,8 @@ within one request plus that request's draft-query count:
 tile = min(256, next_power_of_2(scheduled_tokens + draft_query_rows))
 ```
 
-For anchor-sampled DSpark K5, five draft-query rows make tiles 8, 16, 32, 64,
-128 and 256 reachable. The original explicit representatives cover 16, 64
+For the recorded five-token DSpark configuration, five draft-query rows make
+tiles 8, 16, 32, 64, 128 and 256 reachable. The pinned input's warmup covers 16, 64
 and 256. The overlay enumerates feasible tiles and scalar specialization
 classes: context count 1, ordinary integers and multiples of 16. It selects
 positive target lengths and single/batched request counts within the configured
@@ -80,9 +83,10 @@ context scalar specializations, source drift and output preservation.
 They do not validate GPU writes, model correctness or startup memory usage.
 
 The recorded GPU component control produced nine additional runtime preparation
-events. The corrected warmup captured 13 warmup events and no additional
-events across 19 runtime fixtures, with output checks. A separate TP2/K5 launch
-from empty private serving caches passed 20 API cases / 36 requests in 30.734
+events. The overlay's warmup captured 13 warmup events and no additional
+events across 19 runtime fixtures, with output checks. A separate two-Spark launch
+using five-token DSpark speculation and empty private serving caches passed
+20 API cases / 36 requests in 30.734
 seconds; both ranks logged zero post-readiness preparation-kernel warnings.
 The record identifies exact image/source hashes and the component's AST-replay
 scope.

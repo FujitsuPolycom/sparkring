@@ -11,6 +11,12 @@
     "serve.py": "c8b39938f5c10966d13f8e6506b0b17ed66044b28a890a6dac33b7d8f018607b"
   },
   "conditions": {
+    "hardware": {
+      "hosts": 4,
+      "system_family": "GB10-based Spark",
+      "gpu_model": "NVIDIA GB10",
+      "gpus_per_host": 1
+    },
     "model": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
     "model_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
     "tensor_parallel_size": 4,
