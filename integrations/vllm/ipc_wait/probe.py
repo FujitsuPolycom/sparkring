@@ -24,11 +24,20 @@ def load_condition(source):
                 and node.name == 'SpinCondition']
     if len(selected) != 1:
         raise ValueError('Expected exactly one SpinCondition class')
-    namespace = dict(zmq=zmq, time=time, os=os, SUB=zmq.SUB, PUB=zmq.PUB,
+    imported_names = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            imported_names.update(alias.asname or alias.name.split('.')[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported_names.update(alias.asname or alias.name for alias in node.names)
+    candidates = dict(zmq=zmq, time=time, os=os, SUB=zmq.SUB, PUB=zmq.PUB,
                      SUBSCRIBE=zmq.SUBSCRIBE,
                      sched_yield=getattr(os, 'sched_yield', lambda: time.sleep(0)),
-                     get_open_zmq_inproc_path=lambda: 'inproc://' + str(uuid.uuid4()),
-                     logger=logging.getLogger('ipc-wait-probe'))
+                     get_open_zmq_inproc_path=lambda: 'inproc://' + str(uuid.uuid4()))
+    namespace = {name: obj for name, obj in candidates.items() if name in imported_names}
+    if any(isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+           and target.id == 'logger' for target in node.targets) for node in tree.body):
+        namespace['logger'] = logging.getLogger('ipc-wait-probe')
     exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), 'exec'), namespace)
     return namespace['SpinCondition']
 

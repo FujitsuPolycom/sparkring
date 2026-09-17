@@ -51,6 +51,9 @@ sent after a 20 ms delay woke a parked reader under both policies.
 The [raw record](ipc-wait-linux-cpu-20260917.json) includes every latency sample,
 CPU/wall timing, poll/wait count, cancellation timing, platform and harness hash.
 No serving endpoint, credential or model data is included.
+The recorded harness bytes are retained in local commit `9a53af1`; the measured
+class is the unmodified source with explicit interval arguments. These timing
+results do not qualify the optional patch's default-constructor import path.
 
 ## Conclusion and limits
 

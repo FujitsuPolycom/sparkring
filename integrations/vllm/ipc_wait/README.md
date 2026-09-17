@@ -32,6 +32,8 @@ the patch changes only the constructor's default selection. All wait,
 notification, cancellation, memory-fence, timeout and queue algorithms remain
 unchanged. Unknown input bytes are rejected, and result bytes must match the
 recorded hash. Reapplication accepts only that exact result.
+The constructor imports its environment dependency locally; the DeepSeek
+module has no module-level `os` import.
 
 With the patch installed, an unset variable selects `1.0` seconds. The optional
 value must be finite and between `0` and `1` seconds. `0.002` selects two
@@ -50,9 +52,11 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 COPY integrations/vllm/ipc_wait/apply.py integrations/vllm/ipc_wait/sources.json /opt/sparkring/ipc-wait/
 COPY integrations/vllm/ipc_wait/upstream/LICENSE /opt/sparkring/ipc-wait/LICENSE
+COPY integrations/vllm/ipc_wait/preflight.py /opt/sparkring/ipc-wait/preflight.py
 RUN /opt/venv/bin/python /opt/sparkring/ipc-wait/apply.py \
     --source /opt/venv/lib/python3.12/site-packages/vllm/distributed/device_communicators/shm_broadcast.py \
     --receipt /opt/sparkring/ipc-wait/installed.json
+RUN /opt/venv/bin/python /opt/sparkring/ipc-wait/preflight.py
 ```
 
 Supply an independently verified immutable parent image ID or registry digest.
@@ -83,10 +87,18 @@ python integrations/vllm/ipc_wait/probe.py \
 The measured probe requires POSIX `os.sched_yield` and pyzmq. It extracts the
 actual class without importing Torch/vLLM, checks ordered message receipt, and
 records reader process CPU time, wake latency, socket polls and cancellation.
+Only names declared by the source module's imports are available to the class
+fixture. Constructor tests cover the DeepSeek module without a global `os`.
 Its synchronized shared-state payload is a test fixture; it does not execute
 the complete vLLM `MessageQueue`, serialize model commands or measure GPU work.
 The tests also check unchanged methods, rejected preimages, environment
 validation, explicit-call compatibility and finite poll timeout behavior.
+
+The image [preflight](preflight.py) separately imports the actual installed
+vLLM module and constructs real ZMQ readers/writers at the default and optional
+intervals. It uses no injected globals or model execution. Require this check
+inside the derivative image before a serving test; class extraction alone is
+not a complete module-import check.
 
 Before enabling a profile, compare `1` and `0.002` on the same image with the
 same model, cache policy and workload. Capture actual IPC-reader CPU usage,

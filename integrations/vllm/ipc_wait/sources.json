@@ -9,7 +9,7 @@
       "fixture_sha256": "8cbeddfe90e7d1df7497b0cb5dfccb56b9f9dc133c68b3eeeb68fbedccf46c6e",
       "repository": "https://github.com/local-inference-lab/vllm",
       "commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
-      "result_sha256": "44b95c79e682a5e841bca5a73a10738165dd80ad2f7aabfe8fe524ae3600918f"
+      "result_sha256": "8cbdb643a7dce4dc291fcfbdf690c6d9ee22ef1b7520aa65e905981ee08f22c2"
     },
     {
       "name": "r37",
@@ -19,7 +19,7 @@
       "fixture_sha256": "877b409551d432a8c622e6777279fa199ec87de54719bc3bec05ca04a15045ee",
       "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
       "extraction": "Installed ARM64 R37 Python source, retained from Qwen image validation",
-      "result_sha256": "eef9fbdebcc51712ab1eef63ab01110254647fab0a93ca858a83cc44df8b86cc"
+      "result_sha256": "d2bcf756eda71f5a74da6908fbd821151ee7ecff3baf174f843140c914e3548f"
     }
   ]
 }

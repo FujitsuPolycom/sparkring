@@ -10,6 +10,8 @@ ENVIRONMENT = "SPARKRING_SHM_BUSY_LOOP_S"
 SIGNATURE = b"        busy_loop_s: float = 1,\n"
 ASSIGNMENT = b"            self.busy_loop_s = busy_loop_s\n"
 REPLACEMENT = b'''            if busy_loop_s is None:
+                import os
+
                 # Tune only the idle wait policy; explicit callers retain control.
                 value = os.environ.get("SPARKRING_SHM_BUSY_LOOP_S", "1")
                 try:

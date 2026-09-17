@@ -83,6 +83,22 @@ def test_only_constructor_changes(sources):
     assert ast.dump(original) == ast.dump(changed)
 
 
+def test_constructor_imports_environment_dependency_itself(sources, monkeypatch, tmp_path):
+    before, after, record = sources
+    pytest.importorskip('zmq')
+    probe = load_module('probe')
+    original_globals = probe.load_condition(before).__init__.__globals__
+    assert ('os' in original_globals) == (record['name'] == 'r37')
+    local_import = b'                import os\n\n'
+    assert after.read_bytes().count(local_import) == 1
+    if record['name'] == 'deepseek':
+        missing_import = tmp_path / 'missing-import.py'
+        missing_import.write_bytes(after.read_bytes().replace(local_import, b''))
+        monkeypatch.delenv(patcher.ENVIRONMENT, raising=False)
+        with pytest.raises(NameError, match="os"):
+            construct(missing_import, {})
+
+
 def construct(source, kwargs):
     zmq = pytest.importorskip('zmq')
     probe = load_module('probe')
