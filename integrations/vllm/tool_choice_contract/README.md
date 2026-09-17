@@ -1,9 +1,10 @@
 # Chat Completions tool-result contract
 
-Status: implemented; CPU source replay covers all three admitted serving
-modules. The [serving evidence](serving-evidence.json) qualifies the empty-result
-regression on the local Qwen TP4 R37 image with the optional wrapper. Other
-images and model parsers require their own serving qualification.
+Status: **implemented**; CPU source replay covers all three admitted serving
+modules. The [Qwen TP4 evidence](serving-evidence.json) and
+[DeepSeek TP2 record](../../../performance/records/deepseek-v4-flash/api-ipc-tp2-k5-20260917.md)
+qualify bounded empty-result checks on their identified images with the optional
+wrapper. Other images and model parsers require their own serving qualification.
 
 This optional API policy addresses [issue #217](https://github.com/FujitsuPolycom/sparkring/issues/217):
 named or required tool requests can finish with an empty, malformed, or

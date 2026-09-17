@@ -85,7 +85,7 @@ events across 19 runtime fixtures, with output checks. A separate TP2/K5 launch
 from empty private serving caches passed 20 API cases / 36 requests in 30.734
 seconds; both ranks logged zero post-readiness preparation-kernel warnings.
 The record identifies exact image/source hashes and the component's AST-replay
-scope. It excludes the initial harness failure before inference requests.
+scope.
 
 This validates the listed preparation signatures. Other kernel warnings remain.
 No TP4, all-shapes, long-soak or 1M-token quality qualification is claimed.
