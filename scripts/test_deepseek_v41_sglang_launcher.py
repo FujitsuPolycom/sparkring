@@ -301,6 +301,9 @@ def test_shared_plan_uses_bundled_entrypoint_and_nccl(tmp_path):
     assert cmd[-5:] == ["--entrypoint", launch.SHARED_PYTHON, cfg["IMAGE_ID"],
                         launch.SHARED_RUNTIME + "/entrypoint.py", "run"]
     assert "CONTEXT_LENGTH=655360" in cmd
+    extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay 1")
+    assert extra.count("--min-free-slots-delay") == 1
     assert not any(launch.PINS["nccl_target"] in arg for arg in cmd)
     assert not any(str(launch.RUNTIME) in arg for arg in cmd)
     assert "NCCL_SO_HOST_PATH" not in cfg

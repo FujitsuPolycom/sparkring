@@ -87,6 +87,11 @@ verifier. The installed composition must match this checkout's manifest.
 SGLang uses the image's credential-reading entrypoint; prepared authentication
 remains private and bound to the selected image and composition.
 
+Both image selections inherit `MIN_FREE_SLOTS_DELAY=1` from the canonical
+recipe. The [admission comparison](../../performance/records/deepseek-v41-flash/sglang-single-slot-admission.md)
+covers that setting on the shared image. The 640K retrieval record used automatic
+admission; the long-context check was not repeated for the admission override.
+
 The default context remains 262144. With this admitted composition,
 `CONTEXT_LENGTH=655360` selects the recorded larger-context configuration; retain
 `MAX_TOTAL_TOKENS=1500000`, `CHUNKED_PREFILL_SIZE=4096` and

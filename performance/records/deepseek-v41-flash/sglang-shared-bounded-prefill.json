@@ -23,6 +23,7 @@
     "context_length": 655360,
     "chunked_prefill_size": 4096,
     "max_running_requests": 8,
+    "admission_policy": "automatic; resolved to two free slots at eight maximum running requests",
     "max_total_tokens_requested": 1500000,
     "max_total_tokens_observed": 1499904,
     "kv_cache_dtype": "fp8_e4m3",
