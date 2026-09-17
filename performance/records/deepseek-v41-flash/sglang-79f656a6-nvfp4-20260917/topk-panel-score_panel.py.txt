@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Score a candidate capture against a reference capture (same panel, same tokenizer).
+
+Per position (reference distribution R = top-k, candidate C = top-k, both as log-probs):
+  * top1_agree        : argmax(R) == argmax(C)
+  * ref_top1_in_c5    : argmax(R) inside C's top-5
+  * kl_trunc          : KL(R_k || C_k) with both sides renormalised over their own top-k support;
+                        a reference token missing from C's top-k takes C's k-th (renormalised)
+                        log-prob, so the term is a floor, not the true tail mass. Identical
+                        captures score exactly 0. The fraction of positions where every
+                        R-support token is inside C's top-k is reported alongside.
+  * ref_mass          : probability mass of R's top-k (how much of the distribution the truncated
+                        score sees)
+Aggregates overall and per window. Optionally compares a second candidate as a noise floor.
+
+  score_panel.py --ref capture-stock.json --cand capture-nvfp4.json [--floor capture-stock-2.json] --out score.json
+"""
+import argparse, json, math, statistics as st
+from collections import defaultdict
+
+ap = argparse.ArgumentParser()
+ap.add_argument('--ref', required=True)
+ap.add_argument('--cand', required=True)
+ap.add_argument('--floor', default=None, help='a second capture of the reference stack, scored the same way')
+ap.add_argument('--out', required=True)
+a = ap.parse_args()
+
+
+def load(path):
+    d = json.load(open(path))
+    return d, {(r['w'], r['p']): r for r in d['records']}
+
+
+def score(ref, cand):
+    per = []
+    for key, r in ref.items():
+        c = cand.get(key)
+        if c is None:
+            continue
+        R, C = r['top'], c['top']
+        r_tokens = sorted(R, key=lambda t: -R[t])
+        # Both sides are renormalised over their own top-k support, so identical captures score 0.
+        logZ = math.log(sum(math.exp(v) for v in R.values()))
+        logZc = math.log(sum(math.exp(v) for v in C.values()))
+        c_floor = min(C.values()) - logZc
+        kl = 0.0
+        complete = True
+        for t in r_tokens:
+            lr = R[t] - logZ
+            if t in C:
+                lc = C[t] - logZc
+            else:
+                lc = c_floor
+                complete = False
+            kl += math.exp(lr) * (lr - lc)
+        c_sorted = sorted(C, key=lambda t: -C[t])
+        per.append({'w': key[0], 'p': key[1], 'kl': kl, 'complete': complete,
+                    'top1': r['argmax'] == c['argmax'], 'in5': r['argmax'] in c_sorted[:5],
+                    'ref_mass': math.exp(logZ)})
+    n = len(per)
+    kls = [x['kl'] for x in per]
+    kls_sorted = sorted(kls)
+    out = {
+        'positions': n,
+        'top1_agreement': sum(x['top1'] for x in per) / n,
+        'ref_top1_in_cand_top5': sum(x['in5'] for x in per) / n,
+        'kl_trunc_mean': st.mean(kls), 'kl_trunc_median': st.median(kls),
+        'kl_trunc_p99': kls_sorted[int(0.99 * (n - 1))], 'kl_trunc_max': max(kls),
+        'support_complete_fraction': sum(x['complete'] for x in per) / n,
+        'ref_topk_mass_mean': st.mean(x['ref_mass'] for x in per),
+    }
+    byw = defaultdict(list)
+    for x in per:
+        byw[x['w']].append(x)
+    out['per_window'] = {str(w): {'kl_mean': st.mean(y['kl'] for y in v), 'top1': sum(y['top1'] for y in v) / len(v)}
+                         for w, v in sorted(byw.items())}
+    return out
+
+
+ref_meta, ref = load(a.ref)
+cand_meta, cand = load(a.cand)
+result = {'ref': {'label': ref_meta.get('label'), 'file': a.ref}, 'cand': {'label': cand_meta.get('label'), 'file': a.cand},
+          'cand_vs_ref': score(ref, cand)}
+if a.floor:
+    floor_meta, floor = load(a.floor)
+    result['floor'] = {'label': floor_meta.get('label'), 'file': a.floor}
+    result['floor_vs_ref'] = score(ref, floor)
+json.dump(result, open(a.out, 'w'), indent=1)
+for name in ('cand_vs_ref', 'floor_vs_ref'):
+    if name in result:
+        s = result[name]
+        print(f"{name}: positions {s['positions']}  top-1 {s['top1_agreement']:.4f}  ref-top1-in-top5 {s['ref_top1_in_cand_top5']:.4f}  "
+              f"KL_trunc mean {s['kl_trunc_mean']:.4f} median {s['kl_trunc_median']:.4f} p99 {s['kl_trunc_p99']:.3f}  "
+              f"support-complete {s['support_complete_fraction']:.3f}  ref top-k mass {s['ref_topk_mass_mean']:.3f}")

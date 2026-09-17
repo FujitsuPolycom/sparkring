@@ -1,0 +1,83 @@
+{
+ "target": 262144,
+ "concurrency": 8,
+ "wall_limit_s": 2400,
+ "batch_wall_s": 776.8,
+ "completed": 8,
+ "passed": 8,
+ "max_ttft_s": 776.1,
+ "results": [
+  {
+   "i": 0,
+   "pass": true,
+   "ttft_s": 101.8,
+   "wall_s": 776.4,
+   "finish_reason": "stop",
+   "prompt_tokens": 260985,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 1,
+   "pass": true,
+   "ttft_s": 585.4,
+   "wall_s": 776.5,
+   "finish_reason": "stop",
+   "prompt_tokens": 260503,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 2,
+   "pass": true,
+   "ttft_s": 298.7,
+   "wall_s": 776.4,
+   "finish_reason": "stop",
+   "prompt_tokens": 261039,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 3,
+   "pass": true,
+   "ttft_s": 682.2,
+   "wall_s": 776.5,
+   "finish_reason": "stop",
+   "prompt_tokens": 261027,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 4,
+   "pass": true,
+   "ttft_s": 488.8,
+   "wall_s": 776.6,
+   "finish_reason": "stop",
+   "prompt_tokens": 260977,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 5,
+   "pass": true,
+   "ttft_s": 776.1,
+   "wall_s": 776.4,
+   "finish_reason": "stop",
+   "prompt_tokens": 260569,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 6,
+   "pass": true,
+   "ttft_s": 199.6,
+   "wall_s": 776.4,
+   "finish_reason": "stop",
+   "prompt_tokens": 260528,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 7,
+   "pass": true,
+   "ttft_s": 394.1,
+   "wall_s": 776.4,
+   "finish_reason": "stop",
+   "prompt_tokens": 260647,
+   "answer": "COPPER-LANTERN-8315"
+  }
+ ]
+}

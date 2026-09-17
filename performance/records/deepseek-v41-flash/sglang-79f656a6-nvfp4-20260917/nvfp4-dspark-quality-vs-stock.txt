@@ -1,0 +1,11 @@
+prompts 20: first-token argmax agreement 16/20; 48-token greedy exact match 10/20; KL(a||b) over top-20 mean 0.2323 max 1.5936
+  diff i=0 pt=38 first '```' vs '```' | cont '```python\nimport re\n\ndef parse_iso8601_duration(du' vs '```python\nimport re\n\ndef parse_iso8601_duration(du'
+  diff i=2 pt=14 first 'Sun' vs 'Sun' | cont 'Sunlight contains all colors, but air molecules sc' vs 'Sunlight is scattered by air molecules, and shorte'
+  diff i=6 pt=13 first 'A' vs 'Old' | cont 'Aged copper lantern,\nHolds a soft and steady glow,' vs 'Old copper lantern,\nHolds a warm and steady glow,\n'
+  diff i=8 pt=16 first '#' vs '#' | cont '# Bug Fix\n\nThe function is supposed to **add** two' vs "# Bug Fix\n\nThe function is named `add` but it's pe"
+  diff i=10 pt=33 first '#' vs '#' | cont '# Top 5 Customers by Total Order Value\n\n```sql\nSEL' vs '# Top 5 Customers by Total Order Value\n\n```sql\nSEL'
+  diff i=11 pt=30 first 'Let' vs 'Let' | cont "Let's look at the differences between the terms:\n\n" vs "Let's look at the sequence:\n\n2, 6, 12, 20, 30, ..."
+  diff i=12 pt=18 first '`' vs '^(' | cont '`^(?:(?:25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.){3}(?:' vs '^(?:(?:25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.){3}(?:2'
+  diff i=13 pt=21 first 'A' vs 'Full' | cont 'A sliding-window attention layer differs from full' vs 'Full attention allows every token in a sequence to'
+  diff i=15 pt=23 first '```' vs '```' | cont "```bash\nawk '{print $1}' access.log | sort -u | wc" vs "```bash\nawk '{print $1}' access.log | sort -u | wc"
+  diff i=17 pt=13516 first '249' vs '251' | cont '249' vs '248'

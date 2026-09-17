@@ -1,0 +1,29 @@
+[
+ {
+  "target": 131072,
+  "prompt_tokens": 130258,
+  "depth": 0.5,
+  "ttft_s": 38.8,
+  "prefill_tok_s": 3356.7,
+  "answer": "COPPER-LANTERN-8315",
+  "pass": true
+ },
+ {
+  "target": 262144,
+  "prompt_tokens": 260119,
+  "depth": 0.5,
+  "ttft_s": 88.9,
+  "prefill_tok_s": 2926.1,
+  "answer": "COPPER-LANTERN-8315",
+  "pass": true
+ },
+ {
+  "target": 655360,
+  "prompt_tokens": 651418,
+  "depth": 0.5,
+  "ttft_s": 268.6,
+  "prefill_tok_s": 2425.3,
+  "answer": "COPPER-LANTERN-8315",
+  "pass": true
+ }
+]

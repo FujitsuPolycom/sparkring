@@ -443,10 +443,11 @@ model files are included; operators fetch the checkpoint themselves.
 
 `runtime/deepseek-v41-sglang/build-image.sh` clones
 [MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks](https://github.com/MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks)
-at commit `e59e6eb67479aa68f6fa700c600dc90a0729b5ec` (AGPL-3.0). The adapter,
+at commit `79f656a65f189239cc575bf5c5d1b5cf579d4c41` (AGPL-3.0). The adapter,
 `boot.py`, row store, and Engram packer remain in that external repository and
 the operator-built image; none of those files are vendored here. The external
 Dockerfile also carries SGLang's Apache-2.0 FlashMLA wrapper. SparkRing's auth
 patch targets the Apache-2.0 SGLang auth module in the pinned base image and
-preserves its surrounding source. Operators retain the external components'
+preserves its surrounding source; its optional NVFP4 draft overlay patch does the
+same for SGLang's Apache-2.0 `modelopt_quant` module (one platform branch). Operators retain the external components'
 licenses and notices with their builds.
