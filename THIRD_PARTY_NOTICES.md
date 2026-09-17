@@ -76,7 +76,7 @@ SparkRing implementation.
 ## 3. vLLM (referenced, patched, and selected source included)
 
 `integrations/vllm/deepseek_warmup/fixtures/` contains compressed DFlash
-speculator and GPU warmup sources extracted from the DeepSeek image identified
+speculator, GPU warmup and request-state sources extracted from the DeepSeek image identified
 by the adjacent `source.json`. Their vLLM contributor headers and Apache-2.0
 license are retained. The adjacent patch changes DSpark startup preparation;
 the fixtures support offline branch and shape-planning tests. Their provenance

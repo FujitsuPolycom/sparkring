@@ -7,7 +7,7 @@
     {
       "path": "vllm/v1/worker/gpu/spec_decode/dflash/speculator.py",
       "preimage_sha256": "5c0aac819160131cd4b3870bd0e4278b93df4a08675da7868cd986b2de139aec",
-      "candidate_sha256": "3a350223add541eff6bf9750b9e124fa17e65feb0b3354ba59501b102c2ca15f",
+      "candidate_sha256": "41cf8e31871f0799d6b7ef4a9a09e9db4f187b6fd71c8ea31b0599793220b0df",
       "fixture": "dflash-speculator.py.gz",
       "fixture_sha256": "c7d9fa77afffba35785bdc479af6829f2ab7a777ef40492fa09a42ef72b62ab8"
     },
@@ -17,6 +17,14 @@
       "candidate_sha256": "544d8eb9e2898c179d49986b6e216e807459442a020f135562b032fbdcbeeeb1",
       "fixture": "gpu-warmup.py.gz",
       "fixture_sha256": "34edf280e5bc5d4e027540c848602df63f084bbc23bb177d533f3d6e2634b185"
+    }
+  ],
+  "supporting_files": [
+    {
+      "path": "vllm/v1/worker/gpu/states.py",
+      "fixture": "req-states.py.gz",
+      "sha256": "14bde37b80299de9673d316ff5cf4fa5432ca9c23b4a955df60695b7a788ca56",
+      "fixture_sha256": "2ae24a5acbb3c085a1a738b76dd4a2c7d1a0b6e5815c288bbc0e74225416c456"
     }
   ]
 }

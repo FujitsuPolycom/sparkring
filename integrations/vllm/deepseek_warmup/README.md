@@ -23,15 +23,21 @@ tile = min(256, next_power_of_2(scheduled_tokens + draft_query_rows))
 
 For anchor-sampled DSpark K5, five draft-query rows make tiles 8, 16, 32, 64,
 128 and 256 reachable. The original explicit representatives cover 16, 64
-and 256. The overlay enumerates feasible missing tiles and adds positive
-target lengths within the configured token buffer. At a 4,096-token budget,
-K5 adds lengths 1, 12 and 60. Query counts come from the configured speculator;
+and 256. The overlay enumerates feasible tiles and scalar specialization
+classes: context count 1, ordinary integers and multiples of 16. It selects
+positive target lengths and single/batched request counts within the configured
+token buffer. Query counts come from the configured speculator;
 the sweep does not assume a shared anchor convention for DSpark and DFlash.
 Ordinary DFlash's preparation remains unchanged.
 
-Only startup call placement and DSpark target-length selection change. The
-GPU kernel, tensor construction, weights, inference path and serving limits
-retain their source definitions.
+Warmup sampled-token IDs use int64, matching `ReqStates.last_sampled_tokens`;
+next-prefill IDs are allocated separately as int32. This avoids warming a
+pointer-type signature that real requests never use. The application also
+checks the request-state source hash that defines those types.
+
+Startup call placement, DSpark warmup shapes and warmup buffer types change.
+The GPU kernel, weights, inference path and serving limits retain their source
+definitions. Other speculative methods retain their warmup call sequences.
 
 ## Prepare an image overlay
 
@@ -40,7 +46,8 @@ extracted from the DeepSeek image selected by manifest
 `sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd`.
 The corresponding image ID is
 `sha256:41fc632d02352a69f59dc18be184488c1f9d51bd9ad0a29e22ae818af4f465fe`.
-The application rejects changed input hashes before creating any output.
+The application rejects changed input hashes before creating any output,
+including the unchanged request-state definition used to verify buffer types.
 
 During a separate image build, with this integration directory available:
 
@@ -65,9 +72,11 @@ Run offline checks from the repository root:
 python -m pytest integrations/vllm/deepseek_warmup -q
 ```
 
-The tests replay the actual startup branch and target-length planner from
+The tests replay the actual startup branch, target-length planner and complete
+preparation method from
 licensed source fixtures. They cover pruning enabled/disabled, other methods,
-query counts, dynamic depths, token budgets, source drift and output preservation.
+query counts, dynamic depths, token budgets, sampled/prefill pointer types,
+context scalar specializations, source drift and output preservation.
 They do not validate GPU writes, model correctness or startup memory usage.
 
 Hardware calibration must compare the exact baseline and derivative with
@@ -87,7 +96,7 @@ qualification.
 
 ## Source license
 
-The compressed fixtures retain vLLM's Apache-2.0 contributor headers.
+The compressed preparation, startup and request-state fixtures retain vLLM's Apache-2.0 contributor headers.
 [fixtures/LICENSE](fixtures/LICENSE) preserves the license. The manifest
 records image provenance and both compressed and uncompressed hashes; it does
 not claim an unmodified upstream source revision for the extracted image files.
