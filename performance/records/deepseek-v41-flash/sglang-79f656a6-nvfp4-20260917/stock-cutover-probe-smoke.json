@@ -1,0 +1,20 @@
+{
+ "target": 4096,
+ "concurrency": 1,
+ "wall_limit_s": 300,
+ "batch_wall_s": 1.6,
+ "completed": 1,
+ "passed": 1,
+ "max_ttft_s": 1.5,
+ "results": [
+  {
+   "i": 0,
+   "pass": true,
+   "ttft_s": 1.5,
+   "wall_s": 1.6,
+   "finish_reason": "stop",
+   "prompt_tokens": 4091,
+   "answer": "COPPER-LANTERN-8315"
+  }
+ ]
+}

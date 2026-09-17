@@ -31,6 +31,7 @@ requests. Existing rank files inherit this default; set `MIN_FREE_SLOTS_DELAY`
 explicitly to a larger positive integer to batch admissions. SGLang caps the
 threshold at the maximum running-request count. This does not enable mixed
 prefill/decode execution or change context and KV limits.
+Set `MIN_FREE_SLOTS_DELAY=0` to omit the flag and use SGLang's automatic policy.
 
 The [single-slot admission test](../../performance/records/deepseek-v41-flash/sglang-single-slot-admission.md)
 records a bounded C8 latency/throughput comparison on a separate combined image.
@@ -61,6 +62,12 @@ proven equivalent to full prefill. Report its quality and workload limits
 alongside performance measurements. This profile does not include SparkCache or an unattended
 recovery service. The source contribution and its qualification records originate
 from [PR #267](https://github.com/FujitsuPolycom/sparkring/pull/267).
+
+The [2026-09-17 record](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917.md)
+covers the adapter commit `79f656a6` (completion cap, loop abort), the admission-delayer and
+token-pool settings, a rejected 1024-token prefill chunk, and the `nvidia/DeepSeek-V4.1-Flash-NVFP4`
+checkpoint variant with its distribution comparison; the [runtime guide](../../runtime/deepseek-v41-sglang/README.md#serving-controls)
+lists the corresponding optional settings. The recipe defaults are unchanged.
 
 The contributor's [655360-context report](https://github.com/FujitsuPolycom/sparkring/pull/267#issuecomment-5653279829)
 uses additional SGLang memory and execution overlays from #39187 and #39068.

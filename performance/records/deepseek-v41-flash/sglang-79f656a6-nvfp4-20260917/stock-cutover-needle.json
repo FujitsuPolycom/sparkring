@@ -1,0 +1,20 @@
+[
+ {
+  "target": 262144,
+  "prompt_tokens": 260119,
+  "depth": 0.5,
+  "ttft_s": 120.0,
+  "prefill_tok_s": 2167.8,
+  "answer": "COPPER-LANTERN-8315",
+  "pass": true
+ },
+ {
+  "target": 655360,
+  "prompt_tokens": 651418,
+  "depth": 0.5,
+  "ttft_s": 369.6,
+  "prefill_tok_s": 1762.3,
+  "answer": "COPPER-LANTERN-8315",
+  "pass": true
+ }
+]

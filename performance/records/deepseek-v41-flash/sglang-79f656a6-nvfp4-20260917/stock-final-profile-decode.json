@@ -1,0 +1,201 @@
+{
+ "api": "http://localhost:8015",
+ "model": "deepseek-v4.1-flash",
+ "mode": "decode",
+ "label": "final",
+ "gen": 256,
+ "thinking": false,
+ "started": "2026-09-17T12:47:05Z",
+ "samples": [
+  {
+   "c": 1,
+   "wall": 7.648710012435913,
+   "completion_tokens": 256,
+   "prompt_tokens": 258,
+   "agg_tok_s": 33.469696142718675,
+   "per_session_tok_s": 34.710272130282355,
+   "ttft_p50": 0.27284693717956543,
+   "ttft_max": 0.27284693717956543,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 7.6481852531433105,
+   "run": 0
+  },
+  {
+   "c": 1,
+   "wall": 7.492664575576782,
+   "completion_tokens": 256,
+   "prompt_tokens": 255,
+   "agg_tok_s": 34.16675034866261,
+   "per_session_tok_s": 35.43285965632884,
+   "ttft_p50": 0.26707029342651367,
+   "ttft_max": 0.26707029342651367,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 7.492002248764038,
+   "run": 1
+  },
+  {
+   "c": 1,
+   "wall": 7.024856805801392,
+   "completion_tokens": 256,
+   "prompt_tokens": 270,
+   "agg_tok_s": 36.442023955361705,
+   "per_session_tok_s": 37.94294771897276,
+   "ttft_p50": 0.2773478031158447,
+   "ttft_max": 0.2773478031158447,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 7.024319648742676,
+   "run": 2
+  },
+  {
+   "c": 4,
+   "wall": 12.992175579071045,
+   "completion_tokens": 1024,
+   "prompt_tokens": 1039,
+   "agg_tok_s": 78.816668830242,
+   "per_session_tok_s": 20.634007755014444,
+   "ttft_p50": 0.5309191942214966,
+   "ttft_max": 0.5317971706390381,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 12.99169659614563,
+   "run": 0
+  },
+  {
+   "c": 4,
+   "wall": 12.870101690292358,
+   "completion_tokens": 1024,
+   "prompt_tokens": 1038,
+   "agg_tok_s": 79.56425090039353,
+   "per_session_tok_s": 21.693322441113885,
+   "ttft_p50": 0.5401972532272339,
+   "ttft_max": 0.5407986640930176,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 12.868676662445068,
+   "run": 1
+  },
+  {
+   "c": 4,
+   "wall": 12.944644451141357,
+   "completion_tokens": 1024,
+   "prompt_tokens": 1023,
+   "agg_tok_s": 79.10607385664515,
+   "per_session_tok_s": 20.923259236057802,
+   "ttft_p50": 0.5258913040161133,
+   "ttft_max": 0.5262422561645508,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 12.94284701347351,
+   "run": 2
+  },
+  {
+   "c": 8,
+   "wall": 19.36889123916626,
+   "completion_tokens": 2048,
+   "prompt_tokens": 2054,
+   "agg_tok_s": 105.73656358081531,
+   "per_session_tok_s": 14.700653149936555,
+   "ttft_p50": 0.7740806341171265,
+   "ttft_max": 1.1315462589263916,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 19.366373777389526,
+   "run": 0
+  },
+  {
+   "c": 8,
+   "wall": 19.302372217178345,
+   "completion_tokens": 2048,
+   "prompt_tokens": 2092,
+   "agg_tok_s": 106.10094847188581,
+   "per_session_tok_s": 14.728787345643358,
+   "ttft_p50": 0.7989773750305176,
+   "ttft_max": 1.1554205417633057,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 19.301093101501465,
+   "run": 1
+  },
+  {
+   "c": 8,
+   "wall": 19.633111000061035,
+   "completion_tokens": 2048,
+   "prompt_tokens": 2107,
+   "agg_tok_s": 104.31357516359141,
+   "per_session_tok_s": 14.43605122267519,
+   "ttft_p50": 0.7832443714141846,
+   "ttft_max": 1.1285076141357422,
+   "steps_s": 0.0,
+   "acceptance": null,
+   "tok_per_step": null,
+   "preemptions": 0,
+   "errors": 0,
+   "finish": [
+    "length"
+   ],
+   "err_samples": [],
+   "max_wall": 19.632215976715088,
+   "run": 2
+  }
+ ],
+ "finished": "2026-09-17T12:49:05Z"
+}

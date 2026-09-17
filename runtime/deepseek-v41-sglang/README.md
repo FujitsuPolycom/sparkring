@@ -10,8 +10,8 @@ No public image is published.
 | Input | Contract |
 |---|---|
 | Hardware | Four GB10 Sparks, Linux ARM64, local NVMe checkpoint and packed Engram files on every rank |
-| Runtime | External Mia adapter and SGLang base image pinned in [pins.json](pins.json) |
-| Measured settings | TP4/EP4, context 262144, chunk 4096, eight requests, memory fraction 0.90, DSpark block five |
+| Runtime | External Mia adapter (commit `79f656a6`: completion cap, decode-side loop abort, `enable_thinking` alias, publisher reasoning-effort table) and SGLang base image pinned in [pins.json](pins.json) |
+| Measured settings | TP4/EP4, context 262144, chunk 4096, eight requests, memory fraction 0.90, DSpark block five (recipe defaults); a site profile at context 655360, fraction 0.80, delayer off and the NVFP4 checkpoint is recorded in the [2026-09-17 record](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917.md) |
 | Transport | SparkRing patched NCCL 2.30.7, both RoCE devices, four ring channels |
 | Authentication | Required file containing one distinct bearer key per nonempty line |
 | Deployment | Operator-managed rank startup; start workers 3, 2, 1, then rank 0 |
@@ -121,6 +121,61 @@ refer to files inside the mounted state directory. Profile SPS/STS on the
 running configuration before enabling them and compare decode throughput and
 quality independently. vLLM's adaptive verification and Engram tuning do not
 transfer automatically to this implementation.
+
+## Serving controls
+
+The environment settings below select serving controls. Admission defaults to
+one free slot; the other settings retain the image defaults. Contributor measurements
+are in the [2026-09-17 record](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917.md).
+
+| Setting | Default | Effect |
+|---|---|---|
+| `MOE_RUNNER_BACKEND` | `flashinfer_mxfp4` | MoE runner for the routed experts. `flashinfer_cutlass` is required for the NVFP4 checkpoint below: `ModelOptNvFp4FusedMoEMethod` only slices the per-expert `input_scale` to the EP-local experts on the CUTLASS/TRT-LLM branch, and the MXFP4 runner fails at weight post-processing with a 384-vs-96 shape error |
+| `MIN_FREE_SLOTS_DELAY` | `1` (single-slot admission) | Disables admission batching so one free slot can accept a prefill. `0` omits the flag and restores SGLang's automatic policy, which waits for two free slots at eight DFlash-family requests. Larger values request an explicit threshold. The contributor measured eight-stream decode at 86 → 106 tok/s and worst first-token wait at 17 → 1.1 s with single-slot admission; see the linked record for scope |
+| `DSV41_MAX_NEW_TOKENS` | `32768` (image default) | Fills an omitted `max_tokens` and clamps larger values. The image default was sized for short trials; the recorded site uses 131072 because thinking-on audit traces exceed 32768. `0` restores the engine's fill-the-remaining-context behaviour, which let one request run to 714K tokens upstream |
+| `DSV41_LOOP_ABORT` | `1` (image default) | Finishes a request whose output cycles (four copies of a ≥32-token n-gram, 64 identical tokens, or eight identical lines) with `finish_reason=stop`, `matched=repetition`. `--watchdog-timeout` never fires on a live stream |
+| `NVFP4_DRAFT_OVERLAY` | `0` | Mounts the prepared overlay described below. Requires `--prepare` with the same value |
+
+The contributor's [stock-checkpoint output comparison](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917/stock-cutover-quality.json)
+reports 20/20 first-token and 20/20 greedy-continuation matches to its reference.
+In the recorded workload, prefills were serialised (`max_prefill_tokens` 16384, FCFS), and decode made no progress
+while another request prefills: with eight concurrent 262K prompts the last caller waited 11–14
+minutes for its first token and every request's short answer landed only when the batch's prefill
+was done. A larger token pool removes the capacity failure, not that latency; `--enable-mixed-chunk`
+is the untested SGLang knob for it.
+
+## NVFP4 checkpoint variant
+
+`nvidia/DeepSeek-V4.1-Flash-NVFP4` @ `3431dde3247c13b5957f682b1e3c6fcae2566079` (MIT, 491 GiB,
+48 shards) re-encodes only the 384 routed experts of each layer from MXFP4 to NVFP4 W4A4
+(group 16, ModelOpt); attention, shared experts, Engram tables and the bundled DSpark draft keep
+source precision, and the Engram shards stay 47 and 48, so `--pack` works unchanged. Loading it:
+
+1. SGLang auto-detects the `MIXED_PRECISION` + `moe_quant_algo=NVFP4` map and wraps the FP8 config
+   in `HybridFp8NvFp4Config`. Its automatic runner is `flashinfer_trtllm_routed`, which has no
+   SM120 kernel; set `MOE_RUNNER_BACKEND=flashinfer_cutlass`.
+2. The hybrid config sends the draft's MXFP4 experts to the TRT-LLM MoE method unconditionally.
+   Set `NVFP4_DRAFT_OVERLAY=1` and run `--prepare`: [patch-nvfp4-draft.py](patch-nvfp4-draft.py)
+   reads `modelopt_quant.py` from the selected image, refuses if the surrounding source has
+   changed, and writes a module that selects the CUTLASS MXFP8×MXFP4 method on SM90/SM120 — the
+   same choice SGLang's `fp8.py` already makes for the stock checkpoint. The launcher binds the
+   generated module to the image, patcher and pins in `operator/overlay-receipt.json` and mounts
+   it read-only over the image's copy. This launcher fixes `SPEC_ALGO=DSPARK`, so the
+   NVFP4 variant requires the overlay. The contributor's no-speculation measurements
+   used a separate manual launch; they are not an option exposed by this launcher.
+3. Read the boot log's `DSV4 memory calculation ... full_token=` line before pinning
+   `MAX_TOTAL_TOKENS`: the NVFP4 weights take ~4 GiB more per rank and a pin above the budget is
+   **silently clamped**, not rejected. At memory fraction 0.80 with the draft loaded the recorded
+   budget was 5,448,448 tokens (stock checkpoint: 8,235,520).
+
+On the recorded cycle the variant was faster than the stock checkpoint at every prompt depth
+(prefill +6–8 % at 16–64K, needle time-to-first-token 262K 88.9 s vs 104.8 s and 655K 268.6 s vs
+386.9 s) with decode within a few percent, and it passed the same functional gates. Its output
+distribution differs from the stock checkpoint's: quantising the MoE activations to 4 bits moved
+the bounded exact-output gate to 16/20 first tokens and 10/20 greedy continuations. The record
+includes a 1,440-position top-20 comparison against the stock checkpoint on the same image and
+profile; treat the variant as a different model until a site has judged that comparison against
+its own workload. NVIDIA reports benchmark parity on GB300; this runtime has not measured it.
 
 ## Source ownership
 
