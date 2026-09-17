@@ -1,0 +1,1321 @@
+diff --git a/b12x/attention/qsa/_score_cute.py b/b12x/attention/qsa/_score_cute.py
+index 10170c9..aeb2142 100644
+--- a/b12x/attention/qsa/_score_cute.py
++++ b/b12x/attention/qsa/_score_cute.py
+@@ -373,7 +373,12 @@ def launch_score_representatives(
+         key = (prepared_query.device.index, geometry, tuple(t.dtype for t in tensors))
+         raw = _CACHE.get(key)
+         if raw is None:
+-            kernel = _RepresentativeScoreKernel(*geometry)
++            if geometry[0] == 4 and geometry[1] % 16 == 0:
++                from ._score_pair_cute import PairedRepresentativeScoreKernel
++
++                kernel = PairedRepresentativeScoreKernel(*geometry)
++            else:
++                kernel = _RepresentativeScoreKernel(*geometry)
+             raise_if_kernel_resolution_frozen("cute.compile", target=kernel, cache_key=key)
+             fake = tuple(
+                 make_ptr(t, 16, cute.AddressSpace.gmem, assumed_align=t.width // 8)
+@@ -389,7 +394,7 @@ def launch_score_representatives(
+                 Int32(1),
+                 current_cuda_stream(),
+                 compile_spec=KernelCompileSpec.from_key(
+-                    "attention.qsa.representative_score", 1, key
++                    "attention.qsa.representative_score", 2, key
+                 ),
+             )
+             _CACHE[key] = raw
+diff --git a/b12x/attention/qsa/_score_pair_cute.py b/b12x/attention/qsa/_score_pair_cute.py
+new file mode 100644
+index 0000000..5c4ed7a
+--- /dev/null
++++ b/b12x/attention/qsa/_score_pair_cute.py
+@@ -0,0 +1,234 @@
++"""Reuse representative-key operands across two four-head QSA queries."""
++
++import cuda.bindings.driver as cuda
++import cutlass
++import cutlass.cute as cute
++from cutlass import Float32, Int32, Int64, Uint32
++
++from b12x._lib.intrinsics import bf16_mma_m16n8k16_f32
++from b12x.attention.qsa._score_cute import _RepresentativeScoreKernel, _or_error
++
++
++class PairedRepresentativeScoreKernel(_RepresentativeScoreKernel):
++    @cute.jit
++    def __call__(
++        self,
++        pointers: tuple,
++        strides: tuple,
++        rows: Int32,
++        page_count: Int64,
++        group_offset: Int32,
++        group_count: Int32,
++        stream: cuda.CUstream,
++    ):
++        if rows >= 128:
++            self.paired_kernel(
++                pointers, strides, rows, page_count, group_offset, group_count
++            ).launch(
++                grid=((group_count + 63) // 64, (rows + 1) // 2, 1),
++                block=(128, 1, 1),
++                stream=stream,
++            )
++        else:
++            self.kernel(pointers, strides, page_count, group_offset, group_count).launch(
++                grid=((group_count + 63) // 64, rows, 1),
++                block=(128, 1, 1),
++                stream=stream,
++            )
++
++    @cute.kernel
++    def paired_kernel(
++        self,
++        pointers: tuple,
++        strides: tuple,
++        rows: Int32,
++        page_count: Int64,
++        group_offset: Int32,
++        group_count: Int32,
++    ):
++        (
++            query, positions, requests, lengths, cache, table,
++            errors, scores, counts, merges,
++        ) = pointers
++        page_stride, token_stride, table_stride, score_stride = strides
++        block, pair, _ = cute.arch.block_idx()
++        thread, _, _ = cute.arch.thread_idx()
++        lane, warp = thread % 32, thread // 32
++        row = pair * 2
++        eligible = cute.make_rmem_tensor((2,), Int32)
++        carry = cute.make_rmem_tensor((2,), Int32)
++        request = cute.make_rmem_tensor((2,), Int64)
++        for part in cutlass.range_constexpr(2):
++            eligible[part], carry[part], request[part] = Int32(0), Int32(0), Int64(-1)
++            if row + part < rows:
++                request[part] = requests[row + part].to(Int64)
++                if (errors[row + part] == Int32(0)) & (request[part] >= Int64(0)):
++                    p = (positions[row + part].to(Int64) + Int64(1)) // self.ratio
++                    s = lengths[request[part]].to(Int64) // self.ratio
++                    eligible[part] = cutlass.min(
++                        cutlass.min(p, s), Int64(self.max_groups)
++                    ).to(Int32)
++                carry[part] = cutlass.min(
++                    cutlass.min(eligible[part], group_offset), Int32(self.budget)
++                )
++                if (block == 0) & (thread == 0):
++                    counts[row + part] = eligible[part]
++                    merges[row + part] = carry[part] + cutlass.min(
++                        cutlass.max(eligible[part] - group_offset, Int32(0)),
++                        group_count,
++                    )
++
++        if (
++            (request[0] >= Int64(0))
++            & (request[0] == request[1])
++            & (eligible[0] > 0)
++            & (eligible[1] > 0)
++        ):
++            self.score_pair(
++                query,
++                cache,
++                table,
++                errors,
++                scores,
++                request[0],
++                row,
++                page_stride,
++                token_stride,
++                table_stride,
++                score_stride,
++                page_count,
++                group_offset,
++                group_count,
++                block * 64,
++                eligible,
++                carry,
++                lane,
++                warp,
++            )
++        else:
++            # Adjacent packed rows can straddle requests or include padding
++            # and failed state. The scalar path keeps inactive rows load-free.
++            for part in cutlass.range_constexpr(2):
++                if row + part < rows:
++                    self.score_mma(
++                        query,
++                        cache,
++                        table,
++                        errors,
++                        scores,
++                        request[part],
++                        row + part,
++                        page_stride,
++                        token_stride,
++                        table_stride,
++                        (row + part).to(Int64) * score_stride,
++                        page_count,
++                        group_offset,
++                        group_count,
++                        block * 64,
++                        eligible[part],
++                        carry[part],
++                        lane,
++                        warp,
++                    )
++
++    @cute.jit
++    def score_pair(
++        self,
++        query,
++        cache,
++        table,
++        errors,
++        scores,
++        request,
++        row,
++        page_stride,
++        token_stride,
++        table_stride,
++        score_stride,
++        page_count,
++        group_offset,
++        group_count,
++        local_start,
++        eligible,
++        carry,
++        lane,
++        warp,
++    ):
++        matrix_row, matrix_pair = lane // 4, lane % 4
++        warp_start = local_start + warp * 16
++        max_eligible = cutlass.max(eligible[0], eligible[1])
++        if group_offset + warp_start < max_eligible:
++            base = cute.make_rmem_tensor((2,), Int64)
++            valid = cute.make_rmem_tensor((2,), Int32)
++            for part in cutlass.range_constexpr(2):
++                local_group = warp_start + matrix_row + part * 8
++                group = group_offset + local_group
++                base[part], valid[part] = Int64(0), Int32(0)
++                if (local_group < group_count) & (group < max_eligible):
++                    page = table[
++                        request * table_stride + (group // self.page_size).to(Int64)
++                    ].to(Int64)
++                    if (page >= Int64(0)) & (page < page_count):
++                        base[part] = (
++                            page * page_stride
++                            + (group % self.page_size).to(Int64) * token_stride
++                        )
++                        valid[part] = Int32(1)
++                    elif matrix_pair == 0:
++                        # A shared page can be visible to only the later query.
++                        # Report invalid storage only for rows that reference it.
++                        for q in cutlass.range_constexpr(2):
++                            if group < eligible[q]:
++                                _or_error(
++                                    (errors + (row + q).to(Int64)).toint().to(Int64)
++                                )
++            d0, d1, d2, d3 = Float32(0), Float32(0), Float32(0), Float32(0)
++            for tile in cutlass.range_constexpr(self.dim // 16):
++                column = (tile * 16 + matrix_pair * 2).to(Int64)
++                a0, a1, a2, a3 = Uint32(0), Uint32(0), Uint32(0), Uint32(0)
++                if valid[0] != 0:
++                    a0 = self.load_pair(cache, base[0] + column)
++                    a2 = self.load_pair(cache, base[0] + column + Int64(8))
++                if valid[1] != 0:
++                    a1 = self.load_pair(cache, base[1] + column)
++                    a3 = self.load_pair(cache, base[1] + column + Int64(8))
++                # Eight MMA columns hold two independent groups of four heads.
++                query_base = (
++                    (row + matrix_row // 4).to(Int64) * 4 * self.dim
++                    + (matrix_row % 4).to(Int64) * self.dim
++                    + column
++                )
++                b0 = self.load_pair(query, query_base)
++                b1 = self.load_pair(query, query_base + Int64(8))
++                d0, d1, d2, d3 = bf16_mma_m16n8k16_f32(
++                    d0, d1, d2, d3, a0, a1, a2, a3, b0, b1
++                )
++            for part in cutlass.range_constexpr(2):
++                first = cutlass.max(d0 if part == 0 else d2, Float32(0))
++                second = cutlass.max(d1 if part == 0 else d3, Float32(0))
++                local_group = warp_start + matrix_row + part * 8
++                for q in cutlass.range_constexpr(2):
++                    score = Float32(0)
++                    for head in cutlass.range_constexpr(4):
++                        value = first if head % 2 == 0 else second
++                        value = cute.arch.shuffle_sync(
++                            value, (lane // 4) * 4 + q * 2 + head // 2
++                        )
++                        score = score + value
++                    score = score * Float32(self.scale)
++                    if (valid[part] == 0) | (group_offset + local_group >= eligible[q]):
++                        score = Float32(-float("inf"))
++                    if (matrix_pair == q * 2) & (local_group < group_count):
++                        address = (row + q).to(Int64) * score_stride + (
++                            carry[q] + local_group
++                        ).to(Int64)
++                        scores[address] = score
++        else:
++            local_group = warp_start + lane
++            if (lane < 16) & (local_group < group_count):
++                for q in cutlass.range_constexpr(2):
++                    address = (row + q).to(Int64) * score_stride + (
++                        carry[q] + local_group
++                    ).to(Int64)
++                    scores[address] = Float32(-float("inf"))
+diff --git a/b12x/sequence/ple/__init__.py b/b12x/sequence/ple/__init__.py
+index e087666..c062556 100644
+--- a/b12x/sequence/ple/__init__.py
++++ b/b12x/sequence/ple/__init__.py
+@@ -28,6 +28,7 @@ META = OpMeta(
+         "PleQuery",
+         "plan",
+         "bind",
++        "export_checkpoint",
+         "run_decode",
+         "run_mixed",
+         "run_prefill",
+@@ -62,6 +63,7 @@ if TYPE_CHECKING:
+         PleConfig,
+         PleQuery,
+         bind,
++        export_checkpoint,
+         is_supported,
+         plan,
+         run_decode,
+diff --git a/b12x/sequence/ple/_contracts.py b/b12x/sequence/ple/_contracts.py
+index 53226db..49cb139 100644
+--- a/b12x/sequence/ple/_contracts.py
++++ b/b12x/sequence/ple/_contracts.py
+@@ -494,6 +494,37 @@ def bind_layer(
+     )
+ 
+ 
++def export_checkpoint(
++    binding: LayerBinding, *, offsets: torch.Tensor, slots: torch.Tensor
++) -> None:
++    """Export an interior prefill window after the preceding ``run_mixed``.
++
++    Offsets are query-relative and strictly interior. Nonpositive offsets,
++    negative destinations, decode rows, empty rows, and offsets at or beyond
++    the query end do nothing. Enabled destinations must be valid, distinct
++    pool slots separate from every live input/output slot. The caller must
++    export before reusing the binding's normalized-input and history scratch.
++
++    Eager mixed warmup prepares this kernel; offsets and slots remain device
++    inputs and may change during CUDA graph replay without kernel resolution.
++    """
++    caps = binding.plan.caps
++    if caps.mode != "mixed":
++        raise ValueError("checkpoint export requires a mixed LayerPlan")
++    for name, tensor, dtype in (
++        ("checkpoint offsets", offsets, torch.int32),
++        ("checkpoint slots", slots, torch.int64),
++    ):
++        _require_tensor(
++            name, tensor, shape=(caps.max_seqs,), dtype=dtype, device=caps.device
++        )
++    if caps.device.type != "cuda":
++        raise ValueError("PLE GPU run requires CUDA; use the explicit reference oracle")
++    from ._kernels import export_layer_checkpoint
++
++    export_layer_checkpoint(binding, offsets=offsets, slots=slots)
++
++
+ def run_decode(binding: LayerBinding, *, eps: float) -> torch.Tensor:
+     """Run decode and mutate only live nonnegative state slots."""
+     if binding.plan.caps.mode != "decode":
+@@ -561,6 +592,7 @@ __all__ = [
+     "LayerBinding",
+     "plan_layer",
+     "bind_layer",
++    "export_checkpoint",
+     "run_decode",
+     "run_prefill",
+     "run_mixed",
+diff --git a/b12x/sequence/ple/_kernels.py b/b12x/sequence/ple/_kernels.py
+index 543d99b..546d7aa 100644
+--- a/b12x/sequence/ple/_kernels.py
++++ b/b12x/sequence/ple/_kernels.py
+@@ -2,12 +2,16 @@
+ 
+ from __future__ import annotations
+ 
++from dataclasses import dataclass
++from functools import lru_cache
+ from typing import TYPE_CHECKING
+ 
+ import torch
+ import triton
+ import triton.language as tl
+ 
++from b12x._lib.runtime_control import raise_if_kernel_resolution_frozen
++
+ if TYPE_CHECKING:
+     from ._contracts import LayerBinding
+ 
+@@ -538,6 +542,165 @@ def _update_state_kernel(
+         )
+ 
+ 
++@triton.jit
++def _export_checkpoint_kernel(
++    normalized_u_ptr,
++    gathered_state_ptr,
++    query_start_loc_ptr,
++    checkpoint_offsets_ptr,
++    checkpoint_slots_ptr,
++    request_is_prefill_ptr,
++    num_seqs_ptr,
++    conv_state_ptr,
++    error_code_ptr,
++    CHANNELS: tl.constexpr,
++    STATE_LENGTH: tl.constexpr,
++    STATE_CAPACITY: tl.constexpr,
++    STATE_STRIDE: tl.constexpr,
++    BLOCK: tl.constexpr,
++):
++    """Copy an internal prefill window into an independent state slot."""
++    request = tl.program_id(0)
++    element = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
++    live = (request < tl.load(num_seqs_ptr)) & (tl.load(error_code_ptr) == 0)
++    offset = tl.load(checkpoint_offsets_ptr + request, live, other=0)
++    slot = tl.load(checkpoint_slots_ptr + request, live, other=-1).to(tl.int64)
++    prefill = tl.load(request_is_prefill_ptr + request, live, other=False)
++    start = tl.load(query_start_loc_ptr + request, live, other=0)
++    end = tl.load(query_start_loc_ptr + request + 1, live, other=0)
++    valid = live & prefill & (slot >= 0) & (offset > 0) & (offset < end - start)
++    channel = element // STATE_CAPACITY
++    position = element % STATE_CAPACITY
++    relative = offset - STATE_LENGTH + position
++    payload = (channel < CHANNELS) & (position < STATE_LENGTH)
++    token = start.to(tl.int64) + relative.to(tl.int64)
++    query = tl.load(
++        normalized_u_ptr + token * CHANNELS + channel.to(tl.int64),
++        valid & payload & (relative >= 0), other=0,
++    )
++    history = tl.load(
++        gathered_state_ptr
++        + (request.to(tl.int64) * CHANNELS + channel.to(tl.int64)) * STATE_LENGTH
++        + (offset + position).to(tl.int64),
++        valid & payload & (relative < 0), other=0,
++    )
++    value = tl.where(relative >= 0, query, history)
++    tl.store(
++        conv_state_ptr + slot * STATE_STRIDE + element.to(tl.int64),
++        value, valid & (element < CHANNELS * STATE_CAPACITY),
++    )
++
++
++@dataclass(frozen=True)
++class _CompilePointer:
++    dtype: torch.dtype
++    alignment: int
++
++    def data_ptr(self):
++        return self.alignment
++
++
++@lru_cache(maxsize=None)
++def _checkpoint_program(
++    device: torch.device,
++    channels: int,
++    state_length: int,
++    state_capacity: int,
++    state_stride: int,
++):
++    """Resolve once per static layout during R37's eager mixed warmup.
++
++    Compile at each dtype's minimum alignment so any valid contiguous metadata
++    view can be supplied later. No request count, offset, slot ID, or tensor
++    address belongs in this cache key.
++    """
++    raise_if_kernel_resolution_frozen(
++        "triton checkpoint warmup", target=_export_checkpoint_kernel,
++        cache_key=(device, channels, state_length, state_capacity, state_stride),
++    )
++    with torch.cuda.device(device):
++        if torch.cuda.is_current_stream_capturing():
++            raise RuntimeError("warm up mixed PLE before capturing checkpoint export")
++        bf16 = _CompilePointer(torch.bfloat16, 2)
++        i32 = _CompilePointer(torch.int32, 4)
++        i64 = _CompilePointer(torch.int64, 8)
++        boolean = _CompilePointer(torch.bool, 1)
++        program = _export_checkpoint_kernel.warmup(
++            bf16, bf16, i32, i32, i64, boolean, i32, bf16, i32,
++            CHANNELS=channels, STATE_LENGTH=state_length,
++            STATE_CAPACITY=state_capacity, STATE_STRIDE=state_stride,
++            BLOCK=256, num_warps=4, grid=(1, 1),
++        )
++        # CompiledKernel subscription also loads the binary and launcher.
++        # Materialize them now without launching or touching caller storage.
++        program[(1, 1, 1)]
++        return program
++
++
++@torch.library.custom_op(
++    "b12x::ple_export_checkpoint", mutates_args=("conv_state",)
++)
++def _export_checkpoint_op(
++    normalized_u: torch.Tensor,
++    gathered_state: torch.Tensor,
++    query_start_loc: torch.Tensor,
++    offsets: torch.Tensor,
++    slots: torch.Tensor,
++    request_is_prefill: torch.Tensor,
++    num_seqs: torch.Tensor,
++    conv_state: torch.Tensor,
++    error_code: torch.Tensor,
++    max_seqs: int,
++    channels: int,
++    state_length: int,
++    state_capacity: int,
++    state_stride: int,
++) -> None:
++    program = _checkpoint_program(
++        conv_state.device, channels, state_length, state_capacity, state_stride
++    )
++    program[(max_seqs, triton.cdiv(channels * state_capacity, 256), 1)](
++        normalized_u, gathered_state, query_start_loc, offsets, slots,
++        request_is_prefill, num_seqs, conv_state, error_code,
++        channels, state_length, state_capacity, state_stride, 256,
++    )
++
++
++@_export_checkpoint_op.register_fake
++def _export_checkpoint_fake(
++    normalized_u: torch.Tensor,
++    gathered_state: torch.Tensor,
++    query_start_loc: torch.Tensor,
++    offsets: torch.Tensor,
++    slots: torch.Tensor,
++    request_is_prefill: torch.Tensor,
++    num_seqs: torch.Tensor,
++    conv_state: torch.Tensor,
++    error_code: torch.Tensor,
++    max_seqs: int,
++    channels: int,
++    state_length: int,
++    state_capacity: int,
++    state_stride: int,
++) -> None:
++    del normalized_u, gathered_state, query_start_loc, offsets, slots
++    del request_is_prefill, num_seqs, conv_state, error_code, max_seqs
++    del channels, state_length, state_capacity, state_stride
++
++
++def export_layer_checkpoint(
++    binding: LayerBinding, *, offsets: torch.Tensor, slots: torch.Tensor
++) -> None:
++    caps = binding.plan.caps
++    assert binding.request_is_prefill is not None
++    torch.ops.b12x.ple_export_checkpoint(
++        binding.normalized_u, binding.gathered_state, binding.query_start_loc,
++        offsets, slots, binding.request_is_prefill, binding.num_seqs,
++        binding.conv_state, binding.error_code, caps.max_seqs, caps.channels,
++        caps.state_length, caps.state_capacity, binding.conv_state.stride(0),
++    )
++
++
+ def _launch_layer_pipeline(
+     residual: torch.Tensor,
+     key: torch.Tensor,
+@@ -577,6 +740,10 @@ def _launch_layer_pipeline(
+     state_length = dilation * (kernel_size - 1)
+     state_capacity = state_length + max_speculative_tokens
+     state_strides = tuple(int(stride) for stride in conv_state.stride())
++    if mixed:
++        _checkpoint_program(
++            conv_state.device, channels, state_length, state_capacity, state_strides[0]
++        )
+     channel_grid = triton.cdiv(channels, _CHANNEL_BLOCK)
+     _reset_error_kernel[(1,)](error_code, num_warps=1)
+     request_block = 128
+@@ -1000,4 +1167,4 @@ def run_layer_mixed_kernels(
+     )
+ 
+ 
+-__all__ = ["run_layer_kernels", "run_layer_mixed_kernels"]
++__all__ = ["run_layer_kernels", "run_layer_mixed_kernels", "export_layer_checkpoint"]
+diff --git a/b12x/sequence/ple/api.py b/b12x/sequence/ple/api.py
+index 95e8290..bb68f27 100644
+--- a/b12x/sequence/ple/api.py
++++ b/b12x/sequence/ple/api.py
+@@ -8,6 +8,7 @@ from ._contracts import (
+     LayerCaps as Caps,
+     LayerPlan as Plan,
+     bind_layer as bind,
++    export_checkpoint,
+     plan_layer as plan,
+     run_decode,
+     run_mixed,
+@@ -29,6 +30,7 @@ __all__ = [
+     "PleQuery",
+     "plan",
+     "bind",
++    "export_checkpoint",
+     "run_decode",
+     "run_mixed",
+     "run_prefill",
+diff --git a/vllm/envs.py b/vllm/envs.py
+index 08fbf38..b51704d 100644
+--- a/vllm/envs.py
++++ b/vllm/envs.py
+@@ -205,6 +205,8 @@ if TYPE_CHECKING:
+     VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH: bool = True
+     VLLM_MTP_NVFP4_LM_HEAD: bool = True
+     VLLM_QWEN3_8_FLASH_NEXT_OVERLAP: bool = True
++    VLLM_QWEN3_8_HC_PREFILL_MODE: str = "off"
++    VLLM_QWEN3_8_PREFILL_COALESCE: bool = False
+     VLLM_B12X_MLA_CKV_GATHER: bool = False
+     VLLM_B12X_MLA_CKV_GATHER_MIN_TOKENS: int = 16
+     VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS: int = 524288
+@@ -1700,6 +1702,12 @@ environment_variables: dict[str, Callable[[], Any]] = {
+     "VLLM_QWEN3_8_FLASH_NEXT_OVERLAP": lambda: bool(
+         int(os.getenv("VLLM_QWEN3_8_FLASH_NEXT_OVERLAP", "1"))
+     ),
++    "VLLM_QWEN3_8_HC_PREFILL_MODE": lambda: os.getenv(
++        "VLLM_QWEN3_8_HC_PREFILL_MODE", "off"
++    ),
++    "VLLM_QWEN3_8_PREFILL_COALESCE": lambda: bool(
++        int(os.getenv("VLLM_QWEN3_8_PREFILL_COALESCE", "0"))
++    ),
+     # Gather DCP-sharded C4 records before B12X sparse-MLA prefill. This avoids
+     # query replication plus the per-rank LSE combine and is opt-in while the
+     # path is being qualified on GLM5Next.
+diff --git a/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py b/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py
+index aff0325..d35a84d 100644
+--- a/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py
++++ b/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py
+@@ -3,6 +3,7 @@
+ """Inference-only Qwen3-Next/Qwen3.5 model."""
+ 
+ import os
++from dataclasses import replace
+ from typing import TYPE_CHECKING, Any, Literal
+ 
+ import torch
+@@ -70,6 +71,7 @@ from vllm.utils.torch_utils import (
+     direct_register_custom_op,
+ )
+ from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
++from vllm.v1.kv_cache_interface import MambaSpec
+ from vllm.v1.worker.workspace import retain_cuda_graph_capture_resource
+ 
+ if TYPE_CHECKING:
+@@ -519,6 +521,22 @@ class ChunkGatedDeltaRule(CustomOp):
+ 
+ @PluggableLayer.register("qwen_gated_delta_net_attention")
+ class QwenGatedDeltaNetAttention(GatedDeltaNetAttention):
++    def get_kv_cache_spec(self, vllm_config: VllmConfig) -> MambaSpec:
++        spec = super().get_kv_cache_spec(vllm_config)
++        assert isinstance(spec, MambaSpec)
++        if not self.prefill_checkpoint_blocks:
++            return spec
++        if (
++            self.gdn_prefill_backend != "b12x"
++            or self.gdn_decode_kernel != "b12x"
++            or vllm_config.use_request_boundary_checkpoints
++            or vllm_config.cache_config.mamba_cache_mode != "align"
++        ):
++            raise ValueError(
++                "Qwen prefill checkpoints require B12X GDN and aligned caching"
++            )
++        return replace(spec, num_prefill_checkpoint_blocks=1)
++
+     def get_state_shape(
+         self,
+     ) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
+@@ -540,8 +558,14 @@ class QwenGatedDeltaNetAttention(GatedDeltaNetAttention):
+         gqa_interleaved_layout=False,
+         reduce_results: bool = True,
+         overlap_input_projections: bool = False,
++        prefill_checkpoint_blocks: int = 0,
+     ) -> None:
+         super().__init__(config, vllm_config, prefix)
++        if prefill_checkpoint_blocks not in (0, 1):
++            raise ValueError(
++                "Qwen GDN supports zero or one internal prefill checkpoint"
++            )
++        self.prefill_checkpoint_blocks = prefill_checkpoint_blocks
+ 
+         self.num_k_heads = config.linear_num_key_heads
+         self.num_v_heads = config.linear_num_value_heads
+@@ -2523,6 +2547,42 @@ class QwenGatedDeltaNetAttention(GatedDeltaNetAttention):
+             query_start_loc=metadata.query_start_loc,
+             metadata=metadata.convolution_metadata(rows),
+         ).transpose(0, 1)
++        if self.prefill_checkpoint_blocks:
++            # The checkpoint stores raw convolution inputs. The recurrent
++            # prefill runner independently publishes the matching SSM state.
++            from vllm.model_executor.layers.mamba.gdn.kimi_gdn_linear_attn import (
++                _store_cache_checkpoints_kernel,
++            )
++
++            checkpoint = metadata.checkpoint
++            state_len = self.conv_kernel_size - 1
++            width = packed.shape[-1]
++            _store_cache_checkpoints_kernel[
++                (
++                    checkpoint.checkpoint_offsets.numel(),
++                    triton.cdiv(width * state_len, 256),
++                )
++            ](
++                packed,
++                conv_state,
++                self.kv_cache[1],
++                self.kv_cache[1],
++                metadata.query_start_loc,
++                checkpoint.checkpoint_offsets,
++                checkpoint.state_indices,
++                packed.stride(0),
++                packed.stride(1),
++                *conv_state.stride(),
++                self.kv_cache[1].stride(0),
++                self.kv_cache[1].stride(0),
++                checkpoint.checkpoint_offsets.stride(0),
++                state_len,
++                width,
++                0,
++                0,
++                256,
++                False,
++            )
+         runner.run(
+             mixed_qkv=convolved,
+             a=a.index_select(0, non_spec_indices),
+diff --git a/vllm/model_executor/models/qwen3_next.py b/vllm/model_executor/models/qwen3_next.py
+index 3dc38f3..828f2b6 100644
+--- a/vllm/model_executor/models/qwen3_next.py
++++ b/vllm/model_executor/models/qwen3_next.py
+@@ -91,7 +91,13 @@ def _should_use_sequence_parallel(vllm_config: VllmConfig) -> bool:
+ 
+ 
+ class Qwen3NextSparseMoeBlock(nn.Module):
+-    def __init__(self, vllm_config: VllmConfig, prefix: str = ""):
++    def __init__(
++        self,
++        vllm_config: VllmConfig,
++        prefix: str = "",
++        *,
++        reduce_results: bool = True,
++    ):
+         super().__init__()
+ 
+         config = vllm_config.model_config.hf_text_config
+@@ -163,6 +169,7 @@ class Qwen3NextSparseMoeBlock(nn.Module):
+             )
+ 
+         self.experts = FusedMoEFactory(
++            reduce_results=reduce_results,
+             shared_experts=self.shared_expert,
+             gate=self.gate,
+             num_experts=self.n_routed_experts,
+diff --git a/vllm/models/qwen3_8_flash_next/hc_prefill.py b/vllm/models/qwen3_8_flash_next/hc_prefill.py
+new file mode 100644
+index 0000000..0ddc1c2
+--- /dev/null
++++ b/vllm/models/qwen3_8_flash_next/hc_prefill.py
+@@ -0,0 +1,139 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""BF16 token-row ownership for Qwen's pure eager prefills."""
++
++from dataclasses import dataclass
++from typing import Any
++
++import torch
++
++from vllm.distributed import get_tp_group
++from vllm.forward_context import get_forward_context, is_forward_context_available
++from vllm.logger import init_logger
++
++logger = init_logger(__name__)
++
++
++def configure(model, config, mode: str) -> None:
++    """Agree on ownership admission before compiling any model forward."""
++    if mode not in ("off", "control", "shard"):
++        raise ValueError("Qwen HC prefill mode must be off, control, or shard")
++    model.hc_prefill_mode = mode
++    model.hc_prefill_reports = 0
++    if not torch.distributed.is_initialized():
++        if mode == "off":
++            return
++        raise RuntimeError("Qwen HC ownership requires initialized TP ranks")
++    group = get_tp_group()
++    error = None
++    parallel = config.parallel_config
++    if mode != "off" and (
++        group.world_size != 4
++        or parallel.pipeline_parallel_size != 1
++        or parallel.data_parallel_size != 1
++        or parallel.decode_context_parallel_size != 1
++        or parallel.prefill_context_parallel_size != 1
++        or parallel.enable_expert_parallel
++        or parallel.enable_eplb
++        or parallel.use_sequence_parallel_moe
++        or parallel.enable_dbo
++        or config.model_config.dtype != torch.bfloat16
++    ):
++        error = "Qwen HC ownership requires BF16 TP4/PP1/DP1/DCP1/PCP1"
++    votes = [None] * group.world_size
++    torch.distributed.all_gather_object(votes, (mode, error), group=group.cpu_group)
++    if any(vote != (mode, None) for vote in votes):
++        raise RuntimeError(f"Qwen HC ownership configuration mismatch: {votes}")
++
++
++def eligible(model, rows: int) -> bool:
++    """Only real pure prefills with evenly owned rows bypass compiled decode."""
++    if model.hc_prefill_mode == "off" or torch.compiler.is_compiling():
++        return False
++    if rows < 1024 or rows % 4:
++        return False
++    if not is_forward_context_available() or torch.cuda.is_current_stream_capturing():
++        return False
++    context = get_forward_context()
++    if (
++        getattr(context, "is_dummy_run", False)
++        # PIECEWISE selects wrappers inside the compiled model. The ownership
++        # entry point calls forward directly, so those wrappers are bypassed.
++        or context.cudagraph_runtime_mode.name not in ("NONE", "PIECEWISE")
++        or context.ubatch_slices is not None
++        or not isinstance(context.attn_metadata, dict)
++    ):
++        return False
++    # GDN metadata has CPU counts for prefill, ordinary decode and speculative
++    # decode. Check every recurrent layer; never infer purity from row count.
++    metadata: list[Any] = [
++        item
++        for item in context.attn_metadata.values()
++        if hasattr(item, "num_prefill_tokens") and hasattr(item, "num_spec_decodes")
++    ]
++    return bool(metadata) and all(
++        type(item.num_prefill_tokens) is int
++        and item.num_prefill_tokens == rows
++        and item.num_prefills > 0
++        and item.num_decodes == 0
++        and item.num_spec_decodes == 0
++        for item in metadata
++    )
++
++
++@dataclass
++class RowOwnership:
++    """Keep HC state local and exchange only complete TP block boundaries."""
++
++    rows: int
++    rank: int
++    group: Any
++    reductions: int = 0
++    gathers: int = 0
++
++    def local(self, tensor: torch.Tensor) -> torch.Tensor:
++        if tensor.shape[0] != self.rows:
++            raise ValueError("Qwen HC full tensor has the wrong row count")
++        count = self.rows // 4
++        return tensor.narrow(0, self.rank * count, count)
++
++    def gather(self, tensor: torch.Tensor) -> torch.Tensor:
++        if tensor.shape[0] != self.rows // 4:
++            raise ValueError("Qwen HC owned tensor has the wrong row count")
++        self.gathers += 1
++        source = tensor.contiguous()
++        output = source.new_empty((self.rows, *source.shape[1:]))
++        self.group.all_gather(output, source)
++        return output
++
++    def reduce(self, tensor: torch.Tensor) -> torch.Tensor:
++        if tensor.shape[0] != self.rows:
++            raise ValueError("Qwen HC reduction requires full TP partial rows")
++        self.reductions += 1
++        source = tensor.contiguous()
++        output = source.new_empty((self.rows // 4, *source.shape[1:]))
++        self.group.reduce_scatter(output, source)
++        return output
++
++
++def create(model, rows: int) -> RowOwnership | None:
++    if model.hc_prefill_mode != "shard":
++        return None
++    group = get_tp_group()
++    comm = getattr(group.device_communicator, "pynccl_comm", None)
++    if comm is None or not comm.available or comm.disabled:
++        raise RuntimeError("Qwen HC ownership requires the TP NCCL communicator")
++    return RowOwnership(rows, group.rank_in_group, comm)
++
++
++def report(model, owner: RowOwnership | None, rows: int) -> None:
++    if model.hc_prefill_reports < 8:
++        logger.info(
++            "QWEN_HC_PREFILL mode=%s rows=%d owner_rows=%d rs=%d ag=%d",
++            model.hc_prefill_mode,
++            rows,
++            rows if owner is None else rows // 4,
++            0 if owner is None else owner.reductions,
++            0 if owner is None else owner.gathers,
++        )
++        model.hc_prefill_reports += 1
+diff --git a/vllm/models/qwen3_8_flash_next/model.py b/vllm/models/qwen3_8_flash_next/model.py
+index 01c00d2..756dcd4 100644
+--- a/vllm/models/qwen3_8_flash_next/model.py
++++ b/vllm/models/qwen3_8_flash_next/model.py
+@@ -14,7 +14,7 @@ from torch import nn
+ from vllm import envs
+ from vllm.compilation.decorators import support_torch_compile
+ from vllm.config import VllmConfig
+-from vllm.distributed import get_pp_group
++from vllm.distributed import get_pp_group, tensor_model_parallel_all_reduce
+ from vllm.model_executor.layers.logits_processor import LogitsProcessor
+ from vllm.model_executor.layers.mamba.gdn.qwen_gdn_linear_attn import (
+     QwenGatedDeltaNetAttention,
+@@ -73,6 +73,7 @@ from vllm.sequence import IntermediateTensors
+ from vllm.tokenizers.registry import cached_tokenizer_from_config
+ from vllm.v1.attention.backends.registry import MambaAttentionBackendEnum
+ 
++from . import hc_prefill
+ from .config import Qwen3_8FlashNextConfig, Qwen3_8FlashNextTextConfig
+ from .hyperconnection import (
+     GatedResidual,
+@@ -147,12 +148,20 @@ _HC_WEIGHTS_MAPPER = WeightsMapper(
+ 
+ 
+ class Qwen3_8FlashNextSparseMoeBlock(Qwen3NextSparseMoeBlock):
+-    def __init__(self, vllm_config: VllmConfig, prefix: str = "") -> None:
++    def __init__(
++        self,
++        vllm_config: VllmConfig,
++        prefix: str = "",
++        *,
++        reduce_results: bool = True,
++    ) -> None:
+         if vllm_config.parallel_config.use_sequence_parallel_moe:
+             raise NotImplementedError(
+                 "Qwen3.8-Flash-Next HC does not support sequence-parallel MoE"
+             )
+-        super().__init__(vllm_config=vllm_config, prefix=prefix)
++        super().__init__(
++            vllm_config=vllm_config, prefix=prefix, reduce_results=reduce_results
++        )
+         config = vllm_config.model_config.hf_text_config
+         self.n_shared_experts = int(config.shared_expert_intermediate_size > 0)
+ 
+@@ -170,6 +179,10 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+         self.config = config
+         self.layer_type = layer_type
+         self.layer_idx = extract_layer_index(prefix)
++        self.defer_hc_reductions = (
++            envs.VLLM_QWEN3_8_HC_PREFILL_MODE != "off"
++            and self.layer_idx < config.num_hidden_layers
++        )
+         self.ple: Qwen3_8FlashNextPLELayer | None = None
+         if self.layer_idx + 1 in config.ple_layer_ids:
+             dense_ids = sorted(set(config.ple_layer_ids))
+@@ -188,6 +201,8 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+                 prefix=f"{prefix}.linear_attn",
+                 gqa_interleaved_layout=False,
+                 overlap_input_projections=envs.VLLM_QWEN3_8_FLASH_NEXT_OVERLAP,
++                reduce_results=not self.defer_hc_reductions,
++                prefill_checkpoint_blocks=int(envs.VLLM_QWEN3_8_PREFILL_COALESCE),
+             )
+         elif layer_type == "full_attention":
+             if getattr(config, "indexer_n_heads", None) is None:
+@@ -197,6 +212,7 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+                     cache_config=vllm_config.cache_config,
+                     quant_config=vllm_config.quant_config,
+                     prefix=f"{prefix}.self_attn",
++                    reduce_results=not self.defer_hc_reductions,
+                 )
+             else:
+                 qsa_module = import_module("vllm.models.qwen3_8_flash_next.qsa")
+@@ -206,6 +222,7 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+                     layer_id=self.layer_idx,
+                     quant_config=vllm_config.quant_config,
+                     prefix=f"{prefix}.self_attn",
++                    reduce_results=not self.defer_hc_reductions,
+                 )
+         else:
+             raise ValueError(f"invalid layer_type {layer_type!r}")
+@@ -217,7 +234,9 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+         )
+         if is_moe:
+             self.mlp = Qwen3_8FlashNextSparseMoeBlock(
+-                vllm_config=vllm_config, prefix=f"{prefix}.mlp"
++                vllm_config=vllm_config,
++                prefix=f"{prefix}.mlp",
++                reduce_results=not self.defer_hc_reductions,
+             )
+         else:
+             self.mlp = Qwen3NextMLP(
+@@ -226,6 +245,7 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+                 hidden_act=config.hidden_act,
+                 quant_config=vllm_config.quant_config,
+                 prefix=f"{prefix}.mlp",
++                reduce_results=not self.defer_hc_reductions,
+             )
+ 
+         hc_config = HyperConnectionConfig(
+@@ -258,14 +278,19 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+         ngram_context: torch.Tensor | None,
+         ple_prefetched: bool = False,
+         output_indices: torch.Tensor | None = None,
++        hc_owner: hc_prefill.RowOwnership | None = None,
+     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+         attn_hc = self.attn_hyper_connection
++        if hc_owner is not None and output_indices is not None:
++            raise ValueError("Qwen HC ownership cannot compact decode outputs")
+         if self.ple is not None:
+             if prev_block_output is not None and prev_injection is not None:
+                 hidden_states = attn_hc.combine(
+                     hidden_states, prev_block_output, prev_injection
+                 )
+                 prev_block_output = prev_injection = None
++            if hc_owner is not None:
++                hidden_states = hc_owner.gather(hidden_states)
+             if input_ids is None or query_start_loc is None or ngram_context is None:
+                 raise RuntimeError("PLE inputs were not prepared")
+             hidden_states = hidden_states + self.ple(
+@@ -275,6 +300,8 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+                 ngram_context,
+                 prefetched=ple_prefetched,
+             )
++            if hc_owner is not None:
++                hidden_states = hc_owner.local(hidden_states)
+         if prev_block_output is not None and prev_injection is not None:
+             hidden_states, block_input, injection = attn_hc.combine_and_mix(
+                 hidden_states, prev_block_output, prev_injection
+@@ -282,10 +309,18 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+         else:
+             hidden_states, block_input, injection = attn_hc.mix(hidden_states)
+ 
++        if hc_owner is not None:
++            block_input = hc_owner.gather(block_input)
+         if self.layer_type == "linear_attention":
+             attn_out = self.linear_attn(hidden_states=block_input)
+         else:
+             attn_out = self.self_attn(hidden_states=block_input, positions=positions)
++        if self.defer_hc_reductions:
++            attn_out = (
++                hc_owner.reduce(attn_out)
++                if hc_owner is not None
++                else tensor_model_parallel_all_reduce(attn_out)
++            )
+         if output_indices is not None:
+             hidden_states = hidden_states[output_indices]
+             attn_out = attn_out[output_indices]
+@@ -296,7 +331,15 @@ class Qwen3_8FlashNextDecoderLayer(nn.Module):
+                 hidden_states, attn_out, injection
+             )
+         )
++        if hc_owner is not None:
++            block_input = hc_owner.gather(block_input)
+         mlp_out = self.mlp(block_input)
++        if self.defer_hc_reductions:
++            mlp_out = (
++                hc_owner.reduce(mlp_out)
++                if hc_owner is not None
++                else tensor_model_parallel_all_reduce(mlp_out)
++            )
+         return hidden_states, mlp_out, injection
+ 
+ 
+@@ -431,6 +474,9 @@ class Qwen3_8FlashNextModel(nn.Module):
+             )
+         else:
+             self.register_buffer("_mtp_hidden_buffer", None, persistent=False)
++        hc_prefill.configure(self, vllm_config, envs.VLLM_QWEN3_8_HC_PREFILL_MODE)
++        # R37 warms collective plans through forwards before graph capture.
++        # Deferred reductions remain active on that replicated warmup path.
+ 
+     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+         return self.embed_tokens(input_ids)
+@@ -444,6 +490,7 @@ class Qwen3_8FlashNextModel(nn.Module):
+         query_start_loc: torch.Tensor | None = None,
+         ngram_context: torch.Tensor | None = None,
+         deepstack_input_embeds: IntermediateTensors | None = None,
++        hc_prefill_eager: bool = False,
+     ) -> torch.Tensor | IntermediateTensors:
+         if get_pp_group().is_first_rank:
+             if inputs_embeds is not None:
+@@ -458,6 +505,14 @@ class Qwen3_8FlashNextModel(nn.Module):
+                 raise ValueError("pipeline stage requires intermediate tensors")
+             hidden_states = intermediate_tensors["hidden_states"]
+ 
++        hc_owner = (
++            hc_prefill.create(self, hidden_states.shape[0])
++            if hc_prefill_eager
++            else None
++        )
++        full_rows = hidden_states.shape[0]
++        if hc_owner is not None:
++            hidden_states = hc_owner.local(hidden_states)
+         block_output = None
+         injection = None
+         last_layer = None
+@@ -493,6 +548,7 @@ class Qwen3_8FlashNextModel(nn.Module):
+                 query_start_loc=query_start_loc,
+                 ngram_context=ngram_context,
+                 ple_prefetched=ple_prefetched,
++                hc_owner=hc_owner,
+             )
+             ple_prefetched = next_ple_prefetched
+             if deepstack_input_embeds is not None and layer_idx < len(
+@@ -501,6 +557,8 @@ class Qwen3_8FlashNextModel(nn.Module):
+                 deepstack_embed = deepstack_input_embeds[
+                     f"deepstack_input_embeds_{layer_idx}"
+                 ]
++                if hc_owner is not None:
++                    deepstack_embed = hc_owner.local(deepstack_embed)
+                 deepstack_embed = (
+                     deepstack_embed.unsqueeze(-2)
+                     .expand(
+@@ -530,8 +588,14 @@ class Qwen3_8FlashNextModel(nn.Module):
+         multi_hidden, sample_hidden_states, _ = final_mixer.combine_and_mix(
+             hidden_states, block_output, injection
+         )
++        if hc_owner is not None:
++            sample_hidden_states = hc_owner.gather(sample_hidden_states)
++            if self._mtp_hidden_buffer is not None:
++                multi_hidden = hc_owner.gather(multi_hidden)
+         if self._mtp_hidden_buffer is not None:
+             self._mtp_hidden_buffer[: multi_hidden.shape[0]].copy_(multi_hidden)
++        if hc_prefill_eager:
++            hc_prefill.report(self, hc_owner, full_rows)
+         return sample_hidden_states
+ 
+     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+@@ -627,6 +691,18 @@ class Qwen3_8FlashNextForCausalLM(
+         inputs_embeds: torch.Tensor | None = None,
+         **kwargs: object,
+     ) -> torch.Tensor | IntermediateTensors:
++        if hc_prefill.eligible(self.model, positions.shape[-1]):
++            eager_forward: Callable[..., torch.Tensor | IntermediateTensors] = (
++                self.model.forward
++            )
++            return eager_forward(
++                input_ids,
++                positions,
++                intermediate_tensors,
++                inputs_embeds,
++                hc_prefill_eager=True,
++                **kwargs,
++            )
+         return self.model(
+             input_ids,
+             positions,
+@@ -896,7 +972,7 @@ class Qwen3_8FlashNextForConditionalGeneration(
+             and self.use_deepstack
+             else None
+         )
+-        hidden_states = self.language_model.model(
++        hidden_states = self.language_model(
+             input_ids=input_ids,
+             positions=positions,
+             intermediate_tensors=intermediate_tensors,
+diff --git a/vllm/models/qwen3_8_flash_next/ple_attn.py b/vllm/models/qwen3_8_flash_next/ple_attn.py
+index b8aa164..90eb4c3 100644
+--- a/vllm/models/qwen3_8_flash_next/ple_attn.py
++++ b/vllm/models/qwen3_8_flash_next/ple_attn.py
+@@ -85,6 +85,9 @@ class PLEGraphInputs:
+ @dataclass
+ class PLEAttentionMetadata(ShortConvAttentionMetadata):
+     graph_inputs: PLEGraphInputs | None = None
++    checkpoint_columns: torch.Tensor | None = None
++    checkpoint_offsets: torch.Tensor | None = None
++    checkpoint_slots: torch.Tensor | None = None
+ 
+ 
+ class PLEAttentionBackend(ShortConvAttentionBackend):
+@@ -107,6 +110,15 @@ class PLEAttentionMetadataBuilder(ShortConvAttentionMetadataBuilder):
+         self.graph_inputs = PLEGraphInputs(
+             scheduler.max_num_seqs, scheduler.max_num_batched_tokens, device
+         )
++        self.checkpoint_offsets = torch.zeros(
++            scheduler.max_num_seqs, dtype=torch.int32, device=device
++        )
++        self.checkpoint_slots = torch.full(
++            (scheduler.max_num_seqs,),
++            _B12X_NULL_STATE_SLOT,
++            dtype=torch.int64,
++            device=device,
++        )
+ 
+     def build(
+         self, common_prefix_len, common_attn_metadata, fast_build=False, **kwargs
+@@ -116,7 +128,53 @@ class PLEAttentionMetadataBuilder(ShortConvAttentionMetadataBuilder):
+         )
+         assert isinstance(metadata, PLEAttentionMetadata)
+         self.graph_inputs.stage(metadata, common_attn_metadata.query_start_loc)
+-        return replace(metadata, graph_inputs=self.graph_inputs)
++        inputs = self.graph_inputs
++        self.checkpoint_offsets.zero_()
++        self.checkpoint_slots.fill_(_B12X_NULL_STATE_SLOT)
++        columns = None
++        if metadata.num_prefills and self.kv_cache_spec.num_prefill_checkpoint_blocks:
++            common = common_attn_metadata
++            assert common.seq_lens_cpu_upper_bound is not None
++            starts = common.query_start_loc_cpu.tolist()
++            lengths = common.seq_lens_cpu_upper_bound.tolist()
++            offsets = [0] * metadata.num_reqs
++            host_columns = [0] * metadata.num_reqs
++            size = self.kv_cache_spec.block_size
++            for row in range(metadata.num_decodes, metadata.num_reqs):
++                query_len = starts[row + 1] - starts[row]
++                length = lengths[row]
++                offset = length // size * size - (length - query_len)
++                if length % size and 0 < offset < query_len and offset % 16 == 0:
++                    offsets[row] = offset
++                    host_columns[row] = length // size - 1
++            self.checkpoint_offsets[: metadata.num_reqs].copy_(
++                torch.tensor(
++                    offsets, dtype=torch.int32, device=inputs.num_tokens.device
++                )
++            )
++            columns = torch.tensor(
++                host_columns, dtype=torch.int64, device=inputs.num_tokens.device
++            )
++            self._refresh_checkpoints(
++                metadata.num_reqs, columns, common.block_table_tensor
++            )
++        return replace(
++            metadata,
++            graph_inputs=inputs,
++            checkpoint_columns=columns,
++            checkpoint_offsets=self.checkpoint_offsets if columns is not None else None,
++            checkpoint_slots=self.checkpoint_slots if columns is not None else None,
++        )
++
++    def _refresh_checkpoints(self, rows, columns, block_table):
++        request_rows = torch.arange(rows, device=block_table.device)
++        self.checkpoint_slots[:rows].copy_(
++            torch.where(
++                self.checkpoint_offsets[:rows] > 0,
++                block_table[request_rows, columns],
++                _B12X_NULL_STATE_SLOT,
++            )
++        )
+ 
+     def build_for_cudagraph_capture(
+         self, common_attn_metadata: CommonAttentionMetadata
+@@ -131,4 +189,20 @@ class PLEAttentionMetadataBuilder(ShortConvAttentionMetadataBuilder):
+         updated = super().update_block_table(metadata, blk_table, slot_mapping)
+         assert isinstance(updated, PLEAttentionMetadata)
+         self.graph_inputs.stage(updated, metadata.graph_inputs.query_start_loc)
+-        return replace(updated, graph_inputs=self.graph_inputs)
++        if metadata.checkpoint_columns is not None:
++            assert metadata.checkpoint_offsets is not None
++            self.checkpoint_offsets.copy_(metadata.checkpoint_offsets)
++            self.checkpoint_slots.fill_(_B12X_NULL_STATE_SLOT)
++            self._refresh_checkpoints(
++                updated.num_reqs, metadata.checkpoint_columns, blk_table
++            )
++        return replace(
++            updated,
++            graph_inputs=self.graph_inputs,
++            checkpoint_offsets=self.checkpoint_offsets
++            if metadata.checkpoint_columns is not None
++            else None,
++            checkpoint_slots=self.checkpoint_slots
++            if metadata.checkpoint_columns is not None
++            else None,
++        )
+diff --git a/vllm/models/qwen3_8_flash_next/ple_layer.py b/vllm/models/qwen3_8_flash_next/ple_layer.py
+index a7a0912..7ac2407 100644
+--- a/vllm/models/qwen3_8_flash_next/ple_layer.py
++++ b/vllm/models/qwen3_8_flash_next/ple_layer.py
+@@ -5,6 +5,7 @@
+ from __future__ import annotations
+ 
+ from collections.abc import Iterable, Sequence
++from dataclasses import replace
+ from typing import Any
+ 
+ import torch
+@@ -42,6 +43,7 @@ from vllm.utils.b12x import (
+ from vllm.utils.torch_utils import current_stream, direct_register_custom_op
+ from vllm.v1.attention.backends.registry import MambaAttentionBackendEnum
+ from vllm.v1.attention.backends.utils import NULL_BLOCK_ID
++from vllm.v1.kv_cache_interface import MambaSpec
+ 
+ from .config import Qwen3_8FlashNextTextConfig
+ from .ple_attn import PLEAttentionBackend, PLEAttentionMetadata
+@@ -1019,6 +1021,18 @@ class Qwen3_8FlashNextPLELayer(nn.Module, MambaBase):
+             num_spec=self.num_spec_tokens,
+         )
+ 
++    def get_kv_cache_spec(self, vllm_config: VllmConfig) -> MambaSpec:
++        spec = super().get_kv_cache_spec(vllm_config)
++        assert isinstance(spec, MambaSpec)
++        if not envs.VLLM_QWEN3_8_PREFILL_COALESCE:
++            return spec
++        if (
++            vllm_config.use_request_boundary_checkpoints
++            or vllm_config.cache_config.mamba_cache_mode != "align"
++        ):
++            raise ValueError("Qwen PLE internal checkpoints require aligned caching")
++        return replace(spec, num_prefill_checkpoint_blocks=1)
++
+     def _prepare_metadata(
+         self,
+         metadata: PLEAttentionMetadata,
+@@ -1072,9 +1086,17 @@ class Qwen3_8FlashNextPLELayer(nn.Module, MambaBase):
+         self._key[:token_count].copy_(key)
+         self._value[:token_count].copy_(value)
+         self._prepare_metadata(metadata, query_start_loc, token_count)
+-        _b12x_module("ple").run_mixed(
+-            self._bind_ple(), eps=self.eps, token_count=token_count
+-        )
++        binding = self._bind_ple()
++        api = _b12x_module("ple")
++        api.run_mixed(binding, eps=self.eps, token_count=token_count)
++        if metadata.checkpoint_columns is not None:
++            assert metadata.checkpoint_offsets is not None
++            assert metadata.checkpoint_slots is not None
++            api.export_checkpoint(
++                binding,
++                offsets=metadata.checkpoint_offsets,
++                slots=metadata.checkpoint_slots,
++            )
+ 
+     def forward(
+         self,
+diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
+index 570aa77..93c008d 100644
+--- a/vllm/v1/core/sched/scheduler.py
++++ b/vllm/v1/core/sched/scheduler.py
+@@ -425,16 +425,20 @@ class Scheduler(SchedulerInterface):
+         self.need_mamba_block_aligned_split = (
+             self.has_mamba_layers and self.cache_config.mamba_cache_mode == "align"
+         )
+-        glm5_next_mtp_has_independent_draft_state = (
++        mtp_has_independent_draft_state = (
+             speculative_config is not None
+             and speculative_config.method == "mtp"
+             and speculative_config.draft_model_config is not None
+-            and "Glm5NextMTPModel"
+-            in (speculative_config.draft_model_config.hf_config.architectures or ())
++            and bool(
++                {"Glm5NextMTPModel", "Qwen3_8FlashNextMTP"}
++                & set(
++                    speculative_config.draft_model_config.hf_config.architectures or ()
++                )
++            )
+         )
+         self.mamba_has_prefill_checkpoint_blocks = (
+             self.has_mamba_layers
+-            # DFlash and GLM-5.3 MTP keep draft attention state independently
++            # DFlash, GLM-5.3 and Qwen3.8 MTP keep draft attention state independently
+             # from the target GDN recurrent state. Publishing a target GDN
+             # checkpoint therefore does not mutate draft KV. Prefix-cache
+             # lookup still drops and re-prefills the lookahead-dependent MTP
+@@ -442,7 +446,7 @@ class Scheduler(SchedulerInterface):
+             and (
+                 not self.use_eagle
+                 or (speculative_config is not None and speculative_config.use_dflash())
+-                or glm5_next_mtp_has_independent_draft_state
++                or mtp_has_independent_draft_state
+             )
+             and all(
+                 not isinstance(group.kv_cache_spec, MambaSpec)

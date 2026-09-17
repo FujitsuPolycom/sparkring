@@ -1,0 +1,106 @@
+{
+  "schema": "sparkring-source-extension/v1",
+  "id": "lil-r37-qwen-prefill",
+  "installer_sha256": "638dfee9d986bdedde347f6c605cfa9071ef4bc9c27ecd506143d4e40d099dc5",
+  "parent": {
+    "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+    "receipt_sha256": "88df2558f348864e48b08a818d05ae87f6b6f1e63c1456f482f77d37f5f9f30a"
+  },
+  "patch": {
+    "source": "runtime/images/compositions/lil-r37-qwen-prefill/runtime.patch",
+    "sha256": "331b3c005d7b0170913a5a22374f5148f087c8baeacafa25f29e7263658e65b8"
+  },
+  "sources": {
+    "b12x/sequence/ple/__init__.py": {
+      "sha256": "a06cca3433a9b1932be2c796969035448c7026ef53a848db758755ef443252d7",
+      "parent_sha256": "9670f6a1dd003ed8b91d3c0826ecc1edfaa86cdc452fe1baca1cd866081b51b0"
+    },
+    "b12x/sequence/ple/_contracts.py": {
+      "sha256": "3dcfd268380faacab92d698d0ce60b138303f8f954c3e812766c7375223d1ece",
+      "parent_sha256": "6172f34a313b5b7f3b8e16ba6b97e4adf931d1ebb61955b1c0df6ddadaec30b4"
+    },
+    "b12x/sequence/ple/_kernels.py": {
+      "sha256": "0599bc57418442c8db4dfae1082c41c52aac057eb4633074a4fdf419a854b9bc",
+      "parent_sha256": "92666cea143a9aaeddf943c2d568231d224fe6e30ae3880b83ec160debdc4851"
+    },
+    "b12x/sequence/ple/api.py": {
+      "sha256": "0153102b56a47ba0d6bf2c591024eec1f890e75a5bc75ee72b82372d1b47241c",
+      "parent_sha256": "ef4cc7ed9ef23d4d6b4d23543c4c8fdbe7cc85721978d02abba2a788581b10a4"
+    },
+    "vllm/envs.py": {
+      "sha256": "50e8159df624fafd7d6725760e5e634aa2858b27441a45cc2f328afd3e679e6d",
+      "parent_sha256": "6c653f5d0346de6576f2305f06344413757279a1c7feb9fea7c62a8899e098c0"
+    },
+    "vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py": {
+      "sha256": "6b0daa3c6eecad2d7dc72d0dd92861e74b451bfefedb12fd1a5e07fb1b765e24",
+      "parent_sha256": "ae683c67ddd8c08b4164546f5d2ec95f53ba684224d5030e3d40d27662cd7b76"
+    },
+    "vllm/model_executor/models/qwen3_next.py": {
+      "sha256": "976e1a7b1c06cc65c09b289db7f2e55218a465e1f5b5c5b2044547b7287ccec3",
+      "parent_sha256": "7eea48a4bb61228e35c2e8febb31bee53d75a72da968ea9c18f02f2ea615d893"
+    },
+    "vllm/models/qwen3_8_flash_next/hc_prefill.py": {
+      "sha256": "909503a23522491d68eb966ee73ac726f2020543b8a83fc97e1baf47401eceff",
+      "parent_sha256": null
+    },
+    "vllm/models/qwen3_8_flash_next/model.py": {
+      "sha256": "ba4e521ce920ca01618b1a2c57f87667c90f6f7fa400a37b6b542c8f082630c3",
+      "parent_sha256": "aa6bfbcdd8982459f70437cda7258606de6cb57af5186ea05f83e988b92396fc"
+    },
+    "vllm/models/qwen3_8_flash_next/ple_attn.py": {
+      "sha256": "f48d046546d25fd76d04df9996534d291de5d15cc163ceb389567d3329f3d2fc",
+      "parent_sha256": "206b9b3c009f59f69e9d0828e3eac66783550b9f3ac87add8362a2d6fa33aaff"
+    },
+    "vllm/models/qwen3_8_flash_next/ple_layer.py": {
+      "sha256": "36cf41250e292891af4578454c57fff539f2df6ecf41e79fca0d89986242a8ca",
+      "parent_sha256": "fe21dfcf3b1fa72e453846d2a82968166703ae2936553266da0719e22e29b07d"
+    },
+    "vllm/v1/core/sched/scheduler.py": {
+      "sha256": "95d7913137d26dae8f13cb5c29168da765430b3bfdcfce66e9bad7ae6eda10f3",
+      "parent_sha256": "c085117f43459bce8b00a9f92fb781745f0f43a03bff2bc2c78a1669e940485f"
+    },
+    "b12x/attention/qsa/_score_cute.py": {
+      "sha256": "7b718488a6cc9152ea0bc08775e02a13f4ee722492174761f6e34625abbfeb1b",
+      "parent_sha256": "a55faee403c6a28a60389181bb4ae1c27909c69ed880bc9331a7162cf51171af"
+    },
+    "b12x/attention/qsa/_score_pair_cute.py": {
+      "sha256": "4797aaeefea384de03da367f0ced3890b3d9357b4852c4c1bbe977239eb3f175",
+      "parent_sha256": null
+    }
+  },
+  "integration_contracts": {
+    "/opt/sparkring/contracts/vllm-connector-jobs-r37-qwen-prefill.json": {
+      "source": "runtime/images/compositions/lil-r37-qwen-prefill/vllm-connector-jobs-r37-qwen-prefill.json",
+      "sha256": "9fa15daa0628c87c9d3e0201e8c92245106cc568ea992143560da9e415423241"
+    }
+  },
+  "provenance": {
+    "base_image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+    "base_image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:aef597a5ee70f7b4e0807901e43456b6ac8d2234247ab4df6a6cfe031e5169c6",
+    "upstream": [
+      {
+        "repository": "https://github.com/local-inference-lab/vllm",
+        "pull_request": 779,
+        "head": "b0cf3b82341433caa2b350b1b71fc98b11c8ed92",
+        "role": "Qwen HC token-row sharding and recurrent checkpoint coalescing"
+      },
+      {
+        "repository": "https://github.com/local-inference-lab/b12x",
+        "pull_request": 386,
+        "head": "087b15b326a52072d4ad21c9ab4a66064af12d64",
+        "role": "PLE interior checkpoint export"
+      },
+      {
+        "repository": "https://github.com/local-inference-lab/b12x",
+        "pull_request": 387,
+        "head": "3ee490bc198dee9c24fd96cfa88dcc3e93c201c2",
+        "role": "Paired QSA representative scoring"
+      }
+    ],
+    "adaptation": "Backported to the installed R37 interfaces. Preserves page-error guards, 64-bit addressing, eager compilation before graph capture, and existing feature hooks. This is not an unmodified upstream source upgrade.",
+    "upstream_author": "original-el8 (Jason)",
+    "local_source_record": "22a70e506729efb8d5ce35aa6ac1d2a4034ff9dc",
+    "native_library_changes": false,
+    "qualification": "Development. Component tests and overlay serving checks passed; packaged-image serving qualification is recorded separately."
+  }
+}

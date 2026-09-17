@@ -1,0 +1,197 @@
+{
+  "base_commit": "c687594b8a8082e18af9fe2f64eb5f9ee442e251",
+  "connector_api": "jj-block-state-read-leases/v1",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "required_symbols": [
+        "KVConnectorBase_V1.bind_gpu_block_pool",
+        "KVConnectorBase_V1.build_connector_worker_meta",
+        "KVConnectorBase_V1.has_pending_push_work",
+        "KVConnectorWorkerMetadata.aggregate"
+      ],
+      "sha256": "0fe7c1e8428e7accd8a6856ec133b5309922f9395b415bdb7fab26dc1e202778"
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ],
+      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2"
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "required_symbols": [
+        "KVConnectorBlockState.block_ids",
+        "KVConnectorBlockState.boundary_state_offloads",
+        "SchedulerOutput.kv_connector_block_state"
+      ],
+      "sha256": "8ea57558c576d80971faf28aba3d093d3d0ca5ad773b79e586255c2695e30846"
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "required_symbols": [
+        "Scheduler.__init__",
+        "Scheduler.schedule",
+        "Scheduler.has_requests",
+        "Scheduler.update_from_output",
+        "Scheduler._free_request_blocks",
+        "Scheduler._handle_invalid_blocks",
+        "Scheduler._update_requests_with_invalid_blocks",
+        "Scheduler._update_waiting_for_remote_kv",
+        "Scheduler._preempt_request"
+      ],
+      "sha256": "95d7913137d26dae8f13cb5c29168da765430b3bfdcfce66e9bad7ae6eda10f3"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "required_symbols": [
+        "KVCacheManager.take_boundary_state_offloads",
+        "KVCacheManager.free"
+      ],
+      "sha256": "8a0724c157df0701827f682e92eba9dad7073f8fb9d3853c07e88347e2663f2c"
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "required_symbols": [
+        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
+        "MambaManager.cache_blocks",
+        "MambaManager.allocate_new_blocks",
+        "MambaManager.pop_blocks_for_free"
+      ],
+      "sha256": "d8a6aa7b722d795fb21a88b46116d47ad7bb8a4ccfe82f5c7c8f185a4593e072"
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ],
+      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "required_symbols": [
+        "GPUModelRunner.update_requests",
+        "GPUModelRunner.sample_tokens"
+      ],
+      "sha256": "a5d8e6df911eba24a4c7b43ce621a75c53caa0a9bcd79f1c350ae73eca28ceff"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/kv_connector.py",
+      "required_symbols": [
+        "ActiveKVConnector.pre_forward",
+        "ActiveKVConnector.post_forward",
+        "ActiveKVConnector.no_forward"
+      ],
+      "sha256": "bc226eec2b7a5940d4b68976f733e2abb235a2e1db7eb6d37a7e7ffb4f7cb492"
+    },
+    {
+      "path": "vllm/v1/worker/mamba_utils.py",
+      "required_symbols": [],
+      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b"
+    },
+    {
+      "path": "b12x/sequence/ple/__init__.py",
+      "sha256": "a06cca3433a9b1932be2c796969035448c7026ef53a848db758755ef443252d7",
+      "required_symbols": []
+    },
+    {
+      "path": "b12x/sequence/ple/_contracts.py",
+      "sha256": "3dcfd268380faacab92d698d0ce60b138303f8f954c3e812766c7375223d1ece",
+      "required_symbols": []
+    },
+    {
+      "path": "b12x/sequence/ple/_kernels.py",
+      "sha256": "0599bc57418442c8db4dfae1082c41c52aac057eb4633074a4fdf419a854b9bc",
+      "required_symbols": []
+    },
+    {
+      "path": "b12x/sequence/ple/api.py",
+      "sha256": "0153102b56a47ba0d6bf2c591024eec1f890e75a5bc75ee72b82372d1b47241c",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/envs.py",
+      "sha256": "50e8159df624fafd7d6725760e5e634aa2858b27441a45cc2f328afd3e679e6d",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py",
+      "sha256": "6b0daa3c6eecad2d7dc72d0dd92861e74b451bfefedb12fd1a5e07fb1b765e24",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/model_executor/models/qwen3_next.py",
+      "sha256": "976e1a7b1c06cc65c09b289db7f2e55218a465e1f5b5c5b2044547b7287ccec3",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/hc_prefill.py",
+      "sha256": "909503a23522491d68eb966ee73ac726f2020543b8a83fc97e1baf47401eceff",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/model.py",
+      "sha256": "ba4e521ce920ca01618b1a2c57f87667c90f6f7fa400a37b6b542c8f082630c3",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/ple_attn.py",
+      "sha256": "f48d046546d25fd76d04df9996534d291de5d15cc163ceb389567d3329f3d2fc",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/ple_layer.py",
+      "sha256": "36cf41250e292891af4578454c57fff539f2df6ecf41e79fca0d89986242a8ca",
+      "required_symbols": []
+    },
+    {
+      "path": "b12x/attention/qsa/_score_cute.py",
+      "sha256": "7b718488a6cc9152ea0bc08775e02a13f4ee722492174761f6e34625abbfeb1b",
+      "required_symbols": []
+    },
+    {
+      "path": "b12x/attention/qsa/_score_pair_cute.py",
+      "sha256": "4797aaeefea384de03da367f0ced3890b3d9357b4852c4c1bbe977239eb3f175",
+      "required_symbols": []
+    }
+  ],
+  "qualification": "Source identity and KV-block lease callbacks verified; serving support is profile-specific.",
+  "required_semantics": [
+    "scheduler-binds-owning-block-pool",
+    "block-state-and-boundary-offers-describe-one-scheduled-step",
+    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
+    "full-attention-prefix-pages-remain-immutable-while-referenced",
+    "connector-metadata-is-built-before-scheduler-dispatch",
+    "worker-post-forward-follows-target-and-mtp-state-writes",
+    "worker-metadata-aggregates-distinct-physical-ranks",
+    "pending-connector-work-keeps-idle-engine-stepping",
+    "no-forward-steps-do-not-call-wait-for-save",
+    "hybrid-load-failure-discards-unproven-prefixes",
+    "failed-load-blocks-retire-after-receive-or-write-fences"
+  ],
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "semantic_review": {
+    "base_contract_sha256": "e90a6f941c9269a6ac358c5876543c2827ca757e1815fd3b891218571aa86ab8",
+    "changed_file": "vllm/v1/core/sched/scheduler.py",
+    "changed_symbol": "Scheduler.__init__",
+    "reviewed_base_policy": [
+      "glm5_next_mtp_has_independent_draft_state = speculative_config is not None and speculative_config.method == 'mtp' and (speculative_config.draft_model_config is not None) and ('Glm5NextMTPModel' in (speculative_config.draft_model_config.hf_config.architectures or ()))",
+      "self.mamba_has_prefill_checkpoint_blocks = self.has_mamba_layers and (not self.use_eagle or (speculative_config is not None and speculative_config.use_dflash()) or glm5_next_mtp_has_independent_draft_state) and all((not isinstance(group.kv_cache_spec, MambaSpec) or group.kv_cache_spec.num_prefill_checkpoint_blocks > 0 for group in kv_cache_config.kv_cache_groups))"
+    ],
+    "reviewed_overlay_policy": [
+      "mtp_has_independent_draft_state = speculative_config is not None and speculative_config.method == 'mtp' and (speculative_config.draft_model_config is not None) and bool({'Glm5NextMTPModel', 'Qwen3_8FlashNextMTP'} & set(speculative_config.draft_model_config.hf_config.architectures or ()))",
+      "self.mamba_has_prefill_checkpoint_blocks = self.has_mamba_layers and (not self.use_eagle or (speculative_config is not None and speculative_config.use_dflash()) or mtp_has_independent_draft_state) and all((not isinstance(group.kv_cache_spec, MambaSpec) or group.kv_cache_spec.num_prefill_checkpoint_blocks > 0 for group in kv_cache_config.kv_cache_groups))"
+    ],
+    "conclusion": "The only AST changes classify independent Qwen MTP draft state and enable existing checkpoint capacity. All other scheduler AST nodes and the other nine lease-contract files retain identity. No lease acquisition, release, dispatch, fence, invalidation or post-forward callback changes."
+  },
+  "base_vllm_commit": "c687594b8a8082e18af9fe2f64eb5f9ee442e251",
+  "base_vllm_tree": "8e0bb7da60e882c095385222d5878981a2666b60",
+  "qsa_adaptation": {
+    "upstream_head": "3ee490bc198dee9c24fd96cfa88dcc3e93c201c2",
+    "scope": "Paired representative scoring retains the R37 state_errors and bounded-page interface. The checkpoint and lease implementations are unchanged by this scorer patch."
+  },
+  "source_patch_sha256": "331b3c005d7b0170913a5a22374f5148f087c8baeacafa25f29e7263658e65b8"
+}

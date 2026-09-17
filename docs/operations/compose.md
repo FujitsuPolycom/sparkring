@@ -45,6 +45,15 @@ creation. Published profiles reject `--local-image-id`; source-equivalent
 rebuilds use an explicitly local release selection with the same image ID and
 local tag installed on every rank.
 
+The Qwen TP4 adapter also supports an explicit
+[source-image test selection](../../profiles/qwen38-flash-next-qad-tp4/README.md#local-source-image-testing):
+`--local-source-extension lil-r37-qwen-prefill --local-image-id IMAGE_ID`.
+It uses the registered source descriptor, the image's complete installed inventory
+and retained feature/cache receipts. Its verified entrypoint checks that inventory
+before serving. The public profile remains selected unless these arguments are
+provided. Candidate-only KV and bootstrap-port alternatives are recorded in the
+deployment manifest; TP2 rejects this source selection.
+
 ## Prepare the hosts
 
 Use the profile's two or four Linux ARM64 Sparks with working fabric and matching

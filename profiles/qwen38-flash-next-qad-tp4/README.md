@@ -115,6 +115,36 @@ benchmarking. API readiness alone does not establish correctness or throughput.
 Use the [bounded image comparison](../../performance/qwen-image-comparison.md)
 for matched prefill/decode measurements and their interpretation.
 
+## Local source-image testing
+
+The [Qwen prefill source image](../../runtime/images/compositions/lil-r37-qwen-prefill/README.md)
+packages HC row sharding, recurrent checkpoint coalescing and paired-query QSA
+scoring over the shared R37 image. Its local selection enables HC sharding and
+coalescing on TP4 while preserving the profile's model, MTP and transport choices.
+The published image above remains the default.
+
+Build and verify the candidate, then install the same image ID and generated
+local tag on all four hosts. Use a distinct site name and a dedicated cache root.
+Render through the standard coordinator:
+
+```bash
+python3 scripts/sparkring.py compose render qwen38-flash-next-qad-tp4 \
+  --site .sparkring/qwen-candidate.site.yaml --output .sparkring/deployments/qwen-candidate \
+  --local-source-extension lil-r37-qwen-prefill --local-image-id "$CANDIDATE_IMAGE_ID"
+```
+
+Select `qwen38-flash-next-qad-tp4-sparkcache` in that command to enable persistence.
+The candidate selects its packaged lease contract and a separate persistent-cache
+namespace. Optional test arguments `--local-kv-cache-gib 40` and
+`--local-master-port 29779` select 40 GiB KV per rank and an isolated bootstrap
+port; omitting them retains the profile's 24 GiB and port 29776.
+
+Continue with `compose check`, host checks and the reviewed start procedure above.
+The deployment binds the exact candidate ID, descriptor and test settings. This
+selection is local and TP4-only; it does not change TP2 profiles or transfer
+published-image validation to the candidate. Persistent-cache validation requires
+a correct response after a process restart and restore evidence from every rank.
+
 ## Stop and rollback
 
 ```bash

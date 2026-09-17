@@ -86,19 +86,38 @@ def site_inputs(rank, master, host_ip, interface, model, cache, *, remote=False,
     return paths
 
 
-def verify_image(image, *, cache_enabled=False, feature_enabled=False, run=subprocess.run):
+def verify_image(image, *, cache_enabled=False, feature_enabled=False,
+                 local_source_extension=None, run=subprocess.run):
     expected = publication()
-    if not cache_enabled and not feature_enabled and image != expected["image_id"]:
+    if not cache_enabled and not feature_enabled and local_source_extension is None and image != expected["image_id"]:
         raise ValueError("Image differs from the registered R37 publication")
     info = json.loads(run(["docker", "image", "inspect", image], check=True, capture_output=True, text=True).stdout)[0]
     if info.get("Id") != image or info.get("Os") != "linux" or info.get("Architecture") != "arm64":
         raise ValueError("Image identity or Linux ARM64 platform differs")
-    if info.get("Config", {}).get("Entrypoint") != ["/opt/venv/bin/python", candidate.ENTRYPOINT]:
+    entrypoint = candidate.ENTRYPOINT
+    if local_source_extension is not None:
+        from runtime.common import source_candidate
+        source_candidate.image_reference(local_source_extension, image)
+        entrypoint = source_candidate.ENTRYPOINT
+    if info.get("Config", {}).get("Entrypoint") != ["/opt/venv/bin/python", entrypoint]:
         raise ValueError("Image does not use the verified generic candidate entrypoint")
     raw = run(["docker", "run", "--rm", "--pull", "never", "--network", "none", "--entrypoint", "/bin/cat", image,
                "/opt/sparkring/receipts/candidate-installed.json"], check=True, capture_output=True).stdout
     verification = json.loads(run(["docker", "run", "--rm", "--pull", "never", "--network", "none", image, "verify"],
                                   check=True, capture_output=True, text=True).stdout)
+    if local_source_extension is not None:
+        from runtime.common import feature_candidate, source_candidate
+        receipts = []
+        for receipt_image, receipt_path in (
+            (image, source_candidate.PARENT_RECEIPT),
+            (image, feature_candidate.PARENT_RECEIPT),
+            (expected["image_id"], "/opt/sparkring/receipts/candidate-installed.json"),
+        ):
+            receipts.append(run([
+                "docker", "run", "--rm", "--pull", "never", "--network", "none",
+                "--entrypoint", "/bin/cat", receipt_image, receipt_path,
+            ], check=True, capture_output=True).stdout)
+        return source_candidate.validate(image, raw, *receipts, verification, identity=local_source_extension)
     if cache_enabled or feature_enabled:
         parent = run(["docker", "run", "--rm", "--pull", "never", "--network", "none",
                       "--entrypoint", "/bin/cat", expected["image_id"],
@@ -119,8 +138,19 @@ def verify_image(image, *, cache_enabled=False, feature_enabled=False, run=subpr
 
 
 def container_spec(profile, *, rank, master, host_ip, interface, image, model, cache,
-                   remote=False, hcas=None, gid=None):
+                   remote=False, hcas=None, gid=None, local_source_extension=None,
+                   local_kv_cache_gib=None, local_master_port=None):
     canonical(profile)
+    entrypoint = candidate.ENTRYPOINT
+    if local_source_extension is not None:
+        from runtime.common import source_candidate
+        source_candidate.image_reference(local_source_extension, image)
+        profile = source_candidate.profile_settings(
+            profile, local_source_extension, local_kv_cache_gib, local_master_port,
+        )
+        entrypoint = source_candidate.ENTRYPOINT
+    elif local_kv_cache_gib is not None or local_master_port is not None:
+        raise ValueError("Local KV and master-port alternatives require a local source extension")
     nodes = node_count(profile)
     model, cache = site_inputs(rank, master, host_ip, interface, model, cache, remote=remote, nodes=nodes)
     cache_enabled = profile.get('image_extension') == 'lil-r37-cache64'
@@ -161,7 +191,7 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         if nodes == 4:
             env["B12X_ROCE_GID_INDEX"] = str(gid)
     args = [
-        candidate.ENTRYPOINT,
+        entrypoint,
         "serve",
         "/models/target",
         "--served-model-name",
@@ -213,6 +243,9 @@ def main():
     p.add_argument("--rank", type=int, required=True)
     for key in ("master", "host-ip", "interface", "image", "model", "cache"):
         p.add_argument("--" + key, required=True)
+    p.add_argument("--local-source-extension")
+    p.add_argument("--local-kv-cache-gib", type=int)
+    p.add_argument("--local-master-port", type=int)
     o = p.parse_args()
     profile = canonical(read(o.profile))
     model, cache = site_inputs(o.rank, o.master, o.host_ip, o.interface, o.model, o.cache, nodes=node_count(profile))
@@ -226,11 +259,15 @@ def main():
         image=o.image,
         model=o.model,
         cache=o.cache,
+        local_source_extension=o.local_source_extension,
+        local_kv_cache_gib=o.local_kv_cache_gib,
+        local_master_port=o.local_master_port,
     )
     print(json.dumps(command), flush=True)
     if o.action != "plan":
         verify_image(o.image, cache_enabled=profile.get('image_extension') == 'lil-r37-cache64',
-                     feature_enabled=profile.get('image_extension') == 'lil-r37-shared')
+                     feature_enabled=profile.get('image_extension') == 'lil-r37-shared',
+                     local_source_extension=o.local_source_extension)
     if o.action == "check":
         print("CLI help check only; no inference, cache or performance qualification.", flush=True)
         command[1] = "run"

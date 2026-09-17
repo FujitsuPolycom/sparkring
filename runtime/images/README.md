@@ -33,3 +33,53 @@ name are not interchangeable; a model-neutral name does not qualify every profil
 Retired profiles retain their image references in their linked guides.
 The [R33 publication record](../../runtime/sparkring/jovian-r33/publication.json)
 contains the download digest and profile verification scope.
+
+## Bounded Python source extensions
+
+[source_extension.py](source_extension.py) packages a pinned Git patch over a
+SparkRing image that has an installed receipt. It accepts Python files under
+`b12x` and `vllm`, plus additional JSON integration contracts. It preserves
+native libraries, feature hooks, package versions, and inherited receipt metadata.
+GPU kernels defined in Python can still require compilation during warmup;
+source verification does not establish GPU compatibility or serving correctness.
+
+A `sparkring-source-extension/v1` descriptor records:
+
+- The parent image ID and exact installed-receipt SHA256.
+- The installer SHA256, patch path and SHA256, and upstream provenance.
+- Every changed package path, its inherited SHA256, and its resulting SHA256.
+  A null inherited digest declares a file addition.
+- Additional contract paths, repository sources, and SHA256 digests.
+
+Prepare an isolated build context from a descriptor and this repository:
+
+```bash
+python runtime/images/source_extension.py prepare \
+  --descriptor /path/to/descriptor.json \
+  --repository /path/to/sparkring \
+  --output /path/to/source-context
+```
+
+The context contains the compact patch, contracts, descriptor, installer, and a
+generated Dockerfile. The Dockerfile accepts `PARENT_IMAGE` for a locally cached
+parent tag. Before building, compare that tag's `docker image inspect` ID with
+the descriptor's `parent.image_id`; installation independently verifies the
+pinned receipt and every inherited file. It does not download application source.
+
+Installation applies the patch to a temporary Git tree and verifies all resulting
+files before writing the image. It rejects undeclared paths, symlinks in write
+paths, native-file changes, deletions, renames, file-mode changes, and overwrites
+without inherited ownership. All admission checks precede installation writes;
+an interrupted filesystem write fails the build layer.
+
+The installed entry point is `/opt/sparkring/bin/source-extension.py`:
+`verify` checks the complete resulting inventory and package versions; `serve`
+performs the same verification before invoking the vLLM CLI. Deployment profiles
+select optional capabilities and their integration contract. Serving requires
+no host source mounts.
+
+The receipt retains the parent inventory and records the extension separately.
+The original receipt, patch, and descriptor remain under
+`/opt/sparkring/receipts/source-*`. Build each extension from its recorded parent;
+the installer rejects applying another extension over an already extended image.
+This keeps each recipe's source changes relative to an explicit shared base.

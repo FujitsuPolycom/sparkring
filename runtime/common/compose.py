@@ -144,7 +144,7 @@ def site_settings(site, *, nodes=2):
     return site
 
 
-def source_inventory(profile_id):
+def source_inventory(profile_id, *, local_source_extension=None):
     """Bind controller and host code plus release inputs using LF-normalized text."""
     paths = {
         "runtime/common/compose.py",
@@ -173,6 +173,13 @@ def source_inventory(profile_id):
     folders = ["lil-r37-glm-spark", "lil-r37-cache64"]
     if profile_id in TP4_PROFILES:
         folders.append("lil-r37-shared")
+    if local_source_extension is not None:
+        from runtime.common import source_candidate
+        source_candidate.descriptor(local_source_extension)
+        if profile_id not in TP4_PROFILES:
+            raise ValueError("Local Qwen source extension requires a TP4 profile")
+        paths.add("runtime/common/source_candidate.py")
+        folders.append(local_source_extension)
     for folder in folders:
         paths.update(
             p.relative_to(ROOT).as_posix()
@@ -185,7 +192,8 @@ def source_inventory(profile_id):
     }
 
 
-def specifications(profile_id, site, *, local_image_id=None):
+def specifications(profile_id, site, *, local_image_id=None, local_source_extension=None,
+                   local_kv_cache_gib=None, local_master_port=None):
     if profile_id not in SUPPORTED:
         raise ValueError(
             "Compose adapter unsupported for "
@@ -199,7 +207,15 @@ def specifications(profile_id, site, *, local_image_id=None):
     local = publication.get("schema") == "sparkring-local-image-build/v1"
     image = publication["image_tag"] if local else publication["image_reference"]
     image_id = publication["image_id"]
-    if local:
+    if local_source_extension is not None:
+        from runtime.common import source_candidate
+        if profile_id not in TP4_PROFILES:
+            raise ValueError("Local Qwen source extension requires a TP4 profile")
+        image = source_candidate.image_reference(local_source_extension, local_image_id)
+        image_id = local_image_id
+    elif local_kv_cache_gib is not None or local_master_port is not None:
+        raise ValueError("Local KV and master-port alternatives require a local source extension")
+    elif local:
         from runtime.common import feature_candidate
         if (publication.get("published") is not False
                 or profile.get("image_extension") != "lil-r37-shared"
@@ -211,7 +227,7 @@ def specifications(profile_id, site, *, local_image_id=None):
             image_id = local_image_id
     elif local_image_id is not None:
         raise ValueError("Published image selections cannot be overridden")
-    if (
+    if local_source_extension is None and (
         release["image"] != image
         or publication["platform"] != "linux/arm64"
         or not (local or re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image))
@@ -233,6 +249,9 @@ def specifications(profile_id, site, *, local_image_id=None):
             gid=rank["gid"],
             image=image_id,
             remote=True,
+            local_source_extension=local_source_extension,
+            local_kv_cache_gib=local_kv_cache_gib,
+            local_master_port=local_master_port,
         )
         specs.append(replace(spec, name=f"sr-{site['name']}-r{rank['rank']}"))
     return specs, image
@@ -319,12 +338,24 @@ def compose_text(spec, image):
     )
 
 
-def build(profile_id, site, *, local_image_id=None):
-    specs, image = specifications(profile_id, site, local_image_id=local_image_id)
-    inputs = source_inventory(profile_id)
+def selection_options(manifest):
+    """Carry only explicit image/test selections into deterministic regeneration."""
+    return {name: manifest[name] for name in (
+        "local_image_id", "local_source_extension", "local_kv_cache_gib", "local_master_port",
+    ) if name in manifest}
+
+
+def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
+          local_kv_cache_gib=None, local_master_port=None):
+    options = {key: value for key, value in {
+        "local_image_id": local_image_id, "local_source_extension": local_source_extension,
+        "local_kv_cache_gib": local_kv_cache_gib, "local_master_port": local_master_port,
+    }.items() if value is not None}
+    specs, image = specifications(profile_id, site, **options)
+    inputs = (source_inventory(profile_id) if local_source_extension is None else
+              source_inventory(profile_id, local_source_extension=local_source_extension))
     identity_inputs = {"profile": profile_id, "site": site, "inputs": inputs}
-    if local_image_id is not None:
-        identity_inputs["local_image_id"] = local_image_id
+    identity_inputs.update(options)
     identity = digest(encoded(identity_inputs))
     files = {}
     for number, spec in enumerate(specs):
@@ -342,13 +373,15 @@ def build(profile_id, site, *, local_image_id=None):
         "files": {name: digest(text) for name, text in files.items()},
         "qualification": "Generated configuration only; Compose serving is not qualified.",
     }
-    if local_image_id is not None:
-        manifest["local_image_id"] = local_image_id
+    manifest.update(options)
     return manifest, files
 
 
-def render(profile_id, site, output, *, local_image_id=None):
-    manifest, files = build(profile_id, site, local_image_id=local_image_id)
+def render(profile_id, site, output, *, local_image_id=None, local_source_extension=None,
+           local_kv_cache_gib=None, local_master_port=None):
+    manifest, files = build(profile_id, site, local_image_id=local_image_id,
+                          local_source_extension=local_source_extension,
+                          local_kv_cache_gib=local_kv_cache_gib, local_master_port=local_master_port)
     output = Path(output).resolve()
     if output.is_relative_to(ROOT) and not output.is_relative_to(ROOT / ".sparkring"):
         raise ValueError(
@@ -366,7 +399,7 @@ def render(profile_id, site, output, *, local_image_id=None):
 def load_deployment(output):
     output = Path(output)
     manifest = qwen_flash_next.read(output / "deployment.json")
-    expected, files = build(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
+    expected, files = build(manifest["profile"], manifest["site"], **selection_options(manifest))
     if manifest != expected:
         raise ValueError(
             "Deployment inputs changed; render a separate deployment and review it"
@@ -493,7 +526,7 @@ def check_equivalence(spec, image, text, *, run=subprocess.run):
 
 def check(output):
     manifest, files = load_deployment(output)
-    specs, image = specifications(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
+    specs, image = specifications(manifest["profile"], manifest["site"], **selection_options(manifest))
     for number, spec in enumerate(specs):
         spec = replace(
             spec, labels={LABEL: manifest["id"], "io.sparkring.rank": str(number)}

@@ -278,9 +278,9 @@ def preflight(rank, site, spec, image, profile, manifest):
         require_idle_gpu()
     if rank["rank"] == 0 and not (present and present["State"].get("Running")):
         for flag in ("--port", "--master-port"):
-            port = int(profile["vllm_args"][profile["vllm_args"].index(flag) + 1])
+            port = int(spec.command[spec.command.index(flag) + 1])
             bind_address = (
-                profile["vllm_args"][profile["vllm_args"].index("--host") + 1]
+                spec.command[spec.command.index("--host") + 1]
                 if flag == "--port"
                 else (
                     "::"
@@ -310,12 +310,12 @@ def wait_ready(spec, manifest, *, seconds=900, clock=time.monotonic, sleep=time.
 
 def host_operation(operation, payload):
     manifest = payload["manifest"]
-    expected, files = compose.build(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
+    expected, files = compose.build(manifest["profile"], manifest["site"], **compose.selection_options(manifest))
     if manifest != expected or files != payload["files"]:
         raise ValueError("Host/controller configuration differs")
     number = payload["rank"]
     rank = manifest["site"]["ranks"][number]
-    specs, image = compose.specifications(manifest["profile"], manifest["site"], local_image_id=manifest.get("local_image_id"))
+    specs, image = compose.specifications(manifest["profile"], manifest["site"], **compose.selection_options(manifest))
     spec = replace(
         specs[number],
         labels={compose.LABEL: manifest["id"], "io.sparkring.rank": str(number)},
@@ -344,6 +344,7 @@ def host_operation(operation, payload):
             spec.image_id,
             cache_enabled=profile.get("image_extension") == "lil-r37-cache64",
             feature_enabled=profile.get("image_extension") == "lil-r37-shared",
+            local_source_extension=manifest.get("local_source_extension"),
             run=image_run,
         )
         receipt = {
@@ -424,6 +425,9 @@ def main(argv=None):
     render.add_argument("--site", type=Path, required=True)
     render.add_argument("--output", type=Path, required=True)
     render.add_argument("--local-image-id", help="pin a source-equivalent local Development rebuild; published releases reject overrides")
+    render.add_argument("--local-source-extension", help="select a registered local source-extension test instead of the public image")
+    render.add_argument("--local-kv-cache-gib", type=int, help="select the local TP4 40 GiB KV alternative; requires a source extension")
+    render.add_argument("--local-master-port", type=int, help="isolated source-extension test bootstrap port")
     check = sub.add_parser(
         "check", help="check canonical inputs and resolved Compose equivalence"
     )
@@ -450,6 +454,9 @@ def main(argv=None):
             manifest = compose.render(
                 args.profile, compose.read_site(args.site), args.output,
                 local_image_id=args.local_image_id,
+                local_source_extension=args.local_source_extension,
+                local_kv_cache_gib=args.local_kv_cache_gib,
+                local_master_port=args.local_master_port,
             )
             print(
                 compose.encoded({"deployment": str(args.output), "id": manifest["id"]})
