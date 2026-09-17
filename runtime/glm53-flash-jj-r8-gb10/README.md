@@ -421,6 +421,10 @@ unqualified. The concurrent stages record HTTP overlap, which does not establish
 that both requests shared a GPU batch or identify each worker's sampler path.
 The [bounded sampler observation](../../performance/records/glm53-flash/sampler-concurrency-20260909.md)
 records why C1-only warmup was insufficient on one MTP3 runtime.
+The [DFlash NCCL observation](../../performance/records/glm53-flash/dflash-nccl-greedy-sampler-20260917.md)
+records post-readiness sampler initialization on the frozen DFlash image and
+greedy output variation with SIRCL disabled. Neither observation closes the
+remaining image and workload qualification gaps.
 In particular, the
 case of concurrent 4K-token prefills while a longer request decodes requires an identified image,
 tokenized request lengths, actual overlapping execution and per-rank JIT evidence.
