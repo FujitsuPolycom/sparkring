@@ -21,10 +21,51 @@ LEASE_CONTRACT = "/opt/sparkring/contracts/vllm-connector-jobs-r37-qwen-prefill.
 
 def descriptor(identity=IDENTITY):
     if identity != IDENTITY:
-        raise ValueError("Unregistered local source extension")
+        raise ValueError("Unregistered source extension")
     result = candidate._read(DESCRIPTOR.read_bytes())
     if result.get("id") != IDENTITY or result.get("schema") != "sparkring-source-extension/v1":
-        raise ValueError("Local source extension descriptor differs from its registered identity")
+        raise ValueError("Source extension descriptor differs from its registered identity")
+    return result
+
+
+def publication(identity=IDENTITY, *, image_id=None):
+    """Bind a published source image to its registry digest and reviewed descriptor."""
+    contract = descriptor(identity)
+    path = DESCRIPTOR.with_name("publication.json")
+    if not path.is_file():
+        raise ValueError("Source extension has no registered publication")
+    result = candidate._read(path.read_bytes())
+    if (result.get("schema") != "sparkring-image-publication/v1"
+            or result.get("platform") != "linux/arm64"
+            or result.get("anonymous_pull_verified") is not True
+            or not isinstance(result.get("image_reference"), str)
+            or not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", result["image_reference"])
+            or not isinstance(result.get("image_id"), str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", result["image_id"])
+            or result["image_id"] == contract["parent"]["image_id"]
+            or result.get("descriptor_sha256") != hashlib.sha256(DESCRIPTOR.read_bytes()).hexdigest()):
+        raise ValueError("Source publication must bind an immutable ARM64 image and the reviewed descriptor")
+    if image_id is not None and image_id != result["image_id"]:
+        raise ValueError("Image differs from the registered source publication")
+    return result
+
+
+def release_publication(release, identity=IDENTITY):
+    """Require the release to pin both publication bytes and source descriptor."""
+    result = publication(identity)
+    prefix = "runtime/images/compositions/" + identity + "/"
+    inputs = release.get("inputs", [])
+    if not isinstance(inputs, list) or not inputs or inputs[0].get("path") != prefix + "publication.json":
+        raise ValueError("Source release must select its registered publication input")
+    records = {item.get("path"): item.get("sha256") for item in inputs}
+    required = {prefix + "publication.json": DESCRIPTOR.with_name("publication.json"),
+                prefix + "descriptor.json": DESCRIPTOR}
+    if (release.get("selection") != "registered-source-extension-image"
+            or release.get("image") != result["image_reference"]
+            or len(records) != len(inputs)
+            or any(records.get(name) != hashlib.sha256(path.read_bytes()).hexdigest()
+                   for name, path in required.items())):
+        raise ValueError("Source release does not pin the publication, descriptor and registry image together")
     return result
 
 
@@ -67,6 +108,17 @@ def profile_settings(profile, identity, kv_cache_gib=None, master_port=None):
         extra["spark_cache_root"] = "/cache/persistent/qwen38-flash-next-qad-tp4-" + identity
         arguments[index] = json.dumps(transfer, separators=(",", ":"))
     return result
+
+
+def validate_profile_contract(profile, identity=IDENTITY):
+    """A persistent connector must select the contract for these installed sources."""
+    contract = descriptor(identity)
+    arguments = profile["vllm_args"]
+    if "--kv-transfer-config" in arguments:
+        transfer = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
+        selected = transfer.get("kv_connector_extra_config", {}).get("spark_cache_async_page_capture_lease_contract")
+        if selected != LEASE_CONTRACT or selected not in contract["integration_contracts"]:
+            raise ValueError("Source-image SparkCache profile must select its packaged lease contract")
 
 
 def validate(image_id, installed_bytes, parent_bytes, cache_parent_bytes, base_bytes,

@@ -122,7 +122,8 @@ def test_declared_replacement_requires_its_actual_parent_preimage(inputs):
         source.validate(**inputs)
 
 
-def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(inputs, monkeypatch):
+@pytest.mark.parametrize("published", [False, True])
+def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(inputs, monkeypatch, published):
     image = inputs["image_id"]
     base_image = qwen_flash_next.publication()["image_id"]
     reads = {
@@ -149,7 +150,14 @@ def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(
                 out = reads[(argv[-2], argv[-1])]
         return subprocess.CompletedProcess(argv, 0, stdout=out)
 
-    result = qwen_flash_next.verify_image(image, feature_enabled=True,
-                                          local_source_extension=source.IDENTITY, run=run)
+    if published:
+        source.DESCRIPTOR.with_name("publication.json").write_bytes(encoded({
+            "schema": "sparkring-image-publication/v1", "image_id": image,
+            "image_reference": "example.invalid/sparkring@sha256:" + "a" * 64,
+            "platform": "linux/arm64", "anonymous_pull_verified": True,
+            "descriptor_sha256": sha(source.DESCRIPTOR.read_bytes()),
+        }))
+    selection = {"source_extension" if published else "local_source_extension": source.IDENTITY}
+    result = qwen_flash_next.verify_image(image, **selection, run=run)
     assert result["source_extension"]["id"] == source.IDENTITY
     assert len(calls) == 6

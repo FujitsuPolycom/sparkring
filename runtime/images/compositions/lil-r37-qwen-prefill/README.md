@@ -62,6 +62,45 @@ Published image selections and TP2 settings remain unchanged. This composition
 does not promote TP2 or GLM to a different image. Each profile retains its own
 serving evidence and rollback image.
 
+## Promote a qualified image
+
+The Qwen adapter supports registered source-image releases through ordinary
+Docker and Compose commands. No publication is registered for this composition.
+Promotion requires the actual distribution identities and profile evidence;
+changing a tag or copying a parent receipt does not select this source image.
+
+After authorized publication of the tested image:
+
+1. Add `publication.json` in this directory using schema
+   `sparkring-image-publication/v1`. Record the registry `image_reference` with
+   its manifest digest, exact `image_id`, `platform: linux/arm64`, the SHA256 of
+   `descriptor.json`, and `anonymous_pull_verified: true` after checking a pull.
+   Include the versioned tag, serving-evidence path and qualification limits.
+2. Add a distinct release selection under `runtime/releases/`. Use
+   `selection: registered-source-extension-image`, the same registry reference
+   as `image`, and hash-pinned inputs for this publication and descriptor, with
+   the publication first. Preserve the existing release records.
+3. Point only the qualified TP4 profile's `profile.json` at that release. Set
+   its canonical configuration's `image_extension` to `lil-r37-qwen-prefill`.
+   The adapter selects source admission and the verified source entrypoint;
+   feature settings still come from the canonical configuration.
+4. For the enhanced TP4 configuration, explicitly set
+   `VLLM_QWEN3_8_HC_PREFILL_MODE=shard` and `VLLM_QWEN3_8_PREFILL_COALESCE=1`.
+   A SparkCache selection must reference the packaged
+   `/opt/sparkring/contracts/vllm-connector-jobs-r37-qwen-prefill.json` lease
+   contract and its own persistent-cache namespace. Retain its checkpoint,
+   context, batching and transport settings unless separately reviewed.
+5. Update that profile's quickstart and evidence, then regenerate Compose
+   examples with `python3 scripts/generate_compose_examples.py`. Ordinary
+   `compose render PROFILE --site SITE --output DIRECTORY` now selects the
+   registered image; no local source-image flags are needed.
+
+The 40 GiB KV alternative remains an explicit local test option. Public profiles
+keep 24 GiB until their canonical settings and evidence are deliberately updated.
+TP2 and GLM retain their own image selections. This registration work changes
+deployment metadata and admission; it does not require rebuilding an unchanged
+tested image.
+
 ## Component checks
 
 Run these checks inside the built image on an idle GB10 GPU, mounting only the

@@ -56,6 +56,35 @@ def node_count(profile):
     return int(profile["vllm_args"][profile["vllm_args"].index("--nnodes") + 1])
 
 
+def image_policy(profile, *, local_source_extension=None):
+    """Resolve one image kind for Docker, Compose and host admission."""
+    kinds = {None: "base", "lil-r37-cache64": "cache", "lil-r37-shared": "feature"}
+    extension = profile.get("image_extension")
+    if extension not in kinds:
+        from runtime.common import source_candidate
+        if extension != source_candidate.IDENTITY:
+            raise ValueError("Unregistered Qwen image extension")
+        kinds[extension] = "source"
+    identity = (local_source_extension if local_source_extension is not None else
+                extension if kinds[extension] == "source" else None)
+    if identity is not None:
+        from runtime.common import source_candidate
+        source_candidate.descriptor(identity)
+        if profile.get("topology") != "direct-cycle-4" or node_count(profile) != 4:
+            raise ValueError("Qwen source extension is restricted to TP4 profiles")
+    return {"kind": "source" if identity is not None else kinds[extension],
+            "source_extension": identity, "local": local_source_extension is not None}
+
+
+def image_verification_options(profile, *, local_source_extension=None):
+    policy = image_policy(profile, local_source_extension=local_source_extension)
+    options = {"cache_enabled": policy["kind"] == "cache", "feature_enabled": policy["kind"] == "feature"}
+    if policy["kind"] == "source":
+        key = "local_source_extension" if policy["local"] else "source_extension"
+        options[key] = policy["source_extension"]
+    return options
+
+
 def site_inputs(rank, master, host_ip, interface, model, cache, *, remote=False, nodes=2):
     if nodes not in (2, 4) or type(rank) is not int or rank not in range(nodes):
         raise ValueError("Select rank0/1" if nodes == 2 else "Select rank0/1/2/3 for a four-node profile")
@@ -87,17 +116,23 @@ def site_inputs(rank, master, host_ip, interface, model, cache, *, remote=False,
 
 
 def verify_image(image, *, cache_enabled=False, feature_enabled=False,
-                 local_source_extension=None, run=subprocess.run):
+                 local_source_extension=None, source_extension=None, run=subprocess.run):
     expected = publication()
-    if not cache_enabled and not feature_enabled and local_source_extension is None and image != expected["image_id"]:
+    if local_source_extension is not None and source_extension is not None:
+        raise ValueError("Choose one local or published source selection")
+    selected_source = local_source_extension or source_extension
+    if source_extension is not None:
+        from runtime.common import source_candidate
+        source_candidate.publication(source_extension, image_id=image)
+    if not cache_enabled and not feature_enabled and selected_source is None and image != expected["image_id"]:
         raise ValueError("Image differs from the registered R37 publication")
     info = json.loads(run(["docker", "image", "inspect", image], check=True, capture_output=True, text=True).stdout)[0]
     if info.get("Id") != image or info.get("Os") != "linux" or info.get("Architecture") != "arm64":
         raise ValueError("Image identity or Linux ARM64 platform differs")
     entrypoint = candidate.ENTRYPOINT
-    if local_source_extension is not None:
+    if selected_source is not None:
         from runtime.common import source_candidate
-        source_candidate.image_reference(local_source_extension, image)
+        source_candidate.image_reference(selected_source, image)
         entrypoint = source_candidate.ENTRYPOINT
     if info.get("Config", {}).get("Entrypoint") != ["/opt/venv/bin/python", entrypoint]:
         raise ValueError("Image does not use the verified generic candidate entrypoint")
@@ -105,7 +140,7 @@ def verify_image(image, *, cache_enabled=False, feature_enabled=False,
                "/opt/sparkring/receipts/candidate-installed.json"], check=True, capture_output=True).stdout
     verification = json.loads(run(["docker", "run", "--rm", "--pull", "never", "--network", "none", image, "verify"],
                                   check=True, capture_output=True, text=True).stdout)
-    if local_source_extension is not None:
+    if selected_source is not None:
         from runtime.common import feature_candidate, source_candidate
         receipts = []
         for receipt_image, receipt_path in (
@@ -117,7 +152,7 @@ def verify_image(image, *, cache_enabled=False, feature_enabled=False,
                 "docker", "run", "--rm", "--pull", "never", "--network", "none",
                 "--entrypoint", "/bin/cat", receipt_image, receipt_path,
             ], check=True, capture_output=True).stdout)
-        return source_candidate.validate(image, raw, *receipts, verification, identity=local_source_extension)
+        return source_candidate.validate(image, raw, *receipts, verification, identity=selected_source)
     if cache_enabled or feature_enabled:
         parent = run(["docker", "run", "--rm", "--pull", "never", "--network", "none",
                       "--entrypoint", "/bin/cat", expected["image_id"],
@@ -141,24 +176,31 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
                    remote=False, hcas=None, gid=None, local_source_extension=None,
                    local_kv_cache_gib=None, local_master_port=None):
     canonical(profile)
+    policy = image_policy(profile, local_source_extension=local_source_extension)
     entrypoint = candidate.ENTRYPOINT
-    if local_source_extension is not None:
+    if policy["kind"] == "source":
         from runtime.common import source_candidate
-        source_candidate.image_reference(local_source_extension, image)
-        profile = source_candidate.profile_settings(
-            profile, local_source_extension, local_kv_cache_gib, local_master_port,
-        )
+        if policy["local"]:
+            source_candidate.image_reference(local_source_extension, image)
+            profile = source_candidate.profile_settings(
+                profile, local_source_extension, local_kv_cache_gib, local_master_port,
+            )
+        else:
+            source_candidate.publication(policy["source_extension"], image_id=image)
+            if local_kv_cache_gib is not None or local_master_port is not None:
+                raise ValueError("Local KV and master-port alternatives require a local source extension")
+        source_candidate.validate_profile_contract(profile, policy["source_extension"])
         entrypoint = source_candidate.ENTRYPOINT
     elif local_kv_cache_gib is not None or local_master_port is not None:
         raise ValueError("Local KV and master-port alternatives require a local source extension")
     nodes = node_count(profile)
     model, cache = site_inputs(rank, master, host_ip, interface, model, cache, remote=remote, nodes=nodes)
-    cache_enabled = profile.get('image_extension') == 'lil-r37-cache64'
-    feature_enabled = profile.get('image_extension') == 'lil-r37-shared'
+    cache_enabled = policy["kind"] == "cache"
+    feature_enabled = policy["kind"] == "feature"
     if (cache_enabled or feature_enabled) and (not re.fullmatch(r'sha256:[0-9a-f]{64}', image) or image == publication()['image_id']):
         kind = 'feature-extension' if feature_enabled else 'cache-extension'
         raise ValueError(f'Select an immutable {kind} image, not the base R37 image')
-    if not cache_enabled and not feature_enabled and image != publication()['image_id']:
+    if policy["kind"] == "base" and image != publication()['image_id']:
         raise ValueError('Select the exact registered R37 image ID')
     namespace = f"qwen-flash-next-{image[7:19]}-{profile['model']['revision'][:12]}"
     env = dict(profile["environment"])
@@ -265,9 +307,7 @@ def main():
     )
     print(json.dumps(command), flush=True)
     if o.action != "plan":
-        verify_image(o.image, cache_enabled=profile.get('image_extension') == 'lil-r37-cache64',
-                     feature_enabled=profile.get('image_extension') == 'lil-r37-shared',
-                     local_source_extension=o.local_source_extension)
+        verify_image(o.image, **image_verification_options(profile, local_source_extension=o.local_source_extension))
     if o.action == "check":
         print("CLI help check only; no inference, cache or performance qualification.", flush=True)
         command[1] = "run"

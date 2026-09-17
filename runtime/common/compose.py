@@ -164,6 +164,8 @@ def source_inventory(profile_id, *, local_source_extension=None):
     }
     metadata, _ = profiles.load(profile_id)
     paths.add(metadata["configuration"]["path"])
+    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
+    policy = qwen_flash_next.image_policy(profile, local_source_extension=local_source_extension)
     if profile_id in TP4_PROFILES:
         from runtime.common import qwen_mesh
         paths.add("runtime/common/feature_candidate.py")
@@ -173,13 +175,13 @@ def source_inventory(profile_id, *, local_source_extension=None):
     folders = ["lil-r37-glm-spark", "lil-r37-cache64"]
     if profile_id in TP4_PROFILES:
         folders.append("lil-r37-shared")
-    if local_source_extension is not None:
+    if policy["source_extension"] is not None:
         from runtime.common import source_candidate
-        source_candidate.descriptor(local_source_extension)
+        source_candidate.descriptor(policy["source_extension"])
         if profile_id not in TP4_PROFILES:
             raise ValueError("Local Qwen source extension requires a TP4 profile")
         paths.add("runtime/common/source_candidate.py")
-        folders.append(local_source_extension)
+        folders.append(policy["source_extension"])
     for folder in folders:
         paths.update(
             p.relative_to(ROOT).as_posix()
@@ -203,7 +205,12 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     metadata, release = profiles.load(profile_id)
     profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
     site_settings(site, nodes=qwen_flash_next.node_count(profile))
-    publication = qwen_flash_next.read(ROOT / release["inputs"][0]["path"])
+    policy = qwen_flash_next.image_policy(profile, local_source_extension=local_source_extension)
+    if policy["kind"] == "source" and not policy["local"]:
+        from runtime.common import source_candidate
+        publication = source_candidate.release_publication(release, policy["source_extension"])
+    else:
+        publication = qwen_flash_next.read(ROOT / release["inputs"][0]["path"])
     local = publication.get("schema") == "sparkring-local-image-build/v1"
     image = publication["image_tag"] if local else publication["image_reference"]
     image_id = publication["image_id"]

@@ -342,9 +342,9 @@ def host_operation(operation, payload):
 
         result = qwen_flash_next.verify_image(
             spec.image_id,
-            cache_enabled=profile.get("image_extension") == "lil-r37-cache64",
-            feature_enabled=profile.get("image_extension") == "lil-r37-shared",
-            local_source_extension=manifest.get("local_source_extension"),
+            **qwen_flash_next.image_verification_options(
+                profile, local_source_extension=manifest.get("local_source_extension"),
+            ),
             run=image_run,
         )
         receipt = {

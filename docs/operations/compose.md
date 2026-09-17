@@ -54,6 +54,14 @@ before serving. The public profile remains selected unless these arguments are
 provided. Candidate-only KV and bootstrap-port alternatives are recorded in the
 deployment manifest; TP2 rejects this source selection.
 
+For a registered source-image release, the adapter resolves the same source
+entrypoint and admission from the canonical profile's `image_extension`.
+The release must pin the publication, source descriptor and registry digest;
+the publication binds the exact image ID. Ordinary render/check/start commands
+then need no local flags. See the [promotion fields](../../runtime/images/compositions/lil-r37-qwen-prefill/README.md#promote-a-qualified-image).
+Feature settings remain explicit profile configuration; image selection does
+not silently increase KV allocation or enable optional features.
+
 ## Prepare the hosts
 
 Use the profile's two or four Linux ARM64 Sparks with working fabric and matching
