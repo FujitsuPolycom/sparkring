@@ -45,22 +45,48 @@ creation. Published profiles reject `--local-image-id`; source-equivalent
 rebuilds use an explicitly local release selection with the same image ID and
 local tag installed on every rank.
 
-The Qwen TP4 adapter also supports an explicit
+The Qwen TP2 and TP4 adapters also support an explicit
 [source-image test selection](../../profiles/qwen38-flash-next-qad-tp4/README.md#local-source-image-testing):
 `--local-source-extension lil-r37-qwen-prefill --local-image-id IMAGE_ID`.
 It uses the registered source descriptor, the image's complete installed inventory
 and retained feature/cache receipts. Its verified entrypoint checks that inventory
 before serving. The public profile remains selected unless these arguments are
-provided. Candidate-only KV and bootstrap-port alternatives are recorded in the
-deployment manifest; TP2 rejects this source selection.
+provided. Local KV and bootstrap-port alternatives are recorded in the
+deployment manifest.
 
-For a registered source-image release, the adapter resolves the same source
+For an experimental TP2 trial, select either `qwen38-flash-next-tp2` or
+`qwen38-flash-next-tp2-sparkcache`. The source route keeps HC sharding off,
+enables recurrent-checkpoint coalescing and preserves the pair's existing
+feature and transport selection. It does not activate TP4 HC fusion or the
+`qwen-prefill` feature. KV allocation stays at 24 GiB per rank unless the explicit
+33 GiB local alternative is selected:
+
+```bash
+python3 scripts/sparkring.py compose render qwen38-flash-next-tp2-sparkcache \
+  --site /path/to/private/site.yaml --output /path/to/tp2-source-trial \
+  --local-source-extension lil-r37-qwen-prefill --local-image-id "$IMAGE_ID" \
+  --local-kv-cache-gib 33
+```
+
+Set `IMAGE_ID` to the complete local `sha256:` image ID before rendering. Every
+rank must have that image under the local tag recorded in `deployment.json`.
+The [combined vLLM/SGLang image](../../runtime/deepseek-v41-sglang/combined-image/README.md)
+can use this route only when its inherited vLLM inventory passes source admission.
+TP2 SparkCache uses the packaged source lease contract and a separate
+`qwen38-flash-next-qad-tp2-lil-r37-qwen-prefill` persistent namespace. Use a
+dedicated host cache directory for a controlled trial. The route admits a test
+configuration; it does not qualify TP2 serving, performance or cache restoration.
+TP4 retains its existing HC sharding/coalescing selection and optional 40 GiB KV
+alternative. `--local-master-port` remains an explicit local option for either width.
+
+For a registered TP4 source-image release, the adapter resolves the same source
 entrypoint and admission from the canonical profile's `image_extension`.
 The release must pin the publication, source descriptor and registry digest;
 the publication binds the exact image ID. Ordinary render/check/start commands
 then need no local flags. See the [promotion fields](../../runtime/images/compositions/lil-r37-qwen-prefill/README.md#promote-a-qualified-image).
 Feature settings remain explicit profile configuration; image selection does
-not silently increase KV allocation or enable optional features.
+not silently increase KV allocation or enable optional features. TP2 source-image
+selection remains local and cannot be promoted by changing its public image field.
 
 ## Prepare the hosts
 

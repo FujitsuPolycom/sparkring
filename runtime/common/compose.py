@@ -178,9 +178,9 @@ def source_inventory(profile_id, *, local_source_extension=None):
     if policy["source_extension"] is not None:
         from runtime.common import source_candidate
         source_candidate.descriptor(policy["source_extension"])
-        if profile_id not in TP4_PROFILES:
-            raise ValueError("Local Qwen source extension requires a TP4 profile")
-        paths.add("runtime/common/source_candidate.py")
+        paths.update(("runtime/common/source_candidate.py", "runtime/common/feature_candidate.py"))
+        if "lil-r37-shared" not in folders:
+            folders.append("lil-r37-shared")
         folders.append(policy["source_extension"])
     for folder in folders:
         paths.update(
@@ -216,8 +216,6 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     image_id = publication["image_id"]
     if local_source_extension is not None:
         from runtime.common import source_candidate
-        if profile_id not in TP4_PROFILES:
-            raise ValueError("Local Qwen source extension requires a TP4 profile")
         image = source_candidate.image_reference(local_source_extension, local_image_id)
         image_id = local_image_id
     elif local_kv_cache_gib is not None or local_master_port is not None:

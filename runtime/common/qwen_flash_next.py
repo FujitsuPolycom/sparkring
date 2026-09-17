@@ -70,8 +70,9 @@ def image_policy(profile, *, local_source_extension=None):
     if identity is not None:
         from runtime.common import source_candidate
         source_candidate.descriptor(identity)
-        if profile.get("topology") != "direct-cycle-4" or node_count(profile) != 4:
-            raise ValueError("Qwen source extension is restricted to TP4 profiles")
+        nodes = source_candidate.profile_nodes(profile)
+        if nodes == 2 and local_source_extension is None:
+            raise ValueError("TP2 source-image selection requires an explicit local source extension")
     return {"kind": "source" if identity is not None else kinds[extension],
             "source_extension": identity, "local": local_source_extension is not None}
 
@@ -251,7 +252,7 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         "/opt/venv/bin/python", "-c",
         f"import urllib.request; urllib.request.urlopen('http://127.0.0.1:{port}/health', timeout=4).close()",
     )
-    prefix = "qad-sparkcache-" if nodes == 4 and env.get("SPARKCACHE_ENABLED") == "1" else "qad-" if nodes == 4 else "sparkcache-" if cache_enabled else ""
+    prefix = "qad-sparkcache-" if nodes == 4 and env.get("SPARKCACHE_ENABLED") == "1" else "qad-" if nodes == 4 else "sparkcache-" if env.get("SPARKCACHE_ENABLED") == "1" else ""
     return ContainerSpec(
         name=f"qwen-flash-next-{prefix}tp{nodes}-r{rank}",
         image_id=image, entrypoint=("/opt/venv/bin/python",), command=tuple(args),

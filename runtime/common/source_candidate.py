@@ -79,21 +79,33 @@ def image_reference(identity, image_id):
     return f"sparkring-local:{identity}-{fingerprint}"
 
 
-def profile_settings(profile, identity, kv_cache_gib=None, master_port=None):
-    """Apply reviewed TP4 options after the caller admits the canonical profile."""
-    descriptor(identity)
+def profile_nodes(profile):
+    """Require a matching pair/ring topology, TP width and node count."""
     arguments = profile["vllm_args"]
-    if profile.get("topology") != "direct-cycle-4" or arguments[arguments.index("--tensor-parallel-size") + 1] != "4":
-        raise ValueError("Qwen source-extension selection is restricted to TP4 profiles")
-    if kv_cache_gib is not None and (type(kv_cache_gib) is not int or kv_cache_gib != 40):
-        raise ValueError("The local KV alternative is 40 GiB per rank")
+    nodes = {"direct-pair-2": 2, "direct-cycle-4": 4}.get(profile.get("topology"))
+    if nodes is None or any(arguments[arguments.index(flag) + 1] != str(nodes)
+                            for flag in ("--tensor-parallel-size", "--nnodes")):
+        raise ValueError("Qwen source extension requires matching TP2 pair or TP4 ring settings")
+    return nodes
+
+
+def profile_settings(profile, identity, kv_cache_gib=None, master_port=None):
+    """Select bounded local options; TP2 coalescing does not enable TP4 HC kernels."""
+    descriptor(identity)
+    nodes = profile_nodes(profile)
+    kv_alternative = {2: 33, 4: 40}[nodes]
+    if kv_cache_gib is not None and (type(kv_cache_gib) is not int or kv_cache_gib != kv_alternative):
+        raise ValueError(f"The local TP{nodes} KV alternative is {kv_alternative} GiB per rank")
     if master_port is not None and (type(master_port) is not int or not 1 <= master_port <= 65535):
         raise ValueError("Local master port must be an integer from 1 to 65535")
     result = copy.deepcopy(profile)
     result["environment"].update(
-        VLLM_QWEN3_8_HC_PREFILL_MODE="shard",
+        VLLM_QWEN3_8_HC_PREFILL_MODE="off" if nodes == 2 else "shard",
         VLLM_QWEN3_8_PREFILL_COALESCE="1",
     )
+    if nodes == 2:
+        # An image's defaults must not activate a feature absent from the pair profile.
+        result["environment"].setdefault("SPARKRING_FEATURES", "")
     arguments = result["vllm_args"]
     if kv_cache_gib is not None:
         arguments[arguments.index("--kv-cache-memory-bytes") + 1] = str(kv_cache_gib * 1024 ** 3)
@@ -105,14 +117,21 @@ def profile_settings(profile, identity, kv_cache_gib=None, master_port=None):
         extra = transfer["kv_connector_extra_config"]
         extra["spark_cache_async_page_capture_lease_contract"] = LEASE_CONTRACT
         # Different source layouts must not consume the public profile's entries.
-        extra["spark_cache_root"] = "/cache/persistent/qwen38-flash-next-qad-tp4-" + identity
+        extra["spark_cache_root"] = f"/cache/persistent/qwen38-flash-next-qad-tp{nodes}-" + identity
         arguments[index] = json.dumps(transfer, separators=(",", ":"))
+    validate_profile_contract(result, identity)
     return result
 
 
 def validate_profile_contract(profile, identity=IDENTITY):
-    """A persistent connector must select the contract for these installed sources."""
+    """Preserve TP eligibility and bind persistent capture to installed sources."""
     contract = descriptor(identity)
+    if profile_nodes(profile) == 2:
+        environment = profile["environment"]
+        features = {part.strip() for part in environment.get("SPARKRING_FEATURES", "").split(",") if part.strip()}
+        if (environment.get("VLLM_QWEN3_8_HC_PREFILL_MODE", "off") != "off"
+                or not features <= {"qwen-collectives"}):
+            raise ValueError("Local TP2 source selection does not support HC sharding or TP4 prefill features")
     arguments = profile["vllm_args"]
     if "--kv-transfer-config" in arguments:
         transfer = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])

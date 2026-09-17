@@ -6,9 +6,11 @@ import subprocess
 
 import pytest
 
-from runtime.common import candidate, feature_candidate, qwen_flash_next, source_candidate as source
-from runtime.common.test_feature_candidate import encoded, inputs as feature_inputs, sha
+from runtime.common import candidate, feature_candidate, qwen_flash_next, source_candidate as source, test_feature_candidate
+from runtime.common.test_feature_candidate import encoded, sha
 from runtime.images import source_extension
+
+feature_inputs = test_feature_candidate.inputs
 
 
 @pytest.fixture
@@ -122,8 +124,8 @@ def test_declared_replacement_requires_its_actual_parent_preimage(inputs):
         source.validate(**inputs)
 
 
-@pytest.mark.parametrize("published", [False, True])
-def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(inputs, monkeypatch, published):
+@pytest.mark.parametrize("selection_kind", ["local-tp4", "local-tp2", "local-tp2-cache", "published"])
+def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(inputs, monkeypatch, selection_kind):
     image = inputs["image_id"]
     base_image = qwen_flash_next.publication()["image_id"]
     reads = {
@@ -150,14 +152,40 @@ def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(
                 out = reads[(argv[-2], argv[-1])]
         return subprocess.CompletedProcess(argv, 0, stdout=out)
 
-    if published:
+    if selection_kind == "published":
         source.DESCRIPTOR.with_name("publication.json").write_bytes(encoded({
             "schema": "sparkring-image-publication/v1", "image_id": image,
             "image_reference": "example.invalid/sparkring@sha256:" + "a" * 64,
             "platform": "linux/arm64", "anonymous_pull_verified": True,
             "descriptor_sha256": sha(source.DESCRIPTOR.read_bytes()),
         }))
-    selection = {"source_extension" if published else "local_source_extension": source.IDENTITY}
+    filename = {"local-tp2": qwen_flash_next.CONFIG_ROOT / "config.json",
+                "local-tp2-cache": qwen_flash_next.CONFIG_ROOT / "sparkcache.json"}.get(selection_kind, qwen_flash_next.TP4_CONFIG)
+    profile = qwen_flash_next.read(filename)
+    if selection_kind == "published":
+        profile["image_extension"] = source.IDENTITY
+        selection = qwen_flash_next.image_verification_options(profile)
+    else:
+        selection = qwen_flash_next.image_verification_options(profile, local_source_extension=source.IDENTITY)
     result = qwen_flash_next.verify_image(image, **selection, run=run)
     assert result["source_extension"]["id"] == source.IDENTITY
     assert len(calls) == 6
+
+
+@pytest.mark.parametrize("mutation", [
+    {"Id": "sha256:" + "f" * 64}, {"Architecture": "amd64"},
+    {"Config": {"Entrypoint": ["/opt/venv/bin/python", candidate.ENTRYPOINT]}},
+])
+def test_local_tp2_source_admission_rejects_wrong_image_platform_or_entrypoint_before_payload_reads(inputs, mutation):
+    profile = qwen_flash_next.read(qwen_flash_next.CONFIG_ROOT / "sparkcache.json")
+    selection = qwen_flash_next.image_verification_options(profile, local_source_extension=source.IDENTITY)
+
+    def run(argv, **kwargs):
+        assert argv[1:3] == ["image", "inspect"]
+        observed = {"Id": inputs["image_id"], "Os": "linux", "Architecture": "arm64",
+                    "Config": {"Entrypoint": ["/opt/venv/bin/python", source.ENTRYPOINT]}}
+        observed.update(mutation)
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps([observed]))
+
+    with pytest.raises(ValueError, match="Image"):
+        qwen_flash_next.verify_image(inputs["image_id"], **selection, run=run)

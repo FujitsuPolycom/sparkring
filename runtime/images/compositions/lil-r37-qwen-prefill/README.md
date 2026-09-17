@@ -58,9 +58,19 @@ with the Qwen QAD TP4 profile. The image must have the same local tag and image 
 on all four hosts. The profile supports cache-disabled and SparkCache selections;
 the cache selection mounts model/cache data without any application-source mounts.
 
-Published image selections and TP2 settings remain unchanged. This composition
-does not promote TP2 or GLM to a different image. Each profile retains its own
-serving evidence and rollback image.
+An explicit local TP2 source-image trial is also supported for
+`qwen38-flash-next-tp2` and `qwen38-flash-next-tp2-sparkcache`. It keeps HC
+sharding off and existing TP2 features unchanged, enables recurrent-checkpoint
+coalescing, and preserves the canonical 24 GiB KV allocation. The optional
+`--local-kv-cache-gib 33` selects a bounded TP2 memory alternative. It cannot
+select TP4-only HC fusion or the 40 GiB TP4 alternative. SparkCache uses the
+packaged source lease contract and its own TP2 persistent namespace. See the
+[rendering command and trial scope](../../../../docs/operations/compose.md).
+
+Published image selections remain unchanged. This local route does not promote
+TP2 or GLM or transfer TP4 serving results to TP2. Each profile retains its own
+serving evidence and rollback image; TP2 performance and restart restoration
+require separate measurements on the selected image.
 
 ## Promote a qualified image
 
@@ -95,7 +105,7 @@ After authorized publication of the tested image:
    `compose render PROFILE --site SITE --output DIRECTORY` now selects the
    registered image; no local source-image flags are needed.
 
-The 40 GiB KV alternative remains an explicit local test option. Public profiles
+The TP4 40 GiB and TP2 33 GiB KV alternatives remain explicit local test options. Public profiles
 keep 24 GiB until their canonical settings and evidence are deliberately updated.
 TP2 and GLM retain their own image selections. This registration work changes
 deployment metadata and admission; it does not require rebuilding an unchanged
