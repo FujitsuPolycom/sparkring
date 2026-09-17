@@ -19,7 +19,7 @@ def target(variant=DEFAULT):
 def target_for_image(variant=DEFAULT, image=None):
     """Select maintained host model pins while preserving frozen image recipes."""
     if variant == DEFAULT and (image or {}).get("schema") not in (
-            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-source-image-receipt/v1"):
         return json.loads((ROOT / "runtime/glm53-spark-mtp3-mesh/pins.json").read_text())["target"]
     return target(variant)
 

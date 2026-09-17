@@ -49,3 +49,34 @@ authenticated generation, near-limit retrieval and per-rank memory. Qwen's
 57247 inherited files verify unchanged; its prefill, decode and cache restoration
 on this combined image remain unmeasured. Keep that distinction when selecting
 or publishing a profile.
+
+## Local GLM admission
+
+The explicit local GLM source adapter accepts TP2/DCP1 and TP4/DCP1/DCP4 with
+SparkCache disabled. It verifies the complete source receipt chain and disables
+Qwen feature selection. This is structural admission, not GLM serving evidence.
+Existing R33/R37 registrations and public selections are unchanged.
+
+On a Docker host containing the selected image and the registered R37 base used
+for ancestry verification, create a private receipt without starting a model:
+
+```bash
+python3 -m runtime.common.glm_source_candidate \
+  --local-source-extension lil-r37-qwen-prefill \
+  --image-id sha256:b03062b032bb147f5255463d4f068bfc476bf966c78c82ddeb66df4fb1b0b37d \
+  --output /private/glm-source-receipt.json
+```
+
+The TP2 planner accepts this file through `--runtime-receipt`. For TP4, pass it
+to the mesh profile renderer through `--image-receipt`, then use
+`python3 -m runtime.common.glm_launch plan` for structured Docker/Compose creation.
+The generated legacy shell launcher deliberately refuses source-image trials;
+its historical image gate does not verify the complete source ancestry.
+
+GLM SparkCache profiles remain rejected. The source extension changes scheduler
+and recurrent-checkpoint allocation code, so the parent lease contract does not
+match. Before enabling them, verify four-checkpoint planning/fallback and the
+complete delayed-capture lifecycle, including immutable page retention,
+completion acknowledgements and restore retirement. Then measure GLM serving
+and cache restoration for the selected topology. Qwen cache results do not
+qualify those GLM ownership transitions.

@@ -15,7 +15,7 @@ from pathlib import PurePosixPath
 import re
 
 from runtime.common.container_spec import Bind, ContainerSpec
-from runtime.common import glm_targets
+from runtime.common import glm_targets, glm_source_candidate
 
 PROFILES = frozenset(("tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"))
 NCCL_PATH = "/opt/local-inference/nccl/lib/libnccl.so.2"
@@ -162,10 +162,16 @@ def _validate(values, image_record, contract):
     if not isinstance(selected, Mapping) or selected.get("host_domains") != "dual":
         raise ValueError("Verified contract lacks the selected dual-domain TP4 profile")
     schema = image_record.get("schema")
-    release = {"sparkring-r35-image-receipt/v1": "r35", "sparkring-candidate-image-receipt/v1": "candidate"}.get(schema)
+    release = {"sparkring-r35-image-receipt/v1": "r35", "sparkring-candidate-image-receipt/v1": "candidate", glm_source_candidate.SCHEMA: "candidate"}.get(schema)
     if release is None:
         raise ValueError("GLM TP4 structured planning requires a verified R35 or candidate image")
     _require(values, "SPARKRING_RUNTIME_RELEASE", release)
+    if schema == glm_source_candidate.SCHEMA:
+        glm_source_candidate.validate_profile_capabilities(image_record, profile)
+        if contract != glm_source_candidate.profile_contract(image_record["installed"]):
+            raise ValueError("GLM source profile contract differs from admitted source")
+        for key, expected in glm_source_candidate.DISABLED.items():
+            _require(values, key, expected)
     for key, field in (("IMAGE_ID", "image_id"), ("IMAGE_REF", "image_reference")):
         if not image_record.get(field):
             raise ValueError("Verified image identity is absent")
@@ -413,6 +419,8 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
             SPARKCACHE_SNAPSHOT_LIBRARY_PATH SPARKCACHE_SNAPSHOT_LIBRARY_SHA256 SPARKCACHE_VLLM_ROOT
             SPARKCACHE_SOURCE_LEASE_CONTRACT""".split()
     env.update((key, values[key]) for key in passthrough)
+    if image_record.get("schema") == glm_source_candidate.SCHEMA:
+        env.update(glm_source_candidate.DISABLED)
     for key, leaf in (("VLLM_CACHE_ROOT", "vllm"), ("B12X_CUTE_COMPILE_CACHE_DIR", "b12x"),
                       ("TRITON_CACHE_DIR", "triton"), ("TORCHINDUCTOR_CACHE_DIR", "torchinductor")):
         env[key] = f"/cache/jit/{leaf}/{values['JIT_CACHE_NAMESPACE']}"
@@ -423,6 +431,8 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
             raise ValueError(f"{key} conflicts with the effective source-bound container environment")
     command = ["/opt/sparkring/bin/" + ("sparkring" if release == "r35" else "candidate-image.py"), "serve", "/models/target",
                "--served-model-name", values["SERVED_MODEL_NAME"]]
+    if image_record.get("schema") == glm_source_candidate.SCHEMA:
+        command[0] = glm_source_candidate.ENTRYPOINT
     if api_keys:
         command.extend(("--api-key", *api_keys))
     command.extend(("--host", "0.0.0.0", "--port", values["PORT"]))
