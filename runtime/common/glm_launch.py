@@ -71,7 +71,8 @@ def resolve_spec(launch, image_receipt, rank, *, owner=None):
         resolved["model_metadata_sha256"] = {key: hashlib.sha256(value).hexdigest()
                                              for key, value in metadata.items()}
     spec = glm_tp4.build_spec(environment, image_record=record,
-                             contract=adapter.profile_contract(record["installed"]),
+                             contract=(glm_source_candidate.contract_for_receipt(record) if record["schema"] == glm_source_candidate.SCHEMA
+                                       else adapter.profile_contract(record["installed"])),
                              api_keys=read_api_keys(environment.get("API_KEYS_FILE")), **metadata)
     spec = replace(spec, labels={**spec.labels, STRUCTURED_LABEL: STRUCTURED_SCHEMA})
     return spec, record, resolved

@@ -19,5 +19,12 @@
   },
   "bounded_serving_checks_passed": true,
   "serving_evidence": "performance/records/deepseek-v41-flash/sglang-shared-bounded-prefill.json",
+  "qwen_tp2_evidence": "performance/records/qwen38-flash-next/combined-image-tp2-sparkcache.json",
+  "qwen_tp2_checks": {
+    "kv_cache_gib_per_rank": 33,
+    "generation_passed": true,
+    "fresh_worker_cache_restore_passed": true,
+    "performance_parity_established": false
+  },
   "serving_qualified": false
 }

@@ -451,7 +451,7 @@ def resolve_rank_environments(site_path: Path, bundle: Path, image_receipt: Path
                           NCCL_LIBRARY_SHA256=lock["runtime"]["nccl_sha256"])
         elif r33_composition:
             verifier = _r33_profile_verifier()
-            contract = runtime_adapter.profile_contract(image_record['installed']) if r35_composition else verifier.load_contract()
+            contract = glm_source_candidate.contract_for_receipt(image_record) if local_source else runtime_adapter.profile_contract(image_record['installed']) if r35_composition else verifier.load_contract()
             if r35_composition:
                 values['SPARKRING_RUNTIME_RELEASE'] = 'candidate' if candidate_composition else 'r35'
                 runtime_adapter.validate_profile_capabilities(image_record, runtime_profile)
@@ -508,6 +508,8 @@ def resolve_rank_environments(site_path: Path, bundle: Path, image_receipt: Path
                     "SPARKCACHE_VLLM_ROOT": native["vllm_root"],
                     "SPARKCACHE_SOURCE_LEASE_CONTRACT": native["lease_contract"],
                 })
+    if local_source and selected["sparkcache"]:
+        values["SPARKCACHE_CACHE_NAMESPACE"] = glm_source_candidate.cache_namespace(image_record["image_id"], runtime_profile)
     if 'runtime_tuning' in site:
         tuning = site['runtime_tuning']
         values.update(OMP_NUM_THREADS=str(tuning['omp_threads']),

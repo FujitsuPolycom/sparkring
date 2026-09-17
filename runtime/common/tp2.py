@@ -97,7 +97,7 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
     if plan["image"] != expected_image:
         raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
-    contract = adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
+    contract = glm_source_candidate.contract_for_receipt(receipt) if is_source else adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
     target = glm_targets.target_for_image(image=receipt)
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
     if is_source:
@@ -136,7 +136,8 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
             arguments = _replace_option(arguments, flag, str(serving[key]))
         arguments = _replace_option(arguments, "--limit-mm-per-prompt", json.dumps(serving["limit_mm_per_prompt"]))
         native = contract["sparkcache_native"]
-        namespace = f"sparkring-{release}-{receipt['image_id'][7:19]}-tp2-cache"
+        namespace = (glm_source_candidate.cache_namespace(receipt["image_id"], profile_name) if is_source else
+                     f"sparkring-{release}-{receipt['image_id'][7:19]}-tp2-cache")
         if is_r35:
             namespace += "-" + target["revision"][:12]
         environment.update(SPARKCACHE_CACHE_NAMESPACE=namespace,

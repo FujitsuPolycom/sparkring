@@ -1,4 +1,4 @@
-"""Explicit local GLM admission for the reviewed source extension, without KV restore.
+"""Explicit local GLM admission, with a separate opt-in for SparkCache trials.
 
 The host receipt retains every raw ancestry receipt. Source admission verifies
 the entire installed inventory; it does not transfer model-serving qualification.
@@ -16,14 +16,16 @@ from runtime.common import candidate, feature_candidate, source_candidate
 SCHEMA = "sparkring-glm-source-image-receipt/v1"
 ENTRYPOINT = source_candidate.ENTRYPOINT
 PROFILES = frozenset(("tp2-dcp1", "tp4-dcp1", "tp4-dcp4"))
+CACHE_PROFILES = frozenset(name + "-sparkcache" for name in PROFILES)
 RAW_FIELDS = ("installed_bytes", "parent_bytes", "cache_parent_bytes", "base_bytes")
 DISABLED = {"SPARKRING_FEATURES": "", "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
             "VLLM_QWEN3_8_PREFILL_COALESCE": "0"}
 
 
-def make_receipt(*, local_source_extension, **observations):
+def make_receipt(*, local_source_extension, allow_sparkcache_trial=False, **observations):
     source_candidate.descriptor(local_source_extension)
     document = {"schema": SCHEMA, "local_source_extension": local_source_extension,
+                "allow_sparkcache_trial": allow_sparkcache_trial,
                 "image_id": observations["image_id"], "image_reference": observations["image_id"],
                 "platform": "linux/arm64", "verification": observations["verification"],
                 "installed": candidate._read(observations["installed_bytes"]),
@@ -37,6 +39,8 @@ def validate_receipt(document):
             or document.get("platform") != "linux/arm64"
             or document.get("image_reference") != document.get("image_id")):
         raise ValueError("GLM source admission requires an explicit registered local image selection")
+    if type(document.get("allow_sparkcache_trial", False)) is not bool:
+        raise ValueError("allow_sparkcache_trial must be a boolean")
     try:
         raw = {key: base64.b64decode(document["raw_receipts"][key], validate=True) for key in RAW_FIELDS}
     except (KeyError, ValueError, TypeError) as error:
@@ -52,33 +56,68 @@ def validate_receipt(document):
     manifest = files.get("/opt/sparkring/sircl/python/sparkring-overlay-manifest.json")
     if not candidate._hash(manifest):
         raise ValueError("GLM source image lacks its inherited transport manifest")
-    return dict(document, admission=admission, bundle_manifest_sha256=manifest,
+    return dict(document, allow_sparkcache_trial=document.get("allow_sparkcache_trial", False),
+                admission=admission, bundle_manifest_sha256=manifest,
                 verification=dict(verification, checked_files=copy.deepcopy(files)))
 
 
-def profile_contract(installed):
+def profile_contract(installed, *, allow_sparkcache_trial=False):
+    if type(allow_sparkcache_trial) is not bool:
+        raise ValueError("allow_sparkcache_trial must be a boolean")
     extension = installed.get("source_extension", {})
     if (extension.get("id") != source_candidate.IDENTITY or extension.get("descriptor_sha256")
             != hashlib.sha256(source_candidate.DESCRIPTOR.read_bytes()).hexdigest()):
         raise ValueError("GLM source contract requires its reviewed source descriptor")
     contract = candidate.profile_contract(installed)
-    contract["profiles"] = {name: value for name, value in contract["profiles"].items() if name in PROFILES}
+    allowed = PROFILES | CACHE_PROFILES if allow_sparkcache_trial else PROFILES
+    contract["profiles"] = {name: value for name, value in contract["profiles"].items() if name in allowed}
     contract["common_environment"].update(DISABLED)
     contract["sparkcache_native"]["lease_contract"] = ""
+    if allow_sparkcache_trial:
+        descriptor = source_candidate.descriptor()
+        lease = source_candidate.LEASE_CONTRACT
+        expected = descriptor["integration_contracts"].get(lease, {}).get("sha256")
+        if not candidate._hash(expected) or installed["files"].get(lease) != expected:
+            raise ValueError("GLM cache trial requires the packaged source-matched lease")
+        native = contract["sparkcache_native"]
+        native["lease_contract"] = lease
+        for stem in ("placement", "snapshot"):
+            observed = installed["files"].get(native[stem + "_path"])
+            if not candidate._hash(observed):
+                raise ValueError("GLM cache trial lacks verified native library hashes")
+            native[stem + "_sha256"] = observed
+        native["snapshot_extension"] = copy.deepcopy(installed["cache_extension"])
     contract["source_extension"] = copy.deepcopy(extension)
-    contract["candidate_qualification"] = "Local cache-disabled GLM admission; serving is unqualified."
+    contract["candidate_qualification"] = "Local GLM admission; optional isolated SparkCache trial. Serving and restore are unqualified."
     return contract
+
+
+def contract_for_receipt(document):
+    checked = validate_receipt(document)
+    return profile_contract(checked["installed"], allow_sparkcache_trial=checked["allow_sparkcache_trial"])
+
+
+def cache_namespace(image_id, profile):
+    """Source-specific image/topology stem; callers append the pinned model revision."""
+    if profile not in CACHE_PROFILES or not isinstance(image_id, str):
+        raise ValueError("Select a registered local GLM cache trial")
+    source_candidate.image_reference(source_candidate.IDENTITY, image_id)
+    return f"sparkring-glm-source-{image_id[7:19]}-{profile}"
 
 
 def validate_profile_capabilities(document, profile):
     checked = validate_receipt(document)
-    if profile not in PROFILES:
-        raise ValueError("Local GLM source admission supports only cache-disabled TP2/DCP1 and TP4/DCP1/DCP4; SparkCache requires a separate lease audit")
-    if profile not in profile_contract(checked["installed"])["profiles"]:
+    if profile not in PROFILES | CACHE_PROFILES:
+        raise ValueError("Local GLM source admission supports only TP2/DCP1 and TP4/DCP1/DCP4")
+    if profile in CACHE_PROFILES and not checked["allow_sparkcache_trial"]:
+        raise ValueError("GLM source receipt is cache-disabled; create a separate receipt with --allow-sparkcache-trial")
+    if profile not in contract_for_receipt(checked)["profiles"]:
         raise ValueError("GLM source profile is absent from its inherited contract")
 
 
-def observe(image_id, *, local_source_extension, run=subprocess.run):
+def observe(image_id, *, local_source_extension, allow_sparkcache_trial=False, run=subprocess.run):
+    if type(allow_sparkcache_trial) is not bool:
+        raise ValueError("allow_sparkcache_trial must be a boolean")
     source_candidate.image_reference(local_source_extension, image_id)
     info = json.loads(run(["docker", "image", "inspect", image_id], check=True,
                           capture_output=True, text=True).stdout)[0]
@@ -97,12 +136,14 @@ def observe(image_id, *, local_source_extension, run=subprocess.run):
     observations["verification"] = json.loads(run([
         "docker", "run", "--rm", "--pull", "never", "--network", "none", image_id, "verify"],
         check=True, capture_output=True, text=True).stdout)
-    return make_receipt(local_source_extension=local_source_extension, **observations)
+    return make_receipt(local_source_extension=local_source_extension,
+                        allow_sparkcache_trial=allow_sparkcache_trial, **observations)
 
 
 def verify_local_image(document, *, run=subprocess.run):
     checked = validate_receipt(document)
-    if observe(checked["image_id"], local_source_extension=checked["local_source_extension"], run=run) != checked:
+    if observe(checked["image_id"], local_source_extension=checked["local_source_extension"],
+               allow_sparkcache_trial=checked["allow_sparkcache_trial"], run=run) != checked:
         raise ValueError("Local GLM source image no longer matches its recorded admission")
 
 
@@ -122,11 +163,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--local-source-extension", required=True, choices=(source_candidate.IDENTITY,))
     parser.add_argument("--image-id", required=True)
+    parser.add_argument("--allow-sparkcache-trial", action="store_true",
+                        help="admit isolated GLM SparkCache trials; does not qualify serving or restore")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError("GLM admission output already exists")
-    document = observe(args.image_id, local_source_extension=args.local_source_extension)
+    document = observe(args.image_id, local_source_extension=args.local_source_extension,
+                       allow_sparkcache_trial=args.allow_sparkcache_trial)
     with args.output.open("x", encoding="utf-8") as stream:
         json.dump(document, stream, indent=2)
         stream.write("\n")

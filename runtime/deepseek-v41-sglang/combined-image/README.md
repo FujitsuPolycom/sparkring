@@ -46,15 +46,23 @@ docker run --rm --network none --entrypoint /opt/sparkring/bin/sglang-python IMA
 Replace `IMAGE` with the exact built image ID. These commands check source and
 package receipts without GPU access. The SGLang record covers startup,
 authenticated generation, near-limit retrieval and per-rank memory. Qwen's
-57247 inherited files verify unchanged; its prefill, decode and cache restoration
-on this combined image remain unmeasured. Keep that distinction when selecting
-or publishing a profile.
+57247 inherited files verify unchanged. The [Qwen TP2 record](../../../performance/records/qwen38-flash-next/combined-image-tp2-sparkcache.json)
+covers startup, generation and SparkCache restoration after restarting both
+workers, with 33 GiB KV per rank. Both retrieval fixtures restored 5696 tokens
+on each rank and returned the expected answer.
+
+The same TP2 check measured cold prefill and bounded C1/C8 completion against
+the parent image. The 8K prefill medians were 2.606 s and 2.607 s; the 32K medians
+were 15.752 s and 13.129 s. Combined-image completion throughput was lower and
+variable, so performance parity is not established. The public 24 GiB TP2
+default, Qwen TP4 and GLM serving are not qualified by this record.
 
 ## Local GLM admission
 
 The explicit local GLM source adapter accepts TP2/DCP1 and TP4/DCP1/DCP4 with
-SparkCache disabled. It verifies the complete source receipt chain and disables
-Qwen feature selection. This is structural admission, not GLM serving evidence.
+SparkCache disabled by default. A separate receipt option admits their SparkCache
+variants for isolated local trials. It verifies the complete source receipt chain
+and disables Qwen feature selection. This is structural admission, not GLM serving evidence.
 Existing R33/R37 registrations and public selections are unchanged.
 
 On a Docker host containing the selected image and the registered R37 base used
@@ -73,10 +81,26 @@ to the mesh profile renderer through `--image-receipt`, then use
 The generated legacy shell launcher deliberately refuses source-image trials;
 its historical image gate does not verify the complete source ancestry.
 
-GLM SparkCache profiles remain rejected. The source extension changes scheduler
-and recurrent-checkpoint allocation code, so the parent lease contract does not
-match. Before enabling them, verify four-checkpoint planning/fallback and the
-complete delayed-capture lifecycle, including immutable page retention,
-completion acknowledgements and restore retirement. Then measure GLM serving
-and cache restoration for the selected topology. Qwen cache results do not
-qualify those GLM ownership transitions.
+To create an isolated SparkCache trial receipt, add `--allow-sparkcache-trial`
+to the admission command and choose a new private output path. Its boolean
+`allow_sparkcache_trial` field defaults to `false`; a missing or false value
+rejects cache profiles, and non-boolean values are invalid. The TP2 planner then
+accepts `--sparkcache`; TP4 sites may select `tp4-dcp1-sparkcache` or
+`tp4-dcp4-sparkcache`.
+
+The trial selects the packaged
+`/opt/sparkring/contracts/vllm-connector-jobs-r37-qwen-prefill.json` lease and the
+placement/snapshot library hashes verified in the child image. The inherited
+parent lease does not match the changed scheduler and allocator sources.
+Persistent cache namespaces include the source-trial prefix, image ID, TP/DCP
+profile and model revision, keeping them distinct from parent-profile entries.
+
+The focused [allocator checks](../../images/compositions/lil-r37-qwen-prefill/checks/mamba_checkpoint_reservation.py)
+passed 35 CPU cases on the exact child source. Three GLM cases also passed on
+the parent: planned four-checkpoint continuation, short packed fallback and
+sparse fallback beyond checkpoint capacity. With four checkpoint slots and
+three MTP scratch pages, those normal aligned GLM cases do not select the
+occupied-scratch preservation branch. This supports the explicit local trial;
+GPU checkpoint contents, restart/restore correctness, serving quality and
+stability still require qualification on the selected topology. Qwen cache
+measurements do not establish those GLM results.

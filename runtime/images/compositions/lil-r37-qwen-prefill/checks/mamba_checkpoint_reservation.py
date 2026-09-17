@@ -44,7 +44,28 @@ def _class_methods(path, class_name, names, bases=()):
 
 
 @pytest.fixture(scope="module")
-def classes():
+def checkpoint_api():
+    path = ROOT / "vllm/v1/core/recurrent_prefill_checkpoint.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = {"validate_plan", "prefill_checkpoint_plan", "continuation_layout"}
+    nodes = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in names
+        or isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "COALESCED_CHECKPOINT_CAPACITY"
+                for target in node.targets)
+    ]
+    namespace = {}
+    exec(
+        compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec",
+                flags=__future__.annotations.compiler_flag),
+        namespace,
+    )
+    return namespace
+
+
+@pytest.fixture(scope="module")
+def classes(checkpoint_api):
     base = _class_methods(
         MANAGER,
         "SingleTypeKVCacheManager",
@@ -72,7 +93,7 @@ def classes():
     code = ast.fix_missing_locations(
         ast.Module(body=[base, spec, manager], type_ignores=[])
     )
-    namespace = {"cdiv": lambda a, b: (a + b - 1) // b}
+    namespace = dict(checkpoint_api, cdiv=lambda a, b: (a + b - 1) // b)
     exec(
         compile(code, str(MANAGER), "exec", flags=__future__.annotations.compiler_flag),
         namespace,
@@ -245,3 +266,55 @@ def test_packed_multiple_checkpoints_keep_their_existing_allocation_path(classes
     assert "request" in manager._packed_prefill_checkpoint_reqs
     assert manager._num_checkpoint_blocks["request"] == 2
     assert all(not blocks[column].is_null for column in (2, 3))
+
+
+def test_glm_mtp3_planned_four_checkpoints_keep_worker_columns(classes, checkpoint_api):
+    manager = make_manager(classes, block_size=512, speculative=3, checkpoints=4)
+    # DCP4 retains these four replay positions for a 12800-token prompt.
+    publications = (8704, 10752, 11776, 12288)
+    retained_scratch = None
+    for start, end in ((0, 8192), (8192, 12800)):
+        plan = checkpoint_api["prefill_checkpoint_plan"](
+            start=start, end=end, prompt=12800, num_tokens=12800,
+            block_size=512, publications=publications,
+        )
+        assert plan == (start, end, () if start == 0 else publications)
+        manager._planned_recurrent_checkpoints["request"] = plan
+        try:
+            blocks = advance(manager, start, end)
+        finally:
+            manager._planned_recurrent_checkpoints.pop("request")
+        if start == 0:
+            retained_scratch = blocks[16]
+    assert blocks[16] is retained_scratch
+    assert all(not blocks[position // 512 - 1].is_null for position in publications)
+    assert manager.block_pool.allocations == [4, 5]
+    assert manager._num_checkpoint_blocks == {}
+    assert not manager._packed_prefill_checkpoint_reqs
+
+
+@pytest.mark.parametrize("end,packed", [(9729, True), (11265, False)])
+def test_glm_mtp3_unaligned_tail_uses_packed_or_sparse_fallback(
+    classes, checkpoint_api, end, packed
+):
+    manager = make_manager(classes, block_size=512, speculative=3, checkpoints=4)
+    first = advance(manager, 0, 8192)
+    scratch = tuple(first[16:19])
+    assert checkpoint_api["prefill_checkpoint_plan"](
+        start=8192, end=end, prompt=end, num_tokens=end,
+        block_size=512, publications=(),
+    ) is None
+    columns = manager.kv_cache_spec.prefill_checkpoint_indices(8192, end)
+    assert columns == ((16, 17, 18) if packed else ())
+    blocks = advance(manager, 8192, end)
+    assert ("request" in manager._packed_prefill_checkpoint_reqs) is packed
+    if packed:
+        # All three speculative columns become checkpoints without relocation.
+        assert all(blocks[column] is block for column, block in zip(columns, scratch))
+        assert manager._num_checkpoint_blocks["request"] == 3
+    else:
+        # Six crossed boundaries exceed capacity; the sparse checkpoint sits
+        # beyond the previous scratch columns and receives an appended ID.
+        assert all(blocks[column].is_null for column in (16, 17, 18))
+        assert blocks[21] is scratch[0]
+        assert manager._num_checkpoint_blocks["request"] == 1

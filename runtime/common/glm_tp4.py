@@ -168,8 +168,11 @@ def _validate(values, image_record, contract):
     _require(values, "SPARKRING_RUNTIME_RELEASE", release)
     if schema == glm_source_candidate.SCHEMA:
         glm_source_candidate.validate_profile_capabilities(image_record, profile)
-        if contract != glm_source_candidate.profile_contract(image_record["installed"]):
+        if contract != glm_source_candidate.contract_for_receipt(image_record):
             raise ValueError("GLM source profile contract differs from admitted source")
+        if profile in glm_source_candidate.CACHE_PROFILES:
+            namespace = glm_source_candidate.cache_namespace(image_record["image_id"], profile)
+            _require(values, "SPARKCACHE_CACHE_NAMESPACE", namespace + "-" + glm_targets.target_for_image(image=image_record)["revision"][:12])
         for key, expected in glm_source_candidate.DISABLED.items():
             _require(values, key, expected)
     for key, field in (("IMAGE_ID", "image_id"), ("IMAGE_REF", "image_reference")):
