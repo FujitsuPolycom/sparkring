@@ -1,9 +1,9 @@
 # DeepSeek DSpark preparation warmup
 
-Status: **research-only**. This optional image-build overlay extends DSpark's
-startup preparation. Profile defaults and published images remain unchanged.
-It addresses source-level gaps described in [issue 188](https://github.com/FujitsuPolycom/sparkring/issues/188);
-cold-cache startup and request calibration are required before promotion.
+Status: **implemented**, with [bounded TP2/K5 preparation qualification](../../../performance/records/deepseek-v4-flash/dspark-prepare-warmup-tp2.json).
+This optional image-build overlay extends DSpark's startup preparation. Profile
+defaults and published images remain unchanged. Packaging remains research-only;
+other kernel coverage in [issue 188](https://github.com/FujitsuPolycom/sparkring/issues/188) is still open.
 
 ## Behavior
 
@@ -79,11 +79,16 @@ query counts, dynamic depths, token budgets, sampled/prefill pointer types,
 context scalar specializations, source drift and output preservation.
 They do not validate GPU writes, model correctness or startup memory usage.
 
-Hardware calibration must compare the exact baseline and derivative with
-fresh private compiler caches, identical K5 settings, short exact-token
-requests and repeated matching shapes. For K5, lengths 1, 12 and 60 exercise
-the missing preparation tiles; a 32-token control and requests crossing the
-configured scheduler budget test adjacent paths. Preserve both ranks' logs.
+The recorded GPU component control produced nine additional runtime preparation
+events. The corrected warmup captured 13 warmup events and no additional
+events across 19 runtime fixtures, with output checks. A separate TP2/K5 launch
+from empty private serving caches passed 20 API cases / 36 requests in 30.734
+seconds; both ranks logged zero post-readiness preparation-kernel warnings.
+The record identifies exact image/source hashes and the component's AST-replay
+scope. It excludes the initial harness failure before inference requests.
+
+This validates the listed preparation signatures. Other kernel warnings remain.
+No TP4, all-shapes, long-soak or 1M-token quality qualification is claimed.
 
 Tile coverage is not complete JIT-key coverage. Triton also specializes
 argument types and alignment; other attention, MoE and sampling kernels have
