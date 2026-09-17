@@ -28,6 +28,7 @@
     "context_length": 262144,
     "chunked_prefill_size": 4096,
     "max_running_requests": 8,
+    "min_free_slots_delay": 1,
     "max_total_tokens": 1500000,
     "mem_fraction_static": 0.9,
     "decoder_swa_bounded_replay": true,

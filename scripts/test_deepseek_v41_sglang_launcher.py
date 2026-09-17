@@ -35,9 +35,27 @@ def test_default_plan_keeps_keys_in_file(tmp_path):
     assert "CONTEXT_LENGTH=262144" in cmd
     assert "CHUNKED_PREFILL_SIZE=4096" in cmd
     assert "MAX_RUNNING_REQUESTS=8" in cmd
+    extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay 1")
+    assert extra.count("--min-free-slots-delay") == 1
+    assert int(cfg["MIN_FREE_SLOTS_DELAY"]) == launch.SERVING["min_free_slots_delay"] == 1
     assert any(launch.PINS["nccl_target"] + ":ro" in arg for arg in cmd)
     assert cmd[-2:] == ["/operator/entrypoint.py", "run"]
     assert cmd[-3] == cfg["IMAGE_ID"]
+
+
+@pytest.mark.parametrize("value", ["2", "8", "64"])
+def test_explicit_admission_threshold(tmp_path, value):
+    cfg = launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY=value))
+    extra = next(arg for arg in launch.command(cfg) if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay " + value)
+    assert extra.count("--min-free-slots-delay") == 1
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "65", "1.5", "auto", "1 --disable-radix-cache"])
+def test_invalid_admission_threshold(tmp_path, value):
+    with pytest.raises(ValueError, match="MIN_FREE_SLOTS_DELAY"):
+        launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY=value))
 
 
 @pytest.mark.parametrize("values", [
