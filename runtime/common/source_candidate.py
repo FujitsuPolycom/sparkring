@@ -98,6 +98,9 @@ def profile_settings(profile, identity, kv_cache_gib=None, master_port=None):
         raise ValueError(f"The local TP{nodes} KV alternative is {kv_alternative} GiB per rank")
     if master_port is not None and (type(master_port) is not int or not 1 <= master_port <= 65535):
         raise ValueError("Local master port must be an integer from 1 to 65535")
+    arguments = profile["vllm_args"]
+    if master_port is not None and master_port == int(arguments[arguments.index("--port") + 1]):
+        raise ValueError("Local master port must differ from the inference API port")
     result = copy.deepcopy(profile)
     result["environment"].update(
         VLLM_QWEN3_8_HC_PREFILL_MODE="off" if nodes == 2 else "shard",

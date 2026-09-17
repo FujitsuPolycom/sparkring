@@ -33,18 +33,6 @@ requests. Existing rank files inherit this default; set `MIN_FREE_SLOTS_DELAY`
 explicitly to a larger positive integer to batch admissions. SGLang caps the
 threshold at the maximum running-request count. This does not enable mixed
 prefill/decode execution or change context and KV limits.
-
-The [single-slot admission test](../../performance/records/deepseek-v41-flash/sglang-single-slot-admission.md)
-records a bounded C8 latency/throughput comparison on a separate combined image.
-It is not performance qualification of every image built from the public pins.
-
-The launcher passes `--min-free-slots-delay 1`, allowing a waiting prefill to
-enter when one request slot is available. This disables SGLang's DFlash-family
-admission batching, which otherwise waits for two free slots at eight concurrent
-requests. Existing rank files inherit this default; set `MIN_FREE_SLOTS_DELAY`
-explicitly to a larger positive integer to batch admissions. SGLang caps the
-threshold at the maximum running-request count. This does not enable mixed
-prefill/decode execution or change context and KV limits.
 Set `MIN_FREE_SLOTS_DELAY=0` to omit the flag and use SGLang's automatic policy.
 
 The [single-slot admission test](../../performance/records/deepseek-v41-flash/sglang-single-slot-admission.md)

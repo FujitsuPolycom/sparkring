@@ -426,7 +426,7 @@ def main(argv=None):
     render.add_argument("--output", type=Path, required=True)
     render.add_argument("--local-image-id", help="pin a source-equivalent local Development rebuild; published releases reject overrides")
     render.add_argument("--local-source-extension", help="select a registered local source-extension test instead of the public image")
-    render.add_argument("--local-kv-cache-gib", type=int, help="select the local TP4 40 GiB KV alternative; requires a source extension")
+    render.add_argument("--local-kv-cache-gib", type=int, help="select the local TP2 33 GiB or TP4 40 GiB KV alternative; requires a source extension")
     render.add_argument("--local-master-port", type=int, help="isolated source-extension test bootstrap port")
     check = sub.add_parser(
         "check", help="check canonical inputs and resolved Compose equivalence"

@@ -32,6 +32,16 @@ def options(**extra):
     return {"local_source_extension": source.IDENTITY, "local_image_id": IMAGE, **extra}
 
 
+@pytest.mark.parametrize("profile_id", [PAIR, PAIR + "-sparkcache", PROFILE, PROFILE + "-sparkcache"])
+def test_source_bootstrap_port_cannot_collide_with_api(profile_id):
+    site = compose.read_site(adapter.ROOT / f"profiles/{profile_id.removesuffix('-sparkcache')}/compose/site.example.yaml")
+    ordinary, _ = compose.specifications(profile_id, site)
+    args = ordinary[0].command
+    api_port = int(args[args.index("--port") + 1])
+    with pytest.raises(ValueError, match="must differ from the inference API"):
+        compose.specifications(profile_id, site, **options(local_master_port=api_port))
+
+
 @pytest.mark.parametrize("profile_id", [PROFILE, PROFILE + "-sparkcache"])
 def test_candidate_preserves_model_and_transport_while_enabling_reviewed_tp4_sources(site, profile_id):
     before, public_image = compose.specifications(profile_id, site)

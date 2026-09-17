@@ -45,6 +45,8 @@ creation. Published profiles reject `--local-image-id`; source-equivalent
 rebuilds use an explicitly local release selection with the same image ID and
 local tag installed on every rank.
 
+### Local source-image trials
+
 The Qwen TP2 and TP4 adapters also support an explicit
 [source-image test selection](../../profiles/qwen38-flash-next-qad-tp4/README.md#local-source-image-testing):
 `--local-source-extension lil-r37-qwen-prefill --local-image-id IMAGE_ID`.

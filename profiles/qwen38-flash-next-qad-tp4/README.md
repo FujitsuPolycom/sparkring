@@ -141,7 +141,8 @@ port; omitting them retains the profile's 24 GiB and port 29776.
 
 Continue with `compose check`, host checks and the reviewed start procedure above.
 The deployment binds the exact candidate ID, descriptor and test settings. This
-selection is local and TP4-only; it does not change TP2 profiles or transfer
+example selects TP4. The [local TP2 procedure](../../docs/operations/compose.md#local-source-image-trials)
+keeps HC sharding disabled. Neither selection changes public defaults or transfers
 published-image validation to the candidate. Persistent-cache validation requires
 a correct response after a process restart and restore evidence from every rank.
 

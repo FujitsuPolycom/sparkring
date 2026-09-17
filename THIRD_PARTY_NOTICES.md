@@ -465,8 +465,10 @@ preserves its surrounding source; its optional NVFP4 draft overlay patch does th
 same for SGLang's Apache-2.0 `modelopt_quant` module (one platform branch). Operators retain the external components'
 licenses and notices with their builds.
 
-The optional shared-image builder `runtime/images/sglang_extension.py` uses the
-same pinned Mia source. Its build context records integration edits to CUDA
+The optional shared-image builder `runtime/images/sglang_extension.py` independently
+pins Mia commit `e59e6eb67479aa68f6fa700c600dc90a0729b5ec` in
+[its composition manifest](runtime/deepseek-v41-sglang/combined-image/manifest.json).
+Its build context records integration edits to CUDA
 runtime selection and checkpoint-revision metadata; the resulting image retains
 the complete adapter source and its license under `/opt/dsv41`.
 `runtime/deepseek-v41-sglang/patches/` contains Apache-2.0 SGLang patches from
