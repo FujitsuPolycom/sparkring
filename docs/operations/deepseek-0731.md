@@ -520,6 +520,13 @@ An on-demand pipe request is asynchronous. After writing to
 report that flight-recorder output finished, or wait until the dump file size
 stops changing, before stopping the container.
 
+The [two-Spark recorder test](../../performance/records/transport/nccl-flight-recorder-tp2-20260917.md)
+verified FIFO capture, complete trace files and persistence after normal
+container exit for three healthy PyTorch ProcessGroupNCCL all-reduces. It did
+not inject a timeout. Direct PyNccl, SIRCL and RoCEnante operations outside
+ProcessGroupNCCL are outside that recorder coverage; empty traces do not prove
+that a serving model performed no communication.
+
 ## Measured
 
 Both cache-disabled base setups were measured with the sampling settings in

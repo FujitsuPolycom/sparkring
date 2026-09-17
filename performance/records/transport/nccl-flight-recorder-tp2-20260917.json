@@ -1,0 +1,270 @@
+{
+  "schema": "sparkring-nccl-flight-recorder-observation/v1",
+  "status": "qualified",
+  "scope": "Healthy two-rank ProcessGroupNCCL FIFO capture and host persistence only.",
+  "date_utc": "2026-09-17",
+  "issue": 190,
+  "image": {
+    "id": "sha256:41fc632d02352a69f59dc18be184488c1f9d51bd9ad0a29e22ae818af4f465fe",
+    "published_reference": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd"
+  },
+  "torch": {
+    "git_version": "7661cd9c6b841b62b7f411aa52ec51f05457263b",
+    "nccl_compile_time_version": [
+      2,
+      29,
+      7
+    ],
+    "version": "2.12.0+cu132"
+  },
+  "runtime_nccl": {
+    "version": 23007,
+    "selected_path": "/opt/sparkring/nccl/libnccl.so.2.30.7",
+    "selected_sha256": "ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f",
+    "also_mapped_bundled_sha256": "cc01f863461ea28f3ecc4390716a2d7a5aca9bc00e04eeb6fc7a5c2e666b3dfb",
+    "binding_mechanism": "ELF64 resolved relocation slots (RTLD_NOLOAD|RTLD_NOW)",
+    "nccl_symbols_per_rank": 46
+  },
+  "conditions": {
+    "hardware": "Two NVIDIA GB10 DGX Spark systems",
+    "model": null,
+    "collective_api": "torch.distributed ProcessGroupNCCL",
+    "dtype": "float32",
+    "input_value_by_rank": [
+      1,
+      2
+    ],
+    "expected_sum": 3,
+    "environment": {
+      "TORCH_NCCL_TRACE_BUFFER_SIZE": "2000",
+      "TORCH_NCCL_DUMP_ON_TIMEOUT": "1",
+      "TORCH_NCCL_ENABLE_MONITORING": "1",
+      "TORCH_FR_DUMP_TEMP_FILE": "/cache/nccl-fr/comm_lib_trace_rank_",
+      "TORCH_NCCL_DEBUG_INFO_PIPE_FILE": "/tmp/fr_dump_pipe_",
+      "NCCL_IB_ADDR_FAMILY": "AF_INET",
+      "NCCL_IB_ROCE_VERSION_NUM": "2",
+      "NCCL_IB_HCA": "=rocep1s0f0:1",
+      "NCCL_NET": "IB",
+      "NCCL_IB_DISABLE": "0",
+      "NCCL_NET_PLUGIN": "none",
+      "NCCL_IB_SUBNET_AWARE_ROUTING": "0",
+      "NCCL_IB_MERGE_NICS": "0",
+      "NCCL_PROTO": "LL,LL128,Simple",
+      "NCCL_P2P_LEVEL": "SYS",
+      "NCCL_CROSS_NIC": "1",
+      "NCCL_CUMEM_ENABLE": "0",
+      "NCCL_IGNORE_CPU_AFFINITY": "1",
+      "NCCL_IB_ADDR_RANGE": "",
+      "TORCH_NCCL_BLOCKING_WAIT": "0",
+      "TORCH_INCLUDE_ONLY_ACTIVE": "0",
+      "TORCH_FR_DUMP_DYNAMIC_FILE_NAME": "0",
+      "TORCH_CPP_LOG_LEVEL": "INFO",
+      "NCCL_DEBUG": "INFO"
+    },
+    "environment_absent": [
+      "NCCL_IB_GID_INDEX",
+      "TORCH_FR_BUFFER_SIZE"
+    ],
+    "nccl_preload": "/usr/local/cuda/compat/libcuda.so.1:/opt/sparkring/nccl/libnccl.so.2",
+    "process_group_timeout_seconds": 35,
+    "process_budget_seconds": 105,
+    "outer_timeout_seconds": 110,
+    "outer_kill_grace_seconds": 5,
+    "fault_injected": false,
+    "private_dump_api_used": false
+  },
+  "trace_sequences_align": true,
+  "ranks": [
+    {
+      "rank": 0,
+      "elapsed_seconds": 9.165844799019396,
+      "collectives": [
+        {
+          "correct": true,
+          "elements": 17,
+          "expected": 3
+        },
+        {
+          "correct": true,
+          "elements": 1024,
+          "expected": 3
+        },
+        {
+          "correct": true,
+          "elements": 65536,
+          "expected": 3
+        }
+      ],
+      "dump": {
+        "bytes": 1637,
+        "sha256": "92d52262b296f16f8a8d517930d7cd0570aad670e3c531341471de0539c1f8e8",
+        "entry_count": 4,
+        "format_version": "2.10",
+        "settled_seconds": 1.0028862279723398,
+        "all_reduces": [
+          {
+            "collective_seq_id": 1,
+            "input_sizes": [
+              [
+                17
+              ]
+            ],
+            "output_sizes": [
+              [
+                17
+              ]
+            ],
+            "profiling_name": "nccl:all_reduce",
+            "record_id": 0,
+            "state": "completed",
+            "time_discovered_completed_ns": 1789624907362588174
+          },
+          {
+            "collective_seq_id": 2,
+            "input_sizes": [
+              [
+                1024
+              ]
+            ],
+            "output_sizes": [
+              [
+                1024
+              ]
+            ],
+            "profiling_name": "nccl:all_reduce",
+            "record_id": 1,
+            "state": "completed",
+            "time_discovered_completed_ns": 1789624907362597534
+          },
+          {
+            "collective_seq_id": 3,
+            "input_sizes": [
+              [
+                65536
+              ]
+            ],
+            "output_sizes": [
+              [
+                65536
+              ]
+            ],
+            "profiling_name": "nccl:all_reduce",
+            "record_id": 2,
+            "state": "completed",
+            "time_discovered_completed_ns": 1789624907362600110
+          }
+        ]
+      },
+      "exit_code": 0,
+      "persisted_after_container_exit": true,
+      "process_group_destroyed": true,
+      "fifo_trigger_bytes": 2,
+      "runtime_nccl_version": 23007,
+      "selected_nccl_symbol_count": 46
+    },
+    {
+      "rank": 1,
+      "elapsed_seconds": 9.28135961299995,
+      "collectives": [
+        {
+          "correct": true,
+          "elements": 17,
+          "expected": 3
+        },
+        {
+          "correct": true,
+          "elements": 1024,
+          "expected": 3
+        },
+        {
+          "correct": true,
+          "elements": 65536,
+          "expected": 3
+        }
+      ],
+      "dump": {
+        "bytes": 1637,
+        "sha256": "0c00ab4e89d475c1c9e119bdd9e6086f68cdaaae8619e1e21a2c66ae293ffb23",
+        "entry_count": 4,
+        "format_version": "2.10",
+        "settled_seconds": 1.0034713569912128,
+        "all_reduces": [
+          {
+            "collective_seq_id": 1,
+            "input_sizes": [
+              [
+                17
+              ]
+            ],
+            "output_sizes": [
+              [
+                17
+              ]
+            ],
+            "profiling_name": "nccl:all_reduce",
+            "record_id": 0,
+            "state": "completed",
+            "time_discovered_completed_ns": 1789624907347421089
+          },
+          {
+            "collective_seq_id": 2,
+            "input_sizes": [
+              [
+                1024
+              ]
+            ],
+            "output_sizes": [
+              [
+                1024
+              ]
+            ],
+            "profiling_name": "nccl:all_reduce",
+            "record_id": 1,
+            "state": "completed",
+            "time_discovered_completed_ns": 1789624907347435009
+          },
+          {
+            "collective_seq_id": 3,
+            "input_sizes": [
+              [
+                65536
+              ]
+            ],
+            "output_sizes": [
+              [
+                65536
+              ]
+            ],
+            "profiling_name": "nccl:all_reduce",
+            "record_id": 2,
+            "state": "completed",
+            "time_discovered_completed_ns": 1789624907347439169
+          }
+        ]
+      },
+      "exit_code": 0,
+      "persisted_after_container_exit": true,
+      "process_group_destroyed": true,
+      "fifo_trigger_bytes": 2,
+      "runtime_nccl_version": 23007,
+      "selected_nccl_symbol_count": 46
+    }
+  ],
+  "private_artifact_sha256": {
+    "report.json": "f124ee06132e249a3d0431c549136961117d0947de4b68abfba087ee455be043",
+    "rank0.json": "5a6ffcb1269a1b744a73bb6d4076ac8c3cfd028e226116c0d64f95c24b073a53",
+    "rank1.json": "1a2e1d3e877a6eb147fbe317da0e9ad14022b954ad35d8d798e64589919d72bf",
+    "comm_lib_trace_rank_0": "92d52262b296f16f8a8d517930d7cd0570aad670e3c531341471de0539c1f8e8",
+    "comm_lib_trace_rank_1": "0c00ab4e89d475c1c9e119bdd9e6086f68cdaaae8619e1e21a2c66ae293ffb23"
+  },
+  "private_harness_sha256": {
+    "probe.py": "a233e9334d8084118c494cb52458c88edbdcf8da147602676fb52d84d9033e0e",
+    "run_pair.py": "888dc3a19cb72ee713bc97fa4287c2e4277658d8de1afc0a2882766b3f788822"
+  },
+  "limitations": [
+    "No automatic watchdog, timeout, rank-loss or driver-failure capture was exercised.",
+    "Direct PyNccl, SIRCL, RoCEnante and collectives outside ProcessGroupNCCL are not established recorder coverage.",
+    "Healthy two-rank IPv4 RoCEv2 operation without a GID pin does not qualify a four-rank cycle or general automatic-GID behavior.",
+    "Raw dumps and harness receipts are retained privately; no model weights or serving workload were involved."
+  ]
+}
