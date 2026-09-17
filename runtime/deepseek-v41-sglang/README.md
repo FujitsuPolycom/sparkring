@@ -136,10 +136,9 @@ are in the [2026-09-17 record](../../performance/records/deepseek-v41-flash/sgla
 | `DSV41_LOOP_ABORT` | `1` (image default) | Finishes a request whose output cycles (four copies of a ≥32-token n-gram, 64 identical tokens, or eight identical lines) with `finish_reason=stop`, `matched=repetition`. `--watchdog-timeout` never fires on a live stream |
 | `NVFP4_DRAFT_OVERLAY` | `0` | Mounts the prepared overlay described below. Requires `--prepare` with the same value |
 
-Two more results from the same record belong here because they bound what the settings can do.
-The adapter commit and profile changes above did not move the bounded exact-output gate
-(20/20 first tokens, 20/20 greedy continuations against the 2026-09-11 fixture). Prefills on this
-runtime are strictly serialised (`max_prefill_tokens` 16384, FCFS), and decode makes no progress
+The contributor's [stock-checkpoint output comparison](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917/stock-cutover-quality.json)
+reports 20/20 first-token and 20/20 greedy-continuation matches to its reference.
+In the recorded workload, prefills were serialised (`max_prefill_tokens` 16384, FCFS), and decode made no progress
 while another request prefills: with eight concurrent 262K prompts the last caller waited 11–14
 minutes for its first token and every request's short answer landed only when the batch's prefill
 was done. A larger token pool removes the capacity failure, not that latency; `--enable-mixed-chunk`
@@ -161,8 +160,9 @@ source precision, and the Engram shards stay 47 and 48, so `--pack` works unchan
    changed, and writes a module that selects the CUTLASS MXFP8×MXFP4 method on SM90/SM120 — the
    same choice SGLang's `fp8.py` already makes for the stock checkpoint. The launcher binds the
    generated module to the image, patcher and pins in `operator/overlay-receipt.json` and mounts
-   it read-only over the image's copy. Without the overlay, boot the variant with `SPEC_ALGO`
-   speculation disabled or not at all.
+   it read-only over the image's copy. This launcher fixes `SPEC_ALGO=DSPARK`, so the
+   NVFP4 variant requires the overlay. The contributor's no-speculation measurements
+   used a separate manual launch; they are not an option exposed by this launcher.
 3. Read the boot log's `DSV4 memory calculation ... full_token=` line before pinning
    `MAX_TOTAL_TOKENS`: the NVFP4 weights take ~4 GiB more per rank and a pin above the budget is
    **silently clamped**, not rejected. At memory fraction 0.80 with the draft loaded the recorded

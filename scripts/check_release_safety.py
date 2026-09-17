@@ -1,6 +1,7 @@
 """Scan tracked text for site/credential shapes without printing matched content."""
 from pathlib import Path
 import json
+import math
 import re
 import subprocess
 import sys
@@ -18,18 +19,54 @@ RULES = {
 EXCLUDES = {"scripts/check_release_safety.py"}
 
 
+def credential_scan_text(text):
+    """Normalize numeric Bearer token scores in single-line panel captures only.
+
+    Original bytes remain the input for every other rule. Requiring one line
+    preserves diagnostic line numbers; ambiguous or malformed JSON stays raw.
+    """
+    if len(text.splitlines()) != 1 or not text.lstrip().startswith('{'):
+        return text
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate JSON member')
+            result[key] = value
+        return result
+
+    try:
+        panel = json.loads(text, object_pairs_hook=unique)
+        if not isinstance(panel, dict) or not {'model', 'label', 'k', 'panel', 'n_records', 'wall_s', 'records'} <= panel.keys():
+            return text
+        rows = panel['records']
+        if not isinstance(rows, list) or panel['n_records'] != len(rows):
+            return text
+        for row in rows:
+            if not isinstance(row, dict) or not {'w', 'p', 'top', 'argmax'} <= row.keys():
+                return text
+            top = row['top']
+            if not isinstance(top, dict) or not all(
+                type(value) in (int, float) and math.isfinite(value) and value <= 0
+                for value in top.values()
+            ):
+                return text
+        for row in rows:
+            for token, score in row['top'].items():
+                if token.strip().lower() == 'bearer' and type(score) is float:
+                    row['top'][token] = 0
+        return json.dumps(panel, ensure_ascii=False)
+    except (ValueError, TypeError, OverflowError):
+        return text
+
+
 def findings(text):
+    credential_text = credential_scan_text(text)
     for number, line in enumerate(text.splitlines(), 1):
         for name, pattern in RULES.items():
-            matches = list(re.finditer(pattern, line, re.I))
-            if name == "credential-assignment":
-                # Token-score JSON may contain "Bearer": -12.345678901234.
-                # Only unquoted negative fractional JSON numbers are exempt;
-                # credential strings and integer-shaped values remain scanned.
-                matches = [match for match in matches if not re.fullmatch(
-                    r'[^:=]+:\s*-\d+\.\d+(?:[eE][+-]?\d+)?\s*', match.group()
-                ) or not re.match(r'\s*[,}]', line[match.end():])]
-            if matches:
+            scanned = credential_text if name == 'credential-assignment' and credential_text != text else line
+            if re.search(pattern, scanned, re.I):
                 yield number, name
 
 
