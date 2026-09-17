@@ -21,6 +21,7 @@ PINS = json.loads((RUNTIME / "pins.json").read_text())
 SERVING = json.loads((ROOT / "profiles/deepseek-v41-flash-sglang-cycle/recipe.json").read_text())["serving"]
 COMPOSITION = "sglang-deepseek-bounded-prefill"
 COMPOSITION_MANIFEST = RUNTIME / "combined-image/manifest.json"
+SHARED_PINS_PATH = RUNTIME / "combined-image/adapter-pins.json"
 SHARED_PYTHON = "/opt/sparkring/bin/sglang-python"
 SHARED_RUNTIME = "/opt/sparkring/sglang"
 HOST_NCCL = {"NCCL_SO_HOST_PATH", "NCCL_SO_SHA256"}
@@ -39,7 +40,12 @@ DEFAULTS = {
     "MAX_TOTAL_TOKENS": str(SERVING["max_total_tokens"]),
     "MEM_FRACTION_STATIC": str(SERVING["mem_fraction_static"]),
     "DSPARK_SPS_TABLE": "/state/dspark_sps.json", "DSPARK_STS_TABLE": "/state/dspark_sts.json",
+    # Image defaults unless a site sets them (runtime/deepseek-v41-sglang/README.md#serving-controls).
+    "MOE_RUNNER_BACKEND": "flashinfer_mxfp4",
+    "DSV41_MAX_NEW_TOKENS": "32768", "DSV41_LOOP_ABORT": "1", "NVFP4_DRAFT_OVERLAY": "0",
 }
+MOE_RUNNER_BACKENDS = {"flashinfer_mxfp4", "flashinfer_cutlass"}
+GENERATED = ("auth.py", "auth-receipt.json", "modelopt_quant.py", "overlay-receipt.json")
 TRANSPORT = {
     "NCCL_NET": "IB", "NCCL_NET_PLUGIN": "none", "NCCL_IB_DISABLE": "0",
     "NCCL_IB_SUBNET_AWARE_ROUTING": "1", "NCCL_IB_SUBNET_PREFIX_LEN": "24",
@@ -75,12 +81,21 @@ def read_config(path):
         raise ValueError("missing settings: " + ", ".join(sorted(required - seen)))
     limits = {"NODE_RANK": (0, 3), "API_PORT": (1, 65535), "MASTER_PORT": (1, 65535),
               "CONTEXT_LENGTH": (4096, 1048576), "CHUNKED_PREFILL_SIZE": (128, 65536),
-              "MAX_RUNNING_REQUESTS": (1, 64), "MIN_FREE_SLOTS_DELAY": (1, 64),
-              "MAX_TOTAL_TOKENS": (4096, 10000000),
-              "NCCL_IB_GID_INDEX": (0, 255)}
+              "MAX_RUNNING_REQUESTS": (1, 64), "MAX_TOTAL_TOKENS": (4096, 10000000),
+              "NCCL_IB_GID_INDEX": (0, 255), "MIN_FREE_SLOTS_DELAY": (0, 64),
+              "DSV41_MAX_NEW_TOKENS": (0, 1048576), "DSV41_LOOP_ABORT": (0, 1),
+              "NVFP4_DRAFT_OVERLAY": (0, 1)}
     for key, (low, high) in limits.items():
         if not re.fullmatch(r"[0-9]+", cfg[key]) or not low <= int(cfg[key]) <= high:
             raise ValueError(f"invalid numeric setting: {key}")
+    if cfg["MOE_RUNNER_BACKEND"] not in MOE_RUNNER_BACKENDS:
+        raise ValueError("MOE_RUNNER_BACKEND must be flashinfer_mxfp4 or flashinfer_cutlass")
+    if shared_runtime(cfg):
+        unsupported = seen & {"DSV41_MAX_NEW_TOKENS", "DSV41_LOOP_ABORT"}
+        if cfg["NVFP4_DRAFT_OVERLAY"] != "0" or cfg["MOE_RUNNER_BACKEND"] != "flashinfer_mxfp4":
+            unsupported.add("NVFP4_DRAFT_OVERLAY/MOE_RUNNER_BACKEND")
+        if unsupported:
+            raise ValueError("shared composition does not implement these adapter controls: " + ", ".join(sorted(unsupported)))
     if int(cfg["API_PORT"]) == int(cfg["MASTER_PORT"]):
         raise ValueError("API_PORT and MASTER_PORT must differ")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", cfg["MASTER_ADDR"]):
@@ -100,8 +115,7 @@ def read_config(path):
     if len(set(paths.values())) != len(paths):
         raise ValueError("Bind-mount paths must be distinct")
     model = paths["MODEL_HOST_PATH"]
-    generated = {paths["STATE_HOST_PATH"] / "operator" / name
-                 for name in ("auth.py", "auth-receipt.json")}
+    generated = {paths["STATE_HOST_PATH"] / "operator" / name for name in GENERATED}
     if any(paths[key] in generated for key in ("API_KEY_FILE", "NCCL_SO_HOST_PATH") if key in paths):
         raise ValueError("input files must not use generated authentication paths")
     for key in ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH"):
@@ -119,6 +133,21 @@ def python_entrypoint(cfg):
     return SHARED_PYTHON if shared_runtime(cfg) else "python3"
 
 
+def pins_path(cfg):
+    return SHARED_PINS_PATH if shared_runtime(cfg) else RUNTIME / "pins.json"
+
+
+def selected_pins(cfg):
+    pins = json.loads(pins_path(cfg).read_bytes())
+    if shared_runtime(cfg):
+        manifest = json.loads(COMPOSITION_MANIFEST.read_bytes())
+        if (pins["source_commit"] != manifest["adapter"]["commit"]
+                or pins["base_image"] != manifest["sglang_base"]["reference"]
+                or pins["model_revision"] != manifest["model"]["revision"]):
+            raise ValueError("shared adapter pins differ from the recorded composition")
+    return pins
+
+
 def composition_identity():
     raw = COMPOSITION_MANIFEST.read_bytes()
     manifest = json.loads(raw)
@@ -128,24 +157,31 @@ def composition_identity():
 
 
 def command(cfg):
+    pins = selected_pins(cfg)
     state = PurePosixPath(cfg["STATE_HOST_PATH"])
     mounts = {
         cfg["MODEL_HOST_PATH"]: "/models/DeepSeek-V4.1-Flash:ro",
         cfg["ENGRAM_HOST_PATH"]: "/engram:ro", str(state): "/state",
         cfg["CACHE_HOST_PATH"]: "/root/.cache",
         cfg["API_KEY_FILE"]: "/run/secrets/api-keys:ro",
-        str(state / "operator/auth.py"): PINS["auth_path"] + ":ro",
+        str(state / "operator/auth.py"): pins["auth_path"] + ":ro",
     }
     entrypoint = SHARED_RUNTIME + "/entrypoint.py"
     if not shared_runtime(cfg):
         mounts[str(RUNTIME / "entrypoint.py")] = "/operator/entrypoint.py:ro"
-        mounts[cfg["NCCL_SO_HOST_PATH"]] = PINS["nccl_target"] + ":ro"
+        mounts[cfg["NCCL_SO_HOST_PATH"]] = pins["nccl_target"] + ":ro"
         entrypoint = "/operator/entrypoint.py"
+    if cfg["NVFP4_DRAFT_OVERLAY"] == "1":
+        mounts[str(state / "operator/modelopt_quant.py")] = pins["nvfp4_draft_path"] + ":ro"
+    extra = "--fp8-gemm-backend flashinfer_cutlass --watchdog-timeout 1800 --enable-metrics"
+    if int(cfg["MIN_FREE_SLOTS_DELAY"]) > 0:
+        extra += " --min-free-slots-delay " + cfg["MIN_FREE_SLOTS_DELAY"]
     env = {**TRANSPORT, **{k: cfg[k] for k in (
         "NODE_RANK", "HOST_IP", "CONTEXT_LENGTH", "CHUNKED_PREFILL_SIZE",
         "MAX_RUNNING_REQUESTS", "MAX_TOTAL_TOKENS", "MEM_FRACTION_STATIC",
         "NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME", "NCCL_IB_HCA", "NCCL_IB_GID_INDEX",
-        "DSPARK_SPS_TABLE", "DSPARK_STS_TABLE")},
+        "DSPARK_SPS_TABLE", "DSPARK_STS_TABLE", "MOE_RUNNER_BACKEND",
+        "DSV41_MAX_NEW_TOKENS", "DSV41_LOOP_ABORT")},
         "API_KEY_FILE": "/run/secrets/api-keys", "SERVER_PORT": cfg["API_PORT"],
         "DIST_INIT_ADDR": cfg["MASTER_ADDR"] + ":" + cfg["MASTER_PORT"],
         "VLLM_HOST_IP": cfg["HOST_IP"], "NNODES": "4", "TP_SIZE": "4", "EP_SIZE": "4",
@@ -159,11 +195,12 @@ def command(cfg):
         "SKIP_SMOKE": "1", "WARMUP": "0", "DSV41_MXFP8_BACKEND": "b12x",
         "SGLANG_FLASHINFER_MOE_FUSED_FINALIZE": "0", "SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE": "0",
         "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:False", "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
-        "EXTRA_SGLANG_ARGS": (
-            "--fp8-gemm-backend flashinfer_cutlass --watchdog-timeout 1800 --enable-metrics "
-            "--min-free-slots-delay " + cfg["MIN_FREE_SLOTS_DELAY"]
-        ),
+        "EXTRA_SGLANG_ARGS": extra,
     }
+    if shared_runtime(cfg):
+        # The pinned adapter has no completion-cap or loop-abort implementation.
+        env.pop("DSV41_MAX_NEW_TOKENS")
+        env.pop("DSV41_LOOP_ABORT")
     args = ["docker", "run", "-d", "--name", "sgl_dsv41", "--restart", "no",
             "--label", "family=dsv41", "--label", "engine=sglang", "--network", "host",
             "--ipc", "host", "--privileged", "--cap-add", "IPC_LOCK", "--gpus", "all",
@@ -198,10 +235,10 @@ def verify_host_paths(cfg):
     writable = {key: Path(cfg[key]) for key in
                 ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH")}
     operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
-    writable.update({"auth output": operator / "auth.py", "auth receipt": operator / "auth-receipt.json"})
+    writable.update({"generated " + name: operator / name for name in GENERATED})
     keys = ("API_KEY_FILE",) if shared_runtime(cfg) else ("API_KEY_FILE", "NCCL_SO_HOST_PATH")
     inputs = {Path(cfg[key]).resolve() for key in keys}
-    if any((operator / name).resolve() in inputs for name in ("auth.py", "auth-receipt.json")):
+    if any((operator / name).resolve() in inputs for name in GENERATED):
         raise ValueError("input files must not alias generated authentication paths")
     for name, path in writable.items():
         resolved = path.resolve()
@@ -212,9 +249,9 @@ def verify_host_paths(cfg):
 def auth_record(cfg, source):
     record = {
         "schema": "sparkring-sglang-auth/v1", "image_id": cfg["IMAGE_ID"],
-        "auth_path": PINS["auth_path"], "auth_sha256": hashlib.sha256(source).hexdigest(),
+        "auth_path": selected_pins(cfg)["auth_path"], "auth_sha256": hashlib.sha256(source).hexdigest(),
         "patch_sha256": hashlib.sha256((RUNTIME / "patch-multikey.py").read_bytes()).hexdigest(),
-        "pins_sha256": hashlib.sha256((RUNTIME / "pins.json").read_bytes()).hexdigest(),
+        "pins_sha256": hashlib.sha256(pins_path(cfg).read_bytes()).hexdigest(),
     }
     if shared_runtime(cfg):
         record["composition"] = composition_identity()
@@ -242,6 +279,50 @@ def write_prepared_auth(cfg, source):
             staged.replace(operator / name)
         finally:
             staged.unlink(missing_ok=True)
+
+
+def overlay_record(cfg, source):
+    return {
+        "schema": "sparkring-sglang-nvfp4-draft-overlay/v1", "image_id": cfg["IMAGE_ID"],
+        "overlay_path": PINS["nvfp4_draft_path"], "overlay_sha256": hashlib.sha256(source).hexdigest(),
+        "patch_sha256": hashlib.sha256((RUNTIME / "patch-nvfp4-draft.py").read_bytes()).hexdigest(),
+        "pins_sha256": hashlib.sha256((RUNTIME / "pins.json").read_bytes()).hexdigest(),
+    }
+
+
+def write_prepared_overlay(cfg, source):
+    operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
+    compile(source, str(operator / "modelopt_quant.py"), "exec")
+    operator.mkdir(parents=True, exist_ok=True)
+    payloads = {"modelopt_quant.py": source, "overlay-receipt.json":
+                (json.dumps(overlay_record(cfg, source), sort_keys=True) + "\n").encode()}
+    for name, payload in payloads.items():
+        with tempfile.NamedTemporaryFile(dir=operator, prefix=".overlay-", delete=False) as stream:
+            staged = Path(stream.name)
+            try:
+                stream.write(payload)
+            except BaseException:
+                stream.close()
+                staged.unlink(missing_ok=True)
+                raise
+        try:
+            staged.replace(operator / name)
+        finally:
+            staged.unlink(missing_ok=True)
+
+
+def verify_prepared_overlay(cfg):
+    if cfg["NVFP4_DRAFT_OVERLAY"] != "1":
+        return
+    operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
+    try:
+        source = (operator / "modelopt_quant.py").read_bytes()
+        receipt = json.loads((operator / "overlay-receipt.json").read_bytes())
+        if receipt == overlay_record(cfg, source):
+            return
+    except (OSError, ValueError):
+        pass
+    raise ValueError("prepared NVFP4 draft overlay differs or is missing; run --prepare for the selected image")
 
 
 def verify_prepared_auth(cfg):
@@ -279,6 +360,7 @@ def verify_host(cfg):
     if not keys or len(keys) != len(set(keys)) or any("," in k or any(not 33 <= ord(c) <= 126 for c in k) for k in keys):
         raise ValueError("key file must contain distinct nonempty keys without commas or whitespace")
     verify_prepared_auth(cfg)
+    verify_prepared_overlay(cfg)
     names = output(["docker", "ps", "--format", "{{.Names}}"]).splitlines()
     if any(name.startswith(("vllm", "sgl", "glm")) for name in names):
         raise ValueError("a model container is already running; stop its owning service first")
@@ -299,6 +381,7 @@ def main():
     ap.add_argument("environment")
     args = ap.parse_args()
     cfg = read_config(args.environment)
+    pins = selected_pins(cfg)
     if args.check:
         print(shlex.join(command(cfg)))
     elif args.prepare:
@@ -307,8 +390,14 @@ def main():
         source = subprocess.check_output([
             "docker", "run", "--rm", "--memory", "512m", "--entrypoint", python_entrypoint(cfg),
             "-v", str(RUNTIME / "patch-multikey.py") + ":/patch.py:ro", cfg["IMAGE_ID"],
-            "-S", "/patch.py", PINS["auth_path"]])
+            "-S", "/patch.py", pins["auth_path"]])
         write_prepared_auth(cfg, source)
+        if cfg["NVFP4_DRAFT_OVERLAY"] == "1":
+            overlay = subprocess.check_output([
+                "docker", "run", "--rm", "--memory", "512m", "--entrypoint", "python3",
+                "-v", str(RUNTIME / "patch-nvfp4-draft.py") + ":/patch.py:ro", cfg["IMAGE_ID"],
+                "-S", "/patch.py", PINS["nvfp4_draft_path"]])
+            write_prepared_overlay(cfg, overlay)
         print("Authentication prepared; no GPU used")
     elif args.pack:
         verify_host_paths(cfg)

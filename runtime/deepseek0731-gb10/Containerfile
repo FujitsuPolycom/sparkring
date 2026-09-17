@@ -76,6 +76,27 @@ RUN LD_PRELOAD=/usr/local/cuda/compat/libcuda.so.1:/opt/sparkring/nccl/libnccl.s
 LABEL org.sparkring.native-pr431="excluded-thin-diagnostic"
 
 
+FROM ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd AS api-upgrade
+ARG SPARKRING_SOURCE_REVISION
+USER root
+COPY runtime/deepseek0731-gb10 /opt/sparkring-deepseek-gb10/
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/sparkring-deepseek-gb10/licenses/
+RUN python3 /opt/sparkring-deepseek-gb10/apply_api_upgrade.py \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --site-root /opt/venv/lib/python3.12/site-packages \
+      --source-root /opt/r7-src/vllm \
+      --native /opt/venv/lib/python3.12/site-packages/vllm/_C_stable_libtorch.abi3.so \
+      --receipt /opt/sparkring-deepseek-gb10/api-upgrade-receipt.json
+RUN LD_PRELOAD=/usr/local/cuda/compat/libcuda.so.1:/opt/sparkring/nccl/libnccl.so.2 \
+    python3 /opt/sparkring-deepseek-gb10/verify_image.py \
+      --expect-native --require-launch-env \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --output /opt/sparkring-deepseek-gb10/api-upgrade-verification.json
+LABEL org.opencontainers.image.revision="${SPARKRING_SOURCE_REVISION}" \
+      org.sparkring.api-upgrade-parent="sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd" \
+      local-inference.vllm.gb10-runtime-overlay="sparse-row-clamp+dsml-recovery+responses-max+empty-required-tool-error-v2"
+
+
 FROM runtime-overlay AS native
 
 RUN python3 /opt/sparkring-deepseek-gb10/apply_native_overlay.py \

@@ -20,9 +20,9 @@ untracked=$(git -C "${repo_root}" ls-files --others --exclude-standard -- "${bui
 }
 
 case "${target}" in
-  native|thin) ;;
+  native|thin|api-upgrade) ;;
   *)
-    printf 'SPARKRING_DEEPSEEK_GB10_TARGET must be native or thin, got %s\n' "${target}" >&2
+    printf 'SPARKRING_DEEPSEEK_GB10_TARGET must be native, thin or api-upgrade, got %s\n' "${target}" >&2
     exit 2
     ;;
 esac
@@ -41,7 +41,7 @@ verify_args=(
   --require-launch-env
   --contract /opt/sparkring-deepseek-gb10/runtime-contract.json
 )
-if [[ "${target}" == native ]]; then
+if [[ "${target}" == native || "${target}" == api-upgrade ]]; then
   verify_args+=(--expect-native)
 fi
 

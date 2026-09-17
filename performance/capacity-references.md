@@ -9,12 +9,16 @@ The linked profile specifies its KV allocation and other runtime settings.
 |---|---|---:|
 | GLM-5.3-Flash NVFP4-Spark · MTP3 + SparkCache | TP4/DCP1 | 2.28M |
 | [DeepSeek-V4-Flash-0731](../profiles/deepseek-v4-flash-0731/recipe.json) | TP4/DCP1 | 1M |
-| [DeepSeek-V4-Flash-0731](../profiles/deepseek-v4-flash-0731-pair/recipe.json) | TP2/DCP1 | 1M |
 
 The capacity index marks these entries as approximate. Exact startup counts
 can replace them when the matching logs are available. Do not substitute a
 completed prompt length, client workload budget or GiB allocation for a token
 pool count.
+
+DeepSeek-V4-Flash-0731 TP2/DCP1 has a measured
+[2,198,756-token pool](records/deepseek-v4-flash/image827a8e8c-tp2.json)
+with DSpark K5 and 16 GiB KV per rank on the cached published image. This
+replaces its sizing estimate; it does not qualify 1M-token output quality.
 
 The [shared-image profile table](https://github.com/FujitsuPolycom/sparkring/blob/98f5787964013c3ad77c202842b23779fdae247a/README.md#profiles)
 also recorded the cache-disabled MTP3 TP4/DCP1 profile at 2.3M tokens.

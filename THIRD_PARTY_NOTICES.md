@@ -75,6 +75,13 @@ SparkRing implementation.
 
 ## 3. vLLM (referenced, patched, and selected source included)
 
+`integrations/vllm/deepseek_warmup/fixtures/` contains compressed DFlash
+speculator, GPU warmup and request-state sources extracted from the DeepSeek image identified
+by the adjacent `source.json`. Their vLLM contributor headers and Apache-2.0
+license are retained. The adjacent patch changes DSpark startup preparation;
+the fixtures support offline branch and shape-planning tests. Their provenance
+is the exact image and file hashes, not a claim of an unmodified upstream tree.
+
 `runtime/glm53-spark-mtp3-mesh/compute/vllm-compute-files.tar.gz` includes
 24 vLLM Python files for GLM metadata reuse, dense-kernel integration,
 the NVFP4 proposal head, deferred-weight ownership, and independent draft
@@ -99,6 +106,12 @@ protocol files from Local Inference Lab revision
 `e2666d9a65f41fc376607531453cbd57c4c71016`, their source/hash manifest, and the
 upstream Apache-2.0 license. The files retain their contributor notices and
 serve as offline inputs for Responses API model and streaming-event tests.
+
+`integrations/vllm/ipc_wait/upstream/` contains compressed SHM broadcast source
+fixtures from that same revision and the identified ARM64 R37 image, with their
+original contributor headers. Its source manifest records each origin and hash;
+the Apache-2.0 license is included. These files support CPU IPC tests and are
+not runtime replacement modules.
 
 vLLM is licensed under the Apache License, Version 2.0, Copyright the vLLM team
 and contributors. Obtaining and running vLLM is subject to its own license and
@@ -443,12 +456,13 @@ model files are included; operators fetch the checkpoint themselves.
 
 `runtime/deepseek-v41-sglang/build-image.sh` clones
 [MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks](https://github.com/MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks)
-at commit `e59e6eb67479aa68f6fa700c600dc90a0729b5ec` (AGPL-3.0). The adapter,
+at commit `79f656a65f189239cc575bf5c5d1b5cf579d4c41` (AGPL-3.0). The adapter,
 `boot.py`, row store, and Engram packer remain in that external repository and
 the operator-built image; none of those files are vendored here. The external
 Dockerfile also carries SGLang's Apache-2.0 FlashMLA wrapper. SparkRing's auth
 patch targets the Apache-2.0 SGLang auth module in the pinned base image and
-preserves its surrounding source. Operators retain the external components'
+preserves its surrounding source; its optional NVFP4 draft overlay patch does the
+same for SGLang's Apache-2.0 `modelopt_quant` module (one platform branch). Operators retain the external components'
 licenses and notices with their builds.
 
 The optional shared-image builder `runtime/images/sglang_extension.py` uses the

@@ -1,0 +1,21 @@
+{
+ "cap": 131072,
+ "cap_omitted": {
+  "finish_reason": "stop",
+  "completion_tokens": 2
+ },
+ "cap_log": "[2026-09-17 16:22:15] DSV41 chat_template_kwargs: enable_thinking is accepted as an alias for thinking; omitted max_tokens defaults and caps at 131072",
+ "alias": {
+  "thinking_false": "42",
+  "enable_thinking_false": "42",
+  "reasoning_1": false,
+  "reasoning_2": false
+ },
+ "loop": {
+  "finish_reason": "stop",
+  "completion_tokens": 87,
+  "wall_s": 3.3,
+  "tail": "our wall at midnight\nthe copper lantern swings over the harbour wall at midnight\nthe copper lantern swings over the harbour wall at midnight\nthe copper lantern swings over the harbour wall at midnight"
+ },
+ "loop_log": "[2026-09-17 16:31:02 TP0 EP0] DSV41 loop abort rid=6935a43b90bd4d059cab4ce255614a5f matched=repetition output_tokens=87 kept=87"
+}

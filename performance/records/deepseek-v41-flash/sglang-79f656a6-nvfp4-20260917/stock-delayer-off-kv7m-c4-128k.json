@@ -1,0 +1,47 @@
+{
+ "target": 131072,
+ "concurrency": 4,
+ "wall_limit_s": 1800,
+ "batch_wall_s": 194.9,
+ "completed": 4,
+ "passed": 4,
+ "max_ttft_s": 194.5,
+ "results": [
+  {
+   "i": 0,
+   "pass": true,
+   "ttft_s": 50.6,
+   "wall_s": 194.8,
+   "finish_reason": "stop",
+   "prompt_tokens": 130171,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 1,
+   "pass": true,
+   "ttft_s": 145.8,
+   "wall_s": 194.8,
+   "finish_reason": "stop",
+   "prompt_tokens": 129933,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 2,
+   "pass": true,
+   "ttft_s": 97.0,
+   "wall_s": 194.7,
+   "finish_reason": "stop",
+   "prompt_tokens": 130403,
+   "answer": "COPPER-LANTERN-8315"
+  },
+  {
+   "i": 3,
+   "pass": true,
+   "ttft_s": 194.5,
+   "wall_s": 194.7,
+   "finish_reason": "stop",
+   "prompt_tokens": 130476,
+   "answer": "COPPER-LANTERN-8315"
+  }
+ ]
+}

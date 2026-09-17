@@ -320,6 +320,13 @@ def test_environment_examples_preserve_baseline_defaults():
     rows = profiles.read_json(profiles.ROOT/'profiles/environment-exports.json')['exports']
     for row in rows:
         rendered = render_environment(row['profile'], template_only=True).encode('utf-8')
+        for change in row.get('assignment_changes', []):
+            current = (change['to'] + '\n').encode()
+            original = (change['from'] + '\n').encode()
+            assert change['reason'] and current != original
+            assert rendered.count(current) == 1
+            assert original not in rendered
+            rendered = rendered.replace(current, original)
         for key, change in row.get('default_changes', {}).items():
             current = f"{key.upper()}={change['to']}".encode()
             original = f"{key.upper()}={change['from']}".encode()

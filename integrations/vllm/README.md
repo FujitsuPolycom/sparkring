@@ -1,5 +1,9 @@
 # vLLM four-rank transport integration
 
+The separate [DSpark preparation warmup overlay](deepseek_warmup/README.md)
+is a research-only image-build integration with source guards and offline
+fixtures. It does not change transport selection or profile defaults.
+
 ## Status and scope
 
 The adapter installs custom candidates for two collective kinds:

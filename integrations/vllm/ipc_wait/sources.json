@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-ipc-wait-sources/v1",
+  "sources": [
+    {
+      "name": "deepseek",
+      "path": "vllm/distributed/device_communicators/shm_broadcast.py",
+      "fixture": "upstream/deepseek-shm_broadcast.py.gz",
+      "source_sha256": "7ff67c2ef6b8a33a13b11aa3cb202da7887d1d44eed27c6a02d817ea24807d61",
+      "fixture_sha256": "8cbeddfe90e7d1df7497b0cb5dfccb56b9f9dc133c68b3eeeb68fbedccf46c6e",
+      "repository": "https://github.com/local-inference-lab/vllm",
+      "commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
+      "result_sha256": "8cbdb643a7dce4dc291fcfbdf690c6d9ee22ef1b7520aa65e905981ee08f22c2"
+    },
+    {
+      "name": "r37",
+      "path": "vllm/distributed/device_communicators/shm_broadcast.py",
+      "fixture": "upstream/r37-shm_broadcast.py.gz",
+      "source_sha256": "f3e7a3f3ff713fccbd535e0d41650ee05bdf8677e83d4b90519910645022c30b",
+      "fixture_sha256": "877b409551d432a8c622e6777279fa199ec87de54719bc3bec05ca04a15045ee",
+      "image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+      "extraction": "Installed ARM64 R37 Python source, retained from Qwen image validation",
+      "result_sha256": "d2bcf756eda71f5a74da6908fbd821151ee7ecff3baf174f843140c914e3548f"
+    }
+  ]
+}

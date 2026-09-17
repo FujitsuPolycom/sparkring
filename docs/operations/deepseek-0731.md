@@ -24,6 +24,13 @@ but different weight payloads. The measurements therefore establish launch
 behavior and conditional throughput, not exact checkpoint scaling or output
 quality.
 
+The [cached-image TP2 record](../../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json)
+adds bounded plain-0731 serving checks for the selected published image:
+2,198,756 KV tokens at 16 GiB per rank and completed requests through 8,193
+input tokens. Configuration/index hashes and all 48 shard files were checked;
+full weight checksums, a fresh registry pull and 1M-token output quality were
+not verified. Profile status remains Development.
+
 The machine-readable serving contracts are
 [`recipes/deepseek-v4-flash-0731-pair.json`](../../recipes/deepseek-v4-flash-0731-pair.json)
 for the pair and
@@ -181,6 +188,8 @@ During `--check` and before `--run`, the launcher reads the local
 comma-list, `^` exclusion, `=` exact-name, prefix-name, and
 `name[:port[:rail[:plane]]]` rules. Only ports with a readable active state are
 candidates, and only the first 32 non-empty selector entries are considered.
+Empty name lists, nonnumeric fields and fields beyond `plane` fail validation
+instead of relying on NCCL's permissive string parsing.
 The pair selector must resolve to one HCA/port; the cycle selector must resolve
 to two. A selector that resolves to more than NCCL's 32-device cap fails
 preflight because sysfs traversal order cannot prove the order returned by
@@ -193,6 +202,19 @@ if any set is empty. The sets do not need a common index. After validation,
 the launch command removes
 `NCCL_IB_GID_INDEX` from the container so the pinned NCCL 2.30 runtime selects
 an appropriate RoCEv2/IPv4 index independently for each HCA.
+
+Automatic mode requires `NCCL_IB_ADDR_FAMILY=AF_INET` and
+`NCCL_IB_ROCE_VERSION_NUM=2`, or those settings unset. An optional
+`NCCL_IB_ADDR_RANGE` must be an IPv4 CIDR that admits a usable GID on every
+selected member. For example, a range admitting only one edge's subnet is
+insufficient for a cycle. The container receives the checked family, version
+and range explicitly; an omitted range means no address-range restriction.
+
+This is launch-time validation, not recovery from a GID change while a model
+is running. Container NCCL configuration files must not reintroduce a fixed
+GID index; this host check does not inspect those files. Automatic NCCL
+selection requires NCCL 2.21 or later and does not configure SIRCL or
+RoCEnante, whose transport contracts retain their own GID settings.
 
 Use a pin only as an intentional escape hatch:
 
@@ -257,6 +279,12 @@ defaults recorded in
 | `MAX_MODEL_LEN` | 1048576 | Per-request token limit |
 | `MAX_NUM_SEQS` | 32 | Scheduler admission ceiling |
 | `MAX_NUM_BATCHED_TOKENS` | 4096 | Scheduler budget and chunked-prefill size |
+
+The checkpoint's `dspark_block_size=5` is the minimum admitted draft depth.
+The [pinned runtime](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/config/speculative.py)
+accepts larger static depths, including seven; this is source admission, not
+performance qualification. Keep five as the default. Compare accepted tokens,
+verification cost and serving latency on the same topology before changing it.
 
 The launcher uses `--ipc host --shm-size 16g`. Host IPC makes the host's
 `/dev/shm` allocation authoritative, so changing the declaration from 16 GiB
@@ -440,20 +468,71 @@ remove only the stopped deployment container with `docker rm "$CONTAINER_ID"`,
 then rerun `--check` and `--run` with the updated environment on every rank.
 Do not remove model or cache directories to recover a failed launch.
 
+## Diagnose execution timeouts
+
+The pinned runtime defaults `VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS` to 300 seconds.
+It bounds the executor's wait for worker responses to model execution and token
+sampling. ProcessGroupNCCL uses a separate distributed timeout; increasing the
+executor limit does not extend its watchdog or custom transport deadlines.
+See the [worker-response timeout](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/v1/executor/multiproc_executor.py)
+and [distributed timeout configuration](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/distributed/utils.py).
+
+Before raising a timeout, collect every rank's logs and identify whether a worker
+is compiling, waiting for a collective, or no longer running. A larger executor
+budget also delays reporting a genuinely stalled worker. Keep persistent JIT
+caches enabled and measure the affected operation before choosing a timeout.
+
+NCCL's `NCCL_IB_TIMEOUT` is an exponent code, not milliseconds:
+`4.096 microseconds * 2^code`. Its default code 20 is about 4.295 seconds;
+`1000` is outside the supported finite range. `NCCL_IB_RETRY_CNT=7` is already
+the default. Neither setting replaces the executor or process-group deadline.
+See the [NCCL 2.30.7 definitions](https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2307/user-guide/docs/env.html#nccl-ib-timeout).
+
+Test buffer size and protocol tuning independently. `NCCL_BUFFSIZE=8388608`
+selects an 8 MiB buffer, twice the default; it is not a validated profile preset.
+The pinned built-in transport reads `NCCL_IB_TC`, not `NCCL_IB_TOS`; traffic
+class includes ECN bits and is not a raw DSCP number.
+`NCCL_NET_PLUGIN` and `NCCL_TUNER_PLUGIN` select different plugin interfaces.
+PyNCCL still calls the loaded NCCL library, so it does not bypass that library's
+algorithm selection. A per-size tuner needs its own source and serving evidence;
+forcing global `NCCL_PROTO=LL` does not test such a policy.
+
 ## Preserve JIT and collective-hang evidence
 
 The environment templates keep TileLang, Triton, vLLM, and B12X CuTeDSL
 compilation data under the persistent `CACHE_HOST_PATH` mount. Recreating a
 container therefore does not discard those caches.
 
-PyTorch's NCCL flight recorder writes each rank's timeout dump beneath
-`CACHE_HOST_PATH/nccl-fr`. Archive every rank's `comm_lib_trace_rank_*` file
-together after a timeout; a later dump overwrites the static per-rank name.
+The pinned B12X 1.2.1 package reads `B12X_COMPILE_CACHE_DIR`; the template sets
+it to `/cache/jit/b12x/compile`, matching the package's persistent XDG fallback.
+`B12X_CUTE_COMPILE_CACHE_DIR` is not a cache-location setting in this image.
+For an existing rank ENV file, replace that setting with
+`B12X_COMPILE_CACHE_DIR=/cache/jit/b12x/compile`. Retain the existing cache files.
+
+The templates enable PyTorch's NCCL flight recorder and configure dumps beneath
+`CACHE_HOST_PATH/nccl-fr`. Its coverage is limited to operations submitted through
+PyTorch's ProcessGroupNCCL. The pinned vLLM runtime also calls NCCL directly through
+PyNCCL; those calls and custom SIRCL/RoCEnante operations are not automatically
+recorded by ProcessGroupNCCL. An absent dump does not rule out a collective hang.
+See the [PyTorch recorder settings](https://docs.pytorch.org/docs/2.12/torch_nccl_environment_variables.html)
+and [vLLM's direct NCCL calls](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/distributed/device_communicators/pynccl.py).
+
+Archive every rank's available `comm_lib_trace_rank_*` file together with its
+container log after a timeout; a later dump overwrites the static per-rank name.
+Environment configuration alone does not verify dump generation or coverage;
+confirm that an on-demand dump can be produced and parsed on the deployed image.
 
 An on-demand pipe request is asynchronous. After writing to
 `/tmp/fr_dump_pipe_<rank>.pipe` inside a container, wait for the rank log to
 report that flight-recorder output finished, or wait until the dump file size
 stops changing, before stopping the container.
+
+The [two-Spark recorder test](../../performance/records/transport/nccl-flight-recorder-tp2-20260917.md)
+verified FIFO capture, complete trace files and persistence after normal
+container exit for three healthy PyTorch ProcessGroupNCCL all-reduces. It did
+not inject a timeout. Direct PyNccl, SIRCL and RoCEnante operations outside
+ProcessGroupNCCL are outside that recorder coverage; empty traces do not prove
+that a serving model performed no communication.
 
 ## Measured
 

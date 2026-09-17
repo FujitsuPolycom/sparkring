@@ -1,0 +1,175 @@
+{
+  "schema": "sparkring-dspark-preparation-validation/v1",
+  "status": "qualified",
+  "qualification_scope": "The listed DSpark K5 preparation signatures on a two-GB10 deployment; not all model JIT shapes.",
+  "started_utc": "2026-09-17T06:59:06.023Z",
+  "finished_utc": "2026-09-17T06:59:36.751Z",
+  "source": {
+    "integration": "integrations/vllm/deepseek_warmup",
+    "build_commit": "aa619521c57a819455fd9f07e10f98076dd3d68f",
+    "build_context_sha256": "dcd2203489dff9c6975cfd5ae7293b8f8cce11bd86a92e320dc3a73075a34410",
+    "speculator_sha256": "41cf8e31871f0799d6b7ef4a9a09e9db4f187b6fd71c8ea31b0599793220b0df",
+    "startup_sha256": "544d8eb9e2898c179d49986b6e216e807459442a020f135562b032fbdcbeeeb1",
+    "request_states_sha256": "14bde37b80299de9673d316ff5cf4fa5432ca9c23b4a955df60695b7a788ca56",
+    "image_scope": "Unpublished local derivatives also carrying API-contract and IPC-wait changes; profile defaults unchanged."
+  },
+  "conditions": {
+    "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "model_identity_reference": "performance/records/deepseek-v4-flash/image827a8e8c-tp2.json",
+    "hardware": "two NVIDIA GB10 DGX Sparks",
+    "tensor_parallel_size": 2,
+    "decode_context_parallel_size": 1,
+    "speculative_tokens": 5,
+    "draft_query_rows": 5,
+    "sample_from_anchor": true,
+    "max_model_len": 1048576,
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 4096,
+    "reported_max_num_scheduled_tokens": 3968,
+    "kv_bytes_per_rank": 17179869184,
+    "kv_dtype": "fp8_ds_mla",
+    "torch": "2.12.0+cu132",
+    "triton": "3.7.0",
+    "cache_scope": "Each serving /cache host-bind directory was newly created empty before startup; component probes used separate paths.",
+    "monitor": "vLLM warn mode with verbose post-start JIT events on both ranks"
+  },
+  "gpu_component": {
+    "method": "Extract and AST-normalize the exact preparation kernel, wrapper and warmup bodies into a standalone module, preserving Triton constexpr annotations. No model is loaded and no NCCL collectives are executed.",
+    "positive_control_source_sha256": "3a350223add541eff6bf9750b9e124fa17e65feb0b3354ba59501b102c2ca15f",
+    "positive_control_warmup_jit_events": 6,
+    "positive_control_runtime_jit_events": 9,
+    "typed_warmup_jit_events": 13,
+    "typed_runtime_jit_events": 0,
+    "runtime_fixtures": 19,
+    "typed_elapsed_seconds": 1.952539,
+    "checked_outputs": [
+      "query token IDs",
+      "query positions",
+      "sample indices/positions/mappings",
+      "padding"
+    ],
+    "warmup_pointer_types": {
+      "last_sampled": "int64",
+      "next_prefill_tokens": "int32"
+    },
+    "context_scalar_classes": [
+      "one",
+      "ordinary integer",
+      "multiple of 16"
+    ],
+    "positive_control_gate": "Nonempty warmup JIT keys required before zero runtime events can pass."
+  },
+  "serving": {
+    "cases": 20,
+    "requests": 36,
+    "passes": 2,
+    "elapsed_seconds": 30.734,
+    "c1_prompt_tokens": [
+      1,
+      12,
+      60,
+      32,
+      128,
+      4096,
+      4097
+    ],
+    "c1_output_tokens": 16,
+    "sampled_arm": {
+      "prompt_tokens": 60,
+      "temperature": 0.7,
+      "top_p": 0.95
+    },
+    "concurrent_arms": {
+      "concurrency": [
+        2,
+        8
+      ],
+      "prompt_tokens": 64,
+      "output_tokens": 32
+    },
+    "method": "Tokenizer-derived raw IDs, unique first-block prefixes, exact prompt usage, positive bounded output usage, complete SSE and per-case health checks.",
+    "ranks": [
+      {
+        "rank": 0,
+        "image_id": "sha256:738ccc74a5425c7dc763990599f8cc298fbad85df25c40d561fce284a6e40d86",
+        "prepare_jit_warning_events": 0,
+        "other_jit_warning_events": 23,
+        "other_kernel_warning_counts": {
+          "SparseNSAFusedIndexerKernel": 1,
+          "_DenseGemmFusedQuantALaunch": 2,
+          "_DenseGemmLaunch": 3,
+          "_build_c128a_topk_metadata_kernel": 2,
+          "_build_paged_mqa_schedule_triton": 1,
+          "_build_prefill_chunk_metadata_kernel": 2,
+          "_compute_global_topk_indices_and_lens_kernel": 4,
+          "_compute_prefill_metadata_kernel": 6,
+          "_gather_shared_paged_supertile_kernel": 1,
+          "_pack_topk_routes_post_prefix_kernel": 1
+        }
+      },
+      {
+        "rank": 1,
+        "image_id": "sha256:c8036a41c59ef3c767eb6618538a0f547efd63d58521fca8ada84a193e1f4e1e",
+        "prepare_jit_warning_events": 0,
+        "other_jit_warning_events": 23,
+        "other_kernel_warning_counts": {
+          "SparseNSAFusedIndexerKernel": 1,
+          "_DenseGemmFusedQuantALaunch": 2,
+          "_DenseGemmLaunch": 3,
+          "_build_c128a_topk_metadata_kernel": 2,
+          "_build_paged_mqa_schedule_triton": 1,
+          "_build_prefill_chunk_metadata_kernel": 2,
+          "_compute_global_topk_indices_and_lens_kernel": 4,
+          "_compute_prefill_metadata_kernel": 6,
+          "_gather_shared_paged_supertile_kernel": 1,
+          "_pack_topk_routes_post_prefix_kernel": 1
+        }
+      }
+    ]
+  },
+  "conclusion": "The component control reproduced missing preparation signatures. Matching runtime dtypes and feasible scalar classes removed those gaps in the component fixtures and the bounded cold-serving request matrix.",
+  "limitations": [
+    "Other attention, top-k, dense and routing JIT events remain; this does not resolve all startup-shape coverage in issue 188.",
+    "JIT warnings include first-use disk-cache resolutions and do not by themselves measure expensive cold compilation or its cost.",
+    "The 4096/4097-token inputs straddle the configured budget; the effective K5 scheduler budget is 3968, so both may be chunked. Actual iteration partitioning was not traced.",
+    "No TP4, all-shapes, 1M-token quality, long-soak or whole-model speedup qualification is established.",
+    "The initial calibration harness name-collision failure was excluded: health/tokenization succeeded, but no inference completion was sent. Its raw report is preserved separately.",
+    "Component AST replay checks preparation behavior and specialization reuse; it does not replace the separate serving result."
+  ],
+  "source_receipts": [
+    {
+      "role": "positive-control GPU report",
+      "sha256": "1f43b19df1168f245e6174d705e848ba26806aeac783b4e8fad3dbe0c7b81a6b"
+    },
+    {
+      "role": "typed GPU report",
+      "sha256": "ca30a68db641152d3da3c560738ccdfb99051d7d21ec194f8a6563c0e1216f86"
+    },
+    {
+      "role": "API calibration report",
+      "sha256": "9f8039b2bb3f399e33574de373a1eb1a0838a5d13394964bdf0df0749cd184da"
+    },
+    {
+      "role": "rank 0 serving log",
+      "sha256": "743c164accd461de60a54df2ee6e2c20dfb7e3bac6a68706e7d12692deecb210"
+    },
+    {
+      "role": "rank 1 serving log",
+      "sha256": "607213e2980024df12c070868f7692e3536f0e5505095f5501f06e7e52aa55d4"
+    },
+    {
+      "role": "local image build receipt",
+      "sha256": "35b725a8e4669ee87267eb36497d52058a30c3988af8249999b184f16fce5745"
+    },
+    {
+      "role": "calibration controller and restoration report",
+      "sha256": "4de7c273e255fc12b590c8b4068ecbd4e279896b92e3e8c6e7996eea16cb46f6"
+    },
+    {
+      "role": "cold-cache creation and calibration controller source",
+      "sha256": "dc97c222e2152d4347cabcf0428bfab58c55d627f06f97e9b2b6d36b623fb45b"
+    }
+  ],
+  "initial_harness_failure_sha256": "26409bea6a3fe792f0db87a9e2ee1faaf6846fbce6271c3f8e2d0ce787daac37",
+  "receipt_retention": "Raw receipts are retained privately; this record summarizes their scoped evidence without host addresses or complete JIT key strings."
+}
