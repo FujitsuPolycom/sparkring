@@ -181,6 +181,8 @@ During `--check` and before `--run`, the launcher reads the local
 comma-list, `^` exclusion, `=` exact-name, prefix-name, and
 `name[:port[:rail[:plane]]]` rules. Only ports with a readable active state are
 candidates, and only the first 32 non-empty selector entries are considered.
+Empty name lists, nonnumeric fields and fields beyond `plane` fail validation
+instead of relying on NCCL's permissive string parsing.
 The pair selector must resolve to one HCA/port; the cycle selector must resolve
 to two. A selector that resolves to more than NCCL's 32-device cap fails
 preflight because sysfs traversal order cannot prove the order returned by
@@ -193,6 +195,19 @@ if any set is empty. The sets do not need a common index. After validation,
 the launch command removes
 `NCCL_IB_GID_INDEX` from the container so the pinned NCCL 2.30 runtime selects
 an appropriate RoCEv2/IPv4 index independently for each HCA.
+
+Automatic mode requires `NCCL_IB_ADDR_FAMILY=AF_INET` and
+`NCCL_IB_ROCE_VERSION_NUM=2`, or those settings unset. An optional
+`NCCL_IB_ADDR_RANGE` must be an IPv4 CIDR that admits a usable GID on every
+selected member. For example, a range admitting only one edge's subnet is
+insufficient for a cycle. The container receives the checked family, version
+and range explicitly; an omitted range means no address-range restriction.
+
+This is launch-time validation, not recovery from a GID change while a model
+is running. Container NCCL configuration files must not reintroduce a fixed
+GID index; this host check does not inspect those files. Automatic NCCL
+selection requires NCCL 2.21 or later and does not configure SIRCL or
+RoCEnante, whose transport contracts retain their own GID settings.
 
 Use a pin only as an intentional escape hatch:
 
