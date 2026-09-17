@@ -57,6 +57,8 @@ The [shared composition](../../runtime/deepseek-v41-sglang/README.md#shared-spar
 includes those execution changes and the bounded-memory backport. Its launcher
 admits the exact composition before running the documented 655360-context
 alternative. The standalone builder does not include them. The recipe retains
-262K; the combined image requires its own serving qualification.
+262K. The [combined-image record](../../performance/records/deepseek-v41-flash/sglang-shared-bounded-prefill.json)
+covers 11 successful API checks, including exact retrieval from 640K prompt
+tokens; it does not qualify vision, concurrent long prompts or unattended recovery.
 [Dual-domain NCCL results](../../performance/records/transport/nccl-dual-domain-deepseek.md)
 also describe a separate transport configuration, not this adapter's defaults.

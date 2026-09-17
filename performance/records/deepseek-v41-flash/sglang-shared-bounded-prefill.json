@@ -1,0 +1,262 @@
+{
+  "schema": "sparkring-bounded-serving-evidence/v1",
+  "status": "implemented",
+  "subject": "DeepSeek-V4.1-Flash serving through the isolated SGLang runtime in the SparkRing vLLM/SGLang image",
+  "image_id": "sha256:b03062b032bb147f5255463d4f068bfc476bf966c78c82ddeb66df4fb1b0b37d",
+  "published": false,
+  "composition": "runtime/deepseek-v41-sglang/combined-image/manifest.json",
+  "composition_sha256": "3ed1e1c6c8513be9dc550d41e1c5db66575bb7a1ce89fcaac243a5b93fac9ee5",
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+    "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+    "full_weight_checksum_performed": false
+  },
+  "conditions": {
+    "hardware": "Four DGX Spark GB10 hosts, one SM121 GPU per host, direct four-node cycle with existing mesh forwarding",
+    "runtime": "SGLang e087e662 with the two overlays and Mia adapter recorded by the composition manifest",
+    "torch": "2.13.0+cu130",
+    "cuda_tools": "13.0",
+    "nccl": "SparkRing patched 2.30.7",
+    "tensor_parallel_size": 4,
+    "expert_parallel_size": 4,
+    "context_length": 655360,
+    "chunked_prefill_size": 4096,
+    "max_running_requests": 8,
+    "max_total_tokens_requested": 1500000,
+    "max_total_tokens_observed": 1499904,
+    "kv_cache_dtype": "fp8_e4m3",
+    "mem_fraction_static": 0.9,
+    "speculation": {
+      "method": "DSPARK",
+      "block_size": 5,
+      "schedule": "verify-all; no SPS/STS tables"
+    },
+    "engram": {
+      "storage": "local NVMe, Mia TP4 packed layout",
+      "cache_gib": 0,
+      "io_threads": 96
+    },
+    "decoder_swa_bounded_replay": true,
+    "prefill_cuda_graph": false,
+    "decode_verify_cuda_graph": true
+  },
+  "collectives": {
+    "cases_per_rank": 10,
+    "ranks": 4,
+    "all_passed": true,
+    "all_reduce_dtypes": [
+      "float32",
+      "bfloat16"
+    ],
+    "all_reduce_elements": [
+      17,
+      1024,
+      65536,
+      1048576
+    ],
+    "all_gather_dtype": "bfloat16",
+    "all_gather_elements": [
+      17,
+      65536
+    ],
+    "loaded_nccl_path": "/opt/sglang/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2"
+  },
+  "api": {
+    "harness": "performance/harnesses/validation/sglang_deepseek.py",
+    "executed_harness_sha256": "c7f69b68f7779db6407b7f4116f3636735cd628e871b46d67b29ad492fbf896e",
+    "harness_relationship": "The maintained harness preserves the measured request construction and adds source-hash admission plus HTTP redirect/proxy controls. Those client controls have separate CPU tests; the long retrieval was not repeated for them.",
+    "started_at": "2026-09-17T18:31:24.928810+00:00",
+    "finished_at": "2026-09-17T18:36:05.103824+00:00",
+    "passed": true,
+    "tests": [
+      {
+        "name": "health",
+        "http_status": 200,
+        "passed": true,
+        "case_seconds": 1.0173
+      },
+      {
+        "name": "model_identity_key_1",
+        "http_status": 200,
+        "passed": true,
+        "case_seconds": 0.0177
+      },
+      {
+        "name": "model_identity_key_2",
+        "http_status": 200,
+        "passed": true,
+        "case_seconds": 0.0007
+      },
+      {
+        "name": "deny_missing_models",
+        "http_status": 401,
+        "passed": true,
+        "case_seconds": 0.0012
+      },
+      {
+        "name": "deny_missing_generation",
+        "http_status": 401,
+        "passed": true,
+        "case_seconds": 0.0003
+      },
+      {
+        "name": "deny_invalid_models",
+        "http_status": 401,
+        "passed": true,
+        "case_seconds": 0.0003
+      },
+      {
+        "name": "deny_invalid_generation",
+        "http_status": 401,
+        "passed": true,
+        "case_seconds": 0.0006
+      },
+      {
+        "name": "deterministic_generation_key_1",
+        "http_status": 200,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 18,
+          "total_tokens": 20,
+          "completion_tokens": 2,
+          "prompt_tokens_details": null,
+          "reasoning_tokens": 0
+        },
+        "output": "42",
+        "passed": true,
+        "case_seconds": 0.2639
+      },
+      {
+        "name": "deterministic_generation_key_2",
+        "http_status": 200,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 18,
+          "total_tokens": 20,
+          "completion_tokens": 2,
+          "prompt_tokens_details": null,
+          "reasoning_tokens": 0
+        },
+        "output": "42",
+        "passed": true,
+        "case_seconds": 0.2305
+      },
+      {
+        "name": "structured_output",
+        "http_status": 200,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 15,
+          "total_tokens": 23,
+          "completion_tokens": 8,
+          "prompt_tokens_details": null,
+          "reasoning_tokens": 0
+        },
+        "output": "{ \"answer\": 42 }",
+        "protocol": "response_format.json_schema",
+        "passed": true,
+        "case_seconds": 0.3759
+      },
+      {
+        "name": "near_context_exact_retrieval",
+        "http_status": 200,
+        "output": "IRIS-9609AC3494B36245",
+        "finish_reason": {
+          "type": "stop",
+          "matched": 1
+        },
+        "passed": true,
+        "case_seconds": 278.2629
+      }
+    ],
+    "long_request": {
+      "http_status": 200,
+      "elapsed_seconds": 276.3262,
+      "response_sha256": "87c848a4fa142e23018cc4b23d60cfd0a5388434bdbef095733282ce15be979f",
+      "checkpoint_revision_expected": "dba1be0a40aa45a94ad051997016db3960a90277",
+      "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+      "tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+      "chat_encoder_sha256": "502bdaec8a3fd88ebc24c4721a7038fbe42f2063c664638127056107920035c1",
+      "target_prompt_tokens": 640000,
+      "input_tokens": 639831,
+      "context_limit": 655360,
+      "output_budget_tokens": 32,
+      "needle_token_offset": 319916,
+      "needle_depth": 0.500001,
+      "input_ids_sha256": "a4ec67c442467e5a69d4e309aba666c971938e3e0ad6b4435801dbdcf69e07db",
+      "request_nonce": "05fdccb3bef0e5cc747fd53501ee0c25",
+      "expected_answer": "IRIS-9609AC3494B36245",
+      "construction_seconds": 1.6897,
+      "output": "IRIS-9609AC3494B36245",
+      "server_prompt_tokens": 639831,
+      "server_completion_tokens": 12,
+      "server_cached_tokens": 0,
+      "finish_reason": {
+        "type": "stop",
+        "matched": 1
+      },
+      "elapsed_scope": "HTTP round trip including generation; not an isolated prefill timing"
+    }
+  },
+  "memory": {
+    "source": "Host /proc/meminfo MemAvailable sampled every five seconds",
+    "scope": "Samples cover weight preparation, graph capture and bounded serving; sampling began after initial checkpoint loading started.",
+    "ranks": [
+      {
+        "rank": 0,
+        "memory_samples": 179,
+        "sampling_interval_seconds": 5,
+        "sampling_started_at": "2026-09-17T18:22:27.863409+00:00",
+        "sampling_finished_at": "2026-09-17T18:37:17.988904+00:00",
+        "min_mem_available_gib": 22.682384490966797,
+        "final_mem_available_gib": 28.275569915771484,
+        "max_swap_used_kib": 5932396
+      },
+      {
+        "rank": 1,
+        "memory_samples": 179,
+        "sampling_interval_seconds": 5,
+        "sampling_started_at": "2026-09-17T18:22:29.705025+00:00",
+        "sampling_finished_at": "2026-09-17T18:37:19.817216+00:00",
+        "min_mem_available_gib": 24.905643463134766,
+        "final_mem_available_gib": 29.99920654296875,
+        "max_swap_used_kib": 3247300
+      },
+      {
+        "rank": 2,
+        "memory_samples": 179,
+        "sampling_interval_seconds": 5,
+        "sampling_started_at": "2026-09-17T18:22:29.781706+00:00",
+        "sampling_finished_at": "2026-09-17T18:37:19.884074+00:00",
+        "min_mem_available_gib": 24.032730102539062,
+        "final_mem_available_gib": 28.998130798339844,
+        "max_swap_used_kib": 3866844
+      },
+      {
+        "rank": 3,
+        "memory_samples": 179,
+        "sampling_interval_seconds": 5,
+        "sampling_started_at": "2026-09-17T18:22:28.251705+00:00",
+        "sampling_finished_at": "2026-09-17T18:37:18.366010+00:00",
+        "min_mem_available_gib": 24.15399169921875,
+        "final_mem_available_gib": 29.22018051147461,
+        "max_swap_used_kib": 2767376
+      }
+    ]
+  },
+  "result": "Ten short API checks and one exact 639831-token retrieval passed; the API remained healthy and all four ranks remained running.",
+  "conclusion": "This image supports the recorded bounded text-serving configuration. The evidence supports a larger-context alternative without promoting every SGLang workload.",
+  "limits": [
+    "One synthetic retrieval at approximately 50% depth does not establish general quality or retrieval at every position.",
+    "No vision, tool-call, concurrent-load, soak or coordinated-restart qualification is included.",
+    "Decoder-tail replay changes late-layer local attention visibility; these checks do not prove full-prefill equivalence.",
+    "The runtime uses FP8 KV scales of 1.0 when checkpoint scales are absent; finite checks do not establish general accuracy.",
+    "The combined image preserves and verifies 57247 inherited Qwen files. Qwen serving on this combined image has not been measured.",
+    "The two environments share the pinned operating-system and Python-interpreter ABI; this does not admit arbitrary future parent images."
+  ],
+  "references": [
+    "https://github.com/FujitsuPolycom/sparkring/pull/267#issuecomment-5653279829",
+    "runtime/deepseek-v41-sglang/patches/manifest.json"
+  ]
+}

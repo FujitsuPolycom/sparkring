@@ -47,14 +47,17 @@ Torch's compiled header version may still report 2.29.7.
 
 ### Shared SparkRing image
 
-Status: **implemented; serving qualification required**. The
+Status: **Development**, with [bounded TP4 serving evidence](../../performance/records/deepseek-v41-flash/sglang-shared-bounded-prefill.json).
+The
 [`sglang-deepseek-bounded-prefill` composition](combined-image/manifest.json)
 adds SGLang alongside the Qwen-capable vLLM image. SGLang has a separate Python
 environment, CUDA toolkit, compiler caches and NCCL library. The image keeps
 vLLM as its default runtime; the SGLang launcher selects
 `/opt/sparkring/bin/sglang-python` explicitly. This composition includes the
-SGLang #39068 execution changes and a #39187 memory backport. Contributor
-measurements do not qualify the combined image.
+SGLang #39068 execution changes and a #39187 memory backport. Its recorded local
+image passed authentication, generation, structured output and exact retrieval
+from a 639831-token prompt; these checks do not establish general quality or
+long-duration stability.
 
 On an ARM64 Docker host with the manifest's vLLM parent image installed, prepare
 the external Mia source and SparkRing NCCL library, then build:
@@ -85,12 +88,12 @@ SGLang uses the image's credential-reading entrypoint; prepared authentication
 remains private and bound to the selected image and composition.
 
 The default context remains 262144. With this admitted composition,
-`CONTEXT_LENGTH=655360` selects the larger-context test configuration; retain
+`CONTEXT_LENGTH=655360` selects the recorded larger-context configuration; retain
 `MAX_TOTAL_TOKENS=1500000`, `CHUNKED_PREFILL_SIZE=4096` and
-`MAX_RUNNING_REQUESTS=8`. Verify retrieval near the requested context and
-observe every rank's memory before treating that limit as validated. Merely
-changing the context value in the standalone image does not add the required
-memory backport.
+`MAX_RUNNING_REQUESTS=8`. The recorded image allocated 1499904 KV tokens and
+retained at least 22.68 GiB sampled host memory headroom. Rebuilt images need
+their own checks using the [bounded API harness](../../performance/harnesses/validation/README.md#deepseek-sglang-api-checks).
+Changing context in the standalone image does not add the memory backport.
 
 ### Prepare rank data
 

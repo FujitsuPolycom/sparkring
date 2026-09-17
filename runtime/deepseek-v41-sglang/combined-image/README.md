@@ -1,9 +1,10 @@
 # SparkRing image with vLLM and SGLang
 
-Status: **implemented**. This local composition adds an isolated SGLang runtime
+Status: **Development**. This local composition adds an isolated SGLang runtime
 to the Qwen-capable SparkRing image identified by [manifest.json](manifest.json).
-It has no published digest. Source and CPU checks do not establish GPU serving
-correctness, capacity or performance.
+The [local build](local-build.json) passed four-rank collective checks and
+[bounded SGLang serving checks](../../../performance/records/deepseek-v41-flash/sglang-shared-bounded-prefill.json),
+including exact retrieval from a 639831-token prompt. It has no published digest.
 
 | Component | vLLM | SGLang |
 |---|---|---|
@@ -28,8 +29,10 @@ The image also records input hashes and an installed SGLang payload inventory.
 
 Use the [build and launch procedure](../README.md#shared-sparkring-image).
 The existing standalone image builder and 262K profile default remain available.
-The 655360-context configuration is an explicit test selection, not a measured
-capacity of every build.
+The recorded image passed the 655360-context configuration with 1499904 allocated
+KV tokens, 4096-token chunks and eight allowed requests. Its minimum sampled
+host memory headroom was 22.68 GiB. The retrieval check used one request; it does
+not establish concurrent long-context capacity, general quality or soak stability.
 
 Verify each installed runtime independently:
 
@@ -41,6 +44,8 @@ docker run --rm --network none --entrypoint /opt/sparkring/bin/sglang-python IMA
 ```
 
 Replace `IMAGE` with the exact built image ID. These commands check source and
-package receipts without GPU access. Before changing profile recommendations,
-test SGLang startup, authenticated generation, near-limit retrieval and per-rank
-memory; test Qwen prefill, decode and cache restoration against the parent image.
+package receipts without GPU access. The SGLang record covers startup,
+authenticated generation, near-limit retrieval and per-rank memory. Qwen's
+57247 inherited files verify unchanged; its prefill, decode and cache restoration
+on this combined image remain unmeasured. Keep that distinction when selecting
+or publishing a profile.

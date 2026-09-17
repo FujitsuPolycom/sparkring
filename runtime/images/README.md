@@ -21,7 +21,7 @@ See the [release procedure](../../docs/development/releases.md).
 
 | Package / runtime | Profile | Details |
 |---|---|---|
-| Local SparkRing vLLM + SGLang composition | Qwen vLLM payload preserved; DeepSeek-V4.1-Flash SGLang with bounded prefill allocations | [Runtime isolation and build inputs](../deepseek-v41-sglang/combined-image/README.md); hardware validation required |
+| Local SparkRing vLLM + SGLang composition | DeepSeek-V4.1-Flash SGLang passed bounded TP4 checks; Qwen vLLM payload preserved | [Runtime isolation, build inputs and validation scope](../deepseek-v41-sglang/combined-image/README.md) |
 | Published SparkRing R37 ARM64 | GLM-5.3-Flash TP4/DCP1 cache-on bounded checks; other selections experimental | [Published composition and quickstarts](compositions/lil-r37-glm-spark/README.md) |
 | Published SparkRing R35 ARM64 | GLM-5.3-Flash TP2/TP4 fallback; bounded checks do not establish long-duration stability | [Pull and launch instructions](../../docs/operations/r35-local-launch.md) |
 | Locally built SGLang / Mia adapter | DeepSeek-V4.1-Flash TP4/EP4; no public image | [Source-pinned build](../deepseek-v41-sglang/README.md#build-and-prepare) |

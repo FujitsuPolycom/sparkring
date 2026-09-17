@@ -17,5 +17,7 @@
     "sglang_imports": ["torch", "sgl_kernel", "flashinfer", "sglang.srt.rust_extensions._multimodal"],
     "scope": "Imports used the NVIDIA driver libraries with CUDA_VISIBLE_DEVICES=-1. No GPU computation or model serving is established by these checks."
   },
+  "bounded_serving_checks_passed": true,
+  "serving_evidence": "performance/records/deepseek-v41-flash/sglang-shared-bounded-prefill.json",
   "serving_qualified": false
 }
