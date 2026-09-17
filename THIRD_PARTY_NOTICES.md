@@ -75,6 +75,13 @@ SparkRing implementation.
 
 ## 3. vLLM (referenced, patched, and selected source included)
 
+`integrations/vllm/deepseek_warmup/fixtures/` contains compressed DFlash
+speculator and GPU warmup sources extracted from the DeepSeek image identified
+by the adjacent `source.json`. Their vLLM contributor headers and Apache-2.0
+license are retained. The adjacent patch changes DSpark startup preparation;
+the fixtures support offline branch and shape-planning tests. Their provenance
+is the exact image and file hashes, not a claim of an unmodified upstream tree.
+
 `runtime/glm53-spark-mtp3-mesh/compute/vllm-compute-files.tar.gz` includes
 24 vLLM Python files for GLM metadata reuse, dense-kernel integration,
 the NVFP4 proposal head, deferred-weight ownership, and independent draft

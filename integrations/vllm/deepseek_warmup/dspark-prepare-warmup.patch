@@ -1,0 +1,36 @@
+--- a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
+@@ -258,0 +259,21 @@
++        if self._speculator_name == "DSpark":
++            # Each positive scheduled length selects a per-request power-of-two
++            # preparation tile. Cover feasible tiles missing from the long-context
++            # representatives without assuming DSpark and DFlash share an anchor.
++            target_query_lens = {
++                length for length in target_query_lens if length <= self.max_num_tokens
++            }
++            for draft_query_len in draft_query_lens:
++                for exponent in range(9):
++                    tile = 1 << exponent
++                    if any(
++                        min(256, 1 << (length + draft_query_len - 1).bit_length()) == tile
++                        for length in target_query_lens
++                    ):
++                        continue
++                    length = max(1, tile // 2 + 1 - draft_query_len)
++                    if (
++                        length <= self.max_num_tokens
++                        and min(256, 1 << (length + draft_query_len - 1).bit_length()) == tile
++                    ):
++                        target_query_lens.add(length)
+--- a/vllm/v1/worker/gpu/warmup.py
++++ b/vllm/v1/worker/gpu/warmup.py
+@@ -356,0 +357,9 @@
++        elif (
++            model_runner.speculator is not None
++            and model_runner.speculative_config is not None
++            and model_runner.speculative_config.method == "dspark"
++        ):
++            # DSpark prepares draft inputs even when confidence-based pruning
++            # is disabled. Use the established scratch lane before readiness.
++            with use_workspace_lane(1):
++                model_runner.speculator.warmup_capacity_kernels()

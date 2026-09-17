@@ -1,0 +1,22 @@
+{
+  "source_image_id": "sha256:41fc632d02352a69f59dc18be184488c1f9d51bd9ad0a29e22ae818af4f465fe",
+  "source_image_manifest": "sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd",
+  "project": "https://github.com/local-inference-lab/vllm",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash/speculator.py",
+      "preimage_sha256": "5c0aac819160131cd4b3870bd0e4278b93df4a08675da7868cd986b2de139aec",
+      "candidate_sha256": "3a350223add541eff6bf9750b9e124fa17e65feb0b3354ba59501b102c2ca15f",
+      "fixture": "dflash-speculator.py.gz",
+      "fixture_sha256": "c7d9fa77afffba35785bdc479af6829f2ab7a777ef40492fa09a42ef72b62ab8"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/warmup.py",
+      "preimage_sha256": "6a8b0a684dec3b84ed832577cac73568a574cd4b9b2e0a628c8ccf2bdcfcd3d8",
+      "candidate_sha256": "544d8eb9e2898c179d49986b6e216e807459442a020f135562b032fbdcbeeeb1",
+      "fixture": "gpu-warmup.py.gz",
+      "fixture_sha256": "34edf280e5bc5d4e027540c848602df63f084bbc23bb177d533f3d6e2634b185"
+    }
+  ]
+}
