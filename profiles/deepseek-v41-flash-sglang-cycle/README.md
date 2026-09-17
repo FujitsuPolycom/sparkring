@@ -10,6 +10,7 @@ launcher does not automatically switch runtimes after a failure.
 | Parallelism | TP4/EP4 on a direct four-Spark cycle |
 | Request context | 262,144 tokens |
 | Prefill chunk / concurrent requests | 4,096 tokens / 8 |
+| Prefill admission | One free slot (`MIN_FREE_SLOTS_DELAY=1`) |
 | Shared token budget | 1,500,000 requested; allocation is runtime-dependent |
 | Speculation | DSpark block five, verify-all without SPS/STS tables |
 | Authentication | Required private file with distinct bearer keys |
@@ -22,6 +23,19 @@ to build one ARM64 image, distribute its exact ID, and prepare a private rank
 environment. The SGLang Engram layout is incompatible with the vLLM packed files;
 use separate output directories. The guide also identifies the required patched
 NCCL library and its in-image mount; do not substitute the vLLM preload procedure.
+
+The launcher passes `--min-free-slots-delay 1`, allowing a waiting prefill to
+enter when one request slot is available. This disables SGLang's DFlash-family
+admission batching, which otherwise waits for two free slots at eight concurrent
+requests. Existing rank files inherit this default; set `MIN_FREE_SLOTS_DELAY`
+explicitly to a larger positive integer to batch admissions. SGLang caps the
+threshold at the maximum running-request count. This does not enable mixed
+prefill/decode execution or change context and KV limits.
+Set `MIN_FREE_SLOTS_DELAY=0` to omit the flag and use SGLang's automatic policy.
+
+The [single-slot admission test](../../performance/records/deepseek-v41-flash/sglang-single-slot-admission.md)
+records a bounded C8 latency/throughput comparison on a separate combined image.
+It is not performance qualification of every image built from the public pins.
 
 From the repository root, inspect the selected configuration and offline plan:
 
@@ -48,6 +62,12 @@ proven equivalent to full prefill. Report its quality and workload limits
 alongside performance measurements. This profile does not include SparkCache or an unattended
 recovery service. The source contribution and its qualification records originate
 from [PR #267](https://github.com/FujitsuPolycom/sparkring/pull/267).
+
+The [2026-09-17 record](../../performance/records/deepseek-v41-flash/sglang-79f656a6-nvfp4-20260917.md)
+covers the adapter commit `79f656a6` (completion cap, loop abort), the admission-delayer and
+token-pool settings, a rejected 1024-token prefill chunk, and the `nvidia/DeepSeek-V4.1-Flash-NVFP4`
+checkpoint variant with its distribution comparison; the [runtime guide](../../runtime/deepseek-v41-sglang/README.md#serving-controls)
+lists the corresponding optional settings. The recipe defaults are unchanged.
 
 The contributor's [655360-context report](https://github.com/FujitsuPolycom/sparkring/pull/267#issuecomment-5653279829)
 uses additional SGLang memory and execution overlays from #39187 and #39068.

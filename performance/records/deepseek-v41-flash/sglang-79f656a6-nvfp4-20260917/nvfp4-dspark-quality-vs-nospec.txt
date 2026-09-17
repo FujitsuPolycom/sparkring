@@ -1,0 +1,10 @@
+prompts 20: first-token argmax agreement 20/20; 48-token greedy exact match 11/20; KL(a||b) over top-20 mean 0.0000 max 0.0000
+  diff i=1 pt=21 first '{"' vs '{"' | cont '{"name":"Japan","population":123000000,"currency":' vs '{"name":"Japan","population":123900000,"currency":'
+  diff i=2 pt=14 first 'Sun' vs 'Sun' | cont 'Sunlight is scattered by air molecules, and shorte' vs 'Sunlight is scattered by air molecules, and shorte'
+  diff i=4 pt=18 first 'Le' vs 'Le' | cont 'Le gardien du phare regardait la tempête approcher' vs 'Le gardien du phare regardait la tempête arriver.'
+  diff i=6 pt=13 first 'Old' vs 'Old' | cont 'Old copper lantern,\nHolds a warm and flickering gl' vs 'Old copper lantern,\nHolds a warm and steady glow,\n'
+  diff i=8 pt=16 first '#' vs '#' | cont "# Bug Fix\n\nThe function is named `add` but it's pe" vs "# Bug Fix\n\nThe function is named `add` but it's pe"
+  diff i=9 pt=17 first 'A' vs 'A' | cont "A doomed whaling captain's obsessive quest for rev" vs 'A young sailor named Ishmael joins the whaling shi'
+  diff i=11 pt=30 first 'Let' vs 'Let' | cont "Let's look at the sequence:\n\n2, 6, 12, 20, 30, ..." vs "Let's look at the sequence:\n\n2, 6, 12, 20, 30, ..."
+  diff i=13 pt=21 first 'Full' vs 'Full' | cont 'Full attention lets every token attend to every ot' vs 'Full attention allows every token in a sequence to'
+  diff i=15 pt=23 first '```' vs '```' | cont "```bash\nawk '{print $1}' access.log | sort -u | wc" vs "```bash\nawk '{print $1}' access.log | sort -u | wc"

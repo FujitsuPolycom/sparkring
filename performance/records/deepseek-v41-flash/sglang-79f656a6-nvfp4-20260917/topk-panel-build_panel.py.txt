@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Build a sealed token-id panel for served-stack distribution comparisons.
+
+Takes a directory of text files, tokenizes each through the server's /tokenize endpoint (so the
+panel is in the served tokenizer's ids, no chat template, no BOS), and keeps the first WINDOW
+tokens of every file that is long enough, up to N windows. Writes panel.json:
+  {"window": 1024, "positions": [...], "windows": [{"name":..., "ids": [...]}]}
+Positions are the prefix lengths at which the driver asks for the next-token distribution.
+
+  build_panel.py --api http://localhost:8015 --key-file /srv/sparkring/keys/api-keys \
+      --corpus corpus/ --n 24 --window 1024 --start 64 --step 16 --out panel.json
+"""
+import argparse, glob, json, os, urllib.request
+
+ap = argparse.ArgumentParser()
+ap.add_argument('--api', default='http://localhost:8015')
+ap.add_argument('--key-file', default='/srv/sparkring/keys/api-keys')
+ap.add_argument('--corpus', required=True)
+ap.add_argument('--n', type=int, default=24)
+ap.add_argument('--window', type=int, default=1024)
+ap.add_argument('--start', type=int, default=64)
+ap.add_argument('--step', type=int, default=16)
+ap.add_argument('--out', required=True)
+a = ap.parse_args()
+key = open(a.key_file).readline().strip()
+
+
+def tokenize(text):
+    req = urllib.request.Request(a.api + '/tokenize', data=json.dumps({'prompt': text}).encode(),
+                                 headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
+    return json.load(urllib.request.urlopen(req, timeout=120))['tokens']
+
+
+windows = []
+for path in sorted(glob.glob(os.path.join(a.corpus, '*'))):
+    text = open(path, encoding='utf-8', errors='replace').read()
+    ids = tokenize(text)
+    if len(ids) < a.window:
+        print(f'skip {os.path.basename(path)}: {len(ids)} tokens')
+        continue
+    windows.append({'name': os.path.basename(path), 'ids': ids[:a.window], 'file_tokens': len(ids)})
+    if len(windows) == a.n:
+        break
+positions = list(range(a.start, a.window, a.step))
+json.dump({'window': a.window, 'positions': positions, 'windows': windows}, open(a.out, 'w'))
+print(f'{len(windows)} windows x {len(positions)} positions -> {a.out}')

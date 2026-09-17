@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Capture next-token top-k distributions at every panel position from one served stack.
+
+For each window and prefix length p: POST /v1/completions with prompt = ids[:p] (token ids),
+max_tokens 1, temperature 0, logprobs K. Serial, so the radix cache turns each step into a
+16-token incremental prefill. Writes capture.json:
+  {"model": ..., "k": K, "records": [{"w": i, "p": p, "top": {"tok": logprob, ...}, "argmax": tok}]}
+Token identity is the decoded string SGLang returns per top-logprob entry (same tokenizer on both
+sides of a comparison, so strings are a faithful key).
+
+  drive_panel.py --panel panel.json --out capture-nvfp4.json [--k 20] [--label nvfp4]
+"""
+import argparse, json, os, time, urllib.request
+
+ap = argparse.ArgumentParser()
+ap.add_argument('--api', default=os.environ.get('API', 'http://localhost:8015'))
+ap.add_argument('--model', default=os.environ.get('MODEL', 'deepseek-v4.1-flash'))
+ap.add_argument('--key-file', default='/srv/sparkring/keys/api-keys')
+ap.add_argument('--panel', required=True)
+ap.add_argument('--k', type=int, default=20)
+ap.add_argument('--label', default='')
+ap.add_argument('--out', required=True)
+a = ap.parse_args()
+key = open(a.key_file).readline().strip()
+panel = json.load(open(a.panel))
+
+
+def query(ids):
+    body = {'model': a.model, 'prompt': ids, 'max_tokens': 1, 'temperature': 0, 'logprobs': a.k}
+    req = urllib.request.Request(a.api + '/v1/completions', data=json.dumps(body).encode(),
+                                 headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=900) as r:
+                d = json.load(r)
+            break
+        except Exception as exc:
+            if attempt == 3:
+                raise
+            time.sleep(2 + attempt * 3)
+    c = d['choices'][0]
+    top = c['logprobs']['top_logprobs'][0]
+    assert d['usage']['prompt_tokens'] == len(ids), (d['usage'], len(ids))
+    return {'top': top, 'argmax': c['logprobs']['tokens'][0]}
+
+
+records = []
+t0 = time.time()
+for i, w in enumerate(panel['windows']):
+    ids = w['ids']
+    tw = time.time()
+    for p in panel['positions']:
+        r = query(ids[:p])
+        records.append({'w': i, 'p': p, 'top': r['top'], 'argmax': r['argmax']})
+    print(f'window {i:2d} {w["name"][:40]:40s} {len(panel["positions"])} positions in {time.time()-tw:6.1f} s', flush=True)
+json.dump({'model': a.model, 'label': a.label, 'k': a.k, 'panel': os.path.basename(a.panel),
+           'n_records': len(records), 'wall_s': round(time.time() - t0, 1), 'records': records}, open(a.out, 'w'))
+print(f'{len(records)} records in {time.time()-t0:.0f} s -> {a.out}')

@@ -1,6 +1,7 @@
 """Scan tracked text for site/credential shapes without printing matched content."""
 from pathlib import Path
 import json
+import math
 import re
 import subprocess
 import sys
@@ -18,10 +19,59 @@ RULES = {
 EXCLUDES = {"scripts/check_release_safety.py"}
 
 
+def credential_scan_text(text):
+    """Normalize numeric Bearer token scores in single-line panel captures only.
+
+    Original bytes remain the input for every other rule. Requiring one line
+    preserves diagnostic line numbers; ambiguous or malformed JSON stays raw.
+    """
+    if len(text.splitlines()) != 1 or not text.lstrip().startswith('{'):
+        return text
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate JSON member')
+            result[key] = value
+        return result
+
+    class JsonNumber(str):
+        """Retain numeric spelling so unrelated assignments cannot shrink."""
+
+    try:
+        panel = json.loads(text, object_pairs_hook=unique, parse_float=JsonNumber)
+        if not isinstance(panel, dict) or not {'model', 'label', 'k', 'panel', 'n_records', 'wall_s', 'records'} <= panel.keys():
+            return text
+        rows = panel['records']
+        if not isinstance(rows, list) or panel['n_records'] != len(rows):
+            return text
+        for row in rows:
+            if not isinstance(row, dict) or not {'w', 'p', 'top', 'argmax'} <= row.keys():
+                return text
+            top = row['top']
+            if not isinstance(top, dict) or not all(
+                type(value) in (int, JsonNumber) and math.isfinite(float(value)) and float(value) <= 0
+                for value in top.values()
+            ):
+                return text
+        for row in rows:
+            for token, score in row['top'].items():
+                if token.strip().lower() == 'bearer' and type(score) is JsonNumber:
+                    row['top'][token] = 0
+        # Unrelated fractional numbers serialize as strings with their exact
+        # lexemes. This keeps credential-shaped values visible to the scanner.
+        return json.dumps(panel, ensure_ascii=False)
+    except (ValueError, TypeError, OverflowError):
+        return text
+
+
 def findings(text):
+    credential_text = credential_scan_text(text)
     for number, line in enumerate(text.splitlines(), 1):
         for name, pattern in RULES.items():
-            if re.search(pattern, line, re.I):
+            scanned = credential_text if name == 'credential-assignment' and credential_text != text else line
+            if re.search(pattern, scanned, re.I):
                 yield number, name
 
 

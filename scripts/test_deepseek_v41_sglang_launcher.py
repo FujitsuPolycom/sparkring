@@ -34,9 +34,27 @@ def test_default_plan_keeps_keys_in_file(tmp_path):
     assert "CONTEXT_LENGTH=262144" in cmd
     assert "CHUNKED_PREFILL_SIZE=4096" in cmd
     assert "MAX_RUNNING_REQUESTS=8" in cmd
+    extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay 1")
+    assert extra.count("--min-free-slots-delay") == 1
+    assert int(cfg["MIN_FREE_SLOTS_DELAY"]) == launch.SERVING["min_free_slots_delay"] == 1
     assert any(launch.PINS["nccl_target"] + ":ro" in arg for arg in cmd)
     assert cmd[-2:] == ["/operator/entrypoint.py", "run"]
     assert cmd[-3] == cfg["IMAGE_ID"]
+
+
+@pytest.mark.parametrize("value", ["2", "8", "64"])
+def test_explicit_admission_threshold(tmp_path, value):
+    cfg = launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY=value))
+    extra = next(arg for arg in launch.command(cfg) if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay " + value)
+    assert extra.count("--min-free-slots-delay") == 1
+
+
+@pytest.mark.parametrize("value", ["-1", "65", "1.5", "auto", "1 --disable-radix-cache"])
+def test_invalid_admission_threshold(tmp_path, value):
+    with pytest.raises(ValueError, match="MIN_FREE_SLOTS_DELAY"):
+        launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY=value))
 
 
 @pytest.mark.parametrize("values", [
@@ -268,3 +286,97 @@ def test_library_drift_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(launch, 'output', lambda args: cfg['IMAGE_ID'])
     with pytest.raises(ValueError, match='NCCL content identity'):
         launch.verify_host(cfg)
+
+
+def test_serving_controls_keep_image_defaults_except_single_slot_admission(tmp_path):
+    cmd = launch.command(launch.read_config(environment(tmp_path)))
+    assert "MOE_RUNNER_BACKEND=flashinfer_mxfp4" in cmd
+    assert "DSV41_MAX_NEW_TOKENS=32768" in cmd
+    assert "DSV41_LOOP_ABORT=1" in cmd
+    extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay 1")
+    assert not any(launch.PINS["nvfp4_draft_path"] in arg for arg in cmd)
+
+
+def test_explicit_zero_uses_automatic_image_admission(tmp_path):
+    cfg = launch.read_config(environment(tmp_path, MIN_FREE_SLOTS_DELAY="0"))
+    extra = next(arg for arg in launch.command(cfg) if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert "--min-free-slots-delay" not in extra
+
+
+def test_serving_controls_render_when_set(tmp_path):
+    cfg = launch.read_config(environment(
+        tmp_path, MOE_RUNNER_BACKEND="flashinfer_cutlass", MIN_FREE_SLOTS_DELAY="1",
+        DSV41_MAX_NEW_TOKENS="131072", DSV41_LOOP_ABORT="0", NVFP4_DRAFT_OVERLAY="1"))
+    cmd = launch.command(cfg)
+    assert "MOE_RUNNER_BACKEND=flashinfer_cutlass" in cmd
+    assert "DSV41_MAX_NEW_TOKENS=131072" in cmd
+    assert "DSV41_LOOP_ABORT=0" in cmd
+    extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay 1")
+    assert "/operator/state_host_path/operator/modelopt_quant.py:" + launch.PINS["nvfp4_draft_path"] + ":ro" in cmd
+
+
+@pytest.mark.parametrize("values", [
+    {"MOE_RUNNER_BACKEND": "flashinfer_trtllm_routed"}, {"MIN_FREE_SLOTS_DELAY": "65"},
+    {"DSV41_MAX_NEW_TOKENS": "-1"}, {"DSV41_LOOP_ABORT": "2"}, {"NVFP4_DRAFT_OVERLAY": "yes"},
+])
+def test_invalid_serving_controls_rejected(tmp_path, values):
+    with pytest.raises(ValueError):
+        launch.read_config(environment(tmp_path, **values))
+
+
+@pytest.mark.parametrize("key", ["API_KEY_FILE", "NCCL_SO_HOST_PATH"])
+def test_generated_overlay_paths_cannot_replace_input_files(tmp_path, key):
+    with pytest.raises(ValueError, match="generated authentication"):
+        launch.read_config(environment(tmp_path, **{
+            key: "/operator/state_host_path/operator/modelopt_quant.py",
+        }))
+
+
+def test_nvfp4_draft_patch_refuses_drift(tmp_path):
+    source = tmp_path / "modelopt_quant.py"
+    source.write_text("# changed upstream module\n")
+    result = subprocess.run([sys.executable, str(launch.RUNTIME / "patch-nvfp4-draft.py"), str(source)],
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "refusing" in result.stderr
+
+
+def test_nvfp4_draft_patch_adds_platform_branch_only(tmp_path):
+    source = tmp_path / "modelopt_quant.py"
+    source.write_text(
+        "from sglang.srt.runtime_context import get_platform\n"
+        "class HybridFp8NvFp4Config:\n"
+        "    def get_quant_method(self, layer, prefix):\n"
+        "        if True:\n"
+        "            # Fall back to MXFP4 for MTP MoE layers\n"
+        "            if self.is_fp4_experts:\n"
+        "                from sglang.srt.layers.quantization.fp8 import Fp8MoEMethod\n"
+        "                from sglang.srt.layers.quantization.mxfp4_flashinfer_trtllm_moe import (\n"
+        "                    Mxfp4FlashinferTrtllmMoEMethod,\n"
+        "                )\n"
+        "\n"
+        "                return Mxfp4FlashinferTrtllmMoEMethod(Fp8MoEMethod(self), prefix=prefix)\n"
+        "        return None\n"
+    )
+    result = subprocess.run([sys.executable, str(launch.RUNTIME / "patch-nvfp4-draft.py"), str(source)],
+                            capture_output=True, text=True, check=True)
+    compile(result.stdout, str(source), "exec")
+    assert "Mxfp4FlashinferCutlassMoEMethod(Fp8MoEMethod(self), prefix=prefix)" in result.stdout
+    assert "Mxfp4FlashinferTrtllmMoEMethod(Fp8MoEMethod(self), prefix=prefix)" in result.stdout
+    assert "get_platform().is_sm90 or get_platform().is_sm120" in result.stdout
+
+
+def test_prepared_overlay_receipt_binds_image_and_patch(tmp_path):
+    cfg = host_config(tmp_path)
+    cfg["NVFP4_DRAFT_OVERLAY"] = "1"
+    with pytest.raises(ValueError, match="overlay.*prepare"):
+        launch.verify_prepared_overlay(cfg)
+    launch.write_prepared_overlay(cfg, b"# overlay fixture\n")
+    launch.verify_prepared_overlay(cfg)
+    cfg["IMAGE_ID"] = "sha256:" + "c" * 64
+    with pytest.raises(ValueError, match="overlay.*prepare"):
+        launch.verify_prepared_overlay(cfg)
+    cfg["NVFP4_DRAFT_OVERLAY"] = "0"
+    launch.verify_prepared_overlay(cfg)

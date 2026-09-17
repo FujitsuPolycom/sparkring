@@ -1,0 +1,1 @@
+prompts 20: first-token argmax agreement 20/20; 48-token greedy exact match 20/20; KL(a||b) over top-20 mean 0.0060 max 0.1208

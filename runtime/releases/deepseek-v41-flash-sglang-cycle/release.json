@@ -1,7 +1,14 @@
 {
   "schema": "sparkring-release-selection/v1",
   "id": "deepseek-v41-flash-sglang-cycle",
-  "inputs": [{"path": "runtime/deepseek-v41-sglang/pins.json", "sha256": "67668bcb58cad3dfdfa3f3ae2a75ff562da10c9c15ee14ddac311c6d7bb4f32c"}],
-  "image": {"configuration_runtime": "profiles/deepseek-v41-flash-sglang-cycle/recipe.json"},
+  "inputs": [
+    {
+      "path": "runtime/deepseek-v41-sglang/pins.json",
+      "sha256": "47a58918cbd83d0cb5bd18cdec1aa48dbd43bd22658615045d217f85ab8e63d5"
+    }
+  ],
+  "image": {
+    "configuration_runtime": "profiles/deepseek-v41-flash-sglang-cycle/recipe.json"
+  },
   "selection": "recipe-build-or-published-reference"
 }
