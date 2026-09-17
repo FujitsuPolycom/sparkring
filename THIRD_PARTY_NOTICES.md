@@ -100,6 +100,12 @@ protocol files from Local Inference Lab revision
 upstream Apache-2.0 license. The files retain their contributor notices and
 serve as offline inputs for Responses API model and streaming-event tests.
 
+`integrations/vllm/ipc_wait/upstream/` contains compressed SHM broadcast source
+fixtures from that same revision and the identified ARM64 R37 image, with their
+original contributor headers. Its source manifest records each origin and hash;
+the Apache-2.0 license is included. These files support CPU IPC tests and are
+not runtime replacement modules.
+
 vLLM is licensed under the Apache License, Version 2.0, Copyright the vLLM team
 and contributors. Obtaining and running vLLM is subject to its own license and
 notices. SparkRing is not a fork of vLLM.
