@@ -273,6 +273,12 @@ defaults recorded in
 | `MAX_NUM_SEQS` | 32 | Scheduler admission ceiling |
 | `MAX_NUM_BATCHED_TOKENS` | 4096 | Scheduler budget and chunked-prefill size |
 
+The checkpoint's `dspark_block_size=5` is the minimum admitted draft depth.
+The [pinned runtime](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/config/speculative.py)
+accepts larger static depths, including seven; this is source admission, not
+performance qualification. Keep five as the default. Compare accepted tokens,
+verification cost and serving latency on the same topology before changing it.
+
 The launcher uses `--ipc host --shm-size 16g`. Host IPC makes the host's
 `/dev/shm` allocation authoritative, so changing the declaration from 16 GiB
 to 64 GiB does not enlarge shared memory. Compare `df -h /dev/shm` on the host
@@ -468,6 +474,21 @@ Before raising a timeout, collect every rank's logs and identify whether a worke
 is compiling, waiting for a collective, or no longer running. A larger executor
 budget also delays reporting a genuinely stalled worker. Keep persistent JIT
 caches enabled and measure the affected operation before choosing a timeout.
+
+NCCL's `NCCL_IB_TIMEOUT` is an exponent code, not milliseconds:
+`4.096 microseconds * 2^code`. Its default code 20 is about 4.295 seconds;
+`1000` is outside the supported finite range. `NCCL_IB_RETRY_CNT=7` is already
+the default. Neither setting replaces the executor or process-group deadline.
+See the [NCCL 2.30.7 definitions](https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2307/user-guide/docs/env.html#nccl-ib-timeout).
+
+Test buffer size and protocol tuning independently. `NCCL_BUFFSIZE=8388608`
+selects an 8 MiB buffer, twice the default; it is not a validated profile preset.
+The pinned built-in transport reads `NCCL_IB_TC`, not `NCCL_IB_TOS`; traffic
+class includes ECN bits and is not a raw DSCP number.
+`NCCL_NET_PLUGIN` and `NCCL_TUNER_PLUGIN` select different plugin interfaces.
+PyNCCL still calls the loaded NCCL library, so it does not bypass that library's
+algorithm selection. A per-size tuner needs its own source and serving evidence;
+forcing global `NCCL_PROTO=LL` does not test such a policy.
 
 ## Preserve JIT and collective-hang evidence
 
