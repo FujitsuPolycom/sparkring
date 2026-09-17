@@ -42,3 +42,4 @@ runtime/images/compositions/lil-r37-glm-spark/vllm-connector-jobs-lil-r37.json -
 runtime/images/compositions/lil-r37-glm-spark/candidate-image.py -text whitespace=cr-at-eol
 runtime/images/compositions/lil-r37-glm-spark/*.patch whitespace=-trailing-space
 runtime/images/compositions/lil-r37-qwen-prefill/*.patch whitespace=-trailing-space
+runtime/deepseek-v41-sglang/patches/*.patch whitespace=-trailing-space,-blank-at-eof

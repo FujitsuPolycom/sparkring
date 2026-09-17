@@ -1,0 +1,35 @@
+{
+  "schema": "sparkring-sglang-extension/v1",
+  "id": "sglang-deepseek-bounded-prefill",
+  "status": "implemented",
+  "platform": "linux/arm64",
+  "vllm_parent": {
+    "image_id": "sha256:5bd9d05327d4c3bf2c205b2b946e6fc2954ad079637245b6eace0aa846662b59",
+    "local_reference": "sparkring-local:lil-r37-qwen-prefill-f01854c21da9",
+    "receipt_sha256": "219f1d9fc86189ebc4f3c2f89497f6c303dc8fb2631f28ccaf7b38ac0c8fbd8f"
+  },
+  "sglang_base": {
+    "reference": "lmsysorg/sglang@sha256:e56358a68b06427362283c8c8a9d7d706448082ae53098ea1131b5d51aa1fd62",
+    "image_id": "sha256:63700570275c75dab96621f38805682d69e97ce5bb2ef6adba4ded5fcc295c53",
+    "source_commit": "e087e662ba1ac4ef7747537e2a9141085efd4561",
+    "python_prefix": "/opt/sglang",
+    "cuda_home": "/usr/local/cuda-13.0"
+  },
+  "adapter": {
+    "repository": "https://github.com/MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks.git",
+    "commit": "e59e6eb67479aa68f6fa700c600dc90a0729b5ec",
+    "license": "AGPL-3.0"
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "revision": "dba1be0a40aa45a94ad051997016db3960a90277"
+  },
+  "nccl": {
+    "version": "2.30.7",
+    "sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+    "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2",
+    "provenance": "runtime/glm53-flash-jj-r8-gb10/pins.json"
+  },
+  "entrypoint": "/opt/sparkring/bin/sglang-python",
+  "qualification": "Build and serving checks are required for the combined image. Existing contributor measurements do not qualify this composition."
+}

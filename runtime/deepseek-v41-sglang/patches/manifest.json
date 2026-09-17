@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "source_revision": "e087e662ba1ac4ef7747537e2a9141085efd4561",
+  "license": "Apache-2.0",
+  "patches": [
+    {
+      "path": "sglang-39068.patch",
+      "sha256": "35986cd6debbf34bb0ef358097b7a33b746f415f6a99cceae269a2d37165dabf",
+      "upstream_commit": "0d5e663b8f8d80a6caec2a7f7ce4eed6394756b7",
+      "upstream_url": "https://github.com/sgl-project/sglang/pull/39068"
+    },
+    {
+      "path": "bounded-prefill.patch",
+      "sha256": "15cb2eae1791f7351382a4133a112f0fcddebe561500dd6943c4dc61f5148276",
+      "upstream_commit": "cb8dd033ab54af8904733199dbae94270c3395ce",
+      "upstream_patch_sha256": "a5f1c052a79c48bdd6092486325362b4514bcda7c799d6af71665f42f8249c2e",
+      "upstream_url": "https://github.com/sgl-project/sglang/pull/39187"
+    }
+  ],
+  "files": [
+    {
+      "path": "python/sglang/kernels/jit/csrc/deepseek_v4/c2.cuh",
+      "input_sha256": "84be767c3a2909e5cf0bf98ef8f1d5f96d0c86c05f003f749d97ae9eafff44e2",
+      "verify_overlay_sha256": "55f32ba512fca86826a27d66f36d4667848c17cbbe0d34096ffedead0ce469e4",
+      "output_sha256": "55f32ba512fca86826a27d66f36d4667848c17cbbe0d34096ffedead0ce469e4"
+    },
+    {
+      "path": "python/sglang/kernels/ops/attention/dsv4/c2.py",
+      "input_sha256": "0f98a8fe2abf9db25f87d451ceefe0dcb4b411d7fcc0d75c8bdb7a0b3f58600a",
+      "verify_overlay_sha256": "9da953bedcebad1b6168cce61453bd487689363358a2569b8a0c366b955e5bea",
+      "output_sha256": "9da953bedcebad1b6168cce61453bd487689363358a2569b8a0c366b955e5bea"
+    },
+    {
+      "path": "python/sglang/kernels/ops/attention/dsv4/candidate_blocks.py",
+      "input_sha256": "c4f2ace8ecf94f2316a1ec0ef2e8f8a8d7565fb2161a4019cf92601b7ebc5032",
+      "verify_overlay_sha256": "d7fc6c5984d10331a04d3586a537def4d531a440f2db3113423785b9aa4016ea",
+      "output_sha256": "d7fc6c5984d10331a04d3586a537def4d531a440f2db3113423785b9aa4016ea"
+    },
+    {
+      "path": "python/sglang/kernels/ops/attention/dsv4/indexer_postprocess.py",
+      "input_sha256": null,
+      "verify_overlay_sha256": "55a52c4e6c71568705958ed35f821260b38b1d371637712c47dc0e964f9c1f54",
+      "output_sha256": "55a52c4e6c71568705958ed35f821260b38b1d371637712c47dc0e964f9c1f54"
+    },
+    {
+      "path": "python/sglang/kernels/ops/attention/dsv4/q_rope_store.py",
+      "input_sha256": null,
+      "verify_overlay_sha256": "42b1543a1eacbe52fb319bba1babe9b0104d00df5702b50feb7154f3a237de6c",
+      "output_sha256": "42b1543a1eacbe52fb319bba1babe9b0104d00df5702b50feb7154f3a237de6c"
+    },
+    {
+      "path": "python/sglang/kernels/ops/attention/dsv4/wo_a_bf16_small_batch.py",
+      "input_sha256": "f5aef42dd187e427670ed53a08fecc413ff18c6643ba04f6b302491578a78a2e",
+      "verify_overlay_sha256": "f52750d120519d90922f088e8387508f21ec20de7a78679c886aaf1df2f49c23",
+      "output_sha256": "f52750d120519d90922f088e8387508f21ec20de7a78679c886aaf1df2f49c23"
+    },
+    {
+      "path": "python/sglang/srt/layers/attention/deepseek_v4_backend.py",
+      "input_sha256": "a99da83280bad451eee68c8ce0c42bd7f1847249b96f540cd5f74aab171dcacb",
+      "verify_overlay_sha256": "20a711344de7666d83b3dfa3ce7e9621729cbe40ed9a433d28e53872216e65d1",
+      "output_sha256": "0b30be7f937120ed6f2fa8fd2f262ec9d928d1cfbfd9a2d5786505ef458982cf"
+    },
+    {
+      "path": "python/sglang/srt/layers/quantization/fp8.py",
+      "input_sha256": "23c22ed68ba830af4a4862c77bbdafc51781db3e3d9b7193d29422af5b23d314",
+      "verify_overlay_sha256": "f4ebc3bea2e5a527ccbeea0f2a668a285471d7d10ae78f58e4da6d708ce174ab",
+      "output_sha256": "f4ebc3bea2e5a527ccbeea0f2a668a285471d7d10ae78f58e4da6d708ce174ab"
+    },
+    {
+      "path": "python/sglang/srt/layers/quantization/mxfp8_input.py",
+      "input_sha256": null,
+      "verify_overlay_sha256": "02033012ebbcbb4b6140092ccadf8ce3dbb1105e81fb1e2bbe2b9afa3af6171a",
+      "output_sha256": "02033012ebbcbb4b6140092ccadf8ce3dbb1105e81fb1e2bbe2b9afa3af6171a"
+    },
+    {
+      "path": "python/sglang/srt/models/deepseek_v4.py",
+      "input_sha256": "11ac4bec0aac9e2d094cc38211e1744ee7cdc5d8a9920b6af12d9c92f24a5163",
+      "verify_overlay_sha256": "50ea9bfe68d7f77491c8d9211cb1e4707fdbc70d265180e4b71b29d8a244fa35",
+      "output_sha256": "50ea9bfe68d7f77491c8d9211cb1e4707fdbc70d265180e4b71b29d8a244fa35"
+    },
+    {
+      "path": "test/registered/attention/unittests/dsv4/test_dsv41_fused_compress.py",
+      "input_sha256": "284b600a73ee27076a0522a6ea6a78b85406a40679b6d5f8a0d6a3a170b095d1",
+      "verify_overlay_sha256": "3658ffb4dc65132d2d21d4f72d788f9a34afc5c804aa7f30576ed6d39257c9ff",
+      "output_sha256": "3658ffb4dc65132d2d21d4f72d788f9a34afc5c804aa7f30576ed6d39257c9ff"
+    },
+    {
+      "path": "test/registered/kernels/benchmark/attention/bench_c2_verify.py",
+      "input_sha256": null,
+      "verify_overlay_sha256": "53c9669af6944fcbf3e1f6366dfbaf6b3af032c4600c821f35e98c30ce8a6b88",
+      "output_sha256": "53c9669af6944fcbf3e1f6366dfbaf6b3af032c4600c821f35e98c30ce8a6b88"
+    },
+    {
+      "path": "test/registered/kernels/ops/attention/dsv4/test_c2_verify.py",
+      "input_sha256": null,
+      "verify_overlay_sha256": "b10628a138f3ca49f15fd18ae2450e1511b52c2f40d0fa7d4ee5c21acbd1392a",
+      "output_sha256": "b10628a138f3ca49f15fd18ae2450e1511b52c2f40d0fa7d4ee5c21acbd1392a"
+    },
+    {
+      "path": "test/registered/kernels/test_dsv4_indexer_postprocess.py",
+      "input_sha256": null,
+      "verify_overlay_sha256": "9d2d06388bb68b63ac0a80c9702460bac96d76c2e8d8819bb7d2ed9c6dc5e38b",
+      "output_sha256": "9d2d06388bb68b63ac0a80c9702460bac96d76c2e8d8819bb7d2ed9c6dc5e38b"
+    },
+    {
+      "path": "test/registered/kernels/test_dsv4_q_rope_store.py",
+      "input_sha256": null,
+      "verify_overlay_sha256": "2b2c680460b98c6791f33271b1d5751ef2e59f31993c6064a2ac83bfffe15fb9",
+      "output_sha256": "2b2c680460b98c6791f33271b1d5751ef2e59f31993c6064a2ac83bfffe15fb9"
+    },
+    {
+      "path": "test/registered/quant/test_block_fp8_as_mxfp8.py",
+      "input_sha256": "859099fa4d8b29e35be5e20f80422c062ee20fa5dac3cb9f7f973939d3f188ce",
+      "verify_overlay_sha256": "0cf22883a0fcc4c07c9ff75fe30924c77d430b2a089cbc2a5dc55da3add7664e",
+      "output_sha256": "0cf22883a0fcc4c07c9ff75fe30924c77d430b2a089cbc2a5dc55da3add7664e"
+    }
+  ]
+}

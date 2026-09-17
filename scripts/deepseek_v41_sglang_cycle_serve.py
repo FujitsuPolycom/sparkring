@@ -19,6 +19,11 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime/deepseek-v41-sglang"
 PINS = json.loads((RUNTIME / "pins.json").read_text())
 SERVING = json.loads((ROOT / "profiles/deepseek-v41-flash-sglang-cycle/recipe.json").read_text())["serving"]
+COMPOSITION = "sglang-deepseek-bounded-prefill"
+COMPOSITION_MANIFEST = RUNTIME / "combined-image/manifest.json"
+SHARED_PYTHON = "/opt/sparkring/bin/sglang-python"
+SHARED_RUNTIME = "/opt/sparkring/sglang"
+HOST_NCCL = {"NCCL_SO_HOST_PATH", "NCCL_SO_SHA256"}
 REQUIRED = {
     "NODE_RANK", "MASTER_ADDR", "HOST_IP", "MODEL_HOST_PATH", "ENGRAM_HOST_PATH",
     "STATE_HOST_PATH", "CACHE_HOST_PATH", "API_KEY_FILE", "NCCL_SO_HOST_PATH",
@@ -26,6 +31,7 @@ REQUIRED = {
     "NCCL_IB_HCA", "NCCL_IB_GID_INDEX",
 }
 DEFAULTS = {
+    "RUNTIME_COMPOSITION": "standalone",
     "API_PORT": "8000", "MASTER_PORT": "20000", "CONTEXT_LENGTH": str(SERVING["context_length"]),
     "CHUNKED_PREFILL_SIZE": str(SERVING["chunked_prefill_size"]),
     "MAX_RUNNING_REQUESTS": str(SERVING["max_running_requests"]),
@@ -59,8 +65,13 @@ def read_config(path):
             raise ValueError(f"unresolved or empty setting: {key}")
         cfg[key] = value
         seen.add(key)
-    if REQUIRED - seen:
-        raise ValueError("missing settings: " + ", ".join(sorted(REQUIRED - seen)))
+    if cfg["RUNTIME_COMPOSITION"] not in ("standalone", COMPOSITION):
+        raise ValueError("unknown RUNTIME_COMPOSITION")
+    required = REQUIRED if not shared_runtime(cfg) else REQUIRED - HOST_NCCL
+    if shared_runtime(cfg) and seen & HOST_NCCL:
+        raise ValueError("shared composition bundles NCCL; remove host NCCL overrides")
+    if required - seen:
+        raise ValueError("missing settings: " + ", ".join(sorted(required - seen)))
     limits = {"NODE_RANK": (0, 3), "API_PORT": (1, 65535), "MASTER_PORT": (1, 65535),
               "CONTEXT_LENGTH": (4096, 1048576), "CHUNKED_PREFILL_SIZE": (128, 65536),
               "MAX_RUNNING_REQUESTS": (1, 64), "MAX_TOTAL_TOKENS": (4096, 10000000),
@@ -76,26 +87,42 @@ def read_config(path):
         raise ValueError("invalid MEM_FRACTION_STATIC")
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", cfg["IMAGE_ID"]):
         raise ValueError("IMAGE_ID must pin a complete Docker image ID")
-    if not re.fullmatch(r"[0-9a-f]{64}", cfg["NCCL_SO_SHA256"]):
+    if not shared_runtime(cfg) and not re.fullmatch(r"[0-9a-f]{64}", cfg["NCCL_SO_SHA256"]):
         raise ValueError("NCCL_SO_SHA256 must pin the library contents")
-    for key in REQUIRED:
+    for key in required:
         if key.endswith("_PATH") or key == "API_KEY_FILE":
             if (not PurePosixPath(cfg[key]).is_absolute() or ":" in cfg[key]
                     or "\\" in cfg[key] or ".." in PurePosixPath(cfg[key]).parts):
                 raise ValueError(f"{key} must be an absolute bind-mount path without colons")
-    paths = {k: PurePosixPath(cfg[k]) for k in REQUIRED if k.endswith("_PATH") or k == "API_KEY_FILE"}
+    paths = {k: PurePosixPath(cfg[k]) for k in required if k.endswith("_PATH") or k == "API_KEY_FILE"}
     if len(set(paths.values())) != len(paths):
         raise ValueError("Bind-mount paths must be distinct")
     model = paths["MODEL_HOST_PATH"]
     generated = {paths["STATE_HOST_PATH"] / "operator" / name
                  for name in ("auth.py", "auth-receipt.json")}
-    if any(paths[key] in generated for key in ("API_KEY_FILE", "NCCL_SO_HOST_PATH")):
+    if any(paths[key] in generated for key in ("API_KEY_FILE", "NCCL_SO_HOST_PATH") if key in paths):
         raise ValueError("input files must not use generated authentication paths")
     for key in ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH"):
         path = paths[key]
         if path.is_relative_to(model) or model.is_relative_to(path):
             raise ValueError(f"{key} must not overlap the model directory")
     return cfg
+
+
+def shared_runtime(cfg):
+    return cfg.get("RUNTIME_COMPOSITION", "standalone") == COMPOSITION
+
+
+def python_entrypoint(cfg):
+    return SHARED_PYTHON if shared_runtime(cfg) else "python3"
+
+
+def composition_identity():
+    raw = COMPOSITION_MANIFEST.read_bytes()
+    manifest = json.loads(raw)
+    if manifest.get("schema") != "sparkring-sglang-extension/v1" or manifest.get("id") != COMPOSITION:
+        raise ValueError("unrecognized shared composition manifest")
+    return {"id": COMPOSITION, "composition_sha256": hashlib.sha256(raw).hexdigest()}
 
 
 def command(cfg):
@@ -106,9 +133,12 @@ def command(cfg):
         cfg["CACHE_HOST_PATH"]: "/root/.cache",
         cfg["API_KEY_FILE"]: "/run/secrets/api-keys:ro",
         str(state / "operator/auth.py"): PINS["auth_path"] + ":ro",
-        str(RUNTIME / "entrypoint.py"): "/operator/entrypoint.py:ro",
-        cfg["NCCL_SO_HOST_PATH"]: PINS["nccl_target"] + ":ro",
     }
+    entrypoint = SHARED_RUNTIME + "/entrypoint.py"
+    if not shared_runtime(cfg):
+        mounts[str(RUNTIME / "entrypoint.py")] = "/operator/entrypoint.py:ro"
+        mounts[cfg["NCCL_SO_HOST_PATH"]] = PINS["nccl_target"] + ":ro"
+        entrypoint = "/operator/entrypoint.py"
     env = {**TRANSPORT, **{k: cfg[k] for k in (
         "NODE_RANK", "HOST_IP", "CONTEXT_LENGTH", "CHUNKED_PREFILL_SIZE",
         "MAX_RUNNING_REQUESTS", "MAX_TOTAL_TOKENS", "MEM_FRACTION_STATIC",
@@ -138,7 +168,7 @@ def command(cfg):
         args += ["-v", source + ":" + target]
     for key, value in env.items():
         args += ["-e", key + "=" + value]
-    return args + ["--entrypoint", "python3", cfg["IMAGE_ID"], "/operator/entrypoint.py", "run"]
+    return args + ["--entrypoint", python_entrypoint(cfg), cfg["IMAGE_ID"], entrypoint, "run"]
 
 
 def output(args):
@@ -148,6 +178,14 @@ def output(args):
 def verify_image(cfg):
     if output(["docker", "image", "inspect", cfg["IMAGE"], "--format", "{{.Id}}"]) != cfg["IMAGE_ID"]:
         raise ValueError("image identity mismatch")
+    if shared_runtime(cfg):
+        expected = composition_identity()
+        result = json.loads(subprocess.check_output([
+            "docker", "run", "--rm", "--network", "none", "--read-only", "--memory", "512m",
+            "--entrypoint", SHARED_PYTHON, cfg["IMAGE_ID"], "-S", SHARED_RUNTIME + "/verify.py", "verify",
+        ], text=True, timeout=180))
+        if not isinstance(result, dict) or any(result.get(key) != value for key, value in expected.items()):
+            raise ValueError("shared composition identity mismatch")
 
 
 def verify_host_paths(cfg):
@@ -156,7 +194,8 @@ def verify_host_paths(cfg):
                 ("ENGRAM_HOST_PATH", "STATE_HOST_PATH", "CACHE_HOST_PATH")}
     operator = Path(cfg["STATE_HOST_PATH"]) / "operator"
     writable.update({"auth output": operator / "auth.py", "auth receipt": operator / "auth-receipt.json"})
-    inputs = {Path(cfg[key]).resolve() for key in ("API_KEY_FILE", "NCCL_SO_HOST_PATH")}
+    keys = ("API_KEY_FILE",) if shared_runtime(cfg) else ("API_KEY_FILE", "NCCL_SO_HOST_PATH")
+    inputs = {Path(cfg[key]).resolve() for key in keys}
     if any((operator / name).resolve() in inputs for name in ("auth.py", "auth-receipt.json")):
         raise ValueError("input files must not alias generated authentication paths")
     for name, path in writable.items():
@@ -166,12 +205,15 @@ def verify_host_paths(cfg):
 
 
 def auth_record(cfg, source):
-    return {
+    record = {
         "schema": "sparkring-sglang-auth/v1", "image_id": cfg["IMAGE_ID"],
         "auth_path": PINS["auth_path"], "auth_sha256": hashlib.sha256(source).hexdigest(),
         "patch_sha256": hashlib.sha256((RUNTIME / "patch-multikey.py").read_bytes()).hexdigest(),
         "pins_sha256": hashlib.sha256((RUNTIME / "pins.json").read_bytes()).hexdigest(),
     }
+    if shared_runtime(cfg):
+        record["composition"] = composition_identity()
+    return record
 
 
 def write_prepared_auth(cfg, source):
@@ -222,11 +264,12 @@ def verify_host(cfg):
         path = Path(cfg["ENGRAM_HOST_PATH"]) / f"engram-l{layer}-r{cfg['NODE_RANK']}of4.bin"
         if not path.is_file() or not path.stat().st_size:
             raise ValueError(f"missing Mia-layout Engram layer {layer}")
-    library = Path(cfg["NCCL_SO_HOST_PATH"]).resolve(strict=True)
-    with library.open("rb") as stream:
-        digest = hashlib.file_digest(stream, "sha256").hexdigest()
-    if digest != cfg["NCCL_SO_SHA256"]:
-        raise ValueError("NCCL content identity mismatch")
+    if not shared_runtime(cfg):
+        library = Path(cfg["NCCL_SO_HOST_PATH"]).resolve(strict=True)
+        with library.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if digest != cfg["NCCL_SO_SHA256"]:
+            raise ValueError("NCCL content identity mismatch")
     keys = [line.strip() for line in Path(cfg["API_KEY_FILE"]).read_text().splitlines() if line.strip()]
     if not keys or len(keys) != len(set(keys)) or any("," in k or any(not 33 <= ord(c) <= 126 for c in k) for k in keys):
         raise ValueError("key file must contain distinct nonempty keys without commas or whitespace")
@@ -257,7 +300,7 @@ def main():
         verify_host_paths(cfg)
         verify_image(cfg)
         source = subprocess.check_output([
-            "docker", "run", "--rm", "--memory", "512m", "--entrypoint", "python3",
+            "docker", "run", "--rm", "--memory", "512m", "--entrypoint", python_entrypoint(cfg),
             "-v", str(RUNTIME / "patch-multikey.py") + ":/patch.py:ro", cfg["IMAGE_ID"],
             "-S", "/patch.py", PINS["auth_path"]])
         write_prepared_auth(cfg, source)
@@ -269,7 +312,7 @@ def main():
         packed.mkdir(parents=True, exist_ok=True)
         if any(packed.iterdir()):
             raise ValueError("packing requires an empty Engram directory")
-        subprocess.run(["docker", "run", "--rm", "--memory", "8g", "--entrypoint", "python3",
+        subprocess.run(["docker", "run", "--rm", "--memory", "8g", "--entrypoint", python_entrypoint(cfg),
             "-v", cfg["MODEL_HOST_PATH"] + ":/models/DeepSeek-V4.1-Flash:ro",
             "-v", str(packed) + ":/engram", "-e", "PYTHONPATH=/opt/sglang/lib/python3.12/site-packages",
             cfg["IMAGE_ID"], "-S", "/opt/dsv41/scripts/pack_engram.py",

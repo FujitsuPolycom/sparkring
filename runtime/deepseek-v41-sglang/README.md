@@ -10,7 +10,7 @@ No public image is published.
 | Input | Contract |
 |---|---|
 | Hardware | Four GB10 Sparks, Linux ARM64, local NVMe checkpoint and packed Engram files on every rank |
-| Runtime | External Mia adapter and SGLang base image pinned in [pins.json](pins.json) |
+| Runtime | Standalone Mia image from [pins.json](pins.json), or the opt-in [shared composition](#shared-sparkring-image) |
 | Measured settings | TP4/EP4, context 262144, chunk 4096, eight requests, memory fraction 0.90, DSpark block five |
 | Transport | SparkRing patched NCCL 2.30.7, both RoCE devices, four ring channels |
 | Authentication | Required file containing one distinct bearer key per nonempty line |
@@ -37,13 +37,62 @@ once per rank outside the checkout. Resolve all placeholders. Values are literal
 `KEY=VALUE` entries and are passed without shell expansion. Inline credentials
 and unknown settings are rejected. Keep node-local paths and credentials out of version control.
 
-Obtain SparkRing's patched `libnccl.so.2` as described in the
+For `RUNTIME_COMPOSITION=standalone`, obtain SparkRing's patched `libnccl.so.2` as described in the
 [vLLM library setup](../../profiles/deepseek-v41-flash-cycle/README.md#patches-and-nccl), resolve any symlink,
 and record `sha256sum` of that library as `NCCL_SO_SHA256`. The launcher mounts
 it **over the image's pip NCCL library**. Do not add `LD_PRELOAD`: loading a second
 NCCL runtime triggers SGLang's runtime check. This substitution assumes the
 required NCCL 2.x ABI; the host checksum identifies the actual library, while
 Torch's compiled header version may still report 2.29.7.
+
+### Shared SparkRing image
+
+Status: **implemented; serving qualification required**. The
+[`sglang-deepseek-bounded-prefill` composition](combined-image/manifest.json)
+adds SGLang alongside the Qwen-capable vLLM image. SGLang has a separate Python
+environment, CUDA toolkit, compiler caches and NCCL library. The image keeps
+vLLM as its default runtime; the SGLang launcher selects
+`/opt/sparkring/bin/sglang-python` explicitly. This composition includes the
+SGLang #39068 execution changes and a #39187 memory backport. Contributor
+measurements do not qualify the combined image.
+
+On an ARM64 Docker host with the manifest's vLLM parent image installed, prepare
+the external Mia source and SparkRing NCCL library, then build:
+
+```bash
+git clone https://github.com/MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks.git /absolute/mia-source
+git -C /absolute/mia-source checkout --detach e59e6eb67479aa68f6fa700c600dc90a0729b5ec
+python3 runtime/images/sglang_extension.py \
+  --mia-source /absolute/mia-source \
+  --nccl /absolute/patched/libnccl.so.2 \
+  --output /absolute/unused-build-context
+docker build --platform linux/arm64 -t local/sparkring:vllm-sglang /absolute/unused-build-context
+docker image inspect local/sparkring:vllm-sglang --format '{{.Id}}'
+```
+
+The builder checks the source commit and exact NCCL checksum in the composition
+manifest. Distribute one built image to all ranks. In each private environment,
+set `IMAGE`, its complete `IMAGE_ID`, and
+`RUNTIME_COMPOSITION=sglang-deepseek-bounded-prefill`. Remove
+`NCCL_SO_HOST_PATH` and `NCCL_SO_SHA256`; the shared composition supplies its own
+patched NCCL 2.30.7 and rejects host NCCL overrides. It does not replace vLLM's
+NCCL library.
+
+The same `--prepare`, `--pack` and `--run` actions apply. Before creating output
+or starting a rank, they check the image identity and run its CPU-only payload
+verifier. The installed composition must match this checkout's manifest.
+SGLang uses the image's credential-reading entrypoint; prepared authentication
+remains private and bound to the selected image and composition.
+
+The default context remains 262144. With this admitted composition,
+`CONTEXT_LENGTH=655360` selects the larger-context test configuration; retain
+`MAX_TOTAL_TOKENS=1500000`, `CHUNKED_PREFILL_SIZE=4096` and
+`MAX_RUNNING_REQUESTS=8`. Verify retrieval near the requested context and
+observe every rank's memory before treating that limit as validated. Merely
+changing the context value in the standalone image does not add the required
+memory backport.
+
+### Prepare rank data
 
 Render a launch plan without Docker or GPU access:
 
@@ -67,7 +116,8 @@ vLLM packed files. A directory containing existing files is refused.
 The authentication patch checks the pinned upstream source shape before writing
 a private generated module under the state directory. Its
 `operator/auth-receipt.json` binds the generated source to the
-selected image, patcher and source pins. Rerun `--prepare` after changing the
+selected image, patcher and source pins; the shared image also binds its
+composition manifest. Rerun `--prepare` after changing the
 image or patch inputs, or when using state prepared without this receipt.
 Startup rejects missing or mismatched authentication receipts. Each key is
 accepted. SGLang's internal caller can use the complete joined value. Separately

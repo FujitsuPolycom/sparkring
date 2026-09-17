@@ -13,7 +13,7 @@ launcher does not automatically switch runtimes after a failure.
 | Shared token budget | 1,500,000 requested; allocation is runtime-dependent |
 | Speculation | DSpark block five, verify-all without SPS/STS tables |
 | Authentication | Required private file with distinct bearer keys |
-| Image | Build locally from [pinned inputs](../../runtime/deepseek-v41-sglang/pins.json) |
+| Image | Local [standalone build](../../runtime/deepseek-v41-sglang/pins.json) or [shared SparkRing composition](../../runtime/deepseek-v41-sglang/README.md#shared-sparkring-image) |
 
 ## Build, prepare and launch
 
@@ -21,7 +21,9 @@ Follow the [SGLang runtime guide](../../runtime/deepseek-v41-sglang/README.md#bu
 to build one ARM64 image, distribute its exact ID, and prepare a private rank
 environment. The SGLang Engram layout is incompatible with the vLLM packed files;
 use separate output directories. The guide also identifies the required patched
-NCCL library and its in-image mount; do not substitute the vLLM preload procedure.
+NCCL library: standalone mode mounts it over the SGLang library, while the
+shared composition bundles it. Both modes select SGLang's own library; do not
+substitute the vLLM preload procedure.
 
 From the repository root, inspect the selected configuration and offline plan:
 
@@ -51,7 +53,10 @@ from [PR #267](https://github.com/FujitsuPolycom/sparkring/pull/267).
 
 The contributor's [655360-context report](https://github.com/FujitsuPolycom/sparkring/pull/267#issuecomment-5653279829)
 uses additional SGLang memory and execution overlays from #39187 and #39068.
-Those overlays are absent from the pinned builder; raising context alone does
-not reproduce the report. The recipe retains 262K until a separately identified
-runtime selection is qualified. [Dual-domain NCCL results](../../performance/records/transport/nccl-dual-domain-deepseek.md)
+The [shared composition](../../runtime/deepseek-v41-sglang/README.md#shared-sparkring-image)
+includes those execution changes and the bounded-memory backport. Its launcher
+admits the exact composition before running the documented 655360-context
+alternative. The standalone builder does not include them. The recipe retains
+262K; the combined image requires its own serving qualification.
+[Dual-domain NCCL results](../../performance/records/transport/nccl-dual-domain-deepseek.md)
 also describe a separate transport configuration, not this adapter's defaults.

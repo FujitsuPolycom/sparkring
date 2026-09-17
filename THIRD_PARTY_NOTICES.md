@@ -450,3 +450,13 @@ Dockerfile also carries SGLang's Apache-2.0 FlashMLA wrapper. SparkRing's auth
 patch targets the Apache-2.0 SGLang auth module in the pinned base image and
 preserves its surrounding source. Operators retain the external components'
 licenses and notices with their builds.
+
+The optional shared-image builder `runtime/images/sglang_extension.py` uses the
+same pinned Mia source. Its build context records integration edits to CUDA
+runtime selection and checkpoint-revision metadata; the resulting image retains
+the complete adapter source and its license under `/opt/dsv41`.
+`runtime/deepseek-v41-sglang/patches/` contains Apache-2.0 SGLang patches from
+commits `0d5e663b8f8d80a6caec2a7f7ce4eed6394756b7` and
+`cb8dd033ab54af8904733199dbae94270c3395ce`, with the second adapted to the pinned
+backend's candidate-mask interface. The patch headers retain upstream authorship;
+the adjacent manifest records original and adapted content hashes.
