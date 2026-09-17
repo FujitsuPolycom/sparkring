@@ -43,6 +43,11 @@ call is detectable; streaming requires a separate event-level policy.
 Clients should bound retries and may increase the output-token budget when
 reasoning exhausts the available generation length.
 
+For declared-function and complete-JSON checks covering both response modes,
+use the optional [Chat Completions tool-result policy](../../integrations/vllm/tool_choice_contract/README.md).
+It runs at the API frontend without changing the published native image's
+sources and preserves the streaming HTTP/SSE distinction described above.
+
 The runtime patch and per-file hashes are bound by `runtime-contract.json`.
 The image label `local-inference.vllm.gb10-runtime-overlay` is
 `sparse-row-clamp+dsml-recovery+responses-max+empty-required-tool-error-v2`. No model,
