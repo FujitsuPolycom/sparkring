@@ -2,7 +2,6 @@ import difflib
 import hashlib
 import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,8 @@ def fixture(tmp_path, monkeypatch):
     spec = importlib.util.spec_from_file_location('api_upgrade_tested', here / 'apply_api_upgrade.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    digest = lambda data: hashlib.sha256(data).hexdigest()
+    def digest(data):
+        return hashlib.sha256(data).hexdigest()
     contract = json.loads((here / 'runtime-contract.json').read_text())
     patch = ''
     for index, item in enumerate(contract['runtime_patch']['files']):
