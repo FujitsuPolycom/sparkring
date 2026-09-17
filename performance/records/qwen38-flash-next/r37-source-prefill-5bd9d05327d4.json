@@ -1,0 +1,247 @@
+{
+  "schema": "sparkring-qwen-source-image-validation/v1",
+  "status": "Development",
+  "image_id": "sha256:5bd9d05327d4c3bf2c205b2b946e6fc2954ad079637245b6eace0aa846662b59",
+  "local_tag": "sparkring-local:lil-r37-qwen-prefill-f01854c21da9",
+  "parent_image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+  "descriptor_sha256": "f01854c21da928d1170243d95500c28256633bbe2aa252e2b916431d9dd06b11",
+  "installed_receipt_sha256": "219f1d9fc86189ebc4f3c2f89497f6c303dc8fb2631f28ccaf7b38ac0c8fbd8f",
+  "repository_source": "d94ca377d6b897a97a3b12a3a84e0eb3d02e6e32",
+  "published": false,
+  "profile": {
+    "model": "Qwen3.8-Flash-Next",
+    "quantization": "NVFP4 QAD",
+    "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+    "hardware": "Four NVIDIA GB10 Sparks in a direct cycle",
+    "tp": 4,
+    "dcp": 1,
+    "mtp": 3,
+    "context_tokens": 262144,
+    "max_sequences": 16,
+    "batch_tokens": 8192,
+    "kv_bytes_per_rank": 42949672960,
+    "kv_dtype": "fp8",
+    "kv_tokens": 5218792,
+    "requested_block_size": 32,
+    "physical_page_tokens": 1440,
+    "sparkcache": true,
+    "hc_row_sharding": true,
+    "recurrent_coalescing": true
+  },
+  "verification": {
+    "installed_files": 57247,
+    "gpu_qsa_cases_passed": 7,
+    "gpu_ple_cases_passed": 4,
+    "installed_allocator_cpu_cases_passed": 32,
+    "source_tooling_checks_passed": 1097,
+    "source_tooling_checks_skipped": 8,
+    "source_tooling_note": "1094 broad-suite passes plus three successful WSL Git-path reruns; no source change was needed for those environment-only failures.",
+    "ordinary_compose_launch": true,
+    "fresh_worker_external_restore": [
+      {
+        "case": "ordinary",
+        "prompt_tokens": 7870,
+        "cold_cached_tokens": 0,
+        "cold_created_cache_tokens": 7200,
+        "restored_tokens": 7200,
+        "rank_restore_tokens": {
+          "0": 7200,
+          "1": 7200,
+          "2": 7200,
+          "3": 7200
+        },
+        "answer": "HARBOR-6392",
+        "request_sha256": "8843c9aac97393ed8a3bbceddd232f8d92e114d9cad8cb9cae3036ba54007fca",
+        "proof_sha256": "74ec883735cbcf788aeb85a48589740dad716899d1cfb7ef3be00e53a703b495"
+      },
+      {
+        "case": "boundary",
+        "prompt_tokens": 8194,
+        "cold_cached_tokens": 0,
+        "cold_created_cache_tokens": 7200,
+        "restored_tokens": 7200,
+        "rank_restore_tokens": {
+          "0": 7200,
+          "1": 7200,
+          "2": 7200,
+          "3": 7200
+        },
+        "answer": "HARBOR-6392",
+        "request_sha256": "5b507bc517323d4e97dc208ffffe5f47b762ad43c27951bf29e995a01990984c",
+        "proof_sha256": "c070e7d4ed04c517cba72d4018bb36ed069c66ee39cd8697ba84bba579073892"
+      }
+    ],
+    "source_mounts_required": false,
+    "api_text_tool_vision_native_prefix_smoke": true
+  },
+  "performance": {
+    "repetitions": 3,
+    "decode_output_tokens_per_request": 256,
+    "decode_metric": "Aggregate completion tokens divided by group wall time, including request overhead.",
+    "prefill_metric": "Exact input token count divided by client TTFT; includes network and queue time, not isolated server prefill.",
+    "matched_input_token_hashes": true,
+    "unique_content_per_repetition": true,
+    "all_reported_prefill_cached_tokens": 0,
+    "arms": {
+      "overlay": {
+        "decode_c1": {
+          "samples": [
+            89.46960878117109,
+            95.39494681737843,
+            92.0037129247453
+          ],
+          "median": 92.0037129247453
+        },
+        "decode_c8": {
+          "samples": [
+            341.95292353525343,
+            332.1827127542569,
+            351.71639403524904
+          ],
+          "median": 341.95292353525343
+        },
+        "cold_prefill_8192_ttft_seconds": {
+          "samples": [
+            1.776924300007522,
+            1.6970136000018101,
+            1.6959481000085361
+          ],
+          "median": 1.6970136000018101
+        },
+        "cold_prefill_8192_tokens_per_second": {
+          "samples": [
+            4610.21327693325,
+            4827.3036821810165,
+            4830.3364943530805
+          ],
+          "median": 4827.3036821810165
+        },
+        "cold_prefill_32768_ttft_seconds": {
+          "samples": [
+            7.2992134999949485,
+            7.268927400000393,
+            7.283311099978164
+          ],
+          "median": 7.283311099978164
+        },
+        "cold_prefill_32768_tokens_per_second": {
+          "samples": [
+            4489.250793941385,
+            4507.955327769298,
+            4499.05263556547
+          ],
+          "median": 4499.05263556547
+        }
+      },
+      "image": {
+        "decode_c1": {
+          "samples": [
+            84.39889131493504,
+            88.16953568889267,
+            86.29097329646373
+          ],
+          "median": 86.29097329646373
+        },
+        "decode_c8": {
+          "samples": [
+            333.50304860544804,
+            315.7170272065048,
+            339.2393108395525
+          ],
+          "median": 333.50304860544804
+        },
+        "cold_prefill_8192_ttft_seconds": {
+          "samples": [
+            1.7598371999920346,
+            1.7124092000012752,
+            1.7067948000039905
+          ],
+          "median": 1.7124092000012752
+        },
+        "cold_prefill_8192_tokens_per_second": {
+          "samples": [
+            4654.9760398502085,
+            4783.903286664134,
+            4799.639652043026
+          ],
+          "median": 4783.903286664134
+        },
+        "cold_prefill_32768_ttft_seconds": {
+          "samples": [
+            7.287120599998161,
+            7.312704799987841,
+            7.279370999982348
+          ],
+          "median": 7.287120599998161
+        },
+        "cold_prefill_32768_tokens_per_second": {
+          "samples": [
+            4496.700658420319,
+            4480.968519343825,
+            4501.487834605416
+          ],
+          "median": 4496.700658420319
+        }
+      }
+    },
+    "comparison_limit": "The overlay control lacks the checkpoint reservation fix and can omit cold checkpoint publications. The packaged image performs the additional checkpoint/capture work; ratios are not an isolated QSA kernel comparison.",
+    "c1_followup": {
+      "samples": [
+        88.0815814365727,
+        83.18255682551512,
+        87.9399768438228,
+        86.23312424573166,
+        81.99281749256218
+      ],
+      "median": 86.23312424573166,
+      "all_checks_passed": true,
+      "scope": "Additional same-process C1 observations, not a replacement for matched three-run comparison."
+    },
+    "observations": {
+      "cold_prefill_8k_median_change_percent": -0.8990608085645446,
+      "cold_prefill_32k_median_change_percent": -0.05227716445365127,
+      "c1_median_change_percent": -6.209249003846528,
+      "c8_median_change_percent": -2.4710638068091373,
+      "conclusion": "Prefill medians are within 1% of the overlay control; C8 is about 2.5% lower. C1 is about 6.2% lower and five same-process follow-up samples retain that level. Cause is unestablished; do not claim decode performance parity."
+    },
+    "request_method": {
+      "endpoint_path": "/v1/completions",
+      "temperature": 0,
+      "seed": 779386,
+      "stream": true,
+      "include_usage": true,
+      "decode_prompt": "Write a long numbered list of simple facts about arithmetic. Keep writing.",
+      "decode_ignore_eos": true,
+      "prefill_max_output_tokens": 16,
+      "expected_prefill_answer": "ORBIT",
+      "chat_template": {
+        "enable_thinking": false,
+        "add_generation_prompt": true,
+        "add_special_tokens": false
+      },
+      "prefill_content_template": "Benchmark identity {benchmark_id}-{target}. Ignore this label.\\nIgnore these background words.\\n[the string \" background\" repeated target*2 times]\\nReply with exactly the reference code ORBIT.",
+      "prefill_token_selection": "Tokenize the chat template, retain the first target//2 token IDs and final target-target//2 IDs, and submit those exact target IDs as prompt.",
+      "benchmark_ids": [
+        "aac9e400fce7474baa2cca10dc1cb555",
+        "9e1b105ce4444ec48fa29e0e533384b2",
+        "77255107eba542998e3dbd0e73f37747"
+      ],
+      "cache_isolation": "Distinct content identities precede each context-length fixture. API cache_salt alone did not isolate the external disk cache; every reported cold request was required to have cached_tokens=0."
+    }
+  },
+  "limitations": [
+    "Bounded TP4 text/vision checks; no long soak.",
+    "TP2, GLM and 24 GiB KV were not serving-qualified on this image; their published selections remain unchanged.",
+    "External-cache proof covers the two text fixtures, not general media restore.",
+    "The observed short C1 decode reduction remains unexplained; its adoption tradeoff is not hidden by the successful correctness checks."
+  ],
+  "raw_evidence_sha256": {
+    "overlay-1.jsonl": "0f9eb5c86f7baa5da8a8251333efa5fecdbca8a765939af1505d6704ecbff499",
+    "overlay-2.jsonl": "7be51e06f242d8e9c7781eb33c64a3209b707a73b36139011509c4bf95c3dc20",
+    "overlay-3.jsonl": "22223754043c60088c11197e325513a6eb73c51a2b525d459372933c5f26b46d",
+    "image-1.jsonl": "686351e2b8fb28b6baf39702bb102fc53efd9e4023f9cc5c51ef2cf52cf8ed76",
+    "image-2.jsonl": "49ca45286030c5e179a10c53c0b23cf7216ab384d5e616f445a539bb14f0e4ee",
+    "image-3.jsonl": "0b8750b2a73d287220e51616bae78c4ddc915a024fd1a1b2989aced62a2bb35e",
+    "image-c1-followup.jsonl": "d27f9bb897a80a6cd0c9fb3ba20c3382f5dfc43e41ce06ea2bbd3291fcefc016"
+  }
+}

@@ -122,3 +122,20 @@ reserves replacement scratch; shared or hashed blocks remain ineligible. Run
 its CPU checks inside the image with `SPARKRING_TEST_SOURCE_ROOT` set to
 `/opt/venv/lib/python3.12/site-packages`, selecting
 `/checks/mamba_checkpoint_reservation.py` with pytest.
+
+## Packaged serving evidence
+
+The [bounded TP4 record](../../../../performance/records/qwen38-flash-next/r37-source-prefill-5bd9d05327d4.json)
+covers this [local image build](local-build.json), its installed-source GPU checks,
+ordinary Compose launch, text/tool/vision smoke, and two four-rank external
+restores after process recreation. Both 7,870- and 8,194-token cold requests
+published and restored a 7,200-token checkpoint. The serving configuration
+uses 40 GiB FP8 KV per rank (5.22M logical KV tokens); it does not qualify the
+public 24 GiB setting or other model/topology combinations on this image.
+
+Cold-prefill medians were within 1% of the overlay control. Short C1 decode was
+6.2% lower (86 versus 92 completion tokens/s); five follow-up samples retained
+that level. C8 was 2.5% lower (334 versus 342 aggregate tokens/s). The cause of
+the C1 difference is unestablished. These measurements use end-to-end completion
+throughput, not the common-active-interval decode metric used by some upstream
+reports; they do not establish decode performance parity.
