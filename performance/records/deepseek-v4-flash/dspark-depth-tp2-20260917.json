@@ -1,0 +1,306 @@
+{
+  "schema": "sparkring-dspark-depth-observation/v1",
+  "status": "research-only",
+  "issue": 191,
+  "date_utc": "2026-09-17",
+  "source_commit": "9f5b1e619d037d1ae365f158135c3de42402cf4e",
+  "image_ids_by_rank": [
+    "sha256:d461d8c1f6465f3f21b2af40e0e56763282f016776bc7d72436ad13675a03a87",
+    "sha256:26f201e09a77e8e1d0b27bc0ee7f2479a46836eb7b71a7ea7b2c253aaf4d2f1d"
+  ],
+  "base_runtime_identity": {
+    "parent_image_id": "sha256:41fc632d02352a69f59dc18be184488c1f9d51bd9ad0a29e22ae818af4f465fe",
+    "native_library_sha256": "58c4c2e7acdbbacc58d41f1326f63e10b8bc9d0dbf406a2dea22234d7f64dad2"
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "recipe_revision": "7872f01b1d1fe23eabc4c98b48bffcef5a386062",
+    "metadata_and_presence": {
+      "files": 48,
+      "bytes": 166886535336,
+      "config_sha256": "6c8f3d2d3b48707541b88f32f22ef3f0f8a6b57d8523281e2b8d3cdb0ae9a023",
+      "index_sha256": "98efab455cf08dfbbbaaba6f570e1bf10bf927d2b4c3c453a59c2f6f0e3be92b"
+    },
+    "verification": "Previously inventoried matching config/index hashes and 48 nonempty indexed shards on both hosts; full payload checksums and revision provenance were not reverified."
+  },
+  "configuration": {
+    "hardware": "Two NVIDIA GB10 DGX Spark systems",
+    "tp": 2,
+    "dcp": 1,
+    "ipc_spin_seconds": 1.0,
+    "max_model_len": 1048576,
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 4096,
+    "kv_cache_memory_bytes_per_rank": 17179869184,
+    "kv_cache_dtype": "fp8_ds_mla",
+    "external_cache": false,
+    "changed_setting": "Explicit DSpark num_speculative_tokens command argument:5 versus7. Serving environments, image pair, mounts and HostConfig match."
+  },
+  "source_admission": {
+    "vllm_revision": "e2666d9a65f41fc376607531453cbd57c4c71016",
+    "dspark_block_size": 5,
+    "semantics": "Lower bound, not a ceiling; source guard rejects smaller depths.",
+    "replay": {
+      "schema": "sparkring-dspark-block-admission-replay/v1",
+      "source_sha256": "01dd6bfdbd1990652b3f3a982067f6387273898b13f111ebbb92e49fd908444c",
+      "scope": "Actual block-size guard only; not full SpeculativeConfig, GPU or serving",
+      "results": [
+        {
+          "depth": 4,
+          "result": "DSpark requires num_speculative_tokens >= dspark_block_size (5); got 4. Smaller values produce incorrect output. Use num_speculative_tokens=5 or larger (e.g. 7)."
+        },
+        {
+          "depth": 5,
+          "result": "accepted"
+        },
+        {
+          "depth": 6,
+          "result": "accepted"
+        },
+        {
+          "depth": 7,
+          "result": "accepted"
+        }
+      ]
+    }
+  },
+  "measurement": {
+    "prompt_tokens": 1024,
+    "completion_tokens": 128,
+    "temperature": 0,
+    "concurrencies": [
+      1,
+      4,
+      8
+    ],
+    "repeats": 3,
+    "aggregate_rate": "Total output tokens divided by concurrent batch wall time, including prompt processing and queueing."
+  },
+  "arms": [
+    {
+      "depth": 5,
+      "started_utc": "2026-09-17T06:24:40.407704+00:00",
+      "finished_utc": "2026-09-17T06:25:40.421488+00:00",
+      "benchmark_passed": true,
+      "startup": {
+        "kv_pool_tokens": 2198756,
+        "max_num_scheduled_tokens": 3968,
+        "sparse_indexer_next_n": 6
+      },
+      "pre_benchmark_calibration_requests": 36,
+      "samples": [
+        {
+          "concurrency": 1,
+          "observations": [
+            {
+              "repeat": 0,
+              "elapsed_seconds": 2.2899847999797203,
+              "aggregate_end_to_end_tokens_per_second": 55.89556751692568,
+              "median_per_request_decode_tokens_per_second": 76.92640838208014
+            },
+            {
+              "repeat": 1,
+              "elapsed_seconds": 2.292887300020084,
+              "aggregate_end_to_end_tokens_per_second": 55.82481092676419,
+              "median_per_request_decode_tokens_per_second": 76.18172400448778
+            },
+            {
+              "repeat": 2,
+              "elapsed_seconds": 2.3085254000034183,
+              "aggregate_end_to_end_tokens_per_second": 55.44665005626989,
+              "median_per_request_decode_tokens_per_second": 76.61588943522477
+            }
+          ],
+          "median_aggregate_end_to_end_tokens_per_second": 55.82481092676419
+        },
+        {
+          "concurrency": 4,
+          "observations": [
+            {
+              "repeat": 0,
+              "elapsed_seconds": 4.8083086000115145,
+              "aggregate_end_to_end_tokens_per_second": 106.48235015505742,
+              "median_per_request_decode_tokens_per_second": 43.831280397998555
+            },
+            {
+              "repeat": 1,
+              "elapsed_seconds": 4.716441399999894,
+              "aggregate_end_to_end_tokens_per_second": 108.55642137311649,
+              "median_per_request_decode_tokens_per_second": 44.210405200700436
+            },
+            {
+              "repeat": 2,
+              "elapsed_seconds": 4.584444100008113,
+              "aggregate_end_to_end_tokens_per_second": 111.68202487169467,
+              "median_per_request_decode_tokens_per_second": 45.34842677879438
+            }
+          ],
+          "median_aggregate_end_to_end_tokens_per_second": 108.55642137311649
+        },
+        {
+          "concurrency": 8,
+          "observations": [
+            {
+              "repeat": 0,
+              "elapsed_seconds": 7.369750199984992,
+              "aggregate_end_to_end_tokens_per_second": 138.94636483093896,
+              "median_per_request_decode_tokens_per_second": 30.124343565038075
+            },
+            {
+              "repeat": 1,
+              "elapsed_seconds": 7.368044799979543,
+              "aggregate_end_to_end_tokens_per_second": 138.97852521239327,
+              "median_per_request_decode_tokens_per_second": 29.80416540201727
+            },
+            {
+              "repeat": 2,
+              "elapsed_seconds": 7.287939799978631,
+              "aggregate_end_to_end_tokens_per_second": 140.5061002291762,
+              "median_per_request_decode_tokens_per_second": 30.2294183157009
+            }
+          ],
+          "median_aggregate_end_to_end_tokens_per_second": 138.97852521239327
+        }
+      ],
+      "private_benchmark_sha256": "92511c77e2d9a5fb4b52c41d8cf975c4adc4e0f847283a645e8cf8703446fff4",
+      "private_log_sha256_by_rank": [
+        "a1ba63f564fc1b3642e5b044e3b19b35ce2e282c53c3611c7241d73f88e17581",
+        "63f4bbb2ac95aa87eb76327ebb90ce284b93464ba9aa9a626628d98dfb5e219a"
+      ]
+    },
+    {
+      "depth": 7,
+      "started_utc": "2026-09-17T06:39:57.578289+00:00",
+      "finished_utc": "2026-09-17T06:40:58.582506+00:00",
+      "benchmark_passed": true,
+      "startup": {
+        "kv_pool_tokens": 2198756,
+        "max_num_scheduled_tokens": 3904,
+        "sparse_indexer_next_n": 8
+      },
+      "pre_benchmark_calibration_requests": 0,
+      "samples": [
+        {
+          "concurrency": 1,
+          "observations": [
+            {
+              "repeat": 0,
+              "elapsed_seconds": 2.082173899980262,
+              "aggregate_end_to_end_tokens_per_second": 61.47421212090565,
+              "median_per_request_decode_tokens_per_second": 88.65211715551068
+            },
+            {
+              "repeat": 1,
+              "elapsed_seconds": 2.0872577000118326,
+              "aggregate_end_to_end_tokens_per_second": 61.3244833157278,
+              "median_per_request_decode_tokens_per_second": 87.78316810937903
+            },
+            {
+              "repeat": 2,
+              "elapsed_seconds": 2.0855307999881916,
+              "aggregate_end_to_end_tokens_per_second": 61.37526235561937,
+              "median_per_request_decode_tokens_per_second": 88.06258295700523
+            }
+          ],
+          "median_aggregate_end_to_end_tokens_per_second": 61.37526235561937
+        },
+        {
+          "concurrency": 4,
+          "observations": [
+            {
+              "repeat": 0,
+              "elapsed_seconds": 4.453323099995032,
+              "aggregate_end_to_end_tokens_per_second": 114.97032407115738,
+              "median_per_request_decode_tokens_per_second": 45.23441475514129
+            },
+            {
+              "repeat": 1,
+              "elapsed_seconds": 4.1877444999990985,
+              "aggregate_end_to_end_tokens_per_second": 122.261518103626,
+              "median_per_request_decode_tokens_per_second": 53.68878467608559
+            },
+            {
+              "repeat": 2,
+              "elapsed_seconds": 4.1903349999920465,
+              "aggregate_end_to_end_tokens_per_second": 122.18593501497418,
+              "median_per_request_decode_tokens_per_second": 53.54536795459035
+            }
+          ],
+          "median_aggregate_end_to_end_tokens_per_second": 122.18593501497418
+        },
+        {
+          "concurrency": 8,
+          "observations": [
+            {
+              "repeat": 0,
+              "elapsed_seconds": 10.215771499992115,
+              "aggregate_end_to_end_tokens_per_second": 100.23716759921562,
+              "median_per_request_decode_tokens_per_second": 19.694687069029115
+            },
+            {
+              "repeat": 1,
+              "elapsed_seconds": 7.06536330000381,
+              "aggregate_end_to_end_tokens_per_second": 144.93239151615145,
+              "median_per_request_decode_tokens_per_second": 35.67910284887725
+            },
+            {
+              "repeat": 2,
+              "elapsed_seconds": 6.925709000002826,
+              "aggregate_end_to_end_tokens_per_second": 147.85489832154113,
+              "median_per_request_decode_tokens_per_second": 39.72128233017111
+            }
+          ],
+          "median_aggregate_end_to_end_tokens_per_second": 144.93239151615145
+        }
+      ],
+      "private_benchmark_sha256": "d556338f76b3a3147be5c797d7baf350e3aea22834411a95d260c570d20974f4",
+      "private_log_sha256_by_rank": [
+        "4dc62965e1099a35225e70f762bc05ff11c25dc8561f2505962b3695a9780af7",
+        "438d9f4ed3aad5d8a9305d58aa0574d10d92c9e265e2fadfc07d686747129682"
+      ]
+    }
+  ],
+  "first_c8_seven_token_observation": {
+    "aggregate_end_to_end_tokens_per_second": 100.23716759921562,
+    "batch_elapsed_seconds": 10.215771499992115,
+    "server_request_group_window_utc": [
+      "2026-09-17T06:40:18.535061991Z",
+      "2026-09-17T06:40:28.807287279Z"
+    ],
+    "window_definition": "First completion request in the eight-request group through the next tokenization request, ordered using the fixed harness sequence and server access log; not exact client batch timestamps.",
+    "compile_cache_misses": [
+      {
+        "rank": 0,
+        "utc": "2026-09-17T06:40:22.190926742Z",
+        "kernel_role": "Fused 4-bit MoE kernel",
+        "kernel": "W4A16FusedMoeKernel",
+        "reported_status": "disk-cache-miss",
+        "cache_key": "dcb27172d7865300",
+        "spec_hash": "c7b8eae0d21764ca83210571e706e882f767409da051f7c3f421c25f06363bb7"
+      },
+      {
+        "rank": 1,
+        "utc": "2026-09-17T06:40:22.200700533Z",
+        "kernel_role": "Fused 4-bit MoE kernel",
+        "kernel": "W4A16FusedMoeKernel",
+        "reported_status": "disk-cache-miss",
+        "cache_key": "546b5a2223397de1",
+        "spec_hash": "c7b8eae0d21764ca83210571e706e882f767409da051f7c3f421c25f06363bb7"
+      }
+    ],
+    "interpretation": "The miss occurred inside the slow first C8 group. No isolated compile duration or counterbalanced warm-state replay establishes how much of the slowdown it caused."
+  },
+  "sampler_acceptance": {
+    "reported": false,
+    "reason": "Only cumulative post-run metrics are available, without matching benchmark-window before/after counter snapshots."
+  },
+  "profile_default": 5,
+  "limitations": [
+    "The five-token control had36 additional calibration requests before benchmarking; the seven-token arm had none. Cache/warmup histories are unmatched.",
+    "Three samples per concurrency, with a slow first C8 seven-token sample, do not establish a repeatable speedup or latency-tail bound.",
+    "Higher depth changes available scheduler token capacity as reported at startup; both token budgets and derived capacities are retained above.",
+    "This is TP2 startup and bounded throughput evidence, not four-rank cycle, full output-quality or soak qualification.",
+    "No dynamic depth ladder was tested. Source admission does not qualify every backend/shape.",
+    "No profile default, model payload, published image identity or public artifact was changed."
+  ]
+}

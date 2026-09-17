@@ -27,6 +27,9 @@ records bounded tool-contract and Responses `max` checks on local derivatives
 with five-token DSpark speculation. It preserves the native library identity
 and the limits of the short IPC comparison; it does not promote an image or
 change the shared-memory spin default.
+The [static depth comparison](../../performance/records/deepseek-v4-flash/dspark-depth-tp2-20260917.md)
+records bounded TP2 results for five and seven DSpark tokens. Five remains the
+default; unmatched warmup and absent cycle/quality/soak evidence prevent promotion.
 
 The Responses request and response models accept `reasoning.effort: "max"` in addition to
 `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. They retain the OpenAI
