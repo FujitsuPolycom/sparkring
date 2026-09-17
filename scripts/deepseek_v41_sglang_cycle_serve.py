@@ -29,6 +29,7 @@ DEFAULTS = {
     "API_PORT": "8000", "MASTER_PORT": "20000", "CONTEXT_LENGTH": str(SERVING["context_length"]),
     "CHUNKED_PREFILL_SIZE": str(SERVING["chunked_prefill_size"]),
     "MAX_RUNNING_REQUESTS": str(SERVING["max_running_requests"]),
+    "MIN_FREE_SLOTS_DELAY": str(SERVING["min_free_slots_delay"]),
     "MAX_TOTAL_TOKENS": str(SERVING["max_total_tokens"]),
     "MEM_FRACTION_STATIC": str(SERVING["mem_fraction_static"]),
     "DSPARK_SPS_TABLE": "/state/dspark_sps.json", "DSPARK_STS_TABLE": "/state/dspark_sts.json",
@@ -63,7 +64,8 @@ def read_config(path):
         raise ValueError("missing settings: " + ", ".join(sorted(REQUIRED - seen)))
     limits = {"NODE_RANK": (0, 3), "API_PORT": (1, 65535), "MASTER_PORT": (1, 65535),
               "CONTEXT_LENGTH": (4096, 1048576), "CHUNKED_PREFILL_SIZE": (128, 65536),
-              "MAX_RUNNING_REQUESTS": (1, 64), "MAX_TOTAL_TOKENS": (4096, 10000000),
+              "MAX_RUNNING_REQUESTS": (1, 64), "MIN_FREE_SLOTS_DELAY": (1, 64),
+              "MAX_TOTAL_TOKENS": (4096, 10000000),
               "NCCL_IB_GID_INDEX": (0, 255)}
     for key, (low, high) in limits.items():
         if not re.fullmatch(r"[0-9]+", cfg[key]) or not low <= int(cfg[key]) <= high:
@@ -127,7 +129,10 @@ def command(cfg):
         "SKIP_SMOKE": "1", "WARMUP": "0", "DSV41_MXFP8_BACKEND": "b12x",
         "SGLANG_FLASHINFER_MOE_FUSED_FINALIZE": "0", "SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE": "0",
         "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:False", "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
-        "EXTRA_SGLANG_ARGS": "--fp8-gemm-backend flashinfer_cutlass --watchdog-timeout 1800 --enable-metrics",
+        "EXTRA_SGLANG_ARGS": (
+            "--fp8-gemm-backend flashinfer_cutlass --watchdog-timeout 1800 --enable-metrics "
+            "--min-free-slots-delay " + cfg["MIN_FREE_SLOTS_DELAY"]
+        ),
     }
     args = ["docker", "run", "-d", "--name", "sgl_dsv41", "--restart", "no",
             "--label", "family=dsv41", "--label", "engine=sglang", "--network", "host",
