@@ -1,0 +1,189 @@
+{
+  "schema": "sparkring-profile-serving-observation/v1",
+  "profile_id": "deepseek-v4-flash-0731-pair",
+  "started_utc": "2026-09-17T05:39:10.104617+00:00",
+  "finished_utc": "2026-09-17T05:40:10.105155+00:00",
+  "runtime": {
+    "image_reference": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd",
+    "image_id": "sha256:41fc632d02352a69f59dc18be184488c1f9d51bd9ad0a29e22ae818af4f465fe",
+    "retrieval": "already cached on both ranks; no fresh registry pull in this observation",
+    "vllm_version": "0.1.dev1+ge2666d9a6.d20260810",
+    "torch_version": "2.12.0+cu132",
+    "nccl_reported_version": "2.30.7+cuda13.0",
+    "launcher_scope": "Canonical pair launcher with a private container namespace and API/rendezvous ports; no serving source overlay."
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "recipe_revision": "7872f01b1d1fe23eabc4c98b48bffcef5a386062",
+    "configuration_sha256": "6c8f3d2d3b48707541b88f32f22ef3f0f8a6b57d8523281e2b8d3cdb0ae9a023",
+    "tensor_index_sha256": "98efab455cf08dfbbbaaba6f570e1bf10bf927d2b4c3c453a59c2f6f0e3be92b",
+    "files_present_per_rank": 48,
+    "weight_bytes_per_rank": 166886535336,
+    "verification": "Both ranks have matching configuration/index hashes and all 48 indexed nonempty shards. Full shard checksums and checkpoint revision provenance were not reverified."
+  },
+  "configuration": {
+    "hardware": "two NVIDIA GB10 DGX Sparks",
+    "topology": "direct-pair",
+    "tensor_parallel_size": 2,
+    "decode_context_parallel_size": 1,
+    "speculation": "DSpark",
+    "num_speculative_tokens": 5,
+    "max_model_len": 1048576,
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 4096,
+    "reported_max_num_scheduled_tokens": 3968,
+    "block_size": 256,
+    "kv_cache_memory_bytes_per_rank": 17179869184,
+    "kv_cache_dtype": "fp8_ds_mla",
+    "async_scheduling": true,
+    "scheduler_reserve_full_isl": true,
+    "external_cache": false
+  },
+  "capacity": {
+    "reported_kv_pool_tokens": 2198756,
+    "startup_witness": "GPU KV cache size: 2,198,756 tokens",
+    "scope": "Logical pool reported by the TP2 engine; not a per-GPU multiplier or completed long-context request."
+  },
+  "transport": {
+    "all_reduce_backend": "PYNCCL",
+    "hca_per_rank": "rocep1s0f0",
+    "gid_policy": "automatic per-HCA selection; NCCL_IB_GID_INDEX unset",
+    "address_family": "AF_INET",
+    "roce_version": 2,
+    "result": "Both ranks initialized and completed the recorded serving requests with this selection."
+  },
+  "smoke": {
+    "arithmetic_answer": "42",
+    "benchmark_completion_requests": 41,
+    "maximum_prompt_tokens_observed": 8193,
+    "maximum_completion_tokens_observed": 128
+  },
+  "benchmark": {
+    "measurement": "Total completion tokens divided by concurrent batch wall time, including prompt processing and queueing.",
+    "prompt_tokens_per_request": 1024,
+    "completion_tokens_per_request": 128,
+    "temperature": 0.0,
+    "samples": [
+      {
+        "concurrency": 1,
+        "repetitions": 3,
+        "batch_elapsed_seconds": [
+          2.281,
+          2.312,
+          2.297
+        ],
+        "aggregate_end_to_end_tokens_per_second": [
+          56.115739,
+          55.363322,
+          55.724859
+        ],
+        "median_aggregate_end_to_end_tokens_per_second": 55.724859
+      },
+      {
+        "concurrency": 4,
+        "repetitions": 3,
+        "batch_elapsed_seconds": [
+          4.86,
+          4.766,
+          4.578
+        ],
+        "aggregate_end_to_end_tokens_per_second": [
+          105.349794,
+          107.427612,
+          111.839231
+        ],
+        "median_aggregate_end_to_end_tokens_per_second": 107.427612
+      },
+      {
+        "concurrency": 8,
+        "repetitions": 3,
+        "batch_elapsed_seconds": [
+          7.937,
+          7.297,
+          7.281
+        ],
+        "aggregate_end_to_end_tokens_per_second": [
+          129.016001,
+          140.331643,
+          140.640022
+        ],
+        "median_aggregate_end_to_end_tokens_per_second": 140.331643
+      }
+    ],
+    "limitations": "These are aggregate end-to-end rates, not isolated decode rates. Inter-token rates are omitted because the baseline did not record first SSE-chunk token counts. First-use JIT activity occurred; no warmed throughput or complete JIT coverage claim is made."
+  },
+  "compiler_cache": {
+    "mount": "persistent host bind at /cache",
+    "snapshots_after_container_stop": [
+      {
+        "rank": 0,
+        "directory": "/cache/jit/b12x/compile",
+        "files": 276,
+        "bytes": 5860156
+      },
+      {
+        "rank": 1,
+        "directory": "/cache/jit/b12x/compile",
+        "files": 276,
+        "bytes": 5860156
+      }
+    ],
+    "result": "B12X artifacts remained accessible from read-only host-bind inspection after the serving containers stopped.",
+    "limitations": "Artifact presence does not prove all keys were compiled or reused after restart."
+  },
+  "limitations": [
+    "No fresh registry download was tested.",
+    "Model weight payloads were not fully checksummed.",
+    "The 1M context limit is configured, not a tested output-quality or concurrent-capacity result.",
+    "No long soak, TP4 serving qualification, external-cache restore, or general API-contract qualification is established.",
+    "Known required-tool serialization and startup JIT issues are outside the passing ordinary-request checks; profile status remains Development."
+  ],
+  "source_receipts": [
+    {
+      "artifact": "report.json",
+      "role": "bounded benchmark report",
+      "sha256": "40733f852841a8cc7094f9e4d4645ae8c5ea65c3a77df70f465ed046d664c573"
+    },
+    {
+      "artifact": "ordinary.json",
+      "role": "ordinary arithmetic response",
+      "sha256": "fedec70eb9382804963a7a8800b1c567ee4de1cfef36c48d6bec62b868da2de9"
+    },
+    {
+      "artifact": "source.json",
+      "role": "launcher source receipt",
+      "sha256": "1e8f80a3a4586737ac011b467b6db41415d93a9f26a9b6bff60c0be6e7c20f5e"
+    },
+    {
+      "artifact": "rank0-model-presence.json",
+      "role": "rank 0 model metadata and shard presence",
+      "sha256": "b035df2a233cd5ec57ebe1be1cc3d74c9277e3d40a948176d97655bb9f24a66c"
+    },
+    {
+      "artifact": "rank1-model-presence.json",
+      "role": "rank 1 model metadata and shard presence",
+      "sha256": "b035df2a233cd5ec57ebe1be1cc3d74c9277e3d40a948176d97655bb9f24a66c"
+    },
+    {
+      "artifact": "baseline-complete-r0.log",
+      "role": "rank 0 serving log including shutdown",
+      "sha256": "fa7ce3ff066c933fac29b5fc542161468dcce6a6b2838a40c995656ee424678e"
+    },
+    {
+      "artifact": "baseline-complete-r1.log",
+      "role": "rank 1 serving log including shutdown",
+      "sha256": "050488d2af828d9c07afff501646f72b339e8ea4198625440e0412dffa7af000"
+    },
+    {
+      "artifact": "baseline-complete-cache-r0.json",
+      "role": "rank 0 compiler cache inventory after stop",
+      "sha256": "981f4b98398b4c6aafc22823282a932ca45316a912d3b19536ce79f273c3c353"
+    },
+    {
+      "artifact": "baseline-complete-cache-r1.json",
+      "role": "rank 1 compiler cache inventory after stop",
+      "sha256": "1b0060cac925f9c3ab6885ef360d4235708849fe74f5d84823dfa8b825662ed4"
+    }
+  ],
+  "receipt_retention": "Raw logs and input reports are retained privately; this record contains the scoped observations and their receipt hashes."
+}

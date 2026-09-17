@@ -60,11 +60,10 @@
       "approximate": true
     },
     "deepseek-v4-flash-0731-pair": {
-      "tokens": 1000000,
-      "source": "performance/capacity-references.md",
-      "witness": "| TP2/DCP1 | 1M |",
-      "conditions": "DeepSeek-0731 TP2/DCP1; retained README approximation at the documented 16 GiB per-rank allocation.",
-      "approximate": true
+      "tokens": 2198756,
+      "source": "performance/records/deepseek-v4-flash/image827a8e8c-tp2.json",
+      "witness": "GPU KV cache size: 2,198,756 tokens",
+      "conditions": "Measured TP2/DCP1 engine pool on the cached published DeepSeek image, DSpark K5, fp8_ds_mla and 16 GiB KV per rank. Model configuration/index hashes and 48-shard presence checked; no full weight checksum, fresh pull or 1M-token output-quality qualification."
     },
     "glm53-flash-nvfp4-dflash2-bf16-tp4": {
       "tokens": 4321618,

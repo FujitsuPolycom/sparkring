@@ -1,6 +1,6 @@
 # DeepSeek-V4-Flash-0731
 
-Serve on a two-Spark pair using the [recipe](recipe.json). Status: **Development**; the selected published image still needs exact replay validation.
+Serve on a two-Spark pair using the [recipe](recipe.json). Status: **Development**; the cached published image has [bounded TP2 serving checks](../../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json), with full weight verification and long-context qualification outstanding.
 
 Inspect the resolved configuration without contacting a host:
 

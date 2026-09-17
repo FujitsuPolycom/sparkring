@@ -24,6 +24,13 @@ but different weight payloads. The measurements therefore establish launch
 behavior and conditional throughput, not exact checkpoint scaling or output
 quality.
 
+The [cached-image TP2 record](../../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json)
+adds bounded plain-0731 serving checks for the selected published image:
+2,198,756 KV tokens at 16 GiB per rank and completed requests through 8,193
+input tokens. Configuration/index hashes and all 48 shard files were checked;
+full weight checksums, a fresh registry pull and 1M-token output quality were
+not verified. Profile status remains Development.
+
 The machine-readable serving contracts are
 [`recipes/deepseek-v4-flash-0731-pair.json`](../../recipes/deepseek-v4-flash-0731-pair.json)
 for the pair and
