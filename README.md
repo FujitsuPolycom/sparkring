@@ -65,7 +65,7 @@ SparkCache. Linked sources provide the settings and basis for each figure.
 
 - [Benchmarks and test results](performance/benchmarks.md)
 - [Architecture](docs/architecture/overview.md) and [mesh host setup](docs/GLM53_SPARK_MESH_HOST_SETUP.md)
-- [Container images](runtime/images/README.md#container-images)
+- [Container images and shared serving versions](runtime/images/README.md#container-images)
 - [Contributing](CONTRIBUTING.md) and [repository layout](docs/development/layout.md)
 - [Community discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
 

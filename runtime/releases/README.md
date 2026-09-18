@@ -21,10 +21,11 @@ container layers. A serving Release links an exact image digest, build/source
 receipts and profile-specific evidence. Auxiliary host tools and build inputs
 retain their separate identities.
 
-The [shared ARM64 candidate](shared-2026.09.0-rc.1/README.md) records proposed
-version `shared-2026.09.0-rc.1`, source pins and pending publication fields.
-It is not an image selection. Profile defaults remain on their pinned releases
-until each configuration is qualified and explicitly promoted.
+The [shared ARM64 candidate](shared-2026.09.0-rc.1/README.md) records published
+image version `shared-2026.09.0-rc.1`, its verified registry digest, source inputs
+and bounded qualification. The matching GitHub prerelease links its assets. Its release
+selection is opt-in; profile defaults remain on their pinned releases until
+each configuration is qualified and explicitly promoted.
 
 ## Published image and DCP4 overlay
 

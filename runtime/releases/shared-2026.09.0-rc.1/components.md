@@ -1,8 +1,8 @@
 # Shared candidate components and provenance
 
-Status: **implemented integration; publication and profile validation pending**.
-This index identifies the source inputs of `shared-2026.09.0-rc.1`, not a
-published image digest. Its [release record](README.md) owns availability and
+Status: **implemented integration; qualification is profile-specific**.
+This index identifies the source inputs of `shared-2026.09.0-rc.1`.
+Its [release record](README.md) owns the published image digest, availability and
 qualification. Components retain their own licenses; the combined image is not
 licensed solely under Apache-2.0.
 
@@ -20,13 +20,13 @@ GPU harness and reference fixtures separately from runtime sources.
 | NCCL collective communication for vLLM | Installed 2.31.2 (`2.31.2+cuda13.3`); `/opt/local-inference/nccl/lib/libnccl.so.2.31.2`, SHA256 `84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47`. vLLM selects its `libnccl.so.2` link through `VLLM_NCCL_SO_PATH`. | NCCL's complete license/notices remain applicable; [patch attribution](../../../THIRD_PARTY_NOTICES.md#1-nvidia-nccl-portions-included) |
 | NCCL for isolated SGLang | Separate retained 2.30.7; `/opt/sglang/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2`, SHA256 `5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3`; [combined manifest](../../deepseek-v41-sglang/combined-image/manifest.json) | NCCL license/notices and retained source/build attribution apply independently of the vLLM copy |
 | RoCEnante RDMA communication | [Pinned source origins and adaptations](../../../third_party/b12x_roce/provenance.json); selected transport manifests identify installed variants | Apache-2.0; Luke and Local Inference Lab provenance retained |
-| SIRCL and SparkRing integration | Exact repository revision and transport receipts pending finalized build | Apache-2.0; SparkRing contributor notices retained |
+| SIRCL and SparkRing integration | Retained transport manifests and native-library hashes in `/opt/sparkring/receipts/native-installed.json`; maintained source under `spark_transport/` | Apache-2.0; SparkRing contributor notices retained |
 
 The Qwen HC/coalescing and paired-scoring adaptations retain
 [original-el8/Jason's PR779/386/387 provenance](../../images/compositions/lil-r37-qwen-prefill/provenance.json).
 That record describes their source origins, not unchanged application to Kraken
-or candidate performance evidence. The finalized build must record each patch's
-disposition and installed result hashes.
+or candidate performance evidence. The accepted source patches and installed
+receipts identify the applied implementation and resulting hashes.
 
 ## License locations
 
@@ -41,9 +41,9 @@ CUDA, PyTorch, FlashInfer and other inherited dependencies retain their own
 terms and package notices. Model weights are not bundled. See the repository's
 [third-party inventory](../../../THIRD_PARTY_NOTICES.md) for detailed origins.
 
-## Publication payload — pending
+## GitHub prerelease attachments
 
-The release should provide:
+The matching GitHub prerelease provides:
 
 - A checksummed source bundle containing the frozen pins, carried/reconciled
   patches, build recipe, license texts and Mia integration changes.
@@ -55,6 +55,8 @@ The release should provide:
 The existing receipt structure under `/opt/sparkring/receipts` and isolated
 SGLang `{manifest.json,context.json,installed.json}` should remain authoritative,
 not be replaced by a second inventory with independent version selections.
-A minimal embedded entry point is `/opt/sparkring/licenses/components.md`,
-linking those receipts and retained license locations. Embedding and release
-attachments are recommendations here, not completed packaging steps.
+The image embeds `/opt/sparkring/licenses/components.md`, linking those receipts
+and retained license locations. The [publication receipt](publication.json)
+binds the available image; the [source-bundle record](source-bundle.json) pins
+the source attachment. Qualification records in the evidence attachment retain
+their exact image, configuration and workload scope.

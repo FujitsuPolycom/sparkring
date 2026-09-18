@@ -1,0 +1,16 @@
+{
+  "id": "shared-2026.09.0-rc.1",
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:9439d39ad4b104c06cad3416a927f0f90852b456f0b06aa6a1dcf9475bf91a83",
+  "inputs": [
+    {
+      "path": "runtime/releases/shared-2026.09.0-rc.1/publication.json",
+      "sha256": "a7e5ba3871664f04772872cf23268440815c081b6a7313a2f17d79aeb06629dc"
+    },
+    {
+      "path": "runtime/releases/shared-2026.09.0-rc.1/source-bundle.json",
+      "sha256": "e52c4005d40a6dfec194b38b7bab8d7b82a29b5d2c8038d479e449ba2be1b3ab"
+    }
+  ],
+  "schema": "sparkring-release-selection/v1",
+  "selection": "published-immutable-reference"
+}

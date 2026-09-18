@@ -25,19 +25,24 @@ It does not change published image selections or serving deployments.
 ## Container images
 
 The [shared ARM64 serving candidate](../releases/shared-2026.09.0-rc.1/README.md)
-records pinned vLLM/B12X integration and isolated SGLang. It is unpublished;
+publishes pinned vLLM/B12X integration and isolated SGLang, with a verified
+anonymous digest pull;
 [bounded Qwen TP2/TP4 text and SparkCache restart/restore checks passed](../../performance/records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.md).
-Other profile checks and its registry digest remain pending. Existing quickstart
-image selections are unchanged. GitHub Releases will provide the matching
-version landing page; GHCR Packages stores the image itself.
+A [DeepSeek-0731 TP2 check](../../performance/records/deepseek-v4-flash/shared-22da81ca-tp2-smoke-20260918.md)
+also covers startup and one short text request without SparkCache; an isolated
+SGLang TP4 check covers the same bounded scope. GLM restore results retain
+unresolved limitations, not a production recommendation. Existing quickstart image selections
+are unchanged. The matching GitHub prerelease provides the version landing page;
+GHCR Packages stores the image. The candidate guide owns its digest, scope and limitations.
 
 | Package / runtime | Profile | Details |
 |---|---|---|
+| SparkRing shared ARM64 `shared-2026.09.0-rc.1` | Bounded Qwen TP2/TP4 text/cache and DeepSeek text checks; GLM limitations retained | [Digest pull, source records and qualification](../releases/shared-2026.09.0-rc.1/README.md) |
 | Local SparkRing vLLM + SGLang composition | DeepSeek-V4.1-Flash SGLang passed bounded TP4 checks; Qwen vLLM payload preserved | [Runtime isolation, build inputs and validation scope](../deepseek-v41-sglang/combined-image/README.md) |
 | Published SparkRing R37 ARM64 | GLM-5.3-Flash TP4/DCP1 cache-on bounded checks; other selections experimental | [Published composition and quickstarts](compositions/lil-r37-glm-spark/README.md) |
 | Published SparkRing R35 ARM64 | GLM-5.3-Flash TP2/TP4 fallback; bounded checks do not establish long-duration stability | [Pull and launch instructions](../../docs/operations/r35-local-launch.md) |
 | Locally built SGLang / Mia adapter | DeepSeek-V4.1-Flash TP4/EP4; no public image | [Source-pinned build](../deepseek-v41-sglang/README.md#build-and-prepare) |
-| `ghcr.io/fujitsupolycom/sparkring` | Generic R33 ARM64 image; exact profiles select TP2/TP4 topology and optional components | [Source build and profile verification](../../runtime/sparkring/jovian-r33/image/README.md) |
+| SparkRing R33 ARM64 | Exact profiles select TP2/TP4 topology and optional components | [Source build and profile verification](../../runtime/sparkring/jovian-r33/image/README.md) |
 | `gb10-vllm-serving` | Profile-specific images, including DeepSeek | [Packages](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) |
 | Anemll `dspark-vllm-gx10` | DeepSeek-V4-Flash-Vision-Exp with the MiaAI-Lab recipe | [Image, recipe, and transport provenance](../../runtime/deepseek-vision-exp/profile.json) |
 

@@ -1,0 +1,64 @@
+{
+  "schema": "sparkring-bounded-serving-check/v1",
+  "status": "qualified",
+  "scope": "TP2 startup and one short C1 text request only",
+  "image_config_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+  "runtime": "vllm",
+  "model": "DeepSeek-V4-Flash-0731",
+  "checkpoint": {
+    "config_sha256": "6c8f3d2d3b48707541b88f32f22ef3f0f8a6b57d8523281e2b8d3cdb0ae9a023",
+    "index_sha256": "98efab455cf08dfbbbaaba6f570e1bf10bf927d2b4c3c453a59c2f6f0e3be92b",
+    "shards_per_rank": 48,
+    "logical_shard_bytes_per_rank": 166886535336,
+    "full_weight_checksums_verified": false,
+    "identity_scope": "Existing checkpoint mounts; configuration/index hashes and shard sizes matched on both ranks"
+  },
+  "conditions": {
+    "hardware": "two NVIDIA GB10 nodes",
+    "tp": 2,
+    "dcp": 1,
+    "context_limit": 131072,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 4096,
+    "kv_pin_gib_per_rank": 8,
+    "reported_kv_token_pool": 290555,
+    "loader": "b12x",
+    "attention": "FlashInfer SM120 sparse MLA",
+    "transport": "NCCL 2.31.2",
+    "speculation": {"method": "dspark", "tokens": 5, "moe_backend": "b12x"},
+    "compiler_workers_per_stage": 2,
+    "sparkcache": false,
+    "request_concurrency": 1,
+    "request_temperature": 0,
+    "request_max_tokens": 64,
+    "chat_template_kwargs": {"thinking": false}
+  },
+  "result": {
+    "ready_at": "2026-09-18T10:58:39.596645+00:00",
+    "checked_at": "2026-09-18T10:59:53.245004+00:00",
+    "all_ranks_started": true,
+    "health_and_model_alias_passed": true,
+    "prompt": "What is 6 times 7? Reply with only 42.",
+    "answer": "42",
+    "finish_reason": "stop",
+    "prompt_tokens": 18,
+    "completion_tokens": 2,
+    "owned_test_containers_stopped": true
+  },
+  "private_evidence_sha256": {
+    "launch_plan": "a664105b30453c63fcf23000661cb95196a577627a0d342661556158740cfc7d",
+    "readiness": "3e93da2b28691ab4c1c76d65e52eec787603bd218ec80641f542e92b84b6c061",
+    "smoke": "be5535ad57dcd2b80cb084f407fa6c56a6316035e662a8c9a40a24e7ab0d8d13",
+    "stop": "09f043ca65b0c3d4f9b07a1edc8427951c5ca9b46e628c59a5b4db5f001d51b6"
+  },
+  "excluded_qualification": [
+    "public 1M/C32/16GiB profile defaults",
+    "SparkCache",
+    "restart recovery",
+    "full-context or concurrency pressure",
+    "performance",
+    "media",
+    "soak"
+  ],
+  "profile_defaults_changed": false
+}
