@@ -7,8 +7,10 @@ This validates preparation/dispatch ownership, not device checkpoint values.
 import ast
 from contextlib import nullcontext
 from dataclasses import dataclass
+import importlib.util
 import os
 from pathlib import Path
+import sys
 from types import SimpleNamespace as NS
 
 import pytest
@@ -87,7 +89,7 @@ def test_dispatch_refuses_unprepared_or_incompatible_storage(defect):
     assert calls == []
 
 
-def test_checkpoint_compiles_only_static_geometry_and_preloads_launch_handle():
+def test_checkpoint_discovery_is_metadata_only_with_deferred_triton(monkeypatch):
     path = (
         Path(os.environ["SPARKRING_B12X_SOURCE_ROOT"])
         / "b12x/sequence/ple/_checkpoint.py"
@@ -101,11 +103,15 @@ def test_checkpoint_compiles_only_static_geometry_and_preloads_launch_handle():
     ]
     calls = []
 
-    class Program:
-        def __getitem__(self, grid):
-            calls.append(("preload", grid))
-
-    program = Program()
+    module_path = path.parents[2] / "_lib/compile_plan.py"
+    spec = importlib.util.spec_from_file_location("checkpoint_compile_plan_test", module_path)
+    planner = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, planner)
+    spec.loader.exec_module(planner)
+    program = planner.DeferredTritonKernel(
+        planner.ProgramKey("triton", "checkpoint-test", "_export_checkpoint_kernel"),
+        source=NS(name="_export_checkpoint_kernel"),
+    )
 
     def warmup(*pointers, **options):
         calls.append(("compile", pointers, options))
@@ -136,8 +142,15 @@ def test_checkpoint_compiles_only_static_geometry_and_preloads_launch_handle():
         max_seqs=16,
         max_state_slots=100000,
     )
-    assert env["compile_checkpoint"](query, 0) is program
-    assert calls[-1] == ("preload", (1, 1, 1))
+    token = planner._PLANNING.set(set())
+    try:
+        assert env["compile_checkpoint"](query, 0) is program
+        assert planner.program_keys(program) == program.__b12x_programs__
+        with pytest.raises(RuntimeError, match="compile planning attempted Triton"):
+            program[(1, 1, 1)]
+    finally:
+        planner._PLANNING.reset(token)
+    assert len(calls) == 1
     _, pointers, options = calls[0]
     assert [p.alignment for p in pointers] == [2, 2, 4, 4, 8, 1, 4, 2]
     assert options == dict(
@@ -151,6 +164,38 @@ def test_checkpoint_compiles_only_static_geometry_and_preloads_launch_handle():
         num_warps=4,
         grid=(16, 2),
     )
+
+
+def test_ple_materialization_loads_every_program_before_exposing_state():
+    path = (Path(os.environ["SPARKRING_B12X_SOURCE_ROOT"])
+            / "b12x/sequence/ple/_preparation.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    materialize = next(node for node in ast.walk(tree)
+                       if isinstance(node, ast.FunctionDef) and node.name == "materialize")
+    programs = tuple(object() for _ in range(6))
+    calls = []
+
+    def compile_layer(*args):
+        calls.append(("compile", args))
+        return programs
+
+    def load_programs(value):
+        assert value is programs
+        calls.append(("load", value))
+        return value
+
+    def state(query, layout, value):
+        assert calls[-1] == ("load", programs)
+        assert value is programs
+        return NS(programs=value)
+
+    env = dict(query="query", query_payload="payload", caps="caps",
+               _materialize_layout=lambda *args: "layout", compile_layer=compile_layer,
+               load_programs=load_programs, _PleState=state)
+    exec(compile(ast.Module(body=[materialize], type_ignores=[]), str(path), "exec"), env)
+    result = env["materialize"](NS(config=NS(to_dict=lambda: {})), NS(ordinal=0))
+    assert result.programs is programs
+    assert [call[0] for call in calls] == ["compile", "load"]
 
 
 def test_checkpoint_program_semantics_have_a_distinct_preparation_identity():

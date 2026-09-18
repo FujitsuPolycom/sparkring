@@ -15,8 +15,8 @@
       "repository": "https://github.com/local-inference-lab/vllm.git",
       "upstream_commit": "35bab057b1751a6076a457803bcc4b78809689cf",
       "patch": "vllm.patch",
-      "patch_sha256": "79f1d7f505f57519e407a323460d5f4e23ec111d3cf0c466e5b0bf36c90d43bc",
-      "accepted_snapshot_sha256": "34351e28ad097d1d6d88561d921759197c7c2f6ecc0d6b61803f7d0ee4cac025",
+      "patch_sha256": "4c13db783227dbde4e30686d64997c44545c9b66f01cdad332e64bbcac78be6d",
+      "accepted_snapshot_sha256": "0481eb71311f399d8550ad2cdd30a5843fb8263c8a9521b7926ea9ab76550aac",
       "license": "Apache-2.0"
     },
     {
@@ -24,8 +24,8 @@
       "repository": "https://github.com/local-inference-lab/b12x.git",
       "upstream_commit": "a83336581a3a907076e60797df69ab66df5a2ff1",
       "patch": "b12x.patch",
-      "patch_sha256": "c2ba44fddd28112ca3fa895ada55ddb3ff55f367f6b9c63af6943974f4fe5985",
-      "accepted_snapshot_sha256": "e1de3a479781ca34e94c83daa72f8ed7e673e016dfe24e48473de7eaaf19aa33",
+      "patch_sha256": "5272477c61226a4f3b818680cae57e62251b1085ef07734b9984f3b36c3b183a",
+      "accepted_snapshot_sha256": "771fa73ec51687e36eb6ecf8aa5d8af39302f59dce6bd82d69165ba4c6230452",
       "license": "Apache-2.0"
     }
   ]

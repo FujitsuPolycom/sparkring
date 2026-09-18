@@ -9,9 +9,49 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from .contract_rebind import symbol
 from .contracts import encoded, oid, relative, require, sha
 from .sources import tree_digest
+
+
+def verify_lease_symbols(data, names):
+    """Match SparkCache's v1 Class.member symbol schema before image assembly.
+
+    The installed verifier remains authoritative at image admission. Generic AST
+    lookup admits top-level functions and nested paths that its schema rejects.
+    """
+    if names is None:
+        return
+    require(
+        isinstance(names, list)
+        and all(isinstance(name, str) and name for name in names),
+        "Invalid required_symbols for SparkCache lease contract",
+    )
+    if not names:
+        return
+    classes = {
+        node.name: node
+        for node in ast.parse(data).body
+        if isinstance(node, ast.ClassDef)
+    }
+    for name in names:
+        parts = name.split(".")
+        require(
+            len(parts) == 2 and all(parts),
+            "Required symbols must use Class.member: " + name,
+        )
+        owner, member = parts
+        require(owner in classes, "Required Class.member is absent: " + name)
+        members = set()
+        for node in classes[owner].body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                members.add(node.name)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                members.add(node.target.id)
+            elif isinstance(node, ast.Assign):
+                members.update(
+                    target.id for target in node.targets if isinstance(target, ast.Name)
+                )
+        require(member in members, "Required Class.member is absent: " + name)
 
 
 def migrate(parent, manifest, roots, source_records, *, input_sha256):
@@ -79,10 +119,7 @@ def migrate(parent, manifest, roots, source_records, *, input_sha256):
         )
         data = file.read_bytes()
         require(sha(data) == row["sha256"], "Migration source bytes differ: " + name)
-        if row.get("required_symbols"):
-            tree = ast.parse(data)
-            for identifier in row["required_symbols"]:
-                symbol(tree, identifier)
+        verify_lease_symbols(data, row.get("required_symbols"))
     trees = {component: tree_digest(roots[component]) for component in used_components}
     evidence = {}
     for component in used_components:

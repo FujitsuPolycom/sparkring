@@ -46,7 +46,7 @@
     "/opt/venv/lib/python3.12/site-packages/b12x/preparation/__init__.py": "cf48b799828df628454a2a441c05667188cfb9b57d4b3aa29984ba8487a3249e",
     "/opt/venv/lib/python3.12/site-packages/b12x/preparation/types.py": "1c67f28932ddf428e2e1485c7727f75e7694596f00f5a25e195ff3c0d68dec12",
     "/opt/venv/lib/python3.12/site-packages/b12x/preparation/tuning.py": "5eb916d0758733d2ea6e012cede295513cbd8add348e7880ca2ec54013713cff",
-    "/opt/venv/lib/python3.12/site-packages/b12x/preparation/session.py": "7fea0e72fbff3736b8e352cd90b009286220f5d2d65945d75e3c3b8f7a21a0b5",
+    "/opt/venv/lib/python3.12/site-packages/b12x/preparation/session.py": "36899478a440bac5999b5160bf98729ede0b4924994b49f83297fee5510e18d9",
     "/opt/venv/lib/python3.12/site-packages/b12x/_lib/compile_plan.py": "9a7066143209765286ed5cb44394c938a8998a3e0ba7fa986d5bec81b4c5722b",
     "/opt/venv/lib/python3.12/site-packages/b12x/_lib/program_cache.py": "63720746570d28f74a1a45d38e20727e4497265c8151f001f0046457ab7e9b8b"
   },

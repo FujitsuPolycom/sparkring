@@ -1,7 +1,7 @@
 # Prepared transport image integration
 
-Status: **implemented assets; bounded two/four-rank GPU checks qualified** in the
-[image-specific record](../../../performance/records/transport/rocenante-prepared-35cf12b2-20260918.md).
+Status: **qualified for bounded two/four-rank collective checks** in the
+[image-specific record](../../../performance/records/transport/rocenante-prepared-a75bd02f-20260918.md).
 This is an explicit image-extension operation, not a replacement of retained
 repository assets or an instruction to modify a running deployment.
 
@@ -12,7 +12,7 @@ repository assets or an instruction to modify a running deployment.
 | Existing `/opt/sparkring/transports/sparkring_transport_selector.py` | SHA256 `c820cf956d216f0f1e83632121ff3a04c2d743f6f6e2663f1551b27f1cdda50c` |
 | Replacement [selector](sparkring_transport_selector.py), same installed path | SHA256 `256a3a4d189d97ccf87f5cb72011bd38ef1c63c27bf335ddc6e78f090fc745b7` |
 | Retained `/opt/venv/lib/python3.12/site-packages/sparkring_transport.pth` | SHA256 `c4865202d229c0501368f6f31f810d97dda25e50c0afc12cc4edd4bb8a5695a6`; unchanged |
-| [Prepared bundle manifest](manifest.json) | SHA256 `e8577c447a69ac75253758a0964791e862ccca1ad13168e7addefa6ec96369c9` |
+| [Prepared bundle manifest](manifest.json) | SHA256 `7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c` |
 
 Stage with [package.py](package.py), then install its exact contents at
 `/opt/sparkring/transports/tp2-rocenante-adaptive-prepared/`. Before writing the
@@ -25,8 +25,18 @@ Select on **every** participating rank:
 
 ```text
 SPARKRING_TRANSPORT_PROFILE=tp2-rocenante-adaptive-prepared
-SPARKRING_TRANSPORT_MANIFEST_SHA256=e8577c447a69ac75253758a0964791e862ccca1ad13168e7addefa6ec96369c9
+SPARKRING_TRANSPORT_MANIFEST_SHA256=7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c
 ```
+
+This manifest binds B12X's distributed preparation session at SHA256
+`36899478a440bac5999b5160bf98729ede0b4924994b49f83297fee5510e18d9`.
+Active multi-rank tuning ignores rank-local selection hits so every participant
+reaches the same tuning boundaries; compiled-program caching is retained.
+The [GPU-tested manifest](../../../performance/records/transport/manifests/e8577c447a69ac75253758a0964791e862ccca1ad13168e7addefa6ec96369c9.json)
+is archived byte-for-byte. Transport runtime file hashes are identical, but its
+GPU results are not relabeled for this different source binding. The separate
+`a75bd02ffc1d` image record qualifies `7d8beed57e54`; repeat the probe for a
+different image or topology.
 
 The selector preserves the legacy profile on the R37 B12X runtime. On a runtime
 containing B12X's prepared API it explicitly refuses that legacy profile and

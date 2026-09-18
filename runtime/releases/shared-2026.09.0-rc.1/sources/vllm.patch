@@ -5367,6 +5367,99 @@ index 13398377924096045f6b80aeac1834b8d7756fa9..8c7944df77c97aae7a051e7c6607e7f1
              prefill_checkpoint = replace(
                  prefill_checkpoint,
                  state_indices=checkpoint_state_indices,
+diff --git a/vllm/v1/core/kv_cache_coordinator.py b/vllm/v1/core/kv_cache_coordinator.py
+index 757f03516ba7a5efa4b8cac2844ae154c3a82457..6ae2097ff95b7eddfd17dd0ea2c4c5ebb5fb2065 100644
+--- a/vllm/v1/core/kv_cache_coordinator.py
++++ b/vllm/v1/core/kv_cache_coordinator.py
+@@ -1,7 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ from abc import ABC, abstractmethod
+-from collections.abc import Sequence
++from collections.abc import Callable, Sequence
+ from typing import NamedTuple
+ 
+ from vllm.logger import init_logger
+@@ -72,6 +72,7 @@ class KVCacheCoordinator(ABC):
+     """
+ 
+     enable_partial_hash_hits = False
++    recurrent_publication_boundary_provider: Callable[[Request], object] | None = None
+ 
+     def __init__(
+         self,
+@@ -331,6 +332,33 @@ class KVCacheCoordinator(ABC):
+             for manager in self.single_type_managers
+         )
+ 
++    def get_recurrent_publication_boundaries(self, request: Request) -> tuple[int, ...]:
++        """Validate optional, metadata-only connector hints before materialization.
++
++        Hints never prove that bytes exist. Normal finalized-token bounds, block
++        hashes and connector read leases still govern publication. Nothing is
++        latched: withdrawn hints disappear, and already-computed positions cannot
++        resurrect states skipped by an earlier cache pass.
++        """
++        provider = getattr(self, "recurrent_publication_boundary_provider", None)
++        if not callable(provider) or request.use_boundary_checkpoints:
++            return ()
++        try:
++            proposed = provider(request)
++        except Exception:
++            return ()
++        if type(proposed) not in (tuple, list) or len(proposed) > 4:
++            return ()
++        if any(
++            type(position) is not int
++            or not request.num_computed_tokens < position < request.num_prompt_tokens
++            or position <= 0
++            or position % self.scheduler_block_size
++            for position in proposed
++        ):
++            return ()
++        return tuple(sorted(set(proposed)))
++
+     def get_replay_boundaries(self, request: Request) -> tuple[int, ...]:
+         """Positions a later request replaying this prompt can resume at.
+ 
+@@ -349,7 +377,7 @@ class KVCacheCoordinator(ABC):
+             boundary = max(
+                 request.num_prompt_tokens - max(1, self.prefill_replay_tokens), 0
+             )
+-            return tuple(
++            native = tuple(
+                 dict.fromkeys(
+                     position
+                     for alignment in (
+@@ -361,14 +389,22 @@ class KVCacheCoordinator(ABC):
+                     )
+                 )
+             )
+-        if not self.eagle_group_ids:
+-            return (
++        elif not self.eagle_group_ids:
++            native = (
+                 max(request.num_prompt_tokens - max(1, self.prefill_replay_tokens), 0),
+             )
+-        block = self.scheduler_block_size
+-        resend = (request.num_prompt_tokens - 1) // block * block
+-        extension = request.num_prompt_tokens // block * block
+-        return tuple(sorted({max(resend - block, 0), max(extension - block, 0)}))
++        else:
++            block = self.scheduler_block_size
++            resend = (request.num_prompt_tokens - 1) // block * block
++            extension = request.num_prompt_tokens // block * block
++            native = tuple(sorted({max(resend - block, 0), max(extension - block, 0)}))
++        # Publication positions are absolute, not Eagle lookup candidates.
++        # Merge after native replay back-off so the connector's state is not shifted.
++        return tuple(
++            dict.fromkeys(
++                (*native, *self.get_recurrent_publication_boundaries(request))
++            )
++        )
+ 
+     def cache_blocks(self, request: Request, num_computed_tokens: int) -> None:
+         """
 diff --git a/vllm/v1/core/kv_cache_manager.py b/vllm/v1/core/kv_cache_manager.py
 index 7e36eca0074775d93ccc7545b96180d97850aabf..25b90333030af6085972c0e3d6eae2717de82c8b 100644
 --- a/vllm/v1/core/kv_cache_manager.py
@@ -5820,7 +5913,7 @@ index 46ea472171c340af793b3cead8754d567d0be81b..9c9332abf1180bdd6df094dbc59a1107
      # Request IDs that are preempted in this step.
      # Only used for v2 model runner.
 diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
-index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795bcdc78167 100644
+index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..3a3f4a1e47612ef874c133f00798a6c5f2686495 100644
 --- a/vllm/v1/core/sched/scheduler.py
 +++ b/vllm/v1/core/sched/scheduler.py
 @@ -8,6 +8,7 @@ from collections.abc import Iterable
@@ -5863,7 +5956,17 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
      def __init__(
          self,
          vllm_config: VllmConfig,
-@@ -426,8 +438,10 @@ class Scheduler(SchedulerInterface):
+@@ -367,6 +379,9 @@ class Scheduler(SchedulerInterface):
+         if self.connector is not None:
+             self.connector.bind_kv_cache_manager(self.kv_cache_manager)
+             self.connector.bind_gpu_block_pool(self.kv_cache_manager.block_pool)
++            self.kv_cache_manager.coordinator.recurrent_publication_boundary_provider = (
++                getattr(self.connector, "get_recurrent_publication_boundaries", None)
++            )
+             if self.kv_cache_manager.boundary_checkpoints is not None:
+                 self.connector.bind_boundary_checkpoint_cache(self.kv_cache_manager)
+ 
+@@ -426,8 +441,10 @@ class Scheduler(SchedulerInterface):
              or (
                  speculative_config.method == "mtp"
                  and speculative_config.draft_model_config is not None
@@ -5876,7 +5979,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
              )
          )
          self.mamba_has_prefill_checkpoint_blocks = (
-@@ -491,6 +505,120 @@ class Scheduler(SchedulerInterface):
+@@ -491,6 +508,125 @@ class Scheduler(SchedulerInterface):
          # In-flight requests still prefilling (prefill chunks + in-progress
          # async KV loads). Their remaining-block reservation gates async loads.
          self._inflight_prefills: set[Request] = set()
@@ -5940,6 +6043,11 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
 +                    for manager in managers
 +                    for position in manager._expand_reachable_boundaries(boundaries)
 +                }
++                | set(
++                    self.kv_cache_manager.coordinator.get_recurrent_publication_boundaries(
++                        request
++                    )
++                )
 +            )
 +        )
 +        plan = prefill_checkpoint_plan(
@@ -5997,7 +6105,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
  
      def _mamba_block_aligned_split(
          self,
-@@ -512,6 +640,14 @@ class Scheduler(SchedulerInterface):
+@@ -512,6 +648,14 @@ class Scheduler(SchedulerInterface):
              + num_new_local_computed_tokens
              + num_external_computed_tokens
          )
@@ -6012,7 +6120,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
          if request.use_boundary_checkpoints:
              # Running-state migration still happens in the worker, but these
              # requests publish only semantic endpoints. Stop exactly at the
-@@ -641,6 +777,28 @@ class Scheduler(SchedulerInterface):
+@@ -641,6 +785,28 @@ class Scheduler(SchedulerInterface):
                  if start < position < end
              }
              if use_internal_checkpoint:
@@ -6041,7 +6149,23 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
                  # The worker's checkpoint grid belongs to each recurrent group.
                  internal_positions = {
                      end // manager.block_size * manager.block_size
-@@ -776,6 +934,10 @@ class Scheduler(SchedulerInterface):
+@@ -653,6 +819,15 @@ class Scheduler(SchedulerInterface):
+                     if internal is not None and internal > start:
+                         reuse_stops.discard(internal)
+             stops = (*stops, *reuse_stops)
++        # Optional publications require an actual state at their exact boundary.
++        # Keep these stops even when an internal checkpoint has a different
++        # Eagle-shifted position. Packed coalescing includes the same hints above.
++        stops = (
++            *stops,
++            *self.kv_cache_manager.coordinator.get_recurrent_publication_boundaries(
++                request
++            ),
++        )
+         # Stop at the earliest mandatory position strictly inside the chunk.
+         end = min((s for s in stops if start < s < end), default=end)
+         return max(end - start, 0)
+@@ -776,6 +951,10 @@ class Scheduler(SchedulerInterface):
  
      def schedule(self, throttle_prefills: bool = False) -> SchedulerOutput:
          self.current_step += 1
@@ -6052,7 +6176,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
          # NOTE(woosuk) on the scheduling algorithm:
          # There's no "decoding phase" nor "prefill phase" in the scheduler.
          # Each request just has the num_computed_tokens and
-@@ -794,6 +956,7 @@ class Scheduler(SchedulerInterface):
+@@ -794,6 +973,7 @@ class Scheduler(SchedulerInterface):
  
          req_to_new_blocks: dict[str, KVCacheBlocks] = {}
          num_scheduled_tokens: dict[str, int] = {}
@@ -6060,7 +6184,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
          token_budget = self.max_num_scheduled_tokens
          spec = self.vllm_config.speculative_config
          separate_draft_input_tokens = 0
-@@ -1085,10 +1248,16 @@ class Scheduler(SchedulerInterface):
+@@ -1085,10 +1265,16 @@ class Scheduler(SchedulerInterface):
                  # Schedule newly needed KV blocks for the request.
                  with record_function_or_nullcontext("schedule: allocate_slots"):
                      while True:
@@ -6077,7 +6201,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
                          )
  
                          if new_blocks is not None:
-@@ -1143,6 +1312,7 @@ class Scheduler(SchedulerInterface):
+@@ -1143,6 +1329,7 @@ class Scheduler(SchedulerInterface):
                                      )
                                  req_to_new_blocks.pop(preempted_req_id)
                                  scheduled_spec_decode_tokens.pop(preempted_req_id, None)
@@ -6085,7 +6209,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
                                  preempted_encoder_inputs = scheduled_encoder_inputs.pop(
                                      preempted_req_id, None
                                  )
-@@ -1185,6 +1355,8 @@ class Scheduler(SchedulerInterface):
+@@ -1185,6 +1372,8 @@ class Scheduler(SchedulerInterface):
                  request_id = request.request_id
                  req_to_new_blocks[request_id] = new_blocks
                  num_scheduled_tokens[request_id] = num_new_tokens
@@ -6094,7 +6218,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
                  token_budget -= num_new_tokens
                  input_budget -= num_new_tokens + draft_slots
                  draft_input_budget -= separate_draft_input_tokens
-@@ -1652,6 +1824,17 @@ class Scheduler(SchedulerInterface):
+@@ -1652,6 +1841,17 @@ class Scheduler(SchedulerInterface):
                      # avoid deadlock and predictable preemptions.
                      reserved_blocks = self._inflight_prefill_reserved_blocks()
  
@@ -6112,7 +6236,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
                  new_blocks = self.kv_cache_manager.allocate_slots(
                      request,
                      num_new_tokens,
-@@ -1695,6 +1878,7 @@ class Scheduler(SchedulerInterface):
+@@ -1695,6 +1895,7 @@ class Scheduler(SchedulerInterface):
                              for r in self.running
                          )
                      ),
@@ -6120,7 +6244,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
                  )
  
                  if new_blocks is None:
-@@ -1739,6 +1923,13 @@ class Scheduler(SchedulerInterface):
+@@ -1739,6 +1940,13 @@ class Scheduler(SchedulerInterface):
                          num_new_local_computed_tokens - external_boundary_hit_tokens,
                      )
  
@@ -6134,7 +6258,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
                  request_queue.remove_request(request)
                  if load_kv_async:
                      # If loading async, allocate memory and put request
-@@ -1832,6 +2023,9 @@ class Scheduler(SchedulerInterface):
+@@ -1832,6 +2040,9 @@ class Scheduler(SchedulerInterface):
                      token_budget = 0
                      break
  
@@ -6144,7 +6268,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
              # re-queue requests skipped in this pass ahead of older skipped items.
              if step_skipped_waiting:
                  self.skipped_waiting.prepend_requests(step_skipped_waiting)
-@@ -2017,6 +2211,11 @@ class Scheduler(SchedulerInterface):
+@@ -2017,6 +2228,11 @@ class Scheduler(SchedulerInterface):
                  compute_service_class = "decode"
  
          scheduler_output = SchedulerOutput(
@@ -6156,7 +6280,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
              scheduled_new_reqs=new_reqs_data,
              boundary_logits_only=bool(
                  new_reqs_data
-@@ -2077,6 +2276,23 @@ class Scheduler(SchedulerInterface):
+@@ -2077,6 +2293,23 @@ class Scheduler(SchedulerInterface):
  
          with record_function_or_nullcontext("schedule: update_after_schedule"):
              self._update_after_schedule(scheduler_output)
@@ -6180,7 +6304,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
          controller = self.compute_share_controller
          if controller is not None and controller.auto_enabled:
              # Sample after cache lookup and request-state transitions. Before
-@@ -3472,6 +3688,8 @@ class Scheduler(SchedulerInterface):
+@@ -3472,6 +3705,8 @@ class Scheduler(SchedulerInterface):
          """Free the request's KV blocks, deferring the return to the block
          pool when an in-flight GPU step may still write them.
          """
@@ -6189,7 +6313,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
          if self._request_blocks_can_be_freed(request):
              self.kv_cache_manager.free(request)
              return
-@@ -3944,6 +4162,8 @@ class Scheduler(SchedulerInterface):
+@@ -3944,6 +4179,8 @@ class Scheduler(SchedulerInterface):
  
          This method scans the given requests, detects those with invalid blocks
          and adjusts their `num_computed_tokens` to the longest valid prefix.
@@ -6198,7 +6322,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
          For observability, it also accumulates the total number of tokens that
          will need to be recomputed across all affected requests.
  
-@@ -3956,8 +4176,9 @@ class Scheduler(SchedulerInterface):
+@@ -3956,8 +4193,9 @@ class Scheduler(SchedulerInterface):
              requests: The set of requests to scan for invalid blocks.
              invalid_block_ids: IDs of invalid blocks.
              num_scheduled_tokens: req_id -> number of scheduled tokens.
@@ -6210,7 +6334,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
  
          Returns:
              tuple:
-@@ -3984,39 +4205,43 @@ class Scheduler(SchedulerInterface):
+@@ -3984,39 +4222,43 @@ class Scheduler(SchedulerInterface):
              is_affected = False
              marked_invalid_block = False
              req_id = request.request_id
@@ -6277,7 +6401,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
  
              req_num_computed_blocks = (
                  req_num_computed_tokens + self.block_size - 1
-@@ -4103,7 +4328,7 @@ class Scheduler(SchedulerInterface):
+@@ -4103,7 +4345,7 @@ class Scheduler(SchedulerInterface):
              for req in self.skipped_waiting
              if req.status == RequestStatus.WAITING_FOR_REMOTE_KVS
          )
@@ -6286,7 +6410,7 @@ index 2ace136d5055059e4d9d85b9f59c34875a6a1e3e..7a630b65b1e840986d48f6c7f80e795b
              self._update_requests_with_invalid_blocks(
                  async_load_reqs,
                  invalid_block_ids,
-@@ -4128,10 +4353,23 @@ class Scheduler(SchedulerInterface):
+@@ -4128,10 +4370,23 @@ class Scheduler(SchedulerInterface):
          if not total_failed_requests:
              return set()
  

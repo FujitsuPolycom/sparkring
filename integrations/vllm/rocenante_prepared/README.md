@@ -1,8 +1,9 @@
 # Prepared adaptive RoCEnante transport
 
-Status: **qualified for bounded two/four-rank collective checks; model-serving
-qualification is separate**. The [hardware record](../../../performance/records/transport/rocenante-prepared-35cf12b2-20260918.md)
-identifies the exact image, topology and limits.
+Status: **qualified for bounded two/four-rank collective checks; model serving
+is separate**. The [hardware record](../../../performance/records/transport/rocenante-prepared-a75bd02f-20260918.md)
+qualifies manifest `7d8beed57e54` on image `a75bd02ffc1d` and identifies the
+exact probe, topology and limits.
 The profile identity `tp2-rocenante-adaptive-prepared` bridges SparkRing's
 adaptive peer-path transport to B12X's prepared execution API. It is separate
 from the immutable `tp2-rocenante-adaptive` source bundle.
@@ -70,5 +71,8 @@ those transport checks; no image/profile promotion is implied by CPU success.
 
 The recorded two- and four-rank runs each passed 15 cases per rank, including
 four frozen-kernel graph replays with stable addresses and no replay allocation.
-Those results establish bounded collective behavior, not model performance or
-compatibility of other image/profile selections.
+Those results identify manifest `7d8beed57e54` and image `a75bd02ffc1d`.
+The preparation session repeats multi-rank selection races instead of trusting
+unequal rank-local selection caches. The archived `e8577c447a69` record retains
+its own evidence; neither record establishes model performance or compatibility
+of other selections.

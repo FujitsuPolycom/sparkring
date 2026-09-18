@@ -74,6 +74,26 @@ def selected_manifests(root, installed):
     return manifests
 
 
+def verify_installed_lease(root, contract):
+    """Run the consumer's installed schema/hash/AST checks without importing vLLM."""
+    site = root / "opt/venv/lib/python3.12/site-packages"
+    path = site / "sparkcache/runtime_patches/verify_lease_contract.py"
+    if (
+        not path.resolve().is_relative_to(site.resolve())
+        or path.is_symlink()
+        or not path.is_file()
+    ):
+        raise ValueError(
+            "SparkCache lease verifier is missing or escapes its installed root"
+        )
+    spec = importlib.util.spec_from_file_location(
+        "installed_sparkcache_lease_verifier", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.verify_contract(site, contract)
+
+
 def verify_bindings(root=Path("/")):
     assertions, failed = 0, []
     installed_path = root / "opt/sparkring/receipts/native-installed.json"
@@ -130,6 +150,16 @@ def verify_bindings(root=Path("/")):
             ):
                 failed.append("Connector source binding changed: " + name)
             assertions += 1
+        try:
+            verify_installed_lease(root, contract)
+        except Exception as error:
+            failed.append(
+                "Installed SparkCache lease verifier rejected "
+                + contract.name
+                + ": "
+                + str(error)
+            )
+        assertions += 1
     return assertions, failed
 
 

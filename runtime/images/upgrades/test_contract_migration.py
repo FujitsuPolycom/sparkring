@@ -161,3 +161,46 @@ def test_migration_requires_b12x_oracle_when_lease_names_b12x(tmp_path):
     manifest["required_oracles"]["b12x"] = ["kernel-contract"]
     with pytest.raises(Refused, match="oracle"):
         migrate(parent, manifest, roots, records, input_sha256="f" * 64)
+
+
+@pytest.mark.parametrize(
+    "required",
+    [
+        ["compile_auxiliary"],
+        ["Lease.retain.extra"],
+        [".retain"],
+        ["Lease."],
+        "Lease.retain",
+        [1],
+        [""],
+    ],
+)
+def test_migration_rejects_symbols_outside_installed_lease_schema(tmp_path, required):
+    parent, manifest, roots, records = inputs(tmp_path)
+    path = roots["vllm"] / "vllm/new.py"
+    path.write_bytes(path.read_bytes() + b"def compile_auxiliary(): pass\n")
+    row = manifest["contract"]["files"][0]
+    row.update(sha256=sha(path.read_bytes()), required_symbols=required)
+    tree = tree_digest(roots["vllm"])
+    records["vllm"]["candidate_tree_sha256"] = tree
+    records["vllm"]["oracles"][0]["subject_sha256"] = tree
+    with pytest.raises(Refused, match="required.symbol|Class.member"):
+        migrate(parent, manifest, roots, records, input_sha256="f" * 64)
+
+
+@pytest.mark.parametrize(
+    "member", ["retain", "field", "assigned", "Inner", "async_method"]
+)
+def test_migration_accepts_installed_lease_class_member_forms(tmp_path, member):
+    parent, manifest, roots, records = inputs(tmp_path)
+    path = roots["vllm"] / "vllm/new.py"
+    path.write_text(
+        "class Lease:\n def retain(self): pass\n field: int\n assigned = 1\n class Inner: pass\n async def async_method(self): pass\n"
+    )
+    manifest["contract"]["files"][0].update(
+        sha256=sha(path.read_bytes()), required_symbols=["Lease." + member]
+    )
+    tree = tree_digest(roots["vllm"])
+    records["vllm"]["candidate_tree_sha256"] = tree
+    records["vllm"]["oracles"][0]["subject_sha256"] = tree
+    migrate(parent, manifest, roots, records, input_sha256="f" * 64)

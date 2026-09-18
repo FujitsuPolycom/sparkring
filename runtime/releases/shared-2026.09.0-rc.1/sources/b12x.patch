@@ -1,3 +1,61 @@
+diff --git a/b12x/_lib/compile_pool.py b/b12x/_lib/compile_pool.py
+index e2a986013f39c3113cca24d954bf311a7748f002..2370d0ce230d6e345a31395141367ad6fff06c38 100644
+--- a/b12x/_lib/compile_pool.py
++++ b/b12x/_lib/compile_pool.py
+@@ -156,6 +156,45 @@ def _offline_compiler_spawn_environment():
+                 os.environ["CUDA_VISIBLE_DEVICES"] = previous
+ 
+ 
++def _parse_compiler_cpu_affinity(value: str) -> set[int]:
++    """Parse an explicit Linux CPU list without consulting serving affinity."""
++    cpus = set()
++    for part in value.split(","):
++        bounds = part.strip().split("-")
++        if len(bounds) not in (1, 2) or any(
++            not bound or not bound.isascii() or not bound.isdecimal()
++            for bound in bounds
++        ):
++            raise ValueError("B12X_COMPILE_CPU_AFFINITY requires CPU IDs or inclusive ranges")
++        first, last = int(bounds[0]), int(bounds[-1])
++        if first > last:
++            raise ValueError("B12X_COMPILE_CPU_AFFINITY contains a descending CPU range")
++        cpus.update(range(first, last + 1))
++    return cpus
++
++
++def _configure_compiler_cpu_affinity() -> None:
++    """Apply an opt-in CPU mask to this compiler child, never its parent."""
++    value = os.environ.get("B12X_COMPILE_CPU_AFFINITY")
++    if value is None:
++        return
++    requested = _parse_compiler_cpu_affinity(value)
++    if not hasattr(os, "sched_getaffinity") or not hasattr(os, "sched_setaffinity"):
++        raise RuntimeError("B12X_COMPILE_CPU_AFFINITY requires Linux scheduler affinity")
++    previous = os.sched_getaffinity(0)
++    try:
++        os.sched_setaffinity(0, requested)
++        # Linux silently intersects a requested mask with cgroup/online CPUs.
++        # Accept only the exact declared placement; do not disguise a subset.
++        if os.sched_getaffinity(0) != requested:
++            raise RuntimeError("the kernel accepted only part of the requested CPU mask")
++    except Exception as error:
++        os.sched_setaffinity(0, previous)
++        raise RuntimeError(
++            f"B12X_COMPILE_CPU_AFFINITY={value!r} could not be applied exactly"
++        ) from error
++
++
+ def _initialize_worker(
+     device_ordinal: int,
+     compute_capability: tuple[int, int],
+@@ -170,6 +209,7 @@ def _initialize_worker(
+     # Hiding devices before importing CUDA-aware libraries prevents an
+     # accidental runtime or driver call from retaining a device context.
+     os.environ["CUDA_VISIBLE_DEVICES"] = ""
++    _configure_compiler_cpu_affinity()
+     import torch
+     from triton import knobs
+     from . import compiler
 diff --git a/b12x/attention/qsa/_contract.py b/b12x/attention/qsa/_contract.py
 index bc8bd0a93e9ee7b5832828a4be740d214a16d9e5..0691ec1f30ee843488b37f92f79b672adc200c30 100644
 --- a/b12x/attention/qsa/_contract.py
@@ -2624,6 +2682,23 @@ index 3d494ed029c9b4b542bedb499758bf5237ff5b5f..7f7d2fedde891e3f43f040862efd374e
  )
  
  
+diff --git a/b12x/preparation/session.py b/b12x/preparation/session.py
+index e81af4dc3522c4dfa745c26ad8919e0520c1af0f..06228eef3fd5b357ac47bf26c9246eed82305bf9 100644
+--- a/b12x/preparation/session.py
++++ b/b12x/preparation/session.py
+@@ -798,6 +798,12 @@ class PreparationJob:
+         obligation.key = self._choice_key(obligation, selections)
+         if obligation.key is None:
+             return
++        # Local hits cannot remove one participant from a shared tuning race.
++        # Compiled programs remain reusable; only distributed selection is rerun.
++        if (self.autotune and not self.session.cache_only
++                and not self.session._stop.is_set()
++                and len(self.session._tuning_ranks) > 1):
++            return
+         with self._timing.span("cache_lookup"):
+             cache = self.session._selection_cache()
+             record = cache.get(obligation.key)
 diff --git a/b12x/sequence/_shared/delta_prefill/_cute_kernels.py b/b12x/sequence/_shared/delta_prefill/_cute_kernels.py
 index 3525ad4923358f6c743895fbca60b0599e4dd066..10ac2a9bcb687872026aa3c811b01b8c54e83605 100644
 --- a/b12x/sequence/_shared/delta_prefill/_cute_kernels.py
@@ -4916,10 +4991,10 @@ index 591e6b0826e8e177798f90cbe950d83876c78594..27cce7db3f0aa320701f3d141ca4ad50
          invocation_from_tensors,
 diff --git a/b12x/sequence/ple/_checkpoint.py b/b12x/sequence/ple/_checkpoint.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..e5c12c229068e7f82b3c0dae7b0c8e8ccbb20d72
+index 0000000000000000000000000000000000000000..9adafd93e4181eee195bb1f9a7c931a23de1a732
 --- /dev/null
 +++ b/b12x/sequence/ple/_checkpoint.py
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,184 @@
 +"""Prepared interior PLE checkpoint export; device offsets never select kernels."""
 +
 +from dataclasses import dataclass
@@ -5030,8 +5105,6 @@ index 0000000000000000000000000000000000000000..e5c12c229068e7f82b3c0dae7b0c8e8c
 +                triton.cdiv(channels * (length + query.max_speculative_tokens), 256),
 +            ),
 +        )
-+        # Materialize launch handles during preparation, before graph capture.
-+        program[(1, 1, 1)]
 +        return program
 +
 +
@@ -5157,10 +5230,18 @@ index ded1c5c0751144242ac6d7173589c07903f030e4..1e4965b7bd03a2c0f89c64598868e3c6
      "run_prefill",
      "run_mixed",
 diff --git a/b12x/sequence/ple/_preparation.py b/b12x/sequence/ple/_preparation.py
-index c6e04f3c1e67e25b71546b35480cdf35a9ce38a5..534783146363c1cfc75ace831077526e6a745302 100644
+index c6e04f3c1e67e25b71546b35480cdf35a9ce38a5..73183281ada945ad89ff63d9d91ffe42920f3d15 100644
 --- a/b12x/sequence/ple/_preparation.py
 +++ b/b12x/sequence/ple/_preparation.py
-@@ -82,7 +82,7 @@ def compile_layer(query_payload, config_payload, ordinal):
+@@ -9,6 +9,7 @@ import torch
+ import triton
+ 
+ from b12x._lib.compile_pool import CompileJob
++from b12x._lib.compile_plan import load_programs
+ from b12x.preparation import FrozenMapping, MemoryRequirements, Plan
+ from ._contracts import LayerCaps, _bind_layer, _materialize_layout
+ from ._tuning import OPERANDS, PleConfig, PleQuery, TUNING
+@@ -82,7 +83,7 @@ def compile_layer(query_payload, config_payload, ordinal):
          num_warps=4, grid=(n, channel_grid),
      )
      with torch.cuda.device(ordinal):
@@ -5169,7 +5250,7 @@ index c6e04f3c1e67e25b71546b35480cdf35a9ce38a5..534783146363c1cfc75ace831077526e
              kernels._request_ids_kernel.warmup(
                  p["query_start_loc"], p["num_seqs"], p["num_tokens"], p["request_ids"],
                  MAX_TOKENS=m, num_warps=1, grid=(m,),
-@@ -109,6 +109,10 @@ def compile_layer(query_payload, config_payload, ordinal):
+@@ -109,6 +110,10 @@ def compile_layer(query_payload, config_payload, ordinal):
                  p["request_is_prefill"], p["num_seqs"], p["conv_state"], **state_options,
              ),
          )
@@ -5180,6 +5261,22 @@ index c6e04f3c1e67e25b71546b35480cdf35a9ce38a5..534783146363c1cfc75ace831077526e
  
  
  def _binding_tensors(binding, token_count=None):
+@@ -240,9 +245,14 @@ def make_plan(caps: LayerCaps, *, invocation, override):
+         return MemoryRequirements(scratch=_materialize_layout(caps, config).scratch_specs())
+ 
+     def materialize(selection, device):
++        # Checkpoint export is not executed by ordinary PLE priming. Load every
++        # declared program here so its module is owned before graph capture.
++        programs = load_programs(
++            compile_layer(query_payload, selection.config.to_dict(), device.ordinal)
++        )
+         return _PleState(
+             query, _materialize_layout(caps, selection.config),
+-            compile_layer(query_payload, selection.config.to_dict(), device.ordinal),
++            programs,
+         )
+ 
+     return Plan(
 diff --git a/b12x/sequence/ple/_tuning.py b/b12x/sequence/ple/_tuning.py
 index 6c3c3e78f933ca4846b63e067a0531e8390004b2..b98e7b8159e976b62666b2cb578d7971310f2929 100644
 --- a/b12x/sequence/ple/_tuning.py

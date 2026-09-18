@@ -167,6 +167,14 @@ the result to a passing oracle for the exact accepted source tree. Changed
 interfaces or missing evidence stop the build. The resulting contract and proof
 receive separate identities; retained published contracts are not overwritten.
 
+Reviewed cache-contract migrations accept required symbols only in the
+consumer's `Class.member` form. Top-level functions remain protected by their
+file hashes and source tests, not unsupported symbol declarations. Image
+admission also runs the installed SparkCache `verify_contract` implementation
+against every active lease contract, covering its schema, source hashes and
+required members before model startup. This CPU check is not cache-restore
+qualification.
+
 An operator-pinned `foundation.native_cache` manifest can reference an earlier
 compiled wheel. Reuse requires exact equality of declared native/build inputs,
 native-language files elsewhere in each source tree, compiler image, Torch ABI,
@@ -462,6 +470,37 @@ The fixed adapter must enforce reservation, snapshot/restore, model-weight reuse
 cleanup and matched workload controls. The runner provides no implicit permission
 to stop containers or use another task's cluster. A hardware receipt covers only
 its named gates; it is not general stability qualification.
+
+## Labels-only image metadata
+
+Status: **implemented**. The standalone
+[`image_metadata`](image_metadata.py) operator step derives release labels from
+the selected image's installed source, feature and transport receipts. It changes
+only OCI labels; it does not rebuild code, qualify profiles or publish to GHCR.
+
+On a Linux ARM64 Docker host, stage the exact parent image in an operator-owned
+registry bound to `127.0.0.1:19555`, repository `sparkring/native`, tagged with its
+configuration digest **without** the `sha256:` prefix. Then run from the checkout:
+
+```bash
+python -m runtime.images.upgrades.image_metadata \
+  --parent-image sha256:PARENT_CONFIG_HEX \
+  --source-manifest runtime/releases/RELEASE_ID/sources/manifest.json \
+  --output /var/tmp/sparkring-image-metadata-UNIQUE_ID
+```
+
+Replace the placeholders with the selected immutable parent, release and a fresh
+output directory. `--installed-receipt PATH` optionally requires an external
+receipt to match the image's receipt byte-for-byte. A temporary container is
+created for file extraction but never started. Registry access stays inside that
+loopback repository; Docker uses the local Unix socket.
+
+`equivalence.json` records full parent/child inspections and verifies identical
+filesystem layers and every non-label OCI/Docker configuration field. The child
+has a distinct configuration ID; retain the runtime-build identity separately
+from any later repository adoption commit. Failures retain output for inspection;
+do not treat a partial registry write as a verified child. No upgrade-controller
+default or profile image selection is changed.
 
 ## State, limits and recovery
 
