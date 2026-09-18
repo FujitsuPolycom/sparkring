@@ -19,25 +19,7 @@ substituted into a GHCR pull command. The source manifest is not a publication
 receipt. The [published RC1 candidate](../shared-2026.09.0-rc.1/README.md) retains
 its own immutable inputs and narrower qualification record.
 
-Qwen TP2/TP4 cache-on and cache-off trials passed bounded text, retrieval and
-media checks; cache-enabled trials also passed all-rank restart/restore checks.
-Matched saved-image controls show topology-dependent throughput trade-offs,
-including lower TP4 cold-prefill throughput. No blanket performance improvement
-or profile-default promotion is claimed.
-
-The upstream GPU selection recorded 21 passes and four program-identity failures.
-Those four failures also occurred on RC1. A six-test compatibility supplement
-checks the retained kernel identities and selection behavior; it does not turn
-the upstream failures into passes. Request-level SparkCache salt isolation,
-full-context/C16 throughput and arbitrary video accuracy are not qualified by
-these trials. A separately developed salt-isolation fix is not in this image.
-
-## Recorded measurements
-
-- [Qwen TP2/TP4 with and without SparkCache: bounded qualification](../../../performance/records/qwen38-flash-next/shared-5ea26fe19e7c-tp2-tp4-qualification-20260918.md)
-- [Matched saved-image comparison and promotion hold](../../../performance/records/qwen38-flash-next/shared-5ea26fe19e7c-tp2-tp4-comparison-20260918.md)
-- [Portable exact-token cold-prefill reproduction](../../../performance/methodology/exact-cold-prefill.md)
-
-The records retain every numeric sample and identify locally retained raw
-artifacts by hash. They do not imply those private site artifacts are publicly
-downloadable or that this image has been published to a registry.
+Hardware measurements are retained locally and are not published here.
+This source description does not promote any profile or establish serving
+qualification. A separately developed request-salt isolation fix is not included
+in this image.
