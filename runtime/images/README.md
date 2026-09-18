@@ -11,12 +11,18 @@ Do not select a serving image from a package's publication date or GitHub's
 |---|---|---|
 | GitHub container package | A named family of images in GHCR, such as `sparkring` | Follow the selected profile; the family name alone is insufficient |
 | Image tag or registry digest | A version label or content-addressed image selection within a package | Pull the digest pinned by the quickstart; a mutable tag is not an equivalent pin |
-| GitHub Release | Notes and downloadable assets attached to a Git tag | Download a host tool or build input only when the guide explicitly requires it |
+| GitHub Release | A version's announcement, compatibility notes and installation links, with optional download assets | A serving release links its GHCR image and quickstarts; auxiliary releases identify host tools or build inputs |
 | Repository `runtime/releases/` selection | A profile's published contract or pinned builder | Resolved by repository tooling; not a separate GitHub download channel |
 
 The package count in GitHub's sidebar counts families, not individual image
 versions. Model weights, site configuration and host fabric provisioning remain
 separate from the serving image unless a profile explicitly states otherwise.
+
+A serving image can have both a Package version and a GitHub Release entry.
+The Release is its human-facing landing page; GHCR stores the image Docker
+pulls. Size does not determine which channel an artifact uses. The
+[publication plan](../../docs/development/image-distribution-plan.md) proposes
+matching serving-release pages rather than moving image storage out of GHCR.
 
 ## Container images
 

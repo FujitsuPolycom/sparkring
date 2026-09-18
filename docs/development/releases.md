@@ -27,7 +27,11 @@ selections are different interfaces. The [image and download guide](../../runtim
 explains operator selection. Keep host tools and build-input archives visibly
 identified as non-serving artifacts; a GitHub **Latest** badge is not a profile
 recommendation. The [distribution rollout plan](image-distribution-plan.md)
-describes proposed metadata cleanup without changing published identities.
+describes a matching serving-Release/Package presentation and auxiliary metadata
+cleanup without changing published identities. The
+[serving Release template](serving-release-template.md) captures the image pin,
+supported-profile evidence, known limitations and rollback references. It is
+not a publication receipt or a GitHub draft Release.
 
 A partial lifecycle fix may be accepted as a mitigation. For example, increasing
 peer-response silence tolerance does not handle disappearance of the local
