@@ -10,7 +10,7 @@ import sys
 import pytest
 import yaml
 
-from runtime.common import compose, qwen_flash_next
+from runtime.common import compose
 from runtime.common.container_spec import Bind, ContainerSpec, docker_create
 from scripts import generate_compose_examples
 
