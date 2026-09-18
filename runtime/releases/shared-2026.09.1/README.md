@@ -3,9 +3,11 @@
 Shared ARM64 serving image for NVIDIA GB10 clusters, with vLLM, SparkCache and
 an isolated SGLang runtime. CUDA 13.3; PyTorch 2.13.0. Model weights are separate.
 
-Status: **implemented**. Image/source verification passed; the
-[qualification record](qualification.json) identifies serving checks and limits.
-Presence of a model integration does not qualify its deployment.
+Status: **research-only**. A retained two-node SparkCache container restart
+stalled while unloading a CUDA library during autotuning. A same-image retry
+started and restored cached tokens, but does not establish reliable startup.
+Do not promote this image while that failure remains unresolved. The
+[qualification record](qualification.json) identifies checks and limits.
 
 ## Image and profiles
 
@@ -38,6 +40,14 @@ The runtime includes B12X #394 sparse-attention selection, multimodal
 hyperconnection forwarding, and a configuration audit before API readiness.
 Feature selection and qualification remain profile-specific. This guide makes
 no throughput claim.
+
+A bounded CUDA reproducer demonstrates a deadlock when automatic Python cyclic
+cleanup unloads a CUDA library while autotuning holds GPU work behind a
+host-controlled stream gate, matching the observed blocked native call.
+The host thread cannot release the gate until unloading returns. The
+[collection-deferral correction](../../../integrations/b12x/patches/stream-gate-gc.md)
+requires a distinct image and full-model restart qualification; it is not present
+in the immutable image identified above.
 
 ## Sources and rollback
 

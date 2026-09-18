@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-functional-qualification/v1",
   "release": "shared-2026.09.1",
-  "status": "implemented",
+  "status": "research-only",
   "runtime_image_id": "sha256:942988d57ccec7a24b3f670beda4e6b58195077e1bda0c72a474fcf032fbe4e8",
   "publication_image_id": "sha256:67271e056568baf421bef838551c3a08837730a70e4a1cc62ae2c11c7920fb6d",
   "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
@@ -14,7 +14,15 @@
     "source_gate_skips": 0,
     "anonymous_digest_pull_verified": true
   },
-  "scope": "Source, image identity and installed-file checks passed. Exact published-image serving qualification is pending.",
+  "scope": "Source and installed-file checks passed. Bounded text, media, short-request score and concurrent-response checks passed on TP2 and TP4 with and without SparkCache. A retained TP2 SparkCache restart stalled in cuLibraryUnload; the same-image retry restored both fixtures, but does not qualify startup reliability. Promotion is withheld.",
+  "startup_failure": {
+    "topology": "TP2/DCP1 with SparkCache",
+    "operation": "restart of retained serving containers",
+    "worker_symptom": "CUDA library unload blocked while the preparation peer waited for the distributed stage",
+    "native_frame": "cuLibraryUnload",
+    "controlled_retry": "same image and settings started; two independent fixtures restored 5696 tokens each on both ranks",
+    "conclusion": "Retry success does not resolve the startup failure; a corrected immutable image requires qualification."
+  },
   "not_established": [
     "four-profile clean-checkout serving and restart/restore qualification",
     "performance or benchmark results",
