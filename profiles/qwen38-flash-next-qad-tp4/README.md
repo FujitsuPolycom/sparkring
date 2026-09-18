@@ -96,7 +96,7 @@ curl --fail http://127.0.0.1:8015/health
 curl --fail http://127.0.0.1:8015/v1/models
 curl --fail http://127.0.0.1:8015/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
+  -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD-TP4","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
 ```
 
 For a remote client, replace `127.0.0.1` with rank0's reachable address.

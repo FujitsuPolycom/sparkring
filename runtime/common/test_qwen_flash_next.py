@@ -63,7 +63,9 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     assert plain['model'] == cached['model'] == tp4['model']
     assert plain['model']['revision'] == '629bc3218833a38b475b719f34aa571666f4a03e'
     assert plain['served_model_name'] == cached['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP2'
-    assert tp4['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD'
+    assert tp4['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP4'
+    tp4_cached = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/sparkcache.json')
+    assert tp4_cached['served_model_name'] == tp4['served_model_name']
     manifest = (root / 'SHA256SUMS').read_text().splitlines()
     hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in manifest}
     assert hashes['config.json'] == plain['model']['config_sha256']

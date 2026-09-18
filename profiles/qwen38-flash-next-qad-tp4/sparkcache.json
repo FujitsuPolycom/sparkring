@@ -8,7 +8,7 @@
     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
   },
   "topology": "direct-cycle-4",
-  "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD",
+  "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
   "environment": {
     "VLLM_USE_V2_MODEL_RUNNER": "1",
     "VLLM_SSM_CONV_STATE_LAYOUT": "DS",

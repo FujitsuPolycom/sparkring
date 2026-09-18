@@ -15,7 +15,7 @@ services:
     - serve
     - /models/target
     - --served-model-name
-    - Qwen3.8-Flash-Next-NVFP4-QAD
+    - Qwen3.8-Flash-Next-NVFP4-QAD-TP4
     - --node-rank
     - '0'
     - --master-addr
@@ -168,7 +168,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-a6a2a5b35e77-629bc3218833
     labels:
-      io.sparkring.deployment: 3df837414ca7a819f15bf4ecdef2d008fcf941098044f8c0f1f3a7b775b41dac
+      io.sparkring.deployment: 5e15f72e44b9862369dfd57ac63e3a22bb426ad07a0d9e7a7634afea536c2169
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
