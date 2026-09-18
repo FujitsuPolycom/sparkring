@@ -45,6 +45,7 @@ class ContainerSpec:
     security_opt: tuple[str, ...] = ()
     user: str | None = None
     working_dir: str | None = None
+    cpuset_cpus: str | None = None
     health_mode: str = "auto"
 
     def __post_init__(self):
@@ -97,6 +98,15 @@ class ContainerSpec:
                 or "\\" in self.working_dir
             ):
                 raise ValueError("working_dir must be a normalized absolute Linux path")
+        if self.cpuset_cpus is not None:
+            if not isinstance(self.cpuset_cpus, str) or not re.fullmatch(
+                r"[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*", self.cpuset_cpus
+            ):
+                raise ValueError("cpuset_cpus must be a literal CPU index/range list")
+            for interval in self.cpuset_cpus.split(","):
+                endpoints = [int(part) for part in interval.split("-")]
+                if len(endpoints) == 2 and endpoints[0] > endpoints[1]:
+                    raise ValueError("cpuset_cpus range is reversed")
         if self.health_mode not in ("auto", "inherit", "disabled", "exec", "shell"):
             raise ValueError("Unsupported container health mode")
         if not isinstance(self.health_command, tuple) or any(
@@ -130,7 +140,10 @@ class ContainerSpec:
         return self.health_mode
 
     def document(self):
-        return asdict(self)
+        result = asdict(self)
+        if self.cpuset_cpus is None:
+            result.pop("cpuset_cpus")
+        return result
 
 
 def docker_create(spec: ContainerSpec) -> list[str]:
@@ -163,6 +176,7 @@ def docker_create(spec: ContainerSpec) -> list[str]:
         ("--shm-size", spec.shm_size),
         ("--user", spec.user),
         ("--workdir", spec.working_dir),
+        ("--cpuset-cpus", spec.cpuset_cpus),
     ):
         if value is not None:
             argv += [option, str(value)]
@@ -372,6 +386,8 @@ def expected_inspection(spec: ContainerSpec, image: dict, *, backend="docker") -
         host_config["Init"] = spec.init
     if spec.shm_size is not None:
         host_config["ShmSize"] = spec.shm_size
+    if spec.cpuset_cpus is not None:
+        host_config["CpusetCpus"] = spec.cpuset_cpus
     return {
         "name": spec.name,
         "image": spec.image_id,

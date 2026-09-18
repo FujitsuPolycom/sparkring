@@ -1,0 +1,6 @@
+ARG PARENT
+FROM ${PARENT}
+COPY . /native-context/
+RUN /opt/venv/bin/python /native-context/native_install.py install --context /native-context
+ENTRYPOINT ["/opt/venv/bin/python", "/opt/sparkring/bin/native-image.py"]
+CMD ["verify"]
