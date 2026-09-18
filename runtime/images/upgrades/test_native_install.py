@@ -226,6 +226,30 @@ def test_distribution_ownership_does_not_include_other_packages(tmp_path, monkey
     )
 
 
+@pytest.mark.parametrize(
+    "name", ["b12x-generate-gpu-profile", "b12x-inspect-model-policy"]
+)
+def test_selected_b12x_owns_its_retained_console_script_paths(name):
+    assert native_install.package_owned("/opt/venv/bin/" + name, ["b12x"], [])
+    assert not native_install.package_owned(
+        "/opt/venv/bin/" + name, ["vllm", "flashinfer"], []
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/opt/venv/bin/pip",
+        "/opt/venv/bin/python",
+        "/opt/venv/bin/sglang",
+        "/opt/venv/bin/b12x-unreviewed-command",
+        "/opt/sglang/bin/b12x-generate-gpu-profile",
+    ],
+)
+def test_console_script_ownership_does_not_cover_unrelated_executables(path):
+    assert not native_install.package_owned(path, ["vllm", "b12x", "flashinfer"], [])
+
+
 def test_sglang_runtime_inventory_protects_isolated_dependencies(tmp_path, monkeypatch):
     root, prefix = tmp_path / "runtime", tmp_path / "sglang-venv"
     directory = root / "sglang"

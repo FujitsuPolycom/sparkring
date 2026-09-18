@@ -16,6 +16,27 @@ from .demo import DemoAgent, DemoExecutor, FIXED, REFACTORED, setup
 from .runner import resolve_uncertain, run
 
 
+def test_bounded_command_failure_retains_the_actionable_tail(monkeypatch):
+    detail = (
+        b"compiler context\n" + b"progress\n" * 1000 + b"fatal: missing owned CLI\n"
+    )
+    monkeypatch.setattr(
+        io,
+        "command",
+        lambda *a, **k: {
+            "returncode": 1,
+            "uncertain": False,
+            "stderr": detail,
+            "stdout": b"",
+        },
+    )
+    with pytest.raises(contracts.Refused) as failure:
+        io.checked(["docker", "build"])
+    message = str(failure.value)
+    assert "compiler context" in message and "fatal: missing owned CLI" in message
+    assert "intermediate output omitted" in message and len(message) < 2100
+
+
 @pytest.fixture
 def fixture(tmp_path):
     policy, repository = setup(tmp_path / "fixture")

@@ -151,12 +151,11 @@ def command(
 def checked(argv, **kwargs):
     result = command(argv, **kwargs)
     if result["returncode"] or result["uncertain"]:
-        raise Refused(
-            "Command failed: "
-            + str(argv[0])
-            + ": "
-            + result["stderr"].decode(errors="replace")[:2000]
-        )
+        detail = result["stderr"].decode(errors="replace")
+        if len(detail) > 2000:
+            # Build systems commonly emit their actionable exception last.
+            detail = detail[:400] + "\n[intermediate output omitted]\n" + detail[-1500:]
+        raise Refused("Command failed: " + str(argv[0]) + ": " + detail)
     return result["stdout"]
 
 

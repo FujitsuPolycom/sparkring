@@ -74,8 +74,19 @@ def package_owned(path, package_names, metadata_roots):
         return True
     if any(path.is_relative_to(root) for root in metadata_roots):
         return True
-    scripts = {"vllm": "/opt/venv/bin/vllm", "flashinfer": "/opt/venv/bin/flashinfer"}
-    return path in {Path(scripts[name]) for name in package_names if name in scripts}
+    # These exact console entrypoints belong to the selected distributions.
+    # B12X's policy-based CLI is removed by the preparation-based source package;
+    # its removal must be tracked as owned, without admitting other venv programs.
+    scripts = {
+        "vllm": {"vllm"},
+        "flashinfer": {"flashinfer"},
+        "b12x": {"b12x-generate-gpu-profile", "b12x-inspect-model-policy"},
+    }
+    return path in {
+        Path("/opt/venv/bin") / entrypoint
+        for name in package_names
+        for entrypoint in scripts.get(name, ())
+    }
 
 
 def isolated_sglang_inventory():
