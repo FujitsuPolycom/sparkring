@@ -17,7 +17,7 @@ def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
     assert cached['serving']['sparkcache'] is True
     assert 'SparkCache is disabled' not in str(cached['evidence'])
     cache_row = next(line for line in variants.splitlines() if '[qwen38-flash-next-tp2-sparkcache](' in line)
-    assert '| On | Experimental |' in cache_row
+    assert '| On | Validated |' in cache_row
 
 
 def test_qad_quant_link_identifies_the_pinned_checkpoint_for_tp2_and_tp4():
