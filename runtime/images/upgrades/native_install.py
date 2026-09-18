@@ -11,7 +11,7 @@ import hashlib
 import importlib.metadata as metadata
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import sys
 
@@ -20,6 +20,11 @@ ROOT = Path("/opt/sparkring")
 RECEIPT = ROOT / "receipts/candidate-installed.json"
 NATIVE = ROOT / "receipts/native-installed.json"
 ENTRYPOINT = ROOT / "bin/native-image.py"
+DEPENDENCY_PACKAGES = {
+    "flashinfer-python": "flashinfer",
+    "flashinfer-jit-cache": "flashinfer_jit_cache",
+}
+SGLANG_PREFIX = Path("/opt/sglang")
 
 
 def require(value, message):
@@ -69,7 +74,154 @@ def package_owned(path, package_names, metadata_roots):
         return True
     if any(path.is_relative_to(root) for root in metadata_roots):
         return True
-    return path in (Path("/opt/venv/bin/vllm"),)
+    scripts = {"vllm": "/opt/venv/bin/vllm", "flashinfer": "/opt/venv/bin/flashinfer"}
+    return path in {Path(scripts[name]) for name in package_names if name in scripts}
+
+
+def isolated_sglang_inventory():
+    """Verify the separate runtime receipt and inventory its Python environment."""
+    directory = ROOT / "sglang"
+    if not directory.exists():
+        return None
+    receipt = directory / "installed.json"
+    manifest = directory / "manifest.json"
+    record = read(receipt)
+    require(
+        record.get("schema") == "sparkring-sglang-installed/v1"
+        and record.get("files")
+        and record["composition_sha256"] == sha(manifest),
+        "Isolated SGLang receipt or manifest differs",
+    )
+    require(
+        record["vllm_parent_receipt_sha256"] == sha(RECEIPT),
+        "Isolated SGLang parent receipt differs",
+    )
+    files = dict(record["files"])
+    files.update({str(receipt): sha(receipt), str(manifest): sha(manifest)})
+    files[str(ROOT / "bin/sglang-python")] = sha(ROOT / "bin/sglang-python")
+    prefix = Path(read(manifest)["sglang_base"]["python_prefix"])
+    require(
+        prefix == SGLANG_PREFIX and prefix.is_dir(),
+        "Isolated SGLang Python prefix differs",
+    )
+    for path in prefix.rglob("*"):
+        if path.is_file() and path.suffix not in (".pyc", ".pyo"):
+            files[str(path)] = sha(path)
+    verify_files(files)
+    return {
+        "receipt_sha256": sha(receipt),
+        "composition_sha256": sha(manifest),
+        "files": files,
+        "serving_qualified": False,
+    }
+
+
+def install_feature_update(context, descriptor):
+    """Apply reviewed owned feature changes after preserving the parent catalog."""
+    selected = descriptor.get("feature_update")
+    if selected is None:
+        return {}, None
+    require(
+        selected.get("file") == "feature-update.json",
+        "Feature descriptor is not an owned context file",
+    )
+    manifest_path = context / selected["file"]
+    require(
+        sha(manifest_path) == selected["sha256"], "Feature-update descriptor differs"
+    )
+    manifest = read(manifest_path)
+    require(
+        manifest.get("schema") == "sparkring-native-feature-update/v1"
+        and manifest.get("assets"),
+        "Unknown or empty feature update",
+    )
+    catalog = ROOT / "features/capabilities.json"
+    require(
+        sha(catalog) == manifest.get("parent_capabilities_sha256"),
+        "Parent feature catalog differs",
+    )
+    require(
+        str(catalog) in manifest["assets"],
+        "Feature update must declare its child catalog",
+    )
+    payloads = {}
+    for name, asset in manifest["assets"].items():
+        target = Path(name)
+        pure = PurePosixPath(name)
+        require(
+            pure.is_absolute()
+            and ".." not in pure.parts
+            and "\\" not in name
+            and (
+                target.is_relative_to(ROOT / "features")
+                or target.is_relative_to(ROOT / "qwen4-prefill")
+                or target == SITE / "sparkring_features.pth"
+            )
+            and not any(part.is_symlink() for part in (target, *target.parents)),
+            "Feature target is outside its owner or symlinked: " + name,
+        )
+        parent_hash = asset.get("parent_sha256")
+        require(
+            (
+                not target.exists()
+                if parent_hash is None
+                else target.is_file() and sha(target) == parent_hash
+            ),
+            "Feature target preimage differs: " + name,
+        )
+        source = context / "feature-assets" / name.lstrip("/")
+        require(
+            source.is_file() and sha(source) == asset["sha256"],
+            "Feature asset differs: " + name,
+        )
+        data = source.read_bytes()
+        if target.suffix == ".py":
+            compile(data, name, "exec")
+        payloads[target] = data
+    child = json.loads(payloads[catalog])
+    parent = read(catalog)
+    verify_feature_dispositions(parent, child)
+    retained = (
+        ROOT
+        / "receipts"
+        / ("features-parent-" + descriptor["input_sha256"][:16] + ".json")
+    )
+    require(not retained.exists(), "Retained parent feature catalog already exists")
+    retained.write_bytes(catalog.read_bytes())
+    for target, data in payloads.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    files = {str(path): sha(path) for path in [retained, *payloads]}
+    receipt = {
+        "descriptor_sha256": selected["sha256"],
+        "parent_catalog": str(retained),
+        "parent_capabilities_sha256": manifest["parent_capabilities_sha256"],
+        "catalog": str(catalog),
+        "catalog_sha256": sha(catalog),
+        "assets": manifest["assets"],
+        "serving_qualified": False,
+    }
+    return files, receipt
+
+
+def verify_feature_dispositions(parent, child):
+    require(
+        child.get("schema") == "sparkring-image-capabilities/v1"
+        and child.get("features"),
+        "Child feature catalog is unsupported or empty",
+    )
+    removed = set(parent["features"]) - set(child["features"])
+    unsupported = child.get("unsupported_features", {})
+    require(
+        removed <= set(unsupported),
+        "Removed features lack an explicit unsupported disposition",
+    )
+    for name in removed:
+        require(
+            unsupported[name].get("reason")
+            and unsupported[name].get("replacement") in child["features"],
+            "Removed feature lacks its reason or replacement: " + name,
+        )
 
 
 def selected_boundary_identity(parent):
@@ -108,16 +260,54 @@ def install_source_binding(context, descriptor, compiler):
         "Binding artifacts differ from installation inputs",
     )
     contract, proof = read(contract_file), read(proof_file)
+    schema = proof.get("schema")
+    if schema == "sparkring-binding-migration/v1":
+        trees = proof.get("component_trees", {})
+        require(
+            trees == compiler["source_trees"]
+            and proof.get("input_sha256") == descriptor["input_sha256"]
+            and proof.get("contract_sha256")
+            == hashlib.sha256(
+                json.dumps(
+                    contract, sort_keys=True, separators=(",", ":"), allow_nan=False
+                ).encode()
+            ).hexdigest(),
+            "Migration proof does not bind compiled components",
+        )
+        oracles = proof.get("oracles", [])
+        require(
+            oracles and {item.get("component") for item in oracles} == set(trees),
+            "Migration proof omits a component oracle",
+        )
+        for item in oracles:
+            receipt = item.get("receipt", {})
+            require(
+                receipt.get("schema") == "sparkring-upgrade-gate/v1"
+                and receipt.get("input_sha256") == descriptor["input_sha256"]
+                and receipt.get("subject_sha256") == trees[item["component"]]
+                and receipt.get("variant") == "candidate"
+                and receipt.get("outcome") == "passed"
+                and receipt.get("skipped") == 0
+                and type(receipt.get("assertions")) is int
+                and receipt["assertions"] > 0,
+                "Migration oracle does not describe compiled source",
+            )
+    else:
+        require(
+            schema == "sparkring-binding-equivalence/v1"
+            and proof.get("oracle", {}).get("input_sha256")
+            == descriptor["input_sha256"]
+            and proof["oracle"].get("subject_sha256")
+            == compiler["source_trees"]["vllm"]
+            and proof["oracle"].get("variant") == "candidate"
+            and proof["oracle"].get("outcome") == "passed"
+            and proof["oracle"].get("skipped") == 0
+            and type(proof["oracle"].get("assertions")) is int
+            and proof["oracle"]["assertions"] > 0,
+            "Binding proof does not describe the compiled source",
+        )
     require(
-        proof.get("schema") == "sparkring-binding-equivalence/v1"
-        and proof.get("candidate_tree_sha256") == compiler["source_trees"]["vllm"]
-        and proof.get("oracle", {}).get("input_sha256") == descriptor["input_sha256"]
-        and proof["oracle"].get("subject_sha256") == compiler["source_trees"]["vllm"]
-        and proof["oracle"].get("variant") == "candidate"
-        and proof["oracle"].get("outcome") == "passed"
-        and proof["oracle"].get("skipped") == 0
-        and type(proof["oracle"].get("assertions")) is int
-        and proof["oracle"]["assertions"] > 0
+        proof.get("candidate_tree_sha256") == compiler["source_trees"]["vllm"]
         and proof.get("serving_qualified") is False,
         "Binding proof does not describe the compiled source",
     )
@@ -180,6 +370,7 @@ def install(context):
     )
     parent = read(RECEIPT)
     verify_files(parent["files"])
+    isolated_sglang = isolated_sglang_inventory()
     boundary_path = selected_boundary_identity(parent)
     boundary = read(boundary_path) if boundary_path.exists() else None
     if boundary is not None:
@@ -198,13 +389,20 @@ def install(context):
         name: metadata.version(name) for name in ("torch", "torchvision", "torchaudio")
     }
     before = dict(parent["files"])
-    packages = ["vllm", "b12x"]
+    dependencies = descriptor.get("runtime_dependencies", {})
+    require(
+        set(dependencies) <= set(DEPENDENCY_PACKAGES),
+        "Unreviewed runtime dependency migration",
+    )
+    packages = ["vllm", "b12x", *dependencies]
+    package_names = [DEPENDENCY_PACKAGES.get(name, name) for name in packages]
+    wheel_records = {**compiler["wheels"], **dependencies}
     selected = []
     metadata_roots = []
     for name in packages:
         before.update(distribution_files(name))
-        metadata_roots.extend(SITE.glob(name + "-*.dist-info"))
-        record = compiler["wheels"][name]
+        metadata_roots.extend(SITE.glob(name.replace("-", "_") + "-*.dist-info"))
+        record = wheel_records[name]
         filename = record["file"]
         require(
             Path(filename).name == filename and filename.endswith(".whl"),
@@ -243,7 +441,7 @@ def install(context):
     )
     files, removed = {}, []
     for path, expected in before.items():
-        if package_owned(path, packages, metadata_roots):
+        if package_owned(path, package_names, metadata_roots):
             if not Path(path).exists():
                 removed.append(path)
         else:
@@ -254,15 +452,20 @@ def install(context):
             files[path] = expected
     for name in packages:
         require(
-            metadata.version(name) == compiler["wheels"][name]["version"],
+            metadata.version(name) == wheel_records[name]["version"],
             "Installed distribution version differs",
         )
         files.update(distribution_files(name))
         # Include package additions that a retained foundation RECORD omitted.
-        for path in (SITE / name).rglob("*"):
+        for path in (SITE / DEPENDENCY_PACKAGES.get(name, name)).rglob("*"):
             if path.is_file() and path.suffix not in (".pyc", ".pyo"):
                 files[str(path)] = sha(path)
     files.update(install_source_binding(context, descriptor, compiler))
+    feature_files, feature_update = install_feature_update(context, descriptor)
+    files.update(feature_files)
+    if isolated_sglang is not None:
+        verify_files(isolated_sglang["files"])
+        files.update(isolated_sglang["files"])
     # Optional cache/feature additions remain unchanged and receive explicit hashes.
     for directory in (
         SITE / "sparkcache",
@@ -328,6 +531,14 @@ def install(context):
             **{name: metadata.version(name) for name in packages},
         },
         "foundation_dependency_exceptions": prior_errors,
+        "runtime_dependencies": dependencies,
+        "feature_update": feature_update,
+        "isolated_sglang": (
+            {key: value for key, value in isolated_sglang.items() if key != "files"}
+            | {"files_verified": len(isolated_sglang["files"])}
+        )
+        if isolated_sglang
+        else None,
         "active_contracts": sorted(
             descriptor.get("active_contracts", parent.get("integration_contracts", {}))
         ),
@@ -379,6 +590,7 @@ def verify():
         "input_sha256": value["input_sha256"],
         "serving_qualified": False,
         "features": sorted(features),
+        "isolated_sglang": value.get("isolated_sglang"),
     }
 
 

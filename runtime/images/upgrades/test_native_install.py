@@ -1,6 +1,7 @@
 """Native image attestation and compiler-policy checks without a container."""
 
 import json
+import hashlib
 
 import pytest
 
@@ -45,9 +46,19 @@ def test_explicit_native_recipe_is_admitted():
     assert build_native.validate_recipe(recipe()) == recipe()
 
 
+def test_reviewed_gb10_metadata_profile_is_explicit():
+    selected = {**recipe(), "wheel_metadata_profile": "gb10-dsl462-quack064"}
+    assert build_native.validate_recipe(selected) == selected
+    with pytest.raises(ValueError, match="metadata profile"):
+        build_native.validate_recipe(
+            {**selected, "wheel_metadata_profile": "drop-audio"}
+        )
+
+
 @pytest.mark.parametrize("tamper", [False, True])
+@pytest.mark.parametrize("migration", [False, True])
 def test_install_source_binding_requires_matching_installed_bytes(
-    tmp_path, monkeypatch, tamper
+    tmp_path, monkeypatch, tamper, migration
 ):
     root, site, context = tmp_path / "runtime", tmp_path / "site", tmp_path / "context"
     (root / "contracts").mkdir(parents=True)
@@ -73,6 +84,26 @@ def test_install_source_binding_requires_matching_installed_bytes(
             "skipped": 0,
         },
     }
+    if migration:
+        proof = {
+            "schema": "sparkring-binding-migration/v1",
+            "candidate_tree_sha256": "b" * 64,
+            "component_trees": {"vllm": "b" * 64},
+            "input_sha256": "a" * 64,
+            "contract_sha256": hashlib.sha256(
+                json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "oracles": [
+                {
+                    "component": "vllm",
+                    "receipt": {
+                        **proof["oracle"],
+                        "schema": "sparkring-upgrade-gate/v1",
+                    },
+                }
+            ],
+            "serving_qualified": False,
+        }
     (context / "binding.json").write_text(json.dumps(contract))
     (context / "proof.json").write_text(json.dumps(proof))
     destination = (
@@ -193,3 +224,116 @@ def test_distribution_ownership_does_not_include_other_packages(tmp_path, monkey
     assert not native_install.package_owned(
         tmp_path / "credentials", ["vllm", "b12x"], []
     )
+
+
+def test_sglang_runtime_inventory_protects_isolated_dependencies(tmp_path, monkeypatch):
+    root, prefix = tmp_path / "runtime", tmp_path / "sglang-venv"
+    directory = root / "sglang"
+    directory.mkdir(parents=True)
+    prefix.mkdir()
+    (root / "bin").mkdir()
+    (root / "bin/sglang-python").write_text("wrapper")
+    parent = root / "parent.json"
+    parent.write_text("{}")
+    library = prefix / "torch.so"
+    library.write_bytes(b"ARM runtime")
+    manifest = directory / "manifest.json"
+    manifest.write_text(json.dumps({"sglang_base": {"python_prefix": str(prefix)}}))
+    (directory / "installed.json").write_text(
+        json.dumps(
+            {
+                "schema": "sparkring-sglang-installed/v1",
+                "files": {
+                    str(root / "bin/sglang-python"): native_install.sha(
+                        root / "bin/sglang-python"
+                    )
+                },
+                "composition_sha256": native_install.sha(manifest),
+                "vllm_parent_receipt_sha256": native_install.sha(parent),
+            }
+        )
+    )
+    monkeypatch.setattr(native_install, "ROOT", root)
+    monkeypatch.setattr(native_install, "RECEIPT", parent)
+    monkeypatch.setattr(native_install, "SGLANG_PREFIX", prefix)
+    inventory = native_install.isolated_sglang_inventory()
+    assert str(library) in inventory["files"]
+    library.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="payload differs"):
+        native_install.verify_files(inventory["files"])
+
+
+def test_runtime_dependency_cannot_replace_torch(tmp_path):
+    with pytest.raises(ValueError, match="Unreviewed runtime"):
+        build_native.prepare_runtime_dependencies(
+            {
+                "foundation": {
+                    "runtime_dependencies": [
+                        {
+                            "name": "torch",
+                            "version": "2",
+                            "path": "torch.whl",
+                            "sha256": "a" * 64,
+                            "source_url": "https://example.invalid/torch.whl",
+                        }
+                    ]
+                }
+            },
+            tmp_path,
+        )
+
+
+def test_removed_feature_requires_explicit_replacement_and_reason():
+    parent = {"features": {"qwen-prefill": {}, "qwen-collectives": {}}}
+    child = {
+        "schema": "sparkring-image-capabilities/v1",
+        "features": {"qwen4-prefill": {}, "qwen-collectives": {}},
+    }
+    with pytest.raises(ValueError, match="unsupported disposition"):
+        native_install.verify_feature_dispositions(parent, child)
+    child["unsupported_features"] = {"qwen-prefill": {"replacement": "qwen4-prefill"}}
+    with pytest.raises(ValueError, match="reason or replacement"):
+        native_install.verify_feature_dispositions(parent, child)
+    child["unsupported_features"]["qwen-prefill"]["reason"] = (
+        "The model source uses a different prepared projection interface."
+    )
+    native_install.verify_feature_dispositions(parent, child)
+
+
+def test_feature_staging_verifies_hashes_without_modifying_policy_assets(tmp_path):
+    source = tmp_path / "bootstrap.py"
+    source.write_text("VALUE = 1\n")
+    manifest = tmp_path / "features.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": "sparkring-native-feature-update/v1",
+                "assets": {
+                    "/opt/sparkring/features/bootstrap.py": {
+                        "source": source.name,
+                        "sha256": native_install.sha(source),
+                        "parent_sha256": "a" * 64,
+                    }
+                },
+            }
+        )
+    )
+    policy = {
+        "_root": tmp_path,
+        "foundation": {
+            "feature_update": {
+                "manifest": manifest.name,
+                "sha256": native_install.sha(manifest),
+            }
+        },
+    }
+    context = tmp_path / "context"
+    context.mkdir()
+    selected = build_native.prepare_feature_update(policy, context)
+    assert selected["sha256"] == native_install.sha(manifest)
+    assert (
+        context / "feature-assets/opt/sparkring/features/bootstrap.py"
+    ).read_bytes() == source.read_bytes()
+    source.write_text("VALUE = 2\n")
+    with pytest.raises(ValueError, match="Feature asset differs"):
+        build_native.prepare_feature_update(policy, context)

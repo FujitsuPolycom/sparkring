@@ -37,12 +37,39 @@ def oracle_environment(source, overlay, baseline):
     )
 
 
+def bind_test_roots(items, selected, baseline, source):
+    """Bind explicitly declared AST source probes to the runtime under test."""
+    modules = {str(Path(item.module.__file__).resolve()): item.module for item in items}
+    for path in selected:
+        module = modules.get(str(Path(path).resolve()))
+        if (
+            module is None
+            or Path(getattr(module, "ROOT", "")).resolve() != Path(baseline).resolve()
+        ):
+            raise ValueError(
+                "Protected AST probe has no declared baseline ROOT: " + path
+            )
+        module.ROOT = Path(source)
+
+
+def pytest_collection_modifyitems(items):
+    selected = json.loads(os.environ.get("SPARKRING_AST_SOURCE_TESTS", "[]"))
+    if selected:
+        bind_test_roots(
+            items,
+            selected,
+            os.environ["SPARKRING_ORACLE_BASELINE"],
+            os.environ["SPARKRING_TEST_SOURCE_ROOT"],
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--baseline", required=True, type=Path)
     parser.add_argument("--component", required=True)
     parser.add_argument("--result", required=True, type=Path)
+    parser.add_argument("--source-root-test", action="append", default=[])
     parser.add_argument("tests", nargs="+")
     args = parser.parse_args()
     # Source-only oracles may need the foundation's compiled extension modules.
@@ -65,11 +92,22 @@ def main():
         paths.append(protected_test_path(args.baseline, name))
     junit = Path("/tmp/upgrade-oracle.xml")
     env = oracle_environment(args.source, overlay, args.baseline)
+    for name in args.source_root_test:
+        if name not in {value.split("::")[0] for value in args.tests}:
+            raise ValueError("AST source-root probe must also be a selected test")
+    root_tests = [
+        protected_test_path(args.baseline, name) for name in args.source_root_test
+    ]
+    env["SPARKRING_AST_SOURCE_TESTS"] = json.dumps(root_tests)
+    env["SPARKRING_ORACLE_BASELINE"] = str(args.baseline)
+    env["PYTHONPATH"] = str(Path(__file__).parent) + os.pathsep + env["PYTHONPATH"]
     result = subprocess.run(
         [
             sys.executable,
             "-m",
             "pytest",
+            "-p",
+            "pytest_gate",
             "--import-mode=importlib",
             "-q",
             "--junitxml=" + str(junit),

@@ -8,9 +8,12 @@ No model weights, Docker socket or host credentials are mounted into the build.
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
 import hashlib
 import importlib.metadata as metadata
 import json
+import io
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -21,6 +24,117 @@ import struct
 import time
 import zipfile
 from email.parser import BytesParser
+from email.policy import compat32
+
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+
+
+GB10_DEPENDENCIES = {
+    "nvidia-cutlass-dsl": ("==4.7.1", "nvidia-cutlass-dsl[cu13]==4.6.2"),
+    "quack-kernels": ("==0.6.5", "quack-kernels==0.6.4"),
+}
+
+
+def normalize_gb10_metadata(path, profile):
+    """Bind only reviewed DSL/Quack requirements; preserve every backend."""
+    require(profile == "gb10-dsl462-quack064", "Unknown wheel metadata profile")
+    before = wheel_record(path, "vllm")
+    for name, (_, replacement) in GB10_DEPENDENCIES.items():
+        require(
+            Requirement(replacement).specifier.contains(metadata.version(name)),
+            "Compiler dependency differs from reviewed GB10 profile: " + name,
+        )
+    path = Path(path)
+    temporary = path.with_suffix(".metadata.tmp")
+    changes, rows = [], []
+    with zipfile.ZipFile(path) as source:
+        meta_name = next(
+            name for name in source.namelist() if name.endswith(".dist-info/METADATA")
+        )
+        record_name = meta_name.rsplit("/", 1)[0] + "/RECORD"
+        require(record_name in source.namelist(), "Wheel lacks RECORD")
+        message = BytesParser(policy=compat32).parsebytes(source.read(meta_name))
+        requirements = message.get_all("Requires-Dist", [])
+        rewritten, seen = [], set()
+        for value in requirements:
+            requirement = Requirement(value)
+            name = canonicalize_name(requirement.name)
+            if name in GB10_DEPENDENCIES:
+                old, replacement = GB10_DEPENDENCIES[name]
+                require(
+                    name not in seen
+                    and str(requirement.specifier) == old
+                    and requirement.marker is None
+                    and requirement.url is None
+                    and requirement.extras
+                    == ({"cu13"} if name == "nvidia-cutlass-dsl" else set()),
+                    "Unreviewed GB10 dependency requirement: " + value,
+                )
+                seen.add(name)
+                rewritten.append(replacement)
+                changes.append({"before": value, "after": replacement})
+            else:
+                rewritten.append(value)
+        require(
+            seen == set(GB10_DEPENDENCIES), "GB10 dependency requirements are missing"
+        )
+        del message["Requires-Dist"]
+        for value in rewritten:
+            message["Requires-Dist"] = value
+        message["X-SparkRing-Dependency-Profile"] = profile
+        replacement_metadata = message.as_bytes(
+            policy=compat32.clone(max_line_length=0)
+        )
+        with zipfile.ZipFile(temporary, "w") as destination:
+            for item in source.infolist():
+                if item.filename == record_name:
+                    continue
+                digest, length = hashlib.sha256(), 0
+                reader = (
+                    io.BytesIO(replacement_metadata)
+                    if item.filename == meta_name
+                    else source.open(item)
+                )
+                with reader, destination.open(item, "w") as stream:
+                    while block := reader.read(1024 * 1024):
+                        stream.write(block)
+                        digest.update(block)
+                        length += len(block)
+                encoded = (
+                    base64.urlsafe_b64encode(digest.digest()).rstrip(b"=").decode()
+                )
+                rows.append((item.filename, "sha256=" + encoded, str(length)))
+            record = io.StringIO(newline="")
+            csv.writer(record, lineterminator="\n").writerows(
+                [*rows, (record_name, "", "")]
+            )
+            destination.writestr(source.getinfo(record_name), record.getvalue())
+    after = wheel_record(temporary, "vllm")
+    require(
+        after["native_hashes"] == before["native_hashes"],
+        "Metadata rewrite changed native bytes",
+    )
+    with zipfile.ZipFile(path) as source, zipfile.ZipFile(temporary) as destination:
+        require(
+            set(source.namelist()) == set(destination.namelist()),
+            "Metadata rewrite changed wheel membership",
+        )
+        for item in source.infolist():
+            if item.filename not in (meta_name, record_name):
+                require(
+                    source.getinfo(item.filename).CRC
+                    == destination.getinfo(item.filename).CRC,
+                    "Metadata rewrite changed package bytes: " + item.filename,
+                )
+    temporary.replace(path)
+    return {
+        "profile": profile,
+        "original_sha256": before["sha256"],
+        "normalized_sha256": sha(path),
+        "changes": changes,
+        "native_members_unchanged": True,
+    }
 
 
 def sha(path):
@@ -69,10 +183,23 @@ def wheel_record(path, expected_name):
         )
         package = expected_name.replace("-", "_")
         metadata_root = meta_paths[0].split("/")[0]
-        require(
-            not any(name.split("/")[0].endswith(".data") for name in names),
-            "Wheel data relocations require a separately reviewed installer",
-        )
+        if expected_name == "flashinfer-jit-cache":
+            relocated = (
+                metadata_root.removesuffix(".dist-info")
+                + ".data/purelib/flashinfer_jit_cache/"
+            )
+            require(
+                all(
+                    name.startswith(relocated) or name.startswith(metadata_root + "/")
+                    for name in names
+                ),
+                "JIT cache wheel may relocate only its own purelib package",
+            )
+        else:
+            require(
+                not any(name.split("/")[0].endswith(".data") for name in names),
+                "Wheel data relocations require a separately reviewed installer",
+            )
         require(
             not any(
                 name.split("/")[0] in ("torch", "torchvision", "torchaudio")
@@ -86,14 +213,18 @@ def wheel_record(path, expected_name):
                 "Runtime wheel modifies another package",
             )
         native = [name for name in names if re.search(r"\.so(?:\.|$)", name)]
+        native_hashes = {}
         for name in native:
-            head = archive.read(name)[:64]
+            with archive.open(name) as stream:
+                head = stream.read(64)
             require(
                 len(head) == 64
                 and head[:6] == b"\x7fELF\x02\x01"
                 and struct.unpack_from("<H", head, 18)[0] == 183,
                 "Native wheel member is not ARM64 ELF: " + name,
             )
+            with archive.open(name) as stream:
+                native_hashes[name] = hashlib.file_digest(stream, "sha256").hexdigest()
         if expected_name == "vllm":
             require(native, "vLLM wheel contains no compiled extensions")
         return {
@@ -103,9 +234,7 @@ def wheel_record(path, expected_name):
             "version": value["Version"],
             "requires_dist": value.get_all("Requires-Dist", []),
             "native_members": native,
-            "native_hashes": {
-                name: hashlib.sha256(archive.read(name)).hexdigest() for name in native
-            },
+            "native_hashes": native_hashes,
         }
 
 
@@ -294,6 +423,7 @@ def build(descriptor_path, source_root, work):
     )
     started = time.time()
     records = {}
+    metadata_normalization = None
     cached = descriptor.get("native_cache")
     if cached:
         require(
@@ -334,6 +464,10 @@ def build(descriptor_path, source_root, work):
         )
         files = list(wheels.glob(name + "-*.whl"))
         require(len(files) == 1, "Build must produce exactly one wheel: " + name)
+        if name == "vllm" and descriptor.get("wheel_metadata_profile"):
+            metadata_normalization = normalize_gb10_metadata(
+                files[0], descriptor["wheel_metadata_profile"]
+            )
         records[name] = wheel_record(files[0], name)
         if cached and name == "vllm":
             require(
@@ -371,6 +505,7 @@ def build(descriptor_path, source_root, work):
         "native_rebuilt": not bool(cached),
         "native_cache": cached,
         "native_inputs": descriptor.get("native_inputs"),
+        "metadata_normalization": metadata_normalization,
     }
     with (work / "result.json").open("x") as stream:
         json.dump(result, stream, indent=2, sort_keys=True)

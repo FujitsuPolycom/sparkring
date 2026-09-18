@@ -3,18 +3,93 @@
 import importlib.util
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import hashlib
+
+
+def checked_file(root, name, expected):
+    path = PurePosixPath(name)
+    if not path.is_absolute() or ".." in path.parts or "\\" in name:
+        raise ValueError("Invalid installed binding path: " + name)
+    local = root / name.lstrip("/")
+    if (
+        not local.resolve().is_relative_to(root.resolve())
+        or local.is_symlink()
+        or not local.is_file()
+        or hashlib.sha256(local.read_bytes()).hexdigest() != expected
+    ):
+        raise ValueError("Installed binding differs: " + name)
+    return local
+
+
+def selected_manifests(root, installed):
+    """Only a receipt-bound feature migration can retire inherited hook targets."""
+    update = installed.get("feature_update")
+    legacy = root / "opt/sparkring/features/qwen-prefill/manifest.json"
+    if update is None:
+        return [(legacy, "sparkring-qwen-prefill/v1")] if legacy.exists() else []
+    parent = json.loads(
+        checked_file(
+            root, update["parent_catalog"], update["parent_capabilities_sha256"]
+        ).read_text()
+    )
+    catalog = "/opt/sparkring/features/capabilities.json"
+    if update["catalog"] != catalog or not update.get("assets"):
+        raise ValueError("Feature migration lacks its owned catalog and assets")
+    child = json.loads(
+        checked_file(root, catalog, update["catalog_sha256"]).read_text()
+    )
+    for name, asset in update["assets"].items():
+        checked_file(root, name, asset["sha256"])
+    if (
+        child.get("schema") != "sparkring-image-capabilities/v1"
+        or parent.get("schema") != "sparkring-image-capabilities/v1"
+        or not child.get("features")
+        or update["assets"][catalog]["sha256"] != update["catalog_sha256"]
+    ):
+        raise ValueError("Unsupported feature migration catalog")
+    for name in set(parent["features"]) - set(child["features"]):
+        disposition = child.get("unsupported_features", {}).get(name, {})
+        if (
+            not disposition.get("reason")
+            or disposition.get("replacement") not in child["features"]
+        ):
+            raise ValueError("Feature removal lacks a replacement: " + name)
+    manifests = []
+    for name, feature in child["features"].items():
+        if name not in {"qwen-collectives", "qwen4-prefill", "qwen-prefill"}:
+            raise ValueError("Unknown feature binding: " + name)
+        directory = PurePosixPath(feature["directory"])
+        if directory.is_absolute() or ".." in directory.parts or "\\" in str(directory):
+            raise ValueError("Invalid feature directory")
+        for relative, expected in feature["files"].items():
+            checked_file(root, "/opt/sparkring/features/" + relative, expected)
+        if name != "qwen-collectives":
+            relative = str(directory / "manifest.json")
+            digest = feature["manifest_sha256"]
+            if feature["files"].get(relative) != digest:
+                raise ValueError("Feature manifest is not inventoried: " + name)
+            path = checked_file(root, "/opt/sparkring/features/" + relative, digest)
+            manifests.append((path, "sparkring-" + name + "/v1"))
+    return manifests
 
 
 def verify_bindings(root=Path("/")):
     assertions, failed = 0, []
-    manifest = root / "opt/sparkring/features/qwen-prefill/manifest.json"
-    if manifest.exists():
+    installed_path = root / "opt/sparkring/receipts/native-installed.json"
+    if not installed_path.exists():
+        installed_path = root / "opt/sparkring/receipts/candidate-installed.json"
+    installed = (
+        json.loads(installed_path.read_text()) if installed_path.exists() else {}
+    )
+    try:
+        manifests = selected_manifests(root, installed)
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        failed.append("Feature migration binding failed: " + str(error))
+        manifests = []
+    for manifest, schema in manifests:
         value = json.loads(manifest.read_text())
-        if value.get("schema") != "sparkring-qwen-prefill/v1" or not value.get(
-            "image_source_preimages"
-        ):
+        if value.get("schema") != schema or not value.get("image_source_preimages"):
             failed.append("Missing Qwen prefill source preimages")
         else:
             for name, expected in value["image_source_preimages"].items():
@@ -26,12 +101,8 @@ def verify_bindings(root=Path("/")):
                 ):
                     failed.append("Feature source preimage changed: " + name)
                 assertions += 1
-    installed_path = root / "opt/sparkring/receipts/native-installed.json"
-    if not installed_path.exists():
-        installed_path = root / "opt/sparkring/receipts/candidate-installed.json"
     active = None
     if installed_path.exists():
-        installed = json.loads(installed_path.read_text())
         active = installed.get(
             "active_contracts", list(installed.get("integration_contracts", {}))
         )

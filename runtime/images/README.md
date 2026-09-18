@@ -24,6 +24,12 @@ It does not change published image selections or serving deployments.
 
 ## Container images
 
+The [shared ARM64 serving candidate](../releases/shared-2026.09.0-rc.1/README.md)
+records pinned vLLM/B12X integration and isolated SGLang. It is unpublished;
+profile validation and its registry digest remain pending. Existing quickstart
+image selections are unchanged. GitHub Releases will provide the matching
+version landing page; GHCR Packages stores the image itself.
+
 | Package / runtime | Profile | Details |
 |---|---|---|
 | Local SparkRing vLLM + SGLang composition | DeepSeek-V4.1-Flash SGLang passed bounded TP4 checks; Qwen vLLM payload preserved | [Runtime isolation, build inputs and validation scope](../deepseek-v41-sglang/combined-image/README.md) |

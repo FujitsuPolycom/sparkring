@@ -495,7 +495,10 @@ def load_policy(path):
     if binding is not None:
         require(
             isinstance(binding, dict)
-            and set(binding) == {"contract", "sha256", "reference_source", "oracle"},
+            and (
+                set(binding) == {"contract", "sha256", "reference_source", "oracle"}
+                or set(binding) == {"contract", "sha256", "migration"}
+            ),
             "Unknown source-binding configuration",
         )
         file = beneath(path.parent, binding["contract"])
@@ -503,17 +506,56 @@ def load_policy(path):
             sha(file.read_bytes()) == binding["sha256"],
             "Source-binding contract differs",
         )
-        require(
-            binding["oracle"] in gate_ids
-            and next(gate for gate in gates if gate["id"] == binding["oracle"])["stage"]
-            == "oracle",
-            "Source binding requires a protected source oracle",
-        )
-        reference = PurePosixPath(binding["reference_source"])
-        require(
-            reference.is_absolute() and ".." not in reference.parts,
-            "Source-binding reference must be an explicit builder path",
-        )
+        if "migration" in binding:
+            migration = binding["migration"]
+            require(
+                isinstance(migration, dict) and set(migration) == {"path", "sha256"},
+                "Invalid source migration input",
+            )
+            manifest_file = beneath(path.parent, migration["path"])
+            require(
+                sha(manifest_file.read_bytes()) == migration["sha256"],
+                "Migration input differs",
+            )
+            manifest = read(manifest_file)
+            require(
+                manifest.get("schema") == "sparkring-binding-migration-policy/v1",
+                "Unknown migration input schema",
+            )
+            required_oracles = manifest.get("required_oracles", {})
+            require(
+                isinstance(required_oracles, dict) and required_oracles,
+                "Migration has no protected oracles",
+            )
+            for component, names in required_oracles.items():
+                require(
+                    component in {source["id"] for source in policy["sources"]}
+                    and isinstance(names, list)
+                    and names,
+                    "Invalid migration component oracles",
+                )
+                for name in names:
+                    require(
+                        name in gate_ids
+                        and next(g for g in gates if g["id"] == name)["stage"]
+                        == "oracle",
+                        "Migration requires protected source oracles",
+                    )
+            inputs[migration["path"]] = migration["sha256"]
+        else:
+            require(
+                binding["oracle"] in gate_ids
+                and next(gate for gate in gates if gate["id"] == binding["oracle"])[
+                    "stage"
+                ]
+                == "oracle",
+                "Source binding requires a protected source oracle",
+            )
+            reference = PurePosixPath(binding["reference_source"])
+            require(
+                reference.is_absolute() and ".." not in reference.parts,
+                "Source-binding reference must be an explicit builder path",
+            )
         inputs[binding["contract"]] = binding["sha256"]
     policy["_root"] = str(path.parent)
     policy["_path"] = str(path)

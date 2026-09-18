@@ -1,5 +1,17 @@
 ARG PARENT
-FROM ${PARENT}
+FROM ${PARENT} AS native-system-tools
+ARG ELFUTILS_VERSION=0.190-1.1ubuntu0.1
+# DeepGEMM's C++ exception diagnostics require the libdwfl development headers.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libdw-dev=${ELFUTILS_VERSION} libelf-dev=${ELFUTILS_VERSION} \
+      libdw1t64=${ELFUTILS_VERSION} libelf1t64=${ELFUTILS_VERSION} && \
+    c++ -std=c++20 -fsyntax-only -x c++ -include elfutils/libdwfl.h /dev/null && \
+    mkdir -p /opt/sparkring/compiler && \
+    dpkg-query -W libdw-dev libelf-dev libdw1t64 libelf1t64 > /opt/sparkring/compiler/elfutils-packages.txt
+LABEL org.sparkring.compiler.elfutils-version=${ELFUTILS_VERSION}
+
+FROM native-system-tools AS tooling
 COPY inputs/ /build-tooling-inputs/
 COPY tooling.py /build-tooling-inputs/tooling.py
 RUN /opt/venv/bin/python -S /build-tooling-inputs/tooling.py verify --root /build-tooling-inputs

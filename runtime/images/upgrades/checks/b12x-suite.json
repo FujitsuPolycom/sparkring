@@ -1,0 +1,22 @@
+{
+  "baseline_only": [
+    "kda_baseline/checkpoints.py"
+  ],
+  "candidate_only": [
+    "b12x_prepared_contracts.py",
+    "ple_checkpoint_preparation.py"
+  ],
+  "common": [
+    "kda_checkpoint_common.py"
+  ],
+  "component": "b12x",
+  "files": {
+    "b12x_prepared_contracts.py": "2ebf6b204371b0c96f207f50cdfc46a300cf57f5b5754e209e6901d8dc69c5fb",
+    "kda_baseline/__init__.py": "4e92ee0ef5554f5ea4ca5de6352a11e69b0acdbb2b27f12279214534abe050ab",
+    "kda_baseline/checkpoints.py": "581ec74025cee6e70960cda00b3bd9bde04c6d75bb1d4e48c966694eb0772f7c",
+    "kda_baseline/reference_helpers.py": "4c906484ee479ad5cda158c309b8249f2e857f93d331748d06f13dc724ff870f",
+    "kda_checkpoint_common.py": "a4b091a798cc19072860deb26fbfd99f91f8f055d0a4b14e5cc4530dedec5420",
+    "ple_checkpoint_preparation.py": "d4f261b1c345c220dc880186648644540d3f00ca1f8033c0fba269331db14f2a"
+  },
+  "schema": "sparkring-protected-source-suite/v1"
+}

@@ -15,8 +15,55 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.images.upgrades.contracts import beneath, load_policy, read, require, sha  # noqa: E402
 from runtime.images.upgrades.contract_rebind import rebind  # noqa: E402
+from runtime.images.upgrades.contract_migration import migrate  # noqa: E402
 from runtime.images.upgrades.io import checked, write_json  # noqa: E402
 from runtime.images.upgrades.sources import tree_digest, native_digest  # noqa: E402
+from runtime.images.upgrades.native_worker import wheel_record  # noqa: E402
+
+
+def prepare_runtime_dependencies(policy, context):
+    """Stage exact reviewed dependency wheels without resolving packages online."""
+    result = {}
+    for selected in policy["foundation"].get("runtime_dependencies", []):
+        require(
+            isinstance(selected, dict)
+            and set(selected) == {"path", "sha256", "name", "version", "source_url"},
+            "Runtime dependency fields differ",
+        )
+        require(selected["name"] in ("flashinfer-python", "flashinfer-jit-cache") and selected["name"] not in result,
+                "Unreviewed runtime dependency migration")
+        path = beneath(policy["_root"], selected["path"])
+        require(path.suffix == ".whl" and sha(path.read_bytes()) == selected["sha256"],
+                "Runtime dependency wheel differs from policy")
+        record = wheel_record(path, selected["name"])
+        require(record["version"] == selected["version"], "Runtime dependency version differs")
+        destination = context / "wheels" / path.name
+        destination.parent.mkdir(exist_ok=True)
+        shutil.copyfile(path, destination)
+        result[selected["name"]] = {**record, "source_url": selected["source_url"]}
+    return result
+
+
+def prepare_feature_update(policy, context):
+    selected = policy["foundation"].get("feature_update")
+    if selected is None:
+        return None
+    require(set(selected) == {"manifest", "sha256"}, "Feature-update policy fields differ")
+    path = beneath(policy["_root"], selected["manifest"])
+    require(sha(path.read_bytes()) == selected["sha256"], "Feature-update manifest differs")
+    manifest = read(path)
+    require(manifest.get("schema") == "sparkring-native-feature-update/v1" and manifest.get("assets"),
+            "Unknown or empty feature update")
+    for target, asset in manifest["assets"].items():
+        require(target.startswith("/opt/") and ".." not in Path(target).parts,
+                "Feature target escapes the image")
+        source = beneath(policy["_root"], asset["source"])
+        require(sha(source.read_bytes()) == asset["sha256"], "Feature asset differs: " + target)
+        destination = context / "feature-assets" / target.lstrip("/")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+    shutil.copyfile(path, context / "feature-update.json")
+    return {"file": "feature-update.json", "sha256": selected["sha256"]}
 
 
 def docker(*args, seconds=120, limit=4 * 1024**2):
@@ -30,7 +77,7 @@ def docker(*args, seconds=120, limit=4 * 1024**2):
 def validate_recipe(recipe):
     require(
         isinstance(recipe, dict)
-        and set(recipe)
+        and set(recipe) - {"wheel_metadata_profile"}
         == {
             "schema",
             "architecture",
@@ -45,6 +92,10 @@ def validate_recipe(recipe):
         "Native recipe fields differ",
     )
     require(recipe["schema"] == "sparkring-native-recipe/v1", "Unknown native recipe")
+    require(
+        recipe.get("wheel_metadata_profile") in (None, "gb10-dsl462-quack064"),
+        "Unknown wheel metadata profile",
+    )
     require(
         recipe["build_type"] in ("Release", "RelWithDebInfo"),
         "Native build_type must explicitly select Release or RelWithDebInfo",
@@ -96,19 +147,26 @@ def prepare_source_binding(policy, bundle, paths, parent, context):
         (
             item
             for item in source.get("oracles", [])
-            if item["gate"] == config["oracle"]
+            if item["gate"] == config.get("oracle")
         ),
         None,
     )
-    require(oracle is not None, "Accepted vLLM source lacks its binding oracle")
-    contract, proof = rebind(
-        read(contract_path),
-        config["reference_source"],
-        paths["vllm"],
-        source["target_commit"],
-        oracle,
-        input_sha256=bundle["input_sha256"],
-    )
+    if 'migration' in config:
+        migration = config['migration']
+        manifest_file = beneath(policy['_root'], migration['path'])
+        require(sha(manifest_file.read_bytes()) == migration['sha256'], 'Migration policy changed')
+        contract, proof = migrate(read(contract_path), read(manifest_file), paths,
+                                  bundle['sources'], input_sha256=bundle['input_sha256'])
+    else:
+        require(oracle is not None, "Accepted vLLM source lacks its binding oracle")
+        contract, proof = rebind(
+            read(contract_path),
+            config["reference_source"],
+            paths["vllm"],
+            source["target_commit"],
+            oracle,
+            input_sha256=bundle["input_sha256"],
+        )
     destination = (
         "/opt/sparkring/contracts/vllm-connector-jobs-source-"
         + proof["candidate_tree_sha256"][:16]
@@ -234,6 +292,8 @@ def build(policy_path, bundle_path, output, result_path):
         "distribution_version": "0.26.1rc0+sparkring.native."
         + bundle["input_sha256"][:12],
     }
+    if recipe.get("wheel_metadata_profile"):
+        source_descriptor["wheel_metadata_profile"] = recipe["wheel_metadata_profile"]
     native_inputs = {
         source["id"]: native_digest(paths[source["id"]], source["native_paths"])
         for source in policy["sources"]
@@ -366,7 +426,7 @@ def build(policy_path, bundle_path, output, result_path):
         "Compiled wheel and foundation Torch ABI differ",
     )
     wheels = context / "wheels"
-    wheels.mkdir()
+    wheels.mkdir(exist_ok=True)
     for record in compiled["wheels"].values():
         path = work / "wheels" / record["file"]
         require(
@@ -380,6 +440,8 @@ def build(policy_path, bundle_path, output, result_path):
         "parent_installed_sha256": sha(raw_parent),
         "compiler_descriptor_sha256": compiled["descriptor_sha256"],
         "source_trees": source_trees,
+        "runtime_dependencies": prepare_runtime_dependencies(policy, context),
+        "feature_update": prepare_feature_update(policy, context),
     }
     binding, active = prepare_source_binding(
         policy, bundle, paths, parent_receipt, context

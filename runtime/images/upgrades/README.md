@@ -202,6 +202,32 @@ A legacy manifest without that field is not reused. With the separately approved
 build stops. Existing image receipts and external KV-cache identity formats are
 not rewritten by this change.
 
+The optional native recipe value `wheel_metadata_profile:
+"gb10-dsl462-quack064"` binds the reviewed SM121 dependency pair: CUTLASS DSL
+4.6.2 and Quack 0.6.4. It admits only the exact upstream requirements
+DSL 4.7.1 and Quack 0.6.5, verifies the compiler's installed pair, and records
+both wheel hashes and the two requirement changes. Native bytes and all other
+requirements, including media backends, remain unchanged. This packaging
+disposition still requires import and GPU-kernel checks; it is not evidence of
+general backend compatibility.
+
+`foundation.runtime_dependencies` can install reviewed FlashInfer Python and
+matching JIT-cache wheels by
+policy-relative path, SHA256, distribution name, version and publisher URL.
+The build never resolves runtime packages online or replaces Torch. The
+installer includes the dependency's installed files in its receipt and refuses
+new unsatisfied requirements. An isolated SGLang environment receives its own
+pre/post-install file inventory in addition to its composition receipt; changing
+the vLLM environment does not silently authorize changing SGLang.
+
+`foundation.feature_update` names a hash-bound
+`sparkring-native-feature-update/v1` manifest. Each asset declares its owned
+target, exact parent hash (or absence) and replacement bytes. The installer
+preserves the parent capability catalog and requires an explicit unsupported
+disposition and replacement for removed feature selections. Runtime source
+preimages remain separately checked by the image gate. Retaining a legacy
+feature's files does not make it selectable on a different engine interface.
+
 Carried patches must describe the **complete retained feature closure** relative
 to their declared baseline commit. A published image can contain source older
 than the operational reference. Mechanical patch success is insufficient if the
