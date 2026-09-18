@@ -6,6 +6,10 @@ published image digest. Its [release record](README.md) owns availability and
 qualification. Components retain their own licenses; the combined image is not
 licensed solely under Apache-2.0.
 
+The [frozen source patches and manifest](sources/README.md) reconstruct the
+vLLM/B12X inputs. [Qualification inputs](qualification/README.md) pin the bounded
+GPU harness and reference fixtures separately from runtime sources.
+
 | Component and role | Source identity | License / attribution |
 |---|---|---|
 | vLLM inference runtime | [LIL vLLM](https://github.com/local-inference-lab/vllm), `35bab057b1751a6076a457803bcc4b78809689cf`, plus reconciled SparkRing patches | Apache-2.0; upstream contributor notices retained |

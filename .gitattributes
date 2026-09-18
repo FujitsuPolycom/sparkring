@@ -2,6 +2,7 @@
 *.patch text eol=lf
 integrations/sparkcache/*.patch whitespace=-trailing-space
 integrations/vllm/patches/**/*.patch whitespace=-trailing-space
+runtime/releases/shared-2026.09.0-rc.1/sources/*.patch whitespace=-trailing-space
 # Qualification receipts bind the maintained conversation harness by file hash.
 performance/harnesses/validation/conversation_soak.py text eol=lf
 runtime/** text eol=lf

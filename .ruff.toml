@@ -5,3 +5,12 @@ extend-exclude = [
     "runtime/deepseek-v41-gb10/tools/verify5.py",
     "runtime/deepseek-v41-gb10/tools/test_engram_packed.py",
 ]
+
+[lint.per-file-ignores]
+# These source-bound compatibility imports are retained verbatim by their
+# transport manifest and protected baseline fixture inventories.
+"integrations/vllm/rocenante_prepared/roce/roce_oneshot.py" = ["F401"]
+"runtime/images/upgrades/checks/kda_baseline/reference_helpers.py" = ["F401"]
+# The pinned upstream QSA fixture contains an unused diagnostic allocation;
+# its bytes are part of the release's reference-fixture identity.
+"runtime/releases/shared-2026.09.0-rc.1/qualification/fixtures/tests/attention/test_qsa_contract.py" = ["F841"]

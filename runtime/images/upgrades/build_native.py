@@ -19,6 +19,7 @@ from runtime.images.upgrades.contract_migration import migrate  # noqa: E402
 from runtime.images.upgrades.io import checked, write_json  # noqa: E402
 from runtime.images.upgrades.sources import tree_digest, native_digest  # noqa: E402
 from runtime.images.upgrades.native_worker import wheel_record  # noqa: E402
+from runtime.images.upgrades.native_install import feature_asset_scope  # noqa: E402
 
 
 def prepare_runtime_dependencies(policy, context):
@@ -70,10 +71,9 @@ def prepare_feature_update(policy, context):
         "Unknown or empty feature update",
     )
     for target, asset in manifest["assets"].items():
-        require(
-            target.startswith("/opt/") and ".." not in Path(target).parts,
-            "Feature target escapes the image",
-        )
+        scope = feature_asset_scope(target)
+        require(scope != "fresh-metadata" or asset.get("parent_sha256") is None,
+                "Release and license metadata must use fresh destinations")
         source = beneath(policy["_root"], asset["source"])
         require(
             sha(source.read_bytes()) == asset["sha256"],

@@ -1,6 +1,7 @@
 # Shared serving candidate: 2026.09.0-rc.1
 
-Status: **implemented integration; unpublished, profile validation pending**.
+Status: **built; installed-payload and runtime checks passed; unpublished,
+profile validation pending**.
 `shared-2026.09.0-rc.1` is a proposed publication identifier, not an available
 image tag or a recommendation. No profile selects this candidate by default.
 
@@ -40,16 +41,28 @@ adapter revision listed above.
 | Intended registry package | `ghcr.io/fujitsupolycom/sparkring` |
 | Proposed image tag and Git tag | `shared-2026.09.0-rc.1` |
 | Platform | `linux/arm64`; NVIDIA GB10/SM121 target |
-| Candidate Docker configuration ID | Not assigned in this record |
+| Runtime-build Docker configuration ID | `sha256:98d5a51e2e0ed8f7cee14ff1420ab9d2413f4bba88b70cff9b40ab0b1ea00deb` |
+| Publication candidate Docker configuration ID | `sha256:5252600fb91bd1f999856f31cc382ca91934d45fa3043429344aa8fd18ad01d3` |
 | Registry manifest digest | Not published; no pull command available |
-| Source/adoption commit and finalized build receipt | Pending |
-| Installed-payload, native dependency and cache-contract verification | Pending release evidence |
+| Source/adoption commit | Pending |
+| Native installed-payload receipt SHA256 | `85655482b7ff4a2ce9248a1af7729f1ec47a66730e2b9c1b9e152a7c3a2a0e1c` |
+| Installed-payload and cache-source binding | Passed; 45 source-contract files verified |
+| Runtime checks | 10 passed; imports, package constraints and CLI only |
 | Anonymous digest-pull verification | Pending publication |
 
 Docker configuration IDs and registry manifest digests are different identities.
 Do not substitute the comparison image ID for a candidate pull digest. Add a
 machine-readable `release.json` only after its image and immutable input hashes
 exist; the release-selection schema is not a progress log.
+
+The [build and runtime-check record](../../../performance/records/images/shared-98d5a51e2e0e-runtime-20260918.md)
+binds these results to the runtime-build image. Native artifacts were reused
+(`native_rebuilt=false`) and their installed payload verified. The
+[metadata-equivalence record](../../../performance/records/images/shared-5252600fb91b-metadata-equivalence-20260918.json)
+proves that the publication candidate has the same 123 filesystem layers and
+identical image configuration except labels. It therefore contains the verified
+runtime payload, without adding a serving claim. Model-generation and
+cache-restore qualification remain pending; no public registry digest exists.
 
 ## Profile validation
 

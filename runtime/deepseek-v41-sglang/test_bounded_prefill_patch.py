@@ -210,7 +210,8 @@ def fixture_overlay(tmp_path):
     data = [("one.patch", "first", "second"), ("two.patch", "second", "third")]
     for name, before, after in data:
         (patches / name).write_text(f"--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-{before}\n+{after}\n", encoding="utf-8", newline="\n")
-    digest = lambda text: hashlib.sha256(text.encode()).hexdigest()
+    def digest(text):
+        return hashlib.sha256(text.encode()).hexdigest()
     manifest = dict(schema_version=1, source_revision="test-fixture", patches=[
         dict(path=name, sha256=installer.sha256(patches / name)) for name, *_ in data], files=[
         dict(path="a.py", input_sha256=digest("first\n"), verify_overlay_sha256=digest("second\n"), output_sha256=digest("third\n"))])

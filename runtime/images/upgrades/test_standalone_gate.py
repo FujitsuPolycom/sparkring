@@ -1,7 +1,6 @@
 """Protected source gates retain a common oracle and reject false pass evidence."""
 
 import json
-from pathlib import Path
 
 import pytest
 

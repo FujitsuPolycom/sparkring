@@ -4,14 +4,16 @@
   ],
   "candidate_only": [
     "b12x_prepared_contracts.py",
-    "ple_checkpoint_preparation.py"
+    "ple_checkpoint_preparation.py",
+    "gdn_boundary_construction.py"
   ],
   "common": [
     "kda_checkpoint_common.py"
   ],
   "component": "b12x",
   "files": {
-    "b12x_prepared_contracts.py": "2ebf6b204371b0c96f207f50cdfc46a300cf57f5b5754e209e6901d8dc69c5fb",
+    "b12x_prepared_contracts.py": "072ee5392bdbf3b5a965837fa55f3e2c8e4cd629e383966e78ddb7ea0a969470",
+    "gdn_boundary_construction.py": "8d48f243d45b6907f5099e9a309a9d474012c906ffbd98082ddfce6b23e4c4c5",
     "kda_baseline/__init__.py": "4e92ee0ef5554f5ea4ca5de6352a11e69b0acdbb2b27f12279214534abe050ab",
     "kda_baseline/checkpoints.py": "581ec74025cee6e70960cda00b3bd9bde04c6d75bb1d4e48c966694eb0772f7c",
     "kda_baseline/reference_helpers.py": "4c906484ee479ad5cda158c309b8249f2e857f93d331748d06f13dc724ff870f",

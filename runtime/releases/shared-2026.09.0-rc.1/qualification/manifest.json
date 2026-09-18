@@ -1,0 +1,92 @@
+{
+  "schema": "sparkring-component-qualification-inputs/v1",
+  "component": "b12x",
+  "upstream_commit": "a83336581a3a907076e60797df69ab66df5a2ff1",
+  "runtime_sources": "../sources/manifest.json",
+  "execution_oracles": {
+    "path": "execution-oracles-aaec6a5b.tar.gz",
+    "sha256": "d2396570ae239d752b2d819c17a81540c0c30096a656a942f50d37ef1870c2c8",
+    "inventory_member": "oracle-gates.json",
+    "inventory_sha256": "aaec6a5b5fad1eebd609da9d87c8c2350c8e00d1a197650cff64da0a2c86c4d3",
+    "components": ["vllm", "b12x"],
+    "bound_inputs": 17,
+    "archive_members": 18,
+    "scope": "Exact frozen CPU gate inputs, including suite line endings; not an execution-result receipt"
+  },
+  "harness": {
+    "path": "test_b12x_gpu_gates.py",
+    "sha256": "bb571b9dc04ea9421974f065afa8d6370a18b8afd9c19e6ce0350540d7e12497"
+  },
+  "retained_harness_sources": [
+    {
+      "path": "b12x-gates-68c4cb03.tar.gz",
+      "sha256": "5f1f652c67caed55f1f3fcac41445e1ff0cba1c070967b3664634b311be3b5d1",
+      "member": "test_b12x_gpu_gates.py",
+      "member_sha256": "68c4cb032607a2fb0e5fbc39e04647a6c8f607d9157361f9d69fb4cb4f156743",
+      "scope": "Exact source retained for receipts that identify this member hash; no result is reassigned to the formatted harness"
+    },
+    {
+      "path": "transport-probe-be8d5f7d.tar.gz",
+      "sha256": "9e5bb7cfedd5e4e2e4ce2c46f8525a420a1760eb0df7c9c342aa712a3d06f001",
+      "member": "probe.py",
+      "member_sha256": "be8d5f7d12bef39c453953dade256b36904200700da2c68df443fef909826558",
+      "scope": "Executed source for the bounded two/four-rank transport record"
+    }
+  ],
+  "license": {
+    "path": "B12X-LICENSE",
+    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  },
+  "fixture_basis": "All fixture bytes match either pinned upstream files or the postimage Git blob recorded by sources/b12x.patch; no additional fixture source edits",
+  "execution_status": "No GPU result is asserted by this input manifest; execution receipts must bind the exact harness, fixtures and runtime source or installed image",
+  "fixtures": [
+    {
+      "path": "fixtures/tests/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "basis": "pinned_upstream"
+    },
+    {
+      "path": "fixtures/tests/attention/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "basis": "pinned_upstream"
+    },
+    {
+      "path": "fixtures/tests/attention/test_qsa_contract.py",
+      "sha256": "8522cf46186e3ac1f2218ba8c07f49a0da021256ff33a74b78fd26f81c45eecd",
+      "git_blob": "a79507e8d0d8a8cd1e889fd8931f1ae8eed76ee6",
+      "basis": "pinned_upstream"
+    },
+    {
+      "path": "fixtures/tests/conftest.py",
+      "sha256": "e9eafdabd0f6654b1942dd4194de887572f9de25cc33d1efe6efadef9be07a59",
+      "git_blob": "8147b2d4ee9acc30be93d2ad4183fdd7261b75e9",
+      "basis": "pinned_upstream"
+    },
+    {
+      "path": "fixtures/tests/sequence/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "basis": "pinned_upstream"
+    },
+    {
+      "path": "fixtures/tests/sequence/test_kda_prefill.py",
+      "sha256": "c7332216f9d3dbfae8eb0922c1576406056b75c26830ba8543dcd569e046f6f6",
+      "git_blob": "1755dd9530331c5b1a8ffaa1fbd75bd056a3b3c1",
+      "basis": "accepted_patch"
+    },
+    {
+      "path": "fixtures/tests/sequence/test_kda_prefill_two_checkpoints_gpu.py",
+      "sha256": "5b27d3aec00d8e5c7ed2550d51f7c3da61155f756f6270638b5040c6c339ece3",
+      "git_blob": "5ff48b444c2ed68db73876f5562325773e74135f",
+      "basis": "accepted_patch"
+    },
+    {
+      "path": "fixtures/tests/sequence/test_ple.py",
+      "sha256": "253e09ece8ed268bc3a86f83153b7e82037eaccbab5cc9b0e45719a259fc2039",
+      "git_blob": "5c0fd1357eaa5e8455c0bc5aa67fcea55341871e",
+      "basis": "pinned_upstream"
+    }
+  ]
+}

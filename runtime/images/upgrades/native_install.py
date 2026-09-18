@@ -7,13 +7,20 @@ not infer serving qualification or rewrite feature/cache compatibility contracts
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
+import configparser
+import copy
 import hashlib
 import importlib.metadata as metadata
 import json
+import io
 import os
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
+import re
+import zipfile
 
 SITE = Path("/opt/venv/lib/python3.12/site-packages")
 ROOT = Path("/opt/sparkring")
@@ -25,6 +32,42 @@ DEPENDENCY_PACKAGES = {
     "flashinfer-jit-cache": "flashinfer_jit_cache",
 }
 SGLANG_PREFIX = Path("/opt/sglang")
+FLASHINFER_GLOBAL_BUILD_HELPERS = ("build_backend.py", "build_utils.py")
+PREPARED_TRANSPORT_PROFILE = "tp2-rocenante-adaptive-prepared"
+
+
+def feature_asset_scope(name):
+    """Classify only explicitly owned image-extension paths."""
+    path = PurePosixPath(name)
+    require(
+        path.is_absolute()
+        and ".." not in path.parts
+        and "\\" not in name
+        and str(path) == name,
+        "Invalid image-extension asset path",
+    )
+    owner = PurePosixPath("/opt/sparkring")
+    if (
+        any(
+            path != root and path.is_relative_to(root)
+            for root in (owner / "features", owner / "qwen4-prefill")
+        )
+        or name == "/opt/venv/lib/python3.12/site-packages/sparkring_features.pth"
+    ):
+        return "feature"
+    bundle = owner / "transports" / PREPARED_TRANSPORT_PROFILE
+    if (
+        (path != bundle and path.is_relative_to(bundle))
+        or path == owner / "transports/sparkring_transport_selector.py"
+        or name == "/opt/venv/lib/python3.12/site-packages/sparkring_transport.pth"
+    ):
+        return "transport"
+    if path == owner / "licenses/components.md" or (
+        path.parent == owner / "releases/shared"
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.json", path.name)
+    ):
+        return "fresh-metadata"
+    raise ValueError("Image-extension asset is outside its reviewed owner: " + name)
 
 
 def require(value, message):
@@ -87,6 +130,245 @@ def package_owned(path, package_names, metadata_roots):
         for name in package_names
         for entrypoint in scripts.get(name, ())
     }
+
+
+def distribution_ownership(paths):
+    """Read every installed distribution's RECORD claims for selected paths."""
+    paths = set(map(str, paths))
+    result = {path: [] for path in paths}
+    for distribution in metadata.distributions():
+        owner = re.sub(r"[-_.]+", "-", distribution.metadata["Name"]).lower()
+        for entry in distribution.files or []:
+            if str(entry).endswith((".pyc", ".pyo")):
+                continue
+            path = str(Path(distribution.locate_file(entry)).resolve())
+            if path not in paths:
+                continue
+            digest = entry.hash
+            expected = None
+            if digest is not None and digest.mode == "sha256":
+                expected = base64.urlsafe_b64decode(
+                    digest.value + "=" * (-len(digest.value) % 4)
+                ).hex()
+            result[path].append(
+                {
+                    "distribution": owner,
+                    "version": distribution.version,
+                    "record_hash_mode": digest.mode if digest else None,
+                    "record_hash_value": digest.value if digest else None,
+                    "record_sha256": expected,
+                }
+            )
+    return result
+
+
+def wheel_install_paths(wheels):
+    """Resolve reviewed wheel payload and console-script destinations for audit."""
+    result, metadata_roots = set(), []
+    for wheel in wheels.values():
+        with zipfile.ZipFile(wheel) as archive:
+            names = archive.namelist()
+            records = [name for name in names if name.endswith(".dist-info/METADATA")]
+            require(len(records) == 1, "Wheel lacks one metadata owner")
+            metadata_root = records[0].split("/")[0]
+            metadata_roots.append(SITE / metadata_root)
+            destinations = set()
+            for name in names:
+                if name.endswith("/"):
+                    continue
+                parts = PurePosixPath(name).parts
+                require(
+                    parts
+                    and not PurePosixPath(name).is_absolute()
+                    and ".." not in parts
+                    and "\\" not in name,
+                    "Wheel destination escapes site-packages",
+                )
+                if parts[0].endswith(".data"):
+                    require(
+                        len(parts) > 2 and parts[1] in ("purelib", "platlib"),
+                        "Unreviewed wheel relocation",
+                    )
+                    parts = parts[2:]
+                destination = str(SITE.joinpath(*parts))
+                require(
+                    destination not in destinations,
+                    "Duplicate relocated wheel destination",
+                )
+                destinations.add(destination)
+            entrypoints = metadata_root + "/entry_points.txt"
+            if entrypoints in names:
+                config = configparser.ConfigParser(interpolation=None)
+                config.optionxform = str
+                config.read_string(archive.read(entrypoints).decode())
+                for name in (
+                    config["console_scripts"] if "console_scripts" in config else ()
+                ):
+                    require(
+                        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name),
+                        "Invalid wheel console-script path",
+                    )
+                    destinations.add(str(Path("/opt/venv/bin") / name))
+            result.update(destinations)
+    return result, metadata_roots
+
+
+def audit_selected_ownership(
+    selected_files, package_names, metadata_roots, parent_files, planned_paths=()
+):
+    """Refuse unexplained RECORD extras/collisions before pip changes any files."""
+    paths = {path for files in selected_files.values() for path in files}
+    owners = distribution_ownership(paths | set(planned_paths))
+    selected_names = set(selected_files)
+    helpers = {str(SITE / name) for name in FLASHINFER_GLOBAL_BUILD_HELPERS}
+    backups, extras, conflicts, unowned = {}, {}, {}, []
+    for name in sorted(paths):
+        foreign = [
+            item for item in owners[name] if item["distribution"] not in selected_names
+        ]
+        extra = not package_owned(name, package_names, metadata_roots)
+        if extra:
+            extras[name] = owners[name]
+        if foreign:
+            conflicts[name] = owners[name]
+        if name in helpers and name in selected_files.get("flashinfer-python", {}):
+            path = Path(name)
+            data = path.read_bytes()
+            require(
+                not path.is_symlink() and parent_files.get(name) == sha(path),
+                "Build helper lacks verified inherited ownership: " + name,
+            )
+            for owner in owners[name]:
+                expected = owner["record_sha256"]
+                owner["record_matches_baseline_bytes"] = (
+                    None if expected is None else expected == sha(path)
+                )
+            backups[name] = {
+                "bytes": data,
+                "mode": path.stat().st_mode & 0o777,
+                "sha256": sha(path),
+                "owners": owners[name],
+            }
+        elif extra or foreign:
+            unowned.append(
+                {"path": name, "unexplained_extra": extra, "owners": owners[name]}
+            )
+    for name in sorted(set(planned_paths)):
+        if not package_owned(name, package_names, metadata_roots) or any(
+            item["distribution"] not in selected_names for item in owners[name]
+        ):
+            unowned.append(
+                {
+                    "path": name,
+                    "candidate_wheel_destination": True,
+                    "owners": owners[name],
+                }
+            )
+    require(
+        not unowned,
+        "Selected distributions have unreviewed ownership conflicts: "
+        + json.dumps(unowned),
+    )
+    return {
+        "selected_record_files": {
+            name: len(files) for name, files in selected_files.items()
+        },
+        "extras": extras,
+        "collisions": conflicts,
+        "preserved_helpers": {
+            name: {key: value for key, value in item.items() if key != "bytes"}
+            for name, item in backups.items()
+        },
+    }, backups
+
+
+def isolate_flashinfer_build_helpers(wheel, directory, version):
+    """Remove only redundant root build helpers from the reviewed runtime wheel."""
+    require(version == "0.6.18.post1", "Unreviewed FlashInfer helper-isolation version")
+    wheel = Path(wheel)
+    directory.mkdir(exist_ok=True)
+    destination = directory / wheel.name
+    require(not destination.exists(), "Normalized installation wheel already exists")
+    removed = {}
+    with zipfile.ZipFile(wheel) as source:
+        names = source.namelist()
+        require(len(names) == len(set(names)), "Duplicate runtime wheel paths")
+        record_names = [name for name in names if name.endswith(".dist-info/RECORD")]
+        require(len(record_names) == 1, "Runtime wheel must have exactly one RECORD")
+        for name in FLASHINFER_GLOBAL_BUILD_HELPERS:
+            duplicate = "flashinfer/data/" + name
+            require(
+                name in names
+                and duplicate in names
+                and source.read(name) == source.read(duplicate),
+                "FlashInfer build helper is not an identical packaged-data duplicate: "
+                + name,
+            )
+            removed[name] = {
+                "sha256": hashlib.sha256(source.read(name)).hexdigest(),
+                "retained_copy": duplicate,
+            }
+        record_name = record_names[0]
+        rows = list(csv.reader(io.StringIO(source.read(record_name).decode())))
+        require(
+            {name for name, *_ in rows if name in removed} == set(removed),
+            "Build helpers are absent from the publisher RECORD",
+        )
+        record = io.StringIO(newline="")
+        csv.writer(record, lineterminator="\n").writerows(
+            row for row in rows if row[0] not in removed
+        )
+        with zipfile.ZipFile(destination, "w") as output:
+            for item in source.infolist():
+                if item.filename in removed:
+                    continue
+                if item.filename == record_name:
+                    output.writestr(copy.copy(item), record.getvalue())
+                    continue
+                with (
+                    source.open(item) as original,
+                    output.open(copy.copy(item), "w") as target,
+                ):
+                    while block := original.read(1024 * 1024):
+                        target.write(block)
+        with zipfile.ZipFile(destination) as output:
+            require(
+                set(output.namelist()) == set(names) - set(removed),
+                "Installation wheel membership differs",
+            )
+            for name in output.namelist():
+                if name == record_name:
+                    continue
+                with source.open(name) as original, output.open(name) as installed:
+                    require(
+                        hashlib.file_digest(original, "sha256").digest()
+                        == hashlib.file_digest(installed, "sha256").digest(),
+                        "Helper isolation changed runtime/package payload: " + name,
+                    )
+    return destination, {
+        "profile": "flashinfer-0.6.18.post1-build-helper-isolation",
+        "publisher_wheel_sha256": sha(wheel),
+        "installation_wheel_sha256": sha(destination),
+        "removed_root_helpers": removed,
+        "other_payload_hashes_unchanged": True,
+    }
+
+
+def restore_build_helpers(backups):
+    for name in (str(SITE / item) for item in FLASHINFER_GLOBAL_BUILD_HELPERS):
+        require(
+            not Path(name).exists() and not Path(name).is_symlink(),
+            "Filtered build helper unexpectedly exists after pip: " + name,
+        )
+    for name, item in backups.items():
+        path = Path(name)
+        with path.open("xb") as stream:
+            stream.write(item["bytes"])
+        path.chmod(item["mode"])
+        require(
+            sha(path) == item["sha256"],
+            "Restored inherited build helper differs: " + name,
+        )
 
 
 def isolated_sglang_inventory():
@@ -158,20 +440,16 @@ def install_feature_update(context, descriptor):
     payloads = {}
     for name, asset in manifest["assets"].items():
         target = Path(name)
-        pure = PurePosixPath(name)
+        scope = feature_asset_scope(name)
         require(
-            pure.is_absolute()
-            and ".." not in pure.parts
-            and "\\" not in name
-            and (
-                target.is_relative_to(ROOT / "features")
-                or target.is_relative_to(ROOT / "qwen4-prefill")
-                or target == SITE / "sparkring_features.pth"
-            )
-            and not any(part.is_symlink() for part in (target, *target.parents)),
+            not any(part.is_symlink() for part in (target, *target.parents)),
             "Feature target is outside its owner or symlinked: " + name,
         )
         parent_hash = asset.get("parent_sha256")
+        require(
+            scope != "fresh-metadata" or parent_hash is None,
+            "Release and license metadata may only use a fresh destination",
+        )
         require(
             (
                 not target.exists()
@@ -188,10 +466,16 @@ def install_feature_update(context, descriptor):
         data = source.read_bytes()
         if target.suffix == ".py":
             compile(data, name, "exec")
+        if scope == "fresh-metadata" and target.suffix == ".json":
+            require(
+                isinstance(json.loads(data), dict),
+                "Release metadata must be a JSON object",
+            )
         payloads[target] = data
     child = json.loads(payloads[catalog])
     parent = read(catalog)
     verify_feature_dispositions(parent, child)
+    transport_bundles = verify_transport_assets(payloads)
     retained = (
         ROOT
         / "receipts"
@@ -210,9 +494,105 @@ def install_feature_update(context, descriptor):
         "catalog": str(catalog),
         "catalog_sha256": sha(catalog),
         "assets": manifest["assets"],
+        "transport_bundles": transport_bundles,
         "serving_qualified": False,
     }
     return files, receipt
+
+
+def verify_transport_assets(payloads):
+    """Require the complete prepared transport and its installed API preimages."""
+    transport = ROOT / "transports"
+    if not any(
+        path.is_relative_to(transport) or path == SITE / "sparkring_transport.pth"
+        for path in payloads
+    ):
+        return {}
+    bundle = transport / PREPARED_TRANSPORT_PROFILE
+    manifest_path = bundle / "manifest.json"
+    require(
+        manifest_path in payloads,
+        "Transport update omits the complete prepared bundle manifest",
+    )
+    manifest = json.loads(payloads[manifest_path])
+    require(
+        manifest.get("schema") == "sparkring-transport-bundle/v1"
+        and manifest.get("name") == PREPARED_TRANSPORT_PROFILE
+        and isinstance(manifest.get("files"), dict)
+        and manifest["files"],
+        "Prepared transport manifest identity or inventory differs",
+    )
+    actual = {
+        path.relative_to(bundle).as_posix(): path
+        for path in payloads
+        if path != manifest_path and path.is_relative_to(bundle)
+    }
+    require(
+        set(actual) == set(manifest["files"]),
+        "Prepared transport payload is incomplete or contains unlisted files",
+    )
+    for relative, expected in manifest["files"].items():
+        parts = PurePosixPath(relative)
+        require(
+            not parts.is_absolute()
+            and ".." not in parts.parts
+            and "\\" not in relative
+            and ":" not in relative
+            and re.fullmatch(r"[0-9a-f]{64}", expected)
+            and hashlib.sha256(payloads[actual[relative]]).hexdigest() == expected,
+            "Prepared transport payload differs: " + relative,
+        )
+    if bundle.exists():
+        existing = {
+            path.relative_to(bundle).as_posix()
+            for path in bundle.rglob("*")
+            if path.is_file()
+            and path != manifest_path
+            and "__pycache__" not in path.parts
+        }
+        require(
+            existing <= set(actual),
+            "Prepared transport directory contains unlisted inherited files",
+        )
+    preimages = manifest.get("image_source_preimages", {})
+    required = {
+        str(SITE / "b12x" / name)
+        for name in (
+            "preparation/__init__.py",
+            "preparation/types.py",
+            "preparation/tuning.py",
+            "preparation/session.py",
+            "_lib/compile_plan.py",
+            "_lib/program_cache.py",
+        )
+    }
+    require(
+        isinstance(preimages, dict) and required <= set(preimages),
+        "Prepared transport omits required B12X API preimages",
+    )
+    for name, expected in preimages.items():
+        path = Path(name)
+        require(
+            path.is_absolute()
+            and ".." not in path.parts
+            and path.is_relative_to(SITE / "b12x")
+            and not any(part.is_symlink() for part in (path, *path.parents))
+            and path.is_file()
+            and sha(path) == expected,
+            "Installed prepared-transport API preimage differs: " + name,
+        )
+    return {
+        PREPARED_TRANSPORT_PROFILE: {
+            "manifest": str(manifest_path),
+            "manifest_sha256": hashlib.sha256(payloads[manifest_path]).hexdigest(),
+            "files": {
+                str(actual[name]): expected
+                for name, expected in manifest["files"].items()
+            },
+            "image_source_preimages": preimages,
+            "serving_qualified": False,
+        }
+    }
 
 
 def verify_feature_dispositions(parent, child):
@@ -409,9 +789,11 @@ def install(context):
     package_names = [DEPENDENCY_PACKAGES.get(name, name) for name in packages]
     wheel_records = {**compiler["wheels"], **dependencies}
     selected = []
+    selected_files, wheel_paths, normalizations = {}, {}, {}
     metadata_roots = []
     for name in packages:
-        before.update(distribution_files(name))
+        selected_files[name] = distribution_files(name)
+        before.update(selected_files[name])
         metadata_roots.extend(SITE.glob(name.replace("-", "_") + "-*.dist-info"))
         record = wheel_records[name]
         filename = record["file"]
@@ -421,7 +803,20 @@ def install(context):
         )
         path = context / "wheels" / filename
         require(sha(path) == record["sha256"], "Compiled wheel bytes differ")
+        if name == "flashinfer-python":
+            path, normalizations[name] = isolate_flashinfer_build_helpers(
+                path, context / "installation-wheels", record["version"]
+            )
+        wheel_paths[name] = path
         selected.append(str(path))
+    planned_paths, installed_metadata_roots = wheel_install_paths(wheel_paths)
+    ownership_audit, preserved_helpers = audit_selected_ownership(
+        selected_files,
+        package_names,
+        [*metadata_roots, *installed_metadata_roots],
+        parent["files"],
+        planned_paths,
+    )
     prior_errors = subprocess.run(
         [sys.executable, "-m", "pip", "check"], capture_output=True, text=True
     ).stdout.splitlines()
@@ -438,6 +833,8 @@ def install(context):
         ],
         check=True,
     )
+    if "flashinfer-python" in normalizations:
+        restore_build_helpers(preserved_helpers)
     require(
         {name: metadata.version(name) for name in protected_torch} == protected_torch,
         "Wheel installation changed protected Torch versions",
@@ -543,6 +940,8 @@ def install(context):
         },
         "foundation_dependency_exceptions": prior_errors,
         "runtime_dependencies": dependencies,
+        "runtime_dependency_normalizations": normalizations,
+        "distribution_ownership_audit": ownership_audit,
         "feature_update": feature_update,
         "isolated_sglang": (
             {key: value for key, value in isolated_sglang.items() if key != "files"}

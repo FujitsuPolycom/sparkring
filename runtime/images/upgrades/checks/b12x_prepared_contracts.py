@@ -254,22 +254,28 @@ def test_qsa_transaction_retains_all_validation_before_state_updates():
 def test_qsa_paired_score_and_draft_bounds_still_match_baseline():
     for name in ["_RepresentativeScoreKernel", "_or_error"]:
         path = Path("attention/qsa/_score_cute.py")
-        get = lambda root: next(
-            n
-            for n in ast.parse((root / path).read_text()).body
-            if getattr(n, "name", None) == name
-        )
+
+        def get(root):
+            return next(
+                n
+                for n in ast.parse((root / path).read_text()).body
+                if getattr(n, "name", None) == name
+            )
+
         assert ast.dump(get(ROOT)) == ast.dump(get(BASE))
     assert (ROOT / "attention/qsa/_score_pair_cute.py").read_text() == (
         BASE / "attention/qsa/_score_pair_cute.py"
     ).read_text()
     for name in ["_record_kernel", "_prepare_kernel"]:
         path = Path("attention/qsa/_draft_selection.py")
-        get = lambda root: next(
-            n
-            for n in ast.parse((root / path).read_text()).body
-            if getattr(n, "name", None) == name
-        )
+
+        def get(root):
+            return next(
+                n
+                for n in ast.parse((root / path).read_text()).body
+                if getattr(n, "name", None) == name
+            )
+
         assert ast.dump(get(ROOT)) == ast.dump(get(BASE))
 
 
@@ -393,7 +399,10 @@ def test_score_prepares_once_for_static_geometry_not_live_row_count(
     module = types.ModuleType("test_qsa._score_pair_cute")
     module.PairedRepresentativeScoreKernel = Paired
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    tensor = lambda dtype: NS(dtype=dtype, device=NS(index=0))
+
+    def tensor(dtype):
+        return NS(dtype=dtype, device=NS(index=0))
+
     env = dict(
         __package__="test_qsa",
         torch=NS(
