@@ -172,6 +172,89 @@ def test_decoder_preserves_ple_residual_and_uses_two_owned_reductions():
     namespace["tensor_model_parallel_all_reduce"].assert_not_called()
 
 
+@pytest.mark.parametrize("eligible", [True, False])
+@pytest.mark.parametrize("media", [True, False])
+@pytest.mark.parametrize("intermediate", [True, False])
+def test_multimodal_entry_preserves_hc_dispatch_and_vision_inputs(
+    ownership, eligible, media, intermediate
+):
+    """Exercise both production forwards, not only the HC eligibility helper."""
+    path = ROOT / "vllm/models/qwen4_exp/nvidia/model.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    functions = {}
+    gate = Mock(side_effect=ownership.eligible)
+    for name in ("Qwen4ExpForCausalLM", "Qwen4ExpForConditionalGeneration"):
+        cls = next(n for n in tree.body if getattr(n, "name", None) == name)
+        forward = next(n for n in cls.body if getattr(n, "name", None) == "forward")
+        namespace = dict(
+            hc_prefill=NS(eligible=gate),
+            get_pp_group=lambda: NS(is_first_rank=True),
+        )
+        exec(
+            compile(
+                ast.Module(body=[forward], type_ignores=[]),
+                str(path),
+                "exec",
+                flags=__future__.annotations.compiler_flag,
+            ),
+            namespace,
+        )
+        functions[name] = namespace["forward"]
+
+    calls = []
+    output = object()
+
+    class Inner:
+        hc_prefill_mode = "shard"
+
+        def forward(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return output
+
+        __call__ = forward
+
+    class Language:
+        model = Inner()
+
+        def __call__(self, *args, **kwargs):
+            return functions["Qwen4ExpForCausalLM"](self, *args, **kwargs)
+
+    ownership.context.is_dummy_run = not eligible
+    deepstack = object()
+    wrapper = NS(
+        language_model=Language(),
+        _get_deepstack_input_embeds=Mock(return_value=deepstack),
+        _clear_deepstack_input_embeds=Mock(),
+    )
+    embeds = torch.zeros(1024, 2) if media else None
+    ngram = object()
+    query = object()
+    result = functions["Qwen4ExpForConditionalGeneration"](
+        wrapper,
+        torch.arange(1024),
+        torch.arange(1024),
+        object() if intermediate else None,
+        inputs_embeds=embeds,
+        query_start_loc=query,
+        ngram_context=ngram,
+    )
+    assert result is output
+    gate.assert_called_once()
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs.get("hc_prefill_eager", False) is eligible
+    assert kwargs["query_start_loc"] is query
+    assert kwargs["ngram_context"] is ngram
+    assert kwargs["deepstack_input_embeds"] is (
+        deepstack if media and not intermediate else None
+    )
+    assert args[3] is (None if intermediate else embeds)
+    if media and not intermediate:
+        wrapper._clear_deepstack_input_embeds.assert_called_once_with(1024)
+    else:
+        wrapper._clear_deepstack_input_embeds.assert_not_called()
+
+
 def test_gdn_checkpoint_lease_refuses_non_aligned_execution():
     path = ROOT / "vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py"
     tree = ast.parse(path.read_text())

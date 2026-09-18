@@ -21,6 +21,78 @@ _spec.loader.exec_module(package_prefill)
 
 
 class BundleTests(unittest.TestCase):
+    def test_audit_hook_is_between_engine_initialization_and_http_serving(self):
+        from multimodal_hc_routing import apply_api_audit
+
+        source = """async def build_and_serve():
+    await init_app_state(engine_client, app.state, args, supported_tasks)
+    return await serve_http(app)
+"""
+        patched = apply_api_audit(source)
+        self.assertLess(
+            patched.index("await init_app_state"), patched.index("    emit(")
+        )
+        self.assertLess(patched.index("    emit("), patched.index("await serve_http"))
+        with self.assertRaises(ValueError):
+            apply_api_audit(patched)
+        with self.assertRaises(ValueError):
+            apply_api_audit(source + source)
+
+    def test_startup_audit_distinguishes_flags_from_multimodal_activation(self):
+        from startup_audit import inspect_settings
+
+        source = """class Qwen4ExpForConditionalGeneration:
+    def forward(self):
+        return self.language_model.model()
+"""
+        environment = {
+            "VLLM_QWEN3_8_HC_PREFILL_MODE": "shard",
+            "VLLM_QWEN3_8_PREFILL_COALESCE": "1",
+        }
+        unchanged = dict(environment)
+        rows = inspect_settings(environment, tp=4, batch=8192, source=source)
+        self.assertIn("HC_ROUTE_BYPASS", [code for _, code, _ in rows])
+        self.assertNotIn("HC_ROUTE_VERIFIED", [code for _, code, _ in rows])
+        rows = inspect_settings(
+            environment,
+            tp=4,
+            batch=512,
+            source=source.replace("language_model.model", "language_model"),
+        )
+        self.assertIn("HC_ROUTE_VERIFIED", [code for _, code, _ in rows])
+        self.assertIn("HC_BATCH_TOO_SMALL", [code for _, code, _ in rows])
+        self.assertTrue(
+            any("execution is unverified" in message for _, _, message in rows)
+        )
+        self.assertEqual(environment, unchanged)
+        rows = inspect_settings({}, tp=2, batch=8192, source=source)
+        self.assertNotIn("HC_DISABLED", [code for _, code, _ in rows])
+        rows = inspect_settings({}, tp=4, batch=8192, source=source)
+        self.assertIn("HC_DISABLED", [code for _, code, _ in rows])
+
+    def test_multimodal_routing_patch_preserves_all_call_arguments(self):
+        from multimodal_hc_routing import apply
+
+        source = """class Qwen4ExpForConditionalGeneration:
+    def forward(self, **kwargs):
+        return self.language_model.model(
+            input_ids=ids, positions=positions, intermediate_tensors=intermediate,
+            inputs_embeds=embeds, query_start_loc=query, ngram_context=ngram,
+            deepstack_input_embeds=deepstack,
+        )
+"""
+        repaired = apply(source)
+        self.assertEqual(
+            repaired,
+            source.replace("self.language_model.model(", "self.language_model("),
+        )
+        with self.assertRaises(ValueError):
+            apply(repaired)
+        with self.assertRaises(ValueError):
+            apply(source.replace("ngram_context=ngram,", ""))
+        with self.assertRaises(ValueError):
+            apply(source + source)
+
     def test_mtp_small_rows_preserve_prepared_projection_callables(self):
         source = Path(__file__).with_name("qwen4_mtp_gemm.py")
         tree = ast.parse(source.read_text())
