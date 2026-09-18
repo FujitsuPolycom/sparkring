@@ -2,6 +2,7 @@
   "baseline_only": [],
   "candidate_only": [
     "qwen_checkpoint_metadata.py",
+    "qsa_padding_metadata.py",
     "qwen_hc_ownership.py",
     "ple_checkpoint_metadata.py",
     "connector_publication_retention.py"
@@ -23,6 +24,7 @@
     "hybrid_recovery.py": "f69c7b940a269c743d0f71e6fc90a3358e702e5e216b094b2f6f06fc9801a274",
     "ple_checkpoint_metadata.py": "af17a78bfd997ac45e457401624b64213fa9f01c2b83158c049f69b896d07962",
     "qwen_checkpoint_metadata.py": "a6e1a42d1f4c61ab8d6c87e488caf48dba32a0faa9f061af8995f4cd200f7b11",
+    "qsa_padding_metadata.py": "894af9798c9fcc417efe62cc3b50873d49bb37d2eac2dae99f3860b1ba660854",
     "qwen_hc_ownership.py": "e39144efa6556ae0d815e7a35038941b548e62202d2854c14e3f9881ec0b9537",
     "recurrent_checkpoint_math.py": "9d4b236d5403a1f0d75dd73324a079b6e3b5a129ddc9b31e9726fd7a2bc5c58d"
   },
