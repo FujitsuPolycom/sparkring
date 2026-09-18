@@ -22,6 +22,13 @@ Pushes, GitHub posts, merges, image publication and cluster operations require
 the user's applicable authorization. Normal reviewed Git history makes rollback
 possible; repository adoption does not require rewriting main or forcing a push.
 
+GitHub container packages, downloadable Release assets, and repository release
+selections are different interfaces. The [image and download guide](../../runtime/images/README.md)
+explains operator selection. Keep host tools and build-input archives visibly
+identified as non-serving artifacts; a GitHub **Latest** badge is not a profile
+recommendation. The [distribution rollout plan](image-distribution-plan.md)
+describes proposed metadata cleanup without changing published identities.
+
 A partial lifecycle fix may be accepted as a mitigation. For example, increasing
 peer-response silence tolerance does not handle disappearance of the local
 management address. Describe the solved condition and retain a follow-up for
