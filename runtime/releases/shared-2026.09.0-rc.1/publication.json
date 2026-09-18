@@ -1,0 +1,23 @@
+{
+  "anonymous_config_verified": true,
+  "anonymous_pull_completed": true,
+  "image_config_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:9439d39ad4b104c06cad3416a927f0f90852b456f0b06aa6a1dcf9475bf91a83",
+  "platform": "linux/arm64",
+  "profile_defaults_changed": false,
+  "publisher_sha256": "233bc50168793a7b98581421b47bd701908308933ca79f5d1ed1331d1f539b20",
+  "qualification_records": [
+    "performance/records/images/shared-22da81cae057-validation-20260918.json",
+    "performance/records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.json",
+    "performance/records/deepseek-v4-flash/shared-22da81ca-tp2-smoke-20260918.json"
+  ],
+  "registry_manifest_digest": "sha256:9439d39ad4b104c06cad3416a927f0f90852b456f0b06aa6a1dcf9475bf91a83",
+  "release": "shared-2026.09.0-rc.1",
+  "runtime_build_config_id": "sha256:768620d56aaed88528941bf97b1d1d8a7f4aec0918a4c2d681689372f3838b32",
+  "schema": "sparkring-shared-image-publication/v1",
+  "serving_qualification_added": false,
+  "source_adoption_commit": "3d85d78b16e917dafca915c223f8067594cfcc81",
+  "source_adoption_scope": "Maintained source/tooling adoption; not the original image-build checkout identity",
+  "source_receipt_sha256": "f2da2b743e2b66649478ca570ccf315f6291f7b8cf93f14e49b0c20cff04fe23",
+  "temporary_configs_removed": true
+}

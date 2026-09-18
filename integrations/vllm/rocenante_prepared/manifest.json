@@ -1,0 +1,64 @@
+{
+  "schema": "sparkring-transport-bundle/v1",
+  "name": "tp2-rocenante-adaptive-prepared",
+  "status": "implemented",
+  "source_repository": "https://github.com/FujitsuPolycom/sparkring",
+  "source_revision": null,
+  "upstream_repository": "https://github.com/local-inference-lab/b12x",
+  "license": "Apache-2.0",
+  "package": "b12x.comm.roce",
+  "api_version": 1,
+  "source_origins": {
+    "adaptive_transport": {
+      "repository": "https://github.com/FujitsuPolycom/sparkring",
+      "commit": "60d8d68486540ce9ddb2702dd545fda6b347c087",
+      "manifest_sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
+      "upstream_credit": "Luke and Local Inference Lab RoCEnante contributors; SparkRing peer-path and adaptive-grid integration"
+    },
+    "prepared_interface": {
+      "repository": "https://github.com/local-inference-lab/b12x",
+      "commit": "a83336581a3a907076e60797df69ab66df5a2ff1",
+      "query_schema_version": 2,
+      "semantic_version": 2
+    }
+  },
+  "adaptation": [
+    "Retain adaptive size-based grids, per-grid arrival counters, peer HCA mapping, proxy wire protocol and native collective math.",
+    "Add caller-owned prepared RoCE declarations and execution handles without runtime kernel resolution.",
+    "Keep stream waits before shared staging writes and completion events after output copies.",
+    "Bind immutable peer-path and capacity settings in prepared query identity; opposite_paths is distinct from HCA inventory count."
+  ],
+  "files": {
+    "roce/__init__.py": "0126b2176991804142336b31395e4d5ca1567a4c0a7a6683264f7d0f4965512e",
+    "roce/_allgather_cute.py": "2bab616e7a0949fb83b8e933dbb9c531647659840a607bcd0118652569e389e5",
+    "roce/_cute_intrinsics.py": "11737796a80a0966c04ee347d5ef83a662bde16dc188022134d2cbaa1567410b",
+    "roce/_oneshot_cute.py": "2c791413e084f343f782321e0187d5f8e863832a6ef38cff7c2a365e7b83a0ea",
+    "roce/_path_config.py": "d0ac6f1de1934e74202118a94b4f911001869e3da514bf599ca5ea696e82f0c9",
+    "roce/_preparation.py": "905c3cf8311f14d7cafba6808443163297a18a1800fa95c698d06444b2e6b59d",
+    "roce/_proxy.py": "f783d078d06953f79bcf3a26a61c1ba853d5ec56d07f3e927e5c14275852d854",
+    "roce/_tuning.py": "60298918980d092ec09fe59e65cfae0bb9090af3855fb2ffc42c67d853e28c4a",
+    "roce/api.py": "f8cadfa227d9ce3e115353ef5b5e61004ab27e83799270c210d41c32712f0d38",
+    "roce/roce_oneshot.py": "1033895ecd87c6b7d5d0728d7ba598c5a6f50db50a4417db901a87761820bd70",
+    "roce/_roce_proxy.c": "19174ed656fe4b74d01d0d21797ed7766904828f7fb2aea3698e04ebdbc7b84c",
+    "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  },
+  "image_source_preimages": {
+    "/opt/venv/lib/python3.12/site-packages/b12x/preparation/__init__.py": "cf48b799828df628454a2a441c05667188cfb9b57d4b3aa29984ba8487a3249e",
+    "/opt/venv/lib/python3.12/site-packages/b12x/preparation/types.py": "1c67f28932ddf428e2e1485c7727f75e7694596f00f5a25e195ff3c0d68dec12",
+    "/opt/venv/lib/python3.12/site-packages/b12x/preparation/tuning.py": "5eb916d0758733d2ea6e012cede295513cbd8add348e7880ca2ec54013713cff",
+    "/opt/venv/lib/python3.12/site-packages/b12x/preparation/session.py": "36899478a440bac5999b5160bf98729ede0b4924994b49f83297fee5510e18d9",
+    "/opt/venv/lib/python3.12/site-packages/b12x/_lib/compile_plan.py": "9a7066143209765286ed5cb44394c938a8998a3e0ba7fa986d5bec81b4c5722b",
+    "/opt/venv/lib/python3.12/site-packages/b12x/_lib/program_cache.py": "63720746570d28f74a1a45d38e20727e4497265c8151f001f0046457ab7e9b8b"
+  },
+  "qualification": {
+    "cpu": "Interface and source-preservation tests; see adjacent test_prepared_transport.py",
+    "gpu_rdma": "pending",
+    "serving": "pending",
+    "default_path_count": 2,
+    "default_peer_hca_indices": [
+      0,
+      2
+    ],
+    "four_path": "research-only; inherited capability, not enabled by this bundle"
+  }
+}

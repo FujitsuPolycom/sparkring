@@ -2,7 +2,8 @@
 
 Status: **implemented** correctness harness for the
 [profile validation runbook](../../../docs/operations/profile-validation.md).
-Python 3.10 or later and the standard library are sufficient.
+The repository retrieval harness, `needle_hunt.py`, requires Python 3.10 or
+later and the standard library.
 
 `needle_hunt.py` checks three deterministic repository fixtures:
 
@@ -70,9 +71,41 @@ test data, including its filenames, revision labels, and authority declarations.
 python3 -m pytest performance/harnesses/validation -q
 ```
 
-Tests do not contact an API or host. Records should additionally identify the
+Tests use mocks or loopback HTTP fixtures; they do not contact a serving stack.
+Records should additionally identify the
 model revision, immutable image, serving settings, topology, cache state, and
 concurrent traffic before supporting a profile-validation claim.
+
+## DeepSeek SGLang API checks
+
+[`sglang_deepseek.py`](sglang_deepseek.py) checks the DeepSeek-V4.1-Flash SGLang
+profile's health, served model identifier, two bearer keys, rejection of missing
+or invalid keys, deterministic arithmetic and JSON-schema output. It uses
+Python 3.11 or later. The optional long-context check additionally requires
+`tokenizers` and the pinned checkpoint's local tokenizer and chat encoder;
+their recorded hashes must match before that encoder executes.
+
+```bash
+python3 performance/harnesses/validation/sglang_deepseek.py \
+  --url http://127.0.0.1:8015 \
+  --key-file /private/api-keys \
+  --model-path /models/DeepSeek-V4.1-Flash \
+  --output /private/results/sglang-api.json \
+  --long-context --target-prompt-tokens 640000 --context-limit 655360
+```
+
+Use a file containing at least two distinct keys, one per line. Omit
+`--long-context` for the ten short checks. Retrieval places a unique code near
+the prompt midpoint and submits exact token IDs to SGLang's `/generate` API.
+It checks the server's input count and exact answer. Requests allow 32 output
+tokens and a 900-second response timeout. Redirects and environment proxies
+are disabled; credentials and the large prompt are excluded from the result.
+
+An unused output path receives incremental JSON results. Exit zero means all
+requested checks passed, one means a failed check, and two means setup failed.
+These sequential synthetic requests establish neither general model quality
+nor throughput or stability under concurrent load. Timings include the complete
+request, not only prefill. The harness does not change services or caches.
 
 ## Prefill measurement
 

@@ -1,0 +1,1630 @@
+From 0d5e663b8f8d80a6caec2a7f7ce4eed6394756b7 Mon Sep 17 00:00:00 2001
+From: Xiaoyu Zhang <1182563586@qq.com>
+Date: Fri, 11 Sep 2026 20:34:16 +0800
+Subject: [PATCH] [DSV4.1] Fuse DSpark verify compression, indexer and
+ projections (#39068)
+
+Co-authored-by: DarkSharpness <2040703891@qq.com>
+Co-authored-by: DarkSharpness <ziyi.xu@radixark.ai>
+---
+ .../kernels/jit/csrc/deepseek_v4/c2.cuh       |  93 ++++-
+ .../sglang/kernels/ops/attention/dsv4/c2.py   |  57 +++
+ .../ops/attention/dsv4/candidate_blocks.py    |  42 +-
+ .../ops/attention/dsv4/indexer_postprocess.py |  74 ++++
+ .../ops/attention/dsv4/q_rope_store.py        |  46 +++
+ .../attention/dsv4/wo_a_bf16_small_batch.py   |  51 +++
+ .../layers/attention/deepseek_v4_backend.py   |  62 ++-
+ python/sglang/srt/layers/quantization/fp8.py  |  10 +-
+ .../srt/layers/quantization/mxfp8_input.py    |  16 +
+ python/sglang/srt/models/deepseek_v4.py       |  39 +-
+ .../dsv4/test_dsv41_fused_compress.py         |  85 +++-
+ .../benchmark/attention/bench_c2_verify.py    |  48 +++
+ .../ops/attention/dsv4/test_c2_verify.py      | 368 ++++++++++++++++++
+ .../kernels/test_dsv4_indexer_postprocess.py  | 147 +++++++
+ .../kernels/test_dsv4_q_rope_store.py         |  61 +++
+ .../quant/test_block_fp8_as_mxfp8.py          |  77 ++++
+ 16 files changed, 1244 insertions(+), 32 deletions(-)
+ create mode 100644 python/sglang/kernels/ops/attention/dsv4/indexer_postprocess.py
+ create mode 100644 python/sglang/kernels/ops/attention/dsv4/q_rope_store.py
+ create mode 100644 python/sglang/srt/layers/quantization/mxfp8_input.py
+ create mode 100644 test/registered/kernels/benchmark/attention/bench_c2_verify.py
+ create mode 100644 test/registered/kernels/ops/attention/dsv4/test_c2_verify.py
+ create mode 100644 test/registered/kernels/test_dsv4_indexer_postprocess.py
+ create mode 100644 test/registered/kernels/test_dsv4_q_rope_store.py
+
+diff --git a/python/sglang/kernels/jit/csrc/deepseek_v4/c2.cuh b/python/sglang/kernels/jit/csrc/deepseek_v4/c2.cuh
+index 1b684317d49a..c648287290c8 100644
+--- a/python/sglang/kernels/jit/csrc/deepseek_v4/c2.cuh
++++ b/python/sglang/kernels/jit/csrc/deepseek_v4/c2.cuh
+@@ -50,12 +50,19 @@ constexpr uint32_t kC2VecSize = 2;
+ /// An odd position completes a group with its even predecessor; an even one
+ /// parks itself in the state.
+ ///
++/// Target-verify runs that same schedule with `draft_len` consecutive positions
++/// per request instead of one, so a row's partner is usually the row before it
++/// in `kv_input` rather than the ring. That is the whole difference, and a 2D
++/// grid answers it without arithmetic: `blockIdx.x` is the position inside the
++/// block, `blockIdx.y` the request.
++///
+ /// The three reductions below have three different widths and are not
+ /// interchangeable: the RMSNorm statistic spans the row, an fp8 store scale
+ /// spans 64 elements, an fp4 block spans 16. All asserted.
+ template <
+     bool kUsePDL,
+     bool kStore,
++    bool kVerify,
+     int64_t kHeadDim,
+     int64_t kRopeDim,
+     int32_t kPageBits,
+@@ -85,7 +92,8 @@ __global__ __launch_bounds__(kHeadDim / kC2VecSize) void flash_c2_decode_kernel(
+   using bf16_vec_t = AlignedVector<bf16x2_t, kVecSize / 2>;
+ 
+   const auto tx = threadIdx.x;
+-  const auto row = blockIdx.x;
++  // Verify gives each request a CTA column; decode a flat grid of one row each.
++  const auto row = kVerify ? blockIdx.y * gridDim.x + blockIdx.x : blockIdx.x;
+   // Slots fit in int32 whatever width the scheduler hands them in.
+   const auto raw_out_loc = static_cast<int32_t>(static_cast<const LocT*>(params.raw_out_loc)[row]);
+   const auto pos = static_cast<const PosT*>(params.positions)[row];
+@@ -101,8 +109,17 @@ __global__ __launch_bounds__(kHeadDim / kC2VecSize) void flash_c2_decode_kernel(
+   score_new.load(params.kv_input + row * kStride, tx + kCTASize);
+ 
+   fp32_vec_t kv_old, score_old;
+-  kv_old.load(params.kv_state + read_row * kStride, tx);
+-  score_old.load(params.kv_state + read_row * kStride, tx + kCTASize);
++  // Only a verify block's first row carries over from the ring; the rest pair
++  // with the row before them, which is already in `kv_input` under the same
++  // `| kv | score |` layout as the state, so this is a pointer swap. Taking the
++  // in-block partner from the input is also what keeps it race-free: the CTA
++  // that publishes that ring slot belongs to this very launch.
++  const float* partner = params.kv_state + read_row * kStride;
++  if constexpr (kVerify) {
++    if (blockIdx.x != 0) partner = params.kv_input + static_cast<int64_t>(row - 1) * kStride;
++  }
++  kv_old.load(partner, tx);
++  score_old.load(partner, tx + kCTASize);
+ 
+   if ((pos & 1) == 0) {
+     // padded case
+@@ -256,14 +273,15 @@ struct FlashC2DecodeKernel {
+   static constexpr uint32_t kBlockSize = kHeadDim / kC2VecSize;
+   static constexpr int32_t kPageBits = std::bit_width(kPageSize) - 1;
+   static constexpr int64_t kPageBytes = host::div_ceil(584ll * kPageSize, 576) * 576;
+-  template <bool kStore, typename PosT, typename LocT>
+-  static constexpr auto kernel = flash_c2_decode_kernel<kUsePDL, kStore, kHeadDim, kRopeDim, kPageBits, PosT, LocT>;
++  template <bool kStore, bool kVerify, typename PosT, typename LocT>
++  static constexpr auto kernel =
++      flash_c2_decode_kernel<kUsePDL, kStore, kVerify, kHeadDim, kRopeDim, kPageBits, PosT, LocT>;
+ 
+   /// \brief The (`positions`, `raw_out_loc`) dtype pair, resolved at run time.
+-  template <bool kStore>
++  template <bool kStore, bool kVerify>
+   static auto select(const bool pos_i32, const bool loc_i32) {
+-    if (pos_i32) return loc_i32 ? kernel<kStore, int32_t, int32_t> : kernel<kStore, int32_t, int64_t>;
+-    return loc_i32 ? kernel<kStore, int64_t, int32_t> : kernel<kStore, int64_t, int64_t>;
++    if (pos_i32) return loc_i32 ? kernel<kStore, kVerify, int32_t, int32_t> : kernel<kStore, kVerify, int32_t, int64_t>;
++    return loc_i32 ? kernel<kStore, kVerify, int64_t, int32_t> : kernel<kStore, kVerify, int64_t, int64_t>;
+   }
+ 
+   // The sum of squares is reduced through a fixed-size shared array, so the CTA
+@@ -312,6 +330,38 @@ struct FlashC2DecodeKernel {
+     launch(kv_input, kv_state, kv_output, norm_weight, positions, req, raw_out_loc, eps, ring_size, freqs_cis, kvcache);
+   }
+ 
++  /// \brief `run_decode_fusion` for a target-verify block.
++  ///
++  /// `draft_len` consecutive positions per request, request-major, which the
++  /// grid reproduces as `draft_len x batch`.
++  static void run_verify_fusion(
++      const tvm::ffi::TensorView kv_input,
++      const tvm::ffi::TensorView kv_state,
++      const tvm::ffi::TensorView kv_output,
++      const tvm::ffi::TensorView norm_weight,
++      const tvm::ffi::TensorView positions,
++      const tvm::ffi::TensorView req,
++      const tvm::ffi::TensorView raw_out_loc,
++      const float eps,
++      const tvm::ffi::TensorView freqs_cis,
++      const tvm::ffi::TensorView kvcache,
++      const int64_t ring_size,
++      const int64_t draft_len) {
++    launch(
++        kv_input,
++        kv_state,
++        kv_output,
++        norm_weight,
++        positions,
++        req,
++        raw_out_loc,
++        eps,
++        ring_size,
++        freqs_cis,
++        kvcache,
++        draft_len);
++  }
++
+  private:
+   using MaybeTensor = std::optional<tvm::ffi::TensorView>;
+ 
+@@ -326,7 +376,8 @@ struct FlashC2DecodeKernel {
+       const float eps,
+       const int64_t ring_size,
+       const MaybeTensor freqs_cis,
+-      const MaybeTensor kvcache) {
++      const MaybeTensor kvcache,
++      const int64_t draft_len = 1) {
+     using namespace host;
+ 
+     auto N = SymbolicSize{"num_tokens"};
+@@ -358,6 +409,19 @@ struct FlashC2DecodeKernel {
+     const auto num_tokens = static_cast<uint32_t>(N.unwrap());
+     if (num_tokens == 0) return;
+     RuntimeCheck(ring_size > 0, "the pair-state ring must have at least one position");
++    RuntimeCheck(draft_len >= 1, "the draft length ", draft_len, " must be positive");
++    const auto is_verify = draft_len > 1;
++    RuntimeCheck(!is_verify || num_tokens % draft_len == 0, "verify rows must be a whole number of blocks");
++    // A block publishes its own even positions, so the slot its first row reads
++    // stays out of the launch's reach only while the ring is wider than the
++    // block. `get_compress_state_ring_size` satisfies this by construction.
++    RuntimeCheck(
++        !is_verify || ring_size > draft_len,
++        "the pair-state ring (",
++        ring_size,
++        ") must be wider than the draft length (",
++        draft_len,
++        ")");
+ 
+     const auto params = C2Params{
+         .kv_input = static_cast<const float*>(kv_input.data_ptr()),
+@@ -375,12 +439,17 @@ struct FlashC2DecodeKernel {
+     // `LaunchKernel` is move-only, so each arm builds its own.
+     const auto pos_i32 = pos_dtype.is_type<int32_t>();
+     const auto loc_i32 = loc_dtype.is_type<int32_t>();
+-    if (store) {
+-      const auto k = select<true>(pos_i32, loc_i32);
++    if (is_verify) {
++      const auto block = static_cast<uint32_t>(draft_len);
++      const auto k = select<true, true>(pos_i32, loc_i32);
++      LaunchKernel(dim3{block, num_tokens / block}, kBlockSize, device_.unwrap())  //
++          .enable_pdl(kUsePDL)(k, params);
++    } else if (store) {
++      const auto k = select<true, false>(pos_i32, loc_i32);
+       LaunchKernel(num_tokens, kBlockSize, device_.unwrap())  //
+           .enable_pdl(kUsePDL)(k, params);
+     } else {
+-      const auto k = select<false>(pos_i32, loc_i32);
++      const auto k = select<false, false>(pos_i32, loc_i32);
+       LaunchKernel(num_tokens, kBlockSize, device_.unwrap())  //
+           .enable_pdl(kUsePDL)(k, params);
+     }
+diff --git a/python/sglang/kernels/ops/attention/dsv4/c2.py b/python/sglang/kernels/ops/attention/dsv4/c2.py
+index 641f03a32c92..c7f4f5b3334a 100644
+--- a/python/sglang/kernels/ops/attention/dsv4/c2.py
++++ b/python/sglang/kernels/ops/attention/dsv4/c2.py
+@@ -37,6 +37,7 @@ def _jit_c2_module(head_dim: int, rope_dim: int = 64, page_size: int = 128) -> M
+         cuda_wrappers=[
+             ("decode", f"FlashC2DecodeKernel<{args}>::run_decode"),
+             ("decode_fusion", f"FlashC2DecodeKernel<{args}>::run_decode_fusion"),
++            ("verify_fusion", f"FlashC2DecodeKernel<{args}>::run_verify_fusion"),
+         ],
+     )
+ 
+@@ -150,3 +151,59 @@ def c2_decode_norm_rope_store(
+         int(ring_size),
+     )
+     return out
++
++
++def c2_verify_norm_rope_store(
++    kv_input: torch.Tensor,
++    kv_state: torch.Tensor,
++    norm_weight: torch.Tensor,
++    positions: torch.Tensor,
++    req: torch.Tensor,
++    raw_out_loc: torch.Tensor,
++    eps: float,
++    freqs_cis: torch.Tensor,
++    k_cache: torch.Tensor,
++    *,
++    page_size: int,
++    ring_size: int,
++    draft_len: int,
++    out: Optional[torch.Tensor] = None,
++) -> torch.Tensor:
++    """``c2_decode_norm_rope_store`` for a target-verify block.
++
++    A block is ``draft_len`` rows of one request at consecutive positions, laid
++    out request-major, so every row but the first pairs with the row before it
++    in ``kv_input`` rather than through the ring. Reading the in-block partner
++    from the input is what makes that safe: the row that publishes it into the
++    ring belongs to the same launch, with nothing ordering the two. The block's
++    first row does read the ring, at the slot before the block's own, which the
++    launch cannot reach while ``ring_size > draft_len`` -- a precondition the
++    kernel checks and ``get_compress_state_ring_size`` satisfies by
++    construction.
++
++    Nothing else changes, the pair state included: replaying a block one
++    position at a time through ``c2_decode_norm_rope_store`` gives the same
++    latents, the same ring and the same cache bytes.
++
++    :param draft_len: rows per request, ``speculative_num_draft_tokens``.
++    """
++    num_tokens, fused_dim = kv_input.shape
++    head_dim = fused_dim // 2
++    if out is None:
++        out = kv_input.new_empty((num_tokens, head_dim), dtype=torch.bfloat16)
++
++    _jit_c2_module(head_dim, freqs_cis.shape[-1], page_size).verify_fusion(
++        kv_input,
++        kv_state,
++        out,
++        norm_weight,
++        positions,
++        req,
++        raw_out_loc,
++        float(eps),
++        freqs_cis,
++        k_cache,
++        int(ring_size),
++        int(draft_len),
++    )
++    return out
+diff --git a/python/sglang/kernels/ops/attention/dsv4/candidate_blocks.py b/python/sglang/kernels/ops/attention/dsv4/candidate_blocks.py
+index e5b2e7b22b33..690682a5e6ed 100644
+--- a/python/sglang/kernels/ops/attention/dsv4/candidate_blocks.py
++++ b/python/sglang/kernels/ops/attention/dsv4/candidate_blocks.py
+@@ -62,6 +62,29 @@ def _candidate_mask_kernel(
+     tl.store(OUT + row * WIDTH + cols, values, cols < WIDTH)
+ 
+ 
++@triton.jit
++def _publish_candidate_mask_kernel(
++    INDICES,
++    VALUES,
++    KEEP,
++    WIDTH: tl.constexpr,
++    GROUP: tl.constexpr,
++    TOPK: tl.constexpr,
++    TILE: tl.constexpr,
++):
++    row = tl.program_id(0).to(tl.int64)
++    i = tl.program_id(1) * TILE + tl.arange(0, TILE)
++    selected = tl.load(INDICES + row * TOPK + i // GROUP, i < TOPK * GROUP, 0)
++    score = tl.load(VALUES + row * TOPK + i // GROUP, i < TOPK * GROUP, -float("inf"))
++    cols = selected * GROUP + i % GROUP
++    # torch.topk returns unique block indices: each output position has one writer.
++    tl.store(
++        KEEP + row * WIDTH + cols,
++        score > -float("inf"),
++        (i < TOPK * GROUP) & (cols < WIDTH),
++    )
++
++
+ def candidate_block_logits(
+     logits: torch.Tensor,
+     seq_lens: torch.Tensor,
+@@ -108,8 +131,19 @@ def candidate_block_logits(
+         group_pad,
+         tile,
+     )
+-    top = scores.topk(min(topk_blocks, blocks), dim=-1)
+-    keep = torch.zeros_like(scores, dtype=torch.bool).scatter_(
+-        -1, top.indices, top.values > -torch.inf
++    # Publication only needs membership; sorting the selected pairs is unused.
++    top = scores.topk(min(topk_blocks, blocks), dim=-1, sorted=False)
++    keep = torch.zeros((rows, width), dtype=torch.bool, device=logits.device)
++    _publish_candidate_mask_kernel[
++        (rows, triton.cdiv(top.indices.shape[1] * block_size, 256))
++    ](
++        top.indices,
++        top.values,
++        keep,
++        width,
++        block_size,
++        top.indices.shape[1],
++        256,
++        num_warps=4,
+     )
+-    return output, keep.repeat_interleave(block_size, dim=-1)[..., :width]
++    return output, keep
+diff --git a/python/sglang/kernels/ops/attention/dsv4/indexer_postprocess.py b/python/sglang/kernels/ops/attention/dsv4/indexer_postprocess.py
+new file mode 100644
+index 000000000000..f9983326e16e
+--- /dev/null
++++ b/python/sglang/kernels/ops/attention/dsv4/indexer_postprocess.py
+@@ -0,0 +1,74 @@
++"""Filter selected indexer scores and map logical positions to KV slots."""
++
++import torch
++import triton
++import triton.language as tl
++
++
++@triton.jit
++def _filter_topk_pages(
++    SCORES,
++    INDICES,
++    PAGES,
++    OUT,
++    RAW,
++    WIDTH: tl.constexpr,
++    TOPK: tl.constexpr,
++    PAGE_SIZE: tl.constexpr,
++    SS: tl.constexpr,
++    SI: tl.constexpr,
++    SP: tl.constexpr,
++    SO: tl.constexpr,
++    SR: tl.constexpr,
++    WRITE_RAW: tl.constexpr,
++    BLOCK: tl.constexpr,
++):
++    row = tl.program_id(0).to(tl.int64)
++    col = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
++    index = tl.load(INDICES + row * SI + col, col < TOPK, -1).to(tl.int64)
++    in_bounds = (index >= 0) & (index < WIDTH) & (col < TOPK)
++    score = tl.load(SCORES + row * SS + index, in_bounds, -float("inf"))
++    # This comparison also rejects NaN; +inf remains a valid score.
++    valid = in_bounds & (score > -float("inf"))
++    page = tl.load(PAGES + row * SP + index // PAGE_SIZE, valid, 0)
++    slot = (page * PAGE_SIZE).to(tl.int64) + index % PAGE_SIZE
++    tl.store(OUT + row * SO + col, tl.where(valid, slot, -1), col < TOPK)
++    if WRITE_RAW:
++        tl.store(RAW + row * SR + col, tl.where(valid, index, -1), col < TOPK)
++
++
++def filter_topk_pages(
++    scores: torch.Tensor,
++    indices: torch.Tensor,
++    page_table: torch.Tensor,
++    page_indices: torch.Tensor,
++    page_size: int,
++    raw_indices: torch.Tensor | None = None,
++) -> None:
++    """Preserve top-k order, write -1 for invalid scores, and map valid slots."""
++    rows, topk = indices.shape
++    assert scores.ndim == page_table.ndim == page_indices.ndim == 2
++    assert scores.shape[0] == page_table.shape[0] == page_indices.shape[0] == rows
++    assert page_indices.shape[1] == topk and scores.shape[1] > 0
++    assert page_table.shape[1] * page_size >= scores.shape[1]
++    assert all(t.stride(1) == 1 for t in (scores, indices, page_table, page_indices))
++    if raw_indices is not None:
++        assert raw_indices.shape == indices.shape and raw_indices.stride(1) == 1
++    _filter_topk_pages[(rows, triton.cdiv(topk, 256))](
++        scores,
++        indices,
++        page_table,
++        page_indices,
++        raw_indices,
++        scores.shape[1],
++        topk,
++        page_size,
++        scores.stride(0),
++        indices.stride(0),
++        page_table.stride(0),
++        page_indices.stride(0),
++        raw_indices.stride(0) if raw_indices is not None else 0,
++        raw_indices is not None,
++        256,
++        num_warps=4,
++    )
+diff --git a/python/sglang/kernels/ops/attention/dsv4/q_rope_store.py b/python/sglang/kernels/ops/attention/dsv4/q_rope_store.py
+new file mode 100644
+index 000000000000..e89af4e47967
+--- /dev/null
++++ b/python/sglang/kernels/ops/attention/dsv4/q_rope_store.py
+@@ -0,0 +1,46 @@
++"""Rotate Q while writing the padded buffer consumed by sparse attention."""
++
++import torch
++import triton
++import triton.language as tl
++
++
++@triton.jit
++def _q_rope_store(X, Y, F, POS, SX: tl.constexpr, SY: tl.constexpr):
++    row, head = tl.program_id(0), tl.program_id(1)
++    r = tl.arange(0, 512)
++    value = tl.load(X + row * SX + head * 512 + r).to(tl.float32)
++    partner = tl.gather(value, r ^ 1, 0)
++    position = tl.load(POS + row)
++    cos = tl.load(F + position * 64 + (r - 448) // 2 * 2, r >= 448, 0)
++    sin = tl.load(F + position * 64 + (r - 448) // 2 * 2 + 1, r >= 448, 0)
++    # Match the operation order of deepseek_rope_kernel before BF16 rounding.
++    even = tl.fma(value, cos, -partner * sin)
++    odd = tl.fma(partner, sin, value * cos)
++    rotated = tl.where((r & 1) == 0, even, odd)
++    tl.store(Y + row * SY + head * 512 + r, tl.where(r >= 448, rotated, value))
++
++
++def q_rope_store(
++    q: torch.Tensor,
++    output: torch.Tensor,
++    freqs_cis: torch.Tensor,
++    positions: torch.Tensor,
++) -> None:
++    """Apply 64-wide forward RoPE to 512-wide heads without changing Q padding."""
++    assert q.shape == output.shape and q.ndim == 3 and q.shape[2] == 512
++    assert q.dtype == output.dtype == torch.bfloat16
++    assert q.stride(2) == output.stride(2) == 1
++    assert q.stride(1) == output.stride(1) == 512
++    assert freqs_cis.dtype == torch.complex64 and freqs_cis.is_contiguous()
++    assert freqs_cis.shape[1] == 32 and positions.shape == (q.shape[0],)
++    assert positions.dtype in (torch.int32, torch.int64) and positions.is_contiguous()
++    _q_rope_store[(q.shape[0], q.shape[1])](
++        q,
++        output,
++        torch.view_as_real(freqs_cis),
++        positions,
++        q.stride(0),
++        output.stride(0),
++        num_warps=4,
++    )
+diff --git a/python/sglang/kernels/ops/attention/dsv4/wo_a_bf16_small_batch.py b/python/sglang/kernels/ops/attention/dsv4/wo_a_bf16_small_batch.py
+index 5534ea115624..7d93915c88fa 100644
+--- a/python/sglang/kernels/ops/attention/dsv4/wo_a_bf16_small_batch.py
++++ b/python/sglang/kernels/ops/attention/dsv4/wo_a_bf16_small_batch.py
+@@ -53,3 +53,54 @@ def wo_a_bf16_small_batch(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor
+     )
+     _wo_a_reduce[(triton.cdiv(m * 2048, 256),)](partial, result, m * 2048, num_warps=4)
+     return result
++
++
++@triton.jit
++def _wo_a_reduce_quant(P, Q, S, M: tl.constexpr):
++    row, tile = tl.program_id(0), tl.program_id(1)
++    i = tile * 256 + tl.arange(0, 256)
++    split = tl.arange(0, 8)
++    v = tl.load(P + split[:, None] * (M * 2048) + row * 2048 + i[None, :])
++    y = tl.sum(v, 0).to(tl.bfloat16).to(tl.float32).reshape((8, 32))
++    amax = tl.max(tl.abs(y), 1)
++    # FlashInfer's positive-rounding UE8M0 conversion, including subnormals.
++    normalized = amax * (1.0 / 448.0)
++    bits = normalized.to(tl.int32, bitcast=True)
++    exponent = (bits >> 23) & 255
++    mantissa = bits & 0x7FFFFF
++    bump = (mantissa != 0) & ~((exponent == 0) & (mantissa <= 0x400000))
++    sf = tl.where(normalized <= 0, 0, tl.minimum(exponent + bump.to(tl.int32), 254))
++    inv = tl.where(sf == 0, 0, ((254 - sf) << 23)).to(tl.float32, bitcast=True)
++    quant = tl.minimum(tl.maximum(y * inv[:, None], -448.0), 448.0).to(tl.float8e4nv)
++    tl.store(Q + row * 2048 + i, quant.reshape((256,)))
++    col = tile * 8 + tl.arange(0, 8)
++    off = (col // 4) * 512 + row * 16 + col % 4
++    tl.store(S + off, sf.to(tl.uint8))
++    # Zero only padding rows; valid scale bytes have disjoint writers above.
++    for z in tl.static_range(triton.cdiv(8192, M * 8 * 256)):
++        s = (row * 8 + tile) * 256 + tl.arange(0, 256) + z * (M * 8 * 256)
++        sr = (s % 512) // 16 + ((s % 16) // 4) * 32
++        tl.store(S + s, 0, (s < 8192) & (sr >= M))
++
++
++def _quantize_partial(p):
++    m = p.shape[1]
++    q = torch.empty((m, 2048), device=p.device, dtype=torch.float8_e4m3fn)
++    s = torch.empty(8192, device=p.device, dtype=torch.uint8)
++    _wo_a_reduce_quant[(m, 8)](p, q, s, m, num_warps=4)
++    return q, s
++
++
++def wo_a_bf16_small_batch_mxfp8(x: torch.Tensor, weight: torch.Tensor):
++    """WO-A with BF16 rounding followed by FlashInfer-compatible MXFP8 quantization."""
++    m = x.shape[0]
++    assert 2 <= m <= 8 and x.shape[1:] == (2, 4096)
++    assert x.dtype == weight.dtype == torch.bfloat16
++    assert weight.shape == (2, 1024, 4096) and weight.is_contiguous()
++    assert x.is_cuda and x.device == weight.device
++    assert x.stride(2) == 1 and x.stride(1) == 4096 and x.stride(0) >= 8192
++    partial = torch.empty((8, m, 2, 1024), dtype=torch.float32, device=x.device)
++    _wo_a_partial[(16, 2, 8)](
++        x, weight, partial, m, x.stride(0), num_warps=4, num_stages=3
++    )
++    return _quantize_partial(partial)
+diff --git a/python/sglang/srt/layers/attention/deepseek_v4_backend.py b/python/sglang/srt/layers/attention/deepseek_v4_backend.py
+index 25c18c9fa42e..e660c2b566bf 100644
+--- a/python/sglang/srt/layers/attention/deepseek_v4_backend.py
++++ b/python/sglang/srt/layers/attention/deepseek_v4_backend.py
+@@ -2809,6 +2809,22 @@ def _forward_low_ratio_sources_cp(
+     def _low_ratio_compress(self, layer, x, req, pos, forward_batch) -> None:
+         if forward_batch.forward_mode.is_decode():
+             self._low_ratio_compress_decode(layer, x, req, pos)
++        elif (
++            forward_batch.forward_mode.is_target_verify()
++            and not self.is_dspark_draft
++            and layer.compress_ratio == 2
++            and layer.compressor.use_fused_compress
++            and read_ragged_verify_mode() is not RaggedVerifyMode.COMPACT
++            and self.speculative_num_draft_tokens is not None
++            and self.speculative_num_draft_tokens > 1
++            and x.shape[0]
++            == forward_batch.batch_size * self.speculative_num_draft_tokens
++        ):
++            # Static verify is request-major with consecutive positions. Compact
++            # verify has variable block lengths and must retain the general path.
++            self._low_ratio_compress_fused(
++                layer, x, req, pos, draft_len=self.speculative_num_draft_tokens
++            )
+         else:
+             self._low_ratio_compress_torch(
+                 layer,
+@@ -2832,7 +2848,7 @@ def _low_ratio_compress_decode(self, layer, x, req, pos) -> None:
+         # Projection layout and fused-write support are fixed together at load time;
+         # HIP and pre-Blackwell use split projections.
+         if layer.compressor.use_fused_compress:
+-            self._low_ratio_compress_decode_fused(layer, x, req, pos)
++            self._low_ratio_compress_fused(layer, x, req, pos)
+             return
+         if layer.compress_ratio == 1:
+             core = self.forward_metadata.core_metadata
+@@ -2881,12 +2897,15 @@ def _low_ratio_compress_decode(self, layer, x, req, pos) -> None:
+             fuse_index_store=_is_sm100_or_newer(),
+         )
+ 
+-    def _low_ratio_compress_decode_fused(self, layer, x, req, pos) -> None:
++    def _low_ratio_compress_fused(self, layer, x, req, pos, *, draft_len=1) -> None:
+         """Fused compressor write, index-key projection, then fused index-key write.
+         Both write kernels consume metadata dtypes directly and suppress padded stores.
+         """
+         from sglang.kernels.ops.attention.dsv4.c1 import c1_decode_norm_rope_store
+-        from sglang.kernels.ops.attention.dsv4.c2 import c2_decode_norm_rope_store
++        from sglang.kernels.ops.attention.dsv4.c2 import (
++            c2_decode_norm_rope_store,
++            c2_verify_norm_rope_store,
++        )
+         from sglang.kernels.ops.attention.dsv4.fp4_rope import (
+             index_k_norm_rope_pack_store,
+         )
+@@ -2918,7 +2937,13 @@ def _low_ratio_compress_decode_fused(self, layer, x, req, pos) -> None:
+             # CompressStatePool stores each request's pending pairs in a position ring.
+             # KVAndScore rows use | kv | score |, addressed as req * ring_size + pos % ring_size.
+             state = pool.get_attention_compress_states(layer_id)
+-            latent = c2_decode_norm_rope_store(
++            c2_compress = (
++                c2_verify_norm_rope_store
++                if draft_len > 1
++                else c2_decode_norm_rope_store
++            )
++            verify_args = {"draft_len": draft_len} if draft_len > 1 else {}
++            latent = c2_compress(
+                 compressor.project_fused(x),
+                 state.kv_score_buffer.kv_score,
+                 compressor.norm.weight.data,
+@@ -2930,6 +2955,7 @@ def _low_ratio_compress_decode_fused(self, layer, x, req, pos) -> None:
+                 kv_cache,
+                 page_size=page_size,
+                 ring_size=state.ring_size,
++                **verify_args,
+             )
+             out_loc = core.c2_out_loc
+ 
+@@ -3410,13 +3436,27 @@ def _low_ratio_index_topk_decode(self, layer, x, q_lora, pos) -> None:
+                 selected,
+             )
+         if filter_candidates:
+-            selected = _mask_topk_scores(logits, selected)
+-            columns = selected.clamp_min(0).to(torch.int64)
+-            slots = metadata.page_table.gather(1, columns // page_size) * page_size
+-            slots = slots + columns % page_size
+-            page_indices.copy_(torch.where(selected >= 0, slots, -1))
+-            if raw_indices is not None:
+-                raw_indices.copy_(selected)
++            if logits.is_cuda and torch.version.cuda is not None:
++                from sglang.kernels.ops.attention.dsv4.indexer_postprocess import (
++                    filter_topk_pages,
++                )
++
++                filter_topk_pages(
++                    logits,
++                    selected,
++                    metadata.page_table,
++                    page_indices,
++                    page_size,
++                    raw_indices,
++                )
++            else:
++                selected = _mask_topk_scores(logits, selected)
++                columns = selected.clamp_min(0).to(torch.int64)
++                slots = metadata.page_table.gather(1, columns // page_size) * page_size
++                slots = slots + columns % page_size
++                page_indices.copy_(torch.where(selected >= 0, slots, -1))
++                if raw_indices is not None:
++                    raw_indices.copy_(selected)
+ 
+     def _low_ratio_index_topk_sm90_decode(self, layer, x, q_lora, req, pos) -> None:
+         """Hopper decode indexer: one token per request, every request scored at
+diff --git a/python/sglang/srt/layers/quantization/fp8.py b/python/sglang/srt/layers/quantization/fp8.py
+index 1bdf2ca018f8..50fded006cbf 100644
+--- a/python/sglang/srt/layers/quantization/fp8.py
++++ b/python/sglang/srt/layers/quantization/fp8.py
+@@ -72,6 +72,7 @@
+ )
+ from sglang.srt.layers.quantization.kv_cache import BaseKVCacheMethod
+ from sglang.srt.layers.quantization.marlin_utils_fp8 import prepare_fp8_layer_for_marlin
++from sglang.srt.layers.quantization.mxfp8_input import Mxfp8SwizzledInput
+ from sglang.srt.layers.quantization.unquant import (
+     UnquantizedFusedMoEMethod,
+     UnquantizedLinearMethod,
+@@ -1047,9 +1048,16 @@ def apply(
+         if self.use_mxfp8 or (
+             self.block_fp8_as_mxfp8
+             and getattr(layer, "block_fp8_mxfp8_ready", False)
+-            and not isinstance(x, tuple)
++            and (not isinstance(x, tuple) or isinstance(x, Mxfp8SwizzledInput))
+         ):
+             backend = self.mxfp8_dense_backend
++            if isinstance(x, Mxfp8SwizzledInput):
++                if not (
++                    backend.is_flashinfer_cutlass() or backend.is_flashinfer_cutedsl()
++                ):
++                    raise ValueError(
++                        "128x4 MXFP8 input requires a FlashInfer CUTLASS backend"
++                    )
+             extra_kwargs = {}
+             if backend.is_flashinfer_cutlass() or backend.is_flashinfer_cutedsl():
+                 weight_scale = layer.weight_scale_inv_swizzled
+diff --git a/python/sglang/srt/layers/quantization/mxfp8_input.py b/python/sglang/srt/layers/quantization/mxfp8_input.py
+new file mode 100644
+index 000000000000..326bfe2dc67e
+--- /dev/null
++++ b/python/sglang/srt/layers/quantization/mxfp8_input.py
+@@ -0,0 +1,16 @@
++"""Explicit input layout for a linear consuming prequantized MXFP8 activations."""
++
++from typing import NamedTuple
++
++import torch
++
++
++class Mxfp8SwizzledInput(NamedTuple):
++    """E4M3 activations and UE8M0 scales in FlashInfer's 128x4 layout.
++
++    A plain FP8 tuple may contain block-FP8 scales with a different layout.
++    This marker lets a converted block-FP8 linear distinguish the two.
++    """
++
++    data: torch.Tensor
++    scales: torch.Tensor
+diff --git a/python/sglang/srt/models/deepseek_v4.py b/python/sglang/srt/models/deepseek_v4.py
+index fda132d69d8d..4c16f8ab37b2 100644
+--- a/python/sglang/srt/models/deepseek_v4.py
++++ b/python/sglang/srt/models/deepseek_v4.py
+@@ -33,6 +33,7 @@
+ from sglang.kernels.ops.attention.dsv4.wo_a_bf16_gemv import wo_a_bf16_gemv
+ from sglang.kernels.ops.attention.dsv4.wo_a_bf16_small_batch import (
+     wo_a_bf16_small_batch,
++    wo_a_bf16_small_batch_mxfp8,
+ )
+ from sglang.kernels.ops.attention.flash_mla_sm120 import SM120_DECODE_MAX_TOKENS
+ from sglang.kernels.ops.layernorm.mhc_post_split_h import mhc_post_split_h
+@@ -117,6 +118,7 @@
+     Mxfp8DenseGemmBackend,
+     view_aiter_fused_rms_transposed_fp8_scale,
+ )
++from sglang.srt.layers.quantization.mxfp8_input import Mxfp8SwizzledInput
+ from sglang.srt.layers.rotary_embedding import get_rope_wrapper
+ from sglang.srt.layers.utils import PPMissingLayer, get_layer_id
+ from sglang.srt.layers.utils.cp_utils import (
+@@ -457,8 +459,12 @@ def _wo_a_aiter_gemm_eligible(
+ 
+ 
+ def _apply_wo_a_bf16_matmul(
+-    o: torch.Tensor, wo_a: torch.Tensor, is_decode: bool, is_target_verify: bool = False
+-) -> torch.Tensor:
++    o: torch.Tensor,
++    wo_a: torch.Tensor,
++    is_decode: bool,
++    is_target_verify: bool = False,
++    fuse_mxfp8_quant: bool = False,
++) -> torch.Tensor | Mxfp8SwizzledInput:
+     """Compute bf16 wo_a: o [T, G, D] @ wo_a [G, R, D] -> [T, G, R].
+ 
+     Single-token decode uses a GEMV for the validated TP4 shape. Blackwell
+@@ -492,6 +498,8 @@ def _apply_wo_a_bf16_matmul(
+         if is_decode and o.shape[0] == 1:
+             return wo_a_bf16_gemv(o, wo_a)
+         if 2 <= o.shape[0] <= 8:
++            if fuse_mxfp8_quant:
++                return Mxfp8SwizzledInput(*wo_a_bf16_small_batch_mxfp8(o, wo_a))
+             return wo_a_bf16_small_batch(o, wo_a)
+         result = torch.empty(
+             (o.shape[0], wo_a.shape[0], wo_a.shape[1]), dtype=o.dtype, device=o.device
+@@ -1158,6 +1166,20 @@ def _compute_q_b(
+         q, _ = self.wq_b(q)
+         q = q.view(-1, self.n_local_heads, self.head_dim)
+         if not self.q_head_norm:
++            if (
++                _is_cuda
++                and q_out is not None
++                and 0 < q.shape[0] <= 8
++                and self.head_dim == 512
++                and self.qk_rope_head_dim == 64
++                and q.dtype == q_out.dtype == torch.bfloat16
++                and q.stride(1) == q_out.stride(1) == 512
++                and q.stride(2) == q_out.stride(2) == 1
++            ):
++                from sglang.kernels.ops.attention.dsv4.q_rope_store import q_rope_store
++
++                q_rope_store(q, q_out, self.freqs_cis, positions)
++                return q_out
+             fused_rope_inplace(
+                 q[..., -self.qk_rope_head_dim :],
+                 None,
+@@ -2107,6 +2129,17 @@ def forward(
+                         wo_a,
+                         is_decode=forward_batch.forward_mode.is_decode(),
+                         is_target_verify=forward_batch.forward_mode.is_target_verify(),
++                        fuse_mxfp8_quant=(
++                            not get_forward().sp_active
++                            and getattr(
++                                self.wo_b.quant_method, "mxfp8_dense_backend", None
++                            )
++                            == Mxfp8DenseGemmBackend.FLASHINFER_CUTEDSL
++                            and (
++                                getattr(self.wo_b.quant_method, "use_mxfp8", False)
++                                or getattr(self.wo_b, "block_fp8_mxfp8_ready", False)
++                            )
++                        ),
+                     )
+                 else:
+                     o = _apply_gguf_grouped_wo_a(
+@@ -2116,7 +2149,7 @@ def forward(
+                         self.o_lora_rank,
+                     )
+ 
+-        o, _ = self.wo_b(o.flatten(1))
++        o, _ = self.wo_b(o if isinstance(o, Mxfp8SwizzledInput) else o.flatten(1))
+         if self.attn_tp_size > 1 and self.attn_tp_size < get_parallel().tp_size:
+             o = attn_tp_all_reduce(o)
+ 
+diff --git a/test/registered/attention/unittests/dsv4/test_dsv41_fused_compress.py b/test/registered/attention/unittests/dsv4/test_dsv41_fused_compress.py
+index 862bc7478095..26f2916eb2c0 100644
+--- a/test/registered/attention/unittests/dsv4/test_dsv41_fused_compress.py
++++ b/test/registered/attention/unittests/dsv4/test_dsv41_fused_compress.py
+@@ -1,7 +1,9 @@
+ """Check decode numerics and packed writes through the real cache pool."""
+ 
++import os
+ import types
+ import unittest
++from unittest.mock import Mock, patch
+ 
+ import torch
+ import torch.nn.functional as F
+@@ -194,6 +196,14 @@ def _reference(t, ratio: int):
+         read = t.req * t.ring_size + (t.pos - 1) % t.ring_size
+         partner_kv = t.pair_state[read, :HEAD_DIM]
+         partner_score = t.pair_state[read, HEAD_DIM:]
++        if hasattr(t, "draft_len"):
++            # In-block predecessors come from this projection, not stale ring
++            # slots. This reference deliberately uses the unfused torch chain.
++            in_block = torch.arange(t.pos.numel(), device="cuda") % t.draft_len != 0
++            partner_kv = torch.where(in_block[:, None], kv.roll(1, 0), partner_kv)
++            partner_score = torch.where(
++                in_block[:, None], score.roll(1, 0), partner_score
++            )
+         pooled = (
+             torch.stack([partner_kv, kv], dim=1)
+             * torch.stack([partner_score, score], dim=1).softmax(dim=1)
+@@ -261,7 +271,7 @@ def _check_step(self, t, ratio: int):
+             DeepseekV4AttnBackend,
+         )
+ 
+-        DeepseekV4AttnBackend._low_ratio_compress_decode_fused(
++        DeepseekV4AttnBackend._low_ratio_compress_fused(
+             t.backend, t.layer, t.x, t.req, t.pos
+         )
+         ref_kv, ref_index = _reference(t, ratio)
+@@ -323,6 +333,79 @@ def test_matches_the_unfused_chain(self):
+                 with self.subTest(ratio=ratio, n=n):
+                     self._check_step(_build(n, ratio, seed=100 + n + ratio), ratio)
+ 
++    def test_static_verify_dispatch_and_real_pool_writes(self):
++        from sglang.kernels.ops.attention.dsv4.c2 import c2_verify_norm_rope_store
++        from sglang.srt.layers.attention.deepseek_v4_backend import (
++            DeepseekV4AttnBackend,
++            _low_ratio_compression_metadata,
++        )
++        from sglang.srt.model_executor.forward_batch_info import ForwardMode
++
++        set_global_server_args_for_scheduler(
++            ServerArgs(
++                model_path="dummy",
++                page_size=POOL_PAGE_SIZE,
++                speculative_algorithm="DSPARK",
++                speculative_num_draft_tokens=6,
++                speculative_dspark_block_size=5,
++            )
++        )
++        try:
++            t = _build(12, 2, seed=418)
++            t.draft_len = 6
++            t.req.copy_(torch.arange(2, device="cuda").repeat_interleave(6))
++            t.pos.copy_(
++                (
++                    torch.tensor([31, 32], device="cuda")[:, None]
++                    + torch.arange(6, device="cuda")
++                ).flatten()
++            )
++            core = t.backend.forward_metadata.core_metadata
++            t.out_loc, _ = _low_ratio_compression_metadata(
++                2, t.pos + 1, core.raw_out_loc
++            )
++            core.c2_out_loc = t.out_loc
++            angles = torch.randn(64, ROPE_DIM // 2, device="cuda")
++            t.freqs = t.layer.freqs_cis = torch.polar(torch.ones_like(angles), angles)
++            backend = t.backend
++            backend.is_dspark_draft = False
++            backend.speculative_num_draft_tokens = 6
++            backend._low_ratio_compress_fused = types.MethodType(
++                DeepseekV4AttnBackend._low_ratio_compress_fused, backend
++            )
++            backend._low_ratio_compress_torch = Mock()
++            batch = types.SimpleNamespace(
++                forward_mode=ForwardMode.TARGET_VERIFY, batch_size=2
++            )
++            with (
++                patch.dict(os.environ, {"SGLANG_RAGGED_VERIFY_MODE": "static"}),
++                patch(
++                    "sglang.kernels.ops.attention.dsv4.c2.c2_verify_norm_rope_store",
++                    wraps=c2_verify_norm_rope_store,
++                ) as fused,
++            ):
++                DeepseekV4AttnBackend._low_ratio_compress(
++                    backend, t.layer, t.x, t.req, t.pos, batch
++                )
++                fused.assert_called_once()
++                self.assertEqual(fused.call_args.kwargs["draft_len"], 6)
++            backend._low_ratio_compress_torch.assert_not_called()
++            ref_kv, ref_index = _reference(t, 2)
++            self.assertTrue(torch.equal(t.kv_cache.view(torch.uint8), ref_kv))
++            self.assertTrue(torch.equal(t.index_cache, ref_index))
++
++            # A compact graph can happen to have a divisible row count. It must
++            # still use the variable-length fallback rather than the 2D grid.
++            with patch.dict(os.environ, {"SGLANG_RAGGED_VERIFY_MODE": "compact"}):
++                DeepseekV4AttnBackend._low_ratio_compress(
++                    backend, t.layer, t.x, t.req, t.pos, batch
++                )
++            backend._low_ratio_compress_torch.assert_called_once()
++        finally:
++            set_global_server_args_for_scheduler(
++                ServerArgs(model_path="dummy", page_size=POOL_PAGE_SIZE)
++            )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/test/registered/kernels/benchmark/attention/bench_c2_verify.py b/test/registered/kernels/benchmark/attention/bench_c2_verify.py
+new file mode 100644
+index 000000000000..715dc8227e5c
+--- /dev/null
++++ b/test/registered/kernels/benchmark/attention/bench_c2_verify.py
+@@ -0,0 +1,48 @@
++"""Ratio-2 target-verify compressor including RMSNorm, RoPE and cache writes."""
++
++import torch
++
++from sglang.kernels.jit.benchmark import marker
++from sglang.kernels.ops.attention.dsv4.c2 import c2_verify_norm_rope_store
++from sglang.srt.mem_cache.deepseek_v4_memory_pool import get_compress_state_ring_size
++from sglang.test.ci.ci_register import register_cuda_ci
++
++register_cuda_ci(
++    est_time=15, stage="base-b-kernel-benchmark", runner_config="4-gpu-b200"
++)
++
++
++@marker.parametrize("batch", [1, 8, 64, 128], [1, 64])
++@marker.benchmark("draft_len", [2, 6])
++def benchmark(batch: int, draft_len: int):
++    if torch.cuda.get_device_capability()[0] < 10:
++        marker.skip("FP4 packing requires SM100")
++    device, dim, page = "cuda", 512, 128
++    n = batch * draft_len
++    ring = get_compress_state_ring_size(2, True, draft_len)
++    inputs = torch.randn(n, 2 * dim, device=device)
++    state = torch.randn((batch + 1) * ring, 2 * dim, device=device)
++    norm = torch.randn(dim, device=device, dtype=torch.bfloat16)
++    req = torch.arange(batch, device=device).repeat_interleave(draft_len)
++    pos = (
++        torch.arange(batch, device=device)[:, None] % 2
++        + 8
++        + torch.arange(draft_len, device=device)
++    ).flatten()
++    loc = torch.arange(n, device=device) * 2 + 3
++    angles = torch.randn(32, 32, device=device)
++    freqs = torch.view_as_real(torch.polar(torch.ones_like(angles), angles)).flatten(-2)
++    cache = torch.zeros(
++        n // page + 2, -(-584 * page // 576) * 576, device=device, dtype=torch.uint8
++    )
++    out = torch.empty(n, dim, device=device, dtype=torch.bfloat16)
++    return marker.do_bench(
++        c2_verify_norm_rope_store,
++        input_args=(inputs, state, norm, pos, req, loc, 1e-6, freqs, cache),
++        input_kwargs=dict(page_size=page, ring_size=ring, draft_len=draft_len, out=out),
++        memory_output=(out, state, cache),
++    )
++
++
++if __name__ == "__main__":
++    benchmark.run()
+diff --git a/test/registered/kernels/ops/attention/dsv4/test_c2_verify.py b/test/registered/kernels/ops/attention/dsv4/test_c2_verify.py
+new file mode 100644
+index 000000000000..8134ae064675
+--- /dev/null
++++ b/test/registered/kernels/ops/attention/dsv4/test_c2_verify.py
+@@ -0,0 +1,368 @@
++"""Verify compressor: exact decode replay, padding, wrap and rejected prefixes."""
++
++import sys
++
++import pytest
++import torch
++
++from sglang.kernels.ops.attention.dsv4.c2 import (
++    c2_decode_norm_rope_store,
++    c2_verify_norm_rope_store,
++)
++from sglang.srt.layers.attention.dsv4.dsv41_sparse import RMSNorm
++from sglang.srt.model_loader.utils import set_default_torch_dtype
++from sglang.test.ci.ci_register import register_cuda_ci
++
++register_cuda_ci(est_time=60, stage="base-b-kernel-unit", runner_config="4-gpu-b200")
++pytestmark = pytest.mark.skipif(
++    not torch.cuda.is_available()
++    or torch.version.cuda is None
++    or torch.cuda.get_device_capability()[0] < 10,
++    reason="the compressor packs FP4 with SM100 instructions",
++)
++
++EPS = 1e-6
++HEAD_DIMS = (512,)
++ROPE_DIM = 64
++RATIO = 2
++PAGE_SIZE = 128
++PAGE_BYTES = -(-584 * PAGE_SIZE // 576) * 576
++DRAFT_LENS = (2, 5, 6, 9)
++VERIFY_BATCHES = (1, 3, 8)
++
++
++def _norm(dim: int, seed: int) -> RMSNorm:
++    """`DeepseekV41Compressor.norm` as the model holds it: bf16 weight, because
++    the parameter is created inside `set_default_torch_dtype(model dtype)`."""
++    with set_default_torch_dtype(torch.bfloat16):
++        norm = RMSNorm(dim, EPS).cuda()
++    assert norm.weight.dtype == torch.bfloat16
++    # Not `ones`: a constant weight cannot catch a wrong per-element index.
++    g = torch.Generator(device="cuda").manual_seed(seed)
++    with torch.no_grad():
++        norm.weight.copy_(torch.randn(dim, generator=g, device="cuda"))
++    return norm
++
++
++def _freqs(max_pos, seed):
++    """`layer.freqs_cis` and the fp32 real/imag-interleaved view the kernel
++    indexes itself, at `positions - 1`."""
++    g = torch.Generator(device="cuda").manual_seed(seed)
++    ang = torch.randn(max_pos, ROPE_DIM // 2, generator=g, device="cuda")
++    freqs = torch.polar(torch.ones_like(ang), ang)
++    return freqs, torch.view_as_real(freqs).flatten(-2).contiguous().float()
++
++
++def _cache(max_slot):
++    """A compressed-pool buffer wide enough for `max_slot`, zeroed so an
++    untouched slot is recognizable."""
++    return torch.zeros(
++        max_slot // PAGE_SIZE + 2, PAGE_BYTES, dtype=torch.uint8, device="cuda"
++    )
++
++
++def _spec_ring_size(draft_len):
++    """`get_compress_state_ring_size(2, is_speculative=True, draft_len)`."""
++    return 1 << (draft_len + 1).bit_length()
++
++
++def _verify_inputs(bs, draft_len, dim, seed, *, starts=None, pad_reqs=0):
++    """A target-verify batch: `draft_len` consecutive positions per request,
++    request-major. Block heads alternate parity by default, so some blocks open
++    by consuming the ring and some by parking into it."""
++    g = torch.Generator(device="cuda").manual_seed(seed)
++    n = bs * draft_len
++    ring_size = _spec_ring_size(draft_len)
++    kv_input = torch.randn(n, 2 * dim, generator=g, device="cuda", dtype=torch.float32)
++    kv_state = torch.randn(
++        (bs + 1) * ring_size, 2 * dim, generator=g, device="cuda", dtype=torch.float32
++    )
++    if starts is None:
++        starts = torch.arange(bs, device="cuda") + 4
++    offsets = torch.arange(draft_len, device="cuda")
++    positions = (starts[:, None] + offsets[None, :]).flatten().to(torch.int32)
++    req = torch.arange(bs, device="cuda", dtype=torch.int64).repeat_interleave(
++        draft_len
++    )
++    raw_out_loc = torch.arange(n, device="cuda", dtype=torch.int32) * 2 + 3
++    if pad_reqs:
++        # Graph padding pads whole request slots, aliasing a live
++        # `req_pool_idx`, and leaves their position buffer at zero.
++        pad = req >= bs - pad_reqs
++        raw_out_loc[pad] = 0
++        positions[pad] = 0
++        req[pad] = 0
++    return kv_input, kv_state, positions, req, raw_out_loc, ring_size
++
++
++def _decode_replay(
++    kv_input, kv_state, norm, positions, req, raw_out_loc, freqs_cis, cache, **kw
++):
++    """The same block, one position per launch -- what one fused verify launch
++    has to reproduce. Step `j` is a decode step over row `j` of every request,
++    carrying the pair ring between steps exactly as the served decode path does.
++    """
++    draft_len = kw["draft_len"]
++    n, dim = positions.shape[0], kv_input.shape[1] // 2
++    rows = torch.arange(n, device="cuda").view(-1, draft_len)
++    out = torch.zeros(n, dim, device="cuda", dtype=torch.bfloat16)
++    for j in range(draft_len):
++        idx = rows[:, j]
++        out[idx] = c2_decode_norm_rope_store(
++            kv_input[idx].contiguous(),
++            kv_state,
++            norm.weight.data,
++            positions[idx].contiguous(),
++            req[idx].contiguous(),
++            raw_out_loc[idx].contiguous(),
++            EPS,
++            freqs_cis,
++            cache,
++            page_size=PAGE_SIZE,
++            ring_size=kw["ring_size"],
++            out=torch.zeros(idx.numel(), dim, device="cuda", dtype=torch.bfloat16),
++        )
++    return out
++
++
++def _run_verify(kv_input, kv_state, norm, positions, req, raw_out_loc, **kw):
++    """One `c2_verify_norm_rope_store` call; returns `(latent, cache)`. `out` is
++    zeroed so rows the kernel skips compare equal to the replay's."""
++    n, dim = positions.shape[0], kv_input.shape[1] // 2
++    freqs_cis, cache = kw["freqs_cis"], kw["cache"]
++    got = c2_verify_norm_rope_store(
++        kv_input,
++        kv_state,
++        norm.weight.data,
++        positions,
++        req,
++        raw_out_loc,
++        EPS,
++        freqs_cis,
++        cache,
++        page_size=PAGE_SIZE,
++        ring_size=kw["ring_size"],
++        draft_len=kw["draft_len"],
++        out=torch.zeros(n, dim, device="cuda", dtype=torch.bfloat16),
++    )
++    return got, cache
++
++
++@pytest.mark.parametrize("pad_reqs", (0, 1))
++@pytest.mark.parametrize("draft_len", DRAFT_LENS)
++@pytest.mark.parametrize("bs", VERIFY_BATCHES)
++def test_verify_matches_decode_replay(bs, draft_len, pad_reqs):
++    """The load-bearing property: one verify launch over a block equals
++    `draft_len` decode launches over the same rows -- same latents, same pair
++    ring, same cache bytes, bitwise. Verify takes the in-block partner from
++    `kv_input` where decode takes it from the ring, and that substitution has to
++    be invisible."""
++    if pad_reqs >= bs:
++        pytest.skip("an all-padded batch has no live block to compare")
++    dim = HEAD_DIMS[0]
++    kv_input, kv_state, positions, req, raw_out_loc, ring_size = _verify_inputs(
++        bs, draft_len, dim, seed=20000 + bs * 97 + draft_len, pad_reqs=pad_reqs
++    )
++    norm = _norm(dim, 20001 + bs + draft_len)
++    _, freqs_cis = _freqs(int(positions.max().item()) + 2, 20002 + draft_len)
++    slots_max = int((raw_out_loc // RATIO).max().item())
++    cache_v, cache_d = _cache(slots_max), _cache(slots_max)
++    state_v, state_d = kv_state.clone(), kv_state.clone()
++    kw = dict(ring_size=ring_size, draft_len=draft_len)
++
++    got, _ = _run_verify(
++        kv_input,
++        state_v,
++        norm,
++        positions,
++        req,
++        raw_out_loc,
++        freqs_cis=freqs_cis,
++        cache=cache_v,
++        **kw,
++    )
++    expected = _decode_replay(
++        kv_input, state_d, norm, positions, req, raw_out_loc, freqs_cis, cache_d, **kw
++    )
++
++    assert cache_d.any(), "the replay stored nothing, so the comparison is empty"
++    assert torch.equal(got, expected), "latent differs from the decode replay"
++    assert torch.equal(state_v, state_d), "pair ring differs from the decode replay"
++    assert torch.equal(cache_v, cache_d), "cache bytes differ from the decode replay"
++
++
++@pytest.mark.parametrize("draft_len", DRAFT_LENS)
++def test_verify_reads_the_ring_only_on_the_first_row(draft_len):
++    """A block's first row is the only one allowed to consume the ring. Move the
++    slot it reads and its latent must move with it; every later row pairs inside
++    the block and must not notice."""
++    bs, dim = 4, HEAD_DIMS[0]
++    # Odd heads, so every block opens by completing a group against the ring.
++    starts = 2 * torch.arange(bs, device="cuda") + 5
++    kv_input, kv_state, positions, req, raw_out_loc, ring_size = _verify_inputs(
++        bs, draft_len, dim, seed=21000 + draft_len, starts=starts
++    )
++    norm = _norm(dim, 21001 + draft_len)
++    _, freqs_cis = _freqs(int(positions.max().item()) + 2, 21002 + draft_len)
++    slots_max = int((raw_out_loc // RATIO).max().item())
++    kw = dict(ring_size=ring_size, draft_len=draft_len, freqs_cis=freqs_cis)
++
++    base, _ = _run_verify(
++        kv_input,
++        kv_state.clone(),
++        norm,
++        positions,
++        req,
++        raw_out_loc,
++        cache=_cache(slots_max),
++        **kw,
++    )
++    heads = torch.arange(0, bs * draft_len, draft_len, device="cuda")
++    read = req[heads] * ring_size + (positions[heads].to(torch.int64) - 1) % ring_size
++    moved = kv_state.clone()
++    moved[read] += 1.0
++    got, _ = _run_verify(
++        kv_input,
++        moved,
++        norm,
++        positions,
++        req,
++        raw_out_loc,
++        cache=_cache(slots_max),
++        **kw,
++    )
++
++    rest = torch.ones(bs * draft_len, dtype=torch.bool, device="cuda")
++    rest[heads] = False
++    assert not torch.equal(got[heads], base[heads]), "a block head ignored the ring"
++    assert torch.equal(got[rest], base[rest]), "a later row went through the ring"
++
++
++def test_verify_rejects_a_ring_narrower_than_the_block():
++    """`ring_size > draft_len` is the whole reason a block's own publishes stay
++    off the slot its first row reads, so the kernel refuses a narrower ring
++    rather than racing quietly."""
++    bs, draft_len, dim = 2, 4, HEAD_DIMS[0]
++    kv_input, kv_state, positions, req, raw_out_loc, _ = _verify_inputs(
++        bs, draft_len, dim, seed=22000
++    )
++    norm = _norm(dim, 22001)
++    _, freqs_cis = _freqs(int(positions.max().item()) + 2, 22002)
++    with pytest.raises(Exception, match="must be wider than the draft length"):
++        _run_verify(
++            kv_input,
++            kv_state,
++            norm,
++            positions,
++            req,
++            raw_out_loc,
++            cache=_cache(int((raw_out_loc // RATIO).max().item())),
++            freqs_cis=freqs_cis,
++            ring_size=draft_len,
++            draft_len=draft_len,
++        )
++
++
++@pytest.mark.parametrize("start", (31, 32))
++@pytest.mark.parametrize("dtype", (torch.int32, torch.int64))
++def test_rejected_prefix_then_next_verify(start, dtype):
++    # Compare with a decode history that never saw the rejected suffix. The
++    # next verify starts at the committed position, including across ring wrap.
++    bs, draft_len, dim = 3, 6, 512
++    inputs, initial, pos, req, loc, ring = _verify_inputs(
++        bs,
++        draft_len,
++        dim,
++        23000,
++        starts=torch.full((bs,), start, device="cuda"),
++    )
++    pos, loc = pos.to(dtype), loc.to(dtype)
++    norm = _norm(dim, 23001)
++    _, freqs = _freqs(start + 2 * draft_len + 2, 23002)
++    rows = torch.arange(bs * draft_len, device="cuda").view(bs, draft_len)
++    for accepted in range(1, draft_len + 1):
++        state = initial.clone()
++        reference = initial.clone()
++        cache, ref_cache = _cache(128), _cache(128)
++        kw = dict(draft_len=draft_len, ring_size=ring, freqs_cis=freqs)
++        _run_verify(inputs, state, norm, pos, req, loc, cache=cache, **kw)
++        for j in range(accepted):
++            idx = rows[:, j]
++            c2_decode_norm_rope_store(
++                inputs[idx],
++                reference,
++                norm.weight.data,
++                pos[idx],
++                req[idx],
++                loc[idx],
++                EPS,
++                freqs,
++                ref_cache,
++                page_size=PAGE_SIZE,
++                ring_size=ring,
++            )
++        # Do not count speculative cache bytes that have no committed reader.
++        cache.zero_()
++        ref_cache.zero_()
++        next_inputs = inputs.flip(0).contiguous()
++        got, _ = _run_verify(
++            next_inputs,
++            state,
++            norm,
++            pos + accepted,
++            req,
++            loc,
++            cache=cache,
++            **kw,
++        )
++        expected = _decode_replay(
++            next_inputs,
++            reference,
++            norm,
++            pos + accepted,
++            req,
++            loc,
++            freqs,
++            ref_cache,
++            ring_size=ring,
++            draft_len=draft_len,
++        )
++        assert torch.equal(got, expected), f"{start=} {accepted=}: latent differs"
++        assert torch.equal(cache, ref_cache), f"{start=} {accepted=}: cache differs"
++
++
++def test_verify_cuda_graph_replay():
++    bs, draft_len, dim = 3, 6, 512
++    inputs, initial, pos, req, loc, ring = _verify_inputs(bs, draft_len, dim, 24000)
++    norm = _norm(dim, 24001)
++    _, freqs = _freqs(32, 24002)
++    state, cache = initial.clone(), _cache(128)
++    kw = dict(ring_size=ring, draft_len=draft_len, freqs_cis=freqs, cache=cache)
++    _run_verify(inputs, state, norm, pos, req, loc, **kw)
++    torch.cuda.synchronize()
++    graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(graph):
++        got, _ = _run_verify(inputs, state, norm, pos, req, loc, **kw)
++    state.copy_(initial)
++    cache.zero_()
++    graph.replay()
++    ref_cache = _cache(128)
++    expected = _decode_replay(
++        inputs,
++        initial,
++        norm,
++        pos,
++        req,
++        loc,
++        freqs,
++        ref_cache,
++        ring_size=ring,
++        draft_len=draft_len,
++    )
++    assert torch.equal(got, expected)
++    assert torch.equal(state, initial)
++    assert torch.equal(cache, ref_cache)
++
++
++if __name__ == "__main__":
++    sys.exit(pytest.main([__file__]))
+diff --git a/test/registered/kernels/test_dsv4_indexer_postprocess.py b/test/registered/kernels/test_dsv4_indexer_postprocess.py
+new file mode 100644
+index 000000000000..ea5cf31a9ab2
+--- /dev/null
++++ b/test/registered/kernels/test_dsv4_indexer_postprocess.py
+@@ -0,0 +1,147 @@
++import unittest
++
++import torch
++
++from sglang.kernels.ops.attention.dsv4.candidate_blocks import candidate_block_logits
++from sglang.kernels.ops.attention.dsv4.indexer_postprocess import filter_topk_pages
++from sglang.test.ci.ci_register import register_cuda_ci
++from sglang.test.test_utils import CustomTestCase
++
++register_cuda_ci(est_time=20, stage="base-b", runner_config="1-gpu-small")
++
++
++def reference_pages(scores, indices, pages, page_size):
++    cols = indices.to(torch.int64)
++    value = scores.gather(1, cols.clamp(0, scores.shape[1] - 1))
++    valid = (cols >= 0) & (cols < scores.shape[1]) & (value > -torch.inf)
++    raw = indices.masked_fill(~valid, -1)
++    safe = raw.clamp_min(0).to(torch.int64)
++    slots = pages.gather(1, safe // page_size) * page_size + safe % page_size
++    return torch.where(raw >= 0, slots, -1).to(torch.int32), raw
++
++
++class TestIndexerPostprocess(CustomTestCase):
++    def test_filter_and_page_mapping(self):
++        torch.manual_seed(91)
++        for rows in (1, 6, 64):
++            for width in (1, 65, 4096):
++                for dtype in (torch.int32, torch.int64):
++                    # Row-strided tensors match sliced metadata buffers.
++                    scores = torch.randn(rows, width + 7, device="cuda")[:, :width]
++                    indices = torch.randint(
++                        -2, width + 2, (rows, 520), device="cuda", dtype=dtype
++                    )[:, :512]
++                    indices[:, :5] = 0
++                    scores[0, 0] = -torch.inf
++                    if rows > 1:
++                        scores[1, 0] = torch.nan
++                        scores[2, 0] = torch.inf
++                        scores[3, :] = -torch.inf
++                    pages = torch.randint(
++                        0,
++                        100000,
++                        (rows, (width + 63) // 64 + 3),
++                        device="cuda",
++                        dtype=torch.int32,
++                    )[:, :-3]
++                    out = torch.empty(rows, 520, device="cuda", dtype=torch.int32)[
++                        :, :512
++                    ]
++                    raw = torch.empty_like(indices)
++                    expected, expected_raw = reference_pages(scores, indices, pages, 64)
++                    for write_raw in (False, True):
++                        filter_topk_pages(
++                            scores, indices, pages, out, 64, raw if write_raw else None
++                        )
++                        torch.testing.assert_close(out, expected, rtol=0, atol=0)
++                        if write_raw:
++                            torch.testing.assert_close(
++                                raw, expected_raw, rtol=0, atol=0
++                            )
++
++    def test_graph_replay(self):
++        rows, width = 6, 4096
++        scores = torch.randn(rows, width, device="cuda")
++        indices = torch.randint(
++            -1, width, (rows, 512), device="cuda", dtype=torch.int32
++        )
++        pages = torch.randint(
++            0, 100000, (rows, width // 64), device="cuda", dtype=torch.int32
++        )
++        out, raw = torch.empty_like(indices), torch.empty_like(indices)
++        filter_topk_pages(scores, indices, pages, out, 64, raw)
++        graph = torch.cuda.CUDAGraph()
++        with torch.cuda.graph(graph):
++            filter_topk_pages(scores, indices, pages, out, 64, raw)
++        for _ in range(3):
++            scores.normal_()
++            scores[:, :32] = -torch.inf
++            indices.random_(-1, width)
++            pages.random_(0, 100000)
++            graph.replay()
++            expected, expected_raw = reference_pages(scores, indices, pages, 64)
++            torch.testing.assert_close(out, expected, rtol=0, atol=0)
++            torch.testing.assert_close(raw, expected_raw, rtol=0, atol=0)
++
++    def test_candidate_publication(self):
++        torch.manual_seed(912)
++        for width, group, topk in (
++            (65, 32, 8),
++            (4096, 128, 8),
++            (32768, 2048, 8),
++            (1048576, 2048, 8),
++            (4096, 8, 2048),
++            (1048576, 8, 2048),
++        ):
++            rows = 6
++            x = torch.randn(rows, width + 9, device="cuda")[:, :width]
++            lengths = torch.tensor(
++                [0, 1, width // 2, width - 1, width, width],
++                device="cuda",
++                dtype=torch.int32,
++            )
++            # Include ties, NaN and a final partial block.
++            x[3, :] = 0
++            x[4, 0] = torch.nan
++            x[5, :] = -torch.inf
++            masked = x.masked_fill(
++                torch.arange(width, device="cuda")[None, :] >= lengths[:, None],
++                -torch.inf,
++            )
++            blocks = (width + group - 1) // group
++            padded = torch.nn.functional.pad(
++                masked, (0, blocks * group - width), value=-torch.inf
++            )
++            scores = padded.reshape(rows, blocks, group).max(-1).values
++            last = (lengths - 1) // group
++            scores = torch.where(
++                (torch.arange(blocks, device="cuda")[None, :] == last[:, None])
++                & (lengths[:, None] > 0),
++                torch.inf,
++                scores,
++            )
++            selected = scores.topk(min(topk, blocks), dim=-1)
++            keep = (
++                torch.zeros_like(scores, dtype=torch.bool)
++                .scatter_(1, selected.indices, selected.values > -torch.inf)
++                .repeat_interleave(group, dim=-1)[:, :width]
++            )
++            got, published = candidate_block_logits(
++                x, lengths, topk_blocks=topk, block_size=group, published=None
++            )
++            torch.testing.assert_close(got, masked, rtol=0, atol=0, equal_nan=True)
++            torch.testing.assert_close(published, keep, rtol=0, atol=0)
++            consumer, _ = candidate_block_logits(
++                x, lengths, topk_blocks=topk, block_size=group, published=published
++            )
++            torch.testing.assert_close(
++                consumer,
++                masked.masked_fill(~keep, -torch.inf),
++                rtol=0,
++                atol=0,
++                equal_nan=True,
++            )
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test/registered/kernels/test_dsv4_q_rope_store.py b/test/registered/kernels/test_dsv4_q_rope_store.py
+new file mode 100644
+index 000000000000..c14733865757
+--- /dev/null
++++ b/test/registered/kernels/test_dsv4_q_rope_store.py
+@@ -0,0 +1,61 @@
++import unittest
++
++import torch
++
++from sglang.kernels.ops.attention.dsv4.elementwise import fused_rope_inplace
++from sglang.kernels.ops.attention.dsv4.q_rope_store import q_rope_store
++from sglang.test.ci.ci_register import register_cuda_ci
++from sglang.test.test_utils import CustomTestCase
++
++register_cuda_ci(est_time=20, stage="base-b-kernel-unit", runner_config="1-gpu-large")
++
++
++class TestQRopeStore(CustomTestCase):
++    def test_exact_output_and_padding(self):
++        torch.manual_seed(911)
++        freqs = torch.polar(
++            torch.ones(8192, 32, device="cuda"), torch.randn(8192, 32, device="cuda")
++        )
++        for rows in (1, 2, 5, 6, 8):
++            for heads in (8, 16, 32):
++                for dtype in (torch.int32, torch.int64):
++                    q = torch.randn(
++                        rows, heads + 1, 512, device="cuda", dtype=torch.bfloat16
++                    )[:, :heads]
++                    padding = torch.full(
++                        (rows, 64, 512), 7.0, device="cuda", dtype=q.dtype
++                    )
++                    output = padding[:, :heads]
++                    positions = torch.randint(
++                        0, 8192, (rows,), device="cuda", dtype=dtype
++                    )
++                    original = q.clone()
++                    expected = q.clone()
++                    fused_rope_inplace(expected[..., 448:], None, freqs, positions)
++                    q_rope_store(q, output, freqs, positions)
++                    torch.testing.assert_close(output, expected, rtol=0, atol=0)
++                    torch.testing.assert_close(q, original, rtol=0, atol=0)
++                    self.assertTrue((padding[:, heads:] == 7).all().item())
++
++    def test_graph_replay(self):
++        q = torch.randn(6, 16, 512, device="cuda", dtype=torch.bfloat16)
++        output = torch.zeros(6, 64, 512, device="cuda", dtype=q.dtype)[:, :16]
++        freqs = torch.polar(
++            torch.ones(8192, 32, device="cuda"), torch.randn(8192, 32, device="cuda")
++        )
++        positions = torch.arange(4096, 4102, device="cuda")
++        q_rope_store(q, output, freqs, positions)
++        graph = torch.cuda.CUDAGraph()
++        with torch.cuda.graph(graph):
++            q_rope_store(q, output, freqs, positions)
++        for _ in range(3):
++            q.normal_()
++            positions.random_(0, 8192)
++            graph.replay()
++            expected = q.clone()
++            fused_rope_inplace(expected[..., 448:], None, freqs, positions)
++            torch.testing.assert_close(output, expected, rtol=0, atol=0)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test/registered/quant/test_block_fp8_as_mxfp8.py b/test/registered/quant/test_block_fp8_as_mxfp8.py
+index 930dac675eca..3fa721555639 100644
+--- a/test/registered/quant/test_block_fp8_as_mxfp8.py
++++ b/test/registered/quant/test_block_fp8_as_mxfp8.py
+@@ -104,6 +104,83 @@ class TestLinearNumerics(_OptInCase):
+     SHAPES = [(1792, 5120), (5120, 576)]
+     MS = [1, 17, 300]
+ 
++    def test_fused_wo_a_quantized_input(self):
++        from flashinfer import mxfp8_quantize
++
++        from sglang.kernels.ops.attention.dsv4.wo_a_bf16_small_batch import (
++            _quantize_partial,
++            _wo_a_reduce,
++            wo_a_bf16_small_batch,
++            wo_a_bf16_small_batch_mxfp8,
++        )
++        from sglang.srt.layers.quantization.mxfp8_input import Mxfp8SwizzledInput
++
++        method = Fp8LinearMethod(_block32_config())
++        w = torch.randn(5120, 2048, device=DEVICE, dtype=torch.bfloat16) / 2048**0.5
++        qweight, scale = _quant_block32(w)
++        layer = _build_layer(method, qweight, scale)
++        for rows in range(2, 9):
++            for magnitude in (0.0, 1e-37, 1e-7, 1.0, 448.0, 1e10):
++                partial = torch.randn(8, rows, 2, 1024, device=DEVICE) * magnitude
++                bf16 = torch.empty(rows, 2048, dtype=torch.bfloat16, device=DEVICE)
++                _wo_a_reduce[(rows * 8,)](partial, bf16, rows * 2048, num_warps=4)
++                expected_q, expected_s = mxfp8_quantize(bf16, True, alignment=32)
++                actual_q, actual_s = _quantize_partial(partial)
++                torch.testing.assert_close(
++                    actual_q.view(torch.uint8),
++                    expected_q.view(torch.uint8),
++                    rtol=0,
++                    atol=0,
++                )
++                torch.testing.assert_close(actual_s, expected_s, rtol=0, atol=0)
++                actual = method.apply(layer, Mxfp8SwizzledInput(actual_q, actual_s))
++                expected = method.apply(layer, bf16)
++                torch.testing.assert_close(actual, expected, rtol=0, atol=0)
++
++            x = torch.randn(rows, 64, 512, device=DEVICE, dtype=torch.bfloat16)[
++                :, :16
++            ].view(rows, 2, 4096)
++            wo_a = (
++                torch.randn(2, 1024, 4096, device=DEVICE, dtype=torch.bfloat16) * 0.02
++            )
++            bf16 = wo_a_bf16_small_batch(x, wo_a).flatten(1)
++            q, s = wo_a_bf16_small_batch_mxfp8(x, wo_a)
++            expected_q, expected_s = mxfp8_quantize(bf16, True, alignment=32)
++            torch.testing.assert_close(
++                q.view(torch.uint8), expected_q.view(torch.uint8), rtol=0, atol=0
++            )
++            torch.testing.assert_close(s, expected_s, rtol=0, atol=0)
++
++        # Ordinary block-FP8 tuples must retain their existing dispatch path.
++        sentinel = torch.empty(0)
++        with patch.object(
++            method, "w8a8_block_fp8_linear", return_value=sentinel
++        ) as legacy:
++            self.assertIs(method.apply(layer, (q, s)), sentinel)
++            legacy.assert_called_once()
++
++        partial = torch.randn(8, 6, 2, 1024, device=DEVICE)
++        _quantize_partial(partial)
++        graph = torch.cuda.CUDAGraph()
++        with torch.cuda.graph(graph):
++            q, s = _quantize_partial(partial)
++            output = method.apply(layer, Mxfp8SwizzledInput(q, s))
++        for _ in range(3):
++            partial.normal_()
++            # The replay must regenerate scale padding as well as live rows.
++            s.fill_(255)
++            graph.replay()
++            bf16 = torch.empty(6, 2048, dtype=torch.bfloat16, device=DEVICE)
++            _wo_a_reduce[(48,)](partial, bf16, 6 * 2048, num_warps=4)
++            eq, es = mxfp8_quantize(bf16, True, alignment=32)
++            torch.testing.assert_close(
++                q.view(torch.uint8), eq.view(torch.uint8), rtol=0, atol=0
++            )
++            torch.testing.assert_close(s, es, rtol=0, atol=0)
++            torch.testing.assert_close(
++                output, method.apply(layer, bf16), rtol=0, atol=0
++            )
++
+     def test_against_dequantized_reference(self):
+         from sglang.kernels.ops.quantization.fp8_kernel import (
+             sglang_per_token_group_quant_fp8,

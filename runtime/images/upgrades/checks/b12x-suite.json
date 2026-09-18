@@ -1,0 +1,28 @@
+{
+  "baseline_only": [
+    "kda_baseline/checkpoints.py"
+  ],
+  "candidate_only": [
+    "b12x_prepared_contracts.py",
+    "ple_checkpoint_preparation.py",
+    "gdn_boundary_construction.py",
+    "distributed_selection_cache.py",
+    "compiler_worker_affinity.py"
+  ],
+  "common": [
+    "kda_checkpoint_common.py"
+  ],
+  "component": "b12x",
+  "files": {
+    "b12x_prepared_contracts.py": "072ee5392bdbf3b5a965837fa55f3e2c8e4cd629e383966e78ddb7ea0a969470",
+    "compiler_worker_affinity.py": "373e2ede1186715200a0b41f8630a0eb0638152b30ce3265c6296578ac6988f1",
+    "distributed_selection_cache.py": "174b00a7649d18026f817a43d53737eda04900d70e424b0506ab5eb45a0384d9",
+    "gdn_boundary_construction.py": "8d48f243d45b6907f5099e9a309a9d474012c906ffbd98082ddfce6b23e4c4c5",
+    "kda_baseline/__init__.py": "4e92ee0ef5554f5ea4ca5de6352a11e69b0acdbb2b27f12279214534abe050ab",
+    "kda_baseline/checkpoints.py": "581ec74025cee6e70960cda00b3bd9bde04c6d75bb1d4e48c966694eb0772f7c",
+    "kda_baseline/reference_helpers.py": "4c906484ee479ad5cda158c309b8249f2e857f93d331748d06f13dc724ff870f",
+    "kda_checkpoint_common.py": "a4b091a798cc19072860deb26fbfd99f91f8f055d0a4b14e5cc4530dedec5420",
+    "ple_checkpoint_preparation.py": "a32e3f3d3de1de69b271525a7343c6a813f69ccf8e7232065c0bae026ef637ac"
+  },
+  "schema": "sparkring-protected-source-suite/v1"
+}

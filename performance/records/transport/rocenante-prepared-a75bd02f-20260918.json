@@ -1,0 +1,312 @@
+{
+  "schema": "sparkring-prepared-roce-qualification/v1",
+  "status": "qualified",
+  "scope": "Bounded collective correctness, selected-path traffic and frozen-kernel replay; no throughput/model/cache qualification",
+  "date_utc": "2026-09-18",
+  "image_config_id": "sha256:a75bd02ffc1dd29713f97f599ccb10a88ba76bb5cd9d3554a98c875e96c0b942",
+  "transport_profile": "tp2-rocenante-adaptive-prepared",
+  "transport_manifest_sha256": "7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c",
+  "harness": {
+    "path": "runtime/releases/shared-2026.09.0-rc.1/qualification/transport-probe-15e522b0.tar.gz",
+    "sha256": "15e522b076afb4885c0d6eda1d80eeacc2a1a79dba6164ccc24f5d3c5ba4ed4f",
+    "members": 2,
+    "size_bytes": 8279,
+    "member": "probe.py"
+  },
+  "reference": {
+    "api": "torch.distributed ProcessGroupNCCL",
+    "logged_version": "2.31.2+cuda13.3",
+    "patched_nccl_2_30_7_qualification": false
+  },
+  "workload": {
+    "reduction_dtypes": [
+      "bfloat16",
+      "float16",
+      "float32"
+    ],
+    "reduction_bytes": [
+      16,
+      4096,
+      1048576
+    ],
+    "gather_shapes": [
+      [
+        4,
+        32
+      ],
+      [
+        4,
+        32
+      ],
+      [
+        5,
+        3
+      ]
+    ],
+    "gather_dimensions": [
+      0,
+      -1,
+      -1
+    ],
+    "cases_per_rank": 15,
+    "graph_replays": 4
+  },
+  "runs": [
+    {
+      "world_size": 2,
+      "model": null,
+      "processes_per_node": 1,
+      "all_container_exit_codes": 0,
+      "oom_killed": false,
+      "source_completion_sha256": "fc8eb6872533c96da1bfd6c657e67d8ff3c7ae4f8351b64a4a3c82b4e20e3cae",
+      "ranks": [
+        {
+          "rank": 0,
+          "outcome": "passed",
+          "source_result_sha256": "f370efd250efb66786ad6019c39a1a7a382face940fe5829a6ac265ecf58baab",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "roceP2p1s0f0"
+          ],
+          "peer_hca": {
+            "1": [
+              0,
+              1
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "two_wave_activations": 0
+        },
+        {
+          "rank": 1,
+          "outcome": "passed",
+          "source_result_sha256": "28b128955f3061f8b70947f3d0ab22a506183f81e212d1c05c51956d3ba1f0eb",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "roceP2p1s0f0"
+          ],
+          "peer_hca": {
+            "0": [
+              0,
+              1
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "two_wave_activations": 0
+        }
+      ]
+    },
+    {
+      "world_size": 4,
+      "model": null,
+      "processes_per_node": 1,
+      "all_container_exit_codes": 0,
+      "oom_killed": false,
+      "source_completion_sha256": "94e2e9592d80d3693caaea0c64533b2825d9ba3000ec8977be1d8e7932a41f48",
+      "ranks": [
+        {
+          "rank": 0,
+          "outcome": "passed",
+          "source_result_sha256": "2a445f11a4a821844bf208a8084ab9f1f51c83b5f12eb9dcdf065d1a52d61466",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "1": [
+              0,
+              2
+            ],
+            "2": [
+              0,
+              3
+            ],
+            "3": [
+              1,
+              3
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            3524128,
+            1762064,
+            1762016,
+            3524032
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "two_wave_activations": 3
+        },
+        {
+          "rank": 1,
+          "outcome": "passed",
+          "source_result_sha256": "8d24dc488f137bdf41360db5f49326676c38d746c0c9bdfacb06a111944c0a88",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "0": [
+              1,
+              3
+            ],
+            "2": [
+              0,
+              2
+            ],
+            "3": [
+              0,
+              3
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            3524128,
+            1762064,
+            1762016,
+            3524032
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "two_wave_activations": 3
+        },
+        {
+          "rank": 2,
+          "outcome": "passed",
+          "source_result_sha256": "510a238a45ae835ff9a31be38b2e2eba4d2855020fca1fe50c173e502915cd53",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "0": [
+              1,
+              2
+            ],
+            "1": [
+              1,
+              3
+            ],
+            "3": [
+              0,
+              2
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            3524128,
+            3524032,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "two_wave_activations": 3
+        },
+        {
+          "rank": 3,
+          "outcome": "passed",
+          "source_result_sha256": "a099bfca16ccc8b4a61d93a36b0d5e3d8bd536026fe3b5cf2ce72fd4c5c1556e",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "0": [
+              0,
+              2
+            ],
+            "1": [
+              1,
+              2
+            ],
+            "2": [
+              1,
+              3
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            3524128,
+            3524032,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "two_wave_activations": 3
+        }
+      ]
+    }
+  ]
+}

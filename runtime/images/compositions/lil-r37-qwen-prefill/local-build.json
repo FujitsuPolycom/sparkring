@@ -1,0 +1,13 @@
+{
+  "schema": "sparkring-local-image-build/v1",
+  "status": "Development",
+  "image_id": "sha256:5bd9d05327d4c3bf2c205b2b946e6fc2954ad079637245b6eace0aa846662b59",
+  "image_tag": "sparkring-local:lil-r37-qwen-prefill-f01854c21da9",
+  "platform": "linux/arm64",
+  "parent_image_id": "sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2",
+  "descriptor_sha256": "f01854c21da928d1170243d95500c28256633bbe2aa252e2b916431d9dd06b11",
+  "installed_receipt_sha256": "219f1d9fc86189ebc4f3c2f89497f6c303dc8fb2631f28ccaf7b38ac0c8fbd8f",
+  "published": false,
+  "build_and_verification_seconds": 25.8,
+  "serving_evidence": "performance/records/qwen38-flash-next/r37-source-prefill-5bd9d05327d4.json"
+}

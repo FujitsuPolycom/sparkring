@@ -78,3 +78,63 @@ def test_composition_matches_published_parent_and_tested_capacity():
     assert descriptor['parent']['image_id'] == parent['image_id']
     assert descriptor['native']['group_capacity'] == 64
     assert len(descriptor['python_files']) == 5
+
+
+def boundary_fixture(tmp_path):
+    package = tmp_path / extension.SITE.lstrip('/') / 'sparkcache/example.py'
+    package.parent.mkdir(parents=True)
+    package.write_bytes(b'VALUE = 1\n')
+    library_name = '/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so'
+    library = tmp_path / library_name.lstrip('/')
+    library.parent.mkdir(parents=True)
+    library.write_bytes(b'fixed-native-bytes')
+    name = '/opt/sparkring/contracts/boundary-runtime.json'
+    path = tmp_path / name.lstrip('/')
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'schema':'sparkcache-boundary-runtime/v1',
+        'files':{'sparkcache/example.py':extension.sha(package.read_bytes())},
+        'external':{library_name:extension.sha(library.read_bytes())}}))
+    receipt = {'files':{name:extension.sha(path.read_bytes())}}
+    return receipt, path, package, library_name
+
+
+def test_python_extension_preserves_parent_boundary_and_creates_distinct_identity(tmp_path):
+    receipt, original, package, _ = boundary_fixture(tmp_path)
+    before = original.read_bytes()
+    result = extension.boundary_identity_update(receipt,
+        {extension.SITE+'/sparkcache/example.py':b'VALUE = 2\n'}, 'a'*64, tmp_path)
+    assert original.read_bytes() == before
+    assert package.read_bytes() == b'VALUE = 1\n'
+    assert result['record']['path'].endswith('boundary-cache-aaaaaaaaaaaaaaaa.json')
+    assert result['record']['serving_qualified'] is False
+    assert result['record']['parent_sha256'] == extension.sha(before)
+    value = json.loads(result['data'])
+    assert value['files']['sparkcache/example.py'] == extension.sha(b'VALUE = 2\n')
+
+
+def test_boundary_extension_refuses_untracked_parent_and_native_change(tmp_path):
+    receipt, original, _, library = boundary_fixture(tmp_path)
+    with pytest.raises(ValueError, match='separately qualified'):
+        extension.boundary_identity_update(receipt, {library:b'changed native'}, 'a'*64, tmp_path)
+    with pytest.raises(ValueError, match='verified installed ownership'):
+        extension.boundary_identity_update({'files':{}}, {}, 'a'*64, tmp_path)
+    result = extension.boundary_identity_update({'files':{}}, {}, 'a'*64, tmp_path,
+                                                expected_parent_sha256=extension.sha(original.read_bytes()))
+    assert result['record']['serving_qualified'] is False
+
+
+def test_boundary_extension_rejects_changed_parent_payload(tmp_path):
+    receipt, _, package, _ = boundary_fixture(tmp_path)
+    package.write_bytes(b'undeclared change')
+    with pytest.raises(ValueError, match='parent package identity'):
+        extension.boundary_identity_update(receipt, {}, 'a'*64, tmp_path)
+
+
+def test_boundary_extension_preserves_required_runtime_mount_identity(tmp_path):
+    receipt, original, _, library = boundary_fixture(tmp_path)
+    expected = json.loads(original.read_bytes())['external'][library]
+    (tmp_path/library.lstrip('/')).unlink()
+    result = extension.boundary_identity_update(receipt, {}, 'a'*64, tmp_path)
+    assert result['record']['required_runtime_external'] == {library:expected}
+    assert json.loads(result['data'])['external'][library] == expected
+    assert result['record']['serving_qualified'] is False

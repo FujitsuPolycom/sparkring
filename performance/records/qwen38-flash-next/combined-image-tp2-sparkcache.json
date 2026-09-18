@@ -1,0 +1,242 @@
+{
+  "schema": "sparkring-bounded-serving-evidence/v1",
+  "status": "implemented",
+  "subject": "Qwen3.8-Flash-Next QAD TP2 with SparkCache on the combined vLLM/SGLang image",
+  "image_id": "sha256:b03062b032bb147f5255463d4f068bfc476bf966c78c82ddeb66df4fb1b0b37d",
+  "published": false,
+  "parent_image_id": "sha256:5bd9d05327d4c3bf2c205b2b946e6fc2954ad079637245b6eace0aa846662b59",
+  "composition": "runtime/deepseek-v41-sglang/combined-image/manifest.json",
+  "model": {
+    "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "revision": "629bc3218833a38b475b719f34aa571666f4a03e"
+  },
+  "conditions": {
+    "hardware": "Two DGX Spark GB10 hosts, one GPU per host, direct pair using both PCI domains",
+    "tp": 2,
+    "dcp": 1,
+    "mtp_tokens": 3,
+    "context_length": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_gib_per_rank": 33,
+    "kv_cache_dtype": "fp8",
+    "logical_kv_tokens_observed": 3956707,
+    "hc_prefill_mode": "off",
+    "recurrent_prefill_coalescing": true,
+    "checkpoint_policy": "aligned",
+    "sparkcache": true,
+    "lease_contract": "/opt/sparkring/contracts/vllm-connector-jobs-r37-qwen-prefill.json",
+    "cache_namespace": "Dedicated to the combined-image trial; parent cache entries were not reused."
+  },
+  "cache_restore": {
+    "fixtures": [
+      {
+        "prompt_tokens": 7870,
+        "seed_cached_tokens": 0,
+        "replay_cached_tokens": 5696,
+        "expected_answer": "HARBOR-6392",
+        "answer_correct": true,
+        "ranks": {
+          "0": {
+            "restored_tokens": 5696,
+            "restore_log_sha256": "d711a14325cc2ea2d40c7efe81cdbb3cca4b8994837de6a76c2f9d0408f71641"
+          },
+          "1": {
+            "restored_tokens": 5696,
+            "restore_log_sha256": "7f61ead3e1121e42917663841b9e43e16fa20767e8f2557b52694b745df34d98"
+          }
+        }
+      },
+      {
+        "prompt_tokens": 8194,
+        "seed_cached_tokens": 0,
+        "replay_cached_tokens": 5696,
+        "expected_answer": "HARBOR-6392",
+        "answer_correct": true,
+        "ranks": {
+          "0": {
+            "restored_tokens": 5696,
+            "restore_log_sha256": "71427f2c9f0719f1c78cb1331a6967ae70a0d727b16a13849697ac7d9dfd6404"
+          },
+          "1": {
+            "restored_tokens": 5696,
+            "restore_log_sha256": "6d9a0b53e157804a697ac07bab9ab159c3bcc83b12bc2d728a6dc5ef2d05f031"
+          }
+        }
+      }
+    ],
+    "both_workers_restarted": true,
+    "image_unchanged_during_restart": true,
+    "worker_restore_tokens_equal_api_cached_tokens": true
+  },
+  "performance": {
+    "scope": "Regression screen with one excluded warmup and three measured waves per case. Completion rates divide all generated tokens by whole-wave wall time, including prefill. They are not isolated decode-kernel rates.",
+    "prefill_cases": "One request with exactly 8192 or 32768 input tokens and one forced output token",
+    "completion_cases": "One or eight requests per wave; exactly 2048 input and 256 forced output tokens each; temperature 0; thinking disabled",
+    "cached_tokens": 0,
+    "comparison": "Parent and combined deployments used matching compute and data-fabric bootstrap settings.",
+    "parent": [
+      {
+        "kind": "prefill",
+        "input_tokens_per_request": 8192,
+        "concurrency": 1,
+        "measured_waves": 3,
+        "median_ttft_seconds": 2.606189,
+        "ttft_seconds_per_wave": [
+          2.605627,
+          2.606189,
+          2.612987
+        ]
+      },
+      {
+        "kind": "prefill",
+        "input_tokens_per_request": 32768,
+        "concurrency": 1,
+        "measured_waves": 3,
+        "median_ttft_seconds": 15.751995,
+        "ttft_seconds_per_wave": [
+          15.751995,
+          12.610448,
+          17.274669
+        ]
+      },
+      {
+        "kind": "completion",
+        "input_tokens_per_request": 2048,
+        "concurrency": 1,
+        "measured_waves": 3,
+        "median_ttft_seconds": 0.6676,
+        "whole_wave_output_tokens_per_second": 68.468375,
+        "samples": [
+          {
+            "ttft_mean_seconds": 0.664477,
+            "whole_wave_output_tokens_per_second": 68.193599
+          },
+          {
+            "ttft_mean_seconds": 0.6676,
+            "whole_wave_output_tokens_per_second": 67.354163
+          },
+          {
+            "ttft_mean_seconds": 0.669736,
+            "whole_wave_output_tokens_per_second": 69.906486
+          }
+        ]
+      },
+      {
+        "kind": "completion",
+        "input_tokens_per_request": 2048,
+        "concurrency": 8,
+        "measured_waves": 3,
+        "median_ttft_seconds": 3.486437,
+        "whole_wave_output_tokens_per_second": 189.57067,
+        "samples": [
+          {
+            "ttft_mean_seconds": 3.493843,
+            "whole_wave_output_tokens_per_second": 196.089559
+          },
+          {
+            "ttft_mean_seconds": 3.486437,
+            "whole_wave_output_tokens_per_second": 194.653105
+          },
+          {
+            "ttft_mean_seconds": 3.312287,
+            "whole_wave_output_tokens_per_second": 178.949199
+          }
+        ]
+      }
+    ],
+    "combined": [
+      {
+        "kind": "prefill",
+        "input_tokens_per_request": 8192,
+        "concurrency": 1,
+        "measured_waves": 3,
+        "median_ttft_seconds": 2.606686,
+        "ttft_seconds_per_wave": [
+          2.799674,
+          2.600908,
+          2.606686
+        ]
+      },
+      {
+        "kind": "prefill",
+        "input_tokens_per_request": 32768,
+        "concurrency": 1,
+        "measured_waves": 3,
+        "median_ttft_seconds": 13.12889,
+        "ttft_seconds_per_wave": [
+          10.780785,
+          13.12889,
+          15.466731
+        ]
+      },
+      {
+        "kind": "completion",
+        "input_tokens_per_request": 2048,
+        "concurrency": 1,
+        "measured_waves": 3,
+        "median_ttft_seconds": 0.668196,
+        "whole_wave_output_tokens_per_second": 56.518738,
+        "samples": [
+          {
+            "ttft_mean_seconds": 0.664466,
+            "whole_wave_output_tokens_per_second": 50.76985
+          },
+          {
+            "ttft_mean_seconds": 0.972551,
+            "whole_wave_output_tokens_per_second": 53.852605
+          },
+          {
+            "ttft_mean_seconds": 0.668196,
+            "whole_wave_output_tokens_per_second": 67.504587
+          }
+        ]
+      },
+      {
+        "kind": "completion",
+        "input_tokens_per_request": 2048,
+        "concurrency": 8,
+        "measured_waves": 3,
+        "median_ttft_seconds": 3.457067,
+        "whole_wave_output_tokens_per_second": 143.231545,
+        "samples": [
+          {
+            "ttft_mean_seconds": 3.311998,
+            "whole_wave_output_tokens_per_second": 198.704568
+          },
+          {
+            "ttft_mean_seconds": 5.748737,
+            "whole_wave_output_tokens_per_second": 136.799102
+          },
+          {
+            "ttft_mean_seconds": 3.457067,
+            "whole_wave_output_tokens_per_second": 116.245002
+          }
+        ]
+      }
+    ],
+    "conclusion": "The 8K prefill medians were equal within 1 ms; the combined-image 32K median was lower. Combined-image completion samples were variable and lower in aggregate; performance parity is not established."
+  },
+  "restoration": {
+    "original_container_ids_and_configuration_preserved": true,
+    "api_answer": "42"
+  },
+  "evidence_hashes": {
+    "qwen_bench.py": "c006a93ef735bb367bebc13d16780e999745fcca3b54eea7b3b22752bcea672e",
+    "qwen_cache_probe.py": "b18734eb6f5050a7882930c5b6b7e164853379f816ea961eb8903122d51f2dc2",
+    "bench-fixtures.json": "c36a28f2291f26d50630f121b043a5d21073e939e12025a58071ed9a8399d8af",
+    "cache-fixtures.json": "7708664b8e4541318d1551c0038ab986bc6228510956d1fdb4898ef4af6f5159",
+    "baseline-bench.json": "ed35f8cf552a4eb1f89b50476ecaaed7f04ba0d718adc2068fe3474877268d1e",
+    "combined-fabric-bench.json": "b24fe00c23ff8fe5f5b16d27d0d3c9c0b102b6a8619ad0902913f271c953a619",
+    "cache-seed.json": "c98757bfd7a603a748fcc3e8a3f1c6870dadf2a75227e42a57c4ba809fa195f0",
+    "cache-replay.json": "5b29e35a7a44f741a5ddfee1f5b4aa9af9cbea3be9d9a21a342744724f730c57"
+  },
+  "limits": [
+    "Only 33 GiB KV per rank was exercised; the public 24 GiB default, TP4 and GLM are not qualified by this record.",
+    "No separate cache-disabled deployment, exhaustive on/off matrix, or soak was performed.",
+    "One parent boot and one matched child boot underpin the comparison; compilation cache and initial persistent-cache populations differed. No randomized order or independent clock control was used.",
+    "An exploratory child run used a different bootstrap address and is excluded from the matched comparison.",
+    "Synthetic key retrieval is not general semantic-quality, tool, or vision qualification.",
+    "Raw private benchmark fixtures/harnesses are identified by hash; this record reports their request conditions and results without publishing site inputs."
+  ]
+}

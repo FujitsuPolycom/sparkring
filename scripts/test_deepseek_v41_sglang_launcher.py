@@ -1,5 +1,6 @@
 """Offline configuration and command contracts; no Docker or GPU calls."""
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -20,7 +21,7 @@ def environment(tmp_path, **overrides):
                NCCL_IB_HCA="rocep1s0f0,rocep1s0f1", NCCL_IB_GID_INDEX="3")
     cfg.update(overrides)
     path = tmp_path / "rank.env"
-    path.write_text("\n".join(f"{k}={v}" for k, v in cfg.items()))
+    path.write_text("\n".join(f"{k}={v}" for k, v in cfg.items() if v is not None))
     return path
 
 
@@ -286,6 +287,131 @@ def test_library_drift_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(launch, 'output', lambda args: cfg['IMAGE_ID'])
     with pytest.raises(ValueError, match='NCCL content identity'):
         launch.verify_host(cfg)
+
+
+def shared_environment(tmp_path, **overrides):
+    values = {"RUNTIME_COMPOSITION": launch.COMPOSITION,
+              "NCCL_SO_HOST_PATH": None, "NCCL_SO_SHA256": None}
+    return environment(tmp_path, **{**values, **overrides})
+
+
+def test_shared_plan_uses_bundled_entrypoint_and_nccl(tmp_path):
+    cfg = launch.read_config(shared_environment(tmp_path, CONTEXT_LENGTH="655360"))
+    cmd = launch.command(cfg)
+    assert cmd[-5:] == ["--entrypoint", launch.SHARED_PYTHON, cfg["IMAGE_ID"],
+                        launch.SHARED_RUNTIME + "/entrypoint.py", "run"]
+    assert "CONTEXT_LENGTH=655360" in cmd
+    extra = next(arg for arg in cmd if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert extra.endswith("--min-free-slots-delay 1")
+    assert extra.count("--min-free-slots-delay") == 1
+    assert not any(launch.PINS["nccl_target"] in arg for arg in cmd)
+    assert not any(str(launch.RUNTIME) in arg for arg in cmd)
+    assert "NCCL_SO_HOST_PATH" not in cfg
+    assert "NCCL_SO_SHA256" not in cfg
+    assert any("/operator/auth.py:" + launch.PINS["auth_path"] in arg for arg in cmd)
+
+
+@pytest.mark.parametrize("setting", ["NCCL_SO_HOST_PATH", "NCCL_SO_SHA256"])
+def test_shared_configuration_rejects_ignored_host_nccl(tmp_path, setting):
+    value = "/operator/nccl.so" if setting.endswith("PATH") else "a" * 64
+    with pytest.raises(ValueError, match="remove host NCCL"):
+        launch.read_config(shared_environment(tmp_path, **{setting: value}))
+
+
+def test_unknown_runtime_composition_rejected_offline(tmp_path):
+    with pytest.raises(ValueError, match="unknown RUNTIME_COMPOSITION"):
+        launch.read_config(environment(tmp_path, RUNTIME_COMPOSITION="unregistered"))
+
+
+def test_shared_default_context_remains_262k(tmp_path):
+    cfg = launch.read_config(shared_environment(tmp_path))
+    assert cfg["CONTEXT_LENGTH"] == "262144"
+
+
+def test_shared_adapter_pins_and_auth_receipt_preserve_built_image(tmp_path):
+    cfg = launch.read_config(shared_environment(tmp_path))
+    pins = launch.selected_pins(cfg)
+    assert pins["source_commit"] == "e59e6eb67479aa68f6fa700c600dc90a0729b5ec"
+    assert launch.PINS["source_commit"] == "79f656a65f189239cc575bf5c5d1b5cf579d4c41"
+    assert launch.auth_record(cfg, b"# fixture\n")["pins_sha256"] == (
+        "67668bcb58cad3dfdfa3f3ae2a75ff562da10c9c15ee14ddac311c6d7bb4f32c")
+    cmd = launch.command(cfg)
+    assert not any(arg.startswith(("DSV41_MAX_NEW_TOKENS=", "DSV41_LOOP_ABORT=")) for arg in cmd)
+
+
+@pytest.mark.parametrize("values", [
+    {"DSV41_MAX_NEW_TOKENS": "0"}, {"DSV41_LOOP_ABORT": "0"},
+    {"NVFP4_DRAFT_OVERLAY": "1"}, {"MOE_RUNNER_BACKEND": "flashinfer_cutlass"},
+])
+def test_shared_image_rejects_unimplemented_adapter_controls(tmp_path, values):
+    with pytest.raises(ValueError, match="shared composition does not implement"):
+        launch.read_config(shared_environment(tmp_path, **values))
+
+
+def test_shared_admission_zero_uses_the_engine_policy(tmp_path):
+    cfg = launch.read_config(shared_environment(tmp_path, MIN_FREE_SLOTS_DELAY="0"))
+    extra = next(arg for arg in launch.command(cfg) if arg.startswith("EXTRA_SGLANG_ARGS="))
+    assert "--min-free-slots-delay" not in extra
+
+
+@pytest.mark.parametrize("mode", ["prepare", "pack"])
+def test_shared_preparation_admits_payload_before_writing(tmp_path, monkeypatch, mode):
+    cfg = host_config(tmp_path)
+    cfg["RUNTIME_COMPOSITION"] = launch.COMPOSITION
+    for key in launch.HOST_NCCL:
+        cfg.pop(key)
+    cfg["ENGRAM_HOST_PATH"] = str(tmp_path / "shared-packed")
+    monkeypatch.setattr(launch, "read_config", lambda path: cfg)
+    monkeypatch.setattr(launch, "output", lambda args: cfg["IMAGE_ID"])
+    monkeypatch.setattr(sys, "argv", ["launcher", "--" + mode, "unused.env"])
+    commands = []
+    def capture(args, **kwargs):
+        commands.append(args)
+        assert args[args.index("--entrypoint") + 1] == launch.SHARED_PYTHON
+        assert cfg["IMAGE_ID"] in args
+        if args[-1] == "verify":
+            assert not Path(cfg["ENGRAM_HOST_PATH"]).exists()
+            assert "--gpus" not in args
+            assert "--network" in args and "--read-only" in args
+            return json.dumps(launch.composition_identity())
+        return b"# shared prepared module\n"
+    monkeypatch.setattr(launch.subprocess, "check_output", capture)
+    monkeypatch.setattr(launch.subprocess, "run", capture)
+    launch.main()
+    assert len(commands) == 2
+    assert commands[0][-2:] == [launch.SHARED_RUNTIME + "/verify.py", "verify"]
+    if mode == "prepare":
+        launch.verify_prepared_auth(cfg)
+    else:
+        assert "/opt/dsv41/scripts/pack_engram.py" in commands[1]
+
+
+@pytest.mark.parametrize("field", ["id", "composition_sha256"])
+@pytest.mark.parametrize("mode", ["prepare", "pack"])
+def test_composition_drift_rejected_before_preparation(tmp_path, monkeypatch, field, mode):
+    cfg = launch.read_config(shared_environment(tmp_path))
+    cfg["STATE_HOST_PATH"] = str(tmp_path / "state")
+    cfg["ENGRAM_HOST_PATH"] = str(tmp_path / "packed")
+    monkeypatch.setattr(launch, "read_config", lambda path: cfg)
+    monkeypatch.setattr(launch, "output", lambda args: cfg["IMAGE_ID"])
+    monkeypatch.setattr(sys, "argv", ["launcher", "--" + mode, "unused.env"])
+    receipt = {**launch.composition_identity(), field: "changed"}
+    monkeypatch.setattr(launch.subprocess, "check_output", lambda args, **kwargs: json.dumps(receipt))
+    monkeypatch.setattr(launch.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not pack or launch"))
+    with pytest.raises(ValueError, match="composition identity"):
+        launch.main()
+    assert not Path(cfg["STATE_HOST_PATH"]).exists()
+    assert not Path(cfg["ENGRAM_HOST_PATH"]).exists()
+
+
+def test_shared_auth_receipt_cannot_be_reused_as_standalone(tmp_path):
+    cfg = host_config(tmp_path)
+    cfg["RUNTIME_COMPOSITION"] = launch.COMPOSITION
+    launch.write_prepared_auth(cfg, b"# prepared\n")
+    launch.verify_prepared_auth(cfg)
+    cfg["RUNTIME_COMPOSITION"] = "standalone"
+    with pytest.raises(ValueError, match="authentication.*prepare"):
+        launch.verify_prepared_auth(cfg)
 
 
 def test_serving_controls_keep_image_defaults_except_single_slot_admission(tmp_path):

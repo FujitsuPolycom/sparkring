@@ -2,6 +2,18 @@
   "schema": "sparkring-image-builders/v1",
   "builders": [
     {
+      "id": "sglang-deepseek-bounded-prefill",
+      "path": "runtime/images/sglang_extension.py",
+      "kind": "python",
+      "reason": "Prepare an isolated SGLang runtime over the pinned Qwen-capable SparkRing image; preparation requires local source and NCCL inputs and does not invoke Docker."
+    },
+    {
+      "id": "lil-r37-qwen-prefill",
+      "path": "runtime/images/source_extension.py",
+      "kind": "python",
+      "reason": "Prepare a pinned Qwen HC/checkpoint/QSA source patch over the shared ARM64 image; preparation does not invoke Docker."
+    },
+    {
       "id": "lil-r37-shared",
       "path": "runtime/images/feature_extension.py",
       "kind": "python",

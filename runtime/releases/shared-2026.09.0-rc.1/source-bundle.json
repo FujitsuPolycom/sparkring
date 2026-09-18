@@ -1,0 +1,8 @@
+{
+  "bytes": 90290330,
+  "file": "shared-2026.09.0-rc.1-sources.tar.gz",
+  "image_config_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+  "schema": "sparkring-release-source-bundle/v1",
+  "sha256": "1066426891c461d43cea3562148900dc5734a9aec6205bd8ee5dd87cd8edb9ae",
+  "url": "https://github.com/FujitsuPolycom/sparkring/releases/download/shared-2026.09.0-rc.1/shared-2026.09.0-rc.1-sources.tar.gz"
+}

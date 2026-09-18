@@ -1,0 +1,27 @@
+#!/bin/sh
+# Keep the vLLM process environment out of SGLang's separate Python/CUDA runtime.
+set -eu
+unset LD_PRELOAD PYTHONHOME PYTHONPATH LD_LIBRARY_PATH
+unset NCCL_ROOT NCCL_INCLUDE_DIR NCCL_LIB_DIR VLLM_NCCL_SO_PATH NCCL_LOCAL_INFERENCE_PATH
+unset PYTORCH_HOME TORCHINDUCTOR_CUTLASS_DIR TORCH_ALLOW_TF32_CUBLAS_OVERRIDE
+unset TRITON_CUDACRT_PATH TRITON_CUDART_PATH TRITON_CUPTI_LIB_PATH TRITON_CUPTI_INCLUDE_PATH
+export VIRTUAL_ENV=/opt/sglang
+export CUDA_HOME=/usr/local/cuda-13.0
+export CUDA_PATH="$CUDA_HOME"
+export TRITON_PTXAS_PATH="$CUDA_HOME/bin/ptxas"
+export TRITON_CUOBJDUMP_PATH="$CUDA_HOME/bin/cuobjdump"
+export TRITON_NVDISASM_PATH="$CUDA_HOME/bin/nvdisasm"
+export TORCH_CUDA_ARCH_LIST=12.1
+export PATH="/opt/sglang/bin:$CUDA_HOME/bin:/usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export PYTHONPATH=/opt/dsv41/adapter:/opt/sglang/lib/python3.12/site-packages
+export PYTHONNOUSERSITE=1
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+export SGLANG_RUST_BUILD_MODE=never
+export SGLANG_CACHE_DIR=/root/.cache/sparkring/sglang
+export SGLANG_DG_CACHE_DIR="$SGLANG_CACHE_DIR/deep_gemm"
+export FLASHINFER_WORKSPACE_BASE="$SGLANG_CACHE_DIR/flashinfer"
+export TORCH_EXTENSIONS_DIR="$SGLANG_CACHE_DIR/torch_extensions"
+export TORCHINDUCTOR_CACHE_DIR="$SGLANG_CACHE_DIR/inductor"
+export TRITON_CACHE_DIR="$SGLANG_CACHE_DIR/triton"
+export CUDA_CACHE_PATH="$SGLANG_CACHE_DIR/cuda"
+exec /opt/sglang/bin/python3 "$@"

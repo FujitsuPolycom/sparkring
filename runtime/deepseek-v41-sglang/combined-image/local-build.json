@@ -1,0 +1,38 @@
+{
+  "schema": "sparkring-local-image-build/v1",
+  "status": "Development",
+  "platform": "linux/arm64",
+  "published": false,
+  "image_id": "sha256:b03062b032bb147f5255463d4f068bfc476bf966c78c82ddeb66df4fb1b0b37d",
+  "image_bytes": 57634538787,
+  "parent_image_id": "sha256:5bd9d05327d4c3bf2c205b2b946e6fc2954ad079637245b6eace0aa846662b59",
+  "composition_sha256": "3ed1e1c6c8513be9dc550d41e1c5db66575bb7a1ce89fcaac243a5b93fac9ee5",
+  "vllm_installed_receipt_sha256": "219f1d9fc86189ebc4f3c2f89497f6c303dc8fb2631f28ccaf7b38ac0c8fbd8f",
+  "cpu_checks": {
+    "inherited_vllm_files_verified": 57247,
+    "sglang_payload_files_verified": 4829,
+    "sglang_torch": "2.13.0+cu130",
+    "sglang_torch_cuda": "13.0",
+    "sglang_nccl_reported_version": 23007,
+    "sglang_imports": ["torch", "sgl_kernel", "flashinfer", "sglang.srt.rust_extensions._multimodal"],
+    "scope": "Imports used the NVIDIA driver libraries with CUDA_VISIBLE_DEVICES=-1. No GPU computation or model serving is established by these checks."
+  },
+  "bounded_serving_checks_passed": true,
+  "serving_evidence": "performance/records/deepseek-v41-flash/sglang-shared-bounded-prefill.json",
+  "qwen_tp2_evidence": "performance/records/qwen38-flash-next/combined-image-tp2-sparkcache.json",
+  "qwen_tp2_checks": {
+    "kv_cache_gib_per_rank": 33,
+    "generation_passed": true,
+    "fresh_worker_cache_restore_passed": true,
+    "performance_parity_established": false
+  },
+  "qwen_tp4_evidence": "performance/records/qwen38-flash-next/combined-image-tp4-sparkcache.json",
+  "qwen_tp4_checks": {
+    "kv_cache_gib_per_rank": 40,
+    "generation_passed": true,
+    "fresh_worker_cache_restore_passed": true,
+    "performance_measured": false
+  },
+  "sglang_retained_container_restart_resolved": false,
+  "serving_qualified": false
+}

@@ -1,0 +1,10 @@
+{
+  "vllm/v1/core/single_type_kv_cache_manager.py": {
+    "before_sha256": "d8a6aa7b722d795fb21a88b46116d47ad7bb8a4ccfe82f5c7c8f185a4593e072",
+    "after_sha256": "c6d787cfd378d3eb374df25a4c3cc5478a51bd32bad0e3f66583f4d2a0ec31f2"
+  },
+  "tests/v1/kv_connector/unit/test_hybrid_recovery_source.py": {
+    "before_sha256": "fbca5411ee10f66fa75159b3916d098e3aa1377d584db35d9d0dfb3224e6a68f",
+    "after_sha256": "a2beeadb07547bfe42865b3985bd6cdd8facb7953d4492fd422beb2d7a547cd3"
+  }
+}

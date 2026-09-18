@@ -14,6 +14,19 @@ Do not update a preserved hash to make a changed build look like the same
 release. Add a distinct release selection and evidence instead. Historical
 records retain their original scope even when navigation retires a profile.
 
+## Shared serving versions
+
+GitHub Releases provides the version landing page; GHCR Packages stores the
+container layers. A serving Release links an exact image digest, build/source
+receipts and profile-specific evidence. Auxiliary host tools and build inputs
+retain their separate identities.
+
+The [shared ARM64 candidate](shared-2026.09.0-rc.1/README.md) records published
+image version `shared-2026.09.0-rc.1`, its verified registry digest, source inputs
+and bounded qualification. The matching GitHub prerelease links its assets. Its release
+selection is opt-in; profile defaults remain on their pinned releases until
+each configuration is qualified and explicitly promoted.
+
 ## Published image and DCP4 overlay
 
 `sparkring-r33/published-inputs/` retains the original contract, publication

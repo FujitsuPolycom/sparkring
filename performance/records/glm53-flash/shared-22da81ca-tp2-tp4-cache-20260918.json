@@ -1,0 +1,177 @@
+{
+  "schema": "sparkring-glm-bounded-cache-evidence/v1",
+  "status": "research-only",
+  "scope": "Bounded text generation and persistent-cache tests; limitations prevent blanket profile promotion",
+  "image_config_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+  "checkpoint_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+  "checkpoint_revision_limit": "The public ec0c3c checkpoint selection is not the tested local revision",
+  "fixture_prompt_tokens": [
+    7870,
+    8194
+  ],
+  "request_concurrency": 1,
+  "temperature": 0,
+  "request_max_tokens": 1024,
+  "reasoning_effort": "low",
+  "independent_mtp_modules": 1,
+  "profile_defaults_changed": false,
+  "limitations": [
+    "TP4 first restart: 7870-token replay passed; 8194-token replay failed exact-answer validation. Its raw failed answer was not retained, so formatting versus incorrect state cannot be determined.",
+    "TP4 unchanged repeated full worker restart: both original fixtures passed exact answers and matched external restore counts on every rank. This does not establish a fix for the earlier mismatch.",
+    "TP2 7.5GiB/1M and 4GiB/262K trials were terminated under memory pressure; startup alone did not establish a safe serving envelope.",
+    "TP2 mixed 256/2048 pages could not publish a 7680-token snapshot because an attention group required 2048-token alignment.",
+    "The TP2 resource trial uses uniform512 pages,2GiB KV,64K context,C4,batch4096 and disabled coalescing. It does not qualify the public high-capacity profile.",
+    "TP2 resource-trial cold8194 answer contained the correct key in a Markdown bold wrapper. Exact formatting failed; a separate literal-or-single-bold-wrapper policy checks key identity and preserves the raw response.",
+    "Per-request cache_salt does not isolate SparkCache disk entries and is not a cold-cache control.",
+    "Performance, full-context, concurrency pressure, media, corruption, eviction and soak workloads were not qualified."
+  ],
+  "initial_tp4_failed_replay_sha256": "2cbbc30bc0fd320810b024cece6005e5822cb055c68de07c6cd340086724a333",
+  "runs": [
+    {
+      "tp": 4,
+      "dcp": 1,
+      "context_limit": 1048576,
+      "kv_gib_per_rank": 24.0,
+      "max_num_seqs": 16,
+      "max_num_batched_tokens": 8192,
+      "mtp_tokens": 3,
+      "loader": "b12x",
+      "recurrent_policy": "aligned",
+      "target_page_tokens": 512,
+      "recurrent_page_tokens": 512,
+      "coalescing": true,
+      "startup_passed": true,
+      "text_smoke_passed": true,
+      "seed_validation_policy": "exact-text/v1",
+      "replay_completed": true,
+      "restart_ready": true,
+      "validation_status": "complete",
+      "fixtures": [
+        {
+          "prompt_tokens": 7870,
+          "cold_cached_tokens": 0,
+          "cold_exact_format": true,
+          "replay_cached_tokens": 7680,
+          "replay_validation": "passed",
+          "replay_exact_format": true,
+          "rank_restore": [
+            {
+              "rank": 0,
+              "tokens": 7680
+            },
+            {
+              "rank": 1,
+              "tokens": 7680
+            },
+            {
+              "rank": 2,
+              "tokens": 7680
+            },
+            {
+              "rank": 3,
+              "tokens": 7680
+            }
+          ]
+        },
+        {
+          "prompt_tokens": 8194,
+          "cold_cached_tokens": 0,
+          "cold_exact_format": true,
+          "replay_cached_tokens": 8192,
+          "replay_validation": "passed",
+          "replay_exact_format": true,
+          "rank_restore": [
+            {
+              "rank": 0,
+              "tokens": 8192
+            },
+            {
+              "rank": 1,
+              "tokens": 8192
+            },
+            {
+              "rank": 2,
+              "tokens": 8192
+            },
+            {
+              "rank": 3,
+              "tokens": 8192
+            }
+          ]
+        }
+      ],
+      "private_evidence_sha256": {
+        "plan": "fee0bf6efe8ccbf6e635133e280164b0e5eec408c96ee3b967e2bed8240bc942",
+        "seed": "c246c4bd37c62ac64e36cd9798817de334a895d08ec2d95d757bcb54a30f4490",
+        "replay": "ddfa856541aca2391615c65c526f08d789154ebbf6fe5551b41713818642c3c7",
+        "restart": "4747941287cb2e00cca3a43e760981c868550c8c1bfcd0ee262d6f9176b8add5"
+      },
+      "replay_validation_policy": "exact-text/v1"
+    },
+    {
+      "tp": 2,
+      "dcp": 1,
+      "context_limit": 65536,
+      "kv_gib_per_rank": 2.0,
+      "max_num_seqs": 4,
+      "max_num_batched_tokens": 4096,
+      "mtp_tokens": 3,
+      "loader": "b12x",
+      "recurrent_policy": "aligned",
+      "target_page_tokens": 512,
+      "recurrent_page_tokens": 512,
+      "coalescing": false,
+      "startup_passed": true,
+      "text_smoke_passed": true,
+      "seed_validation_policy": "literal-key-or-single-markdown-bold-wrapper/v1",
+      "replay_completed": true,
+      "restart_ready": true,
+      "validation_status": "complete",
+      "fixtures": [
+        {
+          "prompt_tokens": 7870,
+          "cold_cached_tokens": 0,
+          "cold_exact_format": true,
+          "replay_cached_tokens": 7680,
+          "replay_validation": "passed",
+          "replay_exact_format": true,
+          "rank_restore": [
+            {
+              "rank": 0,
+              "tokens": 7680
+            },
+            {
+              "rank": 1,
+              "tokens": 7680
+            }
+          ]
+        },
+        {
+          "prompt_tokens": 8194,
+          "cold_cached_tokens": 0,
+          "cold_exact_format": false,
+          "replay_cached_tokens": 8192,
+          "replay_validation": "passed",
+          "replay_exact_format": true,
+          "rank_restore": [
+            {
+              "rank": 0,
+              "tokens": 8192
+            },
+            {
+              "rank": 1,
+              "tokens": 8192
+            }
+          ]
+        }
+      ],
+      "private_evidence_sha256": {
+        "plan": "723e01a63246629d4ad3c657a1413ee2dbab4ceee087a0c77cc4d1d84a051b9a",
+        "seed": "e12c59460ce3d65df49e4ee330ca356b4c79bcc65391a5786cc556d9d894cd79",
+        "replay": "2e474083f48595c34a8ae6e4d19edf68fd6928ea8b831c1cb3b4095972aefa79",
+        "restart": "a4b58ca078a8cc98711100c502d7c7a2c96174162215a7ff32c01f42a1f7daac"
+      },
+      "replay_validation_policy": "literal-key-or-single-markdown-bold-wrapper/v1"
+    }
+  ]
+}

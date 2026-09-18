@@ -84,21 +84,24 @@ def _remove_option(arguments, flag):
 
 def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
     verifier = _r33_verifier()
-    from runtime.common import candidate, glm_targets, r35
+    from runtime.common import candidate, glm_targets, r35, glm_source_candidate
+    is_source = receipt.get("schema") == glm_source_candidate.SCHEMA
     is_candidate = receipt.get("schema") == candidate.SCHEMA
-    adapter = candidate if is_candidate else r35
-    is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA)
+    adapter = glm_source_candidate if is_source else candidate if is_candidate else r35
+    is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA)
     if is_r35:
         adapter.validate_receipt(receipt)
     else:
         verifier.validate_image_receipt(receipt)
-    release = receipt['installed']['composition_id'] if is_candidate else ('r35' if is_r35 else 'r33')
+    release = 'glm-local-source' if is_source else receipt['installed']['composition_id'] if is_candidate else ('r35' if is_r35 else 'r33')
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
     if plan["image"] != expected_image:
         raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
-    contract = adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
+    contract = glm_source_candidate.contract_for_receipt(receipt) if is_source else adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
     target = glm_targets.target_for_image(image=receipt)
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
+    if is_source:
+        adapter.validate_profile_capabilities(receipt, profile_name)
     selected = contract["profiles"][profile_name]
     environment = dict(plan["environment"])
     environment.update(contract["common_environment"])
@@ -133,7 +136,8 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
             arguments = _replace_option(arguments, flag, str(serving[key]))
         arguments = _replace_option(arguments, "--limit-mm-per-prompt", json.dumps(serving["limit_mm_per_prompt"]))
         native = contract["sparkcache_native"]
-        namespace = f"sparkring-{release}-{receipt['image_id'][7:19]}-tp2-cache"
+        namespace = (glm_source_candidate.cache_namespace(receipt["image_id"], profile_name) if is_source else
+                     f"sparkring-{release}-{receipt['image_id'][7:19]}-tp2-cache")
         if is_r35:
             namespace += "-" + target["revision"][:12]
         environment.update(SPARKCACHE_CACHE_NAMESPACE=namespace,
@@ -171,7 +175,7 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         arguments = _remove_option(arguments, "--model-loader-extra-config")
     if is_r35:
         arguments = _remove_option(arguments, '--gdn-decode-kernel')
-    container_args = ([candidate.ENTRYPOINT if is_candidate else "/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
+    container_args = ([glm_source_candidate.ENTRYPOINT if is_source else candidate.ENTRYPOINT if is_candidate else "/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
     command = list(plan["command"])
     name = f"sparkring-{release}-{profile_name}-r{environment['NODE_RANK']}"
     command[command.index("--name") + 1] = name
@@ -382,7 +386,12 @@ def validate_source_image_receipt(receipt, plan, source_root=None):
 
 def validate_runtime_receipt(receipt, plan):
     """Require source compatibility evidence for this exact image and profile."""
-    from runtime.common import candidate
+    from runtime.common import candidate, glm_source_candidate
+    if receipt.get("schema") == glm_source_candidate.SCHEMA:
+        glm_source_candidate.validate_profile_capabilities(receipt, plan["profile"])
+        if plan.get("runtime_kind") != "glm-local-source-candidate" or plan["image"] != receipt["image_id"]:
+            raise ValueError("GLM source receipt differs from adapted TP2 plan")
+        return
     if receipt.get('schema') == candidate.SCHEMA:
         candidate.validate_profile_capabilities(receipt, plan['profile'])
         if plan.get('runtime_kind') != receipt['installed']['composition_id'] + '-candidate' or plan['image'] != (receipt['image_id'] if plan['image_identity_kind'] == 'local_config_id' else receipt['image_reference']):
@@ -421,7 +430,9 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     if action not in ("create", "start"):
         raise ValueError("Execution action must be create or start")
     validate_runtime_receipt(receipt, plan)
-    from runtime.common import candidate
+    from runtime.common import candidate, glm_source_candidate
+    if receipt.get("schema") == glm_source_candidate.SCHEMA:
+        glm_source_candidate.verify_local_image(receipt, run=run)
     if receipt.get("schema") == candidate.SCHEMA:
         candidate.verify_local_image(receipt, run=run)
     if receipt.get('schema') == 'sparkring-r35-image-receipt/v1':
@@ -482,7 +493,7 @@ def main():
                         help="Explicit TP2 R33 cache KV pin; default is the 7.5 GiB research configuration")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
-    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1") else None
+    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-source-image-receipt/v1") else None
     plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt,
                   r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes)
     print(json.dumps(plan, indent=2), flush=True)

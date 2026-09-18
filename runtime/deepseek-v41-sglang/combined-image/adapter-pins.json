@@ -1,0 +1,14 @@
+{
+  "schema": "sparkring-deepseek-v41-sglang/v1",
+  "status": "implemented",
+  "source_repository": "https://github.com/MiaAI-Lab/DeepSeek-v4.1-Flash-DGX-Sparks.git",
+  "source_commit": "e59e6eb67479aa68f6fa700c600dc90a0729b5ec",
+  "source_license": "AGPL-3.0",
+  "base_image": "lmsysorg/sglang@sha256:e56358a68b06427362283c8c8a9d7d706448082ae53098ea1131b5d51aa1fd62",
+  "platform": "linux/arm64",
+  "model_repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "model_revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+  "auth_path": "/sgl-workspace/sglang/python/sglang/srt/utils/auth.py",
+  "nccl_target": "/opt/sglang/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2",
+  "nccl_requirement": "SparkRing switchless-cycle patched NCCL 2.30.7; operator records SHA256 of the resolved library"
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-image-label-equivalence-summary/v1",
+  "scope": "Metadata-only image equivalence; no additional runtime execution or serving qualification",
+  "source_proof_schema": "sparkring-image-label-equivalence/v1",
+  "source_proof_sha256": "d2775027029bcbd3da0095293942aec2eaddd3f9584e038722ee1b2ca8c06e3c",
+  "parent_image_id": "sha256:98d5a51e2e0ed8f7cee14ff1420ab9d2413f4bba88b70cff9b40ab0b1ea00deb",
+  "image_id": "sha256:5252600fb91bd1f999856f31cc382ca91934d45fa3043429344aa8fd18ad01d3",
+  "rootfs_identical": true,
+  "rootfs_layers": 123,
+  "raw_config_except_labels_identical": true,
+  "runtime_config_except_labels_identical": true,
+  "unchanged_raw_config_sha256": "sha256:0de7d258b4dbab229100ec9e767a5eb93ada4a8f62210752ef383ed9c7b6d15f",
+  "installed_payload_unchanged": true,
+  "native_installed_receipt_sha256": "85655482b7ff4a2ce9248a1af7729f1ec47a66730e2b9c1b9e152a7c3a2a0e1c",
+  "external_publication": false,
+  "serving_qualification_added": false,
+  "omitted": "Raw image inspections, operator registry references and host filesystem paths"
+}

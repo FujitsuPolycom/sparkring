@@ -1,0 +1,57 @@
+{
+  "schema": "sparkring-bounded-serving-check/v1",
+  "status": "qualified",
+  "scope": "Fresh TP4 startup and one authenticated short C1 text request only",
+  "image_config_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+  "runtime": "isolated SGLang",
+  "model": "DeepSeek-V4.1-Flash",
+  "checkpoint": {
+    "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+    "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+    "shards_per_rank": 48,
+    "logical_shard_bytes_per_rank": 510296708312,
+    "full_weight_checksums_verified": false,
+    "engram": "Existing read-only packed NVMe tables reused; no download, conversion or repack"
+  },
+  "conditions": {
+    "hardware": "four NVIDIA GB10 nodes",
+    "tp": 4,
+    "ep": 4,
+    "context_limit": 655360,
+    "max_running_requests": 8,
+    "chunked_prefill_size": 4096,
+    "prefill_admission_slots": 1,
+    "max_total_tokens_requested": 1500000,
+    "max_total_tokens_reported": 1499904,
+    "mem_fraction_static": 0.9,
+    "speculation": {"method": "DSpark", "tokens": 5},
+    "sparkcache": false,
+    "api_authentication": true,
+    "request_concurrency": 1,
+    "temperature": 0,
+    "max_tokens": 64,
+    "thinking": false
+  },
+  "result": {
+    "ready_at": "2026-09-18T13:32:04.614794+00:00",
+    "checked_at": "2026-09-18T13:32:25.272614+00:00",
+    "all_ranks_started": true,
+    "health_and_model_alias_passed": true,
+    "prompt": "What is 6 times 7? Reply with only 42.",
+    "answer": "42",
+    "finish_reason": "stop",
+    "prompt_tokens": 18,
+    "completion_tokens": 2
+  },
+  "private_evidence_sha256": {
+    "plan": "9926fa8c63c83a0f578aa98b84a8d5cde3263df9103505b7be750f77d50b4ba8",
+    "readiness": "5ac1361fd13f5c12a38861bb770367ee9fb36dc2392b3438619bc27d88491b98",
+    "smoke": "ed86dc95ad1012aedf81a72db6b8d493c385f16c56ae85396978ff1cc7a552ff"
+  },
+  "limitations": [
+    "This fresh-container check does not resolve retained-container restart failures observed on the separate b03062b baseline image.",
+    "First-use kernel compilation occurred during the server's readiness warmup.",
+    "No SparkCache, long-context, concurrency pressure, performance, media or soak qualification is claimed."
+  ],
+  "profile_defaults_changed": false
+}

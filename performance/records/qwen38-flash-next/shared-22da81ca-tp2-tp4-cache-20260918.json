@@ -1,0 +1,175 @@
+{
+  "schema": "sparkring-qwen-hybrid-cache-qualification/v1",
+  "status": "qualified",
+  "scope": "Bounded C1 text startup, correct generation, capture/publication and restore after all worker processes restart",
+  "image_config_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+  "model": "Qwen3.8-Flash-Next-NVFP4-QAD",
+  "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "conditions": {
+    "context_limit": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "dcp": 1,
+    "speculation_method": "mtp",
+    "speculative_tokens": 3,
+    "independent_mtp_modules": 1,
+    "recurrent_checkpoint_policy": "aligned",
+    "prefix_cache_retention_interval": 0,
+    "images_per_prompt": 3,
+    "videos_per_prompt": 1,
+    "media_tested": false,
+    "cache_access_mode": "read-write",
+    "cache_store_bytes_per_rank": 4294967296,
+    "request_concurrency": 1,
+    "request_temperature": 0,
+    "request_seed": 779386,
+    "request_max_tokens": 128,
+    "thinking": false
+  },
+  "excluded_qualification": [
+    "performance",
+    "full-context",
+    "concurrency pressure",
+    "image/video correctness",
+    "corruption handling",
+    "cache eviction pressure",
+    "soak",
+    "multi-module MTP"
+  ],
+  "runs": [
+    {
+      "tp": 2,
+      "kv_pin_gib_per_rank": 33,
+      "startup_passed": true,
+      "text_smoke_answers_correct": 2,
+      "fixture_results": [
+        {
+          "prompt_tokens": 7870,
+          "request_sha256": "c1bc22ed18dc043d2f70eac30ea0b2379b15699fdcd115ddbbb0055817e99888",
+          "token_ids_sha256": "6d23abb3536761f23d13ac62a2f52fdc457b4e6eec7c2845231cb1397f290330",
+          "seed_answer_correct": true,
+          "replay_answer_correct": true,
+          "seed_cached_tokens": 0,
+          "replay_cached_tokens": 5696,
+          "rank_restore_tokens": [
+            {
+              "rank": 0,
+              "tokens": 5696
+            },
+            {
+              "rank": 1,
+              "tokens": 5696
+            }
+          ]
+        },
+        {
+          "prompt_tokens": 8194,
+          "request_sha256": "8cb5f62cea2b6d0993f9dba900727b3cd3dbda46401f5624bab64f75838528a9",
+          "token_ids_sha256": "5eb636d7268efc99a06d194314ac52601f78331507cbc7ad9e10bca015e6a110",
+          "seed_answer_correct": true,
+          "replay_answer_correct": true,
+          "seed_cached_tokens": 0,
+          "replay_cached_tokens": 5696,
+          "rank_restore_tokens": [
+            {
+              "rank": 0,
+              "tokens": 5696
+            },
+            {
+              "rank": 1,
+              "tokens": 5696
+            }
+          ]
+        }
+      ],
+      "publication_passed_on_all_ranks": true,
+      "restart_passed_on_all_ranks": true,
+      "restart_scope": "Same exact containers; process start timestamps changed; image/configuration/mount hashes unchanged",
+      "harness_sha256": "71dcd33239eb5c78c3185ddabbb4ae354199981f2ad7addaacca62acfbb03230",
+      "source_receipt_sha256": {
+        "readiness": "8170c0341d1cc3b553de3b593e01915a63802319053e57f1392e7494dbb809c7",
+        "smoke": "d5c1822489fd1fe2e17288c715085653ccdc954e7a2985c0717e4cc5019a20c2",
+        "fixtures": "fdc1b29d8585320b68c5e13639582828ca93068aa848127b9363966f891cd11a",
+        "seed": "51164db9caf5ba802c731c296e66798ba4e7f667e19b2789693573591fb4a90d",
+        "publications": "06129e27f19d4eb0dc9600fe453f5badd676fe7f18cb0293ac2394d6f69a2149",
+        "restart": "b3e1c968a8e5efdb1dd68e491adabdc48996bebdfd1e4e78cb0d041f580ebb18",
+        "replay": "9a9b23c2a0b25e1f4ff84c533d911824c576312fa37b6a9fe41675391e1881ea"
+      }
+    },
+    {
+      "tp": 4,
+      "kv_pin_gib_per_rank": 40,
+      "startup_passed": true,
+      "text_smoke_answers_correct": 2,
+      "fixture_results": [
+        {
+          "prompt_tokens": 7870,
+          "request_sha256": "fe3fb12828259b77f88b629dde96ea1260d44fdacf6fe5836d3cb5f9ae3dcab4",
+          "token_ids_sha256": "69c049d70c307f5811c42a5fc179ea6bf685aa9a130013b0abba8d00e5b51abf",
+          "seed_answer_correct": true,
+          "replay_answer_correct": true,
+          "seed_cached_tokens": 0,
+          "replay_cached_tokens": 7200,
+          "rank_restore_tokens": [
+            {
+              "rank": 0,
+              "tokens": 7200
+            },
+            {
+              "rank": 1,
+              "tokens": 7200
+            },
+            {
+              "rank": 2,
+              "tokens": 7200
+            },
+            {
+              "rank": 3,
+              "tokens": 7200
+            }
+          ]
+        },
+        {
+          "prompt_tokens": 8194,
+          "request_sha256": "30f48340a1fd0f5fa8bf77b421588adc205d093ba6e586183e1e33f9759fd558",
+          "token_ids_sha256": "dcc81c126940985edba1689557e64fbda219e4e8141df53068271a20bcf4a63d",
+          "seed_answer_correct": true,
+          "replay_answer_correct": true,
+          "seed_cached_tokens": 0,
+          "replay_cached_tokens": 7200,
+          "rank_restore_tokens": [
+            {
+              "rank": 0,
+              "tokens": 7200
+            },
+            {
+              "rank": 1,
+              "tokens": 7200
+            },
+            {
+              "rank": 2,
+              "tokens": 7200
+            },
+            {
+              "rank": 3,
+              "tokens": 7200
+            }
+          ]
+        }
+      ],
+      "publication_passed_on_all_ranks": true,
+      "restart_passed_on_all_ranks": true,
+      "restart_scope": "Same exact containers; process start timestamps changed; image/configuration/mount hashes unchanged",
+      "harness_sha256": "71dcd33239eb5c78c3185ddabbb4ae354199981f2ad7addaacca62acfbb03230",
+      "source_receipt_sha256": {
+        "readiness": "a0fd9dd408b4b6c668e95a0fd3be4450a31d8ae3b4b5f898ab7b161df3864f9d",
+        "smoke": "6886c842a63111682e29e060237510168c6065fc3490cc9ad9c698dffef73780",
+        "fixtures": "c78cbd789c4c52ecf1ef46f31e528b0e76a3fd73eb1604e65958349526952a65",
+        "seed": "50f5946a3209276d4eaf27271ca301f212e4d4b2ffdbd3334d1df6a7956cb788",
+        "publications": "f593c9ccf66504620881f05f69b4c44ba98cef4c29d6e28d97946d526d0ed5b9",
+        "restart": "696c038240141dc363f6a74656f4a95adc32e892bda0c44f24889397b6f56abd",
+        "replay": "180fddbd891fb83aaf7416929c52e9040562e22a51e6bfa32b88fe826970bd86"
+      }
+    }
+  ]
+}

@@ -1,0 +1,366 @@
+{
+  "schema": "sparkring-prepared-roce-qualification/v1",
+  "status": "qualified",
+  "scope": "Bounded two/four-rank native collective correctness, selected-path traffic and frozen-kernel CUDA graph replay only",
+  "date_utc": "2026-09-18",
+  "image_config_id": "sha256:35cf12b2d644661a9e1443d8afc388742e9d516305e5014f21be1c20f7e50340",
+  "transport_profile": "tp2-rocenante-adaptive-prepared",
+  "transport_manifest_sha256": "e8577c447a69ac75253758a0964791e862ccca1ad13168e7addefa6ec96369c9",
+  "harness": {
+    "archive": "runtime/releases/shared-2026.09.0-rc.1/qualification/transport-probe-be8d5f7d.tar.gz",
+    "archive_sha256": "9e5bb7cfedd5e4e2e4ce2c46f8525a420a1760eb0df7c9c342aa712a3d06f001",
+    "member": "probe.py",
+    "sha256": "be8d5f7d12bef39c453953dade256b36904200700da2c68df443fef909826558",
+    "maintained_source": "integrations/vllm/rocenante_prepared/probe.py",
+    "maintained_source_sha256": "15e522b076afb4885c0d6eda1d80eeacc2a1a79dba6164ccc24f5d3c5ba4ed4f",
+    "qualification_subject": "Archived executed member; formatted maintained-source bytes are a separate artifact"
+  },
+  "reference": {
+    "api": "torch.distributed ProcessGroupNCCL",
+    "logged_version": "2.31.2+cuda13.3",
+    "patched_nccl_2_30_7_qualification": false
+  },
+  "workload": {
+    "reduction_dtypes": [
+      "bfloat16",
+      "float16",
+      "float32"
+    ],
+    "reduction_bytes": [
+      16,
+      4096,
+      1048576
+    ],
+    "gather_cases": [
+      {
+        "shape": [
+          4,
+          32
+        ],
+        "dimension": 0
+      },
+      {
+        "shape": [
+          4,
+          32
+        ],
+        "dimension": -1
+      },
+      {
+        "shape": [
+          5,
+          3
+        ],
+        "dimension": -1
+      }
+    ],
+    "independent_misaligned_gather_outputs": true,
+    "max_reduce_bytes": 1048576,
+    "max_gather_bytes": 1048576,
+    "cases_per_rank": 15,
+    "graph_replays": 4
+  },
+  "runs": [
+    {
+      "world_size": 2,
+      "model": null,
+      "processes_per_node": 1,
+      "all_container_exit_codes": 0,
+      "oom_killed": false,
+      "ranks": [
+        {
+          "rank": 0,
+          "outcome": "passed",
+          "source_result_sha256": "18215722dfbe766347a790cba1ae18c7ac19448f0347e88a14c61b131d7aa7ce",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "roceP2p1s0f0"
+          ],
+          "peer_hca": {
+            "1": [
+              0,
+              1
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "path_completion_errors": [
+            0,
+            0
+          ],
+          "two_wave_activations": 0
+        },
+        {
+          "rank": 1,
+          "outcome": "passed",
+          "source_result_sha256": "575639a35fa8ab66e64275e20c7344259c20aab8a13c9bab22cfbef26208b4a2",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "roceP2p1s0f0"
+          ],
+          "peer_hca": {
+            "0": [
+              0,
+              1
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "path_completion_errors": [
+            0,
+            0
+          ],
+          "two_wave_activations": 0
+        }
+      ]
+    },
+    {
+      "world_size": 4,
+      "model": null,
+      "processes_per_node": 1,
+      "all_container_exit_codes": 0,
+      "oom_killed": false,
+      "ranks": [
+        {
+          "rank": 0,
+          "outcome": "passed",
+          "source_result_sha256": "7394f2b483974e6e833c07bbf732fd56a30510d0be77b69d9804893bd11f7359",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "1": [
+              0,
+              2
+            ],
+            "2": [
+              0,
+              3
+            ],
+            "3": [
+              1,
+              3
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            3524128,
+            1762064,
+            1762016,
+            3524032
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "path_completion_errors": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "two_wave_activations": 3
+        },
+        {
+          "rank": 1,
+          "outcome": "passed",
+          "source_result_sha256": "9ee99764b07e46271cfe53a1ba0cf2d042315382058702b00a0357c123f103e2",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "0": [
+              1,
+              3
+            ],
+            "2": [
+              0,
+              2
+            ],
+            "3": [
+              0,
+              3
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            3524128,
+            1762064,
+            1762016,
+            3524032
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "path_completion_errors": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "two_wave_activations": 3
+        },
+        {
+          "rank": 2,
+          "outcome": "passed",
+          "source_result_sha256": "132095e84abfe9852e14db49326e0f45b4546b506ae7cba1d664291618d27efc",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "0": [
+              1,
+              2
+            ],
+            "1": [
+              1,
+              3
+            ],
+            "3": [
+              0,
+              2
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            3524128,
+            3524032,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "path_completion_errors": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "two_wave_activations": 3
+        },
+        {
+          "rank": 3,
+          "outcome": "passed",
+          "source_result_sha256": "eb2c7699ff6e0ed521b9fa12858afb93faac331520238359c8334a8fc485c62b",
+          "case_count": 15,
+          "hcas": [
+            "rocep1s0f0",
+            "rocep1s0f1",
+            "roceP2p1s0f0",
+            "roceP2p1s0f1"
+          ],
+          "peer_hca": {
+            "0": [
+              0,
+              2
+            ],
+            "1": [
+              1,
+              2
+            ],
+            "2": [
+              1,
+              3
+            ]
+          },
+          "paths_per_peer": 2,
+          "active_hca_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "payload_delta_bytes_per_hca": [
+            1762064,
+            3524128,
+            3524032,
+            1762016
+          ],
+          "graph_replays": 4,
+          "stable_addresses": true,
+          "replay_allocations": 0,
+          "error_sequence": 0,
+          "path_completion_errors": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "two_wave_activations": 3
+        }
+      ]
+    }
+  ],
+  "sanitization": "Hostnames, IP addresses, container IDs, QP identifiers and wall times omitted; original successful rank JSON SHA256 values retained.",
+  "limitations": [
+    "Not throughput, model serving, SparkCache restore, full-context or soak qualification.",
+    "No four-path mode, network failover or separate weighted-mesh profile qualification.",
+    "NCCL reference logs identify 2.31.2+cuda13.3, not the patched 2.30.7 library selected by some serving profiles.",
+    "Reference NCCL logged ibv_query_port_speed errno 93 warnings; the bounded collectives completed successfully."
+  ]
+}
