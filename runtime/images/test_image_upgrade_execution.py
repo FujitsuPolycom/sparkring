@@ -157,11 +157,27 @@ def test_feature_and_connector_binding_changes_do_not_rehash(tmp_path):
             "files": [{"path": "engine.py", "sha256": expected}],
         },
     )
+    verifier = package / "sparkcache/runtime_patches/verify_lease_contract.py"
+    verifier.parent.mkdir(parents=True)
+    verifier.write_text(
+        "import hashlib, json\n"
+        "def verify_contract(root, contract):\n"
+        "    data = json.loads(contract.read_text())\n"
+        "    for item in data['files']:\n"
+        "        actual = hashlib.sha256((root / item['path']).read_bytes()).hexdigest()\n"
+        "        if actual != item['sha256']:\n"
+        "            raise ValueError('consumer source digest differs')\n"
+        "    return [root / item['path'] for item in data['files']]\n",
+        encoding="utf-8",
+    )
     before = binding.read_bytes()
-    assert image_gate.verify_bindings(tmp_path) == (2, [])
+    assert image_gate.verify_bindings(tmp_path) == (3, [])
     source.write_bytes(b"incompatible")
     assertions, failures = image_gate.verify_bindings(tmp_path)
-    assert assertions == 2 and len(failures) == 2
+    assert assertions == 3 and len(failures) == 3
+    assert any("Feature source preimage changed" in failure for failure in failures)
+    assert any("Connector source binding changed" in failure for failure in failures)
+    assert any("consumer source digest differs" in failure for failure in failures)
     assert binding.read_bytes() == before
 
 
