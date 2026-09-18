@@ -55,7 +55,20 @@ The same TP2 check measured cold prefill and bounded C1/C8 completion against
 the parent image. The 8K prefill medians were 2.606 s and 2.607 s; the 32K medians
 were 15.752 s and 13.129 s. Combined-image completion throughput was lower and
 variable, so performance parity is not established. The public 24 GiB TP2
-default, Qwen TP4 and GLM serving are not qualified by this record.
+default and GLM serving are not qualified by this record.
+
+The [Qwen TP4 record](../../../performance/records/qwen38-flash-next/combined-image-tp4-sparkcache.json)
+covers startup, generation and SparkCache restoration with 40 GiB KV per rank,
+HC sharding and prefill coalescing selected. Both fixtures restored 7200 tokens
+on every rank after all four workers restarted and returned the expected answer.
+Startup reported 5218792 logical KV tokens. This bounded check does not measure
+performance, full-context capacity or soak stability.
+
+SGLang restoration exposed a retained-container restart limitation: two ranks
+failed before server initialization, and a rank 3 probe reproduced a bus error
+in `torch.cuda.is_available()`. Fresh containers with equivalent settings passed
+CUDA initialization. The TP4 record preserves that recovery separately from the
+successful Qwen cache check; the underlying restart failure remains unresolved.
 
 ## Local GLM admission
 

@@ -1,0 +1,102 @@
+{
+  "schema": "sparkring-bounded-serving-evidence/v1",
+  "status": "implemented",
+  "subject": "Qwen3.8-Flash-Next QAD TP4 with SparkCache on the combined vLLM/SGLang image",
+  "image_id": "sha256:b03062b032bb147f5255463d4f068bfc476bf966c78c82ddeb66df4fb1b0b37d",
+  "published": false,
+  "composition": "runtime/deepseek-v41-sglang/combined-image/manifest.json",
+  "model": {
+    "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "revision": "629bc3218833a38b475b719f34aa571666f4a03e"
+  },
+  "conditions": {
+    "hardware": "Four DGX Spark GB10 hosts, one GPU per host, switchless ring",
+    "tp": 4,
+    "dcp": 1,
+    "mtp_tokens": 3,
+    "context_length": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_gib_per_rank": 40,
+    "kv_cache_dtype": "fp8",
+    "logical_kv_tokens_observed": 5218792,
+    "hc_prefill_mode": "shard",
+    "recurrent_prefill_coalescing": true,
+    "checkpoint_policy": "aligned",
+    "sparkcache": true,
+    "lease_contract": "/opt/sparkring/contracts/vllm-connector-jobs-r37-qwen-prefill.json",
+    "cache_namespace": "Dedicated to this combined-image trial; no prior deployment entries reused."
+  },
+  "checks": {
+    "startup_and_generation_passed": true,
+    "all_four_workers_restarted": true,
+    "image_and_container_ids_unchanged_during_restart": true,
+    "fresh_worker_cache_restore_passed": true,
+    "fixtures": [
+      {
+        "prompt_tokens": 7870,
+        "seed_cached_tokens": 0,
+        "replay_cached_tokens": 7200,
+        "expected_answer": "HARBOR-6392",
+        "seed_answer_correct": true,
+        "replay_answer_correct": true,
+        "per_rank_restored_tokens": {
+          "0": 7200,
+          "1": 7200,
+          "2": 7200,
+          "3": 7200
+        },
+        "restore_log_sha256": {
+          "0": "e11719820dda5e042ab5d06a8797d143bad7db66014a27bf86b6181c63380f99",
+          "1": "881044d32d2cb9fa8124c7d02e8f48135ff1c6ebe2e94dc28f07c795433233d1",
+          "2": "6fab59c9b8349d9a6bba688647cc19e34dece878a85a7fe14bc40419d2c387f5",
+          "3": "bb3d266d2d58c0639fdfd9bcca7696dfea99e3de02fed3dbd82217538c2dcccd"
+        }
+      },
+      {
+        "prompt_tokens": 8194,
+        "seed_cached_tokens": 0,
+        "replay_cached_tokens": 7200,
+        "expected_answer": "HARBOR-6392",
+        "seed_answer_correct": true,
+        "replay_answer_correct": true,
+        "per_rank_restored_tokens": {
+          "0": 7200,
+          "1": 7200,
+          "2": 7200,
+          "3": 7200
+        },
+        "restore_log_sha256": {
+          "0": "dd22ecb66f4cc05658f0eebcf673a9b6c1a671f72d89b1560b44f2744b6b5a41",
+          "1": "4e39e3aefc27378f17781d51067a0e01eaf62944f21d9e38f5aba21cdcb005bf",
+          "2": "f27eb3eb43f5a59a8e024db1b0237f7928946e16ada1d02a9093094604f3b45c",
+          "3": "1025e6c1c0cd0b26f20043f5164717da0a7518bb0f85e21f6f3e7bff6bf7e9d4"
+        }
+      }
+    ]
+  },
+  "restoration": {
+    "sglang_image_and_serving_configuration_preserved": true,
+    "recreated_ranks": [
+      0,
+      3
+    ],
+    "original_containers_retained": true,
+    "authenticated_api_answer": "42",
+    "limitation": "Retained rank 0 and 3 containers failed before server initialization; a rank 3 probe reproduced SIGBUS in torch.cuda.is_available(). Fresh containers with equivalent settings restored service. The underlying retained-container failure remains unresolved."
+  },
+  "evidence_hashes": {
+    "qwen_tp4_cache_probe.py": "7fd53910f1e8055e4ee4d56020e06f046c046cca0cda5d8a5d5e258d35259e6c",
+    "tp4-cache-fixtures.json": "903d961fbef90d2162ee882f93dc542de96e459d973ace88da1b53b2dace58a4",
+    "tp4-cache-seed.json": "99d9e1cd8e8e6e3e354ff9c90b47e4e396c73a24536b7b16ee59798d9bf2460d",
+    "tp4-cache-replay.json": "fb924d8544872764887409db152a4e92e4436014229d2d815902c3ff2d91e4b6",
+    "tp4-original-help-r3.log.private": "0d0534d4fd5616564f6d423ff01604182294bb3c395e84db3f28386c1bbe969b"
+  },
+  "limits": [
+    "Only TP4/DCP1 with 40 GiB KV per rank and SparkCache was exercised.",
+    "Two short retrieval fixtures and one worker restart establish bounded restoration, not general quality, full-context capacity or soak stability.",
+    "No cache-disabled deployment or performance comparison was run; selected feature flags do not establish their individual speedups.",
+    "This record does not qualify GLM or other model profiles.",
+    "Private fixtures and logs are identified by hash; site inputs and credentials are not published."
+  ]
+}

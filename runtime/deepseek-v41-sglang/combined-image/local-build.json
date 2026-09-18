@@ -26,5 +26,13 @@
     "fresh_worker_cache_restore_passed": true,
     "performance_parity_established": false
   },
+  "qwen_tp4_evidence": "performance/records/qwen38-flash-next/combined-image-tp4-sparkcache.json",
+  "qwen_tp4_checks": {
+    "kv_cache_gib_per_rank": 40,
+    "generation_passed": true,
+    "fresh_worker_cache_restore_passed": true,
+    "performance_measured": false
+  },
+  "sglang_retained_container_restart_resolved": false,
   "serving_qualified": false
 }
