@@ -27,6 +27,7 @@ configurations and workloads recorded with each profile.
 3. Run the [validation checks](docs/operations/profile-validation.md).
 
 Each quickstart selects its image and states which configurations were tested.
+For package names and host-tool downloads, see [images and downloads](runtime/images/README.md).
 
 ## Profiles
 
@@ -65,7 +66,7 @@ SparkCache. Linked sources provide the settings and basis for each figure.
 
 - [Benchmarks and test results](performance/benchmarks.md)
 - [Architecture](docs/architecture/overview.md) and [mesh host setup](docs/GLM53_SPARK_MESH_HOST_SETUP.md)
-- [Container images](runtime/images/README.md#container-images)
+- [Container images and downloads](runtime/images/README.md)
 - [Contributing](CONTRIBUTING.md) and [repository layout](docs/development/layout.md)
 - [Community discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
 
