@@ -11,6 +11,9 @@ SparkRing transports and SparkCache, retaining an isolated SGLang environment.
 Profiles select one engine and their applicable optimizations. Sharing an image
 does not run two servers on one GPU or enable every optimization for every model.
 
+The [component and provenance index](components.md) identifies licenses, retained
+attribution, source inputs and the pending publication payload.
+
 | Component | Frozen input |
 |---|---|
 | vLLM, `dev/karmic-kraken` | `35bab057b1751a6076a457803bcc4b78809689cf` |
