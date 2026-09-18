@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import sys
@@ -30,13 +30,21 @@ def prepare_runtime_dependencies(policy, context):
             and set(selected) == {"path", "sha256", "name", "version", "source_url"},
             "Runtime dependency fields differ",
         )
-        require(selected["name"] in ("flashinfer-python", "flashinfer-jit-cache") and selected["name"] not in result,
-                "Unreviewed runtime dependency migration")
+        require(
+            selected["name"] in ("flashinfer-python", "flashinfer-jit-cache")
+            and selected["name"] not in result,
+            "Unreviewed runtime dependency migration",
+        )
         path = beneath(policy["_root"], selected["path"])
-        require(path.suffix == ".whl" and sha(path.read_bytes()) == selected["sha256"],
-                "Runtime dependency wheel differs from policy")
+        require(
+            path.suffix == ".whl" and sha(path.read_bytes()) == selected["sha256"],
+            "Runtime dependency wheel differs from policy",
+        )
         record = wheel_record(path, selected["name"])
-        require(record["version"] == selected["version"], "Runtime dependency version differs")
+        require(
+            record["version"] == selected["version"],
+            "Runtime dependency version differs",
+        )
         destination = context / "wheels" / path.name
         destination.parent.mkdir(exist_ok=True)
         shutil.copyfile(path, destination)
@@ -48,17 +56,29 @@ def prepare_feature_update(policy, context):
     selected = policy["foundation"].get("feature_update")
     if selected is None:
         return None
-    require(set(selected) == {"manifest", "sha256"}, "Feature-update policy fields differ")
+    require(
+        set(selected) == {"manifest", "sha256"}, "Feature-update policy fields differ"
+    )
     path = beneath(policy["_root"], selected["manifest"])
-    require(sha(path.read_bytes()) == selected["sha256"], "Feature-update manifest differs")
+    require(
+        sha(path.read_bytes()) == selected["sha256"], "Feature-update manifest differs"
+    )
     manifest = read(path)
-    require(manifest.get("schema") == "sparkring-native-feature-update/v1" and manifest.get("assets"),
-            "Unknown or empty feature update")
+    require(
+        manifest.get("schema") == "sparkring-native-feature-update/v1"
+        and manifest.get("assets"),
+        "Unknown or empty feature update",
+    )
     for target, asset in manifest["assets"].items():
-        require(target.startswith("/opt/") and ".." not in Path(target).parts,
-                "Feature target escapes the image")
+        require(
+            target.startswith("/opt/") and ".." not in Path(target).parts,
+            "Feature target escapes the image",
+        )
         source = beneath(policy["_root"], asset["source"])
-        require(sha(source.read_bytes()) == asset["sha256"], "Feature asset differs: " + target)
+        require(
+            sha(source.read_bytes()) == asset["sha256"],
+            "Feature asset differs: " + target,
+        )
         destination = context / "feature-assets" / target.lstrip("/")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
@@ -129,18 +149,133 @@ def validate_recipe(recipe):
     return recipe
 
 
+def select_parent_binding(parent, destination, raw_contract, raw_extension=None):
+    """Select an owned contract, or prove its source extension supersedes one base."""
+    active = set(parent.get("integration_contracts", {}))
+    contract_hash = sha(raw_contract)
+    require(
+        parent.get("files", {}).get(destination) == contract_hash,
+        "Selected parent contract is not owned with matching bytes",
+    )
+    if destination in active:
+        return active, None
+    extension = parent.get("source_extension", {})
+    descriptor_path = "/opt/sparkring/receipts/source-extension.json"
+    require(
+        raw_extension is not None
+        and extension.get("provenance")
+        and extension.get("descriptor_sha256")
+        == sha(raw_extension)
+        == parent["files"].get(descriptor_path),
+        "Inactive contract lacks verified source-extension provenance",
+    )
+    descriptor = json.loads(raw_extension)
+    require(
+        descriptor.get("schema") == "sparkring-source-extension/v1"
+        and descriptor.get("id") == extension.get("id")
+        and descriptor.get("parent", {}).get("image_id")
+        == extension.get("parent_image_id")
+        and descriptor["parent"].get("receipt_sha256")
+        == extension.get("parent_receipt_sha256")
+        and descriptor.get("provenance") == extension["provenance"],
+        "Source-extension descriptor identity differs",
+    )
+    require(
+        descriptor.get("integration_contracts", {}).get(destination, {}).get("sha256")
+        == contract_hash,
+        "Source extension does not declare the selected contract",
+    )
+    contract = json.loads(raw_contract)
+    require(
+        contract.get("schema") == "sparkring-vllm-kv-block-lease-contract/v1"
+        and isinstance(contract.get("files"), list)
+        and contract["files"],
+        "Source-extension contract has no source inventory",
+    )
+    rows = set()
+    for item in contract["files"]:
+        name = item.get("path", "")
+        path = PurePosixPath(name)
+        require(
+            name
+            and not path.is_absolute()
+            and ".." not in path.parts
+            and "\\" not in name
+            and path.parts[0] in ("vllm", "b12x")
+            and name not in rows
+            and re.fullmatch(r"[0-9a-f]{64}", item.get("sha256", ""))
+            and parent["files"].get("/opt/venv/lib/python3.12/site-packages/" + name)
+            == item["sha256"],
+            "Source-extension contract does not match installed source: " + name,
+        )
+        rows.add(name)
+    base_hash = contract.get("semantic_review", {}).get("base_contract_sha256")
+    require(
+        isinstance(base_hash, str) and re.fullmatch(r"[0-9a-f]{64}", base_hash),
+        "Source-extension contract does not identify its reviewed base",
+    )
+    bases = [
+        name
+        for name in active
+        if name.startswith("/opt/sparkring/contracts/vllm-connector-jobs-")
+        and parent["integration_contracts"][name].get("sha256") == base_hash
+    ]
+    require(
+        len(bases) == 1,
+        "Source-extension base is absent or ambiguous among active contracts",
+    )
+    require(
+        parent["files"].get(bases[0]) == base_hash,
+        "Reviewed active base contract does not match its owned bytes",
+    )
+    active.remove(bases[0])
+    active.add(destination)
+    return active, {
+        "selected_contract": destination,
+        "selected_contract_sha256": contract_hash,
+        "superseded_contract": bases[0],
+        "superseded_contract_sha256": base_hash,
+        "source_extension_id": extension["id"],
+        "source_extension_descriptor_sha256": sha(raw_extension),
+        "installed_source_files_verified": len(rows),
+        "serving_qualified": False,
+    }
+
+
 def prepare_source_binding(policy, bundle, paths, parent, context):
     config = policy["foundation"].get("source_binding")
     if config is None:
         return None, None
     contract_path = beneath(policy["_root"], config["contract"])
     original_destination = "/opt/sparkring/contracts/" + contract_path.name
-    active = set(parent.get("integration_contracts", {}))
-    require(
-        original_destination in active
-        and parent["files"].get(original_destination)
-        == sha(contract_path.read_bytes()),
-        "Source binding does not name the active parent contract",
+    raw_extension = None
+    if original_destination not in parent.get("integration_contracts", {}):
+        raw_extension = docker(
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "--runtime",
+            "runc",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--memory",
+            "64m",
+            "--cpus",
+            "1",
+            "--entrypoint",
+            "/bin/cat",
+            policy["foundation"]["image_id"],
+            "/opt/sparkring/receipts/source-extension.json",
+            limit=16 * 1024**2,
+        )
+    active, selection = select_parent_binding(
+        parent, original_destination, contract_path.read_bytes(), raw_extension
     )
     source = bundle["sources"]["vllm"]
     oracle = next(
@@ -151,12 +286,20 @@ def prepare_source_binding(policy, bundle, paths, parent, context):
         ),
         None,
     )
-    if 'migration' in config:
-        migration = config['migration']
-        manifest_file = beneath(policy['_root'], migration['path'])
-        require(sha(manifest_file.read_bytes()) == migration['sha256'], 'Migration policy changed')
-        contract, proof = migrate(read(contract_path), read(manifest_file), paths,
-                                  bundle['sources'], input_sha256=bundle['input_sha256'])
+    if "migration" in config:
+        migration = config["migration"]
+        manifest_file = beneath(policy["_root"], migration["path"])
+        require(
+            sha(manifest_file.read_bytes()) == migration["sha256"],
+            "Migration policy changed",
+        )
+        contract, proof = migrate(
+            read(contract_path),
+            read(manifest_file),
+            paths,
+            bundle["sources"],
+            input_sha256=bundle["input_sha256"],
+        )
     else:
         require(oracle is not None, "Accepted vLLM source lacks its binding oracle")
         contract, proof = rebind(
@@ -172,6 +315,8 @@ def prepare_source_binding(policy, bundle, paths, parent, context):
         + proof["candidate_tree_sha256"][:16]
         + ".json"
     )
+    if selection is not None:
+        proof["parent_binding_selection"] = selection
     write_json(context / "source-binding.json", contract)
     write_json(context / "source-binding-proof.json", proof)
     active.remove(original_destination)
