@@ -1,0 +1,39 @@
+{
+  "schema": "sparkring-functional-qualification/v1",
+  "release": "shared-2026.09.0",
+  "runtime_image_id": "sha256:462b65ac8629a1531e2974aa75683e07ce5e6ec1352039a7d060972863c12705",
+  "publication_image_id": "sha256:a6a2a5b35e7784199a40dd7fe2c682c16955f26d8ff34bd999646088cf313b09",
+  "publication_changes": "Labels only; filesystem layers and runtime configuration unchanged",
+  "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "conditions": {
+    "hardware": "NVIDIA GB10",
+    "tensor_parallel_degrees": [2, 4],
+    "decode_context_parallel_degree": 1,
+    "context_limit": 262144,
+    "max_sequences": 16,
+    "batch_tokens": 8192,
+    "kv_bytes_per_rank": 25769803776,
+    "speculation": "MTP3",
+    "sparkcache": "enabled, aligned checkpoints",
+    "media_limits": {"image": 3, "video": 1, "video_frames": 16}
+  },
+  "observations": {
+    "tp2": {"api_ready": true, "text_correctness": true, "synthetic_image_video_correctness": true, "live_settings_verified": true},
+    "tp4": {"api_ready": true, "text_correctness": true, "synthetic_image_video_correctness": true, "live_settings_verified": true, "hc_sharding_executed_all_ranks": true},
+    "startup_audit_before_api_readiness": true,
+    "native_wheel_reuse_verified": true,
+    "source_reconstruction_verified": true,
+    "anonymous_digest_pull_verified": true
+  },
+  "scope": "Qualified for these bounded functional checks. Configured limits are not claims of tested capacity.",
+  "not_established": [
+    "performance or benchmark results",
+    "full-context or C16 pressure and long-duration stability",
+    "arbitrary or high-resolution media accuracy",
+    "persistent-cache restart/corruption requalification on this exact HC-fixed payload",
+    "independent cache-disabled hardware qualification",
+    "request cache_salt isolation",
+    "GLM, DeepSeek or other model qualification on this release"
+  ],
+  "privacy": "No benchmark results or raw user prompts are included. Functional test artifacts remain local."
+}

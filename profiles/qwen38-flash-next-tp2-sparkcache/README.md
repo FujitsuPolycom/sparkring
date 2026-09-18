@@ -1,15 +1,20 @@
 # Qwen3.8-Flash-Next with SparkCache on two Sparks
 
-Use the [single Qwen TP2 quickstart](../qwen38-flash-next-tp2/README.md).
-Its default selects the published persistent-cache configuration; it also
-contains the cache-disabled alternative and the restart procedure.
+Use the [Qwen TP2 quickstart](../qwen38-flash-next-tp2/README.md).
+It selects SparkCache by default and includes the cache-disabled alternative,
+image pull, model verification, startup and restart instructions.
 
-[Generated Compose deployments](compose/README.md) are also available.
-[Bounded TP2 checks](../../performance/records/qwen38-flash-next/compose-tp2.json)
-cover startup, shutdown and persistent-cache restore through fresh containers
-with the original non-QAD checkpoint, not the QAD selection in the quickstart.
+Both variants use [shared-2026.09.0](../../runtime/releases/shared-2026.09.0/README.md).
+The [configuration](../qwen38-flash-next-tp2/sparkcache.json) owns the flags;
+the [qualification record](../../runtime/releases/shared-2026.09.0/qualification.json)
+states the bounded QAD text/media checks and untested limits.
 
-The configuration owner is
-[sparkcache.json](../qwen38-flash-next-tp2/sparkcache.json).
-[Validation scope](../../performance/records/qwen38-flash-next/r37-sparkcache.json)
-remains specific to its recorded image and checkpoint.
+Persistent caching uses aligned checkpoints, a fresh release-specific namespace,
+4 GiB disk capacity per rank, two 512 MiB capture slots and a 256 MiB restore
+budget per rank. These buffers are separate from the 24 GiB KV pin.
+
+Use [Compose](../../docs/operations/compose.md) profile
+`qwen38-flash-next-tp2-sparkcache` for coordinated deployments.
+The API has no configured key. Restrict access to trusted clients or an
+authenticated gateway. Request `cache_salt` does not isolate this image's disk
+cache; use separate deployments/cache directories for tenant isolation.

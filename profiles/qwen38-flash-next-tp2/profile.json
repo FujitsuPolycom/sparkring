@@ -3,14 +3,14 @@
   "id": "qwen38-flash-next-tp2",
   "title": "Qwen3.8-Flash-Next NVFP4 QAD on two Sparks",
   "recommendation": "recommended",
-  "status": "research-only",
+  "status": "implemented",
   "configuration": {
     "format": "serving-profile",
     "path": "profiles/qwen38-flash-next-tp2/config.json"
   },
-  "release": "runtime/releases/qwen38-flash-next-r37/release.json",
+  "release": "runtime/releases/shared-2026.09.0/release.json",
   "guide": "profiles/qwen38-flash-next-tp2/README.md",
-  "evidence_scope": "QAD checkpoint selection with unchanged TP2 serving settings. The linked runtime evidence records the original non-QAD checkpoint.",
+  "evidence_scope": "Shared runtime: bounded QAD text and synthetic image/video checks on TP2/TP4 with SparkCache enabled; TP4 HC sharding observed on every rank. No performance, full-context, C16-pressure or soak claim. See the release qualification record for deployment walkthrough coverage.",
   "overrides": [],
   "launcher": {
     "kind": "python",

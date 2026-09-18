@@ -16,6 +16,10 @@ records retain their original scope even when navigation retires a profile.
 
 ## Shared serving versions
 
+[Shared runtime 2026.09.0](shared-2026.09.0/README.md) is selected by the Qwen
+TP2 and TP4 quickstarts, with and without SparkCache. Other profiles retain
+their own pinned selections and qualification records.
+
 GitHub Releases provides the version landing page; GHCR Packages stores the
 container layers. A serving Release links an exact image digest, build/source
 receipts and profile-specific evidence. Auxiliary host tools and build inputs

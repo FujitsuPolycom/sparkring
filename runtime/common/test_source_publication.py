@@ -158,7 +158,7 @@ def test_ordinary_render_selects_published_source_image_without_local_flags(publ
         assert spec.environment["VLLM_QWEN3_8_HC_PREFILL_MODE"] == "shard"
         assert spec.environment["VLLM_QWEN3_8_PREFILL_COALESCE"] == "1"
         assert spec.command[spec.command.index("--kv-cache-memory-bytes") + 1] == str(24 * 1024 ** 3)
-        assert spec.command[spec.command.index("--master-port") + 1] == "29776"
+        assert spec.command[spec.command.index("--master-port") + 1] == "29779"
         argv = docker_create(spec)
         assert argv[argv.index(IMAGE_ID) + 1:] == list(spec.command)
         assert IMAGE_ID in files[f"rank{rank}/container.json"]

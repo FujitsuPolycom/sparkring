@@ -64,11 +64,14 @@
     "B12X_ROCE_OPPOSITE_PATHS": "2",
     "B12X_ROCE_GID_INDEX": "3",
     "VLLM_NCCL_SO_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
-    "SPARKRING_FEATURES": "qwen-collectives,qwen-prefill",
+    "SPARKRING_FEATURES": "qwen-collectives,qwen4-prefill",
     "QWEN_DISPATCH_MODE": "both",
     "QWEN_DISPATCH_AR_BYTES": "20480",
     "QWEN_DISPATCH_TRACE": "0",
-    "LD_PRELOAD": "/opt/local-inference/nccl/lib/libnccl.so.2"
+    "LD_PRELOAD": "/opt/local-inference/nccl/lib/libnccl.so.2",
+    "VLLM_QWEN3_8_HC_PREFILL_MODE": "shard",
+    "VLLM_QWEN3_8_PREFILL_COALESCE": "1",
+    "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0"
   },
   "vllm_args": [
     "--tensor-parallel-size",
@@ -86,7 +89,7 @@
     "--port",
     "8015",
     "--master-port",
-    "29776",
+    "29779",
     "--max-model-len",
     "262144",
     "--max-num-seqs",
@@ -100,7 +103,7 @@
     "--kv-cache-dtype",
     "fp8",
     "--block-size",
-    "16",
+    "32",
     "--load-format",
     "b12x",
     "--gpu-memory-utilization",
@@ -134,13 +137,16 @@
     "--compilation-config",
     "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}",
     "--media-io-kwargs",
-    "{\"video\":{\"num_frames\":16}}"
+    "{\"video\":{\"num_frames\":16}}",
+    "--recurrent-checkpoint-policy",
+    "aligned",
+    "--enable-prompt-tokens-details"
   ],
   "qualification": {
-    "scope": "Bounded QAD TP4 text, prefill and C1/C8 decode checks on the exact shared-feature image. No full-262K, QAD media or long-duration qualification. SparkCache is disabled.",
-    "record": "performance/records/qwen38-flash-next/r37-shared-tp4.json"
+    "scope": "Bounded QAD TP2/TP4 text and synthetic media checks on the shared runtime with SparkCache enabled; cache-off deployment selection shares the runtime. See the qualification record for separate walkthrough coverage and untested limits.",
+    "record": "runtime/releases/shared-2026.09.0/qualification.json"
   },
-  "image_extension": "lil-r37-shared",
+  "image_extension": "native-shared",
   "transport": {
     "peer_hca_maps": [
       "1=0/2,2=0/3,3=1/3",
@@ -154,5 +160,6 @@
       "secondary-clockwise",
       "secondary-counterclockwise"
     ]
-  }
+  },
+  "image_release": "shared-2026.09.0"
 }

@@ -1,48 +1,27 @@
 # Qwen3.8-Flash-Next with SparkCache on four Sparks
 
-Status: **Development**. This selection enables the published shared image's
-Qwen hybrid connector. [Bounded text checks](../../performance/records/qwen38-flash-next/sparkcache-tp4.json)
-passed cold/warm reuse, disk restore on all four ranks, and corrupted-object
-rejection followed by correct recomputation. The cache-disabled TP4 default is unchanged.
+Use the [Qwen QAD TP4 quickstart](../qwen38-flash-next-qad-tp4/README.md) and select
+`PROFILE=qwen38-flash-next-qad-tp4-sparkcache` before rendering.
+Image/model/fabric preparation and start/stop/restart instructions are shared.
+Both variants pull [shared-2026.09.0](../../runtime/releases/shared-2026.09.0/README.md);
+no additional cache image or source overlay is required.
 
-Complete the [QAD TP4 prerequisites](../qwen38-flash-next-qad-tp4/README.md#prepare-image-model-and-fabric).
-Use the same pinned shared image, QAD checkpoint and managed fabric. Render
-profile `qwen38-flash-next-qad-tp4-sparkcache` through the
-[Compose procedure](../../docs/operations/compose.md), with a distinct deployment
-name and a dedicated cache directory outside all model and source directories.
-Never stop or replace another workload without its owner's approval.
+The [configuration](../qwen38-flash-next-qad-tp4/sparkcache.json) retains TP4/DCP1,
+MTP3, 262K context, 16 sequences, batch8192, 24 GiB FP8 KV per rank and media
+limits of three images/one video. HC row sharding, fusion, checkpoint coalescing,
+compact MTP and projection overlap are enabled. The startup audit reports
+configuration/source checks before API readiness; real HC execution is separate.
 
-After preparing that private site:
+Persistence uses aligned checkpoints and 32-token requested attention blocks.
+The per-rank disk limit is 4 GiB, with two 512 MiB capture slots and a 256 MiB
+restore budget. A dedicated release-specific namespace prevents accidental reuse
+of a previous deployment's entries. Keep the previous namespace for rollback.
 
-```bash
-python3 scripts/sparkring.py compose render qwen38-flash-next-qad-tp4-sparkcache \
-  --site .sparkring/qwen-qad-cache.site.yaml --output .sparkring/deployments/qwen-qad-cache
-python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/qwen-qad-cache
-```
+The [qualification record](../../runtime/releases/shared-2026.09.0/qualification.json)
+covers bounded QAD text and synthetic media on the exact runtime. It does not
+claim performance, full-context/concurrency-pressure stability or arbitrary
+video accuracy. Historical cache-restore evidence belongs to its original image.
 
-Continue with the shared guide's host checks and reviewed start/stop procedure.
-
-The [configuration](../qwen38-flash-next-qad-tp4/sparkcache.json) retains
-TP4/DCP1, MTP3, 262K context, 16 sequences, an 8192-token scheduler budget,
-24 GiB FP8 KV per rank, both Qwen feature hooks, and three-image/one-video limits.
-It adds aligned checkpoint persistence with 4 GiB disk capacity per rank,
-two 512 MiB capture slots and a 256 MiB restore budget per rank. Media limits are
-configuration, not media qualification.
-
-The cache selection requests 32-token attention blocks so the runtime rounds
-physical hybrid pages to the persistent connector's 32-token chunk alignment.
-The cache-disabled profile requests 16 tokens; its TP4 runtime produces
-1424-token pages, which the connector correctly rejects as incompatible.
-
-The test restored 7,200 cached tokens from an identical 7,860-token request.
-One corrupted rank-zero object caused full recomputation with zero cached credit.
-These are correctness checks, not performance, media or full-context qualification.
-
-Cache entries are bound to the QAD checkpoint and TP degree. TP2 and TP4 use
-separate cache roots and incompatible rank layouts even when their checkpoint
-revision matches. Invalid restores recompute.
-
-The API has no configured authentication; restrict it to trusted clients or
-an authenticated gateway. Use the coordinator's inspected-ID stop procedure;
-retain saved containers and caches for rollback. Do not treat cache-disabled
-performance or the TP2 restore record as evidence for this TP4 selection.
+The API has no configured key: restrict it to trusted clients or an authenticated
+gateway. Request `cache_salt` does not isolate persistent entries in this image.
+Use separate deployments/cache namespaces where tenant isolation is required.

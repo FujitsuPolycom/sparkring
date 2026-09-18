@@ -12,8 +12,9 @@ from runtime.common.test_compose import compose_cli as compose_cli
 from scripts import sparkring_compose as coordinator
 
 PROFILE = "qwen38-flash-next-qad-tp4"
-BUILD = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/local-build.json"
-PUBLICATION = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/publication.json"
+LEGACY_BUILD = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/local-build.json"
+PUBLICATION = adapter.ROOT / "runtime/releases/shared-2026.09.0/publication.json"
+BUILD = PUBLICATION
 MAPS = ["1=0/2,2=0/3,3=1/3", "0=1/3,2=0/2,3=0/3",
         "0=1/2,1=1/3,3=0/2", "0=0/2,1=1/2,2=1/3"]
 
@@ -37,7 +38,9 @@ def test_tp4_settings_and_peer_maps_reach_both_backends(site, rank):
                         ("--kv-cache-memory-bytes", "25769803776"), ("--node-rank", str(rank))]:
         assert spec.command[spec.command.index(flag)+1] == value
     assert spec.environment["B12X_ROCE_PEER_HCA_MAP"] == MAPS[rank]
-    assert spec.environment["SPARKRING_FEATURES"] == "qwen-collectives,qwen-prefill"
+    assert spec.environment["SPARKRING_FEATURES"] == "qwen-collectives,qwen4-prefill"
+    assert spec.environment["VLLM_QWEN3_8_HC_PREFILL_MODE"] == "shard"
+    assert spec.environment["VLLM_QWEN3_8_PREFILL_COALESCE"] == "1"
     assert spec.environment["QWEN_DISPATCH_AR_BYTES"] == "20480"
     assert spec.environment["NCCL_IB_PRESERVE_PCI_DOMAIN"] == "1"
     assert spec.environment["SPARKCACHE_ENABLED"] == "0"
@@ -65,26 +68,13 @@ def test_tp4_incomplete_rank_or_fabric_selection_is_rejected(site, mutation):
         compose.specifications(PROFILE, site)
 
 
-def test_local_rebuild_identity_is_bound_to_export_and_plan(site, tmp_path, monkeypatch):
+def test_native_profile_refuses_legacy_local_rebuild_selection(site, tmp_path, monkeypatch):
     metadata, _ = compose.profiles.load(PROFILE)
     metadata = dict(metadata, release="runtime/releases/qwen38-flash-next-qad-r37-shared/release.json")
     local_release = adapter.read(adapter.ROOT / metadata["release"])
     monkeypatch.setattr(compose.profiles, "load", lambda *args, **kwargs: (metadata, local_release))
-    image_id = "sha256:" + "a" * 64
-    reference, _ = compose.build(PROFILE, site)
-    selected, _ = compose.build(PROFILE, site, local_image_id=image_id)
-    assert reference["id"] != selected["id"]
-    assert selected["image_id"] == image_id
-    target = tmp_path / "deployment"
-    compose.render(PROFILE, site, target, local_image_id=image_id)
-    loaded, files = compose.load_deployment(target)
-    assert loaded == selected
-    plan = coordinator.plan(loaded, files, "start")
-    phases = {phase["id"]: phase for phase in plan["phases"]}
-    assert len(phases["preflight"]["actions"]) == 4
-    assert all(action["argv"][:2] == ["sudo", "-n"] for action in phases["preflight"]["actions"])
-    assert [a["host"] for a in phases["start-worker"]["actions"]] == ["spark1", "spark2", "spark3"]
-    assert [a["host"] for a in phases["start-api"]["actions"]] == ["spark0"]
+    with pytest.raises(ValueError, match="Local image selection"):
+        compose.build(PROFILE, site, local_image_id="sha256:" + "a" * 64)
 
 
 @pytest.mark.parametrize("profile_id", ["qwen38-flash-next-tp2", PROFILE, PROFILE + "-sparkcache"])
@@ -101,14 +91,14 @@ def test_registry_selection_preserves_the_tested_image_and_serving_spec(site, mo
     metadata = dict(metadata, release="runtime/releases/qwen38-flash-next-qad-r37-shared/release.json")
     local_release = adapter.read(adapter.ROOT / metadata["release"])
     monkeypatch.setattr(compose.profiles, "load", lambda *args, **kwargs: (metadata, local_release))
-    local, local_image = compose.specifications(PROFILE, site)
-    assert local == published
-    assert image != local_image
+    with pytest.raises(ValueError, match="Local image selection"):
+        compose.specifications(PROFILE, site)
+    assert image == adapter.read(PUBLICATION)["image_reference"]
     assert {spec.image_id for spec in published} == {adapter.read(BUILD)["image_id"]}
 
 
 def test_feature_verification_reads_chain_from_same_image(monkeypatch):
-    image = adapter.read(BUILD)["image_id"]
+    image = adapter.read(LEGACY_BUILD)["image_id"]
     parent_image = adapter.publication()["image_id"]
     calls = []
     observed = []
@@ -155,7 +145,7 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert spec.environment == expected_env
     args = list(spec.command)
     assert args[args.index("--block-size") + 1] == "32"
-    assert base.command[base.command.index("--block-size") + 1] == "16"
+    assert base.command[base.command.index("--block-size") + 1] == "32"
     transfer = json.loads(args[args.index("--kv-transfer-config") + 1])
     assert transfer["kv_connector"] == "SparkContextCacheConnector"
     assert transfer["kv_load_failure_policy"] == "recompute"
@@ -174,11 +164,9 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert args[args.index("--tensor-parallel-size") + 1] == "4"
     assert tp2[tp2.index("--tensor-parallel-size") + 1] == "2"
     assert extra["spark_cache_root"] != tp2_extra["spark_cache_root"]
-    for flag in ("--kv-transfer-config", "--recurrent-checkpoint-policy"):
+    for flag in ("--kv-transfer-config",):
         index = args.index(flag)
         del args[index:index + 2]
-    args.remove("--enable-prompt-tokens-details")
-    args[args.index("--block-size") + 1] = "16"
     assert args == list(base.command)
     assert spec.mounts == base.mounts
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap

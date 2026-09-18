@@ -52,7 +52,9 @@ def test_candidate_preserves_model_and_transport_while_enabling_reviewed_tp4_sou
         assert spec.command[:2] == (source.ENTRYPOINT, "serve")
         assert spec.environment["VLLM_QWEN3_8_HC_PREFILL_MODE"] == "shard"
         assert spec.environment["VLLM_QWEN3_8_PREFILL_COALESCE"] == "1"
-        for name in ("SPARKRING_FEATURES", "QWEN_DISPATCH_AR_BYTES", "NCCL_IB_PRESERVE_PCI_DOMAIN",
+        assert spec.environment["SPARKRING_FEATURES"] == "qwen-collectives,qwen-prefill"
+        assert original.environment["SPARKRING_FEATURES"] == "qwen-collectives,qwen4-prefill"
+        for name in ("QWEN_DISPATCH_AR_BYTES", "NCCL_IB_PRESERVE_PCI_DOMAIN",
                      "B12X_ROCE_PEER_HCA_MAP", "SPARKCACHE_ENABLED", "SIRCL_ENABLED"):
             assert spec.environment[name] == original.environment[name]
         for flag in ("--max-model-len", "--max-num-seqs", "--max-num-batched-tokens",
@@ -114,8 +116,10 @@ def test_local_tp2_retains_pair_settings_without_tp4_compute_activation(pair, pr
         assert spec.environment["VLLM_QWEN3_8_PREFILL_COALESCE"] == "1"
         assert spec.environment["SPARKRING_FEATURES"] == original.environment.get("SPARKRING_FEATURES", "")
         for name in ("B12X_ROCE_PEER_HCA_MAP", "B12X_ROCE_HCA", "NCCL_IB_HCA", "B12X_ROCE_PAIR_PATHS",
-                     "SPARKRING_TRANSPORT_PROFILE", "SPARKCACHE_ENABLED", "SIRCL_ENABLED"):
+                     "SPARKCACHE_ENABLED", "SIRCL_ENABLED"):
             assert spec.environment[name] == original.environment[name]
+        assert spec.environment["SPARKRING_TRANSPORT_PROFILE"] == "tp2-rocenante-adaptive"
+        assert original.environment["SPARKRING_TRANSPORT_PROFILE"] == "tp2-rocenante-adaptive-prepared"
         for flag in ("--max-model-len", "--max-num-seqs", "--max-num-batched-tokens",
                      "--kv-cache-memory-bytes", "--tensor-parallel-size", "--nnodes",
                      "--decode-context-parallel-size", "--master-port", "--speculative-config", "--block-size"):

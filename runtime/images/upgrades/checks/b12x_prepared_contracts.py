@@ -1,6 +1,8 @@
 """CPU checks of the explicit prepared B12X source; no GPU qualification."""
 
 import ast
+import contextvars
+import hashlib
 import os
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -205,19 +207,105 @@ def test_delta_launch_consumes_precompiled_programs_and_resets_no_resources():
     assert len([c for c in calls if c[0] == "recurrence"]) == 4
 
 
-def test_qsa_retains_every_baseline_support_kernel_body():
+QSA_REPLACED_SELECTION = {
+    "_stable_topk_threshold_kernel",
+    "_count_stable_topk_candidates_kernel",
+    "_emit_stable_topk_kernel",
+}
+
+
+def verify_qsa_support_kernel_preservation(old, new, replacement):
+    """Admit the pinned CuTe selector, while preserving every unrelated kernel."""
+    actual = {n.name: n for n in new.body if isinstance(n, ast.FunctionDef)}
+    kernels = [n for n in old.body
+               if isinstance(n, ast.FunctionDef) and n.name.endswith("_kernel")]
+    assert len(kernels) >= 20
+    missing = {n.name for n in kernels} - actual.keys()
+    assert missing in (set(), QSA_REPLACED_SELECTION), missing
+    if missing:
+        # The upstream replacement has a separate GPU numerical/graph gate.
+        # Exact bytes prevent this CPU admission from accepting arbitrary kernels.
+        assert hashlib.sha256(replacement).hexdigest() == (
+            "90de48e9fd3d69286bed26b593a09951f3ec1b2c7da8d2ce81c0cdd97bc68c8c"
+        )
+    for n in kernels:
+        if n.name not in missing:
+            assert ast.dump(n) == ast.dump(actual[n.name]), n.name
+
+
+def test_qsa_retains_unrelated_baseline_support_kernel_bodies():
     path = Path("attention/qsa/_kernels.py")
     old = ast.parse((BASE / path).read_text())
     new = ast.parse((ROOT / path).read_text())
-    actual = {n.name: n for n in new.body if isinstance(n, ast.FunctionDef)}
-    kernels = [
-        n
-        for n in old.body
-        if isinstance(n, ast.FunctionDef) and n.name.endswith("_kernel")
-    ]
-    assert len(kernels) >= 20
-    for n in kernels:
-        assert ast.dump(n) == ast.dump(actual[n.name]), n.name
+    replacement = ROOT / "attention/qsa/_stable_select_cute.py"
+    verify_qsa_support_kernel_preservation(
+        old, new, replacement.read_bytes() if replacement.is_file() else b""
+    )
+
+
+@pytest.mark.parametrize("mutation", ["unrelated-kernel", "partial-replacement", "changed-kernel"])
+def test_qsa_preservation_rejects_unreviewed_kernel_changes(mutation):
+    old = ast.parse((BASE / "attention/qsa/_kernels.py").read_text())
+    new = ast.parse(ast.unparse(old))
+    kernels = [n for n in new.body if isinstance(n, ast.FunctionDef)
+               and n.name.endswith("_kernel") and n.name not in QSA_REPLACED_SELECTION]
+    if mutation == "unrelated-kernel":
+        new.body.remove(kernels[0])
+    elif mutation == "partial-replacement":
+        new.body = [n for n in new.body
+                    if getattr(n, "name", None) != "_stable_topk_threshold_kernel"]
+    else:
+        kernels[0].body.append(ast.Pass())
+    with pytest.raises(AssertionError):
+        verify_qsa_support_kernel_preservation(old, new, b"")
+
+
+@pytest.mark.parametrize("mode", ["direct", "compile", "prepared"])
+@pytest.mark.parametrize("break_ownership", [False, True])
+def test_qsa_selection_records_and_reuses_owned_program(monkeypatch, mode, break_ownership):
+    replacement = ROOT / "attention/qsa/_stable_select_cute.py"
+    if not replacement.is_file():
+        return  # The baseline Triton selection is covered by exact-body preservation.
+    context = contextvars.ContextVar("selection", default=None)
+    programs, calls, raw = {}, [], object()
+    if mode == "compile":
+        context.set((programs, True))
+    elif mode == "prepared":
+        programs["stable_selection"] = raw
+        context.set((programs, False))
+    module = types.ModuleType("qsa_test._stable_select_cute")
+    def launch(**kwargs):
+        calls.append(kwargs)
+        return raw
+    module.launch_stable_selection = launch
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    function = next(n for n in ast.parse((ROOT / "attention/qsa/_kernels.py").read_text()).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "launch_stabilize_topk")
+    if break_ownership:
+        class RemoveOwnership(ast.NodeTransformer):
+            def visit_Assign(self, node):
+                target = ast.unparse(node.targets[0])
+                if mode == "compile" and target == "context[0]['stable_selection']":
+                    return ast.copy_location(ast.Pass(), node)
+                if mode == "prepared" and target == "prepared":
+                    node.value = ast.copy_location(ast.Constant(None), node.value)
+                return node
+        function = RemoveOwnership().visit(function)
+    scope = {"__package__": "qsa_test", "_support_launch_context": context,
+             "triton": NS(next_power_of_2=lambda n: n), "torch": NS(Tensor=object),
+             "_launch_triton": lambda *a, **kw: calls.append((a, kw)),
+             "_copy_stable_topk_kernel": object()}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "_kernels.py", "exec"), scope)
+    tensor = NS(shape=(9, 4608))
+    args = {a.arg: tensor for a in function.args.kwonlyargs}
+    args.update(group_budget=512, group_offset=4096)
+    scope[function.name](**args)
+    expected_failure = break_ownership and mode != "direct"
+    with pytest.raises((AssertionError, KeyError)) if expected_failure else nullcontext():
+        assert calls[0]["prepared"] is (raw if mode == "prepared" else None)
+        assert len(calls) == 2
+        if mode != "direct":
+            assert programs["stable_selection"] is raw
 
 
 def test_qsa_transaction_retains_all_validation_before_state_updates():

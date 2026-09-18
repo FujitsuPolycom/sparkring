@@ -3,14 +3,14 @@
   "id": "qwen38-flash-next-qad-tp4-sparkcache",
   "title": "Qwen3.8-Flash-Next NVFP4 QAD on four Sparks with persistent prefix caching",
   "recommendation": "alternative",
-  "status": "implemented",
+  "status": "qualified",
   "configuration": {
     "format": "serving-profile",
     "path": "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
   },
-  "release": "runtime/releases/qwen38-flash-next-qad-r37-shared-registry/release.json",
+  "release": "runtime/releases/shared-2026.09.0/release.json",
   "guide": "profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md",
-  "evidence_scope": "Bounded QAD TP4/DCP1 text cold/warm reuse, four-rank disk restore through fresh processes, corrupted-object rejection with full recomputation, and original-service rollback. No media, full-context, concurrent, performance or long-duration qualification.",
+  "evidence_scope": "Shared runtime: bounded QAD text and synthetic image/video checks on TP2/TP4 with SparkCache enabled; TP4 HC sharding observed on every rank. No performance, full-context, C16-pressure or soak claim. See the release qualification record for deployment walkthrough coverage.",
   "overrides": [],
   "launcher": {
     "kind": "python",

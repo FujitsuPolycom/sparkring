@@ -5,6 +5,11 @@ from pathlib import Path
 import pytest
 from runtime.common.qwen_flash_next import ROOT, render, publication
 from runtime.common import qwen_flash_next as adapter
+from runtime.common import native_candidate
+
+
+def shared_publication():
+    return native_candidate.publication("shared-2026.09.0")
 
 PROFILE = (
     Path(__file__).resolve().parents[2] / "profiles/qwen38-flash-next-tp2/config.json"
@@ -18,7 +23,7 @@ def plan(rank=0):
         master="192.0.2.1",
         host_ip=f"192.0.2.{rank + 1}",
         interface="test0",
-        image=publication()["image_id"],
+        image=shared_publication()["image_id"],
         model=str(ROOT / "fixture-model"),
         cache=str(ROOT / "fixture-cache"),
     )
@@ -27,7 +32,7 @@ def plan(rank=0):
 def test_qwen_model_and_native_prefix_only():
     command = plan()
     assert (
-        command[command.index("--served-model-name") + 1] == "Qwen3.8-Flash-Next-NVFP4-QAD"
+        command[command.index("--served-model-name") + 1] == "Qwen3.8-Flash-Next-NVFP4-QAD-TP2"
     )
     assert "--kv-transfer-config" not in command
     assert "--device-ids" not in command
@@ -57,7 +62,8 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     tp4 = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/config.json')
     assert plain['model'] == cached['model'] == tp4['model']
     assert plain['model']['revision'] == '629bc3218833a38b475b719f34aa571666f4a03e'
-    assert plain['served_model_name'] == cached['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD'
+    assert plain['served_model_name'] == cached['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP2'
+    assert tp4['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD'
     manifest = (root / 'SHA256SUMS').read_text().splitlines()
     hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in manifest}
     assert hashes['config.json'] == plain['model']['config_sha256']
@@ -66,7 +72,7 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     args = cached['vllm_args']
     config = json.loads(args[args.index('--kv-transfer-config') + 1])
     extra = config['kv_connector_extra_config']
-    assert extra['spark_cache_root'] == '/cache/persistent/qwen38-flash-next-qad-tp2-r37-cache64'
+    assert extra['spark_cache_root'] == '/cache/persistent/qwen38-flash-next-qad-tp2-shared-2026090'
     assert extra['spark_cache_target_checkpoint_sha256'] == extra['spark_cache_draft_checkpoint_sha256'] == '036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba'
     assert extra['spark_cache_target_checkpoint_sha256'] != 'ada04299f0b223ab6e55ff16edaf88db094d3f09b7fd31fc9f46aa9d8d7a2c47'
     assert config['kv_connector'] == 'SparkContextCacheConnector'
@@ -100,14 +106,14 @@ def test_expanded_capacity_preserves_native_context():
 
 def options():
     return dict(rank=0, master='192.0.2.1', host_ip='192.0.2.1', interface='test0',
-                image=publication()['image_id'], model=str(ROOT / 'fixture-model'),
+                image=shared_publication()['image_id'], model=str(ROOT / 'fixture-model'),
                 cache=str(ROOT / 'fixture-cache'))
 
 
 def test_unregistered_image_rejected():
     values = options()
     values['image'] = 'sha256:' + 'a' * 64
-    with pytest.raises(ValueError, match='registered R37'):
+    with pytest.raises(ValueError, match='selected shared release'):
         render(json.loads(PROFILE.read_text()), **values)
 
 
@@ -142,8 +148,8 @@ def test_mount_overlap_rejected():
 def test_explicit_entrypoint_and_compile_identity():
     command = plan()
     assert command[command.index('--entrypoint') + 1] == '/opt/venv/bin/python'
-    assert adapter.candidate.ENTRYPOINT in command
-    namespace = f"qwen-flash-next-{publication()['image_id'][7:19]}-629bc3218833"
+    assert native_candidate.ENTRYPOINT in command
+    namespace = f"qwen-flash-next-{shared_publication()['image_id'][7:19]}-629bc3218833"
     assert f'VLLM_CACHE_ROOT=/cache/{namespace}/vllm' in command
     assert 'VLLM_SPARK_TP4_MODE=' in command
     assert 'VLLM_SPARK_TP4_VOCAB_MODE=' in command
@@ -197,7 +203,7 @@ def test_catalog_exposes_native_capacity_and_no_overrides():
     profile, _ = load('qwen38-flash-next-tp2')
     resolved = resolve('qwen38-flash-next-tp2')
     assert profile['overrides'] == []
-    assert resolved['status'] == 'research-only'
+    assert resolved['status'] == 'implemented'
     assert resolved['topology'] == 'direct-pair-2'
     expected = {'tensor_parallel_size': 2, 'decode_context_parallel_size': 1,
                 'max_model_len': 262144, 'max_num_seqs': 16,
@@ -219,12 +225,13 @@ def test_evidence_uses_one_native_context_profile():
         assert config['vllm_args'][config['vllm_args'].index('--max-model-len') + 1] == '262144'
 
 
-def test_sparkcache_requires_extension_and_preserves_capacity():
+def test_sparkcache_requires_native_release_and_preserves_capacity():
     profile = adapter.read(adapter.CONFIG_ROOT / 'sparkcache.json')
     values = options()
-    with pytest.raises(ValueError, match='cache-extension'):
+    values['image'] = publication()['image_id']
+    with pytest.raises(ValueError, match='selected shared release'):
         adapter.render(profile, **values)
-    values['image'] = 'sha256:' + 'a' * 64
+    values['image'] = shared_publication()['image_id']
     command = adapter.render(profile, **values)
     assert command[command.index('--name') + 1] == 'qwen-flash-next-sparkcache-tp2-r0'
     assert command[command.index('--kv-cache-memory-bytes') + 1] == '25769803776'

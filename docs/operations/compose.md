@@ -36,14 +36,14 @@ Compose YAML are rendered from that specification, without parsing shell command
 The [Qwen configuration](../../profiles/qwen38-flash-next-tp2/config.json) owns
 serving defaults. A site cannot change them or select an arbitrary image. The
 [SparkCache configuration](../../profiles/qwen38-flash-next-tp2/sparkcache.json)
-selects its registered extension image. Image capabilities do not automatically
+selects the same registered shared runtime with persistence enabled. Image capabilities do not automatically
 enable GLM-specific features in Qwen.
 
-The QAD TP4 profile selects the published shared-feature image by immutable
-registry digest. The host verifier checks its full pinned payload before
-creation. Published profiles reject `--local-image-id`; source-equivalent
-rebuilds use an explicitly local release selection with the same image ID and
-local tag installed on every rank.
+All four Qwen profiles select the shared native image by immutable registry
+digest. The host verifier checks its native receipt, source identities and
+pinned payload without requiring a separate R37 parent pull. Published
+selections reject an isolated `--local-image-id` override. Explicit R37 trials
+remain a separate developer selection below.
 
 ### Local source-image trials
 
@@ -53,7 +53,8 @@ The Qwen TP2 and TP4 adapters also support an explicit
 It uses the registered source descriptor, the image's complete installed inventory
 and retained feature/cache receipts. Its verified entrypoint checks that inventory
 before serving. The public profile remains selected unless these arguments are
-provided. Local KV and bootstrap-port alternatives are recorded in the
+provided. R37 trials select their own hooks, transport and source contracts.
+Local KV and bootstrap-port alternatives are recorded in the
 deployment manifest.
 
 For an experimental TP2 trial, select either `qwen38-flash-next-tp2` or
