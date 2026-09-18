@@ -26,7 +26,8 @@ It does not change published image selections or serving deployments.
 
 The [shared ARM64 serving candidate](../releases/shared-2026.09.0-rc.1/README.md)
 records pinned vLLM/B12X integration and isolated SGLang. It is unpublished;
-profile validation and its registry digest remain pending. Existing quickstart
+[bounded Qwen TP2/TP4 text and SparkCache restart/restore checks passed](../../performance/records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.md).
+Other profile checks and its registry digest remain pending. Existing quickstart
 image selections are unchanged. GitHub Releases will provide the matching
 version landing page; GHCR Packages stores the image itself.
 

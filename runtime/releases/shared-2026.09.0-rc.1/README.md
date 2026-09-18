@@ -1,7 +1,7 @@
 # Shared serving candidate: 2026.09.0-rc.1
 
-Status: **built; installed-payload and runtime checks passed; unpublished,
-profile validation pending**.
+Status: **built; bounded Qwen TP2/TP4 text and SparkCache checks passed;
+unpublished, other profile checks pending**.
 `shared-2026.09.0-rc.1` is a proposed publication identifier, not an available
 image tag or a recommendation. No profile selects this candidate by default.
 
@@ -41,13 +41,14 @@ adapter revision listed above.
 | Intended registry package | `ghcr.io/fujitsupolycom/sparkring` |
 | Proposed image tag and Git tag | `shared-2026.09.0-rc.1` |
 | Platform | `linux/arm64`; NVIDIA GB10/SM121 target |
-| Runtime-build Docker configuration ID | `sha256:98d5a51e2e0ed8f7cee14ff1420ab9d2413f4bba88b70cff9b40ab0b1ea00deb` |
-| Publication candidate Docker configuration ID | `sha256:5252600fb91bd1f999856f31cc382ca91934d45fa3043429344aa8fd18ad01d3` |
+| Runtime-build Docker configuration ID | `sha256:768620d56aaed88528941bf97b1d1d8a7f4aec0918a4c2d681689372f3838b32` |
+| Publication candidate Docker configuration ID | `sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d` |
 | Registry manifest digest | Not published; no pull command available |
 | Source/adoption commit | Pending |
-| Native installed-payload receipt SHA256 | `85655482b7ff4a2ce9248a1af7729f1ec47a66730e2b9c1b9e152a7c3a2a0e1c` |
-| Installed-payload and cache-source binding | Passed; 45 source-contract files verified |
+| Native installed-payload receipt SHA256 | `3e60f6ef14760d7f4a41847d17ab80ffe88d4cf324675600f2d7402d81869f1c` |
+| Installed-payload and cache-source binding | Passed; 46 source files and installed SparkCache consumer verifier checked |
 | Runtime checks | 10 passed; imports, package constraints and CLI only |
+| Two/four-rank transport component evidence | Same manifest tested on `a75bd02ffc1d`; dedicated probe not rerun on `22da81cae057` |
 | Anonymous digest-pull verification | Pending publication |
 
 Docker configuration IDs and registry manifest digests are different identities.
@@ -55,14 +56,13 @@ Do not substitute the comparison image ID for a candidate pull digest. Add a
 machine-readable `release.json` only after its image and immutable input hashes
 exist; the release-selection schema is not a progress log.
 
-The [build and runtime-check record](../../../performance/records/images/shared-98d5a51e2e0e-runtime-20260918.md)
-binds these results to the runtime-build image. Native artifacts were reused
-(`native_rebuilt=false`) and their installed payload verified. The
-[metadata-equivalence record](../../../performance/records/images/shared-5252600fb91b-metadata-equivalence-20260918.json)
-proves that the publication candidate has the same 123 filesystem layers and
-identical image configuration except labels. It therefore contains the verified
-runtime payload, without adding a serving claim. Model-generation and
-cache-restore qualification remain pending; no public registry digest exists.
+The [build/runtime validation record](../../../performance/records/images/shared-22da81cae057-validation-20260918.md)
+binds these results to the named images. Native artifacts were reused
+(`native_rebuilt=false`) and verified. Its metadata-equivalence proof covers all
+123 filesystem layers and identical configuration except labels. The
+[transport record](../../../performance/records/transport/rocenante-prepared-a75bd02f-20260918.md)
+retains its separate image identity. Qwen's bounded model/cache results follow
+below; no public registry digest exists.
 
 ## Profile validation
 
@@ -71,9 +71,9 @@ unpublished image. Their image pins remain unchanged.
 
 | Configuration | Candidate validation |
 |---|---|
-| [Qwen3.8-Flash-Next QAD, TP4 + SparkCache](../../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | Pending |
+| [Qwen3.8-Flash-Next QAD, TP4 + SparkCache](../../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | [Bounded text and restart/restore passed](../../../performance/records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.md); 7,200 cached tokens per fixture, all four ranks |
 | [GLM-5.3-Flash NVFP4-Spark, TP4/DCP1 + SparkCache](../../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Pending |
-| [Qwen3.8-Flash-Next QAD, TP2 + SparkCache](../../../profiles/qwen38-flash-next-tp2-sparkcache/README.md) | Pending |
+| [Qwen3.8-Flash-Next QAD, TP2 + SparkCache](../../../profiles/qwen38-flash-next-tp2-sparkcache/README.md) | [Bounded text and restart/restore passed](../../../performance/records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.md); 5,696 cached tokens per fixture, both ranks |
 | [GLM-5.3-Flash NVFP4-Spark, TP2/DCP1 + SparkCache](../../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Pending |
 | [DeepSeek vLLM](../../../profiles/deepseek-v41-flash-cycle/README.md) / [SGLang](../../../profiles/deepseek-v41-flash-sglang-cycle/README.md) | Separate engine/profile checks pending |
 

@@ -11,6 +11,32 @@ GPU evidence to its different file hash; the fixture bytes remain unchanged.
 
 ## Frozen CPU oracle inputs
 
+[execution-oracles-1210ba2b.tar.gz](execution-oracles-1210ba2b.tar.gz) preserves
+the CPU source oracles and installed-contract gate for runtime build
+`768620d56aae`, including connector-driven checkpoint publication retention.
+Its 21 hash-bound inputs match the executed policy and source-gate receipts;
+the archive also contains input/identity declarations and the license
+(25 members). SHA256:
+`49572dd098a985317065511a0a89eda865636af2a8cb6e245ddae9cd60b7a451`.
+The source-oracle inventory SHA256 is
+`1210ba2b24007fa699317a9e1a0019e4e72d2bb1e10b535b9c7d6c65b26018fc`.
+Original CRLF suite bytes are retained. The
+[22da81ca validation record](../../../../performance/records/images/shared-22da81cae057-validation-20260918.md)
+owns the results; no private operator policy, host configuration or wheels are
+included, and packaging these inputs does not rerun their checks.
+
+[execution-oracles-c7847ecb.tar.gz](execution-oracles-c7847ecb.tar.gz) preserves
+the exact inputs used for runtime build `cc4f6c8f7665`: 19 unique source-oracle
+files, `oracle-gates.json`, the installed-contract image gate, and its separate
+input declaration (22 members). Archive SHA256:
+`4ed1dadd7d7d687d2942e163eef8a2549e41dde46a08003753703dc8b46db5db`.
+The source-oracle inventory SHA256 is
+`c7847ecb8f45bec78690256d832bcb24002cd064047b84d8a3d71698f5b7c7df`.
+It includes the executed CRLF suite bytes, not a Git-normalized reconstruction.
+Only hash-bound gate inputs are included; no operator policy, hosts or wheels.
+The [candidate validation record](../../../../performance/records/images/shared-a75bd02ffc1d-validation-20260918.md)
+owns the results; the archive alone is not a success claim.
+
 [execution-oracles-aaec6a5b.tar.gz](execution-oracles-aaec6a5b.tar.gz) preserves the
 17 hash-bound vLLM/B12X gate inputs and `oracle-gates.json`, including the suite
 JSON files' CRLF bytes. Archive SHA256:
@@ -54,3 +80,10 @@ The separate [prepared RoCEnante record](../../../../performance/records/transpo
 covers bounded two/four-rank collective and graph checks on image `35cf12b2d644`.
 It identifies its own manifest, harness, per-rank receipts and NCCL reference;
 the B12X component inputs above are not a substitute for that transport evidence.
+
+The [a75bd02f transport record](../../../../performance/records/transport/rocenante-prepared-a75bd02f-20260918.md)
+uses the separate [15e522b0 probe archive](transport-probe-15e522b0.tar.gz), SHA256
+`5aefa700c021547c24cbc1f6ee97ab0e68d0a6f94d23c69c58cab054bd338e08`.
+Its executed `probe.py` hash is
+`15e522b076afb4885c0d6eda1d80eeacc2a1a79dba6164ccc24f5d3c5ba4ed4f`;
+the `be8d5f7d` archive remains tied to its preceding image-specific receipt.

@@ -1,0 +1,149 @@
+{
+  "schema": "sparkring-candidate-validation-summary/v1",
+  "image_config_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+  "scope": "Installed payload, consumer contract, imports/CLI and metadata equivalence; model checks are separately scoped",
+  "runtime_build_config_id": "sha256:768620d56aaed88528941bf97b1d1d8a7f4aec0918a4c2d681689372f3838b32",
+  "platform": "linux/arm64",
+  "native_rebuilt": false,
+  "input_sha256": "3a655af6cb5f576ae95a64c7881c1aefede91ebc02f3a9da76ccf35ba125843e",
+  "source_trees": {
+    "b12x": "771fa73ec51687e36eb6ecf8aa5d8af39302f59dce6bd82d69165ba4c6230452",
+    "vllm": "0481eb71311f399d8550ad2cdd30a5843fb8263c8a9521b7926ea9ab76550aac"
+  },
+  "verification": {
+    "features": [
+      "qwen-collectives",
+      "qwen4-prefill"
+    ],
+    "files_verified": 235822,
+    "input_sha256": "3a655af6cb5f576ae95a64c7881c1aefede91ebc02f3a9da76ccf35ba125843e",
+    "isolated_sglang": {
+      "composition_sha256": "3ed1e1c6c8513be9dc550d41e1c5db66575bb7a1ce89fcaac243a5b93fac9ee5",
+      "files_verified": 177742,
+      "receipt_sha256": "8b6046fdcecfdada52eb7e0adf799cbfadfb6fb0989c3c4ab1951d54b268c9d0",
+      "serving_qualified": false
+    },
+    "receipt_sha256": "3e60f6ef14760d7f4a41847d17ab80ffe88d4cf324675600f2d7402d81869f1c",
+    "schema": "sparkring-native-verification/v1",
+    "serving_qualified": false,
+    "source_trees": {
+      "b12x": "771fa73ec51687e36eb6ecf8aa5d8af39302f59dce6bd82d69165ba4c6230452",
+      "vllm": "0481eb71311f399d8550ad2cdd30a5843fb8263c8a9521b7926ea9ab76550aac"
+    }
+  },
+  "qualified_gates": [
+    "installed-contracts"
+  ],
+  "cache_contract": {
+    "path": "/opt/sparkring/contracts/vllm-connector-jobs-source-0481eb71311f399d.json",
+    "sha256": "dcb15be2d7f04acc7c10806bb47eadcc06afe7ff2b46059d5125d6a9287e5c6a",
+    "files": 46,
+    "consumer_verify_contract_passed": true
+  },
+  "runtime_checks": [
+    {
+      "name": "gpu",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "69a9b943971c11a2e254256567feaf6e641fbb56083aeaa2bb6af3902f6f25bc",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-vllm",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "fc036828891f4cc5b4f211b42f550713d394fd88a6cf09efacfe15d7909f7800",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "qwen-model",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "ea1dcb0318ce5914295c613f3430af9b9cb29b796379b2d480118ef8dc6eb1b4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "glm-model",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "dfb8984e7f2943fc38a9a6ac3841025529a3b2354f0dfb59268c3909fc6509e8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "b12x",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "5be2537c1ffcf092f850fb38e01b64c13a7c6d4825349c25e051f83ac4ff2018",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "flashinfer",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "71599adb0af33c3ed2201063e2b07ea9fa54616667cee6c93c5c8331471c6736",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "sparkcache",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "b54c525ff0c590ec5777b8625542b35e66cac0fbff008f0b220f3d1d6bc46924",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "serve-help",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "b232bffe94a7b7c942c2e0f84c152625bc354d7d73ee942287ec9346bcbb5ba3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "pip-check",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "sglang-isolated",
+      "passed": true,
+      "returncode": 0,
+      "timeout": false,
+      "stdout_sha256": "cfffb37e9cc81712688ad2f44c6d57a488fe77522ce0c493988fb35efcdb1184",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "metadata_equivalence": {
+    "parent_image_id": "sha256:768620d56aaed88528941bf97b1d1d8a7f4aec0918a4c2d681689372f3838b32",
+    "image_id": "sha256:22da81cae0572ae2985a5c34a125db4f3cc58e871fa7e6256dffe59828f1ae5d",
+    "rootfs_identical": true,
+    "rootfs_layers": 123,
+    "raw_config_except_labels_identical": true,
+    "runtime_config_except_labels_identical": true,
+    "unchanged_raw_config_sha256": "sha256:d3b08ff1e5ba60f8b21597f8df419ff3b9efb9ce4b0e880e14a692c59c1319a6",
+    "installed_payload_unchanged": true,
+    "external_publication": false,
+    "serving_qualification_added": false
+  },
+  "source_report_sha256": {
+    "build": "3303f499f5bda46ff069132d58fb7de2ed9c58573b2f8626d317b44a20144667",
+    "runtime": "b8fc017498ce6bec2d48b8b355829baad8bf27c2eb5dd1b1d81105a6b1d1bf4a",
+    "metadata_equivalence": "cab28861a6380c570b6920ef7129022483ab6b562ff73dda5610eb29916f2978"
+  },
+  "transport_evidence": {
+    "image_config_id": "sha256:a75bd02ffc1dd29713f97f599ccb10a88ba76bb5cd9d3554a98c875e96c0b942",
+    "manifest_sha256": "7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c",
+    "rerun_on_this_image": false,
+    "record": "performance/records/transport/rocenante-prepared-a75bd02f-20260918.json"
+  },
+  "published": false
+}

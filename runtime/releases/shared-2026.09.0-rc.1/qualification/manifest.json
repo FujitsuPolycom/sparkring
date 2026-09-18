@@ -13,6 +13,20 @@
     "archive_members": 18,
     "scope": "Exact frozen CPU gate inputs, including suite line endings; not an execution-result receipt"
   },
+  "retained_execution_oracle_archives": [
+    {
+      "path": "execution-oracles-1210ba2b.tar.gz",
+      "sha256": "49572dd098a985317065511a0a89eda865636af2a8cb6e245ddae9cd60b7a451",
+      "inventory_member": "oracle-gates.json",
+      "inventory_sha256": "1210ba2b24007fa699317a9e1a0019e4e72d2bb1e10b535b9c7d6c65b26018fc",
+      "runtime_build_image_id": "sha256:768620d56aaed88528941bf97b1d1d8a7f4aec0918a4c2d681689372f3838b32",
+      "input_sha256": "3a655af6cb5f576ae95a64c7881c1aefede91ebc02f3a9da76ccf35ba125843e",
+      "components": ["vllm", "b12x"],
+      "bound_inputs": 21,
+      "archive_members": 25,
+      "scope": "Source oracles and installed-contract gate matched to the executed policy and source-gate receipts; includes connector-driven publication retention, original suite line endings, identity declarations and license. No private operator policy or new execution claim."
+    }
+  ],
   "harness": {
     "path": "test_b12x_gpu_gates.py",
     "sha256": "bb571b9dc04ea9421974f065afa8d6370a18b8afd9c19e6ce0350540d7e12497"
