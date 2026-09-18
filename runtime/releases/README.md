@@ -16,7 +16,7 @@ records retain their original scope even when navigation retires a profile.
 
 ## Shared serving versions
 
-[Shared runtime 2026.09.0](shared-2026.09.0/README.md) is selected by the Qwen
+[Shared runtime 2026.09.1](shared-2026.09.1/README.md) is selected by the Qwen
 TP2 and TP4 quickstarts, with and without SparkCache. Other profiles retain
 their own pinned selections and qualification records.
 

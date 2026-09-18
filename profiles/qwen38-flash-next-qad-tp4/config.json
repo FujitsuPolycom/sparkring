@@ -143,8 +143,8 @@
     "--enable-prompt-tokens-details"
   ],
   "qualification": {
-    "scope": "Bounded QAD TP2/TP4 text and synthetic media checks on the shared runtime with SparkCache enabled; cache-off deployment selection shares the runtime. See the qualification record for separate walkthrough coverage and untested limits.",
-    "record": "runtime/releases/shared-2026.09.0/qualification.json"
+    "scope": "Exact-image deployment, response and cache-restore evidence is recorded in runtime/releases/shared-2026.09.1/qualification.json. Configured limits are not full-context or C16-pressure qualification; no performance claim.",
+    "record": "runtime/releases/shared-2026.09.1/qualification.json"
   },
   "image_extension": "native-shared",
   "transport": {
@@ -161,5 +161,5 @@
       "secondary-counterclockwise"
     ]
   },
-  "image_release": "shared-2026.09.0"
+  "image_release": "shared-2026.09.1"
 }

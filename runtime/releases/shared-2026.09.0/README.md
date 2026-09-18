@@ -1,5 +1,11 @@
 # SparkRing shared runtime 2026.09.0
 
+Status: **research-only**. This immutable image has a known short-request
+failure: after longer text or multimodal traffic, CUDA-graph padding can retain
+stale request IDs and produce nonfinite scores or repeated words. It is retained
+for reproduction, not recommended for serving. Profile quickstarts select their
+own image versions; the links below do not select this release.
+
 The ARM64/GB10 serving image contains the Kraken-based vLLM runtime, B12X #394,
 Qwen multimodal HC routing, a pre-API startup audit and SparkCache. The separate
 SGLang runtime remains included; its presence does not qualify a model/profile.
@@ -9,7 +15,7 @@ docker pull ghcr.io/fujitsupolycom/sparkring@sha256:8cfcfdaffd91af252c0eef2f46d3
 ```
 
 The readable tag is `ghcr.io/fujitsupolycom/sparkring:shared-2026.09.0`.
-Quickstarts pin the immutable digest. The [publication record](publication.json)
+The [publication record](publication.json)
 binds that digest to image configuration `a6a2a5b35e77`, source hashes and an
 anonymous Docker pull. Runtime layers/configuration are unchanged from the
 functionally checked image `462b65ac8629`; only release labels differ.

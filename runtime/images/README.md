@@ -24,7 +24,7 @@ It does not change published image selections or serving deployments.
 
 ## Container images
 
-[Shared runtime 2026.09.0](../releases/shared-2026.09.0/README.md) is the Qwen
+[Shared runtime 2026.09.1](../releases/shared-2026.09.1/README.md) is the Qwen
 TP2/TP4 selection, with and without SparkCache. Its release record pins the
 HC-routing fix, startup audit and bounded functional qualification.
 

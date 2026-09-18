@@ -1,8 +1,9 @@
 # Generated Qwen TP2 Compose
 
-Status: **Development**. [Bounded TP2 checks](../../../performance/records/qwen38-flash-next/compose-tp2.json)
-cover coordinated startup/shutdown, text responses and SparkCache restore across
-a fresh deployment with the original non-QAD checkpoint. These examples select QAD.
+Status: **implemented**. These examples select the QAD checkpoint and the image
+in the [profile quickstart](../README.md). The selected release's
+[qualification record](../../../runtime/releases/shared-2026.09.1/qualification.json)
+states exact-image deployment and serving coverage.
 
 [Rank 0](compose.rank0.yaml) and [rank 1](compose.rank1.yaml) are generated from
 [config.json](../config.json) and the [public site example](site.example.yaml).
@@ -15,7 +16,7 @@ a private deployment and coordinate both hosts. Complete the
 
 For persistent caching, select `qwen38-flash-next-tp2-sparkcache`; its
 [generated examples](../../qwen38-flash-next-tp2-sparkcache/compose/README.md)
-select the registered extension image. Private site files own host settings;
+select the same shared serving image. Private site files own host settings;
 `.env` is not used. Edit the profile/site input and regenerate instead of editing
 these exports.
 

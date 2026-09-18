@@ -1,13 +1,13 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-Status: **Validated for bounded functional checks with SparkCache**. The commands select the published SparkCache profile;
+Status: **implemented; exact-image qualification pending**. The commands select the published SparkCache profile;
 the cache-disabled alternative shares the same procedure. This uses the
 QAD checkpoint pinned to revision `629bc3218833a38b475b719f34aa571666f4a03e`
 in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`. Complete the
 [host prerequisites](../../docs/operations/prerequisites.md) and prepare one
 direct cable on cage p0 before starting; the launcher does not configure networking.
 
-Both variants use [SparkRing shared-2026.09.0](../../runtime/releases/shared-2026.09.0/README.md)
+Both variants use [SparkRing shared-2026.09.1](../../runtime/releases/shared-2026.09.1/README.md)
 with aligned checkpoints, managed B12X loading, Qwen checkpoint coalescing,
 compact MTP and projection overlap. HC row sharding remains off on TP2; the
 included ownership implementation requires TP4. Request-boundary caching and
@@ -32,9 +32,9 @@ separate writable directory.
 REPO=$PWD
 PROFILE=profiles/qwen38-flash-next-tp2/sparkcache.json
 CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
-IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:8cfcfdaffd91af252c0eef2f46d325765f364d3ac812ee7f76343fa2393dd357
+IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:3a8cdcf34ac51fdeb5a433107710e7787d52834281f377a7432b7df737035bbb
 MODEL_DIR=/srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
-CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-shared-2026090
+CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-shared-2026091
 
 # No separate parent-image pull is required for native-image verification.
 docker pull --platform linux/arm64 "$IMAGE_REF"
@@ -146,7 +146,7 @@ CONTAINER_PREFIX=qwen-flash-next-tp2
 
 Configuration is owned by [sparkcache.json](sparkcache.json) and
 [config.json](config.json), not this table. Capacity overrides are intentionally
-not accepted. The [release qualification](../../runtime/releases/shared-2026.09.0/qualification.json)
+not accepted. The [release qualification](../../runtime/releases/shared-2026.09.1/qualification.json)
 records bounded text and synthetic image/video correctness with SparkCache
 enabled on the exact QAD runtime. Cache-disabled deployment checks are separate;
 shared image selection alone is not additional hardware evidence.
@@ -157,7 +157,7 @@ Sixteen video frames are not sixteen visual tokens. A 512 MiB capture slot can
 reject a snapshot below the configured 65536-token span ceiling; serving must
 continue without optional cache publication.
 
-[Release sources and rollback](../../runtime/releases/shared-2026.09.0/README.md).
+[Release sources and rollback](../../runtime/releases/shared-2026.09.1/README.md).
 [Generated Compose deployments](../../docs/operations/compose.md) support both
 configurations, with and without SparkCache. Historical R37 evidence remains
 attached to its original image and is not reattributed to this release.

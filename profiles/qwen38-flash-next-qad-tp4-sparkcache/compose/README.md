@@ -7,5 +7,5 @@ They contain documentation hosts, not an installation for your network.
 
 Use the [profile guide](../README.md) and render a private deployment with
 `qwen38-flash-next-qad-tp4-sparkcache`. Edit the profile/site inputs, not generated
-YAML. The [bounded serving record](../../../performance/records/qwen38-flash-next/sparkcache-tp4.json)
-states the tested image, text-cache restore and recomputation scope.
+YAML. The [qualification record](../../../runtime/releases/shared-2026.09.1/qualification.json)
+states exact-image deployment and persistent-cache coverage.

@@ -9,7 +9,7 @@ from runtime.common import native_candidate
 
 
 def shared_publication():
-    return native_candidate.publication("shared-2026.09.0")
+    return native_candidate.publication("shared-2026.09.1")
 
 PROFILE = (
     Path(__file__).resolve().parents[2] / "profiles/qwen38-flash-next-tp2/config.json"
@@ -74,7 +74,7 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     args = cached['vllm_args']
     config = json.loads(args[args.index('--kv-transfer-config') + 1])
     extra = config['kv_connector_extra_config']
-    assert extra['spark_cache_root'] == '/cache/persistent/qwen38-flash-next-qad-tp2-shared-2026090'
+    assert extra['spark_cache_root'] == '/cache/persistent/qwen38-flash-next-qad-tp2-shared-2026091'
     assert extra['spark_cache_target_checkpoint_sha256'] == extra['spark_cache_draft_checkpoint_sha256'] == '036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba'
     assert extra['spark_cache_target_checkpoint_sha256'] != 'ada04299f0b223ab6e55ff16edaf88db094d3f09b7fd31fc9f46aa9d8d7a2c47'
     assert config['kv_connector'] == 'SparkContextCacheConnector'

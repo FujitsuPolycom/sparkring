@@ -132,7 +132,7 @@ record links preserve configuration evidence when the guide selects a different 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
 | DCP1 | direct-pair-2 | Off | Development | [qwen38-flash-next-tp2 (default)](../profiles/qwen38-flash-next-tp2/README.md) |
-| DCP1 | direct-pair-2 | On | Validated | [qwen38-flash-next-tp2-sparkcache](../profiles/qwen38-flash-next-tp2/README.md) |
+| DCP1 | direct-pair-2 | On | Development | [qwen38-flash-next-tp2-sparkcache](../profiles/qwen38-flash-next-tp2/README.md) |
 
 </details>
 
@@ -142,7 +142,7 @@ record links preserve configuration evidence when the guide selects a different 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
 | DCP1 | direct-cycle-4 | Off | Development | [qwen38-flash-next-qad-tp4 (default)](../profiles/qwen38-flash-next-qad-tp4/README.md) |
-| DCP1 | direct-cycle-4 | On | Validated | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
+| DCP1 | direct-cycle-4 | On | Development | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
 
 </details>
 

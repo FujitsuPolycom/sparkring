@@ -1,6 +1,8 @@
 {
   "schema": "sparkring-functional-qualification/v1",
   "release": "shared-2026.09.0",
+  "status": "research-only",
+  "known_failure": "Short requests between CUDA-graph capture sizes can produce nonfinite scores after longer text or multimodal requests on TP2 and TP4. The recorded bounded startup/text/media passes do not establish general serving correctness.",
   "runtime_image_id": "sha256:462b65ac8629a1531e2974aa75683e07ce5e6ec1352039a7d060972863c12705",
   "publication_image_id": "sha256:a6a2a5b35e7784199a40dd7fe2c682c16955f26d8ff34bd999646088cf313b09",
   "publication_changes": "Labels only; filesystem layers and runtime configuration unchanged",
@@ -25,7 +27,7 @@
     "source_reconstruction_verified": true,
     "anonymous_digest_pull_verified": true
   },
-  "scope": "Qualified for these bounded functional checks. Configured limits are not claims of tested capacity.",
+  "scope": "Retained bounded functional observations only. The known short-request failure prevents serving promotion; configured limits are not claims of tested capacity.",
   "not_established": [
     "performance or benchmark results",
     "full-context or C16 pressure and long-duration stability",

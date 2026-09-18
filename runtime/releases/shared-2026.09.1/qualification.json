@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-functional-qualification/v1",
+  "release": "shared-2026.09.1",
+  "status": "implemented",
+  "runtime_image_id": "sha256:942988d57ccec7a24b3f670beda4e6b58195077e1bda0c72a474fcf032fbe4e8",
+  "publication_image_id": "sha256:67271e056568baf421bef838551c3a08837730a70e4a1cc62ae2c11c7920fb6d",
+  "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "observations": {
+    "source_reconstruction_verified": true,
+    "native_wheel_reuse_verified": true,
+    "installed_files_verified": 235824,
+    "vllm_source_assertions": 177,
+    "b12x_source_assertions": 109,
+    "source_gate_skips": 0,
+    "anonymous_digest_pull_verified": true
+  },
+  "scope": "Source, image identity and installed-file checks passed. Exact published-image serving qualification is pending.",
+  "not_established": [
+    "four-profile clean-checkout serving and restart/restore qualification",
+    "performance or benchmark results",
+    "full-context or C16 pressure and extended stability",
+    "arbitrary media accuracy",
+    "request cache_salt isolation",
+    "GLM, DeepSeek or other model qualification"
+  ]
+}
