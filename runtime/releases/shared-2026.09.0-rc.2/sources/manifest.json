@@ -1,0 +1,40 @@
+{
+  "schema": "sparkring-release-source-inputs/v1",
+  "release_candidate": "shared-2026.09.0-rc.2",
+  "scope": "Pinned source reconstruction; not an image publication or serving qualification receipt",
+  "snapshot": {
+    "implementation": "runtime/images/upgrades/sources.py:tree_digest",
+    "excluded_source_paths": [
+      ".agents",
+      ".claude"
+    ],
+    "git_metadata_included": false,
+    "identity": "SHA256 of canonical JSON mapping relative paths to SHA256 of canonical JSON containing each file's SHA256 and executable flag",
+    "is_git_tree_id": false
+  },
+  "components": [
+    {
+      "id": "vllm",
+      "repository": "https://github.com/local-inference-lab/vllm.git",
+      "upstream_commit": "35bab057b1751a6076a457803bcc4b78809689cf",
+      "patch": "vllm.patch",
+      "patch_sha256": "4c13db783227dbde4e30686d64997c44545c9b66f01cdad332e64bbcac78be6d",
+      "accepted_snapshot_sha256": "0481eb71311f399d8550ad2cdd30a5843fb8263c8a9521b7926ea9ab76550aac",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "b12x",
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "upstream_commit": "a83336581a3a907076e60797df69ab66df5a2ff1",
+      "patch": "b12x.patch",
+      "patch_sha256": "5cb3e5eafc978cc1c17a32065a0d52c2fb71b745bf9af46780ae2fd3e6b1e789",
+      "accepted_snapshot_sha256": "07fa3004bebe1f9f22219dc32aa7b7b9e29c46bfd7842e0d793f66b48ed0805d",
+      "license": "Apache-2.0",
+      "additional_upstream_patch": {
+        "pull_request": "https://github.com/local-inference-lab/b12x/pull/394",
+        "head_commit": "7530ea27d7d923dbc71a76a356922bd8b6b1611a",
+        "runtime_patch_sha256": "2cd497d63ac3e1b88e65a8ffc516c5ba79c3d1ff2b8bf9bbac670fd057603b1c"
+      }
+    }
+  ]
+}
