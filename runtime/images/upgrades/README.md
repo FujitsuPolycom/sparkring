@@ -341,6 +341,18 @@ patch remains hash-bound, textual source views are preserved, and proposals
 cannot edit those binary-asset paths. This encoding does not establish semantic
 compatibility of a binary asset; an unresolved migration remains a blocker.
 
+Repeated textual conflict fragments use `carried_patch_reference` entries with
+UTF-8 byte offsets, lengths and SHA256 values into the complete `carried_patch`.
+This removes duplicate payloads, not source context. Unmatched or ambiguous
+fragments stay embedded; request-size limits remain unchanged.
+
+When an operational baseline layers an approved source extension over R37,
+`source_layers.compose_extension` reconstructs the component's full carried patch
+from a protected baseline snapshot. It checks descriptor-bound preimages and
+postimages and refuses undeclared changed files. The input snapshot is unchanged.
+The result still needs the policy's independent source oracles; reconstruction
+does not establish upstream compatibility or serving qualification.
+
 Two proposal transports are implemented:
 
 - **Endpoint:** initialize with `--agent-endpoint https://HOST/v1 --agent-model

@@ -24,6 +24,19 @@ def protected_test_path(baseline, name):
     return "::".join((str(path), *selectors))
 
 
+def oracle_environment(source, overlay, baseline):
+    """Point runtime-aware protected tests at the selected source variant."""
+    return dict(
+        os.environ,
+        PYTHONPATH=os.pathsep.join((str(overlay), str(baseline))),
+        XDG_CACHE_HOME="/tmp/upgrade-oracle-cache",
+        PYTHONDONTWRITEBYTECODE="1",
+        HF_HUB_OFFLINE="1",
+        TRANSFORMERS_OFFLINE="1",
+        SPARKRING_TEST_SOURCE_ROOT=str(source),
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, type=Path)
@@ -51,14 +64,7 @@ def main():
     for name in args.tests:
         paths.append(protected_test_path(args.baseline, name))
     junit = Path("/tmp/upgrade-oracle.xml")
-    env = dict(
-        os.environ,
-        PYTHONPATH=os.pathsep.join((str(overlay), str(args.baseline))),
-        XDG_CACHE_HOME="/tmp/upgrade-oracle-cache",
-        PYTHONDONTWRITEBYTECODE="1",
-        HF_HUB_OFFLINE="1",
-        TRANSFORMERS_OFFLINE="1",
-    )
+    env = oracle_environment(args.source, overlay, args.baseline)
     result = subprocess.run(
         [
             sys.executable,

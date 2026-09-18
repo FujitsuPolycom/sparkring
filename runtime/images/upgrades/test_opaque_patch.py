@@ -1,7 +1,7 @@
 """Lossless text retention and immutable binary-asset request identities."""
 
 from runtime.images.upgrades.contracts import sha
-from runtime.images.upgrades.agent import request_identity
+from runtime.images.upgrades.agent import request_identity, compact_text_feedback
 from runtime.images.upgrades import opaque_patch as module
 
 
@@ -57,3 +57,22 @@ def test_text_only_request_is_unchanged(tmp_path):
     }
     result, protected = module.compact(value, roots={"candidate": tmp_path})
     assert result == value and result is not value and protected == []
+
+
+def test_duplicate_conflict_text_is_reconstructable_by_utf8_offset():
+    fragment = 'diff --git a/code.py b/code.py\n-old\n+new\n'
+    request = {'carried_patch': '# café\n' + fragment,
+               'feedback': [{'patch': fragment, 'error': 'context mismatch'}]}
+    result = compact_text_feedback(request)
+    ref = result['feedback'][0]['carried_patch_reference']
+    raw = result['carried_patch'].encode()[ref['offset_bytes']:][:ref['length_bytes']]
+    assert raw.decode() == fragment and sha(raw) == ref['sha256']
+    assert result['feedback'][0]['error'] == 'context mismatch'
+    assert request['feedback'][0]['patch'] == fragment
+    assert request_identity(request) == request_identity(result)
+
+
+def test_unmatched_or_ambiguous_fragments_are_not_elided():
+    request = {'carried_patch': 'same same', 'feedback': [
+        {'patch': 'same'}, {'patch': 'absent'}, {'patch': ''}, {'error': 'failure'}]}
+    assert compact_text_feedback(request) == request

@@ -144,6 +144,29 @@ def validate(value):
     return value
 
 
+def compact_text_feedback(request):
+    """Reference duplicate conflict fragments without discarding patch text."""
+    feedback = request.get('feedback')
+    carried = request.get('carried_patch', '').encode('utf-8')
+    if not isinstance(feedback, list):
+        return request
+    rows = []
+    for row in feedback:
+        fragment = row.get('patch') if isinstance(row, dict) else None
+        raw = fragment.encode('utf-8') if isinstance(fragment, str) else b''
+        if raw and carried.count(raw) == 1:
+            rows.append({
+                **{key: value for key, value in row.items() if key != 'patch'},
+                'carried_patch_reference': {
+                    'encoding': 'utf-8', 'offset_bytes': carried.index(raw),
+                    'length_bytes': len(raw), 'sha256': sha(raw),
+                },
+            })
+        else:
+            rows.append(row)
+    return {**request, 'feedback': rows}
+
+
 def request_for(
     source,
     record,
@@ -227,6 +250,7 @@ def request_for(
         result["protected_paths"] = sorted(
             set(source.get("protected_paths", [])) | set(opaque_paths)
         )
+    result = compact_text_feedback(result)
     require(
         len(json.dumps(result).encode()) <= limit,
         "Complete agent request exceeds context budget",

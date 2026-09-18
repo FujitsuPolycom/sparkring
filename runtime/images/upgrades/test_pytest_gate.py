@@ -3,6 +3,15 @@
 import pytest
 
 from .pytest_gate import protected_test_path
+from .pytest_gate import oracle_environment
+
+
+def test_protected_tests_inspect_selected_runtime_not_reference(monkeypatch):
+    monkeypatch.setenv('SPARKRING_TEST_SOURCE_ROOT', '/wrong-runtime')
+    env = oracle_environment('/candidate', '/overlay', '/protected-baseline')
+    assert env['SPARKRING_TEST_SOURCE_ROOT'] == '/candidate'
+    assert '/protected-baseline' in env['PYTHONPATH']
+    assert env['HF_HUB_OFFLINE'] == env['TRANSFORMERS_OFFLINE'] == '1'
 
 
 def test_exact_cpu_test_can_be_selected_from_mixed_hardware_module(tmp_path):
