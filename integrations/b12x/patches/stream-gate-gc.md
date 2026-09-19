@@ -1,6 +1,9 @@
 # Automatic collection during CUDA autotuning
 
-Status: implemented; GPU startup qualification is required.
+Status: **qualified for the bounded CUDA reproducer and Qwen TP2/TP4 startup
+and retained-restart checks** in [SparkRing 2026.09.2](../../../runtime/releases/shared-2026.09.2/qualification.json).
+The linked record identifies the exact image, settings and limits; this is not
+a guarantee against every CUDA or driver stall.
 
 The source transformation in [stream_gate_gc.py](stream_gate_gc.py) changes
 `b12x/preparation/_measurement.py`. B12X holds a CUDA stream behind a host-owned
@@ -48,4 +51,4 @@ opens, without watchdog intervention. On an unpatched control image, `--mode all
 compares direct destruction, automatic cyclic collection, and scoped collection
 deferral. Direct-reference destruction remains outside the guard's contract.
 This is a correctness check, not a throughput benchmark. Full-model startup and
-restart qualification are separate requirements.
+restart evidence is recorded separately in the [release correctness summary](../../../runtime/releases/shared-2026.09.2/correctness.json).

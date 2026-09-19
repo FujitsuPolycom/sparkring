@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
-  "status": "implemented",
+  "status": "qualified",
   "model": {
     "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
     "config_sha256": "2d655dfa625c3c018f9685031367bc83f8532d3faf3333d7c838b2bdc13b8a7e",
@@ -143,7 +143,7 @@
     "--enable-prompt-tokens-details"
   ],
   "qualification": {
-    "scope": "Source and installed-image checks are recorded in runtime/releases/shared-2026.09.2/qualification.json. Exact-image serving and restart/restore qualification are pending; no performance claim.",
+    "scope": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified.",
     "record": "runtime/releases/shared-2026.09.2/qualification.json"
   },
   "image_extension": "native-shared",

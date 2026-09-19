@@ -1,6 +1,6 @@
 # Generated Qwen TP2 Compose
 
-Status: **implemented**. These examples select the QAD checkpoint and the image
+Status: **qualified for bounded correctness and restart checks**. These examples select the QAD checkpoint and the image
 in the [profile quickstart](../README.md). The selected release's
 [qualification record](../../../runtime/releases/shared-2026.09.2/qualification.json)
 states exact-image deployment and serving coverage.

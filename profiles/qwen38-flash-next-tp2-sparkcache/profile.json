@@ -3,14 +3,14 @@
   "id": "qwen38-flash-next-tp2-sparkcache",
   "title": "Qwen3.8-Flash-Next NVFP4 QAD on two Sparks with persistent prefix caching",
   "recommendation": "alternative",
-  "status": "implemented",
+  "status": "qualified",
   "configuration": {
     "format": "serving-profile",
     "path": "profiles/qwen38-flash-next-tp2/sparkcache.json"
   },
   "release": "runtime/releases/shared-2026.09.2/release.json",
   "guide": "profiles/qwen38-flash-next-tp2/README.md",
-  "evidence_scope": "Source and installed-image checks are recorded in runtime/releases/shared-2026.09.2/qualification.json. Exact-image serving and restart/restore qualification are pending; no performance claim.",
+  "evidence_scope": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks, including physical cache restore on every rank, passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified.",
   "overrides": [],
   "launcher": {
     "kind": "python",

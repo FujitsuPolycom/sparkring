@@ -27,7 +27,9 @@ It does not change published image selections or serving deployments.
 [Shared runtime 2026.09.2](../releases/shared-2026.09.2/README.md) is the Qwen
 TP2/TP4 selection, with and without SparkCache. Its release record pins the
 CUDA startup cleanup fix, sparse-attention metadata correction and startup audit.
-Source and component checks passed; exact-image serving qualification is pending.
+All four Qwen profiles passed bounded text/media, request-order, concurrent
+correctness and restart checks; SparkCache selections also passed physical
+restore checks. The release record retains full-context and other-model limits.
 
 The [shared ARM64 serving candidate](../releases/shared-2026.09.0-rc.1/README.md)
 publishes pinned vLLM/B12X integration and isolated SGLang, with a verified

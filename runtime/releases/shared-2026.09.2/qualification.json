@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-functional-qualification/v1",
   "release": "shared-2026.09.2",
-  "status": "implemented",
+  "status": "qualified",
   "runtime_image_id": "sha256:eff1bce21027593fab2fa931af58a7efd6f5df382a36e62d343a0c51310c5f74",
   "publication_image_id": "sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499",
   "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
@@ -26,32 +26,32 @@
   "profiles": [
     {
       "id": "qwen38-flash-next-tp2",
-      "status": "implemented",
-      "qualification": "pending exact-image text, media, request-order and restart/restore checks"
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
     },
     {
       "id": "qwen38-flash-next-tp2-sparkcache",
-      "status": "implemented",
-      "qualification": "pending exact-image text, media, request-order and restart/restore checks"
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks, including physical cache restore on every rank, passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
     },
     {
       "id": "qwen38-flash-next-qad-tp4",
-      "status": "implemented",
-      "qualification": "pending exact-image text, media, request-order and restart/restore checks"
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
     },
     {
       "id": "qwen38-flash-next-qad-tp4-sparkcache",
-      "status": "implemented",
-      "qualification": "pending exact-image text, media, request-order and restart/restore checks"
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks, including physical cache restore on every rank, passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
     }
   ],
-  "scope": "Source acceptance, installed-file checks, anonymous digest pull and a bounded CUDA-gate reproducer passed. Full-model serving and restart/restore qualification remain pending for all four Qwen profiles.",
+  "scope": "Exact-image TP2/DCP1 and TP4/DCP1 Qwen QAD checks passed with and without SparkCache: bounded short/16K text, finite scores, synthetic images/video, request ordering, concurrent exact-answer requests and retained-container restarts. Cache-enabled selections restored two fixtures after restart, with API cache credits matched to physical restore evidence on every rank. The correctness record owns case counts, lifetimes, image/source identities and evidence hashes. These checks do not establish full-context/C16-pressure stability, arbitrary media accuracy or performance.",
   "not_established": [
-    "four-profile clean-checkout serving and restart/restore qualification",
     "performance or benchmark results",
     "full-context or C16 pressure and extended stability",
     "arbitrary media accuracy",
     "request cache_salt isolation",
     "GLM, DeepSeek or other model qualification"
-  ]
+  ],
+  "correctness_record": "runtime/releases/shared-2026.09.2/correctness.json"
 }

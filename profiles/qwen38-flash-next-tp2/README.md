@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-Status: **implemented; exact-image qualification pending**. The commands select the published SparkCache profile;
+Status: **qualified for bounded correctness and restart checks**. The commands select the published SparkCache profile;
 the cache-disabled alternative shares the same procedure. This uses the
 QAD checkpoint pinned to revision `629bc3218833a38b475b719f34aa571666f4a03e`
 in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`. Complete the
@@ -147,9 +147,11 @@ CONTAINER_PREFIX=qwen-flash-next-tp2
 Configuration is owned by [sparkcache.json](sparkcache.json) and
 [config.json](config.json), not this table. Capacity overrides are intentionally
 not accepted. The [release qualification](../../runtime/releases/shared-2026.09.2/qualification.json)
-records source and installed-image checks. Full-model text, synthetic image/video,
-request-order and restart/restore qualification remain pending on this image,
-both with and without SparkCache.
+records passing bounded short/16K text, finite-score, synthetic image/video,
+request-order, concurrent-request and retained-restart checks on this image,
+both with and without SparkCache. The cache-enabled profile also restored two
+fixtures on every rank after restart. The [correctness summary](../../runtime/releases/shared-2026.09.2/correctness.json)
+owns exact image identities, case counts and evidence hashes.
 
 These checks do not qualify arbitrary/high-resolution video, C16 multimedia,
 sixteen simultaneous full-context requests or prolonged store-pressure stability.

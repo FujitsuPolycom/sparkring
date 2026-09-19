@@ -1,6 +1,6 @@
 # Generated Qwen TP2 Compose with SparkCache
 
-Status: **implemented**. These examples select QAD and the shared serving image.
+Status: **qualified for bounded correctness and restart checks**. These examples select QAD and the shared serving image.
 The [qualification record](../../../runtime/releases/shared-2026.09.2/qualification.json)
 states exact-image deployment and persistent-cache coverage.
 

@@ -1,6 +1,6 @@
 # Generated Qwen QAD TP4 Compose with SparkCache
 
-Status: **Development**. The four rank YAML files are generated from the
+Status: **qualified for bounded correctness and restart checks**. The four rank YAML files are generated from the
 [cache configuration](../../qwen38-flash-next-qad-tp4/sparkcache.json) and
 [TP4 site example](../../qwen38-flash-next-qad-tp4/compose/site.example.yaml).
 They contain documentation hosts, not an installation for your network.

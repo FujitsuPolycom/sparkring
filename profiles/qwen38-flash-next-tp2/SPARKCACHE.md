@@ -13,7 +13,8 @@ Follow [Plan and create](README.md#plan-and-create) and
 ## Verification scope
 
 See [Evidence and remaining checks](README.md#evidence-and-remaining-checks).
-The published cache64 image uses aligned checkpoints; it does not contain the
-complete request-boundary connector. Its
-[build recipe](../../runtime/images/compositions/lil-r37-cache64/README.md)
-and immutable publication remain available.
+[SparkRing 2026.09.2](../../runtime/releases/shared-2026.09.2/README.md) uses
+aligned checkpoints and a release-specific persistent-cache namespace. Its
+[qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
+owns exact-image correctness and restart/restore evidence. Request-boundary
+caching and request-salt isolation are not enabled by this profile.

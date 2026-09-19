@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next with SparkCache on four Sparks
 
-Status: **implemented; exact-image qualification pending**.
+Status: **qualified for bounded correctness and restart checks**.
 Use the [Qwen QAD TP4 quickstart](../qwen38-flash-next-qad-tp4/README.md) and select
 `PROFILE=qwen38-flash-next-qad-tp4-sparkcache` before rendering.
 Image/model/fabric preparation and start/stop/restart instructions are shared.
@@ -19,10 +19,10 @@ restore budget. A dedicated release-specific namespace prevents accidental reuse
 of a previous deployment's entries. Keep the previous namespace for rollback.
 
 The [qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
-records source checks and pending full-model text, media and restart/restore
-tests. It does not claim performance, full-context/concurrency-pressure stability
-or arbitrary video accuracy. Cache-restore evidence from other images is not
-qualification for this image.
+records bounded text/media correctness, request-order and concurrent-request
+checks, retained restarts and physical cache restore on all four ranks. It does
+not claim performance, full-context/C16-pressure stability or arbitrary video
+accuracy. Results apply to the identified image and configuration only.
 
 The API has no configured key: restrict it to trusted clients or an authenticated
 gateway. Request `cache_salt` does not isolate persistent entries in this image.

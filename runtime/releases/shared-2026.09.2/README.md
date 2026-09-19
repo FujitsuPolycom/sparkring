@@ -3,10 +3,11 @@
 Shared ARM64 serving image for NVIDIA GB10 clusters, with vLLM, SparkCache and
 an isolated SGLang runtime. CUDA 13.3; PyTorch 2.13.0. Model weights are separate.
 
-Status: **implemented; full-model qualification pending**. Source checks,
-installed-file verification, an anonymous image pull and a bounded CUDA startup
-reproducer passed. Those checks do not qualify every serving profile. The
-[qualification record](qualification.json) states the evidence and limits.
+Status: **qualified for bounded Qwen TP2/TP4 correctness and restart checks**,
+with and without SparkCache. Source and installed-file verification, an anonymous
+image pull and a bounded CUDA startup reproducer also passed. The
+[qualification record](qualification.json) and [correctness summary](correctness.json)
+state exact image identities, checks and limits; other models are not qualified.
 
 ## Image and profiles
 
@@ -19,13 +20,23 @@ Use a profile's complete quickstart, not an image substitution in unrelated flag
 
 | Profile | Status | Guide |
 |---|---|---|
-| Qwen3.8-Flash-Next QAD, TP2 | Implemented; qualification pending | [Two-node quickstart](../../../profiles/qwen38-flash-next-tp2/README.md) |
-| Qwen3.8-Flash-Next QAD, TP2 + SparkCache | Implemented; qualification pending | [Persistent-cache selection](../../../profiles/qwen38-flash-next-tp2-sparkcache/README.md) |
-| Qwen3.8-Flash-Next QAD, TP4 | Implemented; qualification pending | [Four-node quickstart](../../../profiles/qwen38-flash-next-qad-tp4/README.md) |
-| Qwen3.8-Flash-Next QAD, TP4 + SparkCache | Implemented; qualification pending | [Persistent-cache selection](../../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
+| Qwen3.8-Flash-Next QAD, TP2 | Qualified; bounded checks | [Two-node quickstart](../../../profiles/qwen38-flash-next-tp2/README.md) |
+| Qwen3.8-Flash-Next QAD, TP2 + SparkCache | Qualified; bounded checks | [Persistent-cache selection](../../../profiles/qwen38-flash-next-tp2-sparkcache/README.md) |
+| Qwen3.8-Flash-Next QAD, TP4 | Qualified; bounded checks | [Four-node quickstart](../../../profiles/qwen38-flash-next-qad-tp4/README.md) |
+| Qwen3.8-Flash-Next QAD, TP4 + SparkCache | Qualified; bounded checks | [Persistent-cache selection](../../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
 
 GLM and DeepSeek components are included but untested on this version. Their
 profiles retain separate image pins; inclusion is not a compatibility guarantee.
+
+## Qualification scope
+
+All four Qwen profiles passed short and 16K-token text checks, finite-score
+checks around text/media request ordering, synthetic three-image/one-video
+requests, concurrent exact-answer requests and retained-container restarts.
+Cache-enabled profiles restored two fixtures after restart; API cache credits
+matched physical restore evidence on every rank. Configured 262K context and
+16 sequences are not full-context or C16-pressure qualification. Arbitrary
+media accuracy, sustained-load stability and performance remain unqualified.
 
 ## Runtime behavior
 

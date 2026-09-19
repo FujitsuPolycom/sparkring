@@ -205,7 +205,7 @@ def test_catalog_exposes_native_capacity_and_no_overrides():
     profile, _ = load('qwen38-flash-next-tp2')
     resolved = resolve('qwen38-flash-next-tp2')
     assert profile['overrides'] == []
-    assert resolved['status'] == 'implemented'
+    assert resolved['status'] == 'qualified'
     assert resolved['topology'] == 'direct-pair-2'
     expected = {'tensor_parallel_size': 2, 'decode_context_parallel_size': 1,
                 'max_model_len': 262144, 'max_num_seqs': 16,

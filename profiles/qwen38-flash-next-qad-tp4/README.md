@@ -1,11 +1,14 @@
 # Qwen3.8-Flash-Next QAD on four Sparks
 
-Status: **implemented; exact-image qualification pending**. This guide selects
+Status: **qualified for bounded correctness and restart checks**. This guide selects
 [SparkRing shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md).
 The cache-disabled profile and [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md)
 use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
-states the source checks and pending full-model tests; configuration is not
-a claim of full-context, concurrency-pressure or performance qualification.
+records bounded short/16K text, finite-score, synthetic media, request-order,
+concurrent-request and retained-restart checks, plus physical cache restore
+with SparkCache. The [correctness summary](../../runtime/releases/shared-2026.09.2/correctness.json)
+owns case counts and evidence hashes. These checks do not qualify full-context,
+C16-pressure stability or performance.
 
 | Setting | Selection |
 |---|---|
