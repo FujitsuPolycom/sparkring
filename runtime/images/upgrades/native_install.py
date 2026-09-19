@@ -31,6 +31,18 @@ DEPENDENCY_PACKAGES = {
     "flashinfer-python": "flashinfer",
     "flashinfer-jit-cache": "flashinfer_jit_cache",
 }
+# These distributions share the cuda namespace. They must never be treated as
+# owning the entire cuda directory, including cuda-pathfinder's sibling files.
+CUDA_RUNTIME_VERSIONS = {
+    "cuda-python": "13.3.1",
+    "cuda-bindings": "13.3.1",
+    "cuda-core": "1.0.1",
+}
+CUDA_PROTECTED_VERSIONS = {
+    "cuda-pathfinder": "1.8.1",
+    "nvidia-cutlass-dsl": "4.6.2",
+    "torch": "2.13.0",
+}
 SGLANG_PREFIX = Path("/opt/sglang")
 FLASHINFER_GLOBAL_BUILD_HELPERS = ("build_backend.py", "build_utils.py")
 PREPARED_TRANSPORT_PROFILE = "tp2-rocenante-adaptive-prepared"
@@ -184,8 +196,79 @@ def distribution_files(name):
     return result
 
 
-def package_owned(path, package_names, metadata_roots):
+def selected_distribution_files(name):
+    try:
+        return distribution_files(name)
+    except metadata.PackageNotFoundError:
+        if name not in CUDA_RUNTIME_VERSIONS:
+            raise
+        return {}
+
+
+def validate_runtime_dependencies(dependencies):
+    require(set(dependencies) <= set(DEPENDENCY_PACKAGES) | set(CUDA_RUNTIME_VERSIONS),
+            "Unreviewed runtime dependency migration")
+    selected = set(dependencies) & set(CUDA_RUNTIME_VERSIONS)
+    if selected:
+        require(selected == set(CUDA_RUNTIME_VERSIONS)
+                and all(dependencies[name].get("version") == version
+                        for name, version in CUDA_RUNTIME_VERSIONS.items()),
+                "CUDA runtime migration requires the complete reviewed version tuple")
+
+
+def cuda_protected_inputs(dependencies):
+    if not set(dependencies) & set(CUDA_RUNTIME_VERSIONS):
+        return {}, {}
+    versions = {name: metadata.version(name) for name in CUDA_PROTECTED_VERSIONS}
+    require(versions == CUDA_PROTECTED_VERSIONS, "CUDA migration protected versions differ")
+    files = {}
+    for name in ("cuda-pathfinder", "nvidia-cutlass-dsl"):
+        files.update(distribution_files(name))
+    # Inventory siblings even if the old foundation omitted their RECORDs.
+    # Only selected exact RECORD/wheel paths may change during installation.
+    namespace = SITE / "cuda"
+    require(not namespace.is_symlink(), "CUDA namespace is a symlink")
+    for path in namespace.rglob("*"):
+        require(not path.is_symlink(), "CUDA namespace contains a symlink")
+        if path.is_file() and path.suffix not in (".pyc", ".pyo"):
+            files[str(path)] = sha(path)
+    return versions, files
+
+
+def cuda_wheel_paths(name, wheel, version):
+    require(name in CUDA_RUNTIME_VERSIONS and version == CUDA_RUNTIME_VERSIONS[name],
+            "Unreviewed CUDA runtime wheel version")
+    paths, roots = wheel_install_paths({name: wheel})
+    owner = name.replace("-", "_") + "-" + version + ".dist-info"
+    require(roots == [SITE / owner], "CUDA wheel metadata namespace differs")
+    scope = {"cuda-bindings": ("cuda", "bindings"), "cuda-core": ("cuda", "core")}.get(name)
+    for path in paths:
+        file = Path(path)
+        require(file.is_relative_to(SITE), "CUDA wheel escapes its namespace")
+        parts = file.relative_to(SITE).parts
+        require(parts[0] == owner or (scope is not None and parts[:2] == scope and len(parts) > 2),
+                "CUDA wheel modifies an unreviewed namespace: " + str(path))
+    return paths
+
+
+def cuda_record_paths(name, files):
+    """An old RECORD cannot grant blanket ownership outside the same namespace."""
+    scope = {"cuda-bindings": ("cuda", "bindings"), "cuda-core": ("cuda", "core")}.get(name)
+    for path in files:
+        file = Path(path)
+        require(file.is_relative_to(SITE), "CUDA RECORD escapes its namespace")
+        parts = file.relative_to(SITE).parts
+        own_metadata = (parts[0].startswith(name.replace("-", "_") + "-")
+                        and parts[0].endswith(".dist-info"))
+        require(own_metadata or (scope is not None and parts[:2] == scope and len(parts) > 2),
+                "CUDA RECORD modifies an unreviewed namespace: " + str(path))
+    return set(files)
+
+
+def package_owned(path, package_names, metadata_roots, exact_paths=()):
     path = Path(path)
+    if str(path) in exact_paths:
+        return True
     if any(path.is_relative_to(SITE / name) for name in package_names):
         return True
     if any(path.is_relative_to(root) for root in metadata_roots):
@@ -287,7 +370,7 @@ def wheel_install_paths(wheels):
 
 
 def audit_selected_ownership(
-    selected_files, package_names, metadata_roots, parent_files, planned_paths=()
+    selected_files, package_names, metadata_roots, parent_files, planned_paths=(), exact_paths=()
 ):
     """Refuse unexplained RECORD extras/collisions before pip changes any files."""
     paths = {path for files in selected_files.values() for path in files}
@@ -299,7 +382,7 @@ def audit_selected_ownership(
         foreign = [
             item for item in owners[name] if item["distribution"] not in selected_names
         ]
-        extra = not package_owned(name, package_names, metadata_roots)
+        extra = not package_owned(name, package_names, metadata_roots, exact_paths)
         if extra:
             extras[name] = owners[name]
         if foreign:
@@ -327,8 +410,11 @@ def audit_selected_ownership(
                 {"path": name, "unexplained_extra": extra, "owners": owners[name]}
             )
     for name in sorted(set(planned_paths)):
-        if not package_owned(name, package_names, metadata_roots) or any(
-            item["distribution"] not in selected_names for item in owners[name]
+        unknown_existing = name in exact_paths and Path(name).exists() and name not in paths
+        if (
+            not package_owned(name, package_names, metadata_roots, exact_paths)
+            or unknown_existing
+            or any(item["distribution"] not in selected_names for item in owners[name])
         ):
             unowned.append(
                 {
@@ -914,18 +1000,17 @@ def install(context):
     }
     before = dict(parent["files"])
     dependencies = descriptor.get("runtime_dependencies", {})
-    require(
-        set(dependencies) <= set(DEPENDENCY_PACKAGES),
-        "Unreviewed runtime dependency migration",
-    )
+    validate_runtime_dependencies(dependencies)
+    protected_cuda_versions, cuda_namespace_before = cuda_protected_inputs(dependencies)
+    before.update(cuda_namespace_before)
     packages = ["vllm", "b12x", *dependencies]
-    package_names = [DEPENDENCY_PACKAGES.get(name, name) for name in packages]
+    package_names = [DEPENDENCY_PACKAGES.get(name, name) for name in packages if name not in CUDA_RUNTIME_VERSIONS]
     wheel_records = {**compiler["wheels"], **dependencies}
     selected = []
     selected_files, wheel_paths, normalizations = {}, {}, {}
-    metadata_roots = []
+    metadata_roots, exact_paths, cuda_destinations = [], set(), set()
     for name in packages:
-        selected_files[name] = distribution_files(name)
+        selected_files[name] = selected_distribution_files(name)
         before.update(selected_files[name])
         metadata_roots.extend(SITE.glob(name.replace("-", "_") + "-*.dist-info"))
         record = wheel_records[name]
@@ -936,6 +1021,12 @@ def install(context):
         )
         path = context / "wheels" / filename
         require(sha(path) == record["sha256"], "Compiled wheel bytes differ")
+        if name in CUDA_RUNTIME_VERSIONS:
+            destinations = cuda_wheel_paths(name, path, record["version"])
+            require(not cuda_destinations & destinations, "CUDA wheels collide in their shared namespace")
+            cuda_destinations.update(destinations)
+            exact_paths.update(cuda_record_paths(name, selected_files[name]))
+            exact_paths.update(destinations)
         if name == "flashinfer-python":
             path, normalizations[name] = isolate_flashinfer_build_helpers(
                 path, context / "installation-wheels", record["version"]
@@ -951,6 +1042,7 @@ def install(context):
         [*metadata_roots, *installed_metadata_roots],
         parent["files"],
         planned_paths,
+        exact_paths,
     )
     prior_errors = subprocess.run(
         [sys.executable, "-m", "pip", "check"], capture_output=True, text=True
@@ -974,6 +1066,8 @@ def install(context):
         {name: metadata.version(name) for name in protected_torch} == protected_torch,
         "Wheel installation changed protected Torch versions",
     )
+    require({name: metadata.version(name) for name in protected_cuda_versions} == protected_cuda_versions,
+            "Wheel installation changed protected CUDA dependencies")
     after_errors = subprocess.run(
         [sys.executable, "-m", "pip", "check"], capture_output=True, text=True
     ).stdout.splitlines()
@@ -984,7 +1078,7 @@ def install(context):
     )
     files, removed = {}, list(parent.get("removed_files", []))
     for path, expected in before.items():
-        if package_owned(path, package_names, metadata_roots):
+        if package_owned(path, package_names, metadata_roots, exact_paths):
             if not Path(path).exists():
                 removed.append(path)
         else:
@@ -999,6 +1093,8 @@ def install(context):
             "Installed distribution version differs",
         )
         files.update(distribution_files(name))
+        if name in CUDA_RUNTIME_VERSIONS:
+            continue
         # Include package additions that a retained foundation RECORD omitted.
         for path in (SITE / DEPENDENCY_PACKAGES.get(name, name)).rglob("*"):
             if path.is_file() and path.suffix not in (".pyc", ".pyo"):
@@ -1075,9 +1171,11 @@ def install(context):
         "versions": {
             **parent["versions"],
             **{name: metadata.version(name) for name in packages},
+            **protected_cuda_versions,
         },
         "foundation_dependency_exceptions": prior_errors,
         "runtime_dependencies": dependencies,
+        "protected_cuda_dependencies": protected_cuda_versions,
         "runtime_dependency_normalizations": normalizations,
         "distribution_ownership_audit": ownership_audit,
         "feature_update": feature_update,

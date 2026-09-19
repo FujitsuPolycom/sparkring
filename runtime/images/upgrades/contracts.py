@@ -464,6 +464,27 @@ def load_policy(path):
                     f"{key} input hash differs",
                 )
                 inputs[item["path"]] = item["sha256"]
+    dependencies = policy.get("foundation", {}).get("runtime_dependencies", [])
+    require(isinstance(dependencies, list), "Runtime dependencies must be a list")
+    if dependencies:
+        from .native_install import validate_runtime_dependencies
+
+        selected = {}
+        for item in dependencies:
+            require(isinstance(item, dict)
+                    and set(item) == {"path", "sha256", "name", "version", "source_url"},
+                    "Runtime dependency fields differ")
+            require(isinstance(item["name"], str) and item["name"] not in selected,
+                    "Duplicate or invalid runtime dependency")
+            require(isinstance(item["version"], str) and item["version"]
+                    and isinstance(item["source_url"], str) and item["source_url"].startswith("https://"),
+                    "Runtime dependency needs an explicit version and HTTPS publisher URL")
+            file = beneath(path.parent, item["path"])
+            require(file.suffix == ".whl" and sha(file.read_bytes()) == item["sha256"],
+                    "Runtime dependency wheel differs from policy")
+            selected[item["name"]] = item
+            inputs[item["path"]] = item["sha256"]
+        validate_runtime_dependencies(selected)
     native_cache = policy.get("foundation", {}).get("native_cache")
     if native_cache is not None:
         require(

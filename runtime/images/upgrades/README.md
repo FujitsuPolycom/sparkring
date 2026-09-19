@@ -236,6 +236,35 @@ new unsatisfied requirements. An isolated SGLang environment receives its own
 pre/post-install file inventory in addition to its composition receipt; changing
 the vLLM environment does not silently authorize changing SGLang.
 
+For CUDA 13.3 foundations, the dependency migration avoids newer optional driver
+symbol requests made by CUDA Python 13.4 bindings. It uses an all-or-none tuple: `cuda-python` 13.3.1,
+`cuda-bindings` 13.3.1 and `cuda-core` 1.0.1. Declare all three exact wheel hashes,
+versions and publisher URLs as runtime dependencies. Policy loading verifies and
+binds those wheel files. The installer requires and preserves `cuda-pathfinder`
+1.8.1, CUTLASS DSL 4.6.2 and Torch 2.13.0; missing or changed protected versions
+refuse the migration. It resolves no packages online and still rejects newly
+unsatisfied dependency checks.
+
+CUDA distributions share a namespace. The metapackage may install only its own
+distribution metadata; bindings and core may install only their respective
+`cuda/bindings` and `cuda/core` payloads plus metadata. Both old RECORD paths and
+new wheel destinations are audited. Unselected owners, unrecorded existing
+destinations and cross-wheel collisions refuse installation. The installer never
+grants ownership over the entire `cuda` directory: Pathfinder, other namespace
+siblings and protected DSL files retain their hashes. New CUDA packages can be
+installed without an old RECORD, while removals and replacements remain recorded
+in the child native inventory.
+
+This runtime dependency migration does not relax native-cache admission. Native
+source/build inputs, compiler image, Torch ABI, architecture, build mode and native
+member hashes must still match; drift with the default `refuse` policy stops the
+build. Reused engine wheels keep their original compiler provenance and remain
+`native_rebuilt: false`. Matching cache metadata does not establish compatibility
+between their compiled bytes, the selected CUDA Python API and JIT consumers.
+Installed import, CUDA kernel/graph and model checks remain required before use;
+an ABI or unsatisfied dependency failure is a blocker, not permission to edit
+requirements or relabel reused native binaries.
+
 `foundation.feature_update` names a hash-bound
 `sparkring-native-feature-update/v1` manifest. Each asset declares its owned
 target, exact parent hash (or absence) and replacement bytes. The installer

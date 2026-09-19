@@ -21,6 +21,7 @@ from runtime.images.upgrades.sources import tree_digest, native_digest  # noqa: 
 from runtime.images.upgrades.native_worker import wheel_record  # noqa: E402
 from runtime.images.upgrades.native_install import (  # noqa: E402
     PARENT_RECEIPTS, feature_asset_scope, normalize_parent_receipt,
+    CUDA_RUNTIME_VERSIONS, cuda_wheel_paths, validate_runtime_dependencies,
 )
 
 
@@ -54,17 +55,14 @@ def read_parent_image(image_id):
 def prepare_runtime_dependencies(policy, context):
     """Stage exact reviewed dependency wheels without resolving packages online."""
     result = {}
-    for selected in policy["foundation"].get("runtime_dependencies", []):
-        require(
-            isinstance(selected, dict)
-            and set(selected) == {"path", "sha256", "name", "version", "source_url"},
-            "Runtime dependency fields differ",
-        )
-        require(
-            selected["name"] in ("flashinfer-python", "flashinfer-jit-cache")
-            and selected["name"] not in result,
-            "Unreviewed runtime dependency migration",
-        )
+    selections = policy["foundation"].get("runtime_dependencies", [])
+    for selected in selections:
+        require(isinstance(selected, dict)
+                and set(selected) == {"path", "sha256", "name", "version", "source_url"},
+                "Runtime dependency fields differ")
+    require(len({item["name"] for item in selections}) == len(selections), "Duplicate runtime dependency")
+    validate_runtime_dependencies({item["name"]: item for item in selections})
+    for selected in selections:
         path = beneath(policy["_root"], selected["path"])
         require(
             path.suffix == ".whl" and sha(path.read_bytes()) == selected["sha256"],
@@ -75,6 +73,8 @@ def prepare_runtime_dependencies(policy, context):
             record["version"] == selected["version"],
             "Runtime dependency version differs",
         )
+        if selected["name"] in CUDA_RUNTIME_VERSIONS:
+            cuda_wheel_paths(selected["name"], path, selected["version"])
         destination = context / "wheels" / path.name
         destination.parent.mkdir(exist_ok=True)
         shutil.copyfile(path, destination)
