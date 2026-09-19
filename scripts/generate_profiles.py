@@ -74,6 +74,21 @@ def compact_profile_rows(rows, root=ROOT):
         elif config['format'] == 'release-profile':
             key = (config['path'], config['key'].removesuffix('-sparkcache'))
             cached = config['key'].endswith('-sparkcache')
+            # Cache options may be promoted to different releases independently.
+            # Pair named variants for navigation without transferring their evidence.
+            base_id = p['id'].removesuffix('-sparkcache') if cached else p['id']
+            other_id = base_id if cached else base_id + '-sparkcache'
+            if other_id in rows_by_id:
+                other, other_resolved = rows_by_id[other_id]
+                other_config = other['configuration']
+                expected_key = config['key'].removesuffix('-sparkcache') if cached else config['key'] + '-sparkcache'
+                if (other_config['format'] == 'release-profile'
+                        and other['recommendation'] != 'retired'
+                        and p['recommendation'] != 'retired'
+                        and other_config['key'] == expected_key
+                        and deployment_family(other_resolved) == deployment_family(resolved)
+                        and other_resolved['serving']['decode_context_parallel_size'] == resolved['serving']['decode_context_parallel_size']):
+                    key = ('release-cache-pair', base_id)
         elif config['format'] == 'serving-profile':
             data = read_json(local_path(config['path'], root))
             cached = resolved['serving'].get('sparkcache', False)

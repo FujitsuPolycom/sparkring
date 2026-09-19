@@ -13,6 +13,10 @@ per rank. Bounded qualification covers requests through 128K at concurrency
 1/2/4/8, basic text/media checks and physical-rank cache restore. It does not
 establish full-context or long-duration stability.
 
+SparkCache is optional for GLM. This guide enables it on 2026.09.3; the
+[cache-disabled alternative](../glm53-flash-spark-tp4-dcp1/README.md) uses a
+separately pinned R37 procedure with its own settings and validation limits.
+
 ## 1. Prepare the hosts
 
 Follow [four-Spark host setup](../../docs/GLM53_SPARK_MESH_HOST_SETUP.md) from the repository root. Use
