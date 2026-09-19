@@ -140,7 +140,7 @@ alter a published profile.
 ## Bounded GLM conversations
 
 The host launcher selects GLM checkpoint revision
-`ec0c3ce05787aa471121235af483b098f11d3570` from the
+`a608241037e4c2565356bff7ca293f2133888f88` from the
 [model pins](../../profiles/glm53-target-variants.json). Its template defaults
 to Max reasoning effort when effort is omitted. Its template retains earlier
 reasoning by default (`clear_thinking=false`) and ignores `enable_thinking`.

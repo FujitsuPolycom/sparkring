@@ -3,10 +3,10 @@
   "nvfp4-spark": {
     "target": {
       "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
-      "revision": "ec0c3ce05787aa471121235af483b098f11d3570",
+      "revision": "a608241037e4c2565356bff7ca293f2133888f88",
       "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
       "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
-      "checkpoint_identity": "c132eef529c66a95a4910a8dca42902a2bcf96e093822a2abaf51735fed140f4"
+      "checkpoint_identity": "c1031022d49952dc287e85a7a99b7415780307acbabe0ea94d4ffaeca3d090c1"
     },
     "metadata_sha256": {
       "config.json": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",

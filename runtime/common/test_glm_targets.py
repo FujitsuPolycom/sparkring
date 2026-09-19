@@ -103,7 +103,7 @@ def test_spark_revision_and_cache_namespace_follow_image_contract(schema):
     image = {"schema": schema} if schema else None
     maintained = schema in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1")
     selected = glm_targets.target_for_image(image=image)
-    expected = "ec0c3ce05787aa471121235af483b098f11d3570" if maintained else "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+    expected = "a608241037e4c2565356bff7ca293f2133888f88" if maintained else "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
     assert selected["revision"] == expected
     identity = (hashlib.sha256(f"{selected['repository']}@{expected}".encode()).hexdigest()
                 if maintained else "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4")
