@@ -112,3 +112,42 @@ def test_unconfigured_topology_is_not_inferred_from_image_admission(observations
     glm.validate_profile_capabilities(record, "tp4-dcp1-sparkcache")
     with pytest.raises(ValueError, match="TP2/DCP1 and TP4/DCP1"):
         glm.validate_profile_capabilities(record, "tp4-dcp4-sparkcache")
+
+
+@pytest.mark.parametrize("profile", sorted(glm.PROFILES))
+@pytest.mark.parametrize("variant", ["nvfp4-spark", "nvfp4-qad"])
+def test_native_arguments_preserve_profile_resources_and_select_draft_backend(observations, profile, variant):
+    contract = glm.contract_for_receipt(glm.make_receipt(**observations))
+    original = ["serve", "/models/target", "--load-format", "safetensors", "--mamba-block-size", "512",
+                "--cp-kv-cache-interleave-size", "auto", "--cudagraph-metrics", "--async-scheduling",
+                "--max-cudagraph-capture-size", "64", "--model-loader-extra-config", '{"allocation":"managed"}']
+    before = list(original)
+    args = glm.adapt_arguments(original, contract, profile, variant)
+    assert original == before
+    selected = contract["profiles"][profile]
+    for flag, expected in (("--max-model-len", 1048576), ("--kv-cache-memory-bytes", selected["kv_cache_memory_bytes"]),
+                           ("--max-num-seqs", selected["serving"]["max_num_seqs"]), ("--max-num-batched-tokens", 8192),
+                           ("--load-format", "b12x"), ("--max-parallel-prefills", 1)):
+        assert args.count(flag) == 1 and args[args.index(flag) + 1] == str(expected)
+    flags = ("--mamba-block-size", "--max-cudagraph-capture-size", "--async-scheduling", "--cudagraph-metrics")
+    assert all((flag in args) == (selected["node_count"] == 4) for flag in flags)
+    speculation = json.loads(args[args.index("--speculative-config") + 1])
+    assert speculation["num_speculative_tokens"] == 3
+    assert speculation.get("moe_backend") == ("humming" if selected["node_count"] == 2 or variant == "nvfp4-qad" else None)
+    if selected["node_count"] == 2:
+        assert speculation["draft_load_config"]["load_format"] == "b12x"
+    else:
+        assert "draft_load_config" not in speculation and speculation["draft_tensor_parallel_size"] == 4
+    graph = json.loads(args[args.index("--compilation-config") + 1])
+    assert graph["cudagraph_capture_sizes"] == selected["cudagraph_capture_sizes"]
+    if selected["node_count"] == 2:
+        assert graph["mode"] == 0
+    else:
+        assert graph["custom_ops"] == ["all"] and graph["pass_config"] == {"fuse_allreduce_rms": False}
+
+
+@pytest.mark.parametrize("args", [["serve", "--load-format"], ["serve", "--load-format", "a", "--load-format", "b"]])
+def test_ambiguous_argument_translation_is_rejected(observations, args):
+    contract = glm.contract_for_receipt(glm.make_receipt(**observations))
+    with pytest.raises(ValueError):
+        glm.adapt_arguments(args, contract, "tp2-dcp1-sparkcache")

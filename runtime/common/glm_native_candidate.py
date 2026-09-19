@@ -117,6 +117,9 @@ def profile_contract(installed):
                        lifecycle="explicit-create-and-start", memory_guard_required=False)
         if profile["node_count"] == 2:
             profile["serving"] = copy.deepcopy(compatibility["profiles"]["tp2-dcp1-sparkcache"]["serving"])
+        else:
+            profile["serving"] = dict(max_num_seqs=16, max_num_batched_tokens=8192,
+                                      prefill_schedule_interval=2, limit_mm_per_prompt={"image": 4, "video": 1})
     files = installed["files"]
     cache = {key: compatibility["sparkcache_native"][key]
              for key in ("placement_path", "snapshot_path", "vllm_root")}
@@ -149,6 +152,83 @@ def cache_namespace(image_id, profile):
     if profile not in PROFILES or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
         raise ValueError("Native GLM cache namespace requires an exact image and supported profile")
     return f"sparkring-native-glm-{image_id[7:19]}-{profile}"
+
+
+def adapt_arguments(arguments, contract, profile, variant="nvfp4-spark"):
+    """Translate the retained GLM argument surface to the native engine contract.
+
+    Resource settings come from the selected profile. This translation does not
+    lower context, KV allocation, batch size or concurrency to gain admission.
+    MXFP8 QAD draft experts require a backend distinct from the NVFP4 target.
+    """
+    if profile not in PROFILES or variant not in ("nvfp4-spark", "nvfp4-qad"):
+        raise ValueError("Native GLM arguments require a configured DCP1 profile and LIL checkpoint")
+    selected = contract["profiles"][profile]
+    nodes = selected["node_count"]
+    result = list(arguments)
+
+    def remove(name, *, value=True):
+        if result.count(name) > 1:
+            raise ValueError("Serving option occurs more than once: " + name)
+        if name in result:
+            index = result.index(name)
+            if value and (index + 1 == len(result) or result[index + 1].startswith("--")):
+                raise ValueError("Serving option has no value: " + name)
+            del result[index:index + (2 if value else 1)]
+
+    def set_option(name, value):
+        remove(name)
+        result.extend((name, str(value)))
+
+    for flag in ("--model-loader-extra-config", "--gdn-decode-kernel"):
+        remove(flag)
+    if nodes == 2:
+        for flag in ("--mamba-block-size", "--max-cudagraph-capture-size", "--cp-kv-cache-interleave-size"):
+            remove(flag)
+        for flag in ("--cudagraph-metrics", "--async-scheduling"):
+            remove(flag, value=False)
+    for flag, value in (
+        ("--load-format", "b12x"), ("--quantization", "modelopt_mixed"),
+        ("--max-model-len", contract["model"]["max_model_len"]),
+        ("--kv-cache-memory-bytes", selected["kv_cache_memory_bytes"]),
+        ("--max-parallel-prefills", 1),
+        ("--recurrent-checkpoint-policy", "aligned"), ("--prefix-cache-retention-interval", 0),
+    ):
+        set_option(flag, value)
+    serving = selected["serving"]
+    for flag, key in (("--max-num-seqs", "max_num_seqs"), ("--max-num-batched-tokens", "max_num_batched_tokens"),
+                      ("--prefill-schedule-interval", "prefill_schedule_interval")):
+        set_option(flag, serving[key])
+    set_option("--limit-mm-per-prompt", json.dumps(serving["limit_mm_per_prompt"], separators=(",", ":")))
+    speculation = dict(method="mtp", num_speculative_tokens=3, attention_backend="B12X")
+    if nodes == 2:
+        speculation['draft_load_config'] = copy.deepcopy(selected['draft_load_config'])
+        for flag, value in (("--mm-processor-cache-gb", 0), ("--mm-encoder-tp-mode", "data"), ("--generation-config", "auto")):
+            set_option(flag, value)
+    else:
+        # These explicit TP4 draft controls match the measured mesh recipe.
+        # An omitted draft loader inherits the target's B12X loader.
+        speculation.update(draft_tensor_parallel_size=4, kv_cache_dtype="auto",
+                           draft_sample_method="probabilistic", rejection_sample_method="standard")
+    if nodes == 2 or variant == "nvfp4-qad":
+        speculation["moe_backend"] = "humming"
+    set_option("--speculative-config", json.dumps(speculation, separators=(",", ":")))
+    captures = selected["cudagraph_capture_sizes"]
+    graph = dict(cudagraph_mode="FULL_AND_PIECEWISE", cudagraph_capture_sizes=captures)
+    if nodes == 2:
+        graph.update(mode=0, max_cudagraph_capture_size=max(captures))
+    else:
+        graph.update(custom_ops=["all"], pass_config={"fuse_allreduce_rms": False})
+        set_option("--max-cudagraph-capture-size", max(captures))
+        set_option("--mamba-block-size", 256)
+        set_option("--cp-kv-cache-interleave-size", 1)
+        for flag in ("--async-scheduling", "--cudagraph-metrics"):
+            remove(flag, value=False)
+            result.append(flag)
+    set_option("--compilation-config", json.dumps(graph, separators=(",", ":")))
+    if nodes == 4:
+        set_option("--media-io-kwargs", '{"video":{"num_frames":16}}')
+    return result
 
 
 def main():
