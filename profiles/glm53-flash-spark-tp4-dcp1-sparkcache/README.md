@@ -104,6 +104,11 @@ Use the separately pinned [R33 DCP4 reproduction procedure](../../performance/re
 It does not qualify DCP4 on 2026.09.3. Do not apply its entrypoint overlay to
 the native image or edit a staged DCP1 deployment into DCP4.
 
+For that R33 procedure, select `tp4-dcp4-sparkcache` for persistent caching or
+`tp4-dcp4` without it in the private site's `runtime_profile`. Use the R33 image
+receipt and contract paths named by the reproduction guide, not this native
+image receipt. The deployment-suite planner above remains DCP1-only.
+
 ## Validation and results
 
 The [release qualification](../../runtime/releases/shared-2026.09.3/qualification.json)
