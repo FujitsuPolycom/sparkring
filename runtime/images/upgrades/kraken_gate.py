@@ -1,6 +1,7 @@
 """Bind the paired vLLM coordinator before running protected source checks."""
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -30,7 +31,10 @@ def main():
     peer = bind_peer(args.peer_vllm_root, args.peer_vllm_sha256)
     os.environ["SPARKRING_VLLM_SOURCE_ROOT"] = str(peer)
     result = run(args.source, args.baseline, args.suite, args.result)
-    return 0 if result["outcome"] == "passed" else 1
+    # A completed oracle reports failure in its receipt. The runner needs that
+    # evidence to evaluate upstream and candidate variants or request repair.
+    print(json.dumps(result))
+    return 0
 
 
 if __name__ == "__main__":
