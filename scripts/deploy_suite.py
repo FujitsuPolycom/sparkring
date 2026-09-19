@@ -221,7 +221,7 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
         if document.get("profile") is not None:
             result["site"]["runtime_profile"] = document["profile"]
         if runtime_profile is not None:
-            if document.get("schema") not in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+            if document.get("schema") not in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-native-image-receipt/v1"):
                 raise ValueError("Explicit runtime profile requires an R33, R35 or registered candidate image receipt")
             result["site"]["runtime_profile"] = runtime_profile
         selected = selection(result, PROFILE)
@@ -320,10 +320,10 @@ def main(argv=None):
                    help="Explicit verified local source composition or canonical performance receipt; omission retains the base public image")
     p.add_argument("--reuse-existing-image", action="store_true",
                    help="Verify the selected image on all four hosts without saving or copying it")
-    p.add_argument("--target-model-variant", choices=("nvfp4-spark", "nvidia-nvfp4"),
+    p.add_argument("--target-model-variant", choices=("nvfp4-spark", "nvfp4-qad", "nvidia-nvfp4"),
                    help="Select pinned target metadata; omitted keeps NVFP4-Spark")
     p.add_argument("--runtime-profile", choices=("tp4-dcp1", "tp4-dcp1-sparkcache"),
-                   help="Required topology/profile selection for an R33, R35 or registered candidate image receipt")
+                   help="Required topology/profile selection for a source-bound or native image receipt")
     p.add_argument("--existing-model-root", type=str, action="append", default=[],
                    help="Read-only existing model directory; repeat in rank order exactly four times with --reuse-existing-image")
     p.add_argument("--output", type=Path, required=True)

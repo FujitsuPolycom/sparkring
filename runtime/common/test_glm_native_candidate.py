@@ -3,6 +3,7 @@ import base64
 import copy
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,7 @@ def observations(monkeypatch):
         "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so")})
     raw = json.dumps(installed).encode()
     publication["installed_receipt_sha256"] = hashlib.sha256(raw).hexdigest()
+    publication["transport"] = dict(profile="tp2-rocenante-adaptive-prepared", manifest_sha256="3" * 64)
     verified.update(receipt_sha256=publication["installed_receipt_sha256"], files_verified=len(installed["files"]))
     monkeypatch.setattr(native, "publication", lambda *args, **kwargs: publication)
     return dict(release=publication["release"], image_id=image, inspection=inspection,
@@ -151,3 +153,99 @@ def test_ambiguous_argument_translation_is_rejected(observations, args):
     contract = glm.contract_for_receipt(glm.make_receipt(**observations))
     with pytest.raises(ValueError):
         glm.adapt_arguments(args, contract, "tp2-dcp1-sparkcache")
+
+
+@pytest.mark.parametrize("cache_enabled", [False, True])
+@pytest.mark.parametrize("variant", ["nvfp4-spark", "nvfp4-qad"])
+def test_tp2_native_plan_selects_verified_entrypoint_loader_and_transport(observations, tmp_path, monkeypatch, cache_enabled, variant):
+    from runtime.common import tp2, glm_targets
+    record = glm.make_receipt(**observations)
+    model, cache = tmp_path / "model", tmp_path / "cache"
+    model.mkdir()
+    cache.mkdir()
+    (model / "config.json").write_bytes(b"config fixture")
+    (model / "model.safetensors.index.json").write_bytes(b"index fixture")
+    seen = []
+    monkeypatch.setattr(glm_targets, "verified_override", lambda *args: seen.append(args))
+    env = tmp_path / "rank.env"
+    env.write_text("VLLM_HOST_IP=192.0.2.10\nNCCL_SOCKET_IFNAME=eth0\nGLOO_SOCKET_IFNAME=eth0\n")
+    plan = tp2.render(0, "192.0.2.10", model, cache, env, record["image_id"], record,
+                      r33_sparkcache=cache_enabled, target_model_variant=variant)
+    assert seen == [(variant, b"config fixture", b"index fixture")]
+    assert plan["container_args"][:2] == [glm.ENTRYPOINT, "serve"]
+    assert plan["environment"]["SPARKRING_TRANSPORT_PROFILE"] == "tp2-rocenante-adaptive-prepared"
+    assert plan["environment"]["SOURCE_IMAGE_PROFILE"] == ""
+    assert plan["labels"]["org.sparkring.memory-guard"] == "false"
+    assert plan["memory_guard_floor_bytes"] == 0
+    assert plan["model"]["revision"] == glm_targets.target(variant)["revision"]
+    assert plan["target_model_variant"] == variant
+    assert plan["environment"]["SERVED_MODEL_NAME"].endswith(("QAD" if variant == "nvfp4-qad" else "Spark") + "-TP2")
+    assert plan["qualification"]["gpu_qualified"] is False
+    assert "reference_context_limit" not in plan["qualification"]
+    assert plan["environment"]["LOAD_FORMAT"] == "b12x"
+    assert ("--kv-transfer-config" in plan["container_args"]) == cache_enabled
+    tp2.validate_runtime_receipt(record, plan)
+    observations_seen = []
+    monkeypatch.setattr(glm, "verify_local_image", lambda doc, **kwargs: observations_seen.append(doc))
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert argv[0] != "systemctl", "Native profiles must not enable or require an untested memory guard"
+        assert argv == ["docker", "ps", "--quiet"] or argv == plan["command"]
+        return SimpleNamespace(stdout="")
+
+    tp2.execute(plan, "create", record, run=run)
+    assert observations_seen == [record]
+    assert calls == [["docker", "ps", "--quiet"], plan["command"]]
+    if cache_enabled:
+        config = json.loads(plan["container_args"][plan["container_args"].index("--kv-transfer-config") + 1])
+        assert config["kv_connector_extra_config"]["spark_cache_async_page_capture_lease_contract"] == record["installed"]["active_contracts"][0]
+        assert config["kv_connector_extra_config"]["spark_cache_target_checkpoint_sha256"] == glm_targets.target(variant)["checkpoint_identity"]
+
+
+@pytest.mark.parametrize("variant", ["nvfp4-spark", "nvfp4-qad"])
+@pytest.mark.parametrize("profile", ["tp4-dcp1", "tp4-dcp1-sparkcache"])
+def test_managed_tp4_native_render_and_spec(observations, tmp_path, monkeypatch, variant, profile):
+    from runtime.common import glm_targets, glm_tp4
+    from runtime.common.test_glm_tp4 import mesh, example, module, MESH
+    record = glm.make_receipt(**observations)
+    image_path = tmp_path / "image.json"
+    image_path.write_text(json.dumps(record))
+    (tmp_path / "fabric.example.json").write_text(json.dumps(example.topology_example()))
+    site = dict(example.site_example(), runtime_profile=profile, target_model_variant=variant)
+    site_path = tmp_path / "site.json"
+    site_path.write_text(json.dumps(site))
+    monkeypatch.setattr(mesh, "verify_bundle", lambda *args: record["bundle_manifest_sha256"])
+    seen = []
+    monkeypatch.setattr(glm_targets, "verified_override", lambda *args: seen.append(args))
+    output = tmp_path / "launch"
+    mesh.render(site_path, tmp_path / "bundle", output, image_path)
+    assert "structured container plan" in (output / "launch-rank.sh").read_text()
+    readiness = module("native_glm_readiness_test", MESH / "wait_managed_ready.py")
+    readiness_plan = readiness.load_launch(output)
+    assert readiness_plan["timeout_seconds"] == 1800
+    assert readiness.readiness_limit(readiness_plan) == 1800
+    assert all(target["wrapper"] == glm.ENTRYPOINT and target["runtime_release"] == "native"
+               for target in readiness_plan["containers"])
+    contract = glm.contract_for_receipt(record)
+    for rank in range(4):
+        values = mesh.defaults(output / f"rank{rank}.env")
+        spec = glm_tp4.build_spec(values, image_record=record, contract=contract,
+                                  model_config=b"config fixture", model_index=b"index fixture")
+        assert spec.command[:2] == (glm.ENTRYPOINT, "serve")
+        assert spec.environment["SOURCE_IMAGE_PROFILE"] == ""
+        assert spec.environment["VLLM_PLUGINS"] == "b12x_loader"
+        assert spec.environment["SPARKRING_FEATURES"] == ""
+        assert spec.environment["SPARK_TP4_GRAPH_DIRECT_DOORBELL"] == "1"
+        assert spec.command[spec.command.index("--load-format") + 1] == "b12x"
+        assert spec.command[spec.command.index("--kv-cache-memory-bytes") + 1] == "25769803776"
+        if profile.endswith("-sparkcache"):
+            config = json.loads(spec.command[spec.command.index("--kv-transfer-config") + 1])["kv_connector_extra_config"]
+            assert config["spark_cache_async_page_capture_lease_contract"] == record["installed"]["active_contracts"][0]
+            assert config["spark_cache_max_bytes"] == 8 * 1024**3
+            assert config["spark_cache_async_page_capture_slot_bytes"] == 512 * 1024**2
+            assert config["spark_cache_cuda_placement_arena_bytes"] == 64 * 1024**2
+            assert "spark_cache_clear_once" not in config
+            assert config["spark_cache_target_checkpoint_sha256"] == glm_targets.target(variant)["checkpoint_identity"]
+    assert seen == [(variant, b"config fixture", b"index fixture")] * 4

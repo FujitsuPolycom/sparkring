@@ -7,19 +7,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RECORD = ROOT / "profiles/glm53-target-variants.json"
 DEFAULT = "nvfp4-spark"
-VARIANTS = (DEFAULT, "nvidia-nvfp4")
+VARIANTS = (DEFAULT, "nvfp4-qad", "nvidia-nvfp4")
 
 
 def target(variant=DEFAULT):
     if variant not in VARIANTS:
-        raise ValueError("target_model_variant must be nvfp4-spark or nvidia-nvfp4")
+        raise ValueError("target_model_variant must be nvfp4-spark, nvfp4-qad or nvidia-nvfp4")
     return json.loads(RECORD.read_text())[variant]["target"]
 
 
 def target_for_image(variant=DEFAULT, image=None):
     """Select maintained host model pins while preserving frozen image recipes."""
     if variant == DEFAULT and (image or {}).get("schema") not in (
-            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-source-image-receipt/v1"):
+            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-source-image-receipt/v1", "sparkring-glm-native-image-receipt/v1"):
         return json.loads((ROOT / "runtime/glm53-spark-mtp3-mesh/pins.json").read_text())["target"]
     return target(variant)
 
@@ -39,6 +39,10 @@ def adapt_launcher(text, image):
 def require_image(variant, image):
     """Admit host configuration only; image admission does not qualify serving."""
     target(variant)
+    if variant == "nvfp4-qad":
+        if (image or {}).get("schema") != "sparkring-glm-native-image-receipt/v1":
+            raise ValueError("LIL NVFP4 QAD requires an explicit native GLM image receipt")
+        return
     if variant == DEFAULT or image is None:
         return
     schema = image.get("schema")
@@ -51,8 +55,10 @@ def require_image(variant, image):
     raise ValueError("nvidia-nvfp4 requires the retained compute launcher or the registered R37 composition; R33/R35 and other source-image contracts are unsupported")
 
 
-def readiness_timeout(variant=DEFAULT):
+def readiness_timeout(variant=DEFAULT, image=None):
     target(variant)
+    if variant == "nvfp4-qad" or (image or {}).get("schema") == "sparkring-glm-native-image-receipt/v1":
+        return 1800
     return 1500 if variant == "nvidia-nvfp4" else 900
 
 
@@ -67,23 +73,28 @@ def verify_download(variant, files, image=None):
                     raise ValueError("Spark model metadata differs from its pinned identity: " + name)
         return
     expected = json.loads(RECORD.read_text())[variant]["source_files"]
+    label = "QAD" if variant == "nvfp4-qad" else "NVIDIA"
     if set(files) != set(expected):
-        raise ValueError("NVIDIA model file set differs from the pinned revision")
+        raise ValueError(label + " model file set differs from the pinned revision")
     for name, identity in expected.items():
         if "sha256" not in identity:
-            raise ValueError("NVIDIA manifest lacks a pinned SHA256 identity: " + name)
+            raise ValueError(label + " manifest lacks a pinned SHA256 identity: " + name)
         if files[name] != identity["sha256"]:
-            raise ValueError("NVIDIA model file differs from its pinned identity: " + name)
+            raise ValueError(label + " model file differs from its pinned identity: " + name)
     for name, field in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
         if files[name] != selected[field]:
-            raise ValueError("NVIDIA model metadata differs from its pinned identity: " + name)
+            raise ValueError(label + " model metadata differs from its pinned identity: " + name)
 
 
 def environment(variant, values, image):
     """Bind model-specific loader settings and persistent cache namespaces."""
     require_image(variant, image)
     result = dict(values)
-    if variant != DEFAULT:
+    if variant == "nvfp4-qad":
+        result.update(TARGET_MODEL_VARIANT=variant, LOAD_FORMAT="b12x", VLLM_PLUGINS="b12x_loader",
+                      B12X_NVFP4_DYNAMIC_MATERIALIZED="0", DFLASH_WARMUP_TIMEOUT_SECONDS="1800")
+        result["SPARKCACHE_CACHE_NAMESPACE"] += "-nvfp4-qad-" + target(variant)["revision"][:12]
+    elif variant != DEFAULT:
         result.update(TARGET_MODEL_VARIANT=variant, LOAD_FORMAT="safetensors",
                       DFLASH_WARMUP_TIMEOUT_SECONDS="1500")
         result["SPARKCACHE_CACHE_NAMESPACE"] += "-" + variant

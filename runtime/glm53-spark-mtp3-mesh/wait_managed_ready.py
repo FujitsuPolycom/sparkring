@@ -33,7 +33,8 @@ def registered_targets(launch, site, topology, targets):
     image = rendered.get("image", {})
     schema = image.get("schema") if isinstance(image, dict) else None
     adapters = {profile.r35.SCHEMA: (profile.r35, "r35", "/opt/sparkring/bin/sparkring"),
-                profile.candidate.SCHEMA: (profile.candidate, "candidate", profile.candidate.ENTRYPOINT)}
+                profile.candidate.SCHEMA: (profile.candidate, "candidate", profile.candidate.ENTRYPOINT),
+                profile.glm_native_candidate.SCHEMA: (profile.glm_native_candidate, "native", profile.glm_native_candidate.ENTRYPOINT)}
     if schema not in adapters:
         return False
     adapter, release, wrapper = adapters[schema]
@@ -88,9 +89,10 @@ def load_launch(launch):
     if environment.get("TARGET_MODEL_VARIANT", profile.glm_targets.DEFAULT) != variant:
         raise ValueError("Readiness target differs from the rendered site")
 
+    native = registered and all(target.get("runtime_release") == "native" for target in targets)
     return {
-        **({"target_model_variant": variant, "timeout_seconds": profile.glm_targets.readiness_timeout(variant)}
-           if variant != profile.glm_targets.DEFAULT else {}),
+        **({"target_model_variant": variant, "timeout_seconds": 1800 if native else profile.glm_targets.readiness_timeout(variant)}
+           if native or variant != profile.glm_targets.DEFAULT else {}),
         "containers": targets,
         "urls": [f"http://{address}:{ports[0]}/health", f"http://{address}:{ports[1]}/liveness"],
         "stable_samples_required": 2 if registered else 1,
@@ -158,7 +160,7 @@ def inspect_container(target, timeout):
                 raise ValueError("Registered container environment has duplicate names")
             env[key] = content
         expected = {"NODE_RANK": str(target["rank"]), "SPARKRING_NODE_RANK": str(target["rank"]),
-                    "SOURCE_IMAGE_PROFILE": target["runtime_profile"], "SPARKRING_PROFILE_MODE": "custom"}
+                    "SOURCE_IMAGE_PROFILE": "" if target["runtime_release"] == "native" else target["runtime_profile"], "SPARKRING_PROFILE_MODE": "custom"}
         if any(env.get(key) != value for key, value in expected.items()):
             raise ValueError("Registered container rank or profile differs from the launch")
         for flag, value in (("--node-rank", target["rank"]), ("--tensor-parallel-size", 4),
@@ -214,8 +216,15 @@ def sample(plan, deadline, *, inspect=inspect_container, request=http_ready, clo
     return result
 
 
+def readiness_limit(plan):
+    targets = plan.get("containers", [])
+    if targets and all(target.get("runtime_release") == "native" for target in targets):
+        return 1800
+    return profile.glm_targets.readiness_timeout(plan.get("target_model_variant", profile.glm_targets.DEFAULT))
+
+
 def wait(plan, timeout, *, probe=sample, clock=time.monotonic, sleep=time.sleep):
-    maximum = profile.glm_targets.readiness_timeout(plan.get("target_model_variant", profile.glm_targets.DEFAULT))
+    maximum = readiness_limit(plan)
     if not math.isfinite(timeout) or not 0 < timeout <= maximum:
         raise ValueError(f"Timeout must be finite and greater than zero through {maximum} seconds")
     started = clock()
@@ -253,7 +262,7 @@ def main():
     if args.output is not None and (args.output.exists() or args.output.is_symlink()):
         parser.error("Output receipt must not already exist")
     plan = load_launch(args.launch)
-    maximum = profile.glm_targets.readiness_timeout(plan.get("target_model_variant", profile.glm_targets.DEFAULT))
+    maximum = readiness_limit(plan)
     timeout = maximum if args.timeout is None else args.timeout
     if not math.isfinite(timeout) or not 0 < timeout <= maximum:
         parser.error(f"Timeout must be finite and greater than zero through {maximum} seconds")

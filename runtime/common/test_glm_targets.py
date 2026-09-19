@@ -11,6 +11,39 @@ from runtime.common import glm_targets
 CONFIG = Path(__file__).with_name("fixtures") / "glm53-nvidia-nvfp4-config.json"
 
 
+def test_lil_qad_is_distinct_and_has_complete_file_identities():
+    selected = glm_targets.target("nvfp4-qad")
+    assert selected["repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4"
+    assert selected["revision"] == "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49"
+    assert selected["checkpoint_identity"] == hashlib.sha256((selected["repository"] + "@" + selected["revision"]).encode()).hexdigest()
+    record = json.loads(glm_targets.RECORD.read_bytes())["nvfp4-qad"]
+    files = {name: row["sha256"] for name, row in record["source_files"].items()}
+    assert len(files) == 60
+    assert files["config.json"] == selected["config_sha256"]
+    assert files["model.safetensors.index.json"] == selected["index_sha256"]
+    glm_targets.verify_download("nvfp4-qad", files)
+    changed = dict(files, **{"config.json": "0" * 64})
+    with pytest.raises(ValueError, match="QAD model file"):
+        glm_targets.verify_download("nvfp4-qad", changed)
+    files.pop("LICENSE")
+    with pytest.raises(ValueError, match="QAD model file set"):
+        glm_targets.verify_download("nvfp4-qad", files)
+
+
+def test_qad_requires_native_admission_and_keeps_fast_loader():
+    for image in (None, {"schema": "sparkring-r35-image-receipt/v1"}, {"schema": "sparkring-candidate-image-receipt/v1"}):
+        with pytest.raises(ValueError, match="native GLM"):
+            glm_targets.require_image("nvfp4-qad", image)
+    image = {"schema": "sparkring-glm-native-image-receipt/v1"}
+    glm_targets.require_image("nvfp4-qad", image)
+    environment = glm_targets.environment("nvfp4-qad", {"SPARKCACHE_CACHE_NAMESPACE": "test-cache"}, image)
+    assert environment["LOAD_FORMAT"] == "b12x" and environment["VLLM_PLUGINS"] == "b12x_loader"
+    assert environment["SPARKCACHE_CACHE_NAMESPACE"] == "test-cache-nvfp4-qad-175ae8ce3b5a"
+    assert glm_targets.readiness_timeout("nvfp4-qad") == 1800
+    assert glm_targets.readiness_timeout("nvfp4-spark", image) == 1800
+    assert glm_targets.readiness_timeout() == 900
+
+
 def test_nvidia_metadata_matches_contributor_pin_and_preserves_quantization():
     raw = CONFIG.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == glm_targets.target("nvidia-nvfp4")["config_sha256"]

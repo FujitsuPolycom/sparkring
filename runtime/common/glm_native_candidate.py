@@ -67,7 +67,7 @@ def make_receipt(*, release, image_id, inspection, installed_bytes, verification
     return dict(schema=SCHEMA, release=release, image_id=image_id,
                 image_reference=publication["image_reference"], platform="linux/arm64",
                 raw_installed=base64.b64encode(installed_bytes).decode(), inspection=info,
-                verification=copy.deepcopy(verification), installed=view,
+                verification={**copy.deepcopy(verification), "checked_files": copy.deepcopy(view["files"])}, installed=view,
                 bundle_manifest_sha256=view["files"][MANIFEST], serving_qualified=False)
 
 
@@ -140,6 +140,31 @@ def profile_contract(installed):
 
 def contract_for_receipt(document):
     return profile_contract(validate_receipt(document)["installed"])
+
+
+def environment_for_profile(installed, profile):
+    """Apply native runtime and bounded cache settings after compatibility templates."""
+    contract = profile_contract(installed)
+    if profile not in contract["profiles"]:
+        raise ValueError("Native GLM profile is not configured")
+    values = dict(contract["common_environment"])
+    values.update(SPARKRING_RUNTIME_RELEASE="native", SPARKCACHE_MAX_BYTES="8589934592",
+                  SPARKCACHE_LOW_WATERMARK_BYTES="6442450944", SPARKCACHE_MAX_SPAN_TOKENS="65536",
+                  SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES="536870912", SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT="2",
+                  SPARKCACHE_CUDA_ARENA_BYTES="67108864", SPARKCACHE_LOAD_THREADS="2",
+                  SPARKCACHE_MAX_PENDING_RESTORES="2", SPARKCACHE_CUDA_RESTORE_IO_WORKERS="2",
+                  SPARKCACHE_CLEAR_ONCE="", B12X_COMPILE_CPU_AFFINITY="12-19")
+    if contract["profiles"][profile]["node_count"] == 4:
+        values["SPARK_TP4_GRAPH_DIRECT_DOORBELL"] = "1"
+    return values
+
+
+def adapt_launcher(text, installed):
+    """Prevent legacy shell launchers from bypassing native structured admission."""
+    profile_contract(installed)
+    return ("#!/usr/bin/env bash\nset -euo pipefail\n"
+            "echo 'Native GLM deployment requires runtime.common.glm_launch and its verified image receipt; use the structured container plan.' >&2\n"
+            "exit 64\n")
 
 
 def validate_profile_capabilities(document, profile):

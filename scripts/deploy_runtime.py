@@ -124,10 +124,10 @@ def build_runtime_plan(preparation, action, *, container_backend="docker"):
     cache_diagnostics = "cache_diagnostics" in spec.get("site", {})
     if action == "create" and container_backend == "compose" and cache_diagnostics:
         raise ValueError("Compose creation does not support cache diagnostic sites; use the retained Docker launcher")
-    structured = (public["receipt"].get("schema") in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1")
+    structured = (public["receipt"].get("schema") in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-native-image-receipt/v1")
                   and not cache_diagnostics)
     if action == "create" and container_backend == "compose" and not structured:
-        raise ValueError("Compose creation requires an explicit R35 or candidate image receipt")
+        raise ValueError("Compose creation requires an explicit source-bound or native image receipt")
     image_id = public["config_image_id"]
     phases = []
     capabilities = preparation.get("lifecycle_capabilities", [])
