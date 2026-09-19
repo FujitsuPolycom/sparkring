@@ -34,6 +34,79 @@ DEPENDENCY_PACKAGES = {
 SGLANG_PREFIX = Path("/opt/sglang")
 FLASHINFER_GLOBAL_BUILD_HELPERS = ("build_backend.py", "build_utils.py")
 PREPARED_TRANSPORT_PROFILE = "tp2-rocenante-adaptive-prepared"
+PARENT_RECEIPTS = {
+    "native": "/opt/sparkring/receipts/native-installed.json",
+    "candidate": "/opt/sparkring/receipts/candidate-installed.json",
+}
+
+
+def normalize_parent_receipt(raw, kind):
+    """Expose verified native contract selections without rewriting the receipt."""
+    require(kind in PARENT_RECEIPTS, "Unknown foundation receipt kind")
+    parent = json.loads(raw)
+    require(
+        isinstance(parent, dict)
+        and parent.get("schema") == f"sparkring-{kind}-installed/v1"
+        and isinstance(parent.get("files"), dict) and parent["files"]
+        and isinstance(parent.get("versions"), dict) and parent["versions"],
+        "Invalid foundation installed receipt",
+    )
+    require(isinstance(parent.get("removed_files", []), list), "Invalid removed-file inventory")
+    if kind == "native":
+        require("removed_files" in parent, "Native foundation lacks removed-file inventory")
+        active = parent.get("active_contracts")
+        require(isinstance(active, list) and all(isinstance(name, str) for name in active),
+                "Native foundation lacks declared active contracts")
+        require(len(active) == len(set(active)), "Duplicate native active contract")
+        contracts = {}
+        for name in active:
+            path = PurePosixPath(name)
+            digest = parent["files"].get(name)
+            require(
+                path.parent == PurePosixPath("/opt/sparkring/contracts")
+                and str(path) == name and "\\" not in name and ".." not in path.parts
+                and isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest),
+                "Native active contract is not owned with a valid hash: " + name,
+            )
+            contracts[name] = {"sha256": digest}
+        require("boundary_runtime" in parent, "Native foundation lacks boundary selection")
+        parent["integration_contracts"] = contracts
+    else:
+        require(isinstance(parent.get("integration_contracts", {}), dict),
+                "Invalid candidate contract selections")
+    return parent
+
+
+def read_parent_foundation(descriptor=None):
+    """A present native receipt is authoritative, including when it is invalid."""
+    kind, path = ("native", NATIVE) if os.path.lexists(NATIVE) else ("candidate", RECEIPT)
+    require(path.is_file() and not path.is_symlink(), "Invalid foundation receipt path")
+    raw = path.read_bytes()
+    evidence = dict(kind=kind, path=str(path), sha256=hashlib.sha256(raw).hexdigest())
+    if descriptor is not None:
+        declared = descriptor.get("parent_receipt")
+        require(
+            (declared == evidence if declared is not None else kind == "candidate")
+            and descriptor.get("parent_installed_sha256") == evidence["sha256"],
+            "Foundation installed receipt selection differs",
+        )
+    parent = normalize_parent_receipt(raw, kind)
+    verify_installed_state(parent)
+    return parent, raw, evidence
+
+
+def retain_parent_receipt(raw, evidence):
+    """Keep the exact parent attestation when native-installed.json is replaced."""
+    digest = hashlib.sha256(raw).hexdigest()
+    require(digest == evidence["sha256"], "Retained parent receipt bytes differ")
+    archive = ROOT / "receipts" / ("foundation-" + digest + ".json")
+    if os.path.lexists(archive):
+        require(archive.is_file() and not archive.is_symlink() and sha(archive) == digest,
+                "Retained parent receipt destination differs")
+    else:
+        with archive.open("xb") as stream:
+            stream.write(raw)
+    return {str(archive): digest}, {**evidence, "retained_path": str(archive)}
 
 
 def feature_asset_scope(name):
@@ -617,9 +690,15 @@ def verify_feature_dispositions(parent, child):
 
 def selected_boundary_identity(parent):
     """Use an owned versioned cache identity when the foundation declares one."""
-    selected = parent.get("cache_extension", {}).get("boundary_runtime")
+    native = parent.get("schema") == "sparkring-native-installed/v1"
+    selected = (parent.get("boundary_runtime") if native else
+                parent.get("cache_extension", {}).get("boundary_runtime"))
     if selected is None:
+        if native:
+            return None
         return ROOT / "contracts/boundary-runtime.json"
+    require(isinstance(selected, dict) and isinstance(selected.get("path"), str)
+            and isinstance(selected.get("sha256"), str), "Invalid boundary selection")
     path = Path(selected["path"])
     require(
         path.parent == ROOT / "contracts" and not path.is_symlink(),
@@ -755,15 +834,10 @@ def install(context):
         and compiler["source_trees"] == descriptor["source_trees"],
         "Compiler receipt does not bind accepted source",
     )
-    require(
-        sha(RECEIPT) == descriptor["parent_installed_sha256"],
-        "Foundation installed receipt differs",
-    )
-    parent = read(RECEIPT)
-    verify_files(parent["files"])
+    parent, raw_parent, parent_receipt = read_parent_foundation(descriptor)
     isolated_sglang = isolated_sglang_inventory()
     boundary_path = selected_boundary_identity(parent)
-    boundary = read(boundary_path) if boundary_path.exists() else None
+    boundary = read(boundary_path) if boundary_path is not None and boundary_path.exists() else None
     if boundary is not None:
         require(
             boundary.get("schema") == "sparkcache-boundary-runtime/v1",
@@ -810,6 +884,8 @@ def install(context):
         wheel_paths[name] = path
         selected.append(str(path))
     planned_paths, installed_metadata_roots = wheel_install_paths(wheel_paths)
+    require(not set(parent.get("removed_files", [])) & set(planned_paths),
+            "Native wheel reintroduces a foundation removed file")
     ownership_audit, preserved_helpers = audit_selected_ownership(
         selected_files,
         package_names,
@@ -847,7 +923,7 @@ def install(context):
         "Native wheel introduces unsatisfied dependencies: "
         + str(sorted(set(after_errors) - set(prior_errors))),
     )
-    files, removed = {}, []
+    files, removed = {}, list(parent.get("removed_files", []))
     for path, expected in before.items():
         if package_owned(path, package_names, metadata_roots):
             if not Path(path).exists():
@@ -890,6 +966,8 @@ def install(context):
     ENTRYPOINT.parent.mkdir(parents=True, exist_ok=True)
     ENTRYPOINT.write_bytes(Path(__file__).read_bytes())
     files[str(ENTRYPOINT)] = sha(ENTRYPOINT)
+    retained_files, parent_receipt = retain_parent_receipt(raw_parent, parent_receipt)
+    files.update(retained_files)
     boundary_record = None
     if boundary is not None:
         # A compiled runtime gets a distinct attestation. This is identity
@@ -931,9 +1009,10 @@ def install(context):
         "input_sha256": descriptor["input_sha256"],
         "parent_image_id": descriptor["parent_image_id"],
         "parent_installed_sha256": descriptor["parent_installed_sha256"],
+        "parent_receipt": parent_receipt,
         "compiler": compiler,
         "files": files,
-        "removed_files": removed,
+        "removed_files": sorted(set(removed)),
         "versions": {
             **parent["versions"],
             **{name: metadata.version(name) for name in packages},
@@ -959,14 +1038,10 @@ def install(context):
     return verify()
 
 
-def verify():
-    value = read(NATIVE)
-    require(
-        value.get("schema") == "sparkring-native-installed/v1" and value.get("files"),
-        "Missing native installed inventory",
-    )
+def verify_installed_state(value):
+    """Verify files, absent paths, versions and features before any replacement."""
     verify_files(value["files"])
-    for path in value["removed_files"]:
+    for path in value.get("removed_files", []):
         require(not Path(path).exists(), "Removed package file reappeared: " + path)
     for name, expected in value["versions"].items():
         require(
@@ -992,6 +1067,16 @@ def verify():
             require(paths, "Feature has no source inventory")
             verify_files(paths)
             features[name] = paths
+    return features
+
+
+def verify():
+    value = read(NATIVE)
+    require(
+        value.get("schema") == "sparkring-native-installed/v1" and value.get("files"),
+        "Missing native installed inventory",
+    )
+    features = verify_installed_state(value)
     return {
         "schema": "sparkring-native-verification/v1",
         "receipt_sha256": sha(NATIVE),

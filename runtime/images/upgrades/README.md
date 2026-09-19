@@ -135,6 +135,14 @@ extension is a Python-only update.
 
 ## Native compilation and verified reuse
 
+Native-built foundations use their `native-installed.json` inventory rather
+than an ancestor's `candidate-installed.json`. A present but invalid native
+receipt stops installation; it never falls back to stale metadata. The child
+retains the exact parent receipt bytes and verifies active cache contracts,
+file removals, features and the isolated SGLang environment. This also applies
+to Python-only cache extensions recorded in the native inventory. Matching
+metadata does not replace installed-file or GPU qualification.
+
 Use `init-r37 --native` to select the GB10 wheel compiler. Its private policy
 declares SM121a, eight compiler jobs, a CPU/memory limit, the Torch ABI and a
 compiler deadline. `foundation.compiler_image_id` may select an immutable
