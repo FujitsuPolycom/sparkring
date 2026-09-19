@@ -14,7 +14,7 @@ ranks:
   - roceP2p1s0f1
   gid: 3
   model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
-  cache: /srv/cache/qwen38-qad-r37
+  cache: /srv/cache/qwen38-flash-next-qad-tp4-shared-2026092
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:
@@ -32,7 +32,7 @@ ranks:
   - roceP2p1s0f1
   gid: 3
   model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
-  cache: /srv/cache/qwen38-qad-r37
+  cache: /srv/cache/qwen38-flash-next-qad-tp4-shared-2026092
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:
@@ -50,7 +50,7 @@ ranks:
   - roceP2p1s0f1
   gid: 3
   model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
-  cache: /srv/cache/qwen38-qad-r37
+  cache: /srv/cache/qwen38-flash-next-qad-tp4-shared-2026092
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:
@@ -68,7 +68,7 @@ ranks:
   - roceP2p1s0f1
   gid: 3
   model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
-  cache: /srv/cache/qwen38-qad-r37
+  cache: /srv/cache/qwen38-flash-next-qad-tp4-shared-2026092
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:

@@ -24,9 +24,10 @@ It does not change published image selections or serving deployments.
 
 ## Container images
 
-[Shared runtime 2026.09.1](../releases/shared-2026.09.1/README.md) is the Qwen
+[Shared runtime 2026.09.2](../releases/shared-2026.09.2/README.md) is the Qwen
 TP2/TP4 selection, with and without SparkCache. Its release record pins the
-HC-routing fix, startup audit and bounded functional qualification.
+CUDA startup cleanup fix, sparse-attention metadata correction and startup audit.
+Source and component checks passed; exact-image serving qualification is pending.
 
 The [shared ARM64 serving candidate](../releases/shared-2026.09.0-rc.1/README.md)
 publishes pinned vLLM/B12X integration and isolated SGLang, with a verified

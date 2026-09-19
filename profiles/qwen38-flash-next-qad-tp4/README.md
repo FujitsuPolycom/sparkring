@@ -1,9 +1,10 @@
 # Qwen3.8-Flash-Next QAD on four Sparks
 
-This guide selects [SparkRing shared-2026.09.1](../../runtime/releases/shared-2026.09.1/README.md).
+Status: **implemented; exact-image qualification pending**. This guide selects
+[SparkRing shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md).
 The cache-disabled profile and [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md)
-use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.1/qualification.json)
-states the bounded functional checks and remaining limits; configuration is not
+use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
+states the source checks and pending full-model tests; configuration is not
 a claim of full-context, concurrency-pressure or performance qualification.
 
 | Setting | Selection |
@@ -28,15 +29,15 @@ Complete the [host prerequisites](../../docs/operations/prerequisites.md).
 Use the same SparkRing checkout on every host and pull this image on all four:
 
 ```bash
-IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:3a8cdcf34ac51fdeb5a433107710e7787d52834281f377a7432b7df737035bbb'
+IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123'
 docker pull --platform linux/arm64 "$IMAGE_REF"
 docker image inspect --format '{{.Id}}' "$IMAGE_REF"
 ```
 
 The image ID must be
-`sha256:a6a2a5b35e7784199a40dd7fe2c682c16955f26d8ff34bd999646088cf313b09`.
+`sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499`.
 No separate R37 parent-image pull is required. The
-[publication receipt](../../runtime/releases/shared-2026.09.1/publication.json)
+[publication receipt](../../runtime/releases/shared-2026.09.2/publication.json)
 binds the image to its source and installed inventory.
 
 Reuse an existing verified QAD checkpoint. Otherwise download the pinned revision

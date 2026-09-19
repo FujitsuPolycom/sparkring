@@ -143,8 +143,8 @@
     "--enable-prompt-tokens-details"
   ],
   "qualification": {
-    "scope": "Exact-image deployment, response and cache-restore evidence is recorded in runtime/releases/shared-2026.09.1/qualification.json. Configured limits are not full-context or C16-pressure qualification; no performance claim.",
-    "record": "runtime/releases/shared-2026.09.1/qualification.json"
+    "scope": "Source and installed-image checks are recorded in runtime/releases/shared-2026.09.2/qualification.json. Exact-image serving and restart/restore qualification are pending; no performance claim.",
+    "record": "runtime/releases/shared-2026.09.2/qualification.json"
   },
   "image_extension": "native-shared",
   "transport": {
@@ -161,5 +161,5 @@
       "secondary-counterclockwise"
     ]
   },
-  "image_release": "shared-2026.09.1"
+  "image_release": "shared-2026.09.2"
 }
