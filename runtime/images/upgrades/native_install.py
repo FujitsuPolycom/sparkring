@@ -482,11 +482,70 @@ def isolated_sglang_inventory():
     }
 
 
-def install_feature_update(context, descriptor):
+def verified_inherited_feature_update(parent):
+    """Retain migration provenance only while its owned catalogs/assets match.
+
+    This preserves the original record, including historical API preimages;
+    it does not rebind those preimages or qualify them against replacement wheels.
+    """
+    update = parent.get("feature_update")
+    if update is None:
+        return None
+    require(
+        isinstance(update, dict) and update.get("serving_qualified") is False
+        and isinstance(update.get("descriptor_sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", update["descriptor_sha256"])
+        and isinstance(update.get("assets"), dict) and update["assets"],
+        "Invalid inherited feature-update record",
+    )
+
+    def owned(name, expected):
+        require(isinstance(name, str) and isinstance(expected, str)
+                and re.fullmatch(r"[0-9a-f]{64}", expected),
+                "Invalid inherited feature evidence")
+        path = Path(name)
+        require(
+            path.is_absolute() and ".." not in path.parts
+            and not any(part.is_symlink() for part in (path, *path.parents))
+            and parent["files"].get(name) == expected
+            and path.is_file() and sha(path) == expected,
+            "Inherited feature evidence is unowned or changed: " + name,
+        )
+        return path
+
+    catalog = ROOT / "features/capabilities.json"
+    require(update.get("catalog") == str(catalog), "Inherited feature catalog differs")
+    owned(str(catalog), update.get("catalog_sha256"))
+    archived = owned(update.get("parent_catalog"), update.get("parent_capabilities_sha256"))
+    require(archived.parent == ROOT / "receipts"
+            and re.fullmatch(r"features-parent-[0-9a-f]{16}\.json", archived.name),
+            "Inherited parent feature catalog escapes its owner")
+    require(update["assets"].get(str(catalog), {}).get("sha256") == update["catalog_sha256"],
+            "Inherited feature assets omit the selected catalog")
+    for name, asset in update["assets"].items():
+        require(isinstance(asset, dict), "Invalid inherited feature asset")
+        target = owned(name, asset.get("sha256"))
+        # Map configurable test roots to the same production ownership rules.
+        if target.is_relative_to(ROOT):
+            logical = "/opt/sparkring/" + target.relative_to(ROOT).as_posix()
+        elif target.is_relative_to(SITE):
+            logical = "/opt/venv/lib/python3.12/site-packages/" + target.relative_to(SITE).as_posix()
+        else:
+            logical = name
+        feature_asset_scope(logical)
+    previous, current = read(archived), read(catalog)
+    require(previous.get("schema") == "sparkring-image-capabilities/v1"
+            and isinstance(previous.get("features"), dict),
+            "Unsupported inherited parent feature catalog")
+    verify_feature_dispositions(previous, current)
+    return copy.deepcopy(update)
+
+
+def install_feature_update(context, descriptor, parent=None):
     """Apply reviewed owned feature changes after preserving the parent catalog."""
     selected = descriptor.get("feature_update")
     if selected is None:
-        return {}, None
+        return {}, verified_inherited_feature_update(parent) if parent is not None else None
     require(
         selected.get("file") == "feature-update.json",
         "Feature descriptor is not an owned context file",
@@ -945,7 +1004,7 @@ def install(context):
             if path.is_file() and path.suffix not in (".pyc", ".pyo"):
                 files[str(path)] = sha(path)
     files.update(install_source_binding(context, descriptor, compiler))
-    feature_files, feature_update = install_feature_update(context, descriptor)
+    feature_files, feature_update = install_feature_update(context, descriptor, parent)
     files.update(feature_files)
     if isolated_sglang is not None:
         verify_files(isolated_sglang["files"])
@@ -1067,6 +1126,7 @@ def verify_installed_state(value):
             require(paths, "Feature has no source inventory")
             verify_files(paths)
             features[name] = paths
+    verified_inherited_feature_update(value)
     return features
 
 

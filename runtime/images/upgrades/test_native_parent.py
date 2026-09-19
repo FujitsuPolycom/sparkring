@@ -194,6 +194,7 @@ def test_native_install_preserves_unrelated_inventory_and_parent_evidence(tmp_pa
                                        features={"retained": {"files": {"active.py": native_install.sha(feature)}}})))
     for path in (manifest, feature):
         parent["files"][str(path)] = native_install.sha(path)
+    inherited_update = add_feature_migration(parent, manifest, feature)
     removed = site / "vllm/removed.py"
     parent["removed_files"] = [str(removed)]
     parent["versions"].update(vllm="old", b12x="old")
@@ -272,6 +273,7 @@ def test_native_install_preserves_unrelated_inventory_and_parent_evidence(tmp_pa
         child = native_install.read(selected)
         assert result["features"] == ["retained"]
         assert child["active_contracts"] == [] and child["boundary_runtime"] is None
+        assert child["feature_update"] == inherited_update
         assert child["removed_files"] == [str(removed)]
         for path in (unrelated, packages["sparkcache"], feature, manifest,
                      library, wrapper, composition, sglang_receipt):
@@ -282,3 +284,85 @@ def test_native_install_preserves_unrelated_inventory_and_parent_evidence(tmp_pa
         assert native_install.Path(evidence["retained_path"]).read_bytes() == raw
         assert native_install.RECEIPT.read_text() == "stale historical candidate"
         assert child["versions"] == {"torch": "2.13.0", "vllm": "new", "b12x": "new"}
+
+
+def add_feature_migration(parent, catalog, asset):
+    archived = native_install.ROOT / "receipts/features-parent-0123456789abcdef.json"
+    archived.write_bytes(catalog.read_bytes())
+    parent["files"][str(archived)] = native_install.sha(archived)
+    update = dict(
+        descriptor_sha256="f" * 64, parent_catalog=str(archived),
+        parent_capabilities_sha256=native_install.sha(archived), catalog=str(catalog),
+        catalog_sha256=native_install.sha(catalog), serving_qualified=False,
+        transport_bundles={}, assets={str(path): dict(sha256=native_install.sha(path),
+                                                     parent_sha256=None, source="fixture")
+                                      for path in (catalog, asset)},
+    )
+    parent["feature_update"] = update
+    return copy.deepcopy(update)
+
+
+@pytest.mark.parametrize("defect", [None, "asset-bytes", "asset-hash", "catalog-hash",
+                                    "unowned-asset", "unowned-parent", "parent-bytes",
+                                    "catalog-missing-from-assets", "wrong-catalog",
+                                    "qualified", "descriptor", "asset-scope",
+                                    "removal-disposition"])
+def test_inherited_feature_migration_requires_owned_unchanged_evidence(tmp_path, monkeypatch, defect):
+    parent, _, _ = installed_parent(tmp_path, monkeypatch)
+    catalog = native_install.ROOT / "features/capabilities.json"
+    catalog.parent.mkdir()
+    asset = catalog.parent / "active.py"
+    asset.write_text("ACTIVE = True")
+    catalog.write_text(json.dumps(dict(schema="sparkring-image-capabilities/v1",
+                                      features={"retained": {"files": {"active.py": native_install.sha(asset)}}})))
+    for path in (catalog, asset):
+        parent["files"][str(path)] = native_install.sha(path)
+    expected = add_feature_migration(parent, catalog, asset)
+    update = parent["feature_update"]
+    if defect == "asset-bytes":
+        asset.write_text("tampered")
+    elif defect == "asset-hash":
+        update["assets"][str(asset)]["sha256"] = "1" * 64
+    elif defect == "catalog-hash":
+        update["catalog_sha256"] = "1" * 64
+    elif defect == "unowned-asset":
+        del parent["files"][str(asset)]
+    elif defect == "unowned-parent":
+        del parent["files"][update["parent_catalog"]]
+    elif defect == "parent-bytes":
+        native_install.Path(update["parent_catalog"]).write_text("tampered")
+    elif defect == "catalog-missing-from-assets":
+        del update["assets"][str(catalog)]
+    elif defect == "wrong-catalog":
+        update["catalog"] = str(asset)
+    elif defect == "qualified":
+        update["serving_qualified"] = True
+    elif defect == "descriptor":
+        update["descriptor_sha256"] = "broken"
+    elif defect == "asset-scope":
+        outside = native_install.ROOT / "payload"
+        update["assets"][str(outside)] = {"sha256": native_install.sha(outside)}
+    elif defect == "removal-disposition":
+        archived = native_install.Path(update["parent_catalog"])
+        archived.write_text(json.dumps(dict(schema="sparkring-image-capabilities/v1",
+                                            features={"retired": {}})))
+        update["parent_capabilities_sha256"] = native_install.sha(archived)
+        parent["files"][str(archived)] = native_install.sha(archived)
+    if defect is None:
+        files, inherited = native_install.install_feature_update(tmp_path, {}, parent)
+        assert files == {} and inherited == expected and inherited is not update
+    else:
+        with pytest.raises(ValueError):
+            native_install.install_feature_update(tmp_path, {}, parent)
+        # The installer invokes this before pip: stale migration metadata is
+        # rejected even when all unrelated inventory bytes remain valid.
+        with pytest.raises(ValueError):
+            native_install.verify_installed_state(parent)
+
+
+def test_explicit_feature_update_still_requires_existing_context_hash_gate(tmp_path, monkeypatch):
+    parent, _, _ = installed_parent(tmp_path, monkeypatch)
+    (tmp_path / "feature-update.json").write_text("{}")
+    descriptor = {"feature_update": {"file": "feature-update.json", "sha256": "a" * 64}}
+    with pytest.raises(ValueError, match="Feature-update descriptor differs"):
+        native_install.install_feature_update(tmp_path, descriptor, parent)
