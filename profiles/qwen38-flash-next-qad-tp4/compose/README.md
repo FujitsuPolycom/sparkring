@@ -6,6 +6,6 @@ published image preparation and required fabric checks. Replace example site inp
 and regenerate; do not edit the generated YAML.
 
 Status: **qualified for bounded correctness and restart checks**. The
-[release record](../../../runtime/releases/shared-2026.09.2/qualification.json)
+[release record](../../../runtime/releases/shared-2026.09.3/qualification.json)
 scopes hardware evidence for this image; generated configuration is not proof
 of full-context/C16-pressure stability or performance.

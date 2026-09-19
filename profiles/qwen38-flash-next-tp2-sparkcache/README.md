@@ -5,10 +5,10 @@ Use the [Qwen TP2 quickstart](../qwen38-flash-next-tp2/README.md).
 It selects SparkCache by default and includes the cache-disabled alternative,
 image pull, model verification, startup and restart instructions.
 
-Both variants use [shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md).
+Both variants use [shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md).
 The [configuration](../qwen38-flash-next-tp2/sparkcache.json) owns the flags;
-the [qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
-records bounded text/media correctness, request-order and concurrent-request
+the [qualification record](../../runtime/releases/shared-2026.09.3/qualification.json)
+records bounded text/media correctness, concurrent-request
 checks, and physical cache restore on both ranks after retained restarts.
 
 Persistent caching uses aligned checkpoints, a fresh release-specific namespace,

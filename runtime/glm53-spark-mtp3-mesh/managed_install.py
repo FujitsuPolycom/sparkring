@@ -36,6 +36,7 @@ SOURCE_FILES = (
     'runtime/releases/shared-2026.09.0-rc.1/publication.json',
     'runtime/releases/shared-2026.09.1/publication.json',
     'runtime/releases/shared-2026.09.2/publication.json',
+    'runtime/releases/shared-2026.09.3/publication.json',
     'runtime/common/source_candidate.py',
     'runtime/common/feature_candidate.py',
     'runtime/images/compositions/lil-r37-cache64/descriptor.json',

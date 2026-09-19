@@ -1,213 +1,114 @@
 # GLM-5.3-Flash on four Sparks
 
-[Shared-spec Compose creation](compose/README.md) is available for the R37 path
-below. It creates stopped containers and retains managed startup/recovery.
-Configuration equivalence is tested; GLM serving through this backend still
-requires hardware acceptance.
+Status: **qualified for bounded correctness and restart/restore checks** on
+[SparkRing 2026.09.3](../../runtime/releases/shared-2026.09.3/README.md).
+Full-context, arbitrary media and long-duration stability are not qualified.
 
-Run [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88)
-with MTP3 on a four-Spark ring. **DCP1 is the default; DCP4 is an alternative.**
-Context defaults to 1M tokens. SparkCache is optional. The primary procedure
-selects the published **R37 ARM64** image. Status: **Experimental**; bounded
-TP4/DCP1 cache-on checks passed, not long-duration stability qualification.
+Run GLM-5.3-Flash with TP4/DCP1, MTP3 and SparkCache on a prepared four-Spark
+ring. Select NVFP4-Spark or LIL NVFP4 QAD explicitly. Both use the B12X target
+loader; the QAD draft uses Humming for its MXFP8 experts. Spark is not QAD.
 
-| Selection | KV allocation per rank | KV evidence | Procedure |
-|---|---:|---:|---|
-| DCP1, with or without SparkCache | 24 GiB | [2.3M sizing reference](../../performance/capacity-references.md) | Deployment suite below |
-| DCP4, with or without SparkCache | 24 GiB | 8.4M with SparkCache (R33) | [R33 DCP4 reproduction](#dcp4-alternative) |
-
-Capacity depends on enabled features. The validated results are scoped to the
-[image and workload records](#validation-and-results), not every possible configuration.
-For a switch-connected fabric, use the [switched setup](../glm53-flash-spark-tp4-switched/README.md).
-
-The [NVIDIA NVFP4 target](../glm53-nvidia-nvfp4.md) is an opt-in Development
-adaptation with separate model pins and evidence. NVFP4-Spark stays the default.
+The configured context limit is 1,048,576 tokens and KV allocation is 24 GiB
+per rank. Bounded qualification covers requests through 128K at concurrency
+1/2/4/8, basic text/media checks and physical-rank cache restore. It does not
+establish full-context or long-duration stability.
 
 ## 1. Prepare the hosts
 
-Use a Linux or WSL controller with Python 3, PyYAML, Git, SSH and SCP. Run the
-commands from the root of this checkout. Keep every host on the same source
-revision; record it with `git rev-parse HEAD`. Do not switch to a retired
-integration branch to follow this guide.
-
-Complete [four-Spark host setup](../../docs/GLM53_SPARK_MESH_HOST_SETUP.md),
-including Docker/NVIDIA support, independent management access, SSH aliases,
-noninteractive sudo, the four-cable ring, and the required RDMA functions.
-Use a maintenance window for networking changes; stop dependent containers
-and RDMA users first. This setup must not replace an unrelated deployment.
+Follow [four-Spark host setup](../../docs/GLM53_SPARK_MESH_HOST_SETUP.md) from the repository root. Use
+the same checkout revision on the controller and all four hosts. Keep the
+management network separate from the four-cable data ring. Review network
+changes during a maintenance window; do not replace another deployment.
 
 ## 2. Select the published image
 
-Use an ARM64 host to record the image, then retain its receipt on the controller.
-Set `IMAGE_HOST` to a configured Spark SSH alias from host setup. These commands
-pull and verify the image without loading a model; staging later pulls the same
-immutable registry digest on each host:
+On an ARM64 Spark with this checkout, run:
 
 ```bash
-IMAGE_HOST=spark0
-IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270'
-RECORD=$(mktemp -d "$HOME/sparkring-r37-receipt.XXXXXX")
-ssh "$IMAGE_HOST" "sudo -n docker pull --platform linux/arm64 '$IMAGE_REF'"
-IMAGE=$(ssh "$IMAGE_HOST" "sudo -n docker image inspect --format '{{.Id}}' '$IMAGE_REF'")
-ssh "$IMAGE_HOST" "sudo -n docker run --rm --network none --pull never --entrypoint cat '$IMAGE' /opt/sparkring/receipts/candidate-installed.json" > "$RECORD/installed.json"
-ssh "$IMAGE_HOST" "sudo -n docker run --rm --network none --pull never '$IMAGE' verify" > "$RECORD/verification.json"
-python3 runtime/common/candidate.py --composition lil-r37-glm-spark \
-  --image-id "$IMAGE" --image-reference "$IMAGE_REF" \
-  --installed-receipt "$RECORD/installed.json" \
-  --verification "$RECORD/verification.json" --output "$RECORD/image.json"
-SPARKRING_RECEIPT="$RECORD/image.json"
+RELEASE=shared-2026.09.3
+IMAGE_REF=$(python3 -c 'import json,sys; print(json.load(open("runtime/releases/"+sys.argv[1]+"/publication.json"))["image_reference"])' "$RELEASE")
+docker pull --platform linux/arm64 "$IMAGE_REF"
+IMAGE=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
+mkdir -p .sparkring
+RECORD=$(mktemp -d "$PWD/.sparkring/glm-native-receipt.XXXXXX")
+python3 runtime/common/glm_native_candidate.py \
+  --release "$RELEASE" --image-id "$IMAGE" --output "$RECORD/image.json"
 ```
 
-The runtime receipt selects this image; `publication.json` is distribution
-metadata and cannot replace it. [Image building](../../runtime/images/README.md)
-is a separate workflow and is not needed for this quickstart.
-
-The human-readable tag is `ghcr.io/fujitsupolycom/sparkring:r37-arm64-beeb32253aa7`.
-Use the digest above for reproducibility. For the previous image, use the
-[R35 launch procedure](../../docs/operations/r35-local-launch.md); preserve its
-separate receipt and cache namespace. Catalog records retain their original
-release identities and evidence instead of being rewritten as R37 qualification.
+Copy the resulting `image.json` to the controller and set `SPARKRING_RECEIPT`
+to its controller-local path. The installed inventory receipt authenticates
+the image; the publication JSON alone is not a runtime receipt.
 
 ## 3. Discover and plan DCP1
 
-The R37 deployment stages NVFP4-Spark revision
-[`a608241037e4c2565356bff7ca293f2133888f88`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88)
-from the [model pins](../glm53-target-variants.json). Its configuration and
-weight-index hashes match the recorded `df116c4` checkpoint; its chat template
-and generation defaults differ. See [checkpoint selection](../glm53-checkpoints.md)
-for the separate plain NVFP4 QAD checkpoint and qualification limits.
-Download paths and SparkCache identities use the selected revision. Historical
-benchmark results remain scoped to their recorded template and settings.
-
-Set the runtime selection to `tp4-dcp1-sparkcache` for SparkCache or
-`tp4-dcp1` without it. Replace the controller address, four management addresses
-and SSH aliases with your site values. Node order assigns ranks 0–3.
+Run in Bash on the controller from the repository root. Replace the example
+management addresses and SSH aliases with the prepared hosts. Rank order is
+the order of the four node arguments.
 
 ```bash
 sr() { python3 scripts/sparkring.py deploy "$@"; }
 STATE="$PWD/.sparkring/glm-tp4-deployment"
-RUNTIME_PROFILE=tp4-dcp1-sparkcache
-
+VARIANT=nvfp4-spark
 sr discover --controller-address 192.0.2.10 \
   --node spark0=192.0.2.20 --node spark1=192.0.2.21 \
   --node spark2=192.0.2.22 --node spark3=192.0.2.23 \
   --output "$STATE/inventory.json"
 sr plan --inventory "$STATE/inventory.json" --name glm-tp4 \
   --workspace /srv/sparkring/glm-tp4 --preserve-existing-network \
-  --image-receipt "$SPARKRING_RECEIPT" --runtime-profile "$RUNTIME_PROFILE" \
+  --image-receipt "$SPARKRING_RECEIPT" \
+  --runtime-profile tp4-dcp1-sparkcache --target-model-variant "$VARIANT" \
   --output "$STATE/preparation.json"
 sr network-plan --preparation "$STATE/preparation.json" \
   --inventory "$STATE/inventory.json" --output "$STATE/network-plan.json"
 ```
 
-Use a dedicated workspace and a fabric range that does not overlap management
-or VPN routes. Discovery reads hosts; the two plan commands are offline.
-Inspect the inventory and plans before applying them.
+Set `VARIANT=nvfp4-qad` for the QAD checkpoint. The target catalog pins Spark
+to `a608241037e4c2565356bff7ca293f2133888f88` and QAD to
+`175ae8ce3b5af842b0d0140dbeb43e9cfc557c49`. Revision-specific cache identities
+prevent sharing unverified KV state between these checkpoints.
 
-**Keep both selection flags.** Omitting `--image-receipt` chooses another
-runtime composition. This CLI currently accepts only the two DCP1 selections;
-do not pass `tp4-dcp4` to it. Use the DCP4 procedure below instead.
+If the selected image and checkpoint are already installed on every node, add
+`--reuse-existing-image` and four `--existing-model-root /absolute/model/path`
+arguments to `sr plan`, in rank order. Each path is resolved on its corresponding
+host. Use the complete directory for the selected pinned revision, not a parent
+directory containing multiple snapshots. The planner verifies the inputs before
+reuse. Do not omit the image receipt or point it at a different checkpoint.
 
 ## 4. Apply, stage and start
 
-Continue in the [deployment suite at “Apply networking, then verify it”](../../docs/operations/deployment-suite.md#apply-networking-then-verify-it),
-using the `STATE`, `SPARKRING_RECEIPT` and preparation file from this guide.
-The preservation flag retains the endpoint addresses and connection UUIDs configured
-by host setup. Planning rejects incomplete addressing, inconsistent cable subnets,
-or saved NetworkManager settings that would require connection replacement.
-Correct those settings and rediscover before planning again.
+Continue at “Apply networking, then verify it” in
+[the deployment suite](../../docs/operations/deployment-suite.md), keeping this preparation file and image
+receipt. Review plans before applying them. Stage the pinned image, checkpoint,
+transport and source; create stopped containers; install managed services;
+verify native communication; then start through the coordinator.
 
-Do not repeat the generic guide's receipt-free `sr plan` example.
-
-Follow its stages in order:
-
-1. Apply the reviewed network plan and verify the resulting network.
-2. Stage the pinned image, model, transport bundle and tracked source.
-3. Create stopped containers and install the managed services.
-4. Bring up the mesh and pass the native communication checks.
-5. Start the model through the coordinator, then run readiness checks.
-
-Inspect each plan before applying it. The suite provides separate flags for
-hardware tests and model actions. It does not start a model during staging.
-Do not substitute direct `docker start` for managed startup or alter fabric
-settings while queue pairs are active.
+Use coordinated stop/recover for subsequent operation, not direct rank startup.
+Native readiness allows 1800 seconds for cold preparation. Inspect all four
+rank logs for the selected image, checkpoint, DCP1, MTP3 and SparkCache connector.
+Health alone does not prove cache restore; follow the semantic and cache checks
+in [profile validation](../../docs/operations/profile-validation.md).
 
 ## 5. Verify the selected configuration
 
-Inspect the generated rank environments and logs on all four hosts. For the
-default selection they must show DCP1, `MAX_MODEL_LEN=1048576` and the chosen
-SparkCache setting. After the API is ready, run the
-[semantic and serving checks](../../docs/operations/profile-validation.md).
-If SparkCache is enabled, check cold requests, prefix reuse and restore;
-API health alone does not establish cache operation.
+The API listens on rank 0, port 8015, with the model name
+`GLM-5.3-Flash-NVFP4-Spark-TP4` or `GLM-5.3-Flash-NVFP4-QAD-TP4`.
+It binds all interfaces without an API key. Restrict access to a trusted network
+or an authenticated gateway; do not expose it directly to the Internet.
 
-For bounded requests, select reasoning effort explicitly and allow enough output
-tokens for the final answer. This checkpoint's template opens a thinking block;
-do not assume `enable_thinking=false` disables it. See
-[GLM conversation settings](../../docs/operations/r35-local-launch.md#bounded-glm-conversations).
-
-Use the deployment suite's coordinated `stop`/`recover` actions for operation
-and recovery. Preserve private site inputs, image receipts and cache roots.
+DCP4 and cache-disabled GLM configurations retain separate image selections
+and evidence. They do not inherit this cache-enabled DCP1 qualification.
 
 ## DCP4 alternative
 
-The procedure below reproduces **R33 DCP4**, with its pinned image, profile-contract
-and entrypoint overlay. It does not qualify R37 DCP4. Use the R33 receipt named
-by that procedure; do not apply its release overlay to the R37 image.
-
-The deployment-suite planner and staged-source selection are DCP1-only.
-For DCP4, use the separately documented
-[render-and-launch procedure](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md#reproduction-overlay-and-quickstart)
-with an already prepared ring, verified bundle, image receipt and private site.
-Choose `tp4-dcp4-sparkcache` or `tp4-dcp4` in the site's `runtime_profile`.
-For managed installation, also save the four host-local contract directories in
-that private site's `r33_profile_contract_roots`, in rank order:
-
-```json
-"r33_profile_contract_roots": [
-  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles",
-  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles",
-  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles",
-  "/srv/sparkring/source/runtime/sparkring/jovian-r33/profiles"
-]
-```
-
-Use each host's actual checkout path and the same source revision. Keep the
-sibling `image/entrypoint.py` in that checkout. The renderer puts the selected
-path into each rank environment, so managed container verification reproduces
-both read-only overlay mounts. A shell export alone does not persist this input.
-Re-render before creating the stopped containers and installing services.
-
-That procedure supplies `R33_PROFILE_CONTRACT_HOST_ROOT` on every host and
-uses each host's own rendered rank environment.
-
-Do not edit a staged DCP1 environment in place: deployment receipts pin its
-hashes. A DCP4 change needs its own rendered inputs and lifecycle preparation.
-For managed operation, follow the
-[managed installation/startup contract](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#install-on-each-host);
-a direct launch from the recorded trial is not a managed-service upgrade.
-
-The [DCP4 profile](../glm53-flash-spark-tp4-dcp4-sparkcache/profile.json) and
-[activation receipt](../../runtime/sparkring/jovian-r33/profiles/evidence/tp4-dcp4-sparkcache-activation-20260911.json)
-pin the configuration used for the bounded tests. DCP1 remains the default.
-
-Validate a recorded activation from the repository root with:
-
-```bash
-python3 runtime/common/verify_activation.py --receipt /path/to/activation.json
-```
-
-This checks the receipt's rank, cache, image and source declarations. It does
-not run a serving test or replace the workload evidence.
+Use the separately pinned [R33 DCP4 reproduction procedure](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md#reproduction-overlay-and-quickstart).
+It does not qualify DCP4 on 2026.09.3. Do not apply its entrypoint overlay to
+the native image or edit a staged DCP1 deployment into DCP4.
 
 ## Validation and results
 
-- [R37 TP4 record](../../performance/records/glm53-flash/r37-tp4-source-upgrade.md): bounded DCP1 cache-on correctness, all-rank restart/restore and matched short performance checks.
-- [DCP1 record](../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md): bounded serving, cache and restore checks.
-- [DCP4 record](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md): 8,364,901-token KV pool, prefix-hit checks and planned/SIGKILL restore.
-- [Benchmark summaries](../../performance/benchmarks.md): measurements and their conditions.
-
-R37 cache-off and DCP4 selections do not inherit the cache-on DCP1 test results.
-The 1M context setting is distinct from a completed 1M-token test. The full
-blank-host deployment procedure has not been requalified from factory-reset
-Sparks. See the records for the exact tested configurations.
+The [release qualification](../../runtime/releases/shared-2026.09.3/qualification.json)
+and [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
+cover Spark and QAD separately. Existing [R37](../../performance/records/glm53-flash/r37-tp4-source-upgrade.md)
+and [R33](../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md)
+records retain their own scope. A factory-reset, blank-host deployment has not
+been requalified; hardware checks used prepared rings and verified model copies.

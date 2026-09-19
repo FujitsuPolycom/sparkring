@@ -1,0 +1,236 @@
+{
+  "schema": "sparkring-native-glm-profile-contract/v1",
+  "profiles": {
+    "tp2-dcp1-sparkcache": {
+      "tensor_parallel_size": 2,
+      "decode_context_parallel_size": 1,
+      "node_count": 2,
+      "transport": "tp2-rocenante-adaptive",
+      "host_domains": "dual",
+      "physical_dacs_per_rank": 1,
+      "sparkcache": true,
+      "kv_cache_memory_bytes": 8053063680,
+      "cudagraph_capture_sizes": [
+        1,
+        2,
+        4,
+        8,
+        12,
+        16,
+        20,
+        24,
+        28,
+        32
+      ],
+      "load_format": "b12x",
+      "loader_extra_config": {},
+      "allocation_policy": "managed-in-loader",
+      "plugins": "b12x_loader",
+      "continuation_coalescing": true,
+      "draft_load_config": {
+        "load_format": "b12x",
+        "model_loader_extra_config": {}
+      },
+      "serving": {
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "prefill_schedule_interval": 8,
+        "limit_mm_per_prompt": {
+          "image": 3,
+          "video": 1
+        }
+      },
+      "lifecycle": "explicit-create-and-start",
+      "memory_guard_required": false,
+      "runtime_manifest": "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json",
+      "runtime_manifest_sha256": "c0fd5567442b08b908cc193f36d0864e262573c7e5d232509479a823cface742",
+      "prepared_transport_manifest_sha256": "7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c"
+    },
+    "tp4-dcp1-sparkcache": {
+      "inherits": "tp4-dcp1",
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "node_count": 4,
+      "transport": "sparkring-rocenante-mesh",
+      "mesh_pins": "glm53-spark-mtp3-mesh/pins.json",
+      "mesh_pins_sha256": "05fddc68d2e74e00ed29126c09258766aff8a852b67681836023c097234d728b",
+      "host_domains": "dual",
+      "sparkcache": true,
+      "kv_cache_memory_bytes": 25769803776,
+      "cudagraph_capture_sizes": [
+        4,
+        8,
+        12,
+        16,
+        20,
+        24,
+        28,
+        32,
+        36,
+        40,
+        44,
+        48,
+        52,
+        56,
+        60,
+        64
+      ],
+      "load_format": "b12x",
+      "plugins": "b12x_loader",
+      "allocation_policy": "managed-in-loader",
+      "draft_load_config": {
+        "load_format": "b12x",
+        "model_loader_extra_config": {}
+      },
+      "lifecycle": "explicit-create-and-start",
+      "memory_guard_required": false,
+      "serving": {
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 8192,
+        "prefill_schedule_interval": 2,
+        "limit_mm_per_prompt": {
+          "image": 4,
+          "video": 1
+        }
+      },
+      "runtime_manifest": "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json",
+      "runtime_manifest_sha256": "c0fd5567442b08b908cc193f36d0864e262573c7e5d232509479a823cface742"
+    }
+  },
+  "model": {
+    "max_model_len": 1048576,
+    "loader": {
+      "load_format": "b12x"
+    },
+    "speculation": {
+      "method": "mtp",
+      "num_speculative_tokens": 3,
+      "attention_backend": "B12X"
+    },
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "revision": "a608241037e4c2565356bff7ca293f2133888f88",
+    "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+    "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
+    "checkpoint_identity": "c1031022d49952dc287e85a7a99b7415780307acbabe0ea94d4ffaeca3d090c1"
+  },
+  "common_environment": {
+    "SPARKRING_PROFILE_MODE": "custom",
+    "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+    "VLLM_NCCL_SO_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+    "NCCL_LOCAL_INFERENCE_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+    "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+    "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_NO_USAGE_STATS": "1",
+    "VLLM_PLUGINS": "b12x_loader",
+    "LOAD_FORMAT": "b12x",
+    "SPARKRING_FEATURES": "",
+    "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
+    "VLLM_QWEN3_8_PREFILL_COALESCE": "0",
+    "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
+    "VLLM_SPARK_SHARED_CAPTURE_STREAM": "1",
+    "VLLM_USE_RUST_FRONTEND": "0"
+  },
+  "sparkcache_native": {
+    "placement_path": "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so",
+    "snapshot_path": "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so",
+    "vllm_root": "/opt/venv/lib/python3.12/site-packages",
+    "placement_sha256": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+    "snapshot_sha256": "b50db45123c4faf0fdfb021da0a0f1b7f329869ae5dc13dcc7432dd4ce765b68",
+    "lease_contract": "/opt/sparkring/contracts/vllm-connector-jobs-source-c1659b268b292c73.json"
+  },
+  "source_trees": {
+    "b12x": "1104cc99243d5533544d089583e39f46d7ac3027caa3f3a37139c4d4f59a5313",
+    "vllm": "c1659b268b292c738b1a36faec17a242b51a35c83879a108c82313aa2a5be63f"
+  },
+  "qualification": "Bounded cache-enabled TP2/TP4 DCP1 qualification; see runtime/releases/shared-2026.09.3/qualification.json.",
+  "release": "shared-2026.09.3",
+  "image_id": "sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855",
+  "installed_receipt_sha256": "252678df6c88e281054e6ff9f438e80af04df2b9da53c1960caa03a2edda415d",
+  "target_variants": {
+    "nvfp4-spark": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+      "revision": "a608241037e4c2565356bff7ca293f2133888f88",
+      "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+      "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
+      "checkpoint_identity": "c1031022d49952dc287e85a7a99b7415780307acbabe0ea94d4ffaeca3d090c1"
+    },
+    "nvfp4-qad": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "revision": "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49",
+      "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+      "index_sha256": "b43d25a280d02bfd2a58c046386e24baad78fcce355ea2d48cc0c4c78671686b",
+      "checkpoint_identity": "deaddef04f277dbfd8bda8e7e5616aabbcc9a7c26b03cd34c96bf6015bd23dc1"
+    }
+  },
+  "publication_status": "published",
+  "profile_environment": {
+    "tp2-dcp1-sparkcache": {
+      "SPARKRING_PROFILE_MODE": "custom",
+      "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+      "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+      "VLLM_NCCL_SO_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+      "NCCL_LOCAL_INFERENCE_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+      "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+      "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "VLLM_NO_USAGE_STATS": "1",
+      "VLLM_PLUGINS": "b12x_loader",
+      "LOAD_FORMAT": "b12x",
+      "SPARKRING_FEATURES": "",
+      "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
+      "VLLM_QWEN3_8_PREFILL_COALESCE": "0",
+      "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
+      "VLLM_SPARK_SHARED_CAPTURE_STREAM": "1",
+      "VLLM_USE_RUST_FRONTEND": "0",
+      "SPARKRING_RUNTIME_RELEASE": "native",
+      "SPARKCACHE_MAX_BYTES": "8589934592",
+      "SPARKCACHE_LOW_WATERMARK_BYTES": "6442450944",
+      "SPARKCACHE_MAX_SPAN_TOKENS": "65536",
+      "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES": "536870912",
+      "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT": "2",
+      "SPARKCACHE_CUDA_ARENA_BYTES": "67108864",
+      "SPARKCACHE_LOAD_THREADS": "2",
+      "SPARKCACHE_MAX_PENDING_RESTORES": "2",
+      "SPARKCACHE_CUDA_RESTORE_IO_WORKERS": "2",
+      "SPARKCACHE_CLEAR_ONCE": "",
+      "B12X_COMPILE_CPU_AFFINITY": "12-19"
+    },
+    "tp4-dcp1-sparkcache": {
+      "SPARKRING_PROFILE_MODE": "custom",
+      "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+      "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+      "VLLM_NCCL_SO_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+      "NCCL_LOCAL_INFERENCE_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+      "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+      "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "VLLM_NO_USAGE_STATS": "1",
+      "VLLM_PLUGINS": "b12x_loader",
+      "LOAD_FORMAT": "b12x",
+      "SPARKRING_FEATURES": "",
+      "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
+      "VLLM_QWEN3_8_PREFILL_COALESCE": "0",
+      "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
+      "VLLM_SPARK_SHARED_CAPTURE_STREAM": "1",
+      "VLLM_USE_RUST_FRONTEND": "0",
+      "SPARKRING_RUNTIME_RELEASE": "native",
+      "SPARKCACHE_MAX_BYTES": "8589934592",
+      "SPARKCACHE_LOW_WATERMARK_BYTES": "6442450944",
+      "SPARKCACHE_MAX_SPAN_TOKENS": "65536",
+      "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES": "536870912",
+      "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT": "2",
+      "SPARKCACHE_CUDA_ARENA_BYTES": "67108864",
+      "SPARKCACHE_LOAD_THREADS": "2",
+      "SPARKCACHE_MAX_PENDING_RESTORES": "2",
+      "SPARKCACHE_CUDA_RESTORE_IO_WORKERS": "2",
+      "SPARKCACHE_CLEAR_ONCE": "",
+      "B12X_COMPILE_CPU_AFFINITY": "12-19",
+      "SPARK_TP4_GRAPH_DIRECT_DOORBELL": "1"
+    }
+  }
+}

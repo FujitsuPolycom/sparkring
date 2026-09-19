@@ -6,15 +6,15 @@
   "status": "qualified",
   "configuration": {
     "format": "release-profile",
-    "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+    "path": "runtime/releases/shared-2026.09.3/glm-profile-contract.json",
     "key": "tp4-dcp1-sparkcache"
   },
-  "release": "runtime/releases/sparkring-r33-dcp4/release.json",
+  "release": "runtime/releases/shared-2026.09.3/release.json",
   "guide": "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md",
-  "evidence_scope": "Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.",
+  "evidence_scope": "SparkRing 2026.09.3 passed bounded TP4/DCP1 text, finite-score, synthetic-media and retained-restart checks for separate NVFP4-Spark and QAD checkpoints, with physical SparkCache restore on all four ranks. See runtime/releases/shared-2026.09.3/qualification.json. Full-context, arbitrary media, long-duration stability and performance are not qualified.",
   "overrides": [],
   "launcher": {
     "kind": "guide"
   },
-  "quickstart_status": "research-only"
+  "quickstart_status": "qualified"
 }

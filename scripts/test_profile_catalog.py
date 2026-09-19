@@ -38,7 +38,7 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
     glm_rows = [line for line in summary.splitlines() if line.startswith('| **[GLM-5.3-Flash](')]
     assert len(glm_rows) == 2  # Four-Spark and two-Spark deployments.
     assert '| 1/4 |' in glm_rows[0]
-    assert all('[Optional]' in row for row in glm_rows)
+    assert all('| Included |' in row for row in glm_rows)
     assert '1,048,576' not in summary
     for profile_id in catalog():
         profile, _ = load(profile_id)
@@ -58,7 +58,7 @@ def test_catalog_keeps_separate_deepseek_engines_and_variant_validation():
     assert any('<br>SGLang |' in row for row in rows)
     for profile_id, status, cache in (
         ('glm53-flash-spark-tp4-dcp1', 'Experimental', 'Off'),
-        ('glm53-flash-spark-tp4-dcp1-sparkcache', 'Experimental', 'On'),
+        ('glm53-flash-spark-tp4-dcp1-sparkcache', 'Validated', 'On'),
     ):
         row = next(line for line in variants.splitlines() if f'](../profiles/{profile_id}/README.md)' in line)
         assert f'| {cache} | {status} |' in row
@@ -73,13 +73,15 @@ def test_shared_qwen_guide_is_used_for_cache_links_and_variant_navigation():
 
 
 
-def test_glm_discovery_uses_quickstart_status_without_relabelling_r33():
+def test_glm_discovery_promotes_native_cache_profiles_without_relabelling_r33():
     summary = profile_table(compact=True)
     glm = [row for row in summary.splitlines() if row.startswith("| **[GLM-5.3-Flash](")]
     assert len(glm) == 2
-    assert all(row.endswith("| Experimental |") for row in glm)
+    assert all(row.endswith("| Validated |") for row in glm)
     for profile_id in ("glm53-flash-spark-tp2-dcp1-sparkcache", "glm53-flash-spark-tp4-dcp1-sparkcache"):
         resolved = resolve(profile_id)
         assert resolved["status"] == "qualified"
-        assert resolved["quickstart_status"] == "research-only"
-        assert resolved["release"]["id"] == "sparkring-r33-dcp4"
+        assert resolved["quickstart_status"] == "qualified"
+        assert resolved["release"]["id"] == "shared-2026.09.3"
+    for profile_id in ("glm53-flash-spark-tp2-dcp1", "glm53-flash-spark-tp4-dcp1"):
+        assert resolve(profile_id)["release"]["id"] == "sparkring-r33-dcp4"

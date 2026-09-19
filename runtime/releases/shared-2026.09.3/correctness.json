@@ -1,0 +1,460 @@
+{
+  "schema": "sparkring-functional-evidence/v1",
+  "image_id": "sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855",
+  "publication_status": "published",
+  "selections": [
+    {
+      "selection": "glm-qad-tp2-release",
+      "tp": 2,
+      "dcp": 1,
+      "sparkcache": true,
+      "status": "qualified",
+      "model": "GLM-5.3-Flash-NVFP4-QAD-TP2",
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "retained_restart": true,
+      "restore_fixtures": [
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1
+          ]
+        },
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1
+          ]
+        }
+      ],
+      "evidence_sha256": {
+        "checks.json": "9b5014f0a345d09abc1b43d7a079c30172cf79f62d009920b96d3da60a1ae556",
+        "functional.json": "ab392937f93401ed44ccf4dbe080394dbb855aecefe65152f706b01cc4a54f57",
+        "restart.json": "b4b2e2fcf7d1ce4aaf95103dcdf71a04412c2f0c62e5554ae0a88b374c7d6878",
+        "replay.json": "4a411f7eda70ed354e1a90bb347ba789dd4afc48df5bdd9eb9c4da14efde2e0c"
+      },
+      "reported_kv_pool_tokens": 1081922,
+      "checkpoint_revision": "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49",
+      "checkpoint_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "target_variant": "nvfp4-qad",
+      "profile_id": "glm53-flash-spark-tp2-dcp1-sparkcache"
+    },
+    {
+      "selection": "glm-qad-tp4-release",
+      "tp": 4,
+      "dcp": 1,
+      "sparkcache": true,
+      "status": "qualified",
+      "model": "GLM-5.3-Flash-NVFP4-QAD-TP4",
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "retained_restart": true,
+      "restore_fixtures": [
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "evidence_sha256": {
+        "checks.json": "d49e4da055dfd3cb3dcb1a2af8310331de75c7058eb65edcc5d1ee5c90173c47",
+        "functional.json": "2e65c4f1c84cc7e6d6af451dd20d6d05c35fa8868035594068f241194a263619",
+        "restart.json": "1987cc6c329757bb3df9cc2af5209ba433506b087d8f5317dd15e97ae7bd9aff",
+        "replay.json": "e12c59dd996c33690c6bd19e5320495ce493b6fe6ed6c76ee70375424e328601"
+      },
+      "reported_kv_pool_tokens": 2278454,
+      "checkpoint_revision": "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49",
+      "checkpoint_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "target_variant": "nvfp4-qad",
+      "profile_id": "glm53-flash-spark-tp4-dcp1-sparkcache"
+    },
+    {
+      "selection": "glm-spark-tp2-release",
+      "tp": 2,
+      "dcp": 1,
+      "sparkcache": true,
+      "status": "qualified",
+      "model": "GLM-5.3-Flash-NVFP4-Spark-TP2",
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "retained_restart": true,
+      "restore_fixtures": [
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1
+          ]
+        },
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1
+          ]
+        }
+      ],
+      "evidence_sha256": {
+        "checks.json": "af713955103ddf70b222f2926d7b81405ea020c5f81e891a75dd2e2bb48ee09e",
+        "functional.json": "b0deab6fa041d036da04584343efb82dede9fed88323508a4d6876d9fb0d382d",
+        "restart.json": "0966371f55ae15a29c7c2181467c58f5c1d000267cf6701c8403e2780eca5d2d",
+        "replay.json": "4c620e6b15e0f3c404070f50ae0c6a3e78384f107f4d694234e903cb511c9478"
+      },
+      "reported_kv_pool_tokens": 1081922,
+      "checkpoint_revision": "a608241037e4c2565356bff7ca293f2133888f88",
+      "checkpoint_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+      "target_variant": "nvfp4-spark",
+      "profile_id": "glm53-flash-spark-tp2-dcp1-sparkcache"
+    },
+    {
+      "selection": "glm-spark-tp4-release",
+      "tp": 4,
+      "dcp": 1,
+      "sparkcache": true,
+      "status": "qualified",
+      "model": "GLM-5.3-Flash-NVFP4-Spark-TP4",
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "retained_restart": true,
+      "restore_fixtures": [
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "cached_tokens": 8192,
+          "physical_ranks": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "evidence_sha256": {
+        "checks.json": "22423d1af718bd469979415ef69e3bf2f1732c49762cc32f811a6d44a64bb096",
+        "functional.json": "14050e0247319ed2f666002a0d4d4c6968c543ff872c2d44555c84b8f4d32b0e",
+        "restart.json": "94f62de405a32a33c57b5327aac825435e373a9999b22ef4879d573204fd88ed",
+        "replay.json": "5482e7801eedb3dbf56122357642f1d26338bdea427be16a4a56e1e3ff118ac6"
+      },
+      "reported_kv_pool_tokens": 2278454,
+      "checkpoint_revision": "a608241037e4c2565356bff7ca293f2133888f88",
+      "checkpoint_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+      "target_variant": "nvfp4-spark",
+      "profile_id": "glm53-flash-spark-tp4-dcp1-sparkcache"
+    },
+    {
+      "selection": "qwen-qad-tp2-release",
+      "tp": 2,
+      "dcp": 1,
+      "sparkcache": true,
+      "status": "qualified",
+      "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "retained_restart": true,
+      "restore_fixtures": [
+        {
+          "cached_tokens": 5696,
+          "physical_ranks": [
+            0,
+            1
+          ]
+        },
+        {
+          "cached_tokens": 5696,
+          "physical_ranks": [
+            0,
+            1
+          ]
+        }
+      ],
+      "evidence_sha256": {
+        "checks.json": "fe8ab2c8a245bc970e3287dc8d531a6a9d786bfddfb743d26413ad2b266e9ad5",
+        "functional.json": "9a39365f59a559de8f597d7a9f9873e0041ce1ca8cdc3e197d21af4233aa7668",
+        "restart.json": "b09e2397f81710a4352aa3e548576e863d7fb750453f995a33237e96dd49d933",
+        "replay.json": "5b552b5050a4f8ae25a45fa215dd42887820f8fe34b433152e25088cc6612ce1"
+      },
+      "reported_kv_pool_tokens": 2877721,
+      "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+      "checkpoint_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+      "target_variant": "nvfp4-qad",
+      "profile_id": "qwen38-flash-next-tp2-sparkcache"
+    },
+    {
+      "selection": "qwen-qad-tp4-release",
+      "tp": 4,
+      "dcp": 1,
+      "sparkcache": true,
+      "status": "qualified",
+      "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "retained_restart": true,
+      "restore_fixtures": [
+        {
+          "cached_tokens": 7200,
+          "physical_ranks": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "cached_tokens": 7200,
+          "physical_ranks": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "evidence_sha256": {
+        "checks.json": "7c246781407c94bdabb9d75f86f178b11154f7b48d63dc5974ee40fb2280dbc9",
+        "functional.json": "70ef87b999962c388bee37fd116b0bbf32e3d1315b7d4875b70eff1d4113160b",
+        "restart.json": "930baadef63b345a6096ebd9edecea76c5740dc169836f872154d803f7c1f93a",
+        "replay.json": "36343007bc567a4c8570595fd9832ff651e650391e19f6fbfc82035ec34e9f02"
+      },
+      "reported_kv_pool_tokens": 3131214,
+      "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+      "checkpoint_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+      "target_variant": "nvfp4-qad",
+      "profile_id": "qwen38-flash-next-qad-tp4-sparkcache"
+    },
+    {
+      "selection": "qwen-qad-tp2-cacheoff",
+      "tp": 2,
+      "dcp": 1,
+      "sparkcache": false,
+      "status": "qualified",
+      "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+      "retained_restart": true,
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "concurrent_requests_before_restart": 20,
+      "concurrent_requests_after_restart": 20,
+      "evidence_sha256": {
+        "checks.json": "0bf30322730ee5ebf4be6ac9646d0d0585b2fcedbabff921f6b5a6953d068000",
+        "functional.json": "7cff0b6e57685f3792949135da1813e0385cb5f9303713e458fcb3296b07c36e",
+        "restart.json": "8586a4c187ff044b5d79214cf649c0e4b1a9cb52e919dd640cf4bd641c20e9b3",
+        "concurrent.json": "65e17b2b869bf7b42b36ea0e6baaf6a5b792bbf0f032f18dd3c849957f783f52",
+        "restart-concurrent.json": "f59094d6951b4bd59e64b9f2a011e0fee7056851edf15f20866d46d39af03443"
+      },
+      "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+      "checkpoint_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+      "target_variant": "nvfp4-qad",
+      "profile_id": "qwen38-flash-next-tp2"
+    },
+    {
+      "selection": "qwen-qad-tp4-cacheoff",
+      "tp": 4,
+      "dcp": 1,
+      "sparkcache": false,
+      "status": "qualified",
+      "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
+      "retained_restart": true,
+      "functional_cases": [
+        {
+          "kind": "16k-key-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "short-finite",
+          "passed": true
+        },
+        {
+          "kind": "media",
+          "passed": true
+        }
+      ],
+      "concurrent_requests_before_restart": 20,
+      "concurrent_requests_after_restart": 20,
+      "evidence_sha256": {
+        "checks.json": "0bf30322730ee5ebf4be6ac9646d0d0585b2fcedbabff921f6b5a6953d068000",
+        "functional.json": "b5b349cd8fcfc5bc5967bd77b27b123cb8143241763801c1029b374ae6df9f7b",
+        "restart.json": "a8f7d2a5fdb44529d6bf103281b3a193291a5a5402bbaf3292588ba386e047f3",
+        "concurrent.json": "fb4855f17a23fa811cef4b379a3e82cf755eb5a83901bbe4b9e16f65d955190c",
+        "restart-concurrent.json": "0a314302c884dd809cf8ad2169dee68b82a1b659fc5f53c75fc223ebc2499a21"
+      },
+      "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+      "checkpoint_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+      "target_variant": "nvfp4-qad",
+      "profile_id": "qwen38-flash-next-qad-tp4"
+    }
+  ],
+  "scope": "Bounded functional and retained-restart checks only. No performance, full-context, arbitrary-media or long-duration stability claim.",
+  "limitations": [
+    "An earlier image encountered a TP4 GLM QAD collective timeout; bounded candidate success does not establish its root cause or resolution."
+  ],
+  "release": "shared-2026.09.3"
+}

@@ -3,9 +3,9 @@
   "profiles": {
     "qwen38-flash-next-tp2": {
       "tokens": 2877721,
-      "source": "runtime/releases/shared-2026.09.2/correctness.json",
+      "source": "runtime/releases/shared-2026.09.3/correctness.json",
       "witness": "\"reported_kv_pool_tokens\": 2877721",
-      "conditions": "Qwen QAD TP2/DCP1 on SparkRing 2026.09.2, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Identical engine-reported pool across cache-on/off startup and retained restarts. Capacity report, not proof that sixteen full-context requests fit."
+      "conditions": "Qwen QAD TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit."
     },
     "deepseek-v41-flash-sglang-cycle": {
       "tokens": 1499904,
@@ -15,9 +15,9 @@
     },
     "glm53-flash-spark-tp2-dcp1-sparkcache": {
       "tokens": 1081922,
-      "source": "performance/records/glm53-flash/r35-tp2-sparkcache.json",
-      "witness": "\"kv_pool_tokens\": 1081922",
-      "conditions": "Recorded R35 TP2/DCP1 SparkCache pool at 7.5 GiB KV per rank. Sizing reference for the retained profile; not R37 TP2 qualification."
+      "source": "runtime/releases/shared-2026.09.3/correctness.json",
+      "witness": "\"reported_kv_pool_tokens\": 1081922",
+      "conditions": "GLM Spark TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 7.5 GiB KV per rank and 1048576 configured context. Engine-reported capacity; not full-context qualification."
     },
     "glm52-exl3-r7-3.5bpw": {
       "tokens": 1156864,
@@ -45,11 +45,10 @@
       "conditions": "Reported startup for the normalized TP2 profile; maximum configured sequences 32."
     },
     "glm53-flash-spark-tp4-dcp1-sparkcache": {
-      "tokens": 2280000,
-      "source": "performance/capacity-references.md",
-      "witness": "2.28M",
-      "conditions": "Published R33 TP4/DCP1 SparkCache profile; 24 GiB FP8 KV per rank; retained README approximation.",
-      "approximate": true
+      "tokens": 2278454,
+      "source": "runtime/releases/shared-2026.09.3/correctness.json",
+      "witness": "\"reported_kv_pool_tokens\": 2278454",
+      "conditions": "GLM Spark TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB KV per rank and 1048576 configured context. Engine-reported capacity; not full-context qualification."
     },
     "deepseek-v4-flash-0731": {
       "tokens": 1000000,
@@ -98,9 +97,9 @@
     },
     "qwen38-flash-next-qad-tp4": {
       "tokens": 3131214,
-      "source": "runtime/releases/shared-2026.09.2/correctness.json",
+      "source": "runtime/releases/shared-2026.09.3/correctness.json",
       "witness": "\"reported_kv_pool_tokens\": 3131214",
-      "conditions": "Qwen QAD TP4/DCP1 on SparkRing 2026.09.2, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Identical engine-reported pool across cache-on/off startup and retained restarts. Capacity report, not proof that sixteen full-context requests fit."
+      "conditions": "Qwen QAD TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit."
     }
   }
 }

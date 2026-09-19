@@ -132,13 +132,18 @@ def configuration(p, root=ROOT):
         serving.setdefault("node_count", data["hardware"]["ranks"])
         return data["model"], serving, data["hardware"]["topology"], data.get("evidence", data.get("publication", {})), data.get("runtime", {})
     if source["format"] == "release-profile":
-        if data.get("schema") != "sparkring-r33-profile-contract/v1":
+        if data.get("schema") not in {"sparkring-r33-profile-contract/v1", "sparkring-native-glm-profile-contract/v1"}:
             raise ValueError("Unsupported release-profile schema")
         selected = data["profiles"][source["key"]]
         serving = {k: selected[k] for k in ("tensor_parallel_size", "decode_context_parallel_size", "node_count", "kv_cache_memory_bytes")}
         serving.update(selected.get("serving", {}))
         serving["max_model_len"] = data["model"]["max_model_len"]
         serving["sparkcache"] = selected["sparkcache"]
+        if data["schema"] == "sparkring-native-glm-profile-contract/v1":
+            # Native serving uses structured container plans, not an R33 shell
+            # template. Image admission remains the launcher's responsibility.
+            return data["model"], serving, selected["transport"], p["evidence_scope"], {
+                "release_profile": source["key"], "image_release": data["release"]}
         template = (Path(source["path"]).parent / selected["template"]).as_posix()
         local_path(template, root)
         return data["model"], serving, selected["transport"], p["evidence_scope"], {"release_profile": source["key"], "template": template}

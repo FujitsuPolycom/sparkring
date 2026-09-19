@@ -1,0 +1,70 @@
+{
+  "schema": "sparkring-functional-qualification/v1",
+  "release": "shared-2026.09.3",
+  "status": "qualified",
+  "runtime_image_id": "sha256:157be9a52296566990001ead202d71846e3bdb0fd13537ff2db85e271bddbc95",
+  "publication_image_id": "sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855",
+  "profiles": [
+    {
+      "id": "glm53-flash-spark-tp2-dcp1-sparkcache",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score and synthetic-media checks, plus retained-container restart. SparkCache selections restored two fixtures with API cache credit matched to physical restore on every rank. Full-context, C16 pressure, arbitrary media, long-duration stability and performance are not qualified.",
+      "target_variants": [
+        "nvfp4-qad",
+        "nvfp4-spark"
+      ]
+    },
+    {
+      "id": "glm53-flash-spark-tp4-dcp1-sparkcache",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score and synthetic-media checks, plus retained-container restart. SparkCache selections restored two fixtures with API cache credit matched to physical restore on every rank. Full-context, C16 pressure, arbitrary media, long-duration stability and performance are not qualified.",
+      "target_variants": [
+        "nvfp4-qad",
+        "nvfp4-spark"
+      ]
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score and synthetic-media checks, plus retained-container restart. SparkCache selections restored two fixtures with API cache credit matched to physical restore on every rank. Full-context, C16 pressure, arbitrary media, long-duration stability and performance are not qualified.",
+      "target_variants": [
+        "nvfp4-qad"
+      ]
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4-sparkcache",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score and synthetic-media checks, plus retained-container restart. SparkCache selections restored two fixtures with API cache credit matched to physical restore on every rank. Full-context, C16 pressure, arbitrary media, long-duration stability and performance are not qualified.",
+      "target_variants": [
+        "nvfp4-qad"
+      ]
+    },
+    {
+      "id": "qwen38-flash-next-tp2",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score and synthetic-media checks, plus retained-container restart. SparkCache selections restored two fixtures with API cache credit matched to physical restore on every rank. Full-context, C16 pressure, arbitrary media, long-duration stability and performance are not qualified.",
+      "target_variants": [
+        "nvfp4-qad"
+      ]
+    },
+    {
+      "id": "qwen38-flash-next-tp2-sparkcache",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score and synthetic-media checks, plus retained-container restart. SparkCache selections restored two fixtures with API cache credit matched to physical restore on every rank. Full-context, C16 pressure, arbitrary media, long-duration stability and performance are not qualified.",
+      "target_variants": [
+        "nvfp4-qad"
+      ]
+    }
+  ],
+  "scope": "Bounded short/16K text, finite-score and synthetic-media checks, plus retained-container restart. SparkCache selections restored two fixtures with API cache credit matched to physical restore on every rank. Full-context, C16 pressure, arbitrary media, long-duration stability and performance are not qualified.",
+  "correctness_record": "runtime/releases/shared-2026.09.3/correctness.json",
+  "not_established": [
+    "performance or benchmark results",
+    "full-context or C16-pressure stability",
+    "arbitrary media accuracy",
+    "request cache_salt isolation",
+    "GLM cache-disabled or DCP4 qualification",
+    "DeepSeek qualification",
+    "root cause or resolution of the earlier-image TP4 collective timeout"
+  ]
+}

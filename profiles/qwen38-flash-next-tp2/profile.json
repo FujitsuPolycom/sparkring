@@ -8,9 +8,9 @@
     "format": "serving-profile",
     "path": "profiles/qwen38-flash-next-tp2/config.json"
   },
-  "release": "runtime/releases/shared-2026.09.2/release.json",
+  "release": "runtime/releases/shared-2026.09.3/release.json",
   "guide": "profiles/qwen38-flash-next-tp2/README.md",
-  "evidence_scope": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified.",
+  "evidence_scope": "Bounded short/16K text, finite-score, synthetic media, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.3/qualification.json and runtime/releases/shared-2026.09.3/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified.",
   "overrides": [],
   "launcher": {
     "kind": "python",

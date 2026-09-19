@@ -5,8 +5,8 @@ and separate model directories; never overwrite files mounted by a live model.
 
 | Checkpoint | Pinned revision | Scope |
 |---|---|---|
-| [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88) | `a608241037e4c2565356bff7ca293f2133888f88` | Maintained R35/R37 host selection; serving evidence remains scoped to each recorded checkpoint. |
-| [NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) | `175ae8ce3b5af842b0d0140dbeb43e9cfc557c49` | Research-only checkpoint selection; not qualified by the retained plain-NVFP4 recipes. |
+| [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88) | `a608241037e4c2565356bff7ca293f2133888f88` | Qualified for bounded TP2/TP4 DCP1 SparkCache checks on SparkRing 2026.09.3. |
+| [NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) | `175ae8ce3b5af842b0d0140dbeb43e9cfc557c49` | Qualified for bounded TP2/TP4 DCP1 SparkCache checks on SparkRing 2026.09.3; not covered by retained plain-NVFP4 recipes. |
 
 The [Spark target record](glm53-target-variants.json) owns its runtime revision,
 metadata hashes and checkpoint identity. R35/R37 host launchers incorporate the
@@ -28,7 +28,11 @@ hf download local-inference-lab/GLM-5.3-Flash-NVFP4 \
   --local-dir "$MODEL_DIR"
 ```
 
-Status: **research-only** for this QAD revision in the retained SparkRing recipes.
-Retargeting a recipe requires its config/index hashes, cache identity and serving
-checks to agree with the selected checkpoint. A completed download alone is not
-runtime qualification.
+Use `--target-model-variant nvfp4-qad` with the native-image
+[TP2](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) or
+[TP4](glm53-flash-spark-tp4-dcp1-sparkcache/README.md) procedure. The
+[qualification record](../runtime/releases/shared-2026.09.3/qualification.json)
+scopes bounded text/media and restart/restore evidence. It does not qualify
+full-context load, arbitrary media, DCP4 or cache-disabled GLM selections.
+Retargeting another recipe requires matching metadata, cache identity and
+serving checks; a completed download alone is not runtime qualification.

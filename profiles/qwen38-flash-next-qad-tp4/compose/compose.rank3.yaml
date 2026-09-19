@@ -3,7 +3,7 @@ name: sr-qwen-qad-example-r3
 services:
   model:
     container_name: sr-qwen-qad-example-r3
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -89,16 +89,16 @@ services:
     - --enable-prompt-tokens-details
     - --headless
     environment:
-      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/b12x
-      B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/b12x
+      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
+      B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
       B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
       B12X_POLICY_MODE: auto
-      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/roce
+      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/roce
       B12X_ROCE_GID_INDEX: '3'
       B12X_ROCE_HCA: rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1
       B12X_ROCE_OPPOSITE_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 0=0/2,1=1/2,2=1/3
-      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/cute
+      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/cute
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       LD_PRELOAD: /opt/local-inference/nccl/lib/libnccl.so.2
@@ -140,11 +140,11 @@ services:
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/inductor
+      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/triton
+      TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/triton
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-      VLLM_CACHE_ROOT: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/vllm
+      VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -167,9 +167,9 @@ services:
       VLLM_SSM_CONV_STATE_LAYOUT: DS
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833
+      XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-629bc3218833
     labels:
-      io.sparkring.deployment: 8e3a26fb9554f5f869bc35bdfb1234f1cb6dedb1b104a4b4806e4151d874ea16
+      io.sparkring.deployment: f481b42f629bf7b8041953bf92706b4b1f013fcc119b39e02f4118cf504e490d
       io.sparkring.rank: '3'
     network_mode: host
     ipc: host

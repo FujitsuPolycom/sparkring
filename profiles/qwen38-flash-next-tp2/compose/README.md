@@ -2,7 +2,7 @@
 
 Status: **qualified for bounded correctness and restart checks**. These examples select the QAD checkpoint and the image
 in the [profile quickstart](../README.md). The selected release's
-[qualification record](../../../runtime/releases/shared-2026.09.2/qualification.json)
+[qualification record](../../../runtime/releases/shared-2026.09.3/qualification.json)
 states exact-image deployment and serving coverage.
 
 [Rank 0](compose.rank0.yaml) and [rank 1](compose.rank1.yaml) are generated from

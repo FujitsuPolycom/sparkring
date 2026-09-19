@@ -13,7 +13,7 @@ from scripts import sparkring_compose as coordinator
 
 PROFILE = "qwen38-flash-next-qad-tp4"
 LEGACY_BUILD = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/local-build.json"
-PUBLICATION = adapter.ROOT / "runtime/releases/shared-2026.09.2/publication.json"
+PUBLICATION = adapter.ROOT / "runtime/releases/shared-2026.09.3/publication.json"
 BUILD = PUBLICATION
 MAPS = ["1=0/2,2=0/3,3=1/3", "0=1/3,2=0/2,3=0/3",
         "0=1/2,1=1/3,3=0/2", "0=0/2,1=1/2,2=1/3"]

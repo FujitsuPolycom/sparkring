@@ -7,7 +7,7 @@ in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`. Complete the
 [host prerequisites](../../docs/operations/prerequisites.md) and prepare one
 direct cable on cage p0 before starting; the launcher does not configure networking.
 
-Both variants use [SparkRing shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md)
+Both variants use [SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md)
 with aligned checkpoints, managed B12X loading, Qwen checkpoint coalescing,
 compact MTP and projection overlap. HC row sharding remains off on TP2; the
 included ownership implementation requires TP4. Request-boundary caching and
@@ -32,9 +32,9 @@ separate writable directory.
 REPO=$PWD
 PROFILE=profiles/qwen38-flash-next-tp2/sparkcache.json
 CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
-IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123
+IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6
 MODEL_DIR=/srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
-CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-shared-2026092
+CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-shared-2026093
 
 # No separate parent-image pull is required for native-image verification.
 docker pull --platform linux/arm64 "$IMAGE_REF"
@@ -146,11 +146,11 @@ CONTAINER_PREFIX=qwen-flash-next-tp2
 
 Configuration is owned by [sparkcache.json](sparkcache.json) and
 [config.json](config.json), not this table. Capacity overrides are intentionally
-not accepted. The [release qualification](../../runtime/releases/shared-2026.09.2/qualification.json)
+not accepted. The [release qualification](../../runtime/releases/shared-2026.09.3/qualification.json)
 records passing bounded short/16K text, finite-score, synthetic image/video,
-request-order, concurrent-request and retained-restart checks on this image,
+concurrent-request and retained-restart checks on this image,
 both with and without SparkCache. The cache-enabled profile also restored two
-fixtures on every rank after restart. The [correctness summary](../../runtime/releases/shared-2026.09.2/correctness.json)
+fixtures on every rank after restart. The [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
 owns exact image identities, case counts and evidence hashes.
 
 These checks do not qualify arbitrary/high-resolution video, C16 multimedia,
@@ -159,7 +159,7 @@ Sixteen video frames are not sixteen visual tokens. A 512 MiB capture slot can
 reject a snapshot below the configured 65536-token span ceiling; serving must
 continue without optional cache publication.
 
-[Release sources and rollback](../../runtime/releases/shared-2026.09.2/README.md).
+[Release sources and rollback](../../runtime/releases/shared-2026.09.3/README.md).
 [Generated Compose deployments](../../docs/operations/compose.md) support both
 configurations, with and without SparkCache. Historical R37 evidence remains
 attached to its original image and is not reattributed to this release.
