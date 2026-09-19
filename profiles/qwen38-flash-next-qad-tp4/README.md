@@ -1,4 +1,4 @@
-# Qwen3.8-Flash-Next QAD on four Sparks
+# Qwen3.8-Flash-Next NVFP4 QAD on four Sparks
 
 Status: **qualified for bounded correctness and restart checks**. This guide selects
 [SparkRing shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md).
