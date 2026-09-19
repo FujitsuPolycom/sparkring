@@ -16,6 +16,8 @@ SOURCE_FILES = (
     "runtime/common/__init__.py",
     "runtime/common/candidate.py",
     "runtime/common/glm_source_candidate.py",
+    "runtime/common/glm_native_candidate.py",
+    "runtime/common/native_candidate.py",
     "runtime/common/source_candidate.py",
     "runtime/common/feature_candidate.py",
     "runtime/common/cache_candidate.py",

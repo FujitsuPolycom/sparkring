@@ -30,6 +30,13 @@ SOURCE_FILES = (
     'runtime/common/r35.py',
     'runtime/common/candidate.py',
     'runtime/common/glm_source_candidate.py',
+    'runtime/common/glm_native_candidate.py',
+    'runtime/common/native_candidate.py',
+    'runtime/releases/shared-2026.09.0/publication.json',
+    'runtime/releases/shared-2026.09.0-rc.1/publication.json',
+    'runtime/releases/shared-2026.09.1/publication.json',
+    'runtime/releases/shared-2026.09.2/publication.json',
+    'runtime/releases/shared-2026.09.3/publication.json',
     'runtime/common/source_candidate.py',
     'runtime/common/feature_candidate.py',
     'runtime/images/compositions/lil-r37-cache64/descriptor.json',
@@ -330,8 +337,9 @@ def canonical_container_spec(launch, image_receipt, rank, image, *, run=subproce
         spec, record, resolved = glm_launch.resolve_spec(launch, image_receipt, rank, owner=profile)
         backend = glm_launch.check_plan(launch, image_receipt, rank, spec, record, resolved)
         return expected_inspection(spec, image, backend=backend)
-    if image_receipt.is_file() and profile.load_image_receipt(image_receipt).get('schema') == profile.glm_source_candidate.SCHEMA:
-        raise ValueError('Local GLM source admission requires a structured creation plan')
+    if image_receipt.is_file() and profile.load_image_receipt(image_receipt).get('schema') in (
+            profile.glm_source_candidate.SCHEMA, profile.glm_native_candidate.SCHEMA):
+        raise ValueError('GLM source/native admission requires a structured creation plan')
     if (site.get('runtime_profile') in ('tp4-dcp4', 'tp4-dcp4-sparkcache')
             and 'r33_profile_contract_roots' not in site
             and (not image_receipt.is_file()
@@ -390,6 +398,9 @@ def external_marker_attestation(*, root=None, binary=None):
 
 def managed_image_attestation(receipt):
     """Return source-pinned managed-mesh helper identities for the selected runtime."""
+    if receipt.get('schema') == managed_units.service.mesh_profile.glm_native_candidate.SCHEMA:
+        managed_units.service.mesh_profile.glm_native_candidate.validate_receipt(receipt)
+        return {}
     if receipt.get('schema') == managed_units.service.mesh_profile.glm_source_candidate.SCHEMA:
         managed_units.service.mesh_profile.glm_source_candidate.validate_receipt(receipt)
         return {}
@@ -447,7 +458,7 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, depl
     site, _, _ = profile.load_site(launch / 'site.json')
     receipt = profile.load_image_receipt(image_receipt)
     inside = managed_image_attestation(receipt)
-    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA, profile.glm_source_candidate.SCHEMA):
+    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA, profile.glm_source_candidate.SCHEMA, profile.glm_native_candidate.SCHEMA):
         inside = external_marker_attestation(binary=Path(site['marker_binary']))
     expected_marker = profile.PINS['marker']['source_sha256']
     if receipt.get('schema') == 'sparkring-source-image-receipt/v1':
@@ -457,7 +468,7 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, depl
         raise ValueError('Managed profile requires the source-pinned image and host marker')
     # Release profiles record readiness after launch. Wrapper images must carry
     # their pre-launch warmup attestation here.
-    if (receipt.get('schema') not in ('sparkring-r33-image-receipt/v1', profile.r35.SCHEMA, profile.candidate.SCHEMA, profile.glm_source_candidate.SCHEMA)
+    if (receipt.get('schema') not in ('sparkring-r33-image-receipt/v1', profile.r35.SCHEMA, profile.candidate.SCHEMA, profile.glm_source_candidate.SCHEMA, profile.glm_native_candidate.SCHEMA)
             and not inside.get('readiness_warmup')):
         raise ValueError('Managed MTP3 profile requires the temperature-one readiness image')
     result = subprocess.run(['docker', 'inspect', site['container_prefix'] + f'-r{rank}'],
@@ -469,8 +480,8 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file, depl
     image = json.loads(result.stdout)[0]
     if image.get('Id') != receipt['image_id']:
         raise ValueError('Inspected image differs from the verified image receipt')
-    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA, profile.glm_source_candidate.SCHEMA):
-        (profile.glm_source_candidate if receipt.get("schema") == profile.glm_source_candidate.SCHEMA else profile.candidate if receipt.get("schema") == profile.candidate.SCHEMA else profile.r35).verify_local_image(receipt)
+    if receipt.get('schema') in (profile.r35.SCHEMA, profile.candidate.SCHEMA, profile.glm_source_candidate.SCHEMA, profile.glm_native_candidate.SCHEMA):
+        (profile.glm_native_candidate if receipt.get("schema") == profile.glm_native_candidate.SCHEMA else profile.glm_source_candidate if receipt.get("schema") == profile.glm_source_candidate.SCHEMA else profile.candidate if receipt.get("schema") == profile.candidate.SCHEMA else profile.r35).verify_local_image(receipt)
     expected = canonical_container_spec(launch, image_receipt, rank, image)
     validate_container_spec(container, expected)
     if profile.sha(Path(site['marker_binary'])) != site['marker_binary_sha256']:

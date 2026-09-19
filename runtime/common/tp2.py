@@ -1,4 +1,4 @@
-"""Plan, create, or manually start guarded NVFP4-Spark TP2 profiles with explicit KV settings."""
+"""Plan, create or start GLM TP2 profiles with explicit image and KV settings."""
 
 from __future__ import annotations
 
@@ -82,25 +82,28 @@ def _remove_option(arguments, flag):
     return result
 
 
-def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
+def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None,
+                       target_model_variant="nvfp4-spark"):
     verifier = _r33_verifier()
-    from runtime.common import candidate, glm_targets, r35, glm_source_candidate
+    from runtime.common import candidate, glm_targets, r35, glm_source_candidate, glm_native_candidate
+    is_native = receipt.get("schema") == glm_native_candidate.SCHEMA
     is_source = receipt.get("schema") == glm_source_candidate.SCHEMA
     is_candidate = receipt.get("schema") == candidate.SCHEMA
-    adapter = glm_source_candidate if is_source else candidate if is_candidate else r35
-    is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA)
+    adapter = glm_native_candidate if is_native else glm_source_candidate if is_source else candidate if is_candidate else r35
+    is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA)
     if is_r35:
         adapter.validate_receipt(receipt)
     else:
         verifier.validate_image_receipt(receipt)
-    release = 'glm-local-source' if is_source else receipt['installed']['composition_id'] if is_candidate else ('r35' if is_r35 else 'r33')
+    release = receipt['release'] if is_native else 'glm-local-source' if is_source else receipt['installed']['composition_id'] if is_candidate else ('r35' if is_r35 else 'r33')
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
     if plan["image"] != expected_image:
         raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
     contract = glm_source_candidate.contract_for_receipt(receipt) if is_source else adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
-    target = glm_targets.target_for_image(image=receipt)
+    glm_targets.require_image(target_model_variant, receipt)
+    target = glm_targets.target_for_image(target_model_variant, image=receipt)
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
-    if is_source:
+    if is_source or is_native:
         adapter.validate_profile_capabilities(receipt, profile_name)
     selected = contract["profiles"][profile_name]
     environment = dict(plan["environment"])
@@ -175,13 +178,30 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         arguments = _remove_option(arguments, "--model-loader-extra-config")
     if is_r35:
         arguments = _remove_option(arguments, '--gdn-decode-kernel')
-    container_args = ([glm_source_candidate.ENTRYPOINT if is_source else candidate.ENTRYPOINT if is_candidate else "/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
+    if is_native:
+        if kv_memory_bytes != selected["kv_cache_memory_bytes"]:
+            raise ValueError("Native GLM profiles do not admit legacy KV allocation overrides")
+        arguments = glm_native_candidate.adapt_arguments(arguments, contract, profile_name, target_model_variant)
+        alias = "GLM-5.3-Flash-NVFP4-" + ("QAD" if target_model_variant == "nvfp4-qad" else "Spark") + "-TP2"
+        arguments = _replace_option(arguments, "--served-model-name", alias)
+        transport = glm_native_candidate.native.publication(receipt["release"])["transport"]
+        environment.update(SOURCE_IMAGE_PROFILE="", SIRCL_ENABLED="0", **glm_native_candidate.DISABLED)
+        environment.update(SERVED_MODEL_NAME=alias, TARGET_MODEL_VARIANT=target_model_variant)
+        environment.update(SPARKRING_TRANSPORT_PROFILE=transport["profile"],
+                           SPARKRING_TRANSPORT_MANIFEST_SHA256=transport["manifest_sha256"],
+                           B12X_COMPILE_CPU_AFFINITY="12-19")
+        plan["transport_manifest_sha256"] = transport["manifest_sha256"]
+        plan["memory_guard_floor_bytes"] = 0
+    container_args = ([glm_native_candidate.ENTRYPOINT if is_native else glm_source_candidate.ENTRYPOINT if is_source else candidate.ENTRYPOINT if is_candidate else "/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
     command = list(plan["command"])
     name = f"sparkring-{release}-{profile_name}-r{environment['NODE_RANK']}"
     command[command.index("--name") + 1] = name
     entrypoint = '/opt/venv/bin/python' if is_r35 else '/opt/sparkring/bin/sparkring-r33'
     command[command.index("--entrypoint") + 1] = entrypoint
     labels = dict(plan["labels"])
+    if is_native:
+        labels["org.sparkring.memory-guard"] = "false"
+        labels["org.sparkring.transport.manifest-sha256"] = plan["transport_manifest_sha256"]
     labels["org.sparkring.profile"] = profile_name
     image_index = len(command) - len(plan["container_args"]) - 1
     prefix = command[:image_index]
@@ -214,6 +234,8 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         kv_cache_memory_bytes=kv_memory_bytes,
         model=target,
     )
+    if is_native:
+        plan["target_model_variant"] = target_model_variant
     if is_r35:
         plan['healthcheck'] = healthcheck
     if sparkcache:
@@ -227,6 +249,9 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
             plan["activation_blockers"] = []
         except ValueError as error:
             plan["activation_blockers"] = [str(error)]
+    if is_native:
+        plan["qualification"] = {"status": "implemented", "gpu_qualified": False,
+                                 "scope": "Native configuration admission; consult exact-profile release evidence."}
     return plan
 
 
@@ -235,7 +260,9 @@ adapt_r33_plan = adapt_release_plan
 
 
 def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None, *, r33_sparkcache=False,
-           r33_cache_kv_memory_bytes=None):
+           r33_cache_kv_memory_bytes=None, target_model_variant="nvfp4-spark"):
+    from runtime.common import glm_targets
+    glm_targets.require_image(target_model_variant, r33_receipt)
     if r33_cache_kv_memory_bytes is not None and (
             not r33_sparkcache or type(r33_cache_kv_memory_bytes) is not int
             or r33_cache_kv_memory_bytes not in (7247757312, 8053063680, 9395240960)):
@@ -248,6 +275,9 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         raise ValueError("Select an immutable registry digest or exact local sha256 image config ID")
     if not (model_dir / "config.json").is_file() or not cache_dir.is_dir():
         raise ValueError("An existing checkpoint with config.json and a cache directory are required")
+    if r33_receipt and r33_receipt.get("schema") == "sparkring-glm-native-image-receipt/v1":
+        glm_targets.verified_override(target_model_variant, (model_dir / "config.json").read_bytes(),
+                                      (model_dir / "model.safetensors.index.json").read_bytes())
     for path in (model_dir, cache_dir):
         if "," in str(path.resolve()):
             raise ValueError("Docker bind-mount paths must not contain commas")
@@ -322,7 +352,8 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         "entrypoint": "python3", "runtime_kind": "legacy",
     }
     return adapt_release_plan(result, r33_receipt, sparkcache=r33_sparkcache,
-                          cache_kv_memory_bytes=r33_cache_kv_memory_bytes) if r33_receipt is not None else result
+                          cache_kv_memory_bytes=r33_cache_kv_memory_bytes,
+                          target_model_variant=target_model_variant) if r33_receipt is not None else result
 
 
 def _source_receipt_contract(directory):
@@ -386,7 +417,13 @@ def validate_source_image_receipt(receipt, plan, source_root=None):
 
 def validate_runtime_receipt(receipt, plan):
     """Require source compatibility evidence for this exact image and profile."""
-    from runtime.common import candidate, glm_source_candidate
+    from runtime.common import candidate, glm_source_candidate, glm_native_candidate
+    if receipt.get("schema") == glm_native_candidate.SCHEMA:
+        glm_native_candidate.validate_profile_capabilities(receipt, plan["profile"])
+        expected = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
+        if plan.get("runtime_kind") != receipt["release"] + "-candidate" or plan["image"] != expected:
+            raise ValueError("Native GLM receipt differs from the selected TP2 plan")
+        return
     if receipt.get("schema") == glm_source_candidate.SCHEMA:
         glm_source_candidate.validate_profile_capabilities(receipt, plan["profile"])
         if plan.get("runtime_kind") != "glm-local-source-candidate" or plan["image"] != receipt["image_id"]:
@@ -426,11 +463,14 @@ def validate_runtime_receipt(receipt, plan):
 
 
 def execute(plan, action, receipt, *, run=subprocess.run):
-    """Run explicit lifecycle actions after checking the guard and container contract."""
+    """Run lifecycle actions after image, profile and stopped-container checks."""
     if action not in ("create", "start"):
         raise ValueError("Execution action must be create or start")
     validate_runtime_receipt(receipt, plan)
-    from runtime.common import candidate, glm_source_candidate
+    from runtime.common import candidate, glm_source_candidate, glm_native_candidate
+    is_native = receipt.get("schema") == glm_native_candidate.SCHEMA
+    if is_native:
+        glm_native_candidate.verify_local_image(receipt, run=run)
     if receipt.get("schema") == glm_source_candidate.SCHEMA:
         glm_source_candidate.verify_local_image(receipt, run=run)
     if receipt.get("schema") == candidate.SCHEMA:
@@ -438,13 +478,14 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     if receipt.get('schema') == 'sparkring-r35-image-receipt/v1':
         from runtime.common import r35
         r35.verify_local_image(receipt, run=run)
-    service = load_profile()["lifecycle"]["memory_guard_service"]
-    run(["systemctl", "is-active", "--quiet", service], check=True)
-    guard = run(["systemctl", "show", service, "--property=ExecStart", "--value"],
-                check=True, capture_output=True, text=True).stdout
-    floor = re.search(r"--available-floor-bytes(?:=|\s+)([0-9]+)(?=\s|;|$)", guard)
-    if floor is None or int(floor[1]) != plan["memory_guard_floor_bytes"]:
-        raise RuntimeError("The active host memory guard must use the profile's 2 GiB floor")
+    if not is_native:
+        service = load_profile()["lifecycle"]["memory_guard_service"]
+        run(["systemctl", "is-active", "--quiet", service], check=True)
+        guard = run(["systemctl", "show", service, "--property=ExecStart", "--value"],
+                    check=True, capture_output=True, text=True).stdout
+        floor = re.search(r"--available-floor-bytes(?:=|\s+)([0-9]+)(?=\s|;|$)", guard)
+        if floor is None or int(floor[1]) != plan["memory_guard_floor_bytes"]:
+            raise RuntimeError("The active host memory guard must use the profile's 2 GiB floor")
     ids = run(["docker", "ps", "--quiet"], check=True, capture_output=True, text=True).stdout.split()
     if ids:
         running = json.loads(run(["docker", "inspect", *ids], check=True,
@@ -488,14 +529,16 @@ def main():
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--runtime-receipt", type=Path)
+    parser.add_argument("--target-model-variant", choices=("nvfp4-spark", "nvfp4-qad"), default="nvfp4-spark")
     parser.add_argument("--sparkcache", "--r33-sparkcache", dest='r33_sparkcache', action="store_true", help="Plan the source-capability-gated TP2 cache composition")
     parser.add_argument("--r33-cache-kv-memory-bytes", type=int, choices=(7247757312, 8053063680, 9395240960),
                         help="Explicit TP2 R33 cache KV pin; default is the 7.5 GiB research configuration")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
-    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-source-image-receipt/v1") else None
+    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-source-image-receipt/v1", "sparkring-glm-native-image-receipt/v1") else None
     plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt,
-                  r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes)
+                  r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes,
+                  target_model_variant=args.target_model_variant)
     print(json.dumps(plan, indent=2), flush=True)
     if args.action == "plan":
         return

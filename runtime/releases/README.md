@@ -16,9 +16,10 @@ records retain their original scope even when navigation retires a profile.
 
 ## Shared serving versions
 
-[Shared runtime 2026.09.2](shared-2026.09.2/README.md) is selected by the Qwen
-TP2 and TP4 quickstarts, with and without SparkCache. Other profiles retain
-their own pinned selections and qualification records.
+[Shared runtime 2026.09.3](shared-2026.09.3/README.md) is selected by Qwen TP2
+and TP4, with and without SparkCache, and GLM TP2/TP4 DCP1 with SparkCache.
+GLM supports separate Spark and QAD checkpoint selections. Other profiles
+retain independent image pins and qualification records.
 
 GitHub Releases provides the version landing page; GHCR Packages stores the
 container layers. A serving Release links an exact image digest, build/source

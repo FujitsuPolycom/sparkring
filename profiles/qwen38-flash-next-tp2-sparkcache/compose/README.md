@@ -1,7 +1,7 @@
 # Generated Qwen TP2 Compose with SparkCache
 
 Status: **qualified for bounded correctness and restart checks**. These examples select QAD and the shared serving image.
-The [qualification record](../../../runtime/releases/shared-2026.09.2/qualification.json)
+The [qualification record](../../../runtime/releases/shared-2026.09.3/qualification.json)
 states exact-image deployment and persistent-cache coverage.
 
 [Rank 0](compose.rank0.yaml) and [rank 1](compose.rank1.yaml) are generated from

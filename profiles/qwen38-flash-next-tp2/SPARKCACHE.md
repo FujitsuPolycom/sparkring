@@ -13,8 +13,8 @@ Follow [Plan and create](README.md#plan-and-create) and
 ## Verification scope
 
 See [Evidence and remaining checks](README.md#evidence-and-remaining-checks).
-[SparkRing 2026.09.2](../../runtime/releases/shared-2026.09.2/README.md) uses
+[SparkRing 2026.09.3](../../runtime/releases/shared-2026.09.3/README.md) uses
 aligned checkpoints and a release-specific persistent-cache namespace. Its
-[qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
+[qualification record](../../runtime/releases/shared-2026.09.3/qualification.json)
 owns exact-image correctness and restart/restore evidence. Request-boundary
 caching and request-salt isolation are not enabled by this profile.

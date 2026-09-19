@@ -22,7 +22,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 from spark_transport.fabric.cx7_hairpin_diagonal import fabric  # noqa: E402
 from integrations.vllm.rocenante import build_bundle  # noqa: E402
-from runtime.common import glm_source_candidate, candidate, glm_targets, r35  # noqa: E402
+from runtime.common import glm_source_candidate, glm_native_candidate, candidate, glm_targets, r35  # noqa: E402
 
 PINS = json.loads((HERE / "pins.json").read_text())
 BASE = HERE.parent / "glm53-flash-jj-r8-gb10"
@@ -243,6 +243,8 @@ def _r33_profile_verifier():
 def validate_image_receipt(document: dict) -> dict:
     if not isinstance(document, dict):
         raise ValueError("Image receipt must be a JSON object")
+    if document.get('schema') == glm_native_candidate.SCHEMA:
+        return glm_native_candidate.validate_receipt(document)
     if document.get('schema') == glm_source_candidate.SCHEMA:
         return glm_source_candidate.validate_receipt(document)
     if document.get('schema') == candidate.SCHEMA:
@@ -371,7 +373,7 @@ def verify_bundle(bundle: Path, image_record: dict | None = None) -> str:
     manifest = json.loads((bundle / "sparkring-overlay-manifest.json").read_text())
     for item in manifest["files"]:
         expected_hashes = {item["sha256"]}
-        if image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA):
+        if image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA):
             # Release images retain the overlay lineage manifest and attest their
             # rebuilt native library and packaged Python files. Rendering and
             # installation accept the lineage bundle or verified image files.
@@ -393,10 +395,11 @@ def resolve_rank_environments(site_path: Path, bundle: Path, image_receipt: Path
     site, topology, plan = load_site(site_path)
     source_composition = image_record and image_record.get("schema") == "sparkring-source-image-receipt/v1"
     local_source = image_record and image_record.get('schema') == glm_source_candidate.SCHEMA
+    native_composition = image_record and image_record.get('schema') == glm_native_candidate.SCHEMA
     candidate_composition = image_record and image_record.get('schema') in (candidate.SCHEMA, glm_source_candidate.SCHEMA)
-    runtime_adapter = glm_source_candidate if local_source else candidate if candidate_composition else r35
-    r35_composition = image_record and image_record.get('schema') in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA)
-    r33_composition = image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA)
+    runtime_adapter = glm_native_candidate if native_composition else glm_source_candidate if local_source else candidate if candidate_composition else r35
+    r35_composition = image_record and image_record.get('schema') in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA)
+    r33_composition = image_record and image_record.get("schema") in ("sparkring-r33-image-receipt/v1", r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA)
     if r35_composition and 'r33_profile_contract_roots' in site:
         raise ValueError('R35 uses its verified installed contract; R33 contract overlays are not supported')
     if 'runtime_tuning' in site and not r35_composition:
@@ -453,10 +456,12 @@ def resolve_rank_environments(site_path: Path, bundle: Path, image_receipt: Path
             verifier = _r33_profile_verifier()
             contract = glm_source_candidate.contract_for_receipt(image_record) if local_source else runtime_adapter.profile_contract(image_record['installed']) if r35_composition else verifier.load_contract()
             if r35_composition:
-                values['SPARKRING_RUNTIME_RELEASE'] = 'candidate' if candidate_composition else 'r35'
+                values['SPARKRING_RUNTIME_RELEASE'] = 'native' if native_composition else 'candidate' if candidate_composition else 'r35'
                 runtime_adapter.validate_profile_capabilities(image_record, runtime_profile)
                 if candidate_composition:
                     values['JIT_CACHE_NAMESPACE'] = f"sparkring-{image_record['installed']['composition_id']}-{image_record['image_id'][7:19]}-{runtime_profile}"
+                elif native_composition:
+                    values['JIT_CACHE_NAMESPACE'] = f"sparkring-native-{image_record['image_id'][7:19]}-{runtime_profile}"
             selected = contract["profiles"][runtime_profile]
             profile_values = verifier.parse_template(
                 ROOT / "runtime/sparkring/jovian-r33/profiles" / selected["template"]
@@ -508,6 +513,11 @@ def resolve_rank_environments(site_path: Path, bundle: Path, image_receipt: Path
                     "SPARKCACHE_VLLM_ROOT": native["vllm_root"],
                     "SPARKCACHE_SOURCE_LEASE_CONTRACT": native["lease_contract"],
                 })
+    if native_composition:
+        values.update(glm_native_candidate.environment_for_profile(image_record["installed"], runtime_profile))
+        values["SPARKCACHE_CACHE_NAMESPACE"] = glm_native_candidate.cache_namespace(image_record["image_id"], runtime_profile)
+        variant = site.get("target_model_variant", glm_targets.DEFAULT)
+        values["SERVED_MODEL_NAME"] = "GLM-5.3-Flash-NVFP4-" + ("QAD" if variant == "nvfp4-qad" else "Spark") + "-TP4"
     if local_source and selected["sparkcache"]:
         values["SPARKCACHE_CACHE_NAMESPACE"] = glm_source_candidate.cache_namespace(image_record["image_id"], runtime_profile)
     if 'runtime_tuning' in site:
@@ -571,6 +581,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     image_record = resolved["image_record"]
     expected_bundle = resolved["bundle_manifest_sha256"]
     local_source = image_record and image_record.get("schema") == glm_source_candidate.SCHEMA
+    native_composition = image_record and image_record.get("schema") == glm_native_candidate.SCHEMA
     candidate_composition = image_record and image_record.get("schema") in (candidate.SCHEMA, glm_source_candidate.SCHEMA)
     output.mkdir(parents=True)
     ranks = []
@@ -589,12 +600,12 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                                  "--source-port", "65535", "--replacement-ethertype", "0x88b5", "--attach", "--run-seconds", "7200"]}
                                  for m in plan.markers if m.source_rank == rank]}
         ranks.append(rank_plan)
-    if image_record and image_record.get("schema") in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA):
+    if image_record and image_record.get("schema") in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA):
         launcher = (BASE / "launch-rank.sh").read_text()
-        if candidate_composition:
-            adapter = glm_source_candidate if local_source else candidate
+        if candidate_composition or native_composition:
+            adapter = glm_native_candidate if native_composition else glm_source_candidate if local_source else candidate
             launcher = adapter.adapt_launcher(launcher, image_record["installed"])
-        (output / "launch-rank.sh").write_text(launcher if local_source else glm_targets.adapt_launcher(launcher, image_record), newline="\n")
+        (output / "launch-rank.sh").write_text(launcher if local_source or native_composition else glm_targets.adapt_launcher(launcher, image_record), newline="\n")
     else:
         shutil.copyfile(BASE / "launch-rank.sh", output / "launch-rank.sh")
     rendered_site = dict(site, topology_file="fabric.json")

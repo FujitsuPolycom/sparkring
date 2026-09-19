@@ -55,6 +55,23 @@ def test_release_template_must_resolve_inside_repository(repository, template):
         profiles.configuration(profile, repository)
 
 
+def test_native_release_profile_uses_structured_configuration(repository):
+    profile = {"configuration": {"format": "release-profile", "path": "profiles/contract.json", "key": "pair"},
+               "evidence_scope": "Bounded fixture"}
+    write(repository / "profiles/contract.json", {
+        "schema": "sparkring-native-glm-profile-contract/v1", "release": "shared-fixture",
+        "model": {"max_model_len": 1024, "loader": {"load_format": "b12x"}},
+        "profiles": {"pair": {"tensor_parallel_size": 2, "decode_context_parallel_size": 1,
+            "node_count": 2, "kv_cache_memory_bytes": 1024, "sparkcache": True,
+            "transport": "tp2-rocenante-adaptive", "serving": {"max_num_seqs": 8}}},
+    })
+    model, serving, topology, evidence, runtime = profiles.configuration(profile, repository)
+    assert model["loader"]["load_format"] == "b12x"
+    assert serving["sparkcache"] and serving["max_num_seqs"] == 8
+    assert topology == "tp2-rocenante-adaptive" and evidence == "Bounded fixture"
+    assert runtime == {"release_profile": "pair", "image_release": "shared-fixture"}
+
+
 def test_legacy_export_rewrites_only_base_reference(repository):
     base = "profiles/example/recipe.json"
     source = "profiles/child.json"
@@ -230,12 +247,12 @@ def test_plan_does_not_execute_launcher(repository):
         plan('example', ['start'], repository)
 
 
-def test_catalog_pins_r33_receipt_and_cache_selection():
+def test_catalog_native_cache_selection_requires_operator_image_receipt():
     result = plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan'])
-    assert '--r33-sparkcache' in result['command']
-    assert result['command'][-2] == '--runtime-receipt'
-    with pytest.raises(ValueError, match='catalog owns'):
-        plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan', '--runtime-receipt=other.json'])
+    assert '--sparkcache' in result['command']
+    assert '--runtime-receipt' not in result['command']
+    explicit = plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan', '--runtime-receipt=verified.json'])
+    assert '--runtime-receipt=verified.json' in explicit['command']
 
 
 @pytest.mark.parametrize('profile_id', ['glm53-flash-spark-tp2-dcp1', 'glm53-flash-spark-tp2-dcp1-sparkcache'])

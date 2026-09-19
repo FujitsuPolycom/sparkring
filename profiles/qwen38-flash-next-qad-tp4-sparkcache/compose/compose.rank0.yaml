@@ -3,7 +3,7 @@ name: sr-qwen-qad-example-r0
 services:
   model:
     container_name: sr-qwen-qad-example-r0
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -88,18 +88,18 @@ services:
     - aligned
     - --enable-prompt-tokens-details
     - --kv-transfer-config
-    - '{"kv_connector":"SparkContextCacheConnector","kv_connector_module_path":"sparkcache.spark_context_cache_connector","kv_role":"kv_both","kv_load_failure_policy":"recompute","kv_connector_extra_config":{"spark_cache_root":"/cache/persistent/qwen38-flash-next-qad-tp4-shared-2026092","spark_cache_model_profile":"qwen38-flash-next-hybrid","spark_cache_publication_schema":"tail-cow-v2","spark_cache_target_checkpoint_sha256":"036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba","spark_cache_draft_checkpoint_sha256":"036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba","spark_cache_draft_policy":"separate","spark_cache_access_mode":"read-write","spark_cache_max_bytes":4294967296,"spark_cache_low_watermark_bytes":3221225472,"spark_cache_min_span_tokens":4096,"spark_cache_max_span_tokens":65536,"spark_cache_scheduler_probe":"none","spark_cache_streaming_snapshots":false,"spark_cache_cuda_restore":true,"spark_cache_cuda_placement_library":"/opt/sparkring/sparkcache/lib/libspark_cache_placement.so","spark_cache_cuda_placement_library_sha256":"d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93","spark_cache_cuda_placement_arena_bytes":67108864,"spark_cache_cuda_restore_arena_budget_bytes":268435456,"spark_cache_cuda_restore_io_workers":2,"spark_cache_load_threads":2,"spark_cache_max_pending_restores":2,"spark_cache_async_page_capture":true,"spark_cache_async_page_capture_lease_mode":"connector-jobs","spark_cache_async_page_capture_library":"/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so","spark_cache_async_page_capture_library_sha256":"b50db45123c4faf0fdfb021da0a0f1b7f329869ae5dc13dcc7432dd4ce765b68","spark_cache_async_page_capture_slot_bytes":536870912,"spark_cache_async_page_capture_slot_count":2,"spark_cache_async_page_capture_vllm_root":"/opt/venv/lib/python3.12/site-packages","spark_cache_async_page_capture_lease_contract":"/opt/sparkring/contracts/vllm-connector-jobs-source-36cf1185c163ba29.json","spark_cache_page_snapshot_interval_tokens":0}}'
+    - '{"kv_connector":"SparkContextCacheConnector","kv_connector_module_path":"sparkcache.spark_context_cache_connector","kv_role":"kv_both","kv_load_failure_policy":"recompute","kv_connector_extra_config":{"spark_cache_root":"/cache/persistent/qwen38-flash-next-qad-tp4-shared-2026093","spark_cache_model_profile":"qwen38-flash-next-hybrid","spark_cache_publication_schema":"tail-cow-v2","spark_cache_target_checkpoint_sha256":"036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba","spark_cache_draft_checkpoint_sha256":"036c2f7994466d32514130f0417ccd117705ca01e2038c1ce5745f84813829ba","spark_cache_draft_policy":"separate","spark_cache_access_mode":"read-write","spark_cache_max_bytes":4294967296,"spark_cache_low_watermark_bytes":3221225472,"spark_cache_min_span_tokens":4096,"spark_cache_max_span_tokens":65536,"spark_cache_scheduler_probe":"none","spark_cache_streaming_snapshots":false,"spark_cache_cuda_restore":true,"spark_cache_cuda_placement_library":"/opt/sparkring/sparkcache/lib/libspark_cache_placement.so","spark_cache_cuda_placement_library_sha256":"d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93","spark_cache_cuda_placement_arena_bytes":67108864,"spark_cache_cuda_restore_arena_budget_bytes":268435456,"spark_cache_cuda_restore_io_workers":2,"spark_cache_load_threads":2,"spark_cache_max_pending_restores":2,"spark_cache_async_page_capture":true,"spark_cache_async_page_capture_lease_mode":"connector-jobs","spark_cache_async_page_capture_library":"/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so","spark_cache_async_page_capture_library_sha256":"b50db45123c4faf0fdfb021da0a0f1b7f329869ae5dc13dcc7432dd4ce765b68","spark_cache_async_page_capture_slot_bytes":536870912,"spark_cache_async_page_capture_slot_count":2,"spark_cache_async_page_capture_vllm_root":"/opt/venv/lib/python3.12/site-packages","spark_cache_async_page_capture_lease_contract":"/opt/sparkring/contracts/vllm-connector-jobs-source-c1659b268b292c73.json","spark_cache_page_snapshot_interval_tokens":0}}'
     environment:
-      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/b12x
-      B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/b12x
+      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
+      B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
       B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
       B12X_POLICY_MODE: auto
-      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/roce
+      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/roce
       B12X_ROCE_GID_INDEX: '3'
       B12X_ROCE_HCA: rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1
       B12X_ROCE_OPPOSITE_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 1=0/2,2=0/3,3=1/3
-      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/cute
+      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/cute
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       LD_PRELOAD: /opt/local-inference/nccl/lib/libnccl.so.2
@@ -141,11 +141,11 @@ services:
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/inductor
+      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/triton
+      TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/triton
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-      VLLM_CACHE_ROOT: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833/vllm
+      VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -168,9 +168,9 @@ services:
       VLLM_SSM_CONV_STATE_LAYOUT: DS
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/qwen-flash-next-b13ac9630ecd-629bc3218833
+      XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-629bc3218833
     labels:
-      io.sparkring.deployment: 075ed2e8c696b43111e4fff0b204aecc3c709f9cf5b03921b4dd3f3fab6ba057
+      io.sparkring.deployment: 36d1c32960b28d3ca4e5fe7b4a113acf0df492d50f8498bb5b60b3efee4b3cd6
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host

@@ -15,7 +15,7 @@ from pathlib import PurePosixPath
 import re
 
 from runtime.common.container_spec import Bind, ContainerSpec
-from runtime.common import glm_targets, glm_source_candidate
+from runtime.common import glm_targets, glm_source_candidate, glm_native_candidate
 
 PROFILES = frozenset(("tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"))
 NCCL_PATH = "/opt/local-inference/nccl/lib/libnccl.so.2"
@@ -162,10 +162,16 @@ def _validate(values, image_record, contract):
     if not isinstance(selected, Mapping) or selected.get("host_domains") != "dual":
         raise ValueError("Verified contract lacks the selected dual-domain TP4 profile")
     schema = image_record.get("schema")
-    release = {"sparkring-r35-image-receipt/v1": "r35", "sparkring-candidate-image-receipt/v1": "candidate", glm_source_candidate.SCHEMA: "candidate"}.get(schema)
+    release = {"sparkring-r35-image-receipt/v1": "r35", "sparkring-candidate-image-receipt/v1": "candidate", glm_source_candidate.SCHEMA: "candidate", glm_native_candidate.SCHEMA: "native"}.get(schema)
     if release is None:
-        raise ValueError("GLM TP4 structured planning requires a verified R35 or candidate image")
+        raise ValueError("GLM TP4 structured planning requires a verified source-bound or native image")
     _require(values, "SPARKRING_RUNTIME_RELEASE", release)
+    if schema == glm_native_candidate.SCHEMA:
+        glm_native_candidate.validate_profile_capabilities(image_record, profile)
+        if contract != glm_native_candidate.contract_for_receipt(image_record):
+            raise ValueError("Native GLM profile contract differs from its authenticated inventory")
+        for key, expected in glm_native_candidate.environment_for_profile(image_record["installed"], profile).items():
+            _require(values, key, expected)
     if schema == glm_source_candidate.SCHEMA:
         glm_source_candidate.validate_profile_capabilities(image_record, profile)
         if contract != glm_source_candidate.contract_for_receipt(image_record):
@@ -231,6 +237,8 @@ def _validate(values, image_record, contract):
     if values["CHAT_TEMPLATE_HOST_PATH"]:
         _path(values["CHAT_TEMPLATE_HOST_PATH"], "CHAT_TEMPLATE_HOST_PATH")
     for key in ("CONTAINER_PREFIX", "JIT_CACHE_NAMESPACE", "SPARKCACHE_CACHE_NAMESPACE", "SPARKCACHE_CLEAR_ONCE"):
+        if schema == glm_native_candidate.SCHEMA and key == "SPARKCACHE_CLEAR_ONCE" and values[key] == "":
+            continue
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values.get(key, "")):
             raise ValueError(f"{key} requires a resolved namespace or container prefix")
     for key in (*SOURCE_FLAGS, "B12X_MLA_CKV_GATHER", "B12X_FUSED_INDEXER", "MULTIMODAL_INPUTS",
@@ -371,7 +379,8 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
     values = normalize_environment(environment)
     profile, rank, release = _validate(values, image_record, contract)
     variant = values["TARGET_MODEL_VARIANT"]
-    override = glm_targets.verified_override(variant, model_config, model_index) if variant != glm_targets.DEFAULT else None
+    is_native = image_record.get("schema") == glm_native_candidate.SCHEMA
+    override = glm_targets.verified_override(variant, model_config, model_index) if variant != glm_targets.DEFAULT or is_native else None
     if (not isinstance(api_keys, tuple) or bool(api_keys) != bool(values["API_KEYS_FILE"])
             or any(not isinstance(key, str) or not key or key.startswith("-")
                    or any(c.isspace() or c == "\0" for c in key) for key in api_keys)):
@@ -429,6 +438,12 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
         env[key] = f"/cache/jit/{leaf}/{values['JIT_CACHE_NAMESPACE']}"
     if api_keys:
         env["SPARKRING_WARMUP_API_KEY"] = api_keys[0]
+    if is_native:
+        env.update(contract["common_environment"], **glm_native_candidate.DISABLED)
+        env["B12X_COMPILE_CPU_AFFINITY"] = values["B12X_COMPILE_CPU_AFFINITY"]
+        for key, subdirectory in (("B12X_COMPILE_CACHE_DIR", "b12x"), ("B12X_CUTE_COMPILE_CACHE_DIR", "b12x"),
+                                  ("CUTE_DSL_CACHE_DIR", "cute"), ("B12X_ROCE_CACHE_DIR", "roce")):
+            env[key] = env["XDG_CACHE_HOME"].rstrip("/") + "/" + subdirectory
     for key in env.keys() & values.keys():
         if env[key] != values[key]:
             raise ValueError(f"{key} conflicts with the effective source-bound container environment")
@@ -436,6 +451,9 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
                "--served-model-name", values["SERVED_MODEL_NAME"]]
     if image_record.get("schema") == glm_source_candidate.SCHEMA:
         command[0] = glm_source_candidate.ENTRYPOINT
+    elif is_native:
+        command[0] = glm_native_candidate.ENTRYPOINT
+        env["SOURCE_IMAGE_PROFILE"] = ""
     if api_keys:
         command.extend(("--api-key", *api_keys))
     command.extend(("--host", "0.0.0.0", "--port", values["PORT"]))
@@ -475,9 +493,14 @@ def build_spec(environment: Mapping[str, str], *, image_record: Mapping, contrac
         if values[key] == "1":
             command.append(option)
     if values["SPARKCACHE_ENABLED"] == "1":
-        command.extend(("--kv-transfer-config", _json(_cache_config(values, image_record))))
+        cache_config = _cache_config(values, image_record)
+        if is_native:
+            cache_config["kv_connector_extra_config"].pop("spark_cache_clear_once", None)
+        command.extend(("--kv-transfer-config", _json(cache_config)))
     if rank:
         command.append("--headless")
+    if is_native:
+        command = [command[0], *glm_native_candidate.adapt_arguments(command[1:], contract, profile, variant)]
     labels = {"org.sparkring.runtime": f"glm53-flash-spark-jovian-{release}-{profile}", "org.sparkring.rank": str(rank),
               "org.sparkring.sircl.native-sha256": values["SPARKRING_DECLARED_SIRCL_NATIVE_SHA256"],
               "org.sparkring.sircl.manifest-sha256": values["SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256"]}

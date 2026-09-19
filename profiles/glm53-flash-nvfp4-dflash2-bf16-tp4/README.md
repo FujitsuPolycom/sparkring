@@ -4,6 +4,11 @@ This deployment uses the pinned [recipe](recipe.json). Status: **Development**.
 It is retained for reproducing that image and configuration; select the
 [profile catalog](../README.md) for maintained deployments.
 
+The plain Hugging Face repository also provides a QAD checkpoint at revision
+`175ae8ce3b5af842b0d0140dbeb43e9cfc557c49`. See
+[checkpoint selection](../glm53-checkpoints.md) for its download pin. This
+reproduction recipe retains `520de24`; its image and evidence do not qualify QAD.
+
 Inspect the resolved configuration without contacting a host:
 
 ```bash

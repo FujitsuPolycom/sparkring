@@ -143,8 +143,8 @@
     "--enable-prompt-tokens-details"
   ],
   "qualification": {
-    "scope": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified.",
-    "record": "runtime/releases/shared-2026.09.2/qualification.json"
+    "scope": "Bounded short/16K text, finite-score, synthetic media, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.3/qualification.json and runtime/releases/shared-2026.09.3/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified.",
+    "record": "runtime/releases/shared-2026.09.3/qualification.json"
   },
   "image_extension": "native-shared",
   "transport": {
@@ -161,5 +161,5 @@
       "secondary-counterclockwise"
     ]
   },
-  "image_release": "shared-2026.09.2"
+  "image_release": "shared-2026.09.3"
 }

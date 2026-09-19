@@ -32,7 +32,7 @@ def _image_selection(spec, profile):
         raise ValueError("Unsupported runtime selection schema")
     module = profile_module(profile)
     document = module.validate_image_receipt(selected["image_receipt"])
-    if document["schema"] in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+    if document["schema"] in ("sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-native-image-receipt/v1"):
         if spec.get("site", {}).get("runtime_profile") not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
             raise ValueError("Candidate selection requires an explicit TP4 runtime profile")
         contract = json.loads((profile.parent / "sparkring/jovian-r33/mesh-host-contract.json").read_text())
@@ -99,7 +99,7 @@ def selection(spec, profile):
     variant = spec.get("site", {}).get("target_model_variant", glm_targets.DEFAULT)
     glm_targets.require_image(variant, selected["receipt"])
     if variant != glm_targets.DEFAULT or selected["receipt"]["schema"] in (
-            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1"):
+            "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-native-image-receipt/v1"):
         selected["pins"] = dict(selected["pins"], target=glm_targets.target_for_image(variant, selected["receipt"]))
     return selected
 

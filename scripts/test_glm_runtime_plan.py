@@ -37,7 +37,7 @@ def test_compose_selection_cannot_replace_managed_start():
 def test_legacy_images_keep_their_existing_creation_path():
     plan = build_runtime_plan(prepared(), "create")
     assert "launch-rank.sh" in json.dumps(plan)
-    with pytest.raises(ValueError, match="explicit R35 or candidate"):
+    with pytest.raises(ValueError, match="explicit source-bound or native"):
         build_runtime_plan(prepared(), "create", container_backend="compose")
 
 

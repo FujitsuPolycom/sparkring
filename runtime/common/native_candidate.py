@@ -65,7 +65,8 @@ def validate(record, image, inspection, raw, verification):
                 verification=verification)
 
 
-def verify_image(image, release, *, run=subprocess.run):
+def observe_image(image, release, *, run=subprocess.run):
+    """Return authenticated native inventory observations for profile adapters."""
     record = publication(release, image_id=image)
     inspection = json.loads(run(["docker", "image", "inspect", image], check=True,
                                 capture_output=True, text=True).stdout)[0]
@@ -74,4 +75,10 @@ def verify_image(image, release, *, run=subprocess.run):
     raw = run([*common, "--entrypoint", "/bin/cat", image, RECEIPT], check=True, capture_output=True).stdout
     verification = json.loads(run([*common, image, "verify"], check=True,
                                   capture_output=True, text=True).stdout)
-    return validate(record, image, inspection, raw, verification)
+    return dict(publication=record, inspection=inspection, installed_bytes=raw,
+                verification=verification,
+                host_verification=validate(record, image, inspection, raw, verification))
+
+
+def verify_image(image, release, *, run=subprocess.run):
+    return observe_image(image, release, run=run)["host_verification"]

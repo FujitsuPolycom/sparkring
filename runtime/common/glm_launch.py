@@ -14,7 +14,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from runtime.common import candidate, glm_targets, glm_tp4, r35, glm_source_candidate  # noqa: E402
+from runtime.common import candidate, glm_targets, glm_tp4, r35, glm_source_candidate, glm_native_candidate  # noqa: E402
 from runtime.common.container_spec import docker_create, expected_inspection  # noqa: E402
 
 STRUCTURED_LABEL = "io.sparkring.container-spec"
@@ -59,12 +59,12 @@ def resolve_spec(launch, image_receipt, rank, *, owner=None):
                 raise ValueError("Supplied launch input differs from the canonical source: " + name)
     resolved = profile.resolve_rank_environments(launch / "site.json", Path(site["bundle_root"]), image_receipt)
     record = resolved["image_record"]
-    if record.get("schema") not in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA):
-        raise ValueError("Structured GLM creation supports R35 and registered candidate images; use the retained launcher for other releases")
-    adapter = glm_source_candidate if record["schema"] == glm_source_candidate.SCHEMA else candidate if record["schema"] == candidate.SCHEMA else r35
+    if record.get("schema") not in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA):
+        raise ValueError("Structured GLM creation requires a verified source-bound or native image receipt")
+    adapter = glm_native_candidate if record["schema"] == glm_native_candidate.SCHEMA else glm_source_candidate if record["schema"] == glm_source_candidate.SCHEMA else candidate if record["schema"] == candidate.SCHEMA else r35
     environment = resolved["environments"][rank]
     metadata = {}
-    if environment["TARGET_MODEL_VARIANT"] != glm_targets.DEFAULT:
+    if environment["TARGET_MODEL_VARIANT"] != glm_targets.DEFAULT or record["schema"] == glm_native_candidate.SCHEMA:
         root = Path(environment["TARGET_MODEL_HOST_PATH"])
         metadata = {"model_config": (root / "config.json").read_bytes(),
                     "model_index": (root / "model.safetensors.index.json").read_bytes()}
@@ -92,6 +92,7 @@ def document(launch, image_receipt, rank, backend, spec, record, resolved):
                               for name in ("runtime/common/glm_launch.py", "runtime/common/glm_tp4.py",
                                            "runtime/common/container_spec.py", "runtime/common/compose.py",
                                            "runtime/common/glm_targets.py", "runtime/common/glm_source_candidate.py",
+                                           "runtime/common/glm_native_candidate.py", "runtime/common/native_candidate.py",
                                            "runtime/common/source_candidate.py", "profiles/glm53-target-variants.json",
                                            "runtime/glm53-spark-mtp3-mesh/profile.py")}}
 
@@ -183,7 +184,7 @@ def main(argv=None):
                 if (output / "created.json").exists():
                     raise ValueError("Creation receipt already exists; inspect the deployment before recovery")
                 validate_mounts(spec)
-                adapter = glm_source_candidate if record["schema"] == glm_source_candidate.SCHEMA else candidate if record["schema"] == candidate.SCHEMA else r35
+                adapter = glm_native_candidate if record["schema"] == glm_native_candidate.SCHEMA else glm_source_candidate if record["schema"] == glm_source_candidate.SCHEMA else candidate if record["schema"] == candidate.SCHEMA else r35
                 adapter.verify_local_image(record, run=run)
                 if args.backend == "compose":
                     compose.check_project_containers(spec.name, run=run)

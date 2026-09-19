@@ -1,12 +1,11 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on four Sparks
 
 Status: **qualified for bounded correctness and restart checks**. This guide selects
-[SparkRing shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md).
+[SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md).
 The cache-disabled profile and [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md)
-use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
-records bounded short/16K text, finite-score, synthetic media, request-order,
-concurrent-request and retained-restart checks, plus physical cache restore
-with SparkCache. The [correctness summary](../../runtime/releases/shared-2026.09.2/correctness.json)
+use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.3/qualification.json)
+records bounded short/16K text, finite-score, synthetic media, concurrent-request and retained-restart checks, plus physical cache restore
+with SparkCache. The [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
 owns case counts and evidence hashes. These checks do not qualify full-context,
 C16-pressure stability or performance.
 
@@ -32,7 +31,7 @@ Complete the [host prerequisites](../../docs/operations/prerequisites.md).
 Use the same SparkRing checkout on every host and pull this image on all four:
 
 ```bash
-IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123'
+IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6'
 docker pull --platform linux/arm64 "$IMAGE_REF"
 docker image inspect --format '{{.Id}}' "$IMAGE_REF"
 ```
@@ -40,7 +39,7 @@ docker image inspect --format '{{.Id}}' "$IMAGE_REF"
 The image ID must be
 `sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499`.
 No separate R37 parent-image pull is required. The
-[publication receipt](../../runtime/releases/shared-2026.09.2/publication.json)
+[publication receipt](../../runtime/releases/shared-2026.09.3/publication.json)
 binds the image to its source and installed inventory.
 
 Reuse an existing verified QAD checkpoint. Otherwise download the pinned revision
