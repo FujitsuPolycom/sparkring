@@ -71,9 +71,10 @@ image selections. Included components do not imply qualification.
 ## Sources and rollback
 
 [Publication identity](publication.json), [source inputs](sources/README.md) and
-[component licenses](components.md) describe the payload. Source archive
-distribution is pending until the versioned GitHub Release assets are uploaded.
-GHCR stores the container layers. Preserve 2026.09.2 and its matching deployment
+[component licenses](components.md) describe the payload. The
+[versioned GitHub Release](https://github.com/FujitsuPolycom/sparkring/releases/tag/shared-2026.09.3)
+provides the source archives and qualification records; GHCR stores container
+layers. Preserve 2026.09.2 and its matching deployment
 settings/cache roots for rollback. Release-specific cache directories and the
 source-bound connector contract prevent accidental reuse of unverified state;
 they do not change checkpoint wire format or establish cross-image compatibility.
