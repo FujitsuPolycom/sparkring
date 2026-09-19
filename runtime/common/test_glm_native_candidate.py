@@ -87,3 +87,28 @@ def test_required_runtime_artifacts_cannot_be_omitted(observations, path):
     del installed["files"][path]
     with pytest.raises(ValueError, match="missing"):
         glm._view(installed, observations["release"])
+
+
+def test_profile_settings_use_native_bindings_without_retained_provenance(observations):
+    record = glm.make_receipt(**observations)
+    frozen = glm.ROOT / "runtime/sparkring/jovian-r33/profiles/profile-contract.json"
+    before = frozen.read_bytes()
+    contract = glm.contract_for_receipt(record)
+    assert set(contract["profiles"]) == glm.PROFILES
+    assert contract["sparkcache_native"]["lease_contract"] == record["installed"]["active_contracts"][0]
+    assert contract["sparkcache_native"]["snapshot_sha256"] == "2" * 64
+    assert "source_commit" not in contract["sparkcache_native"]
+    assert "revision" not in contract["model"]
+    assert contract["model"]["loader"]["load_format"] == "b12x"
+    assert contract["common_environment"]["VLLM_SPARK_SHARED_CAPTURE_STREAM"] == "1"
+    assert all(not profile["memory_guard_required"] for profile in contract["profiles"].values())
+    assert contract["profiles"]["tp2-dcp1-sparkcache"]["kv_cache_memory_bytes"] == 8053063680
+    assert contract["profiles"]["tp4-dcp1-sparkcache"]["kv_cache_memory_bytes"] == 25769803776
+    assert frozen.read_bytes() == before
+
+
+def test_unconfigured_topology_is_not_inferred_from_image_admission(observations):
+    record = glm.make_receipt(**observations)
+    glm.validate_profile_capabilities(record, "tp4-dcp1-sparkcache")
+    with pytest.raises(ValueError, match="TP2/DCP1 and TP4/DCP1"):
+        glm.validate_profile_capabilities(record, "tp4-dcp4-sparkcache")

@@ -30,6 +30,9 @@ MODEL = "/opt/venv/lib/python3.12/site-packages/vllm/models/glm5next/nvidia/mode
 FIELDS = frozenset(("schema", "release", "image_id", "image_reference", "platform",
                     "raw_installed", "inspection", "verification", "installed",
                     "bundle_manifest_sha256", "serving_qualified"))
+PROFILES = frozenset(("tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"))
+DISABLED = {"SPARKRING_FEATURES": "", "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
+            "VLLM_QWEN3_8_PREFILL_COALESCE": "0"}
 
 
 def _view(installed, release):
@@ -94,6 +97,58 @@ def verify_local_image(document, *, run=subprocess.run):
     checked = validate_receipt(document)
     if observe(checked["image_id"], checked["release"], run=run) != checked:
         raise ValueError("Native GLM image observations differ from the saved receipt")
+
+
+def profile_contract(installed):
+    """Resolve DCP1 settings while replacing all retained image-specific bindings.
+
+    Compatibility templates supply rank settings, not image qualification. The
+    native inventory supplies cache-library hashes and the active source lease.
+    """
+    if installed.get("schema") != "sparkring-glm-native-profile-view/v1":
+        raise ValueError("Native GLM settings require an authenticated profile view")
+    compatibility = json.loads((ROOT / "runtime/sparkring/jovian-r33/profiles/profile-contract.json").read_bytes())
+    profiles = {name: copy.deepcopy(compatibility["profiles"][name]) for name in sorted(PROFILES)}
+    for name, profile in profiles.items():
+        for field in ("capability_file", "required_capabilities", "reference_kv_cache_memory_bytes", "lifecycle"):
+            profile.pop(field, None)
+        profile.update(load_format="b12x", plugins="b12x_loader", allocation_policy="managed-in-loader",
+                       draft_load_config={"load_format": "b12x", "model_loader_extra_config": {}},
+                       lifecycle="explicit-create-and-start", memory_guard_required=False)
+        if profile["node_count"] == 2:
+            profile["serving"] = copy.deepcopy(compatibility["profiles"]["tp2-dcp1-sparkcache"]["serving"])
+    files = installed["files"]
+    cache = {key: compatibility["sparkcache_native"][key]
+             for key in ("placement_path", "snapshot_path", "vllm_root")}
+    cache.update(placement_sha256=files[cache["placement_path"]],
+                 snapshot_sha256=files[cache["snapshot_path"]],
+                 lease_contract=installed["active_contracts"][0])
+    environment = dict(compatibility["common_environment"], **DISABLED)
+    environment.update(LOAD_FORMAT="b12x", VLLM_PLUGINS="b12x_loader",
+                       B12X_NVFP4_DYNAMIC_MATERIALIZED="0", VLLM_SPARK_SHARED_CAPTURE_STREAM="1",
+                       VLLM_USE_RUST_FRONTEND="0")
+    return dict(schema="sparkring-native-glm-profile-contract/v1", profiles=profiles,
+                model=dict(max_model_len=1048576, loader={"load_format": "b12x"},
+                           speculation={"method": "mtp", "num_speculative_tokens": 3, "attention_backend": "B12X"}),
+                common_environment=environment, sparkcache_native=cache,
+                source_trees=copy.deepcopy(installed["compiler"]["source_trees"]),
+                qualification="Implemented configuration admission; exact-profile hardware evidence is separate.")
+
+
+def contract_for_receipt(document):
+    return profile_contract(validate_receipt(document)["installed"])
+
+
+def validate_profile_capabilities(document, profile):
+    checked = validate_receipt(document)
+    if profile not in profile_contract(checked["installed"])["profiles"]:
+        raise ValueError("Native GLM configuration supports TP2/DCP1 and TP4/DCP1")
+
+
+def cache_namespace(image_id, profile):
+    if profile not in PROFILES or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        raise ValueError("Native GLM cache namespace requires an exact image and supported profile")
+    return f"sparkring-native-glm-{image_id[7:19]}-{profile}"
 
 
 def main():
