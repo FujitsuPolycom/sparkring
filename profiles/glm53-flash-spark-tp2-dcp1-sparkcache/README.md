@@ -9,6 +9,10 @@ the LIL NVFP4 QAD checkpoint. Both use B12X loading. Defaults are a configured
 1,048,576-token context limit, eight sequences, an 8192-token batch and
 7.5 GiB KV per node. Configured limits are not full-limit stability claims.
 
+SparkCache is optional for GLM. This guide enables it on 2026.09.3; the
+[cache-disabled alternative](../glm53-flash-spark-tp2-dcp1/README.md) uses a
+separately pinned R37 procedure with its own settings and validation limits.
+
 <a id="1-prepare-the-pair"></a>
 ## Prepare both hosts
 
@@ -154,8 +158,9 @@ documented evidence; this guide qualifies the SparkCache-enabled configuration.
 
 ## SparkCache off
 
-The cache-disabled GLM profile retains its separately qualified image and settings.
-Do not remove the connector flag and treat this cache-on qualification as its evidence.
+Use the [cache-disabled guide](../glm53-flash-spark-tp2-dcp1/README.md) and its
+R37 image receipt. Its status is Experimental. Removing `--sparkcache` from
+the 2026.09.3 commands above is not the documented cache-off deployment.
 
 ## R35 fallback
 

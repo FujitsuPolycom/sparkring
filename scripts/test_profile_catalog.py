@@ -38,7 +38,8 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
     glm_rows = [line for line in summary.splitlines() if line.startswith('| **[GLM-5.3-Flash](')]
     assert len(glm_rows) == 2  # Four-Spark and two-Spark deployments.
     assert '| 1/4 |' in glm_rows[0]
-    assert all('| Included |' in row for row in glm_rows)
+    for row, nodes in zip(glm_rows, (4, 2)):
+        assert f'[Optional](../profiles/glm53-flash-spark-tp{nodes}-dcp1-sparkcache/README.md)' in row
     assert '1,048,576' not in summary
     for profile_id in catalog():
         profile, _ = load(profile_id)
@@ -78,6 +79,7 @@ def test_glm_discovery_promotes_native_cache_profiles_without_relabelling_r33():
     glm = [row for row in summary.splitlines() if row.startswith("| **[GLM-5.3-Flash](")]
     assert len(glm) == 2
     assert all(row.endswith("| Validated |") for row in glm)
+    assert all('[Optional](' in row for row in glm)
     for profile_id in ("glm53-flash-spark-tp2-dcp1-sparkcache", "glm53-flash-spark-tp4-dcp1-sparkcache"):
         resolved = resolve(profile_id)
         assert resolved["status"] == "qualified"
@@ -85,3 +87,31 @@ def test_glm_discovery_promotes_native_cache_profiles_without_relabelling_r33():
         assert resolved["release"]["id"] == "shared-2026.09.3"
     for profile_id in ("glm53-flash-spark-tp2-dcp1", "glm53-flash-spark-tp4-dcp1"):
         assert resolve(profile_id)["release"]["id"] == "sparkring-r33-dcp4"
+
+
+def test_cross_release_cache_pair_requires_matching_model_and_layout():
+    from copy import deepcopy
+    from scripts.generate_profiles import compact_profile_rows
+
+    ids = ('glm53-flash-spark-tp4-dcp1', 'glm53-flash-spark-tp4-dcp1-sparkcache')
+    original = [(load(profile_id)[0], resolve(profile_id)) for profile_id in ids]
+    assert original[0][0]['configuration']['path'] != original[1][0]['configuration']['path']
+    rows, cells = compact_profile_rows(original)
+    assert len(rows) == 1 and rows[0][0]['id'] == ids[1]
+    assert cells[ids[1]].startswith('[Optional](')
+
+    for section, field, value in (
+        ('model', 'repository', 'unrelated/model'),
+        ('serving', 'node_count', 2),
+        ('serving', 'decode_context_parallel_size', 4),
+        ('runtime', 'engine', 'sglang'),
+    ):
+        mismatched = deepcopy(original)
+        mismatched[0][1][section][field] = value
+        _, cells = compact_profile_rows(mismatched)
+        assert cells[ids[1]] == 'Included'
+
+    retired = deepcopy(original)
+    retired[0][0]['recommendation'] = 'retired'
+    _, cells = compact_profile_rows(retired)
+    assert cells[ids[1]] == 'Included'
