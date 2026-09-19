@@ -8,6 +8,7 @@
 | `runtime/releases/` | Release selection and protection of retained immutable inputs |
 | `spark_transport/` | Communication kernels, native transport and maintained fabric planning |
 | `integrations/vllm/` | Framework adapters, including RoCEnante bundle composition |
+| `integrations/b12x/` | Source transformations and regression checks for B12X integration |
 | `integrations/sparkcache/` | Selection of external SparkCache compositions; implementation stays upstream |
 | `integrations/lil/` | Pinned companion lifecycle/export bridge |
 | `docs/architecture/` | Component design and communication architecture |

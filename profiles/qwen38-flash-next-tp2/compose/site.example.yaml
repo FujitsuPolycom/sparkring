@@ -10,7 +10,7 @@ ranks:
     hcas: [rocep1s0f0, roceP2p1s0f0]
     gid: 3
     model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
-    cache: /srv/cache/qwen38-flash-next-qad-tp2-r37
+    cache: /srv/cache/qwen38-flash-next-qad-tp2-shared-2026092
     repository: /opt/sparkring
     deployment_root: /srv/sparkring-deployments
   - rank: 1
@@ -20,6 +20,6 @@ ranks:
     hcas: [rocep1s0f0, roceP2p1s0f0]
     gid: 3
     model: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
-    cache: /srv/cache/qwen38-flash-next-qad-tp2-r37
+    cache: /srv/cache/qwen38-flash-next-qad-tp2-shared-2026092
     repository: /opt/sparkring
     deployment_root: /srv/sparkring-deployments

@@ -70,9 +70,19 @@ def verify_answer(content):
     if value.startswith("```"):
         value = "\n".join(value.splitlines()[1:-1])
     parsed = json.loads(value)
+    require(isinstance(parsed, dict), "Media response must be a JSON object")
+    images, video = parsed.get("images"), parsed.get("video")
     require(
-        parsed.get("images") == ["red", "green", "blue"]
-        and parsed.get("video") == "red",
+        isinstance(images, list)
+        and len(images) == 3
+        and all(isinstance(color, str) for color in images)
+        and isinstance(video, str),
+        "Media response must name three image colors and one video color",
+    )
+    # The fixture asks for color names, not a particular capitalization.
+    require(
+        [color.strip().casefold() for color in images] == ["red", "green", "blue"]
+        and video.strip().casefold() == "red",
         "Solid-color image/video response differs from the fixture",
     )
     return parsed

@@ -1,0 +1,32 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "shared-2026.09.2",
+  "image_id": "sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499",
+  "image_config_id": "sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:shared-2026.09.2",
+  "registry_manifest_digest": "sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123",
+  "platform": "linux/arm64",
+  "runtime_build_config_id": "sha256:eff1bce21027593fab2fa931af58a7efd6f5df382a36e62d343a0c51310c5f74",
+  "installed_receipt_sha256": "fb28371e1d475d975f32add8b9bb65e23fc71048944b2d664d31857a70d6d771",
+  "input_sha256": "975113d810924a2a8e5abcf12257bf972b31f11e13ecd62825fbb16f2deb8793",
+  "source_trees": {
+    "b12x": "1104cc99243d5533544d089583e39f46d7ac3027caa3f3a37139c4d4f59a5313",
+    "vllm": "36cf1185c163ba291e010daf9a59ea91f3b05580ac5618974e4277f3ca534a01"
+  },
+  "features": [
+    "qwen-collectives",
+    "qwen4-prefill"
+  ],
+  "transport": {
+    "profile": "tp2-rocenante-adaptive-prepared",
+    "manifest_sha256": "7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c"
+  },
+  "anonymous_config_verified": true,
+  "anonymous_pull_completed": true,
+  "temporary_configs_removed": true,
+  "runtime_layers_unchanged": true,
+  "runtime_configuration_except_labels_unchanged": true,
+  "publisher_sha256": "3a4095ea1fae4d7b185a3cb7bf76f6497688b11b791047dc0fa92474023cafd1",
+  "qualification_scope": "See qualification.json for exact-profile serving checks and limitations. Anonymous pull proves image identity, not serving qualification."
+}

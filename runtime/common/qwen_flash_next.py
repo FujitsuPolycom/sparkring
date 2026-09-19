@@ -58,6 +58,16 @@ def node_count(profile):
 
 def image_policy(profile, *, local_source_extension=None):
     """Resolve one image kind for Docker, Compose and host admission."""
+    if profile.get("image_extension") == "native-shared":
+        if local_source_extension is not None:
+            from runtime.common import source_candidate
+            source_candidate.descriptor(local_source_extension)
+            source_candidate.profile_nodes(profile)
+            return {"kind": "source", "source_extension": local_source_extension, "local": True}
+        from runtime.common import native_candidate
+        native_candidate.publication(profile.get("image_release"))
+        return {"kind": "native", "source_extension": None, "local": False,
+                "native_release": profile["image_release"]}
     kinds = {None: "base", "lil-r37-cache64": "cache", "lil-r37-shared": "feature"}
     extension = profile.get("image_extension")
     if extension not in kinds:
@@ -79,6 +89,8 @@ def image_policy(profile, *, local_source_extension=None):
 
 def image_verification_options(profile, *, local_source_extension=None):
     policy = image_policy(profile, local_source_extension=local_source_extension)
+    if policy["kind"] == "native":
+        return {"native_release": policy["native_release"]}
     options = {"cache_enabled": policy["kind"] == "cache", "feature_enabled": policy["kind"] == "feature"}
     if policy["kind"] == "source":
         key = "local_source_extension" if policy["local"] else "source_extension"
@@ -117,7 +129,12 @@ def site_inputs(rank, master, host_ip, interface, model, cache, *, remote=False,
 
 
 def verify_image(image, *, cache_enabled=False, feature_enabled=False,
-                 local_source_extension=None, source_extension=None, run=subprocess.run):
+                 local_source_extension=None, source_extension=None, native_release=None, run=subprocess.run):
+    if native_release is not None:
+        if cache_enabled or feature_enabled or local_source_extension or source_extension:
+            raise ValueError("Native and legacy image admission cannot be combined")
+        from runtime.common import native_candidate
+        return native_candidate.verify_image(image, native_release, run=run)
     expected = publication()
     if local_source_extension is not None and source_extension is not None:
         raise ValueError("Choose one local or published source selection")
@@ -179,6 +196,10 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     canonical(profile)
     policy = image_policy(profile, local_source_extension=local_source_extension)
     entrypoint = candidate.ENTRYPOINT
+    if policy["kind"] == "native":
+        from runtime.common import native_candidate
+        native_candidate.publication(policy["native_release"], image_id=image)
+        entrypoint = native_candidate.ENTRYPOINT
     if policy["kind"] == "source":
         from runtime.common import source_candidate
         if policy["local"]:
@@ -221,6 +242,11 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         CUTE_DSL_CACHE_DIR=f"/cache/{namespace}/cute",
         TORCHINDUCTOR_CACHE_DIR=f"/cache/{namespace}/inductor",
     )
+    if policy["kind"] == "native":
+        native = native_candidate.publication(policy["native_release"], image_id=image)
+        env["SPARKRING_TRANSPORT_PROFILE"] = native["transport"]["profile"]
+        env["SPARKRING_TRANSPORT_MANIFEST_SHA256"] = native["transport"]["manifest_sha256"]
+        env["B12X_CUTE_COMPILE_CACHE_DIR"] = env["B12X_COMPILE_CACHE_DIR"]
     if hcas is not None:
         if (not isinstance(hcas, list) or len(hcas) != nodes or len(set(hcas)) != nodes
                 or any(not re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca) for hca in hcas)):

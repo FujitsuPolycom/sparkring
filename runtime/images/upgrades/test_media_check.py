@@ -39,3 +39,24 @@ def test_wrong_media_colors_are_not_a_pass():
     assert verify_answer(json.dumps(dict(images=["red", "green", "blue"], video="red")))
     with pytest.raises(Refused):
         verify_answer(json.dumps(dict(images=["red", "green", "blue"], video="black")))
+
+
+def test_color_capitalization_does_not_change_media_meaning():
+    value = dict(images=["Red", " GREEN ", "Blue"], video="RED")
+    assert verify_answer(json.dumps(value)) == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [],
+        dict(images=["red", "green"], video="red"),
+        dict(images=["blue", "green", "red"], video="red"),
+        dict(images=["red", "green", "blue"], video="BLACK"),
+        dict(images=["red", "green", "blue"], video=None),
+        dict(images=["red", "green", 3], video="red"),
+    ],
+)
+def test_media_structure_order_and_wrong_colors_remain_failures(value):
+    with pytest.raises(Refused):
+        verify_answer(json.dumps(value))

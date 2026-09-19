@@ -10,7 +10,7 @@ import sys
 import pytest
 import yaml
 
-from runtime.common import compose, qwen_flash_next
+from runtime.common import compose
 from runtime.common.container_spec import Bind, ContainerSpec, docker_create
 from scripts import generate_compose_examples
 
@@ -112,7 +112,8 @@ def test_tp2_backends_preserve_canonical_profile(site, profile, compose_cli):
             == service["entrypoint"][1:] + service["command"]
         )
         assert argv[argv.index("--entrypoint") + 1] == service["entrypoint"][0]
-        assert spec.command[0] == qwen_flash_next.candidate.ENTRYPOINT
+        from runtime.common import native_candidate
+        assert spec.command[0] == native_candidate.ENTRYPOINT
         for option, expected in (
             ("--max-model-len", "262144"),
             ("--max-num-seqs", "16"),

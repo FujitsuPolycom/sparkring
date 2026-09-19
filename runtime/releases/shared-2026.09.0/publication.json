@@ -1,0 +1,29 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "shared-2026.09.0",
+  "image_id": "sha256:a6a2a5b35e7784199a40dd7fe2c682c16955f26d8ff34bd999646088cf313b09",
+  "image_config_id": "sha256:a6a2a5b35e7784199a40dd7fe2c682c16955f26d8ff34bd999646088cf313b09",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:8cfcfdaffd91af252c0eef2f46d325765f364d3ac812ee7f76343fa2393dd357",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:shared-2026.09.0",
+  "registry_manifest_digest": "sha256:8cfcfdaffd91af252c0eef2f46d325765f364d3ac812ee7f76343fa2393dd357",
+  "platform": "linux/arm64",
+  "runtime_build_config_id": "sha256:462b65ac8629a1531e2974aa75683e07ce5e6ec1352039a7d060972863c12705",
+  "installed_receipt_sha256": "f736c210a678eb977c790cf1e9f4ec97c5c69b3a7bba01c00ac7424043c3de1a",
+  "input_sha256": "976844b388f6e2238434fe3b9a899ed3417214364178e95b13078811129998e5",
+  "source_trees": {
+    "vllm": "4190972dc2f5e8c5f62d072bfb2211c6b88ba81c61e323cb2e28719ee26bf79c",
+    "b12x": "07fa3004bebe1f9f22219dc32aa7b7b9e29c46bfd7842e0d793f66b48ed0805d"
+  },
+  "features": ["qwen-collectives", "qwen4-prefill"],
+  "transport": {
+    "profile": "tp2-rocenante-adaptive-prepared",
+    "manifest_sha256": "7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c"
+  },
+  "anonymous_config_verified": true,
+  "anonymous_pull_completed": true,
+  "temporary_configs_removed": true,
+  "runtime_layers_unchanged": true,
+  "runtime_configuration_except_labels_unchanged": true,
+  "publisher_sha256": "7ff1b494a8c97a856152fe97b45da563c8a15d40f06b00c658c947653ffa3fd1",
+  "qualification_scope": "Bounded Qwen NVFP4-QAD TP2/TP4 text and synthetic image/video checks with SparkCache enabled; TP4 HC sharding observed on every rank. No benchmark results included. Other profile qualifications are separate."
+}

@@ -1,8 +1,8 @@
 # Generated Qwen TP2 Compose with SparkCache
 
-Status: **Development**. [Bounded TP2 checks](../../../performance/records/qwen38-flash-next/compose-tp2.json)
-cover coordinated startup/shutdown, text responses and SparkCache restore across
-a fresh deployment with the original non-QAD checkpoint. These examples select QAD.
+Status: **qualified for bounded correctness and restart checks**. These examples select QAD and the shared serving image.
+The [qualification record](../../../runtime/releases/shared-2026.09.2/qualification.json)
+states exact-image deployment and persistent-cache coverage.
 
 [Rank 0](compose.rank0.yaml) and [rank 1](compose.rank1.yaml) are generated from
 the [SparkCache configuration](../../qwen38-flash-next-tp2/sparkcache.json) and

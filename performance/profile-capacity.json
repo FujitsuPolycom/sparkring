@@ -2,11 +2,10 @@
   "schema": "sparkring-profile-capacity/v1",
   "profiles": {
     "qwen38-flash-next-tp2": {
-      "tokens": 2954103,
-      "source": "performance/records/qwen38-flash-next/r37-tp2.json",
-      "witness": "\"reported_kv_pool_tokens\": 2954103",
-      "conditions": "Sizing reference from the original NVFP4 TP2/DCP1 profile at 262144 context, 16 sequences, 8192 batched tokens and 24 GiB KV per rank; QAD retains these settings. Not proof that sixteen full-context requests fit.",
-      "approximate": true
+      "tokens": 2877721,
+      "source": "runtime/releases/shared-2026.09.2/correctness.json",
+      "witness": "\"reported_kv_pool_tokens\": 2877721",
+      "conditions": "Qwen QAD TP2/DCP1 on SparkRing 2026.09.2, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Identical engine-reported pool across cache-on/off startup and retained restarts. Capacity report, not proof that sixteen full-context requests fit."
     },
     "deepseek-v41-flash-sglang-cycle": {
       "tokens": 1499904,
@@ -98,10 +97,10 @@
       "conditions": "Published R33 image plus DCP4 contract/entrypoint overlay, TP4/DCP4, 24 GiB FP8 KV per rank, SparkCache enabled."
     },
     "qwen38-flash-next-qad-tp4": {
-      "tokens": 3179938,
-      "source": "performance/records/qwen38-flash-next/r37-shared-tp4.json",
-      "witness": "GPU KV cache size: 3,179,938 tokens",
-      "conditions": "QAD TP4/DCP1, shared image 2540686d726a, 24 GiB FP8 KV per rank, 262144 context, 16 sequences, 8192 batch, MTP3, HC/MTP prefill features, SparkCache disabled. Startup pool estimate, not full-context workload qualification."
+      "tokens": 3131214,
+      "source": "runtime/releases/shared-2026.09.2/correctness.json",
+      "witness": "\"reported_kv_pool_tokens\": 3131214",
+      "conditions": "Qwen QAD TP4/DCP1 on SparkRing 2026.09.2, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Identical engine-reported pool across cache-on/off startup and retained restarts. Capacity report, not proof that sixteen full-context requests fit."
     }
   }
 }

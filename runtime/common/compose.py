@@ -162,10 +162,14 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "profiles/qwen38-flash-next-tp2/config.json",
         "profiles/qwen38-flash-next-tp2/sparkcache.json",
     }
-    metadata, _ = profiles.load(profile_id)
+    metadata, release = profiles.load(profile_id)
+    paths.update(item["path"] for item in release["inputs"])
     paths.add(metadata["configuration"]["path"])
     profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
     policy = qwen_flash_next.image_policy(profile, local_source_extension=local_source_extension)
+    if policy["kind"] == "native":
+        paths.add("runtime/common/native_candidate.py")
+        paths.add(f"runtime/releases/{policy['native_release']}/publication.json")
     if profile_id in TP4_PROFILES:
         from runtime.common import qwen_mesh
         paths.add("runtime/common/feature_candidate.py")

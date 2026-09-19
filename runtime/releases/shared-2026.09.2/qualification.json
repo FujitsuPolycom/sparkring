@@ -1,0 +1,57 @@
+{
+  "schema": "sparkring-functional-qualification/v1",
+  "release": "shared-2026.09.2",
+  "status": "qualified",
+  "runtime_image_id": "sha256:eff1bce21027593fab2fa931af58a7efd6f5df382a36e62d343a0c51310c5f74",
+  "publication_image_id": "sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499",
+  "checkpoint_revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "observations": {
+    "source_reconstruction_verified": true,
+    "native_wheel_reuse_verified": true,
+    "installed_files_verified": 235824,
+    "vllm_source_assertions": 177,
+    "b12x_source_assertions": 116,
+    "source_gate_skips": 0,
+    "anonymous_digest_pull_verified": true
+  },
+  "cuda_gate_probe": {
+    "status": "qualified",
+    "scope": "Bounded component check on the published ARM64 image; not full-model startup qualification.",
+    "condition": "Automatic cyclic collection during a CUDA stream-gated measurement, using the installed B12X source and CuTe library finalizer.",
+    "measurement": "Library unload completed successfully after the stream gate released, without watchdog intervention or source overlays.",
+    "result": "The installed collection-deferral guard prevents the reproduced cyclic-finalizer gate deadlock.",
+    "source_sha256": "649491d7d36068cb66b962ad614b8af04a27cd3ca9f9f602778f254e6136b59a",
+    "limitations": "Explicit gc.collect(), reference-count finalizers and unrelated driver stalls are not covered."
+  },
+  "profiles": [
+    {
+      "id": "qwen38-flash-next-tp2",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
+    },
+    {
+      "id": "qwen38-flash-next-tp2-sparkcache",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks, including physical cache restore on every rank, passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4-sparkcache",
+      "status": "qualified",
+      "qualification": "Bounded short/16K text, finite-score, synthetic media, request-order, concurrent-request and retained-restart checks, including physical cache restore on every rank, passed on the exact image; see runtime/releases/shared-2026.09.2/qualification.json and runtime/releases/shared-2026.09.2/correctness.json. Full-context/C16 pressure, arbitrary media and performance are not qualified."
+    }
+  ],
+  "scope": "Exact-image TP2/DCP1 and TP4/DCP1 Qwen QAD checks passed with and without SparkCache: bounded short/16K text, finite scores, synthetic images/video, request ordering, concurrent exact-answer requests and retained-container restarts. Cache-enabled selections restored two fixtures after restart, with API cache credits matched to physical restore evidence on every rank. The correctness record owns case counts, lifetimes, image/source identities and evidence hashes. These checks do not establish full-context/C16-pressure stability, arbitrary media accuracy or performance.",
+  "not_established": [
+    "performance or benchmark results",
+    "full-context or C16 pressure and extended stability",
+    "arbitrary media accuracy",
+    "request cache_salt isolation",
+    "GLM, DeepSeek or other model qualification"
+  ],
+  "correctness_record": "runtime/releases/shared-2026.09.2/correctness.json"
+}

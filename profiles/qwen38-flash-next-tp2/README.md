@@ -1,16 +1,17 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-Status: **Experimental**. The commands select the published SparkCache profile;
+Status: **qualified for bounded correctness and restart checks**. The commands select the published SparkCache profile;
 the cache-disabled alternative shares the same procedure. This uses the
 QAD checkpoint pinned to revision `629bc3218833a38b475b719f34aa571666f4a03e`
 in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`. Complete the
 [host prerequisites](../../docs/operations/prerequisites.md) and prepare one
 direct cable on cage p0 before starting; the launcher does not configure networking.
 
-The published SparkCache image uses **aligned checkpoints**. Complete
-request-boundary checkpoint support and its measurements are a separate
-composition whose publication is pending; do not attribute those measurements
-to the image below. See the [boundary-checkpoint findings](../../performance/records/qwen38-flash-next/BOUNDARY-TP2.md).
+Both variants use [SparkRing shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md)
+with aligned checkpoints, managed B12X loading, Qwen checkpoint coalescing,
+compact MTP and projection overlap. HC row sharding remains off on TP2; the
+included ownership implementation requires TP4. Request-boundary caching and
+request-salt isolation are not enabled by this selection.
 
 | Setting | Published SparkCache profile |
 |---|---|
@@ -31,13 +32,11 @@ separate writable directory.
 REPO=$PWD
 PROFILE=profiles/qwen38-flash-next-tp2/sparkcache.json
 CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
-BASE_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270
-IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:de885a8a3f687d1966b918f913ab95b0da33a84422313ed4c10ba5477c66f523
+IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123
 MODEL_DIR=/srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
-CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-r37
+CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-shared-2026092
 
-# The parent supports full-inventory verification and native-cache rollback.
-docker pull --platform linux/arm64 "$BASE_IMAGE"
+# No separate parent-image pull is required for native-image verification.
 docker pull --platform linux/arm64 "$IMAGE_REF"
 IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
 mkdir -p "$CACHE_DIR"
@@ -108,13 +107,17 @@ curl --fail "http://${MASTER_ADDR}:8000/health"
 curl --fail "http://${MASTER_ADDR}:8000/v1/models"
 curl --fail "http://${MASTER_ADDR}:8000/v1/chat/completions" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
+  -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD-TP2","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
 ```
 
 The API is `http://RANK0_ADDRESS:8000/v1`, with model name
-`Qwen3.8-Flash-Next-NVFP4-QAD`. It has no configured authentication: restrict access
+`Qwen3.8-Flash-Next-NVFP4-QAD-TP2`. It has no configured authentication: restrict access
 to trusted clients or an authenticated gateway. The short completion checks basic
-generation, not cache persistence or capacity.
+generation, not cache persistence or capacity. The `SPARKRING STARTUP AUDIT`
+banner appears before API readiness. Read its warnings: requested flags are not
+proof of runtime execution or performance. The bundled SparkCache does not
+isolate disk entries by request `cache_salt`; use separate deployments/cache
+namespaces when tenant isolation is required.
 
 Monitor host `MemAvailable`; Docker's 108 GiB memory and 112 GiB combined
 memory/swap limits do not cover every GB10 GPU allocation. This profile installs
@@ -136,19 +139,19 @@ Before planning/creating, select these values instead; all other steps are share
 ```bash
 PROFILE=profiles/qwen38-flash-next-tp2/config.json
 CONTAINER_PREFIX=qwen-flash-next-tp2
-IMAGE_REF=$BASE_IMAGE
-IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
+# IMAGE_REF and IMAGE_ID remain the same shared release.
 ```
 
 ## Evidence and remaining checks
 
 Configuration is owned by [sparkcache.json](sparkcache.json) and
 [config.json](config.json), not this table. Capacity overrides are intentionally
-not accepted. The following records concern the original non-QAD checkpoint,
-not this QAD selection. The [SparkCache record](../../performance/records/qwen38-flash-next/r37-sparkcache.json)
-covers bounded publication, process-restart text/media restore, changed-input
-misses and corruption recovery. The [native-cache record](../../performance/records/qwen38-flash-next/r37-tp2.json)
-covers native prefix reuse, C16 short answers, near-limit text and synthetic media.
+not accepted. The [release qualification](../../runtime/releases/shared-2026.09.2/qualification.json)
+records passing bounded short/16K text, finite-score, synthetic image/video,
+request-order, concurrent-request and retained-restart checks on this image,
+both with and without SparkCache. The cache-enabled profile also restored two
+fixtures on every rank after restart. The [correctness summary](../../runtime/releases/shared-2026.09.2/correctness.json)
+owns exact image identities, case counts and evidence hashes.
 
 These checks do not qualify arbitrary/high-resolution video, C16 multimedia,
 sixteen simultaneous full-context requests or prolonged store-pressure stability.
@@ -156,7 +159,7 @@ Sixteen video frames are not sixteen visual tokens. A 512 MiB capture slot can
 reject a snapshot below the configured 65536-token span ceiling; serving must
 continue without optional cache publication.
 
-[Image source/build recipe](../../runtime/images/compositions/lil-r37-cache64/README.md).
+[Release sources and rollback](../../runtime/releases/shared-2026.09.2/README.md).
 [Generated Compose deployments](../../docs/operations/compose.md) support both
-configurations, with and without SparkCache. [Bounded TP2 checks](../../performance/records/qwen38-flash-next/compose-tp2.json)
-cover startup, shutdown, text responses and persistent-cache restore.
+configurations, with and without SparkCache. Historical R37 evidence remains
+attached to its original image and is not reattributed to this release.

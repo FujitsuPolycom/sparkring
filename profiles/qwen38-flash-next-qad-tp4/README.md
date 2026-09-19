@@ -1,57 +1,53 @@
 # Qwen3.8-Flash-Next QAD on four Sparks
 
-Status: **Development**. This profile selects the published R37 shared image
-with Qwen collective selection, HC fusion and MTP prefill GEMMs. The baked image
-passed inventory, four-rank Compose startup, bounded text checks and matched
-prefill/decode measurements. The [serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
-identifies the exact image, conditions and remaining limits. It is not a general
-media, full-context or long-duration qualification.
+Status: **qualified for bounded correctness and restart checks**. This guide selects
+[SparkRing shared-2026.09.2](../../runtime/releases/shared-2026.09.2/README.md).
+The cache-disabled profile and [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md)
+use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.2/qualification.json)
+records bounded short/16K text, finite-score, synthetic media, request-order,
+concurrent-request and retained-restart checks, plus physical cache restore
+with SparkCache. The [correctness summary](../../runtime/releases/shared-2026.09.2/correctness.json)
+owns case counts and evidence hashes. These checks do not qualify full-context,
+C16-pressure stability or performance.
 
 | Setting | Selection |
 |---|---|
-| Model quant | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) |
+| Checkpoint | Qwen3.8-Flash-Next NVFP4 QAD, revision `629bc3218833a38b475b719f34aa571666f4a03e` |
 | Parallelism | TP4/DCP1 on a four-node ring with hardware-forwarded mesh paths |
-| Context / sequences / batch | 262K / 16 / 8192 |
-| KV allocation | 24 GiB FP8 per rank |
-| Speculation | MTP3 |
-| Collectives | RoCEnante all-reduce up to 20 KiB; larger reductions use dual-domain NCCL |
-| Prefill | Qwen HC up/gate fusion and large-row MTP GEMMs |
-| SparkCache | [Optional](../qwen38-flash-next-qad-tp4-sparkcache/README.md); disabled by default. Native prefix caching remains enabled |
-| Media | Three images / one video, 16 configured frames; QAD TP4 media acceptance is pending |
+| Context / sequences / batch | 262144 / 16 / 8192; no YaRN |
+| KV allocation | 24 GiB FP8 per rank; 32-token requested attention blocks |
+| Loading / speculation | Managed B12X / MTP3 |
+| Collectives | Size-based RoCEnante selection and dual-domain NCCL |
+| Prefill | HC fusion and row sharding, checkpoint coalescing, paired QSA scoring and B12X #394 |
+| Media | Three images / one video, 16 configured frames |
+| SparkCache | Optional; choose its profile below. Native prefix caching stays enabled in both |
 
-The [configuration](config.json) owns these settings. The original PTQ checkpoint
-and published SparkCache image use the [two-Spark quickstart](../qwen38-flash-next-tp2/README.md).
-GLM-specific mHC/KDA and SIRCL serving switches are disabled in this Qwen profile.
+The [configuration](config.json) owns these settings. GLM-specific mHC/KDA
+switches and SIRCL serving switches are disabled for this Qwen profile.
+TP2 uses the [two-Spark quickstart](../qwen38-flash-next-tp2/README.md).
 
 ## Prepare image, model and fabric
 
-Use four Linux ARM64 Sparks with Docker Compose and the
-[host prerequisites](../../docs/operations/prerequisites.md). Pull the exact
-[shared feature image](../../runtime/images/compositions/lil-r37-shared/README.md)
-on every host:
+Complete the [host prerequisites](../../docs/operations/prerequisites.md).
+Use the same SparkRing checkout on every host and pull this image on all four:
 
 ```bash
-BASE_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270'
-IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:aef597a5ee70f7b4e0807901e43456b6ac8d2234247ab4df6a6cfe031e5169c6'
-# The base supplies the pinned parent receipt; Docker reuses shared layers.
-docker pull --platform linux/arm64 "$BASE_IMAGE"
+IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123'
 docker pull --platform linux/arm64 "$IMAGE_REF"
 docker image inspect --format '{{.Id}}' "$IMAGE_REF"
 ```
 
 The image ID must be
-`sha256:2540686d726a28eb07784f9d2db5dc1f795404c7874fc1d6c11f018cd789adc2`.
-The readable tag is `ghcr.io/fujitsupolycom/sparkring:r37-shared-arm64-2540686d726a`;
-the [publication receipt](../../runtime/images/compositions/lil-r37-shared/publication.json)
-binds it to the immutable digest. The coordinator verifies the complete image
-contents before serving. Local image builds remain a separate developer workflow.
+`sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499`.
+No separate R37 parent-image pull is required. The
+[publication receipt](../../runtime/releases/shared-2026.09.2/publication.json)
+binds the image to its source and installed inventory.
 
-Use an existing verified checkpoint or download the pinned
-[`qad-step-4000` revision](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)
-into a dedicated directory on each host. The repository's `main` branch contains
-the separate PTQ checkpoint; it does not substitute for this QAD revision.
+Reuse an existing verified QAD checkpoint. Otherwise download the pinned revision
+once and transfer it to the other hosts over the data fabric:
 
 ```bash
+# Skip download when these verified weights already exist.
 hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 \
   --revision 629bc3218833a38b475b719f34aa571666f4a03e \
   --local-dir /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
@@ -60,100 +56,95 @@ REPO=$PWD
   sha256sum --check "$REPO/profiles/qwen38-flash-next-qad-tp4/SHA256SUMS")
 ```
 
-Verify the complete shard checksums before launch. The coordinator checks model
-metadata identity; it does not substitute that for full weight verification.
-Model mounts are read-only, and caches must be outside the model directory.
+The model repository's `main` branch is not a substitute for this QAD revision.
+The coordinator verifies metadata, not every weight shard. Mount weights
+read-only and keep writable caches outside model directories.
 
 Prepare the [managed ring fabric](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
-and its private mesh site before starting a model. The
-[fabric owner](../../spark_transport/fabric/cx7_hairpin_diagonal/README.md)
-defines the network contract independently of Qwen. The coordinator does not
-install routes, hardware rules or source markers. Do not restart a fabric
-controller while dependent model ranks are running.
-
-The private Compose site binds the mesh-site file hash and canonical plan hash.
-Its HCA order is primary clockwise/counterclockwise followed by secondary
-clockwise/counterclockwise. Host checks verify the requested devices, GIDs,
-routes, hardware rules and live marker attachment. This is a readiness snapshot,
-not an end-to-end RDMA test or continuing fabric supervision.
+and its private mesh site. The [fabric guide](../../spark_transport/fabric/cx7_hairpin_diagonal/README.md)
+owns device order, routing and hardware forwarding. The model launcher does not
+install those resources. Do not restart fabric controllers under live collectives.
 
 ## Render, check and start
 
-Follow the [shared Compose guide](../../docs/operations/compose.md) for controller
-and host dependencies. Use the same source checkout on every host. Prepare
-dedicated cache and deployment directories, then copy and edit the site example:
+Follow the [Compose prerequisites](../../docs/operations/compose.md#prepare-the-hosts).
+Create dedicated cache/deployment directories on every host. Copy and edit the
+site example; its addresses and fabric hashes are placeholders:
 
 ```bash
 mkdir -p .sparkring
 cp profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml .sparkring/qwen-qad.site.yaml
-# Fill all four hosts, directories and the prepared fabric's actual identities.
-python3 scripts/sparkring.py compose render qwen38-flash-next-qad-tp4 \
-  --site .sparkring/qwen-qad.site.yaml --output .sparkring/deployments/qwen-qad
-python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/qwen-qad
-python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/qwen-qad --hosts
-python3 scripts/sparkring.py compose start --deployment .sparkring/deployments/qwen-qad
+# Fill every host, model/cache directory, HCA/GID and prepared fabric identity.
+PROFILE=qwen38-flash-next-qad-tp4
+# To enable persistence instead:
+# PROFILE=qwen38-flash-next-qad-tp4-sparkcache
+DEPLOYMENT=.sparkring/deployments/qwen-qad
+python3 scripts/sparkring.py compose render "$PROFILE" \
+  --site .sparkring/qwen-qad.site.yaml --output "$DEPLOYMENT"
+python3 scripts/sparkring.py compose check --deployment "$DEPLOYMENT"
+python3 scripts/sparkring.py compose check --deployment "$DEPLOYMENT" --hosts
+python3 scripts/sparkring.py compose start --deployment "$DEPLOYMENT"
 ```
 
 Review the printed plan and repeat `start` with `--approve` and its exact hash.
-The coordinator creates all four stopped containers, starts workers before the
-API rank, and checks readiness. TP4 preflight uses `sudo -n` to inspect root-owned
-fabric processes. Existing workloads must be stopped explicitly during the
-agreed test window; the coordinator never replaces them.
+The coordinator creates stopped containers, starts workers before rank0, and
+checks readiness. TP4 host checks require `sudo -n` for root-owned fabric state.
+Stop competing GPU workloads only with their owner's approval; the coordinator
+does not replace them.
 
-On rank 0, use the container name from `rank0/container.json`:
+On rank0, use the container name recorded in `rank0/container.json`:
 
 ```bash
 docker logs --follow --tail 100 sr-qwen-qad-example-r0
 curl --fail http://127.0.0.1:8015/health
+curl --fail http://127.0.0.1:8015/v1/models
 curl --fail http://127.0.0.1:8015/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD","messages":[{"role":"user","content":"What is 17 + 25?"}],"temperature":0,"max_tokens":128}'
+  -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD-TP4","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
 ```
 
-Confirm a correct response and feature-activation evidence on every rank before
-benchmarking. API readiness alone does not establish correctness or throughput.
-Use the [bounded image comparison](../../performance/qwen-image-comparison.md)
-for matched prefill/decode measurements and their interpretation.
+For a remote client, replace `127.0.0.1` with rank0's reachable address.
+The API binds without a configured key: restrict it to trusted clients or an
+authenticated gateway. SparkCache request-salt isolation is not implemented in
+this image; use separate deployments/cache namespaces for tenant isolation.
+
+Before API readiness, `SPARKRING STARTUP AUDIT` reports source/configuration
+checks and warnings without changing flags. `HC_ROUTE_VERIFIED` proves that the
+dispatcher is reachable, not that it ran. An eligible real TP4 prefill logs
+`QWEN_HC_PREFILL mode=shard` on every rank. A short request or mixed
+prefill/decode batch may not exercise that path.
 
 ## Local source-image testing
 
-The [Qwen prefill source image](../../runtime/images/compositions/lil-r37-qwen-prefill/README.md)
-packages HC row sharding, recurrent checkpoint coalescing and paired-query QSA
-scoring over the shared R37 image. Its local selection enables HC sharding and
-coalescing on TP4 while preserving the profile's model, MTP and transport choices.
-The published image above remains the default.
-
-Build and verify the candidate, then install the same image ID and generated
-local tag on all four hosts. Use a distinct site name and a dedicated cache root.
-Render through the standard coordinator:
-
-```bash
-python3 scripts/sparkring.py compose render qwen38-flash-next-qad-tp4 \
-  --site .sparkring/qwen-candidate.site.yaml --output .sparkring/deployments/qwen-candidate \
-  --local-source-extension lil-r37-qwen-prefill --local-image-id "$CANDIDATE_IMAGE_ID"
-```
-
-Select `qwen38-flash-next-qad-tp4-sparkcache` in that command to enable persistence.
-The candidate selects its packaged lease contract and a separate persistent-cache
-namespace. Optional test arguments `--local-kv-cache-gib 40` and
-`--local-master-port 29779` select 40 GiB KV per rank and an isolated bootstrap
-port; omitting them retains the profile's 24 GiB and port 29776.
-
-Continue with `compose check`, host checks and the reviewed start procedure above.
-The deployment binds the exact candidate ID, descriptor and test settings. This
-example selects TP4. The [local TP2 procedure](../../docs/operations/compose.md#local-source-image-trials)
-keeps HC sharding disabled. Neither selection changes public defaults or transfers
-published-image validation to the candidate. Persistent-cache validation requires
-a correct response after a process restart and restore evidence from every rank.
+The retained [R37 source-image workflow](../../runtime/images/compositions/lil-r37-qwen-prefill/README.md)
+is an explicit developer alternative, not this shared release. Selecting it
+requires `--local-source-extension lil-r37-qwen-prefill --local-image-id IMAGE_ID`.
+Its adapter selects R37 hooks, transport and cache contracts with a separate
+namespace. It does not inherit this release's qualification. Do not use local
+overrides to substitute an arbitrary image into the published quickstart.
 
 ## Stop and rollback
 
 ```bash
-python3 scripts/sparkring.py compose stop --deployment .sparkring/deployments/qwen-qad
+python3 scripts/sparkring.py compose stop --deployment "$DEPLOYMENT"
 # Review and repeat with the printed --approve hash.
 ```
 
-Stop retains the exact containers and cache directories. Restore the previous
-deployment only after all four test ranks have stopped. Keep its image and
-fabric configuration intact; do not change marker ownership underneath live
-collectives. See the shared guide's [recovery behavior](../../docs/operations/compose.md#stop-and-recover).
+The coordinator's `start` is create-only; do not rerun it to restart retained
+containers. On each host, inspect the name from its `rankN/container.json` and
+verify its image and deployment label against the saved deployment:
+
+```bash
+RANK=1 # set to this host's rank
+NAME="sr-qwen-qad-example-r${RANK}" # use your site's actual name
+CID=$(docker inspect --format '{{.Id}}' "$NAME")
+docker inspect --format '{{.Image}} {{json .Config.Labels}}' "$CID"
+# After checking the recorded image and io.sparkring.deployment label:
+docker start "$CID"
+```
+
+Restart workers 1/2/3 before rank0, with no competing GPU workload. Repeat the
+health/model checks above. These commands retain the exact containers and caches.
+Keep the prior deployment directory, image and cache namespace for rollback.
+Restore it only after all four replacement ranks have stopped, without changing
+fabric ownership beneath a live model. See [stop and recover](../../docs/operations/compose.md#stop-and-recover).

@@ -1,0 +1,224 @@
+{
+  "schema": "sparkring-bounded-correctness-summary/v1",
+  "release": "shared-2026.09.2",
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:b58746401f0d51874696eb7fe37f0cffa5bbd1a1aed1dce26ef7be322e8fe123",
+  "image_config_id": "sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499",
+  "public_commit": "d0cee340f9eb277c61932346d69c5cb3287a4668",
+  "source_sha256": {
+    "measurement": "649491d7d36068cb66b962ad614b8af04a27cd3ca9f9f602778f254e6136b59a",
+    "qsa": "5afa28cc0ca26c3f234cb038c9ec1968e300b74340debb008d91cac1a8298f70"
+  },
+  "cuda_library_finalization": "qualified on exact image",
+  "profiles": {
+    "qwen38-flash-next-tp2": {
+      "status": "qualified",
+      "tensor_parallel": 2,
+      "sparkcache": false,
+      "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+      "reported_kv_pool_tokens": 2877721,
+      "verified_lifetimes": 2,
+      "short_finite_score_cases": 120,
+      "concurrent_exact_answer_requests": 30,
+      "long_prompt_tokens": 16384,
+      "synthetic_media": {
+        "images": 3,
+        "videos": 1
+      },
+      "retained_restarts": 1,
+      "restore_checks": [],
+      "source_and_settings_verified_all_ranks": true
+    },
+    "qwen38-flash-next-tp2-sparkcache": {
+      "status": "qualified",
+      "tensor_parallel": 2,
+      "sparkcache": true,
+      "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+      "reported_kv_pool_tokens": 2877721,
+      "verified_lifetimes": 3,
+      "short_finite_score_cases": 180,
+      "concurrent_exact_answer_requests": 45,
+      "long_prompt_tokens": 16384,
+      "synthetic_media": {
+        "images": 3,
+        "videos": 1
+      },
+      "retained_restarts": 2,
+      "restore_checks": [
+        [
+          {
+            "prompt_tokens": 7870,
+            "restored_tokens": 5696,
+            "verified_ranks": 2
+          },
+          {
+            "prompt_tokens": 8194,
+            "restored_tokens": 5696,
+            "verified_ranks": 2
+          }
+        ],
+        [
+          {
+            "prompt_tokens": 7870,
+            "restored_tokens": 5696,
+            "verified_ranks": 2
+          },
+          {
+            "prompt_tokens": 8194,
+            "restored_tokens": 5696,
+            "verified_ranks": 2
+          }
+        ]
+      ],
+      "source_and_settings_verified_all_ranks": true
+    },
+    "qwen38-flash-next-qad-tp4": {
+      "status": "qualified",
+      "tensor_parallel": 4,
+      "sparkcache": false,
+      "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
+      "reported_kv_pool_tokens": 3131214,
+      "verified_lifetimes": 2,
+      "short_finite_score_cases": 120,
+      "concurrent_exact_answer_requests": 30,
+      "long_prompt_tokens": 16384,
+      "synthetic_media": {
+        "images": 3,
+        "videos": 1
+      },
+      "retained_restarts": 1,
+      "restore_checks": [],
+      "source_and_settings_verified_all_ranks": true
+    },
+    "qwen38-flash-next-qad-tp4-sparkcache": {
+      "status": "qualified",
+      "tensor_parallel": 4,
+      "sparkcache": true,
+      "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
+      "reported_kv_pool_tokens": 3131214,
+      "verified_lifetimes": 2,
+      "short_finite_score_cases": 120,
+      "concurrent_exact_answer_requests": 30,
+      "long_prompt_tokens": 16384,
+      "synthetic_media": {
+        "images": 3,
+        "videos": 1
+      },
+      "retained_restarts": 1,
+      "restore_checks": [
+        [
+          {
+            "prompt_tokens": 7870,
+            "restored_tokens": 7200,
+            "verified_ranks": 4
+          },
+          {
+            "prompt_tokens": 8194,
+            "restored_tokens": 7200,
+            "verified_ranks": 4
+          }
+        ]
+      ],
+      "source_and_settings_verified_all_ranks": true
+    }
+  },
+  "historical_failed_attempts": 0,
+  "failure_inventory_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "evidence_sha256": {
+    "verified-build": "264299036f818b7fa0c2ac9d0cbbd4938234708ab52455f3c67b09a00dba3e7d",
+    "image-label-equivalence": "d6e98c67ab6e1c5625e57f55607648b9d10afac6bae33c9f4bce3b1973c0a51e",
+    "anonymous-publication": "2eb5f9deb76483b689b9d42f58b6906e847ab22c7f713aa45e24b5d99fbe29a2",
+    "installed-gpu-gate": "16eca72d42035f91e2a4836e6549598f35580a3e667d4a770df9f3e12d8cff46",
+    "walkthrough-identity": "133f648cf2cd6e75efcfd76d2fc1b83517b90ec19326faa01aec9655c59625e2",
+    "inherited-helper-sources": "9d3c6b02954707944d319c5dc6a81a64e3cbe641b58a417da9287c7048ff734e",
+    "tp2-cacheoff/deployment.json": "d6caf2d3c10be56507d65f1c29a066c12428fe1053705998f1a590d95bbe4845",
+    "tp2-cacheoff/start-receipt.json": "baf549c3546d3ff0bd21b15bc8a30931974fa9e63d8e2e6c11544ba3342c2f81",
+    "tp2-cacheoff/functional-initial.json": "4b88c89759f79ecabcad1830eb7793abd5e64d1b16861151b4f037e25d7c4fd9",
+    "tp2-cacheoff/sequence-initial": "70201a9a5465327dad039f1e25b67054040c35512b96bf210879da3ed1cc418f",
+    "tp2-cacheoff/finite-initial-initial": "5b692c21ecf757e7ffb83f54b9881158be7143f27d998df9ff2d146523b163ba",
+    "tp2-cacheoff/finite-initial-after-text": "ca4968cfc505d5b97d72b9ee4bc5c4ca773ba21b062a10bb4b012e4e21c822de",
+    "tp2-cacheoff/finite-initial-after-media": "606dc7b6ac9c2ce2ffb0d1015b605c432fdef0d8db54753fbf083d247ef52758",
+    "tp2-cacheoff/concurrent-initial": "51418a6ef2ad4be0b12e7392b6ffb454369e5c9c9ef48c078c48d4db9d7dac4d",
+    "tp2-cacheoff/long-initial.json": "6005997cd4a0ce1d92437aaf3387c8b6ead1d1ffb5c20138e664cb3ca042498e",
+    "tp2-cacheoff/functional-restart1.json": "22eb601e60d693826ab807fec8fb0d98f7703845a62e8cec1a4467ce19b2b974",
+    "tp2-cacheoff/retained-start-restart1.json": "4d636d6e0f99d9bb7da5f2625061e9ce41462a1aac2cde64b28b6b4a27ff0c8a",
+    "tp2-cacheoff/retained-stop-restart1.json": "27937ad82042dc1491d42e7d25506df042f53a042a0f7c2b699efe78ca2ad1f7",
+    "tp2-cacheoff/sequence-restart1": "ce5af8d55411ec54894185dab1441df09abc19ca8065cd1fc659d6dbbbe1bb8a",
+    "tp2-cacheoff/finite-restart1-initial": "7b1e2e2cac30c02389517406f9fba7bc1563ce242f834514df506ddc586d492b",
+    "tp2-cacheoff/finite-restart1-after-text": "d5c9d43dca60709b25003deb85a5ee72f072f510635b836f463b8f74022c4a6a",
+    "tp2-cacheoff/finite-restart1-after-media": "270623a6afcdf4d39eb2e294899208e10a65d7842a6599c4d459a4a407396fbf",
+    "tp2-cacheoff/concurrent-restart1": "e79b1741b67b71bc89c3fbfe4d3c80e65d55e241807899a4f95e119c6f11d278",
+    "tp2-cacheoff/long-restart1.json": "11194a552cfb88e3dd1c01a5e1e3ba206b9ad660eef93616a5f2b43e4dbf7e67",
+    "tp2-cacheon/deployment.json": "0cf6be0c06fe5bb893cccd37f127d0a4c620e71236bea946685ed1796946e10d",
+    "tp2-cacheon/start-receipt.json": "cb56ecb25964f723b96035eec4a25e84f84ddbccdfafa7aa91af02f8e56ee7d9",
+    "tp2-cacheon/functional-initial.json": "2879f37b7691aa8baca6e9a124086e493caca64aa6c46799ef4cadb1c1b0dbbb",
+    "tp2-cacheon/sequence-initial": "97344398e11c85b295774f77a2c106f8f5f25a459d5be4255666da8932ff933a",
+    "tp2-cacheon/finite-initial-initial": "4850b873a83060749895a5bd327af26ba4cf61fb258af06659dc9f87d8619cba",
+    "tp2-cacheon/finite-initial-after-text": "fa586e15acd2dae0f910ef22635ede903a71bae62b2627c3be8b2325a4981fc3",
+    "tp2-cacheon/finite-initial-after-media": "3ae2bc3e51caf5f867373ce4f123dc241fb7f13a429edb9d81617e40b37520f8",
+    "tp2-cacheon/concurrent-initial": "57f4d365e5e93f8828eec85f804921f9647d99376f27b618e638eddab6af6b21",
+    "tp2-cacheon/long-initial.json": "4b2b3294def7cb880e0446c24ef7d5a359f26f1f0d3a6d865ed0905122af2384",
+    "tp2-cacheon/cache-seed-initial.json": "4edbec27099f64d810603a0ee03465f48da930624df8340374cb9f2c34db0347",
+    "tp2-cacheon/functional-restart2.json": "fcaafc50c43b0a92335e7c5c01cde059b10c2e56bfae4f44573cd0f6335d2b83",
+    "tp2-cacheon/retained-start-restart2.json": "a1d8961c2dae52500dced2f45b92fbf73a74eeec9477a73e3af1fd585ea26996",
+    "tp2-cacheon/retained-stop-restart2.json": "3245b90e9d95bab91a4b258c61318fd9d3896ff913ec1bf4036ff8b237f29aa2",
+    "tp2-cacheon/sequence-restart2": "7e1755d85ae19aa88220818aa181ff453a95db730473a8eb5545336a5a39c135",
+    "tp2-cacheon/finite-restart2-initial": "08e3c814a15bbd6841a4f22198c0650fb9f3c172f36ded8952ef81c5c1d583c2",
+    "tp2-cacheon/finite-restart2-after-text": "14f2a7fd616826a227071f6eb820ff3d3d267c891dfb11eaf3179388f7a0e7ad",
+    "tp2-cacheon/finite-restart2-after-media": "917ad162cdd4644fb7be7d0ecb9d804fa3352ea37bd6a063289d0599716c69a8",
+    "tp2-cacheon/concurrent-restart2": "cd18032210e3aa353ca8db8a70d84c29cd58525a80da2f4d4919be3b74f60140",
+    "tp2-cacheon/long-restart2.json": "4faf061324b7a525b8511d9d6f13118e5e67127acdc06ee834717be27bb10762",
+    "tp2-cacheon/cache-replay-restart2.json": "a8869223bfe279ea02a6d5e38195ccb73730b807e656ec6fca403432efc11737",
+    "tp2-cacheon/functional-restart3.json": "b6392a3a819e94a4ebe16abb990c37f37b3e34dfba9dae9b016b4d2a50d09264",
+    "tp2-cacheon/retained-start-restart3.json": "3e8949aaf52a348309cf07554b4d8df20e090f89fd25d11f3fd397fbfd88c2d4",
+    "tp2-cacheon/retained-stop-restart3.json": "87d138046df3707f6bd0e2cc535faddbf9728947f78fd05a65339cc1f1a1ce02",
+    "tp2-cacheon/sequence-restart3": "0918d6f3822b2401373ef83425c940690cc5fb9d61f360906b99ee7cf8bfc272",
+    "tp2-cacheon/finite-restart3-initial": "c28bc3bf4fb8cef411f93bdf27ab3d1994a2488a92ff7ef40bce31f2a0672156",
+    "tp2-cacheon/finite-restart3-after-text": "6304ca9536a7a90190c8749e7e216b54bee105691f9fa2cc485fbaa5e9580037",
+    "tp2-cacheon/finite-restart3-after-media": "5edfb964fec98170e8b1a3d9ad2e79ff607b8898746a4858b780cfe4cba3b4f9",
+    "tp2-cacheon/concurrent-restart3": "9d877bd926934852cf4324aa633fe3c38ee3b3c8a7005ae9ff115ad0d5215f43",
+    "tp2-cacheon/cache-replay-restart3.json": "ae4eccbf346ba70eeb4002df9672641a9121417273da8f8bbdf93c602acc39a9",
+    "tp4-cacheoff/deployment.json": "45405f999524abfc8efeb9e7edfb8a5372d00a8171fa1948a463ed300e143bf3",
+    "tp4-cacheoff/start-receipt.json": "e3af4155ebb8bd08808c67fa2b215a3b34a4cac6a67d3894c06c264a6bd3edf5",
+    "tp4-cacheoff/functional-initial.json": "9749a46c4c72f3ced395fc2af730609087e897e775c61c6c173638b9bf3d9ea3",
+    "tp4-cacheoff/sequence-initial": "5c4139fbe245955898ed98c8180c51b7a3112d14ab1a89ec3e9d475f050b2f44",
+    "tp4-cacheoff/finite-initial-initial": "abc3c2bb22a3e5bbea396f64d0d17bf4dc8c4387165051ec47dfe08ab16b5064",
+    "tp4-cacheoff/finite-initial-after-text": "97eb7652969ad96496934d1b9310766466166b47d946b348c59b6606c8766408",
+    "tp4-cacheoff/finite-initial-after-media": "4ad33c49b1d3f13266abd2e916a6f75f68343b16691afd739917c149849128b2",
+    "tp4-cacheoff/concurrent-initial": "1aa820e30ed95cd28a45286dcbc10e014ab7344178c7ba93f70c482929798f84",
+    "tp4-cacheoff/long-initial.json": "9a8a3534ad1110819a675541b6a58b0e576faad5422ebe4799ef5ae4dc6c9a8a",
+    "tp4-cacheoff/functional-restart1.json": "5ff3303bf4397b9082d17f2e026f31a0c91ded6473b8774670b1fcb06a82a022",
+    "tp4-cacheoff/retained-start-restart1.json": "88904bca3907a6708e53072d9eccf033cbb8e7acfc3c666b81af5b10af5c85c7",
+    "tp4-cacheoff/retained-stop-restart1.json": "15df7689afc7ea2c24e77bae175558a68eb8b6215653829698cf2c07a7c8f885",
+    "tp4-cacheoff/sequence-restart1": "7a92f0cd01f4954ff360ade8191591838da51a67130a20e7d2d68e1e1c831b1a",
+    "tp4-cacheoff/finite-restart1-initial": "481208fc0f9e70af4198c7bfe0bbd4778eb751a8d1e8d4b97ffa501c4fe76eb7",
+    "tp4-cacheoff/finite-restart1-after-text": "42c019149f37b7fa95e33a8165f7454693596f50e0dac423aa13744a6e34ac12",
+    "tp4-cacheoff/finite-restart1-after-media": "fac43621c906d306e8e420abd45b806fdf9617ad7383d13bc3eba660f8b56ad1",
+    "tp4-cacheoff/concurrent-restart1": "920fa173f1b7e348ea37072d51bdd76ad3c834eb509ee2b15c0a96526a15b1e4",
+    "tp4-cacheoff/long-restart1.json": "5f451b9cdd28bb48e04aac4af3976a5d8496f0edcc6971f86d48a584933e29a4",
+    "tp4-cacheon/deployment.json": "2ae519aa24323e62a726b237dd9c962a2f3610a3a8981ca9ebf458f45f04e710",
+    "tp4-cacheon/start-receipt.json": "2e38dfd4d584cdda75f16124397f119403d62a84c798c564013064779135e6d8",
+    "tp4-cacheon/functional-initial.json": "15ad1e0e3e4249a11cbaa6ec248dc9a81a79b9bbc02b61f1a368e21d75fe79f4",
+    "tp4-cacheon/sequence-initial": "76ea63587f1dc0f2c4d380181a2b1e81b6ba9e3386ffcabae397cda2383a62b5",
+    "tp4-cacheon/finite-initial-initial": "25526cf3fea51e5a58e2f0a7baba29c2655d009fffbc35d9df4e1de1a2cf204c",
+    "tp4-cacheon/finite-initial-after-text": "a0500fb68c20eb1a96208c2ab6947451359d106858a85ed59718c58bcde5876a",
+    "tp4-cacheon/finite-initial-after-media": "7387d7cc6e12208733487789e9649bd2291031f1fe969254807de9a77e80ccc9",
+    "tp4-cacheon/concurrent-initial": "c587c7e4aef47c99df4073f0d53f911b2409f6ac20df4e6ec9f1feec8914b5bb",
+    "tp4-cacheon/long-initial.json": "39d1e14ba8ba32729afb1a403c787db2868991dffd13868ac4a348495eb1ae17",
+    "tp4-cacheon/cache-seed-initial.json": "7865407d281e6ae49989bd44b913260468dff6bb7f1e51fd616969befae7ff84",
+    "tp4-cacheon/functional-restart2.json": "c9010dab487d22c00b354b3e7889fcbb1d64e19071fa0d034203121703fee1fc",
+    "tp4-cacheon/retained-start-restart2.json": "18bc91f73e8c8b4cfc1cd971e5da4f0c1786d6d10d64ad988d1ee96964cd5f65",
+    "tp4-cacheon/retained-stop-restart2.json": "7aeb9ca1f57a9557d805eebdfaf6b2b0767638d478b54300d1cbfd79b1b65e65",
+    "tp4-cacheon/sequence-restart2": "fbf05e31f14a8b56a952a84519e21ab635419dc9f4ba20243b7c06fa6f8a62d4",
+    "tp4-cacheon/finite-restart2-initial": "4165917623575e596cfb66f98304206fad8d2b3df9b3b46ec4e43ed23ca812e6",
+    "tp4-cacheon/finite-restart2-after-text": "cd3722a981da0543cf94cc288399aa14ffc42aa1f81c78a6fff4cd9bf439eee3",
+    "tp4-cacheon/finite-restart2-after-media": "06407fd289f7a4abb69f065579a460ca81132d99fe541fe6bceefde1cc6d11c3",
+    "tp4-cacheon/concurrent-restart2": "ea4dbaad30243e4c40a82273d7c29ffa48c2e7bfc9e4eac39881fb58bd03d12d",
+    "tp4-cacheon/long-restart2.json": "3ebc6f2f6fad2a9ce0b507efaf4d08ede88eb42684c1ec57e447f91cdb0ca0ea",
+    "tp4-cacheon/cache-replay-restart2.json": "ba516a0ef760ebb196a2d56ff8b42416b4b8912d9df196d195c54d4391b350d4"
+  },
+  "limitations": [
+    "Bounded correctness and restart checks only; no throughput claims.",
+    "Full-context saturation, arbitrary media and sustained-load stability are not established.",
+    "Other model profiles are not qualified by this evidence."
+  ]
+}

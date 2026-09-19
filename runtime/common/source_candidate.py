@@ -102,6 +102,14 @@ def profile_settings(profile, identity, kv_cache_gib=None, master_port=None):
     if master_port is not None and master_port == int(arguments[arguments.index("--port") + 1]):
         raise ValueError("Local master port must differ from the inference API port")
     result = copy.deepcopy(profile)
+    if result.get("image_extension") == "native-shared":
+        # Explicit R37 trials select R37 hooks and contracts, not Kraken hooks.
+        result["image_extension"] = identity
+        result.pop("image_release", None)
+        features = result["environment"].get("SPARKRING_FEATURES", "").split(",")
+        result["environment"]["SPARKRING_FEATURES"] = ",".join(
+            "qwen-prefill" if name == "qwen4-prefill" else name for name in features
+        )
     result["environment"].update(
         VLLM_QWEN3_8_HC_PREFILL_MODE="off" if nodes == 2 else "shard",
         VLLM_QWEN3_8_PREFILL_COALESCE="1",
