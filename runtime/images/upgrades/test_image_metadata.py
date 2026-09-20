@@ -271,6 +271,17 @@ def test_operator_step_verifies_metadata_without_starting_container(runtime):
     ) == module.without_labels(runtime["original"])
 
 
+def test_metadata_staging_refuses_unpullable_parent_before_registry_writes(runtime):
+    runtime["before"]["RootFS"]["Layers"] = [
+        "sha256:" + f"{index:064x}"
+        for index in range(module.MAX_PULLABLE_ROOTFS_LAYERS + 1)
+    ]
+    with pytest.raises(ValueError, match="flatten it before metadata staging"):
+        runtime["run"]()
+    assert not runtime["requests"]
+    assert not any(call[0] == "create" for call in runtime["calls"])
+
+
 @pytest.fixture
 def versioned(runtime):
     path = "/opt/sparkring/licenses/shared/shared-fixture.md"

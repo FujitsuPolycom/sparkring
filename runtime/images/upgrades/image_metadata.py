@@ -13,6 +13,7 @@ import urllib.request
 BASE = "http://127.0.0.1:19555"
 REPOSITORY = "sparkring/native"
 RECEIPT = "/opt/sparkring/receipts/native-installed.json"
+MAX_PULLABLE_ROOTFS_LAYERS = 120
 
 
 def require(condition, message):
@@ -260,6 +261,16 @@ def verify_equivalence(before, after, child_id):
     require(left == right, "Non-label Docker runtime configuration changed")
 
 
+def require_pullable_layers(image):
+    layers = image.get("RootFS", {}).get("Layers")
+    require(
+        isinstance(layers, list)
+        and layers
+        and len(layers) <= MAX_PULLABLE_ROOTFS_LAYERS,
+        "Parent image exceeds the pullable layer budget; flatten it before metadata staging",
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--parent-image", required=True)
@@ -280,6 +291,7 @@ def main(argv=None):
         and before["Architecture"] == "arm64",
         "Parent must be the selected Linux ARM64 image",
     )
+    require_pullable_layers(before)
     source_raw = args.source_manifest.read_bytes()
     source_manifest = json.loads(source_raw)
     release = source_manifest["release_candidate"]

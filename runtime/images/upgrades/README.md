@@ -561,6 +561,28 @@ Status: **implemented**. The standalone
 the selected image's installed source, feature and transport receipts. It changes
 only OCI labels; it does not rebuild code, qualify profiles or publish to GHCR.
 
+Docker can construct local images whose layer chains cannot later be imported
+from a registry. Metadata staging therefore refuses parents with more than 120
+root filesystem layers. Convert such a parent locally before metadata staging:
+
+```bash
+python -m runtime.images.upgrades.image_flatten \
+  --source-image sha256:PARENT_CONFIG_HEX \
+  --target-tag sparkring:flattened-RELEASE_ID \
+  --container sparkring-flatten-UNIQUE_ID \
+  --output /var/tmp/sparkring-image-flatten-UNIQUE_ID \
+  --execute
+```
+
+The source must be an immutable Linux ARM64 image ID, the target tag and output
+directory must be unused, and Docker's data root must have at least twice the
+image's logical size plus 10 GiB free. The step never starts the temporary
+container or pushes externally. It refuses image semantics that Docker import
+cannot preserve, verifies the installed runtime before and after conversion,
+requires one output layer, compares supported runtime configuration fields and
+writes `flatten.json`. Use the resulting immutable image ID as the metadata
+parent; do not treat flattening as serving qualification.
+
 On a Linux ARM64 Docker host, stage the exact parent image in an operator-owned
 registry bound to `127.0.0.1:19555`, repository `sparkring/native`, tagged with its
 configuration digest **without** the `sha256:` prefix. Then run from the checkout:
