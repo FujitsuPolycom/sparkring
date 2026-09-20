@@ -31,9 +31,94 @@ DEPENDENCY_PACKAGES = {
     "flashinfer-python": "flashinfer",
     "flashinfer-jit-cache": "flashinfer_jit_cache",
 }
+# These distributions share the cuda namespace. They must never be treated as
+# owning the entire cuda directory, including cuda-pathfinder's sibling files.
+CUDA_RUNTIME_VERSIONS = {
+    "cuda-python": "13.3.1",
+    "cuda-bindings": "13.3.1",
+    "cuda-core": "1.0.1",
+}
+CUDA_PROTECTED_VERSIONS = {
+    "cuda-pathfinder": "1.8.1",
+    "nvidia-cutlass-dsl": "4.6.2",
+    "torch": "2.13.0",
+}
 SGLANG_PREFIX = Path("/opt/sglang")
 FLASHINFER_GLOBAL_BUILD_HELPERS = ("build_backend.py", "build_utils.py")
 PREPARED_TRANSPORT_PROFILE = "tp2-rocenante-adaptive-prepared"
+PARENT_RECEIPTS = {
+    "native": "/opt/sparkring/receipts/native-installed.json",
+    "candidate": "/opt/sparkring/receipts/candidate-installed.json",
+}
+
+
+def normalize_parent_receipt(raw, kind):
+    """Expose verified native contract selections without rewriting the receipt."""
+    require(kind in PARENT_RECEIPTS, "Unknown foundation receipt kind")
+    parent = json.loads(raw)
+    require(
+        isinstance(parent, dict)
+        and parent.get("schema") == f"sparkring-{kind}-installed/v1"
+        and isinstance(parent.get("files"), dict) and parent["files"]
+        and isinstance(parent.get("versions"), dict) and parent["versions"],
+        "Invalid foundation installed receipt",
+    )
+    require(isinstance(parent.get("removed_files", []), list), "Invalid removed-file inventory")
+    if kind == "native":
+        require("removed_files" in parent, "Native foundation lacks removed-file inventory")
+        active = parent.get("active_contracts")
+        require(isinstance(active, list) and all(isinstance(name, str) for name in active),
+                "Native foundation lacks declared active contracts")
+        require(len(active) == len(set(active)), "Duplicate native active contract")
+        contracts = {}
+        for name in active:
+            path = PurePosixPath(name)
+            digest = parent["files"].get(name)
+            require(
+                path.parent == PurePosixPath("/opt/sparkring/contracts")
+                and str(path) == name and "\\" not in name and ".." not in path.parts
+                and isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest),
+                "Native active contract is not owned with a valid hash: " + name,
+            )
+            contracts[name] = {"sha256": digest}
+        require("boundary_runtime" in parent, "Native foundation lacks boundary selection")
+        parent["integration_contracts"] = contracts
+    else:
+        require(isinstance(parent.get("integration_contracts", {}), dict),
+                "Invalid candidate contract selections")
+    return parent
+
+
+def read_parent_foundation(descriptor=None):
+    """A present native receipt is authoritative, including when it is invalid."""
+    kind, path = ("native", NATIVE) if os.path.lexists(NATIVE) else ("candidate", RECEIPT)
+    require(path.is_file() and not path.is_symlink(), "Invalid foundation receipt path")
+    raw = path.read_bytes()
+    evidence = dict(kind=kind, path=str(path), sha256=hashlib.sha256(raw).hexdigest())
+    if descriptor is not None:
+        declared = descriptor.get("parent_receipt")
+        require(
+            (declared == evidence if declared is not None else kind == "candidate")
+            and descriptor.get("parent_installed_sha256") == evidence["sha256"],
+            "Foundation installed receipt selection differs",
+        )
+    parent = normalize_parent_receipt(raw, kind)
+    verify_installed_state(parent)
+    return parent, raw, evidence
+
+
+def retain_parent_receipt(raw, evidence):
+    """Keep the exact parent attestation when native-installed.json is replaced."""
+    digest = hashlib.sha256(raw).hexdigest()
+    require(digest == evidence["sha256"], "Retained parent receipt bytes differ")
+    archive = ROOT / "receipts" / ("foundation-" + digest + ".json")
+    if os.path.lexists(archive):
+        require(archive.is_file() and not archive.is_symlink() and sha(archive) == digest,
+                "Retained parent receipt destination differs")
+    else:
+        with archive.open("xb") as stream:
+            stream.write(raw)
+    return {str(archive): digest}, {**evidence, "retained_path": str(archive)}
 
 
 def feature_asset_scope(name):
@@ -65,6 +150,9 @@ def feature_asset_scope(name):
     if path == owner / "licenses/components.md" or (
         path.parent == owner / "releases/shared"
         and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.json", path.name)
+    ) or (
+        path.parent == owner / "licenses/shared"
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.md", path.name)
     ):
         return "fresh-metadata"
     raise ValueError("Image-extension asset is outside its reviewed owner: " + name)
@@ -111,8 +199,79 @@ def distribution_files(name):
     return result
 
 
-def package_owned(path, package_names, metadata_roots):
+def selected_distribution_files(name):
+    try:
+        return distribution_files(name)
+    except metadata.PackageNotFoundError:
+        if name not in CUDA_RUNTIME_VERSIONS:
+            raise
+        return {}
+
+
+def validate_runtime_dependencies(dependencies):
+    require(set(dependencies) <= set(DEPENDENCY_PACKAGES) | set(CUDA_RUNTIME_VERSIONS),
+            "Unreviewed runtime dependency migration")
+    selected = set(dependencies) & set(CUDA_RUNTIME_VERSIONS)
+    if selected:
+        require(selected == set(CUDA_RUNTIME_VERSIONS)
+                and all(dependencies[name].get("version") == version
+                        for name, version in CUDA_RUNTIME_VERSIONS.items()),
+                "CUDA runtime migration requires the complete reviewed version tuple")
+
+
+def cuda_protected_inputs(dependencies):
+    if not set(dependencies) & set(CUDA_RUNTIME_VERSIONS):
+        return {}, {}
+    versions = {name: metadata.version(name) for name in CUDA_PROTECTED_VERSIONS}
+    require(versions == CUDA_PROTECTED_VERSIONS, "CUDA migration protected versions differ")
+    files = {}
+    for name in ("cuda-pathfinder", "nvidia-cutlass-dsl"):
+        files.update(distribution_files(name))
+    # Inventory siblings even if the old foundation omitted their RECORDs.
+    # Only selected exact RECORD/wheel paths may change during installation.
+    namespace = SITE / "cuda"
+    require(not namespace.is_symlink(), "CUDA namespace is a symlink")
+    for path in namespace.rglob("*"):
+        require(not path.is_symlink(), "CUDA namespace contains a symlink")
+        if path.is_file() and path.suffix not in (".pyc", ".pyo"):
+            files[str(path)] = sha(path)
+    return versions, files
+
+
+def cuda_wheel_paths(name, wheel, version):
+    require(name in CUDA_RUNTIME_VERSIONS and version == CUDA_RUNTIME_VERSIONS[name],
+            "Unreviewed CUDA runtime wheel version")
+    paths, roots = wheel_install_paths({name: wheel})
+    owner = name.replace("-", "_") + "-" + version + ".dist-info"
+    require(roots == [SITE / owner], "CUDA wheel metadata namespace differs")
+    scope = {"cuda-bindings": ("cuda", "bindings"), "cuda-core": ("cuda", "core")}.get(name)
+    for path in paths:
+        file = Path(path)
+        require(file.is_relative_to(SITE), "CUDA wheel escapes its namespace")
+        parts = file.relative_to(SITE).parts
+        require(parts[0] == owner or (scope is not None and parts[:2] == scope and len(parts) > 2),
+                "CUDA wheel modifies an unreviewed namespace: " + str(path))
+    return paths
+
+
+def cuda_record_paths(name, files):
+    """An old RECORD cannot grant blanket ownership outside the same namespace."""
+    scope = {"cuda-bindings": ("cuda", "bindings"), "cuda-core": ("cuda", "core")}.get(name)
+    for path in files:
+        file = Path(path)
+        require(file.is_relative_to(SITE), "CUDA RECORD escapes its namespace")
+        parts = file.relative_to(SITE).parts
+        own_metadata = (parts[0].startswith(name.replace("-", "_") + "-")
+                        and parts[0].endswith(".dist-info"))
+        require(own_metadata or (scope is not None and parts[:2] == scope and len(parts) > 2),
+                "CUDA RECORD modifies an unreviewed namespace: " + str(path))
+    return set(files)
+
+
+def package_owned(path, package_names, metadata_roots, exact_paths=()):
     path = Path(path)
+    if str(path) in exact_paths:
+        return True
     if any(path.is_relative_to(SITE / name) for name in package_names):
         return True
     if any(path.is_relative_to(root) for root in metadata_roots):
@@ -214,7 +373,7 @@ def wheel_install_paths(wheels):
 
 
 def audit_selected_ownership(
-    selected_files, package_names, metadata_roots, parent_files, planned_paths=()
+    selected_files, package_names, metadata_roots, parent_files, planned_paths=(), exact_paths=()
 ):
     """Refuse unexplained RECORD extras/collisions before pip changes any files."""
     paths = {path for files in selected_files.values() for path in files}
@@ -226,7 +385,7 @@ def audit_selected_ownership(
         foreign = [
             item for item in owners[name] if item["distribution"] not in selected_names
         ]
-        extra = not package_owned(name, package_names, metadata_roots)
+        extra = not package_owned(name, package_names, metadata_roots, exact_paths)
         if extra:
             extras[name] = owners[name]
         if foreign:
@@ -254,8 +413,11 @@ def audit_selected_ownership(
                 {"path": name, "unexplained_extra": extra, "owners": owners[name]}
             )
     for name in sorted(set(planned_paths)):
-        if not package_owned(name, package_names, metadata_roots) or any(
-            item["distribution"] not in selected_names for item in owners[name]
+        unknown_existing = name in exact_paths and Path(name).exists() and name not in paths
+        if (
+            not package_owned(name, package_names, metadata_roots, exact_paths)
+            or unknown_existing
+            or any(item["distribution"] not in selected_names for item in owners[name])
         ):
             unowned.append(
                 {
@@ -409,11 +571,70 @@ def isolated_sglang_inventory():
     }
 
 
-def install_feature_update(context, descriptor):
+def verified_inherited_feature_update(parent):
+    """Retain migration provenance only while its owned catalogs/assets match.
+
+    This preserves the original record, including historical API preimages;
+    it does not rebind those preimages or qualify them against replacement wheels.
+    """
+    update = parent.get("feature_update")
+    if update is None:
+        return None
+    require(
+        isinstance(update, dict) and update.get("serving_qualified") is False
+        and isinstance(update.get("descriptor_sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", update["descriptor_sha256"])
+        and isinstance(update.get("assets"), dict) and update["assets"],
+        "Invalid inherited feature-update record",
+    )
+
+    def owned(name, expected):
+        require(isinstance(name, str) and isinstance(expected, str)
+                and re.fullmatch(r"[0-9a-f]{64}", expected),
+                "Invalid inherited feature evidence")
+        path = Path(name)
+        require(
+            path.is_absolute() and ".." not in path.parts
+            and not any(part.is_symlink() for part in (path, *path.parents))
+            and parent["files"].get(name) == expected
+            and path.is_file() and sha(path) == expected,
+            "Inherited feature evidence is unowned or changed: " + name,
+        )
+        return path
+
+    catalog = ROOT / "features/capabilities.json"
+    require(update.get("catalog") == str(catalog), "Inherited feature catalog differs")
+    owned(str(catalog), update.get("catalog_sha256"))
+    archived = owned(update.get("parent_catalog"), update.get("parent_capabilities_sha256"))
+    require(archived.parent == ROOT / "receipts"
+            and re.fullmatch(r"features-parent-[0-9a-f]{16}\.json", archived.name),
+            "Inherited parent feature catalog escapes its owner")
+    require(update["assets"].get(str(catalog), {}).get("sha256") == update["catalog_sha256"],
+            "Inherited feature assets omit the selected catalog")
+    for name, asset in update["assets"].items():
+        require(isinstance(asset, dict), "Invalid inherited feature asset")
+        target = owned(name, asset.get("sha256"))
+        # Map configurable test roots to the same production ownership rules.
+        if target.is_relative_to(ROOT):
+            logical = "/opt/sparkring/" + target.relative_to(ROOT).as_posix()
+        elif target.is_relative_to(SITE):
+            logical = "/opt/venv/lib/python3.12/site-packages/" + target.relative_to(SITE).as_posix()
+        else:
+            logical = name
+        feature_asset_scope(logical)
+    previous, current = read(archived), read(catalog)
+    require(previous.get("schema") == "sparkring-image-capabilities/v1"
+            and isinstance(previous.get("features"), dict),
+            "Unsupported inherited parent feature catalog")
+    verify_feature_dispositions(previous, current)
+    return copy.deepcopy(update)
+
+
+def install_feature_update(context, descriptor, parent=None):
     """Apply reviewed owned feature changes after preserving the parent catalog."""
     selected = descriptor.get("feature_update")
     if selected is None:
-        return {}, None
+        return {}, verified_inherited_feature_update(parent) if parent is not None else None
     require(
         selected.get("file") == "feature-update.json",
         "Feature descriptor is not an owned context file",
@@ -617,9 +838,15 @@ def verify_feature_dispositions(parent, child):
 
 def selected_boundary_identity(parent):
     """Use an owned versioned cache identity when the foundation declares one."""
-    selected = parent.get("cache_extension", {}).get("boundary_runtime")
+    native = parent.get("schema") == "sparkring-native-installed/v1"
+    selected = (parent.get("boundary_runtime") if native else
+                parent.get("cache_extension", {}).get("boundary_runtime"))
     if selected is None:
+        if native:
+            return None
         return ROOT / "contracts/boundary-runtime.json"
+    require(isinstance(selected, dict) and isinstance(selected.get("path"), str)
+            and isinstance(selected.get("sha256"), str), "Invalid boundary selection")
     path = Path(selected["path"])
     require(
         path.parent == ROOT / "contracts" and not path.is_symlink(),
@@ -755,15 +982,10 @@ def install(context):
         and compiler["source_trees"] == descriptor["source_trees"],
         "Compiler receipt does not bind accepted source",
     )
-    require(
-        sha(RECEIPT) == descriptor["parent_installed_sha256"],
-        "Foundation installed receipt differs",
-    )
-    parent = read(RECEIPT)
-    verify_files(parent["files"])
+    parent, raw_parent, parent_receipt = read_parent_foundation(descriptor)
     isolated_sglang = isolated_sglang_inventory()
     boundary_path = selected_boundary_identity(parent)
-    boundary = read(boundary_path) if boundary_path.exists() else None
+    boundary = read(boundary_path) if boundary_path is not None and boundary_path.exists() else None
     if boundary is not None:
         require(
             boundary.get("schema") == "sparkcache-boundary-runtime/v1",
@@ -781,18 +1003,17 @@ def install(context):
     }
     before = dict(parent["files"])
     dependencies = descriptor.get("runtime_dependencies", {})
-    require(
-        set(dependencies) <= set(DEPENDENCY_PACKAGES),
-        "Unreviewed runtime dependency migration",
-    )
+    validate_runtime_dependencies(dependencies)
+    protected_cuda_versions, cuda_namespace_before = cuda_protected_inputs(dependencies)
+    before.update(cuda_namespace_before)
     packages = ["vllm", "b12x", *dependencies]
-    package_names = [DEPENDENCY_PACKAGES.get(name, name) for name in packages]
+    package_names = [DEPENDENCY_PACKAGES.get(name, name) for name in packages if name not in CUDA_RUNTIME_VERSIONS]
     wheel_records = {**compiler["wheels"], **dependencies}
     selected = []
     selected_files, wheel_paths, normalizations = {}, {}, {}
-    metadata_roots = []
+    metadata_roots, exact_paths, cuda_destinations = [], set(), set()
     for name in packages:
-        selected_files[name] = distribution_files(name)
+        selected_files[name] = selected_distribution_files(name)
         before.update(selected_files[name])
         metadata_roots.extend(SITE.glob(name.replace("-", "_") + "-*.dist-info"))
         record = wheel_records[name]
@@ -803,6 +1024,12 @@ def install(context):
         )
         path = context / "wheels" / filename
         require(sha(path) == record["sha256"], "Compiled wheel bytes differ")
+        if name in CUDA_RUNTIME_VERSIONS:
+            destinations = cuda_wheel_paths(name, path, record["version"])
+            require(not cuda_destinations & destinations, "CUDA wheels collide in their shared namespace")
+            cuda_destinations.update(destinations)
+            exact_paths.update(cuda_record_paths(name, selected_files[name]))
+            exact_paths.update(destinations)
         if name == "flashinfer-python":
             path, normalizations[name] = isolate_flashinfer_build_helpers(
                 path, context / "installation-wheels", record["version"]
@@ -810,12 +1037,15 @@ def install(context):
         wheel_paths[name] = path
         selected.append(str(path))
     planned_paths, installed_metadata_roots = wheel_install_paths(wheel_paths)
+    require(not set(parent.get("removed_files", [])) & set(planned_paths),
+            "Native wheel reintroduces a foundation removed file")
     ownership_audit, preserved_helpers = audit_selected_ownership(
         selected_files,
         package_names,
         [*metadata_roots, *installed_metadata_roots],
         parent["files"],
         planned_paths,
+        exact_paths,
     )
     prior_errors = subprocess.run(
         [sys.executable, "-m", "pip", "check"], capture_output=True, text=True
@@ -839,6 +1069,8 @@ def install(context):
         {name: metadata.version(name) for name in protected_torch} == protected_torch,
         "Wheel installation changed protected Torch versions",
     )
+    require({name: metadata.version(name) for name in protected_cuda_versions} == protected_cuda_versions,
+            "Wheel installation changed protected CUDA dependencies")
     after_errors = subprocess.run(
         [sys.executable, "-m", "pip", "check"], capture_output=True, text=True
     ).stdout.splitlines()
@@ -847,9 +1079,9 @@ def install(context):
         "Native wheel introduces unsatisfied dependencies: "
         + str(sorted(set(after_errors) - set(prior_errors))),
     )
-    files, removed = {}, []
+    files, removed = {}, list(parent.get("removed_files", []))
     for path, expected in before.items():
-        if package_owned(path, package_names, metadata_roots):
+        if package_owned(path, package_names, metadata_roots, exact_paths):
             if not Path(path).exists():
                 removed.append(path)
         else:
@@ -864,12 +1096,14 @@ def install(context):
             "Installed distribution version differs",
         )
         files.update(distribution_files(name))
+        if name in CUDA_RUNTIME_VERSIONS:
+            continue
         # Include package additions that a retained foundation RECORD omitted.
         for path in (SITE / DEPENDENCY_PACKAGES.get(name, name)).rglob("*"):
             if path.is_file() and path.suffix not in (".pyc", ".pyo"):
                 files[str(path)] = sha(path)
     files.update(install_source_binding(context, descriptor, compiler))
-    feature_files, feature_update = install_feature_update(context, descriptor)
+    feature_files, feature_update = install_feature_update(context, descriptor, parent)
     files.update(feature_files)
     if isolated_sglang is not None:
         verify_files(isolated_sglang["files"])
@@ -890,6 +1124,8 @@ def install(context):
     ENTRYPOINT.parent.mkdir(parents=True, exist_ok=True)
     ENTRYPOINT.write_bytes(Path(__file__).read_bytes())
     files[str(ENTRYPOINT)] = sha(ENTRYPOINT)
+    retained_files, parent_receipt = retain_parent_receipt(raw_parent, parent_receipt)
+    files.update(retained_files)
     boundary_record = None
     if boundary is not None:
         # A compiled runtime gets a distinct attestation. This is identity
@@ -931,15 +1167,18 @@ def install(context):
         "input_sha256": descriptor["input_sha256"],
         "parent_image_id": descriptor["parent_image_id"],
         "parent_installed_sha256": descriptor["parent_installed_sha256"],
+        "parent_receipt": parent_receipt,
         "compiler": compiler,
         "files": files,
-        "removed_files": removed,
+        "removed_files": sorted(set(removed)),
         "versions": {
             **parent["versions"],
             **{name: metadata.version(name) for name in packages},
+            **protected_cuda_versions,
         },
         "foundation_dependency_exceptions": prior_errors,
         "runtime_dependencies": dependencies,
+        "protected_cuda_dependencies": protected_cuda_versions,
         "runtime_dependency_normalizations": normalizations,
         "distribution_ownership_audit": ownership_audit,
         "feature_update": feature_update,
@@ -959,14 +1198,10 @@ def install(context):
     return verify()
 
 
-def verify():
-    value = read(NATIVE)
-    require(
-        value.get("schema") == "sparkring-native-installed/v1" and value.get("files"),
-        "Missing native installed inventory",
-    )
+def verify_installed_state(value):
+    """Verify files, absent paths, versions and features before any replacement."""
     verify_files(value["files"])
-    for path in value["removed_files"]:
+    for path in value.get("removed_files", []):
         require(not Path(path).exists(), "Removed package file reappeared: " + path)
     for name, expected in value["versions"].items():
         require(
@@ -992,6 +1227,17 @@ def verify():
             require(paths, "Feature has no source inventory")
             verify_files(paths)
             features[name] = paths
+    verified_inherited_feature_update(value)
+    return features
+
+
+def verify():
+    value = read(NATIVE)
+    require(
+        value.get("schema") == "sparkring-native-installed/v1" and value.get("files"),
+        "Missing native installed inventory",
+    )
+    features = verify_installed_state(value)
     return {
         "schema": "sparkring-native-verification/v1",
         "receipt_sha256": sha(NATIVE),

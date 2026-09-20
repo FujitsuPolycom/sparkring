@@ -109,3 +109,66 @@ def test_even_bound_catalog_cannot_silently_remove_parent_feature(tmp_path):
     receipt["feature_update"]["assets"][catalog]["sha256"] = digest
     put(receipt_name, receipt)
     assert "replacement" in verify_bindings(tmp_path)[1][0]
+
+
+def prepared_transport(root, *, source_payload=b"accepted transport source"):
+    put, _, receipt, _, receipt_name, _ = migration(root)
+    source = "/opt/venv/lib/python3.12/site-packages/b12x/preparation/session.py"
+    source_hash = put(source, source_payload)
+    profile = "tp2-rocenante-adaptive-prepared"
+    manifest = "/opt/sparkring/transports/" + profile + "/manifest.json"
+    preimages = {source: source_hash}
+    manifest_hash = put(
+        manifest,
+        {
+            "schema": "sparkring-transport-bundle/v1",
+            "name": profile,
+            "image_source_preimages": preimages,
+        },
+    )
+    receipt["feature_update"]["assets"][manifest] = {"sha256": manifest_hash}
+    receipt["feature_update"]["transport_bundles"] = {
+        profile: {
+            "manifest": manifest,
+            "manifest_sha256": manifest_hash,
+            "image_source_preimages": preimages,
+        }
+    }
+    put(receipt_name, receipt)
+    return put, receipt, receipt_name, profile, manifest, source
+
+
+def test_prepared_transport_accepts_receipt_owned_installed_preimages(tmp_path):
+    _, _, _, _, _, source = prepared_transport(tmp_path)
+    assertions, failed = verify_bindings(tmp_path)
+    assert not failed and assertions == 2
+    assert source.endswith("b12x/preparation/session.py")
+
+
+def test_prepared_transport_rejects_installed_source_drift(tmp_path):
+    put, _, _, _, _, source = prepared_transport(tmp_path)
+    put(source, b"drift")
+    assert "Transport source preimage changed: " + source in verify_bindings(tmp_path)[1]
+
+
+def test_prepared_transport_rejects_receipt_manifest_preimage_disagreement(tmp_path):
+    put, receipt, receipt_name, profile, _, _ = prepared_transport(tmp_path)
+    receipt["feature_update"]["transport_bundles"][profile][
+        "image_source_preimages"
+    ] = {"/opt/venv/lib/python3.12/site-packages/b12x/other.py": "0" * 64}
+    put(receipt_name, receipt)
+    assert "Transport source preimage record differs" in verify_bindings(tmp_path)[1][0]
+
+
+def test_prepared_transport_rejects_manifest_without_source_preimages(tmp_path):
+    put, receipt, receipt_name, profile, manifest, _ = prepared_transport(tmp_path)
+    manifest_hash = put(
+        manifest,
+        {"schema": "sparkring-transport-bundle/v1", "name": profile},
+    )
+    receipt["feature_update"]["assets"][manifest]["sha256"] = manifest_hash
+    binding = receipt["feature_update"]["transport_bundles"][profile]
+    binding["manifest_sha256"] = manifest_hash
+    binding.pop("image_source_preimages")
+    put(receipt_name, receipt)
+    assert "Prepared transport lacks source preimages" in verify_bindings(tmp_path)[1][0]

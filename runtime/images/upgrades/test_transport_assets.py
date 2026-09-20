@@ -1,7 +1,9 @@
 """Image extension admission is bounded to reviewed transport and metadata owners."""
 
 import hashlib
+import io
 import json
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -19,6 +21,7 @@ from . import build_native
         ),
         ("/opt/venv/lib/python3.12/site-packages/sparkring_transport.pth", "transport"),
         ("/opt/sparkring/licenses/components.md", "fresh-metadata"),
+        ("/opt/sparkring/licenses/shared/shared-fixture.md", "fresh-metadata"),
         ("/opt/sparkring/releases/shared/manifest.json", "fresh-metadata"),
         ("/opt/sparkring/releases/shared/2026.09-candidate.json", "fresh-metadata"),
     ],
@@ -38,6 +41,12 @@ def test_reviewed_transport_and_fresh_metadata_paths_are_admitted(path, scope):
         "/opt/sparkring/releases/shared/install.py",
         "/opt/sparkring/releases/shared/subdir/manifest.json",
         "/opt/sparkring/releases/shared/../oops.json",
+        "/opt/sparkring/licenses/shared/../components.md",
+        "/opt/sparkring/licenses/shared/subdir/components.md",
+        "/opt/sparkring/licenses/shared/shared-fixture.py",
+        "/opt/sparkring/licenses/shared/.md",
+        "/opt/sparkring/licenses/shared/" + "a" * 97 + ".md",
+        "/opt/sparkring/licenses/shared//shared-fixture.md",
     ],
 )
 def test_legacy_and_unowned_destinations_remain_protected(path):
@@ -124,7 +133,16 @@ def test_transport_payload_or_api_drift_is_rejected(tmp_path, monkeypatch, defec
         module.verify_transport_assets(payloads)
 
 
-def test_release_metadata_update_cannot_overwrite_an_existing_identity(tmp_path):
+@pytest.mark.parametrize(
+    "target",
+    [
+        "/opt/sparkring/releases/shared/manifest.json",
+        "/opt/sparkring/licenses/shared/shared-fixture.md",
+    ],
+)
+def test_release_metadata_update_cannot_overwrite_an_existing_identity(
+    tmp_path, target
+):
     source = tmp_path / "sources.json"
     source.write_text("{}")
     manifest = tmp_path / "features.json"
@@ -133,7 +151,7 @@ def test_release_metadata_update_cannot_overwrite_an_existing_identity(tmp_path)
             {
                 "schema": "sparkring-native-feature-update/v1",
                 "assets": {
-                    "/opt/sparkring/releases/shared/manifest.json": {
+                    target: {
                         "source": source.name,
                         "sha256": module.sha(source),
                         "parent_sha256": "a" * 64,
@@ -153,3 +171,90 @@ def test_release_metadata_update_cannot_overwrite_an_existing_identity(tmp_path)
     }
     with pytest.raises(ValueError, match="fresh"):
         build_native.prepare_feature_update(policy, tmp_path / "context")
+
+
+@pytest.mark.parametrize("defect", [None, "existing", "parent-hash", "symlink"])
+def test_versioned_metadata_install_retains_inherited_files(monkeypatch, defect):
+    """Run the installer against a filesystem boundary with immutable old metadata."""
+    files, symlinks = {}, set()
+
+    class ImagePath(PurePosixPath):
+        def is_symlink(self):
+            return str(self) in symlinks
+
+        def exists(self):
+            return str(self) in files
+
+        def is_file(self):
+            return self.exists()
+
+        def read_bytes(self):
+            return files[str(self)]
+
+        def read_text(self):
+            return self.read_bytes().decode()
+
+        def open(self, mode):
+            assert mode == "rb"
+            return io.BytesIO(self.read_bytes())
+
+        def write_bytes(self, data):
+            files[str(self)] = data
+
+        def mkdir(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(module, "Path", ImagePath)
+    monkeypatch.setattr(module, "ROOT", ImagePath("/opt/sparkring"))
+    catalog = "/opt/sparkring/features/capabilities.json"
+    target = "/opt/sparkring/licenses/shared/shared-fixture.md"
+    files[catalog] = json.dumps(
+        {
+            "schema": "sparkring-image-capabilities/v1",
+            "features": {"retained": {}},
+        }
+    ).encode()
+    files["/opt/sparkring/licenses/components.md"] = b"Inherited license index.\n"
+    files["/opt/sparkring/releases/shared/shared-2026.09.3.json"] = b"{}\n"
+    assets = {
+        catalog: {"parent_sha256": module.sha(ImagePath(catalog))},
+        target: {"parent_sha256": None},
+    }
+    payloads = {catalog: files[catalog], target: b"Versioned license index.\n"}
+    for name, payload in payloads.items():
+        assets[name].update(
+            source="fixture", sha256=hashlib.sha256(payload).hexdigest()
+        )
+        files["/context/feature-assets" + name] = payload
+    if defect == "existing":
+        files[target] = b"Already published metadata.\n"
+    elif defect == "parent-hash":
+        assets[target]["parent_sha256"] = "a" * 64
+    elif defect == "symlink":
+        symlinks.add(str(ImagePath(target).parent))
+    files["/context/feature-update.json"] = json.dumps(
+        {
+            "schema": "sparkring-native-feature-update/v1",
+            "parent_capabilities_sha256": module.sha(ImagePath(catalog)),
+            "assets": assets,
+        }
+    ).encode()
+    descriptor = {
+        "input_sha256": "b" * 64,
+        "feature_update": {
+            "file": "feature-update.json",
+            "sha256": module.sha(ImagePath("/context/feature-update.json")),
+        },
+    }
+    before = files.copy()
+    if defect:
+        with pytest.raises(ValueError, match="preimage|fresh|symlink"):
+            module.install_feature_update(ImagePath("/context"), descriptor)
+        assert files == before
+    else:
+        installed, receipt = module.install_feature_update(
+            ImagePath("/context"), descriptor
+        )
+        assert installed[target] == hashlib.sha256(payloads[target]).hexdigest()
+        assert receipt["serving_qualified"] is False
+        assert all(files[name] == data for name, data in before.items())

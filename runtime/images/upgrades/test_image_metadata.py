@@ -196,6 +196,8 @@ def runtime(tmp_path, monkeypatch):
             return ("f" * 64).encode()
         if args[0] == "cp":
             path = args[1].split(":", 1)[1]
+            if path != module.RECEIPT and path not in image_files:
+                raise subprocess.CalledProcessError(1, ["docker", *args])
             data = (
                 module.encoded(state["receipt"])
                 if path == module.RECEIPT
@@ -269,6 +271,170 @@ def test_operator_step_verifies_metadata_without_starting_container(runtime):
     ) == module.without_labels(runtime["original"])
 
 
+def test_metadata_staging_refuses_unpullable_parent_before_registry_writes(runtime):
+    runtime["before"]["RootFS"]["Layers"] = [
+        "sha256:" + f"{index:064x}"
+        for index in range(module.MAX_PULLABLE_ROOTFS_LAYERS + 1)
+    ]
+    with pytest.raises(ValueError, match="flatten it before metadata staging"):
+        runtime["run"]()
+    assert not runtime["requests"]
+    assert not any(call[0] == "create" for call in runtime["calls"])
+
+
+@pytest.fixture
+def versioned(runtime):
+    path = "/opt/sparkring/licenses/shared/shared-fixture.md"
+    payload = b"Version-specific component licenses.\n"
+    digest = module.sha(payload)[7:]
+    runtime["files"][path] = payload
+    runtime["receipt"]["files"][path] = digest
+    runtime["source_index"]["component_license_index"] = {
+        "schema": "sparkring-versioned-component-license-index/v1",
+        "sha256": digest,
+    }
+    index = "/opt/sparkring/releases/shared/shared-fixture.json"
+    runtime["files"][index] = module.encoded(runtime["source_index"])
+    runtime["receipt"]["files"][index] = module.sha(runtime["files"][index])[7:]
+    runtime["license_path"] = path
+    return runtime
+
+
+def test_versioned_license_index_is_verified_and_labeled_without_legacy_changes(
+    versioned,
+):
+    original_files = copy.deepcopy(versioned["files"])
+    versioned["run"]()
+    proof = json.loads((versioned["output"] / "equivalence.json").read_bytes())
+    labels = json.loads(versioned["upload"])["config"]["Labels"]
+    path = versioned["license_path"]
+    assert labels["org.sparkring.component-license-index"] == path
+    assert "org.opencontainers.image.licenses" not in labels
+    assert proof["metadata_inputs"]["derived"]["component_license_index"] == {
+        "path": path,
+        "sha256": module.sha(original_files[path])[7:],
+    }
+    verified = proof["metadata_inputs"]["verified_installed_files"]
+    assert path in verified
+    assert "/opt/sparkring/licenses/components.md" not in verified
+    assert versioned["files"] == original_files
+
+
+def test_versioned_labels_replace_inherited_source_index_hash(versioned):
+    metadata = module.metadata_inputs(
+        versioned["receipt"],
+        versioned["manifest"],
+        versioned["catalog"],
+        versioned["source_index"],
+    )
+    labels = module.labels_for_parent(
+        {
+            "org.sparkring.source-index-sha256": "e" * 64,
+            "org.opencontainers.image.licenses": "Apache-2.0",
+        },
+        versioned["parent"],
+        metadata,
+    )
+    index = "/opt/sparkring/releases/shared/shared-fixture.json"
+    assert (
+        labels["org.sparkring.source-index-sha256"]
+        == versioned["receipt"]["files"][index]
+    )
+    assert "org.opencontainers.image.licenses" not in labels
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        None,
+        {},
+        {"schema": "unknown/v1", "sha256": "a" * 64},
+        {"schema": "sparkring-versioned-component-license-index/v1"},
+        {"schema": "sparkring-versioned-component-license-index/v1", "sha256": None},
+        {"schema": "sparkring-versioned-component-license-index/v1", "sha256": "bad"},
+        {
+            "schema": "sparkring-versioned-component-license-index/v1",
+            "sha256": "a" * 64,
+        },
+        {
+            "schema": "sparkring-versioned-component-license-index/v1",
+            "sha256": "a" * 64,
+            "path": "/opt/sparkring/licenses/components.md",
+        },
+    ],
+)
+def test_invalid_versioned_binding_cannot_fall_back_to_legacy(versioned, binding):
+    versioned["source_index"]["component_license_index"] = binding
+    index = "/opt/sparkring/releases/shared/shared-fixture.json"
+    versioned["files"][index] = module.encoded(versioned["source_index"])
+    versioned["receipt"]["files"][index] = module.sha(versioned["files"][index])[7:]
+    with pytest.raises(ValueError, match="[Cc]omponent license index"):
+        versioned["run"]()
+    assert not versioned["requests"]
+
+
+@pytest.mark.parametrize("defect", ["bytes", "missing-file", "missing-receipt"])
+def test_versioned_license_requires_installed_bytes_and_receipt(versioned, defect):
+    path = versioned["license_path"]
+    if defect == "bytes":
+        versioned["files"][path] += b"tampered"
+    elif defect == "missing-file":
+        del versioned["files"][path]
+    else:
+        del versioned["receipt"]["files"][path]
+    with pytest.raises((ValueError, subprocess.CalledProcessError)):
+        versioned["run"]()
+    assert not versioned["requests"]
+    assert not any(
+        call[0] == "cp" and call[1].endswith(":/opt/sparkring/licenses/components.md")
+        for call in versioned["calls"]
+    )
+
+
+@pytest.mark.parametrize("release", ["../escape", ".hidden", "x" * 97])
+def test_versioned_binding_rejects_release_names_outside_fresh_owner(
+    versioned, release
+):
+    versioned["manifest"]["release_candidate"] = release
+    versioned["source_index"]["version"] = release
+    with pytest.raises(ValueError, match="release identifier"):
+        module.metadata_inputs(
+            versioned["receipt"],
+            versioned["manifest"],
+            versioned["catalog"],
+            versioned["source_index"],
+        )
+
+
+def test_legacy_top_level_schema_keeps_fixed_license_convention(runtime):
+    runtime["source_index"]["schema"] = "retained-legacy-schema/v1"
+    index = "/opt/sparkring/releases/shared/shared-fixture.json"
+    runtime["files"][index] = module.encoded(runtime["source_index"])
+    runtime["receipt"]["files"][index] = module.sha(runtime["files"][index])[7:]
+    runtime["run"]()
+    labels = json.loads(runtime["upload"])["config"]["Labels"]
+    assert (
+        labels["org.sparkring.component-license-index"]
+        == "/opt/sparkring/licenses/components.md"
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/opt/sparkring/releases/shared/shared-fixture.json",
+        "/opt/sparkring/transports/prepared/manifest.json",
+    ],
+)
+def test_versioned_source_and_transport_bytes_are_bound_before_labeling(
+    versioned, path
+):
+    versioned["files"][path] += b"tampered"
+    with pytest.raises(ValueError, match="Installed metadata differs"):
+        versioned["run"]()
+    assert not versioned["requests"]
+
+
 def test_changed_catalog_fails_before_any_registry_write(runtime):
     runtime["files"]["/opt/sparkring/features/capabilities.json"] += b" "
     with pytest.raises(ValueError, match="Installed metadata differs"):
@@ -277,7 +443,9 @@ def test_changed_catalog_fails_before_any_registry_write(runtime):
     assert ("rm", "f" * 64) in runtime["calls"]
 
 
-def test_source_mismatch_fails_before_any_registry_write(runtime):
+@pytest.mark.parametrize("fixture_name", ["runtime", "versioned"])
+def test_source_mismatch_fails_before_any_registry_write(request, fixture_name):
+    runtime = request.getfixturevalue(fixture_name)
     runtime["receipt"]["compiler"]["source_trees"]["b12x"] = "0" * 64
     with pytest.raises(ValueError, match="Source snapshot differs"):
         runtime["run"]()
@@ -299,7 +467,9 @@ def test_changed_runtime_cannot_produce_equivalence_proof(runtime, change):
     assert not (runtime["output"] / "equivalence.json").exists()
 
 
-def test_transport_metadata_mismatch_is_rejected(runtime):
+@pytest.mark.parametrize("fixture_name", ["runtime", "versioned"])
+def test_transport_metadata_mismatch_is_rejected(request, fixture_name):
+    runtime = request.getfixturevalue(fixture_name)
     runtime["catalog"]["transport_profiles"]["prepared"]["manifest_sha256"] = "0" * 64
     with pytest.raises(ValueError, match="transport differs"):
         module.metadata_inputs(

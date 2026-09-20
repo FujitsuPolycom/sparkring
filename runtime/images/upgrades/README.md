@@ -135,6 +135,14 @@ extension is a Python-only update.
 
 ## Native compilation and verified reuse
 
+Native-built foundations use their `native-installed.json` inventory rather
+than an ancestor's `candidate-installed.json`. A present but invalid native
+receipt stops installation; it never falls back to stale metadata. The child
+retains the exact parent receipt bytes and verifies active cache contracts,
+file removals, features and the isolated SGLang environment. This also applies
+to Python-only cache extensions recorded in the native inventory. Matching
+metadata does not replace installed-file or GPU qualification.
+
 Use `init-r37 --native` to select the GB10 wheel compiler. Its private policy
 declares SM121a, eight compiler jobs, a CPU/memory limit, the Torch ABI and a
 compiler deadline. `foundation.compiler_image_id` may select an immutable
@@ -227,6 +235,35 @@ installer includes the dependency's installed files in its receipt and refuses
 new unsatisfied requirements. An isolated SGLang environment receives its own
 pre/post-install file inventory in addition to its composition receipt; changing
 the vLLM environment does not silently authorize changing SGLang.
+
+For CUDA 13.3 foundations, the dependency migration avoids newer optional driver
+symbol requests made by CUDA Python 13.4 bindings. It uses an all-or-none tuple: `cuda-python` 13.3.1,
+`cuda-bindings` 13.3.1 and `cuda-core` 1.0.1. Declare all three exact wheel hashes,
+versions and publisher URLs as runtime dependencies. Policy loading verifies and
+binds those wheel files. The installer requires and preserves `cuda-pathfinder`
+1.8.1, CUTLASS DSL 4.6.2 and Torch 2.13.0; missing or changed protected versions
+refuse the migration. It resolves no packages online and still rejects newly
+unsatisfied dependency checks.
+
+CUDA distributions share a namespace. The metapackage may install only its own
+distribution metadata; bindings and core may install only their respective
+`cuda/bindings` and `cuda/core` payloads plus metadata. Both old RECORD paths and
+new wheel destinations are audited. Unselected owners, unrecorded existing
+destinations and cross-wheel collisions refuse installation. The installer never
+grants ownership over the entire `cuda` directory: Pathfinder, other namespace
+siblings and protected DSL files retain their hashes. New CUDA packages can be
+installed without an old RECORD, while removals and replacements remain recorded
+in the child native inventory.
+
+This runtime dependency migration does not relax native-cache admission. Native
+source/build inputs, compiler image, Torch ABI, architecture, build mode and native
+member hashes must still match; drift with the default `refuse` policy stops the
+build. Reused engine wheels keep their original compiler provenance and remain
+`native_rebuilt: false`. Matching cache metadata does not establish compatibility
+between their compiled bytes, the selected CUDA Python API and JIT consumers.
+Installed import, CUDA kernel/graph and model checks remain required before use;
+an ABI or unsatisfied dependency failure is a blocker, not permission to edit
+requirements or relabel reused native binaries.
 
 `foundation.feature_update` names a hash-bound
 `sparkring-native-feature-update/v1` manifest. Each asset declares its owned
@@ -429,6 +466,49 @@ a proof that an LLM preserved every semantic property.
 
 ## Qualification boundaries
 
+### Versioned source and license metadata
+
+The installed `/opt/sparkring/releases/shared/<release>.json` source index can
+opt into an immutable versioned license index with this nested binding:
+
+```json
+"component_license_index": {
+  "schema": "sparkring-versioned-component-license-index/v1",
+  "sha256": "<SHA256 of the versioned component license index bytes>"
+}
+```
+
+`image_metadata.py` derives the license path as
+`/opt/sparkring/licenses/shared/<release>.md`. The release identifier must equal
+the supplied source manifest's release and use 1–96 ASCII letters, digits, dots,
+underscores or hyphens, starting with a letter or digit. No path is accepted in
+the binding or on the command line. Both index files must be present in the
+installed receipt and match their recorded hashes; the license hash must also
+match the source-index binding. Existing source-tree, catalog and transport
+checks still apply. The resulting labels and equivalence proof record the
+versioned license path, its verified hash, and the verified source-index hash.
+An inherited source-index hash label is replaced with the verified hash.
+
+Without `component_license_index`, the legacy fixed
+`/opt/sparkring/licenses/components.md` convention is retained, regardless of
+the legacy top-level source-index schema. A present but null, incomplete or
+unknown nested binding is rejected; it cannot fall back to the legacy file.
+Recorded legacy golden labels remain unchanged. The image does not receive
+a blanket OCI license declaration or additional serving qualification.
+
+The native installer admits versioned license files only at fresh destinations.
+Inherited license/release files, including the fixed license index, cannot be
+overwritten through metadata admission. Stage new metadata through an explicitly
+reviewed feature-update descriptor and installed receipt. That existing update
+mechanism requires a child capability catalog and derives transport proofs from
+declared assets; a metadata-only plan must preserve the catalog and applicable
+transport evidence explicitly. Path admission is not an automatic metadata
+migration. New filesystem metadata changes image identity and is distinct from
+the subsequent labels-only equivalence step. No release identifier or publisher
+is selected by this convention.
+
+### Admission scope
+
 | Layer | Implemented admission | Evidence not supplied by the initializer |
 |---|---|---|
 | Source | Baseline, upstream and candidate oracle runs; source-digest binding; bounded repair | Whole-runtime behavioral equivalence |
@@ -440,8 +520,11 @@ The supplied source recipe runs the retained recurrent-checkpoint and hybrid
 recovery CPU tests and B12X two-checkpoint CPU tests inside the foundation.
 These container gates must be calibrated on the builder; a missing dependency,
 skipped test or zero-test receipt is not success. Candidate image gates reject
-changed feature source preimages and SparkCache lease-contract bindings. They
-do not rewrite those hashes to make an incompatible composition appear valid.
+changed feature source preimages, prepared-transport source preimages and
+SparkCache lease-contract bindings. Prepared transport manifests must be owned
+by the installed feature-update receipt, identify the selected transport, and
+agree with the receipt's preimage map. The gate does not rewrite those hashes to
+make an incompatible composition appear valid.
 
 The supplied recipe has no hardware gates or publisher command. It cannot
 claim GLM/Qwen/DeepSeek, TP2/TP4, cache restart/corruption, multimodal or performance
@@ -477,6 +560,28 @@ Status: **implemented**. The standalone
 [`image_metadata`](image_metadata.py) operator step derives release labels from
 the selected image's installed source, feature and transport receipts. It changes
 only OCI labels; it does not rebuild code, qualify profiles or publish to GHCR.
+
+Docker can construct local images whose layer chains cannot later be imported
+from a registry. Metadata staging therefore refuses parents with more than 120
+root filesystem layers. Convert such a parent locally before metadata staging:
+
+```bash
+python -m runtime.images.upgrades.image_flatten \
+  --source-image sha256:PARENT_CONFIG_HEX \
+  --target-tag sparkring:flattened-RELEASE_ID \
+  --container sparkring-flatten-UNIQUE_ID \
+  --output /var/tmp/sparkring-image-flatten-UNIQUE_ID \
+  --execute
+```
+
+The source must be an immutable Linux ARM64 image ID, the target tag and output
+directory must be unused, and Docker's data root must have at least twice the
+image's logical size plus 10 GiB free. The step never starts the temporary
+container or pushes externally. It refuses image semantics that Docker import
+cannot preserve, verifies the installed runtime before and after conversion,
+requires one output layer, compares supported runtime configuration fields and
+writes `flatten.json`. Use the resulting immutable image ID as the metadata
+parent; do not treat flattening as serving qualification.
 
 On a Linux ARM64 Docker host, stage the exact parent image in an operator-owned
 registry bound to `127.0.0.1:19555`, repository `sparkring/native`, tagged with its

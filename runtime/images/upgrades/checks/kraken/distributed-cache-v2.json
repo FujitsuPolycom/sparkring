@@ -1,0 +1,27 @@
+{
+  "schema": "sparkring-kraken-distributed-cache-oracle/v2",
+  "contract_version": 2,
+  "test": "distributed_cache_v2.py",
+  "test_sha256": "5feb48e6d51924cdce30d1494c4333648ebd42faf6d148f531274f25aa67fe24",
+  "scope": "CPU metadata protocol for the reconciled Kraken candidate; no GPU, process transport, or serving qualification",
+  "upstream_bases": {
+    "vllm": "af9e4dca109e0348323c0182e98a3aaf7282bfc3",
+    "b12x": "0f3a8cbfd1c11d27f04e3ab37a802d522f4f1c68"
+  },
+  "observed_source_sha256": {
+    "b12x/b12x/preparation/types.py": "0080c95c24d483f9ff8bd696dbc134f5e03ba6e2a34f4456cb4317c694d4f31a",
+    "b12x/b12x/preparation/_cache.py": "f014ab0b470953bcb22176ec1ccd6ca0f3b3e71ee82ad7e1b6b53b44cc97c7b8",
+    "b12x/b12x/preparation/session.py": "5e2611c9c0b747b6a5b1100ad6c6ba61a724707028e77cedb8c95cf3cd7a6127",
+    "vllm/vllm/v1/worker/b12x_startup.py": "f852b138cb21f295a9bde5da150cac894bb6d2e2a0ce25a3b179fe68605857d9"
+  },
+  "required_environment": [
+    "SPARKRING_B12X_SOURCE_ROOT",
+    "SPARKRING_VLLM_SOURCE_ROOT"
+  ],
+  "result": {
+    "tests_passed": 27,
+    "tests_skipped": 0,
+    "platform_scope": "Windows CPU"
+  },
+  "integration": "Independent reviewed contract. Does not replace, modify, or override the existing protected source suites. Verify source provenance and this test digest in the consuming gate."
+}

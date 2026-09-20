@@ -1,0 +1,84 @@
+{
+  "schema": "sparkring-prerelease-qualification/v1",
+  "release": "shared-2026.09.4-rc.3",
+  "status": "research-only",
+  "full_model_qualification": false,
+  "published_image": "sha256:764b26343c37b6321544079ef5f9cedfe46161a995cfa3c86528acec352233b9",
+  "tested_runtime_image": "sha256:c57f939fde8ca5d7134f20ec1da6a16321dd023e662ce2392d94e14390de71a1",
+  "runtime_equivalence": {
+    "rootfs_layers_equal": true,
+    "runtime_configuration_except_labels_equal": true,
+    "installed_receipt_sha256": "22a02b3a5a30401d5a5c2203ca5bad8f20e5ba8b2cac26594d89fc2419441a90"
+  },
+  "qualified_profiles": [
+    {
+      "profile": "qwen38-flash-next-tp2-sparkcache",
+      "topology": "TP2/DCP1",
+      "result": "passed",
+      "scope": "startup, finite READY generation, 33042-token chunked prefill, bounded solid-color image/video interpretation, RoCEnante activation and SparkCache health on two ranks",
+      "kv_tokens": 2877721,
+      "sparkcache_ranks": 2,
+      "sparkcache_limit_gib": 8
+    },
+    {
+      "profile": "qwen38-flash-next-qad-tp4-sparkcache",
+      "topology": "TP4/DCP1",
+      "result": "passed",
+      "scope": "startup, finite READY generation, 33042-token chunked prefill, bounded solid-color image/video interpretation, HC prefill/decode execution, RoCEnante activation and SparkCache health on four ranks",
+      "kv_tokens": 3131214,
+      "sparkcache_ranks": 4,
+      "sparkcache_limit_gib": 16
+    }
+  ],
+  "media_evidence": {
+    "result": "passed",
+    "topologies": ["TP2/DCP1", "TP4/DCP1"],
+    "fixture": "Three 64x64 solid-color images in red/green/blue order and one one-second 224x224 red video",
+    "observed": "Both deployments returned red, green and blue for the images and red for the video",
+    "private_record_sha256": "1e8c1e40b28187662b940d49fcc2545124ed3bc490313b8a3589ade51e58eb5c",
+    "limitation": "The bounded synthetic fixture does not establish arbitrary image or video accuracy"
+  },
+  "chunked_prefill_evidence": {
+    "result": "passed",
+    "topologies": ["TP2/DCP1", "TP4/DCP1"],
+    "prompt_tokens": 33042,
+    "configured_batch_tokens": 8192,
+    "observed": "Both deployments returned the exact deterministic lookup code",
+    "private_record_sha256": "f7e5c8a00894534a082cfad70191aaad21dcdb5aed8130a6ab9d13ef58f05544",
+    "limitation": "One bounded chunked prompt does not establish throughput or full-context stability"
+  },
+  "finite_score_evidence": {
+    "result": "passed",
+    "topologies": ["TP2/DCP1", "TP4/DCP1"],
+    "observed": "Both deployments returned SCORE_OK with finite selected-token and top-token log probabilities",
+    "private_record_sha256": "0b4cc96ee7805a7db787a74725460608e74618b6f9f3f744a1b65c8f5b3ef84e",
+    "limitation": "One short scored completion does not establish model quality"
+  },
+  "isolated_sglang_evidence": {
+    "result": "passed",
+    "scope": "CPU-only isolated composition verification and server CLI import",
+    "files_checked": 4829,
+    "composition_sha256": "3ed1e1c6c8513be9dc550d41e1c5db66575bb7a1ce89fcaac243a5b93fac9ee5",
+    "server_cli_import": "passed",
+    "limitation": "Runtime inventory and CLI verification do not establish GPU startup or authenticated generation"
+  },
+  "component_evidence": [
+    {"scope": "KDA projection behavior, stable selector, raw-ring sanitizer and graph prewarm", "result": "passed", "basis": "runtime-equivalent candidates with retained image lineage"},
+    {"scope": "Shared-pool replay, compressed and raw high offsets, chunked selection and TP4-shaped numerical replay", "result": "passed", "cases": 6, "external_test_manifest_sha256": "a9120e9cbd20ead32149befcc1c04d24b6bf043bd66e0c9cffc703204e1728ac"},
+    {"scope": "Native route packing, MoE, dense A16 and preparation", "result": "passed", "cases": 27, "external_test_manifest_sha256": "e675af3fc7bd250a49a427a64c741ef20f65b5713985c821bfa29066d8992edf"}
+  ],
+  "pending": [
+    "Qwen cache-disabled TP2/TP4 serving",
+    "Exact-image SparkCache retained restart and physical all-rank restore",
+    "GLM Spark and QAD TP2/TP4 serving",
+    "Matched performance",
+    "SGLang startup and generation",
+    "Complete verifier M9/M16 numerical qualification"
+  ],
+  "limitations": [
+    "Bounded startup and generation checks do not establish full-context or concurrency-pressure stability",
+    "Issue 278 and long-duration collective failures remain unresolved"
+  ],
+  "experimental_multisequence_mtp_included": false,
+  "stable_defaults_changed": false
+}

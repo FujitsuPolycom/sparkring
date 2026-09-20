@@ -1,0 +1,35 @@
+{
+  "baseline_only": [],
+  "candidate_only": [
+    "kda_preparation_lifetime.py",
+    "qwen_checkpoint_metadata.py",
+    "qsa_padding_metadata.py",
+    "qwen_hc_ownership.py",
+    "ple_checkpoint_metadata.py",
+    "kraken/connector_publication_scope_v1.py"
+  ],
+  "common": [
+    "checkpoint_reservation.py",
+    "hybrid_recovery.py",
+    "block_state_snapshot.py",
+    "recurrent_checkpoint_math.py::test_fresh_and_continuation_plans_export_exact_retained_boundaries",
+    "recurrent_checkpoint_math.py::test_checkpoint_plan_can_carry_only_the_final_running_state",
+    "recurrent_checkpoint_math.py::test_unrepresentable_or_over_budget_final_spans_use_ordinary_splitting",
+    "recurrent_checkpoint_math.py::test_worker_checkpoint_rows_follow_request_order_and_reject_span_drift"
+  ],
+  "component": "vllm",
+  "files": {
+    "kda_preparation_lifetime.py": "be4908ddfee607d4ba726e6e38286d0c2abfe620862fdb2741af85d04dcd5b84",
+    "block_state_snapshot.py": "008a4ed7e3a07162bef8322a8fdd0789441f799b4fb703a40a4f19ffe1797073",
+    "checkpoint_reservation.py": "94faed159e5ae260018b7fbb8313c553c592b1f1f3f942ffd1ef1070a2cebaed",
+    "connector_publication_retention.py": "3009e8528fa65d538f69e3d93ddcb3a41c65685fda16f8a13166e39208d86e1f",
+    "hybrid_recovery.py": "f69c7b940a269c743d0f71e6fc90a3358e702e5e216b094b2f6f06fc9801a274",
+    "ple_checkpoint_metadata.py": "af17a78bfd997ac45e457401624b64213fa9f01c2b83158c049f69b896d07962",
+    "qwen_checkpoint_metadata.py": "a6e1a42d1f4c61ab8d6c87e488caf48dba32a0faa9f061af8995f4cd200f7b11",
+    "qsa_padding_metadata.py": "894af9798c9fcc417efe62cc3b50873d49bb37d2eac2dae99f3860b1ba660854",
+    "qwen_hc_ownership.py": "e39144efa6556ae0d815e7a35038941b548e62202d2854c14e3f9881ec0b9537",
+    "recurrent_checkpoint_math.py": "9d4b236d5403a1f0d75dd73324a079b6e3b5a129ddc9b31e9726fd7a2bc5c58d",
+    "kraken/connector_publication_scope_v1.py": "228efe312d91faa48b828363fa92cd6dfb4732e1eaf8cd8ab270375ff8ecb163"
+  },
+  "schema": "sparkring-protected-source-suite/v1"
+}

@@ -74,6 +74,47 @@ def selected_manifests(root, installed):
     return manifests
 
 
+def transport_preimages(root, installed):
+    """Return source bindings for every receipt-owned prepared transport."""
+    update = installed.get("feature_update")
+    if update is None:
+        return []
+    assets = update.get("assets")
+    bundles = update.get("transport_bundles", {})
+    if not isinstance(assets, dict) or not isinstance(bundles, dict):
+        raise ValueError("Feature migration transport inventory is invalid")
+    result = []
+    for profile, binding in bundles.items():
+        if not isinstance(profile, str) or not isinstance(binding, dict):
+            raise ValueError("Transport bundle binding is invalid")
+        name, expected = binding.get("manifest"), binding.get("manifest_sha256")
+        if (
+            not isinstance(name, str)
+            or not isinstance(expected, str)
+            or assets.get(name, {}).get("sha256") != expected
+        ):
+            raise ValueError("Transport manifest is not owned: " + str(profile))
+        manifest = json.loads(checked_file(root, name, expected).read_text())
+        if (
+            manifest.get("schema") != "sparkring-transport-bundle/v1"
+            or manifest.get("name") != profile
+        ):
+            raise ValueError("Transport manifest identity differs: " + profile)
+        preimages = manifest.get("image_source_preimages")
+        recorded = binding.get("image_source_preimages")
+        if profile.endswith("-prepared") and not preimages:
+            raise ValueError("Prepared transport lacks source preimages: " + profile)
+        if preimages is None:
+            if recorded is not None:
+                raise ValueError("Transport receipt adds absent source preimages: " + profile)
+            continue
+        if not isinstance(preimages, dict) or not preimages or recorded != preimages:
+            raise ValueError("Transport source preimage record differs: " + profile)
+        for source, digest in preimages.items():
+            result.append((source, digest))
+    return result
+
+
 def verify_installed_lease(root, contract):
     """Run the consumer's installed schema/hash/AST checks without importing vLLM."""
     site = root / "opt/venv/lib/python3.12/site-packages"
@@ -121,6 +162,21 @@ def verify_bindings(root=Path("/")):
                 ):
                     failed.append("Feature source preimage changed: " + name)
                 assertions += 1
+    try:
+        transports = transport_preimages(root, installed)
+    except (ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as error:
+        failed.append("Transport binding failed: " + str(error))
+        transports = []
+    for name, expected in transports:
+        path = root / name.lstrip("/")
+        if (
+            not isinstance(expected, str)
+            or not path.resolve().is_relative_to(root.resolve())
+            or not path.is_file()
+            or hashlib.sha256(path.read_bytes()).hexdigest() != expected
+        ):
+            failed.append("Transport source preimage changed: " + name)
+        assertions += 1
     active = None
     if installed_path.exists():
         active = installed.get(
