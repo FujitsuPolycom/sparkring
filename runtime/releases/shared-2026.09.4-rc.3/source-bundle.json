@@ -8,7 +8,7 @@
     {"name": "b12x.patch", "sha256": "12e83d2b4d3dc93a334f2707727aa1a4fa5250bbb69078e583919e4963e4be41"},
     {"name": "vllm-sources.tar.gz", "sha256": "f191d0952798c76e5cc48d10d8552a89efe8370197fe17ddaf0de99842f8434d"},
     {"name": "b12x-sources.tar.gz", "sha256": "bdec13031e4988ad83a6ca4e7d15e893451a604817cdb63d43bf046efb1d41fb"},
-    {"name": "components.md", "sha256": "3c5d75953dabf2afc6c54117e347cb68fe5ada8e9c3f7716d5c45928937eea77"}
+    {"name": "components.md", "sha256": "1f479238e8fae65e54a77a814520702ddd07220bfd2a7ae65b909fb9aa03c196"}
   ],
   "independent_reconstruction_verified": true,
   "scope": "vLLM and B12X admitted sources plus component notices; image-layout and transport-manifest corrections do not change those source trees."
