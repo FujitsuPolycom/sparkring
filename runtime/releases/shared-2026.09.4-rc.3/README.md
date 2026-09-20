@@ -42,7 +42,7 @@ must not be used.
 | [Qwen Flash-Next QAD TP4 without SparkCache](../../../profiles/qwen38-flash-next-qad-tp4/README.md) | Expected compatible; not checked on this prerelease |
 | [GLM Flash SparkCache TP2](../../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Pending; Spark and QAD checkpoints require separate checks |
 | [GLM Flash SparkCache TP4](../../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Pending; Spark and QAD checkpoints require separate checks |
-| [DeepSeek SGLang](../../../profiles/deepseek-v41-flash-sglang-cycle/README.md) | Runtime inventory preserved; startup and generation pending |
+| [DeepSeek SGLang](../../../profiles/deepseek-v41-flash-sglang-cycle/README.md) | Isolated composition verifier passed 4,829 files and the server CLI imported; GPU startup and authenticated generation pending |
 
 The Qwen checks used 262,144-token context, 16 sequences, batch 8192, 24 GiB
 FP8 KV per rank, MTP3, three-image/one-video limits and fresh SparkCache/compiler

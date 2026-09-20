@@ -54,6 +54,14 @@
     "private_record_sha256": "0b4cc96ee7805a7db787a74725460608e74618b6f9f3f744a1b65c8f5b3ef84e",
     "limitation": "One short scored completion does not establish model quality"
   },
+  "isolated_sglang_evidence": {
+    "result": "passed",
+    "scope": "CPU-only isolated composition verification and server CLI import",
+    "files_checked": 4829,
+    "composition_sha256": "3ed1e1c6c8513be9dc550d41e1c5db66575bb7a1ce89fcaac243a5b93fac9ee5",
+    "server_cli_import": "passed",
+    "limitation": "Runtime inventory and CLI verification do not establish GPU startup or authenticated generation"
+  },
   "component_evidence": [
     {"scope": "KDA projection behavior, stable selector, raw-ring sanitizer and graph prewarm", "result": "passed", "basis": "runtime-equivalent candidates with retained image lineage"},
     {"scope": "Shared-pool replay, compressed and raw high offsets, chunked selection and TP4-shaped numerical replay", "result": "passed", "cases": 6, "external_test_manifest_sha256": "a9120e9cbd20ead32149befcc1c04d24b6bf043bd66e0c9cffc703204e1728ac"},
