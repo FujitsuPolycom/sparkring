@@ -1,0 +1,53 @@
+{
+  "schema": "sparkring-prerelease-qualification/v1",
+  "release": "shared-2026.09.4-rc.3",
+  "status": "research-only",
+  "full_model_qualification": false,
+  "published_image": "sha256:764b26343c37b6321544079ef5f9cedfe46161a995cfa3c86528acec352233b9",
+  "tested_runtime_image": "sha256:c57f939fde8ca5d7134f20ec1da6a16321dd023e662ce2392d94e14390de71a1",
+  "runtime_equivalence": {
+    "rootfs_layers_equal": true,
+    "runtime_configuration_except_labels_equal": true,
+    "installed_receipt_sha256": "22a02b3a5a30401d5a5c2203ca5bad8f20e5ba8b2cac26594d89fc2419441a90"
+  },
+  "qualified_profiles": [
+    {
+      "profile": "qwen38-flash-next-tp2-sparkcache",
+      "topology": "TP2/DCP1",
+      "result": "passed",
+      "scope": "startup, finite READY generation, RoCEnante activation and SparkCache health on two ranks",
+      "kv_tokens": 2877721,
+      "sparkcache_ranks": 2,
+      "sparkcache_limit_gib": 8
+    },
+    {
+      "profile": "qwen38-flash-next-qad-tp4-sparkcache",
+      "topology": "TP4/DCP1",
+      "result": "passed",
+      "scope": "startup, finite READY generation, HC prefill/decode execution, RoCEnante activation and SparkCache health on four ranks",
+      "kv_tokens": 3131214,
+      "sparkcache_ranks": 4,
+      "sparkcache_limit_gib": 16
+    }
+  ],
+  "component_evidence": [
+    {"scope": "KDA projection behavior, stable selector, raw-ring sanitizer and graph prewarm", "result": "passed", "basis": "runtime-equivalent candidates with retained image lineage"},
+    {"scope": "Shared-pool replay, compressed and raw high offsets, chunked selection and TP4-shaped numerical replay", "result": "passed", "cases": 6, "external_test_manifest_sha256": "a9120e9cbd20ead32149befcc1c04d24b6bf043bd66e0c9cffc703204e1728ac"},
+    {"scope": "Native route packing, MoE, dense A16 and preparation", "result": "passed", "cases": 27, "external_test_manifest_sha256": "e675af3fc7bd250a49a427a64c741ef20f65b5713985c821bfa29066d8992edf"}
+  ],
+  "pending": [
+    "Qwen cache-disabled TP2/TP4 serving",
+    "Exact-image SparkCache retained restart and physical all-rank restore",
+    "GLM Spark and QAD TP2/TP4 serving",
+    "Selected media checks",
+    "Matched performance",
+    "SGLang startup and generation",
+    "Complete verifier M9/M16 numerical qualification"
+  ],
+  "limitations": [
+    "Bounded startup and generation checks do not establish full-context or concurrency-pressure stability",
+    "Issue 278 and long-duration collective failures remain unresolved"
+  ],
+  "experimental_multisequence_mtp_included": false,
+  "stable_defaults_changed": false
+}

@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "shared-2026.09.4-rc.3",
+  "selection": "published-experimental-prerelease",
+  "status": "research-only",
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:9450b6964aa87cdb44e3b190df9b6db12289a8850ee3513e5278241e70245a64",
+  "stable_defaults_changed": false,
+  "full_model_qualification": false
+}
