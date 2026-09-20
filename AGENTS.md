@@ -9,6 +9,13 @@ The [layout guide](docs/development/layout.md) defines ownership; the
 - Work within the user's scope. Local editing and offline tests are ordinary
   development. Posting, merging, publishing and changing running hosts require
   applicable authorization; respect authorization already given.
+  For issue triage: review every open issue's body and comment thread against
+  the current checkout before assigning a disposition. Every disposition
+  (close completed, close not planned, progress comment, stays open, scope
+  error) must cite the file, symbol, or test in this repository that it rests
+  on, and must not cite an artifact that does not exist yet. Present the
+  disposition table and proposed close/comment batch first; posting any of it
+  requires the session's explicit authorization.
 - Find the existing owner before adding a file. Prefer configuration and shared
   implementation to copied launchers. Generated compatibility exports are edited
   through their source and [generator](scripts/generate_profiles.py).
