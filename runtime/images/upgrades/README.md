@@ -520,8 +520,11 @@ The supplied source recipe runs the retained recurrent-checkpoint and hybrid
 recovery CPU tests and B12X two-checkpoint CPU tests inside the foundation.
 These container gates must be calibrated on the builder; a missing dependency,
 skipped test or zero-test receipt is not success. Candidate image gates reject
-changed feature source preimages and SparkCache lease-contract bindings. They
-do not rewrite those hashes to make an incompatible composition appear valid.
+changed feature source preimages, prepared-transport source preimages and
+SparkCache lease-contract bindings. Prepared transport manifests must be owned
+by the installed feature-update receipt, identify the selected transport, and
+agree with the receipt's preimage map. The gate does not rewrite those hashes to
+make an incompatible composition appear valid.
 
 The supplied recipe has no hardware gates or publisher command. It cannot
 claim GLM/Qwen/DeepSeek, TP2/TP4, cache restart/corruption, multimodal or performance
