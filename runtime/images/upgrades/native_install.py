@@ -150,6 +150,9 @@ def feature_asset_scope(name):
     if path == owner / "licenses/components.md" or (
         path.parent == owner / "releases/shared"
         and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.json", path.name)
+    ) or (
+        path.parent == owner / "licenses/shared"
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.md", path.name)
     ):
         return "fresh-metadata"
     raise ValueError("Image-extension asset is outside its reviewed owner: " + name)

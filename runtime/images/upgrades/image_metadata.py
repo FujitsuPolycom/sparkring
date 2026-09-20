@@ -74,6 +74,36 @@ def docker(*args):
     )
 
 
+def component_license_index(receipt, source_index, release):
+    """Bind a versioned index without reinterpreting legacy top-level schemas."""
+    path = "/opt/sparkring/licenses/components.md"
+    if "component_license_index" in source_index:
+        binding = source_index["component_license_index"]
+        require(
+            isinstance(binding, dict)
+            and set(binding) == {"schema", "sha256"}
+            and binding["schema"] == "sparkring-versioned-component-license-index/v1",
+            "Unsupported component license index binding",
+        )
+        require(
+            isinstance(release, str)
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", release),
+            "Invalid versioned release identifier",
+        )
+        path = f"/opt/sparkring/licenses/shared/{release}.md"
+        digest = binding["sha256"]
+    else:
+        # The absence of this nested binding is the explicit legacy convention.
+        digest = receipt["files"].get(path)
+    require(
+        isinstance(digest, str)
+        and re.fullmatch(r"[0-9a-f]{64}", digest)
+        and receipt["files"].get(path) == digest,
+        "Component license index differs from installed receipt",
+    )
+    return {"path": path, "sha256": digest}
+
+
 def metadata_inputs(receipt, manifest, catalog, source_index):
     require(
         manifest["schema"] == "sparkring-release-source-inputs/v1",
@@ -112,7 +142,7 @@ def metadata_inputs(receipt, manifest, catalog, source_index):
         == transport["manifest_sha256"],
         "Feature catalog transport differs from installed receipt",
     )
-    return {
+    metadata = {
         "release": release,
         "components": components,
         "features": sorted(catalog["features"]),
@@ -120,7 +150,19 @@ def metadata_inputs(receipt, manifest, catalog, source_index):
         "feature_catalog_sha256": update["catalog_sha256"],
         "transport_profile": profile,
         "transport_manifest_sha256": transport["manifest_sha256"],
+        "component_license_index": component_license_index(
+            receipt, source_index, release
+        ),
     }
+    if "component_license_index" in source_index:
+        path = f"/opt/sparkring/releases/shared/{release}.json"
+        digest = receipt["files"].get(path)
+        require(
+            isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest),
+            "Versioned source index is absent from installed receipt",
+        )
+        metadata["source_index_sha256"] = digest
+    return metadata
 
 
 def labels_for_parent(old, parent, metadata):
@@ -154,7 +196,10 @@ def labels_for_parent(old, parent, metadata):
             "org.sparkring.release": metadata["release"],
             "org.sparkring.status": "implemented; profile qualification pending",
             "org.sparkring.features": ",".join(metadata["features"]),
-            "org.sparkring.component-license-index": "/opt/sparkring/licenses/components.md",
+            "org.sparkring.component-license-index": metadata.get(
+                "component_license_index",
+                {"path": "/opt/sparkring/licenses/components.md"},
+            )["path"],
             "org.sparkring.source-index": "/opt/sparkring/releases/shared/"
             + metadata["release"]
             + ".json",
@@ -176,6 +221,8 @@ def labels_for_parent(old, parent, metadata):
         labels["org.sparkring." + name + ".snapshot-sha256"] = component[
             "accepted_snapshot_sha256"
         ]
+    if "source_index_sha256" in metadata:
+        labels["org.sparkring.source-index-sha256"] = metadata["source_index_sha256"]
     return labels
 
 
@@ -279,10 +326,10 @@ def main(argv=None):
         index_raw = verified_file(
             "/opt/sparkring/releases/shared/" + release + ".json", "source-index.json"
         )
-        verified_file("/opt/sparkring/licenses/components.md", "components.md")
         metadata = metadata_inputs(
             receipt, source_manifest, json.loads(catalog_raw), json.loads(index_raw)
         )
+        verified_file(metadata["component_license_index"]["path"], "components.md")
         transport = receipt["feature_update"]["transport_bundles"][
             metadata["transport_profile"]
         ]

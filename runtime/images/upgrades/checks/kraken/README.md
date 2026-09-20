@@ -24,12 +24,15 @@ source-only checks, or use the exact installed connector in the test image.
 |---|---|
 | Common KDA checkpoint behavior | Unchanged, on both baseline and candidate |
 | R37-only checkpoint helper import | Not selected: that helper is absent from the 2026.09.3 baseline; common checkpoint behavior remains required |
-| Legacy QSA kernel-count and replacement tests | Exact 2026.09.3 inventory, selector identity and effective mutation tests in the [QSA oracle](QSA_RELEASE3_V1.md) |
+| Legacy QSA kernel-count and replacement tests | Exact 2026.09.3 inventory, selector identity and effective mutation tests in the [QSA oracle, version 2](QSA_RELEASE3_V2.md); version 1 records only the first admitted change |
 | Pre-agreement distributed tuning fixture | Production cache-agreement handshake and cancellation in the [version-2 oracle](distributed-cache-v2.md) |
 | Other prepared-kernel, PLE, GDN, compiler and lifetime checks | Unchanged |
 
-The QSA exception is limited to the reviewed raw-ring bounds guard and its
-runtime row-count argument. It does not admit arbitrary kernel changes.
+The QSA exception is limited to two reconstructed changes: the reviewed
+raw-ring bounds guard with its runtime row-count argument, and prepared-program
+coverage for shared compressed/raw storage (a `/shared` support-key suffix plus
+explicit compilation of both shared-storage validators in `compile_qsa`). It
+does not admit arbitrary kernel or contract changes.
 The paired cache-agreement test requires an explicit vLLM source root in
 addition to B12X. CPU success cannot qualify transport delivery, CUDA replay,
 memory safety, installed artifacts or serving performance. Run the documented

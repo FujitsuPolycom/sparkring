@@ -466,6 +466,49 @@ a proof that an LLM preserved every semantic property.
 
 ## Qualification boundaries
 
+### Versioned source and license metadata
+
+The installed `/opt/sparkring/releases/shared/<release>.json` source index can
+opt into an immutable versioned license index with this nested binding:
+
+```json
+"component_license_index": {
+  "schema": "sparkring-versioned-component-license-index/v1",
+  "sha256": "<SHA256 of the versioned component license index bytes>"
+}
+```
+
+`image_metadata.py` derives the license path as
+`/opt/sparkring/licenses/shared/<release>.md`. The release identifier must equal
+the supplied source manifest's release and use 1–96 ASCII letters, digits, dots,
+underscores or hyphens, starting with a letter or digit. No path is accepted in
+the binding or on the command line. Both index files must be present in the
+installed receipt and match their recorded hashes; the license hash must also
+match the source-index binding. Existing source-tree, catalog and transport
+checks still apply. The resulting labels and equivalence proof record the
+versioned license path, its verified hash, and the verified source-index hash.
+An inherited source-index hash label is replaced with the verified hash.
+
+Without `component_license_index`, the legacy fixed
+`/opt/sparkring/licenses/components.md` convention is retained, regardless of
+the legacy top-level source-index schema. A present but null, incomplete or
+unknown nested binding is rejected; it cannot fall back to the legacy file.
+Recorded legacy golden labels remain unchanged. The image does not receive
+a blanket OCI license declaration or additional serving qualification.
+
+The native installer admits versioned license files only at fresh destinations.
+Inherited license/release files, including the fixed license index, cannot be
+overwritten through metadata admission. Stage new metadata through an explicitly
+reviewed feature-update descriptor and installed receipt. That existing update
+mechanism requires a child capability catalog and derives transport proofs from
+declared assets; a metadata-only plan must preserve the catalog and applicable
+transport evidence explicitly. Path admission is not an automatic metadata
+migration. New filesystem metadata changes image identity and is distinct from
+the subsequent labels-only equivalence step. No release identifier or publisher
+is selected by this convention.
+
+### Admission scope
+
 | Layer | Implemented admission | Evidence not supplied by the initializer |
 |---|---|---|
 | Source | Baseline, upstream and candidate oracle runs; source-digest binding; bounded repair | Whole-runtime behavioral equivalence |

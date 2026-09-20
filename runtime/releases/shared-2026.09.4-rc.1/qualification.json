@@ -1,0 +1,17 @@
+{
+  "schema": "sparkring-prerelease-qualification/v1",
+  "release": "shared-2026.09.4-rc.1",
+  "status": "research-only",
+  "full_model_qualification": false,
+  "tested_runtime_image": "sha256:7abd5306bf5d883ca767b564e87e978f36aca6f9afcede8f4eec22e66d4f57d5",
+  "component_evidence": [
+    {"scope": "KDA projection behavior, stable selector, raw-ring sanitizer and graph prewarm", "result": "passed", "basis": "Earlier runtime-equivalent candidates; exact-image lineage retained in private evidence"},
+    {"scope": "Shared-pool replay, compressed and raw high offsets, chunked selection and TP4-shaped numerical replay", "result": "passed", "cases": 6, "image": "sha256:7abd5306bf5d883ca767b564e87e978f36aca6f9afcede8f4eec22e66d4f57d5", "external_test_manifest_sha256": "a9120e9cbd20ead32149befcc1c04d24b6bf043bd66e0c9cffc703204e1728ac"},
+    {"scope": "Native route packing, MoE, dense A16 and preparation", "result": "passed", "cases": 27, "image": "sha256:7abd5306bf5d883ca767b564e87e978f36aca6f9afcede8f4eec22e66d4f57d5", "external_test_manifest_sha256": "e675af3fc7bd250a49a427a64c741ef20f65b5713985c821bfa29066d8992edf"}
+  ],
+  "pending": ["GLM Spark and QAD TP2/TP4 serving", "Qwen QAD TP2/TP4 serving", "Exact-image SparkCache restart and physical all-rank restore", "Media", "Matched performance", "SGLang startup/generation", "Complete verifier M9/M16 numerical qualification"],
+  "limitations": ["Nondeterministic verifier reduction failed an overly strict bitwise comparison; numerical-contract retest pending", "Component success does not qualify a complete model profile", "Issue 278 and long-duration collective failures remain unresolved"],
+  "experimental_multisequence_mtp_included": false,
+  "stable_defaults_changed": false,
+  "publication_before_full_model_tests": "Explicitly authorized for this experimental prerelease"
+}
