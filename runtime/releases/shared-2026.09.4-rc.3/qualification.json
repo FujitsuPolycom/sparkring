@@ -15,7 +15,7 @@
       "profile": "qwen38-flash-next-tp2-sparkcache",
       "topology": "TP2/DCP1",
       "result": "passed",
-      "scope": "startup, finite READY generation, bounded solid-color image/video interpretation, RoCEnante activation and SparkCache health on two ranks",
+      "scope": "startup, finite READY generation, 33042-token chunked prefill, bounded solid-color image/video interpretation, RoCEnante activation and SparkCache health on two ranks",
       "kv_tokens": 2877721,
       "sparkcache_ranks": 2,
       "sparkcache_limit_gib": 8
@@ -24,7 +24,7 @@
       "profile": "qwen38-flash-next-qad-tp4-sparkcache",
       "topology": "TP4/DCP1",
       "result": "passed",
-      "scope": "startup, finite READY generation, bounded solid-color image/video interpretation, HC prefill/decode execution, RoCEnante activation and SparkCache health on four ranks",
+      "scope": "startup, finite READY generation, 33042-token chunked prefill, bounded solid-color image/video interpretation, HC prefill/decode execution, RoCEnante activation and SparkCache health on four ranks",
       "kv_tokens": 3131214,
       "sparkcache_ranks": 4,
       "sparkcache_limit_gib": 16
@@ -37,6 +37,22 @@
     "observed": "Both deployments returned red, green and blue for the images and red for the video",
     "private_record_sha256": "1e8c1e40b28187662b940d49fcc2545124ed3bc490313b8a3589ade51e58eb5c",
     "limitation": "The bounded synthetic fixture does not establish arbitrary image or video accuracy"
+  },
+  "chunked_prefill_evidence": {
+    "result": "passed",
+    "topologies": ["TP2/DCP1", "TP4/DCP1"],
+    "prompt_tokens": 33042,
+    "configured_batch_tokens": 8192,
+    "observed": "Both deployments returned the exact deterministic lookup code",
+    "private_record_sha256": "f7e5c8a00894534a082cfad70191aaad21dcdb5aed8130a6ab9d13ef58f05544",
+    "limitation": "One bounded chunked prompt does not establish throughput or full-context stability"
+  },
+  "finite_score_evidence": {
+    "result": "passed",
+    "topologies": ["TP2/DCP1", "TP4/DCP1"],
+    "observed": "Both deployments returned SCORE_OK with finite selected-token and top-token log probabilities",
+    "private_record_sha256": "0b4cc96ee7805a7db787a74725460608e74618b6f9f3f744a1b65c8f5b3ef84e",
+    "limitation": "One short scored completion does not establish model quality"
   },
   "component_evidence": [
     {"scope": "KDA projection behavior, stable selector, raw-ring sanitizer and graph prewarm", "result": "passed", "basis": "runtime-equivalent candidates with retained image lineage"},

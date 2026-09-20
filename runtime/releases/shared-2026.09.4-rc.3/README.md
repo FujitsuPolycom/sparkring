@@ -36,8 +36,8 @@ must not be used.
 
 | Profile | Evidence on this image filesystem |
 |---|---|
-| [Qwen Flash-Next QAD TP2 + SparkCache](../../../profiles/qwen38-flash-next-tp2/README.md) | **Bounded qualified:** startup, `READY` generation, solid-color image/video check, RoCEnante and healthy SparkCache on two ranks |
-| [Qwen Flash-Next QAD TP4 + SparkCache](../../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | **Bounded qualified:** startup, `READY` generation, solid-color image/video check, HC prefill/decode, RoCEnante and healthy SparkCache on four ranks |
+| [Qwen Flash-Next QAD TP2 + SparkCache](../../../profiles/qwen38-flash-next-tp2/README.md) | **Bounded qualified:** startup, `READY` generation, 33K-token chunked prefill, solid-color image/video check, RoCEnante and healthy SparkCache on two ranks |
+| [Qwen Flash-Next QAD TP4 + SparkCache](../../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | **Bounded qualified:** startup, `READY` generation, 33K-token chunked prefill, solid-color image/video check, HC prefill/decode, RoCEnante and healthy SparkCache on four ranks |
 | [Qwen Flash-Next QAD TP2 without SparkCache](../../../profiles/qwen38-flash-next-tp2/README.md) | Expected compatible; not checked on this prerelease |
 | [Qwen Flash-Next QAD TP4 without SparkCache](../../../profiles/qwen38-flash-next-qad-tp4/README.md) | Expected compatible; not checked on this prerelease |
 | [GLM Flash SparkCache TP2](../../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Pending; Spark and QAD checkpoints require separate checks |
@@ -53,6 +53,16 @@ filesystem layers and runtime configuration are otherwise identical.
 The media fixture contained three 64×64 red/green/blue images and one one-second
 224×224 red video. Both deployments returned the four colors in order. This is
 bounded input/interpretation evidence, not arbitrary media accuracy.
+
+The chunked-prefill fixture contained 33,042 prompt tokens and required the
+model to retrieve one deterministic code. Both deployments returned the exact
+code. The configured scheduling batch is 8,192 tokens; this check establishes
+correct chunked execution for one bounded prompt, not throughput or full-context
+stability.
+
+Both deployments also returned `SCORE_OK` with finite selected-token and
+top-token log probabilities. This is a bounded numerical sanity check, not a
+model-quality evaluation.
 
 Full-context pressure, retained restart/physical restore, arbitrary media,
 matched performance, GLM model serving and isolated SGLang generation remain
