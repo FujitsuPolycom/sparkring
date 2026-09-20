@@ -1,0 +1,15 @@
+{
+  "schema": "sparkring-prerelease-withdrawal/v1",
+  "release": "shared-2026.09.4-rc.1",
+  "status": "unsupported",
+  "registry_manifest_digest": "sha256:19ab50bdb7689f2a5cd3167a8c97af66a1333c5bc01ca929881a573cc0fa3e10",
+  "condition": "Docker pull into an image store without the candidate layers",
+  "result": "failed",
+  "error": "max depth exceeded",
+  "cause": "The 127-layer root filesystem exceeds the Docker registry-import layer-depth limit on the tested GB10 hosts.",
+  "earlier_verification_limit": "The recorded anonymous pull reused an existing Docker layer store and did not establish clean-host importability.",
+  "replacement_release": "shared-2026.09.4-rc.3",
+  "replacement_registry_manifest_digest": "sha256:9450b6964aa87cdb44e3b190df9b6db12289a8850ee3513e5278241e70245a64",
+  "replacement_clean_pull": "passed",
+  "stable_defaults_changed": false
+}
