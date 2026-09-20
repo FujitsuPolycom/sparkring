@@ -1,0 +1,17 @@
+{
+  "schema": "sparkring-prerelease-public-verification/v1",
+  "release": "shared-2026.09.4-rc.1",
+  "registry_manifest_digest": "sha256:19ab50bdb7689f2a5cd3167a8c97af66a1333c5bc01ca929881a573cc0fa3e10",
+  "image_config_digest": "sha256:a72fc6e95046495b74fd9dea62b123784ec0d423a2b0ff1d583553b2292d1dfb",
+  "anonymous_manifest_verified": true,
+  "anonymous_config_verified": true,
+  "anonymous_pull_completed": true,
+  "anonymous_pull_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:19ab50bdb7689f2a5cd3167a8c97af66a1333c5bc01ca929881a573cc0fa3e10",
+  "source_manifest_asset_sha256": "b936e2c6976db2c9df547ef682bbeb83b83bf047c26211d1d0f99d038fc57077",
+  "component_notice_asset_sha256": "3c5d75953dabf2afc6c54117e347cb68fe5ada8e9c3f7716d5c45928937eea77",
+  "label_equivalence_sha256": "ea4dbf9b33645cd77582cacd1c6263a37eb914ba87fc882f33550429616d0bf6",
+  "rootfs_layers": 127,
+  "stable_defaults_changed": false,
+  "model_qualified": false,
+  "temporary_anonymous_docker_config_removed": true
+}
