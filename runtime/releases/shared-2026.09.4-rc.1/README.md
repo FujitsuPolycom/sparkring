@@ -4,6 +4,13 @@ Status: **research-only**. This is an opt-in ARM64/GB10 prerelease candidate.
 Full-model qualification is pending. Stable quickstarts retain their existing
 image selections; this candidate is not a replacement for their tested defaults.
 
+Pull by version or immutable digest:
+
+```bash
+docker pull ghcr.io/fujitsupolycom/sparkring:shared-2026.09.4-rc.1
+docker pull ghcr.io/fujitsupolycom/sparkring@sha256:19ab50bdb7689f2a5cd3167a8c97af66a1333c5bc01ca929881a573cc0fa3e10
+```
+
 ## Included changes
 
 - LIL vLLM `af9e4dca109e0348323c0182e98a3aaf7282bfc3` and B12X
@@ -54,6 +61,7 @@ No performance improvement or general image/video accuracy is claimed.
 
 ## Publication
 
-This directory is a local draft. Registry digest, source archives, component
-notices and publication receipts must be finalized before publishing. No mutable
-stable tag or profile default is changed by this draft.
+The [publication record](publication.json) binds the immutable registry digest.
+The GitHub prerelease attaches reconstructed source archives, complete patches,
+the source manifest and component notices. No mutable stable tag or profile
+default changes.
