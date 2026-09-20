@@ -573,3 +573,12 @@ def test_ci_runs_glm53_runtime_contracts() -> None:
     assert "runtime/glm53-flash" in pytest_command
     assert "runtime/glm53-flash-jj-r8-gb10" in pytest_command
     assert "runtime/deepseek0731-gb10" in pytest_command
+
+
+def test_glm53_quickstarts_state_dynamic_depth_unsupported() -> None:
+    for path in (BASE_QUICKSTART_PATH, CACHE_QUICKSTART_PATH):
+        text = path.read_text(encoding="utf-8")
+        assert "Dynamic-depth DFlash on TP4/DCP4 is unsupported" in text
+        assert "num_speculative_tokens_per_batch_size" in text
+        assert "adaptive_speculative_tokens_window" in text
+        assert "[launcher guard](../scripts/sparkring_runtime.py)" in text

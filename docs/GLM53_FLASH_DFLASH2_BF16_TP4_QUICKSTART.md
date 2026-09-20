@@ -58,10 +58,12 @@ python "${sparkring_root}/scripts/pull_glm53_image_cluster.py" \
 
 Keep this profile's TP4/DCP1 and fixed seven-token DFlash settings.
 Dynamic-depth DFlash on TP4/DCP4 is unsupported because it can hang graph
-capture ([issue #221](https://github.com/FujitsuPolycom/sparkring/issues/221)).
-The [launcher guard](../scripts/sparkring_runtime.py) rejects explicit affected
-settings during offline planning; it cannot inspect configuration hidden in
-an image entrypoint or external vLLM config file.
+capture ([issue #221](https://github.com/FujitsuPolycom/sparkring/issues/221)):
+the `num_speculative_tokens_per_batch_size` and
+`adaptive_speculative_tokens_window` controls. The
+[launcher guard](../scripts/sparkring_runtime.py) rejects them during offline
+planning for this model family at TP4/DCP4; it cannot inspect configuration
+hidden in an image entrypoint or external vLLM config file.
 
 ```bash
 python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
