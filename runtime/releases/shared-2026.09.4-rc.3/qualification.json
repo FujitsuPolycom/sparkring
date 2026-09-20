@@ -15,7 +15,7 @@
       "profile": "qwen38-flash-next-tp2-sparkcache",
       "topology": "TP2/DCP1",
       "result": "passed",
-      "scope": "startup, finite READY generation, RoCEnante activation and SparkCache health on two ranks",
+      "scope": "startup, finite READY generation, bounded solid-color image/video interpretation, RoCEnante activation and SparkCache health on two ranks",
       "kv_tokens": 2877721,
       "sparkcache_ranks": 2,
       "sparkcache_limit_gib": 8
@@ -24,12 +24,20 @@
       "profile": "qwen38-flash-next-qad-tp4-sparkcache",
       "topology": "TP4/DCP1",
       "result": "passed",
-      "scope": "startup, finite READY generation, HC prefill/decode execution, RoCEnante activation and SparkCache health on four ranks",
+      "scope": "startup, finite READY generation, bounded solid-color image/video interpretation, HC prefill/decode execution, RoCEnante activation and SparkCache health on four ranks",
       "kv_tokens": 3131214,
       "sparkcache_ranks": 4,
       "sparkcache_limit_gib": 16
     }
   ],
+  "media_evidence": {
+    "result": "passed",
+    "topologies": ["TP2/DCP1", "TP4/DCP1"],
+    "fixture": "Three 64x64 solid-color images in red/green/blue order and one one-second 224x224 red video",
+    "observed": "Both deployments returned red, green and blue for the images and red for the video",
+    "private_record_sha256": "1e8c1e40b28187662b940d49fcc2545124ed3bc490313b8a3589ade51e58eb5c",
+    "limitation": "The bounded synthetic fixture does not establish arbitrary image or video accuracy"
+  },
   "component_evidence": [
     {"scope": "KDA projection behavior, stable selector, raw-ring sanitizer and graph prewarm", "result": "passed", "basis": "runtime-equivalent candidates with retained image lineage"},
     {"scope": "Shared-pool replay, compressed and raw high offsets, chunked selection and TP4-shaped numerical replay", "result": "passed", "cases": 6, "external_test_manifest_sha256": "a9120e9cbd20ead32149befcc1c04d24b6bf043bd66e0c9cffc703204e1728ac"},
@@ -39,7 +47,6 @@
     "Qwen cache-disabled TP2/TP4 serving",
     "Exact-image SparkCache retained restart and physical all-rank restore",
     "GLM Spark and QAD TP2/TP4 serving",
-    "Selected media checks",
     "Matched performance",
     "SGLang startup and generation",
     "Complete verifier M9/M16 numerical qualification"
