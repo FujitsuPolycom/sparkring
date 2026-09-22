@@ -104,6 +104,14 @@
     {
       "id": "qwen38-flash-next-qad-tp4-sparkcache",
       "path": "profiles/qwen38-flash-next-qad-tp4-sparkcache/profile.json"
+    },
+    {
+      "id": "mimo-v26-flash-rl-tp2",
+      "path": "profiles/mimo-v26-flash-rl-tp2/profile.json"
+    },
+    {
+      "id": "mimo-v26-flash-rl-tp4",
+      "path": "profiles/mimo-v26-flash-rl-tp4/profile.json"
     }
   ]
 }

@@ -1,0 +1,388 @@
+diff --git a/benchmarks/kernels/benchmark_diffkv_spec_decode.py b/benchmarks/kernels/benchmark_diffkv_spec_decode.py
+new file mode 100644
+index 000000000000..b0df73922062
+--- /dev/null
++++ b/benchmarks/kernels/benchmark_diffkv_spec_decode.py
+@@ -0,0 +1,136 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Compare automatic DiffKV dispatch with its 2D path for speculative queries.
++
++Run inside an installed vLLM environment. E4M3 additionally requires DiffKV FP8
++support. Results include exact shapes and numerical agreement, not a speed gate.
++"""
++
++import argparse
++import inspect
++import json
++from pathlib import Path
++
++import torch
++import triton
++
++from vllm.v1.attention.ops.triton_unified_attention_diffkv import (
++    unified_attention_diffkv,
++)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--dtype", choices=["bfloat16", "fp8_e4m3"], default="bfloat16")
++    parser.add_argument("--contexts", type=int, nargs="+", default=[8192, 32768, 65536])
++    parser.add_argument("--concurrency", type=int, nargs="+", default=[1, 4, 16])
++    parser.add_argument("--source-module", type=Path)
++    args = parser.parse_args()
++    run = unified_attention_diffkv
++    if args.source_module:
++        import importlib.util
++
++        spec = importlib.util.spec_from_file_location(
++            "diffkv_candidate", args.source_module
++        )
++        module = importlib.util.module_from_spec(spec)
++        spec.loader.exec_module(module)
++        run = module.unified_attention_diffkv
++    if (
++        args.dtype == "fp8_e4m3"
++        and "k_descale" not in inspect.signature(run).parameters
++    ):
++        parser.error(
++            "This vLLM source lacks FP8 DiffKV support; "
++            "apply the FP8 reader change first"
++        )
++    rows = []
++    torch.manual_seed(19)
++    for batch in args.concurrency:
++        for context in args.contexts:
++            q_len, heads, kv_heads, hq, hv, block = 8, 16, 1, 192, 128, 16
++            blocks = (context + block - 1) // block
++            table = torch.arange(
++                batch * blocks, device="cuda", dtype=torch.int32
++            ).reshape(batch, blocks)
++            packed = (
++                torch.randn(batch * blocks, block, kv_heads, hq + hv, device="cuda")
++                * 0.25
++            ).bfloat16()
++            if args.dtype == "fp8_e4m3":
++                packed = packed.to(torch.float8_e4m3fn)
++            q = torch.randn(
++                batch * q_len, heads, hq, device="cuda", dtype=torch.bfloat16
++            )
++            out = torch.empty(
++                batch * q_len, heads, hv, device="cuda", dtype=torch.bfloat16
++            )
++            partial = torch.full((128, heads, 16, hv), float("nan"), device="cuda")
++            maximum = torch.full((128, heads, 16), float("nan"), device="cuda")
++            expsum = torch.full_like(maximum, float("nan"))
++            kw = dict(
++                q=q,
++                k=packed[..., :hq],
++                v=packed[..., hq:],
++                out=out,
++                cu_seqlens_q=torch.arange(batch + 1, device="cuda", dtype=torch.int32)
++                * q_len,
++                seqused_k=torch.full(
++                    (batch,), context, device="cuda", dtype=torch.int32
++                ),
++                softmax_scale=hq**-0.5,
++                causal=True,
++                window_size=(-1, -1),
++                block_table=table,
++                softcap=0,
++                max_seqlen_q=q_len,
++                seq_threshold_3D=128,
++                num_par_softmax_segments=16,
++                softmax_segm_output=partial,
++                softmax_segm_max=maximum,
++                softmax_segm_expsum=expsum,
++            )
++            if args.dtype == "fp8_e4m3":
++                kw.update(
++                    k_descale=torch.ones(1, device="cuda"),
++                    v_descale=torch.ones(1, device="cuda"),
++                )
++            run(**dict(kw, seq_threshold_3D=0))
++            expected = out.clone()
++            run(**kw)
++            torch.testing.assert_close(out, expected, atol=0.02, rtol=0.02)
++            relative_error = (
++                (out.float() - expected.float()).norm() / expected.float().norm()
++            ).item()
++            assert relative_error < 0.01, relative_error
++            split_used = bool(torch.isfinite(expsum[: batch * q_len, :, 0]).all())
++            two_d = triton.testing.do_bench(
++                lambda kw=kw: run(**dict(kw, seq_threshold_3D=0)), warmup=25, rep=100
++            )
++            auto = triton.testing.do_bench(lambda kw=kw: run(**kw), warmup=25, rep=100)
++            row = dict(
++                concurrency=batch,
++                query_length=q_len,
++                context=context,
++                dtype=args.dtype,
++                heads=heads,
++                kv_heads=kv_heads,
++                automatic_ms=auto,
++                two_d_ms=two_d,
++                speedup=two_d / auto,
++                split_used=split_used,
++                correct=True,
++                relative_error=relative_error,
++            )
++            rows.append(row)
++            print(json.dumps(row), flush=True)
++    args.output.write_text(
++        json.dumps(dict(rows=rows, passed=all(r["correct"] for r in rows)), indent=2)
++        + "\n"
++    )
++
++
++if __name__ == "__main__":
++    with torch.inference_mode():
++        main()
+diff --git a/tests/kernels/attention/test_triton_diffkv_spec_decode.py b/tests/kernels/attention/test_triton_diffkv_spec_decode.py
+new file mode 100644
+index 000000000000..fbbb95b37bc7
+--- /dev/null
++++ b/tests/kernels/attention/test_triton_diffkv_spec_decode.py
+@@ -0,0 +1,201 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Short multi-token DiffKV attention against an independent PyTorch reference."""
++
++from types import SimpleNamespace
++
++import pytest
++import torch
++
++from vllm.v1.attention.ops.triton_unified_attention_diffkv import (
++    unified_attention_diffkv,
++)
++
++pytestmark = pytest.mark.skip_global_cleanup
++
++
++def make_case(
++    q_lens, kv_lens, heads_kv=1, window=None, sinks=False, capacity=64, layout="HND"
++):
++    torch.manual_seed(71)
++    device = "cuda"
++    heads, hq, hv, block = 16, 192, 128, 16
++    columns = (max(kv_lens) + block - 1) // block + 1
++    blocks = columns * len(kv_lens)
++    table = torch.randperm(blocks, device=device).reshape(len(kv_lens), columns).int()
++    packed = (
++        torch.randn(blocks, heads_kv, block, hq + hv, device=device) * 0.3
++    ).bfloat16()
++    if layout == "NHD":
++        packed = packed.transpose(1, 2).contiguous().transpose(1, 2)
++    q = torch.randn(sum(q_lens), heads, hq, device=device, dtype=torch.bfloat16)
++    k, v = packed.transpose(1, 2).split([hq, hv], dim=-1)
++    out = torch.empty(sum(q_lens), heads, hv, device=device, dtype=torch.bfloat16)
++    partial = torch.full((capacity, heads, 16, hv), float("nan"), device=device)
++    maximum = torch.full((capacity, heads, 16), float("nan"), device=device)
++    expsum = torch.full_like(maximum, float("nan"))
++    sink = torch.linspace(-1, 2, heads, device=device) if sinks else None
++    lengths = torch.tensor(kv_lens, dtype=torch.int32, device=device)
++    starts = torch.tensor(
++        [0, *torch.tensor(q_lens).cumsum(0).tolist()], dtype=torch.int32, device=device
++    )
++    args = dict(
++        q=q,
++        k=k,
++        v=v,
++        out=out,
++        cu_seqlens_q=starts,
++        seqused_k=lengths,
++        softmax_scale=hq**-0.5,
++        causal=True,
++        window_size=(-1, -1) if window is None else (window - 1, 0),
++        block_table=table,
++        softcap=0,
++        sinks=sink,
++        max_seqlen_q=max(q_lens),
++        seq_threshold_3D=64,
++        num_par_softmax_segments=16,
++        softmax_segm_output=partial,
++        softmax_segm_max=maximum,
++        softmax_segm_expsum=expsum,
++    )
++    return SimpleNamespace(**locals())
++
++
++def reference(c):
++    results, start = [], 0
++    for i, q_len in enumerate(c.q_lens):
++        length = int(c.lengths[i])
++        positions = torch.arange(length, device="cuda")
++        pages = c.table[i, positions // c.block].long()
++        k = (
++            c.k[pages, positions % c.block]
++            .float()
++            .repeat_interleave(c.heads // c.heads_kv, 1)
++        )
++        v = (
++            c.v[pages, positions % c.block]
++            .float()
++            .repeat_interleave(c.heads // c.heads_kv, 1)
++        )
++        scores = (
++            torch.einsum("qhd,khd->hqk", c.q[start : start + q_len].float(), k)
++            * c.hq**-0.5
++        )
++        distance = (length - q_len + torch.arange(q_len, device="cuda"))[
++            :, None
++        ] - positions
++        allowed = distance >= 0
++        if c.window is not None:
++            allowed &= distance < c.window
++        scores.masked_fill_(~allowed, -torch.inf)
++        if c.sink is not None:
++            scores = torch.cat([scores, c.sink[:, None, None].expand(-1, q_len, 1)], -1)
++        probs = scores.softmax(-1)[..., :length]
++        results.append(torch.einsum("hqk,khd->qhd", probs, v))
++        start += q_len
++    return torch.cat(results).bfloat16()
++
++
++def assert_reference(c):
++    expected = reference(c)
++    actual = c.out[: sum(c.q_lens)]
++    torch.testing.assert_close(actual, expected, atol=0.02, rtol=0.02)
++    relative = (actual.float() - expected.float()).norm() / expected.float().norm()
++    assert relative < 0.01, relative.item()
++
++
++@pytest.mark.parametrize(
++    "q_lens,kv_lens", [([8], [8]), ([8], [2111]), ([1, 3, 8], [19, 319, 2111])]
++)
++@pytest.mark.parametrize("heads_kv", [1, 2])
++@pytest.mark.parametrize("window", [None, 4, 128])
++@pytest.mark.parametrize("sinks", [False, True])
++@pytest.mark.parametrize("layout", ["HND", "NHD"])
++@torch.inference_mode()
++def test_short_queries_use_split_kv(q_lens, kv_lens, heads_kv, window, sinks, layout):
++    c = make_case(q_lens, kv_lens, heads_kv, window, sinks, layout=layout)
++    unified_attention_diffkv(**c.args)
++    assert_reference(c)
++    # A real split launch writes intermediate results for every query token.
++    assert torch.isfinite(c.expsum[: sum(q_lens), :, 0]).all()
++
++
++@pytest.mark.parametrize("capacity", [1, 4, 8])
++@torch.inference_mode()
++def test_small_scratch_falls_back_without_writes(capacity):
++    c = make_case([8, 8], [319, 2111], capacity=capacity)
++    unified_attention_diffkv(**c.args)
++    assert_reference(c)
++    assert torch.isnan(c.partial).all()
++    assert torch.isnan(c.maximum).all()
++    assert torch.isnan(c.expsum).all()
++
++
++@pytest.mark.parametrize("window", [None, 4, 128])
++@torch.inference_mode()
++def test_short_query_graph_replay_changes_pages(window):
++    c = make_case([8, 3, 1], [319, 511, 2111], window=window, sinks=True)
++    stream = torch.cuda.Stream()
++    stream.wait_stream(torch.cuda.current_stream())
++    with torch.cuda.stream(stream):
++        for _ in range(3):
++            unified_attention_diffkv(**c.args)
++    torch.cuda.current_stream().wait_stream(stream)
++    graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(graph):
++        unified_attention_diffkv(**c.args)
++    for step in range(3):
++        c.q.normal_()
++        c.table.copy_(c.table.roll(1, dims=1))
++        c.lengths.copy_(
++            torch.tensor([300 + step, 490 + step, 2090 + step], device="cuda")
++        )
++        graph.replay()
++        assert_reference(c)
++
++
++@pytest.mark.parametrize("threshold,split", [(15, False), (16, True), (17, True)])
++@torch.inference_mode()
++def test_token_threshold_boundary(threshold, split):
++    c = make_case([8, 8], [319, 2111])
++    c.args["seq_threshold_3D"] = threshold
++    unified_attention_diffkv(**c.args)
++    assert_reference(c)
++    assert bool(torch.isfinite(c.expsum[:16, :, 0]).all()) is split
++
++
++@pytest.mark.parametrize(
++    "buffer", ["softmax_segm_output", "softmax_segm_max", "softmax_segm_expsum"]
++)
++@torch.inference_mode()
++def test_each_scratch_capacity_is_checked(buffer):
++    c = make_case([8, 8], [319, 2111])
++    c.args[buffer] = c.args[buffer][:4]
++    unified_attention_diffkv(**c.args)
++    assert_reference(c)
++    assert torch.isnan(c.partial).all()
++    assert torch.isnan(c.maximum).all()
++    assert torch.isnan(c.expsum).all()
++
++
++@torch.inference_mode()
++def test_graph_padding_preserves_real_query_rows():
++    c = make_case([8, 3, 1, 0], [319, 511, 2111, 0], sinks=True)
++    c.q = torch.cat([c.q, torch.zeros_like(c.q[:4])])
++    c.out = torch.empty(16, c.heads, c.hv, device="cuda", dtype=torch.bfloat16)
++    c.args.update(q=c.q, out=c.out)
++    stream = torch.cuda.Stream()
++    stream.wait_stream(torch.cuda.current_stream())
++    with torch.cuda.stream(stream):
++        for _ in range(3):
++            unified_attention_diffkv(**c.args)
++    torch.cuda.current_stream().wait_stream(stream)
++    graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(graph):
++        unified_attention_diffkv(**c.args)
++    for _ in range(3):
++        c.q.normal_()
++        c.table.copy_(c.table.roll(1, dims=1))
++        graph.replay()
++        assert_reference(c)
+diff --git a/vllm/v1/attention/ops/triton_unified_attention_diffkv.py b/vllm/v1/attention/ops/triton_unified_attention_diffkv.py
+index eaf62b6bce66..3f9279f653c6 100644
+--- a/vllm/v1/attention/ops/triton_unified_attention_diffkv.py
++++ b/vllm/v1/attention/ops/triton_unified_attention_diffkv.py
+@@ -397,7 +397,7 @@ def unified_attention_diffkv(
+     sinks=None,
+     use_alibi_sqrt=False,
+     # 3D / split-KV softmax buffers.  When all four are provided and the
+-    # batch is decode-only with few sequences, the 3D path is taken.
++    # complete query-token batch fits the workspace, the 3D path is taken.
+     seq_threshold_3D: int | None = None,
+     num_par_softmax_segments: int | None = None,
+     softmax_segm_output: torch.Tensor | None = None,
+@@ -428,17 +428,20 @@ def unified_attention_diffkv(
+ 
+     sliding_window_val = 1 + window_size[0] if window_size[0] >= 0 else 0
+ 
+-    # Decide between 2D and 3D launch.  Mirrors the standard launcher:
+-    # 3D requires preallocated softmax buffers, decode-only batches, and
+-    # a small number of sequences (otherwise 2D already saturates the SM).
++    # Decide between 2D and 3D launch.
++    # Partial outputs and reduction scalars are indexed by query token, not
++    # sequence. Short multi-token verification batches can use split-KV when
++    # every query token fits the workspace; larger prefills retain the 2D path.
+     use_3d = not (
+         seq_threshold_3D is None
+         or num_par_softmax_segments is None
+         or softmax_segm_output is None
+         or softmax_segm_max is None
+         or softmax_segm_expsum is None
+-        or max_seqlen_q > 1
+-        or num_seqs > seq_threshold_3D
++        or q.shape[0] > seq_threshold_3D
++        or q.shape[0] > softmax_segm_output.shape[0]
++        or q.shape[0] > softmax_segm_max.shape[0]
++        or q.shape[0] > softmax_segm_expsum.shape[0]
+         or is_batch_invariant
+     )
+ 

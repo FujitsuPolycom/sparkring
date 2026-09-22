@@ -1,0 +1,29 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "mimo-v26-flash-rl-tp4",
+  "title": "MiMo-V2.6-Flash-RL with DFlash and SIRCL on four Sparks",
+  "recommendation": "alternative",
+  "status": "implemented",
+  "configuration": {
+    "format": "recipe",
+    "path": "profiles/mimo-v26-flash-rl-tp4/recipe.json"
+  },
+  "release": "runtime/releases/mimo-v26-flash-rl-tp4/release.json",
+  "guide": "profiles/mimo-v26-flash-rl-tp4/README.md",
+  "evidence_scope": "One-site serving with bind-mounted vLLM overlay files on the published image over the hardware-forwarded managed mesh; text, image and audio smoke checks and a single-day throughput record. No qualification, soak or independent reproduction.",
+  "overrides": [
+    "max_model_len",
+    "max_num_seqs",
+    "max_num_batched_tokens"
+  ],
+  "launcher": {
+    "kind": "bash",
+    "path": "runtime/mimo-v26-flash/launch-ring.sh",
+    "actions": [
+      "--check",
+      "--run"
+    ],
+    "fixed_args": [],
+    "configuration_input": "env"
+  }
+}

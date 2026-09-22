@@ -100,6 +100,18 @@
       "source": "runtime/releases/shared-2026.09.3/correctness.json",
       "witness": "\"reported_kv_pool_tokens\": 3131214",
       "conditions": "Qwen QAD TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit."
+    },
+    "mimo-v26-flash-rl-tp2": {
+      "tokens": 547326,
+      "source": "performance/records/mimo-v26-flash/tp2-pair-20260922.md",
+      "witness": "GPU KV cache size: 547,326 tokens",
+      "conditions": "MiMo-V2.6-Flash-RL TP2/DCP1 with multimodal inputs enabled, 12 GiB bf16 target KV per rank, 262144 configured context, 16 sequences, 8192 batch and a 5-token DFlash draft. Engine-reported capacity, not proof that sixteen full-context requests fit."
+    },
+    "mimo-v26-flash-rl-tp4": {
+      "tokens": 2189381,
+      "source": "performance/records/mimo-v26-flash/tp4-ring-20260922.md",
+      "witness": "GPU KV cache size: 2,189,381 tokens",
+      "conditions": "MiMo-V2.6-Flash-RL TP4/DCP1 with SIRCL over the managed mesh and multimodal inputs enabled, 20 GiB bf16 target KV per rank, 262144 configured context, 16 sequences, 8192 batch and a 5-token DFlash draft. Engine-reported capacity, not proof that sixteen full-context requests fit."
     }
   }
 }

@@ -32,6 +32,17 @@ See [full results](../docs/RESULTS.md) and the
 [mesh validation report](records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 for repeat counts, accuracy checks, settings, and limitations.
 
+### MiMo-V2.6-Flash-RL with DFlash
+
+Status: **implemented, not qualified**. Single runs on one day from one
+benchmark script; not matched comparisons with the tables above. Decode is
+aggregate output throughput; prefill is a single cold request.
+
+| Profile | Context | Prefill tok/s | C1 decode tok/s | C8 decode tok/s | 120K decode tok/s |
+|---|---:|---:|---:|---:|---:|
+| [Two Sparks, RoCEnante all-reduce](records/mimo-v26-flash/tp2-pair-20260922.md) | 48K | 2,183 | 36.0 | 91.3 (8K) | 29.7 |
+| [Four Sparks, SIRCL over the managed mesh](records/mimo-v26-flash/tp4-ring-20260922.md) | 48K | 3,721 | 63.4 | 184.0 (8K) | 46.6 |
+
 ### GLM-5.3-Flash with MTP3 and SparkCache
 
 These observations use the [SparkRing R33 image](../runtime/releases/sparkring-r33/release.json).

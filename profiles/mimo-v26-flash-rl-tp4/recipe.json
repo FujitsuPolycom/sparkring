@@ -1,0 +1,124 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "mimo-v26-flash-rl-tp4",
+  "status": "implemented",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "sparkring-rocenante-mesh",
+    "physical_ports_per_rank": 2,
+    "socket_direct_functions_per_port": 2,
+    "requirements": "Switchless 0-1-2-3-0 cable cycle with the managed-mesh fabric plan applied: routes, neighbor tables and the hardware-offloaded tc-flower relay rule (EtherType 0x88b5) on every rail, as installed by the GLM-5.3 managed-mesh fabric service. The launcher refuses to start with SIRCL enabled when no relay rule is present."
+  },
+  "model": {
+    "repository": "XiaomiMiMo/MiMo-V2.6-Flash-RL",
+    "revision": "5711b268169967567844e1e560e8a3966da959b1",
+    "config_sha256": "61bea4a0f7a0dd8969f8cae528761e26b697dd12ff63e98804c3f0945492e621",
+    "weight_index_sha256": "09d9b96a77ed9765fa4e02a6a45f92797702eef432da426efc6b45c1131b1812",
+    "quantization": "fp8 attention and dense projections, MXFP4 routed experts (checkpoint fp8 quantization config with mxfp4 store dtype), bf16 DFlash draft",
+    "external_draft_required": false,
+    "identity_note": "MiMo-V2.6-Flash-RL (MIT): 48 layers, 9 global-attention layers with 4 KV heads and 39 sliding-window layers with 8 KV heads and a 128-token window; Q/K head 192, V head 128; bundled five-layer DFlash draft (block size 8); vision and audio encoders. The pinned revision's dflash/config.json is valid JSON; earlier revisions need the launcher's corrected copy."
+  },
+  "runtime": {
+    "engine": "vllm",
+    "profile": "runtime/mimo-v26-flash/image.json",
+    "image_lock": "runtime/mimo-v26-flash/image.json",
+    "image_lock_entry": "image",
+    "image": "ghcr.io/fujitsupolycom/sparkring@sha256:26c366af994cf42e38e4596db4d611342a3466fd8ca49d6037237d04249e5132",
+    "vllm_version": "0.26.1rc0+sparkring.native.2160312ffde4",
+    "overlay": "runtime/mimo-v26-flash/overlay",
+    "environment_template": "runtime/mimo-v26-flash/ring.env.example",
+    "sircl_environment_template": "runtime/mimo-v26-flash/sircl-rank.env.example",
+    "launcher": "runtime/mimo-v26-flash/launch-ring.sh",
+    "entrypoint": "/opt/venv/bin/python -m vllm.entrypoints.cli.main serve, exec'd from a login shell (entrypoint attestation bypassed for the overlay)"
+  },
+  "serving": {
+    "served_model_name": "mimo-v2.6-flash",
+    "tensor_parallel_size": 4,
+    "node_count": 4,
+    "distributed_executor_backend": "mp",
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "gpu_memory_utilization": 0.8,
+    "kv_cache_memory_bytes_per_rank": 21474836480,
+    "kv_cache_dtype": "fp8 for the draft; the target keeps a bf16 KV cache (no checkpoint K/V scales; an fp8 target cache repeats itself on long outputs)",
+    "kv_cache_layout": "BLHNC",
+    "block_size": 64,
+    "dtype": "bfloat16",
+    "attention_backend": "TRITON_ATTN_DIFFKV with the PR 839 split-KV verification dispatch",
+    "linear_backend": "auto (the 3392-wide global-attention QKV slice at TP4 is not a multiple of 128, so linear kernels are chosen per layer)",
+    "moe_backend": "b12x (MXFP4 weights, MXFP8 activations)",
+    "speculation": {
+      "method": "dflash",
+      "draft": "/models/target/dflash",
+      "num_speculative_tokens": 5,
+      "attention_backend": "TRITON_ATTN"
+    },
+    "cudagraph": {
+      "mode": "FULL_AND_PIECEWISE",
+      "max_capture_size": 64,
+      "note": "A C8 decode step with a 5-token draft is 48 query rows; a 64-token ceiling keeps it on the captured width-4096 SIRCL graph lane."
+    },
+    "aot_compile": false,
+    "prefix_caching": true,
+    "chunked_prefill": true,
+    "multimodal": {
+      "images_per_prompt": 3,
+      "videos_per_prompt": 1,
+      "audios_per_prompt": 1,
+      "video_frames": 16,
+      "audio_backend": "torchcodec",
+      "encoder_tp_mode": "data"
+    },
+    "reasoning_parser": "mimo",
+    "tool_call_parser": "mimo",
+    "collectives": {
+      "all_reduce": "SIRCL custom mode: graph-only session on the primary rail pair for captured width-4096 collectives and the fused bidirectional prefill session on both rail pairs for eager [Q <= 8192, 4096] tensors; RoCEnante virtual diagonals over the hardware relay; PyNCCL over the four rails for everything else (custom all-reduce disabled)",
+      "sircl": true,
+      "sircl_environment": "The SPARK_TP4_* and VLLM_SPARK_* assignments of the GLM-5.3 managed-mesh profile's rendered rank environment, plus VLLM_SPARK_TP4_MODE=custom and VLLM_SPARK_TP4_VOCAB_MODE=custom"
+    },
+    "nccl": {
+      "NCCL_IB_HCA": "=<four RoCE device functions>:1",
+      "NCCL_IB_GID_INDEX": "3",
+      "NCCL_IB_MERGE_NICS": "0",
+      "NCCL_IB_SUBNET_AWARE_ROUTING": "1",
+      "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+      "NCCL_CROSS_NIC": "1",
+      "NCCL_ALGO": "Ring",
+      "NCCL_PROTO": "LL,LL128,Simple",
+      "NCCL_P2P_LEVEL": "SYS",
+      "NCCL_MIN_NCHANNELS": "4",
+      "NCCL_MAX_NCHANNELS": "4",
+      "NCCL_SWITCHLESS_RING_ONLY": "1",
+      "NCCL_SOCKET_IFNAME": "<management interface>"
+    },
+    "external_kv_cache": false,
+    "sizing_note": "The 16-sequence admission limit and the 20 GiB KV reservation are configuration choices; 20 GiB is the largest reservation that leaves room for both SIRCL sessions during warmup. They are not throughput or per-request guarantees."
+  },
+  "evidence": {
+    "status": "implemented",
+    "record": "performance/records/mimo-v26-flash/tp4-ring-20260922.md",
+    "conditions": "Single site, 2026-09-22; single-stream 600-token decode, eight concurrent 300-token decodes at about 8K context, cold 48K and 120K prefill with 300-token decode, 1500-token repetition test at greedy and T=1.0; one image request. Relay-rule hardware counters observed increasing under load.",
+    "result": "Single stream 63.4 tok/s; C8 aggregate 184.0 tok/s; 48K cold prefill 3,721 tok/s with 55.7 tok/s decode; 120K cold prefill 2,901 tok/s with 46.6 tok/s decode; repetition tests clean; image check passes; 2,189,381 KV tokens. The same launch on PyNCCL with a 30 GiB reservation measured 57.8 / 151.1 / 3,826 and 53.5 / 2,933 and 48.8 with 3,284,072 KV tokens.",
+    "conclusion": "Serves with both SIRCL sessions up on every rank over the hardware-forwarded mesh. Not qualified: no soak, no accuracy suite, no independent reproduction.",
+    "limitations": [
+      "Overlay files replace image sources at launch; the image's attestation entrypoint is bypassed.",
+      "Throughput values are single runs from one benchmark script on one day; the noise band is about 3 percent single-stream and 5 percent at C8.",
+      "Every follower prints an AssertionError (collective_rpc on a follower node) during KV sizing and continues; it is not an error condition in this build.",
+      "Video and audio inputs are enabled but only an image request was checked on this topology."
+    ]
+  },
+  "provenance": {
+    "image_publisher": "SparkRing",
+    "model_publisher": "XiaomiMiMo",
+    "overlay_sources": [
+      "https://github.com/vllm-project/vllm/pull/57508",
+      "https://github.com/vllm-project/vllm/pull/57784",
+      "https://github.com/local-inference-lab/vllm/pull/839"
+    ],
+    "transport_provider": "SparkRing",
+    "transport_implementation": "SIRCL with RoCEnante virtual diagonals over the managed mesh; patched NVIDIA NCCL fallback"
+  }
+}

@@ -225,6 +225,16 @@
       "source": "integrations/vllm/rocenante/sitecustomize.py",
       "destination": "spark_transport/experiments/glm53_rocenante_overlay/sitecustomize.py",
       "kind": "source"
+    },
+    {
+      "source": "profiles/mimo-v26-flash-rl-tp2/recipe.json",
+      "destination": "recipes/mimo-v26-flash-rl-tp2.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/mimo-v26-flash-rl-tp4/recipe.json",
+      "destination": "recipes/mimo-v26-flash-rl-tp4.json",
+      "kind": "recipe"
     }
   ]
 }

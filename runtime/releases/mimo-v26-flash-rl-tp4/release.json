@@ -1,0 +1,15 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "mimo-v26-flash-rl-tp4",
+  "selection": "published-immutable-reference",
+  "image": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring@sha256:26c366af994cf42e38e4596db4d611342a3466fd8ca49d6037237d04249e5132",
+    "configuration_runtime": "profiles/mimo-v26-flash-rl-tp4/recipe.json"
+  },
+  "inputs": [
+    {
+      "path": "runtime/mimo-v26-flash/image.json",
+      "sha256": "218b2960776166ec1f4df012f58b1405ed5f980cee6254e972475853eacac262"
+    }
+  ]
+}

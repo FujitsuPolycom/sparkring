@@ -1,0 +1,98 @@
+{
+  "schema": "sparkring-mimo-v26-flash-runtime/v1",
+  "status": "implemented",
+  "platform": "linux/arm64",
+  "image": {
+    "publisher": "SparkRing",
+    "reference": "ghcr.io/fujitsupolycom/sparkring@sha256:26c366af994cf42e38e4596db4d611342a3466fd8ca49d6037237d04249e5132",
+    "config_digest": "sha256:412d4f5e0e13acbc53e032d3be26ded2e7a9d979a2261236e98d59817cf259e6",
+    "label_version": "shared-2026.09.3",
+    "vllm_version": "0.26.1rc0+sparkring.native.2160312ffde4",
+    "site_layer": "The measured containers ran a local child image (ID sha256:c57f939fde8ca5d7134f20ec1da6a16321dd023e662ce2392d94e14390de71a1) that adds one 54 MB layer written by the image's own `verify` entrypoint action on top of this reference. The overlay files below are bind-mounted at launch and are not part of any image.",
+    "entrypoint_bypass": "The image entrypoint attests site-packages hashes and rejects overlays, so the launchers exec `/opt/venv/bin/python -m vllm.entrypoints.cli.main serve` from a login shell (/etc/shinit_v2 activates the bundled CUDA forward-compatibility driver)."
+  },
+  "model": {
+    "repository": "XiaomiMiMo/MiMo-V2.6-Flash-RL",
+    "revision": "5711b268169967567844e1e560e8a3966da959b1",
+    "config_sha256": "61bea4a0f7a0dd8969f8cae528761e26b697dd12ff63e98804c3f0945492e621",
+    "weight_index_sha256": "09d9b96a77ed9765fa4e02a6a45f92797702eef432da426efc6b45c1131b1812",
+    "dflash_draft_sha256": "94d9c02c17e0b469f88699e98424825ebe13a17f07eb3b86727b5e0c8143d287",
+    "dflash_config_note": "Revisions before b2674c72176d008cb675a09f626f8eba3f3f21c4 ship dflash/config.json with a trailing comma; the launchers mount a corrected copy (fix_dflash_config.py) when the checkpoint's file does not parse. config.json, model.safetensors.index.json and the draft weights are unchanged across those revisions."
+  },
+  "overlay": {
+    "mount_root": "/opt/venv/lib/python3.12/site-packages/vllm",
+    "files": {
+      "overlay/mimo_v2.py": {
+        "sha256": "980f412d69798de7c235c01868977ad44470fa6c0c2d67b452d29fd78653706f",
+        "target": "model_executor/models/mimo_v2.py",
+        "selected_by": "PAD_V=0",
+        "content": "Image file plus upstream vLLM PR 57508 (fused fp8 QKV sharding by the checkpoint's pre-shard count) and PR 57784 (bf16 MoE router via GateLinear); DiffKV attention path."
+      },
+      "overlay/mimo_v2_padded_v.py": {
+        "sha256": "af14a48b1841d466e0a7ba9aa723d106ab253e3b3353abb837ad1753915f04e6",
+        "target": "model_executor/models/mimo_v2.py",
+        "selected_by": "PAD_V=1",
+        "content": "As mimo_v2.py, with V zero-padded from 128 to 192 so the target runs the symmetric TRITON_ATTN kernel; VLLM_MIMO_PAD_V and VLLM_MIMO_PASS_CACHE_CONFIG switches."
+      },
+      "overlay/mimo_v2_mtp.py": {
+        "sha256": "a3ad7feb741e9e517efff089e3c23959f5bba69c9eff38367b8ac5606dbc00f1",
+        "target": "model_executor/models/mimo_v2_mtp.py",
+        "selected_by": "always",
+        "content": "Image file plus PR 57508 and PR 57784."
+      },
+      "overlay/mimo_v2_omni.py": {
+        "sha256": "93063c697fbbb5c4e02e96df790e868525ea7fad1572acb623223efa238879b7",
+        "target": "model_executor/models/mimo_v2_omni.py",
+        "selected_by": "MM=0",
+        "content": "Image file plus the PR 57784 SupportsEagle3 mixin (the build resolves this checkpoint to the omni class and DFlash needs Eagle3 auxiliary states)."
+      },
+      "overlay/mimo_v2_omni_mm.py": {
+        "sha256": "93ec40121485767058de49a316890bc56e9c50573d7ca6a802709bd1b7e555c8",
+        "target": "model_executor/models/mimo_v2_omni.py",
+        "selected_by": "MM=1 or MM=image",
+        "content": "As mimo_v2_omni.py, plus get_mm_lora_token_counts and get_mm_mapping (the b12x eager warmup otherwise receives None for the encoder row count) and the window-attention sink slice fix for --mm-encoder-tp-mode data."
+      },
+      "overlay/qwen3_dflash.py": {
+        "sha256": "443dc0ff80ec70251fcf3ede5f5b8087cb08fe7d7d2377189cf41531786d08d8",
+        "target": "model_executor/models/qwen3_dflash.py",
+        "selected_by": "always",
+        "content": "Image file plus the PR 57784 draft attention_value_scale and a tolerant import of ModelOptMxFp8LinearMethod, which this build's modelopt module lacks; the bf16 draft never takes the MXFP8 path."
+      },
+      "overlay/triton_unified_attention.py": {
+        "sha256": "8a34dd52e0154b8601537ed5d0daea147f192878b6090ad84357c22cfaff7ddf",
+        "target": "v1/attention/ops/triton_unified_attention.py",
+        "selected_by": "PAD_V=1",
+        "content": "Image kernel with the PR 839 2D/3D dispatch rule ported to the symmetric kernel: DFlash verification batches (1 + draft-length query rows per request) take the split-KV decode path."
+      },
+      "overlay/triton_unified_attention_diffkv.py": {
+        "sha256": "bf11296df73cc60415a6ecd642ddd4381c29c7e07a05d898dcc6686a0e4efa55",
+        "target": "v1/attention/ops/triton_unified_attention_diffkv.py",
+        "selected_by": "PAD_V=0",
+        "content": "local-inference-lab/vllm PR 839: multi-row speculative verification batches take the split-KV decode path in the DiffKV kernel; kernel arithmetic unchanged."
+      }
+    },
+    "patches": {
+      "patches/pr57508.diff": {
+        "sha256": "14cc2d8da413dcffb20eab13fef1937973720628955a9ad17759f88983f85295",
+        "source": "https://github.com/vllm-project/vllm/pull/57508"
+      },
+      "patches/pr57784.diff": {
+        "sha256": "20b721de80a079c2041971ef5ec6b37aa7f72dc4ff2526d92fdbecf6970d385a",
+        "source": "https://github.com/vllm-project/vllm/pull/57784"
+      },
+      "patches/pr839.diff": {
+        "sha256": "b116183a634baf69e9e614f1eead077c71e8c7c0668b3ee88a887d32a0f9a0f5",
+        "source": "https://github.com/local-inference-lab/vllm/pull/839"
+      }
+    }
+  },
+  "launchers": {
+    "pair": "runtime/mimo-v26-flash/launch-pair.sh",
+    "ring": "runtime/mimo-v26-flash/launch-ring.sh"
+  },
+  "evidence": {
+    "pair_record": "performance/records/mimo-v26-flash/tp2-pair-20260922.md",
+    "ring_record": "performance/records/mimo-v26-flash/tp4-ring-20260922.md",
+    "independent_hardware_validation": false
+  }
+}
