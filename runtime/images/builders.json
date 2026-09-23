@@ -2,6 +2,12 @@
   "schema": "sparkring-image-builders/v1",
   "builders": [
     {
+      "id": "external-arm64",
+      "path": "runtime/images/external_context.py",
+      "kind": "python",
+      "reason": "Offline preparation of a digest-pinned external vLLM/B12X image with explicit SparkRing source and integration artifacts; preserves inherited framework binaries."
+    },
+    {
       "id": "sglang-deepseek-bounded-prefill",
       "path": "runtime/images/sglang_extension.py",
       "kind": "python",

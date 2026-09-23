@@ -1,0 +1,71 @@
+{
+  "baseline_only": [],
+  "candidate_only": [
+    "sm121/kda_preparation_lifetime.py",
+    "sm121/qwen_checkpoint_metadata.py",
+    "qsa_padding_metadata.py",
+    "qwen_hc_ownership.py",
+    "ple_checkpoint_metadata.py",
+    "kraken/connector_publication_scope_v1.py",
+    "sm121/hc_projection_admission.py"
+  ],
+  "common": [
+    "checkpoint_reservation.py",
+    "sm121/hybrid_recovery.py",
+    "block_state_snapshot.py",
+    "recurrent_checkpoint_math.py::test_fresh_and_continuation_plans_export_exact_retained_boundaries",
+    "recurrent_checkpoint_math.py::test_checkpoint_plan_can_carry_only_the_final_running_state",
+    "recurrent_checkpoint_math.py::test_unrepresentable_or_over_budget_final_spans_use_ordinary_splitting",
+    "recurrent_checkpoint_math.py::test_worker_checkpoint_rows_follow_request_order_and_reject_span_drift"
+  ],
+  "component": "vllm",
+  "files": {
+    "block_state_snapshot.py": "008a4ed7e3a07162bef8322a8fdd0789441f799b4fb703a40a4f19ffe1797073",
+    "checkpoint_reservation.py": "94faed159e5ae260018b7fbb8313c553c592b1f1f3f942ffd1ef1070a2cebaed",
+    "connector_publication_retention.py": "3009e8528fa65d538f69e3d93ddcb3a41c65685fda16f8a13166e39208d86e1f",
+    "hybrid_recovery.py": "f69c7b940a269c743d0f71e6fc90a3358e702e5e216b094b2f6f06fc9801a274",
+    "kda_preparation_lifetime.py": "be4908ddfee607d4ba726e6e38286d0c2abfe620862fdb2741af85d04dcd5b84",
+    "kraken/connector_publication_scope_v1.py": "228efe312d91faa48b828363fa92cd6dfb4732e1eaf8cd8ab270375ff8ecb163",
+    "ple_checkpoint_metadata.py": "af17a78bfd997ac45e457401624b64213fa9f01c2b83158c049f69b896d07962",
+    "qsa_padding_metadata.py": "894af9798c9fcc417efe62cc3b50873d49bb37d2eac2dae99f3860b1ba660854",
+    "qwen_checkpoint_metadata.py": "a6e1a42d1f4c61ab8d6c87e488caf48dba32a0faa9f061af8995f4cd200f7b11",
+    "qwen_hc_ownership.py": "e39144efa6556ae0d815e7a35038941b548e62202d2854c14e3f9881ec0b9537",
+    "recurrent_checkpoint_math.py": "9d4b236d5403a1f0d75dd73324a079b6e3b5a129ddc9b31e9726fd7a2bc5c58d",
+    "sm121/hc_projection_admission.py": "2ee0118fa9982d9c4a9d37b3dbfaa298c4ecab3d958a0b405745414a1ec825ac",
+    "sm121/hybrid_recovery.py": "9d37f4929c4855288d90ffc8a60d0ef92afa2b431212f2d694a6186b3f283c30",
+    "sm121/kda_preparation_lifetime.py": "cd5ccacc70ac4a857cb7840da2a3d44b4b02688dc2936c7db250cd2fe2eb640e",
+    "sm121/qwen_checkpoint_metadata.py": "0ed87810434e398eaec26f991af8d309762f11ace93c7e932802a222f8f96197"
+  },
+  "migration": {
+    "additional_checks": [
+      "sm121/hc_projection_admission.py"
+    ],
+    "fixture_adaptations": [
+      {
+        "adapted": "sm121/kda_preparation_lifetime.py",
+        "adapted_sha256": "cd5ccacc70ac4a857cb7840da2a3d44b4b02688dc2936c7db250cd2fe2eb640e",
+        "assertions_and_test_cases_unchanged": true,
+        "original": "kda_preparation_lifetime.py",
+        "original_sha256": "be4908ddfee607d4ba726e6e38286d0c2abfe620862fdb2741af85d04dcd5b84"
+      },
+      {
+        "adapted": "sm121/qwen_checkpoint_metadata.py",
+        "adapted_sha256": "0ed87810434e398eaec26f991af8d309762f11ace93c7e932802a222f8f96197",
+        "assertions_and_test_cases_unchanged": true,
+        "original": "qwen_checkpoint_metadata.py",
+        "original_sha256": "a6e1a42d1f4c61ab8d6c87e488caf48dba32a0faa9f061af8995f4cd200f7b11"
+      },
+      {
+        "adapted": "sm121/hybrid_recovery.py",
+        "adapted_sha256": "9d37f4929c4855288d90ffc8a60d0ef92afa2b431212f2d694a6186b3f283c30",
+        "assertions_and_test_cases_unchanged": true,
+        "original": "hybrid_recovery.py",
+        "original_sha256": "f69c7b940a269c743d0f71e6fc90a3358e702e5e216b094b2f6f06fc9801a274"
+      }
+    ],
+    "parent_suite": "vllm-kraken-suite.json",
+    "parent_suite_sha256": "1722c02512fdc1b071b53910b6b8d55b58c156bcc49b29b1781524a30373c3cd",
+    "scope": "Retained CPU source assertions with current KDA, checkpoint and VMM fixtures; reject simultaneous HC token-row and projection ownership. No GPU or serving qualification."
+  },
+  "schema": "sparkring-protected-source-suite/v1"
+}

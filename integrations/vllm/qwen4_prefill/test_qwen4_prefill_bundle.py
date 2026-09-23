@@ -152,6 +152,7 @@ class BundleTests(unittest.TestCase):
             namespace,
         )
         layer = SimpleNamespace(
+            tp_size=1,
             use_combine=False,
             input_mix_weight_down=lambda x: x,
             input_mix_weight_up=SimpleNamespace(weight="weight"),
@@ -159,10 +160,45 @@ class BundleTests(unittest.TestCase):
                 binding if operation == "scaled_silu" else None
             ),
         )
-        output, injection = namespace["mix_normalized"](layer, "normalized")
-        self.assertEqual(output, ("normalized", "weight", "normalized"))
+        normalized = SimpleNamespace(shape=(128, 10240))
+        output, injection = namespace["mix_normalized"](layer, normalized)
+        self.assertEqual(output, (normalized, "weight", normalized))
         self.assertIsNone(injection)
         self.assertEqual(calls, [{"binding": binding}])
+
+
+    def test_small_hc_batches_keep_native_projection_dispatch(self):
+        source = Path(__file__).with_name("qwen4_hc_fusion.py")
+        patch_function = next(
+            node for node in ast.parse(source.read_text()).body
+            if getattr(node, "name", None) == "patch"
+        )
+        function = next(
+            node for node in patch_function.body
+            if getattr(node, "name", None) == "mix_normalized"
+        )
+        calls = []
+        native = object()
+        namespace = {
+            "module": SimpleNamespace(_hyperconnection_api=lambda: SimpleNamespace(
+                run_scaled_silu=lambda value, **kwargs: value)),
+            "operation": lambda *args: "prefill-hook",
+            "original_mix_normalized": lambda owner, value: (
+                calls.append((owner, value)) or (native, None)
+            ),
+        }
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(source), "exec"), namespace)
+        layer = SimpleNamespace(
+            tp_size=4, use_combine=False,
+            input_mix_weight_down=lambda value: value,
+            input_mix_weight_up=SimpleNamespace(weight="weight"),
+            _binding=lambda *_: None,
+        )
+        for rows in (0, 1, 16, 64, 127):
+            with self.subTest(rows=rows):
+                normalized = SimpleNamespace(shape=(rows, 10240))
+                self.assertEqual(namespace["mix_normalized"](layer, normalized), (native, None))
+                self.assertEqual(calls[-1], (layer, normalized))
 
     def fixture(self, directory):
         root = Path(directory)
@@ -190,6 +226,32 @@ class BundleTests(unittest.TestCase):
                     "TORCHINDUCTOR_CACHE_DIR": namespace + "/inductor",
                 },
             )
+
+    def test_external_python_layout_is_bound_in_packaged_bootstrap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "image"
+            bindings = {}
+            for old in prefill_bootstrap.IMAGE_SOURCES:
+                name = old.replace(
+                    "/opt/venv/lib/python3.12/site-packages/",
+                    "/usr/local/lib/python3.12/dist-packages/",
+                )
+                path = image / name.lstrip("/")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(name.encode())
+                bindings[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+            digest = package_prefill.package(root / "bundle", bindings)
+            spec = importlib.util.spec_from_file_location(
+                "external_prefill_bootstrap", root / "bundle/qwen4_prefill_bootstrap.py"
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.verify(root / "bundle", digest, image)
+            first = image / next(iter(bindings)).lstrip("/")
+            first.write_bytes(b"unexpected source")
+            with self.assertRaisesRegex(ValueError, "image source mismatch"):
+                module.verify(root / "bundle", digest, image)
 
     def test_changed_file_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
