@@ -50,6 +50,7 @@ def test_documented_shell_examples_parse_without_execution():
 
 @pytest.mark.parametrize("relative", [
     "docs/operations/host-preparation.md", "docs/operations/pair-network.md",
+    "docs/operations/setup-rehearsal.md",
     "docs/operations/bootstrap.md", "docs/GLM53_SPARK_MESH_HOST_SETUP.md",
     "profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md",
     "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md",

@@ -11,10 +11,45 @@ targets, OS/driver versions, existing workloads, fabric addresses, model paths,
 image identities and free space on each destination filesystem. Distinguish
 prepared hosts from factory-reset hosts in every result.
 
-For an unpublished branch, transfer the same committed source archive to a new
-directory on each test host, compare its checksum, and run commands from that
-directory. Do not install `main` and assume it contains the branch's changes.
-Keep private addresses, credentials and host output outside Git.
+For an unpublished branch, use the Git bundle procedure below. It preserves
+revision identity and tracked-file discovery, which a plain source archive lacks.
+Do not install `main` and assume it contains the branch's changes. Keep private
+addresses, credentials and host output outside Git.
+
+## Hand off an unpublished branch
+
+On the controller in **Bash**, from the committed setup branch, create a private
+bundle. These commands are local; they do not publish or contact a Spark:
+
+```bash
+git diff --quiet
+git diff --cached --quiet
+mkdir -p .sparkring
+HANDOFF=$(mktemp -d "$PWD/.sparkring/setup-handoff.XXXXXX")
+git symbolic-ref --short HEAD > "$HANDOFF/branch.txt"
+git rev-parse HEAD > "$HANDOFF/revision.txt"
+git bundle create "$HANDOFF/source.bundle" "$(cat "$HANDOFF/branch.txt")"
+git bundle verify "$HANDOFF/source.bundle"
+(cd "$HANDOFF" && sha256sum source.bundle > SHA256SUMS)
+printf 'Transfer this directory after test approval: %s\n' "$HANDOFF"
+```
+
+After the test window is approved, transfer that directory to each intended
+rank through its verified management connection. On **each rank**, set `HANDOFF`
+to the received directory's absolute path. Use a new checkout path; cloning
+refuses an existing nonempty destination:
+
+```bash
+HANDOFF=REPLACE_WITH_ABSOLUTE_RECEIVED_HANDOFF_DIRECTORY
+CHECKOUT="$HOME/sparkring-setup-test"
+(cd "$HANDOFF" && sha256sum --check SHA256SUMS)
+git clone --branch "$(cat "$HANDOFF/branch.txt")" "$HANDOFF/source.bundle" "$CHECKOUT"
+test "$(git -C "$CHECKOUT" rev-parse HEAD)" = "$(cat "$HANDOFF/revision.txt")"
+cd "$CHECKOUT"
+```
+
+Use this checkout for every subsequent command. The bundled branch has no
+upstream network dependency. Record the destination path in the private inventory.
 
 ## Pair rehearsal
 
