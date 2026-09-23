@@ -22,16 +22,16 @@
   },
   "runtime": {
     "engine": "vllm",
-    "profile": "runtime/mimo-v26-flash/image.json",
-    "image_lock": "runtime/mimo-v26-flash/image.json",
+    "profile": "runtime/mimo-v26-flash/b12x-image.json",
+    "image_lock": "runtime/mimo-v26-flash/b12x-image.json",
     "image_lock_entry": "image",
-    "image": "ghcr.io/fujitsupolycom/sparkring@sha256:26c366af994cf42e38e4596db4d611342a3466fd8ca49d6037237d04249e5132",
+    "image": "sparkring:mimo-b12x-6afb999-4f3028",
     "vllm_version": "0.26.1rc0+sparkring.native.2160312ffde4",
-    "overlay": "runtime/mimo-v26-flash/overlay",
     "environment_template": "runtime/mimo-v26-flash/ring.env.example",
     "sircl_environment_template": "runtime/mimo-v26-flash/sircl-rank.env.example",
     "launcher": "runtime/mimo-v26-flash/launch-ring.sh",
-    "entrypoint": "/opt/venv/bin/python -m vllm.entrypoints.cli.main serve, exec'd from a login shell (entrypoint attestation bypassed for the overlay)"
+    "entrypoint": "Pinned B12X/vLLM Python packages baked into a derived image; vLLM CLI through a login shell for CUDA compatibility initialization",
+    "image_builder": "runtime/mimo-v26-flash/build-image.sh"
   },
   "serving": {
     "served_model_name": "mimo-v2.6-flash",
@@ -43,23 +43,24 @@
     "max_num_batched_tokens": 8192,
     "gpu_memory_utilization": 0.8,
     "kv_cache_memory_bytes_per_rank": 21474836480,
-    "kv_cache_dtype": "fp8 for the draft; the target keeps a bf16 KV cache (no checkpoint K/V scales; an fp8 target cache repeats itself on long outputs)",
+    "kv_cache_dtype": "bfloat16 for target and draft",
     "kv_cache_layout": "BLHNC",
     "block_size": 64,
     "dtype": "bfloat16",
-    "attention_backend": "TRITON_ATTN_DIFFKV with the PR 839 split-KV verification dispatch",
+    "attention_backend": "B12X for global and sliding-window target attention; packed Q/K-192, V-128 pages",
     "linear_backend": "auto (the 3392-wide global-attention QKV slice at TP4 is not a multiple of 128, so linear kernels are chosen per layer)",
     "moe_backend": "b12x (MXFP4 weights, MXFP8 activations)",
     "speculation": {
       "method": "dflash",
       "draft": "/models/target/dflash",
       "num_speculative_tokens": 5,
-      "attention_backend": "TRITON_ATTN"
+      "attention_backend": "B12X",
+      "kv_cache_dtype": "auto (BF16 draft weights)"
     },
     "cudagraph": {
       "mode": "FULL_AND_PIECEWISE",
       "max_capture_size": 64,
-      "note": "A C8 decode step with a 5-token draft is 48 query rows; a 64-token ceiling keeps it on the captured width-4096 SIRCL graph lane."
+      "note": "C8 with five speculative tokens uses 48 query rows; the capture ceiling is 64. C16 admission can exceed that full-graph ceiling."
     },
     "aot_compile": false,
     "prefix_caching": true,
@@ -95,30 +96,37 @@
       "NCCL_SOCKET_IFNAME": "<management interface>"
     },
     "external_kv_cache": false,
-    "sizing_note": "The 16-sequence admission limit and the 20 GiB KV reservation are configuration choices; 20 GiB is the largest reservation that leaves room for both SIRCL sessions during warmup. They are not throughput or per-request guarantees."
+    "sizing_note": "20 GiB total target/draft KV allocation per rank; 2,189,381 logical tokens reported in the measured TP4 launch. The 16-sequence limit is admission capacity, not a throughput guarantee.",
+    "load_format": "safetensors",
+    "model_runner": "V2 (VLLM_USE_V2_MODEL_RUNNER=1)"
   },
   "evidence": {
     "status": "implemented",
-    "record": "performance/records/mimo-v26-flash/tp4-ring-20260922.md",
-    "conditions": "Single site, 2026-09-22; single-stream 600-token decode, eight concurrent 300-token decodes at about 8K context, cold 48K and 120K prefill with 300-token decode, 1500-token repetition test at greedy and T=1.0; one image request. Relay-rule hardware counters observed increasing under load.",
-    "result": "Single stream 63.4 tok/s; C8 aggregate 184.0 tok/s; 48K cold prefill 3,721 tok/s with 55.7 tok/s decode; 120K cold prefill 2,901 tok/s with 46.6 tok/s decode; repetition tests clean; image check passes; 2,189,381 KV tokens. The same launch on PyNCCL with a 30 GiB reservation measured 57.8 / 151.1 / 3,826 and 53.5 / 2,933 and 48.8 with 3,284,072 KV tokens.",
-    "conclusion": "Serves with both SIRCL sessions up on every rank over the hardware-forwarded mesh. Not qualified: no soak, no accuracy suite, no independent reproduction.",
+    "record": "performance/records/mimo-v26-flash/b12x-tp4-20260923.md",
+    "conditions": "Four GB10 Sparks, TP4/DCP1, B12X target and draft, BF16 KV, DFlash5, V2 runner; llm-decode-bench v0.6.2 at 8K/128K and C1/C8 with 20-second decode windows.",
+    "result": "Prefill approximately 4,005/3,288 tok/s at 8K/128K. C1 decode 54.54/47.20 tok/s. C8 repeats 162.30–198.97/141.82–148.50 tok/s. Short responses coherent; measured cells reported zero errors and no detected loops.",
+    "conclusion": "Text serving and bounded performance checks pass on one site. Acceptance varies between runs; these results do not establish a universal decode speedup.",
     "limitations": [
-      "Overlay files replace image sources at launch; the image's attestation entrypoint is bypassed.",
-      "Throughput values are single runs from one benchmark script on one day; the noise band is about 3 percent single-stream and 5 percent at C8.",
-      "Every follower prints an AssertionError (collective_rpc on a follower node) during KV sizing and continues; it is not an error condition in this build.",
-      "Video and audio inputs are enabled but only an image request was checked on this topology."
+      "The image is built locally from pinned Python sources over a published native runtime; no prebuilt artifact is published.",
+      "Media input limits are configured, but image/video/audio inference has not been rechecked on this source composition.",
+      "No soak, accuracy suite, SparkCache composition or independent reproduction."
     ]
   },
   "provenance": {
     "image_publisher": "SparkRing",
     "model_publisher": "XiaomiMiMo",
-    "overlay_sources": [
-      "https://github.com/vllm-project/vllm/pull/57508",
-      "https://github.com/vllm-project/vllm/pull/57784",
-      "https://github.com/local-inference-lab/vllm/pull/839"
-    ],
+    "overlay_sources": [],
     "transport_provider": "SparkRing",
-    "transport_implementation": "SIRCL with RoCEnante virtual diagonals over the managed mesh; patched NVIDIA NCCL fallback"
+    "transport_implementation": "SIRCL with RoCEnante virtual diagonals over the managed mesh; patched NVIDIA NCCL fallback",
+    "source_revisions": {
+      "vllm": {
+        "repository": "https://github.com/local-inference-lab/vllm.git",
+        "revision": "6afb99982576a7a2eb53d667189e859629e22739"
+      },
+      "b12x": {
+        "repository": "https://github.com/local-inference-lab/b12x.git",
+        "revision": "4f3028b19c1d8290dc72b6f483aba40de23eae5a"
+      }
+    }
   }
 }

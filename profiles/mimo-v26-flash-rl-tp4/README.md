@@ -1,30 +1,27 @@
 # MiMo-V2.6-Flash-RL with DFlash and SIRCL on four Sparks
 
-Profile: `mimo-v26-flash-rl-tp4`. Status: **Development** (implemented, not
-qualified). This four-rank configuration serves
-`XiaomiMiMo/MiMo-V2.6-Flash-RL` with its bundled DFlash draft, text, image,
-video and audio inputs, and SIRCL collectives over the hardware-forwarded
-managed mesh: the graph-only session for captured width-4096 decode
-collectives and the fused bidirectional prefill session on both rail pairs,
-with RoCEnante virtual diagonals over the relay rule. Its evidence is a
-single-site, single-day record; see [limitations](#evidence-and-limitations).
+Profile: `mimo-v26-flash-rl-tp4`. Status: **Development (implemented, not qualified)**.
+This profile uses pinned Karmic Kraken and B12X sources for native global,
+sliding-window and DFlash draft attention, with BF16 target and draft KV.
+TP4 text serving and bounded performance tests passed on one site.
+Media requests and sustained workloads remain unqualified.
 
 Inspect the selected defaults with
 `python scripts/profiles.py resolve mimo-v26-flash-rl-tp4`.
 
-The [runtime contract](../../runtime/mimo-v26-flash/image.json) records the
-published image, the vLLM build and every overlay file's digest and mount
-target; the [runtime README](../../runtime/mimo-v26-flash/README.md) explains
-why the overlay exists. The [serving recipe](recipe.json) summarizes model,
-topology and serving settings.
+The [runtime contract](../../runtime/mimo-v26-flash/b12x-image.json) pins the
+base image and both source revisions. The
+[runtime guide](../../runtime/mimo-v26-flash/README.md) describes the image
+build. The [serving recipe](recipe.json) records the serving settings.
 
 | Setting | Value |
 |---|---|
 | Parallelism | TP4/DCP1; switchless 0-1-2-3-0 cycle, both ports and both PCIe domains per rank |
 | Context / sequences / batch | 262,144 / 16 / 8,192 |
-| KV | 20 GiB bf16 target cache per rank; fp8 draft cache |
-| Attention | DiffKV Triton kernel with the PR 839 split-KV verification dispatch |
-| Speculation | DFlash, 5 drafted tokens |
+| KV | 20 GiB per rank shared by BF16 target and draft caches |
+| Attention | Native B12X target global/SWA attention and B12X noncausal draft attention |
+| Loading / speculation | Safetensors / DFlash, 5 drafted tokens |
+| Runner | V2; `VLLM_USE_V2_MODEL_RUNNER=1` |
 | Media | 3 images, 1 video (16 frames), 1 audio per prompt |
 | Collectives | SIRCL custom mode (graph-only and fused prefill sessions) with RoCEnante virtual diagonals; PyNCCL over four rails otherwise |
 | Capture | Full and piecewise cudagraphs up to 64 tokens |
@@ -48,15 +45,18 @@ management addresses; scope the rank-zero API port to its intended clients.
 
 ## Image and checkpoint
 
-Pull the published image on every rank and keep its immutable reference:
+Build the derived image on an ARM64 Spark from the repository root:
 
 ```bash
-IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:26c366af994cf42e38e4596db4d611342a3466fd8ca49d6037237d04249e5132
-docker pull --platform linux/arm64 "$IMAGE"
+bash runtime/mimo-v26-flash/build-image.sh
+IMAGE=sparkring:mimo-b12x-6afb999-4f3028
 ```
 
-Pin `IMAGE` by image ID in the rank environment when a local tag resolves to
-different builds on different ranks.
+This image is not published to GHCR. Follow the
+[build and distribution steps](../../runtime/mimo-v26-flash/README.md#build-and-distribute)
+to load the same image on all four ranks, then set `IMAGE` in each private
+rank environment to its local image ID. The launcher's source-label check
+rejects the unmodified base image.
 
 Download the checkpoint at revision
 `5711b268169967567844e1e560e8a3966da959b1` into the same absolute directory
@@ -111,7 +111,7 @@ Validate the inputs without starting anything:
 python scripts/launch.py mimo-v26-flash-rl-tp4 --check /srv/private/mimo-tp4-rank.env
 ```
 
-The check confirms both environment files, checkpoint files, overlay files,
+The check confirms both environment files, checkpoint files, source labels,
 image presence and that a relay rule exists. It does not test the fabric.
 
 ## Start, check and stop
@@ -123,13 +123,13 @@ python scripts/launch.py --execute mimo-v26-flash-rl-tp4 --run /srv/private/mimo
 docker logs --follow mimo-v26-flash-rl-tp4-r0
 ```
 
-Startup takes about 10 minutes on the reference cycle. Every follower prints
-`AssertionError: collective_rpc should not be called on follower node`
-during KV sizing and continues; that line is not a failure in this build.
+Cold startup includes safetensors loading, B12X selection, kernel preparation
+and graph capture. Retain `CACHE_DIR` across restarts to reuse selections.
+The API is ready after `Application startup complete`.
 Before directing traffic, confirm on every rank `SIRCL capability vote
 accepted: physical_ranks=4`, `Spark TP4 graph-only session ready` and
 `Spark TP4 fused prefill session ready: ... rails=2 exposure=fused`, and on
-rank 0 `Using TRITON_ATTN_DIFFKV for attention`, the reported `GPU KV cache
+rank 0 `Using B12X for attention` and `Using V2 Model Runner`, the reported `GPU KV cache
 size` and `Application startup complete`. Then send one text and one image
 request to `mimo-v2.6-flash` on port 8020 and check the answers. Reasoning
 output uses the `mimo` reasoning parser; tool calls use the `mimo` tool-call
@@ -148,32 +148,23 @@ rank's container.
 
 ## Launcher switches
 
-`SIRCL=0` serves the same settings on PyNCCL over the four rails without the
-mesh relay; that configuration measured lower single-stream and C8
-throughput and fits a 30 GiB KV reservation. Other tunables (`KV_BYTES`,
-`SPEC_TOKENS`, `CG_CAP`, `MM`, `PAD_V`, `LINEAR_BACKEND`, `EXTRA_ENV`) are
-listed in the [runtime README](../../runtime/mimo-v26-flash/README.md). A
-changed value is research-only and does not inherit this profile's record.
-A 30 GiB reservation with SIRCL enabled exhausted one rank's device memory
-during warmup. The RoCEnante one-shot all-reduce is a pair transport: on
-this cycle its queue pairs to non-adjacent ranks do not connect.
+`SIRCL=0` selects PyNCCL over the four rails. Tunables (`KV_BYTES`,
+`SPEC_TOKENS`, `CG_CAP`, `MM`, `LINEAR_BACKEND`, `EXTRA_ENV`) are listed in
+the [runtime guide](../../runtime/mimo-v26-flash/README.md).
+The measured configuration uses SIRCL and a 20 GiB KV reservation per rank.
 
 ## Evidence and limitations
 
-The [ring record](../../performance/records/mimo-v26-flash/tp4-ring-20260922.md)
-holds the measured configurations: single stream 63.4 tok/s, C8 aggregate
-184.0 tok/s, 48K cold prefill 3,721 tok/s with 55.7 tok/s decode, 120K cold
-prefill 2,901 tok/s with 46.6 tok/s decode, repetition tests clean, image
-check passed, 2,189,381 KV tokens; the PyNCCL alternative measured 57.8 /
-151.1 / 3,826 and 53.5 / 2,933 and 48.8 with 3,284,072 KV tokens.
+The [B12X TP4 record](../../performance/records/mimo-v26-flash/b12x-tp4-20260923.md)
+reports approximately 4.0K/3.3K prefill tok/s at 8K/128K, C1 decode
+54.5/47.2 tok/s and repeated C8 measurements of 162–199/142–149 tok/s.
+Speculative acceptance differs across runs; these measurements do not
+establish a universal decode speedup. The engine reported 2,189,381 KV tokens.
 
-- Single runs on one day; the noise band is about 3 percent single-stream
-  and 5 percent at C8. 120K decode with SIRCL is about 5 percent below PyNCCL.
-- The overlay bypasses the image's attestation entrypoint; a rebuilt image
-  that absorbs the recorded overlay files would remove that bypass.
-- Video and audio inputs are enabled but only an image request was checked
-  on this topology.
+- Image, video and audio limits are configured but media inference has not
+  been rechecked on this source composition.
+- Safetensors is required for the recorded setup. FastSafetensors produced
+  corrupted text in the tested MiMo configuration.
+- The derived image bypasses its base image's package-hash attestation.
+  Launcher checks verify declared source labels, not runtime file integrity.
 - No soak, accuracy suite, SparkCache composition or independent reproduction.
-- The mesh relay is installed and owned by the GLM-5.3 managed-mesh fabric
-  service; this profile does not install, verify or repair it beyond
-  checking that a relay rule exists.

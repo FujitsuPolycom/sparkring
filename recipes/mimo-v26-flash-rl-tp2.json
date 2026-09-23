@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "mimo-v26-flash-rl-tp2",
-  "status": "implemented",
+  "status": "research-only",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -20,15 +20,15 @@
   },
   "runtime": {
     "engine": "vllm",
-    "profile": "runtime/mimo-v26-flash/image.json",
-    "image_lock": "runtime/mimo-v26-flash/image.json",
+    "profile": "runtime/mimo-v26-flash/b12x-image.json",
+    "image_lock": "runtime/mimo-v26-flash/b12x-image.json",
     "image_lock_entry": "image",
-    "image": "ghcr.io/fujitsupolycom/sparkring@sha256:26c366af994cf42e38e4596db4d611342a3466fd8ca49d6037237d04249e5132",
+    "image": "sparkring:mimo-b12x-6afb999-4f3028",
     "vllm_version": "0.26.1rc0+sparkring.native.2160312ffde4",
-    "overlay": "runtime/mimo-v26-flash/overlay",
     "environment_template": "runtime/mimo-v26-flash/pair.env.example",
     "launcher": "runtime/mimo-v26-flash/launch-pair.sh",
-    "entrypoint": "/opt/venv/bin/python -m vllm.entrypoints.cli.main serve, exec'd from a login shell (entrypoint attestation bypassed for the overlay)"
+    "entrypoint": "Pinned B12X/vLLM Python packages baked into a derived image; vLLM CLI through a login shell for CUDA compatibility initialization",
+    "image_builder": "runtime/mimo-v26-flash/build-image.sh"
   },
   "serving": {
     "served_model_name": "mimo-v2.6-flash",
@@ -41,22 +41,24 @@
     "gpu_memory_utilization": 0.88,
     "kv_cache_memory_bytes_per_rank": 12884901888,
     "kv_cache_memory_bytes_per_rank_text_only": 17179869184,
-    "kv_cache_dtype": "fp8 for the draft; the target keeps a bf16 KV cache (no checkpoint K/V scales; an fp8 target cache repeats itself on long outputs)",
+    "kv_cache_dtype": "bfloat16 for target and draft",
     "kv_cache_layout": "BLHNC",
     "block_size": 64,
     "dtype": "bfloat16",
-    "attention_backend": "TRITON_ATTN with V zero-padded to 192 (padded-V overlay) and the split-KV verification dispatch",
+    "attention_backend": "B12X for global and sliding-window target attention; packed Q/K-192, V-128 pages",
     "linear_backend": "b12x",
     "moe_backend": "b12x (MXFP4 weights, MXFP8 activations)",
     "speculation": {
       "method": "dflash",
       "draft": "/models/target/dflash",
       "num_speculative_tokens": 5,
-      "attention_backend": "TRITON_ATTN"
+      "attention_backend": "B12X",
+      "kv_cache_dtype": "auto (BF16 draft weights)"
     },
     "cudagraph": {
       "mode": "FULL_AND_PIECEWISE",
-      "max_capture_size": 32
+      "max_capture_size": 64,
+      "note": "C8 with five speculative tokens uses 48 query rows; the capture ceiling is 64. C16 admission can exceed that full-graph ceiling."
     },
     "aot_compile": false,
     "prefix_caching": true,
@@ -76,29 +78,37 @@
       "sircl": false
     },
     "external_kv_cache": false,
-    "sizing_note": "The 16-sequence admission limit and the 12 GiB KV reservation are configuration choices bounded by host memory (earlyoom on the reference pair); they are not throughput or per-request guarantees."
+    "sizing_note": "12 GiB KV per rank is retained as a starting reservation. BF16 draft KV and the 64-row graph ceiling need TP2 memory qualification; historical Triton capacity does not apply.",
+    "load_format": "safetensors",
+    "model_runner": "V2 (VLLM_USE_V2_MODEL_RUNNER=1)"
   },
   "evidence": {
-    "status": "implemented",
-    "record": "performance/records/mimo-v26-flash/tp2-pair-20260922.md",
-    "conditions": "Single site, 2026-09-22; single-stream 600-token decode, eight concurrent 300-token decodes at about 8K context, cold 48K and 120K prefill with 300-token decode, 1500-token repetition test at greedy and T=1.0; one image and one audio request.",
-    "result": "Single stream 36.0 tok/s; C8 aggregate 91.3 tok/s; 48K cold prefill 2,183 tok/s with 33.7 tok/s decode; 120K cold prefill 1,488 tok/s with 29.7 tok/s decode; repetition tests clean; image and audio checks pass; 547,326 KV tokens.",
-    "conclusion": "Serves text, image, video and audio requests on the published image with the recorded overlay. Not qualified: no soak, no accuracy suite, no independent reproduction.",
+    "status": "research-only",
+    "record": "performance/records/mimo-v26-flash/b12x-tp4-20260923.md",
+    "conditions": "Configuration adaptation from the measured TP4 B12X image; no TP2 hardware run for these settings.",
+    "result": "Unmeasured. The historical Triton TP2 record does not qualify this image or its memory use.",
+    "conclusion": "TP2 startup, memory, correctness and performance remain unqualified.",
     "limitations": [
-      "Overlay files replace image sources at launch; the image's attestation entrypoint is bypassed.",
-      "Throughput values are single runs from one benchmark script on one day; the noise band from repeated baselines is about 3 percent single-stream and 5 percent at C8.",
-      "Video input is enabled but only image and audio requests were checked."
+      "The image is built locally from pinned Python sources over a published native runtime; no prebuilt artifact is published.",
+      "TP2 has not been tested with B12X attention, BF16 draft KV or the 64-row capture ceiling.",
+      "No soak, accuracy suite, SparkCache composition or independent reproduction."
     ]
   },
   "provenance": {
     "image_publisher": "SparkRing",
     "model_publisher": "XiaomiMiMo",
-    "overlay_sources": [
-      "https://github.com/vllm-project/vllm/pull/57508",
-      "https://github.com/vllm-project/vllm/pull/57784",
-      "https://github.com/local-inference-lab/vllm/pull/839"
-    ],
+    "overlay_sources": [],
     "transport_provider": "SparkRing",
-    "transport_implementation": "B12X RoCEnante one-shot all-reduce with PyNCCL fallback"
+    "transport_implementation": "B12X RoCEnante one-shot all-reduce with PyNCCL fallback",
+    "source_revisions": {
+      "vllm": {
+        "repository": "https://github.com/local-inference-lab/vllm.git",
+        "revision": "6afb99982576a7a2eb53d667189e859629e22739"
+      },
+      "b12x": {
+        "repository": "https://github.com/local-inference-lab/b12x.git",
+        "revision": "4f3028b19c1d8290dc72b6f483aba40de23eae5a"
+      }
+    }
   }
 }

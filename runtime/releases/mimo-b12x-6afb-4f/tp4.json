@@ -1,0 +1,27 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "mimo-b12x-6afb-4f-tp4",
+  "selection": "local-pinned-source-build",
+  "image": {
+    "reference": "sparkring:mimo-b12x-6afb999-4f3028",
+    "configuration_runtime": "profiles/mimo-v26-flash-rl-tp4/recipe.json"
+  },
+  "inputs": [
+    {
+      "path": "runtime/mimo-v26-flash/b12x-image.json",
+      "sha256": "25d4f078ab2cb8299d998be642af5237fc43f75a67890b55fcb3c869a1309179"
+    },
+    {
+      "path": "runtime/mimo-v26-flash/Dockerfile",
+      "sha256": "d151d654b55e068510a731b5607d35fc8b7833014f341dea47c3c1608db4c408"
+    },
+    {
+      "path": "runtime/mimo-v26-flash/build-image.sh",
+      "sha256": "44687d58d91a826c8b04be397d8a88c7d9b8c6f673b7ec35cb826c542b39fc92"
+    },
+    {
+      "path": "runtime/mimo-v26-flash/check_image.py",
+      "sha256": "a55766c5e2631c3a3b14eb3720fcd3945bd7564a9a7b95bbd5eb31487de40018"
+    }
+  ]
+}

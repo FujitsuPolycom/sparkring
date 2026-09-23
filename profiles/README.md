@@ -25,7 +25,7 @@ variant of the GLM TP4 settings below; NVFP4-Spark remains their default.
 | [DeepSeek-V4.1-Flash](../profiles/deepseek-v41-flash-cycle/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 1 | 1M / [2.2M](../profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development |
 | [DeepSeek-V4.1-Flash](../profiles/deepseek-v41-flash-sglang-cycle/README.md)<br>SGLang | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | — | 262K / [1.5M](../performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | No | Development |
 | [GLM-5.2](../profiles/glm52-exl3-r7-3.5bpw/README.md)<br>vLLM | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | 4 | 1M / [1.2M](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](../profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development |
-| [MiMo-V2.6-Flash-RL](../profiles/mimo-v26-flash-rl-tp4/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / [2.2M](../performance/records/mimo-v26-flash/tp4-ring-20260922.md) | No | Development |
+| [MiMo-V2.6-Flash-RL](../profiles/mimo-v26-flash-rl-tp4/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / [2.2M](../performance/records/mimo-v26-flash/b12x-tp4-20260923.md) | No | Development |
 | [Qwen3.8-27B](../profiles/qwen38-27b-exl3-k5k6/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [8.7M](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development |
 
 ### Two Sparks
@@ -35,7 +35,7 @@ variant of the GLM TP4 settings below; NVFP4-Spark remains their default.
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / [1.1M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated |
 | **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | 1 | 262K / [2.9M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/qwen38-flash-next-tp2/README.md) | Validated |
 | [DeepSeek-V4-Flash-0731](../profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [2.2M](../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
-| [MiMo-V2.6-Flash-RL](../profiles/mimo-v26-flash-rl-tp2/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / [547K](../performance/records/mimo-v26-flash/tp2-pair-20260922.md) | No | Development |
+| [MiMo-V2.6-Flash-RL](../profiles/mimo-v26-flash-rl-tp2/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / — | No | Experimental |
 | [Qwen3.8-27B](../profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [4.1M](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
 
 
@@ -53,7 +53,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Development | [mimo-v26-flash-rl-tp2](../profiles/mimo-v26-flash-rl-tp2/README.md) |
+| DCP1 | direct-pair-2 | Off | Experimental | [mimo-v26-flash-rl-tp2](../profiles/mimo-v26-flash-rl-tp2/README.md) |
 
 </details>
 

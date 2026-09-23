@@ -8,9 +8,9 @@
     "format": "recipe",
     "path": "profiles/mimo-v26-flash-rl-tp4/recipe.json"
   },
-  "release": "runtime/releases/mimo-v26-flash-rl-tp4/release.json",
+  "release": "runtime/releases/mimo-b12x-6afb-4f/tp4.json",
   "guide": "profiles/mimo-v26-flash-rl-tp4/README.md",
-  "evidence_scope": "One-site serving with bind-mounted vLLM overlay files on the published image over the hardware-forwarded managed mesh; text, image and audio smoke checks and a single-day throughput record. No qualification, soak or independent reproduction.",
+  "evidence_scope": "Four GB10 Sparks, TP4/DCP1, B12X target and draft, BF16 KV, DFlash5, V2 runner; llm-decode-bench v0.6.2 at 8K/128K and C1/C8 with 20-second decode windows. Text serving and bounded performance checks pass on one site. Acceptance varies between runs; these results do not establish a universal decode speedup.",
   "overrides": [
     "max_model_len",
     "max_num_seqs",

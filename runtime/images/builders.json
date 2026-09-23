@@ -2,6 +2,12 @@
   "schema": "sparkring-image-builders/v1",
   "builders": [
     {
+      "id": "mimo-b12x-attention",
+      "path": "runtime/mimo-v26-flash/build-image.sh",
+      "kind": "bash",
+      "reason": "Assemble pinned MiMo B12X target/draft attention sources over the shared SparkRing ARM64 native runtime."
+    },
+    {
       "id": "sglang-deepseek-bounded-prefill",
       "path": "runtime/images/sglang_extension.py",
       "kind": "python",

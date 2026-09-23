@@ -1,0 +1,51 @@
+{
+  "schema": "sparkring-mimo-v26-flash-runtime/v1",
+  "status": "research-only",
+  "platform": "linux/arm64",
+  "image": {
+    "reference": "sparkring:mimo-b12x-6afb999-4f3028",
+    "publisher": "local build; no prebuilt image published",
+    "vllm_version": "0.26.1rc0+sparkring.native.2160312ffde4",
+    "entrypoint_bypass": "Launchers invoke the vLLM CLI through a login shell to activate the bundled CUDA compatibility driver. The inherited base-image attestation does not cover the replaced Python packages."
+  },
+  "model": {
+    "repository": "XiaomiMiMo/MiMo-V2.6-Flash-RL",
+    "revision": "5711b268169967567844e1e560e8a3966da959b1",
+    "config_sha256": "61bea4a0f7a0dd8969f8cae528761e26b697dd12ff63e98804c3f0945492e621",
+    "weight_index_sha256": "09d9b96a77ed9765fa4e02a6a45f92797702eef432da426efc6b45c1131b1812",
+    "dflash_draft_sha256": "94d9c02c17e0b469f88699e98424825ebe13a17f07eb3b86727b5e0c8143d287",
+    "dflash_config_note": "Revisions before b2674c72176d008cb675a09f626f8eba3f3f21c4 ship dflash/config.json with a trailing comma; the launchers mount a corrected copy (fix_dflash_config.py) when the checkpoint's file does not parse. config.json, model.safetensors.index.json and the draft weights are unchanged across those revisions."
+  },
+  "launchers": {
+    "pair": "runtime/mimo-v26-flash/launch-pair.sh",
+    "ring": "runtime/mimo-v26-flash/launch-ring.sh"
+  },
+  "evidence": {
+    "ring_record": "performance/records/mimo-v26-flash/b12x-tp4-20260923.md",
+    "pair_status": "research-only; B12X target/draft composition has not been launched on TP2",
+    "independent_hardware_validation": false
+  },
+  "base_image": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring@sha256:26c366af994cf42e38e4596db4d611342a3466fd8ca49d6037237d04249e5132",
+    "config_digest": "sha256:412d4f5e0e13acbc53e032d3be26ded2e7a9d979a2261236e98d59817cf259e6",
+    "label_version": "shared-2026.09.3",
+    "native_extensions": "Retained from the base image; the builder replaces Python packages without compiling CUDA extensions.",
+    "measurement_note": "TP4 measurements used parent c57f939fde8ca5d7134f20ec1da6a16321dd023e662ce2392d94e14390de71a1, a local child of this digest containing its verification-generated cache layer. Rebuilding directly from the published parent has not been benchmarked."
+  },
+  "sources": {
+    "vllm": {
+      "repository": "https://github.com/local-inference-lab/vllm.git",
+      "revision": "6afb99982576a7a2eb53d667189e859629e22739"
+    },
+    "b12x": {
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "revision": "4f3028b19c1d8290dc72b6f483aba40de23eae5a"
+    }
+  },
+  "build": {
+    "launcher": "runtime/mimo-v26-flash/build-image.sh",
+    "dockerfile": "runtime/mimo-v26-flash/Dockerfile",
+    "image_check": "runtime/mimo-v26-flash/check_image.py",
+    "platform": "linux/arm64"
+  }
+}

@@ -1,74 +1,91 @@
 # MiMo-V2.6-Flash-RL runtime
 
-Launch inputs for the two MiMo-V2.6-Flash-RL profiles,
-[`mimo-v26-flash-rl-tp2`](../../profiles/mimo-v26-flash-rl-tp2/README.md)
-(two Sparks) and
-[`mimo-v26-flash-rl-tp4`](../../profiles/mimo-v26-flash-rl-tp4/README.md)
-(four Sparks). Status: **implemented**; neither profile is qualified.
+The [TP2 profile](../../profiles/mimo-v26-flash-rl-tp2/README.md) and
+[TP4 profile](../../profiles/mimo-v26-flash-rl-tp4/README.md) use native B12X
+attention for MiMo global and sliding-window layers and its DFlash draft.
+Packed Q/K-192, V-128 pages keep the unequal head dimensions without padding V.
+TP4 has bounded text-serving evidence; TP2 is **research-only** pending hardware testing.
 
-`XiaomiMiMo/MiMo-V2.6-Flash-RL` is a 309B mixture-of-experts model with 48
-decoder layers (9 global-attention layers with 4 KV heads, 39 sliding-window
-layers with 8 KV heads and a 128-token window), 192-wide Q/K heads, 128-wide V
-heads, fp8 attention weights, MXFP4 experts stored in an fp8 quantization
-config, a bundled five-layer DFlash draft (`dflash/`, block size 8) and vision
-and audio encoders.
+## Build and distribute
 
-## Contents
+The [image contract](b12x-image.json) pins the published SparkRing native base,
+LIL vLLM revision `6afb99982576a7a2eb53d667189e859629e22739` and B12X revision
+`4f3028b19c1d8290dc72b6f483aba40de23eae5a`. These Python packages include
+native MiMo attention selection, packed DiffKV handling and noncausal DFlash
+attention. Native CUDA extensions and SparkRing transport remain from the base.
+Changing either source pin requires compatibility testing.
 
-| File | Purpose |
-|---|---|
-| [image.json](image.json) | Runtime contract: published image reference, vLLM build, checkpoint identity and the digest, mount target and selector of every overlay file |
-| [launch-pair.sh](launch-pair.sh) | Starts one TP2 rank from a rank-local copy of [pair.env.example](pair.env.example) |
-| [launch-ring.sh](launch-ring.sh) | Starts one TP4 rank from a rank-local copy of [ring.env.example](ring.env.example) and a filled [sircl-rank.env.example](sircl-rank.env.example) |
-| [fix_dflash_config.py](fix_dflash_config.py) | Writes a valid-JSON copy of a draft configuration whose upstream revision carries a trailing comma |
-| `overlay/` | vLLM source files bind-mounted read-only over the image's package |
-| `patches/` | The upstream diffs the overlay files apply, for provenance |
+On an ARM64 Spark with Git, Python 3 and Docker, run from the repository root:
 
-## Why an overlay
+```bash
+bash runtime/mimo-v26-flash/build-image.sh
+IMAGE=sparkring:mimo-b12x-6afb999-4f3028
+docker image inspect --format '{{.Id}}' "$IMAGE"
+docker save "$IMAGE" -o /var/tmp/mimo-b12x-image.tar
+```
 
-The published image's vLLM build (`0.26.1rc0+sparkring.native.2160312ffde4`)
-loads this checkpoint only with changes that upstream vLLM merged after the
-build: fused fp8 QKV sharding by the checkpoint's pre-shard count
-([vLLM PR 57508](https://github.com/vllm-project/vllm/pull/57508)), the bf16
-MoE router, the draft's attention value scale and the Eagle3 mixin on the
-omni class ([vLLM PR 57784](https://github.com/vllm-project/vllm/pull/57784)).
-Two further files are performance changes: the split-KV dispatch for
-multi-row speculative verification batches in the DiffKV kernel
-([local-inference-lab/vllm PR 839](https://github.com/local-inference-lab/vllm/pull/839))
-and the same rule ported to the symmetric kernel. Multimodal serving needs the
-omni class to report encoder token counts and the sink slice per data-parallel
-encoder shard. The image entrypoint attests site-packages hashes and rejects
-any overlay, so the launchers exec the vLLM CLI directly with the argv the
-entrypoint would exec, from a login shell so the image's shell initialization
-activates its CUDA forward-compatibility driver (the vision and audio encoders'
-FlashAttention-2 kernel is CUDA 13.3 PTX).
+Copy the archive to each serving rank through the site's transfer network,
+then run on each recipient:
 
-A rebuilt image that includes these changes removes the overlay and the
-entrypoint bypass; `image.json` records each file's digest so such an image
-can state what it absorbed.
+```bash
+docker load -i /var/tmp/mimo-b12x-image.tar
+docker image inspect --format '{{.Id}}' sparkring:mimo-b12x-6afb999-4f3028
+```
 
-## Launcher switches
+All ranks must report the same image ID. Put that ID in each rank's private
+`IMAGE` assignment. No prebuilt image for this composition is published.
+The builder retains its temporary source context and prints the path.
+The measured TP4 image used the same source revisions over a child of the
+published base containing verification-generated caches; a build directly
+from the public base has not been benchmarked.
 
-Both launchers read a rank-local environment file (site addresses,
-interfaces, devices, paths and image) and take serving tunables from the
-process environment, defaulting to the profile recipe.
+[check_image.py](check_image.py) checks ARM64 architecture and pinned source
+labels before either launcher removes a serving container. The check rejects
+the unmodified base and wrong source revisions. Labels establish declared
+provenance; they do not attest package bytes. The CLI is invoked through a
+login shell to activate the base's CUDA compatibility driver because inherited
+package attestation does not cover the replaced Python packages.
 
-| Variable | Pair default | Ring default | Meaning |
-|---|---|---|---|
-| `MM` | `1` | `1` | `1`: images (3), video (1) and audio (1) per prompt; `image`: images only; `0`: text only |
-| `PAD_V` | `1` | `0` | `1`: padded-V symmetric attention kernel; `0`: DiffKV kernel with the PR 839 dispatch |
-| `KV_BYTES` | 12 GiB (16 GiB when `MM=0`) | 20 GiB | KV reservation per rank; the target KV cache is bf16, the draft's fp8 |
-| `SPEC_TOKENS` | `5` | `5` | Drafted tokens per step |
-| `CG_CAP` | `32` | `64` | Full cudagraph capture ceiling in tokens |
-| `ROCE_AR` | `1` | not used | RoCEnante one-shot all-reduce up to 2 MB; NCCL above |
-| `SIRCL` | not used | `1` | SIRCL graph-only and fused-prefill sessions over the managed mesh; `0` serves on PyNCCL |
-| `LINEAR_BACKEND` | `b12x` | `auto` | At TP4 the 3392-wide global-attention QKV slice is not a multiple of 128 |
-| `EXTRA_ENV` | empty | empty | `NAME=value,NAME2=value` added to the container environment |
+## Serving defaults
 
-The target KV cache stays bf16 on both topologies: the checkpoint carries no
-K/V scales and an fp8 target cache repeats itself on long outputs at both
-greedy and sampled decoding. Global and sliding layers plus the draft give
-mixed KV page sizes, which only the block-outermost `BLHNC` layout expresses.
-Ahead-of-time compilation of the language-model forward is disabled whenever
-multimodal inputs are enabled: the compiled function is specialised on the
-text-only dummy run and fails on the multimodal profiling run.
+| Setting | TP2 | TP4 |
+|---|---|---|
+| Target / draft attention | B12X / B12X | B12X / B12X |
+| Target / draft KV | BF16 / BF16 | BF16 / BF16 |
+| Loader / runner | Safetensors / V2 | Safetensors / V2 |
+| Context / sequences / batch | 262,144 / 16 / 8,192 | 262,144 / 16 / 8,192 |
+| KV reservation per rank | 12 GiB; 16 GiB text-only | 20 GiB |
+| DFlash tokens / graph ceiling | 5 / 64 | 5 / 64 |
+| Linear backend / MoE backend | B12X / B12X | auto / B12X |
+| Collectives | RoCEnante pair, NCCL fallback | SIRCL over managed mesh, NCCL fallback |
+| Media limits | 3 images, 1 video (16 frames), 1 audio | Same |
+
+TP2 memory use with BF16 draft KV and 64-row capture is unmeasured.
+TP4 keeps automatic linear-kernel selection because its global-attention
+QKV slice is 3392 wide, which is not a multiple of 128. The 64-row graph
+ceiling covers C8/DFlash5; 16 admitted requests can exceed that ceiling.
+
+Safetensors is the recorded loader. FastSafetensors produced corrupted text
+in the tested MiMo setup. FP8 target KV and FP8 B12X draft KV are not qualified
+by these profiles. `VLLM_PLUGINS=b12x_loader` loads the plugin but does not
+change the explicit `--load-format safetensors` selection.
+
+## Launch controls
+
+Use [pair.env.example](pair.env.example) or [ring.env.example](ring.env.example)
+and [sircl-rank.env.example](sircl-rank.env.example). The launchers accept
+`--check RANK_ENV_FILE` or `--run RANK_ENV_FILE`. Follow the topology's
+profile for fabric setup, startup ordering, log checks and stopping.
+
+`MM=1` enables the listed media limits, `MM=image` enables only images,
+and `MM=0` selects text-only serving. `KV_BYTES`, `SPEC_TOKENS`, `CG_CAP`,
+`MAX_MODEL_LEN`, `MAX_NUM_SEQS` and `MAX_BATCHED` override serving limits.
+For an explicit text-only TP2 KV override also set `KV_BYTES_EXPLICIT=1`.
+`ROCE_AR` controls pair collectives; `SIRCL` controls ring collectives.
+`EXTRA_ENV` adds comma-separated container environment assignments.
+AOT compilation is disabled when media is enabled.
+
+The maintained launchers do not mount the retained `overlay/` or `patches/`
+files; those belong to the historical Triton measurements. The only optional
+model-file mount repairs invalid JSON in older `dflash/config.json` files
+using [fix_dflash_config.py](fix_dflash_config.py).

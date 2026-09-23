@@ -3,14 +3,14 @@
   "id": "mimo-v26-flash-rl-tp2",
   "title": "MiMo-V2.6-Flash-RL with DFlash on two Sparks",
   "recommendation": "alternative",
-  "status": "implemented",
+  "status": "research-only",
   "configuration": {
     "format": "recipe",
     "path": "profiles/mimo-v26-flash-rl-tp2/recipe.json"
   },
-  "release": "runtime/releases/mimo-v26-flash-rl-tp2/release.json",
+  "release": "runtime/releases/mimo-b12x-6afb-4f/tp2.json",
   "guide": "profiles/mimo-v26-flash-rl-tp2/README.md",
-  "evidence_scope": "One-site serving with bind-mounted vLLM overlay files on the published image; text, image and audio smoke checks and a single-day throughput record. No qualification, soak or independent reproduction.",
+  "evidence_scope": "Configuration adaptation from the measured TP4 B12X image; no TP2 hardware run for these settings. TP2 startup, memory, correctness and performance remain unqualified.",
   "overrides": [
     "max_model_len",
     "max_num_seqs",

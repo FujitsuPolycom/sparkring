@@ -11,15 +11,10 @@
 # of sircl-rank.env.example). Start ranks 3, 2 and 1 before rank 0; rank 0
 # serves the API.
 #
-# The image entrypoint attests the site-packages hashes and rejects the model
-# overlay, so the vLLM CLI is exec'd directly with the argv the entrypoint
-# would exec, from a login shell so /etc/shinit_v2 activates the CUDA
-# forward-compatibility driver (see launch-pair.sh for the reason).
-#
-# Overlay files (this directory's overlay/) and the switches that select them
-# are described in README.md. Serving settings are recorded in
-# profiles/mimo-v26-flash-rl-tp4/recipe.json; tunables below default to that
-# recipe.
+# Invoke the derived image's CLI through a login shell so /etc/shinit_v2
+# activates its CUDA compatibility driver. The inherited base-image
+# attestation does not describe the replaced Python packages.
+# Settings and source pins are recorded in recipe.json and b12x-image.json.
 set -euo pipefail
 [ $# -eq 2 ] && { [ "$1" = --check ] || [ "$1" = --run ]; } || { echo "usage: bash launch-ring.sh --check|--run RANK_ENV_FILE" >&2; exit 2; }
 ACTION="$1"; RANK_ENV_FILE="$2"
@@ -28,7 +23,6 @@ if grep -v "^#" "$RANK_ENV_FILE" | grep -q "REPLACE_"; then echo "$RANK_ENV_FILE
 # shellcheck disable=SC1090
 . "$RANK_ENV_FILE"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OVERLAY="${OVERLAY:-$HERE/overlay}"
 for name in RANK HOST_IP MASTER_ADDR MGMT_IFNAME NCCL_IB_HCA_LIST MODEL_DIR CACHE_DIR IMAGE; do
   [ -n "${!name:-}" ] || { echo "$RANK_ENV_FILE: set $name" >&2; exit 2; }
 done
@@ -46,29 +40,19 @@ MAX_BATCHED="${MAX_BATCHED:-8192}"
 KV_BYTES="${KV_BYTES:-21474836480}"
 GPU_MEM="${GPU_MEM:-0.80}"
 SPEC_TOKENS="${SPEC_TOKENS:-5}"
-ATTN="${ATTN:-TRITON_ATTN}"
+ATTN="${ATTN:-B12X}"
 # A C=8 decode step with a 5-token draft is 48 query rows; a 64-token capture
 # ceiling keeps that step on the captured width-4096 SIRCL graph lane.
 CG_CAP="${CG_CAP:-64}"
 MM="${MM:-1}"
 case "$MM" in
-  1)     OMNI_FILE=mimo_v2_omni_mm.py; MM_ARGS=(--limit-mm-per-prompt '{"image":3,"video":1,"audio":1}' --mm-processor-cache-gb 0 --mm-encoder-tp-mode data --media-io-kwargs '{"video":{"num_frames":16},"audio":{"audio_backend":"torchcodec"}}') ;;
-  image) OMNI_FILE=mimo_v2_omni_mm.py; MM_ARGS=(--limit-mm-per-prompt '{"image":3,"video":0,"audio":0}' --mm-processor-cache-gb 0 --mm-encoder-tp-mode data) ;;
-  0)     OMNI_FILE=mimo_v2_omni.py;    MM_ARGS=(--limit-mm-per-prompt '{"image":0,"video":0,"audio":0}' --mm-processor-cache-gb 0) ;;
+  1)     MM_ARGS=(--limit-mm-per-prompt '{"image":3,"video":1,"audio":1}' --mm-processor-cache-gb 0 --mm-encoder-tp-mode data --media-io-kwargs '{"video":{"num_frames":16},"audio":{"audio_backend":"torchcodec"}}') ;;
+  image) MM_ARGS=(--limit-mm-per-prompt '{"image":3,"video":0,"audio":0}' --mm-processor-cache-gb 0 --mm-encoder-tp-mode data) ;;
+  0)     MM_ARGS=(--limit-mm-per-prompt '{"image":0,"video":0,"audio":0}' --mm-processor-cache-gb 0) ;;
   *) echo "MM must be 1, image or 0" >&2; exit 2 ;;
 esac
 if [ "$MM" != 0 ]; then AOT_COMPILE=0; else AOT_COMPILE="${AOT_COMPILE:-1}"; fi
-# PAD_V=0 (ring default) runs the DiffKV kernel with the PR 839 split-KV
-# dispatch; PAD_V=1 selects the padded-V symmetric kernel, which on this
-# topology gains nothing and costs 17 percent of KV capacity.
-PAD_V="${PAD_V:-0}"
-if [ "$PAD_V" = 1 ]; then
-  MIMO_V2_FILE=mimo_v2_padded_v.py
-  KERNEL_MOUNT=(-v "$OVERLAY/triton_unified_attention.py":/opt/venv/lib/python3.12/site-packages/vllm/v1/attention/ops/triton_unified_attention.py:ro)
-else
-  MIMO_V2_FILE=mimo_v2.py
-  KERNEL_MOUNT=(-v "$OVERLAY/triton_unified_attention_diffkv.py":/opt/venv/lib/python3.12/site-packages/vllm/v1/attention/ops/triton_unified_attention_diffkv.py:ro)
-fi
+# Native B12X accepts packed Q/K-192, V-128 pages without model overlays.
 EXTRA_ENV_ARGS=()
 IFS=',' read -r -a _extra_kv <<< "${EXTRA_ENV:-}"
 for kv in "${_extra_kv[@]}"; do [ -n "$kv" ] && EXTRA_ENV_ARGS+=(--env "$kv"); done
@@ -105,9 +89,7 @@ LINEAR_BACKEND="${LINEAR_BACKEND:-auto}"
 for f in config.json dflash/config.json dflash/dflash_draft_model.safetensors model.safetensors.index.json; do
   [ -f "$MODEL_DIR/$f" ] || { echo "missing $MODEL_DIR/$f" >&2; exit 1; }
 done
-for f in "$MIMO_V2_FILE" mimo_v2_mtp.py "$OMNI_FILE" qwen3_dflash.py; do
-  [ -f "$OVERLAY/$f" ] || { echo "missing overlay file $OVERLAY/$f" >&2; exit 1; }
-done
+python3 "$HERE/check_image.py" "$IMAGE"
 if [ "$(find "$MODEL_DIR" -name '*.incomplete' | wc -l)" != 0 ]; then
   echo "incomplete download files under $MODEL_DIR" >&2; exit 1
 fi
@@ -119,10 +101,9 @@ if ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$MODEL_DIR/dfla
 fi
 if [ "$ACTION" = --check ]; then
   docker image inspect "$IMAGE" --format '{{.Id}}' >/dev/null || { echo "image $IMAGE is not present" >&2; exit 1; }
-  echo "rank $RANK: inputs valid (SIRCL=$SIRCL MM=$MM PAD_V=$PAD_V KV_BYTES=$KV_BYTES SPEC_TOKENS=$SPEC_TOKENS CG_CAP=$CG_CAP LINEAR_BACKEND=$LINEAR_BACKEND)"
+  echo "rank $RANK: inputs valid (SIRCL=$SIRCL MM=$MM ATTN=$ATTN KV_BYTES=$KV_BYTES SPEC_TOKENS=$SPEC_TOKENS CG_CAP=$CG_CAP LINEAR_BACKEND=$LINEAR_BACKEND)"
   exit 0
 fi
-P=/opt/venv/lib/python3.12/site-packages/vllm/model_executor/models
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 exec docker run -d --name "$NAME" \
   --gpus all --network host --ipc host --shm-size 32g \
@@ -151,16 +132,12 @@ exec docker run -d --name "$NAME" \
   --env B12X_ROCE_CACHE_DIR=/cache/jit/roce --env CUTE_DSL_CACHE_DIR=/cache/jit/cute \
   --env B12X_COMPILE_CACHE_DIR=/cache/jit/b12x --env B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x \
   --env SERVED_MODEL_NAME="$SERVED_MODEL_NAME" \
+  --env VLLM_USE_V2_MODEL_RUNNER=1 \
   --env VLLM_KV_CACHE_LAYOUT=BLHNC --env VLLM_USE_AOT_COMPILE="$AOT_COMPILE" \
-  --env VLLM_MIMO_PAD_V="$PAD_V" --env VLLM_MIMO_PASS_CACHE_CONFIG=0 \
   "${EXTRA_ENV_ARGS[@]}" \
   -v "$MODEL_DIR":/models/target:ro \
   -v "$CACHE_DIR":/cache/jit \
-  "${KERNEL_MOUNT[@]}" "${DFLASH_MOUNT[@]}" \
-  -v "$OVERLAY/$MIMO_V2_FILE":$P/mimo_v2.py:ro \
-  -v "$OVERLAY/mimo_v2_mtp.py":$P/mimo_v2_mtp.py:ro \
-  -v "$OVERLAY/$OMNI_FILE":$P/mimo_v2_omni.py:ro \
-  -v "$OVERLAY/qwen3_dflash.py":$P/qwen3_dflash.py:ro \
+  "${DFLASH_MOUNT[@]}" \
   --entrypoint /bin/sh "$IMAGE" -lc 'exec /opt/venv/bin/python -m vllm.entrypoints.cli.main serve "$@"' sh /models/target \
   --served-model-name "$SERVED_MODEL_NAME" --trust-remote-code \
   --node-rank "$RANK" --master-addr "$MASTER_ADDR" --master-port "$MASTER_PORT" --nnodes 4 \
@@ -168,7 +145,7 @@ exec docker run -d --name "$NAME" \
   --disable-custom-all-reduce \
   --host 0.0.0.0 --port "$PORT" \
   --max-model-len "$MAX_MODEL_LEN" --max-num-seqs "$MAX_NUM_SEQS" --max-num-batched-tokens "$MAX_BATCHED" \
-  --dtype bfloat16 --kv-cache-dtype fp8 --block-size 64 \
+  --dtype bfloat16 --load-format safetensors --kv-cache-dtype bfloat16 --block-size 64 \
   --gpu-memory-utilization "$GPU_MEM" --kv-cache-memory-bytes "$KV_BYTES" \
   --attention-backend "$ATTN" --linear-backend "$LINEAR_BACKEND" --moe-backend b12x \
   --no-enable-flashinfer-autotune \
@@ -176,5 +153,5 @@ exec docker run -d --name "$NAME" \
   "${MM_ARGS[@]}" \
   --reasoning-parser mimo --tool-call-parser mimo --enable-auto-tool-choice \
   --generation-config vllm \
-  --speculative-config "{\"model\":\"/models/target/dflash\",\"method\":\"dflash\",\"num_speculative_tokens\":${SPEC_TOKENS},\"attention_backend\":\"${ATTN}\"}" \
+  --speculative-config "{\"model\":\"/models/target/dflash\",\"method\":\"dflash\",\"num_speculative_tokens\":${SPEC_TOKENS},\"kv_cache_dtype\":\"auto\",\"attention_backend\":\"B12X\"}" \
   --compilation-config "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":${CG_CAP}}"
