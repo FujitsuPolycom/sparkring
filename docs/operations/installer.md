@@ -51,6 +51,19 @@ For a pasteable TP2 file, download one of these and save it as `compose.yaml`:
 - [Qwen TP2](../../profiles/qwen38-flash-next-tp2/compose/standalone.yaml)
 - [Qwen TP2 with SparkCache](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/standalone.yaml)
 
+Validate a downloaded recipe locally before trying hardware:
+
+```bash
+python3 scripts/sparkring.py validate-compose compose.yaml
+# Or check all maintained recipes and save a new report:
+python3 scripts/sparkring.py validate-compose --all --output .sparkring/compose-validation.json
+```
+
+Requires the Docker Compose CLI, but no daemon, images or GPUs. It checks profile
+identity/settings, resolves both ranks with example inputs, tests missing-variable
+guards and simulates rank registration. It rejects external includes/env files
+before invoking Compose. A pass does not establish GPU/RDMA or inference behavior.
+
 The same file goes on both hosts. Set the five local values listed at its top,
 then run `docker compose --profile rank1 up -d` on the worker and
 `docker compose --profile rank0 up -d` on the head. The pinned image pulls
