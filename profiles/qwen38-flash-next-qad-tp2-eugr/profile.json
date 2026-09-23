@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-qad-tp2-eugr",
+  "title": "Qwen3.8-Flash-Next NVFP4 QAD TP2 on the eugr ARM64 foundation",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-qad-tp2-eugr/config.json"
+  },
+  "release": "runtime/releases/shared-2026.09.4-rc.4/release.json",
+  "guide": "profiles/qwen38-flash-next-qad-tp2-eugr/README.md",
+  "evidence_scope": "Opt-in prerelease; consult the exact-image qualification record for completed TP2/TP4 checks and remaining limitations. Stable profile defaults are unchanged.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan",
+      "check",
+      "create"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/qwen38-flash-next-qad-tp2-eugr/config.json"
+    ]
+  }
+}

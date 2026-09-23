@@ -15,6 +15,9 @@ from runtime.common import profiles, qwen_flash_next
 ROOT = Path(__file__).resolve().parents[2]
 TP4_PROFILES = ("qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache")
 SUPPORTED = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", *TP4_PROFILES)
+# These opt-in IDs need a registered publication/profile before rendering.
+# SUPPORTED remains the inventory with checked-in, generated public examples.
+EXTERNAL_PROFILES = ("qwen38-flash-next-qad-tp2-eugr", "qwen38-flash-next-qad-tp4-eugr")
 LABEL = "io.sparkring.deployment"
 
 
@@ -170,7 +173,15 @@ def source_inventory(profile_id, *, local_source_extension=None):
     if policy["kind"] == "native":
         paths.add("runtime/common/native_candidate.py")
         paths.add(f"runtime/releases/{policy['native_release']}/publication.json")
-    if profile_id in TP4_PROFILES:
+    if policy["kind"] == "external":
+        from runtime.common import external_candidate
+        publication = external_candidate.release_publication(release, policy["external_release"])
+        paths.update(("runtime/common/external_candidate.py", "runtime/common/native_candidate.py"))
+        paths.add(f"runtime/releases/{policy['external_release']}/publication.json")
+        # Canonical admission checks every configuration pinned by the release;
+        # both pair and ring records must survive controller-to-host staging.
+        paths.update(publication["profiles"])
+    if qwen_flash_next.node_count(profile) == 4:
         from runtime.common import qwen_mesh
         paths.add("runtime/common/feature_candidate.py")
         paths.update(("profiles/qwen38-flash-next-qad-tp4/config.json",
@@ -200,7 +211,7 @@ def source_inventory(profile_id, *, local_source_extension=None):
 
 def specifications(profile_id, site, *, local_image_id=None, local_source_extension=None,
                    local_kv_cache_gib=None, local_master_port=None):
-    if profile_id not in SUPPORTED:
+    if profile_id not in (*SUPPORTED, *EXTERNAL_PROFILES):
         raise ValueError(
             "Compose adapter unsupported for "
             + str(profile_id)
@@ -213,6 +224,9 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     if policy["kind"] == "source" and not policy["local"]:
         from runtime.common import source_candidate
         publication = source_candidate.release_publication(release, policy["source_extension"])
+    elif policy["kind"] == "external":
+        from runtime.common import external_candidate
+        publication = external_candidate.release_publication(release, policy["external_release"])
     else:
         publication = qwen_flash_next.read(ROOT / release["inputs"][0]["path"])
     local = publication.get("schema") == "sparkring-local-image-build/v1"

@@ -44,6 +44,9 @@ def publication():
 
 
 def canonical(profile):
+    if profile.get("image_extension") == "external-base":
+        from runtime.common import external_candidate
+        return external_candidate.canonical_profile(profile)
     if (profile not in [read(CONFIG_ROOT / name) for name in CONFIG_NAMES]
             and profile not in [read(TP4_CONFIG), read(TP4_CACHE_CONFIG)]):
         raise ValueError("Select an unchanged canonical Qwen configuration")
@@ -58,6 +61,13 @@ def node_count(profile):
 
 def image_policy(profile, *, local_source_extension=None):
     """Resolve one image kind for Docker, Compose and host admission."""
+    if profile.get("image_extension") == "external-base":
+        if local_source_extension is not None:
+            raise ValueError("External releases cannot select a legacy source extension")
+        from runtime.common import external_candidate
+        external_candidate.publication(profile.get("image_release"))
+        return {"kind": "external", "source_extension": None, "local": False,
+                "external_release": profile["image_release"]}
     if profile.get("image_extension") == "native-shared":
         if local_source_extension is not None:
             from runtime.common import source_candidate
@@ -89,6 +99,8 @@ def image_policy(profile, *, local_source_extension=None):
 
 def image_verification_options(profile, *, local_source_extension=None):
     policy = image_policy(profile, local_source_extension=local_source_extension)
+    if policy["kind"] == "external":
+        return {"external_release": policy["external_release"]}
     if policy["kind"] == "native":
         return {"native_release": policy["native_release"]}
     options = {"cache_enabled": policy["kind"] == "cache", "feature_enabled": policy["kind"] == "feature"}
@@ -129,7 +141,13 @@ def site_inputs(rank, master, host_ip, interface, model, cache, *, remote=False,
 
 
 def verify_image(image, *, cache_enabled=False, feature_enabled=False,
-                 local_source_extension=None, source_extension=None, native_release=None, run=subprocess.run):
+                 local_source_extension=None, source_extension=None, native_release=None,
+                 external_release=None, run=subprocess.run):
+    if external_release is not None:
+        if cache_enabled or feature_enabled or local_source_extension or source_extension or native_release:
+            raise ValueError("External and legacy image admission cannot be combined")
+        from runtime.common import external_candidate
+        return external_candidate.verify_image(image, external_release, run=run)
     if native_release is not None:
         if cache_enabled or feature_enabled or local_source_extension or source_extension:
             raise ValueError("Native and legacy image admission cannot be combined")
@@ -196,6 +214,12 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     canonical(profile)
     policy = image_policy(profile, local_source_extension=local_source_extension)
     entrypoint = candidate.ENTRYPOINT
+    python = "/opt/venv/bin/python"
+    if policy["kind"] == "external":
+        from runtime.common import external_candidate
+        external = external_candidate.publication(policy["external_release"], image_id=image)
+        profile = external_candidate.profile_settings(profile, external)
+        entrypoint, python = external_candidate.ENTRYPOINT, external_candidate.PYTHON
     if policy["kind"] == "native":
         from runtime.common import native_candidate
         native_candidate.publication(policy["native_release"], image_id=image)
@@ -247,6 +271,10 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         env["SPARKRING_TRANSPORT_PROFILE"] = native["transport"]["profile"]
         env["SPARKRING_TRANSPORT_MANIFEST_SHA256"] = native["transport"]["manifest_sha256"]
         env["B12X_CUTE_COMPILE_CACHE_DIR"] = env["B12X_COMPILE_CACHE_DIR"]
+    if policy["kind"] == "external":
+        env["SPARKRING_TRANSPORT_PROFILE"] = external["transport"]["profile"]
+        env["SPARKRING_TRANSPORT_MANIFEST_SHA256"] = external["transport"]["manifest_sha256"]
+        env["B12X_CUTE_COMPILE_CACHE_DIR"] = env["B12X_COMPILE_CACHE_DIR"]
     if hcas is not None:
         if (not isinstance(hcas, list) or len(hcas) != nodes or len(set(hcas)) != nodes
                 or any(not re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca) for hca in hcas)):
@@ -275,15 +303,18 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         args += ["--headless"]
     port = profile["vllm_args"][profile["vllm_args"].index("--port") + 1]
     health = () if rank else (
-        "/opt/venv/bin/python", "-c",
+        python, "-c",
         f"import urllib.request; urllib.request.urlopen('http://127.0.0.1:{port}/health', timeout=4).close()",
     )
     prefix = "qad-sparkcache-" if nodes == 4 and env.get("SPARKCACHE_ENABLED") == "1" else "qad-" if nodes == 4 else "sparkcache-" if env.get("SPARKCACHE_ENABLED") == "1" else ""
     return ContainerSpec(
         name=f"qwen-flash-next-{prefix}tp{nodes}-r{rank}",
-        image_id=image, entrypoint=("/opt/venv/bin/python",), command=tuple(args),
+        image_id=image, entrypoint=(python,), command=tuple(args),
         environment=env, mounts=(Bind(str(model), "/models/target", True), Bind(str(cache), "/cache")),
         health_command=health,
+        working_dir="/" if policy["kind"] == "external" else None,
+        cap_add=tuple(profile["container_envelope"]["cap_add"]) if policy["kind"] == "external" else (),
+        security_opt=tuple(profile["container_envelope"]["security_opt"]) if policy["kind"] == "external" else (),
     )
 
 

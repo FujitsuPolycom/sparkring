@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparkring-runtime-status"
+version = "0.1.0"
+description = "Read-only SparkRing configuration and resident preparation status"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.115"]
+
+[project.entry-points."vllm.endpoint_plugins"]
+sparkring_status = "sparkring_runtime_status.plugin:StatusPlugin"
+
+[project.entry-points."vllm.general_plugins"]
+sparkring_status = "sparkring_runtime_status.plugin:register_worker_method"
+
+[tool.setuptools.packages.find]
+include = ["sparkring_runtime_status*"]

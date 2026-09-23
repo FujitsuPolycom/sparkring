@@ -15,6 +15,18 @@ keep the upstream prepared projection callables. HC uses its declared
 `scaled_silu` preparation binding. These are source-specific hooks, not general
 model or TP2 support.
 
+The HC hook supports both replicated and TP4-sharded projection weights. With
+sharded projections it retains KK's FP32 down-projection before BF16 conversion,
+gathers the bottleneck, fuses the local 640-coordinate up-projection and gate,
+then gathers the block input. Batches below 128 rows use the original KK method,
+including its prepared decode workspaces and projection dispatch.
+
+Projection sharding requires identical token rows on every rank. The separate HC
+token-row ownership mode must therefore be `off` when projection sharding is
+enabled; combining the two would mix projections from different tokens. The
+adapter must select this configuration explicitly. The sharded fusion path has
+CPU dispatch checks; GPU numerical and serving qualification remain pending.
+
 `package_prefill.py` emits a manifest-bound bundle for
 `/opt/sparkring/qwen4-prefill`. The selected image feature installs only
 `qwen4_prefill.pth`; do not activate the R37 `qwen-prefill` bundle alongside it.

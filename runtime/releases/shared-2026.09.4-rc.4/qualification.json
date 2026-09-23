@@ -1,0 +1,328 @@
+{
+  "schema": "sparkring-external-final-qualification/v1",
+  "status": "bounded-qwen-tp2-tp4-serving-qualified",
+  "composition_sha256": "f93681c64242803d9bebcc9b6a7170a31e6946073354b5d3da9d7e59e94b2cdc",
+  "image_tested_cpu": "sha256:e7aa21940659a7c5a67d64515e01368ea4c12fe12365e20d9fb5e04eebf78881",
+  "source_manifest_sha256": "deb6d30a6fb1d3c316cfc17b046e587c65b8e241b3cbf0df7dcb8ee3011cfa78",
+  "source_commits": {
+    "vllm": "91f94783190ce716e2238f899b25d44e84e2a525",
+    "b12x": "a0a0c425e20f45e041de241afd6e76dcfc52d281"
+  },
+  "installed_cpu_checks": {
+    "vllm": {
+      "tests": 482,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "a01322d3afb1f3a3f32d98da51b84aef41f98b905cf26677b82d69173a061bee"
+    },
+    "b12x": {
+      "tests": 103,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "c2c93c15e4231ccbd18e408fa6f3e47953b7dcb90fac9a7e7722c1875177aa84"
+    }
+  },
+  "protected_source_checks": {
+    "vllm-baseline": {
+      "exit": 0,
+      "outcome": "passed",
+      "assertions": 69,
+      "skipped": 0
+    },
+    "vllm-candidate": {
+      "exit": 0,
+      "outcome": "passed",
+      "assertions": 187,
+      "skipped": 0
+    },
+    "b12x-baseline": {
+      "exit": 0,
+      "outcome": "passed",
+      "assertions": 23,
+      "skipped": 0
+    },
+    "b12x-candidate": {
+      "exit": 0,
+      "outcome": "passed",
+      "assertions": 228,
+      "skipped": 0
+    }
+  },
+  "protected_source_inputs_sha256": "691852eb9fa47c52d8af45d8127119590cc487597de3dcf83dd1752dd5649888",
+  "status_plugin": {
+    "unit_contracts_passed": 29,
+    "real_vllm_authentication_middleware_passed": 1,
+    "real_worker_method_registration_passed": true,
+    "live_endpoint_verified": true
+  },
+  "tp2": {
+    "startup": "passed",
+    "text_correctness": true,
+    "persistent_cache_restart_restore": true,
+    "prompt_tokens": 10508,
+    "restored_tokens": 8544,
+    "cold_cached_tokens": 0,
+    "immediate_replay_cached_tokens": 5696,
+    "worker_status_received": 2,
+    "worker_status_expected": 2,
+    "performance_qualification": false,
+    "physical_restore_per_rank": [
+      {
+        "physical_rank": 0,
+        "verified_span_tokens": 8544,
+        "page_bytes": 124674297,
+        "outcome": "verified"
+      },
+      {
+        "physical_rank": 1,
+        "verified_span_tokens": 8544,
+        "page_bytes": 124674297,
+        "outcome": "verified"
+      }
+    ],
+    "runtime_status": {
+      "hc_prefill_row_ownership": "off",
+      "hc_projection_tp_size": 2,
+      "fuse_act_quant": true,
+      "workers_complete": true
+    },
+    "transport_observed": {
+      "nccl": "2.31.2+cuda13.3",
+      "nccl_library": "/opt/local-inference/nccl/lib/libnccl.so.2",
+      "rocenante_world": 2,
+      "hca_functions": 2,
+      "all_reduce_max_bytes": 2097152,
+      "all_gather_shard_max_bytes": 16777216,
+      "first_all_reduce_bytes": 81920,
+      "first_all_gather_shard": [
+        8192,
+        160
+      ]
+    },
+    "scale_setting_note": "The live deployment leaves VLLM_B12X_MOE_FP4_LAYER_MAX_INPUT_SCALE unset, which the pinned envs.py resolves to 0. The published profile explicitly exports that same default. An earlier draft used an unrecognized non-VLLM-prefixed name; it did not enable w13."
+  },
+  "tp4": {
+    "final_sources_deployed": true,
+    "startup": "passed",
+    "text_correctness": true,
+    "persistent_cache_restart_restore": true,
+    "restart_check": "passed",
+    "prompt_tokens": 10508,
+    "cold_cached_tokens": 0,
+    "immediate_replay_cached_tokens": 8640,
+    "committed_tokens_per_rank": 10080,
+    "worker_status_received": 4,
+    "worker_status_expected": 4,
+    "runtime_status": {
+      "hc_prefill_row_ownership": "shard",
+      "hc_projection_tp_size": 1,
+      "fuse_act_quant": true,
+      "workers_complete": true
+    },
+    "performance_qualification": false,
+    "restored_tokens": 10080,
+    "physical_restore_per_rank": [
+      {
+        "physical_rank": 0,
+        "verified_span_tokens": 10080,
+        "page_bytes": 106168569,
+        "outcome": "restored"
+      },
+      {
+        "physical_rank": 1,
+        "verified_span_tokens": 10080,
+        "page_bytes": 106168569,
+        "outcome": "restored"
+      },
+      {
+        "physical_rank": 2,
+        "verified_span_tokens": 10080,
+        "page_bytes": 106168569,
+        "outcome": "restored"
+      },
+      {
+        "physical_rank": 3,
+        "verified_span_tokens": 10080,
+        "page_bytes": 106168569,
+        "outcome": "restored"
+      }
+    ],
+    "transport_observed": {
+      "nccl": "2.31.2+cuda13.3",
+      "dispatch_mode": "both",
+      "policy_all_reduce_max_bytes": 20480,
+      "prefill_ownership_examples": [
+        {
+          "rows": 7200,
+          "owner_rows": 1800
+        },
+        {
+          "rows": 1440,
+          "owner_rows": 360
+        }
+      ],
+      "prefill_reduce_scatter_count": 96,
+      "prefill_all_gather_count": 99,
+      "first_rocenante_all_gather_shard": [
+        16,
+        62080
+      ]
+    },
+    "bounded_prefill_measurement": {
+      "scope": "C1 streaming TTFT on exact 8192/32768-token synthetic fixtures; three repetitions each, 16 output tokens, temperature 0, seed 20260923, MTP3. All six requests reported zero cached tokens. No decode, concurrency or full-context performance claim.",
+      "summary": {
+        "8192": {
+          "median_ttft_seconds": 1.8143866999889724,
+          "median_prefill_tokens_per_second": 4515.024277928068
+        },
+        "32768": {
+          "median_ttft_seconds": 7.041902600001777,
+          "median_prefill_tokens_per_second": 4653.28787705637
+        }
+      },
+      "request_results": [
+        {
+          "context": 8192,
+          "repeat": 0,
+          "ttft_seconds": 1.8202501999912784,
+          "prefill_tokens_per_second": 4500.480208731334,
+          "usage": {
+            "prompt_tokens": 8192,
+            "total_tokens": 8208,
+            "completion_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "fixture_sha256": "d47781d507b6e610df1ec3159dc6a95c6b264fc37cb64575ea39496e7141abee"
+        },
+        {
+          "context": 8192,
+          "repeat": 1,
+          "ttft_seconds": 1.7989261000184342,
+          "prefill_tokens_per_second": 4553.827975432706,
+          "usage": {
+            "prompt_tokens": 8192,
+            "total_tokens": 8208,
+            "completion_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "fixture_sha256": "6b68914f4e6e80d3b42f429b8a368767ba365284adad2f6ef68da4e97d1afa25"
+        },
+        {
+          "context": 8192,
+          "repeat": 2,
+          "ttft_seconds": 1.8143866999889724,
+          "prefill_tokens_per_second": 4515.024277928068,
+          "usage": {
+            "prompt_tokens": 8192,
+            "total_tokens": 8208,
+            "completion_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "fixture_sha256": "c7bf37fc7d2608464d457c7abaa381c306f04ee2837865e1d75eb2fea52d336c"
+        },
+        {
+          "context": 32768,
+          "repeat": 0,
+          "ttft_seconds": 7.041902600001777,
+          "prefill_tokens_per_second": 4653.28787705637,
+          "usage": {
+            "prompt_tokens": 32768,
+            "total_tokens": 32784,
+            "completion_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "fixture_sha256": "2b16c89ff2bb5c723d71fdc43b53546994b6552fd49bfd563e39a0dbd3a9d064"
+        },
+        {
+          "context": 32768,
+          "repeat": 1,
+          "ttft_seconds": 7.088204599975143,
+          "prefill_tokens_per_second": 4622.891387773275,
+          "usage": {
+            "prompt_tokens": 32768,
+            "total_tokens": 32784,
+            "completion_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "fixture_sha256": "eb05bcbe7a101f809c65fd414ccd2d0e5e74ffefad0e4075e611c80b8905a4f6"
+        },
+        {
+          "context": 32768,
+          "repeat": 2,
+          "ttft_seconds": 7.012061599991284,
+          "prefill_tokens_per_second": 4673.090721285268,
+          "usage": {
+            "prompt_tokens": 32768,
+            "total_tokens": 32784,
+            "completion_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "fixture_sha256": "cfaef4c01259f68e06bf5745e6ae101c94008600ead4d3072f0a7bf660ea4f89"
+        }
+      ],
+      "earlier_hc_row_roce_composition": "d348478b8de66939074491a51b27b8ea65c50a15bf683658726454884ce4c530",
+      "earlier_hc_row_roce_medians_tok_s": {
+        "8192": 4524.9,
+        "32768": 4648.77
+      }
+    }
+  },
+  "public_registry_verified": true,
+  "scope": "Exact final image CPU/source qualification. Component CUDA evidence and prior prototype serving measurements retain their own source scope; live qualification pending.",
+  "profile_scope_note": "Published profiles preserve the observed non-cache serving arguments. Site addresses, rank ownership and cache paths are supplied separately. Obsolete B12X_POLICY_MODE is omitted; its removal does not select a different engine path.",
+  "gpu_components": {
+    "b12x_modern_277_288": {
+      "tested_source_archive_sha256": "23b8da263b350c880031541eff49927836ffad79f6764c3684c60a6fa8cc7b8d",
+      "runtime_files_match_final_source_after_line_ending_normalization": true,
+      "runtime_file_count": 507,
+      "qualified_commit": "a0a0c425e20f45e041de241afd6e76dcfc52d281",
+      "cpu_cases": 263,
+      "ordered_split_k_numerical_comparisons": 27,
+      "fused_quantized_cases": 8,
+      "gpu": "NVIDIA GB10, SM121",
+      "scope": "Single-GPU synthetic numerical, ownership and graph-replay checks; no throughput or full-model qualification."
+    },
+    "gdn_paired_projection": {
+      "candidate_source_sha256": "330812289eaff7865da11d7e4f0c718b4a0e449f2f6cee346f3ae22e1ecc8ea3",
+      "geometries": [
+        2,
+        4
+      ],
+      "cases": 10,
+      "mutated_graph_replays_per_case": 3,
+      "eager_bitwise_equal": true,
+      "caller_stream_visibility": true,
+      "scope": "Single GPU with checkpoint-derived TP2/TP4 shapes and synthetic weights; prototype B12X runtime. No distributed performance claim."
+    },
+    "prototype_component_checks": {
+      "composition_sha256": "d348478b8de66939074491a51b27b8ea65c50a15bf683658726454884ce4c530",
+      "hc_up_gate_cases": 4,
+      "hc_mutated_graph_replays_per_case": 3,
+      "mimo_borrowed_loader_cases": 4,
+      "stream_gc_cases": 1,
+      "qsa_dcp_component_cases": 10,
+      "scope": "Earlier composition component evidence, not a substitute for final distributed serving qualification."
+    }
+  },
+  "limitations": [
+    "Bounded Qwen text and restart checks only; full context and sustained multi-client pressure are not qualified.",
+    "Arbitrary image/video behavior and full MiMo serving are not qualified.",
+    "TP2 decode/prefill throughput and TP4 decode throughput were not benchmarked in final qualification.",
+    "MTP5, MXFP8 LM-head activation and w13 scaling are not enabled by the published profiles.",
+    "Anonymous pull used an existing Docker engine with cached foundation layers; no empty-engine claim."
+  ]
+}

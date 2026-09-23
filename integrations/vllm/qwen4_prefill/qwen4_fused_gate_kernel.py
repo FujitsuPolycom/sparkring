@@ -4,7 +4,7 @@ import triton
 import triton.language as tl
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["M"])
 def kernel(
     X,
     W,
@@ -57,14 +57,16 @@ def kernel(
 
 
 def fused(x, w, n, y, bm, bh, bk, warps):
-    kernel[(triton.cdiv(x.shape[0], bm), triton.cdiv(2560, bh))](
+    hidden = y.shape[1]
+    rank = x.shape[1]
+    kernel[(triton.cdiv(x.shape[0], bm), triton.cdiv(hidden, bh))](
         x,
         w,
         n,
         y,
         x.shape[0],
-        2560,
-        320,
+        hidden,
+        rank,
         bm,
         bh,
         bk,

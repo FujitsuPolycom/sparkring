@@ -21,6 +21,12 @@ and TP4, with and without SparkCache, and GLM TP2/TP4 DCP1 with SparkCache.
 GLM supports separate Spark and QAD checkpoint selections. Other profiles
 retain independent image pins and qualification records.
 
+[Shared runtime 2026.09.4-rc.4](shared-2026.09.4-rc.4/README.md) is an opt-in
+ARM64 external composition for Qwen QAD TP2/TP4. It preserves the September 23
+eugr foundation's native binaries and adds audited vLLM/B12X sources, SparkRing
+transport/cache integrations, explicit HC ownership modes and a passive runtime
+status endpoint. Its separate profiles do not change stable defaults.
+
 GitHub Releases provides the version landing page; GHCR Packages stores the
 container layers. A serving Release links an exact image digest, build/source
 receipts and profile-specific evidence. Auxiliary host tools and build inputs

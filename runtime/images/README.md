@@ -22,6 +22,12 @@ For isolated upstream catch-up trials, use the
 reconciles approved patches and can build explicitly authorized candidates.
 It does not change published image selections or serving deployments.
 
+For a precompiled external ARM64 vLLM/B12X image, use the
+[external context preparer](external-context.md). Its explicit input manifest
+pins source archives, the installed base inventory and exported SparkRing assets.
+Preparation preserves inherited framework binaries and generates a local Docker
+context; it does not run Docker or change a deployment.
+
 ## Container images
 
 [Shared runtime 2026.09.3](../releases/shared-2026.09.3/README.md) is selected by

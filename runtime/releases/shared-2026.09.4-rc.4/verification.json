@@ -1,0 +1,48 @@
+{
+  "schema": "sparkring-prerelease-public-verification/v1",
+  "reference": "ghcr.io/fujitsupolycom/sparkring@sha256:3d3411b66dd2a4f78ea062ec0a923308f302df14f0e0f9a6ae8961946ae603c8",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:shared-2026.09.4-rc.4",
+  "manifest_digest": "sha256:3d3411b66dd2a4f78ea062ec0a923308f302df14f0e0f9a6ae8961946ae603c8",
+  "config_digest": "sha256:99dd974df3c13648061ead9e293c876609350856e7f792936498d13de00c7eca",
+  "layers": 31,
+  "compressed_bytes": 11393032447,
+  "anonymous_manifest_verified": true,
+  "anonymous_config_verified": true,
+  "image_id": "sha256:99dd974df3c13648061ead9e293c876609350856e7f792936498d13de00c7eca",
+  "anonymous_pull_completed": true,
+  "clean_docker_engine_pull_completed": false,
+  "inherited_layer_cache_present": true,
+  "installed_runtime_verified_after_pull": true,
+  "installed_receipt_sha256": "ae1e5362efff2e265ba45c674133d1e02597a329425367c080b1f3f1703b66f0",
+  "verification": {
+    "schema": "sparkring-external-verification/v1",
+    "composition_sha256": "f93681c64242803d9bebcc9b6a7170a31e6946073354b5d3da9d7e59e94b2cdc",
+    "sources": {
+      "b12x": {
+        "archive": "b12x-sources.tar",
+        "archive_sha256": "5e3a6df7180c725562c35c383cf8ed75684331f2e2f4776e8d5aa6fc17c75ae1",
+        "baseline_archive": "eugr-b12x-upstream-source.tar",
+        "baseline_archive_sha256": "6b8d0573f2cbaae1a41b3baaeeca4614aa19853e370b9e538deea851ce2f4452",
+        "baseline_commit": "8a99d639410e39d5f39cb4037675331beceea1d4",
+        "commit": "a0a0c425e20f45e041de241afd6e76dcfc52d281",
+        "upstream": "2fca4df84e68e4c55af3fa957305aa5952c7587f"
+      },
+      "vllm": {
+        "archive": "vllm-sources.tar",
+        "archive_sha256": "65a2c7a71e2ad7802e5726b79d6628fc957fdf4594df506580860ed06a77bd0d",
+        "baseline_archive": "eugr-vllm-upstream-source.tar",
+        "baseline_archive_sha256": "31448f235977e5749209181498329de63b29faba33c0c056305f9626c49f5682",
+        "baseline_commit": "57fdda71b06063203ef0a82cac888a7c9b5f8f7a",
+        "commit": "91f94783190ce716e2238f899b25d44e84e2a525",
+        "upstream": "e77be22511ab91ecf217760524b7579c366cca2a"
+      }
+    },
+    "files_verified": 5792,
+    "framework_native_rebuilt": false,
+    "owned_python_roots": [
+      "/opt/sparkring/python"
+    ],
+    "serving_qualified": false
+  },
+  "release": "shared-2026.09.4-rc.4"
+}

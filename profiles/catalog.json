@@ -104,6 +104,14 @@
     {
       "id": "qwen38-flash-next-qad-tp4-sparkcache",
       "path": "profiles/qwen38-flash-next-qad-tp4-sparkcache/profile.json"
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp2-eugr",
+      "path": "profiles/qwen38-flash-next-qad-tp2-eugr/profile.json"
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4-eugr",
+      "path": "profiles/qwen38-flash-next-qad-tp4-eugr/profile.json"
     }
   ]
 }
