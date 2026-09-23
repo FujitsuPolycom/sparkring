@@ -31,7 +31,7 @@ def fixture():
         "capabilities": {
             "features": ["qwen-collectives", "qwen4-prefill"], "sparkcache_contract": contract,
             "transport_profile": TRANSPORT, "transport_manifest_sha256": "6" * 64,
-            "hc_projection_tp": True, "hc_prefill_row_ownership": "off", "serving_qualified": False,
+            "hc_supported_modes": external.HC_SUPPORTED_MODES, "serving_qualified": False,
         },
     }
     raw = json.dumps(installed).encode()
@@ -44,6 +44,7 @@ def fixture():
         "installed_receipt_sha256": hashlib.sha256(raw).hexdigest(),
         "composition_sha256": "4" * 64, "base": base, "sources": sources,
         "features": ["qwen-collectives", "qwen4-prefill"],
+        "hc_supported_modes": external.HC_SUPPORTED_MODES,
         "sparkcache_contract": {"path": contract, "sha256": "5" * 64},
         "transport": {"profile": TRANSPORT, "manifest_sha256": "6" * 64},
         "profiles": {"profiles/external/config.json": "8" * 64},
@@ -52,6 +53,7 @@ def fixture():
                   "Config": {"Entrypoint": [external.PYTHON, external.ENTRYPOINT]}}
     verified = {"schema": "sparkring-external-verification/v1", "composition_sha256": "4" * 64,
                 "sources": sources, "files_verified": 2, "framework_native_rebuilt": False,
+                "owned_python_roots": [],
                 "serving_qualified": False}
     return publication, inspection, raw, verified
 
@@ -108,7 +110,7 @@ def test_installed_contract_matches_publication_and_actual_inventory(registered,
     elif mutation == "contract":
         installed["capabilities"]["sparkcache_contract"] = "/wrong.json"
     elif mutation == "hc":
-        installed["capabilities"]["hc_prefill_row_ownership"] = "shard"
+        installed["capabilities"]["hc_supported_modes"] = {}
     else:
         installed["base"]["config_id"] = "sha256:" + "0" * 64
     raw = json.dumps(installed).encode()
@@ -153,6 +155,9 @@ def opt_in_profile(nodes, cached):
     profile["image_extension"] = "external-base"
     profile["image_release"] = RELEASE
     profile["container_envelope"] = copy.deepcopy(external.ENVELOPE)
+    profile["environment"].update({
+        "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": "1", "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
+    })
     profile["vllm_args"] += ["--model-loader-extra-config", '{"read_mode":"bounce","io_threads":8}']
     return profile
 
@@ -201,7 +206,7 @@ def test_external_qwen_plan_retains_operating_parameters_and_pins_hooks(register
         extra = transfer["kv_connector_extra_config"]
         assert extra["spark_cache_async_page_capture_lease_contract"] == record["sparkcache_contract"]["path"]
         assert extra["spark_cache_async_page_capture_vllm_root"] == external.SITE
-        assert extra["spark_cache_root"].endswith(record["composition_sha256"][:16])
+        assert extra["spark_cache_root"].endswith(record["composition_sha256"][:16] + "-" + external.profile_identity(profile)[:16])
 
 
 def test_changed_pinned_profile_is_not_canonical(registered):
@@ -237,3 +242,97 @@ def test_external_selection_cannot_mix_legacy_source_or_admission(registered):
         qwen.image_policy(profile, local_source_extension="lil-r37-qwen-prefill")
     with pytest.raises(ValueError, match="cannot be combined"):
         qwen.verify_image(IMAGE, external_release=RELEASE, native_release="shared-2026.09.3")
+
+
+@pytest.mark.parametrize("nodes,projection,rows", [(2, "1", "off"), (4, "1", "off"), (4, "0", "shard")])
+def test_external_profile_preserves_its_explicit_hc_ownership(registered, nodes, projection, rows):
+    record, _, _, _, _ = registered
+    profile = opt_in_profile(nodes, True)
+    profile["environment"].update({
+        "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": projection, "VLLM_QWEN3_8_HC_PREFILL_MODE": rows,
+    })
+    selected = external.profile_settings(profile, record)
+    assert selected["environment"]["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] == projection
+    assert selected["environment"]["VLLM_QWEN3_8_HC_PREFILL_MODE"] == rows
+    assert selected["environment"]["VLLM_MXFP8_LM_HEAD"] == "0"
+    assert "B12X_MOE_FP4_LAYER_MAX_INPUT_SCALE" not in selected["environment"]
+
+
+@pytest.mark.parametrize("nodes,projection,rows", [(2, "0", "shard"), (2, "0", "off"), (4, "1", "shard"), (4, "0", "off"), (4, None, "shard")])
+def test_external_profile_rejects_unsupported_or_conflicting_hc_ownership(nodes, projection, rows):
+    profile = opt_in_profile(nodes, True)
+    profile["environment"].update({
+        "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": projection, "VLLM_QWEN3_8_HC_PREFILL_MODE": rows,
+    })
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        external.validate_profile_contract(profile)
+
+
+def test_persistent_cache_identity_changes_with_hc_mode_and_is_stable_for_one_profile(registered):
+    record, _, _, _, _ = registered
+    projection = opt_in_profile(4, True)
+    rows = copy.deepcopy(projection)
+    rows["environment"].update({
+        "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": "0", "VLLM_QWEN3_8_HC_PREFILL_MODE": "shard",
+    })
+
+    def cache_root(profile):
+        args = external.profile_settings(profile, record)["vllm_args"]
+        return json.loads(args[args.index("--kv-transfer-config") + 1])["kv_connector_extra_config"]["spark_cache_root"]
+
+    assert cache_root(projection) != cache_root(rows)
+    assert cache_root(rows) == cache_root(copy.deepcopy(rows))
+    changed = copy.deepcopy(rows)
+    changed["environment"]["VLLM_MXFP8_LM_HEAD"] = "1"
+    assert cache_root(changed) != cache_root(rows)
+
+
+def status_record():
+    return {
+        "distribution": "sparkring-runtime-status", "version": "0.1.0",
+        "plugin_name": "sparkring_status", "python_root": external.STATUS_PYTHON_ROOT,
+        "wheel_sha256": "a" * 64, "source_archive_sha256": "b" * 64,
+        "entry_points": external.STATUS_ENTRY_POINTS,
+    }
+
+
+def test_status_activation_requires_the_published_artifact(registered):
+    record, _, _, _, _ = registered
+    profile = opt_in_profile(2, True)
+    profile["environment"]["VLLM_PLUGINS"] += ",sparkring_status"
+    with pytest.raises(ValueError, match="must match"):
+        external.profile_settings(profile, record)
+    record["runtime_status"] = status_record()
+    assert external.profile_settings(profile, record)["environment"]["VLLM_PLUGINS"] == "b12x_loader,sparkring_status"
+    profile["environment"]["VLLM_PLUGINS"] = "b12x_loader"
+    with pytest.raises(ValueError, match="must match"):
+        external.profile_settings(profile, record)
+
+
+def test_status_publication_requires_both_official_entry_points(registered):
+    record, path, _, _, _ = registered
+    record["runtime_status"] = status_record()
+    path.write_text(json.dumps(record))
+    assert external.publication(RELEASE)["runtime_status"] == status_record()
+    record["runtime_status"]["entry_points"] = {"vllm.endpoint_plugins": {}}
+    path.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="status artifact"):
+        external.publication(RELEASE)
+
+
+def test_status_host_admission_binds_the_import_root_and_complete_verification(registered):
+    record, _, info, raw, verification = registered
+    record["runtime_status"] = status_record()
+    installed = json.loads(raw)
+    installed["capabilities"]["runtime_status"] = status_record()
+    installed["python_roots"] = {external.STATUS_PYTHON_ROOT: {"sparkring_runtime_status/plugin.py": "c" * 64}}
+    installed["files"][external.STATUS_PYTHON_ROOT + "/sparkring_runtime_status/plugin.py"] = "c" * 64
+    installed["files"][external.SITE + "/sparkring_runtime_status.pth"] = external.sha((external.STATUS_PYTHON_ROOT + "\n").encode())
+    raw = json.dumps(installed).encode()
+    record["installed_receipt_sha256"] = external.sha(raw)
+    verification["files_verified"] = len(installed["files"])
+    verification["owned_python_roots"] = [external.STATUS_PYTHON_ROOT]
+    assert external.validate(record, IMAGE, info, raw, verification)["image_id"] == IMAGE
+    verification["owned_python_roots"] = []
+    with pytest.raises(ValueError, match="composition/source"):
+        external.validate(record, IMAGE, info, raw, verification)

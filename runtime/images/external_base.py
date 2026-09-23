@@ -23,9 +23,10 @@ import sys
 ROOT = Path("/opt/sparkring")
 RECEIPT = ROOT / "receipts/external-base-installed.json"
 ENTRYPOINT = ROOT / "bin/external-base.py"
+PYTHON_ROOT = ROOT / "python"
 SITE = "/usr/local/lib/python3.12/dist-packages/"
 PACKAGE_NAMES = frozenset(("vllm", "b12x", "sparkcache"))
-HOOK_NAMES = frozenset(("sparkring_features.pth", "sparkring_transport.pth"))
+HOOK_NAMES = frozenset(("sparkring_features.pth", "sparkring_transport.pth", "sparkring_runtime_status.pth"))
 
 
 def require(condition, message):
@@ -71,6 +72,56 @@ def inventory_package(root):
             require(not path.is_symlink(), "Package contains a symlink: " + str(path))
             result[str(path)] = sha(path)
     return result
+
+
+def inventory_python_root(root):
+    """Inventory every file, including importable standalone bytecode."""
+    require(not root.is_symlink(), "Owned Python root is a symlink")
+    require(not root.exists() or root.is_dir(), "Owned Python root is not a directory")
+    result = {}
+    for path in sorted(root.rglob("*")):
+        require(not path.is_symlink(), "Owned Python root contains a symlink: " + str(path))
+        if path.is_file():
+            result[str(path)] = sha(path)
+        else:
+            require(path.is_dir(), "Owned Python root contains a special file: " + str(path))
+    return result
+
+
+def admit_python_roots(descriptor):
+    roots = descriptor.get("python_roots", {})
+    status = descriptor["capabilities"].get("runtime_status")
+    require(set(roots) == ({str(PYTHON_ROOT)} if status is not None else set()),
+            "Owned Python roots do not match the selected status artifact")
+    require(not PYTHON_ROOT.exists(), "Owned Python root already exists")
+    changes = descriptor["files"]
+    actual = {name: row["after"] for name, row in changes.items()
+              if Path(name).is_relative_to(PYTHON_ROOT)}
+    expected = {}
+    for relative, digest in roots.get(str(PYTHON_ROOT), {}).items():
+        path = PurePosixPath(relative)
+        require(path.parts and str(path) == relative and not path.is_absolute()
+                and ".." not in path.parts and "\\" not in relative,
+                "Invalid owned Python file path")
+        require(path.parts[0] in {"sparkring_runtime_status", f"sparkring_runtime_status-{status['version']}.dist-info"},
+                "Owned Python file has an unexpected owner")
+        require(not (path.suffix in {".pyc", ".pth", ".so", ".dll", ".pyd", ".a", ".o"}
+                     or ".so." in path.name), "Owned Python payload must be pure source and metadata")
+        expected[str(PYTHON_ROOT / relative)] = digest
+    require(actual == expected and (status is None or bool(expected)),
+            "Owned Python inventory differs from its declared payload")
+    hook = SITE + "sparkring_runtime_status.pth"
+    if status is None:
+        require(hook not in changes, "Status path hook requires a selected artifact")
+    else:
+        require(status.get("python_root") == str(PYTHON_ROOT)
+                and changes.get(hook, {}).get("after") == hashlib.sha256((str(PYTHON_ROOT) + "\n").encode()).hexdigest()
+                and changes[hook].get("before") is None,
+                "Status path hook or Python root differs")
+        for group in ("vllm.endpoint_plugins", "vllm.general_plugins"):
+            require(not any(entry.name == "sparkring_status" for entry in metadata.entry_points(group=group)),
+                    "External base already declares the status plugin: " + group)
+    return roots
 
 
 def record_distribution(name, root):
@@ -123,6 +174,7 @@ def install(context):
         native.update({path: digest for path, digest in expected.items()
                        if ".so" in Path(path).name})
     changes = descriptor["files"]
+    python_roots = admit_python_roots(descriptor)
     for name, row in changes.items():
         path = writable_path(name)
         require(str(path) not in native, "Framework native payload cannot be replaced")
@@ -195,6 +247,7 @@ def install(context):
         "removed_files": [name for name, row in changes.items() if row["after"] is None],
         "symlinks": descriptor.get("symlinks", {}),
         "capabilities": descriptor["capabilities"], "serving_qualified": False,
+        "python_roots": python_roots,
     }
     RECEIPT.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return verify()
@@ -204,6 +257,17 @@ def verify():
     record = read(RECEIPT)
     require(record.get("schema") == "sparkring-external-installed/v1", "Unknown receipt")
     other_files = dict(record["files"])
+    python_roots = record.get("python_roots", {})
+    require(set(python_roots) <= {str(PYTHON_ROOT)}, "Unknown owned Python root in receipt")
+    expected_python = {str(PYTHON_ROOT / relative): digest
+                       for relative, digest in python_roots.get(str(PYTHON_ROOT), {}).items()}
+    require(inventory_python_root(PYTHON_ROOT) == expected_python,
+            "Installed owned Python inventory differs")
+    recorded_python = {name: digest for name, digest in record["files"].items()
+                       if Path(name).is_relative_to(PYTHON_ROOT)}
+    require(recorded_python == expected_python, "Owned Python files differ between receipt inventories")
+    for name in recorded_python:
+        other_files.pop(name)
     for package in PACKAGE_NAMES:
         root = Path(SITE + package)
         expected = {name: digest for name, digest in record["files"].items()
@@ -225,6 +289,7 @@ def verify():
         "schema": "sparkring-external-verification/v1",
         "composition_sha256": record["composition_sha256"], "sources": record["sources"],
         "files_verified": len(record["files"]), "framework_native_rebuilt": False,
+        "owned_python_roots": sorted(python_roots),
         "serving_qualified": False,
     }
 

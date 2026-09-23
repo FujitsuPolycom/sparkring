@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -39,6 +40,7 @@ def installed_packages(tmp_path, monkeypatch):
     }))
     monkeypatch.setattr(adapter, "SITE", str(site) + os.sep)
     monkeypatch.setattr(adapter, "RECEIPT", receipt)
+    monkeypatch.setattr(adapter, "PYTHON_ROOT", tmp_path / "python")
     return site
 
 
@@ -62,3 +64,84 @@ def test_verify_ignores_generated_bytecode(installed_packages):
 
     assert result["files_verified"] == 6
     assert result["serving_qualified"] is False
+
+
+def install_status_fixture():
+    root = adapter.PYTHON_ROOT
+    payload = {
+        "sparkring_runtime_status/__init__.py": b"# package\n",
+        "sparkring_runtime_status/plugin.py": b"# official plugin\n",
+        "sparkring_runtime_status-0.1.0.dist-info/METADATA": b"Name: sparkring-runtime-status\nVersion: 0.1.0\n",
+    }
+    record = adapter.read(adapter.RECEIPT)
+    expected = {}
+    for name, raw in payload.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+        expected[name] = adapter.sha(path)
+        record["files"][str(path)] = expected[name]
+    record["python_roots"] = {str(root): expected}
+    adapter.RECEIPT.write_text(json.dumps(record))
+    return root
+
+
+@pytest.mark.parametrize("addition", ["unexpected.py", "unexpected.pyc", "other.pth", "namespace/extra.py"])
+def test_status_python_root_rejects_every_unrecorded_importable_file(installed_packages, addition):
+    root = install_status_fixture()
+    result = adapter.verify()
+    assert result["owned_python_roots"] == [str(root)]
+    path = root / addition
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"unrecorded")
+    with pytest.raises(ValueError, match="owned Python inventory"):
+        adapter.verify()
+
+
+def test_status_root_and_whole_receipt_inventory_must_agree(installed_packages):
+    root = install_status_fixture()
+    record = adapter.read(adapter.RECEIPT)
+    del record["files"][str(root / "sparkring_runtime_status/plugin.py")]
+    adapter.RECEIPT.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="between receipt inventories"):
+        adapter.verify()
+
+
+def test_unselected_status_cannot_add_an_import_root(installed_packages):
+    adapter.PYTHON_ROOT.mkdir()
+    (adapter.PYTHON_ROOT / "extra.py").write_bytes(b"unbound")
+    with pytest.raises(ValueError, match="owned Python inventory"):
+        adapter.verify()
+
+
+def status_descriptor():
+    root = adapter.PYTHON_ROOT
+    raw = b"# status\n"
+    import hashlib
+    digest = hashlib.sha256(raw).hexdigest()
+    return {
+        "capabilities": {"runtime_status": {"version": "0.1.0", "python_root": str(root)}},
+        "python_roots": {str(root): {"sparkring_runtime_status/plugin.py": digest}},
+        "files": {
+            str(root / "sparkring_runtime_status/plugin.py"): {"before": None, "after": digest},
+            adapter.SITE + "sparkring_runtime_status.pth": {
+                "before": None, "after": hashlib.sha256((str(root) + "\n").encode()).hexdigest(),
+            },
+        },
+    }
+
+
+def test_status_install_requires_complete_owned_inventory_and_exact_path_hook(installed_packages, monkeypatch):
+    monkeypatch.setattr(adapter.metadata, "entry_points", lambda **kwargs: [])
+    descriptor = status_descriptor()
+    assert adapter.admit_python_roots(descriptor) == descriptor["python_roots"]
+    descriptor["files"][adapter.SITE + "sparkring_runtime_status.pth"]["after"] = "0" * 64
+    with pytest.raises(ValueError, match="path hook"):
+        adapter.admit_python_roots(descriptor)
+    assert not adapter.PYTHON_ROOT.exists()
+
+
+def test_status_install_rejects_an_existing_plugin_name(installed_packages, monkeypatch):
+    monkeypatch.setattr(adapter.metadata, "entry_points", lambda **kwargs: [SimpleNamespace(name="sparkring_status")])
+    with pytest.raises(ValueError, match="already declares"):
+        adapter.admit_python_roots(status_descriptor())

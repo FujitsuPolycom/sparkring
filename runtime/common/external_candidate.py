@@ -18,6 +18,18 @@ RECEIPT = "/opt/sparkring/receipts/external-base-installed.json"
 SITE = "/usr/local/lib/python3.12/dist-packages"
 NCCL = "/opt/local-inference/nccl/lib/libnccl.so.2"
 ENVELOPE = {"cap_add": ["IPC_LOCK"], "security_opt": ["seccomp=unconfined"]}
+STATUS_PYTHON_ROOT = "/opt/sparkring/python"
+STATUS_ENTRY_POINTS = {
+    "vllm.endpoint_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:StatusPlugin"},
+    "vllm.general_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"},
+}
+HC_SUPPORTED_MODES = {
+    "2": [{"projection_tp": "1", "prefill_row_ownership": "off"}],
+    "4": [
+        {"projection_tp": "1", "prefill_row_ownership": "off"},
+        {"projection_tp": "0", "prefill_row_ownership": "shard"},
+    ],
+}
 
 
 def sha(raw):
@@ -33,7 +45,8 @@ def publication(release, *, image_id=None):
             or not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", record.get("base", {}).get("reference", ""))
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", record.get("base", {}).get("config_id", ""))
             or set(record.get("sources", {})) != {"vllm", "b12x"}
-            or set(record.get("features", [])) != {"qwen-collectives", "qwen4-prefill"}):
+            or set(record.get("features", [])) != {"qwen-collectives", "qwen4-prefill"}
+            or record.get("hc_supported_modes") != HC_SUPPORTED_MODES):
         raise ValueError("External release lacks its composition, base or source identity")
     for source in record["sources"].values():
         if any(not re.fullmatch(r"[0-9a-f]{40}", source.get(name, ""))
@@ -54,6 +67,17 @@ def publication(release, *, image_id=None):
                 or not name.startswith("profiles/") or path.suffix != ".json"
                 or not re.fullmatch(r"[0-9a-f]{64}", digest)):
             raise ValueError("External release profile reference is invalid")
+    status = record.get("runtime_status")
+    if status is not None and (
+        status.get("distribution") != "sparkring-runtime-status"
+        or not re.fullmatch(r"[0-9][A-Za-z0-9_.+-]*", status.get("version", ""))
+        or status.get("plugin_name") != "sparkring_status"
+        or status.get("python_root") != STATUS_PYTHON_ROOT
+        or status.get("entry_points") != STATUS_ENTRY_POINTS
+        or any(not re.fullmatch(r"[0-9a-f]{64}", status.get(name, ""))
+               for name in ("wheel_sha256", "source_archive_sha256"))
+    ):
+        raise ValueError("External release status artifact identity or entry points differ")
     return record
 
 
@@ -109,6 +133,8 @@ def validate_profile_contract(profile):
             or profile.get("image_extension") != "external-base"):
         raise ValueError("External Qwen profile schema or image extension differs")
     nodes = profile_nodes(profile)
+    if selected_hc_mode(profile) not in HC_SUPPORTED_MODES[str(nodes)]:
+        raise ValueError("Select mutually exclusive HC projection or prefill row ownership for this TP size")
     if profile.get("container_envelope") != ENVELOPE:
         raise ValueError("External loader profile requires its explicit IPC_LOCK/seccomp envelope")
     args = profile["vllm_args"]
@@ -135,17 +161,33 @@ def validate_profile_contract(profile):
     return nodes
 
 
+def selected_hc_mode(profile):
+    environment = profile["environment"]
+    return {
+        "projection_tp": environment.get("VLLM_QWEN3_8_FLASH_NEXT_HC_TP"),
+        "prefill_row_ownership": environment.get("VLLM_QWEN3_8_HC_PREFILL_MODE"),
+    }
+
+
+def profile_identity(profile):
+    """Bind shared cache semantics before rank-local site settings are applied."""
+    return sha(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode())
+
+
 def profile_settings(profile, record):
     """Rebind image integration paths while retaining operational profile flags."""
     nodes = validate_profile_contract(profile)
     result = copy.deepcopy(profile)
     environment = result["environment"]
+    if selected_hc_mode(profile) not in record["hc_supported_modes"][str(nodes)]:
+        raise ValueError("Selected HC ownership mode is unsupported by the release")
+    plugins = [name.strip() for name in environment.get("VLLM_PLUGINS", "").split(",") if name.strip()]
+    if ("sparkring_status" in plugins) != (record.get("runtime_status") is not None):
+        raise ValueError("Status plugin activation must match the release's selected artifact")
     features = {name for name in environment.get("SPARKRING_FEATURES", "").split(",") if name}
     if not features <= set(record["features"]) or (nodes == 2 and "qwen4-prefill" in features):
         raise ValueError("External Qwen feature selection does not match TP eligibility")
     environment.update({
-        "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": "1",
-        "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
         "VLLM_NCCL_SO_PATH": NCCL, "LD_PRELOAD": NCCL,
         "NCCL_LIB_DIR": str(PurePosixPath(NCCL).parent),
         "NCCL_LOCAL_INFERENCE_PATH": NCCL,
@@ -165,7 +207,8 @@ def profile_settings(profile, record):
         extra["spark_cache_async_page_capture_lease_contract"] = record["sparkcache_contract"]["path"]
         extra["spark_cache_async_page_capture_vllm_root"] = SITE
         extra["spark_cache_root"] = (
-            f"/cache/persistent/qwen38-flash-next-qad-tp{nodes}-" + record["composition_sha256"][:16]
+            f"/cache/persistent/qwen38-flash-next-qad-tp{nodes}-"
+            + record["composition_sha256"][:16] + "-" + profile_identity(profile)[:16]
         )
         args[index] = json.dumps(transfer, separators=(",", ":"))
     if "/opt/venv" in json.dumps([environment, args]):
@@ -186,6 +229,12 @@ def validate(record, image, inspection, raw, verification):
         raise ValueError("Installed external receipt differs from publication")
     installed = json.loads(raw)
     capabilities = installed.get("capabilities", {})
+    status = record.get("runtime_status")
+    status_inventory = installed.get("python_roots", {}).get(STATUS_PYTHON_ROOT, {})
+    if (bool(status_inventory) != (status is not None)
+            or status is not None and installed.get("files", {}).get(SITE + "/sparkring_runtime_status.pth")
+            != sha((STATUS_PYTHON_ROOT + "\n").encode())):
+        raise ValueError("External status import root or path hook is not receipt-bound")
     if (installed.get("schema") != "sparkring-external-installed/v1"
             or installed.get("base") != record["base"]
             or installed.get("composition_sha256") != record["composition_sha256"]
@@ -195,14 +244,15 @@ def validate(record, image, inspection, raw, verification):
             or installed.get("files", {}).get("/opt/sparkring/transports/" + record["transport"]["profile"]
                                               + "/manifest.json") != record["transport"]["manifest_sha256"]
             or set(capabilities.get("features", [])) != set(record["features"])
-            or capabilities.get("hc_projection_tp") is not True
-            or capabilities.get("hc_prefill_row_ownership") != "off"
+            or capabilities.get("hc_supported_modes") != record["hc_supported_modes"]
+            or capabilities.get("runtime_status") != record.get("runtime_status")
             or capabilities.get("sparkcache_contract") != record["sparkcache_contract"]["path"]
             or installed.get("files", {}).get(record["sparkcache_contract"]["path"]) != record["sparkcache_contract"]["sha256"]
             or verification.get("schema") != "sparkring-external-verification/v1"
             or verification.get("composition_sha256") != record["composition_sha256"]
             or verification.get("sources") != record["sources"]
             or verification.get("framework_native_rebuilt") is not False
+            or verification.get("owned_python_roots") != ([STATUS_PYTHON_ROOT] if record.get("runtime_status") is not None else [])
             or verification.get("files_verified") != len(installed.get("files", {}))
             or not installed.get("files")):
         raise ValueError("External installed composition/source verification differs from publication")

@@ -1,5 +1,7 @@
 """Exercise source ownership and pinned context inputs without Docker or a GPU."""
 
+import base64
+import csv
 import hashlib
 import importlib.util
 import io
@@ -7,6 +9,7 @@ import json
 from pathlib import Path
 import shutil
 import tarfile
+import zipfile
 
 import pytest
 
@@ -181,7 +184,8 @@ def test_context_retains_framework_ownership_and_binds_composed_sources(inputs, 
     assert descriptor["sources"]["vllm"]["baseline_archive_sha256"] == manifest["sources"]["vllm"]["baseline_archive"]["sha256"]
     assert descriptor["provenance"]["asset_export"]["parent_image"] == "sha256:" + "d" * 64
     assert descriptor["provenance"]["prefill_controller_files"] == manifest["prefill_controller"]["files"]
-    assert descriptor["capabilities"]["hc_prefill_row_ownership"] == "off"
+    assert descriptor["capabilities"]["hc_supported_modes"] == builder.HC_SUPPORTED_MODES
+    assert "hc_projection_tp" not in descriptor["capabilities"]
     assert descriptor["capabilities"]["serving_qualified"] is False
     assert result["composition_sha256"] == builder.file_sha(context / "composition.json")
     assert (context / "Dockerfile").read_text().startswith("FROM " + manifest["base"]["reference"] + "\n")
@@ -279,3 +283,109 @@ def test_collective_rebinding_requires_same_semantics(inputs, tmp_path):
         builder.prepare(path, tmp_path / "context")
     assert not (tmp_path / "context").exists()
     assert not list(tmp_path.glob(".external-context-*"))
+
+
+def status_artifacts(inputs, tmp_path, *, wheel_mutation=None, record_mutation=None):
+    manifest_path, manifest, pin = inputs
+    project = b'''[project]
+name = "sparkring-runtime-status"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.115"]
+[project.entry-points."vllm.endpoint_plugins"]
+sparkring_status = "sparkring_runtime_status.plugin:StatusPlugin"
+[project.entry-points."vllm.general_plugins"]
+sparkring_status = "sparkring_runtime_status.plugin:register_worker_method"
+'''
+    source = {
+        "pyproject.toml": project,
+        "sparkring_runtime_status/__init__.py": b"# status package\n",
+        "sparkring_runtime_status/plugin.py": b"class StatusPlugin: pass\ndef register_worker_method(): pass\n",
+    }
+    source_path = tmp_path / "runtime-status-source.tar.gz"
+    archive(source_path, {"runtime_status/" + name: raw for name, raw in source.items()})
+    distribution = "sparkring_runtime_status-0.1.0.dist-info"
+    files = {name: raw for name, raw in source.items() if name.startswith("sparkring_runtime_status/")}
+    files.update({
+        distribution + "/METADATA": b"Metadata-Version: 2.4\nName: sparkring-runtime-status\nVersion: 0.1.0\nRequires-Python: >=3.10\nRequires-Dist: fastapi>=0.115\n\n",
+        distribution + "/WHEEL": b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        distribution + "/entry_points.txt": b"[vllm.endpoint_plugins]\nsparkring_status = sparkring_runtime_status.plugin:StatusPlugin\n[vllm.general_plugins]\nsparkring_status = sparkring_runtime_status.plugin:register_worker_method\n",
+    })
+    if wheel_mutation:
+        wheel_mutation(files, distribution)
+    rows = [[name, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=").decode(), str(len(raw))]
+            for name, raw in files.items()]
+    rows.append([distribution + "/RECORD", "", ""])
+    if record_mutation:
+        record_mutation(rows)
+    stream = io.StringIO()
+    csv.writer(stream, lineterminator="\n").writerows(rows)
+    files[distribution + "/RECORD"] = stream.getvalue().encode()
+    wheel = tmp_path / "sparkring_runtime_status-0.1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as package:
+        for name, raw in files.items():
+            package.writestr(name, raw)
+    inventory = json.loads((tmp_path / "inventory.json").read_bytes())
+    inventory["versions"]["fastapi"] = "0.115.0"
+    dump(tmp_path / "inventory.json", inventory)
+    manifest["base_inventory"] = pin(tmp_path / "inventory.json")
+    manifest["runtime_status"] = {"wheel": pin(wheel), "source_archive": pin(source_path)}
+    dump(manifest_path, manifest)
+    return files
+
+
+def test_status_wheel_is_source_bound_and_installed_under_its_own_python_root(inputs, tmp_path):
+    files = status_artifacts(inputs, tmp_path)
+    path, manifest, _ = inputs
+    builder.prepare(path, tmp_path / "context")
+    descriptor = json.loads((tmp_path / "context/composition.json").read_bytes())
+    status = descriptor["capabilities"]["runtime_status"]
+    assert status["entry_points"] == builder.STATUS_ENTRY_POINTS
+    assert status["wheel_sha256"] == manifest["runtime_status"]["wheel"]["sha256"]
+    assert status["source_archive_sha256"] == manifest["runtime_status"]["source_archive"]["sha256"]
+    assert descriptor["python_roots"] == {builder.PYTHON_ROOT: {name: digest(raw) for name, raw in files.items()}}
+    hook = tmp_path / "context/payload" / builder.SITE.lstrip("/") / "sparkring_runtime_status.pth"
+    assert hook.read_bytes() == b"/opt/sparkring/python\n"
+    assert not any(name.startswith(builder.SITE + "sparkring_runtime_status/") for name in descriptor["files"])
+    assert descriptor["provenance"]["runtime_status"]["source_files"]["pyproject.toml"]
+
+
+@pytest.mark.parametrize("mutation,message", [
+    (lambda files, dist: files.__setitem__("sparkring_runtime_status/plugin.py", b"# substituted\n"), "differs from its pinned source"),
+    (lambda files, dist: files.__setitem__("vllm/__init__.py", b"# framework override\n"), "outside its owners"),
+    (lambda files, dist: files.__setitem__("sparkring_runtime_status/extra.so", b"native"), "not pure Python"),
+    (lambda files, dist: files.__setitem__("sparkring_runtime_status/extra.pth", b"import unbound"), "not pure Python"),
+    (lambda files, dist: files.__setitem__(dist + "/WHEEL", b"Root-Is-Purelib: true\nTag: cp312-cp312-linux_aarch64\n"), "platform-specific"),
+    (lambda files, dist: files.__setitem__(dist + "/entry_points.txt", b"[vllm.general_plugins]\nsparkring_status = elsewhere:register\n"), "official API and worker"),
+])
+def test_status_artifact_rejects_foreign_code_native_payload_and_wrong_abi(inputs, tmp_path, mutation, message):
+    status_artifacts(inputs, tmp_path, wheel_mutation=mutation)
+    with pytest.raises(ValueError, match=message):
+        builder.prepare(inputs[0], tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+
+
+@pytest.mark.parametrize("mutation,message", [
+    (lambda rows: rows.pop(0), "RECORD inventory"),
+    (lambda rows: rows[0].__setitem__(1, "sha256=wrong"), "RECORD digest"),
+    (lambda rows: rows.append(rows[0]), "duplicate entries"),
+])
+def test_status_wheel_record_must_cover_exact_payload(inputs, tmp_path, mutation, message):
+    status_artifacts(inputs, tmp_path, record_mutation=mutation)
+    with pytest.raises(ValueError, match=message):
+        builder.prepare(inputs[0], tmp_path / "context")
+
+
+@pytest.mark.parametrize("versions", [
+    {"fastapi": "0.100.0"}, {"fastapi": "0.115.0", "sparkring_runtime_status": "0.1.0"},
+])
+def test_status_base_dependencies_and_distribution_ownership_are_explicit(inputs, tmp_path, versions):
+    status_artifacts(inputs, tmp_path)
+    path, manifest, pin = inputs
+    inventory = json.loads((tmp_path / "inventory.json").read_bytes())
+    inventory["versions"] = versions
+    dump(tmp_path / "inventory.json", inventory)
+    manifest["base_inventory"] = pin(tmp_path / "inventory.json")
+    dump(path, manifest)
+    with pytest.raises(ValueError, match="FastAPI dependency|already owns"):
+        builder.prepare(path, tmp_path / "context")

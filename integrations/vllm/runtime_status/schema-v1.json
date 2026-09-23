@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sparkring:runtime-status:v1",
+  "title": "SparkRing passive runtime status",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "state"],
+      "properties": {
+        "schema": {"const": "sparkring-runtime-status/v1"},
+        "state": {"const": "initializing"}
+      }
+    },
+    {"$ref": "#/$defs/status"}
+  ],
+  "$defs": {
+    "facts": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/fact"}
+    },
+    "fact": {
+      "type": "object",
+      "required": ["state", "source"],
+      "properties": {
+        "state": {"enum": ["known", "unknown", "not_observed"]},
+        "source": {"type": "string"},
+        "phase": {"type": "string"},
+        "value": {"type": ["string", "integer", "boolean", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "configured": {
+      "type": "object",
+      "required": ["environment"],
+      "properties": {
+        "arguments": {"$ref": "#/$defs/facts"},
+        "environment": {"$ref": "#/$defs/facts"}
+      },
+      "additionalProperties": false
+    },
+    "worker": {
+      "type": "object",
+      "required": ["schema", "identity"],
+      "properties": {
+        "schema": {"const": "sparkring-worker-status/v1"},
+        "identity": {"$ref": "#/$defs/facts"},
+        "error": {"const": "snapshot_failed"},
+        "collected_at_unix_ns": {"type": "integer"},
+        "configured": {"$ref": "#/$defs/configured"},
+        "effective": {"$ref": "#/$defs/facts"},
+        "observed": {"$ref": "#/$defs/facts"}
+      },
+      "additionalProperties": false,
+      "if": {"not": {"required": ["error"]}},
+      "then": {"required": ["collected_at_unix_ns", "configured", "effective", "observed"]}
+    },
+    "workers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "scope", "expected_count", "received_count", "missing_count", "missing_rpc_slots", "rank_identities_unique", "cache_age_seconds", "stale", "rpc_pending", "pending_age_seconds", "error", "ranks"],
+      "properties": {
+        "state": {"enum": ["complete", "partial", "pending", "error", "unavailable"]},
+        "scope": {"const": "addressed_engine_executor"},
+        "expected_count": {"type": ["integer", "null"]},
+        "received_count": {"type": "integer", "minimum": 0, "maximum": 256},
+        "missing_count": {"type": ["integer", "null"]},
+        "missing_rpc_slots": {"type": "array", "items": {"type": "integer"}},
+        "rank_identities_unique": {"type": "boolean"},
+        "cache_age_seconds": {"type": ["number", "null"]},
+        "stale": {"type": "boolean"},
+        "rpc_pending": {"type": "boolean"},
+        "pending_age_seconds": {"type": ["number", "null"]},
+        "error": {"enum": [null, "worker_rpc_failed"]},
+        "ranks": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/worker"}}
+      }
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "generated_at_unix_ns", "startup_snapshot_at_unix_ns", "configured", "effective", "observed", "provenance", "workers"],
+      "properties": {
+        "schema": {"const": "sparkring-runtime-status/v1"},
+        "generated_at_unix_ns": {"type": "integer"},
+        "startup_snapshot_at_unix_ns": {"type": "integer"},
+        "configured": {"$ref": "#/$defs/configured"},
+        "effective": {"$ref": "#/$defs/facts"},
+        "observed": {"$ref": "#/$defs/facts"},
+        "provenance": {"type": "object", "required": ["state"], "properties": {"state": {"enum": ["known", "unknown"]}}},
+        "workers": {"$ref": "#/$defs/workers"}
+      }
+    }
+  }
+}

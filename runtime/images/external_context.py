@@ -9,21 +9,41 @@ from __future__ import annotations
 
 import argparse
 import ast
+import base64
+import configparser
+import csv
+from email.parser import BytesParser
 import hashlib
+import io
 import json
 from pathlib import Path, PurePosixPath
 import pprint
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
+import zipfile
 
 
 SITE = "/usr/local/lib/python3.12/dist-packages/"
 TRANSPORT = "tp2-rocenante-adaptive-prepared"
 FEATURE_ROOT = "/opt/sparkring/features/"
+PYTHON_ROOT = "/opt/sparkring/python"
+STATUS_ENTRY_POINTS = {
+    "vllm.endpoint_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:StatusPlugin"},
+    "vllm.general_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"},
+}
+HC_SUPPORTED_MODES = {
+    "2": [{"projection_tp": "1", "prefill_row_ownership": "off"}],
+    "4": [
+        {"projection_tp": "1", "prefill_row_ownership": "off"},
+        {"projection_tp": "0", "prefill_row_ownership": "shard"},
+    ],
+}
 PREFILL_FILES = (
     "package_prefill.py",
     "qwen4_prefill_bootstrap.py",
@@ -152,6 +172,100 @@ def verify_assets(root, export_path, receipt_path):
     return exported, nccl
 
 
+def load_runtime_status(root, record, inventory):
+    """Admit a source-matched pure wheel without installing its dependencies."""
+    require(set(record) == {"wheel", "source_archive"}, "Runtime status requires a pinned wheel and source archive")
+    wheel = pinned_artifact(root, record["wheel"])
+    archive = pinned_artifact(root, record["source_archive"])
+    sources = {}
+    with tarfile.open(archive) as bundle:
+        for member in bundle:
+            path = relative_path(member.name.rstrip("/"))
+            require(path.parts[0] == "runtime_status", "Status source archive has an unexpected owner")
+            require(member.isfile() or member.isdir(), "Status source archive contains a non-regular entry")
+            if member.isdir():
+                continue
+            name = "/".join(path.parts[1:])
+            require(name and name not in sources, "Duplicate status source entry: " + name)
+            require(name in {"pyproject.toml", "README.md", "schema-v1.json", "test_runtime_status.py"}
+                    or name.startswith("sparkring_runtime_status/") and path.suffix == ".py",
+                    "Status source is outside its declared owners: " + name)
+            sources[name] = bundle.extractfile(member).read()
+    require("pyproject.toml" in sources, "Status source lacks its project metadata")
+    project = tomllib.loads(sources["pyproject.toml"].decode())["project"]
+    require(project["name"] == "sparkring-runtime-status"
+            and re.fullmatch(r"[0-9][A-Za-z0-9_.+-]*", project["version"]),
+            "Status distribution identity differs")
+    require(project.get("entry-points") == STATUS_ENTRY_POINTS,
+            "Status source must declare the official API and worker entry points")
+    require(project.get("dependencies") == ["fastapi>=0.115"],
+            "Status dependencies require a reviewed compatibility update")
+    require(not any(re.sub(r"[-_.]+", "-", name).lower() == "sparkring-runtime-status"
+                    for name in inventory["versions"]), "The external base already owns the status distribution")
+    fastapi = inventory["versions"].get("fastapi", "")
+    require(re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", fastapi)
+            and tuple(map(int, fastapi.split(".")[:2])) >= (0, 115),
+            "The external base does not satisfy the status FastAPI dependency")
+    require(wheel.name == f"sparkring_runtime_status-{project['version']}-py3-none-any.whl",
+            "Status wheel must be a matching pure Python wheel")
+    distribution = f"sparkring_runtime_status-{project['version']}.dist-info"
+    files = {}
+    with zipfile.ZipFile(wheel) as bundle:
+        for item in bundle.infolist():
+            name = item.filename.rstrip("/")
+            path = relative_path(name)
+            require(not stat.S_ISLNK(item.external_attr >> 16), "Status wheel contains a symlink")
+            require(path.parts[0] in {"sparkring_runtime_status", distribution},
+                    "Status wheel contains files outside its owners: " + name)
+            if item.is_dir():
+                continue
+            require(name not in files, "Status wheel contains a duplicate file: " + name)
+            require(path.suffix not in {".pyc", ".pth", ".so", ".dll", ".pyd", ".a", ".o"}
+                    and ".so." not in path.name, "Status wheel is not pure Python: " + name)
+            files[name] = bundle.read(item)
+    package = {name: raw for name, raw in files.items() if name.startswith("sparkring_runtime_status/")}
+    require(package and package == {name: raw for name, raw in sources.items()
+                                    if name.startswith("sparkring_runtime_status/")},
+            "Status wheel package differs from its pinned source archive")
+    required = {distribution + "/" + name for name in ("METADATA", "WHEEL", "RECORD", "entry_points.txt")}
+    require(required <= files.keys(), "Status wheel lacks required metadata")
+    metadata = BytesParser().parsebytes(files[distribution + "/METADATA"])
+    require(metadata["Name"] == project["name"] and metadata["Version"] == project["version"]
+            and metadata.get("Requires-Python") == project.get("requires-python")
+            and metadata.get_all("Requires-Dist", []) == project["dependencies"],
+            "Status wheel metadata differs from its source project")
+    wheel_metadata = BytesParser().parsebytes(files[distribution + "/WHEEL"])
+    require(wheel_metadata["Root-Is-Purelib"] == "true"
+            and wheel_metadata.get_all("Tag", []) == ["py3-none-any"],
+            "Status wheel has a native or platform-specific payload")
+    entry_points = configparser.ConfigParser(interpolation=None)
+    entry_points.read_string(files[distribution + "/entry_points.txt"].decode())
+    require({section: dict(entry_points[section]) for section in entry_points.sections()} == STATUS_ENTRY_POINTS,
+            "Status wheel must expose the official API and worker entry points")
+    record_name = distribution + "/RECORD"
+    records = {}
+    for row in csv.reader(io.StringIO(files[record_name].decode())):
+        require(len(row) == 3 and row[0] not in records, "Status wheel RECORD has invalid or duplicate entries")
+        records[row[0]] = row[1:]
+    require(records.keys() == files.keys(), "Status wheel RECORD inventory differs")
+    for name, raw in files.items():
+        expected = ["", ""] if name == record_name else [
+            "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=").decode(), str(len(raw)),
+        ]
+        require(records[name] == expected, "Status wheel RECORD digest differs: " + name)
+    capability = {
+        "distribution": project["name"], "version": project["version"],
+        "plugin_name": "sparkring_status", "python_root": PYTHON_ROOT,
+        "wheel_sha256": record["wheel"]["sha256"],
+        "source_archive_sha256": record["source_archive"]["sha256"],
+        "entry_points": STATUS_ENTRY_POINTS,
+    }
+    provenance = {"wheel": {"name": wheel.name, "sha256": record["wheel"]["sha256"]},
+                  "source_archive": {"name": archive.name, "sha256": record["source_archive"]["sha256"]},
+                  "source_files": {name: sha(raw) for name, raw in sources.items()}}
+    return files, capability, provenance
+
+
 def load_inputs(manifest_path):
     manifest = json.loads(manifest_path.read_bytes())
     require(manifest.get("schema") == "sparkring-external-inputs/v1", "Unknown inputs schema")
@@ -188,7 +302,9 @@ def load_inputs(manifest_path):
     controller_root = root / controller["root"]
     for name, digest in controller["files"].items():
         pinned_artifact(controller_root, {"path": name, "sha256": digest})
-    return manifest, paths, inventory, sources, asset_root, exported, nccl, controller_root
+    status = (load_runtime_status(root, manifest["runtime_status"], inventory)
+              if "runtime_status" in manifest else None)
+    return manifest, paths, inventory, sources, asset_root, exported, nccl, controller_root, status
 
 
 class Composition:
@@ -305,7 +421,7 @@ class Composition:
 def prepare(manifest_path, output):
     manifest_path, output = Path(manifest_path), Path(output)
     require(not output.exists(), "Output already exists: " + str(output))
-    manifest, paths, inventory, sources, assets, exported, nccl, controller = load_inputs(manifest_path)
+    manifest, paths, inventory, sources, assets, exported, nccl, controller, status = load_inputs(manifest_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".external-context-", dir=output.parent) as temporary:
         context = Path(temporary) / "context"
@@ -339,6 +455,13 @@ def prepare(manifest_path, output):
         contract_raw = json_bytes(contract)
         contract_path = "/opt/sparkring/contracts/vllm-connector-jobs-eugr-" + sha(contract_raw)[:16] + ".json"
         composition.add(contract_path, contract_raw)
+        python_roots = {}
+        if status is not None:
+            status_files, status_capability, status_provenance = status
+            for name, raw in status_files.items():
+                composition.add(PYTHON_ROOT + "/" + name, raw)
+            composition.add(SITE + "sparkring_runtime_status.pth", (PYTHON_ROOT + "\n").encode())
+            python_roots[PYTHON_ROOT] = {name: sha(raw) for name, raw in status_files.items()}
         source_pins = {
             name: {
                 **{key: row[key] for key in ("commit", "upstream", "baseline_commit")},
@@ -362,13 +485,17 @@ def prepare(manifest_path, output):
                 "asset_export": exported,
             },
             "files": composition.files, "symlinks": composition.links,
+            "python_roots": python_roots,
             "capabilities": {
                 "features": ["qwen-collectives", "qwen4-prefill"],
                 "sparkcache_contract": contract_path,
                 "transport_profile": TRANSPORT, "transport_manifest_sha256": transport_digest,
-                "hc_projection_tp": True, "hc_prefill_row_ownership": "off", "serving_qualified": False,
+                "hc_supported_modes": HC_SUPPORTED_MODES, "serving_qualified": False,
             },
         }
+        if status is not None:
+            descriptor["capabilities"]["runtime_status"] = status_capability
+            descriptor["provenance"]["runtime_status"] = status_provenance
         (context / "composition.json").write_bytes(json_bytes(descriptor))
         shutil.copyfile(paths["base_inventory"], context / "base-inventory.json")
         shutil.copyfile(paths["installer"], context / "external_base.py")
