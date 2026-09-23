@@ -1,0 +1,56 @@
+{
+  "schema": "sparkring-release-source-bundle/v1",
+  "release": "shared-2026.09.4-rc.4",
+  "attachments": [
+    {
+      "name": "source-manifest.json",
+      "sha256": "deb6d30a6fb1d3c316cfc17b046e587c65b8e241b3cbf0df7dcb8ee3011cfa78"
+    },
+    {
+      "name": "vllm.patch",
+      "sha256": "1fa93d9c6302c63dc9d503bd1201a702b5df3ba4314dc5c3a645e910ecd66897"
+    },
+    {
+      "name": "b12x.patch",
+      "sha256": "430267fc74e74846c6a121bf471162922abbace9190309b6ecd3bb3a033896b3"
+    },
+    {
+      "name": "vllm-sources.tar.gz",
+      "sha256": "757f97a0cbb7c69cb2286c50685d71e4cf157834ab5a53322a03fd8adda76dc4"
+    },
+    {
+      "name": "b12x-sources.tar.gz",
+      "sha256": "68d11578733f40b1aa267950640c2e8ead9f19cbc2eba445e89a78776f2d9eb0"
+    },
+    {
+      "name": "external-build-context.tar.gz",
+      "sha256": "1223d0988fafa51f13dd8b98c758cc49717ddf68d1a8cfb0dbff3c6ea95bb940"
+    },
+    {
+      "name": "components.md",
+      "sha256": "88614e61620dedbc25f956b22e1fa59a92da988eca2523907cd86c342e024046"
+    },
+    {
+      "name": "composition.json",
+      "sha256": "f93681c64242803d9bebcc9b6a7170a31e6946073354b5d3da9d7e59e94b2cdc"
+    },
+    {
+      "name": "pr-disposition-manifest.json",
+      "sha256": "48a8de4d19347058b01b0e3210b4cec47b410d5067bac52fd2763e5fcea93afc"
+    },
+    {
+      "name": "PR-DISPOSITION.md",
+      "sha256": "63c2e5e73696569ee13f463c4e9cb43e69c15e6e5676d59c386beb7ec2fcec0e"
+    },
+    {
+      "name": "sparkring_runtime_status-0.1.0-py3-none-any.whl",
+      "sha256": "3740dfc6e269ebb223679b352974e0ce344577476188cdf75034f243b8de0f78"
+    },
+    {
+      "name": "runtime-status-source.tar.gz",
+      "sha256": "b187d13aa96f7fcd4c2cf58bab3fe1cbc4aa4884b6581a311606e5262335df55"
+    }
+  ],
+  "independent_reconstruction_verified": true,
+  "scope": "Reconstructable vLLM/B12X source overlays, status wheel/source, integration composition, component notices and upstream PR dispositions. Compiled foundation is independently digest-pinned."
+}

@@ -1,0 +1,101 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "shared-2026.09.4-rc.4",
+  "status": "research-only",
+  "runtime_layout": "external-base/v1",
+  "platform": "linux/arm64",
+  "image_id": "sha256:99dd974df3c13648061ead9e293c876609350856e7f792936498d13de00c7eca",
+  "image_config_id": "sha256:99dd974df3c13648061ead9e293c876609350856e7f792936498d13de00c7eca",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:3d3411b66dd2a4f78ea062ec0a923308f302df14f0e0f9a6ae8961946ae603c8",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:shared-2026.09.4-rc.4",
+  "registry_manifest_digest": "sha256:3d3411b66dd2a4f78ea062ec0a923308f302df14f0e0f9a6ae8961946ae603c8",
+  "installed_receipt_sha256": "ae1e5362efff2e265ba45c674133d1e02597a329425367c080b1f3f1703b66f0",
+  "composition_sha256": "f93681c64242803d9bebcc9b6a7170a31e6946073354b5d3da9d7e59e94b2cdc",
+  "base": {
+    "config_id": "sha256:688d27699c48c827e7375c51e79f125161187fddfbabd1bc343521986fc4f768",
+    "reference": "eugr/spark-vllm-b12x@sha256:5249a162cd39aa090e803243aef376e1f87f0fd4826f9249ea1ecd0c814b2c7e"
+  },
+  "sources": {
+    "b12x": {
+      "archive": "b12x-sources.tar",
+      "archive_sha256": "5e3a6df7180c725562c35c383cf8ed75684331f2e2f4776e8d5aa6fc17c75ae1",
+      "baseline_archive": "eugr-b12x-upstream-source.tar",
+      "baseline_archive_sha256": "6b8d0573f2cbaae1a41b3baaeeca4614aa19853e370b9e538deea851ce2f4452",
+      "baseline_commit": "8a99d639410e39d5f39cb4037675331beceea1d4",
+      "commit": "a0a0c425e20f45e041de241afd6e76dcfc52d281",
+      "upstream": "2fca4df84e68e4c55af3fa957305aa5952c7587f"
+    },
+    "vllm": {
+      "archive": "vllm-sources.tar",
+      "archive_sha256": "65a2c7a71e2ad7802e5726b79d6628fc957fdf4594df506580860ed06a77bd0d",
+      "baseline_archive": "eugr-vllm-upstream-source.tar",
+      "baseline_archive_sha256": "31448f235977e5749209181498329de63b29faba33c0c056305f9626c49f5682",
+      "baseline_commit": "57fdda71b06063203ef0a82cac888a7c9b5f8f7a",
+      "commit": "91f94783190ce716e2238f899b25d44e84e2a525",
+      "upstream": "e77be22511ab91ecf217760524b7579c366cca2a"
+    }
+  },
+  "features": [
+    "qwen-collectives",
+    "qwen4-prefill"
+  ],
+  "hc_supported_modes": {
+    "2": [
+      {
+        "prefill_row_ownership": "off",
+        "projection_tp": "1"
+      }
+    ],
+    "4": [
+      {
+        "prefill_row_ownership": "off",
+        "projection_tp": "1"
+      },
+      {
+        "prefill_row_ownership": "shard",
+        "projection_tp": "0"
+      }
+    ]
+  },
+  "runtime_status": {
+    "distribution": "sparkring-runtime-status",
+    "entry_points": {
+      "vllm.endpoint_plugins": {
+        "sparkring_status": "sparkring_runtime_status.plugin:StatusPlugin"
+      },
+      "vllm.general_plugins": {
+        "sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"
+      }
+    },
+    "plugin_name": "sparkring_status",
+    "python_root": "/opt/sparkring/python",
+    "source_archive_sha256": "b187d13aa96f7fcd4c2cf58bab3fe1cbc4aa4884b6581a311606e5262335df55",
+    "version": "0.1.0",
+    "wheel_sha256": "3740dfc6e269ebb223679b352974e0ce344577476188cdf75034f243b8de0f78"
+  },
+  "sparkcache_contract": {
+    "path": "/opt/sparkring/contracts/vllm-connector-jobs-eugr-968592c188627184.json",
+    "sha256": "968592c1886271844ea16f00200e000d2583abe63522865a359f1f6047a48889"
+  },
+  "transport": {
+    "profile": "tp2-rocenante-adaptive-prepared",
+    "manifest_sha256": "8cd9e234737953469bbb2e485b78322be0c8971c071749bea7222b65b9d94b5f"
+  },
+  "profiles": {
+    "profiles/qwen38-flash-next-qad-tp2-eugr/config.json": "cc0b1c90a12ee0a53af9a9b87b23afcedc58f17155326bd511e38c876cc49ea1",
+    "profiles/qwen38-flash-next-qad-tp4-eugr/config.json": "472c59b1e8ce1fabb41a6bb2351d72bbd6329a5baf7415e0e434a2550be2336c"
+  },
+  "anonymous_config_verified": true,
+  "anonymous_pull_completed": true,
+  "clean_docker_engine_pull_completed": false,
+  "installed_runtime_verified_after_pull": true,
+  "runtime_files_verified": 5792,
+  "tested_runtime_image": "sha256:7a1fe4830844cd9c362f9a2fc60015524537865110f6d4ec362c43f145836a1d",
+  "runtime_rootfs_matches_tested_image": true,
+  "runtime_configuration_except_labels_matches_tested_image": true,
+  "rootfs_layers": 31,
+  "source_manifest_sha256": "deb6d30a6fb1d3c316cfc17b046e587c65b8e241b3cbf0df7dcb8ee3011cfa78",
+  "component_notice_sha256": "88614e61620dedbc25f956b22e1fa59a92da988eca2523907cd86c342e024046",
+  "stable_defaults_changed": false,
+  "qualification_scope": "Bounded checks and limitations are recorded in qualification.json; source inclusion is not universal model qualification."
+}

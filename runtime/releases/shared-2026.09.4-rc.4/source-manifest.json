@@ -1,0 +1,34 @@
+{
+  "schema": "sparkring-source-rollup/v1",
+  "release_candidate": "shared-2026.09.4-rc.4",
+  "archive_method": "git -c core.autocrlf=true archive --format=tar HEAD; gzip mtime=0",
+  "scope": "Source reconstruction evidence only; serving qualification is separate.",
+  "components": {
+    "vllm": {
+      "upstream_repository": "https://github.com/local-inference-lab/vllm",
+      "base_commit": "57fdda71b06063203ef0a82cac888a7c9b5f8f7a",
+      "integrated_commit": "91f94783190ce716e2238f899b25d44e84e2a525",
+      "integrated_tree": "8504b5887ddc818227a523901ca86d26b781648c",
+      "patch": "vllm.patch",
+      "patch_sha256": "1fa93d9c6302c63dc9d503bd1201a702b5df3ba4314dc5c3a645e910ecd66897",
+      "source_archive": "vllm-sources.tar.gz",
+      "source_archive_sha256": "757f97a0cbb7c69cb2286c50685d71e4cf157834ab5a53322a03fd8adda76dc4",
+      "uncompressed_archive_sha256": "65a2c7a71e2ad7802e5726b79d6628fc957fdf4594df506580860ed06a77bd0d",
+      "independent_git_tree_reconstruction": true,
+      "native_framework_inputs_rebuilt": false
+    },
+    "b12x": {
+      "upstream_repository": "https://github.com/local-inference-lab/b12x",
+      "base_commit": "8a99d639410e39d5f39cb4037675331beceea1d4",
+      "integrated_commit": "a0a0c425e20f45e041de241afd6e76dcfc52d281",
+      "integrated_tree": "7d6faa330cbb9a1628c6e6942cc16034ea79c7a0",
+      "patch": "b12x.patch",
+      "patch_sha256": "430267fc74e74846c6a121bf471162922abbace9190309b6ecd3bb3a033896b3",
+      "source_archive": "b12x-sources.tar.gz",
+      "source_archive_sha256": "68d11578733f40b1aa267950640c2e8ead9f19cbc2eba445e89a78776f2d9eb0",
+      "uncompressed_archive_sha256": "5e3a6df7180c725562c35c383cf8ed75684331f2e2f4776e8d5aa6fc17c75ae1",
+      "independent_git_tree_reconstruction": true,
+      "native_framework_inputs_rebuilt": false
+    }
+  }
+}
