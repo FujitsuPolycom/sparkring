@@ -1,0 +1,19 @@
+{
+  "schema": "sparkring-install-site/v1",
+  "name": "pair-test",
+  "workspace": "/srv/sparkring/pair-test",
+  "hosts": [
+    {
+      "host": "spark0",
+      "management_ip": "192.0.2.10",
+      "fabric_ip": "198.18.20.1",
+      "interface": "enp1s0f0np0"
+    },
+    {
+      "host": "spark1",
+      "management_ip": "192.0.2.11",
+      "fabric_ip": "198.18.20.2",
+      "interface": "enp1s0f0np0"
+    }
+  ]
+}

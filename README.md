@@ -22,10 +22,24 @@ configurations and workloads recorded with each profile.
 
 ## Setup
 
-Start with [Set up SparkRing](docs/operations/setup.md): choose two or four
-Sparks and a model, prepare the hosts and network, then follow the selected
-serving guide through a successful response. Each step identifies where to run
-commands and how to check its result.
+Want a single Compose file to share? Use [GLM TP2](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml)
+or [Qwen TP2](profiles/qwen38-flash-next-tp2/compose/standalone.yaml). Set the five
+values at the top and select the local rank. These standalone recipes require
+prepared networking and model weights; their hardware rehearsal is pending.
+
+For prepared Sparks, use the [profile installer](docs/operations/installer.md):
+
+```bash
+python3 scripts/sparkring.py init
+python3 scripts/sparkring.py up              # review the plan
+python3 scripts/sparkring.py up --execute
+python3 scripts/sparkring.py status --refresh
+```
+
+The installer is implemented and tested offline; hardware rehearsal is pending.
+It locks the profile/image/checkpoint, prepares assets and coordinates startup.
+It can export per-rank Compose files and portable profile templates.
+For first boot and networking, use [host setup](docs/operations/setup.md).
 
 The [SparkRing image](docs/operations/images.md) contains the inference software.
 Model weights, host drivers, Docker and network configuration are separate.

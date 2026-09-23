@@ -1,5 +1,12 @@
 # Compose deployments from SparkRing profiles
 
+For one saved deployment operated through `init`, `up`, `status` and `down`, use
+the [profile installer](installer.md). It also generates GLM TP2 Compose files
+from the TP2 adapter and exports portable templates with `export --share`.
+That installer path is offline-tested; its hardware rehearsal remains pending.
+The lower-level `sparkring compose` coordinator described below retains its
+existing supported-profile list and recorded serving scope.
+
 Status: **Development**. The [Qwen QAD TP4 serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
 covers four-rank startup, bounded inference/performance checks and coordinated
 stop/restart. The [TP2 smoke record](../../performance/records/qwen38-flash-next/compose-tp2.json)

@@ -168,6 +168,8 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
     subcommands.add_parser("compose", help="generate and coordinate profile-owned Compose deployments")
     subcommands.add_parser("setup", help="read-only installation selection and storage planning")
+    for operation in ("init", "up", "status", "down", "export"):
+        subcommands.add_parser(operation, help="profile installer: " + operation)
     host_commands = host.add_subparsers(dest="host_command", required=True)
     host_check = host_commands.add_parser("check", help="run read-only host checks")
     host_check.add_argument("--json", action="store_true")
@@ -177,6 +179,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw = list(argv if argv is not None else sys.argv[1:])
+    if raw and raw[0] in ("init", "up", "status", "down", "export"):
+        try:
+            from .sparkring_installer import main as installer_main
+        except ImportError:
+            from sparkring_installer import main as installer_main
+        return installer_main(raw)
     if raw and raw[0] == "setup":
         root = str(Path(__file__).resolve().parents[1])
         if root not in sys.path:

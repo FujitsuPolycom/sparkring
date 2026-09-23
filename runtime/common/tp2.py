@@ -83,15 +83,23 @@ def _remove_option(arguments, flag):
 
 
 def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None,
-                       target_model_variant="nvfp4-spark"):
+                       target_model_variant="nvfp4-spark", planning_contract=None):
     verifier = _r33_verifier()
     from runtime.common import candidate, glm_targets, r35, glm_source_candidate, glm_native_candidate
-    is_native = receipt.get("schema") == glm_native_candidate.SCHEMA
+    planning = planning_contract is not None
+    is_native = planning or receipt.get("schema") == glm_native_candidate.SCHEMA
     is_source = receipt.get("schema") == glm_source_candidate.SCHEMA
     is_candidate = receipt.get("schema") == candidate.SCHEMA
     adapter = glm_native_candidate if is_native else glm_source_candidate if is_source else candidate if is_candidate else r35
     is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA)
-    if is_r35:
+    is_r35 = is_r35 or planning
+    if planning:
+        if receipt != glm_native_candidate.native.publication(receipt["release"]):
+            raise ValueError("Offline planning requires the registered publication")
+        expected = json.loads((glm_native_candidate.ROOT / "runtime/releases" / receipt["release"] / "glm-profile-contract.json").read_bytes())
+        if planning_contract != expected or planning_contract["image_id"] != receipt["image_id"]:
+            raise ValueError("Offline planning contract differs from its release")
+    elif is_r35:
         adapter.validate_receipt(receipt)
     else:
         verifier.validate_image_receipt(receipt)
@@ -99,11 +107,14 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
     expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
     if plan["image"] != expected_image:
         raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
-    contract = glm_source_candidate.contract_for_receipt(receipt) if is_source else adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
-    glm_targets.require_image(target_model_variant, receipt)
-    target = glm_targets.target_for_image(target_model_variant, image=receipt)
+    contract = planning_contract if planning else glm_source_candidate.contract_for_receipt(receipt) if is_source else adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
+    if planning:
+        target = contract["target_variants"][target_model_variant]
+    else:
+        glm_targets.require_image(target_model_variant, receipt)
+        target = glm_targets.target_for_image(target_model_variant, image=receipt)
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
-    if is_source or is_native:
+    if not planning and (is_source or is_native):
         adapter.validate_profile_capabilities(receipt, profile_name)
     selected = contract["profiles"][profile_name]
     environment = dict(plan["environment"])
@@ -242,7 +253,9 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         plan["qualification"] = {"status": "research-only", "gpu_qualified": False,
                                  "request_context_target": 1048576, "reference_context_limit": 262144}
         try:
-            if is_r35:
+            if planning:
+                pass
+            elif is_r35:
                 adapter.validate_profile_capabilities(receipt, profile_name)
             else:
                 verifier.validate_profile_image_capabilities(receipt, profile_name)
@@ -252,6 +265,10 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
     if is_native:
         plan["qualification"] = {"status": "implemented", "gpu_qualified": False,
                                  "scope": "Native configuration admission; consult exact-profile release evidence."}
+    if planning:
+        plan["admission_required"] = True
+        plan["qualification"] = {"status": "planned", "gpu_qualified": False,
+                                 "scope": "Release settings only; installed image and checkpoint not verified."}
     return plan
 
 
@@ -260,9 +277,21 @@ adapt_r33_plan = adapt_release_plan
 
 
 def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None, *, r33_sparkcache=False,
-           r33_cache_kv_memory_bytes=None, target_model_variant="nvfp4-spark"):
+           r33_cache_kv_memory_bytes=None, target_model_variant="nvfp4-spark", planning_release=None,
+           site_values=None):
     from runtime.common import glm_targets
-    glm_targets.require_image(target_model_variant, r33_receipt)
+    planning_contract = None
+    if planning_release is not None:
+        from runtime.common import glm_native_candidate, compose
+        if r33_receipt is not None:
+            raise ValueError("Select offline release planning or an observed receipt, not both")
+        r33_receipt = glm_native_candidate.native.publication(planning_release)
+        planning_contract = json.loads((glm_native_candidate.ROOT / "runtime/releases" / planning_release / "glm-profile-contract.json").read_bytes())
+        model_dir, cache_dir = compose.linux_path(str(model_dir)), compose.linux_path(str(cache_dir))
+        if model_dir.is_relative_to(cache_dir) or cache_dir.is_relative_to(model_dir):
+            raise ValueError("Model and cache paths must be disjoint")
+    else:
+        glm_targets.require_image(target_model_variant, r33_receipt)
     if r33_cache_kv_memory_bytes is not None and (
             not r33_sparkcache or type(r33_cache_kv_memory_bytes) is not int
             or r33_cache_kv_memory_bytes not in (7247757312, 8053063680, 9395240960)):
@@ -273,19 +302,24 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         raise ValueError("A valid rank and master address are required")
     if not (re.fullmatch(REGISTRY_IMAGE_PATTERN, image) or re.fullmatch(LOCAL_IMAGE_PATTERN, image)):
         raise ValueError("Select an immutable registry digest or exact local sha256 image config ID")
-    if not (model_dir / "config.json").is_file() or not cache_dir.is_dir():
+    if planning_release is None and (not (model_dir / "config.json").is_file() or not cache_dir.is_dir()):
         raise ValueError("An existing checkpoint with config.json and a cache directory are required")
     if r33_receipt and r33_receipt.get("schema") == "sparkring-glm-native-image-receipt/v1":
         glm_targets.verified_override(target_model_variant, (model_dir / "config.json").read_bytes(),
                                       (model_dir / "model.safetensors.index.json").read_bytes())
-    for path in (model_dir, cache_dir):
-        if "," in str(path.resolve()):
+    model_path = str(model_dir) if planning_release else str(model_dir.resolve())
+    cache_path = str(cache_dir) if planning_release else str(cache_dir.resolve())
+    for path in (model_path, cache_path):
+        if "," in path:
             raise ValueError("Docker bind-mount paths must not contain commas")
-    if model_dir.resolve() == cache_dir.resolve():
+    if model_path == cache_path:
         raise ValueError("Checkpoint and writable cache directories must be distinct")
     profile = load_profile()
     profile_hash = hashlib.sha256(PROFILE_PATH.read_bytes()).hexdigest()
-    environment = {**profile["environment"], **read_site(env_file), **transport_environment(rank)}
+    site = read_site(env_file) if site_values is None else site_values
+    if site_values is not None and (set(site) != SITE_KEYS or any(not isinstance(v, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", v) for v in site.values())):
+        raise ValueError("Provide exactly the three rank address/socket interface values")
+    environment = {**profile["environment"], **site, **transport_environment(rank)}
     environment.update(NODE_RANK=str(rank), SPARKRING_NODE_RANK=str(rank),
                        MASTER_ADDR=master, SOURCE_IMAGE_PROFILE=profile["name"])
     # Keep compilation artifacts in the mounted tree and separate ranks and
@@ -328,8 +362,8 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
     command = ["docker", "create", "--name", name, "--restart", "no",
                "--init", "--no-healthcheck", "--gpus", "all", "--network", "host", "--ipc", "host",
                "--device", "/dev/infiniband", "--ulimit", "memlock=-1:-1",
-               "--mount", f"type=bind,src={model_dir.resolve()},dst=/models/target,readonly",
-               "--mount", f"type=bind,src={cache_dir.resolve()},dst=/cache/jit",
+               "--mount", f"type=bind,src={model_path},dst=/models/target,readonly",
+               "--mount", f"type=bind,src={cache_path},dst=/cache/jit",
                "--entrypoint", "python3"]
     for key, value in labels.items():
         command.extend(["--label", key + "=" + value])
@@ -344,7 +378,7 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         "image_identity_kind": "local_config_id" if re.fullmatch(LOCAL_IMAGE_PATTERN, image) else "registry_manifest_digest",
         "labels": labels, "environment": environment, "container_args": container_args,
         "command": command,
-        "binds": {"/models/target": str(model_dir.resolve()), "/cache/jit": str(cache_dir.resolve())},
+        "binds": {"/models/target": model_path, "/cache/jit": cache_path},
         "memory_guard_floor_bytes": profile["lifecycle"]["memory_guard_floor_bytes"],
         "automatic_restart": False, "automatic_start": False,
         "sparkcache_enabled": False,
@@ -353,7 +387,27 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
     }
     return adapt_release_plan(result, r33_receipt, sparkcache=r33_sparkcache,
                           cache_kv_memory_bytes=r33_cache_kv_memory_bytes,
-                          target_model_variant=target_model_variant) if r33_receipt is not None else result
+                          target_model_variant=target_model_variant, planning_contract=planning_contract) if r33_receipt is not None else result
+
+
+def container_spec(plan, *, name=None, labels=None):
+    """Project structured TP2 fields to the common Docker/Compose envelope."""
+    from runtime.common.container_spec import Bind, ContainerSpec
+    health = plan.get("healthcheck", {"Test": ["NONE"]})
+    test = health["Test"]
+    return ContainerSpec(
+        name=name or plan["name"], image_id=plan["image"],
+        entrypoint=(plan["entrypoint"],), command=tuple(plan["container_args"]),
+        environment=dict(plan["environment"]), memory=None, memory_swap=None,
+        mounts=tuple(Bind(source, target, target == "/models/target") for target, source in plan["binds"].items()),
+        labels={**plan["labels"], **(labels or {})},
+        health_mode="disabled" if test == ["NONE"] else "shell" if test[0] == "CMD-SHELL" else "exec",
+        health_command=() if test == ["NONE"] else tuple(test[1:]),
+        health_interval=health.get("Interval", 10_000_000_000) // 1_000_000_000,
+        health_timeout=health.get("Timeout", 5_000_000_000) // 1_000_000_000,
+        health_start_period=health.get("StartPeriod", 900_000_000_000) // 1_000_000_000,
+        health_retries=health.get("Retries", 3),
+    )
 
 
 def _source_receipt_contract(directory):
@@ -466,6 +520,8 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     """Run lifecycle actions after image, profile and stopped-container checks."""
     if action not in ("create", "start"):
         raise ValueError("Execution action must be create or start")
+    if plan.get("admission_required"):
+        raise ValueError("Offline plans cannot execute; render again with an observed image receipt")
     validate_runtime_receipt(receipt, plan)
     from runtime.common import candidate, glm_source_candidate, glm_native_candidate
     is_native = receipt.get("schema") == glm_native_candidate.SCHEMA
