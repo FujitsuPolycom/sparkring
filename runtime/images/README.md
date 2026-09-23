@@ -1,5 +1,9 @@
 # Image construction
 
+Installing a published deployment? Read [what the image contains](../../docs/operations/images.md)
+and follow [setup](../../docs/operations/setup.md). The build commands below are
+for developers; a published profile does not require a local image build.
+
 Use `python3 scripts/build_image.py BUILDER -- BUILDER_ARGUMENTS` to print a
 build command. Add `--execute` before the builder name only when you intend to
 run that build on the current host. Building consumes resources and may download

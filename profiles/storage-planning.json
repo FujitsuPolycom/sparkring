@@ -1,0 +1,11 @@
+{
+  "schema": "sparkring-storage-planning/v1",
+  "scope": "Conservative additional free-space allowances per rank for operator planning. These are not checkpoint sizes, hardware-qualified minima or download metadata. Keep model copies, Docker storage and writable cache/JIT paths separate in the storage check.",
+  "checkpoint_allowance_gib": {
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": 200,
+    "local-inference-lab/GLM-5.3-Flash-NVFP4": 200,
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": 120
+  },
+  "image_allowance_gib": 68,
+  "cache_and_jit_allowance_gib": 32
+}

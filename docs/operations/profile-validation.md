@@ -1,5 +1,9 @@
 # Validate a serving profile
 
+For initial installation, finish the selected guide's short inference test in
+[setup](setup.md#6-test-a-response-and-save-restart-instructions) first. This
+runbook is the subsequent workload qualification and benchmarking procedure.
+
 Use this runbook to measure a deployed profile's speed, long-context
 accuracy, concurrency behavior, and restart/cache behavior. Keep the results
 with the recipe so another operator can repeat the same workload.

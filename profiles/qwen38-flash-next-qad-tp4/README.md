@@ -27,31 +27,40 @@ TP2 uses the [two-Spark quickstart](../qwen38-flash-next-tp2/README.md).
 
 ## Prepare image, model and fabric
 
-Complete the [host prerequisites](../../docs/operations/prerequisites.md).
+Complete [setup](../../docs/operations/setup.md) through the host and ring
+network steps. Use Bash from the recorded checkout directory on each host.
 Use the same SparkRing checkout on every host and pull this image on all four:
 
 ```bash
-IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6'
+set -euo pipefail
+mkdir -p .sparkring
+PROFILE=qwen38-flash-next-qad-tp4
+# For persistent caching, select qwen38-flash-next-qad-tp4-sparkcache instead.
+python3 scripts/sparkring.py setup show "$PROFILE" --format shell \
+  > .sparkring/selection.env
+cat .sparkring/selection.env
+source .sparkring/selection.env
 docker pull --platform linux/arm64 "$IMAGE_REF"
-docker image inspect --format '{{.Id}}' "$IMAGE_REF"
+IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
+test "$IMAGE_ID" = "$EXPECTED_IMAGE_ID"
 ```
 
-The image ID must be
-`sha256:b13ac9630ecdfbc63c99e952bb23a04c7dc8688ff172cea1944dafd0aed44499`.
+**Pass:** the pulled image ID equals the publication's generated `EXPECTED_IMAGE_ID`.
 No separate R37 parent-image pull is required. The
 [publication receipt](../../runtime/releases/shared-2026.09.3/publication.json)
 binds the image to its source and installed inventory.
 
-Reuse an existing verified QAD checkpoint. Otherwise download the pinned revision
-once and transfer it to the other hosts over the data fabric:
+Reuse an existing verified QAD checkpoint, setting `MODEL_DIR` to its actual path.
+Otherwise run this download on **each rank**. A separately verified file transfer
+can replace a download; verify full shard checksums on every destination:
 
 ```bash
 # Skip download when these verified weights already exist.
-hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 \
-  --revision 629bc3218833a38b475b719f34aa571666f4a03e \
-  --local-dir /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
+MODEL_DIR="/srv/models/${MODEL_REPO##*/}/${MODEL_REV}"
+"$HOME/.venvs/sparkring-download/bin/hf" download "$MODEL_REPO" \
+  --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
 REPO=$PWD
-(cd /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833 && \
+(cd "$MODEL_DIR" && \
   sha256sum --check "$REPO/profiles/qwen38-flash-next-qad-tp4/SHA256SUMS")
 ```
 
@@ -74,9 +83,8 @@ site example; its addresses and fabric hashes are placeholders:
 mkdir -p .sparkring
 cp profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml .sparkring/qwen-qad.site.yaml
 # Fill every host, model/cache directory, HCA/GID and prepared fabric identity.
-PROFILE=qwen38-flash-next-qad-tp4
-# To enable persistence instead:
-# PROFILE=qwen38-flash-next-qad-tp4-sparkcache
+# Keep PROFILE from image selection; fill the site with the actual MODEL_DIR.
+PROFILE="$PROFILE_ID"
 DEPLOYMENT=.sparkring/deployments/qwen-qad
 python3 scripts/sparkring.py compose render "$PROFILE" \
   --site .sparkring/qwen-qad.site.yaml --output "$DEPLOYMENT"

@@ -2,8 +2,9 @@
 
 Status: **qualified for bounded correctness and restart checks**.
 Use the [Qwen TP2 quickstart](../qwen38-flash-next-tp2/README.md).
-It selects SparkCache by default and includes the cache-disabled alternative,
-image pull, model verification, startup and restart instructions.
+Set `PROFILE_ID=qwen38-flash-next-tp2-sparkcache` before its image/checkpoint
+block. The shared guide includes image pull, model verification, startup and
+restart instructions for both cache choices.
 
 Both variants use [shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md).
 The [configuration](../qwen38-flash-next-tp2/sparkcache.json) owns the flags;

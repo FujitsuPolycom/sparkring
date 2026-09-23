@@ -2,7 +2,8 @@
 
 The [Qwen TP2 quickstart](README.md) owns checkpoint verification, image selection,
 planning, startup, restart and safety instructions for both cache choices.
-Use its default SparkCache configuration, [sparkcache.json](sparkcache.json).
+Select `PROFILE_ID=qwen38-flash-next-tp2-sparkcache` before its image/checkpoint
+block to choose [sparkcache.json](sparkcache.json).
 
 ## Plan, create and start
 

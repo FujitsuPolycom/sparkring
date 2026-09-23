@@ -167,6 +167,7 @@ def _parser() -> argparse.ArgumentParser:
     # directly to deploy_suite so that module owns subcommand help and parsing.
     subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
     subcommands.add_parser("compose", help="generate and coordinate profile-owned Compose deployments")
+    subcommands.add_parser("setup", help="read-only installation selection and storage planning")
     host_commands = host.add_subparsers(dest="host_command", required=True)
     host_check = host_commands.add_parser("check", help="run read-only host checks")
     host_check.add_argument("--json", action="store_true")
@@ -176,6 +177,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw = list(argv if argv is not None else sys.argv[1:])
+    if raw and raw[0] == "setup":
+        root = str(Path(__file__).resolve().parents[1])
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from runtime.common.setup import main as setup_main
+        return setup_main(raw[1:])
     if raw and raw[0] == "compose":
         try:
             from .sparkring_compose import main as compose_main

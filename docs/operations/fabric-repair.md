@@ -1,7 +1,9 @@
 # Inspect and repair ring networking
 
 Use Ring Doctor to inspect routing, forwarding and firewall state on a configured
-ring. Complete the [host setup](../GLM53_SPARK_MESH_HOST_SETUP.md) first.
+ring. During first installation, complete host preparation and fabric addressing
+through step 5 of [bootstrap](bootstrap.md#5-review-and-install-fabric-addresses)
+first. Managed-mesh driver preparation is separate from these IP routing repairs.
 
 ## Routing and forwarding across the fabric
 
@@ -53,8 +55,10 @@ The flag does not permit execution from a laptop or unknown control host; the
 local machine must still identify as one configured worker rank. The report
 records when worker recovery mode was used.
 
-Require zero `ERROR` findings, a passing canonical fabric preflight, and a
-reachability matrix in which every pair passes. `--apply` executes the printed
+Before repair, require sufficient cycle discovery, a passing canonical fabric
+preflight and a ready management guard. Missing routes/forwarding may produce
+repairable findings. After repair, require zero `ERROR` findings and a reachability
+matrix in which every pair passes. `--apply` executes the printed
 plan only after both the discovered cycle and canonical fabric checks pass. It
 is idempotent and needs non-interactive `sudo` on each node. Before any repair
 command runs, Ring Doctor executes `sudo -n true` on every node whose plan has

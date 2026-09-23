@@ -2,7 +2,8 @@
 
 Status: **qualified for bounded correctness and restart checks**.
 Use the [Qwen QAD TP4 quickstart](../qwen38-flash-next-qad-tp4/README.md) and select
-`PROFILE=qwen38-flash-next-qad-tp4-sparkcache` before rendering.
+`PROFILE=qwen38-flash-next-qad-tp4-sparkcache` before image selection and retain
+that value through rendering.
 Image/model/fabric preparation and start/stop/restart instructions are shared.
 Both variants pull [shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md);
 no additional cache image or source overlay is required.

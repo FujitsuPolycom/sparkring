@@ -201,10 +201,42 @@ apply_reviewed "$STATE/logs-plan.json" "$STATE/logs-execution.json"
 responses. It sends no inference requests and does not test answer quality or
 SparkCache restore. Status/log output is stored in the execution receipt.
 
+After the initial start, save the controller inputs and functions for a fresh
+Bash session. Run from the same checkout; the file stays in the private state
+directory:
+
 ```bash
+DEPLOYMENT_STATE="$STATE"
+for key in DEPLOYMENT_STATE PREP; do
+  printf '%s=%q\n' "$key" "${!key}"
+done > "$DEPLOYMENT_STATE/operator-session.env"
+declare -f sr apply_reviewed runtime_plan >> "$DEPLOYMENT_STATE/operator-session.env"
+printf 'Saved controller session: %s/operator-session.env\n' "$DEPLOYMENT_STATE"
+```
+
+For a subsequent operation, open Bash in the same checkout and source that
+locally generated file after inspection. The example below uses the GLM
+quickstart's state directory; substitute the printed path for another deployment.
+Use a fresh operation directory so prior plans and execution receipts remain intact:
+
+```bash
+source .sparkring/glm-tp4-deployment/operator-session.env
+STATE=$(mktemp -d "$DEPLOYMENT_STATE/operation.XXXXXX")
 runtime_plan stop
 apply_reviewed "$STATE/stop-plan.json" "$STATE/stop-execution.json" \
   --allow-model-actions
+```
+
+For an ordinary restart after coordinated stop, use `runtime_plan start`,
+`apply_reviewed` with `--allow-model-actions`, then `runtime_plan ready` and
+its corresponding `apply_reviewed` call, as above. Each new operation session
+needs a fresh `STATE` directory. Do not rerun container creation or reuse a
+completed start receipt as a new start operation.
+
+If managed-mesh recovery is needed, inspect the failure first, then generate and
+review this separate operation in a fresh operation directory:
+
+```bash
 runtime_plan recover
 apply_reviewed "$STATE/recover-plan.json" "$STATE/recover-execution.json" \
   --allow-model-actions

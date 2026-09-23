@@ -49,11 +49,13 @@ def test_bootstrap_parses_and_requires_explicit_inputs() -> None:
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.skipif(os.name != "posix", reason="Bash checkout update test requires POSIX paths")
 def test_managed_single_branch_checkout_can_select_another_branch_and_tag(tmp_path):
     """Exercise the actual checkout block against a local source repository."""
     source = tmp_path / "source"
     checkout = tmp_path / "managed"
+    bash = "C:/Program Files/Git/bin/bash.exe" if os.name == "nt" else shutil.which("bash")
+    if not bash or not Path(bash).is_file():
+        pytest.skip("Bash required")
 
     def git(*args, cwd=source):
         return subprocess.run(["git", *args], cwd=cwd, capture_output=True,
@@ -78,11 +80,11 @@ def test_managed_single_branch_checkout_can_select_another_branch_and_tag(tmp_pa
     block = 'set -euo pipefail\nif [[ -e "$INSTALL_DIR" ]]; then' + block
 
     def update(ref):
-        return subprocess.run(["bash"], input=block, text=True, capture_output=True,
-                              env={**os.environ, "INSTALL_DIR": str(checkout), "REF": ref,
-                                   "REPOSITORY": str(source)}, timeout=20)
+        return subprocess.run([bash], input=block, text=True, capture_output=True,
+                              env={**os.environ, "INSTALL_DIR": checkout.as_posix(), "REF": ref,
+                                   "REPOSITORY": source.as_posix()}, timeout=20)
 
-    for ref, expected in (("topic/test", topic), ("release-test", main), ("main", main)):
+    for ref, expected in (("topic/test", topic), ("release-test", main), (topic, topic), ("main", main)):
         result = update(ref)
         assert result.returncode == 0, result.stderr
         assert git("rev-parse", "HEAD", cwd=checkout) == expected
@@ -95,3 +97,9 @@ def test_managed_single_branch_checkout_can_select_another_branch_and_tag(tmp_pa
     assert refused.returncode != 0
     assert "dirty managed checkout" in refused.stderr
     assert (checkout / "tracked").read_text() == "local edit\n"
+
+    # Exercise the first-install path at an immutable commit as well.
+    checkout = tmp_path / "fresh-commit"
+    result = update(topic)
+    assert result.returncode == 0, result.stderr
+    assert git("rev-parse", "HEAD", cwd=checkout) == topic

@@ -24,6 +24,27 @@ describe integration work and do not enable features or change serving defaults.
 
 ## Inspect and resolve
 
+Operators can obtain a compact installation selection without contacting hosts:
+
+```bash
+python3 scripts/sparkring.py setup show glm53-flash-spark-tp2-dcp1-sparkcache
+python3 scripts/sparkring.py setup show qwen38-flash-next-tp2 --format json
+```
+
+The helper resolves the existing profile, validates the release's pinned inputs,
+and reports its publication and checkpoint. `--format shell` emits quoted
+assignments for reviewed local use; it does not create an installed-image receipt.
+GLM's `--variant nvfp4-qad` reads its declared target variant rather than changing
+the profile's image. Unsupported selections fail with a pointer to their own guide.
+
+`setup storage` applies [planning allowances](../../profiles/storage-planning.json)
+to local model, Docker and cache destination filesystems. It sums allocations
+sharing a filesystem, probes existing ancestors without creating directories,
+and returns failure when space is insufficient. Reuse flags are explicit planning
+assumptions and never replace asset verification. These helpers do not configure
+hosts or replace launch adapters. Follow [setup](../operations/setup.md) for the
+operator sequence.
+
 ```bash
 python scripts/profiles.py list
 python scripts/profiles.py validate

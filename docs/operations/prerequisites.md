@@ -1,6 +1,9 @@
 # SparkRing prerequisites
 
-Choose a [profile](../../profiles/README.md), then check the following on every Spark.
+For a first installation, follow [Set up SparkRing](setup.md). This page is a
+reference checklist. Use [host preparation](host-preparation.md) for executable
+instructions, then the [pair network guide](pair-network.md) or ring procedure.
+Check the following on every Spark for your selected profile.
 
 ## Hardware and topology
 
@@ -22,6 +25,9 @@ connection that remains reachable while configuring the data fabric.
 - Matching model revisions and image identities across ranks.
 
 The selected quickstart gives model-specific storage and memory requirements.
+Use `sparkring setup storage` from [host preparation](host-preparation.md#5-check-storage-on-every-rank)
+to budget additional space on the actual destination filesystems. `host check`
+only requires 20 GiB free on the root filesystem; it does not prove model capacity.
 
 ## Network requirements
 

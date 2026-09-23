@@ -16,10 +16,11 @@ separately pinned R37 procedure with its own settings and validation limits.
 <a id="1-prepare-the-pair"></a>
 ## Prepare both hosts
 
-Use the same repository revision on both GB10 nodes. Docker with NVIDIA support,
-Python 3, the Hugging Face CLI and working direct-link RoCE are required. Follow
-the host prerequisites before loading a model. Keep management access separate
-from the data fabric and stop unrelated GPU workloads explicitly.
+Complete [host preparation](../../docs/operations/host-preparation.md) and
+[pair networking](../../docs/operations/pair-network.md) on both GB10 nodes.
+Use the same recorded checkout revision. For prepared hosts, check and reuse their
+settings; skip fresh-network configuration. Keep management access separate from
+the data fabric and stop unrelated GPU workloads explicitly before serving.
 
 <a id="3-install-the-memory-guard"></a>
 The native profile does not install or opt into a custom memory-kill guard.
@@ -32,40 +33,38 @@ Run the following commands in Bash from the repository root on each node.
 ## Select the image and checkpoint
 
 ```bash
-RELEASE=shared-2026.09.3
-IMAGE_REF=$(python3 -c 'import json,sys; print(json.load(open("runtime/releases/"+sys.argv[1]+"/publication.json"))["image_reference"])' "$RELEASE")
+set -euo pipefail
+mkdir -p .sparkring
+VARIANT=nvfp4-spark
+python3 scripts/sparkring.py setup show glm53-flash-spark-tp2-dcp1-sparkcache \
+  --variant "$VARIANT" --format shell > .sparkring/selection.env
+cat .sparkring/selection.env
+source .sparkring/selection.env
 docker pull --platform linux/arm64 "$IMAGE_REF"
 IMAGE=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
-mkdir -p .sparkring
+test "$IMAGE" = "$EXPECTED_IMAGE_ID"
 RECORD=$(mktemp -d "$PWD/.sparkring/native-receipt.XXXXXX")
 python3 runtime/common/glm_native_candidate.py \
   --release "$RELEASE" --image-id "$IMAGE" --output "$RECORD/image.json"
 ```
 
-Choose one checkpoint consistently on both nodes:
+For QAD, change `VARIANT` to `nvfp4-qad` before the selection block above on
+both nodes. The helper obtains the matching checkpoint revision from the release
+contract. **Pass:** the image ID matches and the verifier writes `image.json`.
+Re-running verification uses a fresh receipt directory; it starts no model.
+
+Download the selected checkpoint on **each rank**. Paths below match the host
+preparation defaults. If using other storage, repeat the storage check first:
 
 ```bash
-VARIANT=nvfp4-spark
-case "$VARIANT" in
-  nvfp4-spark)
-    MODEL_REPO=local-inference-lab/GLM-5.3-Flash-NVFP4-Spark
-    MODEL_REV=a608241037e4c2565356bff7ca293f2133888f88
-    MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/a608241
-    ;;
-  nvfp4-qad)
-    MODEL_REPO=local-inference-lab/GLM-5.3-Flash-NVFP4
-    MODEL_REV=175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
-    MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4/175ae8c
-    ;;
-  *) echo 'Select nvfp4-spark or nvfp4-qad' >&2; exit 1 ;;
-esac
-hf download "$MODEL_REPO" --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
-CACHE_DIR=/srv/cache/glm53-native-tp2
+MODEL_DIR="/srv/models/${MODEL_REPO##*/}/${MODEL_REV}"
+CACHE_DIR="/srv/cache/${PROFILE_ID}/${RELEASE}"
+"$HOME/.venvs/sparkring-download/bin/hf" download "$MODEL_REPO" \
+  --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
 mkdir -p "$CACHE_DIR"
 ```
 
-Set `VARIANT=nvfp4-qad` before executing the selection block to use QAD. Spark
-is not a Spark-QAD checkpoint. A verified existing snapshot can be reused by
+Spark is not a Spark-QAD checkpoint. A verified existing snapshot can be reused by
 setting `MODEL_DIR` to its directory and skipping download. Never overwrite a
 checkpoint mounted by a live server. Create writable directories with appropriate
 ownership; do not run serving as root merely to bypass path permissions.
@@ -116,6 +115,11 @@ does not replace an existing container.
 
 ```bash
 NAME="sparkring-${RELEASE}-tp2-dcp1-sparkcache-r${RANK}"
+# Save this rank's inputs and function for a fresh-shell restart.
+for key in RANK MASTER MODEL_DIR CACHE_DIR ENV_FILE IMAGE RECORD VARIANT RELEASE NAME; do
+  printf '%s=%q\n' "$key" "${!key}"
+done > .sparkring/glm-pair-session.env
+declare -f launch_rank >> .sparkring/glm-pair-session.env
 docker logs -f --tail 100 "$NAME"
 ```
 
@@ -131,6 +135,14 @@ From rank 0, or a client that can reach its address:
 ```bash
 curl --fail "http://${MASTER}:8000/health"
 curl --fail "http://${MASTER}:8000/v1/models"
+if test "$VARIANT" = nvfp4-qad; then
+  SERVED_MODEL=GLM-5.3-Flash-NVFP4-QAD-TP2
+else
+  SERVED_MODEL=GLM-5.3-Flash-NVFP4-Spark-TP2
+fi
+curl --fail --max-time 180 "http://${MASTER}:8000/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d "{\"model\":\"$SERVED_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply only READY\"}],\"temperature\":0,\"max_tokens\":64,\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 ```
 
 The served name is `GLM-5.3-Flash-NVFP4-Spark-TP2` or
@@ -141,9 +153,11 @@ to the public Internet.
 
 ## Restart the saved containers
 
-On each node:
+On each node, from the same checkout in a fresh Bash shell, restore the saved
+inputs before stopping. This file was generated locally; inspect it before sourcing:
 
 ```bash
+source .sparkring/glm-pair-session.env
 docker stop --time 30 "$NAME"
 ```
 

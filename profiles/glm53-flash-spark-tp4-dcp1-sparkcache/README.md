@@ -19,29 +19,37 @@ separately pinned R37 procedure with its own settings and validation limits.
 
 ## 1. Prepare the hosts
 
-Follow [four-Spark host setup](../../docs/GLM53_SPARK_MESH_HOST_SETUP.md) from the repository root. Use
+Follow [setup](../../docs/operations/setup.md) and the
+[four-Spark host procedure](../../docs/GLM53_SPARK_MESH_HOST_SETUP.md), sections 1–7. Use
 the same checkout revision on the controller and all four hosts. Keep the
 management network separate from the four-cable data ring. Review network
 changes during a maintenance window; do not replace another deployment.
 
 ## 2. Select the published image
 
-On an ARM64 Spark with this checkout, run:
+On **rank 0**, the default controller, in Bash from the matching checkout, run:
 
 ```bash
-RELEASE=shared-2026.09.3
-IMAGE_REF=$(python3 -c 'import json,sys; print(json.load(open("runtime/releases/"+sys.argv[1]+"/publication.json"))["image_reference"])' "$RELEASE")
+set -euo pipefail
+mkdir -p .sparkring
+VARIANT=nvfp4-spark
+python3 scripts/sparkring.py setup show glm53-flash-spark-tp4-dcp1-sparkcache \
+  --variant "$VARIANT" --format shell > .sparkring/selection.env
+cat .sparkring/selection.env
+source .sparkring/selection.env
 docker pull --platform linux/arm64 "$IMAGE_REF"
 IMAGE=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
-mkdir -p .sparkring
+test "$IMAGE" = "$EXPECTED_IMAGE_ID"
 RECORD=$(mktemp -d "$PWD/.sparkring/glm-native-receipt.XXXXXX")
 python3 runtime/common/glm_native_candidate.py \
   --release "$RELEASE" --image-id "$IMAGE" --output "$RECORD/image.json"
+SPARKRING_RECEIPT="$RECORD/image.json"
 ```
 
-Copy the resulting `image.json` to the controller and set `SPARKRING_RECEIPT`
-to its controller-local path. The installed inventory receipt authenticates
-the image; the publication JSON alone is not a runtime receipt.
+For QAD, set `VARIANT=nvfp4-qad` before this block. **Pass:** image identity matches
+and `image.json` is written. Rank 0 already owns that receipt; no transfer is
+needed. An external controller must receive the file and set `SPARKRING_RECEIPT`
+to its local absolute path. The publication JSON alone is not a runtime receipt.
 
 ## 3. Discover and plan DCP1
 
@@ -52,10 +60,9 @@ the order of the four node arguments.
 ```bash
 sr() { python3 scripts/sparkring.py deploy "$@"; }
 STATE="$PWD/.sparkring/glm-tp4-deployment"
-VARIANT=nvfp4-spark
 sr discover --controller-address 192.0.2.10 \
-  --node spark0=192.0.2.20 --node spark1=192.0.2.21 \
-  --node spark2=192.0.2.22 --node spark3=192.0.2.23 \
+  --node spark-r0=192.0.2.10 --node spark-r1=192.0.2.21 \
+  --node spark-r2=192.0.2.22 --node spark-r3=192.0.2.23 \
   --output "$STATE/inventory.json"
 sr plan --inventory "$STATE/inventory.json" --name glm-tp4 \
   --workspace /srv/sparkring/glm-tp4 --preserve-existing-network \
@@ -66,10 +73,10 @@ sr network-plan --preparation "$STATE/preparation.json" \
   --inventory "$STATE/inventory.json" --output "$STATE/network-plan.json"
 ```
 
-Set `VARIANT=nvfp4-qad` for the QAD checkpoint. The target catalog pins Spark
-to `a608241037e4c2565356bff7ca293f2133888f88` and QAD to
-`175ae8ce3b5af842b0d0140dbeb43e9cfc557c49`. Revision-specific cache identities
-prevent sharing unverified KV state between these checkpoints.
+Keep `VARIANT` from the image-selection block. `setup show` reports its pinned
+checkpoint revision. Rank 0's controller address and rank-0 node address are the
+same management address in this default arrangement. Revision-specific cache
+identities prevent sharing unverified KV state between checkpoints.
 
 If the selected image and checkpoint are already installed on every node, add
 `--reuse-existing-image` and four `--existing-model-root /absolute/model/path`
@@ -98,6 +105,24 @@ The API listens on rank 0, port 8015, with the model name
 `GLM-5.3-Flash-NVFP4-Spark-TP4` or `GLM-5.3-Flash-NVFP4-QAD-TP4`.
 It binds all interfaces without an API key. Restrict access to a trusted network
 or an authenticated gateway; do not expose it directly to the Internet.
+
+After managed readiness, run on **rank 0**:
+
+```bash
+curl --fail http://127.0.0.1:8015/health
+curl --fail http://127.0.0.1:8015/v1/models
+if test "$VARIANT" = nvfp4-qad; then
+  SERVED_MODEL=GLM-5.3-Flash-NVFP4-QAD-TP4
+else
+  SERVED_MODEL=GLM-5.3-Flash-NVFP4-Spark-TP4
+fi
+curl --fail --max-time 180 http://127.0.0.1:8015/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d "{\"model\":\"$SERVED_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply only READY\"}],\"temperature\":0,\"max_tokens\":64,\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+```
+
+Require the expected model and a successful generation. This is the installation
+smoke test; physical cache restore and workload qualification are separate checks.
 
 DCP4 and cache-disabled GLM configurations retain separate image selections
 and evidence. They do not inherit this cache-enabled DCP1 qualification.

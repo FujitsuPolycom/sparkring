@@ -10,7 +10,7 @@ ASSUME_YES=0
 
 usage() {
   cat <<'EOF'
-usage: bash bootstrap.sh [--ref BRANCH_OR_TAG] [--install-dir DIR] [--yes]
+usage: bash bootstrap.sh [--ref BRANCH_TAG_OR_COMMIT] [--install-dir DIR] [--yes]
 
 Downloads SparkRing, verifies local prerequisites, and installs the
 `sparkring` command under ~/.local/bin. It does not configure networking or
@@ -74,8 +74,11 @@ if [[ -e "$INSTALL_DIR" ]]; then
     exit 1
   fi
   # A single-branch clone's fetch configuration excludes other branches.
-  # Fetch the requested branch or tag explicitly before selecting it.
-  if git -C "$INSTALL_DIR" ls-remote --exit-code --heads origin "refs/heads/$REF" >/dev/null; then
+  # Fetch the requested commit, branch or tag explicitly before selecting it.
+  if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+    git -C "$INSTALL_DIR" fetch origin "$REF"
+    git -C "$INSTALL_DIR" checkout --detach "$REF"
+  elif git -C "$INSTALL_DIR" ls-remote --exit-code --heads origin "refs/heads/$REF" >/dev/null; then
     git -C "$INSTALL_DIR" fetch origin "refs/heads/$REF:refs/remotes/origin/$REF"
     git -C "$INSTALL_DIR" checkout -B "$REF" "origin/$REF"
   else
@@ -84,7 +87,14 @@ if [[ -e "$INSTALL_DIR" ]]; then
   fi
 else
   mkdir -p "$(dirname "$INSTALL_DIR")"
-  git clone --branch "$REF" --single-branch "$REPOSITORY" "$INSTALL_DIR"
+  if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+    git init "$INSTALL_DIR"
+    git -C "$INSTALL_DIR" remote add origin "$REPOSITORY"
+    git -C "$INSTALL_DIR" fetch origin "$REF"
+    git -C "$INSTALL_DIR" checkout --detach "$REF"
+  else
+    git clone --branch "$REF" --single-branch "$REPOSITORY" "$INSTALL_DIR"
+  fi
 fi
 
 mkdir -p "$BIN_DIR"
@@ -110,6 +120,8 @@ chmod 0755 "$launcher"
 
 echo
 echo "SparkRing installed at $INSTALL_DIR"
+echo "Checkout revision: $(git -C "$INSTALL_DIR" rev-parse HEAD)"
+echo "Run repository commands from: cd $INSTALL_DIR"
 echo "Command installed at $launcher"
 case ":${PATH}:" in
   *":${BIN_DIR}:"*) ;;

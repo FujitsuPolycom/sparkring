@@ -1,11 +1,14 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-Status: **qualified for bounded correctness and restart checks**. The commands select the published SparkCache profile;
-the cache-disabled alternative shares the same procedure. This uses the
+Status: **qualified for bounded correctness and restart checks**. The commands
+default to cache disabled, matching the catalog; SparkCache is an explicit option.
+This uses the
 QAD checkpoint pinned to revision `629bc3218833a38b475b719f34aa571666f4a03e`
 in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`. Complete the
-[host prerequisites](../../docs/operations/prerequisites.md) and prepare one
-direct cable on cage p0 before starting; the launcher does not configure networking.
+[host preparation](../../docs/operations/host-preparation.md) and
+[pair network procedure](../../docs/operations/pair-network.md) before starting;
+the launcher does not configure networking. Prepared hosts verify and reuse their
+existing network instead of running fresh-network configuration.
 
 Both variants use [SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md)
 with aligned checkpoints, managed B12X loading, Qwen checkpoint coalescing,
@@ -27,18 +30,31 @@ request-salt isolation are not enabled by this selection.
 Use the same SparkRing checkout on both nodes. Set these variables in Bash;
 `MODEL_DIR` must contain the verified checkpoint, and `CACHE_DIR` must be a
 separate writable directory.
+For persistent caching, set `PROFILE_ID=qwen38-flash-next-tp2-sparkcache` in the
+first block. Make the same choice on both ranks before creating containers.
 
 ```bash
 REPO=$PWD
-PROFILE=profiles/qwen38-flash-next-tp2/sparkcache.json
-CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
-IMAGE_REF=ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6
-MODEL_DIR=/srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc321
-CACHE_DIR=/srv/cache/qwen38-flash-next-qad-tp2-shared-2026093
+set -euo pipefail
+PROFILE_ID=qwen38-flash-next-tp2
+mkdir -p .sparkring
+python3 scripts/sparkring.py setup show "$PROFILE_ID" --format shell \
+  > .sparkring/selection.env
+cat .sparkring/selection.env
+source .sparkring/selection.env
+PROFILE="$PROFILE_CONFIG"
+if test "$SPARKCACHE_ENABLED" = 1; then
+  CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
+else
+  CONTAINER_PREFIX=qwen-flash-next-tp2
+fi
+MODEL_DIR="/srv/models/${MODEL_REPO##*/}/${MODEL_REV}"
+CACHE_DIR="/srv/cache/${PROFILE_ID}/${RELEASE}"
 
 # No separate parent-image pull is required for native-image verification.
 docker pull --platform linux/arm64 "$IMAGE_REF"
 IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
+test "$IMAGE_ID" = "$EXPECTED_IMAGE_ID"
 mkdir -p "$CACHE_DIR"
 ```
 
@@ -47,8 +63,8 @@ Reuse an existing verified model copy. Otherwise download the approximately
 
 ```bash
 # Skip this download when MODEL_DIR already contains the verified checkpoint.
-hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 \
-  --revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir "$MODEL_DIR"
+"$HOME/.venvs/sparkring-download/bin/hf" download "$MODEL_REPO" \
+  --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
 (cd "$MODEL_DIR" && sha256sum --check "$REPO/profiles/qwen38-flash-next-tp2/SHA256SUMS")
 ```
 
@@ -70,8 +86,8 @@ reachable `MASTER_ADDR`. SSH and API clients may use the management network.
 
 ```bash
 RANK=0
-MASTER_ADDR=192.0.2.10
-HOST_IP=192.0.2.10
+MASTER_ADDR=198.18.20.1
+HOST_IP=198.18.20.1
 INTERFACE=enp1s0f0np0
 launch_rank() {
   python3 runtime/common/qwen_flash_next.py "$1" \
@@ -80,9 +96,12 @@ launch_rank() {
     --image "$IMAGE_ID" --model "$MODEL_DIR" --cache "$CACHE_DIR"
 }
 launch_rank plan
-# Inspect both plans before creating the stopped containers.
-launch_rank create
 ```
+
+Those addresses match the fresh-pair example. On rank 1 set `RANK=1` and
+`HOST_IP=198.18.20.2`; both ranks retain rank 0's `MASTER_ADDR`. For prepared
+hosts, substitute their actual primary fabric addresses and discovered interface.
+Inspect both plans before running `launch_rank create` on **each rank**.
 
 The defaults select `rocep1s0f0` and `roceP2p1s0f0`, the two PCI-domain views
 of cage p0. Confirm the cable/device mapping. The bootstrap interface is a
@@ -95,8 +114,17 @@ During an authorized test window, stop competing GPU workloads explicitly and
 preserve them for rollback. Start rank1, then rank0, on their respective hosts:
 
 ```bash
-docker start "${CONTAINER_PREFIX}-r1" # rank1 host
-docker start "${CONTAINER_PREFIX}-r0" # rank0 host
+# Save rank-local inputs on EACH rank before starting either container.
+for key in RANK MASTER_ADDR HOST_IP INTERFACE PROFILE IMAGE_ID MODEL_DIR CACHE_DIR CONTAINER_PREFIX; do
+  printf '%s=%q\n' "$key" "${!key}"
+done > .sparkring/qwen-pair-session.env
+declare -f launch_rank >> .sparkring/qwen-pair-session.env
+```
+
+Run on **rank 1 first**, then **rank 0**, in their respective shells:
+
+```bash
+docker start "${CONTAINER_PREFIX}-r${RANK}"
 docker logs --follow --tail 100 "${CONTAINER_PREFIX}-r${RANK}"
 ```
 
@@ -125,22 +153,23 @@ no persistent memory guard, boot service or network changes. Containers do not a
 
 ### Restart existing containers
 
-Do not rerun `create`. Stop each rank on its own host, then use the startup
+Do not rerun `create`. From the same checkout in a fresh Bash shell on each rank,
+restore the locally generated inputs, then stop the container. Inspect the file
+before sourcing it. Use the startup
 commands above in rank1/rank0 order. Disk cache entries remain intact:
 
 ```bash
+source .sparkring/qwen-pair-session.env
 docker stop --timeout 30 "${CONTAINER_PREFIX}-r${RANK}"
 ```
 
 ### Cache-disabled alternative
 
-Before planning/creating, select these values instead; all other steps are shared:
-
-```bash
-PROFILE=profiles/qwen38-flash-next-tp2/config.json
-CONTAINER_PREFIX=qwen-flash-next-tp2
-# IMAGE_REF and IMAGE_ID remain the same shared release.
-```
+Cache disabled is the default above. To enable persistence, select
+`PROFILE_ID=qwen38-flash-next-tp2-sparkcache` before the image/checkpoint block.
+The helper selects its configuration and the block selects its container names.
+Both profiles share the registered image. Changing a variable does not change
+an existing container; use the documented stop/create sequence for a new selection.
 
 ## Evidence and remaining checks
 

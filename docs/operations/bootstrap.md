@@ -2,6 +2,9 @@
 
 This host and network bootstrap supports four- and six-Spark direct rings.
 It does not select a serving profile or qualify six-rank inference.
+Two-node deployments use [pair networking](pair-network.md). For a first
+installation, start at [setup](setup.md) and complete [host preparation](host-preparation.md)
+on every rank, including noninteractive sudo for ring repairs, before continuing.
 
 This procedure starts with one blank DGX Spark whose management IPv4 address,
 username, and password are known. That first Spark becomes rank 0 and the
@@ -10,38 +13,26 @@ OpenSSH `ssh-copy-id` command; SparkRing never reads or stores them.
 
 ## 1. Connect to the head Spark
 
-From a laptop on the management network:
+From a laptop on the management network, replace both uppercase placeholders:
 
 ```bash
-ssh <username>@<rank0-management-ip>
+ssh RANK0_USERNAME@RANK0_MANAGEMENT_IP
 ```
 
 ## 2. Download and inspect the installer
 
-```bash
-REF=refactor/repository-layout
-curl -fL \
-  "https://raw.githubusercontent.com/FujitsuPolycom/sparkring/$REF/bootstrap.sh" \
-  -o bootstrap.sh
-less bootstrap.sh
-bash bootstrap.sh --ref "$REF"
-```
-
-Use the same ref for the downloaded installer and managed checkout. These
-instructions select the refactor branch explicitly; the installer's default is
-`main` when `--ref` is omitted.
-
-The installer checks for Git, Python, OpenSSH, `ssh-copy-id`, and PyYAML. If
-PyYAML is absent, it asks before installing Ubuntu's `python3-yaml` package.
-It installs a managed checkout under `~/.local/share/sparkring` and the command
-`~/.local/bin/sparkring`. It does not contact another Spark or configure a
-network.
-
-If `~/.local/bin` is not already in `PATH`:
+Complete [install and record one checkout](host-preparation.md#3-install-and-record-one-checkout)
+on every rank. The installer accepts a branch, tag or full commit; use the same
+recorded commit on every host. It installs only the local checkout and CLI.
+For an already installed checkout, do not install a second copy. On rank 0:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+cd "$HOME/.local/share/sparkring"
 ```
+
+For a supplied test checkout, use its actual directory and define
+`sparkring() { python3 scripts/sparkring.py "$@"; }` in that Bash session.
 
 ## 3. Check the blank Spark
 
@@ -53,15 +44,15 @@ sparkring host check
 
 It verifies DGX release metadata, GPU driver visibility, Docker, NVIDIA
 Container Toolkit, ConnectX-7 PCI/RDMA inventory, failed systemd units, root
-free space, and reports the `nvidia-dgx-telemetry.service` state. To make
+free space. To make
 enabled telemetry a failing policy check:
 
 ```bash
 sparkring host check --require-telemetry-disabled
 ```
 
-The default check reports telemetry without changing or condemning the user's
-first-boot consent choice.
+The default check does not inspect telemetry or change the user's first-boot
+consent choice. The optional flag adds that policy check.
 
 ## 4. Cable and initialize the ring
 
@@ -132,14 +123,18 @@ restores the prior netplan and stops before changing another rank.
 sparkring doctor --verify
 ```
 
-Require:
+Before applying a repair, require:
 
 - controller `rank0`;
 - one valid four- or six-node cycle;
 - canonical fabric preflight `PASS`;
-- full reachability matrix `PASS`;
 - management repair guard `READY`; and
-- no failed or unknown diagnostic checks.
+- no unknown observations or failed host/link/GID prerequisites.
+
+Missing fabric routes, forwarding rules and resulting nonadjacent reachability
+failures may be the findings the printed repair plan addresses. Review those
+findings; they are not a reason to bypass a failed management or fabric guard.
+Require the full reachability matrix and diagnostics to pass after repair.
 
 The command prints a repair plan but changes nothing without `--apply`.
 
@@ -147,6 +142,7 @@ The command prints a repair plan but changes nothing without `--apply`.
 
 ```bash
 sparkring doctor --verify --apply
+sparkring doctor --verify
 ```
 
 Ring Doctor can change only observed fabric routes, IPv4 forwarding, and

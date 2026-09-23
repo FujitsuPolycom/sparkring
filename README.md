@@ -22,11 +22,16 @@ configurations and workloads recorded with each profile.
 
 ## Setup
 
-1. Choose a deployment below and check the [prerequisites](docs/operations/prerequisites.md).
-2. Follow its quickstart for host setup, image selection and launch commands.
-3. Run the [validation checks](docs/operations/profile-validation.md).
+Start with [Set up SparkRing](docs/operations/setup.md): choose two or four
+Sparks and a model, prepare the hosts and network, then follow the selected
+serving guide through a successful response. Each step identifies where to run
+commands and how to check its result.
 
-Each quickstart selects its image and states which configurations were tested.
+The [SparkRing image](docs/operations/images.md) contains the inference software.
+Model weights, host drivers, Docker and network configuration are separate.
+For existing deployments, verify prerequisites and reuse matching assets before
+making changes. The [full validation runbook](docs/operations/profile-validation.md)
+covers subsequent workload qualification and benchmarks.
 
 ## Profiles
 
