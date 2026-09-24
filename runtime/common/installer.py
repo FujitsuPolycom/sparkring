@@ -208,7 +208,7 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
         specs, _ = compose.specifications(card["profile"], compose_site(lock))
         if "image_runtime" in lock:
             from runtime.common import installer_image
-            specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row))
+            specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row), source_root=row["repository"])
                      for spec, row in zip(specs, site["ranks"], strict=True)]
     else:
         specs = []

@@ -78,6 +78,10 @@ def test_tp4_bootstrap_uses_management_while_rdma_devices_remain_independent():
 def inspection(spec):
     image = {"Id": spec.image_id, "Os": "linux", "Architecture": "arm64", "Config": {"Env": [], "Labels": {}}}
     expected = expected_inspection(spec, image, backend="compose")
+    if "io.sparkring.image-lock" in spec.labels:
+        from runtime.common import loader_policy
+        expected["host_config"]["SecurityOpt"] = [loader_policy.inspection_option() if option.startswith("seccomp=") else option
+                                                  for option in spec.security_opt]
     info = {"Id": "container-id", "Image": spec.image_id, "State": {"Running": False},
             "Config": {"Cmd": expected["cmd"], "Entrypoint": expected["entrypoint"],
                        "Env": [key + "=" + value for key, value in expected["env"].items()],

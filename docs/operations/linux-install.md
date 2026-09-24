@@ -67,6 +67,12 @@ It preserves the model profile and verifies the installed image contents before
 launching through the image's toolchain entrypoint. Published release selections
 stay intact; their qualification does not transfer to the development image.
 
+The external image's B12X checkpoint loader requires `io_uring`. Its container
+uses the [pinned loader policy](../../third_party/moby_seccomp/README.md), which
+adds only the three `io_uring` calls to the Moby 29.2.1 default profile. A CPU-only
+probe checks them during asset preparation, before the previous model stops.
+Docker daemon defaults and host kernel policy are unchanged.
+
 After creating each stopped container, the installer supplies a read-only
 `sparkring-runtime-binding/v1` file with deployment, node, container, image and
 rank identities. It checks the file before starting the model and never rewrites

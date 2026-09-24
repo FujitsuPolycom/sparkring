@@ -42,8 +42,10 @@ def image_info(lock):
 def admit_image(lock):
     card = lock["selection"]
     if "image_runtime" in lock:
-        from runtime.common import installer_image
-        return installer_image.admit(lock["image_runtime"], run=run)
+        from runtime.common import installer_image, loader_policy
+        receipt = installer_image.admit(lock["image_runtime"], run=run)
+        loader_policy.check(card["image_id"], run=run)
+        return receipt
     def native_run(argv, **kwargs):
         # Native admission deliberately reads the installed receipt as bytes.
         kwargs.setdefault("text", False)
@@ -208,6 +210,10 @@ def owned(spec, info, image):
     if info is None:
         raise ValueError("Deployment container is absent")
     expected = expected_inspection(spec, image, backend="compose")
+    if "io.sparkring.image-lock" in spec.labels:
+        from runtime.common import loader_policy
+        expected["host_config"]["SecurityOpt"] = [loader_policy.inspection_option() if option.startswith("seccomp=") else option
+                                                  for option in spec.security_opt]
     config, host = info["Config"], info["HostConfig"]
     host = dict(host)
     # Docker uses null for absent optional lists. NVIDIA-backed containers can
@@ -215,10 +221,10 @@ def owned(spec, info, image):
     for field in ("CapAdd", "SecurityOpt"):
         if host.get(field) is None and expected["host_config"][field] == []:
             host[field] = []
-    if host.get("SecurityOpt") == ["label=disable"] and not expected["host_config"]["SecurityOpt"]:
+    if "label=disable" in host.get("SecurityOpt", []) and "label=disable" not in expected["host_config"]["SecurityOpt"]:
         options = json.loads(run(["docker", "info", "--format", "{{json .SecurityOptions}}"] ).stdout)
         if isinstance(options, list) and not any("selinux" in str(value).lower() for value in options):
-            host["SecurityOpt"] = []
+            host["SecurityOpt"] = [option for option in host["SecurityOpt"] if option != "label=disable"]
     environment = dict(item.split("=", 1) for item in config.get("Env", []) if "=" in item)
     mounts = {item["Destination"]: {k: item[k] for k in ("Source", "Type", "RW")} for item in info["Mounts"]}
     if (info["Image"] != spec.image_id or config.get("Cmd") != expected["cmd"]

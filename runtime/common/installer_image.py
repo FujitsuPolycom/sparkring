@@ -54,7 +54,7 @@ def binding_path(lock, row):
     return str(PurePosixPath(row["deployment_root"]) / lock["id"] / "runtime-binding.json")
 
 
-def adapt(spec, value, *, binding):
+def adapt(spec, value, *, binding, source_root):
     """Reuse the canonical model/network envelope, replacing its runtime binding."""
     environment = dict(spec.environment)
     # Inherit the sealed image's library and Python search paths. Its entrypoint
@@ -83,8 +83,12 @@ def adapt(spec, value, *, binding):
     if len(spec.command) < 2 or spec.command[1] != "serve":
         raise ValueError("External image adapter requires the canonical Qwen serve command")
     health = ("python3", *spec.health_command[1:]) if spec.health_command else ()
+    from runtime.common import loader_policy
+    if any(option.startswith(("seccomp=", "seccomp:")) for option in spec.security_opt):
+        raise ValueError("External loader policy cannot replace an existing profile policy")
     return replace(spec, image_id=value["image_id"], entrypoint=ENTRYPOINT, command=spec.command[1:],
                    environment=environment, health_command=health,
+                   security_opt=(*spec.security_opt, "seccomp=" + str(PurePosixPath(source_root) / loader_policy.RELATIVE)),
                    mounts=(*spec.mounts, Bind(binding, BINDING_TARGET, True)),
                    labels={**spec.labels, "io.sparkring.image-lock": value["name"]})
 
