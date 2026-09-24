@@ -271,7 +271,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.path.insert(0, str(root))
         from runtime.host import progress
         with progress.run(raw[0]):
-            result = _main(raw)
+            try:
+                result = _main(raw)
+            except Exception:
+                import traceback
+                progress.failure(traceback.format_exc())
+                return 2
             print("Command finished." if result == 0 else "Command stopped. See the error above; completed work is recorded.", flush=True)
             return result
     return _main(raw)

@@ -339,7 +339,7 @@ class LinuxFixture:
                     "Status": "Up 1 hour",
                 }
             )
-        elif command[:4] == ("ip", "-j", "-4", "address"):
+        elif command[:4] == ("ip", "-j", "-4", "address") or command[:3] == ("ip", "-j", "address"):
             rows = [
                 {
                     "ifname": item["name"],
@@ -357,6 +357,12 @@ class LinuxFixture:
                 }
                 for item in self.inventory["interfaces"]
             ]
+            for row in rows:
+                if "-4" in command:
+                    # iproute2's family-filtered query omits link-layer fields.
+                    row.pop("address")
+                else:
+                    row["addr_info"].append({"family": "inet6", "local": "fe80::1", "prefixlen": 64})
             text = json.dumps(rows)
         elif command[:5] == ("ip", "-j", "-4", "route", "show"):
             text = json.dumps(self.inventory["routes"])

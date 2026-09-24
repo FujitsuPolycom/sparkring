@@ -281,7 +281,9 @@ def _collect_local(
         "version": toolkit_text,
         "error": toolkit_error,
     }
-    link_rows, link_error = json_command(["ip", "-j", "-4", "address", "show"])
+    # An IPv4-only iproute2 address query omits link-layer addresses. Keep the
+    # full interface record and filter addr_info below so MAC identity survives.
+    link_rows, link_error = json_command(["ip", "-j", "address", "show"])
     if link_rows is not None and not isinstance(link_rows, list):
         link_rows, link_error = None, "ip returned an unexpected interface table"
     route_rows, route_error = json_command(
@@ -882,6 +884,8 @@ def validate_inventory(document: Any, *, require_ready: bool = False) -> dict[st
             )
         if netdev in {row["netdev"] for row in document["rdma"]}:
             raise ValueError("management traffic must not share a mesh data interface")
+        if any(not interfaces[row["netdev"]].get("mac") for row in document["rdma"]):
+            raise ValueError("RDMA interface MAC identity is unavailable; refresh complete link inventory")
         route = management.get("route_to_controller")
         if not isinstance(route, dict) or route.get("dev") != netdev:
             raise ValueError(

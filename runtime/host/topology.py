@@ -41,6 +41,8 @@ def endpoints(node):
             raise ValueError(f"{node['hostname']}: missing verified RDMA function {device}")
         netdev = function["netdev"]
         interface = interfaces[netdev]
+        if not isinstance(interface.get("mac"), str) or not re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", interface["mac"]):
+            raise ValueError(f"{node['hostname']}: MAC address unavailable for {netdev}; refresh interface inventory")
         if netdev == node["facts"]["management"]["interface"] or interface.get("master"):
             raise ValueError("Fabric function is a management or bridge/bond interface")
         result[role] = {"role": role, "rdma_device": device, "netdev": netdev, "mac": interface["mac"].lower(),
