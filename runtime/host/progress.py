@@ -152,7 +152,7 @@ def main(argv=None):
         with path.open(encoding="utf-8") as stream:
             from collections import deque
             for line in deque(stream, maxlen=args.lines):
-                print(line, end="")
+                print(line, end="", flush=True)
             while args.follow:
                 line = stream.readline()
                 if line:

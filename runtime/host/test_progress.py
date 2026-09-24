@@ -1,4 +1,7 @@
 import sys
+import os
+import subprocess
+import threading
 
 from runtime.host import progress
 
@@ -32,3 +35,26 @@ def test_failed_result_never_reports_done(tmp_path, monkeypatch):
     assert "Stopped: Node B" in text and "Done: Node B" not in text
     assert "trace details" not in text
     assert "trace details" in (tmp_path / "install-details.log").read_text()
+
+
+def test_follow_prints_existing_line_immediately_through_an_ssh_style_pipe(tmp_path):
+    (tmp_path / "install.log").write_text("Existing progress must be visible immediately\n")
+    command = [sys.executable, "-c", "from runtime.host.progress import main; main(['--follow','--lines','1'])"]
+    child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             env={**os.environ, "SPARKRING_LOG_DIR": str(tmp_path)})
+    ready = threading.Event()
+    lines = []
+
+    def read():
+        lines.append(child.stdout.readline())
+        ready.set()
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    try:
+        assert ready.wait(5), "Log follower buffered its initial output until a later write"
+        assert lines == ["Existing progress must be visible immediately\n"]
+    finally:
+        child.terminate()
+        child.communicate(timeout=5)
+        reader.join(timeout=1)
