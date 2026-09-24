@@ -39,6 +39,9 @@ def image_info(lock):
 
 def admit_image(lock):
     card = lock["selection"]
+    if "image_runtime" in lock:
+        from runtime.common import installer_image
+        return installer_image.admit(lock["image_runtime"], run=run)
     def native_run(argv, **kwargs):
         # Native admission deliberately reads the installed receipt as bytes.
         kwargs.setdefault("text", False)
@@ -195,6 +198,8 @@ def perform(operation, lock, number):
         run(["docker", "info"])
         ids = run(["docker", "image", "ls", "--quiet", "--no-trunc"]).stdout.splitlines()
         if card["image_id"] not in ids:
+            if card["image_reference"] == card["image_id"]:
+                raise ValueError("Pinned local image is absent; preload " + card["image_id"] + " on every rank before up")
             docker_path = run(["docker", "info", "--format", "{{.DockerRootDir}}"]).stdout.strip()
             budget = setup.storage_plan(card, model_path=row["model"], cache_path=row["cache"],
                                         docker_path=docker_path, reuse_model=row["reuse_verified_model"])
@@ -227,7 +232,7 @@ def perform(operation, lock, number):
             code = "from huggingface_hub import snapshot_download; import sys; snapshot_download(repo_id=sys.argv[1],revision=sys.argv[2],local_dir='/model')"
             run(["docker", "run", "--rm", "--pull", "never", "--runtime", "runc", "--user", f"{os.getuid()}:{os.getgid()}",
                  "--env", "HF_HOME=/tmp/huggingface", "--mount", f"type=bind,src={model},dst=/model",
-                 "--entrypoint", "/opt/venv/bin/python", card["image_id"], "-c", code,
+                 "--entrypoint", "python3" if "image_runtime" in lock else "/opt/venv/bin/python", card["image_id"], "-c", code,
                  card["model_repository"], card["model_revision"]])
         before = model_file_stats(model)
         hashes = model_files(model)

@@ -130,23 +130,28 @@ def backend(card):
     return "glm-managed" if card["profile"] == DEFAULTS["glm53", 4] else "compose"
 
 
-def make_lock(profile, raw_site, revision, bundle_sha256, variant=None):
+def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None):
     if profile not in SUPPORTED:
         raise ValueError("Installer supports the shared GLM/Qwen pair/ring profiles; other profiles retain their own guides")
     if not re.fullmatch(r"[0-9a-f]{40}", revision) or not re.fullmatch(r"[0-9a-f]{64}", bundle_sha256):
         raise ValueError("Lock requires the exact source commit and bundle checksum")
     card = setup.selection(profile, variant)
+    if image_runtime is not None:
+        from runtime.common import installer_image
+        card = installer_image.selection(card, image_runtime)
     site = site_document(raw_site, card, revision)
     value = {"schema": "sparkring-install-lock/v1", "selection": card, "site": site,
              "site_input": raw_site, "source_revision": revision, "bundle_sha256": bundle_sha256,
              "backend": backend(card)}
+    if image_runtime is not None:
+        value["image_runtime"] = image_runtime
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
 
 def validate(lock):
     expected = make_lock(lock["selection"]["profile"], lock["site_input"], lock["source_revision"],
-                         lock["bundle_sha256"], lock["selection"]["target_variant"])
+                         lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=lock.get("image_runtime"))
     if expected != lock:
         raise ValueError("Deployment lock or its profile/release inputs changed; initialize a new deployment")
     return lock
@@ -160,19 +165,19 @@ def load(directory):
     return lock
 
 
-def init(directory, profile, raw_site, *, variant=None):
+def init(directory, profile, raw_site, *, variant=None, image_runtime=None):
     directory = Path(directory).resolve()
     if directory.exists():
         raise ValueError("Deployment directory already exists; use up/status or choose a new directory")
     # Validate user inputs before creating artifacts.
     revision = distribution.identity(ROOT)
-    make_lock(profile, raw_site, revision, "0" * 64, variant)
+    make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime)
     if directory.is_relative_to(ROOT) and not directory.is_relative_to(ROOT / ".sparkring"):
         raise ValueError("Private deployments inside the checkout belong under .sparkring/")
     directory.mkdir(parents=True, mode=0o700)
     bundle = directory / "source.bundle"
     distribution.bundle(ROOT, bundle)
-    lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant)
+    lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant, image_runtime=image_runtime)
     write(directory / "site.json", raw_site)
     write(directory / "deployment.lock.json", lock)
     if lock["backend"] == "compose":
@@ -194,6 +199,9 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
         raise ValueError("Managed GLM Compose files are produced by its existing staging lifecycle")
     if card["profile"] in compose.SUPPORTED:
         specs, _ = compose.specifications(card["profile"], compose_site(lock))
+        if "image_runtime" in lock:
+            from runtime.common import installer_image
+            specs = [installer_image.adapt(spec, lock["image_runtime"]) for spec in specs]
     else:
         specs = []
         for row in site["ranks"]:
@@ -362,19 +370,27 @@ def export(directory, output, *, share=False):
         count = lock["selection"]["nodes"]
         example = {"schema": "sparkring-install-site/v1", "name": "example", "hosts": [
             {"host": f"spark{n}", "management_ip": f"192.0.2.{10+n}",
-             "fabric_ip": f"198.18.20.{n+1}", "interface": "REPLACE_WITH_FABRIC_NETDEV"}
+             "fabric_ip": f"198.18.20.{n+1}", "interface": "FABRIC_NETDEV"}
             for n in range(count)]}
         if count == 4 and lock["selection"]["profile"] in compose.TP4_PROFILES:
             for row in example["hosts"]:
                 row["fabric"] = {"site_path": "/srv/sparkring/mesh-site.json", "site_sha256": "0" * 64, "plan_sha256": "0" * 64}
+        runtime = lock.get("image_runtime")
+        if runtime is not None:
+            runtime = {**runtime, "image_reference": runtime["image_id"]}
+            files["image-lock.json"] = compose.encoded(runtime)
         portable = make_lock(lock["selection"]["profile"], example, lock["source_revision"],
-                             lock["bundle_sha256"], lock["selection"]["target_variant"])
+                             lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=runtime)
         files["site.example.json"] = compose.encoded(example)
         files["profile.json"] = compose.encoded(lock["selection"])
         files["README.txt"] = ("Portable profile template, not a configured deployment. Fill site.example.json, then run "
-                               "sparkring init --profile " + lock["selection"]["profile"] + " --site site.example.json.\n"
+                               "sparkring init --profile " + lock["selection"]["profile"] + " --site site.example.json"
+                               + (" --image-lock image-lock.json" if runtime else "") + ".\n"
                                "Compose files below contain example hosts/paths. Re-render for your site. A separate "
                                "Compose project runs on each rank; Compose alone does not configure RDMA or coordinate hosts.\n")
+        if runtime:
+            files["profile.json"] = compose.encoded(portable["selection"])
+            files["README.txt"] += "Preload the pinned candidate image on every rank; its private registry location is excluded.\n"
         if portable["backend"] == "compose":
             files.update(rendered(portable))
     else:

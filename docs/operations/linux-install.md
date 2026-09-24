@@ -34,6 +34,27 @@ Windows PowerShell, use `ssh -t spark-r0 "sudo sparkring logs --follow"` (replac
 `spark-r0` with Node A's SSH address). The follower's spinner means it is waiting
 for log lines; it does not indicate model readiness.
 
+An explicit development image can accompany the existing Qwen profile:
+
+```bash
+sudo sparkring up qwen38-flash-next-qad-tp4 --instance candidate --image-lock image-lock.json --plan
+```
+
+The `sparkring-installer-image/v1` file pins the image configuration, optional
+registry manifest, external software receipt, toolchain receipt, composition,
+prepared transport and status package. This adapter supports the ARM64 CUDA
+13.4.2/NCCL 2.32.3 external-image composition with status 0.3.0 and SparkCache off.
+It preserves the model profile and verifies the installed image contents before
+launching through the image's toolchain entrypoint. Published release selections
+stay intact; their qualification does not transfer to the development image.
+
+For a private image without a reachable registry, set `image_reference` to its
+exact `image_id` and preload it on every rank. The installer stops with a clear
+message if it is absent. A different `--instance` gives the image its own
+deployment and compilation cache. Preview works while the existing model runs;
+execution requires completing `sparkring down` for that deployment first.
+`sparkring export --share` retains the image lock and per-rank Compose files.
+
 Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and host
 key confirmation, copies SparkRing and its Debian dependencies through the fabric,
 and shows the proposed network changes. Workers need no separate Ethernet cable

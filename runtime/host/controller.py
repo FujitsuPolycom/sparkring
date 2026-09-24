@@ -227,6 +227,7 @@ def lifecycle(argv):
     parser.add_argument("operation", choices=("up", "down", "status"))
     parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
     parser.add_argument("--model-path", help="reuse this verified checkpoint path on every rank")
+    parser.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
     parser.add_argument("--fresh-mesh", action="store_true", help="review replacement of an existing native mesh")
     parser.add_argument("--instance", default="main", help="separate local deployment name for a rehearsal")
     parser.add_argument("--plan", action="store_true")
@@ -234,6 +235,12 @@ def lifecycle(argv):
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    image_runtime = None
+    if args.image_lock:
+        if args.operation != "up" or not args.profile:
+            raise ValueError("--image-lock requires up with an exact profile")
+        from runtime.common import installer_image
+        image_runtime = installer_image.validate(installer.read(args.image_lock), args.profile)
     if args.operation == "status":
         result = node.snapshot() if args.refresh else node.status()
         if (STATE / "cluster.json").exists():
@@ -301,23 +308,21 @@ def lifecycle(argv):
             if profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
-            installer.init(directory, profile, site)
+            installer.init(directory, profile, site, image_runtime=image_runtime)
         else:
             existing = installer.load(directory)
+            if image_runtime is not None and existing.get("image_runtime") != image_runtime:
+                raise ValueError("Deployment uses another image lock; choose a distinct --instance")
             if args.model_path and any(row["model"] != args.model_path or not row["reuse_verified_model"] for row in existing["site"]["ranks"]):
                 raise ValueError("Deployment uses another model path; choose a distinct --instance")
             if args.fresh_mesh and "native_mesh" not in existing["site_input"]:
                 raise ValueError("Deployment reuses an existing mesh; use --instance fresh --fresh-mesh for a separate rehearsal")
     else:
         directory = Path(installer.read(STATE / "active.json")["path"])
-    if args.operation == "up" and (STATE / "active.json").exists():
-        active = Path(installer.read(STATE / "active.json")["path"])
-        if active != directory:
-            previous = installer.status(active)["state"]
-            if previous.get("operation") != "down" or not previous.get("complete"):
-                raise ValueError("Run sparkring down before selecting another model")
     result = installer.apply(directory, args.operation, runner=None, execute=False)
     print(f"{args.operation}: {result['profile']} on " + ", ".join(result["hosts"]))
+    if image_runtime is not None:
+        print("Development image: " + image_runtime["name"] + " | " + image_runtime["image_id"])
     print(" -> ".join(result["phases"]))
     if "native_mesh" in result:
         print("Prepare native ASIC fabric and install its supervised service.")
@@ -326,6 +331,12 @@ def lifecycle(argv):
     if args.plan or not args.execute and not sys.stdin.isatty():
         print("Review, then repeat with --execute.")
         return 0
+    if args.operation == "up" and (STATE / "active.json").exists():
+        active = Path(installer.read(STATE / "active.json")["path"])
+        if active != directory:
+            previous = installer.status(active)["state"]
+            if previous.get("operation") != "down" or not previous.get("complete"):
+                raise ValueError("Run sparkring down before selecting another model")
     confirm("Apply these model/image actions?", args.execute)
     node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
     result = installer.apply(directory, args.operation, runner=Runner(directory), execute=True)

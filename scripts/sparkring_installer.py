@@ -24,6 +24,7 @@ def main(argv=None):
     initialize.add_argument("--model", choices=("glm53", "qwen38"))
     initialize.add_argument("--profile", choices=sorted(installer.SUPPORTED))
     initialize.add_argument("--variant", choices=("nvfp4-spark", "nvfp4-qad"))
+    initialize.add_argument("--image-lock", type=Path, help="source-recorded external toolchain image selection")
     initialize.add_argument("--name")
     initialize.add_argument("--workspace")
     initialize.add_argument("--output", type=Path)
@@ -72,7 +73,8 @@ def main(argv=None):
                 model = input("Model (glm53 or qwen38): ").strip()
             profile = args.profile or installer.DEFAULTS[model, len(raw["hosts"])]
             output = args.output or Path(".sparkring/deployment")
-            installer.init(output, profile, raw, variant=args.variant)
+            installer.init(output, profile, raw, variant=args.variant,
+                           image_runtime=installer.read(args.image_lock) if args.image_lock else None)
             print(f"Saved {profile} for {len(raw['hosts'])} ranks in {output}")
             print("No hosts changed. Next: sparkring up --deployment " + str(output))
             return 0
@@ -82,7 +84,10 @@ def main(argv=None):
                 if args.profile:
                     profile, variant = args.profile, args.variant
                 else:
-                    card = installer.load(args.deployment)["selection"]
+                    lock = installer.load(args.deployment)
+                    if "image_runtime" in lock:
+                        raise ValueError("Use ZIP export for an image-lock deployment; standalone profile export would discard its image selection")
+                    card = lock["selection"]
                     profile, variant = card["profile"], card["target_variant"]
                     if args.variant is not None and args.variant != variant:
                         raise ValueError("Use --profile to select a different standalone variant")
