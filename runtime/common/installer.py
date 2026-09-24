@@ -51,6 +51,14 @@ def address(value):
     return str(parsed)
 
 
+def checkpoint_contract(card):
+    source, _ = profiles.load(card["profile"])
+    model = profiles.resolve(card["profile"])["model"]
+    if source["configuration"]["format"] == "release-profile":
+        model = profiles.read_json(profiles.local_path(source["configuration"]["path"]))["target_variants"][card["target_variant"]]
+    return model
+
+
 def site_document(raw, card, revision):
     if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address", "api_address", "native_mesh"}:
         raise ValueError("Unknown site setting")

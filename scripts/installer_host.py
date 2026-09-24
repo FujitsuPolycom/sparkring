@@ -77,11 +77,7 @@ def verify_model(lock, row, receipt_path, *, receipt=None, measured=None):
     if (receipt["repository"] != card["model_repository"] or receipt["revision"] != card["model_revision"]
             or receipt["path"] != row["model"] or receipt["files"] != measured):
         raise ValueError("Checkpoint differs from its recorded revision/files")
-    source, _ = profiles.load(card["profile"])
-    resolved = profiles.resolve(card["profile"])
-    model = resolved["model"]
-    if source["configuration"]["format"] == "release-profile":
-        model = profiles.read_json(profiles.local_path(source["configuration"]["path"]))["target_variants"][card["target_variant"]]
+    model = installer.checkpoint_contract(card)
     for filename, key in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
         if receipt["files"][filename] != model[key]:
             raise ValueError("Checkpoint metadata differs from the selected profile: " + filename)

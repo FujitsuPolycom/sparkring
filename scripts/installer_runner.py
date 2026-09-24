@@ -265,6 +265,25 @@ class Runner:
         return {"ok": True}
 
     def __call__(self, target, argv, timeout):
+        from runtime.host import progress
+        labels = {"prerequisites": "Check host and GPU availability", "source": "Copy installer source",
+                  "source-check": "Verify installer source", "image": "Prepare pinned image", "image-check": "Verify image",
+                  "model": "Prepare checkpoint and verify all shards", "model-check": "Verify checkpoint receipt",
+                  "preflight": "Check model and fabric", "create": "Create stopped model container", "created": "Verify model container",
+                  "start": "Start model", "running": "Check model process", "ready": "Wait for API readiness",
+                  "smoke": "Test a short model response", "mesh-prepare": "Prepare native fabric helper",
+                  "mesh-install": "Install supervised native fabric", "mesh-up": "Start native fabric",
+                  "mesh-gate": "Verify all four fabric ranks", "stop": "Stop model", "stopped": "Confirm model stopped"}
+        operation = argv[1] if len(argv) > 1 else "operation"
+        rank = argv[2] if len(argv) > 2 else "?"
+        with progress.step(f"Node {rank}: {labels.get(operation, operation.replace('-', ' '))}") as outcome:
+            result = self._call(target, argv, timeout)
+            if result["returncode"]:
+                outcome["failed"] = True
+                progress.failure(result["stderr"])
+            return result
+
+    def _call(self, target, argv, timeout):
         try:
             if len(argv) != 3 or argv[0] != "installer":
                 raise ValueError("Installer runner refuses arbitrary commands")
@@ -272,7 +291,6 @@ class Runner:
             row = self.lock["site"]["ranks"][number]
             if target != row["host"]:
                 raise ValueError("Plan host differs from its locked rank")
-            print(f"{operation}: rank {number} ({target})", flush=True, file=sys.stderr)
             if operation == "prerequisites":
                 facts = json.loads(ssh(target, ["python3", "-I", "-B", "-c", PROBE], timeout=120))
                 check_facts(facts, row)

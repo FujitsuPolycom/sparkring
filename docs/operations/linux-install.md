@@ -17,6 +17,17 @@ sparkring models
 sudo sparkring up qwen38-flash-next-qad-tp4  # select a profile for your node count
 ```
 
+Follow the installation from another terminal:
+
+```bash
+sudo sparkring logs --follow
+```
+
+Concise timestamped progress is appended to `/var/log/sparkring/install.log`.
+Long steps report that they are still working. Verbose command output goes to
+`install-details.log`; use `sparkring logs --details --follow` when investigating
+an error. Credentials entered through SSH are not recorded.
+
 Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and host
 key confirmation, copies SparkRing and its Debian dependencies through the fabric,
 and shows the proposed network changes. Workers need no separate Ethernet cable
@@ -105,8 +116,12 @@ An unhealthy or partly installed mesh stops the plan for inspection.
 Use a separate `--instance fresh` when rehearsing this alongside an existing
 deployment. Old container/source/weight directories are retained.
 
-`--model-path /absolute/checkpoint` reuses a checkpoint after exact metadata and
-shard checks; it avoids downloading weights already present on every rank.
+The installer checks existing container model mounts and standard model
+directories for the selected checkpoint. A complete metadata match is proposed
+for reuse, then every pinned shard is verified before launch. Missing checkpoints
+are downloaded; mismatched or corrupt caches are never overwritten silently.
+`--model-path /absolute/checkpoint` selects a cache explicitly when it is stored
+elsewhere. This avoids downloading weights already present on the ranks.
 Arbitrary upstream images still need their own compatible transport adapter.
 
 ## Local build and tests

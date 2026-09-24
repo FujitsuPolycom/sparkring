@@ -7,7 +7,7 @@ import subprocess
 import tarfile
 
 from runtime.common import distribution
-from runtime.host import node
+from runtime.host import node, progress
 
 
 def install(directory, *, apply=False):
@@ -88,8 +88,8 @@ def build(directory, public_key, *, run=subprocess.run):
     names = sorted({line for line in result.stdout.splitlines() if re.fullmatch(r"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9]+)?", line)})
     if "sparkring" not in names:
         raise ValueError("Installed package dependency closure is unavailable")
-    run(["apt-get", "download", *[n for n in names if n != "sparkring"]], cwd=directory, check=True)
-    run(["dpkg-repack", "sparkring"], cwd=directory, check=True)
+    progress.command(["apt-get", "download", *[n for n in names if n != "sparkring"]], title="Download worker prerequisites on Node A", invoke=run, cwd=directory, check=True)
+    progress.command(["dpkg-repack", "sparkring"], title="Package the installed SparkRing revision for workers", invoke=run, cwd=directory, check=True)
     repository_index(directory, run=run)
     (directory / "controller.pub").write_text(public_key.strip() + "\n", encoding="utf-8")
     source = inspect.getsource(install)

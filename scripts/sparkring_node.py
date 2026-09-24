@@ -11,7 +11,7 @@ from runtime.host import node
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring node")
     commands = parser.add_subparsers(dest="action", required=True)
-    for name in ("initialize", "verify", "configure", "restore", "control-key", "control-configure", "control-up"):
+    for name in ("initialize", "verify", "configure", "adopt", "restore", "control-key", "control-configure", "control-up"):
         commands.add_parser(name)
     seed = commands.add_parser("seed")
     seed.add_argument("--key-file", required=True)
@@ -22,6 +22,8 @@ def main(argv=None):
     inspect.add_argument("--witness", required=True)
     native = commands.add_parser("native-mesh")
     native.add_argument("--rank", type=int, required=True, choices=range(4))
+    assets = commands.add_parser("assets")
+    assets.add_argument("--profile", required=True)
     workspace = commands.add_parser("workspace")
     workspace.add_argument("--operator", required=True)
     workspace.add_argument("--name", required=True)
@@ -55,14 +57,19 @@ def main(argv=None):
         elif args.action == "native-mesh":
             from runtime.host.native_mesh import inspect_local
             result = inspect_local(args.rank)
+        elif args.action == "assets":
+            from runtime.host.assets import discover
+            result = discover(args.profile)
         elif args.action == "workspace":
             result = node.workspace(args.operator, args.name)
         elif args.action == "restore":
             result = node.restore(node.read("/", "/etc/sparkring/fabric.json"))
-        elif args.action in ("verify", "configure"):
+        elif args.action in ("verify", "configure", "adopt"):
             config = json.load(sys.stdin)
             if args.action == "configure":
                 result = node.configure(config)
+            elif args.action == "adopt":
+                result = node.adopt(config)
             else:
                 node.observe(config)
                 result = {"verified": True, "hardware_qualified": False}

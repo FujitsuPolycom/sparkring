@@ -27,15 +27,15 @@ def collect(targets, *, invoke=discovery.inspect_node):
     return [invoke(value, rank, targets[1 if rank == 0 else 0].split("@", 1)[1]) for rank, value in enumerate(targets)]
 
 
-def summarize(plan):
+def summarize(plan, *, observe_only=False):
     print(f"{len(plan['nodes'])} Sparks: " + ("p0 pair" if len(plan["nodes"]) == 2 else "p0-to-p1 ring"))
     for host, proposed in zip(plan["spec"]["hosts"], plan["network"]["hosts"], strict=True):
-        print(f"  rank {host['rank']}: {host['host']}  {proposed['action']}")
+        print(f"  rank {host['rank']}: {host['host']}  " + ("verify existing" if observe_only else proposed["action"]))
         for port in host["data_interfaces"]:
             print(f"    {port['netdev']}  {port['address']}  MTU 9000")
         for problem in proposed["blocked_by"]:
             print("    BLOCKED: " + problem)
-    print("Setup saves network state and enables its boot service. Model images/weights are selected by 'sparkring up'.")
+    print("Existing networking will be verified and recorded." if observe_only else "Setup saves network state and enables its boot service. Model images/weights are selected by 'sparkring up'.")
 
 
 def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.ssh,
@@ -107,6 +107,7 @@ def setup(argv=None):
     parser.add_argument("--fabric-cidr", default="198.18.0.0/21")
     parser.add_argument("--plan", action="store_true", help="read existing SSH access only; no enrollment or host changes")
     parser.add_argument("--apply", action="store_true", help="apply the reviewed plan")
+    parser.add_argument("--adopt", action="store_true", help="verify/save existing networking without changing links, routes or services")
     parser.add_argument("--yes", action="store_true", help="accept the printed configuration scope; never trusts SSH host keys")
     parser.add_argument("--skip-enroll", action="store_true", help="SSH keys and host trust are already configured")
     parser.add_argument("--allow-driver-reload", action="store_true")
@@ -153,20 +154,38 @@ def setup(argv=None):
         if any(n.get("revision") != expected for n in nodes):
             raise ValueError("Install the same SparkRing package revision on all selected nodes")
     plan = topology.build_spec(nodes, head, name=args.name, fabric_cidr=args.fabric_cidr)
-    summarize(plan)
+    summarize(plan, observe_only=args.adopt)
     directory = args.output or Path.home() / ".local/state/sparkring/setups" / str(time.time_ns())
     installer.write(directory / "plan.json", plan)
     print("Full plan: " + str(directory / "plan.json"))
     if args.plan or not args.apply and not sys.stdin.isatty():
         print("Plan saved. Repeat with --apply to configure these hosts.")
         return 0
-    confirm("Apply this network configuration and enable fabric/agent services?", args.yes)
+    confirm("Record this verified existing fabric without network changes?" if args.adopt else "Apply this network configuration and enable fabric/agent services?", args.yes)
 
     def review(value):
         summarize(value)
         confirm("Apply the refreshed plan after driver/configuration discovery?", args.yes)
 
-    plan = apply(plan, directory, allow_driver_reload=args.allow_driver_reload, review=review)
+    if args.adopt:
+        observed = []
+        for rank, host in enumerate(plan["spec"]["hosts"]):
+            config = topology.persistent_config(plan, rank)
+            config.update(ownership="observed", routes=[], forwarding=[])
+            if len(nodes) == 4:
+                mesh = json.loads(discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
+                if not mesh:
+                    raise ValueError("No verified native mesh found; ordinary setup can prepare one")
+                order = ("cw_primary", "ccw_primary", "cw_secondary", "ccw_secondary")
+                config["native_mesh"] = {"reference": mesh["reference"], "host_ip": mesh["host_ip"],
+                                         "hcas": [next(p["rdma_device"] for p in host["data_interfaces"] if p["role"] == role) for role in order]}
+            discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "adopt"], data=json.dumps(config))
+            discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "workspace", "--operator", host["host"].split("@", 1)[0], "--name", args.name])
+            observed.append({"rank": rank, "adopted": True})
+        installer.write(directory / "setup.json", {"complete": True, "network_changed": False, "nodes": observed})
+        print("Existing fabric verified. No link, route or service changes.")
+    else:
+        plan = apply(plan, directory, allow_driver_reload=args.allow_driver_reload, review=review)
     # workspace() established this directory for the SSH operator, not root.
     cluster = {"schema": "sparkring-appliance-cluster/v1", "name": args.name, "plan": plan,
                "setup_receipt": str(directory / "setup.json")}
@@ -266,6 +285,14 @@ def lifecycle(argv):
             if args.model_path:
                 for row in site["hosts"]:
                     row.update(model=args.model_path, reuse_verified_model=True)
+            else:
+                for rank, row in enumerate(site["hosts"]):
+                    found = json.loads(discovery.ssh(row["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "assets", "--profile", profile]))
+                    if found["model_path"]:
+                        row.update(model=found["model_path"], reuse_verified_model=True)
+                        print(f"rank {rank}: cached checkpoint found; full shard checks required before launch")
+                    else:
+                        print(f"rank {rank}: checkpoint missing; plan includes a pinned download")
             if profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)

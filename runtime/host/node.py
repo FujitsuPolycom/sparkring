@@ -154,6 +154,8 @@ def observe(config, *, collect=_collect_local):
 
 def restore(config, *, collect=_collect_local, run=subprocess.run):
     """Restore only missing routes/rules; refuse conflicting routes before mutation."""
+    if config.get("ownership") == "observed":
+        raise ValueError("This fabric belongs to its existing service; no restoration changes are authorized")
     facts = observe(config, collect=collect)
     missing = []
     for desired in config["routes"]:
@@ -204,6 +206,20 @@ def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
     return {"persisted": True, "cluster_id": config["cluster_id"]}
 
 
+def adopt(config, *, root="/", collect=_collect_local):
+    validate(config)
+    if config["node_id"] != read(root, "/etc/sparkring/node.json")["node_id"]:
+        raise ValueError("Observed configuration belongs to another node")
+    if config.get("ownership") != "observed" or config["routes"] or config["forwarding"]:
+        raise ValueError("Adoption must not request network changes")
+    observe(config, collect=collect)
+    path = location(root, "/etc/sparkring/fabric.json")
+    if path.exists() and read(root, "/etc/sparkring/fabric.json") != config:
+        raise ValueError("Node records another setup; inspect before replacing it")
+    save(root, "/etc/sparkring/fabric.json", config)
+    return {"adopted": True, "network_changed": False}
+
+
 def workspace(operator, name, *, root="/"):
     import pwd
     account = pwd.getpwnam(operator)
@@ -232,11 +248,17 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
         result.update(rank=config["rank"], size=config["size"], cluster_id=config["cluster_id"])
         facts = observe(config, collect=collect)
         verify_persistence(config, facts, run=run)
-        if call(["systemctl", "is-active", "sparkring-fabric.service"], run=run, accepted=(0, 3)).returncode:
+        if config.get("ownership") == "observed" and config.get("native_mesh"):
+            from runtime.common import qwen_mesh
+            mesh = config["native_mesh"]
+            qwen_mesh.check(mesh["reference"], config["rank"], mesh["hcas"], 3, mesh["host_ip"])
+        elif config.get("ownership") != "observed" and call(["systemctl", "is-active", "sparkring-fabric.service"], run=run, accepted=(0, 3)).returncode:
             raise ValueError("Fabric service is not active; inspect journalctl -u sparkring-fabric")
         result.update(state="network-configured", next_action="sparkring models",
                       containers=[{"name": c.get("name"), "state": c.get("state")} for c in (facts["docker"].get("containers") or [])],
                       model_ready=None)
+        if config.get("ownership") == "observed":
+            result["state"] = "existing-network-verified"
     except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         result.update(state="needs-attention", next_action="sparkring status --refresh", error=str(error))
     return result

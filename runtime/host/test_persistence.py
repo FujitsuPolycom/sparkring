@@ -87,3 +87,16 @@ def test_plan_only_named_model_does_not_construct_runner(tmp_path, monkeypatch, 
     monkeypatch.setattr(installer_runner, "Runner", lambda *a: pytest.fail("Plan attempted SSH runner"))
     assert controller.lifecycle(["up", "--plan"]) == 0
     assert "--execute" in capsys.readouterr().out
+
+
+def test_adoption_records_facts_without_running_network_commands(tmp_path, monkeypatch):
+    from runtime.host import node
+    found = nodes(2)
+    plan = topology.build_spec(found, found[0]["node_id"])
+    config = topology.persistent_config(plan, 0)
+    config.update(ownership="observed", routes=[], forwarding=[])
+    node.save(tmp_path, "/etc/sparkring/node.json", {"node_id": config["node_id"]})
+    monkeypatch.setattr(node, "call", lambda *a, **k: pytest.fail("Adoption changed host services/network"))
+    assert node.adopt(config, root=tmp_path, collect=lambda _: found[0]["facts"])["network_changed"] is False
+    with pytest.raises(ValueError, match="existing service"):
+        node.restore(config)
