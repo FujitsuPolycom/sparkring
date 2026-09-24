@@ -234,10 +234,12 @@ def lifecycle(argv):
                 print("  " + row["host"] + ": " + row["state"] + (" — " + row["error"] if row.get("error") else ""))
             if result.get("deployment"):
                 saved = result["deployment"]
-                print("Model: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
+                print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
                 print(saved["api_url"])
                 if saved.get("observations"):
                     print(json.dumps(saved["observations"], indent=2))
+                else:
+                    print("Use --refresh for current model container state.")
             print("Network observations do not qualify GPU/RDMA serving.")
         return 0
     from scripts.installer_runner import Runner

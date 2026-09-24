@@ -236,7 +236,7 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
             raise ValueError("Fabric service is not active; inspect journalctl -u sparkring-fabric")
         result.update(state="network-configured", next_action="sparkring up glm" if config["size"] == 4 else "sparkring up qwen",
                       containers=[{"name": c.get("name"), "state": c.get("state")} for c in (facts["docker"].get("containers") or [])],
-                      model_ready=False)
+                      model_ready=None)
     except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         result.update(state="needs-attention", next_action="sparkring status --refresh", error=str(error))
     return result
