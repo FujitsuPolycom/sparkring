@@ -151,6 +151,7 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "runtime/common/__init__.py",
         "runtime/common/container_spec.py",
         "runtime/common/ports.py",
+        "runtime/common/process_lock.py",
         "runtime/common/qwen_flash_next.py",
         "runtime/common/profiles.py",
         "runtime/common/candidate.py",
