@@ -193,12 +193,33 @@ class Runner:
         if revision != self.lock["source_revision"]:
             raise ValueError("Use the clean controller checkout recorded in deployment.lock.json; the source bundle preserves it")
 
-    def remote(self, number, operation):
+    def remote(self, number, operation, *, data=None):
         row = self.lock["site"]["ranks"][number]
         payload = base64.b64encode(json.dumps(self.lock).encode()).decode()
-        prefix = ["sudo", "-n"] if operation == "preflight" and "fabric" in row else []
+        prefix = ["sudo", "-n"] if "fabric" in row and (operation in ("preflight", "create", "start") or operation.startswith("mesh-")) else []
         return json.loads(ssh(row["host"], prefix + ["python3", "-I", "-B", "-c", HOST,
-                          row["repository"], payload, operation, str(number)]))
+                          row["repository"], payload, operation, str(number)], data=data))
+
+    def native_mesh(self, operation):
+        from scripts.deploy_stage import prepare_secrets
+        directory = self.directory / "native-mesh"
+        record = directory / "installation.json"
+        if operation == "mesh-installed":
+            if not record.exists():
+                raise ValueError("Native mesh installation is incomplete")
+            for number in range(4):
+                self.remote(number, "mesh-installed-local")
+            return {"ok": True}
+        if record.exists():
+            return self.native_mesh("mesh-installed")
+        epoch = prepare_secrets(directory)
+        containers = [self.remote(rank, "container-record") for rank in range(4)]
+        payload = json.dumps({"epoch": epoch, "key": base64.b64encode((directory / "health.key").read_bytes()).decode(),
+                              "containers": containers}).encode()
+        for rank in range(4):
+            self.remote(rank, "mesh-install-local", data=payload)
+        installer.write(record, {"deployment": self.lock["id"], "container_ids": [c["Id"] for c in containers]})
+        return {"ok": True}
 
     def managed(self, operation):
         from scripts import deploy_runtime, deploy_stage, deploy_suite
@@ -267,6 +288,9 @@ class Runner:
             elif operation.startswith("managed-"):
                 with contextlib.redirect_stdout(sys.stderr):
                     result = self.managed(operation)
+            elif operation in ("mesh-install", "mesh-installed"):
+                with contextlib.redirect_stdout(sys.stderr):
+                    result = self.native_mesh(operation)
             elif operation == "status":
                 managed = self.lock["backend"] == "glm-managed"
                 name = ("" if managed else "sr-") + self.lock["site"]["name"] + f"-r{number}"

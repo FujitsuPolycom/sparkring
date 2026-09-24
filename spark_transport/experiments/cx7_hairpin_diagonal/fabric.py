@@ -466,7 +466,8 @@ def load_topology(path: Path) -> FabricTopology:
         ranks.append(
             Rank(
                 rank=rank_id,
-                ssh_alias=_string(item["ssh_alias"], f"{field}.ssh_alias", _NAME),
+            ssh_alias=_string(item["ssh_alias"], f"{field}.ssh_alias",
+                              re.compile(r"(?:[A-Za-z0-9_][A-Za-z0-9_.-]*@)?[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")),
                 management_netdev=_string(
                     item["management_netdev"],
                     f"{field}.management_netdev",

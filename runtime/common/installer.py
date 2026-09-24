@@ -52,8 +52,8 @@ def address(value):
 
 
 def site_document(raw, card, revision):
-    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address", "api_address"}:
-        raise ValueError("Site accepts only schema, name, workspace, hosts, controller_address and api_address")
+    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address", "api_address", "native_mesh"}:
+        raise ValueError("Unknown site setting")
     if raw.get("schema") != "sparkring-install-site/v1":
         raise ValueError("Expected sparkring-install-site/v1")
     name = raw.get("name")
@@ -90,7 +90,7 @@ def site_document(raw, card, revision):
         }
         if backend(card) == "glm-managed" and item["cache"] != cache_default:
             raise ValueError("Managed GLM cache must remain under its dedicated managed/cache workspace")
-        if item["host_ip"] == item["management_ip"]:
+        if item["host_ip"] == item["management_ip"] and card["profile"] not in compose.TP4_PROFILES:
             raise ValueError("Management and data fabric addresses must be distinct")
         paths = [PurePosixPath(item[key]) for key in ("model", "cache", "repository", "deployment_root")]
         for i, path in enumerate(paths):
@@ -110,6 +110,11 @@ def site_document(raw, card, revision):
               "controller_address": address(raw.get("controller_address", ranks[0]["management_ip"]))}
     if "api_address" in raw:
         result["api_address"] = address(raw["api_address"])
+    if "native_mesh" in raw:
+        if card["profile"] not in compose.TP4_PROFILES:
+            raise ValueError("This native-mesh plan requires a Qwen TP4 profile")
+        from runtime.host import native_mesh
+        native_mesh.validate(raw["native_mesh"], raw)
     return result
 
 
@@ -262,7 +267,16 @@ def operation_plan(lock, action):
                        phase("managed-start", ranks[:1], "starts-model", "managed-running"),
                        phase("managed-ready", ranks[:1])]
         else:
-            phases += [phase("preflight", ranks), phase("create", ranks, "starts-model", "created"),
+            if "native_mesh" in lock["site_input"]:
+                phases += [phase("mesh-prepare", ranks, "mutates-host", "mesh-prepared"),
+                           phase("create", ranks, "starts-model", "created"),
+                           phase("mesh-install", ranks[:1], "mutates-host", "mesh-installed"),
+                           phase("mesh-replace", ranks, "mutates-host", "mesh-replaced"),
+                           phase("mesh-up", ranks, "mutates-host", "mesh-up-check"),
+                           phase("mesh-gate", ranks), phase("preflight", ranks)]
+            else:
+                phases += [phase("preflight", ranks), phase("create", ranks, "starts-model", "created")]
+            phases += [
                        phase("start", ranks[1:], "starts-model", "running"),
                        phase("start", ranks[:1], "starts-model", "running"), phase("ready", ranks)]
             # Phase IDs are receipt keys, so API/worker barriers need distinct IDs.
@@ -277,10 +291,13 @@ def apply(directory, action, *, runner, execute=False):
     lock = load(directory)
     plan = operation_plan(lock, action)
     if not execute:
-        return {"executed": False, "deployment": lock["id"], "operation": action,
-                "profile": lock["selection"]["profile"], "image": lock["selection"]["image_reference"],
-                "hosts": [r["host"] for r in lock["site"]["ranks"]],
-                "phases": [p["id"] for p in plan["phases"]]}
+        result = {"executed": False, "deployment": lock["id"], "operation": action,
+                  "profile": lock["selection"]["profile"], "image": lock["selection"]["image_reference"],
+                  "hosts": [r["host"] for r in lock["site"]["ranks"]],
+                  "phases": [p["id"] for p in plan["phases"]]}
+        if "native_mesh" in lock["site_input"]:
+            result["native_mesh"] = {"mode": "create", "replaces": lock["site_input"]["native_mesh"]["replaces"]}
+        return result
     guard = directory / "operation.lock"
     try:
         fd = os.open(guard, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

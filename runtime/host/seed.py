@@ -7,20 +7,30 @@ import subprocess
 from runtime.host import control, control_node, node
 
 
-def prepare(public_key, *, run=subprocess.run):
+def prepare(public_key, *, run=subprocess.run, interfaces=None):
     if not re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]*)?", public_key.strip()):
         raise ValueError("Use Node A's Ed25519 public key")
-    containers = node.call(["docker", "ps", "-q"], run=run).stdout.strip()
-    gpu = node.call(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], run=run).stdout.strip()
-    if containers or gpu:
-        raise ValueError("Stop running containers and GPU jobs before worker preparation")
-    if json.loads(node.call(["rdma", "-j", "resource", "show", "qp"], run=run).stdout):
-        raise ValueError("Stop RDMA users before worker preparation")
-    interfaces = sorted({p.name for d in Path("/sys/class/infiniband").iterdir() for p in (d / "device/net").iterdir()})
+    def idle():
+        containers = node.call(["docker", "ps", "-q"], run=run).stdout.strip()
+        gpu = node.call(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], run=run).stdout.strip()
+        if containers or gpu:
+            raise ValueError("Stop running containers and GPU jobs before worker preparation")
+        if json.loads(node.call(["rdma", "-j", "resource", "show", "qp"], run=run).stdout):
+            raise ValueError("Stop RDMA users before worker preparation")
+
+    if interfaces is None:
+        interfaces = sorted({p.name for d in Path("/sys/class/infiniband").iterdir() for p in (d / "device/net").iterdir()})
     if len(interfaces) != 4:
         raise ValueError("Worker preparation expects four ConnectX RDMA functions")
     for interface in interfaces:
         control.netdev(interface)
+        current = node.call(["nmcli", "-g", "GENERAL.CON-UUID", "device", "show", interface], run=run).stdout.strip()
+        addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
+        if current and current != "--" and any(a["scope"] == "link" for row in addresses for a in row.get("addr_info", [])):
+            # Discovering an already configured link does not require detaching
+            # the existing native mesh's RDMA marker processes.
+            continue
+        idle()
         node.call(["ip", "link", "set", "dev", interface, "up"], run=run)
         if (Path("/sys/class/net") / interface / "carrier").read_text().strip() != "1":
             continue

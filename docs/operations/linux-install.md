@@ -13,7 +13,8 @@ On Node A:
 sudo apt install ./sparkring_<version>_arm64.deb
 sudo sparkring setup
 sudo sparkring status
-sudo sparkring up qwen     # pair; use glm for a four-Spark ring
+sparkring models
+sudo sparkring up qwen38-flash-next-qad-tp4  # select a profile for your node count
 ```
 
 Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and host
@@ -91,10 +92,22 @@ when requested. `sparkring down` stops the selected deployment. Package removal
 stops SparkRing host services but retains configuration, weights, caches, receipts
 and already-installed network state; it does not stop a running model deployment.
 
-Pair GLM/Qwen and managed GLM TP4 use the existing deployment engines. Qwen TP4
-still requires an explicitly prepared native mesh reference through
-`sparkring init --site SITE --model qwen38`; the short `up qwen` command supports
-pairs. Arbitrary upstream images still need their own compatible transport adapter.
+`sparkring models` lists exact model/version/quantization/topology profiles and
+marks which support automated installation. Family names such as `qwen` are
+ambiguous and are rejected. Guide-only profiles remain listed with their guides.
+
+Pair GLM/Qwen, managed GLM TP4 and Qwen TP4 use the existing deployment engines.
+Qwen TP4 discovers and verifies an installed native mesh automatically. If none
+exists, it prepares the pinned host marker, creates stopped model containers,
+installs supervised mesh services, waits for every rank, and starts the model.
+An unhealthy or partly installed mesh stops the plan for inspection.
+`--fresh-mesh` prints an explicit replacement plan for an existing native mesh.
+Use a separate `--instance fresh` when rehearsing this alongside an existing
+deployment. Old container/source/weight directories are retained.
+
+`--model-path /absolute/checkpoint` reuses a checkpoint after exact metadata and
+shard checks; it avoids downloading weights already present on every rank.
+Arbitrary upstream images still need their own compatible transport adapter.
 
 ## Local build and tests
 

@@ -169,6 +169,7 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("compose", help="generate and coordinate profile-owned Compose deployments")
     subcommands.add_parser("setup", help="guided Linux pair/ring setup; show/storage retain profile planning")
     subcommands.add_parser("node", help="Linux node services and observations")
+    subcommands.add_parser("models", help="list exact model/version/topology profiles")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
     for operation in ("init", "up", "status", "down", "export"):
         subcommands.add_parser(operation, help="profile installer: " + operation)
@@ -187,9 +188,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "node":
         from scripts.sparkring_node import main as node_main
         return node_main(raw[1:])
+    if raw and raw[0] == "models":
+        from runtime.host.models import main as models_main
+        return models_main(raw[1:])
     if raw and (raw[0] == "setup" and (len(raw) == 1 or raw[1] not in ("show", "storage"))
                 or raw[0] in ("up", "down", "status") and "--deployment" not in raw
-                and (Path(root, "distribution.json").exists() or len(raw) > 1 and raw[1] in ("qwen", "glm"))):
+                and (Path(root, "distribution.json").exists() or len(raw) > 1 and not raw[1].startswith("-"))):
         from runtime.host.controller import main as appliance_main
         return appliance_main(raw)
     if raw and raw[0] == "validate-compose":

@@ -20,6 +20,8 @@ def main(argv=None):
     inspect.add_argument("--target", required=True)
     inspect.add_argument("--management", required=True)
     inspect.add_argument("--witness", required=True)
+    native = commands.add_parser("native-mesh")
+    native.add_argument("--rank", type=int, required=True, choices=range(4))
     workspace = commands.add_parser("workspace")
     workspace.add_argument("--operator", required=True)
     workspace.add_argument("--name", required=True)
@@ -50,6 +52,9 @@ def main(argv=None):
             result = prepare(Path(args.key_file).read_text())
         elif args.action == "inspect":
             result = node.inspect(args.rank, args.target, args.management, args.witness)
+        elif args.action == "native-mesh":
+            from runtime.host.native_mesh import inspect_local
+            result = inspect_local(args.rank)
         elif args.action == "workspace":
             result = node.workspace(args.operator, args.name)
         elif args.action == "restore":

@@ -20,7 +20,10 @@ def lldp_rows(document):
         for netdev, neighbors in entry.items():
             for neighbor in neighbors if isinstance(neighbors, list) else [neighbors]:
                 chassis = neighbor.get("chassis", {})
-                for name, details in chassis.items():
+                entries = [("", chassis)] if "id" in chassis else chassis.items()
+                for name, details in entries:
+                    if not isinstance(details, dict):
+                        continue
                     port = neighbor.get("port", {}).get("id", {})
                     rows.append({"netdev": netdev, "hostname": details.get("name", name),
                                  "chassis": details.get("id", {}).get("value", "").lower(),

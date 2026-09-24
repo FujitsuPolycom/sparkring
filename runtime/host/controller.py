@@ -1,6 +1,7 @@
 """Guided Linux setup; existing network and model engines own all execution."""
 import argparse
 import getpass
+import hashlib
 import ipaddress
 import json
 from pathlib import Path
@@ -173,19 +174,24 @@ def setup(argv=None):
     if path.exists() and installer.read(path)["plan"]["id"] != plan["id"]:
         raise ValueError("Controller already records another cluster; inspect " + str(path))
     node.save(STATE, "cluster.json", cluster, mode=0o600)
-    print("Network configured. Next: sparkring up " + ("glm" if len(nodes) == 4 else "qwen"))
+    print("Network configured. Choose a model: sparkring models")
     return 0
 
 
-def model_site(cluster, model):
+def model_site(cluster, profile, instance="main"):
     plan = cluster["plan"]
     rows = []
     for host in plan["spec"]["hosts"]:
         port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
         rows.append({"host": host["host"], "management_ip": host["management_address"],
                      "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
-    result = {"schema": "sparkring-install-site/v1", "name": cluster["name"] + "-" + model,
-              "workspace": "/srv/sparkring/" + cluster["name"] + "/" + model,
+    import re
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,19}", instance):
+        raise ValueError("Instance must be a short lowercase name")
+    identity = profile if instance == "main" else profile + "-" + instance
+    name = cluster["name"][:12] + "-" + profile[:18] + "-" + hashlib.sha256(identity.encode()).hexdigest()[:6]
+    result = {"schema": "sparkring-install-site/v1", "name": name,
+              "workspace": "/srv/sparkring/" + cluster["name"] + "/" + identity,
               "hosts": rows, "controller_address": rows[0]["management_ip"]}
     if cluster.get("api_address"):
         result["api_address"] = cluster["api_address"]
@@ -195,7 +201,10 @@ def model_site(cluster, model):
 def lifecycle(argv):
     parser = argparse.ArgumentParser(prog="sparkring " + argv[0])
     parser.add_argument("operation", choices=("up", "down", "status"))
-    parser.add_argument("model", nargs="?", choices=("qwen", "glm"))
+    parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
+    parser.add_argument("--model-path", help="reuse this verified checkpoint path on every rank")
+    parser.add_argument("--fresh-mesh", action="store_true", help="review replacement of an existing native mesh")
+    parser.add_argument("--instance", default="main", help="separate local deployment name for a rehearsal")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--refresh", action="store_true")
@@ -245,14 +254,28 @@ def lifecycle(argv):
     from scripts.installer_runner import Runner
     if args.plan and args.execute:
         raise ValueError("Choose --plan or --execute")
-    if args.operation == "up" and args.model:
+    if args.operation == "up" and args.profile:
+        from runtime.host import models
         cluster = installer.read(STATE / "cluster.json")
-        profile = installer.DEFAULTS[{"qwen": "qwen38", "glm": "glm53"}[args.model], len(cluster["plan"]["nodes"])]
-        if args.model == "qwen" and len(cluster["plan"]["nodes"]) == 4:
-            raise ValueError("Qwen TP4 requires a prepared native mesh reference; use sparkring init --site SITE --model qwen38. See docs/operations/linux-install.md.")
-        directory = STATE / "deployments" / args.model
+        profile = models.select(args.profile, len(cluster["plan"]["nodes"]))
+        directory = STATE / "deployments" / profile
+        if args.instance != "main":
+            directory = directory.with_name(profile + "-" + args.instance)
         if not directory.exists():
-            installer.init(directory, profile, model_site(cluster, args.model))
+            site = model_site(cluster, profile, args.instance)
+            if args.model_path:
+                for row in site["hosts"]:
+                    row.update(model=args.model_path, reuse_verified_model=True)
+            if profile in installer.compose.TP4_PROFILES:
+                from runtime.host import native_mesh
+                site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
+            installer.init(directory, profile, site)
+        else:
+            existing = installer.load(directory)
+            if args.model_path and any(row["model"] != args.model_path or not row["reuse_verified_model"] for row in existing["site"]["ranks"]):
+                raise ValueError("Deployment uses another model path; choose a distinct --instance")
+            if args.fresh_mesh and "native_mesh" not in existing["site_input"]:
+                raise ValueError("Deployment reuses an existing mesh; use --instance fresh --fresh-mesh for a separate rehearsal")
     else:
         directory = Path(installer.read(STATE / "active.json")["path"])
     if args.operation == "up" and (STATE / "active.json").exists():
@@ -264,6 +287,10 @@ def lifecycle(argv):
     result = installer.apply(directory, args.operation, runner=None, execute=False)
     print(f"{args.operation}: {result['profile']} on " + ", ".join(result["hosts"]))
     print(" -> ".join(result["phases"]))
+    if "native_mesh" in result:
+        print("Prepare native ASIC fabric and install its supervised service.")
+        for old in result["native_mesh"]["replaces"]:
+            print(f"  Stop/disable rank {old['rank']} service: {old['unit']}")
     if args.plan or not args.execute and not sys.stdin.isatty():
         print("Review, then repeat with --execute.")
         return 0

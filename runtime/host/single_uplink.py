@@ -176,5 +176,5 @@ def main(argv=None):
                              review=lambda p: (controller.summarize(p), controller.confirm("Apply this refreshed fabric plan?", args.yes)))
     node.save(base, "cluster.json", {"schema": "sparkring-appliance-cluster/v1", "name": args.name,
                                     "plan": final, "api_address": api_address, "setup_receipt": str(directory / "setup.json")}, mode=0o600)
-    print("Setup complete. Next: sparkring up " + ("qwen" if len(nodes) == 2 else "glm"))
+    print("Setup complete. Choose a model: sparkring models")
     return 0

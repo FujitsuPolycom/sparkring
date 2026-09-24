@@ -234,7 +234,7 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
         verify_persistence(config, facts, run=run)
         if call(["systemctl", "is-active", "sparkring-fabric.service"], run=run, accepted=(0, 3)).returncode:
             raise ValueError("Fabric service is not active; inspect journalctl -u sparkring-fabric")
-        result.update(state="network-configured", next_action="sparkring up glm" if config["size"] == 4 else "sparkring up qwen",
+        result.update(state="network-configured", next_action="sparkring models",
                       containers=[{"name": c.get("name"), "state": c.get("state")} for c in (facts["docker"].get("containers") or [])],
                       model_ready=None)
     except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as error:

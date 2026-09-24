@@ -146,6 +146,19 @@ def perform(operation, lock, number):
     card = lock["selection"]
     image_receipt = state / "image.json"
     model_receipt = state / "model.json"
+    if operation.startswith("mesh-"):
+        from runtime.host import native_mesh
+        if operation == "mesh-prepare":
+            return native_mesh.prepare_local(lock, number)
+        if operation == "mesh-prepared":
+            value = lock["site_input"]["native_mesh"]
+            owner, _ = native_mesh.modules()
+            owner.external_marker_attestation(binary=Path(value["site"]["marker_binary"]))
+            return {"ok": True}
+        if operation == "mesh-install-local":
+            import sys
+            return native_mesh.install_local(lock, number, json.load(sys.stdin))
+        return native_mesh.operate_local(lock, number, operation)
 
     if operation == "image":
         run(["docker", "info"])
@@ -227,6 +240,13 @@ def perform(operation, lock, number):
         if operation == "created":
             owned(spec, info, image)
             return {"ok": True}
+        if operation == "container-record":
+            owned(spec, info, image)
+            if info["State"].get("Running"):
+                raise ValueError("Native installation requires stopped containers")
+            return {"Id": info["Id"], "Image": info["Image"], "Name": info["Name"],
+                    "State": {"Running": False}, "HostConfig": {"RestartPolicy": info["HostConfig"]["RestartPolicy"]},
+                    "Config": {"Env": info["Config"].get("Env", [])}}
         if operation in ("preflight", "create", "start"):
             receipt = admit_image(lock)
             verify_model(lock, row, model_receipt)
@@ -238,7 +258,7 @@ def perform(operation, lock, number):
                 metadata, _ = profiles.load(card["profile"])
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
                 qwen_flash_next.verify_model_paths(profile, Path(row["model"]), Path(row["cache"]))
-            if card["nodes"] == 4:
+            if card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
                 from runtime.common import qwen_mesh
                 qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
             if not (info and info["State"].get("Running")):
