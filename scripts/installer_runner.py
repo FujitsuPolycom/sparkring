@@ -10,7 +10,7 @@ import shlex
 import subprocess
 import sys
 
-from runtime.common import installer
+from runtime.common import distribution, installer
 from scripts import deploy_engine
 
 
@@ -189,9 +189,8 @@ class Runner:
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
         self.lock = installer.load(self.directory)
-        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=installer.ROOT, text=True).strip()
-        dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=all"], cwd=installer.ROOT, text=True).strip()
-        if revision != self.lock["source_revision"] or dirty:
+        revision = distribution.identity(installer.ROOT)
+        if revision != self.lock["source_revision"]:
             raise ValueError("Use the clean controller checkout recorded in deployment.lock.json; the source bundle preserves it")
 
     def remote(self, number, operation):

@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore the approved SparkRing data fabric
+Wants=network-online.target
+After=network-online.target NetworkManager.service docker.service
+Before=sparkring-mesh.service sparkring-mesh-model.service
+ConditionPathExists=/etc/sparkring/fabric.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/sparkring node restore
+RemainAfterExit=yes
+TimeoutStartSec=300
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

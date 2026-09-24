@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh approved SparkRing control endpoints after interface reload
+After=network-online.target
+ConditionPathExists=/etc/sparkring/control.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/sparkring node control-up
+ExecStartPost=/usr/bin/systemctl start --no-block sparkring-control.service sparkring-access.service sparkring-fabric.service

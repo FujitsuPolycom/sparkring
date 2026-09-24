@@ -43,6 +43,11 @@ def _network_local(payload, operation, *, collect=None, run=None):
             raise ValueError("Stop containers before changing data networking")
         if resources is None or resources:
             raise ValueError("RDMA users remain, or their state is unavailable")
+        if payload.get("require_idle_gpu"):
+            result = invoke(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
+                            capture_output=True, text=True, timeout=30)
+            if result.returncode or result.stdout.strip():
+                raise ValueError("GPU compute users remain, or their state is unavailable")
 
     def call(record):
         result = invoke(record["argv"], capture_output=True, text=True, timeout=120)
@@ -189,7 +194,7 @@ def build_network_plan(preparation, inventory):
             host["host"],
             host["management_address"],
             (),
-            spec["controller_address"],
+            host.get("controller_probe_address", spec["controller_address"]),
         )
         payloads.append(
             {
@@ -199,6 +204,7 @@ def build_network_plan(preparation, inventory):
                 "identity": identity,
                 "commands": commands,
                 "rediscover": reload_host is not None,
+                "require_idle_gpu": spec.get("require_idle_gpu", False),
             }
         )
     phases = [

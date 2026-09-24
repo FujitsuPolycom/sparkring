@@ -1,0 +1,15 @@
+[Unit]
+Description=SparkRing key-authenticated administration access
+Requires=sparkring-control.service
+After=sparkring-control.service
+ConditionPathExists=/etc/sparkring/sshd_config
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/mkdir -p /run/sshd
+ExecStart=/usr/sbin/sshd -D -e -f /etc/sparkring/sshd_config
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

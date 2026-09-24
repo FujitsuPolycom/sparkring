@@ -167,7 +167,8 @@ def _parser() -> argparse.ArgumentParser:
     # directly to deploy_suite so that module owns subcommand help and parsing.
     subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
     subcommands.add_parser("compose", help="generate and coordinate profile-owned Compose deployments")
-    subcommands.add_parser("setup", help="read-only installation selection and storage planning")
+    subcommands.add_parser("setup", help="guided Linux pair/ring setup; show/storage retain profile planning")
+    subcommands.add_parser("node", help="Linux node services and observations")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
     for operation in ("init", "up", "status", "down", "export"):
         subcommands.add_parser(operation, help="profile installer: " + operation)
@@ -180,6 +181,17 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw = list(argv if argv is not None else sys.argv[1:])
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    if raw and raw[0] == "node":
+        from scripts.sparkring_node import main as node_main
+        return node_main(raw[1:])
+    if raw and (raw[0] == "setup" and (len(raw) == 1 or raw[1] not in ("show", "storage"))
+                or raw[0] in ("up", "down", "status") and "--deployment" not in raw
+                and (Path(root, "distribution.json").exists() or len(raw) > 1 and raw[1] in ("qwen", "glm"))):
+        from runtime.host.controller import main as appliance_main
+        return appliance_main(raw)
     if raw and raw[0] == "validate-compose":
         root = str(Path(__file__).resolve().parents[1])
         if root not in sys.path:

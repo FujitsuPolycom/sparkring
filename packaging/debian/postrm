@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+    # Remove only the package's advertisement. Preserve approved configuration,
+    # receipts, routes, running model deployments, source workspaces and weights.
+    rm -f /etc/avahi/services/sparkring.service
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+    fi
+fi

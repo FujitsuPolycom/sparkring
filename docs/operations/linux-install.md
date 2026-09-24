@@ -1,0 +1,119 @@
+# Linux installation
+
+**Development:** the package and control network have local/simulated tests.
+DGX Spark installation, reboot recovery and serving qualification are pending.
+
+Choose any Spark as Node A. Connect its 10GbE port to your network. Connect a
+pair with p0↔p0, or a four-Spark ring with each p0 connected to the next p1.
+The nodes can be in any order; setup discovers ranks from the cables.
+
+On Node A:
+
+```bash
+sudo apt install ./sparkring_<version>_arm64.deb
+sudo sparkring setup
+sudo sparkring status
+sudo sparkring up qwen     # pair; use glm for a four-Spark ring
+```
+
+Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and host
+key confirmation, copies SparkRing and its Debian dependencies through the fabric,
+and shows the proposed network changes. Workers need no separate Ethernet cable
+or Internet connection. The logged-in Spark becomes Node A.
+
+Workers need SSH enabled and an existing root login or a login with sudo. Ubuntu
+24.04 ARM64, NetworkManager, NVIDIA drivers, Docker and NVIDIA Container Toolkit
+must already work on each Spark. Setup does not replace the host driver or
+firmware. Node A and workers must use the same OS distribution/version.
+
+Existing compatible fabric addresses are kept. Incompatible addresses trigger
+a separate replacement confirmation. Setup saves backups and receipts. It keeps
+the active NetworkManager connection identity and IPv6 address generation while changing
+fabric IPv4/MTU settings, so its administration path survives renumbering.
+Six-node and arbitrary port orientations are unsupported by this installer.
+
+## If a worker has no SSH
+
+A machine without remote access needs one local preparation step. On Node A:
+
+```bash
+sudo sparkring setup --worker-bundle
+```
+
+Copy the printed archive to a USB drive, extract it on each worker, then run:
+
+```bash
+sudo python3 install.py --apply --prepare
+```
+
+This installs the bundled packages and enables access with Node A's public key.
+Return to Node A and run `sudo sparkring setup --ssh-port 2222`.
+Private keys and passwords are not copied to workers. The preparation listener
+is disabled after permanent administration access works on every node.
+
+## Optional preferences
+
+Interactive setup needs no `.env`. Repeated installations can use:
+
+```dotenv
+SPARKRING_NAME=home
+SPARKRING_SSH_USER=cody
+SPARKRING_SHARE_INTERNET=yes
+SPARKRING_LINK_POLICY=keep
+```
+
+Run `sudo sparkring setup --env /path/to/settings.env`. Values are parsed as
+literal settings, never sourced as shell code. SSH handles credential prompts.
+`--reset-links` requests reviewed replacement of fabric IPv4 settings.
+`--plan` discovers/reviews through existing access without configuring hosts.
+
+## What is installed
+
+The Debian package contains the CLI, host services, profile/deployment code,
+an immutable source bundle and a file manifest. It contains **no model weights,
+CUDA stack or inference image**. [Images](images.md) supply the serving software;
+[profile adapters](installer.md) still own image admission and model startup.
+The [standalone Compose files](compose.md) remain usable independently.
+
+Workers use a private WireGuard administration tree over their existing IPv6
+link-local fabric addresses. Only Node A's key is admitted by a separate SSH
+service on that network. Optional Internet sharing routes downloads and DNS
+through Node A. It does not move inference collectives into WireGuard.
+
+Configuration is in `/etc/sparkring/`; private controller state and receipts are
+in `/var/lib/sparkring/controller/`. `sparkring status` works from any directory.
+It distinguishes cached/stale observations, network configuration and saved model
+progress; `--refresh` contacts the enrolled nodes and observes the model containers.
+Network configuration is not proof of working RDMA collectives or model accuracy.
+
+Host services restore approved configuration after reboot. Models start only
+when requested. `sparkring down` stops the selected deployment. Package removal
+stops SparkRing host services but retains configuration, weights, caches, receipts
+and already-installed network state; it does not stop a running model deployment.
+
+Pair GLM/Qwen and managed GLM TP4 use the existing deployment engines. Qwen TP4
+still requires an explicitly prepared native mesh reference through
+`sparkring init --site SITE --model qwen38`; the short `up qwen` command supports
+pairs. Arbitrary upstream images still need their own compatible transport adapter.
+
+## Local build and tests
+
+From a clean committed checkout on Linux:
+
+```bash
+python3 scripts/build_deb.py
+python3 -m pytest runtime/host runtime/common/test_distribution.py -q
+```
+
+The builder produces an ARM64 `.deb` and SHA-256 file under `.sparkring/dist/`.
+The package has no compiled host payload, so its assembly can run on x86 Linux.
+An optional Linux namespace rehearsal exercises real WireGuard between two and
+four simulated hosts, with no physical interfaces:
+
+```bash
+sudo env SPARKRING_LINUX_LAB=1 python3 -m pytest scripts/test_appliance_linux.py -q
+```
+
+If an execution receipt says `running` or `uncertain`, inspect it and host state
+before recovery. Do not delete receipts to force a blind retry. Driver reloads
+require `--allow-driver-reload`, stopped containers/GPU work, and no RDMA users.

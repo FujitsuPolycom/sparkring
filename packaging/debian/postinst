@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    /usr/bin/sparkring node initialize
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable --now avahi-daemon.service lldpd.service
+        systemctl enable sparkring-agent.service
+        systemctl restart sparkring-agent.service
+    fi
+fi

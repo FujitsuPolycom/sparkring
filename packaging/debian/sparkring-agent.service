@@ -1,0 +1,21 @@
+[Unit]
+Description=SparkRing local host observations
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sparkring node agent
+Restart=on-failure
+RestartSec=10
+RuntimeDirectory=sparkring
+RuntimeDirectoryMode=0755
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ReadWritePaths=/run/sparkring
+
+[Install]
+WantedBy=multi-user.target

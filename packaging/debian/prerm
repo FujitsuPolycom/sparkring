@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    systemctl disable --now sparkring-agent.service sparkring-fabric.service sparkring-control-refresh.timer sparkring-access.service sparkring-seed.service sparkring-dns.service sparkring-control.service
+fi

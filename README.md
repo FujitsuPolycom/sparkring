@@ -22,6 +22,10 @@ configurations and workloads recorded with each profile.
 
 ## Setup
 
+For guided Linux installation from one Internet-connected Spark, see the
+[Linux package](docs/operations/linux-install.md). It discovers workers through
+the fabric and offers reviewed pair/ring setup. Hardware rehearsal is pending.
+
 Want a single Compose file to share? Use [GLM TP2](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml)
 or [Qwen TP2](profiles/qwen38-flash-next-tp2/compose/standalone.yaml). Set the five
 values at the top and select the local rank. These standalone recipes require

@@ -1,0 +1,13 @@
+[Unit]
+Description=SparkRing worker DNS through Node A
+After=sparkring-control.service
+ConditionPathExists=/etc/sparkring/dnsmasq.conf
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/sparkring/dnsmasq.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

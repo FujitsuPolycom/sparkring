@@ -61,11 +61,8 @@ def source_archive(root, output):
     """Package tracked source only; reject symlinks and omit private/generated files."""
     root = Path(root).resolve()
     output = Path(output)
-    names = (
-        subprocess.check_output(["git", "ls-files", "-z"], cwd=root)
-        .decode()
-        .split("\0")
-    )
+    from runtime.common.distribution import tracked_files
+    names = tracked_files(root)
     selected = []
     for name in filter(None, names):
         # Managed profile rendering imports framework adapters and bundle

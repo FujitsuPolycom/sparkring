@@ -11,10 +11,9 @@ import ipaddress
 import os
 from pathlib import Path, PurePosixPath
 import re
-import subprocess
 import zipfile
 
-from runtime.common import compose, profiles, setup, tp2
+from runtime.common import compose, distribution, profiles, setup, tp2
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
@@ -53,8 +52,8 @@ def address(value):
 
 
 def site_document(raw, card, revision):
-    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address"}:
-        raise ValueError("Site accepts only schema, name, workspace, hosts and controller_address")
+    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address", "api_address"}:
+        raise ValueError("Site accepts only schema, name, workspace, hosts, controller_address and api_address")
     if raw.get("schema") != "sparkring-install-site/v1":
         raise ValueError("Expected sparkring-install-site/v1")
     name = raw.get("name")
@@ -107,8 +106,11 @@ def site_document(raw, card, revision):
     for field in ("host", "management_ip", "host_ip"):
         if len({r[field] for r in ranks}) != len(ranks):
             raise ValueError("Hosts and rank addresses must be distinct")
-    return {"name": name, "workspace": workspace, "ranks": ranks,
-            "controller_address": address(raw.get("controller_address", ranks[0]["management_ip"]))}
+    result = {"name": name, "workspace": workspace, "ranks": ranks,
+              "controller_address": address(raw.get("controller_address", ranks[0]["management_ip"]))}
+    if "api_address" in raw:
+        result["api_address"] = address(raw["api_address"])
+    return result
 
 
 def backend(card):
@@ -150,16 +152,13 @@ def init(directory, profile, raw_site, *, variant=None):
     if directory.exists():
         raise ValueError("Deployment directory already exists; use up/status or choose a new directory")
     # Validate user inputs before creating artifacts.
-    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    if subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=all"], cwd=ROOT, text=True).strip():
-        raise ValueError("Commit the installer source before initializing a deployment")
+    revision = distribution.identity(ROOT)
     make_lock(profile, raw_site, revision, "0" * 64, variant)
     if directory.is_relative_to(ROOT) and not directory.is_relative_to(ROOT / ".sparkring"):
         raise ValueError("Private deployments inside the checkout belong under .sparkring/")
     directory.mkdir(parents=True, mode=0o700)
     bundle = directory / "source.bundle"
-    subprocess.run(["git", "bundle", "create", str(bundle), "HEAD"], cwd=ROOT, check=True, capture_output=True)
-    bundle.chmod(0o600)
+    distribution.bundle(ROOT, bundle)
     lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant)
     write(directory / "site.json", raw_site)
     write(directory / "deployment.lock.json", lock)
@@ -224,7 +223,8 @@ def connection(lock):
         args = specifications(lock, only_rank=0)[0].command
         port = int(args[args.index("--port") + 1])
         model = args[args.index("--served-model-name") + 1]
-    return {"api_url": f"http://{lock['site']['ranks'][0]['management_ip']}:{port}/v1", "model": model, "port": port}
+    host_ip = lock["site"].get("api_address", lock["site"]["ranks"][0]["management_ip"])
+    return {"api_url": f"http://{host_ip}:{port}/v1", "model": model, "port": port}
 
 
 def operation_plan(lock, action):

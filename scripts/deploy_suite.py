@@ -68,7 +68,10 @@ def discover(nodes, controller_address, run=None):
             rank=rank,
             ssh_target=host,
             management_address=address,
-            controller_address=controller_address,
+            # A controller running on rank 0 must prove its physical management
+            # NIC, not the loopback route to its own address.
+            controller_address=(next(n.partition("=")[2] for n in nodes if n.partition("=")[2] != address)
+                                if address == controller_address else controller_address),
         )
         requests.append((host, argv))
     if len({h for h, _ in requests}) != 4:
@@ -135,6 +138,7 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
             "host": fact["ssh_target"],
             "management_address": fact["management"]["address"],
             "management_netdev": fact["management"]["interface"],
+            "controller_probe_address": fact["management"].get("controller_address", inventory["controller_address"]),
             "backup_dir": f"/var/lib/sparkring/network-backup/{name}/rank-{rank}",
             "data_interfaces": [],
         }

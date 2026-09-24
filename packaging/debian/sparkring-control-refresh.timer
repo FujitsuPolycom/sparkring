@@ -1,0 +1,10 @@
+[Unit]
+Description=Keep the approved SparkRing administration path available
+
+[Timer]
+OnBootSec=30
+OnUnitInactiveSec=20
+Unit=sparkring-control-refresh.service
+
+[Install]
+WantedBy=timers.target

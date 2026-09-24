@@ -118,14 +118,16 @@ def _prepare_spec(spec):
         if settings.get(key, value) != value:
             raise NetworkPlanError(f"The managed mesh requires {key}={value}")
     hosts = root.get("hosts")
-    if not isinstance(hosts, list) or len(hosts) != RANK_COUNT:
-        raise NetworkPlanError("hosts must contain exactly four ranks")
+    if not isinstance(hosts, list) or len(hosts) not in (2, RANK_COUNT):
+        raise NetworkPlanError("hosts must contain exactly two or four ranks")
+    count = len(hosts)
+    roles = ROLES if count == 4 else ROLES[:2]
     result = []
     for item in hosts:
         host = _object(item, "host")
         rank = host.get("rank")
-        if type(rank) is not int or rank not in range(RANK_COUNT):
-            raise NetworkPlanError("host rank must be 0, 1, 2, or 3")
+        if type(rank) is not int or rank not in range(count):
+            raise NetworkPlanError("host rank is outside the selected topology")
         ssh = host.get("host")
         if (
             not isinstance(ssh, str)
@@ -138,12 +140,12 @@ def _prepare_spec(spec):
             )
         management = _name(host.get("management_netdev"), "management_netdev", _NETDEV)
         ports = host.get("data_interfaces")
-        if not isinstance(ports, list) or len(ports) != 4:
-            raise NetworkPlanError(f"{ssh}: four data_interfaces are required")
+        if not isinstance(ports, list) or len(ports) != len(roles):
+            raise NetworkPlanError(f"{ssh}: {len(roles)} data_interfaces are required")
         parsed = []
         for port in ports:
             port = _object(port, "data interface")
-            if port.get("role") not in ROLES:
+            if port.get("role") not in roles:
                 raise NetworkPlanError(
                     f"{ssh}: each data interface needs a clockwise/counter-clockwise primary/secondary role"
                 )
@@ -163,7 +165,7 @@ def _prepare_spec(spec):
                 }
             )
         for field in ("role", "netdev", "rdma_device"):
-            if len({port[field] for port in parsed}) != 4:
+            if len({port[field] for port in parsed}) != len(roles):
                 raise NetworkPlanError(
                     f"{ssh}: data interface {field} values must be distinct"
                 )
@@ -177,9 +179,9 @@ def _prepare_spec(spec):
             }
         )
     result.sort(key=lambda host: host["rank"])
-    if [host["rank"] for host in result] != list(range(RANK_COUNT)):
-        raise NetworkPlanError("hosts must contain ranks 0, 1, 2, and 3 once each")
-    if len({host["host"] for host in result}) != RANK_COUNT:
+    if [host["rank"] for host in result] != list(range(count)):
+        raise NetworkPlanError("hosts must contain each selected rank once")
+    if len({host["host"] for host in result}) != count:
         raise NetworkPlanError("SSH hosts must be distinct")
     _cables(result)
     owned = root.get("owned_connection_uuids", [])
@@ -193,8 +195,19 @@ def _prepare_spec(spec):
 def _cables(hosts):
     """Two functions share a physical cable but keep separate IPv4 subnets."""
     endpoints = [p for host in hosts for p in host["data_interfaces"]]
-    if len({str(ipaddress.ip_interface(p["address"]).ip) for p in endpoints}) != 16:
+    if len({str(ipaddress.ip_interface(p["address"]).ip) for p in endpoints}) != len(endpoints):
         raise NetworkPlanError("Every data function needs a distinct IPv4 address")
+    if len(hosts) == 2:
+        networks = []
+        for role in ROLES[:2]:
+            pair = [next(p for p in h["data_interfaces"] if p["role"] == role) for h in hosts]
+            left, right = [ipaddress.ip_interface(p["address"]).network for p in pair]
+            if left != right:
+                raise NetworkPlanError("Pair endpoints must share one subnet per Socket Direct function")
+            networks.append(left)
+        if len(set(networks)) != 2:
+            raise NetworkPlanError("Pair functions require separate subnets")
+        return
     subnets = set()
     for rank, host in enumerate(hosts):
         ports = {p["role"]: p for p in host["data_interfaces"]}
@@ -306,9 +319,9 @@ def _interfaces(host, inventory):
             )
         _name(function.get("pci_address"), "ConnectX PCI address", _BDF)
         found.append((port, interface, function))
-    if len({function["pci_address"] for _, _, function in found}) != 4:
+    if len({function["pci_address"] for _, _, function in found}) != len(host["data_interfaces"]):
         raise NetworkPlanError(
-            f"{host['host']}: four distinct data PCI functions are required"
+            f"{host['host']}: distinct data PCI functions are required"
         )
     return found
 
@@ -368,6 +381,25 @@ def _connection(owner, host, port, interface, connections, owned):
         raise NetworkPlanError(
             f"{ssh}: {port['netdev']} uses unowned connection {previous}; record that exact replacement UUID before changing it"
         )
+    if port.get("update_connection_uuid"):
+        if _uuid(port["update_connection_uuid"], "update connection") != previous:
+            raise NetworkPlanError("Control connection UUID changed; rediscover before modifying it")
+        # Retaining the profile UUID and IPv6 generation settings preserves the
+        # link-local endpoint carrying SSH/WireGuard during IPv4 reconfiguration.
+        changes = ["ipv4.method", "manual", "ipv4.addresses", port["address"],
+                   "ipv4.never-default", "yes", "ipv4.ignore-auto-dns", "yes",
+                   "ipv6.method", "link-local", "ipv6.never-default", "yes",
+                   "802-3-ethernet.mtu", "9000", "connection.autoconnect", "yes"]
+        reverse = ["ipv4.method", nm["ipv4_method"], "ipv4.addresses", ",".join(nm["ipv4_addresses"]),
+                   "ipv4.never-default", "yes" if nm.get("ipv4_never_default") else "no",
+                   "ipv4.ignore-auto-dns", "yes" if nm.get("ipv4_ignore_auto_dns") else "no",
+                   "ipv6.method", nm["ipv6_method"], "ipv6.never-default", "yes" if nm.get("ipv6_never_default") else "no",
+                   "802-3-ethernet.mtu", str(nm["ethernet_mtu"]), "connection.autoconnect", "yes" if nm.get("autoconnect") else "no"]
+        def modify(values, suffix):
+            return _command(ssh, port["role"] + suffix, ["sudo", "-n", "nmcli", "connection", "modify", "uuid", previous, *values], risk="mutates-host")
+        reapply = _command(ssh, port["role"] + "-reapply", ["sudo", "-n", "nmcli", "device", "reapply", port["netdev"]], risk="mutates-host")
+        record.update(action="modify", retained_connection_uuid=previous)
+        return record, [modify(changes, "-modify"), reapply], [modify(reverse, "-restore"), reapply]
     if not previous and interface.get("ipv4"):
         raise NetworkPlanError(
             f"{ssh}: {port['netdev']} has addresses without an identified active connection"
@@ -812,10 +844,11 @@ def plan_network(spec, inventory):
             records.append(record)
             apply.extend(actions)
             rollback[0:0] = reverse
-            driver_actions, driver_reverse = _driver(host, port, interface, function)
+            driver_actions, driver_reverse = _driver(host, port, interface, function) if len(hosts) == 4 else ([], [])
             driver.extend(driver_actions)
             rollback[0:0] = driver_reverse
-            verify.extend(_verification(host, port, function))
+            checks = _verification(host, port, function)
+            verify.extend(checks if len(hosts) == 4 else checks[:-2])
         changed = bool(apply or driver)
         blockers = []
         if changed:
@@ -920,7 +953,7 @@ def verify_network(spec, inventory):
         "status": "implemented",
         "ready": True,
         "hosts": [host["host"] for host in hosts],
-        "data_functions": 16,
+        "data_functions": sum(len(h["data_interfaces"]) for h in hosts),
         "limitations": [
             "This checks host configuration, not RDMA traffic or hardware forwarding correctness."
         ],

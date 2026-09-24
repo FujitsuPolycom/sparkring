@@ -1,0 +1,6 @@
+#!/usr/bin/python3 -IB
+"""Run the installed immutable payload, independent of the caller's directory."""
+import sys
+sys.path.insert(0, "/usr/lib/sparkring")
+from scripts.sparkring import main
+raise SystemExit(main())
