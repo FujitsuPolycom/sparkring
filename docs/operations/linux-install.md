@@ -1,7 +1,8 @@
 # Linux installation
 
-**Development:** the single-command workflow has simulated tests. Its TP4
-hardware acceptance, blank-host setup and reboot recovery are pending.
+**Development:** a configured TP4 upgrade and automatic recovery passed on
+2026-09-24. Blank-host setup, reboot recovery and cable-reordering tests remain
+pending. See the [acceptance record](../development/installer-acceptance.md).
 
 Choose any Spark as Node A. Connect its 10GbE port to your network. Connect a
 pair with p0↔p0, or a four-Spark ring with each p0 connected to the next p1.
