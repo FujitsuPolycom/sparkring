@@ -138,3 +138,19 @@ def test_wrong_node_is_refused_before_transfer(tmp_path, monkeypatch):
     monkeypatch.setattr(node, "read", lambda *a: {"node_id": "wrong"})
     with pytest.raises(ValueError, match="not the enrolled Node A"):
         flow.require_head(cluster(2))
+
+
+def test_glm_mesh_conflict_returns_input_before_updates_or_model_stop(machine, monkeypatch, capsys):
+    events, previous, _, _ = machine
+    value = cluster(4)
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
+    def remote(target, argv):
+        if "assets" in argv:
+            return json.dumps({"model_path": "/srv/models/cached"})
+        return json.dumps({"available": False, "occupied": ["/etc/sparkring/managed-mesh"]})
+    monkeypatch.setattr(flow.discovery, "ssh", remote)
+    assert sparkring.main(["install", "--profile", "glm53-flash-spark-tp4-dcp1-sparkcache", "--yes", "--json"]) == 3
+    result = json.loads(capsys.readouterr().out)
+    assert result["field"] == "fabric" and result["state"] == "needs_input"
+    assert not events and rollout.active(controller.STATE) == previous

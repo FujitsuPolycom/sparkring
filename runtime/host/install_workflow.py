@@ -2,6 +2,7 @@
 import argparse
 import contextlib
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -96,6 +97,18 @@ def check_workloads(directory, previous):
                              field="workload", details={"rank": row["rank"]})
 
 
+def check_managed_namespace(lock):
+    if lock["backend"] != "glm-managed":
+        return
+    from runtime.host.managed_slot import inspect_slot
+    for row in lock["site"]["ranks"]:
+        code = inspect.getsource(inspect_slot) + "\nimport json\nprint(json.dumps(inspect_slot(" + repr(lock["site"]["name"]) + "," + repr(lock["selection"]["image_id"]) + "," + str(row["rank"]) + ")))\n"
+        observed = json.loads(discovery.ssh(row["host"], ["sudo", "-n", "python3", "-I", "-c", code]))
+        if not observed["available"]:
+            raise NeedsInput("GLM's managed-service paths belong to another deployment. A reviewed mesh migration or existing-mesh adapter is required; the current model and fabric have not been changed.",
+                             field="fabric", details={"rank": row["rank"], "occupied": observed["occupied"]})
+
+
 def execute(args):
     state_root = controller.STATE
     require_head()
@@ -112,6 +125,7 @@ def execute(args):
                 raise ValueError("Cluster setup did not complete")
         cluster = refresh_cluster(installer.read(state_root / "cluster.json"))
         directory, lock = select_deployment(args, cluster, state_root)
+        check_managed_namespace(lock)
         previous = rollout.active(state_root)
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
