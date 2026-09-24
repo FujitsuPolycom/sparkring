@@ -71,3 +71,32 @@ source-bundle, CLI and eight service-definition checks. Test fixture preparation
 and read-only observations are separate from installer actions. Private receipts
 and logs are retained by the operator; no site addresses or credentials are
 published here. The existing mesh, TP2 and published release inputs were unchanged.
+
+## Additional profiles and TP2 preparation, 2026-09-24
+
+`qwen38-flash-next-qad-tp4-sparkcache` completed public installation using its
+declared shared-2026.09.3 image, not the external CUDA image above. Readiness
+took 444.0 seconds. A planned retained-container restart passed in 229.9 seconds.
+An identical 8,889-token retrieval prompt returned the correct opaque identifier
+before and after restart. The post-restart API credited 8,640 cached tokens;
+each of four physical workers separately logged restoring 8,640 tokens and
+91.0 MiB. This was one bounded fixture, not a cache performance benchmark.
+
+Six of seven bounded API smoke gates passed. The forced-tool-call completion
+gate failed; the unchanged TP2 baseline exhibited the same failure. Health,
+model/context identity, arithmetic, image-input acceptance and prefix-response
+checks passed. Image-input acceptance is not a visual-understanding test.
+
+GLM preparation review found a nested workspace incompatible with the managed
+backend and service paths already occupied by the current mesh. The controller
+now uses the backend's supported workspace, stages before model shutdown, and
+checks existing service ownership before mutations. Source
+`4663b6c711ffa64b3cc68d659d13de919ec456ba` returned `needs_input` for the occupied
+fabric through the public install command, leaving Qwen and the mesh unchanged.
+GLM serving is not qualified by this test; existing-mesh integration or an
+explicitly reviewed migration remains necessary.
+
+TP2 installer acceptance has not run: SSH access is available, but privileged
+installation awaits sudo credentials/root access, and both local disks are
+nearly full. The baseline API checks above do not establish installer acceptance.
+No TP2 packages, containers, images or network settings were changed.
