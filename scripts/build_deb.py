@@ -21,7 +21,7 @@ def build(root, output, *, version=None):
     root, output = Path(root).resolve(), Path(output).resolve()
     revision = distribution.identity(root)
     epoch = int(subprocess.check_output(["git", "show", "-s", "--format=%ct", revision], cwd=root, text=True))
-    version = version or "0.1.0~dev+git" + revision[:12]
+    version = version or f"0.1.0~dev.{epoch}+git" + revision[:12]
     if not re.fullmatch(r"[0-9][A-Za-z0-9.+~]*", version):
         raise ValueError("Use a Debian upstream version without a revision suffix")
     output.mkdir(parents=True, exist_ok=True)
