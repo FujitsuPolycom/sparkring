@@ -33,8 +33,9 @@ def validate(value, profile):
     for field in ("parent_receipt_sha256", "toolchain_receipt_sha256", "composition_sha256", "transport_manifest_sha256"):
         if not isinstance(value[field], str) or not re.fullmatch(r"[0-9a-f]{64}", value[field]):
             raise ValueError("Image lock requires a complete SHA256: " + field)
-    if value["transport_profile"] != "tp2-rocenante-adaptive-prepared" or value["status_version"] != "0.3.0":
-        raise ValueError("This adapter supports prepared RoCEnante and runtime-status 0.3.0")
+    if (value["transport_profile"] != "tp2-rocenante-adaptive-prepared" or not isinstance(value["status_version"], str)
+            or not re.fullmatch(r"0\.3\.[0-9]+", value["status_version"])):
+        raise ValueError("This adapter supports prepared RoCEnante and runtime-status 0.3.x")
     return value
 
 

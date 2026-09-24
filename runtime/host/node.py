@@ -238,8 +238,21 @@ def workspace(operator, name, *, root="/"):
     return {"workspace": str(path), "controller": str(controller)}
 
 
+def observation_identity(*, root="/"):
+    """Read stable host and boot identities without creating or repairing state."""
+    result = {"node_id": None, "boot_id": None, "identity_errors": {}}
+    for field, name in (("node_id", "/etc/sparkring/node.json"), ("boot_id", "/proc/sys/kernel/random/boot_id")):
+        try:
+            raw = read(root, name)[field] if field == "node_id" else location(root, name).read_text().strip()
+            result[field] = str(uuid.UUID(raw))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            result["identity_errors"][field] = type(error).__name__
+    return result
+
+
 def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.time):
     result = {"schema": "sparkring-node-status/v1", "observed_at": now(), "hostname": socket.gethostname(),
+              **observation_identity(root=root), "source": "host-agent",
               "hardware_qualified": False, "state": "not-configured", "next_action": "sparkring setup"}
     if not location(root, "/etc/sparkring/fabric.json").exists():
         return result

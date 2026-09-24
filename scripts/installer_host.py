@@ -167,6 +167,23 @@ def http_json(port, path, body=None):
         return json.loads(payload) if payload.strip() else {}
 
 
+def model_observation(lock, row, info, *, root="/", now=time.time):
+    """Allowlisted identities from the inspected container and this host only."""
+    from runtime.host import node
+    identity = node.observation_identity(root=root)
+    expected_node = row.get("node_id")
+    state = info.get("State", {}) if info else {}
+    return {"schema": "sparkring-model-observation/v1", "source": "installer-docker-inspect", "observed_at": now(),
+            "deployment_id": lock["id"], "rank": row["rank"], **identity,
+            "expected_node_id": expected_node,
+            "node_identity_matches": identity["node_id"] == expected_node if expected_node and identity["node_id"] else None,
+            "container_id": info["Id"] if info else None, "container_name": info.get("Name", "").lstrip("/") if info else None,
+            "container_started_at": state.get("StartedAt"), "image_id": info["Image"] if info else None,
+            "expected_image_id": lock["selection"]["image_id"],
+            "present": info is not None, "running": bool(state.get("Running")),
+            "health": state.get("Health", {}).get("Status")}
+
+
 def perform(operation, lock, number):
     installer.validate(lock)
     row = lock["site"]["ranks"][number]
@@ -260,9 +277,7 @@ def perform(operation, lock, number):
         if info:
             owned(spec, info, image)
         if operation == "status":
-            return {"rank": number, "present": info is not None,
-                    "running": bool(info and info["State"].get("Running")),
-                    "health": info["State"].get("Health", {}).get("Status") if info else None}
+            return model_observation(lock, row, info)
         if operation == "owned":
             if info:
                 owned(spec, info, image)

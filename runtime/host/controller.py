@@ -205,10 +205,13 @@ def setup(argv=None):
 def model_site(cluster, profile, instance="main"):
     plan = cluster["plan"]
     rows = []
-    for host in plan["spec"]["hosts"]:
+    identities = plan.get("nodes", [])
+    for rank, host in enumerate(plan["spec"]["hosts"]):
         port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
         rows.append({"host": host["host"], "management_ip": host["management_address"],
                      "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
+        if len(identities) == len(plan["spec"]["hosts"]) and isinstance(identities[rank], dict) and identities[rank].get("node_id"):
+            rows[-1]["node_id"] = identities[rank]["node_id"]
     import re
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,19}", instance):
         raise ValueError("Instance must be a short lowercase name")

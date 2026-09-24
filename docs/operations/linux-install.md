@@ -43,7 +43,7 @@ sudo sparkring up qwen38-flash-next-qad-tp4 --instance candidate --image-lock im
 The `sparkring-installer-image/v1` file pins the image configuration, optional
 registry manifest, external software receipt, toolchain receipt, composition,
 prepared transport and status package. This adapter supports the ARM64 CUDA
-13.4.2/NCCL 2.32.3 external-image composition with status 0.3.0 and SparkCache off.
+13.4.2/NCCL 2.32.3 external-image composition with status 0.3.x and SparkCache off.
 It preserves the model profile and verifies the installed image contents before
 launching through the image's toolchain entrypoint. Published release selections
 stay intact; their qualification does not transfer to the development image.
@@ -54,6 +54,14 @@ message if it is absent. A different `--instance` gives the image its own
 deployment and compilation cache. Preview works while the existing model runs;
 execution requires completing `sparkring down` for that deployment first.
 `sparkring export --share` retains the image lock and per-rank Compose files.
+
+`sparkring status --json --refresh` reports the saved deployment/image IDs and
+separate host and container observations. Host observations include persistent
+node ID, boot ID and their own `observed_at`; cached observations retain their
+original time and become stale after 90 seconds. Container observations include
+the inspected container ID, start time and actual image ID. Missing identities
+are `null`, with a reason, rather than guessed from hostname or rank. Network
+observations do not establish model readiness or serving qualification.
 
 Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and host
 key confirmation, copies SparkRing and its Debian dependencies through the fabric,

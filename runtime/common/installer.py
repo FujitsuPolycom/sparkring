@@ -11,6 +11,7 @@ import ipaddress
 import os
 from pathlib import Path, PurePosixPath
 import re
+import uuid
 import zipfile
 
 from runtime.common import compose, distribution, profiles, setup, tp2
@@ -76,7 +77,7 @@ def site_document(raw, card, revision):
     ranks = []
     cache_default = workspace + ("/managed/cache" if backend(card) == "glm-managed" else "/cache")
     for number, row in enumerate(rows):
-        allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model", "fabric"}
+        allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model", "fabric", "node_id"}
         if not isinstance(row, dict) or set(row) - allowed:
             raise ValueError("Unknown host field; passwords and runtime overrides are not site inputs")
         interface = row.get("interface")
@@ -96,6 +97,10 @@ def site_document(raw, card, revision):
             "repository": workspace + "/source-" + revision[:12],
             "deployment_root": workspace + "/containers", "reuse_verified_model": reuse,
         }
+        if "node_id" in row:
+            if not isinstance(row["node_id"], str):
+                raise ValueError("Persistent node ID must be a UUID string")
+            item["node_id"] = str(uuid.UUID(row["node_id"]))
         if backend(card) == "glm-managed" and item["cache"] != cache_default:
             raise ValueError("Managed GLM cache must remain under its dedicated managed/cache workspace")
         if item["host_ip"] == item["management_ip"] and card["profile"] not in compose.TP4_PROFILES:
@@ -114,6 +119,9 @@ def site_document(raw, card, revision):
     for field in ("host", "management_ip", "host_ip"):
         if len({r[field] for r in ranks}) != len(ranks):
             raise ValueError("Hosts and rank addresses must be distinct")
+    identities = [row.get("node_id") for row in ranks]
+    if any(identities) and (not all(identities) or len(set(identities)) != len(ranks)):
+        raise ValueError("Supply distinct persistent node IDs for every rank, or omit all of them")
     result = {"name": name, "workspace": workspace, "ranks": ranks,
               "controller_address": address(raw.get("controller_address", ranks[0]["management_ip"]))}
     if "api_address" in raw:
@@ -187,7 +195,7 @@ def init(directory, profile, raw_site, *, variant=None, image_runtime=None):
 
 
 def compose_site(lock):
-    ranks = [{k: v for k, v in row.items() if k not in ("management_ip", "reuse_verified_model")}
+    ranks = [{k: v for k, v in row.items() if k not in ("management_ip", "reuse_verified_model", "node_id")}
              for row in lock["site"]["ranks"]]
     return {"schema": "sparkring-compose-site/v1", "name": lock["site"]["name"],
             "master": ranks[0]["host_ip"], "ranks": ranks}
@@ -349,6 +357,8 @@ def status(directory):
     lock = load(directory)
     state = read(directory / "state.json") if (directory / "state.json").exists() else {"operation": "not started", "complete": False}
     result = {"profile": lock["selection"]["profile"], "state": state,
+              "deployment_id": lock["id"], "source_revision": lock["source_revision"],
+              "image_id": lock["selection"]["image_id"], "image_reference": lock["selection"]["image_reference"],
               "live_observed": False, "hosts": [r["host"] for r in lock["site"]["ranks"]], **connection(lock)}
     if state.get("receipt"):
         receipt = read(directory / state["receipt"])
