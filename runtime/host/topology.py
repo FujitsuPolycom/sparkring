@@ -26,7 +26,7 @@ def lldp_rows(document):
                         continue
                     port = neighbor.get("port", {}).get("id", {})
                     rows.append({"netdev": netdev, "hostname": details.get("name", name),
-                                 "chassis": details.get("id", {}).get("value", "").lower(),
+                                 "chassis": str(details.get("id", {}).get("value") or "").lower(),
                                  "port": str(port.get("value", "")), "port_type": port.get("type")})
     return rows
 
@@ -65,11 +65,17 @@ def ordered_nodes(nodes, head_id):
             local = local_ports.get(observation["netdev"])
             if local is None or len(nodes) == 2 and local["port"] != 0:
                 continue
+            # Socket Direct delivers the sibling PCI function's LLDP frames
+            # locally on the same physical port. It is not a cable peer. A
+            # self-loop between p0 and p1 still fails peer validation below.
+            if any(observation["port"].lower() == endpoint["mac"] and endpoint["port"] == local["port"]
+                   and endpoint["netdev"] != local["netdev"] for endpoint in ports[ident].values()):
+                continue
             matches = []
             for peer in nodes:
                 if peer["node_id"] == ident:
                     continue
-                chassis_macs = {item["mac"].lower() for item in peer["facts"]["interfaces"]}
+                chassis_macs = {item["mac"].lower() for item in peer["facts"]["interfaces"] if isinstance(item.get("mac"), str)}
                 named = str(observation["hostname"]).rstrip(".") in {peer["hostname"], peer["hostname"] + ".local"}
                 for endpoint in ports[peer["node_id"]].values():
                     match_mac = observation["port"].lower() == endpoint["mac"]

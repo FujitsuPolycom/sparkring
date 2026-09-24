@@ -59,6 +59,14 @@ def configured(plan):
 @pytest.mark.parametrize("size", [2, 4])
 def test_discovery_orders_cables_from_selected_head_and_preserves_addresses(size):
     found = nodes(size)
+    for n in found:
+        n["facts"]["interfaces"].append({"name": "tailscale0", "mac": None, "ipv4": ["100.64.0.1/32"]})
+        ports = topology.endpoints(n)
+        for role, p in ports.items():
+            sibling = ports[role.replace("primary", "secondary") if role.endswith("primary") else role.replace("secondary", "primary")]
+            n["lldp"]["lldp"]["interface"].append({p["netdev"]: {
+                "chassis": {n["hostname"]: {"id": {"type": "mac", "value": sibling["mac"]}}},
+                "port": {"id": {"type": "mac", "value": sibling["mac"]}}}})
     plan = topology.build_spec(list(reversed(found)), found[0]["node_id"])
     assert [n["node_id"] for n in plan["nodes"]] == [n["node_id"] for n in found]
     assert all(h["action"] == "none" for h in plan["network"]["hosts"])
