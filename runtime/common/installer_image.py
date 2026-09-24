@@ -6,9 +6,13 @@ external software and toolchain receipts; it never changes a published release.
 from dataclasses import replace
 import hashlib
 import json
+from pathlib import PurePosixPath
 import re
 
+from runtime.common.container_spec import Bind
+
 ENTRYPOINT = ("python3", "/opt/sparkring/toolchain/toolchain.py")
+BINDING_TARGET = "/run/sparkring/runtime-binding.json"
 PARENT_RECEIPT = "/opt/sparkring/receipts/external-base-installed.json"
 TOOLCHAIN_RECEIPT = "/opt/sparkring/toolchain/installed.json"
 SUPPORTED = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
@@ -46,7 +50,11 @@ def selection(card, value):
             "evidence_scope": "Development image selection; the published profile's serving qualification does not transfer."}
 
 
-def adapt(spec, value):
+def binding_path(lock, row):
+    return str(PurePosixPath(row["deployment_root"]) / lock["id"] / "runtime-binding.json")
+
+
+def adapt(spec, value, *, binding):
     """Reuse the canonical model/network envelope, replacing its runtime binding."""
     environment = dict(spec.environment)
     # Inherit the sealed image's library and Python search paths. Its entrypoint
@@ -59,6 +67,7 @@ def adapt(spec, value):
     cache = environment["XDG_CACHE_HOME"]
     environment.update(
         VLLM_PLUGINS="b12x_loader,sparkring_status",
+        SPARKRING_RUNTIME_BINDING=BINDING_TARGET,
         SPARKRING_TRANSPORT_PROFILE=value["transport_profile"],
         SPARKRING_TRANSPORT_MANIFEST_SHA256=value["transport_manifest_sha256"],
         VLLM_QWEN3_8_FLASH_NEXT_HC_TP="0" if value["profile"].endswith("tp4") else "1",
@@ -76,6 +85,7 @@ def adapt(spec, value):
     health = ("python3", *spec.health_command[1:]) if spec.health_command else ()
     return replace(spec, image_id=value["image_id"], entrypoint=ENTRYPOINT, command=spec.command[1:],
                    environment=environment, health_command=health,
+                   mounts=(*spec.mounts, Bind(binding, BINDING_TARGET, True)),
                    labels={**spec.labels, "io.sparkring.image-lock": value["name"]})
 
 

@@ -48,6 +48,13 @@ It preserves the model profile and verifies the installed image contents before
 launching through the image's toolchain entrypoint. Published release selections
 stay intact; their qualification does not transfer to the development image.
 
+After creating each stopped container, the installer supplies a read-only
+`sparkring-runtime-binding/v1` file with deployment, node, container, image and
+rank identities. It checks the file before starting the model and never rewrites
+it beneath a running container. This is an installer assertion for compatible
+dashboard consumers; boot identity and observation times remain independently
+observed. It is not attestation or serving qualification.
+
 For a private image without a reachable registry, set `image_reference` to its
 exact `image_id` and preload it on every rank. The installer stops with a clear
 message if it is absent. A different `--instance` gives the image its own

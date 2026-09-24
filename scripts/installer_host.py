@@ -5,6 +5,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
+import stat
 import subprocess
 import time
 import urllib.request
@@ -167,6 +169,74 @@ def http_json(port, path, body=None):
         return json.loads(payload) if payload.strip() else {}
 
 
+def runtime_binding(lock, row, info, *, root="/"):
+    """Installer assertions for the exact stopped/inspected container, not attestation."""
+    from runtime.host import node
+    identity = node.observation_identity(root=root)
+    node_id = identity["node_id"]
+    if node_id is None or row.get("node_id", node_id) != node_id:
+        raise ValueError("Runtime binding requires this host's expected persistent node identity")
+    labels = info.get("Config", {}).get("Labels", {})
+    if (not re.fullmatch(r"[0-9a-f]{64}", info.get("Id", "")) or info.get("Image") != lock["selection"]["image_id"]
+            or labels.get(compose.LABEL) != lock["id"] or labels.get("io.sparkring.rank") != str(row["rank"])):
+        raise ValueError("Runtime binding requires the exact owned container and image")
+    return {"schema": "sparkring-runtime-binding/v1", "deployment_id": lock["id"], "node_id": node_id,
+            "container_id": info["Id"], "image_id": info["Image"], "rank": row["rank"]}
+
+
+def local_binding_path(lock, row, *, root="/"):
+    """Reject remote/unknown mounts before inspecting the binding source file."""
+    from runtime.common import installer_image
+    name = installer_image.binding_path(lock, row)
+    path = Path(root) / name.lstrip("/")
+    candidates = []
+    for line in (Path(root) / "proc/self/mountinfo").read_text().splitlines():
+        before, separator, after = line.partition(" - ")
+        if not separator or len(before.split()) < 5 or not after.split():
+            continue
+        mount = Path(re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), before.split()[4]))
+        if path.is_relative_to(mount):
+            candidates.append((len(mount.parts), after.split()[0]))
+    deepest = max((depth for depth, _ in candidates), default=-1)
+    kinds = {kind for depth, kind in candidates if depth == deepest}
+    if not kinds or not kinds <= {"ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "tmpfs", "ramfs"}:
+        raise ValueError("Runtime binding must use a verified local filesystem, not a NAS or unknown mount")
+    # Check parents first, so a symlink is rejected before following it to a
+    # deeper component that could live on a remote filesystem.
+    for item in reversed((path, *path.parents)):
+        if item.is_symlink():
+            raise ValueError("Runtime binding path contains a symlink")
+    return path
+
+
+def read_runtime_binding(path):
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except FileNotFoundError:
+        return None
+    with os.fdopen(descriptor, "rb") as stream:
+        metadata = os.fstat(stream.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 16384:
+            raise ValueError("Runtime binding must be a small regular local file")
+        raw = stream.read(16385)
+        if len(raw) > 16384:
+            raise ValueError("Runtime binding grew beyond its size limit")
+    return json.loads(raw)
+
+
+def check_runtime_binding(lock, row, info, *, root="/", finalize=False):
+    from runtime.host import node
+    expected = runtime_binding(lock, row, info, root=root)
+    path = local_binding_path(lock, row, root=root)
+    actual = read_runtime_binding(path)
+    if actual == expected:
+        return expected
+    if not finalize or info.get("State", {}).get("Running"):
+        raise ValueError("Runtime binding differs; finalize it while the owned container is stopped")
+    node.save(path.parent, path.name, expected, mode=0o644)
+    return expected
+
+
 def model_observation(lock, row, info, *, root="/", now=time.time):
     """Allowlisted identities from the inspected container and this host only."""
     from runtime.host import node
@@ -294,6 +364,8 @@ def perform(operation, lock, number):
             return {"ok": True}
         if operation == "created":
             owned(spec, info, image)
+            if "image_runtime" in lock:
+                check_runtime_binding(lock, row, info)
             return {"ok": True}
         if operation == "container-record":
             owned(spec, info, image)
@@ -330,9 +402,18 @@ def perform(operation, lock, number):
                 if not path.exists():
                     installer.write(path, text)
                 if not info:
+                    if "image_runtime" in lock:
+                        binding = local_binding_path(lock, row)
+                        if read_runtime_binding(binding) is None:
+                            installer.write(binding, {})
                     run(compose.compose_command(spec.name, path) + ["create", "--no-build", "--no-recreate", "--pull", "never", "model"])
+                if "image_runtime" in lock:
+                    created = owned(spec, container(spec), image)
+                    check_runtime_binding(lock, row, created, finalize=True)
             elif operation == "start":
                 owned(spec, info, image)
+                if "image_runtime" in lock:
+                    check_runtime_binding(lock, row, info)
                 if not info["State"].get("Running"):
                     run(["docker", "start", info["Id"]])
             return {"ok": True}

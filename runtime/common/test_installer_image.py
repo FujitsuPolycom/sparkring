@@ -42,7 +42,9 @@ def test_image_selection_preserves_profile_weights_network_and_model_arguments(m
     for before, after in zip(installer.specifications(baseline), installer.specifications(selected), strict=True):
         assert after.command == before.command[1:]
         assert after.entrypoint == installer_image.ENTRYPOINT
-        assert after.mounts == before.mounts and after.devices == before.devices
+        assert after.mounts[:-1] == before.mounts and after.devices == before.devices
+        assert after.mounts[-1].target == installer_image.BINDING_TARGET and after.mounts[-1].read_only
+        assert after.environment["SPARKRING_RUNTIME_BINDING"] == installer_image.BINDING_TARGET
         assert after.environment["B12X_ROCE_HCA"] == before.environment["B12X_ROCE_HCA"]
         assert after.environment["B12X_ROCE_PEER_HCA_MAP"] == before.environment["B12X_ROCE_PEER_HCA_MAP"]
         assert after.environment["VLLM_PLUGINS"] == "b12x_loader,sparkring_status"
