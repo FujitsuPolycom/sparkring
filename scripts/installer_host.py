@@ -364,8 +364,10 @@ def perform(operation, lock, number):
 
     if operation == "image":
         run(["docker", "info"])
-        ids = run(["docker", "image", "ls", "--quiet", "--no-trunc"]).stdout.splitlines()
-        if card["image_id"] not in ids:
+        # A config-ID-only docker save/load yields an untagged image which the
+        # default image listing can omit. Admission addresses the exact ID.
+        existing = run(["docker", "image", "inspect", card["image_id"]], check=False)
+        if existing.returncode:
             if card["image_reference"] == card["image_id"]:
                 raise ValueError("Pinned local image is absent; preload " + card["image_id"] + " on every rank before up")
             docker_path = run(["docker", "info", "--format", "{{.DockerRootDir}}"]).stdout.strip()

@@ -23,6 +23,24 @@ def facts(row):
                       "gid_ip": "198.18.20.1", "ips": ["198.18.20.1"]} for device in row["hcas"]]}
 
 
+def test_image_prepare_accepts_verified_untagged_id_hidden_from_default_listing(tmp_path, monkeypatch):
+    image = "sha256:" + "a" * 64
+    lock = {"id": "fixture", "site": {"workspace": str(tmp_path), "ranks": [{}]},
+            "selection": {"image_id": image, "image_reference": image}}
+    (tmp_path / ".installer-owner.json").write_text(json.dumps({"deployment": "fixture"}))
+    monkeypatch.setattr(installer, "validate", lambda _: lock)
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert argv in (["docker", "info"], ["docker", "image", "inspect", image])
+        return SimpleNamespace(returncode=0, stdout=json.dumps([{"Id": image, "RepoTags": []}]))
+    monkeypatch.setattr(host, "run", run)
+    monkeypatch.setattr(host, "admit_image", lambda _: {"verified_image": image})
+    assert host.perform("image", lock, 0) == {"ok": True}
+    assert ["docker", "image", "inspect", image] in calls
+    assert json.loads((tmp_path / "installer/image.json").read_text())["verified_image"] == image
+
+
 @pytest.mark.parametrize("mutation", ["architecture", "missing-tool", "management", "wrong-gid", "mtu", "down-link"])
 def test_prerequisites_fail_before_host_changes(mutation):
     row = installer.make_lock(GLM, site(), "1" * 40, "2" * 64)["site"]["ranks"][0]

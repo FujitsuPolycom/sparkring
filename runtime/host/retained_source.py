@@ -24,7 +24,7 @@ def checkout(directory, cache, *, run=subprocess.run):
         raise ValueError("Retained controller source path contains a symlink")
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        run(["git", "clone", "--quiet", str(bundle), str(target)], check=True)
+        run(["git", "-c", "advice.detachedHead=false", "clone", "--quiet", str(bundle), str(target)], check=True)
     actual = run(["git", "-C", str(target), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     dirty = run(["git", "-C", str(target), "status", "--porcelain", "--untracked-files=all"], capture_output=True, text=True, check=True).stdout.strip()
     if actual != revision or dirty:
