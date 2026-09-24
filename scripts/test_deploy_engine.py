@@ -124,11 +124,18 @@ def test_drift_and_explicit_model_authorization(tmp_path):
 
 
 def test_locked_receipt_cannot_execute(tmp_path):
+    from runtime.common import process_lock
     p = plan()
     path = tmp_path / "r.json"
-    (tmp_path / "r.json.lock").write_text("operator")
-    with pytest.raises(ValueError, match="locked"):
-        execute_plan(p, path, p["sha256"], runner=success)
+    with process_lock.hold(tmp_path / "r.json.lock"):
+        with pytest.raises(ValueError, match="Another operation"):
+            execute_plan(p, path, p["sha256"], runner=success)
+
+
+def test_stale_receipt_lock_does_not_require_operator_deletion(tmp_path):
+    p = plan()
+    (tmp_path / "r.json.lock").write_text("interrupted process")
+    assert execute_plan(p, tmp_path / "r.json", p["sha256"], runner=success)["complete"]
 
 
 def test_resume_drift_records_failed_verification_and_revokes_complete(tmp_path):

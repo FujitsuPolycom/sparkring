@@ -1,0 +1,188 @@
+"""One Linux entrypoint for cluster setup, asset preparation and model replacement."""
+import argparse
+import contextlib
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+from runtime.common import distribution, installer, installer_image, process_lock
+from runtime.host import controller, discovery, fabric_ssh, install_assets, models, native_mesh, node, progress, retained_source, rollout, topology
+from runtime.host.install_errors import NeedsInput
+from scripts import deploy_network
+
+
+def require_head(cluster=None):
+    if sys.platform != "linux" or not hasattr(os, "geteuid") or os.geteuid() != 0 or not distribution.installed(installer.ROOT):
+        raise NeedsInput("Install the ARM64 package, then run sudo sparkring install on Node A.", field="node_a")
+    identity = node.read("/", "/etc/sparkring/node.json")["node_id"]
+    if cluster is not None and cluster["plan"]["spec"]["hosts"][0]["node_id"] != identity:
+        raise ValueError("This is not the enrolled Node A; image/model traffic must originate on that Spark")
+    return identity
+
+
+def refresh_cluster(cluster):
+    """Re-observe cables without reconfiguring the adopted fabric."""
+    hosts = cluster["plan"]["spec"]["hosts"]
+    found = controller.collect([h["host"] for h in hosts])
+    plan = topology.build_spec(found, require_head(cluster), name=cluster["name"],
+                               fabric_cidr=cluster["plan"].get("fabric_cidr", "198.18.0.0/21"),
+                               preserve_control=cluster["plan"]["spec"].get("preserve_control_ipv6", False))
+    if [h["node_id"] for h in plan["spec"]["hosts"]] != [h["node_id"] for h in hosts]:
+        raise NeedsInput("Cable order changed. Run sparkring setup to review the new fabric first.", field="fabric")
+    deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"])
+    return {**cluster, "plan": plan}
+
+
+def choose_profile(value, count, interactive):
+    if not value:
+        choices = [r for r in models.catalog() if r["automated"] and r["nodes"] == count]
+        if not interactive:
+            raise NeedsInput("Select an exact profile with --profile.", field="profile", details={"choices": [r["profile"] for r in choices]})
+        for number, choice in enumerate(choices, 1):
+            print(f"{number}. {choice['profile']}")
+        selected = input("Model profile number: ").strip()
+        if not selected.isdigit() or not 1 <= int(selected) <= len(choices):
+            raise NeedsInput("Choose one of the listed profiles.", field="profile")
+        value = choices[int(selected) - 1]["profile"]
+    return models.select(value, count)
+
+
+def select_deployment(args, cluster, state_root):
+    profile = choose_profile(args.profile, len(cluster["plan"]["nodes"]), not args.json and sys.stdin.isatty())
+    image = installer_image.validate(installer.read(args.image_lock), profile) if args.image_lock else None
+    request = {"profile": profile, "image_runtime": image, "source": distribution.identity(installer.ROOT),
+               "model_path": args.model_path, "cache_path": args.cache_path,
+               "nodes": cluster["plan"]["spec"]["hosts"], "api_address": cluster.get("api_address")}
+    instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
+    directory = state_root / "deployments" / (profile + "-" + instance)
+    if directory.exists():
+        return directory, installer.load(directory)
+    site = controller.model_site(cluster, profile, instance)
+    for rank, row in enumerate(site["hosts"]):
+        if args.model_path:
+            row.update(model=args.model_path, reuse_verified_model=True)
+        else:
+            found = json.loads(discovery.ssh(row["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "assets", "--profile", profile]))
+            if found["model_path"]:
+                row.update(model=found["model_path"], reuse_verified_model=True)
+            print(f"Node {rank}: " + ("Cached checkpoint found; verify before launch" if found["model_path"] else "Checkpoint will be copied or downloaded"))
+        if args.cache_path:
+            row["cache"] = args.cache_path
+    if profile in installer.compose.TP4_PROFILES:
+        site = native_mesh.select(site, cluster, profile, invoke=discovery.ssh)
+    lock = installer.init(directory, profile, site, image_runtime=image)
+    return directory, lock
+
+
+def check_workloads(directory, previous):
+    """Reject unrelated GPU work before any planned service interruption."""
+    from scripts.installer_runner import PROBE, check_facts, check_workloads, ssh
+    lock = installer.load(directory)
+    allowed = installer.read(previous / "deployment.lock.json") if previous else lock
+    for row in lock["site"]["ranks"]:
+        facts = json.loads(ssh(row["host"], ["python3", "-I", "-B", "-c", PROBE], timeout=120))
+        check_facts(facts, row)
+        for permitted in (allowed, lock):
+            try:
+                check_workloads(facts, permitted, row["rank"], managed_prepared=bool(previous and (previous / "managed/runtime/prepared.json").exists()))
+                break
+            except ValueError:
+                continue
+        else:
+            raise NeedsInput("An unrelated GPU workload is running. Stop that workload or choose another cluster.",
+                             field="workload", details={"rank": row["rank"]})
+
+
+def execute(args):
+    state_root = controller.STATE
+    require_head()
+    interactive = not args.json and sys.stdin.isatty()
+    with process_lock.hold(state_root / "install.lock"):
+        if not (state_root / "cluster.json").exists():
+            if args.plan:
+                raise NeedsInput("Run sparkring setup --plan to discover this unconfigured cluster.", field="setup")
+            if not args.yes and not interactive:
+                raise NeedsInput("First installation requires setup approval. Review sparkring setup --plan, then use --yes.", field="approval")
+            from runtime.host import single_uplink
+            options = (["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
+            if single_uplink.main(options):
+                raise ValueError("Cluster setup did not complete")
+        cluster = refresh_cluster(installer.read(state_root / "cluster.json"))
+        directory, lock = select_deployment(args, cluster, state_root)
+        previous = rollout.active(state_root)
+        plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
+                "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
+                "nodes": len(lock["site"]["ranks"]), "replaces": str(previous) if previous and previous != directory else None,
+                "steps": ["verify-fabric", "update-workers", "prepare-images-and-checkpoints", "switch-model", "verify-serving"],
+                **installer.connection(lock)}
+        print(f"Install {plan['profile']} on {plan['nodes']} Sparks.")
+        print("Update workers and prepare assets; then " + ("replace the current model." if plan["replaces"] else "start the selected model."))
+        if "native_mesh" in lock["site_input"]:
+            if previous:
+                raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before replacing a running deployment.", field="fabric")
+            print("Configure and start the profile's supervised native fabric.")
+        if args.plan:
+            return plan
+        if not args.yes:
+            if not interactive:
+                raise NeedsInput("Review with --plan; add --yes to apply these changes.", field="approval", details=plan)
+            controller.confirm("Apply this installation?")
+        check_workloads(directory, previous)
+        transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
+        plan["transfer"] = transport.verify()
+        assets = install_assets.Assets(transport, directory / "assets")
+        cache = state_root / "retained-sources"
+
+        def apply(path, operation):
+            return retained_source.apply(path, operation, cache=cache)
+
+        def prepare(path):
+            if previous and previous != path:
+                # Verify the rollback controller bundle before any downtime.
+                retained_source.checkout(previous, cache)
+            assets.sync_packages()
+            assets.images(lock["selection"])
+            installer.apply(path, "prepare", runner=assets.runner(path, previous), execute=True)
+            check_workloads(path, previous)
+
+        result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
+                                 verify=lambda path: apply(path, "verify"))
+        return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log")}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
+    parser.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
+    parser.add_argument("--image-lock", type=Path, help="optional pinned development image")
+    parser.add_argument("--model-path", help="existing complete checkpoint path on each Spark")
+    parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")
+    parser.add_argument("--env", type=Path, help="optional literal setup preferences, read on first installation")
+    parser.add_argument("--plan", action="store_true", help="inspect and save the plan without updating workers or models")
+    parser.add_argument("--yes", action="store_true", help="approve the displayed setup and model replacement; SSH trust is still required")
+    parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
+    args = parser.parse_args(argv)
+    output = sys.stdout
+    code = 0
+    with contextlib.redirect_stdout(sys.stderr), progress.run("install"):
+        try:
+            result = execute(args)
+        except NeedsInput as error:
+            result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
+            result, code = {"schema": "sparkring-install-result/v1", "state": "failed", "message": str(error)}, 2
+            transaction = controller.STATE / "transaction.json"
+            if transaction.exists():
+                result["transaction"] = installer.read(transaction)
+            progress.failure(str(error))
+        if result["state"] == "complete":
+            print("Model ready: " + result["api_url"])
+        elif result["state"] == "needs_input":
+            print(result["message"])
+        elif result["state"] == "planned":
+            print("Plan saved. Repeat with --yes to install.")
+    if args.json:
+        print(json.dumps(result, indent=2), file=output)
+    return code

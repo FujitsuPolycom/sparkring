@@ -165,6 +165,32 @@ def test_native_receipt_reads_keep_binary_output(monkeypatch):
     assert len(calls) == 1
 
 
+def test_status_runner_reaches_verified_observation_producer(monkeypatch):
+    current = object.__new__(runner.Runner)
+    current.lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    row = current.lock["site"]["ranks"][0]
+    observed = {"schema": "sparkring-model-observation/v1", "container_id": "observed", "deployment_id": current.lock["id"]}
+    calls = []
+    monkeypatch.setattr(runner, "ssh", lambda *a, **kw: "True\n")
+    current.remote = lambda rank, operation: calls.append((rank, operation)) or observed
+    result = current._call(row["host"], ["installer", "status", "0"], 30)
+    assert json.loads(result["stdout"]) == observed
+    assert calls == [(0, "status")]
+
+
+def test_status_ownership_failure_never_falls_back_to_a_name_lookup(monkeypatch):
+    current = object.__new__(runner.Runner)
+    current.lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    row = current.lock["site"]["ranks"][0]
+    calls = []
+    monkeypatch.setattr(runner, "ssh", lambda *a, **kw: calls.append(a) or "True\n")
+    def refuse(*args):
+        raise ValueError("Container specification mismatch")
+    current.remote = refuse
+    result = current._call(row["host"], ["installer", "status", "0"], 30)
+    assert result["returncode"] == 1 and len(calls) == 1
+
+
 def test_existing_workload_is_rejected_before_download_but_own_container_can_resume():
     lock = installer.make_lock(GLM, site(), "1" * 40, "2" * 64)
     value = {"gpu_containers": [], "gpu_process_ancestors": []}

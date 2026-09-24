@@ -120,6 +120,85 @@ def verify_model(lock, row, receipt_path, *, receipt=None, measured=None):
     return receipt
 
 
+def transfer_model(operation, lock, row, state):
+    """Receive only a verified checkpoint manifest into an owned destination."""
+    import shutil
+    import sys
+    from pathlib import PurePosixPath
+    receipt_path = plain(state / "model.json")
+    model = plain(row["model"])
+    marker = plain(state / "model-transfer.json")
+    if operation == "model-present":
+        from runtime.host.assets import metadata_matches
+        return {"present": (not marker.exists() or receipt_path.exists()) and metadata_matches(model, installer.checkpoint_contract(lock["selection"]))}
+    if operation == "model-transfer-manifest":
+        receipt = verify_model(lock, row, receipt_path)
+        return {"repository": receipt["repository"], "revision": receipt["revision"], "files": receipt["files"],
+                "sizes": {name: value[2] for name, value in model_file_stats(model).items()}}
+    if operation == "model-reuse-receipt":
+        previous = json.load(sys.stdin)
+        source = plain(previous["workspace"])
+        if profiles.read_json(source / ".installer-owner.json") != {"deployment": previous["deployment"]}:
+            raise ValueError("Previous checkpoint receipt belongs to another deployment")
+        saved = plain(source / "installer/model.json")
+        if receipt_path.exists() or not saved.is_file():
+            return {"reused": False}
+        receipt = profiles.read_json(saved)
+        if (receipt.get("repository"), receipt.get("revision"), receipt.get("path")) != (lock["selection"]["model_repository"], lock["selection"]["model_revision"], row["model"]):
+            return {"reused": False}
+        receipt = verify_model(lock, row, saved)
+        state.mkdir(parents=True, exist_ok=True)
+        deploy_engine.save_receipt(receipt_path, receipt)
+        if lock["backend"] != "glm-managed":
+            plain(row["cache"]).mkdir(parents=True, exist_ok=True)
+        return {"reused": True}
+    manifest = json.load(sys.stdin)
+    card = lock["selection"]
+    if (set(manifest) != {"repository", "revision", "files", "sizes"}
+            or manifest["repository"] != card["model_repository"] or manifest["revision"] != card["model_revision"]
+            or set(manifest["files"]) != set(manifest["sizes"])):
+        raise ValueError("Checkpoint transfer identity differs")
+    for name, digest in manifest["files"].items():
+        if (not isinstance(name, str) or not name or PurePosixPath(name).is_absolute()
+                or any(part in ("..", ".cache", ".git") for part in PurePosixPath(name).parts)
+                or any(c in name for c in "\r\n\0\\") or str(PurePosixPath(name)) != name
+                or not re.fullmatch(r"[0-9a-f]{64}", digest) or type(manifest["sizes"][name]) is not int
+                or manifest["sizes"][name] < 0):
+            raise ValueError("Unsafe checkpoint transfer manifest")
+    expected = {"deployment": lock["id"], "path": str(model), "manifest": manifest}
+    if marker.exists():
+        if profiles.read_json(marker) != expected:
+            raise ValueError("Another checkpoint transfer owns this destination")
+    elif model.exists() and any(model.iterdir()):
+        raise ValueError("Checkpoint destination is nonempty and has no owned transfer receipt")
+    if operation == "model-transfer-prepare":
+        policy = profiles.read_json(installer.ROOT / "profiles/storage-planning.json")
+        ancestor = model
+        while not ancestor.exists():
+            ancestor = ancestor.parent
+        remaining = sum(size for name, size in manifest["sizes"].items() if not (model / name).is_file())
+        required = remaining + max(manifest["sizes"].values(), default=0) + policy["cache_and_jit_allowance_gib"] * 1024**3
+        if shutil.disk_usage(ancestor).free < required:
+            raise ValueError("Insufficient checkpoint transfer space; existing model remains running")
+        model.mkdir(parents=True, exist_ok=True)
+        state.mkdir(parents=True, exist_ok=True)
+        deploy_engine.save_receipt(marker, expected)
+        return {"ok": True}
+    if operation != "model-transfer-complete" or not marker.exists():
+        raise ValueError("Checkpoint transfer was not prepared")
+    before = model_file_stats(model)
+    hashes = model_files(model)
+    if hashes != manifest["files"] or before != model_file_stats(model):
+        raise ValueError("Transferred checkpoint differs from its verified source; repeat install to resume")
+    receipt = {"repository": manifest["repository"], "revision": manifest["revision"], "path": str(model),
+               "files": hashes, "file_stats": before, "origin": "verified-fabric-copy"}
+    verify_model(lock, row, receipt_path, receipt=receipt, measured=hashes)
+    deploy_engine.save_receipt(receipt_path, receipt)
+    if lock["backend"] != "glm-managed":
+        plain(row["cache"]).mkdir(parents=True, exist_ok=True)
+    return {"ok": True}
+
+
 def container(spec):
     names = run(["docker", "container", "ls", "--all", "--format", "{{.Names}}" ]).stdout.splitlines()
     return json.loads(run(["docker", "inspect", spec.name]).stdout)[0] if spec.name in names else None
@@ -267,6 +346,8 @@ def perform(operation, lock, number):
     card = lock["selection"]
     image_receipt = state / "image.json"
     model_receipt = state / "model.json"
+    if operation in ("model-present", "model-reuse-receipt") or operation.startswith("model-transfer-"):
+        return transfer_model(operation, lock, row, state)
     if operation.startswith("mesh-"):
         from runtime.host import native_mesh
         if operation == "mesh-prepare":

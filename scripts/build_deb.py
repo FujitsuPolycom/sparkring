@@ -66,7 +66,7 @@ Section: admin
 Priority: optional
 Architecture: arm64
 Maintainer: SparkRing contributors
-Depends: python3 (>= 3.12), python3-yaml, git, openssh-client, openssh-server, sudo, iproute2, iputils-ping, rdma-core, ibverbs-utils, pciutils, ethtool, avahi-daemon, avahi-utils, lldpd, iptables, systemd, systemd-resolved, wireguard-tools, dnsmasq-base, dpkg-repack
+Depends: python3 (>= 3.12), python3-yaml, git, openssh-client, openssh-server, sudo, iproute2, iputils-ping, rdma-core, ibverbs-utils, pciutils, ethtool, avahi-daemon, avahi-utils, lldpd, iptables, systemd, systemd-resolved, wireguard-tools, dnsmasq-base, dpkg-repack, rsync
 Installed-Size: {size}
 Description: SparkRing host setup and profile deployment controller
  Discovers and configures supported pairs and four-node DGX Spark rings.

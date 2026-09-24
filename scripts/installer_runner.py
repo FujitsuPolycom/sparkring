@@ -129,11 +129,12 @@ from scripts.installer_host import perform
 print(json.dumps(perform(sys.argv[3],lock,int(sys.argv[4]))))
 '''
 
-STATUS = r'''import json,subprocess,sys
+STATUS = r'''import json,subprocess,sys,time
 name,image,key,value,rank=sys.argv[1:]
 def run(args): return subprocess.check_output(['docker','--context','default',*args],text=True)
 names=run(['container','ls','--all','--format','{{.Names}}']).splitlines()
-result={'rank':int(rank),'name':name,'present':name in names,'running':False}
+result={'schema':'sparkring-unverified-container-observation/v1','source':'docker-name-lookup',
+        'observed_at':time.time(),'spec_verified':False,'rank':int(rank),'name':name,'present':name in names,'running':False}
 if name in names:
  info=json.loads(run(['inspect',name]))[0]
  result.update(running=info['State'].get('Running',False),health=info['State'].get('Health',{}).get('Status'),
@@ -279,7 +280,7 @@ class Runner:
 
     def __call__(self, target, argv, timeout):
         from runtime.host import progress
-        labels = {"prerequisites": "Check host and GPU availability", "source": "Copy installer source",
+        labels = {"prerequisites": "Check host and GPU availability", "prepare-prerequisites": "Check host before preparing assets", "source": "Copy installer source",
                   "source-check": "Verify installer source", "image": "Prepare pinned image", "image-check": "Verify image",
                   "model": "Prepare checkpoint and verify all shards", "model-check": "Verify checkpoint receipt",
                   "preflight": "Check model and fabric", "create": "Create stopped model container", "created": "Verify model container",
@@ -304,11 +305,12 @@ class Runner:
             row = self.lock["site"]["ranks"][number]
             if target != row["host"]:
                 raise ValueError("Plan host differs from its locked rank")
-            if operation == "prerequisites":
+            if operation in ("prerequisites", "prepare-prerequisites"):
                 facts = json.loads(ssh(target, ["python3", "-I", "-B", "-c", PROBE], timeout=120))
                 check_facts(facts, row)
-                check_workloads(facts, self.lock, number,
-                                managed_prepared=(self.directory / "managed/runtime/prepared.json").is_file())
+                if operation == "prerequisites":
+                    check_workloads(facts, self.lock, number,
+                                    managed_prepared=(self.directory / "managed/runtime/prepared.json").is_file())
                 result = {"ok": True}
             elif operation in ("source", "source-check"):
                 ssh(target, ["python3", "-I", "-B", "-c", SOURCE, self.lock["site"]["workspace"],
@@ -324,6 +326,10 @@ class Runner:
                     result = self.native_mesh(operation)
             elif operation == "status":
                 managed = self.lock["backend"] == "glm-managed"
+                staged = ssh(target, ["python3", "-I", "-c", "from pathlib import Path; import sys; print(Path(sys.argv[1]).is_dir())", row["repository"]]).strip() == "True"
+                if not managed and staged:
+                    result = self.remote(number, "status")
+                    return {"returncode": 0, "stdout": json.dumps(result), "stderr": "", "uncertain": False}
                 name = ("" if managed else "sr-") + self.lock["site"]["name"] + f"-r{number}"
                 key = "io.sparkring.container-spec" if managed else "io.sparkring.deployment"
                 value = "glm-tp4/v1" if managed else self.lock["id"]

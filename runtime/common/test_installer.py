@@ -8,7 +8,7 @@ import zipfile
 
 import pytest
 
-from runtime.common import compose, glm_native_candidate, installer, tp2
+from runtime.common import compose, glm_native_candidate, installer, process_lock, tp2
 from scripts import sparkring, sparkring_installer
 
 GLM = installer.DEFAULTS["glm53", 2]
@@ -68,6 +68,15 @@ def test_pair_start_waits_for_both_hosts_and_starts_worker_first(deployment):
     assert hosts.events.index(("running", 0)) < hosts.events.index(("smoke", 0))
 
 
+def test_asset_preparation_has_no_stop_start_or_fabric_mutations(deployment):
+    directory, _ = deployment
+    hosts = Hosts()
+    assert installer.apply(directory, "prepare", runner=hosts, execute=True)["complete"]
+    assert {name for name, rank in hosts.events} == {
+        "prepare-prerequisites", "source", "source-check", "image", "image-check", "model", "model-check"}
+    assert installer.apply(directory, "up", runner=hosts, execute=True)["complete"]
+
+
 def test_default_up_and_status_do_not_contact_hosts(deployment):
     directory, _ = deployment
     result = installer.apply(directory, "up", runner=lambda *a: pytest.fail("SSH"))
@@ -117,9 +126,15 @@ def test_repeat_up_rechecks_completed_actions_without_creating_again(deployment)
 
 def test_concurrent_up_and_down_are_excluded(deployment):
     directory, _ = deployment
-    (directory / "operation.lock").write_text("other process")
-    with pytest.raises(ValueError, match="Another operation"):
-        installer.apply(directory, "down", runner=Hosts(), execute=True)
+    with process_lock.hold(directory / "operation.lock"):
+        with pytest.raises(ValueError, match="Another operation"):
+            installer.apply(directory, "down", runner=Hosts(), execute=True)
+
+
+def test_dead_process_lock_does_not_require_manual_file_removal(deployment):
+    directory, _ = deployment
+    (directory / "operation.lock").write_text("interrupted process")
+    assert installer.apply(directory, "down", runner=Hosts(), execute=True)["complete"]
 
 
 @pytest.mark.parametrize("change", ["site", "image", "bundle"])

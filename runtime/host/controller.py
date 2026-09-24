@@ -262,13 +262,8 @@ def lifecycle(argv):
             path = installer.read(STATE / "active.json")["path"]
             result["deployment"] = installer.status(path)
             if args.refresh:
-                from scripts.installer_runner import Runner
-                runner = Runner(path)
-                observations = []
-                for action in installer.operation_plan(runner.lock, "status")["phases"][0]["actions"]:
-                    current = runner(action["host"], action["argv"], action["timeout"])
-                    observations.append({"host": action["host"], "result": json.loads(current["stdout"]) if current["returncode"] == 0 else {"error": current["stderr"]}})
-                result["deployment"].update(observations=observations, live_observed=True)
+                from runtime.host import retained_source
+                result["deployment"] = retained_source.apply(path, "status", cache=STATE / "retained-sources")
         if args.json:
             print(json.dumps(result, indent=2))
         else:
@@ -285,7 +280,6 @@ def lifecycle(argv):
                     print("Use --refresh for current model container state.")
             print("Network observations do not qualify GPU/RDMA serving.")
         return 0
-    from scripts.installer_runner import Runner
     if args.plan and args.execute:
         raise ValueError("Choose --plan or --execute")
     if args.operation == "up" and args.profile:
@@ -341,8 +335,9 @@ def lifecycle(argv):
             if previous.get("operation") != "down" or not previous.get("complete"):
                 raise ValueError("Run sparkring down before selecting another model")
     confirm("Apply these model/image actions?", args.execute)
+    from runtime.host import retained_source
+    result = retained_source.apply(directory, args.operation, cache=STATE / "retained-sources")
     node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
-    result = installer.apply(directory, args.operation, runner=Runner(directory), execute=True)
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
 

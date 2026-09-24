@@ -1,7 +1,7 @@
 # Linux installation
 
-**Development:** the package and control network have local/simulated tests.
-DGX Spark installation, reboot recovery and serving qualification are pending.
+**Development:** the single-command workflow has simulated tests. Its TP4
+hardware acceptance, blank-host setup and reboot recovery are pending.
 
 Choose any Spark as Node A. Connect its 10GbE port to your network. Connect a
 pair with p0↔p0, or a four-Spark ring with each p0 connected to the next p1.
@@ -11,11 +11,30 @@ On Node A:
 
 ```bash
 sudo apt install ./sparkring_<version>_arm64.deb
-sudo sparkring setup
-sudo sparkring status
-sparkring models
-sudo sparkring up qwen38-flash-next-qad-tp4  # select a profile for your node count
+sudo sparkring install
 ```
+
+Choose an exact model profile when prompted. The command discovers/configures
+the cluster on first use, updates workers from Node A's package, reuses cached
+images and weights, and copies missing assets over verified fabric paths. It
+prepares assets before stopping the previous managed model. A failed switch
+attempts recovery from the retained deployment and records the outcome.
+
+For an LLM or a repeatable installation:
+
+```bash
+sudo sparkring install --profile qwen38-flash-next-qad-tp4 --plan --json
+sudo sparkring install --profile qwen38-flash-next-qad-tp4 --yes --json
+sudo sparkring status --refresh --json
+```
+
+`--json` writes one result to stdout; progress stays on stderr and in the log.
+Exit codes are 0 for success/planning, 3 for missing input, and 2 for failure.
+`needs_input` identifies the required choice, such as profile, approval or
+storage. `--yes` approves model replacement and first-use setup; it does not
+trust unknown SSH keys or authorize stopping unrelated workloads. A configured
+ring is inspected without changing links. Use `sparkring setup` to review cable
+or network changes separately. `sparkring models` lists the exact profiles.
 
 Follow the installation from another terminal:
 
@@ -37,7 +56,7 @@ for log lines; it does not indicate model readiness.
 An explicit development image can accompany the existing Qwen profile:
 
 ```bash
-sudo sparkring up qwen38-flash-next-qad-tp4 --instance candidate --image-lock image-lock.json --plan
+sudo sparkring install --profile qwen38-flash-next-qad-tp4 --image-lock image-lock.json --plan
 ```
 
 The `sparkring-installer-image/v1` file pins the image configuration, optional
@@ -56,10 +75,11 @@ dashboard consumers; boot identity and observation times remain independently
 observed. It is not attestation or serving qualification.
 
 For a private image without a reachable registry, set `image_reference` to its
-exact `image_id` and preload it on every rank. The installer stops with a clear
-message if it is absent. A different `--instance` gives the image its own
-deployment and compilation cache. Preview works while the existing model runs;
-execution requires completing `sparkring down` for that deployment first.
+exact `image_id` and load it on one enrolled Spark. The installer finds that
+copy and streams it to missing peers without creating another export archive.
+A registry-backed image is downloaded once on Node A. Source/image/profile
+choices automatically select a separate deployment and compilation cache;
+there is no instance name or manual stop command to supply.
 `sparkring export --share` retains the image lock and per-rank Compose files.
 
 `sparkring status --json --refresh` reports the saved deployment/image IDs and
@@ -116,7 +136,8 @@ SPARKRING_SHARE_INTERNET=yes
 SPARKRING_LINK_POLICY=keep
 ```
 
-Run `sudo sparkring setup --env /path/to/settings.env`. Values are parsed as
+Run `sudo sparkring install --env /path/to/settings.env` for first-use setup.
+Values are parsed as
 literal settings, never sourced as shell code. SSH handles credential prompts.
 `--reset-links` requests reviewed replacement of fabric IPv4 settings.
 `--plan` discovers/reviews through existing access without configuring hosts.
@@ -163,10 +184,15 @@ directories for the selected checkpoint. A complete metadata match is proposed
 for reuse, then every pinned shard is verified during preparation. On Linux,
 later gates reuse that checksum receipt only while the complete file list, device,
 inode, size, modification time and change time match; changes trigger checksum
-verification again. Missing checkpoints
-are downloaded; mismatched or corrupt caches are never overwritten silently.
+verification again. A missing checkpoint is copied from a verified peer, or
+downloaded once on Node A if none has it. Copies are checksum-verified before
+launch. Mismatched or corrupt unowned directories are not overwritten.
 `--model-path /absolute/checkpoint` selects a cache explicitly when it is stored
 elsewhere. This avoids downloading weights already present on the ranks.
+`--cache-path /absolute/cache` chooses the writable compilation cache. Image
+imports and checkpoint copies check storage before the model switch; insufficient
+space leaves the old model running. The installer does not delete model weights
+or unrelated archives to make room.
 Arbitrary upstream images still need their own compatible transport adapter.
 
 ## Local build and tests

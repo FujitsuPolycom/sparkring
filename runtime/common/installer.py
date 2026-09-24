@@ -8,13 +8,12 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 import ipaddress
-import os
 from pathlib import Path, PurePosixPath
 import re
 import uuid
 import zipfile
 
-from runtime.common import compose, distribution, profiles, setup, tp2
+from runtime.common import compose, distribution, process_lock, profiles, setup, tp2
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
@@ -258,7 +257,7 @@ def connection(lock):
 
 
 def operation_plan(lock, action):
-    if action not in ("up", "down", "status"):
+    if action not in ("prepare", "up", "down", "status"):
         raise ValueError("Unsupported installation operation")
     ranks = lock["site"]["ranks"]
 
@@ -280,9 +279,12 @@ def operation_plan(lock, action):
         else:
             phases = [phase("owned", ranks), phase("stop", ranks, "stops-model", "stopped")]
     else:
-        phases = [phase("prerequisites", ranks), phase("source", ranks, "mutates-host", "source-check"),
+        phases = [phase("prepare-prerequisites" if action == "prepare" else "prerequisites", ranks), phase("source", ranks, "mutates-host", "source-check"),
                   phase("image", ranks, "mutates-host", "image-check"),
                   phase("model", ranks, "mutates-host", "model-check")]
+        if action == "prepare":
+            return deploy_engine.seal_plan({"schema": "sparkring-deploy-plan/v1", "deployment": lock["id"],
+                                           "operation": action, "phases": phases})
         if lock["backend"] == "glm-managed":
             phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared"),
                        phase("managed-create", ranks[:1], "starts-model", "managed-created"),
@@ -323,14 +325,7 @@ def apply(directory, action, *, runner, execute=False):
         if "native_mesh" in lock["site_input"]:
             result["native_mesh"] = {"mode": "create", "replaces": lock["site_input"]["native_mesh"]["replaces"]}
         return result
-    guard = directory / "operation.lock"
-    try:
-        fd = os.open(guard, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError as error:
-        raise ValueError("Another operation is active or interrupted; inspect operation.lock before recovery") from error
-    try:
-        with os.fdopen(fd, "w") as stream:
-            stream.write(str(os.getpid()))
+    with process_lock.hold(directory / "operation.lock"):
         state_path = directory / "state.json"
         state = read(state_path) if state_path.exists() else {"generation": 0, "operation": None, "complete": True}
         if state["operation"] != action:
@@ -349,8 +344,6 @@ def apply(directory, action, *, runner, execute=False):
         state["complete"] = result["complete"]
         deploy_engine.save_receipt(state_path, state)
         return {"executed": True, **state, **connection(lock)}
-    finally:
-        guard.unlink()
 
 
 def status(directory):

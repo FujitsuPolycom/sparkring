@@ -43,5 +43,5 @@ def main(argv=None):
         for row in rows:
             mode = "installer" if row["automated"] else "guide"
             print(f"{row['profile']}  [{mode}]\n  {row['title']}")
-        print("Start an installer profile with: sparkring up PROFILE")
+        print("Install a profile with: sudo sparkring install --profile PROFILE")
     return 0

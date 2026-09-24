@@ -5,7 +5,6 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import json
-import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -149,20 +148,11 @@ def matches(value, expected):
 
 def execute_plan(plan: dict, receipt_path: Path, approval: str, **options) -> dict:
     """Hold a receipt lock so two controllers cannot apply the same plan at once."""
+    from runtime.common import process_lock
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     lock = receipt_path.with_name(receipt_path.name + ".lock")
-    try:
-        fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as exc:
-        raise ValueError(
-            "Deployment receipt is locked; inspect the owning process before recovery"
-        ) from exc
-    try:
-        with os.fdopen(fd, "w") as stream:
-            stream.write(str(os.getpid()))
+    with process_lock.hold(lock):
         return _execute_plan(plan, receipt_path, approval, **options)
-    finally:
-        lock.unlink()
 
 
 def _execute_plan(
