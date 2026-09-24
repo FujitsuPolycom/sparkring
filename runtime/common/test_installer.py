@@ -182,7 +182,7 @@ def test_managed_glm_uses_managed_native_checks_and_lifecycle():
     assert phases.index("managed-native-check") < phases.index("managed-start")
     assert "managed-install" in phases
     assert "start-api" not in phases
-    assert all(r["cache"] == lock["site"]["workspace"] + "/managed/cache" for r in lock["site"]["ranks"])
+    assert all(r["cache"] == installer.managed_workspace(lock["site"]["name"]) + "/cache" for r in lock["site"]["ranks"])
 
 
 def test_managed_glm_rejects_cache_paths_its_stager_cannot_honor():

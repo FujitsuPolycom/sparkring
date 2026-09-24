@@ -59,6 +59,12 @@ def checkpoint_contract(card):
     return model
 
 
+def managed_workspace(name):
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name):
+        raise ValueError("Invalid managed deployment name")
+    return "/srv/sparkring/" + name + "-managed"
+
+
 def site_document(raw, card, revision):
     if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address", "api_address", "native_mesh"}:
         raise ValueError("Unknown site setting")
@@ -74,7 +80,7 @@ def site_document(raw, card, revision):
     if len(PurePosixPath(workspace).parts) < 4:
         raise ValueError("Use a dedicated workspace below an operator-owned parent")
     ranks = []
-    cache_default = workspace + ("/managed/cache" if backend(card) == "glm-managed" else "/cache")
+    cache_default = managed_workspace(name) + "/cache" if backend(card) == "glm-managed" else workspace + "/cache"
     for number, row in enumerate(rows):
         allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model", "fabric", "node_id"}
         if not isinstance(row, dict) or set(row) - allowed:
@@ -101,7 +107,7 @@ def site_document(raw, card, revision):
                 raise ValueError("Persistent node ID must be a UUID string")
             item["node_id"] = str(uuid.UUID(row["node_id"]))
         if backend(card) == "glm-managed" and item["cache"] != cache_default:
-            raise ValueError("Managed GLM cache must remain under its dedicated managed/cache workspace")
+            raise ValueError("Managed GLM cache must remain under its dedicated backend workspace")
         if item["host_ip"] == item["management_ip"] and card["profile"] not in compose.TP4_PROFILES:
             raise ValueError("Management and data fabric addresses must be distinct")
         paths = [PurePosixPath(item[key]) for key in ("model", "cache", "repository", "deployment_root")]
@@ -283,6 +289,8 @@ def operation_plan(lock, action):
                   phase("image", ranks, "mutates-host", "image-check"),
                   phase("model", ranks, "mutates-host", "model-check")]
         if action == "prepare":
+            if lock["backend"] == "glm-managed":
+                phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared")]
             return deploy_engine.seal_plan({"schema": "sparkring-deploy-plan/v1", "deployment": lock["id"],
                                            "operation": action, "phases": phases})
         if lock["backend"] == "glm-managed":

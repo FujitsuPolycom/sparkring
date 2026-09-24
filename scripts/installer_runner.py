@@ -254,7 +254,7 @@ class Runner:
                 installer.write(image_path, receipt)
             rows = lock["site"]["ranks"]
             inventory = deploy_suite.discover([r["host"] + "=" + r["management_ip"] for r in rows], lock["site"]["controller_address"])
-            spec = deploy_suite.create_spec(inventory, lock["site"]["name"], lock["site"]["workspace"] + "/managed",
+            spec = deploy_suite.create_spec(inventory, lock["site"]["name"], installer.managed_workspace(lock["site"]["name"]),
                                             "198.18.0.0/21", image_path, reuse_existing_image=True,
                                             existing_model_roots=[r["model"] for r in rows], runtime_profile="tp4-dcp1-sparkcache",
                                             target_model_variant=lock["selection"]["target_variant"], preserve_existing_network=True)

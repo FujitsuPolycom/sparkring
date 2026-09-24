@@ -260,10 +260,8 @@ def lifecycle(argv):
                 result["nodes"].append({"host": host["host"], **observation})
         if (STATE / "active.json").exists():
             path = installer.read(STATE / "active.json")["path"]
-            result["deployment"] = installer.status(path)
-            if args.refresh:
-                from runtime.host import retained_source
-                result["deployment"] = retained_source.apply(path, "status", cache=STATE / "retained-sources")
+            from runtime.host import retained_source
+            result["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=STATE / "retained-sources")
         if args.json:
             print(json.dumps(result, indent=2))
         else:

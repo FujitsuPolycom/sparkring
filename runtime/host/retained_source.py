@@ -34,6 +34,8 @@ def checkout(directory, cache, *, run=subprocess.run):
 
 def _operation(directory, operation):
     from runtime.common import installer
+    if operation == "saved-status":
+        return installer.status(directory)
     from scripts.installer_runner import Runner
     runner = Runner(directory)
     if operation in ("verify", "status"):
@@ -59,7 +61,7 @@ def _operation(directory, operation):
 
 
 def apply(directory, operation, *, cache, run=subprocess.run):
-    if operation not in ("prepare", "up", "down", "verify", "status"):
+    if operation not in ("prepare", "up", "down", "verify", "status", "saved-status"):
         raise ValueError("Unsupported retained deployment operation")
     directory = Path(directory).resolve()
     lock = installer.read(directory / "deployment.lock.json")

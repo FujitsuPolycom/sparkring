@@ -8,6 +8,13 @@ import pytest
 from runtime.host import retained_source
 
 
+def test_saved_status_never_constructs_a_live_runner(monkeypatch):
+    from scripts import installer_runner
+    monkeypatch.setattr(installer_runner, "Runner", lambda _: pytest.fail("Cached status contacted execution boundary"))
+    monkeypatch.setattr(retained_source.installer, "status", lambda path: {"state": "saved", "path": path})
+    assert retained_source._operation("fixture", "saved-status") == {"state": "saved", "path": "fixture"}
+
+
 @pytest.fixture
 def archived_program(tmp_path):
     source = tmp_path / "program"
