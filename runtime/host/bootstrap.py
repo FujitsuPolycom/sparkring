@@ -59,10 +59,10 @@ def ssh_argv(route, directory, *, interactive=False, identity=None):
     if not route or len(route) > 3:
         raise ValueError("Bootstrap SSH route requires one through three hops")
     hop = validate_hop(route[-1])
-    identity = hashlib.sha256(json.dumps(route, sort_keys=True).encode()).hexdigest()[:20]
+    socket_id = hashlib.sha256(json.dumps(route, sort_keys=True).encode()).hexdigest()[:20]
     command = ["ssh", "-o", "StrictHostKeyChecking=ask" if interactive else "StrictHostKeyChecking=yes",
                "-o", "BatchMode=no" if interactive else "BatchMode=yes", "-o", "ConnectTimeout=8",
-               "-o", "ControlMaster=auto", "-o", "ControlPersist=600", "-o", "ControlPath=" + str(Path(directory) / identity),
+               "-o", "ControlMaster=auto", "-o", "ControlPersist=600", "-o", "ControlPath=" + str(Path(directory) / socket_id),
                "-p", str(hop["port"])]
     if len(route) > 1:
         jump = ssh_argv(route[:-1], directory, identity=identity)

@@ -81,6 +81,13 @@ def test_ssh_hops_resolve_link_scope_on_the_jump_host_and_keep_key_local(tmp_pat
     assert command[-1] == "cody@fe80::2%port1"
     assert "ForwardAgent=yes" not in json.dumps(command)
     assert "StrictHostKeyChecking=yes" in command
+    assert command[command.index("-i") + 1] == str(tmp_path / "private")
+    assert nested[nested.index("-i") + 1] == str(tmp_path / "private")
+
+
+def test_bootstrap_does_not_invent_an_identity_file_when_using_existing_ssh_auth(tmp_path):
+    route = [{"user": "root", "address": "fe80::1", "interface": "port0", "port": 22}]
+    assert "-i" not in bootstrap.ssh_argv(route, tmp_path)
 
 
 def test_bootstrap_discovery_uses_authenticated_identity_and_rejects_wrong_neighbor_mac():
