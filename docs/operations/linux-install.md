@@ -28,6 +28,12 @@ Long steps report that they are still working. Verbose command output goes to
 `install-details.log`; use `sparkring logs --details --follow` when investigating
 an error. Credentials entered through SSH are not recorded.
 
+Interactive terminals show colored results and a spinner. Saved logs and piped
+output stay plain; `--plain` or `NO_COLOR=1` disables terminal decoration. From
+Windows PowerShell, use `ssh -t spark-r0 "sudo sparkring logs --follow"` (replace
+`spark-r0` with Node A's SSH address). The follower's spinner means it is waiting
+for log lines; it does not indicate model readiness.
+
 Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and host
 key confirmation, copies SparkRing and its Debian dependencies through the fabric,
 and shows the proposed network changes. Workers need no separate Ethernet cable

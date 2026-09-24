@@ -9,8 +9,11 @@ import sys
 import threading
 import time
 
+from runtime.host.terminal import Console
+
 _log = None
 _details = None
+_console = None
 _lock = threading.RLock()
 
 
@@ -48,17 +51,19 @@ def failure(message):
 
 
 class Tee:
-    def __init__(self, stream):
+    def __init__(self, stream, console):
         self.stream = stream
+        self.console = console
         self.partial = ""
 
     def write(self, text):
-        self.stream.write(text)
-        self.partial += text
-        while "\n" in self.partial:
-            line, self.partial = self.partial.split("\n", 1)
-            if line.strip():
-                record(line)
+        with _lock:
+            self.console.write(text, stream=self.stream)
+            self.partial += text
+            while "\n" in self.partial:
+                line, self.partial = self.partial.split("\n", 1)
+                if line.strip():
+                    record(line)
         return len(text)
 
     def flush(self):
@@ -74,7 +79,7 @@ class Tee:
 
 @contextlib.contextmanager
 def run(operation):
-    global _log, _details
+    global _log, _details, _console
     root = directory()
     if any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("Installation log directory contains a symlink")
@@ -87,17 +92,20 @@ def run(operation):
             path.chmod(0o600)
         _log, _details = primary, details
         try:
-            with contextlib.redirect_stdout(Tee(sys.stdout)), contextlib.redirect_stderr(Tee(sys.stderr)):
-                print(f"SparkRing {operation}. Progress: {paths[0]}", flush=True)
-                print("Follow from another terminal: sudo sparkring logs --follow", flush=True)
-                yield
+            with Console(sys.stderr) as _console:
+                with contextlib.redirect_stdout(Tee(sys.stdout, _console)), contextlib.redirect_stderr(Tee(sys.stderr, _console)):
+                    print(f"SparkRing {operation}. Progress: {paths[0]}", flush=True)
+                    print("Follow from another terminal: sudo sparkring logs --follow", flush=True)
+                    yield
         finally:
-            _log = _details = None
+            _log = _details = _console = None
 
 
 @contextlib.contextmanager
 def step(message):
     say(message)
+    console = _console
+    activity = console.begin(message) if console is not None else None
     outcome = {"failed": False}
     finished = threading.Event()
     started = time.monotonic()
@@ -118,6 +126,8 @@ def step(message):
     finally:
         finished.set()
         thread.join(timeout=1)
+        if console is not None:
+            console.end(activity)
 
 
 def command(argv, *, title, invoke=subprocess.run, **kwargs):
@@ -136,6 +146,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring logs")
     parser.add_argument("--follow", action="store_true")
     parser.add_argument("--details", action="store_true")
+    parser.add_argument("--plain", action="store_true", help="disable terminal colors and animation")
     parser.add_argument("--lines", type=int, default=40)
     args = parser.parse_args(argv)
     root = Path(os.environ.get("SPARKRING_LOG_DIR", "/var/log/sparkring"))
@@ -149,14 +160,16 @@ def main(argv=None):
     if not 1 <= args.lines <= 10000:
         parser.error("--lines must be between 1 and 10000")
     try:
-        with path.open(encoding="utf-8") as stream:
+        with path.open(encoding="utf-8") as stream, Console(sys.stdout, plain=args.plain or args.details) as console:
             from collections import deque
             for line in deque(stream, maxlen=args.lines):
-                print(line, end="", flush=True)
+                console.write(line)
+            if args.follow:
+                console.begin("Waiting for new installation output", elapsed=False)
             while args.follow:
                 line = stream.readline()
                 if line:
-                    print(line, end="", flush=True)
+                    console.write(line)
                 else:
                     time.sleep(0.25)
     except KeyboardInterrupt:
