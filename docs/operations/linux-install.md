@@ -118,7 +118,10 @@ deployment. Old container/source/weight directories are retained.
 
 The installer checks existing container model mounts and standard model
 directories for the selected checkpoint. A complete metadata match is proposed
-for reuse, then every pinned shard is verified before launch. Missing checkpoints
+for reuse, then every pinned shard is verified during preparation. On Linux,
+later gates reuse that checksum receipt only while the complete file list, device,
+inode, size, modification time and change time match; changes trigger checksum
+verification again. Missing checkpoints
 are downloaded; mismatched or corrupt caches are never overwritten silently.
 `--model-path /absolute/checkpoint` selects a cache explicitly when it is stored
 elsewhere. This avoids downloading weights already present on the ranks.

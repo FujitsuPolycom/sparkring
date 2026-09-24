@@ -13,6 +13,8 @@ from runtime.common import compose, glm_native_candidate, installer, native_cand
 from runtime.common.container_spec import expected_inspection
 from scripts import deploy_engine
 
+POSIX_STATS = os.name == "posix"
+
 
 def run(argv, **kwargs):
     if argv[0] == "docker":
@@ -70,10 +72,33 @@ def model_files(path):
     return result
 
 
+def model_file_stats(path):
+    """Linux inode/change-time fingerprints for an already checksum-verified tree."""
+    root = plain(path)
+    result = {}
+    for item in sorted(root.rglob("*")):
+        relative = item.relative_to(root)
+        if relative.parts[0] in (".cache", ".git"):
+            continue
+        if item.is_symlink():
+            raise ValueError("Checkpoint verification cannot follow symlinks")
+        if item.is_file():
+            value = item.stat()
+            result[relative.as_posix()] = [value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns]
+    return result
+
+
 def verify_model(lock, row, receipt_path, *, receipt=None, measured=None):
     card = lock["selection"]
     receipt = profiles.read_json(receipt_path) if receipt is None else receipt
-    measured = model_files(row["model"]) if measured is None else measured
+    if measured is None:
+        before = model_file_stats(row["model"])
+        if POSIX_STATS and receipt.get("file_stats") == before:
+            measured = receipt["files"]
+        else:
+            measured = model_files(row["model"])
+            if model_file_stats(row["model"]) != before:
+                raise ValueError("Checkpoint changed during checksum verification")
     if (receipt["repository"] != card["model_repository"] or receipt["revision"] != card["model_revision"]
             or receipt["path"] != row["model"] or receipt["files"] != measured):
         raise ValueError("Checkpoint differs from its recorded revision/files")
@@ -100,6 +125,16 @@ def owned(spec, info, image):
         raise ValueError("Deployment container is absent")
     expected = expected_inspection(spec, image, backend="compose")
     config, host = info["Config"], info["HostConfig"]
+    host = dict(host)
+    # Docker uses null for absent optional lists. NVIDIA-backed containers can
+    # also receive label=disable on hosts where SELinux is not an active policy.
+    for field in ("CapAdd", "SecurityOpt"):
+        if host.get(field) is None and expected["host_config"][field] == []:
+            host[field] = []
+    if host.get("SecurityOpt") == ["label=disable"] and not expected["host_config"]["SecurityOpt"]:
+        options = json.loads(run(["docker", "info", "--format", "{{json .SecurityOptions}}"] ).stdout)
+        if isinstance(options, list) and not any("selinux" in str(value).lower() for value in options):
+            host["SecurityOpt"] = []
     environment = dict(item.split("=", 1) for item in config.get("Env", []) if "=" in item)
     mounts = {item["Destination"]: {k: item[k] for k in ("Source", "Type", "RW")} for item in info["Mounts"]}
     if (info["Image"] != spec.image_id or config.get("Cmd") != expected["cmd"]
@@ -194,8 +229,12 @@ def perform(operation, lock, number):
                  "--env", "HF_HOME=/tmp/huggingface", "--mount", f"type=bind,src={model},dst=/model",
                  "--entrypoint", "/opt/venv/bin/python", card["image_id"], "-c", code,
                  card["model_repository"], card["model_revision"]])
+        before = model_file_stats(model)
+        hashes = model_files(model)
+        if model_file_stats(model) != before:
+            raise ValueError("Checkpoint changed while preparing its checksum receipt")
         receipt = {"repository": card["model_repository"], "revision": card["model_revision"],
-                   "path": row["model"], "files": model_files(model),
+                   "path": row["model"], "files": hashes, "file_stats": before,
                    "origin": "operator-declared-verified-copy" if row["reuse_verified_model"] else "pinned-hub-download"}
         verify_model(lock, row, model_receipt, receipt=receipt, measured=receipt["files"])
         deploy_engine.save_receipt(model_receipt, receipt)

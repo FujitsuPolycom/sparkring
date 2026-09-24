@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -93,6 +94,59 @@ def test_container_ownership_is_more_than_a_name(profile, change, monkeypatch):
         info["HostConfig"]["Privileged"] = True
     with pytest.raises(ValueError, match="refusing adoption"):
         host.owned(spec, info, image)
+
+
+@pytest.mark.parametrize("selinux", [False, True])
+def test_daemon_empty_capabilities_and_nvidia_selinux_default(selinux, monkeypatch):
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    spec = installer.specifications(lock)[0]
+    info, image = inspection(spec)
+    info["HostConfig"].update(CapAdd=None, SecurityOpt=["label=disable"])
+    monkeypatch.setattr(compose, "check_project_containers", lambda *a, **k: None)
+    monkeypatch.setattr(host, "run", lambda *a, **k: SimpleNamespace(stdout=json.dumps(["name=selinux"] if selinux else ["name=apparmor", "name=seccomp,profile=builtin"])))
+    if selinux:
+        with pytest.raises(ValueError, match="refusing adoption"):
+            host.owned(spec, info, image)
+    else:
+        assert host.owned(spec, info, image) is info
+    # Extra policies remain a mismatch even on a host without SELinux.
+    info["HostConfig"]["SecurityOpt"].append("apparmor=unconfined")
+    with pytest.raises(ValueError, match="refusing adoption"):
+        host.owned(spec, info, image)
+
+
+def test_unchanged_verified_checkpoint_uses_file_identity_but_changes_rehash(tmp_path, monkeypatch):
+    model = tmp_path / "model"
+    model.mkdir()
+    for name, content in {"config.json": b"{}", "model.safetensors.index.json": b'{"weight_map":{"w":"weights.safetensors"}}', "weights.safetensors": b"original"}.items():
+        (model / name).write_bytes(content)
+    hashes = host.model_files(model)
+    receipt = {"repository": "test/model", "revision": "a" * 40, "path": str(model), "files": hashes,
+               "file_stats": host.model_file_stats(model)}
+    lock = {"selection": {"profile": "fixture", "model_repository": "test/model", "model_revision": "a" * 40}}
+    row = {"model": str(model)}
+    monkeypatch.setattr(host, "POSIX_STATS", True)
+    monkeypatch.setattr(installer, "checkpoint_contract", lambda _: {"config_sha256": hashes["config.json"], "index_sha256": hashes["model.safetensors.index.json"]})
+    original = host.model_files
+    calls = []
+    monkeypatch.setattr(host, "model_files", lambda path: calls.append(path) or original(path))
+    host.verify_model(lock, row, tmp_path / "receipt.json", receipt=receipt)
+    assert calls == []
+    (model / "weights.safetensors").write_bytes(b"changed")
+    with pytest.raises(ValueError, match="Checkpoint differs"):
+        host.verify_model(lock, row, tmp_path / "receipt.json", receipt=receipt)
+    assert calls
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Linux ctime is the change-detection contract")
+def test_restoring_mtime_cannot_hide_a_linux_checkpoint_edit(tmp_path):
+    path = tmp_path / "weights.safetensors"
+    path.write_bytes(b"original")
+    before = host.model_file_stats(tmp_path)
+    metadata = path.stat()
+    path.write_bytes(b"modified")
+    os.utime(path, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+    assert host.model_file_stats(tmp_path) != before
 
 
 def test_native_receipt_reads_keep_binary_output(monkeypatch):
