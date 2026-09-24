@@ -1,5 +1,6 @@
 """Fresh/adopted mesh plans preserve admission barriers and exact identities."""
 import copy
+import base64
 import json
 import subprocess
 import sys
@@ -151,5 +152,8 @@ def test_discovery_keeps_configured_links_with_existing_rdma_users(monkeypatch):
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(seed.control_node, "write", lambda *a, **k: None)
-    assert seed.prepare("ssh-ed25519 AAAATEST fixture", interfaces=["p0", "p1", "p2", "p3"], run=run)["prepared"]
+    algorithm = b"ssh-ed25519"
+    encoded = len(algorithm).to_bytes(4, "big") + algorithm + (32).to_bytes(4, "big") + bytes(range(32))
+    public = algorithm.decode() + " " + base64.b64encode(encoded).decode() + " fixture"
+    assert seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run)["prepared"]
     assert not any(a[0] == "rdma" for a in calls)
