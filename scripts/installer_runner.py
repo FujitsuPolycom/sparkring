@@ -19,6 +19,7 @@ def _probe():
     import json
     import os
     import platform
+    import re
     import shutil
     import subprocess
     from pathlib import Path
@@ -29,7 +30,7 @@ def _probe():
             raise ValueError("Failed prerequisite: " + " ".join(args) + ": " + value.stderr.strip())
         return value.stdout
 
-    tools = {name: shutil.which(name) is not None for name in ("git", "python3", "docker", "nvidia-smi", "nvidia-ctk", "ip")}
+    tools = {name: shutil.which(name) is not None for name in ("git", "python3", "docker", "nvidia-smi", "nvidia-ctk", "ip", "ibv_devinfo")}
     addresses = json.loads(run(["ip", "-j", "address"]))
     ipv4 = {row["ifname"]: [item["local"] for item in row.get("addr_info", []) if item["family"] == "inet"] for row in addresses}
     management = os.environ.get("SSH_CONNECTION", "").split()
@@ -40,10 +41,14 @@ def _probe():
         try:
             netdev = (port / "gid_attrs/ndevs/3").read_text().strip()
             gid = ipaddress.IPv6Address((port / "gids/3").read_text().strip())
+            verbs = run(["ibv_devinfo", "-d", path.name, "-i", "1"])
+            active_mtu = re.search(r"active_mtu:\s+(\d+)\s+\(\d+\)", verbs)
+            if active_mtu is None:
+                raise ValueError("RDMA active MTU is unavailable")
             rdma.append({"device": path.name, "netdev": netdev, "gid_ip": str(gid.ipv4_mapped),
                          "type": (port / "gid_attrs/types/3").read_text().strip(),
                          "active": "ACTIVE" in (port / "state").read_text(), "ips": ipv4.get(netdev, []),
-                         "rdma_mtu": int((port / "active_mtu").read_text().split()[-1]),
+                         "rdma_mtu": int(active_mtu.group(1)),
                          "mtu": next(row["mtu"] for row in addresses if row["ifname"] == netdev)})
         except (OSError, ValueError, StopIteration):
             rdma.append({"device": path.name, "error": "Missing or invalid GID index 3/interface mapping"})
@@ -73,7 +78,7 @@ def _probe():
     return {"platform": platform.system(), "architecture": platform.machine(), "tools": tools,
             "management_ip": management_ip, "interface": primary.get("netdev"),
             "fabric_ip": primary.get("ips", [None])[0] if len(primary.get("ips", [])) == 1 else None,
-            "rdma": rdma, "docker": run(["docker", "info", "--format", "{{.ServerVersion}}"]),
+            "rdma": rdma, "ipv4": ipv4, "docker": run(["docker", "info", "--format", "{{.ServerVersion}}"]),
             "compose": run(["docker", "compose", "version", "--short"]),
             "gpu_containers": gpu_containers, "gpu_process_ancestors": processes,
             "gpu": run(["nvidia-smi", "-L"])}
@@ -159,7 +164,15 @@ def check_facts(facts, row):
     missing = [name for name, found in facts["tools"].items() if not found]
     if missing:
         raise ValueError("Missing host tools: " + ", ".join(missing))
-    if facts["management_ip"] != row["management_ip"] or facts["fabric_ip"] != row["host_ip"] or facts["interface"] != row["interface"]:
+    if facts["management_ip"] != row["management_ip"]:
+        raise ValueError("Discovered management/fabric mapping differs from the saved site; inspect before reinitializing")
+    if "fabric" in row:
+        # TP4 bootstraps over the admitted mesh's management address. Its RDMA
+        # endpoints are checked independently below and by qwen_mesh admission.
+        matching = [name for name, values in facts.get("ipv4", {}).items() if row["host_ip"] in values]
+        if matching != [row["interface"]] or row["interface"] in {d.get("netdev") for d in facts["rdma"]}:
+            raise ValueError("TP4 bootstrap address must identify its independent management interface")
+    elif facts["fabric_ip"] != row["host_ip"] or facts["interface"] != row["interface"]:
         raise ValueError("Discovered management/fabric mapping differs from the saved site; inspect before reinitializing")
     devices = {entry["device"]: entry for entry in facts["rdma"]}
     for name in row["hcas"]:

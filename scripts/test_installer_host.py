@@ -43,6 +43,19 @@ def test_prerequisites_fail_before_host_changes(mutation):
         runner.check_facts(value, row)
 
 
+def test_tp4_bootstrap_uses_management_while_rdma_devices_remain_independent():
+    row = installer.make_lock(GLM, site(), "1" * 40, "2" * 64)["site"]["ranks"][0]
+    row.update(fabric={"site_path": "/etc/sparkring/site.json"}, host_ip="192.0.2.50", interface="management0")
+    value = facts(row)
+    value.update(fabric_ip="198.18.20.1", interface="data0", ipv4={"management0": ["192.0.2.50"], "data0": ["198.18.20.1"]})
+    for device in value["rdma"]:
+        device["netdev"] = "data0"
+    runner.check_facts(value, row)
+    value["ipv4"]["management0"] = ["192.0.2.51"]
+    with pytest.raises(ValueError, match="bootstrap address"):
+        runner.check_facts(value, row)
+
+
 def inspection(spec):
     image = {"Id": spec.image_id, "Os": "linux", "Architecture": "arm64", "Config": {"Env": [], "Labels": {}}}
     expected = expected_inspection(spec, image, backend="compose")
