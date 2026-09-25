@@ -142,9 +142,14 @@ def remembered_checkpoint(card, model, stats):
 
 
 def remember_checkpoint(receipt):
-    if POSIX_STATS:
+    """Best-effort: the record only saves re-hashing, so failing to write it is harmless."""
+    if not POSIX_STATS:
+        return
+    try:
         CHECKPOINTS.mkdir(parents=True, exist_ok=True, mode=0o700)
         deploy_engine.save_receipt(_checkpoint_record(receipt["path"]), receipt)
+    except OSError:
+        pass
 
 
 def pinned_differences(profile, files):
