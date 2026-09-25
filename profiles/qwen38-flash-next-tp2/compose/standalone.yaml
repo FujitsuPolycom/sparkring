@@ -9,7 +9,7 @@
 #   export SPARKRING_MASTER_ADDR=RANK0_FABRIC_IP
 #   export SPARKRING_HOST_IP=THIS_HOST_FABRIC_IP
 #   export SPARKRING_INTERFACE=THIS_HOST_FABRIC_NETDEV
-# Weights: hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 --revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir "$SPARKRING_MODEL_DIR"
+# Weights: hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 --revision 60215d26cf5e42c2db6128774032d57fc62678da --local-dir "$SPARKRING_MODEL_DIR"
 # Start WORKER host: docker compose --profile rank1 up -d
 # Then HEAD host:    docker compose --profile rank0 up -d
 # Logs: docker compose logs -f rank0  (on head; rank1 on worker)
@@ -23,7 +23,7 @@ x-sparkring:
   profile: qwen38-flash-next-tp2
   release: shared-2026.09.3
   model_repository: local-inference-lab/Qwen3.8-Flash-Next-NVFP4
-  model_revision: 629bc3218833a38b475b719f34aa571666f4a03e
+  model_revision: 60215d26cf5e42c2db6128774032d57fc62678da
   mode: standalone; prepared two-host fabric
 x-runtime: &runtime
   image: ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6
@@ -66,14 +66,14 @@ x-runtime: &runtime
   mem_limit: 115964116992
   memswap_limit: 120259084288
 x-environment: &environment
-  B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
-  B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
+  B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
+  B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
   B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
   B12X_POLICY_MODE: auto
-  B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/roce
+  B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/roce
   B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
   B12X_ROCE_PAIR_PATHS: '2'
-  CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/cute
+  CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/cute
   GLOO_SOCKET_IFNAME: ${SPARKRING_INTERFACE:?Set this hosts primary fabric interface}
   HF_HUB_OFFLINE: '1'
   NCCL_CROSS_NIC: '1'
@@ -94,11 +94,11 @@ x-environment: &environment
   SPARKRING_FEATURES: ''
   SPARKRING_TRANSPORT_MANIFEST_SHA256: 7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c
   SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-  TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/inductor
+  TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/inductor
   TRANSFORMERS_OFFLINE: '1'
-  TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/triton
+  TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/triton
   VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-  VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/vllm
+  VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/vllm
   VLLM_ENABLE_PCIE_ALLREDUCE: '0'
   VLLM_ENABLE_ROCE_ALLREDUCE: '1'
   VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -120,7 +120,7 @@ x-environment: &environment
   VLLM_SSM_CONV_STATE_LAYOUT: DS
   VLLM_USE_V2_MODEL_RUNNER: '1'
   VLLM_WORKER_MULTIPROC_METHOD: spawn
-  XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-629bc3218833
+  XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e
 services:
   rank0:
     <<: *runtime

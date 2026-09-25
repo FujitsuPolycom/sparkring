@@ -88,15 +88,15 @@ services:
     - aligned
     - --enable-prompt-tokens-details
     environment:
-      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
-      B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/b12x
+      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
+      B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
       B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
       B12X_POLICY_MODE: auto
-      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/roce
+      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/roce
       B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
       B12X_ROCE_PAIR_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 1=0/1
-      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/cute
+      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/cute
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       NCCL_CROSS_NIC: '1'
@@ -117,11 +117,11 @@ services:
       SPARKRING_FEATURES: ''
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/inductor
+      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/triton
+      TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/triton
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-      VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-629bc3218833/vllm
+      VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -143,9 +143,9 @@ services:
       VLLM_SSM_CONV_STATE_LAYOUT: DS
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-629bc3218833
+      XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e
     labels:
-      io.sparkring.deployment: aec4bd519d722bccadae2f8ce306663932e24a1be50942bbff4cc36c8c04fef7
+      io.sparkring.deployment: 5d927b5b15dc01318022238702b25d38a7e66307b856d896b129fe4cde243794
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
