@@ -111,6 +111,16 @@ def test_noninteractive_missing_approval_is_a_result_not_a_prompt(machine, capsy
     assert json.loads(capsys.readouterr().out)["field"] == "approval"
 
 
+def test_early_error_does_not_report_a_previous_transaction(machine, monkeypatch, capsys):
+    node.save(controller.STATE, 'transaction.json', {'state': 'complete', 'candidate': 'previous-run', 'complete': True})
+    def fail(*args):
+        raise ValueError('Current discovery failed')
+    monkeypatch.setattr(flow, 'refresh_cluster', fail)
+    assert command() == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result['message'] == 'Current discovery failed' and 'transaction' not in result
+
+
 @pytest.mark.parametrize("profile", ["qwen38-flash-next-qad-tp4", "glm53-flash-spark-tp4-dcp1-nocache"])
 def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine, monkeypatch, capsys, profile):
     value = cluster(4)
@@ -147,7 +157,7 @@ def test_glm_mesh_conflict_returns_input_before_updates_or_model_stop(machine, m
     node.save(controller.STATE, "cluster.json", value)
     monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
     def remote(target, argv):
-        if "assets" in argv:
+        if "discover_contract(" in argv[-1]:
             return json.dumps({"model_path": "/srv/models/cached"})
         if "native-mesh" in argv:
             return json.dumps({"mesh": None})

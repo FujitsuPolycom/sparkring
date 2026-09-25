@@ -66,7 +66,10 @@ def select_deployment(args, cluster, state_root):
         if args.model_path:
             row.update(model=args.model_path, reuse_verified_model=True)
         else:
-            found = json.loads(discovery.ssh(row["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "assets", "--profile", profile]))
+            from runtime.host import assets as asset_discovery
+            card = installer.setup.selection(profile)
+            code = asset_discovery.probe_code(card, installer.checkpoint_contract(card))
+            found = json.loads(discovery.ssh(row["host"], ["sudo", "-n", "python3", "-I", "-c", code]))
             if found["model_path"]:
                 row.update(model=found["model_path"], reuse_verified_model=True)
             print(f"Node {rank}: " + ("Cached checkpoint found; verify before launch" if found["model_path"] else "Checkpoint will be copied or downloaded"))
@@ -183,14 +186,18 @@ def main(argv=None):
     output = sys.stdout
     code = 0
     with contextlib.redirect_stdout(sys.stderr), progress.run("install"):
+        transaction = controller.STATE / "transaction.json"
+        try:
+            previous_transaction = transaction.read_bytes()
+        except OSError:
+            previous_transaction = None
         try:
             result = execute(args)
         except NeedsInput as error:
             result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
             result, code = {"schema": "sparkring-install-result/v1", "state": "failed", "message": str(error)}, 2
-            transaction = controller.STATE / "transaction.json"
-            if transaction.exists():
+            if transaction.exists() and transaction.read_bytes() != previous_transaction:
                 result["transaction"] = installer.read(transaction)
             progress.failure(str(error))
         if result["state"] == "complete":
