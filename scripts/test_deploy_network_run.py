@@ -135,3 +135,15 @@ def test_remote_source_compiles_without_local_imports():
     for phase in plan["phases"]:
         for action in phase["actions"]:
             compile(action["argv"][-1], "remote-network", "exec")
+
+
+def test_network_plan_allows_gpu_less_helpers_and_kernel_queue_pairs():
+    p, facts = changed()
+    row = facts["hosts"]["spark-r0"]
+    row["docker"]["containers"] = [{"name": "netadm", "state": "running"}]
+    row["gpu"] = {**row.get("gpu", {}), "compute_processes": []}
+    row["network"]["rdma_resources"] = [{"ifname": "rocep1s0f0", "comm": "ib_core", "type": "GSI"}]
+    assert build_network_plan(p, facts)["phases"]
+    row["gpu"]["compute_processes"] = [4242]
+    with pytest.raises(ValueError):
+        build_network_plan(p, facts)

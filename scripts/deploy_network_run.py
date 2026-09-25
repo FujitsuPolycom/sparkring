@@ -37,11 +37,18 @@ def _network_local(payload, operation, *, collect=None, run=None):
     journal = root / "execution.json"
 
     def idle(facts):
+        # Links may change under GPU-less containers (network helpers,
+        # registries) but not under GPU work or a process holding RDMA queues.
         containers = facts.get("docker", {}).get("containers")
         resources = facts.get("network", {}).get("rdma_resources")
-        if containers is None or any(c.get("state") == "running" for c in containers):
+        compute = facts.get("gpu", {}).get("compute_processes")
+        if compute:
+            raise ValueError("Stop GPU work before changing data networking (PIDs "
+                             + ", ".join(map(str, compute)) + ")")
+        if compute is None and (containers is None or any(c.get("state") == "running" for c in containers)):
             raise ValueError("Stop containers before changing data networking")
-        if resources is None or resources:
+        # Kernel management queue pairs (GSI/SMI) have no pid and always exist.
+        if resources is None or any(r.get("pid") is not None for r in resources):
             raise ValueError("RDMA users remain, or their state is unavailable")
         if payload.get("require_idle_gpu"):
             result = invoke(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
