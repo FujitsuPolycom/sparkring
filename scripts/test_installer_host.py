@@ -300,3 +300,17 @@ def test_pinned_differences_name_stale_or_missing_files():
     stale.pop("tokenizer.json")
     assert installer_host.pinned_differences("mimo-v26-flash-rl-tp4", stale) == ["dflash/config.json", "tokenizer.json"]
     assert installer_host.checksum_manifest("qwen38-flash-next-qad-tp4").name == "SHA256SUMS"
+
+
+def test_checkpoint_hashes_are_remembered_only_for_an_unchanged_tree(tmp_path, monkeypatch):
+    from scripts import installer_host
+    monkeypatch.setattr(installer_host, "CHECKPOINTS", tmp_path / "records")
+    monkeypatch.setattr(installer_host, "POSIX_STATS", True)
+    card = {"model_repository": "owner/model", "model_revision": "a" * 40}
+    receipt = {"repository": "owner/model", "revision": "a" * 40, "path": "/models/m",
+               "files": {"config.json": "1" * 64}, "file_stats": {"config.json": [1, 2, 3, 4, 5]}}
+    installer_host.remember_checkpoint(receipt)
+    assert installer_host.remembered_checkpoint(card, "/models/m", receipt["file_stats"]) == receipt["files"]
+    assert installer_host.remembered_checkpoint(card, "/models/m", {"config.json": [1, 2, 3, 4, 6]}) is None
+    assert installer_host.remembered_checkpoint(card, "/models/other", receipt["file_stats"]) is None
+    assert installer_host.remembered_checkpoint({**card, "model_revision": "b" * 40}, "/models/m", receipt["file_stats"]) is None

@@ -95,8 +95,10 @@ def select_deployment(args, cluster, state_root):
             if found["model_path"]:
                 row.update(model=found["model_path"], reuse_verified_model=True)
             print(f"Node {rank}: " + ("Cached checkpoint found; verify before launch" if found["model_path"] else "Checkpoint will be copied or downloaded"))
-        if args.cache_path:
-            row["cache"] = args.cache_path
+        # One compile/tuning cache per cluster. Containers use a subdirectory
+        # keyed by model family, image and checkpoint revision, so repeated or
+        # alternating installs reuse earlier kernel tuning.
+        row["cache"] = args.cache_path or "/srv/sparkring/" + cluster["name"] + "/cache"
     if profile in installer.compose.TP4_PROFILES:
         site = native_mesh.select(site, cluster, profile, invoke=discovery.ssh)
     elif installer.backend({"profile": profile}) == "glm-managed":

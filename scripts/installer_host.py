@@ -119,6 +119,34 @@ def checksum_manifest(profile):
     return None
 
 
+CHECKPOINTS = Path("/var/lib/sparkring/checkpoints")
+
+
+def _checkpoint_record(model):
+    return CHECKPOINTS / (hashlib.sha256(str(model).encode()).hexdigest() + ".json")
+
+
+def remembered_checkpoint(card, model, stats):
+    """File hashes from an earlier verification of this exact tree on this host.
+
+    Reused only on Linux while every file's device, inode, size, modification
+    and change time are unchanged; any difference forces full hashing.
+    """
+    record = _checkpoint_record(model)
+    if not POSIX_STATS or not record.is_file():
+        return None
+    saved = profiles.read_json(record)
+    if (saved.get("repository"), saved.get("revision"), saved.get("path")) != (card["model_repository"], card["model_revision"], str(model)):
+        return None
+    return saved["files"] if saved.get("file_stats") == stats else None
+
+
+def remember_checkpoint(receipt):
+    if POSIX_STATS:
+        CHECKPOINTS.mkdir(parents=True, exist_ok=True, mode=0o700)
+        deploy_engine.save_receipt(_checkpoint_record(receipt["path"]), receipt)
+
+
 def pinned_differences(profile, files):
     """Names whose recorded pin differs from, or is absent in, a measured tree."""
     sums = checksum_manifest(profile)
@@ -243,6 +271,7 @@ def transfer_model(operation, lock, row, state):
                "files": hashes, "file_stats": before, "origin": "verified-fabric-copy"}
     verify_model(lock, row, receipt_path, receipt=receipt, measured=hashes)
     deploy_engine.save_receipt(receipt_path, receipt)
+    remember_checkpoint(receipt)
     if not lock["backend"].startswith("glm-"):
         plain(row["cache"]).mkdir(parents=True, exist_ok=True)
     return {"ok": True}
@@ -468,7 +497,7 @@ def perform(operation, lock, number):
         if not row["reuse_verified_model"]:
             hub_download(lock, model)
         before = model_file_stats(model)
-        hashes = model_files(model)
+        hashes = remembered_checkpoint(card, model, before) or model_files(model)
         origin = "operator-declared-verified-copy" if row["reuse_verified_model"] else "pinned-hub-download"
         if row["reuse_verified_model"] and pinned_differences(card["profile"], hashes):
             # A reused copy that differs from the pinned per-file checksums is
@@ -484,6 +513,7 @@ def perform(operation, lock, number):
                    "path": row["model"], "files": hashes, "file_stats": before, "origin": origin}
         verify_model(lock, row, model_receipt, receipt=receipt, measured=receipt["files"])
         deploy_engine.save_receipt(model_receipt, receipt)
+        remember_checkpoint(receipt)
         return {"ok": True}
 
     if lock["backend"] == "glm-existing-mesh":
