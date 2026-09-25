@@ -39,6 +39,20 @@ def test_native_glm_receipt_is_reconstructed_from_authenticated_bytes(observatio
     assert "/owned" not in record["installed"]["files"]
 
 
+def test_planning_completion_preserves_published_entries_and_matches_runtime(observations):
+    source = glm.ROOT / "runtime/releases/shared-2026.09.3/glm-profile-contract.json"
+    before = source.read_bytes()
+    published = json.loads(before)
+    expanded = glm.complete_planning_contract(published)
+    runtime = glm.profile_contract(glm.make_receipt(**observations)["installed"])
+    for name in ("tp2-dcp1", "tp4-dcp1"):
+        assert expanded["profiles"][name] == runtime["profiles"][name]
+        assert expanded["profiles"][name]["sparkcache"] is False
+    for name, value in published["profiles"].items():
+        assert expanded["profiles"][name] == value
+    assert source.read_bytes() == before and json.loads(before) == published
+
+
 @pytest.mark.parametrize("field,value", [
     ("platform", "linux/amd64"), ("image_reference", "unregistered:tag"),
     ("bundle_manifest_sha256", "0" * 64), ("serving_qualified", True),

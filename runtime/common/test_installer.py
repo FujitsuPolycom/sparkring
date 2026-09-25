@@ -213,7 +213,8 @@ def test_offline_glm_plan_cannot_be_executed_directly():
 
 
 @pytest.mark.parametrize("variant", ["nvfp4-spark", "nvfp4-qad"])
-def test_planned_glm_compose_matches_admitted_adapter_settings(tmp_path, monkeypatch, variant):
+@pytest.mark.parametrize("enabled", [False, True])
+def test_planned_glm_compose_matches_admitted_adapter_settings(tmp_path, monkeypatch, variant, enabled):
     """Compare flag/envelope composition; fake bytes are not image qualification."""
     card = installer.setup.selection(GLM, variant)
     publication = glm_native_candidate.native.publication(card["release"])
@@ -230,9 +231,9 @@ def test_planned_glm_compose_matches_admitted_adapter_settings(tmp_path, monkeyp
     (model / "config.json").write_text("{}")
     base = tp2.render(0, "198.18.20.1", model, scratch, None, card["image_id"],
                       site_values={"VLLM_HOST_IP": "198.18.20.1", "NCCL_SOCKET_IFNAME": "eth0", "GLOO_SOCKET_IFNAME": "eth0"})
-    planned = tp2.adapt_release_plan(copy.deepcopy(base), publication, sparkcache=True,
+    planned = tp2.adapt_release_plan(copy.deepcopy(base), publication, sparkcache=enabled,
                                     target_model_variant=variant, planning_contract=contract)
-    admitted = tp2.adapt_release_plan(copy.deepcopy(base), receipt, sparkcache=True, target_model_variant=variant)
+    admitted = tp2.adapt_release_plan(copy.deepcopy(base), receipt, sparkcache=enabled, target_model_variant=variant)
     assert tp2.container_spec(planned) == tp2.container_spec(admitted)
 
 

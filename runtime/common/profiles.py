@@ -134,6 +134,9 @@ def configuration(p, root=ROOT):
     if source["format"] == "release-profile":
         if data.get("schema") not in {"sparkring-r33-profile-contract/v1", "sparkring-native-glm-profile-contract/v1"}:
             raise ValueError("Unsupported release-profile schema")
+        if data["schema"] == "sparkring-native-glm-profile-contract/v1":
+            from runtime.common import glm_native_candidate
+            data = glm_native_candidate.complete_planning_contract(data, root=root)
         selected = data["profiles"][source["key"]]
         serving = {k: selected[k] for k in ("tensor_parallel_size", "decode_context_parallel_size", "node_count", "kv_cache_memory_bytes")}
         serving.update(selected.get("serving", {}))

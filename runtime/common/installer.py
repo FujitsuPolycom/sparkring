@@ -23,7 +23,8 @@ DEFAULTS = {
     ("qwen38", 2): "qwen38-flash-next-tp2",
     ("qwen38", 4): "qwen38-flash-next-qad-tp4",
 }
-SUPPORTED = frozenset((*DEFAULTS.values(), *compose.SUPPORTED))
+GLM_NO_CACHE = {2: "glm53-flash-spark-tp2-dcp1-nocache", 4: "glm53-flash-spark-tp4-dcp1-nocache"}
+SUPPORTED = frozenset((*DEFAULTS.values(), *GLM_NO_CACHE.values(), *compose.SUPPORTED))
 
 
 def write(path, value):
@@ -140,7 +141,7 @@ def site_document(raw, card, revision):
 
 
 def backend(card):
-    return "glm-managed" if card["profile"] == DEFAULTS["glm53", 4] else "compose"
+    return "glm-managed" if card["profile"] in (DEFAULTS["glm53", 4], GLM_NO_CACHE[4]) else "compose"
 
 
 def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None):

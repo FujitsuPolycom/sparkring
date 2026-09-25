@@ -256,7 +256,8 @@ class Runner:
             inventory = deploy_suite.discover([r["host"] + "=" + r["management_ip"] for r in rows], lock["site"]["controller_address"])
             spec = deploy_suite.create_spec(inventory, lock["site"]["name"], installer.managed_workspace(lock["site"]["name"]),
                                             "198.18.0.0/21", image_path, reuse_existing_image=True,
-                                            existing_model_roots=[r["model"] for r in rows], runtime_profile="tp4-dcp1-sparkcache",
+                                            existing_model_roots=[r["model"] for r in rows],
+                                            runtime_profile="tp4-dcp1-sparkcache" if lock["selection"]["sparkcache"] else "tp4-dcp1",
                                             target_model_variant=lock["selection"]["target_variant"], preserve_existing_network=True)
             prep = {"schema": "sparkring-deploy-preparation/v1", "spec": spec,
                     "network_plan": deploy_suite.plan_network(spec, inventory["hosts"]),

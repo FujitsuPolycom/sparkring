@@ -110,6 +110,7 @@ record links preserve configuration evidence when the guide selects a different 
 |---|---|---|---|---|
 | DCP1 | tp2-rocenante-adaptive | On | Validated | [glm53-flash-spark-tp2-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/profile.json) |
 | DCP1 | tp2-rocenante-adaptive | Off | Experimental | [glm53-flash-spark-tp2-dcp1](../profiles/glm53-flash-spark-tp2-dcp1/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1/profile.json) |
+| DCP1 | tp2-rocenante-adaptive | Off | Experimental | [glm53-flash-spark-tp2-dcp1-nocache](../profiles/glm53-flash-spark-tp2-dcp1-nocache/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1-nocache/profile.json) |
 
 </details>
 
@@ -120,6 +121,7 @@ record links preserve configuration evidence when the guide selects a different 
 |---|---|---|---|---|
 | DCP1 | sparkring-rocenante-mesh | On | Validated | [glm53-flash-spark-tp4-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/profile.json) |
 | DCP1 | sparkring-rocenante-mesh | Off | Experimental | [glm53-flash-spark-tp4-dcp1](../profiles/glm53-flash-spark-tp4-dcp1/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1/profile.json) |
+| DCP1 | sparkring-rocenante-mesh | Off | Experimental | [glm53-flash-spark-tp4-dcp1-nocache](../profiles/glm53-flash-spark-tp4-dcp1-nocache/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1-nocache/profile.json) |
 | DCP4 | sparkring-rocenante-mesh | Off | Development | [glm53-flash-spark-tp4-dcp4](../profiles/glm53-flash-spark-tp4-dcp4/README.md) |
 | DCP4 | sparkring-rocenante-mesh | On | Validated | [glm53-flash-spark-tp4-dcp4-sparkcache](../profiles/glm53-flash-spark-tp4-dcp4-sparkcache/README.md) |
 | DCP1 | switched | Off | Experimental | [glm53-flash-spark-tp4-switched](../profiles/glm53-flash-spark-tp4-switched/README.md) |

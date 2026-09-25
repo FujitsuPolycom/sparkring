@@ -104,6 +104,14 @@
     {
       "id": "qwen38-flash-next-qad-tp4-sparkcache",
       "path": "profiles/qwen38-flash-next-qad-tp4-sparkcache/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp2-dcp1-nocache",
+      "path": "profiles/glm53-flash-spark-tp2-dcp1-nocache/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp4-dcp1-nocache",
+      "path": "profiles/glm53-flash-spark-tp4-dcp1-nocache/profile.json"
     }
   ]
 }

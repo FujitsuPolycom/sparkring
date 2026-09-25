@@ -94,9 +94,11 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
     is_r35 = receipt.get('schema') in (r35.SCHEMA, candidate.SCHEMA, glm_source_candidate.SCHEMA, glm_native_candidate.SCHEMA)
     is_r35 = is_r35 or planning
     if planning:
+        planning_contract = glm_native_candidate.complete_planning_contract(planning_contract)
         if receipt != glm_native_candidate.native.publication(receipt["release"]):
             raise ValueError("Offline planning requires the registered publication")
         expected = json.loads((glm_native_candidate.ROOT / "runtime/releases" / receipt["release"] / "glm-profile-contract.json").read_bytes())
+        expected = glm_native_candidate.complete_planning_contract(expected)
         if planning_contract != expected or planning_contract["image_id"] != receipt["image_id"]:
             raise ValueError("Offline planning contract differs from its release")
     elif is_r35:
@@ -287,6 +289,7 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
             raise ValueError("Select offline release planning or an observed receipt, not both")
         r33_receipt = glm_native_candidate.native.publication(planning_release)
         planning_contract = json.loads((glm_native_candidate.ROOT / "runtime/releases" / planning_release / "glm-profile-contract.json").read_bytes())
+        planning_contract = glm_native_candidate.complete_planning_contract(planning_contract)
         model_dir, cache_dir = compose.linux_path(str(model_dir)), compose.linux_path(str(cache_dir))
         if model_dir.is_relative_to(cache_dir) or cache_dir.is_relative_to(model_dir):
             raise ValueError("Model and cache paths must be disjoint")

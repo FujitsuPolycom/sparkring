@@ -99,6 +99,37 @@ def verify_local_image(document, *, run=subprocess.run):
         raise ValueError("Native GLM image observations differ from the saved receipt")
 
 
+def _native_profiles(compatibility):
+    profiles = {name: copy.deepcopy(compatibility["profiles"][name]) for name in sorted(PROFILES)}
+    for profile in profiles.values():
+        for field in ("capability_file", "required_capabilities", "reference_kv_cache_memory_bytes", "lifecycle"):
+            profile.pop(field, None)
+        profile.update(load_format="b12x", plugins="b12x_loader", allocation_policy="managed-in-loader",
+                       draft_load_config={"load_format": "b12x", "model_loader_extra_config": {}},
+                       lifecycle="explicit-create-and-start", memory_guard_required=False)
+        profile["serving"] = (copy.deepcopy(compatibility["profiles"]["tp2-dcp1-sparkcache"]["serving"])
+                              if profile["node_count"] == 2 else
+                              dict(max_num_seqs=16, max_num_batched_tokens=8192,
+                                   prefill_schedule_interval=2, limit_mm_per_prompt={"image": 4, "video": 1}))
+    return profiles
+
+
+def complete_planning_contract(document, *, root=ROOT):
+    """Expose supported cache-off settings without editing frozen release files.
+
+    Older published planning snapshots list only cache-on profiles, while the
+    authenticated native adapter supports both. Fill missing settings from the
+    same adapter definitions; this is planning, not installed-image admission.
+    """
+    if document.get("schema") != "sparkring-native-glm-profile-contract/v1":
+        raise ValueError("Expected a native GLM planning contract")
+    compatibility = json.loads((root / "runtime/sparkring/jovian-r33/profiles/profile-contract.json").read_bytes())
+    result = copy.deepcopy(document)
+    for name, profile in _native_profiles(compatibility).items():
+        result["profiles"].setdefault(name, profile)
+    return result
+
+
 def profile_contract(installed):
     """Resolve DCP1 settings while replacing all retained image-specific bindings.
 
@@ -108,18 +139,7 @@ def profile_contract(installed):
     if installed.get("schema") != "sparkring-glm-native-profile-view/v1":
         raise ValueError("Native GLM settings require an authenticated profile view")
     compatibility = json.loads((ROOT / "runtime/sparkring/jovian-r33/profiles/profile-contract.json").read_bytes())
-    profiles = {name: copy.deepcopy(compatibility["profiles"][name]) for name in sorted(PROFILES)}
-    for name, profile in profiles.items():
-        for field in ("capability_file", "required_capabilities", "reference_kv_cache_memory_bytes", "lifecycle"):
-            profile.pop(field, None)
-        profile.update(load_format="b12x", plugins="b12x_loader", allocation_policy="managed-in-loader",
-                       draft_load_config={"load_format": "b12x", "model_loader_extra_config": {}},
-                       lifecycle="explicit-create-and-start", memory_guard_required=False)
-        if profile["node_count"] == 2:
-            profile["serving"] = copy.deepcopy(compatibility["profiles"]["tp2-dcp1-sparkcache"]["serving"])
-        else:
-            profile["serving"] = dict(max_num_seqs=16, max_num_batched_tokens=8192,
-                                      prefill_schedule_interval=2, limit_mm_per_prompt={"image": 4, "video": 1})
+    profiles = _native_profiles(compatibility)
     files = installed["files"]
     cache = {key: compatibility["sparkcache_native"][key]
              for key in ("placement_path", "snapshot_path", "vllm_root")}
