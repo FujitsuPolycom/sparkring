@@ -40,7 +40,7 @@ DEFAULT_CLUSTER_PATH = Path.home() / ".config" / "sparkring" / "cluster.yaml"
 def _confirm(prompt: str, assume_yes: bool) -> None:
     if assume_yes:
         return
-    if input(prompt + " Type yes: ").strip().lower() != "yes":
+    if input(prompt + " [y/N]: ").strip().lower() not in ("y", "yes"):
         raise BootstrapError("operation cancelled")
 
 

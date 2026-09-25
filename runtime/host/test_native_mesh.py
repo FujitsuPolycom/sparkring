@@ -204,3 +204,44 @@ def test_port_preparation_ignores_tool_containers_and_stops_approved_gpu_contain
         with pytest.raises(ValueError, match="qwen-r0" if approve is None else "Cancelled"):
             seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run, stop=stop if approve else None)
         assert state["stopped"] == []
+
+
+@pytest.mark.parametrize("approved", [False, True])
+def test_existing_fabric_connection_gets_link_local_only_with_approval(monkeypatch, approved):
+    from runtime.host import seed
+    state = {"link_local": False, "calls": []}
+
+    def run(argv, **kw):
+        state["calls"].append(argv)
+        if argv[:3] == ["nmcli", "-g", "GENERAL.CON-UUID"]:
+            return SimpleNamespace(returncode=0, stdout="uuid-" + argv[-1], stderr="")
+        if argv[:3] == ["nmcli", "-g", "connection.id"]:
+            return SimpleNamespace(returncode=0, stdout="Wired connection 4", stderr="")
+        if argv[:3] == ["nmcli", "device", "reapply"]:
+            state["link_local"] = True
+        if argv[:3] == ["ip", "-j", "-6"]:
+            info = [{"scope": "link", "local": "fe80::1"}] if state["link_local"] else []
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"addr_info": info}]), stderr="")
+        if argv[:2] == ["docker", "ps"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[0] == "rdma":
+            rows = [{"ifname": "rocep1s0f0", "comm": "ib_core", "type": "GSI"}]
+            return SimpleNamespace(returncode=0, stdout=json.dumps(rows), stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(seed.control_node, "write", lambda *a, **k: None)
+    monkeypatch.setattr(seed.control, "netdev", lambda name: name)
+    monkeypatch.setattr(seed.Path, "read_text", lambda self: "1", raising=False)
+    algorithm = b"ssh-ed25519"
+    encoded = len(algorithm).to_bytes(4, "big") + algorithm + (32).to_bytes(4, "big") + bytes(range(32))
+    public = algorithm.decode() + " " + base64.b64encode(encoded).decode() + " fixture"
+    approvals = []
+    if approved:
+        assert seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run, link_local=approvals.append)["prepared"]
+        assert approvals[0] == "Wired connection 4 (p0)"
+        assert ["nmcli", "connection", "modify", "uuid-p0", "ipv6.method", "link-local"] in state["calls"]
+        assert not any(argv[:3] == ["nmcli", "connection", "add"] for argv in state["calls"])
+    else:
+        with pytest.raises(ValueError, match="no IPv6 link-local"):
+            seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run)
+        assert not any(argv[:3] == ["nmcli", "connection", "modify"] for argv in state["calls"])

@@ -171,7 +171,7 @@ def trust_host(
     answer = confirm(
         f"Trust {target} host key?\n  {fingerprint.stdout.strip()}\nType yes: "
     )
-    if answer.strip().lower() != "yes":
+    if answer.strip().lower() not in ("y", "yes"):
         raise BootstrapError(f"host key for {target} was not accepted")
     known_hosts = Path.home() / ".ssh" / "known_hosts"
     known_hosts.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

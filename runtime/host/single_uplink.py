@@ -137,7 +137,10 @@ def main(argv=None):
             # --stop-workloads or an explicit answer in a terminal.
             seed.prepare(public, stop=lambda names: controller.confirm(
                 "Stop these running GPU containers so fabric ports can be prepared? They are stopped, not removed: "
-                + ", ".join(names) + ".", args.stop_workloads))
+                + ", ".join(names) + ".", args.stop_workloads),
+                link_local=lambda name: controller.confirm(
+                    "Add IPv6 link-local addressing to fabric connection " + name
+                    + " for discovery? Its IPv4 addresses and MTU are kept.", args.yes))
         if sys.stdin.isatty() and not env.env and "--ssh-user" not in (argv or []):
             args.ssh_user = input("Worker SSH username [root]: ").strip() or "root"
         try:

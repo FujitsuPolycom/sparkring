@@ -17,7 +17,8 @@ STATE = Path("/var/lib/sparkring/controller")
 
 
 def confirm(prompt, yes=False):
-    if not yes and (not sys.stdin.isatty() or input(prompt + " Type yes: ").strip().lower() != "yes"):
+    """Ask in a terminal; `y`/`yes` in any letter case approves, anything else cancels."""
+    if not yes and (not sys.stdin.isatty() or input(prompt + " [y/N]: ").strip().lower() not in ("y", "yes")):
         raise ValueError("Cancelled; no further changes")
 
 

@@ -49,9 +49,14 @@ def main(argv=None):
             from pathlib import Path
             from runtime.host.seed import prepare
             print("Prepare unused fabric interfaces and enable Node A's SSH key on the preparation service.", file=sys.stderr)
-            if input("Type yes: ").strip().lower() != "yes":
+            if input("Continue? [y/N]: ").strip().lower() not in ("y", "yes"):
                 raise ValueError("Worker preparation cancelled")
-            result = prepare(Path(args.key_file).read_text())
+            from runtime.host.controller import confirm
+            result = prepare(Path(args.key_file).read_text(),
+                             stop=lambda names: confirm("Stop these running GPU containers? They are stopped, not removed: "
+                                                        + ", ".join(names) + "."),
+                             link_local=lambda name: confirm("Add IPv6 link-local addressing to fabric connection " + name
+                                                             + "? Its IPv4 addresses and MTU are kept."))
         elif args.action == "inspect":
             result = node.inspect(args.rank, args.target, args.management, args.witness)
         elif args.action == "native-mesh":

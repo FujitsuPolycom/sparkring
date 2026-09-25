@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import time
 
 from runtime.host import control, control_node, node
 
@@ -16,13 +17,18 @@ def gpu_containers(run=subprocess.run):
     return [(row["Id"], row["Name"].lstrip("/")) for row in rows if row["HostConfig"].get("DeviceRequests")]
 
 
-def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None):
+def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_local=None):
     """Prepare fabric ports for discovery.
 
     Bringing up an unconfigured RDMA port requires that no GPU job or RDMA user is
     running; containers without GPUs (tools, registries) do not matter. When GPU
     containers are running, ``stop(names)`` is asked for approval; approved
     containers are stopped, never removed.
+
+    Discovery uses IPv6 link-local addresses. An existing fabric connection
+    without one (for example manual IPv4 with IPv6 disabled) gets IPv6
+    link-local added to that same connection after ``link_local(name)``
+    approves; its IPv4 addresses and MTU are kept.
     """
     if not re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]*)?", public_key.strip()):
         raise ValueError("Use Node A's Ed25519 public key")
@@ -40,8 +46,12 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None):
         gpu = node.call(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], run=run).stdout.strip()
         if gpu:
             raise ValueError("A GPU job outside containers is running; stop it before preparing fabric ports")
-        if json.loads(node.call(["rdma", "-j", "resource", "show", "qp"], run=run).stdout):
-            raise ValueError("Stop RDMA users before preparing fabric ports")
+        # Each port always has kernel-owned management queue pairs (GSI/SMI,
+        # no pid); only queue pairs owned by a process are RDMA users.
+        users = sorted({row.get("comm", "?") for row in json.loads(node.call(["rdma", "-j", "resource", "show", "qp"], run=run).stdout)
+                        if row.get("pid") is not None})
+        if users:
+            raise ValueError("Stop RDMA users before preparing fabric ports: " + ", ".join(users))
 
     if interfaces is None:
         interfaces = sorted({p.name for d in Path("/sys/class/infiniband").iterdir() for p in (d / "device/net").iterdir()})
@@ -65,7 +75,20 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None):
             # already works. Replacing a nonempty profile belongs to setup review.
             addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
             if not any(a["scope"] == "link" for row in addresses for a in row.get("addr_info", [])):
-                raise ValueError("Enable IPv6 link-local on existing fabric connection " + current + " after reviewing its settings")
+                name = node.call(["nmcli", "-g", "connection.id", "connection", "show", current], run=run).stdout.strip()
+                if link_local is None:
+                    raise ValueError(f"Fabric connection '{name}' on {interface} has no IPv6 link-local address; "
+                                     "repeat setup and approve adding it (IPv4 settings are kept)")
+                link_local(f"{name} ({interface})")
+                node.call(["nmcli", "connection", "modify", current, "ipv6.method", "link-local"], run=run)
+                node.call(["nmcli", "device", "reapply", interface], run=run)
+                for _ in range(20):
+                    addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
+                    if any(a["scope"] == "link" and not a.get("tentative") for row in addresses for a in row.get("addr_info", [])):
+                        break
+                    time.sleep(0.5)
+                else:
+                    raise ValueError(f"{interface}: IPv6 link-local address did not become ready")
         else:
             observed = json.loads(node.call(["ip", "-j", "-4", "addr", "show", "dev", interface], run=run).stdout)
             if any(row.get("addr_info") for row in observed):
