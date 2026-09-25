@@ -82,6 +82,9 @@ def build(directory, public_key, *, run=subprocess.run):
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
     if not distribution.installed(node.ROOT):
         raise ValueError("Worker bundles are built from an installed SparkRing package on Node A")
+    # A stale package index names versions the mirror no longer serves, so
+    # refresh it before resolving and downloading the worker closure.
+    progress.command(["apt-get", "update", "-q"], title="Refresh the package index on Node A", invoke=run, check=True)
     result = run(["apt-cache", "depends", "--recurse", "--no-recommends", "--no-suggests",
                   "--no-conflicts", "--no-breaks", "--no-replaces", "--no-enhances", "sparkring"],
                  capture_output=True, text=True, check=True)
