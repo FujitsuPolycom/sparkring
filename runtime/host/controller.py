@@ -25,12 +25,16 @@ def confirm(prompt, yes=False):
 def collect(targets, *, invoke=discovery.inspect_node):
     if len(targets) not in (2, 4) or len(set(targets)) != len(targets):
         raise ValueError("Select exactly two or four distinct Spark management addresses")
+    import concurrent.futures
     from runtime.host import progress
-    result = []
-    for rank, value in enumerate(targets):
+
+    def inspect(rank):
         with progress.step(f"Node {rank}: inspect hardware, links and software"):
-            result.append(invoke(value, rank, targets[1 if rank == 0 else 0].split("@", 1)[1]))
-    return result
+            return invoke(targets[rank], rank, targets[1 if rank == 0 else 0].split("@", 1)[1])
+
+    # Inspection only reads each node, so the nodes are observed concurrently.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(targets)) as pool:
+        return list(pool.map(inspect, range(len(targets))))
 
 
 def summarize(plan, *, observe_only=False):
