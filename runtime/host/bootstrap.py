@@ -54,13 +54,22 @@ def validate_hop(hop):
     return hop
 
 
-def ssh_argv(route, directory, *, interactive=False, identity=None):
-    """Every hop authenticates from Node A; no private key is sent to a worker."""
+def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=False):
+    """Every hop authenticates from Node A; no private key is sent to a worker.
+
+    An interactive login asks about an unknown host key, or with ``trust_new``
+    records it on first contact. New keys go to a SparkRing-owned file in
+    ``directory``, unhashed, so setup can print what it trusted; keys already
+    in the user's known_hosts are still honored.
+    """
     if not route or len(route) > 3:
         raise ValueError("Bootstrap SSH route requires one through three hops")
     hop = validate_hop(route[-1])
     socket_id = hashlib.sha256(json.dumps(route, sort_keys=True).encode()).hexdigest()[:20]
-    command = ["ssh", "-o", "StrictHostKeyChecking=ask" if interactive else "StrictHostKeyChecking=yes",
+    check = ("accept-new" if trust_new else "ask") if interactive else "yes"
+    command = ["ssh", "-o", "StrictHostKeyChecking=" + check,
+               "-o", "UserKnownHostsFile=" + str(Path(directory) / "known_hosts") + " ~/.ssh/known_hosts",
+               "-o", "HashKnownHosts=no",
                "-o", "BatchMode=no" if interactive else "BatchMode=yes", "-o", "ConnectTimeout=8",
                "-o", "ControlMaster=auto", "-o", "ControlPersist=600", "-o", "ControlPath=" + str(Path(directory) / socket_id),
                "-p", str(hop["port"])]
@@ -78,14 +87,24 @@ def ssh_argv(route, directory, *, interactive=False, identity=None):
 
 
 class SSH:
-    def __init__(self, directory, *, identity=None, run=subprocess.run):
+    def __init__(self, directory, *, identity=None, run=subprocess.run, trust_new=False):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.run = run
         self.identity = identity
+        self.trust_new = trust_new
 
     def argv(self, route, interactive=False):
-        return ssh_argv(route, self.directory, interactive=interactive, identity=self.identity)
+        return ssh_argv(route, self.directory, interactive=interactive, identity=self.identity,
+                        trust_new=self.trust_new)
+
+    def trusted(self):
+        """Fingerprint lines for host keys this setup recorded on first contact."""
+        known = self.directory / "known_hosts"
+        if not known.is_file():
+            return []
+        result = self.run(["ssh-keygen", "-l", "-f", str(known)], capture_output=True, text=True)
+        return result.stdout.splitlines() if result.returncode == 0 else []
 
     def login(self, route):
         # OpenSSH owns password/key prompts. Secrets never enter Python/JSON.
@@ -110,6 +129,15 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
     nodes = {head["id"]: head}
     routes = {head["id"]: []}
     queue, observed, edges = [head["id"]], set(), {}
+
+    def link(ident, interface, peer, other, address):
+        cable = tuple(sorted((ident, peer)))
+        if cable not in edges:
+            if not interface["addresses"]:
+                raise ValueError("Local fabric link has no IPv6 link-local address")
+            edges[cable] = [{"id": ident, "netdev": interface["netdev"], "address": interface["addresses"][0], "mac": interface["mac"]},
+                            {"id": peer, "netdev": other["netdev"], "address": address, "mac": other["mac"]}]
+
     for ident in queue:
         current = nodes[ident]
         local = {f["netdev"]: f for f in current["functions"]}
@@ -127,7 +155,15 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
             if observation in observed:
                 continue
             observed.add(observation)
-            # A second Socket Direct function can lead to an already enrolled
+            # The inventory of an authenticated Spark lists every function's MAC
+            # and link-local address, which identifies its other functions and
+            # the return paths to it without signing in again.
+            known = [(nid, f) for nid, n in nodes.items() if nid != ident for f in n["functions"]
+                     if str(f["mac"]).lower() == neighbor["lladdr"].lower() and str(address) in f["addresses"]]
+            if len(known) == 1:
+                link(ident, interface, known[0][0], known[0][1], str(address))
+                continue
+            # An unrecognized function can still lead to an already enrolled
             # machine; authenticate before assigning either identity or rank.
             route = [*routes[ident], {"user": user, "address": str(address), "interface": interface["netdev"], "port": port}]
             if len(route) > 3 or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
@@ -139,13 +175,7 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
                 raise ValueError("Neighbor cannot be matched to its authenticated fabric interface")
             if peer["architecture"] not in ("aarch64", "arm64"):
                 raise ValueError("Fabric neighbor is not Linux ARM64")
-            other = matches[0]
-            cable = tuple(sorted((ident, peer["id"])))
-            if cable not in edges:
-                if not interface["addresses"]:
-                    raise ValueError("Local fabric link has no IPv6 link-local address")
-                edges[cable] = [{"id": ident, "netdev": interface["netdev"], "address": interface["addresses"][0], "mac": interface["mac"]},
-                                {"id": peer["id"], "netdev": other["netdev"], "address": str(address), "mac": other["mac"]}]
+            link(ident, interface, peer["id"], matches[0], str(address))
             if peer["id"] not in nodes:
                 if len(nodes) >= 4:
                     raise ValueError("More than four Sparks found; select a supported pair/ring")

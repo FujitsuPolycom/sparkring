@@ -168,8 +168,11 @@ def execute(args):
             from runtime.host import single_uplink
             options = ((["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
                        + (["--stop-workloads"] if args.stop_workloads else []))
-            if single_uplink.main(options):
+            follow = "then install " + (args.profile or "the model profile you choose") + " and start it"
+            if single_uplink.main(options, follow=follow):
                 raise ValueError("Cluster setup did not complete")
+            # The setup approval listed this installation as its final step.
+            args.yes = True
         cluster = installer.read(state_root / "cluster.json")
         check_access(cluster)
         cluster = refresh_cluster(cluster)
@@ -192,7 +195,7 @@ def execute(args):
         if not args.yes:
             if not interactive:
                 raise NeedsInput("Review with --plan; add --yes to apply these changes.", field="approval", details=plan)
-            controller.confirm("Apply this installation?")
+            controller.confirm("Apply this installation?", default=True)
         def approve_stop(host, names):
             print(f"{host}: stopping unrelated GPU containers (not removing them): " + ", ".join(names))
             if not args.stop_workloads:

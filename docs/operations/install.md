@@ -17,11 +17,21 @@ sudo apt install ./sparkring_<version>_arm64.deb
 sudo sparkring install
 ```
 
-Choose an exact model profile when prompted. The command discovers/configures
-the cluster on first use, updates workers from Node A's package, reuses cached
-images and weights, and copies missing assets over verified fabric paths. It
-prepares assets before stopping the previous managed model. A failed switch
-attempts recovery from the retained deployment and records the outcome.
+Choose an exact model profile when prompted. On first use the command lists
+everything automated setup will do and asks one question, `Proceed? [Y/n]`;
+Enter approves. That approval covers discovery, trusting each cabled Spark's
+SSH host key on first contact (setup prints the fingerprints it recorded),
+package installation, the administration network, fabric addressing and the
+first model installation. SSH still asks for each worker's password when no key
+login exists, and a worker signed in as a non-root user asks for its sudo
+password twice. Stopping a running GPU container always needs its own answer or
+`--stop-workloads`. Setup signs in to each Spark once: other fabric functions
+and return paths are recognized from that Spark's inventory.
+
+The command updates workers from Node A's package, reuses cached images and
+weights, and copies missing assets over verified fabric paths. It prepares
+assets before stopping the previous managed model. A failed switch attempts
+recovery from the retained deployment and records the outcome.
 
 For an LLM or a repeatable installation:
 
@@ -34,8 +44,9 @@ sudo sparkring status --refresh --json
 `--json` writes one result to stdout; progress stays on stderr and in the log.
 Exit codes are 0 for success/planning, 3 for missing input, and 2 for failure.
 `needs_input` identifies the required choice, such as profile, approval or
-storage. `--yes` approves model replacement and first-use setup; it does not
-trust unknown SSH keys or authorize stopping unrelated workloads. A configured
+storage. `--yes` approves model replacement and first-use setup without a
+terminal; it does not trust unknown SSH host keys or authorize stopping
+unrelated workloads. A configured
 ring is inspected without changing links. Use `sparkring setup` to review cable
 or network changes separately. `sparkring models` lists the exact profiles.
 
@@ -118,7 +129,10 @@ choices automatically select a separate deployment; there is no instance name
 or manual stop command to supply. Compile and B12X tuning results share one
 cache per cluster, `/srv/sparkring/<cluster>/cache`, in subdirectories keyed by
 model family, image and checkpoint revision, so reinstalling or switching back
-to a profile reuses its earlier tuning.
+to a profile reuses its earlier tuning. B12X keys compiled kernels to each GPU's
+device UUID, so the first start of a profile on a Spark includes that Spark's
+tuning; Qwen TP2 on the shared image took 666 s to API readiness from an empty
+cache.
 `sparkring export --share` retains the image lock and per-rank Compose files.
 
 `sparkring status --json --refresh` reports the saved deployment/image IDs and
@@ -129,10 +143,11 @@ the inspected container ID, start time and actual image ID. Missing identities
 are `null`, with a reason, rather than guessed from hostname or rank. Network
 observations do not establish model readiness or serving qualification.
 
-Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and host
-key confirmation, copies SparkRing and its Debian dependencies through the fabric,
-and shows the proposed network changes. Workers need no separate Ethernet cable
-or Internet connection. The logged-in Spark becomes Node A.
+Setup finds neighbors over IPv6 link-local addresses, signs in to each worker
+as the account that ran `sudo` (`--ssh-user` selects another), copies SparkRing
+and its Debian dependencies through the fabric, and shows the proposed network
+changes. Workers need no separate Ethernet cable or Internet connection. The
+logged-in Spark becomes Node A.
 
 Before changing anything, `sparkring install` confirms noninteractive SSH and
 `sudo` on every enrolled Spark. A missing grant returns `needs_input` with field

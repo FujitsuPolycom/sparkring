@@ -16,9 +16,15 @@ from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring
 STATE = Path("/var/lib/sparkring/controller")
 
 
-def confirm(prompt, yes=False):
-    """Ask in a terminal; `y`/`yes` in any letter case approves, anything else cancels."""
-    if not yes and (not sys.stdin.isatty() or input(prompt + " [y/N]: ").strip().lower() not in ("y", "yes")):
+def confirm(prompt, yes=False, *, default=False):
+    """Ask in a terminal; `y`/`yes` in any letter case approves, anything else cancels.
+
+    With ``default`` an empty answer (Enter) also approves.
+    """
+    if yes:
+        return
+    answer = input(prompt + (" [Y/n]: " if default else " [y/N]: ")).strip().lower() if sys.stdin.isatty() else "n"
+    if answer not in ("y", "yes") and not (default and answer == ""):
         raise ValueError("Cancelled; no further changes")
 
 

@@ -43,23 +43,30 @@ def provision(discovered, transport, archive, *, private_key, public_key, contro
     keys = {}
     for n in discovered["nodes"]:
         route = discovered["routes"][n["id"]]
+        # Each node generates its private WireGuard key locally; only the
+        # public key returns.
+        key = ["/usr/bin/sparkring", "node", "control-key"]
         if route:
             destination = "/var/tmp/sparkring-enroll-" + str(time.time_ns())
             packages.transfer(transport, route, archive, destination)
             print("Install SparkRing and its packaged dependencies on " + n["hostname"])
             record["steps"].append({"host": n["id"], "operation": "package-install", "state": "running"})
             node.save(directory, "provision.json", record, mode=0o600)
-            root_command(transport, route, ["python3", "-I", destination + "/install.py", "--apply"])
+            install = ["python3", "-I", destination + "/install.py", "--apply"]
+            if route[-1]["user"] == "root":
+                root_command(transport, route, install)
+                result = transport.command(route, key)
+            else:
+                # One sudo authentication installs the package and exports the key.
+                output = "/var/tmp/sparkring-public-" + str(time.time_ns()) + ".json"
+                script = ("import subprocess,pathlib;subprocess.run(" + repr(install) + ",check=True);"
+                          "p=pathlib.Path(" + repr(output) + ");p.write_bytes(subprocess.check_output(" + repr(key) + "));p.chmod(0o644)")
+                root_command(transport, route, ["python3", "-I", "-c", script])
+                result = transport.command(route, ["cat", output])
             record["steps"][-1]["state"] = "succeeded"
             node.save(directory, "provision.json", record, mode=0o600)
-        # Generate private WireGuard keys locally; only public keys return.
-        if route and route[-1]["user"] != "root":
-            output = "/var/tmp/sparkring-public-" + str(time.time_ns()) + ".json"
-            script = ("import subprocess,pathlib;p=pathlib.Path(" + repr(output) + ");p.write_bytes(subprocess.check_output(['/usr/bin/sparkring','node','control-key']));p.chmod(0o644)")
-            root_command(transport, route, ["python3", "-I", "-c", script])
-            result = transport.command(route, ["cat", output])
         else:
-            result = transport.command(route, ["/usr/bin/sparkring", "node", "control-key"])
+            result = transport.command(route, key)
         keys[n["id"]] = json.loads(result)
         n["public_key"] = keys[n["id"]]["public_key"]
     configs = control.plan(discovered["nodes"], discovered["edges"], discovered["head"], subnet=control_cidr, share_uplink=share_uplink)
@@ -84,7 +91,24 @@ def provision(discovered, transport, archive, *, private_key, public_key, contro
     return targets
 
 
-def main(argv=None):
+def approve(args, *, fresh, follow=None):
+    """One default-yes approval for the whole automated setup scope."""
+    print("Automated setup of this Spark (Node A) and the Sparks cabled to it:")
+    if fresh:
+        print("  - find cabled Sparks over IPv6 link-local fabric addresses, adding link-local"
+              " addressing to fabric connections without it (their IPv4 addresses and MTU are kept)")
+        print(f"  - sign in as {args.ssh_user} on SSH port {args.ssh_port} (SSH asks for passwords; change with"
+              " --ssh-user) and trust each cabled Spark's SSH host key on first contact; fingerprints are printed")
+        print("  - install SparkRing and its packaged dependencies, then a private WireGuard administration network")
+        print("  - " + ("do not share" if args.no_share_internet else "share") + " Node A's Internet connection with workers")
+    print("  - keep compatible fabric IPv4 addresses and replace incompatible ones, saving connection backups")
+    if follow:
+        print("  - " + follow)
+    print("Running GPU containers that block setup are listed and stopped only after a separate answer.")
+    controller.confirm("Proceed?", default=True)
+
+
+def main(argv=None, *, follow=None):
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--env", type=Path)
     env, _ = pre.parse_known_args(argv)
@@ -119,6 +143,14 @@ def main(argv=None):
         print("Copy/extract " + str(archive) + " on a worker, then run: sudo python3 install.py --apply --prepare")
         return 0
     directory = base / "setups" / str(time.time_ns())
+    fresh = not (base / "cluster.json").exists() and not (base / "enrolled.json").exists()
+    if fresh and "--ssh-user" not in (argv or []) and not env.env and args.ssh_port == 22:
+        # Sparks are usually set up with one account name; sudo records it.
+        args.ssh_user = os.environ.get("SUDO_USER") or "root"
+    trust_new = False
+    if not args.plan and not args.yes and sys.stdin.isatty():
+        approve(args, fresh=fresh, follow=follow)
+        args.yes = trust_new = True
     if (base / "cluster.json").exists():
         cluster = installer.read(base / "cluster.json")
         targets = [h["host"] for h in cluster["plan"]["spec"]["hosts"]]
@@ -130,7 +162,7 @@ def main(argv=None):
         for prior in (base / "setups").glob("*/provision.json"):
             if not installer.read(prior).get("complete"):
                 raise ValueError("A provisioning attempt is incomplete; inspect " + str(prior) + " and worker state before recovery")
-        transport = bootstrap.SSH(base / "ssh", identity=private)
+        transport = bootstrap.SSH(base / "ssh", identity=private, trust_new=trust_new)
         if not args.plan:
             controller.confirm("Prepare unused local fabric ports for discovery? Existing configured links will be kept.", args.yes)
             # --yes approves setup scope only; stopping running GPU work needs
@@ -144,8 +176,6 @@ def main(argv=None):
         if args.ssh_port == 2222:
             # The worker preparation service admits only root with Node A's key.
             args.ssh_user = "root"
-        elif sys.stdin.isatty() and not env.env and "--ssh-user" not in (argv or []):
-            args.ssh_user = input("Worker SSH username [root]: ").strip() or "root"
         try:
             found = bootstrap.discover(transport, user=args.ssh_user, port=args.ssh_port,
                                        select=lambda peer: print(f"Neighbor on {peer['via']}/{peer['interface']}: {peer['address']}") is None)
@@ -154,6 +184,8 @@ def main(argv=None):
         print(f"Found {len(found['nodes'])} authenticated Sparks. Node A: " + found["nodes"][0]["hostname"])
         for n in found["nodes"]:
             print("  " + n["hostname"] + "  " + n["id"][:12])
+        for line in transport.trusted():
+            print("  SSH host key trusted on first contact: " + line)
         print("Workers will receive SparkRing and a private administration network over the fabric.")
         print("Node A Internet sharing: " + ("disabled" if args.no_share_internet else "enabled (package/image/model downloads)"))
         installer.write(directory / "discovery.json", found)
