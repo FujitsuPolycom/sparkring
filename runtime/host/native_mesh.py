@@ -96,7 +96,7 @@ def definitions(raw_site, cluster, profile):
             "site": site, "topology": fabric, "reference": reference, "health_port": 9976, "replaces": []}
 
 
-def select(raw_site, cluster, profile, *, fresh=False, invoke=discovery.ssh):
+def select(raw_site, cluster, profile, *, fresh=False, existing_only=False, invoke=discovery.ssh):
     result = copy.deepcopy(raw_site)
     observed = [json.loads(invoke(row["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
                 for rank, row in enumerate(result["hosts"])]
@@ -109,6 +109,8 @@ def select(raw_site, cluster, profile, *, fresh=False, invoke=discovery.ssh):
         return result
     if any(observed) and not fresh:
         raise ValueError("Only part of the native mesh is active. Use a reviewed --fresh-mesh replacement after inspection.")
+    if existing_only:
+        return result
     planned = definitions(result, cluster, profile)
     if fresh:
         planned["replaces"] = [{"rank": i, "unit": o["unit"], "reference": o["reference"]} for i, o in enumerate(observed) if o]

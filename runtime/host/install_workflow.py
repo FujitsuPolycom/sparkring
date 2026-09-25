@@ -74,6 +74,8 @@ def select_deployment(args, cluster, state_root):
             row["cache"] = args.cache_path
     if profile in installer.compose.TP4_PROFILES:
         site = native_mesh.select(site, cluster, profile, invoke=discovery.ssh)
+    elif installer.backend({"profile": profile}) == "glm-managed":
+        site = native_mesh.select(site, cluster, profile, existing_only=True, invoke=discovery.ssh)
     lock = installer.init(directory, profile, site, image_runtime=image)
     return directory, lock
 

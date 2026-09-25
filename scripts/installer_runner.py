@@ -188,7 +188,7 @@ def check_workloads(facts, lock, number, *, managed_prepared=False):
     containers, processes = facts["gpu_containers"], facts["gpu_process_ancestors"]
     if not containers and not processes:
         return
-    expected = (lock["site"]["name"] if lock["backend"] == "glm-managed" else "sr-" + lock["site"]["name"]) + f"-r{number}"
+    expected = (lock["site"]["name"] if lock["backend"].startswith("glm-") else "sr-" + lock["site"]["name"]) + f"-r{number}"
     if len(containers) == 1:
         entry = containers[0]
         identity = (entry["labels"].get("io.sparkring.deployment") == lock["id"] if lock["backend"] == "compose"
@@ -243,6 +243,7 @@ class Runner:
         if operation in ("managed-prepare", "managed-prepared"):
             if prepared_path.exists():
                 deploy_suite.check_network(installer.read(prepared_path))
+                self.bind_existing_glm(prepared_path, verify=operation == "managed-prepared")
                 return {"ok": True}
             if operation == "managed-prepared":
                 raise ValueError("Managed staging is incomplete; inspect its stage receipt")
@@ -259,11 +260,16 @@ class Runner:
                                             existing_model_roots=[r["model"] for r in rows],
                                             runtime_profile="tp4-dcp1-sparkcache" if lock["selection"]["sparkcache"] else "tp4-dcp1",
                                             target_model_variant=lock["selection"]["target_variant"], preserve_existing_network=True)
+            if lock["backend"] == "glm-existing-mesh":
+                spec["site"]["management_addresses"] = [row["host_ip"] for row in rows]
+                for rank, row in enumerate(rows):
+                    spec["fabric"]["ranks"][rank]["management_netdev"] = row["interface"]
             prep = {"schema": "sparkring-deploy-preparation/v1", "spec": spec,
                     "network_plan": deploy_suite.plan_network(spec, inventory["hosts"]),
                     "model_started": False, "lifecycle_capabilities": deploy_suite.lifecycle_capabilities()}
             verified = deploy_suite.check_network(prep)
             deploy_stage.stage(verified, directory / "runtime")
+            self.bind_existing_glm(prepared_path)
             return {"ok": True}
         mapping = {"managed-created": "create", "managed-installed": "install", "managed-up-check": "up",
                    "managed-native-checked": "native-check", "managed-running": "start", "managed-stopped": "stop"}
@@ -278,6 +284,14 @@ class Runner:
         deploy_engine.execute_plan(plan, path, plan["sha256"], resume=path.exists(),
                                    allow_model_actions=True, allow_hardware_tests=True)
         return {"ok": True}
+
+    def bind_existing_glm(self, prepared_path, *, verify=False):
+        if self.lock["backend"] != "glm-existing-mesh":
+            return
+        digest = deploy_engine.plan_digest(installer.read(prepared_path))
+        for rank in range(4):
+            self.remote(rank, "existing-glm-bound" if verify else "existing-glm-bind",
+                        data=json.dumps({"preparation_sha256": digest}).encode())
 
     def __call__(self, target, argv, timeout):
         from runtime.host import progress

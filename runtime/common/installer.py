@@ -109,7 +109,7 @@ def site_document(raw, card, revision):
             item["node_id"] = str(uuid.UUID(row["node_id"]))
         if backend(card) == "glm-managed" and item["cache"] != cache_default:
             raise ValueError("Managed GLM cache must remain under its dedicated backend workspace")
-        if item["host_ip"] == item["management_ip"] and card["profile"] not in compose.TP4_PROFILES:
+        if item["host_ip"] == item["management_ip"] and not (card["nodes"] == 4 and "fabric" in row):
             raise ValueError("Management and data fabric addresses must be distinct")
         paths = [PurePosixPath(item[key]) for key in ("model", "cache", "repository", "deployment_root")]
         for i, path in enumerate(paths):
@@ -154,9 +154,12 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
         from runtime.common import installer_image
         card = installer_image.selection(card, image_runtime)
     site = site_document(raw_site, card, revision)
+    selected_backend = backend(card)
+    if selected_backend == "glm-managed" and all("fabric" in row for row in site["ranks"]):
+        selected_backend = "glm-existing-mesh"
     value = {"schema": "sparkring-install-lock/v1", "selection": card, "site": site,
              "site_input": raw_site, "source_revision": revision, "bundle_sha256": bundle_sha256,
-             "backend": backend(card)}
+             "backend": selected_backend}
     if image_runtime is not None:
         value["image_runtime"] = image_runtime
     value["id"] = compose.digest(compose.encoded(value))
@@ -251,7 +254,7 @@ def rendered(lock):
 
 
 def connection(lock):
-    if lock["backend"] == "glm-managed":
+    if lock["backend"] in ("glm-managed", "glm-existing-mesh"):
         from runtime.common import glm_tp4
         port = int(glm_tp4.DEFAULTS["PORT"])
         model = "GLM-5.3-Flash-NVFP4-" + ("QAD" if lock["selection"]["target_variant"] == "nvfp4-qad" else "Spark") + "-TP4"
@@ -290,7 +293,7 @@ def operation_plan(lock, action):
                   phase("image", ranks, "mutates-host", "image-check"),
                   phase("model", ranks, "mutates-host", "model-check")]
         if action == "prepare":
-            if lock["backend"] == "glm-managed":
+            if lock["backend"] in ("glm-managed", "glm-existing-mesh"):
                 phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared")]
             return deploy_engine.seal_plan({"schema": "sparkring-deploy-plan/v1", "deployment": lock["id"],
                                            "operation": action, "phases": phases})
@@ -303,6 +306,8 @@ def operation_plan(lock, action):
                        phase("managed-start", ranks[:1], "starts-model", "managed-running"),
                        phase("managed-ready", ranks[:1])]
         else:
+            if lock["backend"] == "glm-existing-mesh":
+                phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared")]
             if "native_mesh" in lock["site_input"]:
                 phases += [phase("mesh-prepare", ranks, "mutates-host", "mesh-prepared"),
                            phase("create", ranks, "starts-model", "created"),

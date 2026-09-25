@@ -151,7 +151,7 @@ def transfer_model(operation, lock, row, state):
         receipt = verify_model(lock, row, saved)
         state.mkdir(parents=True, exist_ok=True)
         deploy_engine.save_receipt(receipt_path, receipt)
-        if lock["backend"] != "glm-managed":
+        if not lock["backend"].startswith("glm-"):
             plain(row["cache"]).mkdir(parents=True, exist_ok=True)
         return {"reused": True}
     manifest = json.load(sys.stdin)
@@ -196,7 +196,7 @@ def transfer_model(operation, lock, row, state):
                "files": hashes, "file_stats": before, "origin": "verified-fabric-copy"}
     verify_model(lock, row, receipt_path, receipt=receipt, measured=hashes)
     deploy_engine.save_receipt(receipt_path, receipt)
-    if lock["backend"] != "glm-managed":
+    if not lock["backend"].startswith("glm-"):
         plain(row["cache"]).mkdir(parents=True, exist_ok=True)
     return {"ok": True}
 
@@ -402,7 +402,7 @@ def perform(operation, lock, number):
         if model.exists() and any(model.iterdir()) and not row["reuse_verified_model"]:
             raise ValueError("Nonempty model path has no installer receipt; explicitly declare an independently verified copy or choose a fresh path")
         model.mkdir(parents=True, exist_ok=True)
-        if lock["backend"] != "glm-managed":
+        if not lock["backend"].startswith("glm-"):
             cache.mkdir(parents=True, exist_ok=True)
         if not row["reuse_verified_model"]:
             code = "from huggingface_hub import snapshot_download; import sys; snapshot_download(repo_id=sys.argv[1],revision=sys.argv[2],local_dir='/model')"
@@ -421,6 +421,11 @@ def perform(operation, lock, number):
         deploy_engine.save_receipt(model_receipt, receipt)
         return {"ok": True}
 
+    if lock["backend"] == "glm-existing-mesh":
+        if operation == "receipt":
+            return profiles.read_json(image_receipt)
+        from runtime.host import glm_existing_mesh
+        return glm_existing_mesh.perform(operation, lock, number, state)
     if lock["backend"] == "glm-managed":
         if operation == "receipt":
             return profiles.read_json(image_receipt)

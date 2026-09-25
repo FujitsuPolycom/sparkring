@@ -42,7 +42,7 @@ def _operation(directory, operation):
         result = installer.status(directory)
         if operation == "verify":
             steps = ([(row, op) for row in runner.lock["site"]["ranks"] for op in ("owned", "running")]
-                     if runner.lock["backend"] == "compose" else [])
+                     if runner.lock["backend"] != "glm-managed" else [])
             steps.append((runner.lock["site"]["ranks"][0], "smoke"))
             for row, op in steps:
                 checked = runner(row["host"], ["installer", op, str(row["rank"])], 120)

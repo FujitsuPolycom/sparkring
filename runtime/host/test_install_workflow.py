@@ -111,7 +111,8 @@ def test_noninteractive_missing_approval_is_a_result_not_a_prompt(machine, capsy
     assert json.loads(capsys.readouterr().out)["field"] == "approval"
 
 
-def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine, monkeypatch, capsys):
+@pytest.mark.parametrize("profile", ["qwen38-flash-next-qad-tp4", "glm53-flash-spark-tp4-dcp1-nocache"])
+def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine, monkeypatch, capsys, profile):
     value = cluster(4)
     node.save(controller.STATE, "cluster.json", value)
     monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
@@ -123,7 +124,7 @@ def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine,
                                       "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0", "unit": "sparkring-mesh.service"}})
         return json.dumps({"model_path": "/srv/models/cached"})
     monkeypatch.setattr(flow.discovery, "ssh", remote)
-    assert sparkring.main(["install", "--profile", "qwen38-flash-next-qad-tp4", "--yes", "--json"]) == 0
+    assert sparkring.main(["install", "--profile", profile, "--yes", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
     from runtime.common import installer
     lock = installer.load(result["deployment"])
@@ -148,6 +149,8 @@ def test_glm_mesh_conflict_returns_input_before_updates_or_model_stop(machine, m
     def remote(target, argv):
         if "assets" in argv:
             return json.dumps({"model_path": "/srv/models/cached"})
+        if "native-mesh" in argv:
+            return json.dumps({"mesh": None})
         return json.dumps({"available": False, "occupied": ["/etc/sparkring/managed-mesh"]})
     monkeypatch.setattr(flow.discovery, "ssh", remote)
     assert sparkring.main(["install", "--profile", "glm53-flash-spark-tp4-dcp1-sparkcache", "--yes", "--json"]) == 3
