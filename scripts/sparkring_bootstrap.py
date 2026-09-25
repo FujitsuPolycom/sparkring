@@ -169,7 +169,7 @@ def trust_host(
     if fingerprint.returncode:
         raise BootstrapError(f"could not fingerprint the host key for {host}")
     answer = confirm(
-        f"Trust {target} host key?\n  {fingerprint.stdout.strip()}\nType yes: "
+        f"Trust {target} host key?\n  {fingerprint.stdout.strip()}\n[y/N]: "
     )
     if answer.strip().lower() not in ("y", "yes"):
         raise BootstrapError(f"host key for {target} was not accepted")
