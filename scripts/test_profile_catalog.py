@@ -10,7 +10,9 @@ def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
     pair_summary = summary.split('### Two Sparks', 1)[1]
     rows = [line for line in pair_summary.splitlines() if line.replace('**', '').startswith('| [Qwen3.8-Flash-Next](')]
     assert len(rows) == 1
-    assert '[Optional](../profiles/qwen38-flash-next-tp2/README.md)' in rows[0]
+    # The SparkCache profile pins revision 629bc3218833, not the installer
+    # profile's checkpoint, so the installer row offers no cache option.
+    assert '| No | Development |' in rows[0]
     assert 'Qwen with SparkCache is unsupported' not in table
     assert resolve('qwen38-flash-next-tp2')['serving']['sparkcache'] is False
     cached = resolve('qwen38-flash-next-tp2-sparkcache')
@@ -36,10 +38,15 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
     table = profile_table()
     summary, variants = table.split('## Configuration variants', 1)
     glm_rows = [line for line in summary.splitlines() if line.startswith('| **[GLM-5.3-Flash](')]
-    assert len(glm_rows) == 2  # Four-Spark and two-Spark deployments.
-    assert '| 1/4 |' in glm_rows[0]
-    for row, nodes in zip(glm_rows, (4, 2)):
+    # Each topology lists the installer's shared-image profile and the
+    # SparkCache DCP1 profile.
+    assert len(glm_rows) == 4
+    cache_rows = [row for row in glm_rows if '[Optional](' in row]
+    assert len(cache_rows) == 2 and '| 1/4 |' in cache_rows[0]
+    for row, nodes in zip(cache_rows, (4, 2)):
         assert f'[Optional](../profiles/glm53-flash-spark-tp{nodes}-dcp1-sparkcache/README.md)' in row
+    installer_rows = [row for row in glm_rows if '](../docs/operations/install.md)' in row]
+    assert len(installer_rows) == 2 and all(row.endswith('| Experimental |') for row in installer_rows)
     assert '1,048,576' not in summary
     for profile_id in catalog():
         profile, _ = load(profile_id)
@@ -67,7 +74,7 @@ def test_shared_qwen_guide_is_used_for_cache_links_and_variant_navigation():
     from scripts.generate_profiles import profile_table
     compact = profile_table(compact=True)
     catalog = profile_table()
-    assert '[Optional](profiles/qwen38-flash-next-tp2/README.md)' in compact
+    assert '[Optional](profiles/qwen38-flash-next-tp2/README.md)' not in compact
     assert '[qwen38-flash-next-tp2-sparkcache](../profiles/qwen38-flash-next-tp2/README.md)' in catalog
     assert 'profiles/qwen38-flash-next-tp2-sparkcache/README.md' not in compact
     assert 'profiles/qwen38-flash-next-tp2-sparkcache/README.md' not in catalog
@@ -77,9 +84,9 @@ def test_shared_qwen_guide_is_used_for_cache_links_and_variant_navigation():
 def test_glm_discovery_promotes_native_cache_profiles_without_relabelling_r33():
     summary = profile_table(compact=True)
     glm = [row for row in summary.splitlines() if row.startswith("| **[GLM-5.3-Flash](")]
-    assert len(glm) == 2
-    assert all(row.endswith("| Validated |") for row in glm)
-    assert all('[Optional](' in row for row in glm)
+    cached = [row for row in glm if '[Optional](' in row]
+    assert len(glm) == 4 and len(cached) == 2
+    assert all(row.endswith("| Validated |") for row in cached)
     for profile_id in ("glm53-flash-spark-tp2-dcp1-sparkcache", "glm53-flash-spark-tp4-dcp1-sparkcache"):
         resolved = resolve(profile_id)
         assert resolved["status"] == "qualified"
