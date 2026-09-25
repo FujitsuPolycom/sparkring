@@ -79,7 +79,7 @@ services:
     - qwen3_xml
     - --enable-auto-tool-choice
     - --speculative-config
-    - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"humming","attention_backend":"B12X"}'
+    - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X"}'
     - --compilation-config
     - '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}'
     - --media-io-kwargs
@@ -89,13 +89,13 @@ services:
     - --enable-prompt-tokens-details
     - --headless
     environment:
-      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-cuda13.4.2-60215d26cf5e/b12x
+      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-cuda13.4.2-629bc3218833/b12x
       B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
       B12X_POLICY_MODE: auto
       B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
       B12X_ROCE_PAIR_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 0=0/1
-      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/cute
+      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/cute
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       NCCL_CROSS_NIC: '1'
@@ -116,11 +116,11 @@ services:
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
       SPARKRING_TRANSPORT_MANIFEST_SHA256: eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive
-      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/inductor
+      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/triton
+      TRITON_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/triton
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-      VLLM_CACHE_ROOT: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/vllm
+      VLLM_CACHE_ROOT: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -143,9 +143,9 @@ services:
       VLLM_SSM_CONV_STATE_LAYOUT: DS
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e
+      XDG_CACHE_HOME: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833
     labels:
-      io.sparkring.deployment: 24f064405174e0b5500fea0b4880bbffaae0f9852e5460783c94eaec17c2442a
+      io.sparkring.deployment: 424ab742699db2c7406957eee53983f554a338047c63a7490bd26663f7bdadb9
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

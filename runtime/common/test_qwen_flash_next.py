@@ -47,11 +47,10 @@ def test_qwen_model_and_native_prefix_only():
     assert not any(value.startswith("VLLM_PLE_TABLE_MEMORY=") for value in command)
     assert "VLLM_PLE_CPU_OFFLOAD=0" in command
     assert "VLLM_MXFP8_LM_HEAD=0" in command
-    # The qad-step5500-ple1000 MTP experts are MXFP8, which the B12X MoE
-    # backend does not implement; the draft uses the MXFP8-capable backend.
+    # Revision 629bc3218833 stores NVFP4 MTP routed experts, which B12X runs.
     assert (
         json.loads(command[command.index("--speculative-config") + 1])["moe_backend"]
-        == "humming"
+        == "b12x"
     )
     assert command[command.index("--decode-context-parallel-size") + 1] == "1"
 
@@ -68,13 +67,12 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     plain = adapter.read(root / 'config.json')
     cached = adapter.read(root / 'sparkcache.json')
     tp4 = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/config.json')
-    # The installer profiles follow checkpoint branch qad-step5500-ple1000; the
-    # qualified SparkCache profiles keep the release-qualified revision.
+    # The installer and SparkCache profiles pin the release-qualified revision.
     tp4_cached = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/sparkcache.json')
     assert plain['model'] == tp4['model']
     assert cached['model'] == tp4_cached['model']
     assert cached['model']['revision'] == '629bc3218833a38b475b719f34aa571666f4a03e'
-    assert plain['model']['revision'] == '60215d26cf5e42c2db6128774032d57fc62678da'
+    assert plain['model'] == cached['model']
     assert plain['served_model_name'] == cached['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP2'
     assert tp4['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP4'
     assert tp4_cached['served_model_name'] == tp4['served_model_name']
@@ -82,7 +80,7 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in manifest}
     assert hashes['config.json'] == plain['model']['config_sha256']
     assert hashes['model.safetensors.index.json'] == plain['model']['index_sha256']
-    assert len([name for name in hashes if name.endswith('-of-00041.safetensors')]) == 41
+    assert len([name for name in hashes if name.endswith('-of-00036.safetensors')]) == 36
     assert (root / 'SHA256SUMS').read_bytes() == (ROOT / 'profiles/qwen38-flash-next-qad-tp4/SHA256SUMS').read_bytes()
     args = cached['vllm_args']
     config = json.loads(args[args.index('--kv-transfer-config') + 1])
@@ -169,7 +167,7 @@ def test_explicit_entrypoint_and_compile_identity():
     # The installer toolchain image runs its system Python and toolchain entrypoint.
     assert command[command.index('--entrypoint') + 1] == 'python3'
     assert adapter.TOOLCHAIN_ENTRYPOINT in command
-    namespace = f"qwen-flash-next-{installer_image_id()[7:19]}-60215d26cf5e"
+    namespace = f"qwen-flash-next-{installer_image_id()[7:19]}-629bc3218833"
     assert f'VLLM_CACHE_ROOT=/cache/{namespace}/vllm' in command
     assert 'VLLM_SPARK_TP4_MODE=' in command
     assert 'VLLM_SPARK_TP4_VOCAB_MODE=' in command
@@ -223,7 +221,7 @@ def test_catalog_exposes_native_capacity_and_no_overrides():
     profile, _ = load('qwen38-flash-next-tp2')
     resolved = resolve('qwen38-flash-next-tp2')
     assert profile['overrides'] == []
-    # The qad-step5500-ple1000 checkpoint is installer-supported but not qualified.
+    # Release qualification covers the native image, not the installer image.
     assert resolved['status'] == 'implemented'
     assert resolved['topology'] == 'direct-pair-2'
     expected = {'tensor_parallel_size': 2, 'decode_context_parallel_size': 1,

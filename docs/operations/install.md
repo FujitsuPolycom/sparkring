@@ -83,7 +83,7 @@ lists the parent image and every file its derived layers replace.
 
 | Profile | Status |
 |---|---|
-| `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2` | Qwen3.8 Flash Next, checkpoint branch `qad-step5500-ple1000` |
+| `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2` | Qwen3.8 Flash Next NVFP4 QAD, revision `629bc3218833`; see [its decode A/B](../../performance/records/qwen38-flash-next/decode-ab-20260925.md) |
 | `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-spark-tp2` | GLM-5.3-Flash NVFP4-Spark with MTP3; see each profile's evidence scope |
 | `mimo-v26-flash-rl-tp4`, `mimo-v26-flash-rl-tp2` | MiMo-V2.6-Flash-RL with DFlash5; see each profile's evidence scope |
 
@@ -159,7 +159,9 @@ toolkit version and checkpoint revision, and an image update that leaves B12X
 unchanged reuses them. The first start of a profile on a Spark still includes
 that Spark's tuning. On image dev-20260925, Qwen reached API readiness in
 546.8 s on TP2 and 476.9 s on TP4 from empty caches, and in 244.3 s and
-202.7 s when started again.
+202.7 s when started again. Qwen TP4 on image dev-20260924, which it had not
+run before but whose B12X package matches, reached readiness in 352.1 s with
+its compiled kernels already present.
 `sparkring export --share` retains the image lock and per-rank Compose files.
 
 `sparkring status --json --refresh` reports the saved deployment/image IDs and

@@ -1,0 +1,392 @@
+{
+  "schema": "sparkring-decode-ab/v1",
+  "scope": "One A/B series per variant at concurrency 1 on image dev-20260925-cuda1342-nccl2323-status031; serving containers derived from the installer deployment's Compose files; not serving qualification",
+  "image_id": "sha256:5ce6ce267d8069215e08da87be3a8092175e63806cf97730847405eb04a2c51f",
+  "checkpoints": {
+    "ple": "60215d26cf5e42c2db6128774032d57fc62678da (branch qad-step5500-ple1000)",
+    "main": "629bc3218833a38b475b719f34aa571666f4a03e"
+  },
+  "programs": {
+    "qwab.py": "b41b49a9ad87b96fb71745ca3d781c19f97a57435fec7c513d2aded55e2e51f9",
+    "measure.sh": "f9c1d6b81eb893b40d73cf66acadf2cba627603fae48d31bb124a726b4b0068f",
+    "decode_probe.py": "d31435f2ebe73798b19393aafe4744ce9904d9dab9ac3ca892ec8e129280c8f5",
+    "bench.py": "f9570c7ad0d15ee1aaf14bd6bd7cf315c18bc84db7cf3f1d3e4a857a507b5dae",
+    "verify_api.py": "3201b23552f0dea29af66c78b45bf065dddbac6019086e173d592efe8dda90a7",
+    "prefill_curve.py": "b7fe9d7dbe4f24deb26ae6ed36cba67bbdde5c9ebd874d69f3d2bdbae7711e88",
+    "trace_breakdown.py": "80a8dcfd2c97176df290dfe65ba26bcf92931bc000c53fd25e592cc32ba3f74d"
+  },
+  "runs": [
+    {
+      "cluster": "tp2",
+      "variant": "ple-s3",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 47.89,
+          "after_first_token_tokens_per_second": 48.47,
+          "acceptance": 0.39,
+          "acceptance_by_position": [
+            0.69,
+            0.34,
+            0.14
+          ],
+          "tokens_per_step": 2.17
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 73.18,
+          "after_first_token_tokens_per_second": 74.73,
+          "acceptance": 0.8,
+          "acceptance_by_position": [
+            0.91,
+            0.8,
+            0.68
+          ],
+          "tokens_per_step": 3.39
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 80.95,
+          "after_first_token_tokens_per_second": 82.99,
+          "acceptance": 0.92,
+          "acceptance_by_position": [
+            0.96,
+            0.93,
+            0.86
+          ],
+          "tokens_per_step": 3.75
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4066,
+          "seconds": 1.007,
+          "tok_s": 4040
+        },
+        "16384": {
+          "tokens": 16148,
+          "seconds": 3.857,
+          "tok_s": 4186
+        },
+        "65536": {
+          "tokens": 64783,
+          "seconds": 16.95,
+          "tok_s": 3822
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        47.33,
+        45.71,
+        47.23
+      ]
+    },
+    {
+      "cluster": "tp2",
+      "variant": "main-s3",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 53.78,
+          "after_first_token_tokens_per_second": 54.34,
+          "acceptance": 0.37,
+          "acceptance_by_position": [
+            0.63,
+            0.34,
+            0.14
+          ],
+          "tokens_per_step": 2.12
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 82.01,
+          "after_first_token_tokens_per_second": 83.3,
+          "acceptance": 0.77,
+          "acceptance_by_position": [
+            0.9,
+            0.76,
+            0.65
+          ],
+          "tokens_per_step": 3.31
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 92.15,
+          "after_first_token_tokens_per_second": 94.13,
+          "acceptance": 0.92,
+          "acceptance_by_position": [
+            0.96,
+            0.93,
+            0.86
+          ],
+          "tokens_per_step": 3.75
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4065,
+          "seconds": 1.19,
+          "tok_s": 3417
+        },
+        "16384": {
+          "tokens": 16150,
+          "seconds": 3.796,
+          "tok_s": 4255
+        },
+        "65536": {
+          "tokens": 64780,
+          "seconds": 16.524,
+          "tok_s": 3920
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        53.72,
+        50.41,
+        55.48
+      ]
+    },
+    {
+      "cluster": "tp4",
+      "variant": "ple-s3",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 68.23,
+          "after_first_token_tokens_per_second": 69.27,
+          "acceptance": 0.39,
+          "acceptance_by_position": [
+            0.64,
+            0.35,
+            0.17
+          ],
+          "tokens_per_step": 2.16
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 104.58,
+          "after_first_token_tokens_per_second": 107.0,
+          "acceptance": 0.79,
+          "acceptance_by_position": [
+            0.91,
+            0.8,
+            0.68
+          ],
+          "tokens_per_step": 3.38
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 113.33,
+          "after_first_token_tokens_per_second": 116.42,
+          "acceptance": 0.9,
+          "acceptance_by_position": [
+            0.97,
+            0.9,
+            0.82
+          ],
+          "tokens_per_step": 3.69
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4068,
+          "seconds": 0.887,
+          "tok_s": 4587
+        },
+        "16384": {
+          "tokens": 16148,
+          "seconds": 3.61,
+          "tok_s": 4474
+        },
+        "65536": {
+          "tokens": 64781,
+          "seconds": 15.509,
+          "tok_s": 4177
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        72.01,
+        65.93,
+        70.47
+      ]
+    },
+    {
+      "cluster": "tp4",
+      "variant": "main-s3",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 73.79,
+          "after_first_token_tokens_per_second": 74.63,
+          "acceptance": 0.38,
+          "acceptance_by_position": [
+            0.64,
+            0.34,
+            0.16
+          ],
+          "tokens_per_step": 2.14
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 116.93,
+          "after_first_token_tokens_per_second": 119.4,
+          "acceptance": 0.82,
+          "acceptance_by_position": [
+            0.95,
+            0.8,
+            0.72
+          ],
+          "tokens_per_step": 3.47
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 125.54,
+          "after_first_token_tokens_per_second": 128.66,
+          "acceptance": 0.91,
+          "acceptance_by_position": [
+            0.97,
+            0.93,
+            0.85
+          ],
+          "tokens_per_step": 3.74
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4066,
+          "seconds": 0.929,
+          "tok_s": 4379
+        },
+        "16384": {
+          "tokens": 16151,
+          "seconds": 3.564,
+          "tok_s": 4532
+        },
+        "65536": {
+          "tokens": 64784,
+          "seconds": 15.283,
+          "tok_s": 4239
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        79.99,
+        73.32,
+        77.51
+      ]
+    },
+    {
+      "cluster": "tp4",
+      "variant": "main-s2",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 75.94,
+          "after_first_token_tokens_per_second": 76.79,
+          "acceptance": 0.49,
+          "acceptance_by_position": [
+            0.66,
+            0.33
+          ],
+          "tokens_per_step": 1.98
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 101.14,
+          "after_first_token_tokens_per_second": 102.99,
+          "acceptance": 0.84,
+          "acceptance_by_position": [
+            0.89,
+            0.79
+          ],
+          "tokens_per_step": 2.68
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 108.62,
+          "after_first_token_tokens_per_second": 110.98,
+          "acceptance": 0.95,
+          "acceptance_by_position": [
+            0.98,
+            0.92
+          ],
+          "tokens_per_step": 2.9
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4067,
+          "seconds": 0.922,
+          "tok_s": 4410
+        },
+        "16384": {
+          "tokens": 16148,
+          "seconds": 3.582,
+          "tok_s": 4507
+        },
+        "65536": {
+          "tokens": 64782,
+          "seconds": 15.426,
+          "tok_s": 4200
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        79.79,
+        78.44,
+        75.32
+      ]
+    },
+    {
+      "cluster": "tp4",
+      "variant": "main-s4",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 62.22,
+          "after_first_token_tokens_per_second": 62.82,
+          "acceptance": 0.31,
+          "acceptance_by_position": [
+            0.68,
+            0.34,
+            0.16,
+            0.08
+          ],
+          "tokens_per_step": 2.25
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 99.32,
+          "after_first_token_tokens_per_second": 101.17,
+          "acceptance": 0.67,
+          "acceptance_by_position": [
+            0.88,
+            0.72,
+            0.6,
+            0.49
+          ],
+          "tokens_per_step": 3.69
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 117.5,
+          "after_first_token_tokens_per_second": 120.28,
+          "acceptance": 0.84,
+          "acceptance_by_position": [
+            0.96,
+            0.92,
+            0.82,
+            0.67
+          ],
+          "tokens_per_step": 4.37
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4067,
+          "seconds": 0.938,
+          "tok_s": 4338
+        },
+        "16384": {
+          "tokens": 16149,
+          "seconds": 3.598,
+          "tok_s": 4488
+        },
+        "65536": {
+          "tokens": 64779,
+          "seconds": 15.466,
+          "tok_s": 4188
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        62.39,
+        58.23,
+        62.0
+      ]
+    }
+  ]
+}

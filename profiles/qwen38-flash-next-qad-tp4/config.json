@@ -2,9 +2,9 @@
   "schema": "sparkring-serving-profile/v1",
   "status": "implemented",
   "model": {
-    "revision": "60215d26cf5e42c2db6128774032d57fc62678da",
-    "config_sha256": "e0a704d86793ff7c84f4ef99eb9908e13b1684f60bc61b3b3fb1c1a7f3688abc",
-    "index_sha256": "956f5224119a4bc8b09c481ddfee095feae8b650bb02861e2a4d1e5b5735455c",
+    "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+    "config_sha256": "2d655dfa625c3c018f9685031367bc83f8532d3faf3333d7c838b2bdc13b8a7e",
+    "index_sha256": "c528e5628a0f448edc52023933c207a8dbded850afdd960d893c9171a7665dde",
     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
   },
   "topology": "direct-cycle-4",
@@ -134,7 +134,7 @@
     "qwen3_xml",
     "--enable-auto-tool-choice",
     "--speculative-config",
-    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"humming\",\"attention_backend\":\"B12X\"}",
+    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\"}",
     "--compilation-config",
     "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}",
     "--media-io-kwargs",
@@ -144,7 +144,7 @@
     "--enable-prompt-tokens-details"
   ],
   "qualification": {
-    "scope": "Checkpoint revision 60215d26cf5e42c2db6128774032d57fc62678da (branch qad-step5500-ple1000, model class Qwen4Exp) is installer-supported on the shared image; its serving has not been qualified. The release qualification records revision 629bc3218833a38b475b719f34aa571666f4a03e, which sparkcache.json keeps."
+    "scope": "Revision 629bc3218833a38b475b719f34aa571666f4a03e of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 runs on the shared installer image with HC token-row prefill ownership; its release qualification covers the shared-2026.09.3 native image, not this image."
   },
   "image_extension": "toolchain",
   "transport": {

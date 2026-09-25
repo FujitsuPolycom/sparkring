@@ -143,10 +143,10 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     native, native_image = compose.specifications(PROFILE, site)
     cached, cache_image = compose.specifications(PROFILE + "-sparkcache", site)
     base, spec = native[rank], cached[rank]
-    # The installer profile runs the qad-step5500-ple1000 checkpoint on the
-    # installer image; the SparkCache profile runs revision 629bc3218833 on the
-    # shared-2026.09.3 native image. Compute, transport and memory settings match;
-    # image-bound paths, the image's transport identity and cache settings differ.
+    # Both profiles pin revision 629bc3218833. The installer profile runs on the
+    # installer image and the SparkCache profile on the shared-2026.09.3 native
+    # image. Compute, transport and memory settings match; image-bound paths, the
+    # image's transport identity and cache settings differ.
     assert native_image == adapter.read(INSTALLER)["image_reference"]
     assert cache_image == adapter.read(PUBLICATION)["image_reference"]
     image_bound = {"SPARKCACHE_ENABLED", "SPARKRING_TRANSPORT_PROFILE", "SPARKRING_TRANSPORT_MANIFEST_SHA256",
@@ -179,13 +179,10 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     for flag in ("--kv-transfer-config",):
         index = args.index(flag)
         del args[index:index + 2]
-    # The installer checkpoint's MXFP8 MTP experts use the humming MoE backend;
-    # the SparkCache checkpoint's NVFP4 MTP experts keep B12X.
+    # Both drafts run the checkpoint's NVFP4 MTP experts on B12X.
     native = list(base.command)
     draft = native.index("--speculative-config") + 1
-    assert json.loads(native[draft])["moe_backend"] == "humming"
-    assert json.loads(args[draft])["moe_backend"] == "b12x"
-    native[draft] = args[draft]
+    assert json.loads(native[draft])["moe_backend"] == json.loads(args[draft])["moe_backend"] == "b12x"
     assert args[1:] == native[1:]
     assert spec.mounts == base.mounts
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap

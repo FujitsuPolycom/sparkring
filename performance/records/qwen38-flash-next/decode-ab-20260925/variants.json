@@ -1,0 +1,29 @@
+{
+ "ple-s3": {},
+ "main-s3": {
+  "name": "main-s3",
+  "checkpoint": "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e",
+  "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "spec": {
+   "moe_backend": "b12x"
+  }
+ },
+ "main-s2": {
+  "name": "main-s2",
+  "checkpoint": "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e",
+  "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "spec": {
+   "moe_backend": "b12x",
+   "num_speculative_tokens": 2
+  }
+ },
+ "main-s4": {
+  "name": "main-s4",
+  "checkpoint": "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e",
+  "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "spec": {
+   "moe_backend": "b12x",
+   "num_speculative_tokens": 4
+  }
+ }
+}

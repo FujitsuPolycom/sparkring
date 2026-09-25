@@ -1,0 +1,44 @@
+window 1108.1 ms, GPU busy 1091.1 ms (98%), kernel time 1194.6 ms, kernels 94590
+per generated token: window 17.31 ms, busy 17.05 ms
+
+by category (share of kernel time):
+  gemm                   677.3 ms   56.7%
+  moe                    307.5 ms   25.7%
+  norm/elementwise        79.4 ms    6.7%
+  collective              50.8 ms    4.2%
+  attention               43.0 ms    3.6%
+  other                   27.1 ms    2.3%
+  sampling                 8.4 ms    0.7%
+  memcpy/memset            1.2 ms    0.1%
+
+top kernels:
+     320.9 ms   6982x  void cutlass::Kernel2
+     286.9 ms   6561x  kernel_cutlass_kernel_b12x_libdense_gemmDenseGemmKernel_object_at__CopyAtom_ThrID10_TVLayo
+     285.3 ms   1296x  kernel_cutlass_kernel_b12xmoe_sharedkernelssiluMoEDynamicKernelSilu_object_at__tensorptrbf
+      36.0 ms  20488x  void at::native::vectorized_elementwise_kernel
+      35.6 ms   2788x  kernel_cutlass_kernel_b12xcommroce_oneshot_cute_RoceOneshotLaunch_object_at__ptri32gmemali
+      24.6 ms   1647x  std::enable_if
+      20.9 ms    972x  kernel_cutlass_kernel_b12xsequencegdn_decode_cute_kernels_PackedRecurrentQwenKernel_object
+      19.4 ms   8977x  void at::native::elementwise_kernel
+      13.8 ms    162x  kernel_cutlass_kernel_b12xsequencemtp_feedback_cute_prefillMTPPrefillBf16GemmKernel_object
+      12.2 ms     81x  kernel_cutlass_kernel_b12xmoe_sharedkernelsw4a16kernelW4A16FusedMoeKernel_object_at__tenso
+      10.7 ms   5181x  kernel_cutlass_kernel_b12xgemmblockscaled_reduceWeightOnlySplitKReduce_object_at__ptrf32gm
+       9.4 ms    101x  ncclDevKernel_AllReduce_bf16_RING(ncclDevKernelArgsStorage
+       9.4 ms   2727x  kernel_cutlass_kernel_b12xnormhyperconnection_cute_PackedCombineNorm_object_at__ptrbf16gme
+       7.7 ms   4242x  void cublasLt::splitKreduce_kernel
+       7.2 ms   2862x  _gate_mean_kernel
+       5.6 ms    108x  kernel_cutlass_kernel_b12xcommroce_allgather_cute_RoceAllGatherLaunch_object_at__ptri32gme
+       5.4 ms    405x  kernel_cutlass_kernel_b12xattentionpaged_selected_forward_SelectedPositionPagedForwardKern
+       5.2 ms   1377x  _sorted_softmax_topk_kernel
+       4.9 ms    972x  _causal_conv1d_update_kernel
+       4.6 ms    653x  void at::native::index_elementwise_kernel
+       4.1 ms    892x  void at::native::reduce_kernel
+       4.0 ms    100x  nvjet_sm121_tst_mma_64x24x128_4_16x24x128_tmaAB_alignCD4_splitK_TNNN
+       3.9 ms    100x  nvjet_sm121_tst_mma_128x112x64_3_32x56x64_tmaAB_alignCD4_bz_TNNN
+       3.8 ms   1718x  void at::native::unrolled_elementwise_kernel
+       3.1 ms      1x  _row_kernel
+       2.9 ms   1253x  memcpy32_post
+       2.9 ms    351x  kernel_cutlass_kernel_b12xattentionqsa_score_pair_cutePairedRepresentativeScoreKernel_obje
+       2.4 ms   2862x  kernel_cutlass_kernel_b12xnormhyperconnection_cute_ScaledSilu_object_at__ptrbf16gmem_ptrbf
+       2.4 ms   1248x  _dynamic_route_plan_kernel
+       2.2 ms   1296x  triton_poi_fused_mul_silu_slice_0
