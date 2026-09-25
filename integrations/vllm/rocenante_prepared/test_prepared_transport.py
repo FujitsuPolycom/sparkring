@@ -59,16 +59,37 @@ def runtime_method(name, env=None):
     return namespace[name]
 
 
+def c_definition(source, signature, terminator="\n}\n"):
+    """Return one top-level C definition, from its signature through its terminator."""
+    start = source.index(signature)
+    end = source.index(terminator, start) + len(terminator)
+    return source[start:end]
+
+
 def test_legacy_wire_path_and_kernel_math_are_preserved():
     for name in (
         "_proxy.py",
-        "_roce_proxy.c",
         "_path_config.py",
         "_cute_intrinsics.py",
     ):
         assert (ROOT / "roce" / name).read_text().strip() == (
             LEGACY / name
         ).read_text().strip()
+    # The prepared proxy paces hardware-forwarded stripes on the sending side;
+    # peers still exchange the same connection blob, region layout, queue-pair
+    # attributes and data/flag placement as the preserved adaptive proxy.
+    prepared = (ROOT / "roce/_roce_proxy.c").read_text()
+    legacy = (LEGACY / "_roce_proxy.c").read_text()
+    abi = next(l for l in prepared.splitlines() if l.startswith("#define ROCE_ABI_VERSION"))
+    assert abi in legacy.splitlines()
+    for signature, terminator in (
+        ("typedef struct {\n    uint32_t abi_version;", "} roce_blob_t;"),
+        ("int roce_layout(", "\n}\n"),
+        ("static int connect_qp(", "\n}\n"),
+    ):
+        assert c_definition(prepared, signature, terminator) == c_definition(
+            legacy, signature, terminator
+        )
     for name in ("_oneshot_cute.py", "_allgather_cute.py"):
 
         def classes(path):
