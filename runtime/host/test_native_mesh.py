@@ -239,7 +239,8 @@ def test_existing_fabric_connection_gets_link_local_only_with_approval(monkeypat
     if approved:
         assert seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run, link_local=approvals.append)["prepared"]
         assert approvals[0] == "Wired connection 4 (p0)"
-        assert ["nmcli", "connection", "modify", "uuid-p0", "ipv6.method", "link-local"] in state["calls"]
+        assert ["nmcli", "connection", "modify", "uuid-p0", "ipv6.method", "link-local",
+                "ipv6.addr-gen-mode", "eui64"] in state["calls"]
         assert not any(argv[:3] == ["nmcli", "connection", "add"] for argv in state["calls"])
     else:
         with pytest.raises(ValueError, match="no IPv6 link-local"):

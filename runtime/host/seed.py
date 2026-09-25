@@ -80,7 +80,10 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_
                     raise ValueError(f"Fabric connection '{name}' on {interface} has no IPv6 link-local address; "
                                      "repeat setup and approve adding it (IPv4 settings are kept)")
                 link_local(f"{name} ({interface})")
-                node.call(["nmcli", "connection", "modify", current, "ipv6.method", "link-local"], run=run)
+                # EUI-64 makes the link-local address equal the port's default RoCE
+                # GID, keeping one IPv6 GID pair so the IPv4 RoCE v2 GID stays at index 3.
+                node.call(["nmcli", "connection", "modify", current, "ipv6.method", "link-local",
+                           "ipv6.addr-gen-mode", "eui64"], run=run)
                 node.call(["nmcli", "device", "reapply", interface], run=run)
                 for _ in range(20):
                     addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
@@ -94,7 +97,8 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_
             if any(row.get("addr_info") for row in observed):
                 raise ValueError("Unmanaged existing IPv4 configuration on " + interface + "; inspect before preparing")
             node.call(["nmcli", "connection", "add", "type", "ethernet", "ifname", interface, "con-name", "sparkring-bootstrap-" + interface,
-                       "ipv4.method", "disabled", "ipv6.method", "link-local", "connection.autoconnect", "yes"], run=run)
+                       "ipv4.method", "disabled", "ipv6.method", "link-local", "ipv6.addr-gen-mode", "eui64",
+                       "connection.autoconnect", "yes"], run=run)
             node.call(["nmcli", "connection", "up", "sparkring-bootstrap-" + interface], run=run)
     # Preparation and the permanent administration SSH both use TCP 2222. Only
     # SparkRing's own active preparation service may already hold it.
