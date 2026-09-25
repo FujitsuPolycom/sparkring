@@ -10,7 +10,7 @@
   },
   "release": "runtime/releases/dev-20260925-cuda1342-nccl2323-status031/release.json",
   "guide": "docs/operations/install.md",
-  "evidence_scope": "Two-node settings follow the earlier GLM TP2 recipe; not yet run on the shared image.",
+  "evidence_scope": "MTP3 with native prefix caching on installer image dev-20260925-cuda1342-nccl2323-status031: one installation through `sparkring install` passed counting, arithmetic and code checks; single-run first-start timings are in performance/records/images/dev-20260925-installer-profiles-20260925.md. Full-context pressure, media and serving qualification are not established.",
   "overrides": [],
   "launcher": {
     "kind": "python",

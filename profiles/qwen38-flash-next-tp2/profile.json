@@ -10,7 +10,7 @@
   },
   "release": "runtime/releases/dev-20260925-cuda1342-nccl2323-status031/release.json",
   "guide": "profiles/qwen38-flash-next-tp2/README.md",
-  "evidence_scope": "Checkpoint branch qad-step5500-ple1000 (revision 60215d26cf5e42c2db6128774032d57fc62678da) on the shared installer image; serving has not been qualified. Release qualification evidence applies to revision 629bc3218833a38b475b719f34aa571666f4a03e and the SparkCache profile, not to this checkpoint.",
+  "evidence_scope": "Checkpoint branch qad-step5500-ple1000 (revision 60215d26cf5e42c2db6128774032d57fc62678da) with HC token-row prefill ownership on installer image dev-20260925-cuda1342-nccl2323-status031: one installation through `sparkring install` passed counting, arithmetic and code checks; single-run first-start timings are in performance/records/images/dev-20260925-installer-profiles-20260925.md. Serving is not qualified. Release qualification evidence applies to revision 629bc3218833a38b475b719f34aa571666f4a03e and the SparkCache profile, not to this checkpoint.",
   "overrides": [],
   "launcher": {
     "kind": "python",

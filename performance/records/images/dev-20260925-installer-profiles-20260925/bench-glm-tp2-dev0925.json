@@ -1,0 +1,32 @@
+{
+ "label": "glm-tp2-dev0925",
+ "model": "GLM-5.3-Flash-NVFP4-Spark-TP2",
+ "prefill": {
+  "4096": {
+   "tokens": 4068,
+   "seconds": 3.349,
+   "tok_s": 1215
+  },
+  "16384": {
+   "tokens": 16151,
+   "seconds": 6.676,
+   "tok_s": 2419
+  },
+  "65536": {
+   "tokens": 64782,
+   "seconds": 27.719,
+   "tok_s": 2337
+  }
+ },
+ "decode": [
+  30.66,
+  33.69,
+  33.54
+ ],
+ "fingerprints": {
+  "count": "The user wants me to count from 1 to 30, separated by commas, and output only the numbers. This is a simple, straightforward request. No preamble, no explanation, just the numbers.1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, ",
+  "math": "17 * 23 = 391\n\nLet me verify: 17 * 23 = 17 * 20 + 17 * 3 = 340 + 51 = 391391",
+  "code": "The user wants a Python function `is_prime(n)` and nothing else. So I should just provide the function code, no explanations, no extra text.\n\nLet me write a good is_prime function:\n\n```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n < 4:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, int(n ** ",
+  "story": "The user wants a 700-word story about a lighthouse keeper who repairs a clockwork bird. Let me craft something evocative and detailed. I should aim for approximately 700 words \u2014 that's a specific target, so I need to be careful about length. Let me think about the story elements:\n\n- A lighthouse keeper: solitary, methodical, perhaps lonely, tied to routine\n- A clockwork bird: delicate machinery, something broken, something with history\n"
+ }
+}

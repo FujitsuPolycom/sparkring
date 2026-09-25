@@ -1,0 +1,283 @@
+{
+  "schema": "sparkring-installer-profile-validation/v1",
+  "scope": "One installation and one measurement series per profile through `sparkring install` on one Spark pair and one four-Spark ring; functional checks and single-stream timing, not serving qualification",
+  "image": {
+    "release": "dev-20260925-cuda1342-nccl2323-status031",
+    "image_id": "sha256:5ce6ce267d8069215e08da87be3a8092175e63806cf97730847405eb04a2c51f",
+    "registry_manifest_digest": "sha256:9d8e3a6cd00b887ffd33496e43afa06cffeebbfc88008361d7569005c4ae49c6"
+  },
+  "installer_package_revision": "eb8ec2ba3b17",
+  "cache_state": "First start of each profile on this image: compile and tuning caches were empty",
+  "programs": {
+    "verify_api.py": {
+      "path": "performance/records/images/dev-20260925-installer-profiles-20260925/verify_api.py",
+      "sha256": "3201b23552f0dea29af66c78b45bf065dddbac6019086e173d592efe8dda90a7"
+    },
+    "bench.py": {
+      "path": "performance/records/images/dev-20260925-installer-profiles-20260925/bench.py",
+      "sha256": "f9570c7ad0d15ee1aaf14bd6bd7cf315c18bc84db7cf3f1d3e4a857a507b5dae"
+    }
+  },
+  "profiles": [
+    {
+      "profile": "qwen38-flash-next-tp2",
+      "nodes": 2,
+      "served_model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+      "first_start_api_readiness_seconds": 546.8,
+      "functional_checks": {
+        "request_options": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "count_1_to_20_exact": true,
+        "arithmetic_17x23_391": true,
+        "is_prime_function": true
+      },
+      "sampled_decode_tokens_per_second": 47.0,
+      "prefill": {
+        "4096": {
+          "tokens": 4068,
+          "seconds": 1.015,
+          "tok_s": 4006
+        },
+        "16384": {
+          "tokens": 16151,
+          "seconds": 3.978,
+          "tok_s": 4060
+        },
+        "65536": {
+          "tokens": 64783,
+          "seconds": 17.185,
+          "tok_s": 3770
+        }
+      },
+      "greedy_decode_tokens_per_second": [
+        48.49,
+        49.23,
+        47.73
+      ],
+      "greedy_decode_median": 48.49,
+      "receipt": {
+        "path": "performance/records/images/dev-20260925-installer-profiles-20260925/bench-tp2-dev0925.json",
+        "sha256": "dca4decc23cc17d0a79dabb5e8a34dc1b26b6311fce585216dbaceb5cd4ef0e4"
+      }
+    },
+    {
+      "profile": "qwen38-flash-next-qad-tp4",
+      "nodes": 4,
+      "served_model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
+      "first_start_api_readiness_seconds": 476.9,
+      "functional_checks": {
+        "request_options": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "count_1_to_20_exact": true,
+        "arithmetic_17x23_391": true,
+        "is_prime_function": true
+      },
+      "sampled_decode_tokens_per_second": 63.3,
+      "prefill": {
+        "4096": {
+          "tokens": 4068,
+          "seconds": 0.867,
+          "tok_s": 4690
+        },
+        "16384": {
+          "tokens": 16150,
+          "seconds": 3.602,
+          "tok_s": 4484
+        },
+        "65536": {
+          "tokens": 64780,
+          "seconds": 15.5,
+          "tok_s": 4179
+        }
+      },
+      "greedy_decode_tokens_per_second": [
+        69.93,
+        65.56,
+        69.92
+      ],
+      "greedy_decode_median": 69.92,
+      "receipt": {
+        "path": "performance/records/images/dev-20260925-installer-profiles-20260925/bench-tp4-dev0925.json",
+        "sha256": "a3783148d35ba1f869e887478ebe2056620fabc1034d27cfd6bf1faf4aac5c18"
+      }
+    },
+    {
+      "profile": "glm53-flash-nvfp4-spark-tp2",
+      "nodes": 2,
+      "served_model": "GLM-5.3-Flash-NVFP4-Spark-TP2",
+      "first_start_api_readiness_seconds": 581.8,
+      "functional_checks": {
+        "request_options": {
+          "reasoning_effort": "low"
+        },
+        "count_1_to_20_exact": true,
+        "arithmetic_17x23_391": true,
+        "is_prime_function": true
+      },
+      "sampled_decode_tokens_per_second": 29.3,
+      "prefill": {
+        "4096": {
+          "tokens": 4068,
+          "seconds": 3.349,
+          "tok_s": 1215
+        },
+        "16384": {
+          "tokens": 16151,
+          "seconds": 6.676,
+          "tok_s": 2419
+        },
+        "65536": {
+          "tokens": 64782,
+          "seconds": 27.719,
+          "tok_s": 2337
+        }
+      },
+      "greedy_decode_tokens_per_second": [
+        30.66,
+        33.69,
+        33.54
+      ],
+      "greedy_decode_median": 33.54,
+      "receipt": {
+        "path": "performance/records/images/dev-20260925-installer-profiles-20260925/bench-glm-tp2-dev0925.json",
+        "sha256": "2a81ad9be0609bf80bf314fc976061a78c1dac7a0ef09717fad8be095935b94e"
+      }
+    },
+    {
+      "profile": "glm53-flash-nvfp4-spark-tp4",
+      "nodes": 4,
+      "served_model": "GLM-5.3-Flash-NVFP4-Spark-TP4",
+      "first_start_api_readiness_seconds": 483.6,
+      "functional_checks": {
+        "request_options": {
+          "reasoning_effort": "low"
+        },
+        "count_1_to_20_exact": true,
+        "arithmetic_17x23_391": true,
+        "is_prime_function": true
+      },
+      "sampled_decode_tokens_per_second": 56.4,
+      "prefill": {
+        "4096": {
+          "tokens": 4065,
+          "seconds": 1.448,
+          "tok_s": 2806
+        },
+        "16384": {
+          "tokens": 16150,
+          "seconds": 5.48,
+          "tok_s": 2947
+        },
+        "65536": {
+          "tokens": 64782,
+          "seconds": 22.43,
+          "tok_s": 2888
+        }
+      },
+      "greedy_decode_tokens_per_second": [
+        60.89,
+        57.74,
+        62.27
+      ],
+      "greedy_decode_median": 60.89,
+      "receipt": {
+        "path": "performance/records/images/dev-20260925-installer-profiles-20260925/bench-glm-tp4-dev0925.json",
+        "sha256": "11eb2bdaaafc6e6218c120b21a7d4b29ba14a4f05a5bf67d16cb31ac5ff12d80"
+      }
+    },
+    {
+      "profile": "mimo-v26-flash-rl-tp2",
+      "nodes": 2,
+      "served_model": "MiMo-V2.6-Flash-RL-TP2",
+      "first_start_api_readiness_seconds": 640.0,
+      "functional_checks": {
+        "request_options": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "count_1_to_20_exact": true,
+        "arithmetic_17x23_391": true,
+        "is_prime_function": true
+      },
+      "sampled_decode_tokens_per_second": 27.8,
+      "prefill": {
+        "4096": {
+          "tokens": 4068,
+          "seconds": 1.087,
+          "tok_s": 3744
+        },
+        "16384": {
+          "tokens": 16149,
+          "seconds": 4.243,
+          "tok_s": 3806
+        },
+        "65536": {
+          "tokens": 64781,
+          "seconds": 22.065,
+          "tok_s": 2936
+        }
+      },
+      "greedy_decode_tokens_per_second": [
+        25.04,
+        26.36,
+        25.81
+      ],
+      "greedy_decode_median": 25.81,
+      "receipt": {
+        "path": "performance/records/images/dev-20260925-installer-profiles-20260925/bench-mimo-tp2-dev0925.json",
+        "sha256": "da9b54b25a3d06c4d90b388094683f8beb9c9c78c22e2bb5578aaaba878c1cca"
+      }
+    },
+    {
+      "profile": "mimo-v26-flash-rl-tp4",
+      "nodes": 4,
+      "served_model": "MiMo-V2.6-Flash-RL-TP4",
+      "first_start_api_readiness_seconds": 543.6,
+      "functional_checks": {
+        "request_options": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "count_1_to_20_exact": true,
+        "arithmetic_17x23_391": true,
+        "is_prime_function": true
+      },
+      "sampled_decode_tokens_per_second": 49.9,
+      "prefill": {
+        "4096": {
+          "tokens": 4067,
+          "seconds": 0.959,
+          "tok_s": 4243
+        },
+        "16384": {
+          "tokens": 16152,
+          "seconds": 3.814,
+          "tok_s": 4235
+        },
+        "65536": {
+          "tokens": 64778,
+          "seconds": 17.84,
+          "tok_s": 3631
+        }
+      },
+      "greedy_decode_tokens_per_second": [
+        44.34,
+        45.12,
+        44.4
+      ],
+      "greedy_decode_median": 44.4,
+      "receipt": {
+        "path": "performance/records/images/dev-20260925-installer-profiles-20260925/bench-mimo-tp4-dev0925.json",
+        "sha256": "3a2c0816a7b9022c7643068f157a3375dd053efccddf19d6c075232da071ac1b"
+      }
+    }
+  ]
+}
