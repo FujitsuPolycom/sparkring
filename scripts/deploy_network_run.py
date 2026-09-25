@@ -20,7 +20,9 @@ def _guard(facts, host):
         "routes": facts["routes"],
         "interfaces": [i for i in facts["interfaces"] if i["name"] in names],
         "rdma": [i for i in facts["rdma"] if i["device"] in devices],
-        "connections": facts["network"]["connections"],
+        # NetworkManager lists connections in activation order; compare them as a set.
+        "connections": sorted(facts["network"]["connections"] or [],
+                              key=lambda c: (str(c.get("uuid")), str(c.get("interface")))),
     }
 
 
@@ -129,7 +131,17 @@ def _network_local(payload, operation, *, collect=None, run=None):
         save()
         if command.get("stop_after"):
             break
-    after = probe(payload["request"])
+    # Activation applies addresses asynchronously. Record the post-change
+    # fingerprint only once every planned fabric address is live, so later
+    # verification compares settled configuration rather than a transition.
+    import time
+    planned = {p["netdev"]: p["address"] for p in host["data_interfaces"] if p.get("address")}
+    for _ in range(30):
+        after = probe(payload["request"])
+        live = {i["name"]: i.get("ipv4") or [] for i in after["interfaces"]}
+        if all(address in live.get(name, []) for name, address in planned.items()):
+            break
+        time.sleep(1)
     route = after["management"].get("route_to_controller") or {}
     if route.get("dev") != host["management_netdev"] or after["management"].get(
         "error"
