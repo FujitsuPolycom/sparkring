@@ -163,6 +163,5 @@
       "secondary-counterclockwise"
     ]
   },
-  "base_profile": "qwen38-flash-next-qad-tp4",
   "image_release": "shared-2026.09.3"
 }

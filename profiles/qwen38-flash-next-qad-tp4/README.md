@@ -1,6 +1,9 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on four Sparks
 
-Status: **qualified for bounded correctness and restart checks**. This guide selects
+Status: the installer profile ([config.json](config.json)) is **implemented** on the QAD
+checkpoint branch `qad-step5500-ple1000` (model class `Qwen4ExpForConditionalGeneration`);
+its serving is not qualified. The SparkCache profile remains **qualified for bounded
+correctness and restart checks** on revision `629bc3218833`. This guide selects
 [SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md).
 The cache-disabled profile and [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md)
 use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.3/qualification.json)
@@ -11,11 +14,11 @@ C16-pressure stability or performance.
 
 | Setting | Selection |
 |---|---|
-| Checkpoint | Qwen3.8-Flash-Next NVFP4 QAD, revision `629bc3218833a38b475b719f34aa571666f4a03e` |
+| Checkpoint | Installer profile: NVFP4 QAD branch `qad-step5500-ple1000`, revision `60215d26cf5e42c2db6128774032d57fc62678da`; SparkCache profile: revision `629bc3218833a38b475b719f34aa571666f4a03e` |
 | Parallelism | TP4/DCP1 on a four-node ring with hardware-forwarded mesh paths |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN |
 | KV allocation | 24 GiB FP8 per rank; 32-token requested attention blocks |
-| Loading / speculation | Managed B12X / MTP3 |
+| Loading / speculation | Managed B12X / MTP3; the installer profile's MXFP8 MTP experts use the humming MoE backend |
 | Collectives | Size-based RoCEnante selection and dual-domain NCCL |
 | Prefill | HC fusion and row sharding, checkpoint coalescing, paired QSA scoring and B12X #394 |
 | Media | Three images / one video, 16 configured frames |
