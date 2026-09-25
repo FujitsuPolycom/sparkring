@@ -53,12 +53,35 @@ def image_info(lock):
     return json.loads(run(["docker", "image", "inspect", lock["selection"]["image_id"]]).stdout)[0]
 
 
+ADMISSIONS = Path("/var/lib/sparkring/admissions")
+
+
 def admit_image(lock):
     card = lock["selection"]
     if "image_runtime" in lock:
         from runtime.common import installer_image, loader_policy
+        # Admission starts three isolated containers. Its result depends on the
+        # content-addressed image, the lock, the profile and this host's kernel,
+        # Docker and loader policy, so it is reused while all of them match.
+        current = json.loads(run(["docker", "image", "inspect", card["image_id"]]).stdout)[0]["Id"]
+        key = hashlib.sha256(json.dumps({
+            "lock": lock["image_runtime"], "profile": card["profile"], "nodes": card["nodes"],
+            "kernel": os.uname().release if hasattr(os, "uname") else "",
+            "docker": run(["docker", "version", "--format", "{{.Server.Version}}"]).stdout.strip(),
+            "policy": hashlib.sha256(loader_policy.PROFILE.read_bytes()).hexdigest(),
+        }, sort_keys=True).encode()).hexdigest()
+        record = ADMISSIONS / (key + ".json")
+        if record.is_file() and not record.is_symlink():
+            saved = profiles.read_json(record)
+            if saved.get("image_id") == current:
+                return saved["receipt"]
         receipt = installer_image.admit(lock["image_runtime"], run=run, profile=card["profile"], nodes=card["nodes"])
         loader_policy.check(card["image_id"], run=run)
+        try:
+            ADMISSIONS.mkdir(parents=True, exist_ok=True, mode=0o700)
+            deploy_engine.save_receipt(record, {"image_id": current, "receipt": receipt})
+        except OSError:
+            pass
         return receipt
     def native_run(argv, **kwargs):
         # Native admission deliberately reads the installed receipt as bytes.
@@ -69,9 +92,23 @@ def admit_image(lock):
     return native_candidate.verify_image(card["image_id"], card["release"], run=native_run)
 
 
+def _file_sha256(item):
+    digest = hashlib.sha256()
+    with item.open("rb") as stream:
+        while chunk := stream.read(16 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def model_files(path):
+    """SHA-256 of every checkpoint file.
+
+    Files are hashed concurrently: hashlib releases the GIL for large updates,
+    so threads spread the work across cores until storage bandwidth is the limit.
+    """
+    from concurrent.futures import ThreadPoolExecutor
     path = plain(path)
-    result = {}
+    files = []
     for item in sorted(path.rglob("*")):
         relative = item.relative_to(path)
         if relative.parts[0] in (".cache", ".git"):
@@ -79,11 +116,11 @@ def model_files(path):
         if item.is_symlink():
             raise ValueError("Use a complete local checkpoint directory, not external symlinks")
         if item.is_file():
-            digest = hashlib.sha256()
-            with item.open("rb") as stream:
-                while chunk := stream.read(8 << 20):
-                    digest.update(chunk)
-            result[relative.as_posix()] = digest.hexdigest()
+            files.append((relative.as_posix(), item))
+    workers = max(1, min(16, os.cpu_count() or 4))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        digests = pool.map(_file_sha256, [item for _, item in files])
+        result = {name: digest for (name, _), digest in zip(files, digests)}
     if "config.json" not in result or "model.safetensors.index.json" not in result:
         raise ValueError("Checkpoint configuration/index are absent")
     index = profiles.read_json(path / "model.safetensors.index.json")
