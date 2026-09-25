@@ -245,3 +245,23 @@ def test_existing_fabric_connection_gets_link_local_only_with_approval(monkeypat
         with pytest.raises(ValueError, match="no IPv6 link-local"):
             seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run)
         assert not any(argv[:3] == ["nmcli", "connection", "modify"] for argv in state["calls"])
+
+
+def test_port_preparation_names_a_foreign_service_on_the_ssh_port(monkeypatch):
+    from runtime.host import seed
+
+    def run(argv, **kw):
+        if argv[:3] == ["nmcli", "-g", "GENERAL.CON-UUID"]:
+            return SimpleNamespace(returncode=0, stdout="uuid", stderr="")
+        if argv[:3] == ["ip", "-j", "-6"]:
+            return SimpleNamespace(returncode=0, stdout='[{"addr_info":[{"scope":"link","local":"fe80::1"}]}]', stderr="")
+        if argv[0] == "ss":
+            return SimpleNamespace(returncode=0, stdout='LISTEN 0 1000 0.0.0.0:2222 0.0.0.0:* users:(("dropbear",pid=1965,fd=3))\n', stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(seed.control_node, "write", lambda *a, **k: pytest.fail("configured before the port check"))
+    algorithm = b"ssh-ed25519"
+    encoded = len(algorithm).to_bytes(4, "big") + algorithm + (32).to_bytes(4, "big") + bytes(range(32))
+    public = algorithm.decode() + " " + base64.b64encode(encoded).decode() + " fixture"
+    with pytest.raises(ValueError, match="dropbear"):
+        seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run)

@@ -113,9 +113,12 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
     for ident in queue:
         current = nodes[ident]
         local = {f["netdev"]: f for f in current["functions"]}
+        # The two PCIe functions of one physical port share its cable, so a
+        # host sees its own sibling function as a link-local neighbor.
+        own = {str(f["mac"]).lower() for f in current["functions"]}
         for neighbor in current["neighbors"]:
             interface = local.get(neighbor.get("dev"))
-            if not interface or "lladdr" not in neighbor:
+            if not interface or "lladdr" not in neighbor or neighbor["lladdr"].lower() in own:
                 continue
             address = ipaddress.IPv6Address(neighbor["dst"].split("%")[0])
             if not address.is_link_local or str(address) in interface["addresses"]:

@@ -96,6 +96,17 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_
             node.call(["nmcli", "connection", "add", "type", "ethernet", "ifname", interface, "con-name", "sparkring-bootstrap-" + interface,
                        "ipv4.method", "disabled", "ipv6.method", "link-local", "connection.autoconnect", "yes"], run=run)
             node.call(["nmcli", "connection", "up", "sparkring-bootstrap-" + interface], run=run)
+    # Preparation and the permanent administration SSH both use TCP 2222. Only
+    # SparkRing's own active preparation service may already hold it.
+    listeners = node.call(["ss", "-H", "-ltnp", "sport", "=", ":2222"], run=run).stdout
+    if listeners.strip():
+        holders = sorted(set(re.findall(r'\(\("([^"]+)"', listeners)))
+        ours = holders == ["sshd"] and run(["systemctl", "is-active", "--quiet", "sparkring-seed.service"],
+                                           capture_output=True, text=True).returncode == 0
+        if not ours:
+            raise ValueError("TCP port 2222 is in use by " + (", ".join(holders) or "another service")
+                             + ". SparkRing's preparation and administration SSH need it; stop that service "
+                             "(for example: sudo systemctl disable --now dropbear) and repeat")
     node.call(["systemctl", "enable", "--now", "ssh.service"], run=run)
     control_node.write("/etc/sparkring/seed_keys", public_key.strip() + "\n")
     # This separate SSH service accepts only Node A's public key. Existing SSH

@@ -206,3 +206,22 @@ def test_restore_uses_only_fabric_interfaces():
     assert len([a for a in calls if a[:3] == ["ip", "route", "add"]]) == 4
     assert all(config["management"]["interface"] not in " ".join(a) for a in calls)
     assert not any("net.ipv4.ip_forward" in " ".join(a) for a in calls)
+
+
+def test_discovery_ignores_this_hosts_own_sibling_functions():
+    from runtime.host import bootstrap
+    head = {"id": "a", "hostname": "a", "architecture": "aarch64",
+            "functions": [{"netdev": "p0", "mac": "aa:aa:aa:aa:aa:01", "addresses": ["fe80::1"]},
+                          {"netdev": "p0b", "mac": "aa:aa:aa:aa:aa:02", "addresses": ["fe80::2"]}],
+            "neighbors": [{"dst": "fe80::2", "dev": "p0", "lladdr": "aa:aa:aa:aa:aa:02"}]}
+
+    class Transport:
+        def inventory(self, route):
+            if route:
+                raise AssertionError("logged into its own sibling function")
+            return head
+
+        def login(self, route):
+            raise AssertionError("logged into its own sibling function")
+    with pytest.raises(ValueError, match="Could not authenticate a pair/ring"):
+        bootstrap.discover(Transport())
