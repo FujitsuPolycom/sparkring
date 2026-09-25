@@ -4,13 +4,14 @@ import inspect
 import json
 from pathlib import Path
 import random
+import secrets
 import subprocess
 import tempfile
 import threading
 import time
 
 from runtime.common import distribution
-from runtime.host import node, packages, progress, registry_relay
+from runtime.host import fabric_stream, node, packages, progress, registry_relay
 from runtime.host.install_errors import NeedsInput
 
 DOCKER = ["docker", "--context", "default"]
@@ -75,9 +76,14 @@ class Assets:
     def command(self, rank, argv):
         return self.transport.command(rank, argv if rank == 0 else ["sudo", "-n", *argv])
 
+    @staticmethod
+    def code(function, *args, **kwargs):
+        """Python source that runs a self-contained function and prints its JSON result."""
+        return inspect.getsource(function) + "\nimport json\nprint(json.dumps(" + function.__name__ + "(*" + repr(args) + ", **" + repr(kwargs) + ")))\n"
+
     def remote(self, rank, function, *args, **kwargs):
-        code = inspect.getsource(function) + "\nimport json\nprint(json.dumps(" + function.__name__ + "(*" + repr(args) + ", **" + repr(kwargs) + ")))\n"
-        result = self.run(self.command(rank, ["python3", "-I", "-c", code]), capture_output=True, text=True, timeout=7200, check=True)
+        result = self.run(self.command(rank, ["python3", "-I", "-c", self.code(function, *args, **kwargs)]),
+                          capture_output=True, text=True, timeout=7200, check=True)
         return json.loads(result.stdout)
 
     def sync_packages(self):
@@ -222,8 +228,49 @@ class Assets:
         node.save(self.directory, "images.json", result, mode=0o600)
         return result
 
+    def stream_checkpoint(self, runner, rows, manifest, source, target):
+        """Copy the verified checkpoint from ``source`` to cable-adjacent ``target`` over the fabric."""
+        pairs = fabric_stream.links(self.transport.hosts, source, target)
+        if not pairs:
+            raise ValueError(f"Node {source} and Node {target} share no fabric subnet")
+        runner.remote(target, "model-transfer-prepare", data=json.dumps(manifest).encode())
+        files = {name: [manifest["sizes"][name], digest] for name, digest in manifest["files"].items()}
+        mine, theirs = [pair[0] for pair in pairs], [pair[1] for pair in pairs]
+        token = secrets.token_bytes(32)
+        receive = self.code(fabric_stream.receive, theirs, mine, rows[target]["model"], files)
+        with progress.step(f"Node {target}: Copy verified checkpoint from Node {source} over the fabric"), \
+                tempfile.TemporaryFile() as errors:
+            receiver = self.popen(self.command(target, ["python3", "-I", "-c", receive]),
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+            try:
+                receiver.stdin.write(token)
+                receiver.stdin.close()
+                line = receiver.stdout.readline()
+                offer = json.loads(line) if line else None
+                if offer and offer["needed"]:
+                    groups = fabric_stream.balance(offer["needed"], manifest["sizes"], len(pairs))
+                    send = self.code(fabric_stream.send, mine, theirs, offer["ports"], rows[source]["model"], groups)
+                    sender = self.run(self.command(source, ["python3", "-I", "-c", send]), input=token,
+                                      capture_output=True, timeout=7200)
+                    if sender.returncode:
+                        raise ValueError("sender: " + sender.stderr.decode(errors="replace").strip()[-1000:])
+                receiver.stdout.read()
+                if receiver.wait(timeout=600) or offer is None:
+                    errors.seek(0)
+                    raise ValueError("receiver: " + errors.read().decode(errors="replace").strip()[-1000:])
+            finally:
+                if receiver.poll() is None:
+                    receiver.kill()
+                    receiver.wait()
+        runner.remote(target, "model-transfer-complete", data=json.dumps(manifest).encode())
+        return target
+
     def models(self, lock, runner, previous=None):
-        """Verify one cached/downloaded checkpoint, then fill missing peers via rsync."""
+        """Verify one cached/downloaded checkpoint, then fill missing peers.
+
+        Copies use direct fabric streams along the cables; ranks that a stream
+        could not fill are copied with rsync over the administration SSH path.
+        """
         import shlex
         rows = lock["site"]["ranks"]
         if previous:
@@ -241,6 +288,18 @@ class Assets:
         listing = self.directory / "checkpoint-files.txt"
         listing.write_text("\n".join(names) + "\n", encoding="utf-8")
         missing = [r["rank"] for r in rows if r["rank"] not in cached and r["rank"] != donor]
+        have = {donor, *cached}
+        if missing:
+            # Copies follow the cables outward from the donor, each level in
+            # parallel; a failed direct copy leaves the rest to the SSH path.
+            try:
+                for level in fabric_stream.tree(len(rows), donor):
+                    level = [(s, t) for s, t in level if t not in have]
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(level))) as pool:
+                        for target in pool.map(lambda edge: self.stream_checkpoint(runner, rows, manifest, *edge), level):
+                            have.add(target)
+            except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+                progress.say(f"Direct fabric checkpoint copy unavailable ({error}); copying over {self.transport.mode}.")
 
         def copy(source, target):
             runner.remote(target, "model-transfer-prepare", data=json.dumps(manifest).encode())
@@ -256,11 +315,12 @@ class Assets:
             runner.remote(target, "model-transfer-complete", data=json.dumps(manifest).encode())
 
         # The head is the relay for the opposite side of the ring, never the PC.
-        if 0 not in cached and donor != 0:
+        if 0 not in have:
             copy(donor, 0)
-            missing.remove(0)
+            have.add(0)
         for rank in missing:
-            copy(0, rank)
+            if rank not in have:
+                copy(0, rank)
         return {"donor_rank": donor, "cached_ranks": cached, "copied_ranks": [r for r in range(len(rows)) if r not in cached and r != donor]}
 
     def runner(self, directory, previous=None, images=None):

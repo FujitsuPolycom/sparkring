@@ -246,8 +246,14 @@ each host records the verified hashes per checkpoint path in
 `/var/lib/sparkring/checkpoints/`; later gates and later installations reuse
 them only while the complete file list, device, inode, size, modification time
 and change time match; changes trigger checksum verification again. A missing checkpoint is copied from a verified peer, or
-downloaded once on Node A if none has it. Copies are checksum-verified before
-launch. Mismatched or corrupt unowned directories are not overwritten.
+downloaded once on Node A if none has it. Copies travel over the fabric cables
+outward from the Spark that holds the checkpoint, ring neighbors in parallel:
+plain TCP between the two ends of each cable, one stream per shared fabric
+function. The receiver binds only its fabric addresses, accepts only the
+sender's fabric address and a one-time token delivered over administration SSH,
+and writes only files named in the verified manifest; files that already match
+are kept. When a direct copy fails, the remaining Sparks are filled with rsync
+over administration SSH. Copies are checksum-verified before launch. Mismatched or corrupt unowned directories are not overwritten.
 `--model-path /absolute/checkpoint` selects a cache explicitly when it is stored
 elsewhere. This avoids downloading weights already present on the ranks.
 `--cache-path /absolute/cache` chooses another writable compilation cache. Image
