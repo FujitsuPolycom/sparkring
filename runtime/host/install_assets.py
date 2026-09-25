@@ -104,7 +104,11 @@ class Assets:
                                  field="image_lock", details={"image_id": card["image_id"]})
             from runtime.common import profiles
             policy = profiles.read_json(node.ROOT / "profiles/storage-planning.json")
-            reserve = (policy["image_allowance_gib"] + policy["cache_and_jit_allowance_gib"]) * 1024**3
+            if "image_bytes" in card:
+                # Compressed layers and the unpacked image coexist during a pull.
+                reserve = card["image_bytes"] + card["download_bytes"] + 8 * 1024**3
+            else:
+                reserve = (policy["image_allowance_gib"] + policy["cache_and_jit_allowance_gib"]) * 1024**3
             if self.remote(0, storage_probe) < reserve:
                 raise NeedsInput("Node A needs more Docker storage before the pinned image can be downloaded.",
                                  field="storage", details={"rank": 0, "required_bytes": reserve})

@@ -16,5 +16,7 @@
   "composition_sha256": "46ecfc99659799934e7429fb0f8c80310b93aee485337114139bb5fe1df096d4",
   "transport_profile": "tp2-rocenante-adaptive-prepared",
   "transport_manifest_sha256": "da93de36dd16a275e92597999e450f4e9f7616c9e604cf7230e071c22a7822ea",
-  "status_version": "0.3.1"
+  "status_version": "0.3.1",
+  "image_bytes": 31636572175,
+  "download_bytes": 15228468237
 }

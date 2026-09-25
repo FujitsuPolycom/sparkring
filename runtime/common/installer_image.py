@@ -40,7 +40,9 @@ PLUGINS = ("b12x_loader", "sparkring_status")
 COMMON = {"schema", "name", "image_id", "image_reference", "parent_receipt_sha256",
           "toolchain_receipt_sha256", "composition_sha256", "transport_profile",
           "transport_manifest_sha256", "status_version"}
-FIELDS = {SCHEMA_V1: COMMON | {"profile"}, SCHEMA: COMMON | {"profiles"}}
+# v2 records the unpacked image size and the registry download size so storage
+# checks can reserve what this image needs instead of a generic allowance.
+FIELDS = {SCHEMA_V1: COMMON | {"profile"}, SCHEMA: COMMON | {"profiles", "image_bytes", "download_bytes"}}
 
 
 def profiles_of(value):
@@ -60,6 +62,8 @@ def validate(value, profile):
             raise ValueError("A v2 image lock lists sorted, distinct, supported installer profiles")
         if profile not in listed:
             raise ValueError(f"{profile} is not admitted on image lock {value['name']}")
+        if any(type(value[key]) is not int or value[key] <= 0 for key in ("image_bytes", "download_bytes")):
+            raise ValueError("A v2 image lock records positive image_bytes and download_bytes")
     if not isinstance(value["name"], str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", value["name"]):
         raise ValueError("Image lock name must be a short lowercase identifier")
     if not isinstance(value["image_id"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value["image_id"]):
@@ -97,8 +101,11 @@ def selection(card, value):
     scope = ("Development image selection; the published profile's serving qualification does not transfer."
              if value["schema"] == SCHEMA_V1 else
              "Shared installer image; the profile's published serving qualification does not transfer.")
-    return {**card, "profile_release": card["release"], "release": value["name"],
-            "image_id": value["image_id"], "image_reference": value["image_reference"], "evidence_scope": scope}
+    selected = {**card, "profile_release": card["release"], "release": value["name"],
+                "image_id": value["image_id"], "image_reference": value["image_reference"], "evidence_scope": scope}
+    if value["schema"] == SCHEMA:
+        selected.update(image_bytes=value["image_bytes"], download_bytes=value["download_bytes"])
+    return selected
 
 
 def binding_path(lock, row):

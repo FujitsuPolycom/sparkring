@@ -236,7 +236,7 @@ def test_glm_and_mimo_render_on_the_shared_image(monkeypatch, profile):
 def test_qwen_admission_features_do_not_apply_to_other_models():
     value, image, receipts = admission_fixture()
     value = {**{k: v for k, v in value.items() if k != "profile"}, "schema": installer_image.SCHEMA,
-             "profiles": ["glm53-flash-nvfp4-spark-tp4", PROFILE]}
+             "profiles": ["glm53-flash-nvfp4-spark-tp4", PROFILE], "image_bytes": 1, "download_bytes": 1}
     parent = json.loads(receipts[installer_image.PARENT_RECEIPT])
     parent["capabilities"]["features"] = []
     raw = json.dumps(parent).encode()
