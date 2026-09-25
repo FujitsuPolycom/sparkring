@@ -783,17 +783,10 @@ def _backups(host, inventory, functions):
                 ["sudo", "-n", "tc", "-j", "qdisc", "show", "dev", port["netdev"]],
             ),
             (
+                # iproute2 6.1 requires a parameter name after a device, so
+                # record every device's parameters; the backup names each one.
                 "driver",
-                [
-                    "sudo",
-                    "-n",
-                    "devlink",
-                    "-j",
-                    "dev",
-                    "param",
-                    "show",
-                    "pci/" + function["pci_address"].lower(),
-                ],
+                ["sudo", "-n", "devlink", "-j", "dev", "param", "show"],
             ),
         ):
             result.append(
