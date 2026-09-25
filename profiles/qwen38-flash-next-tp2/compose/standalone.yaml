@@ -21,12 +21,12 @@
 name: sparkring-qwen38-flash-next-tp2
 x-sparkring:
   profile: qwen38-flash-next-tp2
-  release: dev-20260925-cuda1342-nccl2323-status031
+  release: dev-20260925-qwendecode-cuda1342-nccl2323-status031
   model_repository: local-inference-lab/Qwen3.8-Flash-Next-NVFP4
   model_revision: 629bc3218833a38b475b719f34aa571666f4a03e
   mode: standalone; prepared two-host fabric
 x-runtime: &runtime
-  image: ghcr.io/fujitsupolycom/sparkring@sha256:9d8e3a6cd00b887ffd33496e43afa06cffeebbfc88008361d7569005c4ae49c6
+  image: ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f
   platform: linux/arm64
   pull_policy: missing
   restart: 'no'
@@ -71,7 +71,7 @@ x-environment: &environment
   B12X_POLICY_MODE: auto
   B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
   B12X_ROCE_PAIR_PATHS: '2'
-  CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/cute
+  CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-4100e1d2bd03-629bc3218833/cute
   GLOO_SOCKET_IFNAME: ${SPARKRING_INTERFACE:?Set this hosts primary fabric interface}
   HF_HUB_OFFLINE: '1'
   NCCL_CROSS_NIC: '1'
@@ -86,17 +86,18 @@ x-environment: &environment
   OMP_NUM_THREADS: '16'
   PYTHONPATH: ''
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+  QWEN_DISPATCH_AR_BYTES: '327680'
   SIRCL_ENABLED: '0'
   SOURCE_IMAGE_PROFILE: ''
   SPARKCACHE_ENABLED: '0'
   SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
   SPARKRING_TRANSPORT_MANIFEST_SHA256: eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4
   SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive
-  TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/inductor
+  TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-4100e1d2bd03-629bc3218833/inductor
   TRANSFORMERS_OFFLINE: '1'
-  TRITON_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/triton
+  TRITON_CACHE_DIR: /cache/qwen-flash-next-4100e1d2bd03-629bc3218833/triton
   VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-  VLLM_CACHE_ROOT: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833/vllm
+  VLLM_CACHE_ROOT: /cache/qwen-flash-next-4100e1d2bd03-629bc3218833/vllm
   VLLM_ENABLE_PCIE_ALLREDUCE: '0'
   VLLM_ENABLE_ROCE_ALLREDUCE: '1'
   VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -112,6 +113,7 @@ x-environment: &environment
   VLLM_QWEN3_8_FLASH_NEXT_OVERLAP: '1'
   VLLM_QWEN3_8_HC_PREFILL_MODE: shard
   VLLM_QWEN3_8_PREFILL_COALESCE: '1'
+  VLLM_QWEN4_EXP_MXFP8_HC: '1'
   VLLM_ROCE_ALLGATHER_MAX_SIZE: '16777216'
   VLLM_ROCE_ALLREDUCE_MAX_SIZE: '2097152'
   VLLM_SPARK_TP4_MODE: ''
@@ -119,7 +121,7 @@ x-environment: &environment
   VLLM_SSM_CONV_STATE_LAYOUT: DS
   VLLM_USE_V2_MODEL_RUNNER: '1'
   VLLM_WORKER_MULTIPROC_METHOD: spawn
-  XDG_CACHE_HOME: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833
+  XDG_CACHE_HOME: /cache/qwen-flash-next-4100e1d2bd03-629bc3218833
 services:
   rank0:
     <<: *runtime
@@ -132,7 +134,7 @@ services:
       --mamba-cache-mode, align, --enable-prefix-caching, --enable-chunked-prefill, --gdn-decode-kernel, b12x, --linear-backend, b12x, --moe-backend,
       b12x, --no-enable-flashinfer-autotune, --mm-encoder-tp-mode, data, --mm-processor-cache-gb, '0', --limit-mm-per-prompt, '{"image":3,"video":1}',
       --reasoning-parser, qwen3, --tool-call-parser, qwen3_xml, --enable-auto-tool-choice, --speculative-config, '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X"}',
-      --compilation-config, '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}',
+      --compilation-config, '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],"custom_ops":["+rotary_embedding"]}',
       --media-io-kwargs, '{"video":{"num_frames":16}}', --recurrent-checkpoint-policy, aligned, --enable-prompt-tokens-details]
     healthcheck:
       test:
@@ -160,7 +162,7 @@ services:
       --mamba-cache-mode, align, --enable-prefix-caching, --enable-chunked-prefill, --gdn-decode-kernel, b12x, --linear-backend, b12x, --moe-backend,
       b12x, --no-enable-flashinfer-autotune, --mm-encoder-tp-mode, data, --mm-processor-cache-gb, '0', --limit-mm-per-prompt, '{"image":3,"video":1}',
       --reasoning-parser, qwen3, --tool-call-parser, qwen3_xml, --enable-auto-tool-choice, --speculative-config, '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X"}',
-      --compilation-config, '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}',
+      --compilation-config, '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],"custom_ops":["+rotary_embedding"]}',
       --media-io-kwargs, '{"video":{"num_frames":16}}', --recurrent-checkpoint-policy, aligned, --enable-prompt-tokens-details, --headless]
     healthcheck:
       disable: true

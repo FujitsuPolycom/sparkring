@@ -68,16 +68,16 @@ Windows PowerShell, use `ssh -t spark-r0 "sudo sparkring logs --follow"` (replac
 for log lines; it does not indicate model readiness.
 
 Every installer profile runs on one shared serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20260925-cuda1342-nccl2323-status031/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/installer-image.json)
 (`sparkring-installer-image/v2`). It is the ARM64
-`ghcr.io/fujitsupolycom/sparkring:dev-20260925-cuda1342-nccl2323-status031`
+`ghcr.io/fujitsupolycom/sparkring:dev-20260925-qwendecode-cuda1342-nccl2323-status031`
 image: eugr's `spark-vllm-b12x` nightly base with CUDA 13.4.2, NCCL 2.32.3, the
-runtime-status dashboard 0.3.1 and the paced RoCEnante transport, whose
+runtime-status dashboard 0.3.1, the paced RoCEnante transport, whose
 forwarded-path send window bounds traffic that a ring node relays for its
-neighbours. The lock lists the admitted profiles and pins the image
+neighbours, and the Qwen decode kernels described below. The lock lists the admitted profiles and pins the image
 configuration, registry manifest, external software receipt, toolchain receipt,
 composition, prepared transport and status package. The image's
-[publication record](../../runtime/releases/dev-20260925-cuda1342-nccl2323-status031/publication.json)
+[publication record](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/publication.json)
 lists the parent image and every file its derived layers replace.
 `sparkring models` marks only these profiles as installer-supported:
 
@@ -97,11 +97,22 @@ Both Qwen profiles use one prefill recipe on TP2 and TP4: each rank owns a
 share of the token rows in the hyper-connection (HC) prefill path
 (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`), which excludes HC projection sharding,
 and the image's `qwen-collectives` collective policy and `qwen4-prefill` hooks
-are active. Both quantize the target LM head to MXFP8 at load
-(`VLLM_MXFP8_LM_HEAD=1`), which shortens each decode step; the
+are active. Both quantize the target LM head (`VLLM_MXFP8_LM_HEAD=1`) and the
+hyper-connection down/injection projections (`VLLM_QWEN4_EXP_MXFP8_HC=1`) from
+BF16 to MXFP8 at load. Every rank reads these weights in full at each decode
+step, so halving their bytes shortens the step; batches above 16 rows, such as
+prefill chunks, keep using the BF16 hyper-connection weights. The image runs
+the remaining BF16 projections, such as the MoE router, through skinny-GEMM
+plans measured on GB10, and the profiles select vLLM's fused rotary-embedding
+op. Decode all-reduces of up to 64 rows (`QWEN_DISPATCH_AR_BYTES=327680`) run on
+RoCEnante rather than NCCL. The TP4 profile sets
+`NCCL_IB_EXTENDED_IPV4_GIDS=1`, which lets the image's NCCL use all four ring
+NIC functions for prefill collectives. The
+[installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
+gives the measurements, and the
 [decode A/B](../../performance/records/qwen38-flash-next/decode-ab-20260925.md)
-records its speed and token-probability agreement with the BF16 head. Before
-any serving container is created, admission reads the image's
+covers the checkpoint and LM-head choices. Before any serving container is
+created, admission reads the image's
 external software receipt and refuses a profile whose HC mode is not listed for
 its node count or whose features the image does not provide.
 

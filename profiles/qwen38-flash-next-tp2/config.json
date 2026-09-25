@@ -21,6 +21,7 @@
     "OMP_NUM_THREADS": "16",
     "VLLM_PLE_CPU_OFFLOAD": "0",
     "VLLM_MXFP8_LM_HEAD": "1",
+    "VLLM_QWEN4_EXP_MXFP8_HC": "1",
     "VLLM_MTP_NVFP4_LM_HEAD": "1",
     "VLLM_LM_HEAD_A16": "1",
     "VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT": "1",
@@ -49,6 +50,7 @@
     "VLLM_QWEN3_8_PREFILL_COALESCE": "1",
     "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
     "SPARKRING_FEATURES": "qwen-collectives,qwen4-prefill",
+    "QWEN_DISPATCH_AR_BYTES": "327680",
     "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": "0"
   },
   "vllm_args": [
@@ -113,7 +115,7 @@
     "--speculative-config",
     "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\"}",
     "--compilation-config",
-    "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}",
+    "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],\"custom_ops\":[\"+rotary_embedding\"]}",
     "--media-io-kwargs",
     "{\"video\":{\"num_frames\":16}}",
     "--recurrent-checkpoint-policy",

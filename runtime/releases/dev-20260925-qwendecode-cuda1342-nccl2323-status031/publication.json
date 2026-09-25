@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260925-qwendecode-cuda1342-nccl2323-status031",
+  "image_id": "sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971",
+  "image_config_id": "sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260925-qwendecode-cuda1342-nccl2323-status031",
+  "registry_manifest_digest": "sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.1",
+  "derivation": {
+    "parent_release": "dev-20260925-cuda1342-nccl2323-status031",
+    "parent_image_id": "sha256:5ce6ce267d8069215e08da87be3a8092175e63806cf97730847405eb04a2c51f",
+    "layers": [
+      "Qwen4Exp decode on GB10 (SM121): the low-latency GEMM hook runs beside B12X with measured SM121 skinny-GEMM plans for BF16 projections, and VLLM_QWEN4_EXP_MXFP8_HC (registered in vllm/envs.py, default off) quantizes BF16 hyper-connection down/injection projections to MXFP8 at load, using them for batches of at most 16 rows and the retained BF16 weights for larger ones; /opt/sparkring/receipts/derived-qwen-decode.json records each replaced file"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

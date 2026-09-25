@@ -16,7 +16,7 @@ LEGACY_BUILD = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/local-
 PUBLICATION = adapter.ROOT / "runtime/releases/shared-2026.09.3/publication.json"
 BUILD = PUBLICATION
 # The installer profile runs on the installer image; its SparkCache profile on shared-2026.09.3.
-INSTALLER = adapter.ROOT / "runtime/releases/dev-20260925-cuda1342-nccl2323-status031/publication.json"
+INSTALLER = adapter.ROOT / "runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/publication.json"
 MAPS = ["1=0/2,2=0/3,3=1/3", "0=1/3,2=0/2,3=0/3",
         "0=1/2,1=1/3,3=0/2", "0=0/2,1=1/2,2=1/3"]
 
@@ -44,7 +44,12 @@ def test_tp4_settings_and_peer_maps_reach_both_backends(site, rank):
     assert spec.environment["SPARKRING_FEATURES"] == "qwen-collectives,qwen4-prefill"
     assert spec.environment["VLLM_QWEN3_8_HC_PREFILL_MODE"] == "shard"
     assert spec.environment["VLLM_QWEN3_8_PREFILL_COALESCE"] == "1"
-    assert spec.environment["QWEN_DISPATCH_AR_BYTES"] == "20480"
+    # RoCEnante reduces every speculative decode step: 16 sequences x 4 rows x
+    # 2560 BF16 values = 327680 bytes.
+    assert spec.environment["QWEN_DISPATCH_AR_BYTES"] == "327680"
+    # NCCL 2.32.3 uses all four ring NIC functions only when it publishes
+    # extended IPv4 GIDs; prefill collectives otherwise run on half the paths.
+    assert spec.environment["NCCL_IB_EXTENDED_IPV4_GIDS"] == "1"
     assert spec.environment["NCCL_IB_PRESERVE_PCI_DOMAIN"] == "1"
     assert spec.environment["SPARKCACHE_ENABLED"] == "0"
     assert spec.environment["SIRCL_ENABLED"] == "0"
@@ -149,9 +154,15 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     # image's transport identity and cache settings differ.
     assert native_image == adapter.read(INSTALLER)["image_reference"]
     assert cache_image == adapter.read(PUBLICATION)["image_reference"]
-    # The installer profile also quantizes its target LM head to MXFP8.
+    # The installer profile also quantizes its target LM head and its
+    # hyper-connection down/injection projections to MXFP8, and its paced
+    # transport takes every decode all-reduce on RoCEnante. Its NCCL 2.32.3
+    # publishes all four ring NIC functions only with extended IPv4 GIDs; the
+    # native image's routed NCCL 2.31.2 finds them without.
     image_bound = {"SPARKCACHE_ENABLED", "SPARKRING_TRANSPORT_PROFILE", "SPARKRING_TRANSPORT_MANIFEST_SHA256",
-                   "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR", "VLLM_MXFP8_LM_HEAD"}
+                   "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR", "VLLM_MXFP8_LM_HEAD",
+                   "VLLM_QWEN4_EXP_MXFP8_HC", "QWEN_DISPATCH_AR_BYTES",
+                   "NCCL_IB_EXTENDED_IPV4_GIDS"}
     comparable = lambda environment: {key: value for key, value in environment.items()
                                       if key not in image_bound and not value.startswith("/cache/qwen-flash-next-")}
     assert comparable(spec.environment) == comparable(base.environment)
@@ -184,6 +195,13 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     native = list(base.command)
     draft = native.index("--speculative-config") + 1
     assert json.loads(native[draft])["moe_backend"] == json.loads(args[draft])["moe_backend"] == "b12x"
+    # The installer profile also selects the fused rotary-embedding op, measured
+    # on the installer image; the SparkCache profile keeps its compilation config.
+    graphs = native.index("--compilation-config") + 1
+    installer_graphs = json.loads(native[graphs])
+    assert installer_graphs.pop("custom_ops") == ["+rotary_embedding"]
+    assert installer_graphs == json.loads(args[graphs])
+    native[graphs] = args[graphs]
     assert args[1:] == native[1:]
     assert spec.mounts == base.mounts
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap

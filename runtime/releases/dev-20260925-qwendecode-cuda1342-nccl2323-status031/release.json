@@ -1,0 +1,16 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "dev-20260925-qwendecode-cuda1342-nccl2323-status031",
+  "selection": "published-immutable-reference",
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f",
+  "inputs": [
+    {
+      "path": "runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/publication.json",
+      "sha256": "2e44c2a40e88bb205f820e0c8783dbcd7f1ca4c2e9574a5f7b582e58f62d63be"
+    },
+    {
+      "path": "runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/installer-image.json",
+      "sha256": "525656b823469c46ab25e4a5da2f5d7ac2094431343d57d506aa94920fe98e18"
+    }
+  ]
+}

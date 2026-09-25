@@ -1,0 +1,244 @@
+{
+ "schema": "sparkring-qwen-tuning-record/v1",
+ "status": "implemented; measured in serving containers derived from installer deployments; not serving-qualified",
+ "image": {
+  "release": "dev-20260925-qwendecode-cuda1342-nccl2323-status031",
+  "image_id": "sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971",
+  "registry_manifest_digest": "sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f"
+ },
+ "checkpoint": {
+  "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+  "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+  "branch": "qad-step-4000"
+ },
+ "profile_settings": {
+  "both": {
+   "VLLM_QWEN4_EXP_MXFP8_HC": "1",
+   "QWEN_DISPATCH_AR_BYTES": "327680",
+   "compilation_config.custom_ops": [
+    "+rotary_embedding"
+   ]
+  },
+  "tp4": {
+   "NCCL_IB_EXTENDED_IPV4_GIDS": "1"
+  }
+ },
+ "decode_per_step_ms_prose_code_json": {
+  "tp4": {
+   "installer_dev20260925_mxfp8_head": [
+    27.9,
+    28.3,
+    28.8
+   ],
+   "sm121_plans": [
+    27.2,
+    27.8,
+    27.6
+   ],
+   "mxfp8_hc_every_batch": [
+    26.1,
+    26.6,
+    26.4
+   ],
+   "mxfp8_hc_16_rows_ar_64_rows": [
+    26.1,
+    26.6,
+    26.6
+   ],
+   "plus_rotary": [
+    25.5,
+    25.9,
+    26.1
+   ]
+  },
+  "tp2": {
+   "installer_dev20260925_mxfp8_head": [
+    37.9,
+    38.4,
+    38.5
+   ],
+   "full_configuration": [
+    35.7,
+    36.3,
+    36.3
+   ]
+  }
+ },
+ "tp2_hc_row_limit_median_steady_ms": {
+  "concurrency": [
+   1,
+   4,
+   5,
+   8,
+   16
+  ],
+  "bf16": [
+   38.64,
+   71.03,
+   69.93,
+   94.09,
+   134.46
+  ],
+  "mxfp8_16_rows": [
+   36.43,
+   65.37,
+   74.68,
+   93.76,
+   133.07
+  ],
+  "mxfp8_64_rows": [
+   36.38,
+   64.61,
+   73.73,
+   97.43,
+   136.12
+  ]
+ },
+ "tp4_all_reduce_limit_steady_ms": {
+  "concurrency": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   8,
+   10,
+   12,
+   14,
+   16
+  ],
+  "bytes_20480": [
+   26.46,
+   39.36,
+   45.93,
+   49.31,
+   58.79,
+   64.26,
+   73.19,
+   82.74,
+   87.69,
+   93.37,
+   101.49
+  ],
+  "bytes_327680": [
+   26.14,
+   35.06,
+   39.8,
+   45.4,
+   50.9,
+   56.68,
+   64.29,
+   74.25,
+   79.38,
+   81.15,
+   94.54
+  ]
+ },
+ "rotary": {
+  "tp4_steady_c1_ms": [
+   26.6,
+   26.12
+  ],
+  "tp2_steady_c1_ms": [
+   36.43,
+   35.95
+  ],
+  "tp4_logprob": {
+   "mean_abs": 0.0353,
+   "p99": 0.6181,
+   "rank1": 0.9861
+  }
+ },
+ "tp4_prefill_tokens_per_second": {
+  "tokens": [
+   4096,
+   8192,
+   16384,
+   32768,
+   65536
+  ],
+  "dev20260924_gids0": [
+   4434,
+   4728,
+   4756,
+   4494,
+   4246
+  ],
+  "nccl2323_gids0": [
+   4402,
+   4672,
+   4659,
+   4485,
+   4224
+  ],
+  "nccl2312_routed": [
+   4927,
+   5219,
+   5179,
+   4986,
+   4706
+  ],
+  "nccl2323_gids1": [
+   5462,
+   5313,
+   5261,
+   5053,
+   4721
+  ]
+ },
+ "logprob_agreement": {
+  "tp4_sm121_vs_installer": {
+   "mean_abs": 0.0354,
+   "p99": 0.6497,
+   "rank1": 0.9844
+  },
+  "tp4_mxfp8_hc_vs_sm121": {
+   "mean_abs": 0.0357,
+   "p99": 0.7172,
+   "rank1": 0.9818
+  },
+  "tp2_full_vs_installer": {
+   "mean_abs": 0.0372,
+   "p99": 0.66,
+   "rank1": 0.9783
+  }
+ },
+ "not_adopted": {
+  "local_argmax": "steady-state changes of -12% to +8% without a pattern; expected effect below run-to-run spread",
+  "five_decode_patches_tp2_median_steady_ms": {
+   "baseline": [
+    35.95,
+    92.43
+   ],
+   "all": [
+    37.23,
+    94.78
+   ],
+   "without_mtp_feedback_route": [
+    37.18,
+    95.3
+   ],
+   "without_fused_qk_norm": [
+    37.15,
+    93.3
+   ],
+   "without_gdn_metadata": [
+    36.98,
+    95.45
+   ],
+   "without_compaction": [
+    36.67,
+    92.75
+   ],
+   "without_all_request_graphs": [
+    36.75,
+    93.69
+   ],
+   "concurrency": [
+    1,
+    8
+   ]
+  }
+ }
+}

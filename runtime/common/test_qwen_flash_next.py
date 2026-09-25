@@ -49,6 +49,12 @@ def test_qwen_model_and_native_prefix_only():
     # The installer profile quantizes the target LM head to MXFP8; see
     # performance/records/qwen38-flash-next/decode-ab-20260925.md.
     assert "VLLM_MXFP8_LM_HEAD=1" in command
+    # The installer image registers this setting and quantizes the BF16
+    # hyper-connection down/injection projections to MXFP8 at load.
+    assert "VLLM_QWEN4_EXP_MXFP8_HC=1" in command
+    # Every speculative decode all-reduce (up to 16 sequences x 4 rows x 2560
+    # BF16 values) runs on RoCEnante instead of the feature default of 4 rows.
+    assert "QWEN_DISPATCH_AR_BYTES=327680" in command
     # Revision 629bc3218833 stores NVFP4 MTP routed experts, which B12X runs.
     assert (
         json.loads(command[command.index("--speculative-config") + 1])["moe_backend"]
@@ -117,6 +123,9 @@ def test_expanded_capacity_preserves_native_context():
     assert not any(value.startswith('VLLM_ALLOW_LONG_MAX_MODEL_LEN=') for value in command)
     graphs = json.loads(command[command.index('--compilation-config') + 1])
     assert all(4 * concurrency in graphs['cudagraph_capture_sizes'] for concurrency in range(1, 17))
+    # The fused rotary-embedding op replaces QSA's per-element PyTorch rope
+    # kernels on the decode critical path.
+    assert graphs['custom_ops'] == ['+rotary_embedding']
 
 
 def options():
