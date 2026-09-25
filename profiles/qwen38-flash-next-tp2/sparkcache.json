@@ -126,6 +126,5 @@
     "record": "runtime/releases/shared-2026.09.3/qualification.json"
   },
   "image_extension": "native-shared",
-  "base_profile": "qwen38-flash-next-tp2",
   "image_release": "shared-2026.09.3"
 }

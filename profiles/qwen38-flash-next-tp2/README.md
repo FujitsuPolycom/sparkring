@@ -1,10 +1,13 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-Status: **qualified for bounded correctness and restart checks**. The commands
-default to cache disabled, matching the catalog; SparkCache is an explicit option.
-This uses the
-QAD checkpoint pinned to revision `629bc3218833a38b475b719f34aa571666f4a03e`
-in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`. Complete the
+Status: the installer profile ([config.json](config.json)) is **implemented**
+on the QAD checkpoint branch `qad-step5500-ple1000`, revision
+`60215d26cf5e42c2db6128774032d57fc62678da` in `local-inference-lab/Qwen3.8-Flash-Next-NVFP4`
+(model class `Qwen4ExpForConditionalGeneration`); its serving is not qualified.
+The SparkCache profile ([sparkcache.json](sparkcache.json)) remains **qualified
+for bounded correctness and restart checks** on revision
+`629bc3218833a38b475b719f34aa571666f4a03e`. The commands default to cache
+disabled, matching the catalog; SparkCache is an explicit option. Complete the
 [host preparation](../../docs/operations/host-preparation.md) and
 [pair network procedure](../../docs/operations/pair-network.md) before starting;
 the launcher does not configure networking. Prepared hosts verify and reuse their
@@ -177,8 +180,9 @@ Configuration is owned by [sparkcache.json](sparkcache.json) and
 [config.json](config.json), not this table. Capacity overrides are intentionally
 not accepted. The [release qualification](../../runtime/releases/shared-2026.09.3/qualification.json)
 records passing bounded short/16K text, finite-score, synthetic image/video,
-concurrent-request and retained-restart checks on this image,
-both with and without SparkCache. The cache-enabled profile also restored two
+concurrent-request and retained-restart checks on this image for revision
+`629bc3218833`, both with and without SparkCache. That evidence does not
+transfer to the `qad-step5500-ple1000` checkpoint used by the installer profile. The cache-enabled profile also restored two
 fixtures on every rank after restart. The [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
 owns exact image identities, case counts and evidence hashes.
 

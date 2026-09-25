@@ -60,8 +60,12 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     plain = adapter.read(root / 'config.json')
     cached = adapter.read(root / 'sparkcache.json')
     tp4 = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/config.json')
-    assert plain['model'] == cached['model'] == tp4['model']
-    assert plain['model']['revision'] == '629bc3218833a38b475b719f34aa571666f4a03e'
+    # The installer profile follows checkpoint branch qad-step5500-ple1000; the
+    # qualified SparkCache and TP4 profiles keep the release-qualified revision.
+    assert cached['model'] == tp4['model']
+    assert cached['model']['revision'] == '629bc3218833a38b475b719f34aa571666f4a03e'
+    assert plain['model']['repository'] == tp4['model']['repository']
+    assert plain['model']['revision'] == '60215d26cf5e42c2db6128774032d57fc62678da'
     assert plain['served_model_name'] == cached['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP2'
     assert tp4['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP4'
     tp4_cached = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/sparkcache.json')
@@ -70,7 +74,10 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in manifest}
     assert hashes['config.json'] == plain['model']['config_sha256']
     assert hashes['model.safetensors.index.json'] == plain['model']['index_sha256']
-    assert (root / 'SHA256SUMS').read_bytes() == (ROOT / 'profiles/qwen38-flash-next-qad-tp4/SHA256SUMS').read_bytes()
+    assert len([name for name in hashes if name.endswith('-of-00041.safetensors')]) == 41
+    ring = (ROOT / 'profiles/qwen38-flash-next-qad-tp4/SHA256SUMS').read_text().splitlines()
+    ring_hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in ring}
+    assert ring_hashes['config.json'] == tp4['model']['config_sha256']
     args = cached['vllm_args']
     config = json.loads(args[args.index('--kv-transfer-config') + 1])
     extra = config['kv_connector_extra_config']
@@ -151,7 +158,7 @@ def test_explicit_entrypoint_and_compile_identity():
     command = plan()
     assert command[command.index('--entrypoint') + 1] == '/opt/venv/bin/python'
     assert native_candidate.ENTRYPOINT in command
-    namespace = f"qwen-flash-next-{shared_publication()['image_id'][7:19]}-629bc3218833"
+    namespace = f"qwen-flash-next-{shared_publication()['image_id'][7:19]}-60215d26cf5e"
     assert f'VLLM_CACHE_ROOT=/cache/{namespace}/vllm' in command
     assert 'VLLM_SPARK_TP4_MODE=' in command
     assert 'VLLM_SPARK_TP4_VOCAB_MODE=' in command
@@ -205,7 +212,8 @@ def test_catalog_exposes_native_capacity_and_no_overrides():
     profile, _ = load('qwen38-flash-next-tp2')
     resolved = resolve('qwen38-flash-next-tp2')
     assert profile['overrides'] == []
-    assert resolved['status'] == 'qualified'
+    # The qad-step5500-ple1000 checkpoint is installer-supported but not qualified.
+    assert resolved['status'] == 'implemented'
     assert resolved['topology'] == 'direct-pair-2'
     expected = {'tensor_parallel_size': 2, 'decode_context_parallel_size': 1,
                 'max_model_len': 262144, 'max_num_seqs': 16,
