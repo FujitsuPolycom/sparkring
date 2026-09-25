@@ -157,3 +157,50 @@ def test_discovery_keeps_configured_links_with_existing_rdma_users(monkeypatch):
     public = algorithm.decode() + " " + base64.b64encode(encoded).decode() + " fixture"
     assert seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run)["prepared"]
     assert not any(a[0] == "rdma" for a in calls)
+
+
+@pytest.mark.parametrize("approve", [None, "yes", "no"])
+def test_port_preparation_ignores_tool_containers_and_stops_approved_gpu_containers(monkeypatch, approve):
+    from runtime.host import seed
+    state = {"gpu_running": True, "stopped": []}
+
+    def run(argv, **kw):
+        if argv[:2] == ["nmcli", "-g"]:
+            return SimpleNamespace(returncode=0, stdout="--", stderr="")
+        if argv[:3] == ["ip", "-j", "-6"]:
+            return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        if argv[:3] == ["ip", "-j", "-4"]:
+            return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        if argv[:2] == ["docker", "ps"]:
+            return SimpleNamespace(returncode=0, stdout="tool\nmodel\n" if state["gpu_running"] else "tool\n", stderr="")
+        if argv[:2] == ["docker", "inspect"]:
+            rows = [{"Id": "tool", "Name": "/netadm", "HostConfig": {}}]
+            if "model" in argv:
+                rows.append({"Id": "model", "Name": "/qwen-r0", "HostConfig": {"DeviceRequests": [{"Driver": "nvidia"}]}})
+            return SimpleNamespace(returncode=0, stdout=json.dumps(rows), stderr="")
+        if argv[:2] == ["docker", "stop"]:
+            state["stopped"].append(argv[-1])
+            state["gpu_running"] = False
+        if argv[0] == "rdma":
+            return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(seed.control_node, "write", lambda *a, **k: None)
+    monkeypatch.setattr(seed.control, "netdev", lambda name: name)
+    monkeypatch.setattr(seed.Path, "read_text", lambda self: "1", raising=False)
+    algorithm = b"ssh-ed25519"
+    encoded = len(algorithm).to_bytes(4, "big") + algorithm + (32).to_bytes(4, "big") + bytes(range(32))
+    public = algorithm.decode() + " " + base64.b64encode(encoded).decode() + " fixture"
+    asked = []
+
+    def stop(names):
+        asked.append(names)
+        if approve == "no":
+            raise ValueError("Cancelled; no further changes")
+    if approve == "yes":
+        assert seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run, stop=stop)["prepared"]
+        assert asked == [["qwen-r0"]] and state["stopped"] == ["model"]
+    else:
+        with pytest.raises(ValueError, match="qwen-r0" if approve is None else "Cancelled"):
+            seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run, stop=stop if approve else None)
+        assert state["stopped"] == []

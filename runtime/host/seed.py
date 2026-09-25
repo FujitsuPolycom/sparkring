@@ -7,16 +7,41 @@ import subprocess
 from runtime.host import control, control_node, node
 
 
-def prepare(public_key, *, run=subprocess.run, interfaces=None):
+def gpu_containers(run=subprocess.run):
+    """Running containers that requested GPUs, as (id, name) pairs."""
+    ids = node.call(["docker", "ps", "-q"], run=run).stdout.split()
+    if not ids:
+        return []
+    rows = json.loads(node.call(["docker", "inspect", *ids], run=run).stdout)
+    return [(row["Id"], row["Name"].lstrip("/")) for row in rows if row["HostConfig"].get("DeviceRequests")]
+
+
+def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None):
+    """Prepare fabric ports for discovery.
+
+    Bringing up an unconfigured RDMA port requires that no GPU job or RDMA user is
+    running; containers without GPUs (tools, registries) do not matter. When GPU
+    containers are running, ``stop(names)`` is asked for approval; approved
+    containers are stopped, never removed.
+    """
     if not re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]*)?", public_key.strip()):
         raise ValueError("Use Node A's Ed25519 public key")
     def idle():
-        containers = node.call(["docker", "ps", "-q"], run=run).stdout.strip()
+        busy = gpu_containers(run)
+        if busy and stop is not None:
+            stop([name for _, name in busy])
+            for ident, _ in busy:
+                node.call(["docker", "stop", "--time", "60", ident], run=run)
+            busy = gpu_containers(run)
+        if busy:
+            names = ", ".join(name for _, name in busy)
+            raise ValueError(f"GPU containers are running ({names}). Stop them (docker stop NAME) or rerun with "
+                             "--stop-workloads, then repeat setup")
         gpu = node.call(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], run=run).stdout.strip()
-        if containers or gpu:
-            raise ValueError("Stop running containers and GPU jobs before worker preparation")
+        if gpu:
+            raise ValueError("A GPU job outside containers is running; stop it before preparing fabric ports")
         if json.loads(node.call(["rdma", "-j", "resource", "show", "qp"], run=run).stdout):
-            raise ValueError("Stop RDMA users before worker preparation")
+            raise ValueError("Stop RDMA users before preparing fabric ports")
 
     if interfaces is None:
         interfaces = sorted({p.name for d in Path("/sys/class/infiniband").iterdir() for p in (d / "device/net").iterdir()})

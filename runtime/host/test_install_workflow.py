@@ -26,7 +26,7 @@ def machine(tmp_path, monkeypatch):
     previous = controller.STATE / "deployments" / "previous"
     previous.mkdir(parents=True)
     node.save(controller.STATE, "active.json", {"path": str(previous)})
-    monkeypatch.setattr(flow, "check_workloads", lambda *a: events.append("check-workloads"))
+    monkeypatch.setattr(flow, "check_workloads", lambda *a, **k: events.append("check-workloads"))
     monkeypatch.setattr(flow.retained_source, "checkout", lambda *a: events.append("rollback-source"))
     class Transport:
         def __init__(self, cluster, directory):
@@ -189,3 +189,36 @@ def test_missing_sudo_returns_access_input_with_fix_before_any_change(monkeypatc
     assert [row["rank"] for row in document["details"]["hosts"]] == [1]
     assert "NOPASSWD" in document["details"]["hosts"][0]["fix"] and "visudo" in document["details"]["hosts"][0]["fix"]
     assert all(argv == ["sudo", "-n", "true"] for _, argv in calls)
+
+
+@pytest.mark.parametrize("approved", [False, True])
+def test_unrelated_gpu_containers_are_stopped_only_with_approval(monkeypatch, tmp_path, approved):
+    from scripts import installer_runner
+    lock = {"id": "new", "site": {"ranks": [{"rank": 0, "host": "root@a"}]}}
+    monkeypatch.setattr(flow.installer, "load", lambda _: lock)
+    state = {"running": True, "stopped": []}
+
+    def ssh(host, argv, timeout=None):
+        if argv[:2] == ["docker", "stop"]:
+            state["stopped"].append(argv[-1])
+            state["running"] = False
+            return ""
+        containers = [{"name": "qwen-manual-r0", "labels": {}}] if state["running"] else []
+        return json.dumps({"gpu_containers": containers})
+    monkeypatch.setattr(installer_runner, "ssh", ssh)
+    monkeypatch.setattr(installer_runner, "check_facts", lambda facts, row: None)
+
+    def check(facts, permitted, rank, managed_prepared=False):
+        if facts["gpu_containers"]:
+            raise ValueError("busy")
+    monkeypatch.setattr(installer_runner, "check_workloads", check)
+    approvals = []
+    stop = (lambda host, names: approvals.append((host, names))) if approved else None
+    from runtime.host.install_errors import NeedsInput
+    if approved:
+        flow.check_workloads(tmp_path, None, stop=stop)
+        assert approvals == [("root@a", ["qwen-manual-r0"])] and state["stopped"] == ["qwen-manual-r0"]
+    else:
+        with pytest.raises(NeedsInput) as caught:
+            flow.check_workloads(tmp_path, None, stop=stop)
+        assert caught.value.document()["details"]["containers"] == ["qwen-manual-r0"] and not state["stopped"]

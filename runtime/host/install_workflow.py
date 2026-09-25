@@ -107,23 +107,39 @@ def select_deployment(args, cluster, state_root):
     return directory, lock
 
 
-def check_workloads(directory, previous):
-    """Reject unrelated GPU work before any planned service interruption."""
+def check_workloads(directory, previous, *, stop=None):
+    """Reject unrelated GPU work before any planned service interruption.
+
+    ``stop(host, names)`` approves stopping unrelated GPU containers; they are
+    stopped, never removed. GPU processes outside containers always need input.
+    """
     from scripts.installer_runner import PROBE, check_facts, check_workloads, ssh
     lock = installer.load(directory)
     allowed = installer.read(previous / "deployment.lock.json") if previous else lock
+    managed = bool(previous and (previous / "managed/runtime/prepared.json").exists())
     for row in lock["site"]["ranks"]:
-        facts = json.loads(ssh(row["host"], ["python3", "-I", "-B", "-c", PROBE], timeout=120))
-        check_facts(facts, row)
-        for permitted in (allowed, lock):
-            try:
-                check_workloads(facts, permitted, row["rank"], managed_prepared=bool(previous and (previous / "managed/runtime/prepared.json").exists()))
+        for attempt in (0, 1):
+            facts = json.loads(ssh(row["host"], ["python3", "-I", "-B", "-c", PROBE], timeout=120))
+            check_facts(facts, row)
+            if any(_permits(check_workloads, facts, permitted, row["rank"], managed) for permitted in (allowed, lock)):
                 break
-            except ValueError:
-                continue
-        else:
-            raise NeedsInput("An unrelated GPU workload is running. Stop that workload or choose another cluster.",
-                             field="workload", details={"rank": row["rank"]})
+            names = [entry["name"] for entry in facts["gpu_containers"]
+                     if entry["labels"].get("io.sparkring.deployment") not in (allowed["id"], lock["id"])]
+            if attempt or stop is None or not names:
+                raise NeedsInput("An unrelated GPU workload is running. Stop it, or repeat with --stop-workloads to stop "
+                                 "(not remove) the listed containers.", field="workload",
+                                 details={"rank": row["rank"], "host": row["host"], "containers": names})
+            stop(row["host"], names)
+            for name in names:
+                ssh(row["host"], ["docker", "stop", "--time", "60", name], timeout=180)
+
+
+def _permits(check, facts, permitted, rank, managed):
+    try:
+        check(facts, permitted, rank, managed_prepared=managed)
+        return True
+    except ValueError:
+        return False
 
 
 def check_managed_namespace(lock):
@@ -149,7 +165,8 @@ def execute(args):
             if not args.yes and not interactive:
                 raise NeedsInput("First installation requires setup approval. Review sparkring setup --plan, then use --yes.", field="approval")
             from runtime.host import single_uplink
-            options = (["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
+            options = ((["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
+                       + (["--stop-workloads"] if args.stop_workloads else []))
             if single_uplink.main(options):
                 raise ValueError("Cluster setup did not complete")
         cluster = installer.read(state_root / "cluster.json")
@@ -175,7 +192,11 @@ def execute(args):
             if not interactive:
                 raise NeedsInput("Review with --plan; add --yes to apply these changes.", field="approval", details=plan)
             controller.confirm("Apply this installation?")
-        check_workloads(directory, previous)
+        def approve_stop(host, names):
+            print(f"{host}: stopping unrelated GPU containers (not removing them): " + ", ".join(names))
+            if not args.stop_workloads:
+                controller.confirm("Stop these containers before installing?")
+        check_workloads(directory, previous, stop=approve_stop if args.stop_workloads or interactive else None)
         transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
         plan["transfer"] = transport.verify()
         assets = install_assets.Assets(transport, directory / "assets")
@@ -210,6 +231,8 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true", help="inspect and save the plan without updating workers or models")
     parser.add_argument("--yes", action="store_true", help="approve the displayed setup and model replacement; SSH trust is still required")
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
+    parser.add_argument("--stop-workloads", action="store_true",
+                        help="stop (never remove) running GPU containers that are not SparkRing's current deployment")
     args = parser.parse_args(argv)
     output = sys.stdout
     code = 0

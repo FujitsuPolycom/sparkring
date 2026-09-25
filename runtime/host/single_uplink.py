@@ -101,6 +101,8 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true", help="discover/review with existing SSH access; no host configuration")
     parser.add_argument("--yes", action="store_true", help="accept configuration scope; SSH host identity still requires verification")
     parser.add_argument("--allow-driver-reload", action="store_true")
+    parser.add_argument("--stop-workloads", action="store_true",
+                        help="stop (never remove) running GPU containers that block fabric preparation")
     parser.add_argument("--worker-bundle", action="store_true", help="build a USB/offline preparation bundle for workers without SSH")
     args = parser.parse_args(argv)
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,34}", args.name):
@@ -131,7 +133,11 @@ def main(argv=None):
         transport = bootstrap.SSH(base / "ssh", identity=private)
         if not args.plan:
             controller.confirm("Prepare unused local fabric ports for discovery? Existing configured links will be kept.", args.yes)
-            seed.prepare(public)
+            # --yes approves setup scope only; stopping running GPU work needs
+            # --stop-workloads or an explicit answer in a terminal.
+            seed.prepare(public, stop=lambda names: controller.confirm(
+                "Stop these running GPU containers so fabric ports can be prepared? They are stopped, not removed: "
+                + ", ".join(names) + ".", args.stop_workloads))
         if sys.stdin.isatty() and not env.env and "--ssh-user" not in (argv or []):
             args.ssh_user = input("Worker SSH username [root]: ").strip() or "root"
         try:
