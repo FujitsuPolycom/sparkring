@@ -17,7 +17,8 @@
    "QWEN_DISPATCH_AR_BYTES": "327680",
    "compilation_config.custom_ops": [
     "+rotary_embedding"
-   ]
+   ],
+   "speculative_config.draft_sample_method": "probabilistic"
   },
   "tp4": {
    "NCCL_IB_EXTENDED_IPV4_GIDS": "1"
@@ -238,6 +239,42 @@
    "concurrency": [
     1,
     8
+   ]
+  }
+ },
+ "probabilistic_drafting_tokens_per_step_prose_code_json": {
+  "tp2": {
+   "greedy_t1": [
+    1.97,
+    3.32,
+    3.64
+   ],
+   "probabilistic_t1": [
+    2.16,
+    3.35,
+    3.71
+   ],
+   "probabilistic_t0": [
+    2.2,
+    3.28,
+    3.76
+   ]
+  },
+  "tp4": {
+   "greedy_t1": [
+    1.99,
+    3.3,
+    3.47
+   ],
+   "probabilistic_t1": [
+    2.14,
+    3.31,
+    3.64
+   ],
+   "probabilistic_t0": [
+    2.12,
+    3.34,
+    3.74
    ]
   }
  }

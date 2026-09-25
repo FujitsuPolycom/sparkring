@@ -133,7 +133,7 @@ services:
       --kv-cache-dtype, fp8, --block-size, '32', --load-format, b12x, --gpu-memory-utilization, '0.85', --kv-cache-memory-bytes, '25769803776',
       --mamba-cache-mode, align, --enable-prefix-caching, --enable-chunked-prefill, --gdn-decode-kernel, b12x, --linear-backend, b12x, --moe-backend,
       b12x, --no-enable-flashinfer-autotune, --mm-encoder-tp-mode, data, --mm-processor-cache-gb, '0', --limit-mm-per-prompt, '{"image":3,"video":1}',
-      --reasoning-parser, qwen3, --tool-call-parser, qwen3_xml, --enable-auto-tool-choice, --speculative-config, '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X"}',
+      --reasoning-parser, qwen3, --tool-call-parser, qwen3_xml, --enable-auto-tool-choice, --speculative-config, '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X","draft_sample_method":"probabilistic"}',
       --compilation-config, '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],"custom_ops":["+rotary_embedding"]}',
       --media-io-kwargs, '{"video":{"num_frames":16}}', --recurrent-checkpoint-policy, aligned, --enable-prompt-tokens-details]
     healthcheck:
@@ -161,7 +161,7 @@ services:
       --kv-cache-dtype, fp8, --block-size, '32', --load-format, b12x, --gpu-memory-utilization, '0.85', --kv-cache-memory-bytes, '25769803776',
       --mamba-cache-mode, align, --enable-prefix-caching, --enable-chunked-prefill, --gdn-decode-kernel, b12x, --linear-backend, b12x, --moe-backend,
       b12x, --no-enable-flashinfer-autotune, --mm-encoder-tp-mode, data, --mm-processor-cache-gb, '0', --limit-mm-per-prompt, '{"image":3,"video":1}',
-      --reasoning-parser, qwen3, --tool-call-parser, qwen3_xml, --enable-auto-tool-choice, --speculative-config, '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X"}',
+      --reasoning-parser, qwen3, --tool-call-parser, qwen3_xml, --enable-auto-tool-choice, --speculative-config, '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X","draft_sample_method":"probabilistic"}',
       --compilation-config, '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],"custom_ops":["+rotary_embedding"]}',
       --media-io-kwargs, '{"video":{"num_frames":16}}', --recurrent-checkpoint-policy, aligned, --enable-prompt-tokens-details, --headless]
     healthcheck:

@@ -55,6 +55,9 @@ def test_qwen_model_and_native_prefix_only():
     # Every speculative decode all-reduce (up to 16 sequences x 4 rows x 2560
     # BF16 values) runs on RoCEnante instead of the feature default of 4 rows.
     assert "QWEN_DISPATCH_AR_BYTES=327680" in command
+    # Drafts sample from the draft distribution, so sampled requests accept
+    # by distribution overlap rather than by the target's probability of one token.
+    assert json.loads(command[command.index("--speculative-config") + 1])["draft_sample_method"] == "probabilistic"
     # Revision 629bc3218833 stores NVFP4 MTP routed experts, which B12X runs.
     assert (
         json.loads(command[command.index("--speculative-config") + 1])["moe_backend"]

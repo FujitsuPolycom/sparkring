@@ -202,6 +202,12 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert installer_graphs.pop("custom_ops") == ["+rotary_embedding"]
     assert installer_graphs == json.loads(args[graphs])
     native[graphs] = args[graphs]
+    # The installer profile samples its drafts; the SparkCache profile keeps
+    # greedy drafting.
+    installer_draft = json.loads(native[draft])
+    assert installer_draft.pop("draft_sample_method") == "probabilistic"
+    assert installer_draft == json.loads(args[draft])
+    native[draft] = args[draft]
     assert args[1:] == native[1:]
     assert spec.mounts == base.mounts
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap

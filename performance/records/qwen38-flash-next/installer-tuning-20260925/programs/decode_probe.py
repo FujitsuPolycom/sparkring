@@ -1,6 +1,8 @@
-"""Greedy decode rate and draft acceptance per prompt type, from streaming timing and /metrics.
+"""Decode rate and draft acceptance per prompt type, from streaming timing and /metrics.
 
-Usage: decode_probe.py BASE_URL [TOKENS] [RUNS]
+Usage: decode_probe.py BASE_URL [TOKENS] [RUNS] [TEMPERATURE]
+TEMPERATURE defaults to 0 (greedy); a positive value samples with the
+checkpoint's other generation defaults (top-k, top-p).
 For each prompt, reports end-to-end tokens/s (including time to first token), the
 steady per-token rate after the first token, and speculative-decoding acceptance
 (accepted/draft tokens and per-position acceptance) from the server counters.
@@ -15,6 +17,7 @@ import urllib.request
 base = sys.argv[1].rstrip("/")
 tokens = int(sys.argv[2]) if len(sys.argv) > 2 else 512
 runs = int(sys.argv[3]) if len(sys.argv) > 3 else 2
+temperature = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
 root = base.rsplit("/v1", 1)[0]
 model = json.loads(urllib.request.urlopen(base + "/models", timeout=30).read())["data"][0]["id"]
 PROMPTS = {
@@ -41,7 +44,7 @@ def counters():
 
 def run(prompt):
     body = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": tokens,
-            "temperature": 0, "ignore_eos": True, "stream": True, "stream_options": {"include_usage": True},
+            "temperature": temperature, "ignore_eos": True, "stream": True, "stream_options": {"include_usage": True},
             "chat_template_kwargs": {"enable_thinking": False}}
     request = urllib.request.Request(base + "/chat/completions", data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})

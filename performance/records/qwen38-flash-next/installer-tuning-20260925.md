@@ -167,6 +167,30 @@ on RoCEnante. A source comparison of the vLLM, B12X and SparkRing trees of
 this image and of the shared-2026.09.3 native image found no prefill-path
 difference that favors the native image.
 
+## Probabilistic drafting
+
+The checkpoint's generation defaults sample at temperature 1.0, top-k 20 and
+top-p 0.95, and apply to every request that does not set its own sampling.
+With greedy drafting, the rejection test treats each draft token as certain,
+so under sampling a draft token survives with the target's probability for it.
+The profiles set `"draft_sample_method": "probabilistic"` in
+`--speculative-config`: drafts sample from the draft distribution and the
+rejection test uses the full probability ratio. Tokens per step from
+`decode_probe.py` (three runs at temperature 1.0, two at temperature 0):
+
+| Configuration | Prose | Code | JSON |
+|---|---|---|---|
+| TP2, greedy drafts, temperature 1.0 | 1.97 | 3.32 | 3.64 |
+| TP2, probabilistic drafts, temperature 1.0 | **2.16** | 3.35 | 3.71 |
+| TP2, probabilistic drafts, temperature 0 | 2.20 | 3.28 | 3.76 |
+| TP4, greedy drafts, temperature 1.0 | 1.99 | 3.30 | 3.47 |
+| TP4, probabilistic drafts, temperature 1.0 | **2.14** | 3.31 | 3.64 |
+| TP4, probabilistic drafts, temperature 0 | 2.12 | 3.34 | 3.74 |
+
+Step time and KV-cache capacity were unchanged (TP4 prose 25.8 and 25.7 ms;
+3,131,214 tokens in both configurations), and temperature-0 acceptance stayed
+within run-to-run spread of greedy drafting (2.18 / 3.30 / 3.71 on TP4).
+
 ## Measured and not adopted
 
 **Local argmax for draft tokens** (`"use_local_argmax_reduction": true` in
