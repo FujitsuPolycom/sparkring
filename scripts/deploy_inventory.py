@@ -237,9 +237,18 @@ def _collect_local(
             ]
         else:
             gpu_error = "nvidia-smi returned an unexpected GPU table"
+    # Compute processes decide whether fabric links may change underneath a job.
+    apps_text, apps_error = command(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"])
+    compute = None
+    if apps_text is not None:
+        try:
+            compute = [int(line.strip()) for line in apps_text.splitlines() if line.strip()]
+        except ValueError:
+            compute = None
     gpu = {
         "available": bool(devices) if devices is not None else None,
         "devices": devices,
+        "compute_processes": compute,
         "error": gpu_error,
     }
     docker_info, docker_error = json_command(

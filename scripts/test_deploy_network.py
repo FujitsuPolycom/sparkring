@@ -394,10 +394,21 @@ def test_network_changes_wait_for_running_models_and_rdma_users():
     inventory["spark-r0"]["docker"]["containers"] = [
         {"name": "model", "state": "running"}
     ]
-    inventory["spark-r0"]["network"]["rdma_resources"] = [{"type": "qp", "id": 1}]
+    inventory["spark-r0"]["gpu"] = {"compute_processes": [4242]}
+    inventory["spark-r0"]["network"]["rdma_resources"] = [{"type": "RC", "id": 1, "pid": 4242, "comm": "python3"}]
     host = plan_network(spec, inventory)["hosts"][0]
     assert not host["apply_permitted"]
     assert len(host["blocked_by"]) == 2
+
+
+def test_kernel_queue_pairs_and_gpu_less_containers_do_not_block_network_changes():
+    spec, inventory = network_fixture()
+    unconfigured(spec, inventory)
+    inventory["spark-r0"]["docker"]["containers"] = [{"name": "netadm", "state": "running"}]
+    inventory["spark-r0"]["gpu"] = {"compute_processes": []}
+    inventory["spark-r0"]["network"]["rdma_resources"] = [{"ifname": "rocep1s0f0", "comm": "ib_core", "type": "GSI"}]
+    host = plan_network(spec, inventory)["hosts"][0]
+    assert host["blocked_by"] == []
 
 
 def test_backup_archive_includes_only_proven_existing_sources():

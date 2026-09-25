@@ -852,22 +852,31 @@ def plan_network(spec, inventory):
         changed = bool(apply or driver)
         blockers = []
         if changed:
-            containers = _object(found.get("docker"), "docker inventory").get(
-                "containers"
-            )
-            if containers is None:
-                blockers.append(
-                    "Container state is unknown; verify model processes are stopped."
+            compute = (found.get("gpu") or {}).get("compute_processes")
+            if compute:
+                blockers.append("GPU processes are running (PIDs "
+                                + ", ".join(map(str, compute)) + "); stop model containers first.")
+            elif compute is None:
+                # Older inventories lack GPU process facts; any running container blocks.
+                containers = _object(found.get("docker"), "docker inventory").get(
+                    "containers"
                 )
-            elif any(c.get("state") == "running" for c in containers):
-                blockers.append(
-                    "Running containers must be classified and all model/RDMA users stopped."
-                )
+                if containers is None:
+                    blockers.append(
+                        "Container state is unknown; verify model processes are stopped."
+                    )
+                elif any(c.get("state") == "running" for c in containers):
+                    blockers.append(
+                        "Running containers must be classified and all model/RDMA users stopped."
+                    )
             resources = network.get("rdma_resources")
             if resources is None:
                 blockers.append("RDMA resource state is unknown.")
-            elif resources:
-                blockers.append("RDMA resources remain in use.")
+            else:
+                # Kernel management queue pairs (GSI/SMI) have no pid and always exist.
+                users = sorted({str(r.get("comm", "?")) for r in resources if r.get("pid") is not None})
+                if users:
+                    blockers.append("RDMA resources remain in use by: " + ", ".join(users) + ".")
         plans.append(
             {
                 "host": ssh,
