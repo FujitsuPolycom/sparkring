@@ -53,6 +53,9 @@ the record lists their SHA-256 values.
 
 Each profile has one installation and one measurement series at concurrency 1.
 The runs include no media, full-context pressure, concurrency sweep, restart
-cycle or soak. The GLM-5.3 TP2 4K request took 3.35 s, about 1.7 s longer than
-its 16K rate predicts; the cause was not investigated. These observations do
-not establish serving qualification or compare this image with another image.
+cycle or soak. The series ran minutes after each first start, so a prompt size
+used for the first time can include kernel compilation: the GLM-5.3 TP2 4K
+request took 3.35 s. After a later restart of that deployment with its caches
+filled, the best of three 3,907-token requests took 1.68 s (2,330 tokens/s),
+in line with its other sizes. These observations do not establish serving
+qualification or compare this image with another image.

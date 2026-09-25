@@ -7,8 +7,8 @@ worker reaches it through an SSH remote forward on the worker's own loopback
 address. The relay fetches each manifest and blob from the upstream registry
 once, verifies it against its digest and serves the verified copy to every
 node. The internet link carries the image once while every node unpacks it
-concurrently, and a node that already holds some layers requests only the
-others.
+concurrently. ``Relay.image`` also exposes the pinned configuration and layer
+list, so the installer can send a node only the layers it lacks.
 
 Upstream access is anonymous bearer-token pulls, which public GHCR and Docker
 Hub repositories use. A registry that requires credentials makes the relay
@@ -232,6 +232,34 @@ class Relay:
                     raise ValueError("Upstream blob differs from its digest")
                 partial.replace(target)
         return target
+
+    def image(self, image_id, platform=("linux", "arm64")):
+        """Return the pinned image's configuration bytes and ordered layers.
+
+        Each layer is ``(diff_id, digest, size)``: the uncompressed digest the
+        configuration records, and the registry blob digest and size. An index
+        selects its single manifest for ``platform``. The configuration digest
+        must equal ``image_id``.
+        """
+        media, content = self.manifest(self.digest, None)
+        document = json.loads(content)
+        if "manifests" in document:
+            entries = [entry for entry in document["manifests"]
+                       if (entry.get("platform", {}).get("os"), entry.get("platform", {}).get("architecture")) == platform]
+            if len(entries) != 1 or not DIGEST.fullmatch(entries[0].get("digest", "")):
+                raise ValueError("The pinned index names no single manifest for this platform")
+            media, content = self.manifest(entries[0]["digest"], entries[0].get("mediaType"))
+            document = json.loads(content)
+        if document.get("config", {}).get("digest") != image_id:
+            raise ValueError("The pinned manifest names a different image configuration")
+        config = self.blob(image_id).read_bytes()
+        diff_ids, layers = json.loads(config)["rootfs"]["diff_ids"], document["layers"]
+        # Foreign layers carry external URLs instead of registry blobs.
+        if (len(diff_ids) != len(layers) or any(not DIGEST.fullmatch(value) for value in diff_ids)
+                or any(not DIGEST.fullmatch(layer.get("digest", "")) or layer.get("urls")
+                       or "foreign" in layer.get("mediaType", "") for layer in layers)):
+            raise ValueError("The pinned manifest's layers are not loadable registry blobs")
+        return config, [(diff, layer["digest"], int(layer["size"])) for diff, layer in zip(diff_ids, layers)]
 
     def close(self):
         self.server.shutdown()

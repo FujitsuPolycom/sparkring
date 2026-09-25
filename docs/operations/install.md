@@ -119,10 +119,20 @@ relay on Node A. The relay serves only the pinned repository on Node A's
 loopback address. Each worker reaches it through an SSH remote forward on the
 worker's own loopback address. It downloads each layer from the registry once,
 in parallel byte ranges, verifies it against its digest, and serves the
-verified copy to every node. All nodes run an ordinary `docker pull`
-concurrently, so the Internet link carries the image once, every node unpacks
-it in parallel, and an image update transfers only its changed layers. Pulled
-images keep the reference `127.0.0.1:5255/<repository>@<digest>`. The relay
+verified copy to every node. Nodes pull concurrently, so the Internet link
+carries the image once and every node unpacks it in parallel. Pulled images
+keep the reference `127.0.0.1:5255/<repository>@<digest>`.
+
+Docker's pull skips a layer the node already holds only if Docker recorded that
+layer's registry digest; layers that arrived through `docker load` or a local
+build lack that record and would download again. The relay therefore reads the
+pinned manifest and image configuration first, and each node reports how many
+of the image's leading layers its Docker image store already holds. A node
+that holds some of them receives an archive with the configuration and only
+its missing compressed layers; `docker load` reuses the held layers, checks
+each loaded layer against the configuration, and tags the image
+`127.0.0.1:5255/<repository>:<image-lock name>`. A node that holds none of the
+layers, or uses Docker's containerd image store, pulls. The relay
 reads anonymous pulls, as public GHCR and Docker Hub repositories allow. Node A
 needs room for the relay's layer cache, which is removed after distribution, in
 addition to its own pull. The installer distributes images while checkpoints
@@ -141,10 +151,15 @@ choices automatically select a separate deployment; there is no instance name
 or manual stop command to supply. Compile and B12X tuning results share one
 cache per cluster, `/srv/sparkring/<cluster>/cache`, in subdirectories keyed by
 model family, image and checkpoint revision, so reinstalling or switching back
-to a profile reuses its earlier tuning. B12X keys compiled kernels to each GPU's
-device UUID, so the first start of a profile on a Spark includes that Spark's
-tuning; Qwen TP2 on the shared image took 666 s to API readiness from an empty
-cache.
+to a profile reuses its earlier tuning. Compiled B12X kernels are the
+exception: B12X keys each one by its package source, Python, torch, CUTLASS
+DSL and CUDA binding versions, compile environment and GPU device UUID, so
+installer profiles keep them in a subdirectory named by model family, CUDA
+toolkit version and checkpoint revision, and an image update that leaves B12X
+unchanged reuses them. The first start of a profile on a Spark still includes
+that Spark's tuning. On image dev-20260925, Qwen reached API readiness in
+546.8 s on TP2 and 476.9 s on TP4 from empty caches, and in 244.3 s and
+202.7 s when started again.
 `sparkring export --share` retains the image lock and per-rank Compose files.
 
 `sparkring status --json --refresh` reports the saved deployment/image IDs and

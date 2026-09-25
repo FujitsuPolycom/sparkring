@@ -25,12 +25,26 @@ REGISTRY_CARD = {"image_id": "sha256:a", "image_reference": "ghcr.io/owner/image
 
 class Relay:
     port = 5255
+    repository = "owner/image"
     instances = []
+    layout = None
     def __init__(self, reference, directory):
         self.closed = False
+        self.fetched = []
+        self.directory = directory
         Relay.instances.append(self)
     def reference(self, port=None):
         return f"127.0.0.1:{port or self.port}/owner/image@sha256:" + "b" * 64
+    def image(self, image_id):
+        if Relay.layout is None:
+            raise ValueError("fixture registry publishes no layer list")
+        return Relay.layout
+    def blob(self, digest):
+        self.fetched.append(digest)
+        path = self.directory / digest.removeprefix("sha256:")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"compressed " + digest.encode())
+        return path
     def close(self):
         self.closed = True
 
@@ -38,6 +52,7 @@ class Relay:
 @pytest.fixture
 def relay(monkeypatch):
     Relay.instances = []
+    Relay.layout = None
     monkeypatch.setattr(assets.registry_relay, "Relay", Relay)
     return Relay
 
@@ -67,6 +82,79 @@ def test_every_missing_node_pulls_through_one_relay_on_node_a(tmp_path, relay):
     assert len(retried) == 2 and retried[1][1] != "forward:5255->5255"
     assert retried[1][-1] == relay.instances[0].reference(int(retried[1][1].split(":")[1].split("-")[0]))
     assert retried[1][2:4] == ["sudo", "-n"] and relay.instances[0].closed
+
+
+LAYERS = [("sha256:" + c * 64, "sha256:" + d * 64, 100) for c, d in (("1", "4"), ("2", "5"), ("3", "6"))]
+CONFIG = b'{"rootfs": {"diff_ids": ["sha256:1..", "sha256:2..", "sha256:3.."]}}'
+
+
+class Sink(io.BytesIO):
+    def close(self):
+        self.data = self.getvalue()
+        super().close()
+
+
+def test_nodes_holding_leading_layers_load_only_the_layers_they_lack(tmp_path, relay):
+    import json
+    import tarfile
+    relay.layout = (CONFIG, LAYERS)
+    card = {**REGISTRY_CARD, "release": "dev-20260925-cuda1342-nccl2323-status031"}
+    held = {0: 0, 2: 2, 3: 3}
+    present, pulls, loads = {1}, [], {}
+    def run(argv, **kwargs):
+        pulls.append(argv)
+        present.add(0 if argv[0] == "docker" else int(argv[0][-1]))
+        return SimpleNamespace(returncode=0, stderr="")
+    class Loader:
+        def __init__(self, argv, **kwargs):
+            self.rank, self.argv = int(argv[0][-1]), argv
+            self.stdin, self.stdout = Sink(), io.BytesIO(b'{"image_id": "sha256:a"}')
+            loads[self.rank] = self
+        def wait(self, timeout=None):
+            present.add(self.rank)
+            return 0
+    def remote(rank, fn, *args, **kwargs):
+        if fn == assets.layer_prefix:
+            assert args == ([diff for diff, _, _ in LAYERS],)
+            return held[rank]
+        assert fn == assets.image_probe
+        return {"present": rank in present, "image_id": "sha256:a", "size_bytes": 30 * 1024**3, "free_bytes": 200 * 1024**3}
+    current = assets.Assets(Transport(), tmp_path, run=run, popen=Loader)
+    current.remote = remote
+    result = current.images(card)
+    assert sorted(result["relayed_ranks"]) == [0, 2, 3]
+    # Node 0 holds no leading layer and pulls; nodes 2 and 3 load only what they lack.
+    assert [argv[-1] for argv in pulls] == [relay.instances[0].reference()]
+    assert sorted(loads) == [2, 3] and relay.instances[0].fetched == [LAYERS[2][1]]
+    for rank, expected in ((2, ["3" * 64 + "/layer.tar"]), (3, [])):
+        assert loads[rank].argv[1:5] == ["sudo", "-n", "python3", "-I"]
+        assert "receive_image(*('sha256:a'," in loads[rank].argv[-1]
+        with tarfile.open(fileobj=io.BytesIO(loads[rank].stdin.data)) as archive:
+            names = archive.getnames()
+            manifest = json.load(archive.extractfile("manifest.json"))
+            assert archive.extractfile("a.json").read() == CONFIG
+        assert sorted(names) == sorted(["a.json", "manifest.json", *expected])
+        assert manifest == [{"Config": "a.json", "Layers": [d[7:] + "/layer.tar" for d, _, _ in LAYERS],
+                             "RepoTags": ["127.0.0.1:5255/owner/image:dev-20260925-cuda1342-nccl2323-status031"]}]
+    assert relay.instances[0].closed
+
+
+def test_layer_prefix_counts_the_longest_locally_held_chain(monkeypatch):
+    import json
+    import subprocess
+    images = {"sha256:x": ["sha256:1", "sha256:2", "sha256:9"], "sha256:y": ["sha256:1"]}
+    def check_output(argv, text=True):
+        if argv[3:4] == ["info"]:
+            return '[["Backing Filesystem","extfs"]]'
+        if argv[3:5] == ["image", "ls"]:
+            return "\n".join(images) + "\n"
+        return json.dumps([{"RootFS": {"Layers": images[name]}} for name in argv[5:]])
+    monkeypatch.setattr(subprocess, "check_output", check_output)
+    assert assets.layer_prefix(["sha256:1", "sha256:2", "sha256:3"]) == 2
+    assert assets.layer_prefix(["sha256:7"]) == 0
+    monkeypatch.setattr(subprocess, "check_output",
+                        lambda argv, text=True: '[["driver-type","io.containerd.snapshotter.v1"]]')
+    assert assets.layer_prefix(["sha256:1"]) == 0
 
 
 def test_relay_storage_shortfall_asks_for_input_before_downloading(tmp_path, relay):

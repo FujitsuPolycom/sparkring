@@ -246,7 +246,8 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     # Compile and tuning caches are keyed by model family, image and checkpoint
     # revision, so repeated installs of the same selection reuse them.
     family = profile.get("cache_namespace", "qwen-flash-next")
-    namespace = f"{family}-{image[7:19]}-{profile['model']['revision'][:12]}"
+    revision = profile["model"]["revision"][:12]
+    namespace = f"{family}-{image[7:19]}-{revision}"
     env = dict(profile["environment"])
     env.update(
         VLLM_HOST_IP=host_ip,
@@ -269,6 +270,17 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         env["SPARKRING_TRANSPORT_PROFILE"] = native["transport"]["profile"]
         env["SPARKRING_TRANSPORT_MANIFEST_SHA256"] = native["transport"]["manifest_sha256"]
         env["B12X_CUTE_COMPILE_CACHE_DIR"] = env["B12X_COMPILE_CACHE_DIR"]
+    if policy["kind"] == "toolchain":
+        # B12X keys each compiled program by its package fingerprint, the Python,
+        # torch, CUTLASS DSL and CUDA binding versions, every other B12X_, CUTE_ and
+        # CUTLASS_ variable, and the GPU UUID. Installer images therefore share
+        # compiled kernels; the folder names the CUDA toolkit, which that key
+        # omits. The RoCE proxy library is keyed only by its C source, so it stays
+        # in the image's XDG cache: leaving B12X_ROCE_CACHE_DIR unset keeps image
+        # paths out of the kernel key.
+        from runtime.common import installer_image
+        env["B12X_COMPILE_CACHE_DIR"] = f"/cache/{family}-cuda{installer_image.CUDA_VERSION}-{revision}/b12x"
+        del env["B12X_ROCE_CACHE_DIR"]
     if hcas is not None:
         if (not isinstance(hcas, list) or len(hcas) != nodes or len(set(hcas)) != nodes
                 or any(not re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca) for hca in hcas)):

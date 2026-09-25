@@ -66,10 +66,9 @@ x-runtime: &runtime
   mem_limit: 115964116992
   memswap_limit: 120259084288
 x-environment: &environment
-  B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/b12x
+  B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-cuda13.4.2-60215d26cf5e/b12x
   B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
   B12X_POLICY_MODE: auto
-  B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/roce
   B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
   B12X_ROCE_PAIR_PATHS: '2'
   CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/cute

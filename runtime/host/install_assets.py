@@ -4,6 +4,7 @@ import inspect
 import json
 from pathlib import Path
 import random
+import re
 import secrets
 import subprocess
 import tempfile
@@ -57,6 +58,62 @@ def receive_image(image, reserve):
     if actual["Id"] != image or actual["Architecture"] != "arm64" or actual["Os"] != "linux":
         raise ValueError("Imported image does not match the selected ARM64 identity")
     return {"image_id": image, "free_bytes": shutil.disk_usage(root).free, "model_started": False}
+
+
+def layer_prefix(diff_ids):
+    """Count the image's leading layers that this node's Docker already holds.
+
+    The graph-driver image store identifies a layer by the chain of
+    uncompressed layer digests (diff IDs) beneath it, so any local image whose
+    layers begin with the same diff IDs proves that chain is present, however
+    it arrived. The containerd image store loads only complete archives and
+    reports zero.
+    """
+    import json
+    import subprocess
+    docker = ["docker", "--context", "default"]
+    status = subprocess.check_output([*docker, "info", "--format", "{{json .DriverStatus}}"], text=True)
+    if "io.containerd.snapshotter" in status:
+        return 0
+    images = sorted(set(subprocess.check_output([*docker, "image", "ls", "-a", "-q", "--no-trunc"], text=True).split()))
+    shared = 0
+    for record in json.loads(subprocess.check_output([*docker, "image", "inspect", *images], text=True)) if images else []:
+        count = 0
+        for held, wanted in zip(record.get("RootFS", {}).get("Layers") or [], diff_ids):
+            if held != wanted:
+                break
+            count += 1
+        shared = max(shared, count)
+    return shared
+
+
+def write_layer_archive(stream, image_id, config, layers, present, blob, tag=None):
+    """Write a ``docker load`` archive holding only the layers after ``present``.
+
+    The manifest lists every layer. Docker's loader looks up each leading chain
+    in the local store and opens a layer file only when that chain is absent;
+    it decompresses each loaded registry blob and rejects any whose content
+    differs from the configuration's diff ID.
+    """
+    import io
+    import tarfile
+
+    def add(name, handle, size):
+        info = tarfile.TarInfo(name)
+        info.size, info.mode = size, 0o644
+        archive.addfile(info, handle)
+
+    names = [diff.removeprefix("sha256:") + "/layer.tar" for diff, _, _ in layers]
+    manifest = [{"Config": image_id.removeprefix("sha256:") + ".json", "RepoTags": [tag] if tag else None,
+                 "Layers": names}]
+    with tarfile.open(fileobj=stream, mode="w|") as archive:
+        add(manifest[0]["Config"], io.BytesIO(config), len(config))
+        encoded = json.dumps(manifest).encode()
+        add("manifest.json", io.BytesIO(encoded), len(encoded))
+        for name, (_, digest, _) in list(zip(names, layers))[present:]:
+            path = Path(blob(digest))
+            with open(path, "rb") as handle:
+                add(name, handle, path.stat().st_size)
 
 
 def worker_revision():
@@ -121,8 +178,30 @@ class Assets:
                                  field="storage", details={"rank": rank, "required_bytes": required,
                                                            "free_bytes": observations[rank]["free_bytes"]})
         relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
+        try:
+            layout = relay.image(card["image_id"])
+        except (OSError, ValueError, KeyError) as error:
+            # Every node then pulls; a pull reports its own registry failure.
+            progress.say(f"Pinned layer list unavailable ({error}); nodes pull the whole image.")
+            layout = None
+        except BaseException:
+            relay.close()
+            raise
 
         def pull_on(rank):
+            present = self.remote(rank, layer_prefix, [diff for diff, _, _ in layout[1]]) if layout else 0
+            if present:
+                # Docker's pull re-downloads a held layer unless it recorded that
+                # layer's registry digest, which layers imported by `docker load`
+                # or built locally lack; the node instead loads only what it lacks.
+                missing = len(layout[1]) - present
+                title = (f"Node {rank}: Load {missing} missing of {len(layout[1])} image layers through Node A's registry relay"
+                         if missing else f"Node {rank}: Register the pinned image from layers the node already holds")
+                with progress.step(title):
+                    self.load_layers(rank, relay, card, layout, present)
+                    if not self.remote(rank, image_probe, card["image_id"])["present"]:
+                        raise ValueError(f"Node {rank}: layer load produced a different image")
+                return rank
             with progress.step(f"Node {rank}: Pull pinned image through Node A's registry relay"):
                 if rank == 0:
                     argv = [*DOCKER, "pull", "-q", "--platform", "linux/arm64", relay.reference()]
@@ -147,6 +226,33 @@ class Assets:
                 return list(pool.map(pull_on, missing))
         finally:
             relay.close()
+
+    def load_layers(self, rank, relay, card, layout, present):
+        """Stream the image configuration and the layers after ``present`` into one node's ``docker load``."""
+        config, layers = layout
+        # Loaded blobs, their unpacked layers and the loader's extracted copy coexist.
+        reserve = 4 * sum(size for _, _, size in layers[present:]) + 4 * 1024**3
+        release = card.get("release", "")
+        tag = (f"127.0.0.1:{registry_relay.PORT}/{relay.repository}:{release}"
+               if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", release) else None)
+        with tempfile.TemporaryFile() as errors:
+            child = self.popen(self.command(rank, ["python3", "-I", "-c", self.code(receive_image, card["image_id"], reserve)]),
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+            try:
+                write_layer_archive(child.stdin, card["image_id"], config, layers, present, relay.blob, tag)
+                child.stdin.close()
+            except BrokenPipeError:
+                pass  # The receiver stopped early; its own error is reported below.
+            finally:
+                if not child.stdin.closed:
+                    try:
+                        child.stdin.close()
+                    except BrokenPipeError:
+                        pass
+            child.stdout.read()
+            if child.wait(timeout=7200):
+                errors.seek(0)
+                raise ValueError(f"Node {rank}: layer load failed: " + errors.read()[-4000:].decode(errors="replace"))
 
     def images(self, card):
         count = len(self.transport.hosts)

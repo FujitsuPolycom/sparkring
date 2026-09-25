@@ -143,6 +143,61 @@ def test_close_removes_the_blob_cache(setup):
     assert not relay.directory.exists()
 
 
+class Store:
+    """Upstream double holding manifests and blobs by digest."""
+
+    def __init__(self, *documents, blobs=()):
+        self.manifests = {digest(json.dumps(d).encode()): json.dumps(d).encode() for d in documents}
+        self.blobs = {digest(b): b for b in blobs}
+
+    def manifest(self, name, accept):
+        return "application/json", self.manifests[name]
+
+    def blob(self, name, target):
+        target.write_bytes(self.blobs[name])
+
+
+def layered(tmp_path, *, foreign=False, config_for=None):
+    layers = [b"layer one", b"layer two"]
+    config = json.dumps({"rootfs": {"diff_ids": ["sha256:" + "1" * 64, "sha256:" + "2" * 64]}}).encode()
+    kinds = ["application/vnd.docker.image.rootfs.diff.tar.gzip",
+             "application/vnd.docker.image.rootfs.foreign.diff.tar.gzip" if foreign else
+             "application/vnd.docker.image.rootfs.diff.tar.gzip"]
+    arm = {"config": {"digest": config_for or digest(config)},
+           "layers": [{"mediaType": kind, "digest": digest(layer), "size": len(layer)} for kind, layer in zip(kinds, layers)]}
+    index = {"manifests": [
+        {"digest": digest(json.dumps({"other": True}).encode()), "platform": {"os": "linux", "architecture": "amd64"}},
+        {"digest": digest(json.dumps(arm).encode()), "platform": {"os": "linux", "architecture": "arm64"}},
+        {"digest": digest(b"{}"), "platform": {"os": "unknown", "architecture": "unknown"}},
+    ]}
+    upstream = Store(index, arm, blobs=[config, *layers])
+    relay = relay_module.Relay("ghcr.io/owner/image@" + digest(json.dumps(index).encode()), tmp_path / "relay",
+                               upstream=upstream, port=0)
+    return relay, config, layers
+
+
+def test_image_resolves_the_platform_manifest_to_its_configuration_and_layers(tmp_path):
+    relay, config, layers = layered(tmp_path)
+    try:
+        loaded, listed = relay.image(digest(config))
+        assert loaded == config
+        assert listed == [("sha256:" + "1" * 64, digest(layers[0]), len(layers[0])),
+                          ("sha256:" + "2" * 64, digest(layers[1]), len(layers[1]))]
+        with pytest.raises(ValueError, match="different image configuration"):
+            relay.image("sha256:" + "f" * 64)
+    finally:
+        relay.close()
+
+
+def test_image_refuses_layers_that_are_not_registry_blobs(tmp_path):
+    relay, config, _ = layered(tmp_path, foreign=True)
+    try:
+        with pytest.raises(ValueError, match="not loadable registry blobs"):
+            relay.image(digest(config))
+    finally:
+        relay.close()
+
+
 def test_reference_must_be_pinned_by_digest():
     with pytest.raises(ValueError, match="pinned by sha256"):
         relay_module.parse("ghcr.io/owner/image:latest")

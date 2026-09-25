@@ -25,6 +25,8 @@ from runtime.common.container_spec import Bind
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = ("python3", "/opt/sparkring/toolchain/toolchain.py")
+# CUDA toolkit of every admitted installer image; ``admit`` requires it.
+CUDA_VERSION = "13.4.2"
 BINDING_TARGET = "/run/sparkring/runtime-binding.json"
 PARENT_RECEIPT = "/opt/sparkring/receipts/external-base-installed.json"
 TOOLCHAIN_RECEIPT = "/opt/sparkring/toolchain/installed.json"
@@ -156,7 +158,7 @@ def adapt(spec, value, *, binding, source_root, profile=None):
         VLLM_NCCL_INCLUDE_PATH="/opt/sparkring/toolchain/nccl/include",
         VLLM_NCCL_SO_PATH="/opt/sparkring/toolchain/nccl/lib/libnccl.so.2",
         NCCL_LOCAL_INFERENCE_PATH="/opt/sparkring/toolchain/nccl/lib/libnccl.so.2",
-        CUDA_HOME="/usr/local/cuda-13.4", CUDA_PATH="/usr/local/cuda-13.4", CUDA_VERSION="13.4.2",
+        CUDA_HOME="/usr/local/cuda-13.4", CUDA_PATH="/usr/local/cuda-13.4", CUDA_VERSION=CUDA_VERSION,
         TILELANG_CACHE_DIR=cache + "/tilelang", TVM_FFI_CACHE_DIR=cache + "/tvm-ffi",
         FLASHINFER_WORKSPACE_BASE=cache + "/flashinfer",
     )
@@ -215,7 +217,7 @@ def admit(value, *, run, profile=None, nodes=None, environment=None):
     if (toolchain.get("schema") != "sparkring-toolchain-installed/v1" or toolchain.get("variant") != "combined"
             or toolchain.get("parent_receipt_sha256") != value["parent_receipt_sha256"]
             or toolchain.get("nccl_version") != 23203 or "V13.4.92" not in toolchain.get("nvcc", "")):
-        raise ValueError("Toolchain receipt is not the selected CUDA 13.4.2 / NCCL 2.32.3 composition")
+        raise ValueError(f"Toolchain receipt is not the selected CUDA {CUDA_VERSION} / NCCL 2.32.3 composition")
     # Verify the actual installed tree, not just receipt labels. No GPU or network
     # is exposed; serving still has its own health and generation barriers.
     run([*isolated, "--entrypoint", ENTRYPOINT[0], value["image_id"], ENTRYPOINT[1], "verify"])

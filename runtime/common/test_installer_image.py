@@ -51,8 +51,18 @@ def test_image_selection_preserves_profile_weights_network_and_model_arguments(m
         assert after.environment["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] == "0"
         assert after.environment["VLLM_QWEN3_8_HC_PREFILL_MODE"] == "shard"
         assert "PYTHONPATH" not in after.environment and "LD_PRELOAD" not in after.environment
-        assert "a" * 12 in after.environment["B12X_COMPILE_CACHE_DIR"]
-        assert before.image_id[7:19] not in after.environment["B12X_COMPILE_CACHE_DIR"]
+        # Image-scoped caches follow the selected image. Compiled B12X kernels
+        # carry their own content key and are shared across installer images of
+        # one CUDA toolkit, so no B12X-keyed variable names an image.
+        assert "a" * 12 in after.environment["XDG_CACHE_HOME"]
+        assert before.image_id[7:19] not in after.environment["XDG_CACHE_HOME"]
+        assert after.environment["B12X_COMPILE_CACHE_DIR"] == before.environment["B12X_COMPILE_CACHE_DIR"]
+        assert "cuda" + installer_image.CUDA_VERSION in after.environment["B12X_COMPILE_CACHE_DIR"]
+        keyed = {key: setting for key, setting in after.environment.items()
+                 if key.startswith(("B12X_", "CUTE_", "CUTLASS_")) and key != "CUTE_DSL_CACHE_DIR"}
+        assert "B12X_ROCE_CACHE_DIR" not in keyed
+        assert not any(image[7:19] in setting for setting in keyed.values()
+                       for image in (before.image_id, after.image_id))
     rendered = installer.rendered(selected)
     assert len(rendered) == 8
     assert "toolchain/toolchain.py" in rendered["rank0/compose.yaml"]
