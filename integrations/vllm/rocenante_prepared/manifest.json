@@ -39,7 +39,7 @@
     "roce/_tuning.py": "60298918980d092ec09fe59e65cfae0bb9090af3855fb2ffc42c67d853e28c4a",
     "roce/api.py": "f8cadfa227d9ce3e115353ef5b5e61004ab27e83799270c210d41c32712f0d38",
     "roce/roce_oneshot.py": "1033895ecd87c6b7d5d0728d7ba598c5a6f50db50a4417db901a87761820bd70",
-    "roce/_roce_proxy.c": "19174ed656fe4b74d01d0d21797ed7766904828f7fb2aea3698e04ebdbc7b84c",
+    "roce/_roce_proxy.c": "1dcdf4d1a5b3bec2f64029d010a628d5ea3554c8c616c02da0d7aee9be123e35",
     "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
   },
   "image_source_preimages": {

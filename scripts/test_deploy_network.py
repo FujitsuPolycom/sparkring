@@ -149,7 +149,7 @@ def network_fixture():
                                     "allowed_values": [],
                                 },
                                 "hairpin_queue_size": {
-                                    "value": 1024,
+                                    "value": 8192,
                                     "cmode": "driverinit",
                                     "allowed_values": [],
                                 },

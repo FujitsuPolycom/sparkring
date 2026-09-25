@@ -177,7 +177,7 @@ driver prerequisites, not settings embedded in the model image:
 | Setting | Observed value and scope |
 |---|---|
 | `hairpin_num_queues` | `4`, `driverinit`, all four PCI functions on every host |
-| `hairpin_queue_size` | `1024` packets, `driverinit`, all four PCI functions on every host |
+| `hairpin_queue_size` | `8192` (driver maximum; 64-byte strides, 512 KiB per queue), `driverinit`, all four PCI functions on every host |
 | `flow_steering_mode` | `hmfs`, `runtime`, all four PCI functions on every host |
 | eSwitch | `legacy`, inline mode `none`, encapsulation `basic`, all 16 PCI functions across the four hosts |
 | Hardware TC offload | Enabled on all 16 verified data functions across the four hosts |
@@ -233,7 +233,7 @@ above and only after the stopped-stack prerequisites:
 
 ```bash
 sudo devlink dev param set "$MESH_DEVLINK" name hairpin_num_queues value 4 cmode driverinit
-sudo devlink dev param set "$MESH_DEVLINK" name hairpin_queue_size value 1024 cmode driverinit
+sudo devlink dev param set "$MESH_DEVLINK" name hairpin_queue_size value 8192 cmode driverinit
 sudo devlink dev reload "$MESH_DEVLINK" action driver_reinit
 ```
 

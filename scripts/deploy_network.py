@@ -18,6 +18,11 @@ from spark_transport.fabric.cx7_hairpin_diagonal.fabric import RANK_COUNT
 PLAN_SCHEMA = "sparkring-deploy-network-plan/v1"
 INVENTORY_SCHEMA = "sparkring-deploy-host-inventory/v1"
 ROLES = ("cw_primary", "cw_secondary", "ccw_primary", "ccw_secondary")
+# mlx5 sizes each hairpin queue at hairpin_queue_size 64-byte strides and drops
+# forwarded packets when it fills, without pausing the upstream link. The
+# driver maximum (512 KiB per queue) holds the prepared RoCEnante forwarded-path
+# send window; the 1024 default (64 KiB) does not.
+HAIRPIN_QUEUE_SIZE = 8192
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}\Z")
 _NETDEV = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,14}\Z")
 _BDF = re.compile(r"[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]\Z")
@@ -113,7 +118,7 @@ def _prepare_spec(spec):
         "mtu": 9000,
         "gid_index": 3,
         "hairpin_num_queues": 4,
-        "hairpin_queue_size": 1024,
+        "hairpin_queue_size": HAIRPIN_QUEUE_SIZE,
     }.items():
         if settings.get(key, value) != value:
             raise NetworkPlanError(f"The managed mesh requires {key}={value}")
@@ -535,7 +540,7 @@ def _driver(host, port, interface, function):
             f"{ssh}: {netdev} must already expose runtime hmfs steering; driver/firmware replacement is unsupported"
         )
     apply, rollback = [], []
-    for key, wanted in (("hairpin_num_queues", 4), ("hairpin_queue_size", 1024)):
+    for key, wanted in (("hairpin_num_queues", 4), ("hairpin_queue_size", HAIRPIN_QUEUE_SIZE)):
         parameter = _object(params.get(key), key)
         prior = parameter.get("value")
         if isinstance(prior, str) and prior.isdigit():
@@ -685,7 +690,7 @@ def _verification(host, port, function):
             ["sudo", "-n", "devlink", "-j", "dev", "param", "show", device],
             {
                 "hairpin_num_queues": 4,
-                "hairpin_queue_size": 1024,
+                "hairpin_queue_size": HAIRPIN_QUEUE_SIZE,
                 "flow_steering_mode": "hmfs",
             },
         ),

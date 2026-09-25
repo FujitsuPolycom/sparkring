@@ -17,7 +17,7 @@
       "eswitch_mode": "legacy",
       "flow_steering_mode": "hmfs",
       "hairpin_num_queues_per_function": 4,
-      "hairpin_queue_size_packets": 1024,
+      "hairpin_queue_size_packets": 8192,
       "hw_tc_offload": true
     },
     "requirements": "Verified direct-neighbor RoCE and the canonical HCA/peer map; hardware-only ConnectX-7 source marking and intermediate forwarding. No physical diagonal cables are required."

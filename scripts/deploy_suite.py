@@ -204,7 +204,7 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_
             "mtu": 9000,
             "gid_index": 3,
             "hairpin_num_queues": 4,
-            "hairpin_queue_size": 1024,
+            "hairpin_queue_size": 8192,
         },
         "hosts": hosts,
         "site": site,

@@ -52,6 +52,20 @@
 #define ROCE_WAVE_MODE_OPPOSITE_FIRST 2u
 #define ROCE_WAVE_MODE_STRICT_THREE 3u
 #define ROCE_WAVE_MODE_BALANCED32 4u
+// Hardware-forwarded (two-hop) paths cross the intermediate ConnectX through
+// a hairpin queue. The mlx5 driver sizes that queue at hairpin_queue_size
+// 64-byte strides (64 KiB at the 1024 default, 512 KiB at the 8192 maximum),
+// and a full hairpin queue drops packets without pausing the upstream link.
+// Each drop costs the reliable connection a go-back-N resend or, for a lost
+// tail packet, a retransmission timeout that stalls every rank. Stripes on
+// forwarded paths are therefore posted as signaled chunks with a bounded
+// number of unacknowledged bytes per queue pair, so the intermediate never
+// buffers more than the window for one flow. The default window assumes
+// hairpin_queue_size 8192; with the 1024 driver default, set a window no
+// larger than 32 KiB.
+#define ROCE_DEFAULT_FORWARD_WINDOW_BYTES 131072u
+#define ROCE_DEFAULT_FORWARD_CHUNK_BYTES 32768u
+#define ROCE_MAX_STREAMS (ROCE_MAX_PEERS * ROCE_MAX_PATHS)
 
 typedef struct {
     uint32_t abi_version;
@@ -121,6 +135,22 @@ typedef struct {
     uint32_t two_wave_threshold_bytes;
     uint32_t wave_mode;
     atomic_uint_fast64_t two_wave_activations;
+    // Forwarded-path flow control; a zero window disables chunking.
+    uint32_t forward_window_bytes;
+    uint32_t forward_chunk_bytes;
+    atomic_uint_fast64_t forward_chunks;
+    // Forwarded stripes registered by post_path and completed by pump_streams
+    // before post_op returns.
+    struct {
+        uint32_t seq;
+        uint32_t slot;
+        uint8_t *send;
+        int peer;
+        int path;
+        uint32_t next;
+        uint32_t end;
+    } streams[ROCE_MAX_STREAMS];
+    int n_streams;
     char err[512];
 } roce_ctx_t;
 
@@ -339,6 +369,41 @@ roce_ctx_t *roce_create(int world, int rank, const char *const *hca_names, int n
             return NULL;
         }
         c->two_wave_threshold_bytes = (uint32_t)value;
+    }
+    c->forward_window_bytes = ROCE_DEFAULT_FORWARD_WINDOW_BYTES;
+    c->forward_chunk_bytes = ROCE_DEFAULT_FORWARD_CHUNK_BYTES;
+    const char *const forward_names[2] = {"B12X_ROCE_FORWARD_WINDOW_BYTES",
+                                          "B12X_ROCE_FORWARD_CHUNK_BYTES"};
+    uint32_t *const forward_values[2] = {&c->forward_window_bytes,
+                                         &c->forward_chunk_bytes};
+    for (int i = 0; i < 2; i++) {
+        const char *text = getenv(forward_names[i]);
+        if (text == NULL || text[0] == '\0') {
+            continue;
+        }
+        char *end = NULL;
+        errno = 0;
+        unsigned long long value = strtoull(text, &end, 10);
+        if (errno != 0 || end == text || *end != '\0' || value > UINT32_MAX ||
+            value % 16u != 0) {
+            snprintf(err, err_len,
+                     "%s must be a 16-byte-aligned integer no larger than %u",
+                     forward_names[i], UINT32_MAX);
+            roce_destroy(c);
+            return NULL;
+        }
+        *forward_values[i] = (uint32_t)value;
+    }
+    if (c->forward_window_bytes != 0 &&
+        (c->forward_chunk_bytes == 0 ||
+         c->forward_chunk_bytes > c->forward_window_bytes ||
+         c->forward_window_bytes / c->forward_chunk_bytes >= ROCE_SEND_DEPTH / 4)) {
+        snprintf(err, err_len,
+                 "B12X_ROCE_FORWARD_CHUNK_BYTES must be nonzero, no larger than "
+                 "the forward window, and allow fewer than %u chunks per window",
+                 ROCE_SEND_DEPTH / 4);
+        roce_destroy(c);
+        return NULL;
     }
     for (int h = 0; h < ROCE_MAX_HCAS; h++) {
         c->direct_peer_by_hca[h] = -1;
@@ -642,11 +707,167 @@ static int drain_cq(roce_ctx_t *c, int h) {
     return 0;
 }
 
+static uint64_t flag_remote_addr(const roce_ctx_t *c, int peer, int path,
+                                 uint32_t slot) {
+    uint32_t flag_row = path < ROCE_LAYOUT_PATHS ? (uint32_t)c->rank
+                                                  : (uint32_t)peer;
+    uint32_t flag_column = path < ROCE_LAYOUT_PATHS
+                               ? (uint32_t)path
+                               : (uint32_t)(path - ROCE_LAYOUT_PATHS);
+    return c->peer_addr[peer] + c->flag_off +
+           (((uint64_t)flag_row * ROCE_SLOTS + slot) * ROCE_LAYOUT_PATHS +
+            flag_column) * ROCE_FLAG_STRIDE;
+}
+
+static int forward_windowed(const roce_ctx_t *c, int peer, uint32_t stripe_bytes) {
+    return c->forward_window_bytes != 0 && c->physical_hops[peer] > 1 &&
+           stripe_bytes > c->forward_chunk_bytes;
+}
+
+// Posts one signaled payload chunk of a forwarded stripe.
+static int post_chunk(roce_ctx_t *c, uint32_t slot, uint8_t *send, int peer,
+                      int path, uint32_t offset, uint32_t bytes) {
+    int h = c->peer_hca[peer][path];
+    roce_hca_t *hca = &c->hca[h];
+    struct ibv_sge sge = {
+        .addr = (uint64_t)(uintptr_t)(send + offset),
+        .length = bytes,
+        .lkey = hca->mr->lkey,
+    };
+    struct ibv_send_wr wr;
+    memset(&wr, 0, sizeof(wr));
+    wr.wr_id = (uint64_t)peer * ROCE_MAX_PATHS + (uint64_t)path;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.opcode = IBV_WR_RDMA_WRITE;
+    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr.rdma.remote_addr =
+        c->peer_addr[peer] + c->recv_off +
+        ((uint64_t)c->rank * ROCE_SLOTS + slot) * c->slot_bytes + offset;
+    wr.wr.rdma.rkey = c->peer_rkey[peer][path];
+    struct ibv_send_wr *bad = NULL;
+    int rc = ibv_post_send(hca->qp[peer], &wr, &bad);
+    if (rc != 0) {
+        atomic_fetch_add(&c->completion_errors[peer][path], 1);
+        set_err(c, "ibv_post_send", rc);
+        return -1;
+    }
+    atomic_fetch_add(&c->payload_writes[peer][path], 1);
+    atomic_fetch_add(&c->payload_bytes[peer][path], bytes);
+    atomic_fetch_add(&c->forward_chunks, 1);
+    hca->outstanding[peer] += 1;
+    return 0;
+}
+
+// Posts the stripe's sequence flag after its last chunk on the same QP.
+static int post_stream_flag(roce_ctx_t *c, uint32_t seq, uint32_t slot,
+                            int peer, int path) {
+    int h = c->peer_hca[peer][path];
+    roce_hca_t *hca = &c->hca[h];
+    uint32_t seq_copy = seq;
+    struct ibv_sge sge = {
+        .addr = (uint64_t)(uintptr_t)&seq_copy,
+        .length = 4,
+        .lkey = 0,
+    };
+    struct ibv_send_wr wr;
+    memset(&wr, 0, sizeof(wr));
+    wr.wr_id = (uint64_t)peer * ROCE_MAX_PATHS + (uint64_t)path;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.opcode = IBV_WR_RDMA_WRITE;
+    wr.send_flags = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
+    wr.wr.rdma.remote_addr = flag_remote_addr(c, peer, path, slot);
+    wr.wr.rdma.rkey = c->peer_rkey[peer][path];
+    struct ibv_send_wr *bad = NULL;
+    int rc = ibv_post_send(hca->qp[peer], &wr, &bad);
+    if (rc != 0) {
+        atomic_fetch_add(&c->completion_errors[peer][path], 1);
+        set_err(c, "ibv_post_send", rc);
+        return -1;
+    }
+    atomic_fetch_add(&c->flag_writes[peer][path], 1);
+    hca->outstanding[peer] += 1;
+    return 0;
+}
+
+// Completes every registered forwarded stripe. Streams advance round-robin so
+// both forwarded paths of an opposite peer stay busy; a QP posts another chunk
+// only while its unacknowledged chunks fit the forward window.
+static int pump_streams(roce_ctx_t *c) {
+    uint32_t window_chunks = c->forward_window_bytes / c->forward_chunk_bytes;
+    int active = c->n_streams;
+    while (active > 0) {
+        int progressed = 0;
+        for (int i = 0; i < c->n_streams; i++) {
+            int peer = c->streams[i].peer;
+            int path = c->streams[i].path;
+            if (peer < 0) {
+                continue;
+            }
+            roce_hca_t *hca = &c->hca[c->peer_hca[peer][path]];
+            if (hca->outstanding[peer] >= window_chunks) {
+                continue;
+            }
+            if (c->streams[i].next < c->streams[i].end) {
+                uint32_t bytes = c->streams[i].end - c->streams[i].next;
+                if (bytes > c->forward_chunk_bytes) {
+                    bytes = c->forward_chunk_bytes;
+                }
+                if (post_chunk(c, c->streams[i].slot, c->streams[i].send, peer,
+                               path, c->streams[i].next, bytes) != 0) {
+                    return -1;
+                }
+                c->streams[i].next += bytes;
+            } else {
+                if (post_stream_flag(c, c->streams[i].seq, c->streams[i].slot,
+                                     peer, path) != 0) {
+                    return -1;
+                }
+                c->streams[i].peer = -1;
+                active -= 1;
+            }
+            progressed = 1;
+        }
+        if (progressed) {
+            continue;
+        }
+        for (int i = 0; i < c->n_streams; i++) {
+            if (c->streams[i].peer >= 0 &&
+                drain_cq(c, c->peer_hca[c->streams[i].peer][c->streams[i].path]) != 0) {
+                return -1;
+            }
+        }
+        if (!atomic_load_explicit(&c->running, memory_order_relaxed)) {
+            snprintf(c->err, sizeof(c->err),
+                     "RoCE proxy stopped with %d forwarded stripes pending", active);
+            return -1;
+        }
+    }
+    c->n_streams = 0;
+    return 0;
+}
+
 static int post_path(roce_ctx_t *c, uint32_t seq, uint32_t slot, uint8_t *send,
                      int peer, int path, uint32_t stripe_offset,
                      uint32_t stripe_bytes) {
     int h = c->peer_hca[peer][path];
     roce_hca_t *hca = &c->hca[h];
+    if (forward_windowed(c, peer, stripe_bytes)) {
+        if (c->n_streams >= ROCE_MAX_STREAMS) {
+            snprintf(c->err, sizeof(c->err), "forwarded stripe table is full");
+            return -1;
+        }
+        c->streams[c->n_streams].seq = seq;
+        c->streams[c->n_streams].slot = slot;
+        c->streams[c->n_streams].send = send;
+        c->streams[c->n_streams].peer = peer;
+        c->streams[c->n_streams].path = path;
+        c->streams[c->n_streams].next = stripe_offset;
+        c->streams[c->n_streams].end = stripe_offset + stripe_bytes;
+        c->n_streams += 1;
+        return 0;
+    }
     // Each QP gets one signaled completion per operation.  Keep its queue
     // below one quarter of the configured depth.
     while (hca->outstanding[peer] >= ROCE_SEND_DEPTH / 4) {
@@ -679,15 +900,7 @@ static int post_path(roce_ctx_t *c, uint32_t seq, uint32_t slot, uint8_t *send,
     flag_wr.num_sge = 1;
     flag_wr.opcode = IBV_WR_RDMA_WRITE;
     flag_wr.send_flags = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
-    uint32_t flag_row = path < ROCE_LAYOUT_PATHS ? (uint32_t)c->rank
-                                                  : (uint32_t)peer;
-    uint32_t flag_column = path < ROCE_LAYOUT_PATHS
-                               ? (uint32_t)path
-                               : (uint32_t)(path - ROCE_LAYOUT_PATHS);
-    flag_wr.wr.rdma.remote_addr =
-        remote + c->flag_off +
-        (((uint64_t)flag_row * ROCE_SLOTS + slot) * ROCE_LAYOUT_PATHS +
-         flag_column) * ROCE_FLAG_STRIDE;
+    flag_wr.wr.rdma.remote_addr = flag_remote_addr(c, peer, path, slot);
     flag_wr.wr.rdma.rkey = c->peer_rkey[peer][path];
     struct ibv_send_wr data_wr;
     memset(&data_wr, 0, sizeof(data_wr));
@@ -1001,6 +1214,9 @@ static int post_op(roce_ctx_t *c, uint32_t seq, uint32_t nbytes) {
         }
     }
 posted:
+    if (c->n_streams != 0 && pump_streams(c) != 0) {
+        return -1;
+    }
     c->ops_posted += 1;
     for (int h = 0; h < c->n_hca; h++) {
         if (drain_cq(c, h) != 0) {
@@ -1105,6 +1321,8 @@ uint64_t roce_stat(roce_ctx_t *c, int which) {
         return c->last_seq;
     case 3:
         return atomic_load(&c->two_wave_activations);
+    case 4:
+        return atomic_load(&c->forward_chunks);
     default:
         return 0;
     }
