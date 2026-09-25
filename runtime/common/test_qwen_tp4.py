@@ -141,7 +141,13 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     cached, cache_image = compose.specifications(PROFILE + "-sparkcache", site)
     base, spec = native[rank], cached[rank]
     assert cache_image == native_image and spec.image_id == base.image_id
-    expected_env = dict(base.environment, SPARKCACHE_ENABLED="1")
+    # The SparkCache profile pins revision 629bc3218833 and the installer profile
+    # pins the qad-step5500-ple1000 checkpoint; compile-cache paths embed each
+    # profile's own revision and otherwise match.
+    cache_revision = adapter.read(adapter.TP4_CONFIG.with_name("sparkcache.json"))["model"]["revision"][:12]
+    native_revision = adapter.read(adapter.TP4_CONFIG)["model"]["revision"][:12]
+    expected_env = {key: value.replace(native_revision, cache_revision) for key, value in base.environment.items()}
+    expected_env["SPARKCACHE_ENABLED"] = "1"
     assert spec.environment == expected_env
     args = list(spec.command)
     assert args[args.index("--block-size") + 1] == "32"
@@ -150,7 +156,7 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert transfer["kv_connector"] == "SparkContextCacheConnector"
     assert transfer["kv_load_failure_policy"] == "recompute"
     extra = transfer["kv_connector_extra_config"]
-    config = adapter.read(adapter.TP4_CONFIG)
+    config = adapter.read(adapter.TP4_CONFIG.with_name("sparkcache.json"))
     expected_identity = hashlib.sha256(
         (config["model"]["repository"] + "@" + config["model"]["revision"]).encode()
     ).hexdigest()
@@ -167,7 +173,14 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     for flag in ("--kv-transfer-config",):
         index = args.index(flag)
         del args[index:index + 2]
-    assert args == list(base.command)
+    # The installer checkpoint's MXFP8 MTP experts use the humming MoE backend;
+    # the SparkCache checkpoint's NVFP4 MTP experts keep B12X.
+    native = list(base.command)
+    draft = native.index("--speculative-config") + 1
+    assert json.loads(native[draft])["moe_backend"] == "humming"
+    assert json.loads(args[draft])["moe_backend"] == "b12x"
+    native[draft] = args[draft]
+    assert args == native
     assert spec.mounts == base.mounts
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap
 
