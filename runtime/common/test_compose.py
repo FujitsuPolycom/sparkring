@@ -112,8 +112,11 @@ def test_tp2_backends_preserve_canonical_profile(site, profile, compose_cli):
             == service["entrypoint"][1:] + service["command"]
         )
         assert argv[argv.index("--entrypoint") + 1] == service["entrypoint"][0]
-        from runtime.common import native_candidate
-        assert spec.command[0] == native_candidate.ENTRYPOINT
+        from runtime.common import native_candidate, qwen_flash_next
+        # The installer profile runs on the installer toolchain image; its
+        # SparkCache variant runs on the shared-2026.09.3 native image.
+        assert spec.command[0] == (native_candidate.ENTRYPOINT if profile.endswith("-sparkcache")
+                                   else qwen_flash_next.TOOLCHAIN_ENTRYPOINT)
         for option, expected in (
             ("--max-model-len", "262144"),
             ("--max-num-seqs", "16"),

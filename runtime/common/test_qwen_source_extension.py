@@ -32,7 +32,17 @@ def options(**extra):
     return {"local_source_extension": source.IDENTITY, "local_image_id": IMAGE, **extra}
 
 
-@pytest.mark.parametrize("profile_id", [PAIR, PAIR + "-sparkcache", PROFILE, PROFILE + "-sparkcache"])
+# Local source extensions build over the native shared image. The installer
+# profiles select their image through the installer image lock, so the trials use
+# the native-family SparkCache profiles.
+@pytest.mark.parametrize("profile_id", [PAIR, PROFILE])
+def test_installer_profiles_select_their_image_through_the_installer_lock(profile_id):
+    site = compose.read_site(adapter.ROOT / f"profiles/{profile_id}/compose/site.example.yaml")
+    with pytest.raises(ValueError, match="installer image lock"):
+        compose.specifications(profile_id, site, **options())
+
+
+@pytest.mark.parametrize("profile_id", [PAIR + "-sparkcache", PROFILE + "-sparkcache"])
 def test_source_bootstrap_port_cannot_collide_with_api(profile_id):
     site = compose.read_site(adapter.ROOT / f"profiles/{profile_id.removesuffix('-sparkcache')}/compose/site.example.yaml")
     ordinary, _ = compose.specifications(profile_id, site)
@@ -42,7 +52,7 @@ def test_source_bootstrap_port_cannot_collide_with_api(profile_id):
         compose.specifications(profile_id, site, **options(local_master_port=api_port))
 
 
-@pytest.mark.parametrize("profile_id", [PROFILE, PROFILE + "-sparkcache"])
+@pytest.mark.parametrize("profile_id", [PROFILE + "-sparkcache"])
 def test_candidate_preserves_model_and_transport_while_enabling_reviewed_tp4_sources(site, profile_id):
     before, public_image = compose.specifications(profile_id, site)
     selected, local_image = compose.specifications(profile_id, site, **options())
@@ -101,10 +111,10 @@ def test_local_memory_and_port_options_are_bound_to_every_rank_and_deployment(si
 ])
 def test_candidate_inputs_fail_closed(site, mutation):
     with pytest.raises(ValueError):
-        compose.specifications(PROFILE, site, **options(**mutation))
+        compose.specifications(PROFILE + "-sparkcache", site, **options(**mutation))
 
 
-@pytest.mark.parametrize("profile_id", [PAIR, PAIR + "-sparkcache"])
+@pytest.mark.parametrize("profile_id", [PAIR + "-sparkcache"])
 def test_local_tp2_retains_pair_settings_without_tp4_compute_activation(pair, profile_id):
     before, public_image = compose.specifications(profile_id, pair)
     selected, local_image = compose.specifications(profile_id, pair, **options())
@@ -151,7 +161,7 @@ def test_tp2_memory_and_port_trial_are_explicit_and_bound_to_both_ranks(pair, tm
 @pytest.mark.parametrize("kv_gib", [24, 40, 41, True])
 def test_tp2_does_not_inherit_the_tp4_memory_alternative(pair, kv_gib):
     with pytest.raises(ValueError, match="TP2 KV alternative is 33"):
-        compose.specifications(PAIR, pair, **options(local_kv_cache_gib=kv_gib))
+        compose.specifications(PAIR + "-sparkcache", pair, **options(local_kv_cache_gib=kv_gib))
 
 
 @pytest.mark.parametrize("filename", ["config.json", "sparkcache.json"])
@@ -171,7 +181,7 @@ def test_tp2_source_selection_is_local_only_and_public_digest_is_unchanged(pair,
     {"SPARKRING_FEATURES": "qwen-collectives,qwen-prefill"},
 ])
 def test_tp2_contract_rejects_tp4_hc_and_feature_activation(environment):
-    profile = source.profile_settings(adapter.read(adapter.CONFIG_ROOT / "config.json"), source.IDENTITY)
+    profile = source.profile_settings(adapter.read(adapter.CONFIG_ROOT / "sparkcache.json"), source.IDENTITY)
     profile["environment"].update(environment)
     with pytest.raises(ValueError, match="does not support HC"):
         source.validate_profile_contract(profile)
@@ -179,7 +189,7 @@ def test_tp2_contract_rejects_tp4_hc_and_feature_activation(environment):
 
 @pytest.mark.parametrize("flag", ["--tensor-parallel-size", "--nnodes"])
 def test_source_selection_rejects_mismatched_pair_geometry(flag):
-    profile = adapter.read(adapter.CONFIG_ROOT / "config.json")
+    profile = adapter.read(adapter.CONFIG_ROOT / "sparkcache.json")
     profile["vllm_args"][profile["vllm_args"].index(flag) + 1] = "4"
     with pytest.raises(ValueError, match="matching TP2 pair"):
         adapter.image_policy(profile, local_source_extension=source.IDENTITY)
@@ -217,7 +227,7 @@ def test_public_profiles_reject_candidate_only_setting_overrides(site, settings)
 
 def test_unchanged_parent_is_not_admitted_as_source_extension(site):
     with pytest.raises(ValueError, match="unchanged parent"):
-        compose.specifications(PROFILE, site, **options(local_image_id=source.descriptor()["parent"]["image_id"]))
+        compose.specifications(PROFILE + "-sparkcache", site, **options(local_image_id=source.descriptor()["parent"]["image_id"]))
 
 
 @pytest.mark.parametrize("profile_id,kv_gib", [(PROFILE + "-sparkcache", 40), (PAIR + "-sparkcache", 33)])

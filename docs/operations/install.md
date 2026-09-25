@@ -68,18 +68,22 @@ Windows PowerShell, use `ssh -t spark-r0 "sudo sparkring logs --follow"` (replac
 for log lines; it does not indicate model readiness.
 
 Every installer profile runs on one shared serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20260924-cuda1342-nccl2323-status031/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260925-cuda1342-nccl2323-status031/installer-image.json)
 (`sparkring-installer-image/v2`). It is the ARM64
-`ghcr.io/fujitsupolycom/sparkring:dev-20260924-cuda1342-nccl2323-status031`
-image: eugr's `spark-vllm-b12x` nightly base with CUDA 13.4.2, NCCL 2.32.3 and the
-runtime-status dashboard 0.3.1. The lock lists the admitted profiles and pins the
-image configuration, registry manifest, external software receipt, toolchain
-receipt, composition, prepared transport and status package. `sparkring models`
-marks only these profiles as installer-supported:
+`ghcr.io/fujitsupolycom/sparkring:dev-20260925-cuda1342-nccl2323-status031`
+image: eugr's `spark-vllm-b12x` nightly base with CUDA 13.4.2, NCCL 2.32.3, the
+runtime-status dashboard 0.3.1 and the paced RoCEnante transport, whose
+forwarded-path send window bounds traffic that a ring node relays for its
+neighbours. The lock lists the admitted profiles and pins the image
+configuration, registry manifest, external software receipt, toolchain receipt,
+composition, prepared transport and status package. The image's
+[publication record](../../runtime/releases/dev-20260925-cuda1342-nccl2323-status031/publication.json)
+lists the parent image and every file its derived layers replace.
+`sparkring models` marks only these profiles as installer-supported:
 
 | Profile | Status |
 |---|---|
-| `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2` | Qwen3.8 Flash Next; TP4 installed and served on this image |
+| `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2` | Qwen3.8 Flash Next, checkpoint branch `qad-step5500-ple1000` |
 | `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-spark-tp2` | GLM-5.3-Flash NVFP4-Spark with MTP3; see each profile's evidence scope |
 | `mimo-v26-flash-rl-tp4`, `mimo-v26-flash-rl-tp2` | MiMo-V2.6-Flash-RL with DFlash5; see each profile's evidence scope |
 
@@ -88,6 +92,14 @@ images do not transfer. All run with SparkCache off and vLLM's native prefix
 cache on. Profiles tied to earlier per-release images keep their guides and are
 not installed by `sparkring install`. `--image-lock FILE` replaces the shared
 lock for a development rehearsal and must list the selected profile.
+
+Both Qwen profiles use one prefill recipe on TP2 and TP4: each rank owns a
+share of the token rows in the hyper-connection (HC) prefill path
+(`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`), which excludes HC projection sharding,
+and the image's `qwen-collectives` collective policy and `qwen4-prefill` hooks
+are active. Before any serving container is created, admission reads the image's
+external software receipt and refuses a profile whose HC mode is not listed for
+its node count or whose features the image does not provide.
 
 The external image's B12X checkpoint loader requires `io_uring`. Its container
 uses the [pinned loader policy](../../third_party/moby_seccomp/README.md), which

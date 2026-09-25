@@ -32,7 +32,7 @@ SCHEMA_V1 = "sparkring-installer-image/v1"
 SCHEMA = "sparkring-installer-image/v2"
 # The release whose image every installer profile uses unless an operator
 # supplies an explicit development lock.
-DEFAULT_LOCK = ROOT / "runtime/releases/dev-20260924-cuda1342-nccl2323-status031/installer-image.json"
+DEFAULT_LOCK = ROOT / "runtime/releases/dev-20260925-cuda1342-nccl2323-status031/installer-image.json"
 QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 SUPPORTED = (*QWEN, "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
              "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4")

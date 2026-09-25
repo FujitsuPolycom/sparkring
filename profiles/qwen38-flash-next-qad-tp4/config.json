@@ -71,7 +71,8 @@
     "LD_PRELOAD": "/opt/local-inference/nccl/lib/libnccl.so.2",
     "VLLM_QWEN3_8_HC_PREFILL_MODE": "shard",
     "VLLM_QWEN3_8_PREFILL_COALESCE": "1",
-    "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0"
+    "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
+    "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": "0"
   },
   "vllm_args": [
     "--tensor-parallel-size",
@@ -145,7 +146,7 @@
   "qualification": {
     "scope": "Checkpoint revision 60215d26cf5e42c2db6128774032d57fc62678da (branch qad-step5500-ple1000, model class Qwen4Exp) is installer-supported on the shared image; its serving has not been qualified. The release qualification records revision 629bc3218833a38b475b719f34aa571666f4a03e, which sparkcache.json keeps."
   },
-  "image_extension": "native-shared",
+  "image_extension": "toolchain",
   "transport": {
     "peer_hca_maps": [
       "1=0/2,2=0/3,3=1/3",
@@ -159,6 +160,5 @@
       "secondary-clockwise",
       "secondary-counterclockwise"
     ]
-  },
-  "image_release": "shared-2026.09.3"
+  }
 }

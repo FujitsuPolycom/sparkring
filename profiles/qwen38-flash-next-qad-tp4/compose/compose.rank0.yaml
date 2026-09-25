@@ -3,15 +3,15 @@ name: sr-qwen-qad-example-r0
 services:
   model:
     container_name: sr-qwen-qad-example-r0
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:9d8e3a6cd00b887ffd33496e43afa06cffeebbfc88008361d7569005c4ae49c6
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
     init: true
     entrypoint:
-    - /opt/venv/bin/python
+    - python3
     command:
-    - /opt/sparkring/bin/native-image.py
+    - /opt/sparkring/toolchain/toolchain.py
     - serve
     - /models/target
     - --served-model-name
@@ -88,16 +88,15 @@ services:
     - aligned
     - --enable-prompt-tokens-details
     environment:
-      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
-      B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
+      B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/b12x
       B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
       B12X_POLICY_MODE: auto
-      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/roce
+      B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/roce
       B12X_ROCE_GID_INDEX: '3'
       B12X_ROCE_HCA: rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1
       B12X_ROCE_OPPOSITE_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 1=0/2,2=0/3,3=1/3
-      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/cute
+      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/cute
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       LD_PRELOAD: /opt/local-inference/nccl/lib/libnccl.so.2
@@ -137,13 +136,13 @@ services:
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
-      SPARKRING_TRANSPORT_MANIFEST_SHA256: 7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c
-      SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/inductor
+      SPARKRING_TRANSPORT_MANIFEST_SHA256: eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4
+      SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive
+      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/triton
+      TRITON_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/triton
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-      VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/vllm
+      VLLM_CACHE_ROOT: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -155,6 +154,7 @@ services:
       VLLM_NCCL_SO_PATH: /opt/local-inference/nccl/lib/libnccl.so.2
       VLLM_PLE_CPU_OFFLOAD: '0'
       VLLM_PLUGINS: b12x_loader
+      VLLM_QWEN3_8_FLASH_NEXT_HC_TP: '0'
       VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT: '1'
       VLLM_QWEN3_8_FLASH_NEXT_OVERLAP: '1'
       VLLM_QWEN3_8_HC_PREFILL_MODE: shard
@@ -166,9 +166,9 @@ services:
       VLLM_SSM_CONV_STATE_LAYOUT: DS
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e
+      XDG_CACHE_HOME: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e
     labels:
-      io.sparkring.deployment: 75ebfc52872b7cee17e6180a67551e4759c2f21725e7acb7e22eaef89a1b03cb
+      io.sparkring.deployment: 9d57600f2bc835d9edefb955ca868be149470203b1675c9a57aa5b363d9ab5c3
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
@@ -204,7 +204,7 @@ services:
     healthcheck:
       test:
       - CMD
-      - /opt/venv/bin/python
+      - python3
       - -c
       - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8015/health', timeout=4).close()
       interval: 10s

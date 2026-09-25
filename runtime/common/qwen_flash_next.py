@@ -31,7 +31,8 @@ TP4_CACHE_CONFIG = ROOT / "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
 # entrypoint, NCCL/CUDA paths, status plugin and runtime binding.
 TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
     "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
-    "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4"))
+    "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4",
+    "qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4"))
 TOOLCHAIN_ENTRYPOINT = "/opt/sparkring/toolchain/toolchain.py"
 
 
@@ -295,15 +296,18 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     if rank:
         args += ["--headless"]
     port = profile["vllm_args"][profile["vllm_args"].index("--port") + 1]
+    # The installer toolchain image runs its system Python; the native and R37
+    # images run the interpreter in /opt/venv.
+    python = "python3" if policy["kind"] == "toolchain" else "/opt/venv/bin/python"
     health = () if rank else (
-        "/opt/venv/bin/python", "-c",
+        python, "-c",
         f"import urllib.request; urllib.request.urlopen('http://127.0.0.1:{port}/health', timeout=4).close()",
     )
     prefix = "qad-sparkcache-" if nodes == 4 and env.get("SPARKCACHE_ENABLED") == "1" else "qad-" if nodes == 4 else "sparkcache-" if env.get("SPARKCACHE_ENABLED") == "1" else ""
     name = f"{family}-tp{nodes}-r{rank}" if policy["kind"] == "toolchain" else f"qwen-flash-next-{prefix}tp{nodes}-r{rank}"
     return ContainerSpec(
         name=name,
-        image_id=image, entrypoint=("/opt/venv/bin/python",), command=tuple(args),
+        image_id=image, entrypoint=(python,), command=tuple(args),
         environment=env, mounts=(Bind(str(model), "/models/target", True), Bind(str(cache), "/cache")),
         health_command=health,
     )

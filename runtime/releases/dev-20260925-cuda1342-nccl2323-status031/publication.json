@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260925-cuda1342-nccl2323-status031",
+  "image_id": "sha256:5ce6ce267d8069215e08da87be3a8092175e63806cf97730847405eb04a2c51f",
+  "image_config_id": "sha256:5ce6ce267d8069215e08da87be3a8092175e63806cf97730847405eb04a2c51f",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:9d8e3a6cd00b887ffd33496e43afa06cffeebbfc88008361d7569005c4ae49c6",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260925-cuda1342-nccl2323-status031",
+  "registry_manifest_digest": "sha256:9d8e3a6cd00b887ffd33496e43afa06cffeebbfc88008361d7569005c4ae49c6",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.1",
+  "derivation": {
+    "parent_release": "dev-20260924-cuda1342-nccl2323-status031",
+    "parent_image_id": "sha256:3db79d3c6bea958aada8855b5bc6ef368484b14b798b04c8b507b8e140925276",
+    "layers": [
+      "Prepared RoCEnante proxy paces hardware-forwarded (two-hop) stripes within a send window (integrations/vllm/rocenante_prepared, transport manifest 2eef276d54030a71c4774b92c89008dd563104b791734f6f588a3ca34a7c4943)",
+      "Qwen HC token-row ownership and qwen4-prefill hooks accept TP2 as well as TP4; the external-base receipt lists the TP2 row-sharding HC mode; /opt/sparkring/receipts/derived-tp2-hc.json records each replaced file"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

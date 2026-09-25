@@ -11,6 +11,12 @@ from runtime.common import native_candidate
 def shared_publication():
     return native_candidate.publication("shared-2026.09.3")
 
+
+def installer_image_id():
+    # The installer profile runs on the image named by the installer image lock.
+    from runtime.common import installer_image
+    return adapter.read(installer_image.DEFAULT_LOCK)["image_id"]
+
 PROFILE = (
     Path(__file__).resolve().parents[2] / "profiles/qwen38-flash-next-tp2/config.json"
 )
@@ -23,7 +29,7 @@ def plan(rank=0):
         master="192.0.2.1",
         host_ip=f"192.0.2.{rank + 1}",
         interface="test0",
-        image=shared_publication()["image_id"],
+        image=installer_image_id(),
         model=str(ROOT / "fixture-model"),
         cache=str(ROOT / "fixture-cache"),
     )
@@ -115,15 +121,19 @@ def test_expanded_capacity_preserves_native_context():
 
 def options():
     return dict(rank=0, master='192.0.2.1', host_ip='192.0.2.1', interface='test0',
-                image=shared_publication()['image_id'], model=str(ROOT / 'fixture-model'),
+                image=installer_image_id(), model=str(ROOT / 'fixture-model'),
                 cache=str(ROOT / 'fixture-cache'))
 
 
 def test_unregistered_image_rejected():
+    # The SparkCache profile binds its image to the selected shared release; the
+    # installer profile's image is admitted only through the installer image lock.
     values = options()
     values['image'] = 'sha256:' + 'a' * 64
     with pytest.raises(ValueError, match='selected shared release'):
-        render(json.loads(PROFILE.read_text()), **values)
+        render(adapter.read(adapter.CONFIG_ROOT / 'sparkcache.json'), **values)
+    with pytest.raises(ValueError, match='installer image lock'):
+        adapter.image_verification_options(json.loads(PROFILE.read_text()))
 
 
 def test_profile_arguments_and_environment_cannot_bypass_canonical():
@@ -156,9 +166,10 @@ def test_mount_overlap_rejected():
 
 def test_explicit_entrypoint_and_compile_identity():
     command = plan()
-    assert command[command.index('--entrypoint') + 1] == '/opt/venv/bin/python'
-    assert native_candidate.ENTRYPOINT in command
-    namespace = f"qwen-flash-next-{shared_publication()['image_id'][7:19]}-60215d26cf5e"
+    # The installer toolchain image runs its system Python and toolchain entrypoint.
+    assert command[command.index('--entrypoint') + 1] == 'python3'
+    assert adapter.TOOLCHAIN_ENTRYPOINT in command
+    namespace = f"qwen-flash-next-{installer_image_id()[7:19]}-60215d26cf5e"
     assert f'VLLM_CACHE_ROOT=/cache/{namespace}/vllm' in command
     assert 'VLLM_SPARK_TP4_MODE=' in command
     assert 'VLLM_SPARK_TP4_VOCAB_MODE=' in command

@@ -21,18 +21,18 @@
 name: sparkring-qwen38-flash-next-tp2
 x-sparkring:
   profile: qwen38-flash-next-tp2
-  release: shared-2026.09.3
+  release: dev-20260925-cuda1342-nccl2323-status031
   model_repository: local-inference-lab/Qwen3.8-Flash-Next-NVFP4
   model_revision: 60215d26cf5e42c2db6128774032d57fc62678da
   mode: standalone; prepared two-host fabric
 x-runtime: &runtime
-  image: ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6
+  image: ghcr.io/fujitsupolycom/sparkring@sha256:9d8e3a6cd00b887ffd33496e43afa06cffeebbfc88008361d7569005c4ae49c6
   platform: linux/arm64
   pull_policy: missing
   restart: 'no'
   init: true
   entrypoint:
-  - /opt/venv/bin/python
+  - python3
   labels: {}
   network_mode: host
   ipc: host
@@ -66,14 +66,13 @@ x-runtime: &runtime
   mem_limit: 115964116992
   memswap_limit: 120259084288
 x-environment: &environment
-  B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
-  B12X_CUTE_COMPILE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/b12x
+  B12X_COMPILE_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/b12x
   B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
   B12X_POLICY_MODE: auto
-  B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/roce
+  B12X_ROCE_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/roce
   B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
   B12X_ROCE_PAIR_PATHS: '2'
-  CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/cute
+  CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/cute
   GLOO_SOCKET_IFNAME: ${SPARKRING_INTERFACE:?Set this hosts primary fabric interface}
   HF_HUB_OFFLINE: '1'
   NCCL_CROSS_NIC: '1'
@@ -91,14 +90,14 @@ x-environment: &environment
   SIRCL_ENABLED: '0'
   SOURCE_IMAGE_PROFILE: ''
   SPARKCACHE_ENABLED: '0'
-  SPARKRING_FEATURES: ''
-  SPARKRING_TRANSPORT_MANIFEST_SHA256: 7d8beed57e541c756995b73b0909a826642cef7c00f8147316cc8cd97a2f905c
-  SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-  TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/inductor
+  SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
+  SPARKRING_TRANSPORT_MANIFEST_SHA256: eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4
+  SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive
+  TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/inductor
   TRANSFORMERS_OFFLINE: '1'
-  TRITON_CACHE_DIR: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/triton
+  TRITON_CACHE_DIR: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/triton
   VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-  VLLM_CACHE_ROOT: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e/vllm
+  VLLM_CACHE_ROOT: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e/vllm
   VLLM_ENABLE_PCIE_ALLREDUCE: '0'
   VLLM_ENABLE_ROCE_ALLREDUCE: '1'
   VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -109,9 +108,10 @@ x-environment: &environment
   VLLM_MXFP8_LM_HEAD: '0'
   VLLM_PLE_CPU_OFFLOAD: '0'
   VLLM_PLUGINS: b12x_loader
+  VLLM_QWEN3_8_FLASH_NEXT_HC_TP: '0'
   VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT: '1'
   VLLM_QWEN3_8_FLASH_NEXT_OVERLAP: '1'
-  VLLM_QWEN3_8_HC_PREFILL_MODE: 'off'
+  VLLM_QWEN3_8_HC_PREFILL_MODE: shard
   VLLM_QWEN3_8_PREFILL_COALESCE: '1'
   VLLM_ROCE_ALLGATHER_MAX_SIZE: '16777216'
   VLLM_ROCE_ALLREDUCE_MAX_SIZE: '2097152'
@@ -120,13 +120,13 @@ x-environment: &environment
   VLLM_SSM_CONV_STATE_LAYOUT: DS
   VLLM_USE_V2_MODEL_RUNNER: '1'
   VLLM_WORKER_MULTIPROC_METHOD: spawn
-  XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e
+  XDG_CACHE_HOME: /cache/qwen-flash-next-5ce6ce267d80-60215d26cf5e
 services:
   rank0:
     <<: *runtime
     container_name: sparkring-qwen38-flash-next-tp2-r0
-    command: [/opt/sparkring/bin/native-image.py, serve, /models/target, --served-model-name, Qwen3.8-Flash-Next-NVFP4-QAD-TP2, --node-rank, '0',
-      --master-addr, '${SPARKRING_MASTER_ADDR:?Set rank 0 primary fabric IPv4 on both hosts}', --tensor-parallel-size, '2', --pipeline-parallel-size,
+    command: [/opt/sparkring/toolchain/toolchain.py, serve, /models/target, --served-model-name, Qwen3.8-Flash-Next-NVFP4-QAD-TP2, --node-rank,
+      '0', --master-addr, '${SPARKRING_MASTER_ADDR:?Set rank 0 primary fabric IPv4 on both hosts}', --tensor-parallel-size, '2', --pipeline-parallel-size,
       '1', --decode-context-parallel-size, '1', --nnodes, '2', --distributed-executor-backend, mp, --host, 0.0.0.0, --port, '8000', --master-port,
       '29638', --max-model-len, '262144', --max-num-seqs, '16', --max-num-batched-tokens, '8192', --dtype, bfloat16, --quantization, modelopt_mixed,
       --kv-cache-dtype, fp8, --block-size, '32', --load-format, b12x, --gpu-memory-utilization, '0.85', --kv-cache-memory-bytes, '25769803776',
@@ -138,7 +138,7 @@ services:
     healthcheck:
       test:
       - CMD
-      - /opt/venv/bin/python
+      - python3
       - -c
       - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).close()
       interval: 10s
@@ -153,8 +153,8 @@ services:
   rank1:
     <<: *runtime
     container_name: sparkring-qwen38-flash-next-tp2-r1
-    command: [/opt/sparkring/bin/native-image.py, serve, /models/target, --served-model-name, Qwen3.8-Flash-Next-NVFP4-QAD-TP2, --node-rank, '1',
-      --master-addr, '${SPARKRING_MASTER_ADDR:?Set rank 0 primary fabric IPv4 on both hosts}', --tensor-parallel-size, '2', --pipeline-parallel-size,
+    command: [/opt/sparkring/toolchain/toolchain.py, serve, /models/target, --served-model-name, Qwen3.8-Flash-Next-NVFP4-QAD-TP2, --node-rank,
+      '1', --master-addr, '${SPARKRING_MASTER_ADDR:?Set rank 0 primary fabric IPv4 on both hosts}', --tensor-parallel-size, '2', --pipeline-parallel-size,
       '1', --decode-context-parallel-size, '1', --nnodes, '2', --distributed-executor-backend, mp, --host, 0.0.0.0, --port, '8000', --master-port,
       '29638', --max-model-len, '262144', --max-num-seqs, '16', --max-num-batched-tokens, '8192', --dtype, bfloat16, --quantization, modelopt_mixed,
       --kv-cache-dtype, fp8, --block-size, '32', --load-format, b12x, --gpu-memory-utilization, '0.85', --kv-cache-memory-bytes, '25769803776',

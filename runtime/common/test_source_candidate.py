@@ -124,7 +124,7 @@ def test_declared_replacement_requires_its_actual_parent_preimage(inputs):
         source.validate(**inputs)
 
 
-@pytest.mark.parametrize("selection_kind", ["local-tp4", "local-tp2", "local-tp2-cache", "published"])
+@pytest.mark.parametrize("selection_kind", ["local-tp4", "local-tp2", "published"])
 def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(inputs, monkeypatch, selection_kind):
     image = inputs["image_id"]
     base_image = qwen_flash_next.publication()["image_id"]
@@ -159,8 +159,10 @@ def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(
             "platform": "linux/arm64", "anonymous_pull_verified": True,
             "descriptor_sha256": sha(source.DESCRIPTOR.read_bytes()),
         }))
-    filename = {"local-tp2": qwen_flash_next.CONFIG_ROOT / "config.json",
-                "local-tp2-cache": qwen_flash_next.CONFIG_ROOT / "sparkcache.json"}.get(selection_kind, qwen_flash_next.TP4_CONFIG)
+    # Local source extensions select native-family (SparkCache) profiles; the
+    # installer profiles take their image from the installer image lock.
+    filename = {"local-tp2": qwen_flash_next.CONFIG_ROOT / "sparkcache.json",
+                "local-tp4": qwen_flash_next.TP4_CACHE_CONFIG}.get(selection_kind, qwen_flash_next.TP4_CONFIG)
     profile = qwen_flash_next.read(filename)
     if selection_kind == "published":
         profile["image_extension"] = source.IDENTITY

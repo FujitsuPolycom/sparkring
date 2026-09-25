@@ -8,7 +8,7 @@
     "format": "serving-profile",
     "path": "profiles/mimo-v26-flash-rl-tp4/config.json"
   },
-  "release": "runtime/releases/dev-20260924-cuda1342-nccl2323-status031/release.json",
+  "release": "runtime/releases/dev-20260925-cuda1342-nccl2323-status031/release.json",
   "guide": "docs/operations/install.md",
   "evidence_scope": "Settings follow the earlier MiMo TP4 deployment (DFlash5, MXFP8 MoE, safetensors draft loader); not yet run on the shared image.",
   "overrides": [],

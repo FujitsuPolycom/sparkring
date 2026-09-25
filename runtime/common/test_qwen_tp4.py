@@ -15,6 +15,8 @@ PROFILE = "qwen38-flash-next-qad-tp4"
 LEGACY_BUILD = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/local-build.json"
 PUBLICATION = adapter.ROOT / "runtime/releases/shared-2026.09.3/publication.json"
 BUILD = PUBLICATION
+# The installer profile runs on the installer image; its SparkCache profile on shared-2026.09.3.
+INSTALLER = adapter.ROOT / "runtime/releases/dev-20260925-cuda1342-nccl2323-status031/publication.json"
 MAPS = ["1=0/2,2=0/3,3=1/3", "0=1/3,2=0/2,3=0/3",
         "0=1/2,1=1/3,3=0/2", "0=0/2,1=1/2,2=1/3"]
 
@@ -29,9 +31,10 @@ def test_tp4_settings_and_peer_maps_reach_both_backends(site, rank):
     specs, image = compose.specifications(PROFILE, site)
     spec = specs[rank]
     argv = docker_create(spec)
-    assert image == adapter.read(PUBLICATION)["image_reference"]
-    assert spec.image_id == adapter.read(BUILD)["image_id"]
+    assert image == adapter.read(INSTALLER)["image_reference"]
+    assert spec.image_id == adapter.read(INSTALLER)["image_id"]
     assert argv[argv.index(spec.image_id)+1:] == list(spec.command)
+    assert spec.entrypoint == ("python3",) and spec.command[0] == adapter.TOOLCHAIN_ENTRYPOINT
     for flag, value in [("--tensor-parallel-size", "4"), ("--nnodes", "4"),
                         ("--decode-context-parallel-size", "1"), ("--max-model-len", "262144"),
                         ("--max-num-seqs", "16"), ("--max-num-batched-tokens", "8192"),
@@ -93,8 +96,8 @@ def test_registry_selection_preserves_the_tested_image_and_serving_spec(site, mo
     monkeypatch.setattr(compose.profiles, "load", lambda *args, **kwargs: (metadata, local_release))
     with pytest.raises(ValueError, match="Local image selection"):
         compose.specifications(PROFILE, site)
-    assert image == adapter.read(PUBLICATION)["image_reference"]
-    assert {spec.image_id for spec in published} == {adapter.read(BUILD)["image_id"]}
+    assert image == adapter.read(INSTALLER)["image_reference"]
+    assert {spec.image_id for spec in published} == {adapter.read(INSTALLER)["image_id"]}
 
 
 def test_feature_verification_reads_chain_from_same_image(monkeypatch):
@@ -140,15 +143,18 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     native, native_image = compose.specifications(PROFILE, site)
     cached, cache_image = compose.specifications(PROFILE + "-sparkcache", site)
     base, spec = native[rank], cached[rank]
-    assert cache_image == native_image and spec.image_id == base.image_id
-    # The SparkCache profile pins revision 629bc3218833 and the installer profile
-    # pins the qad-step5500-ple1000 checkpoint; compile-cache paths embed each
-    # profile's own revision and otherwise match.
-    cache_revision = adapter.read(adapter.TP4_CONFIG.with_name("sparkcache.json"))["model"]["revision"][:12]
-    native_revision = adapter.read(adapter.TP4_CONFIG)["model"]["revision"][:12]
-    expected_env = {key: value.replace(native_revision, cache_revision) for key, value in base.environment.items()}
-    expected_env["SPARKCACHE_ENABLED"] = "1"
-    assert spec.environment == expected_env
+    # The installer profile runs the qad-step5500-ple1000 checkpoint on the
+    # installer image; the SparkCache profile runs revision 629bc3218833 on the
+    # shared-2026.09.3 native image. Compute, transport and memory settings match;
+    # image-bound paths, the image's transport identity and cache settings differ.
+    assert native_image == adapter.read(INSTALLER)["image_reference"]
+    assert cache_image == adapter.read(PUBLICATION)["image_reference"]
+    image_bound = {"SPARKCACHE_ENABLED", "SPARKRING_TRANSPORT_PROFILE", "SPARKRING_TRANSPORT_MANIFEST_SHA256",
+                   "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR"}
+    comparable = lambda environment: {key: value for key, value in environment.items()
+                                      if key not in image_bound and not value.startswith("/cache/qwen-flash-next-")}
+    assert comparable(spec.environment) == comparable(base.environment)
+    assert spec.environment["SPARKCACHE_ENABLED"] == "1" and base.environment["SPARKCACHE_ENABLED"] == "0"
     args = list(spec.command)
     assert args[args.index("--block-size") + 1] == "32"
     assert base.command[base.command.index("--block-size") + 1] == "32"
@@ -180,7 +186,7 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert json.loads(native[draft])["moe_backend"] == "humming"
     assert json.loads(args[draft])["moe_backend"] == "b12x"
     native[draft] = args[draft]
-    assert args == native
+    assert args[1:] == native[1:]
     assert spec.mounts == base.mounts
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap
 

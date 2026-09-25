@@ -30,7 +30,9 @@ def test_selection_uses_profile_publication_and_checkpoint(profile, monkeypatch)
     assert card["model_revision"] == resolved["model"]["revision"]
     assert card["nodes"] == resolved["serving"]["node_count"]
     assert card["sparkcache"] == resolved["serving"]["sparkcache"]
-    assert card["image_id"].startswith("sha256:bc16a981")
+    # Installer profiles run on the installer image; the others on shared-2026.09.3.
+    installer_profiles = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
+    assert card["image_id"].startswith("sha256:5ce6ce267d80" if profile in installer_profiles else "sha256:bc16a981")
 
 
 def test_qad_selection_changes_weights_not_the_image():

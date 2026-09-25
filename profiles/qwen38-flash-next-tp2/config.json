@@ -45,10 +45,11 @@
     "NCCL_IB_HCA": "=rocep1s0f0,roceP2p1s0f0",
     "B12X_ROCE_HCA": "rocep1s0f0,roceP2p1s0f0",
     "B12X_ROCE_PAIR_PATHS": "2",
-    "VLLM_QWEN3_8_HC_PREFILL_MODE": "off",
+    "VLLM_QWEN3_8_HC_PREFILL_MODE": "shard",
     "VLLM_QWEN3_8_PREFILL_COALESCE": "1",
     "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
-    "SPARKRING_FEATURES": ""
+    "SPARKRING_FEATURES": "qwen-collectives,qwen4-prefill",
+    "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": "0"
   },
   "vllm_args": [
     "--tensor-parallel-size",
@@ -122,6 +123,5 @@
   "qualification": {
     "scope": "Checkpoint revision 60215d26cf5e42c2db6128774032d57fc62678da (branch qad-step5500-ple1000, model class Qwen4Exp) is installer-supported on the shared image; its serving has not been qualified. The release qualification records revision 629bc3218833a38b475b719f34aa571666f4a03e, which sparkcache.json keeps."
   },
-  "image_extension": "native-shared",
-  "image_release": "shared-2026.09.3"
+  "image_extension": "toolchain"
 }
