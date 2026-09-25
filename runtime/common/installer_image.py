@@ -117,6 +117,23 @@ def _plugins(existing):
     return ",".join([*PLUGINS, *[name for name in names if name not in PLUGINS]])
 
 
+def qwen_recipe(environment):
+    """The HC mode and image features a Qwen serving environment selects.
+
+    Token-row ownership (VLLM_QWEN3_8_HC_PREFILL_MODE=shard) excludes HC
+    projection sharding; SPARKRING_FEATURES names the image feature bundles.
+    """
+    shard = environment.get("VLLM_QWEN3_8_HC_PREFILL_MODE", "off") == "shard"
+    features = {name.strip() for name in environment.get("SPARKRING_FEATURES", "").split(",") if name.strip()}
+    return {"projection_tp": "0" if shard else "1", "prefill_row_ownership": "shard" if shard else "off"}, features
+
+
+def profile_environment(profile):
+    from runtime.common import profiles
+    metadata, _ = profiles.load(profile)
+    return profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))["environment"]
+
+
 def adapt(spec, value, *, binding, source_root, profile=None):
     """Reuse the canonical model/network envelope, replacing its runtime binding."""
     profile = profile if profile is not None else profiles_of(value)[0]
@@ -144,7 +161,7 @@ def adapt(spec, value, *, binding, source_root, profile=None):
         FLASHINFER_WORKSPACE_BASE=cache + "/flashinfer",
     )
     if profile in QWEN:
-        environment["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] = "0" if profile.endswith("tp4") else "1"
+        environment["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] = qwen_recipe(environment)[0]["projection_tp"]
     if len(spec.command) < 2 or spec.command[1] != "serve":
         raise ValueError("External image adapter requires a canonical vLLM serve command")
     health = ("python3", *spec.health_command[1:]) if spec.health_command else ()
@@ -158,11 +175,12 @@ def adapt(spec, value, *, binding, source_root, profile=None):
                    labels={**spec.labels, "io.sparkring.image-lock": value["name"]})
 
 
-def admit(value, *, run, profile=None, nodes=None):
+def admit(value, *, run, profile=None, nodes=None, environment=None):
     """Verify the local image against the lock before any model downtime.
 
     ``profile`` and ``nodes`` select model-specific capability checks. They
-    default to the single profile of a v1 lock.
+    default to the single profile of a v1 lock. ``environment`` is the Qwen
+    serving environment; it defaults to the profile's configuration.
     """
     profile = profile if profile is not None else profiles_of(value)[0]
     validate(value, profile)
@@ -188,8 +206,9 @@ def admit(value, *, run, profile=None, nodes=None):
             or capabilities.get("runtime_status", {}).get("version") != value["status_version"]):
         raise ValueError("External software receipt does not satisfy this runtime contract")
     if profile in QWEN:
-        required_features = {"qwen-collectives", "qwen4-prefill"} if nodes == 4 else set()
-        hc_mode = {"projection_tp": "0" if nodes == 4 else "1", "prefill_row_ownership": "shard" if nodes == 4 else "off"}
+        # The profile selects its HC mode and feature bundles; the image receipt
+        # declares which modes each node count supports.
+        hc_mode, required_features = qwen_recipe(environment if environment is not None else profile_environment(profile))
         if (not required_features <= set(capabilities.get("features", []))
                 or hc_mode not in capabilities.get("hc_supported_modes", {}).get(str(nodes), [])):
             raise ValueError("External software receipt does not provide this Qwen topology's features")

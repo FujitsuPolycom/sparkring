@@ -137,6 +137,43 @@ def test_admission_verifies_receipts_and_installed_tree_without_gpu_or_network(c
         assert len(calls) == 4
 
 
+def test_qwen_recipe_follows_the_profile_environment():
+    assert installer_image.qwen_recipe({}) == ({"projection_tp": "1", "prefill_row_ownership": "off"}, set())
+    shard = {"VLLM_QWEN3_8_HC_PREFILL_MODE": "shard", "SPARKRING_FEATURES": "qwen-collectives, qwen4-prefill"}
+    assert installer_image.qwen_recipe(shard) == ({"projection_tp": "0", "prefill_row_ownership": "shard"},
+                                                  {"qwen-collectives", "qwen4-prefill"})
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_tp2_row_sharding_requires_an_image_that_declares_it(supported):
+    value, image, receipts = admission_fixture()
+    value["profile"] = "qwen38-flash-next-tp2"
+    parent = json.loads(receipts[installer_image.PARENT_RECEIPT])
+    modes = [{"projection_tp": "1", "prefill_row_ownership": "off"}]
+    if supported:
+        modes.append({"projection_tp": "0", "prefill_row_ownership": "shard"})
+    parent["capabilities"]["hc_supported_modes"]["2"] = modes
+    receipts[installer_image.PARENT_RECEIPT] = json.dumps(parent).encode()
+    value["parent_receipt_sha256"] = hashlib.sha256(receipts[installer_image.PARENT_RECEIPT]).hexdigest()
+    toolchain = json.loads(receipts[installer_image.TOOLCHAIN_RECEIPT])
+    toolchain["parent_receipt_sha256"] = value["parent_receipt_sha256"]
+    receipts[installer_image.TOOLCHAIN_RECEIPT] = json.dumps(toolchain).encode()
+    value["toolchain_receipt_sha256"] = hashlib.sha256(receipts[installer_image.TOOLCHAIN_RECEIPT]).hexdigest()
+    def run(argv, **kwargs):
+        if argv[1] == "image":
+            return SimpleNamespace(stdout=json.dumps([image]))
+        if argv[-1] in receipts:
+            return SimpleNamespace(stdout=receipts[argv[-1]])
+        return SimpleNamespace(stdout="verified")
+    environment = {"VLLM_QWEN3_8_HC_PREFILL_MODE": "shard", "SPARKRING_FEATURES": "qwen-collectives,qwen4-prefill"}
+    admit = lambda: installer_image.admit(value, run=run, profile="qwen38-flash-next-tp2", nodes=2, environment=environment)
+    if supported:
+        assert admit()["image_id"] == value["image_id"]
+    else:
+        with pytest.raises(ValueError, match="Qwen topology"):
+            admit()
+
+
 def test_share_export_preserves_image_lock_without_private_registry(tmp_path):
     value = image_lock()
     value["image_reference"] = "registry.private.example:5000/rehearsal@sha256:" + "f" * 64

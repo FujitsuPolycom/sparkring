@@ -69,6 +69,9 @@ def admit_image(lock):
             "kernel": os.uname().release if hasattr(os, "uname") else "",
             "docker": run(["docker", "version", "--format", "{{.Server.Version}}"]).stdout.strip(),
             "policy": hashlib.sha256(loader_policy.PROFILE.read_bytes()).hexdigest(),
+            # Qwen admission depends on the profile's HC mode and feature selection.
+            "recipe": repr(installer_image.qwen_recipe(installer_image.profile_environment(card["profile"])))
+            if card["profile"] in installer_image.QWEN else None,
         }, sort_keys=True).encode()).hexdigest()
         record = ADMISSIONS / (key + ".json")
         if record.is_file() and not record.is_symlink():
