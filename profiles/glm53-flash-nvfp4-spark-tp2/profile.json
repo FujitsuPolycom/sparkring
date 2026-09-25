@@ -9,7 +9,7 @@
     "path": "profiles/glm53-flash-nvfp4-spark-tp2/config.json"
   },
   "release": "runtime/releases/dev-20260924-cuda1342-nccl2323-status031/release.json",
-  "guide": "docs/operations/installer.md",
+  "guide": "docs/operations/install.md",
   "evidence_scope": "Two-node settings follow the earlier GLM TP2 recipe; not yet run on the shared image.",
   "overrides": [],
   "launcher": {

@@ -22,28 +22,25 @@ configurations and workloads recorded with each profile.
 
 ## Setup
 
-For guided Linux installation from one Internet-connected Spark, see the
-[Linux package](docs/operations/linux-install.md). It discovers workers through
-the fabric and offers reviewed pair/ring setup. Hardware rehearsal is pending.
-
-Want a single Compose file to share? Use [GLM TP2](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml)
-or [Qwen TP2](profiles/qwen38-flash-next-tp2/compose/standalone.yaml). Set the five
-values at the top and select the local rank. These standalone recipes require
-prepared networking and model weights; their hardware rehearsal is pending.
-
-For prepared Sparks, use the [profile installer](docs/operations/installer.md):
+Cable two Sparks as a pair or four as a ring, connect one Spark (Node A) to your
+network, then on Node A:
 
 ```bash
-python3 scripts/sparkring.py init
-python3 scripts/sparkring.py up              # review the plan
-python3 scripts/sparkring.py up --execute
-python3 scripts/sparkring.py status --refresh
+sudo apt install ./sparkring_<version>_arm64.deb
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4
 ```
 
-The installer is implemented and tested offline; hardware rehearsal is pending.
-It locks the profile/image/checkpoint, prepares assets and coordinates startup.
-It can export per-rank Compose files and portable profile templates.
+The [installation guide](docs/operations/install.md) covers profiles, logs,
+`--plan`/`--json` for scripted or LLM-driven use, and recovery. Every installer
+profile runs on one shared serving image; `sparkring models` lists them. The
+installer checks each layer — access, packages, fabric, image, weights — reuses
+what is verified and prepares what is missing before switching models.
 For first boot and networking, use [host setup](docs/operations/setup.md).
+
+Standalone Compose recipes remain available for manual pair deployments:
+[GLM TP2](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml)
+and [Qwen TP2](profiles/qwen38-flash-next-tp2/compose/standalone.yaml). They
+require prepared networking and model weights.
 
 The [SparkRing image](docs/operations/images.md) contains the inference software.
 Model weights, host drivers, Docker and network configuration are separate.
@@ -61,9 +58,9 @@ covers subsequent workload qualification and benchmarks.
 
 | Model | Quant | DCP | Context / KV* | SparkCache | Status |
 |---|---|---|---|---|---|
-| **[GLM-5.3-Flash](docs/operations/installer.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / — | No | Experimental |
+| **[GLM-5.3-Flash](docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / — | No | Experimental |
 | **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1/4 | 1M / ([2.3M](runtime/releases/shared-2026.09.3/correctness.json)/[8.4M](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated |
-| **[MiMo-V2.6-Flash-RL](docs/operations/installer.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / — | No | Experimental |
+| **[MiMo-V2.6-Flash-RL](docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / — | No | Experimental |
 | **[Qwen3.8-Flash-Next](profiles/qwen38-flash-next-qad-tp4/README.md)**<br>vLLM | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | 1 | 262K / [3.1M](runtime/releases/shared-2026.09.3/correctness.json) | [Optional](profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) | Validated |
 | [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development |
 | [DeepSeek-V4-Flash-Vision-Exp](profiles/deepseek-v4-flash-vision-exp-tp4/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | 1 | 1M / — | No | Experimental |
@@ -76,9 +73,9 @@ covers subsequent workload qualification and benchmarks.
 
 | Model | Quant | DCP | Context / KV* | SparkCache | Status |
 |---|---|---|---|---|---|
-| **[GLM-5.3-Flash](docs/operations/installer.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 262K / — | No | Experimental |
+| **[GLM-5.3-Flash](docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 262K / — | No | Experimental |
 | **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / [1.1M](runtime/releases/shared-2026.09.3/correctness.json) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated |
-| **[MiMo-V2.6-Flash-RL](docs/operations/installer.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / — | No | Experimental |
+| **[MiMo-V2.6-Flash-RL](docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / — | No | Experimental |
 | **[Qwen3.8-Flash-Next](profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | 1 | 262K / [2.9M](runtime/releases/shared-2026.09.3/correctness.json) | [Optional](profiles/qwen38-flash-next-tp2/README.md) | Validated |
 | [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [2.2M](performance/records/deepseek-v4-flash/image827a8e8c-tp2.json) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
 | [Qwen3.8-27B](profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |

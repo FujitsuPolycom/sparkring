@@ -9,7 +9,7 @@
     "path": "profiles/mimo-v26-flash-rl-tp2/config.json"
   },
   "release": "runtime/releases/dev-20260924-cuda1342-nccl2323-status031/release.json",
-  "guide": "docs/operations/installer.md",
+  "guide": "docs/operations/install.md",
   "evidence_scope": "Two-node settings are derived from the TP4 recipe; not yet run.",
   "overrides": [],
   "launcher": {

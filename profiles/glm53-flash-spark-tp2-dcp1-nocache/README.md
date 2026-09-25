@@ -7,4 +7,4 @@ sudo sparkring install --profile glm53-flash-spark-tp2-dcp1-nocache --plan
 sudo sparkring install --profile glm53-flash-spark-tp2-dcp1-nocache --yes
 ```
 
-See [Linux installation](../../docs/operations/linux-install.md) for setup and logs. Hardware acceptance remains pending. Existing managed-mesh ownership must be resolved before TP4 replacement.
+See [installation guide](../../docs/operations/install.md) for setup and logs. Hardware acceptance remains pending. Existing managed-mesh ownership must be resolved before TP4 replacement.

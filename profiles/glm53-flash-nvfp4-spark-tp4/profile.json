@@ -9,7 +9,7 @@
     "path": "profiles/glm53-flash-nvfp4-spark-tp4/config.json"
   },
   "release": "runtime/releases/dev-20260924-cuda1342-nccl2323-status031/release.json",
-  "guide": "docs/operations/installer.md",
+  "guide": "docs/operations/install.md",
   "evidence_scope": "TP4: served on the shared CUDA 13.4.2 / NCCL 2.32.3 image with MTP3 and native prefix caching; bounded API, counting, arithmetic, reasoning-split and 9K-token prompt checks passed. Full-context pressure, media and performance are not qualified.",
   "overrides": [],
   "launcher": {

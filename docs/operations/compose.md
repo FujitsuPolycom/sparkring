@@ -1,7 +1,7 @@
 # Compose deployments from SparkRing profiles
 
 For one saved deployment operated through `init`, `up`, `status` and `down`, use
-the [profile installer](installer.md). It also generates GLM TP2 Compose files
+the [profile installer](install.md). It also generates GLM TP2 Compose files
 from the TP2 adapter and exports portable templates with `export --share`.
 That installer path is offline-tested; its hardware rehearsal remains pending.
 The lower-level `sparkring compose` coordinator described below retains its

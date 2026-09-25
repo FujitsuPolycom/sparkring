@@ -1,8 +1,10 @@
-# Linux installation
+# Install SparkRing
 
-**Development:** a configured TP4 upgrade and automatic recovery passed on
-2026-09-24. Blank-host setup, reboot recovery and cable-reordering tests remain
-pending. See the [acceptance record](../development/installer-acceptance.md).
+**Development:** one-command installation on a configured four-Spark ring,
+automatic recovery after a failed switch, and profile switches on the shared
+image are hardware-tested. Blank-host setup, reboot recovery and
+cable-reordering tests remain pending. See the
+[acceptance record](../development/installer-acceptance.md).
 
 Choose any Spark as Node A. Connect its 10GbE port to your network. Connect a
 pair with p0↔p0, or a four-Spark ring with each p0 connected to the next p1.
@@ -168,7 +170,7 @@ literal settings, never sourced as shell code. SSH handles credential prompts.
 The Debian package contains the CLI, host services, profile/deployment code,
 an immutable source bundle and a file manifest. It contains **no model weights,
 CUDA stack or inference image**. [Images](images.md) supply the serving software;
-[profile adapters](installer.md) still own image admission and model startup.
+profile adapters still own image admission and model startup.
 The [standalone Compose files](compose.md) remain usable independently.
 
 Workers use a private WireGuard administration tree over their existing IPv6
@@ -242,3 +244,42 @@ sudo env SPARKRING_LINUX_LAB=1 python3 -m pytest scripts/test_appliance_linux.py
 If an execution receipt says `running` or `uncertain`, inspect it and host state
 before recovery. Do not delete receipts to force a blind retry. Driver reloads
 require `--allow-driver-reload`, stopped containers/GPU work, and no RDMA users.
+
+## Lower-level commands and Compose sharing
+
+`sparkring install` is the supported entry point. The underlying steps remain
+available for inspection and rehearsals:
+
+```bash
+python3 scripts/sparkring.py init --model glm53 --host spark0 --host spark1
+python3 scripts/sparkring.py up            # review the stages
+python3 scripts/sparkring.py up --execute
+python3 scripts/sparkring.py status --refresh
+python3 scripts/sparkring.py down --execute
+```
+
+`init` discovers addresses read-only and saves `.sparkring/deployment` with the
+shared installer image. `--model` accepts `glm53`, `mimo26` or `qwen38`; host
+count selects the profile. For an offline site, fill in
+[the site example](../../profiles/install-site.example.json) and pass
+`--site YOUR_FILE` instead of `--host`. No live command runs without `--execute`
+except discovery and status refresh.
+
+`sparkring export --share --output profile-template.zip` writes a portable
+template: the pinned profile, the image lock, an example site and per-rank
+Compose files. It excludes private addresses, paths, receipts and source
+bundles. `sparkring export --output private-deployment.zip` keeps the actual
+configuration. Compose is the container format, not a multi-host scheduler:
+each host runs its own rank, and Compose alone does not configure RDMA.
+
+Validate a Compose file locally, without a Docker daemon, images or GPUs:
+
+```bash
+python3 scripts/sparkring.py validate-compose compose.yaml
+python3 scripts/sparkring.py validate-compose --all --output .sparkring/compose-validation.json
+```
+
+It checks profile identity and settings, resolves every rank with example
+inputs, tests missing-variable guards and simulates rank registration. A pass
+does not establish GPU/RDMA or inference behavior. [Compose](compose.md) covers
+the standalone recipes.
