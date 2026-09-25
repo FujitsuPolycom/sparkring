@@ -588,7 +588,11 @@ def perform(operation, lock, number):
             return {"ok": True}
         if operation in ("stop", "stopped"):
             if operation == "stop" and info and info["State"].get("Running"):
-                run(["docker", "stop", "--time", "60", info["Id"]])
+                # Serving containers hold no state. Once every rank stops at
+                # once, a worker only waits for its departed peers before its
+                # own executor kills it (28 s for GLM TP2); rank 0 exits in
+                # about 8 s. A short grace period ends that wait.
+                run(["docker", "stop", "--time", "15", info["Id"]])
             elif operation == "stopped" and info and info["State"].get("Running"):
                 raise ValueError("Container is still running")
             return {"ok": True}
