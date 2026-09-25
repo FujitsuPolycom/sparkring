@@ -37,3 +37,5 @@ def test_native_no_cache_profiles_render_without_a_cache_connector():
             for spec in installer.specifications(lock):
                 assert spec.environment['SPARKCACHE_ENABLED'] == '0'
                 assert '--kv-transfer-config' not in spec.command
+                assert '--enable-prefix-caching' in spec.command
+                assert '--no-enable-prefix-caching' not in spec.command

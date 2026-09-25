@@ -134,7 +134,7 @@ def configuration(p, root=ROOT):
     if source["format"] == "release-profile":
         if data.get("schema") not in {"sparkring-r33-profile-contract/v1", "sparkring-native-glm-profile-contract/v1"}:
             raise ValueError("Unsupported release-profile schema")
-        if data["schema"] == "sparkring-native-glm-profile-contract/v1":
+        if data["schema"] == "sparkring-native-glm-profile-contract/v1" and source["key"] not in data["profiles"]:
             from runtime.common import glm_native_candidate
             data = glm_native_candidate.complete_planning_contract(data, root=root)
         selected = data["profiles"][source["key"]]
