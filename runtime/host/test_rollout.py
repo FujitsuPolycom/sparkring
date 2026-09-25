@@ -84,3 +84,32 @@ def test_partial_previous_stop_is_reconciled_before_recovery(tmp_path):
         rollout.execute(after, before, state_root=tmp_path, prepare=cluster.prepare, apply=cluster.apply, verify=cluster.verify)
     assert cluster.running == before
     assert ("candidate", "up") not in cluster.events
+
+
+@pytest.mark.parametrize("stop_refused", [False, True])
+def test_unfinished_switch_is_replaced_by_an_approved_install(tmp_path, stop_refused):
+    before, stuck, after = tmp_path / "old", tmp_path / "stuck", tmp_path / "candidate"
+    node.save(tmp_path, "active.json", {"path": str(before)})
+    node.save(tmp_path, "transaction.json", {"schema": "sparkring-install-transaction/v1", "candidate": str(stuck),
+                                             "previous": str(before), "state": "needs-attention", "complete": False})
+    cluster = Cluster(before, after)
+    original = cluster.apply
+
+    def apply(directory, action):
+        if directory == stuck and stop_refused:
+            raise ValueError("Previous operation is incomplete or uncertain")
+        return original(directory, action)
+    result = rollout.execute(after, before, state_root=tmp_path, prepare=cluster.prepare, apply=apply,
+                             verify=cluster.verify, supersede=True)
+    assert result["complete"] and rollout.active(tmp_path) == after
+    assert result["superseded"]["candidate"] == str(stuck)
+    assert ("supersede_stop_error" in result["superseded"]) == stop_refused
+
+
+def test_unfinished_switch_still_blocks_without_approval(tmp_path):
+    before, stuck, after = tmp_path / "old", tmp_path / "stuck", tmp_path / "candidate"
+    node.save(tmp_path, "transaction.json", {"schema": "sparkring-install-transaction/v1", "candidate": str(stuck),
+                                             "previous": str(before), "state": "needs-attention", "complete": False})
+    cluster = Cluster(before, after)
+    with pytest.raises(ValueError, match="needs attention"):
+        rollout.execute(after, before, state_root=tmp_path, prepare=cluster.prepare, apply=cluster.apply, verify=cluster.verify)

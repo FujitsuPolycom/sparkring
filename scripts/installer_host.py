@@ -18,14 +18,28 @@ from scripts import deploy_engine
 POSIX_STATS = os.name == "posix"
 
 
+class CommandError(subprocess.CalledProcessError):
+    """A failed command whose message carries the tail of its own error output."""
+
+    def __str__(self):
+        detail = self.stderr or self.output or ""
+        if isinstance(detail, bytes):
+            detail = detail.decode(errors="replace")
+        lines = [line.strip() for line in detail.strip().splitlines() if line.strip()][-3:]
+        return super().__str__() + (": " + " | ".join(lines) if lines else "")
+
+
 def run(argv, **kwargs):
-    if argv[0] == "docker":
+    if argv[0] == "docker" and argv[1:3] != ["--context", "default"]:
         argv = ["docker", "--context", "default", *argv[1:]]
     kwargs.setdefault("check", True)
     kwargs.setdefault("capture_output", True)
     kwargs.setdefault("timeout", 7200)
     kwargs.setdefault("text", True)
-    return subprocess.run(argv, **kwargs)
+    try:
+        return subprocess.run(argv, **kwargs)
+    except subprocess.CalledProcessError as error:
+        raise CommandError(error.returncode, error.cmd, error.output, error.stderr) from None
 
 
 def plain(path):
@@ -536,8 +550,12 @@ def perform(operation, lock, number):
             if not (info and info["State"].get("Running")):
                 require_idle()
             compose.check_project_containers(spec.name, owned_id=info["Id"] if info else None, run=run)
-            text = compose.compose_text(spec, card["image_reference"])
-            compose.check_equivalence(spec, card["image_reference"], text, run=run)
+            # Installer-owned containers name the admitted local image by its
+            # configuration ID. A copy received over the fabric has no registry
+            # digest, so a digest reference would not resolve with --pull never.
+            local_image = card["image_id"] if "image_runtime" in lock else card["image_reference"]
+            text = compose.compose_text(spec, local_image)
+            compose.check_equivalence(spec, local_image, text, run=run)
             target = plain(Path(row["deployment_root"]) / lock["id"])
             if operation == "create":
                 target.mkdir(parents=True, exist_ok=True)

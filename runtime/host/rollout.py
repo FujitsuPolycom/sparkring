@@ -5,7 +5,7 @@ from runtime.common import installer
 from runtime.host import node
 
 
-def execute(directory, previous, *, state_root, prepare, apply, verify):
+def execute(directory, previous, *, state_root, prepare, apply, verify, supersede=False):
     """All mutations pass through deployment adapters; the active pointer commits last."""
     directory = Path(directory).resolve()
     previous = Path(previous).resolve() if previous else None
@@ -17,6 +17,18 @@ def execute(directory, previous, *, state_root, prepare, apply, verify):
     if journal.exists():
         retained = installer.read(journal)
         pending = retained["state"] in ("stopping-previous", "starting", "verifying", "recovering-previous", "needs-attention")
+        if pending and retained["state"] in ("recovering-previous", "needs-attention") and supersede:
+            # The caller has confirmed no unexpected GPU workload is running.
+            # Stop the abandoned candidate through its own deployment, then
+            # replace it; the active pointer still names the last good model.
+            print("Replacing an unfinished model switch: " + retained["candidate"])
+            try:
+                apply(Path(retained["candidate"]), "down")
+            except Exception as error:  # noqa: BLE001 - recorded; GPUs were confirmed idle
+                retained["supersede_stop_error"] = str(error)
+                print("Its own stop step was refused; no unexpected GPU workload is running, continuing.")
+            record["superseded"] = retained
+            pending = False
         if pending:
             if retained["candidate"] != str(directory) or retained["state"] in ("recovering-previous", "needs-attention"):
                 raise ValueError("A previous model switch needs attention; inspect " + str(journal))

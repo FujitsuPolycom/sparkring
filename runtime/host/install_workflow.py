@@ -191,8 +191,10 @@ def execute(args):
             installer.apply(path, "prepare", runner=assets.runner(path, previous), execute=True)
             check_workloads(path, previous)
 
+        # check_workloads has confirmed that only the active or candidate
+        # deployment uses the GPUs, so an abandoned failed switch can be replaced.
         result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
-                                 verify=lambda path: apply(path, "verify"))
+                                 verify=lambda path: apply(path, "verify"), supersede=True)
         return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log")}
 
 

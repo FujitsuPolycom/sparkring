@@ -352,11 +352,11 @@ def apply(directory, action, *, runner, execute=False):
         state_path = directory / "state.json"
         state = read(state_path) if state_path.exists() else {"generation": 0, "operation": None, "complete": True}
         if state["operation"] != action:
-            if not state["complete"]:
-                previous = read(directory / state["receipt"])
-                uncertain = any(item["state"] in ("running", "uncertain") for item in previous["actions"].values())
-                if action != "down" or uncertain:
-                    raise ValueError("Previous operation is incomplete or uncertain; inspect its receipts before changing direction")
+            # Stopping is always permitted after an incomplete operation: it
+            # verifies ownership labels, stops only this deployment's running
+            # containers and ignores ranks whose container was never created.
+            if not state["complete"] and action != "down":
+                raise ValueError("Previous operation is incomplete or uncertain; inspect its receipts before changing direction")
             state = {"generation": state["generation"] + 1, "operation": action, "complete": False}
         receipt_path = directory / "operations" / f"{state['generation']:04}-{action}.json"
         state.update(complete=False, receipt=str(receipt_path.relative_to(directory)))

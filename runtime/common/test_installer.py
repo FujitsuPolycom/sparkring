@@ -102,8 +102,9 @@ def test_unknown_mutation_outcome_cannot_retry_or_change_direction(deployment):
     with pytest.raises(ValueError, match="uncertain"):
         installer.apply(directory, "up", runner=second, execute=True)
     assert not any(event[0] == "create" for event in second.events)
-    with pytest.raises(ValueError, match="uncertain"):
-        installer.apply(directory, "down", runner=Hosts(), execute=True)
+    # Stopping remains possible: it checks ownership and only stops this
+    # deployment's running containers, so recovery can always clear a failed start.
+    assert installer.apply(directory, "down", runner=Hosts(), execute=True)["complete"]
 
 
 def test_down_after_readiness_failure_retains_receipts_and_allows_next_up(deployment):
