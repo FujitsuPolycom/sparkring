@@ -95,8 +95,11 @@ For a private image without a reachable registry, set `image_reference` to its
 exact `image_id` and load it on one enrolled Spark. The installer finds that
 copy and streams it to missing peers without creating another export archive.
 A registry-backed image is downloaded once on Node A. Source/image/profile
-choices automatically select a separate deployment and compilation cache;
-there is no instance name or manual stop command to supply.
+choices automatically select a separate deployment; there is no instance name
+or manual stop command to supply. Compile and B12X tuning results share one
+cache per cluster, `/srv/sparkring/<cluster>/cache`, in subdirectories keyed by
+model family, image and checkpoint revision, so reinstalling or switching back
+to a profile reuses its earlier tuning.
 `sparkring export --share` retains the image lock and per-rank Compose files.
 
 `sparkring status --json --refresh` reports the saved deployment/image IDs and
@@ -205,14 +208,15 @@ deployment. Old container/source/weight directories are retained.
 The installer checks existing container model mounts and standard model
 directories for the selected checkpoint. A complete metadata match is proposed
 for reuse, then every pinned shard is verified during preparation. On Linux,
-later gates reuse that checksum receipt only while the complete file list, device,
-inode, size, modification time and change time match; changes trigger checksum
-verification again. A missing checkpoint is copied from a verified peer, or
+each host records the verified hashes per checkpoint path in
+`/var/lib/sparkring/checkpoints/`; later gates and later installations reuse
+them only while the complete file list, device, inode, size, modification time
+and change time match; changes trigger checksum verification again. A missing checkpoint is copied from a verified peer, or
 downloaded once on Node A if none has it. Copies are checksum-verified before
 launch. Mismatched or corrupt unowned directories are not overwritten.
 `--model-path /absolute/checkpoint` selects a cache explicitly when it is stored
 elsewhere. This avoids downloading weights already present on the ranks.
-`--cache-path /absolute/cache` chooses the writable compilation cache. Image
+`--cache-path /absolute/cache` chooses another writable compilation cache. Image
 imports and checkpoint copies check storage before the model switch; insufficient
 space leaves the old model running. The installer does not delete model weights
 or unrelated archives to make room.
