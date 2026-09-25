@@ -298,9 +298,11 @@ def operation_plan(lock, action):
         else:
             phases = [phase("owned", ranks), phase("stop", ranks, "stops-model", "stopped")]
     else:
+        # Checkpoints are prepared before image admission so that Node A can
+        # distribute the image to workers while checkpoints download and hash.
         phases = [phase("prepare-prerequisites" if action == "prepare" else "prerequisites", ranks), phase("source", ranks, "mutates-host", "source-check"),
-                  phase("image", ranks, "mutates-host", "image-check"),
-                  phase("model", ranks, "mutates-host", "model-check")]
+                  phase("model", ranks, "mutates-host", "model-check"),
+                  phase("image", ranks, "mutates-host", "image-check")]
         if action == "prepare":
             if lock["backend"] in ("glm-managed", "glm-existing-mesh"):
                 phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared")]

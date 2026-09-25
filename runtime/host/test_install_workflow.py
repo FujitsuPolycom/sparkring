@@ -1,5 +1,6 @@
 """Public CLI acceptance with host/SSH boundaries simulated, not the coordinator."""
 import json
+import threading
 
 import pytest
 
@@ -42,8 +43,10 @@ def machine(tmp_path, monkeypatch):
             events.append("update-workers")
         def images(self, card):
             events.append("fill-missing-image")
-        def runner(self, directory, previous=None):
+        def runner(self, directory, previous=None, images=None):
             def run(host, argv, timeout):
+                if argv[1] == "image":
+                    images.result()
                 events.append("prepare:" + argv[1])
                 return {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
             return run
@@ -69,6 +72,27 @@ def test_documented_command_updates_prepares_switches_and_emits_only_json(machin
     assert events.index("prepare:model-check") < events.index("previous:down") < events.index("candidate:up") < events.index("candidate:verify")
     assert "Progress:" in out.err and "Model ready:" in out.err
     assert rollout.active(controller.STATE) != previous
+
+
+def test_image_distribution_runs_while_checkpoints_are_prepared(machine, monkeypatch, capsys):
+    events, _, assets, _ = machine
+    checkpoint = threading.Event()
+    original = assets.runner
+    def runner(self, directory, previous=None, images=None):
+        run = original(self, directory, previous, images)
+        def observed(host, argv, timeout):
+            result = run(host, argv, timeout)
+            if argv[1] == "model":
+                checkpoint.set()
+            return result
+        return observed
+    def images(self, card):
+        assert checkpoint.wait(10), "checkpoint preparation waited for image distribution"
+        events.append("fill-missing-image")
+    monkeypatch.setattr(assets, "runner", runner)
+    monkeypatch.setattr(assets, "images", images)
+    assert command() == 0
+    assert events.index("prepare:model") < events.index("fill-missing-image") < events.index("prepare:image")
 
 
 def test_storage_failure_keeps_current_model_and_returns_actionable_json(machine, monkeypatch, capsys):

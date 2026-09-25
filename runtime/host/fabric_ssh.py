@@ -111,6 +111,14 @@ class Transport:
             return list(argv)
         return [*self.argv(rank), shlex.join(argv)]
 
+    def forwarded(self, rank, remote_port, local_port, argv):
+        """Run argv on a worker whose loopback remote_port reaches Node A's loopback local_port."""
+        if rank == 0:
+            raise ValueError("Node A reaches its own loopback services directly")
+        ssh = self.argv(rank)
+        return [ssh[0], "-o", "ExitOnForwardFailure=yes", "-R", f"127.0.0.1:{remote_port}:127.0.0.1:{local_port}",
+                *ssh[1:], shlex.join(argv)]
+
     def verify(self):
         """Authenticate the selected physical path against the enrolled node ID."""
         probe = "import json; print(json.load(open('/etc/sparkring/node.json'))['node_id'])"

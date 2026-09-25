@@ -1,5 +1,6 @@
 """One Linux entrypoint for cluster setup, asset preparation and model replacement."""
 import argparse
+import concurrent.futures
 import contextlib
 import hashlib
 import inspect
@@ -210,8 +211,15 @@ def execute(args):
                 # Verify the rollback controller bundle before any downtime.
                 retained_source.checkout(previous, cache)
             assets.sync_packages()
-            assets.images(lock["selection"])
-            installer.apply(path, "prepare", runner=assets.runner(path, previous), execute=True)
+            # Image distribution and checkpoint preparation use different
+            # resources (registry and fabric versus Hugging Face and disk), so
+            # they run together; image admission waits for the distribution.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                images = pool.submit(assets.images, lock["selection"])
+                try:
+                    installer.apply(path, "prepare", runner=assets.runner(path, previous, images), execute=True)
+                finally:
+                    images.result()
             check_workloads(path, previous)
 
         # check_workloads has confirmed that only the active or candidate

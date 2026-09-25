@@ -527,8 +527,11 @@ def perform(operation, lock, number):
             return {"ok": True}
         model, cache = plain(row["model"]), plain(row["cache"])
         docker_path = run(["docker", "info", "--format", "{{.DockerRootDir}}"]).stdout.strip()
+        # The image may still be arriving from Node A; until it is present its
+        # import space stays reserved alongside the checkpoint.
+        present = run(["docker", "image", "inspect", card["image_id"]], check=False).returncode == 0
         report = setup.storage_plan(card, model_path=model, cache_path=cache, docker_path=docker_path,
-                                     reuse_model=row["reuse_verified_model"], reuse_image=True)
+                                     reuse_model=row["reuse_verified_model"], reuse_image=present)
         if not report["passed"]:
             raise ValueError("Insufficient destination storage: " + json.dumps(report["filesystems"]))
         if model.exists() and any(model.iterdir()) and not row["reuse_verified_model"]:

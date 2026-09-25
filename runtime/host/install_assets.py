@@ -3,14 +3,17 @@ import concurrent.futures
 import inspect
 import json
 from pathlib import Path
+import random
 import subprocess
 import tempfile
 import threading
 import time
 
 from runtime.common import distribution
-from runtime.host import node, packages, progress
+from runtime.host import node, packages, progress, registry_relay
 from runtime.host.install_errors import NeedsInput
+
+DOCKER = ["docker", "--context", "default"]
 
 
 def image_probe(image):
@@ -94,9 +97,69 @@ class Assets:
                     raise ValueError(f"Node {rank}: installed package revision differs")
         return {"updated": outdated, "revision": current}
 
+    def relay(self, card, missing, observations):
+        """Pull on every node that lacks the image, through one upstream download on Node A."""
+        from runtime.common import profiles
+        policy = profiles.read_json(node.ROOT / "profiles/storage-planning.json")
+        if "image_bytes" in card:
+            # Compressed layers and the unpacked image coexist during a pull.
+            pull = card["image_bytes"] + card["download_bytes"] + 8 * 1024**3
+            cache = card["download_bytes"]
+        else:
+            pull = (policy["image_allowance_gib"] + policy["cache_and_jit_allowance_gib"]) * 1024**3
+            cache = policy["image_allowance_gib"] * 1024**3
+        for rank in sorted({0, *missing}):
+            required = (pull if rank in missing else 0) + (cache if rank == 0 else 0)
+            if observations[rank]["free_bytes"] < required:
+                raise NeedsInput(f"Node {rank} needs more Docker storage before the pinned image can be downloaded. Current model has not been stopped.",
+                                 field="storage", details={"rank": rank, "required_bytes": required,
+                                                           "free_bytes": observations[rank]["free_bytes"]})
+        relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
+
+        def pull_on(rank):
+            with progress.step(f"Node {rank}: Pull pinned image through Node A's registry relay"):
+                if rank == 0:
+                    argv = [*DOCKER, "pull", "-q", "--platform", "linux/arm64", relay.reference()]
+                    self.run(argv, capture_output=True, text=True, timeout=7200, check=True)
+                else:
+                    # The worker's Docker reaches the relay on its own loopback
+                    # address; another service holding that port selects a free one.
+                    for port in (relay.port, *random.sample(range(20000, 60000), 3)):
+                        pull = ["sudo", "-n", *DOCKER, "pull", "-q", "--platform", "linux/arm64", relay.reference(port)]
+                        result = self.run(self.transport.forwarded(rank, port, relay.port, pull),
+                                          capture_output=True, text=True, timeout=7200)
+                        if result.returncode == 0 or "forwarding failed" not in result.stderr:
+                            break
+                    if result.returncode:
+                        raise ValueError(f"Node {rank}: relay pull failed: " + result.stderr.strip()[-2000:])
+                if not self.remote(rank, image_probe, card["image_id"])["present"]:
+                    raise ValueError(f"Node {rank}: relay pull produced a different image")
+            return rank
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(missing)) as pool:
+                return list(pool.map(pull_on, missing))
+        finally:
+            relay.close()
+
     def images(self, card):
         count = len(self.transport.hosts)
         observations = [self.remote(rank, image_probe, card["image_id"]) for rank in range(count)]
+        missing = [rank for rank, value in enumerate(observations) if not value["present"]]
+        if missing and card["image_reference"] != card["image_id"]:
+            try:
+                pulled = self.relay(card, missing, observations)
+                result = {"image_id": card["image_id"], "relayed_ranks": pulled,
+                          "reused_ranks": [r for r in range(count) if r not in missing]}
+                node.save(self.directory, "images.json", result, mode=0o600)
+                return result
+            except NeedsInput:
+                raise
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                # Pulls fail when the registry needs credentials or is
+                # unreachable; nodes holding the image then serve the others.
+                progress.say(f"Registry relay unavailable ({error}); copying the image between nodes.")
+                observations = [self.remote(rank, image_probe, card["image_id"]) for rank in range(count)]
         present = [rank for rank, value in enumerate(observations) if value["present"]]
         if not present:
             if card["image_reference"] == card["image_id"]:
@@ -200,7 +263,8 @@ class Assets:
             copy(0, rank)
         return {"donor_rank": donor, "cached_ranks": cached, "copied_ranks": [r for r in range(len(rows)) if r not in cached and r != donor]}
 
-    def runner(self, directory, previous=None):
+    def runner(self, directory, previous=None, images=None):
+        """Runner whose image admission waits for ``images``, a pending fan-out."""
         from scripts.installer_runner import Runner
         assets = self
         class PreparedRunner(Runner):
@@ -215,5 +279,10 @@ class Assets:
                         if not self.models_prepared:
                             assets.models(self.lock, self, previous)
                             self.models_prepared = True
+                if argv[1] == "image" and images is not None and images.exception() is not None:
+                    # The caller re-raises the fan-out error itself, so a request
+                    # for input keeps its type.
+                    return {"returncode": 1, "stdout": "", "uncertain": False,
+                            "stderr": "Image distribution failed: " + str(images.exception())}
                 return super()._call(target, argv, timeout)
         return PreparedRunner(directory)

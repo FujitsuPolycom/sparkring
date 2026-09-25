@@ -91,10 +91,29 @@ it beneath a running container. This is an installer assertion for compatible
 dashboard consumers; boot identity and observation times remain independently
 observed. It is not attestation or serving qualification.
 
-For a private image without a reachable registry, set `image_reference` to its
-exact `image_id` and load it on one enrolled Spark. The installer finds that
-copy and streams it to missing peers without creating another export archive.
-A registry-backed image is downloaded once on Node A. Source/image/profile
+A registry-backed image reaches every Spark that lacks it through a registry
+relay on Node A. The relay serves only the pinned repository on Node A's
+loopback address. Each worker reaches it through an SSH remote forward on the
+worker's own loopback address. It downloads each layer from the registry once,
+in parallel byte ranges, verifies it against its digest, and serves the
+verified copy to every node. All nodes run an ordinary `docker pull`
+concurrently, so the Internet link carries the image once, every node unpacks
+it in parallel, and an image update transfers only its changed layers. Pulled
+images keep the reference `127.0.0.1:5255/<repository>@<digest>`. The relay
+reads anonymous pulls, as public GHCR and Docker Hub repositories allow. Node A
+needs room for the relay's layer cache, which is removed after distribution, in
+addition to its own pull. The installer distributes images while checkpoints
+download and hash, and admits an image only after its distribution completes.
+
+When the relay cannot reach the registry, or the registry requires credentials,
+a Spark that already holds the image streams it to the others with
+`docker save` and `docker load`. For a private image without a reachable
+registry, set `image_reference` to its exact `image_id` and load it on one
+enrolled Spark; the installer uses that stream, without creating another export
+archive. Streaming is slower than the relay: with Docker's overlay2 image
+store, `docker save` writes the whole image to a temporary directory before
+sending its first byte, and `docker load` unpacks only after receiving the
+whole image. Source/image/profile
 choices automatically select a separate deployment; there is no instance name
 or manual stop command to supply. Compile and B12X tuning results share one
 cache per cluster, `/srv/sparkring/<cluster>/cache`, in subdirectories keyed by
