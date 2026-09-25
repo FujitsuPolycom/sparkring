@@ -26,6 +26,13 @@ CONFIG_ROOT = ROOT / "profiles/qwen38-flash-next-tp2"
 CONFIG_NAMES = ("config.json", "sparkcache.json")
 TP4_CONFIG = ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json"
 TP4_CACHE_CONFIG = ROOT / "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
+# Serving profiles for the shared toolchain image. They reuse this module's
+# rank and transport envelope; the installer image lock supplies the image's
+# entrypoint, NCCL/CUDA paths, status plugin and runtime binding.
+TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
+    "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
+    "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4"))
+TOOLCHAIN_ENTRYPOINT = "/opt/sparkring/toolchain/toolchain.py"
 
 
 def read(path):
@@ -45,10 +52,11 @@ def publication():
 
 def canonical(profile):
     if (profile not in [read(CONFIG_ROOT / name) for name in CONFIG_NAMES]
-            and profile not in [read(TP4_CONFIG), read(TP4_CACHE_CONFIG)]):
-        raise ValueError("Select an unchanged canonical Qwen configuration")
+            and profile not in [read(TP4_CONFIG), read(TP4_CACHE_CONFIG)]
+            and profile not in [read(path) for path in TOOLCHAIN_CONFIGS]):
+        raise ValueError("Select an unchanged canonical serving configuration")
     if profile.get("schema") != "sparkring-serving-profile/v1" or profile.get("topology") not in ("direct-pair-2", "direct-cycle-4"):
-        raise ValueError("Invalid Qwen serving profile schema/topology")
+        raise ValueError("Invalid serving profile schema/topology")
     return profile
 
 
@@ -58,6 +66,10 @@ def node_count(profile):
 
 def image_policy(profile, *, local_source_extension=None):
     """Resolve one image kind for Docker, Compose and host admission."""
+    if profile.get("image_extension") == "toolchain":
+        if local_source_extension is not None:
+            raise ValueError("Shared toolchain profiles select their image through the installer image lock")
+        return {"kind": "toolchain", "source_extension": None, "local": False}
     if profile.get("image_extension") == "native-shared":
         if local_source_extension is not None:
             from runtime.common import source_candidate
@@ -89,6 +101,8 @@ def image_policy(profile, *, local_source_extension=None):
 
 def image_verification_options(profile, *, local_source_extension=None):
     policy = image_policy(profile, local_source_extension=local_source_extension)
+    if policy["kind"] == "toolchain":
+        raise ValueError("Shared toolchain images are admitted by the installer image lock")
     if policy["kind"] == "native":
         return {"native_release": policy["native_release"]}
     options = {"cache_enabled": policy["kind"] == "cache", "feature_enabled": policy["kind"] == "feature"}
@@ -196,7 +210,11 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     canonical(profile)
     policy = image_policy(profile, local_source_extension=local_source_extension)
     entrypoint = candidate.ENTRYPOINT
-    if policy["kind"] == "native":
+    if policy["kind"] == "toolchain":
+        if local_kv_cache_gib is not None or local_master_port is not None:
+            raise ValueError("Local KV and master-port alternatives require a local source extension")
+        entrypoint = TOOLCHAIN_ENTRYPOINT
+    elif policy["kind"] == "native":
         from runtime.common import native_candidate
         native_candidate.publication(policy["native_release"], image_id=image)
         entrypoint = native_candidate.ENTRYPOINT
@@ -224,7 +242,10 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         raise ValueError(f'Select an immutable {kind} image, not the base R37 image')
     if policy["kind"] == "base" and image != publication()['image_id']:
         raise ValueError('Select the exact registered R37 image ID')
-    namespace = f"qwen-flash-next-{image[7:19]}-{profile['model']['revision'][:12]}"
+    # Compile and tuning caches are keyed by model family, image and checkpoint
+    # revision, so repeated installs of the same selection reuse them.
+    family = profile.get("cache_namespace", "qwen-flash-next")
+    namespace = f"{family}-{image[7:19]}-{profile['model']['revision'][:12]}"
     env = dict(profile["environment"])
     env.update(
         VLLM_HOST_IP=host_ip,
@@ -279,8 +300,9 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         f"import urllib.request; urllib.request.urlopen('http://127.0.0.1:{port}/health', timeout=4).close()",
     )
     prefix = "qad-sparkcache-" if nodes == 4 and env.get("SPARKCACHE_ENABLED") == "1" else "qad-" if nodes == 4 else "sparkcache-" if env.get("SPARKCACHE_ENABLED") == "1" else ""
+    name = f"{family}-tp{nodes}-r{rank}" if policy["kind"] == "toolchain" else f"qwen-flash-next-{prefix}tp{nodes}-r{rank}"
     return ContainerSpec(
-        name=f"qwen-flash-next-{prefix}tp{nodes}-r{rank}",
+        name=name,
         image_id=image, entrypoint=("/opt/venv/bin/python",), command=tuple(args),
         environment=env, mounts=(Bind(str(model), "/models/target", True), Bind(str(cache), "/cache")),
         health_command=health,

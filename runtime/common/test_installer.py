@@ -11,7 +11,7 @@ import pytest
 from runtime.common import compose, glm_native_candidate, installer, process_lock, tp2
 from scripts import sparkring, sparkring_installer
 
-GLM = installer.DEFAULTS["glm53", 2]
+GLM = installer.GLM_LEGACY[2]
 QWEN = installer.DEFAULTS["qwen38", 2]
 
 
@@ -177,7 +177,7 @@ def test_shared_export_regenerates_examples_instead_of_redacting_private_files(d
 
 
 def test_managed_glm_uses_managed_native_checks_and_lifecycle():
-    lock = installer.make_lock(installer.DEFAULTS["glm53", 4], site(4), "1" * 40, "2" * 64)
+    lock = installer.make_lock(installer.GLM_LEGACY[4], site(4), "1" * 40, "2" * 64)
     phases = [entry["id"] for entry in installer.operation_plan(lock, "up")["phases"]]
     assert phases.index("managed-native-check") < phases.index("managed-start")
     assert "managed-install" in phases
@@ -189,7 +189,7 @@ def test_managed_glm_rejects_cache_paths_its_stager_cannot_honor():
     raw = site(4)
     raw["hosts"][0]["cache"] = "/srv/external-cache"
     with pytest.raises(ValueError, match="Managed GLM cache"):
-        installer.make_lock(installer.DEFAULTS["glm53", 4], raw, "1" * 40, "2" * 64)
+        installer.make_lock(installer.GLM_LEGACY[4], raw, "1" * 40, "2" * 64)
 
 
 def test_cli_offline_init_never_discovers_hosts(tmp_path, monkeypatch, capsys):
@@ -199,7 +199,8 @@ def test_cli_offline_init_never_discovers_hosts(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sparkring_installer, "discover", lambda *a: pytest.fail("No SSH"))
     monkeypatch.setattr(installer, "init", lambda *a, **k: calls.append((a, k)))
     assert sparkring.main(["init", "--model", "glm53", "--site", str(path)]) == 0
-    assert calls[0][0][1] == GLM
+    assert calls[0][0][1] == installer.DEFAULTS["glm53", 2]
+    assert calls[0][1]["image_runtime"] == installer.installer_image.default_lock()
     assert "No hosts changed" in capsys.readouterr().out
 
 

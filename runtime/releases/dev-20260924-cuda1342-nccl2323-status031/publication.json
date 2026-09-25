@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260924-cuda1342-nccl2323-status031",
+  "image_id": "sha256:3db79d3c6bea958aada8855b5bc6ef368484b14b798b04c8b507b8e140925276",
+  "image_config_id": "sha256:3db79d3c6bea958aada8855b5bc6ef368484b14b798b04c8b507b8e140925276",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:088ecd8707852c86b3f3015de7bf9471738c810fb64cc7ba1b09d0128a5cf6f1",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260924-cuda1342-nccl2323-status031",
+  "registry_manifest_digest": "sha256:088ecd8707852c86b3f3015de7bf9471738c810fb64cc7ba1b09d0128a5cf6f1",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.1",
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

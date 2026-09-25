@@ -112,6 +112,22 @@
     {
       "id": "glm53-flash-spark-tp4-dcp1-nocache",
       "path": "profiles/glm53-flash-spark-tp4-dcp1-nocache/profile.json"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2",
+      "path": "profiles/glm53-flash-nvfp4-spark-tp2/profile.json"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp4",
+      "path": "profiles/glm53-flash-nvfp4-spark-tp4/profile.json"
+    },
+    {
+      "id": "mimo-v26-flash-rl-tp2",
+      "path": "profiles/mimo-v26-flash-rl-tp2/profile.json"
+    },
+    {
+      "id": "mimo-v26-flash-rl-tp4",
+      "path": "profiles/mimo-v26-flash-rl-tp4/profile.json"
     }
   ]
 }

@@ -43,7 +43,7 @@ def admit_image(lock):
     card = lock["selection"]
     if "image_runtime" in lock:
         from runtime.common import installer_image, loader_policy
-        receipt = installer_image.admit(lock["image_runtime"], run=run)
+        receipt = installer_image.admit(lock["image_runtime"], run=run, profile=card["profile"], nodes=card["nodes"])
         loader_policy.check(card["image_id"], run=run)
         return receipt
     def native_run(argv, **kwargs):
@@ -95,6 +95,39 @@ def model_file_stats(path):
     return result
 
 
+def checksum_manifest(profile):
+    """Per-file SHA-256 pins for a profile's checkpoint revision, if recorded."""
+    own = profiles.ROOT / "profiles" / profile / "SHA256SUMS"
+    if own.is_file():
+        return own
+    if profile in compose.EXAMPLES:
+        return profiles.ROOT / "profiles/qwen38-flash-next-tp2/SHA256SUMS"
+    return None
+
+
+def pinned_differences(profile, files):
+    """Names whose recorded pin differs from, or is absent in, a measured tree."""
+    sums = checksum_manifest(profile)
+    if sums is None:
+        return []
+    differences = []
+    for line in sums.read_text().splitlines():
+        digest, name = line.split(maxsplit=1)
+        if files.get(name.lstrip("*")) != digest:
+            differences.append(name.lstrip("*"))
+    return differences
+
+
+def hub_download(lock, model):
+    """Fetch the pinned revision into ``model``; existing identical files are kept."""
+    card = lock["selection"]
+    code = "from huggingface_hub import snapshot_download; import sys; snapshot_download(repo_id=sys.argv[1],revision=sys.argv[2],local_dir='/model')"
+    run(["docker", "run", "--rm", "--pull", "never", "--runtime", "runc", "--user", f"{os.getuid()}:{os.getgid()}",
+         "--env", "HF_HOME=/tmp/huggingface", "--mount", f"type=bind,src={model},dst=/model",
+         "--entrypoint", "python3" if "image_runtime" in lock else "/opt/venv/bin/python", card["image_id"], "-c", code,
+         card["model_repository"], card["model_revision"]])
+
+
 def verify_model(lock, row, receipt_path, *, receipt=None, measured=None):
     card = lock["selection"]
     receipt = profiles.read_json(receipt_path) if receipt is None else receipt
@@ -113,8 +146,8 @@ def verify_model(lock, row, receipt_path, *, receipt=None, measured=None):
     for filename, key in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
         if receipt["files"][filename] != model[key]:
             raise ValueError("Checkpoint metadata differs from the selected profile: " + filename)
-    if card["profile"] in compose.SUPPORTED:
-        sums = profiles.ROOT / "profiles/qwen38-flash-next-tp2/SHA256SUMS"
+    sums = checksum_manifest(card["profile"])
+    if sums is not None:
         for line in sums.read_text().splitlines():
             digest, name = line.split(maxsplit=1)
             if receipt["files"].get(name.lstrip("*")) != digest:
@@ -243,6 +276,20 @@ def owned(spec, info, image):
 def require_idle():
     if run(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"]).stdout.strip():
         raise ValueError("GPU has a workload; stop only the intended workload before retrying")
+
+
+def smoke_request(card):
+    """Chat-template settings for the smoke request, owned by the serving profile.
+
+    Profiles whose template always reasons (GLM-5.3) request low effort instead
+    of disabling thinking, which would merge reasoning into the answer text.
+    """
+    source = profiles.load(card["profile"])[0]["configuration"]
+    if source["format"] == "serving-profile":
+        config = profiles.read_json(profiles.local_path(source["path"]))
+        if "smoke" in config:
+            return config["smoke"]
+    return {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def http_json(port, path, body=None):
@@ -405,18 +452,22 @@ def perform(operation, lock, number):
         if not lock["backend"].startswith("glm-"):
             cache.mkdir(parents=True, exist_ok=True)
         if not row["reuse_verified_model"]:
-            code = "from huggingface_hub import snapshot_download; import sys; snapshot_download(repo_id=sys.argv[1],revision=sys.argv[2],local_dir='/model')"
-            run(["docker", "run", "--rm", "--pull", "never", "--runtime", "runc", "--user", f"{os.getuid()}:{os.getgid()}",
-                 "--env", "HF_HOME=/tmp/huggingface", "--mount", f"type=bind,src={model},dst=/model",
-                 "--entrypoint", "python3" if "image_runtime" in lock else "/opt/venv/bin/python", card["image_id"], "-c", code,
-                 card["model_repository"], card["model_revision"]])
+            hub_download(lock, model)
         before = model_file_stats(model)
         hashes = model_files(model)
+        origin = "operator-declared-verified-copy" if row["reuse_verified_model"] else "pinned-hub-download"
+        if row["reuse_verified_model"] and pinned_differences(card["profile"], hashes):
+            # A reused copy that differs from the pinned per-file checksums is
+            # synchronized in place: the hub client re-downloads only files whose
+            # content differs from the pinned revision.
+            hub_download(lock, model)
+            before = model_file_stats(model)
+            hashes = model_files(model)
+            origin = "reused-copy-repaired-from-pinned-revision"
         if model_file_stats(model) != before:
             raise ValueError("Checkpoint changed while preparing its checksum receipt")
         receipt = {"repository": card["model_repository"], "revision": card["model_revision"],
-                   "path": row["model"], "files": hashes, "file_stats": before,
-                   "origin": "operator-declared-verified-copy" if row["reuse_verified_model"] else "pinned-hub-download"}
+                   "path": row["model"], "files": hashes, "file_stats": before, "origin": origin}
         verify_model(lock, row, model_receipt, receipt=receipt, measured=receipt["files"])
         deploy_engine.save_receipt(model_receipt, receipt)
         return {"ok": True}
@@ -536,9 +587,16 @@ def perform(operation, lock, number):
             raise ValueError("API serves a different model")
         response = http_json(port, "/v1/chat/completions", {"model": name,
                              "messages": [{"role": "user", "content": "Reply only READY"}],
-                             "max_tokens": 64, "temperature": 0,
-                             "chat_template_kwargs": {"enable_thinking": False}})
-        if not response.get("choices") or not response["choices"][0]["message"].get("content", "").strip():
+                             "max_tokens": 256, "temperature": 0, **smoke_request(card)})
+        if not response.get("choices") or not (response["choices"][0]["message"].get("content") or "").strip():
             raise ValueError("Smoke request returned no answer")
-        return {"ok": True, "model": name, "scope": "One short generation; not cache/performance qualification"}
+        result = {"ok": True, "model": name, "scope": "One short generation; not cache/performance qualification"}
+        if "image_runtime" in lock:
+            # The shared image carries the runtime-status dashboard; its absence
+            # means the status plugin or runtime binding did not load.
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/sparkring/status/view", timeout=60) as page:
+                if page.status != 200 or page.headers.get_content_type() != "text/html":
+                    raise ValueError("Runtime-status dashboard is unavailable")
+            result["dashboard"] = "/v1/sparkring/status/view"
+        return result
     raise ValueError("Unknown rank operation: " + operation)

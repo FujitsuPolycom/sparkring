@@ -1,0 +1,20 @@
+{
+  "schema": "sparkring-installer-image/v2",
+  "name": "dev-20260924-cuda1342-nccl2323-status031",
+  "profiles": [
+    "glm53-flash-nvfp4-spark-tp2",
+    "glm53-flash-nvfp4-spark-tp4",
+    "mimo-v26-flash-rl-tp2",
+    "mimo-v26-flash-rl-tp4",
+    "qwen38-flash-next-qad-tp4",
+    "qwen38-flash-next-tp2"
+  ],
+  "image_id": "sha256:3db79d3c6bea958aada8855b5bc6ef368484b14b798b04c8b507b8e140925276",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:088ecd8707852c86b3f3015de7bf9471738c810fb64cc7ba1b09d0128a5cf6f1",
+  "parent_receipt_sha256": "1354e3d0270b297dafafd39e5341210f4d0e7bd908b15b0026531c4e0350da62",
+  "toolchain_receipt_sha256": "d72be89ed1714ce3739a8236dc1c64d34e73f795b5f28997b6c7aff1a34d72f7",
+  "composition_sha256": "46ecfc99659799934e7429fb0f8c80310b93aee485337114139bb5fe1df096d4",
+  "transport_profile": "tp2-rocenante-adaptive-prepared",
+  "transport_manifest_sha256": "da93de36dd16a275e92597999e450f4e9f7616c9e604cf7230e071c22a7822ea",
+  "status_version": "0.3.1"
+}

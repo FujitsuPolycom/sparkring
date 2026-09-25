@@ -13,18 +13,26 @@ import re
 import uuid
 import zipfile
 
-from runtime.common import compose, distribution, process_lock, profiles, setup, tp2
+from runtime.common import compose, distribution, installer_image, process_lock, profiles, setup, tp2
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
+# Profiles offered by `sparkring install`, `sparkring models` and `init --model`.
+# Every one runs on the shared image selected by installer_image.DEFAULT_LOCK.
 DEFAULTS = {
-    ("glm53", 2): "glm53-flash-spark-tp2-dcp1-sparkcache",
-    ("glm53", 4): "glm53-flash-spark-tp4-dcp1-sparkcache",
+    ("glm53", 2): "glm53-flash-nvfp4-spark-tp2",
+    ("glm53", 4): "glm53-flash-nvfp4-spark-tp4",
+    ("mimo26", 2): "mimo-v26-flash-rl-tp2",
+    ("mimo26", 4): "mimo-v26-flash-rl-tp4",
     ("qwen38", 2): "qwen38-flash-next-tp2",
     ("qwen38", 4): "qwen38-flash-next-qad-tp4",
 }
+INSTALLABLE = frozenset(installer_image.SUPPORTED)
+# Profiles on their published per-release images. Saved deployments of these
+# still validate and roll back, but new installations use INSTALLABLE only.
+GLM_LEGACY = {2: "glm53-flash-spark-tp2-dcp1-sparkcache", 4: "glm53-flash-spark-tp4-dcp1-sparkcache"}
 GLM_NO_CACHE = {2: "glm53-flash-spark-tp2-dcp1-nocache", 4: "glm53-flash-spark-tp4-dcp1-nocache"}
-SUPPORTED = frozenset((*DEFAULTS.values(), *GLM_NO_CACHE.values(), *compose.SUPPORTED))
+SUPPORTED = frozenset((*INSTALLABLE, *GLM_LEGACY.values(), *GLM_NO_CACHE.values(), *compose.SUPPORTED))
 
 
 def write(path, value):
@@ -141,7 +149,7 @@ def site_document(raw, card, revision):
 
 
 def backend(card):
-    return "glm-managed" if card["profile"] in (DEFAULTS["glm53", 4], GLM_NO_CACHE[4]) else "compose"
+    return "glm-managed" if card["profile"] in (GLM_LEGACY[4], GLM_NO_CACHE[4]) else "compose"
 
 
 def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None):
@@ -218,7 +226,8 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
         specs, _ = compose.specifications(card["profile"], compose_site(lock))
         if "image_runtime" in lock:
             from runtime.common import installer_image
-            specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row), source_root=row["repository"])
+            specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row),
+                                           source_root=row["repository"], profile=card["profile"])
                      for spec, row in zip(specs, site["ranks"], strict=True)]
     else:
         specs = []

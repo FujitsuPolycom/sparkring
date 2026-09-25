@@ -162,10 +162,97 @@ def test_controller_allows_preview_while_another_deployment_is_running(tmp_path,
     installer.write(tmp_path / "cluster.json", {"plan": {"nodes": [0, 1, 2, 3]}})
     installer.write(tmp_path / "active.json", {"path": str(tmp_path / "baseline")})
     (tmp_path / "deployments" / (PROFILE + "-candidate")).mkdir(parents=True)
-    monkeypatch.setattr(controller.installer, "load", lambda _: {"site": {"ranks": []}})
+    # Every installer profile runs on the shared image, so saved deployments carry its lock.
+    monkeypatch.setattr(controller.installer, "load", lambda _: {"site": {"ranks": []}, "image_runtime": installer_image.default_lock()})
     monkeypatch.setattr(controller.installer, "apply", lambda *a, **k: {"profile": PROFILE, "hosts": [], "phases": []})
     monkeypatch.setattr(controller.installer, "status", lambda _: {"state": {"operation": "up", "complete": True}})
     assert controller.lifecycle(["up", PROFILE, "--instance", "candidate", "--plan"]) == 0
     with pytest.raises(ValueError, match="sparkring down"):
         controller.lifecycle(["up", PROFILE, "--instance", "candidate", "--execute"])
     assert installer.read(tmp_path / "active.json")["path"] == str(tmp_path / "baseline")
+
+
+SHARED = ("glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp2",
+          "mimo-v26-flash-rl-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2")
+
+
+def test_release_lock_lists_every_installer_profile_on_one_image():
+    lock = installer_image.default_lock()
+    assert lock["schema"] == installer_image.SCHEMA and tuple(lock["profiles"]) == SHARED
+    assert installer.INSTALLABLE == frozenset(SHARED)
+    assert lock["image_reference"].startswith("ghcr.io/fujitsupolycom/sparkring@sha256:")
+    for profile in SHARED:
+        assert installer_image.for_profile(profile) == lock
+        card = setup.selection(profile)
+        if not profile.startswith("qwen"):
+            # Shared-image profiles select the same image through their release.
+            assert card["image_id"] == lock["image_id"] and card["image_reference"] == lock["image_reference"]
+    with pytest.raises(ValueError, match="not admitted"):
+        installer_image.for_profile("glm53-flash-spark-tp4-dcp1-sparkcache")
+
+
+@pytest.mark.parametrize("change", ["unsorted", "unknown", "empty"])
+def test_shared_lock_profile_list_is_exact(change):
+    value = copy.deepcopy(installer_image.default_lock())
+    if change == "unsorted":
+        value["profiles"] = list(reversed(value["profiles"]))
+    elif change == "unknown":
+        value["profiles"] = sorted([*value["profiles"], "qwen38-flash-next-qad-tp4-sparkcache"])
+    else:
+        value["profiles"] = []
+    with pytest.raises(ValueError):
+        installer_image.validate(value, PROFILE)
+
+
+@pytest.mark.parametrize("profile", ["glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4", "glm53-flash-nvfp4-spark-tp2"])
+def test_glm_and_mimo_render_on_the_shared_image(monkeypatch, profile):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("Offline render contacted a host"))
+    lock_value = installer_image.default_lock()
+    nodes = 4 if profile.endswith("tp4") else 2
+    raw = ring_site() if nodes == 4 else site(2)
+    lock = installer.make_lock(profile, raw, "1" * 40, "2" * 64, image_runtime=lock_value)
+    assert lock["backend"] == "compose" and lock["selection"]["release"] == lock_value["name"]
+    specs = installer.specifications(lock)
+    assert len(specs) == nodes
+    for rank, spec in enumerate(specs):
+        assert spec.image_id == lock_value["image_id"] and spec.entrypoint == installer_image.ENTRYPOINT
+        assert spec.command[0] == "serve" and spec.command[spec.command.index("--node-rank") + 1] == str(rank)
+        assert ("--headless" in spec.command) == bool(rank)
+        assert spec.environment["VLLM_PLUGINS"].split(",")[:2] == ["b12x_loader", "sparkring_status"]
+        assert "VLLM_QWEN3_8_FLASH_NEXT_HC_TP" not in spec.environment
+        assert not any(key.startswith(("VLLM_QWEN3_8_", "QWEN_")) for key in spec.environment)
+        assert spec.environment["SPARKCACHE_ENABLED"] == "0" and "--kv-transfer-config" not in spec.command
+        assert "--enable-prefix-caching" in spec.command
+        assert spec.environment["VLLM_NCCL_SO_PATH"] == "/opt/sparkring/toolchain/nccl/lib/libnccl.so.2"
+        family = "glm53-flash-nvfp4-spark" if profile.startswith("glm") else "mimo-v26-flash-rl"
+        assert spec.environment["XDG_CACHE_HOME"] == f"/cache/{family}-{lock_value['image_id'][7:19]}-{lock['selection']['model_revision'][:12]}"
+        assert spec.mounts[-1].target == installer_image.BINDING_TARGET
+        if rank == 0:
+            assert spec.health_command[0] == "python3"
+    connection = installer.connection(lock)
+    assert connection["model"].endswith(f"-TP{nodes}")
+
+
+def test_qwen_admission_features_do_not_apply_to_other_models():
+    value, image, receipts = admission_fixture()
+    value = {**{k: v for k, v in value.items() if k != "profile"}, "schema": installer_image.SCHEMA,
+             "profiles": ["glm53-flash-nvfp4-spark-tp4", PROFILE]}
+    parent = json.loads(receipts[installer_image.PARENT_RECEIPT])
+    parent["capabilities"]["features"] = []
+    raw = json.dumps(parent).encode()
+    receipts[installer_image.PARENT_RECEIPT] = raw
+    value["parent_receipt_sha256"] = hashlib.sha256(raw).hexdigest()
+    toolchain = json.loads(receipts[installer_image.TOOLCHAIN_RECEIPT])
+    toolchain["parent_receipt_sha256"] = value["parent_receipt_sha256"]
+    raw = json.dumps(toolchain).encode()
+    receipts[installer_image.TOOLCHAIN_RECEIPT] = raw
+    value["toolchain_receipt_sha256"] = hashlib.sha256(raw).hexdigest()
+    def run(argv, **kwargs):
+        if argv[1] == "image":
+            return SimpleNamespace(stdout=json.dumps([image]))
+        if argv[-1] in receipts:
+            return SimpleNamespace(stdout=receipts[argv[-1]])
+        return SimpleNamespace(stdout="verified")
+    assert installer_image.admit(value, run=run, profile="glm53-flash-nvfp4-spark-tp4", nodes=4)["serving_qualified"] is False
+    with pytest.raises(ValueError, match="Qwen topology"):
+        installer_image.admit(value, run=run, profile=PROFILE, nodes=4)

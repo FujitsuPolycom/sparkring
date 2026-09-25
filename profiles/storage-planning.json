@@ -4,7 +4,8 @@
   "checkpoint_allowance_gib": {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": 200,
     "local-inference-lab/GLM-5.3-Flash-NVFP4": 200,
-    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": 120
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": 120,
+    "XiaomiMiMo/MiMo-V2.6-Flash-RL": 190
   },
   "image_allowance_gib": 68,
   "cache_and_jit_allowance_gib": 32

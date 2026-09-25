@@ -54,19 +54,27 @@ Windows PowerShell, use `ssh -t spark-r0 "sudo sparkring logs --follow"` (replac
 `spark-r0` with Node A's SSH address). The follower's spinner means it is waiting
 for log lines; it does not indicate model readiness.
 
-An explicit development image can accompany the existing Qwen profile:
+Every installer profile runs on one shared serving image, pinned by the
+[installer image lock](../../runtime/releases/dev-20260924-cuda1342-nccl2323-status031/installer-image.json)
+(`sparkring-installer-image/v2`). It is the ARM64
+`ghcr.io/fujitsupolycom/sparkring:dev-20260924-cuda1342-nccl2323-status031`
+image: eugr's `spark-vllm-b12x` nightly base with CUDA 13.4.2, NCCL 2.32.3 and the
+runtime-status dashboard 0.3.1. The lock lists the admitted profiles and pins the
+image configuration, registry manifest, external software receipt, toolchain
+receipt, composition, prepared transport and status package. `sparkring models`
+marks only these profiles as installer-supported:
 
-```bash
-sudo sparkring install --profile qwen38-flash-next-qad-tp4 --image-lock image-lock.json --plan
-```
+| Profile | Status |
+|---|---|
+| `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2` | Qwen3.8 Flash Next; TP4 installed and served on this image |
+| `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-spark-tp2` | GLM-5.3-Flash NVFP4-Spark with MTP3; see each profile's evidence scope |
+| `mimo-v26-flash-rl-tp4`, `mimo-v26-flash-rl-tp2` | MiMo-V2.6-Flash-RL with DFlash5; see each profile's evidence scope |
 
-The `sparkring-installer-image/v1` file pins the image configuration, optional
-registry manifest, external software receipt, toolchain receipt, composition,
-prepared transport and status package. This adapter supports the ARM64 CUDA
-13.4.2/NCCL 2.32.3 external-image composition with status 0.3.x and SparkCache off.
-It preserves the model profile and verifies the installed image contents before
-launching through the image's toolchain entrypoint. Published release selections
-stay intact; their qualification does not transfer to the development image.
+Each profile states its own evidence scope; published qualifications of other
+images do not transfer. All run with SparkCache off and vLLM's native prefix
+cache on. Profiles tied to earlier per-release images keep their guides and are
+not installed by `sparkring install`. `--image-lock FILE` replaces the shared
+lock for a development rehearsal and must list the selected profile.
 
 The external image's B12X checkpoint loader requires `io_uring`. Its container
 uses the [pinned loader policy](../../third_party/moby_seccomp/README.md), which
@@ -101,6 +109,12 @@ Setup finds neighbors over IPv6 link-local addresses, asks for SSH login and hos
 key confirmation, copies SparkRing and its Debian dependencies through the fabric,
 and shows the proposed network changes. Workers need no separate Ethernet cable
 or Internet connection. The logged-in Spark becomes Node A.
+
+Before changing anything, `sparkring install` confirms noninteractive SSH and
+`sudo` on every enrolled Spark. A missing grant returns `needs_input` with field
+`access` and, per Spark, the one-time command a person runs there; it prompts
+for that Spark's password. SparkRing never accepts passwords as options or
+settings.
 
 Workers need SSH enabled and an existing root login or a login with sudo. Ubuntu
 24.04 ARM64, NetworkManager, NVIDIA drivers, Docker and NVIDIA Container Toolkit
@@ -200,6 +214,11 @@ elsewhere. This avoids downloading weights already present on the ranks.
 imports and checkpoint copies check storage before the model switch; insufficient
 space leaves the old model running. The installer does not delete model weights
 or unrelated archives to make room.
+Profiles with a `SHA256SUMS` file pin every checkpoint file. A reused copy whose
+files differ from those pins is synchronized in place from the pinned hub
+revision, which downloads only the differing files, then verified again.
+Hub-style folders named `<owner>--<name>` are found with or without a revision
+subfolder; metadata hashes decide a match, not folder names.
 Arbitrary upstream images still need their own compatible transport adapter.
 
 ## Local build and tests

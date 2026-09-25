@@ -52,3 +52,20 @@ def test_portable_discovery_uses_head_pins_without_worker_profile_imports(tmp_pa
     assert 'from runtime' not in code and '/usr/bin/sparkring' not in code
     exec(compile(code, '<portable-asset-probe>', 'exec'), {})
     assert json.loads(capsys.readouterr().out)['model_path'] == str(tmp_path)
+
+
+def test_hub_named_folder_without_revision_is_a_candidate(tmp_path, monkeypatch):
+    import hashlib as _hashlib
+    import json as _json
+    from runtime.host import assets as _assets
+    root = tmp_path / "models" / "Example--Model"
+    root.mkdir(parents=True)
+    (root / "config.json").write_text("{}")
+    (root / "model.safetensors.index.json").write_text(_json.dumps({"weight_map": {"w": "w.safetensors"}}))
+    (root / "w.safetensors").write_text("x")
+    contract = {"config_sha256": _hashlib.sha256(b"{}").hexdigest(),
+                "index_sha256": _hashlib.sha256((root / "model.safetensors.index.json").read_bytes()).hexdigest()}
+    card = {"profile": "p", "model_repository": "Example/Model", "model_revision": "a" * 40}
+    result = _assets.discover_contract(card, contract, run=lambda *a, **k: SimpleNamespace(stdout=""),
+                                       model_roots=(str(tmp_path / "models"),))
+    assert result["model_path"] == str(root)

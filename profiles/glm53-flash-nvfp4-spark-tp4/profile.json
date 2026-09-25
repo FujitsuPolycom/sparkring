@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-nvfp4-spark-tp4",
+  "title": "GLM-5.3-Flash NVFP4-Spark on four Sparks",
+  "recommendation": "recommended",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-flash-nvfp4-spark-tp4/config.json"
+  },
+  "release": "runtime/releases/dev-20260924-cuda1342-nccl2323-status031/release.json",
+  "guide": "docs/operations/installer.md",
+  "evidence_scope": "TP4: served on the shared CUDA 13.4.2 / NCCL 2.32.3 image with MTP3 and native prefix caching; bounded API, counting, arithmetic, reasoning-split and 9K-token prompt checks passed. Full-context pressure, media and performance are not qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-flash-nvfp4-spark-tp4/config.json"
+    ]
+  }
+}

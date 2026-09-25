@@ -121,7 +121,7 @@ def test_early_error_does_not_report_a_previous_transaction(machine, monkeypatch
     assert result['message'] == 'Current discovery failed' and 'transaction' not in result
 
 
-@pytest.mark.parametrize("profile", ["qwen38-flash-next-qad-tp4", "glm53-flash-spark-tp4-dcp1-nocache"])
+@pytest.mark.parametrize("profile", ["qwen38-flash-next-qad-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4"])
 def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine, monkeypatch, capsys, profile):
     value = cluster(4)
     node.save(controller.STATE, "cluster.json", value)
@@ -140,6 +140,9 @@ def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine,
     lock = installer.load(result["deployment"])
     assert result["nodes"] == 4 and "native_mesh" not in lock["site_input"]
     assert [r["host_ip"] for r in lock["site"]["ranks"]] == [f"192.0.2.{110 + rank}" for rank in range(4)]
+    # Every installer profile runs on the shared image without an explicit lock.
+    assert lock["image_runtime"] == installer.installer_image.default_lock()
+    assert result["image_id"] == lock["image_runtime"]["image_id"] and lock["backend"] == "compose"
 
 
 def test_wrong_node_is_refused_before_transfer(tmp_path, monkeypatch):
@@ -151,7 +154,7 @@ def test_wrong_node_is_refused_before_transfer(tmp_path, monkeypatch):
         flow.require_head(cluster(2))
 
 
-def test_glm_mesh_conflict_returns_input_before_updates_or_model_stop(machine, monkeypatch, capsys):
+def test_profiles_outside_the_shared_image_are_refused_before_host_changes(machine, monkeypatch, capsys):
     events, previous, _, _ = machine
     value = cluster(4)
     node.save(controller.STATE, "cluster.json", value)
@@ -163,7 +166,26 @@ def test_glm_mesh_conflict_returns_input_before_updates_or_model_stop(machine, m
             return json.dumps({"mesh": None})
         return json.dumps({"available": False, "occupied": ["/etc/sparkring/managed-mesh"]})
     monkeypatch.setattr(flow.discovery, "ssh", remote)
-    assert sparkring.main(["install", "--profile", "glm53-flash-spark-tp4-dcp1-sparkcache", "--yes", "--json"]) == 3
+    assert sparkring.main(["install", "--profile", "glm53-flash-spark-tp4-dcp1-sparkcache", "--yes", "--json"]) == 2
     result = json.loads(capsys.readouterr().out)
-    assert result["field"] == "fabric" and result["state"] == "needs_input"
+    assert result["state"] == "failed" and "own guide" in result["message"]
     assert not events and rollout.active(controller.STATE) == previous
+
+
+def test_missing_sudo_returns_access_input_with_fix_before_any_change(monkeypatch):
+    value = cluster(2)
+    calls = []
+    worker = value["plan"]["spec"]["hosts"][1]["host"]
+    def invoke(host, argv):
+        calls.append((host, argv))
+        if host == worker:
+            raise RuntimeError(host + ": sudo: a password is required")
+        return ""
+    from runtime.host.install_errors import NeedsInput
+    with pytest.raises(NeedsInput) as caught:
+        flow.check_access(value, invoke=invoke)
+    document = caught.value.document()
+    assert document["field"] == "access" and document["state"] == "needs_input"
+    assert [row["rank"] for row in document["details"]["hosts"]] == [1]
+    assert "NOPASSWD" in document["details"]["hosts"][0]["fix"] and "visudo" in document["details"]["hosts"][0]["fix"]
+    assert all(argv == ["sudo", "-n", "true"] for _, argv in calls)

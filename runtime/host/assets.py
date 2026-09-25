@@ -28,7 +28,7 @@ def discover(profile, *, run=subprocess.run, extra_roots=()):
     return discover_contract(card, contract, run=run, extra_roots=extra_roots)
 
 
-def discover_contract(card, contract, *, run=None, extra_roots=()):
+def discover_contract(card, contract, *, run=None, extra_roots=(), model_roots=("/var/tmp/models", "/models", "/srv/models")):
     """Read cache metadata using the controller's pins, even on older workers."""
     import json
     from pathlib import Path
@@ -45,9 +45,14 @@ def discover_contract(card, contract, *, run=None, extra_roots=()):
                 if mount.get("Type") == "bind" and "model" in mount.get("Destination", "").lower():
                     candidates.add(mount["Source"])
     revision = card["model_revision"]
-    for directory in (Path("/var/tmp/models"), Path("/models"), Path("/srv/models")):
+    # Hub-style folders are named "<owner>--<name>", with or without a revision
+    # subfolder. Metadata hashes, not folder names, decide a match.
+    repository = card["model_repository"].replace("/", "--")
+    for directory in map(Path, model_roots):
         if directory.is_dir():
             candidates.update(str(p) for p in directory.glob("*/" + revision))
+            if (directory / repository).is_dir():
+                candidates.add(str(directory / repository))
     base = Path("/srv/sparkring")
     if base.is_dir():
         candidates.update(str(p) for p in base.glob("*/models/" + revision))

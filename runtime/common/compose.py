@@ -13,8 +13,16 @@ import yaml
 from runtime.common import profiles, qwen_flash_next
 
 ROOT = Path(__file__).resolve().parents[2]
-TP4_PROFILES = ("qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache")
-SUPPORTED = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", *TP4_PROFILES)
+# Published Qwen profiles with generated public Compose examples.
+EXAMPLE_TP4 = ("qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache")
+EXAMPLES = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", *EXAMPLE_TP4)
+# Serving profiles that run only on the installer's shared toolchain image.
+# Their Compose files are rendered by the installer with that image applied.
+TOOLCHAIN_TP4 = ("glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4")
+TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-rl-tp2", *TOOLCHAIN_TP4)
+# Four-node profiles require each host's prepared mesh fabric reference.
+TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4)
+SUPPORTED = (*EXAMPLES, *TOOLCHAIN)
 LABEL = "io.sparkring.deployment"
 
 
@@ -144,6 +152,11 @@ def site_settings(site, *, nodes=2):
     return site
 
 
+def installer_image_lock_path():
+    from runtime.common import installer_image
+    return installer_image.DEFAULT_LOCK.relative_to(ROOT).as_posix()
+
+
 def source_inventory(profile_id, *, local_source_extension=None):
     """Bind controller and host code plus release inputs using LF-normalized text."""
     paths = {
@@ -171,6 +184,9 @@ def source_inventory(profile_id, *, local_source_extension=None):
     if policy["kind"] == "native":
         paths.add("runtime/common/native_candidate.py")
         paths.add(f"runtime/releases/{policy['native_release']}/publication.json")
+    if policy["kind"] == "toolchain":
+        paths.add("runtime/common/installer_image.py")
+        paths.add(installer_image_lock_path())
     if profile_id in TP4_PROFILES:
         from runtime.common import qwen_mesh
         paths.add("runtime/common/feature_candidate.py")

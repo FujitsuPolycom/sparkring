@@ -281,3 +281,22 @@ def test_status_does_not_write_workspace(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="missing image"):
         host.perform("status", lock, 0)
     assert not (tmp_path / "installer").exists()
+
+
+def test_smoke_request_settings_come_from_the_serving_profile():
+    from scripts import installer_host
+    assert installer_host.smoke_request({"profile": "glm53-flash-nvfp4-spark-tp4"}) == {
+        "chat_template_kwargs": {"reasoning_effort": "low"}}
+    assert installer_host.smoke_request({"profile": "qwen38-flash-next-qad-tp4"}) == {
+        "chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_pinned_differences_name_stale_or_missing_files():
+    from scripts import installer_host
+    manifest = installer_host.checksum_manifest("mimo-v26-flash-rl-tp4")
+    pins = dict(reversed(line.split(maxsplit=1)) for line in manifest.read_text().splitlines())
+    assert installer_host.pinned_differences("mimo-v26-flash-rl-tp4", pins) == []
+    stale = {**pins, "dflash/config.json": "0" * 64}
+    stale.pop("tokenizer.json")
+    assert installer_host.pinned_differences("mimo-v26-flash-rl-tp4", stale) == ["dflash/config.json", "tokenizer.json"]
+    assert installer_host.checksum_manifest("qwen38-flash-next-qad-tp4").name == "SHA256SUMS"

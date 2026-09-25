@@ -13,7 +13,7 @@ def catalog():
         rows.append({"profile": ident, "title": definition["title"],
                      "nodes": resolved.get("serving", {}).get("node_count"),
                      "model": resolved.get("model", {}), "guide": definition["guide"],
-                     "automated": ident in installer.SUPPORTED})
+                     "automated": ident in installer.INSTALLABLE})
     return rows
 
 

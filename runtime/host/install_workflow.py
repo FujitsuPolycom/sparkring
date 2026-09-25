@@ -24,6 +24,28 @@ def require_head(cluster=None):
     return identity
 
 
+def check_access(cluster, *, invoke=None):
+    """Confirm noninteractive SSH and sudo on every enrolled Spark before any change.
+
+    Passwords never pass through SparkRing. A missing grant stops with the exact
+    one-time command a person runs on that Spark (it prompts for their password).
+    """
+    invoke = invoke or discovery.ssh
+    missing = []
+    for rank, row in enumerate(cluster["plan"]["spec"]["hosts"]):
+        try:
+            invoke(row["host"], ["sudo", "-n", "true"])
+        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+            user = row["host"].split("@", 1)[0] if "@" in row["host"] else "USER"
+            missing.append({"rank": rank, "host": row["host"], "error": str(error).splitlines()[-1][:200],
+                            "fix": f"ssh -t {row['host']} \"echo '{user} ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/{user} "
+                                   f"&& sudo chmod 440 /etc/sudoers.d/{user} && sudo visudo -cf /etc/sudoers.d/{user}\""})
+    if missing:
+        raise NeedsInput("Some Sparks need noninteractive SSH and sudo for the installer. Run each listed fix once "
+                         "(it asks for that Spark's password), then repeat the install. Nothing has been changed.",
+                         field="access", details={"hosts": missing})
+
+
 def refresh_cluster(cluster):
     """Re-observe cables without reconfiguring the adopted fabric."""
     hosts = cluster["plan"]["spec"]["hosts"]
@@ -53,7 +75,7 @@ def choose_profile(value, count, interactive):
 
 def select_deployment(args, cluster, state_root):
     profile = choose_profile(args.profile, len(cluster["plan"]["nodes"]), not args.json and sys.stdin.isatty())
-    image = installer_image.validate(installer.read(args.image_lock), profile) if args.image_lock else None
+    image = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
     request = {"profile": profile, "image_runtime": image, "source": distribution.identity(installer.ROOT),
                "model_path": args.model_path, "cache_path": args.cache_path,
                "nodes": cluster["plan"]["spec"]["hosts"], "api_address": cluster.get("api_address")}
@@ -128,7 +150,9 @@ def execute(args):
             options = (["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
             if single_uplink.main(options):
                 raise ValueError("Cluster setup did not complete")
-        cluster = refresh_cluster(installer.read(state_root / "cluster.json"))
+        cluster = installer.read(state_root / "cluster.json")
+        check_access(cluster)
+        cluster = refresh_cluster(cluster)
         directory, lock = select_deployment(args, cluster, state_root)
         check_managed_namespace(lock)
         previous = rollout.active(state_root)
@@ -175,7 +199,7 @@ def execute(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
     parser.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
-    parser.add_argument("--image-lock", type=Path, help="optional pinned development image")
+    parser.add_argument("--image-lock", type=Path, help="development image lock replacing the shared installer image")
     parser.add_argument("--model-path", help="existing complete checkpoint path on each Spark")
     parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")
     parser.add_argument("--env", type=Path, help="optional literal setup preferences, read on first installation")

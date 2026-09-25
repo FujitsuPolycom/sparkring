@@ -239,11 +239,11 @@ def lifecycle(argv):
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     image_runtime = None
-    if args.image_lock:
-        if args.operation != "up" or not args.profile:
-            raise ValueError("--image-lock requires up with an exact profile")
+    if args.image_lock and (args.operation != "up" or not args.profile):
+        raise ValueError("--image-lock requires up with an exact profile")
+    if args.operation == "up" and args.profile:
         from runtime.common import installer_image
-        image_runtime = installer_image.validate(installer.read(args.image_lock), args.profile)
+        image_runtime = installer_image.for_profile(args.profile, installer.read(args.image_lock) if args.image_lock else None)
     if args.operation == "status":
         result = node.snapshot() if args.refresh else node.status()
         if (STATE / "cluster.json").exists():

@@ -21,8 +21,8 @@ def main(argv=None):
     initialize = commands.add_parser("init", help="choose a profile and save a locked installation")
     initialize.add_argument("--site", type=Path, help="use a saved site without SSH discovery")
     initialize.add_argument("--host", action="append", help="SSH targets in rank order; read-only discovery")
-    initialize.add_argument("--model", choices=("glm53", "qwen38"))
-    initialize.add_argument("--profile", choices=sorted(installer.SUPPORTED))
+    initialize.add_argument("--model", choices=("glm53", "mimo26", "qwen38"))
+    initialize.add_argument("--profile", choices=sorted(installer.INSTALLABLE))
     initialize.add_argument("--variant", choices=("nvfp4-spark", "nvfp4-qad"))
     initialize.add_argument("--image-lock", type=Path, help="source-recorded external toolchain image selection")
     initialize.add_argument("--name")
@@ -69,12 +69,13 @@ def main(argv=None):
             model = args.model
             if not args.profile and not model:
                 if not sys.stdin.isatty():
-                    raise ValueError("Choose --model glm53/qwen38 or --profile")
-                model = input("Model (glm53 or qwen38): ").strip()
+                    raise ValueError("Choose --model glm53/mimo26/qwen38 or --profile")
+                model = input("Model (glm53, mimo26 or qwen38): ").strip()
             profile = args.profile or installer.DEFAULTS[model, len(raw["hosts"])]
             output = args.output or Path(".sparkring/deployment")
-            installer.init(output, profile, raw, variant=args.variant,
-                           image_runtime=installer.read(args.image_lock) if args.image_lock else None)
+            from runtime.common import installer_image
+            image_runtime = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+            installer.init(output, profile, raw, variant=args.variant, image_runtime=image_runtime)
             print(f"Saved {profile} for {len(raw['hosts'])} ranks in {output}")
             print("No hosts changed. Next: sparkring up --deployment " + str(output))
             return 0

@@ -8,7 +8,8 @@
     "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp": "DeepSeek-V4-Flash-Vision-Exp",
     "deepseek-ai/DeepSeek-V4.1-Flash": "DeepSeek-V4.1-Flash",
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "Qwen3.8-27B",
-    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "Qwen3.8-Flash-Next"
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "Qwen3.8-Flash-Next",
+    "XiaomiMiMo/MiMo-V2.6-Flash-RL": "MiMo-V2.6-Flash-RL"
   },
   "quant_labels": {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": "NVFP4-Spark",
@@ -18,7 +19,8 @@
     "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp": "Stock",
     "deepseek-ai/DeepSeek-V4.1-Flash": "FP8/MXFP4",
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "EXL3 K5/K6",
-    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "NVFP4"
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "NVFP4",
+    "XiaomiMiMo/MiMo-V2.6-Flash-RL": "MXFP8/BF16"
   },
   "quant_variants": {
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc3218833a38b475b719f34aa571666f4a03e": "NVFP4 QAD"
