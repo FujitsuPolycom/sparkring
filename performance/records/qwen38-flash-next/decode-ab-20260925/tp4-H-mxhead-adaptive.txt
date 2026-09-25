@@ -1,0 +1,16 @@
+== tp4-H-mxhead-adaptive checks
+model: Qwen3.8-Flash-Next-NVFP4-QAD-TP4 max_model_len: 262144
+[count] 70 tok in 0.6s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.1s: '391'
+[code] 91 tok in 0.7s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 14.4s = 70.9 tok/s (end-to-end, single stream)
+== tp4-H-mxhead-adaptive decode by prompt type (512 tokens, 2 runs)
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+prose  end-to-end  75.22 tok/s | after first token  76.11 tok/s | acceptance 0.52 | per position [0.68, 0.37, 0.0, 1.0, 1.0, 0.0] | tokens per step 2.04
+code   end-to-end 117.32 tok/s | after first token 119.85 tok/s | acceptance 0.82 | per position [0.93, 0.81, 0.65, 1.0, 1.0, 0.91] | tokens per step 3.39
+json   end-to-end 129.17 tok/s | after first token 132.63 tok/s | acceptance 0.92 | per position [0.98, 0.92, 0.86, 1.0, 1.0, 1.0] | tokens per step 3.76
+== tp4-H-mxhead-adaptive prefill and greedy decode
+[tp4-H-mxhead-adaptive] prefill 4068 tokens: 0.88s = 4641 tok/s (first run 0.95s)
+[tp4-H-mxhead-adaptive] prefill 16151 tokens: 3.62s = 4464 tok/s (first run 3.60s)
+[tp4-H-mxhead-adaptive] prefill 64781 tokens: 15.37s = 4215 tok/s (first run 15.36s)
+[tp4-H-mxhead-adaptive] decode (greedy, 512 tokens x3): [76.98, 68.72, 73.94] tok/s, median 73.94

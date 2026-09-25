@@ -1,0 +1,16 @@
+== tp4-installer-mxhead checks
+model: Qwen3.8-Flash-Next-NVFP4-QAD-TP4 max_model_len: 262144
+[count] 70 tok in 0.6s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.1s: '391'
+[code] 91 tok in 0.7s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 13.5s = 76.1 tok/s (end-to-end, single stream)
+== tp4-installer-mxhead decode by prompt type (512 tokens, 2 runs)
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+prose  end-to-end  80.69 tok/s | after first token  81.83 tok/s | acceptance 0.43 | per position [0.7, 0.39, 0.19, 1.0, 1.0, 1.0] | tokens per step 2.28
+code   end-to-end 114.96 tok/s | after first token 117.61 tok/s | acceptance 0.78 | per position [0.91, 0.78, 0.65, 1.0, 1.0, 1.0] | tokens per step 3.33
+json   end-to-end 125.53 tok/s | after first token 128.55 tok/s | acceptance 0.90 | per position [0.97, 0.91, 0.83, 1.0, 1.0, 1.0] | tokens per step 3.70
+== tp4-installer-mxhead prefill and greedy decode
+[tp4-installer-mxhead] prefill 4064 tokens: 0.90s = 4532 tok/s (first run 0.94s)
+[tp4-installer-mxhead] prefill 16151 tokens: 3.65s = 4429 tok/s (first run 3.62s)
+[tp4-installer-mxhead] prefill 64781 tokens: 15.81s = 4099 tok/s (first run 15.77s)
+[tp4-installer-mxhead] decode (greedy, 512 tokens x3): [74.9, 72.42, 75.94] tok/s, median 74.9

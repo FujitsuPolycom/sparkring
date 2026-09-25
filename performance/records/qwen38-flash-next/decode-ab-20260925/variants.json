@@ -56,5 +56,12 @@
   "env": {
    "VLLM_MXFP8_LM_HEAD": "1"
   }
+ },
+ "mxhead-adaptive": {
+  "name": "mxhead-adaptive",
+  "spec": {
+   "adaptive_speculative_tokens_window": 32,
+   "adaptive_speculative_tokens_initial": 3
+  }
  }
 }
