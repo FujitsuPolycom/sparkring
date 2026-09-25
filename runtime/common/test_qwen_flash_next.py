@@ -41,9 +41,11 @@ def test_qwen_model_and_native_prefix_only():
     assert not any(value.startswith("VLLM_PLE_TABLE_MEMORY=") for value in command)
     assert "VLLM_PLE_CPU_OFFLOAD=0" in command
     assert "VLLM_MXFP8_LM_HEAD=0" in command
+    # The qad-step5500-ple1000 MTP experts are MXFP8, which the B12X MoE
+    # backend does not implement; the draft uses the MXFP8-capable backend.
     assert (
         json.loads(command[command.index("--speculative-config") + 1])["moe_backend"]
-        == "b12x"
+        == "humming"
     )
     assert command[command.index("--decode-context-parallel-size") + 1] == "1"
 

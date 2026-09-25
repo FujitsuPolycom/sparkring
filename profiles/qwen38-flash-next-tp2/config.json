@@ -110,7 +110,7 @@
     "qwen3_xml",
     "--enable-auto-tool-choice",
     "--speculative-config",
-    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\"}",
+    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"humming\",\"attention_backend\":\"B12X\"}",
     "--compilation-config",
     "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}",
     "--media-io-kwargs",

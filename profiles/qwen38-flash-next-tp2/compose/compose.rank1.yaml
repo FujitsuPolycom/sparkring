@@ -79,7 +79,7 @@ services:
     - qwen3_xml
     - --enable-auto-tool-choice
     - --speculative-config
-    - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X"}'
+    - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"humming","attention_backend":"B12X"}'
     - --compilation-config
     - '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]}'
     - --media-io-kwargs
@@ -146,7 +146,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-60215d26cf5e
     labels:
-      io.sparkring.deployment: 5d927b5b15dc01318022238702b25d38a7e66307b856d896b129fe4cde243794
+      io.sparkring.deployment: 104a528c2938b36fd05bcf1a11ea16b1e1b64d6be066a701087bc0223829a149
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host
