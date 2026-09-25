@@ -141,7 +141,10 @@ def main(argv=None):
                 link_local=lambda name: controller.confirm(
                     "Add IPv6 link-local addressing to fabric connection " + name
                     + " for discovery? Its IPv4 addresses and MTU are kept.", args.yes))
-        if sys.stdin.isatty() and not env.env and "--ssh-user" not in (argv or []):
+        if args.ssh_port == 2222:
+            # The worker preparation service admits only root with Node A's key.
+            args.ssh_user = "root"
+        elif sys.stdin.isatty() and not env.env and "--ssh-user" not in (argv or []):
             args.ssh_user = input("Worker SSH username [root]: ").strip() or "root"
         try:
             found = bootstrap.discover(transport, user=args.ssh_user, port=args.ssh_port,
