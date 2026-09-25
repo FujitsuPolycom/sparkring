@@ -302,7 +302,23 @@ def _collect_local(
         return value["active_state"] == "active"
 
     nm_active, networkd_active = active(nm_service), active(networkd_service)
-    if nm_active is True and networkd_active is True:
+    # systemd-networkd can run for unrelated links. It makes the backend
+    # ambiguous only when it manages an RDMA fabric interface.
+    networkd_managed = []
+    if networkd_active is True:
+        fabric = {
+            nic.name
+            for device in file("/sys/class/infiniband").glob("*")
+            for nic in (device / "device/net").glob("*")
+        }
+        listing, _ = command(["networkctl", "list", "--no-legend", "--no-pager"])
+        for line in (listing or "").splitlines():
+            fields = line.split()
+            if len(fields) >= 5 and fields[1] in fabric and fields[4] != "unmanaged":
+                networkd_managed.append(fields[1])
+        if listing is None:
+            networkd_managed = sorted(fabric)
+    if nm_active is True and networkd_active is True and networkd_managed:
         backend = "ambiguous"
     elif nm_active is True:
         backend = "NetworkManager"

@@ -559,3 +559,23 @@ def test_protected_backup_directory_uses_verified_read_only_sudo(tmp_path, monke
         assert result['error'] is None and result['type'] == 'directory' and result['nonempty'] is True
     else:
         assert result['error'] is not None
+
+
+@pytest.mark.parametrize("setup, backend", [("unmanaged", "NetworkManager"), ("configured", "ambiguous")])
+def test_networkd_only_matters_when_it_manages_a_fabric_interface(tmp_path, setup, backend):
+    fixture = LinuxFixture(tmp_path)
+    netdevs = []
+    for item in fixture.inventory["rdma"]:
+        (tmp_path / "sys/class/infiniband" / item["device"] / "device/net" / item["netdev"]).mkdir(parents=True)
+        netdevs.append(item["netdev"])
+    original = fixture.run
+
+    def run(argv, **kwargs):
+        if tuple(argv[:3]) == ("systemctl", "show", "systemd-networkd.service"):
+            return subprocess.CompletedProcess(argv, 0, "LoadState=loaded\nActiveState=active\nSubState=running", "")
+        if argv[:2] == ["networkctl", "list"]:
+            rows = [f"{n + 3} {name} ether routable {setup}" for n, name in enumerate(netdevs)]
+            return subprocess.CompletedProcess(argv, 0, "\n".join(["1 lo loopback carrier unmanaged", *rows]), "")
+        return original(argv, **kwargs)
+    fixture.run = run
+    assert fixture.collect()["network"]["backend"] == backend
