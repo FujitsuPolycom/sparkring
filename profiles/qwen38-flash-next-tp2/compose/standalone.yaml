@@ -104,7 +104,7 @@ x-environment: &environment
   VLLM_HOST_IP: ${SPARKRING_HOST_IP:?Set this hosts primary fabric IPv4}
   VLLM_LM_HEAD_A16: '1'
   VLLM_MTP_NVFP4_LM_HEAD: '1'
-  VLLM_MXFP8_LM_HEAD: '0'
+  VLLM_MXFP8_LM_HEAD: '1'
   VLLM_PLE_CPU_OFFLOAD: '0'
   VLLM_PLUGINS: b12x_loader
   VLLM_QWEN3_8_FLASH_NEXT_HC_TP: '0'

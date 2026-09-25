@@ -1,0 +1,16 @@
+== tp2-installer-main-s3 checks
+model: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 max_model_len: 262144
+[count] 70 tok in 0.8s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.2s: '391'
+[code] 91 tok in 1.0s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 18.7s = 54.8 tok/s (end-to-end, single stream)
+== tp2-installer-main-s3 decode by prompt type (512 tokens, 2 runs)
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  54.19 tok/s | after first token  54.75 tok/s | acceptance 0.38 | per position [0.66, 0.33, 0.15, 1.0, 1.0, 1.0] | tokens per step 2.14
+code   end-to-end  81.47 tok/s | after first token  82.97 tok/s | acceptance 0.76 | per position [0.9, 0.76, 0.63, 1.0, 1.0, 1.0] | tokens per step 3.29
+json   end-to-end  93.19 tok/s | after first token  95.33 tok/s | acceptance 0.93 | per position [0.98, 0.93, 0.87, 1.0, 1.0, 1.0] | tokens per step 3.78
+== tp2-installer-main-s3 prefill and greedy decode
+[tp2-installer-main-s3] prefill 4065 tokens: 1.02s = 4004 tok/s (first run 0.98s)
+[tp2-installer-main-s3] prefill 16150 tokens: 3.80s = 4252 tok/s (first run 3.85s)
+[tp2-installer-main-s3] prefill 64781 tokens: 16.62s = 3897 tok/s (first run 16.57s)
+[tp2-installer-main-s3] decode (greedy, 512 tokens x3): [56.87, 55.38, 58.01] tok/s, median 56.87

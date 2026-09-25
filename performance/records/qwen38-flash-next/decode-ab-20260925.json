@@ -7,13 +7,16 @@
     "main": "629bc3218833a38b475b719f34aa571666f4a03e"
   },
   "programs": {
-    "qwab.py": "b41b49a9ad87b96fb71745ca3d781c19f97a57435fec7c513d2aded55e2e51f9",
+    "qwab.py": "fa5541ac1151a7d7b9ff1cac2f31f73eff491b2df125d9b3dbd1c7673be082e8",
     "measure.sh": "f9c1d6b81eb893b40d73cf66acadf2cba627603fae48d31bb124a726b4b0068f",
     "decode_probe.py": "d31435f2ebe73798b19393aafe4744ce9904d9dab9ac3ca892ec8e129280c8f5",
     "bench.py": "f9570c7ad0d15ee1aaf14bd6bd7cf315c18bc84db7cf3f1d3e4a857a507b5dae",
     "verify_api.py": "3201b23552f0dea29af66c78b45bf065dddbac6019086e173d592efe8dda90a7",
     "prefill_curve.py": "b7fe9d7dbe4f24deb26ae6ed36cba67bbdde5c9ebd874d69f3d2bdbae7711e88",
-    "trace_breakdown.py": "80a8dcfd2c97176df290dfe65ba26bcf92931bc000c53fd25e592cc32ba3f74d"
+    "trace_breakdown.py": "80a8dcfd2c97176df290dfe65ba26bcf92931bc000c53fd25e592cc32ba3f74d",
+    "logprob_probe.py": "12b1d3d61db937eb576658affe85f877c444056e7daa55f8e820a1687e299937",
+    "bench_skinny.py": "0a9bb16847100efb57e78e1ea16023e7e9e84354d7d02c9b9757480e86f484a3",
+    "skinny_overlay.py": "1b27ac05689ebea4d9c0e81abbd6e86362adc95b8125b9853fb65946004f1bce"
   },
   "runs": [
     {
@@ -387,6 +390,402 @@
         58.23,
         62.0
       ]
+    },
+    {
+      "cluster": "tp2",
+      "variant": "installer-main-s3",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 54.19,
+          "after_first_token_tokens_per_second": 54.75,
+          "acceptance": 0.38,
+          "acceptance_by_position": [
+            0.66,
+            0.33,
+            0.15
+          ],
+          "tokens_per_step": 2.14
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 81.47,
+          "after_first_token_tokens_per_second": 82.97,
+          "acceptance": 0.76,
+          "acceptance_by_position": [
+            0.9,
+            0.76,
+            0.63
+          ],
+          "tokens_per_step": 3.29
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 93.19,
+          "after_first_token_tokens_per_second": 95.33,
+          "acceptance": 0.93,
+          "acceptance_by_position": [
+            0.98,
+            0.93,
+            0.87
+          ],
+          "tokens_per_step": 3.78
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4065,
+          "seconds": 1.015,
+          "tok_s": 4004
+        },
+        "16384": {
+          "tokens": 16150,
+          "seconds": 3.799,
+          "tok_s": 4252
+        },
+        "65536": {
+          "tokens": 64781,
+          "seconds": 16.624,
+          "tok_s": 3897
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        56.87,
+        55.38,
+        58.01
+      ]
+    },
+    {
+      "cluster": "tp4",
+      "variant": "installer-main-s3",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 76.02,
+          "after_first_token_tokens_per_second": 76.97,
+          "acceptance": 0.42,
+          "acceptance_by_position": [
+            0.69,
+            0.38,
+            0.18
+          ],
+          "tokens_per_step": 2.25
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 112.47,
+          "after_first_token_tokens_per_second": 114.82,
+          "acceptance": 0.78,
+          "acceptance_by_position": [
+            0.9,
+            0.78,
+            0.65
+          ],
+          "tokens_per_step": 3.33
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 125.17,
+          "after_first_token_tokens_per_second": 128.21,
+          "acceptance": 0.91,
+          "acceptance_by_position": [
+            0.97,
+            0.91,
+            0.84
+          ],
+          "tokens_per_step": 3.72
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4065,
+          "seconds": 0.941,
+          "tok_s": 4319
+        },
+        "16384": {
+          "tokens": 16150,
+          "seconds": 3.587,
+          "tok_s": 4503
+        },
+        "65536": {
+          "tokens": 64781,
+          "seconds": 15.402,
+          "tok_s": 4206
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        71.97,
+        71.28,
+        73.28
+      ]
+    },
+    {
+      "cluster": "tp2",
+      "variant": "main-s3-skinny",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 55.2,
+          "after_first_token_tokens_per_second": 55.79,
+          "acceptance": 0.39,
+          "acceptance_by_position": [
+            0.67,
+            0.33,
+            0.16
+          ],
+          "tokens_per_step": 2.16
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 84.12,
+          "after_first_token_tokens_per_second": 85.54,
+          "acceptance": 0.78,
+          "acceptance_by_position": [
+            0.91,
+            0.79,
+            0.65
+          ],
+          "tokens_per_step": 3.35
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 92.74,
+          "after_first_token_tokens_per_second": 94.8,
+          "acceptance": 0.91,
+          "acceptance_by_position": [
+            0.97,
+            0.91,
+            0.84
+          ],
+          "tokens_per_step": 3.72
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4066,
+          "seconds": 0.97,
+          "tok_s": 4193
+        },
+        "16384": {
+          "tokens": 16149,
+          "seconds": 3.811,
+          "tok_s": 4238
+        },
+        "65536": {
+          "tokens": 64778,
+          "seconds": 16.466,
+          "tok_s": 3934
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        55.99,
+        57.03,
+        54.37
+      ]
+    },
+    {
+      "cluster": "tp4",
+      "variant": "main-s3-skinny",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 76.7,
+          "after_first_token_tokens_per_second": 77.67,
+          "acceptance": 0.38,
+          "acceptance_by_position": [
+            0.65,
+            0.33,
+            0.16
+          ],
+          "tokens_per_step": 2.15
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 116.97,
+          "after_first_token_tokens_per_second": 119.67,
+          "acceptance": 0.8,
+          "acceptance_by_position": [
+            0.92,
+            0.8,
+            0.67
+          ],
+          "tokens_per_step": 3.39
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 128.21,
+          "after_first_token_tokens_per_second": 131.04,
+          "acceptance": 0.91,
+          "acceptance_by_position": [
+            0.97,
+            0.91,
+            0.84
+          ],
+          "tokens_per_step": 3.72
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4070,
+          "seconds": 0.921,
+          "tok_s": 4418
+        },
+        "16384": {
+          "tokens": 16152,
+          "seconds": 3.568,
+          "tok_s": 4527
+        },
+        "65536": {
+          "tokens": 64780,
+          "seconds": 15.292,
+          "tok_s": 4236
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        80.91,
+        78.23,
+        76.6
+      ]
+    },
+    {
+      "cluster": "tp2",
+      "variant": "main-s3-mxfp8head",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 60.56,
+          "after_first_token_tokens_per_second": 61.16,
+          "acceptance": 0.43,
+          "acceptance_by_position": [
+            0.72,
+            0.38,
+            0.2
+          ],
+          "tokens_per_step": 2.3
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 86.94,
+          "after_first_token_tokens_per_second": 88.62,
+          "acceptance": 0.8,
+          "acceptance_by_position": [
+            0.93,
+            0.78,
+            0.69
+          ],
+          "tokens_per_step": 3.39
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 96.39,
+          "after_first_token_tokens_per_second": 98.6,
+          "acceptance": 0.92,
+          "acceptance_by_position": [
+            0.97,
+            0.93,
+            0.87
+          ],
+          "tokens_per_step": 3.77
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4065,
+          "seconds": 1.014,
+          "tok_s": 4009
+        },
+        "16384": {
+          "tokens": 16153,
+          "seconds": 3.777,
+          "tok_s": 4277
+        },
+        "65536": {
+          "tokens": 64780,
+          "seconds": 16.443,
+          "tok_s": 3940
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        57.51,
+        56.34,
+        59.53
+      ]
+    },
+    {
+      "cluster": "tp4",
+      "variant": "main-s3-mxfp8head",
+      "checks_passed": true,
+      "decode": {
+        "prose": {
+          "end_to_end_tokens_per_second": 80.13,
+          "after_first_token_tokens_per_second": 81.14,
+          "acceptance": 0.42,
+          "acceptance_by_position": [
+            0.72,
+            0.37,
+            0.18
+          ],
+          "tokens_per_step": 2.27
+        },
+        "code": {
+          "end_to_end_tokens_per_second": 117.09,
+          "after_first_token_tokens_per_second": 119.75,
+          "acceptance": 0.8,
+          "acceptance_by_position": [
+            0.91,
+            0.79,
+            0.69
+          ],
+          "tokens_per_step": 3.4
+        },
+        "json": {
+          "end_to_end_tokens_per_second": 127.62,
+          "after_first_token_tokens_per_second": 130.7,
+          "acceptance": 0.9,
+          "acceptance_by_position": [
+            0.96,
+            0.9,
+            0.84
+          ],
+          "tokens_per_step": 3.71
+        }
+      },
+      "prefill": {
+        "4096": {
+          "tokens": 4068,
+          "seconds": 0.877,
+          "tok_s": 4637
+        },
+        "16384": {
+          "tokens": 16150,
+          "seconds": 3.579,
+          "tok_s": 4513
+        },
+        "65536": {
+          "tokens": 64780,
+          "seconds": 15.312,
+          "tok_s": 4231
+        }
+      },
+      "greedy_story_decode_tokens_per_second": [
+        75.64,
+        77.04,
+        75.93
+      ]
     }
-  ]
+  ],
+  "lm_head_agreement": {
+    "method": "prompt_logprobs of one fixed 1,151-token text (prose, Python, JSON), per cluster, compared by logprob_probe.py",
+    "tp2_mxfp8_vs_bf16_head": {
+      "tokens": 1151,
+      "mean_abs_logprob_difference": 0.0332,
+      "p99": 0.6223,
+      "max": 1.8018,
+      "rank1_agreement": 0.9852
+    },
+    "tp4_mxfp8_vs_bf16_head": {
+      "tokens": 1151,
+      "mean_abs_logprob_difference": 0.0371,
+      "p99": 0.7707,
+      "max": 1.8477,
+      "rank1_agreement": 0.9783
+    },
+    "reference_bf16_tp2_vs_tp4": {
+      "tokens": 1151,
+      "mean_abs_logprob_difference": 0.0354,
+      "p99": 0.6082,
+      "max": 2.1933,
+      "rank1_agreement": 0.9791
+    }
+  }
 }

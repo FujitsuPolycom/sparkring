@@ -97,7 +97,11 @@ Both Qwen profiles use one prefill recipe on TP2 and TP4: each rank owns a
 share of the token rows in the hyper-connection (HC) prefill path
 (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`), which excludes HC projection sharding,
 and the image's `qwen-collectives` collective policy and `qwen4-prefill` hooks
-are active. Before any serving container is created, admission reads the image's
+are active. Both quantize the target LM head to MXFP8 at load
+(`VLLM_MXFP8_LM_HEAD=1`), which shortens each decode step; the
+[decode A/B](../../performance/records/qwen38-flash-next/decode-ab-20260925.md)
+records its speed and token-probability agreement with the BF16 head. Before
+any serving container is created, admission reads the image's
 external software receipt and refuses a profile whose HC mode is not listed for
 its node count or whose features the image does not provide.
 

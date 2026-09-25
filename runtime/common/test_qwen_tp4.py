@@ -149,8 +149,9 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     # image's transport identity and cache settings differ.
     assert native_image == adapter.read(INSTALLER)["image_reference"]
     assert cache_image == adapter.read(PUBLICATION)["image_reference"]
+    # The installer profile also quantizes its target LM head to MXFP8.
     image_bound = {"SPARKCACHE_ENABLED", "SPARKRING_TRANSPORT_PROFILE", "SPARKRING_TRANSPORT_MANIFEST_SHA256",
-                   "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR"}
+                   "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR", "VLLM_MXFP8_LM_HEAD"}
     comparable = lambda environment: {key: value for key, value in environment.items()
                                       if key not in image_bound and not value.startswith("/cache/qwen-flash-next-")}
     assert comparable(spec.environment) == comparable(base.environment)

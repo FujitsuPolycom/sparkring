@@ -46,7 +46,9 @@ def test_qwen_model_and_native_prefix_only():
     assert "VLLM_USE_V2_MODEL_RUNNER=1" in command
     assert not any(value.startswith("VLLM_PLE_TABLE_MEMORY=") for value in command)
     assert "VLLM_PLE_CPU_OFFLOAD=0" in command
-    assert "VLLM_MXFP8_LM_HEAD=0" in command
+    # The installer profile quantizes the target LM head to MXFP8; see
+    # performance/records/qwen38-flash-next/decode-ab-20260925.md.
+    assert "VLLM_MXFP8_LM_HEAD=1" in command
     # Revision 629bc3218833 stores NVFP4 MTP routed experts, which B12X runs.
     assert (
         json.loads(command[command.index("--speculative-config") + 1])["moe_backend"]

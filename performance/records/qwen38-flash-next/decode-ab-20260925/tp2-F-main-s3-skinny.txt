@@ -1,0 +1,16 @@
+== tp2-F-main-s3-skinny checks
+model: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 max_model_len: 262144
+[count] 70 tok in 0.8s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.2s: '391'
+[code] 91 tok in 1.0s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 18.9s = 54.3 tok/s (end-to-end, single stream)
+== tp2-F-main-s3-skinny decode by prompt type (512 tokens, 2 runs)
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  55.20 tok/s | after first token  55.79 tok/s | acceptance 0.39 | per position [0.67, 0.33, 0.16, 1.0, 1.0, 1.0] | tokens per step 2.16
+code   end-to-end  84.12 tok/s | after first token  85.54 tok/s | acceptance 0.78 | per position [0.91, 0.79, 0.65, 1.0, 1.0, 1.0] | tokens per step 3.35
+json   end-to-end  92.74 tok/s | after first token  94.80 tok/s | acceptance 0.91 | per position [0.97, 0.91, 0.84, 1.0, 1.0, 1.0] | tokens per step 3.72
+== tp2-F-main-s3-skinny prefill and greedy decode
+[tp2-F-main-s3-skinny] prefill 4066 tokens: 0.97s = 4193 tok/s (first run 0.97s)
+[tp2-F-main-s3-skinny] prefill 16149 tokens: 3.81s = 4238 tok/s (first run 3.83s)
+[tp2-F-main-s3-skinny] prefill 64778 tokens: 16.47s = 3934 tok/s (first run 16.46s)
+[tp2-F-main-s3-skinny] decode (greedy, 512 tokens x3): [55.99, 57.03, 54.37] tok/s, median 55.99

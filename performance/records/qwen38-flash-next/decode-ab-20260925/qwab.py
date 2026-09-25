@@ -77,6 +77,7 @@ def derive(text, variant, rank):
     command += variant.get("add_args", [])
     service["command"] = command
     environment.update(variant.get("env", {}))
+    service["volumes"] += [{"type": "bind", "read_only": True, **volume} for volume in variant.get("volumes", [])]
     return yaml.safe_dump(document, sort_keys=False)
 
 

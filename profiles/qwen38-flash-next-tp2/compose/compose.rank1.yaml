@@ -128,7 +128,7 @@ services:
       VLLM_HOST_IP: 192.0.2.11
       VLLM_LM_HEAD_A16: '1'
       VLLM_MTP_NVFP4_LM_HEAD: '1'
-      VLLM_MXFP8_LM_HEAD: '0'
+      VLLM_MXFP8_LM_HEAD: '1'
       VLLM_PLE_CPU_OFFLOAD: '0'
       VLLM_PLUGINS: b12x_loader
       VLLM_QWEN3_8_FLASH_NEXT_HC_TP: '0'
@@ -145,7 +145,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-5ce6ce267d80-629bc3218833
     labels:
-      io.sparkring.deployment: 424ab742699db2c7406957eee53983f554a338047c63a7490bd26663f7bdadb9
+      io.sparkring.deployment: f267eaf07131e270848d9a80bd8e97047f2827b9ab4ddeee4ae0d710761787ce
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

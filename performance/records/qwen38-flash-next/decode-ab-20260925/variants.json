@@ -25,5 +25,36 @@
    "moe_backend": "b12x",
    "num_speculative_tokens": 4
   }
+ },
+ "main-s3-skinny": {
+  "name": "main-s3-skinny",
+  "volumes": [
+   {
+    "source": "/var/tmp/qwab/skinny-overlay/low_latency_gemm.py",
+    "target": "/usr/local/lib/python3.12/dist-packages/vllm/models/qwen4_exp/nvidia/low_latency_gemm.py"
+   },
+   {
+    "source": "/var/tmp/qwab/skinny-overlay/model.py",
+    "target": "/usr/local/lib/python3.12/dist-packages/vllm/models/qwen4_exp/nvidia/model.py"
+   },
+   {
+    "source": "/var/tmp/qwab/skinny-overlay/mtp.py",
+    "target": "/usr/local/lib/python3.12/dist-packages/vllm/models/qwen4_exp/nvidia/mtp.py"
+   },
+   {
+    "source": "/var/tmp/qwab/skinny-overlay/external-base-installed.json",
+    "target": "/opt/sparkring/receipts/external-base-installed.json"
+   },
+   {
+    "source": "/var/tmp/qwab/skinny-overlay/toolchain-installed.json",
+    "target": "/opt/sparkring/toolchain/installed.json"
+   }
+  ]
+ },
+ "main-s3-mxfp8head": {
+  "name": "main-s3-mxfp8head",
+  "env": {
+   "VLLM_MXFP8_LM_HEAD": "1"
+  }
  }
 }
