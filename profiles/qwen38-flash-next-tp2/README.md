@@ -1,7 +1,8 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
 [Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)
-(QAD checkpoint step 5500, revision `60215d26cf5e`) on two DGX Sparks, with MTP
+([Local Inference Lab](https://huggingface.co/local-inference-lab)'s QAD
+checkpoint step 5500, revision `60215d26cf5e`) on two DGX Sparks, with MTP
 speculative decoding and 262K context. Node A serves the API on port 8000 as
 `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, with no API key. Status: Development.
 

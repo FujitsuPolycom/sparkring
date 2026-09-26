@@ -25,7 +25,7 @@ names the parent image and the added layer.
 
 | Component | Purpose |
 |---|---|
-| `eugr/spark-vllm-b12x:nightly-20260924` base | vLLM with B12X kernels and loaders for GB10 |
+| `eugr/spark-vllm-b12x:nightly-20260924` base | vLLM with [Local Inference Lab's B12X](https://github.com/local-inference-lab/b12x) kernels and loaders for GB10 |
 | CUDA 13.4.2 and NCCL 2.32.3 | CUDA runtime and the NCCL library the installer selects |
 | Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives whose forwarded-path send window bounds traffic relayed by a ring node |
 | Runtime-status dashboard 0.3.1 | `/v1/sparkring/status/view` on the model API port |

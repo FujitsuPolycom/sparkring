@@ -67,14 +67,31 @@ has its own setup guide.
 
 ## Acknowledgements
 
-Thanks to the contributors to vLLM, NVIDIA NCCL, B12X and ExLlamaV3, whose
-serving, communication and kernel components are used by SparkRing profiles.
+SparkRing is built on the work of [Local Inference Lab](https://local-inference-lab.ai/),
+an independent nonprofit that develops open-source software and research for
+running AI inference on personal hardware
+([GitHub](https://github.com/local-inference-lab),
+[Hugging Face](https://huggingface.co/local-inference-lab),
+[Discord](https://discord.com/invite/localinferencelab)). SparkRing uses:
 
-The RoCEnante integration adapts communication work by Luke (`lukealonso`)
-and other [Local Inference Lab](https://github.com/local-inference-lab/) contributors.
-See the [RoCEnante provenance](third_party/b12x_roce/README.md#attribution-and-design-origins)
-and [third-party notices](THIRD_PARTY_NOTICES.md) for source origins, adaptations
-and licensing.
+- [B12X](https://github.com/local-inference-lab/b12x), the kernel library for
+  NVIDIA Blackwell whose kernels and loader run the Qwen, GLM and MiMo
+  installer profiles on GB10.
+- The [Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)
+  and [GLM-5.3-Flash NVFP4 Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)
+  checkpoints that the Qwen and GLM profiles serve.
+- RoCEnante, the RDMA transport for decode collectives, which originates with
+  Luke (`lukealonso`) and other Local Inference Lab contributors; SparkRing
+  adapts it ([provenance](third_party/b12x_roce/README.md#attribution-and-design-origins)).
+- [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench),
+  which measured the throughput matrices on the profile pages.
+- Their [vLLM fork](https://github.com/local-inference-lab/vllm), which several
+  catalog profiles build on.
+
+Thanks also to Eugene Rakhmatulin for the `eugr/spark-vllm-b12x` base of the
+installer image, and to the contributors to vLLM, NVIDIA NCCL and ExLlamaV3.
+The [third-party notices](THIRD_PARTY_NOTICES.md) give source origins,
+adaptations and licenses.
 
 ## License
 

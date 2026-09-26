@@ -33,7 +33,9 @@ two ends of a cable.
 ![One serving container per Spark: vLLM with B12X kernels, SparkRing's status plugin and Qwen hooks, RoCEnante and NCCL; the Qwen3.8-Flash-Next and GLM-5.3-Flash model structures](assets/sparkring-serving-stack.svg)
 
 Every Spark runs one container of the same image, one tensor-parallel rank.
-Each profile's `profiles/<id>/config.json` selects the model, the vLLM
+Its kernels come from [Local Inference Lab's B12X](https://github.com/local-inference-lab/b12x),
+and its decode collectives use RoCEnante, which originates with Local Inference
+Lab contributors. Each profile's `profiles/<id>/config.json` selects the model, the vLLM
 arguments and the transport limits; the
 [install reference](../operations/install-reference.md) explains them.
 

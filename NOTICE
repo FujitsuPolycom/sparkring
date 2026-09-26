@@ -8,5 +8,11 @@ This product includes portions of NVIDIA NCCL
 reserved.), licensed under the Apache License, Version 2.0, contained in the
 patch files under spark_transport/nccl/.
 
+This product includes software derived from Local Inference Lab
+(https://local-inference-lab.ai/) projects: the RoCEnante transport, and
+patches to its B12X and vLLM repositories
+(https://github.com/local-inference-lab), licensed under the Apache License,
+Version 2.0.
+
 For all third-party attributions and related obligations, see
 THIRD_PARTY_NOTICES.md.
