@@ -8,8 +8,9 @@ ring. Profiles use vLLM and SGLang.
 
 ## Quick start
 
-Cable the Sparks, check the [prerequisites](docs/operations/install.md), then
-run one command on the Spark connected to your network.
+Check the [requirements](docs/operations/install.md#requirements), cable the
+Sparks as shown there, then run one command on the Spark connected to your
+network.
 
 Two Sparks:
 
@@ -28,7 +29,8 @@ copy already on the Sparks), and prints the API address when the model is ready.
 Each model also serves a live [status dashboard](docs/operations/dashboard.md).
 On four Sparks it also applies the ring's
 [ConnectX driver setting](docs/operations/install.md#four-spark-rings) and
-repeats it at every boot. To run with Docker
+repeats it at every boot. Run the same command again to update SparkRing and
+the model; files already on the Sparks are reused. To run with Docker
 Compose instead, see [Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
 
 To install GLM or MiMo instead, use a `--profile` value from [Profiles](#profiles).
