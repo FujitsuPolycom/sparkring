@@ -1,39 +1,16 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-Status: the installer profile `qwen38-flash-next-tp2` ([config.json](config.json))
-is **implemented**. Install it with
-`sudo sparkring install --profile qwen38-flash-next-tp2`;
-[Install SparkRing](../../docs/operations/install.md) covers the package, host
-requirements, downloads and network exposure. The profile serves revision
-`629bc3218833a38b475b719f34aa571666f4a03e` (Hugging Face branch
-`qad-step-4000`) of `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` on the
-installer image `dev-20260925-qwendecode-cuda1342-nccl2323-status031`
-(`ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f`).
-On one pair, `sparkring install` from source revision `e75451a671a3`
-installed it with these settings, including probabilistic drafting, and its
-counting, arithmetic and code checks passed; the
-[installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
-gives that installation's decode and prefill rates and the measurements behind
-each setting. Its serving is not qualified.
+[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) with MTP
+speculative decoding and 262K context, served on port 8000 as
+`Qwen3.8-Flash-Next-NVFP4-QAD-TP2`. On the Spark connected to your network:
 
-The SparkCache profile `qwen38-flash-next-tp2-sparkcache`
-([sparkcache.json](sparkcache.json)) is **qualified for bounded correctness and
-restart checks** on the same checkpoint revision and the
-[SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md)
-image. The manual commands in this guide create its containers. The manual
-launcher, `runtime/common/qwen_flash_next.py`, plans but refuses to check or
-create containers for the installer profile, whose image is admitted only
-through the installer image lock; install that profile with
-`sparkring install`. Complete the
-[host preparation](../../docs/operations/host-preparation.md) and
-[pair network procedure](../../docs/operations/pair-network.md) before the
-manual commands; the launcher does not configure networking. Prepared hosts
-verify and reuse their existing network instead of running fresh-network
-configuration.
+```bash
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+```
 
-Both profiles use aligned checkpoints, managed B12X loading, Qwen checkpoint
-coalescing, compact MTP and projection overlap. Request-boundary caching and
-request-salt isolation are not enabled by either selection.
+To run it with Docker Compose instead, see [Compose](compose/README.md).
+[Install SparkRing](../../docs/operations/install.md) covers requirements,
+logs and recovery.
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
@@ -49,7 +26,17 @@ request-salt isolation are not enabled by either selection.
 | Caching | vLLM native prefix cache; SparkCache off | 4 GiB disk per rank, reclaim toward 3 GiB; about 1.25 GiB data buffers per rank |
 | API | Port 8000, model `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, no API key | Same |
 
-## Image and checkpoint
+## SparkCache profile: manual setup
+
+`qwen38-flash-next-tp2-sparkcache` ([sparkcache.json](sparkcache.json)) adds a
+disk KV cache and runs on the
+[shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md) image.
+The commands below create its containers. Complete the
+[host preparation](../../docs/operations/host-preparation.md) and
+[pair network procedure](../../docs/operations/pair-network.md) first; these
+commands do not configure networking.
+
+### Image and checkpoint
 
 Use the same SparkRing checkout on both nodes. Set these variables in Bash;
 `MODEL_DIR` must contain the verified checkpoint, and `CACHE_DIR` must be a
@@ -101,7 +88,7 @@ Preserve the original containers and weights for rollback. QAD uses a distinct
 served name, checkpoint identity and persistent-cache namespace. Do not carry
 the plain-NVFP4 checkpoint digests into the QAD cache configuration.
 
-## Plan and create
+### Plan and create
 
 Replace the example addresses/interface on **each node** with the prepared
 high-speed fabric IPs and Linux interface, so worker/control traffic also uses
@@ -132,7 +119,7 @@ of cage p0. Confirm the cable/device mapping. The bootstrap interface is a
 separate input, not an RDMA device list. `plan` is offline; `create` verifies
 the image and refuses existing names. Neither action stops a running workload.
 
-## Controlled startup
+### Controlled startup
 
 During an authorized test window, stop competing GPU workloads explicitly and
 preserve them for rollback. Start rank1, then rank0, on their respective hosts:
@@ -175,7 +162,7 @@ Monitor host `MemAvailable`; Docker's 108 GiB memory and 112 GiB combined
 memory/swap limits do not cover every GB10 GPU allocation. This profile installs
 no persistent memory guard, boot service or network changes. Containers do not autostart.
 
-### Restart existing containers
+#### Restart existing containers
 
 Do not rerun `create`. From the same checkout in a fresh Bash shell on each rank,
 restore the locally generated inputs, then stop the container. Inspect the file
@@ -187,7 +174,7 @@ source .sparkring/qwen-pair-session.env
 docker stop --timeout 30 "${CONTAINER_PREFIX}-r${RANK}"
 ```
 
-### Cache-disabled alternative
+#### Cache-disabled alternative
 
 The cache-disabled configuration of this checkpoint is the installer profile
 `qwen38-flash-next-tp2`; install it with
@@ -195,7 +182,7 @@ The cache-disabled configuration of this checkpoint is the installer profile
 does not create its containers. Changing a variable does not change an existing
 container; use the documented stop/create sequence for a new selection.
 
-## Evidence and remaining checks
+### Evidence and remaining checks
 
 Configuration is owned by [sparkcache.json](sparkcache.json) and
 [config.json](config.json), not this table. Capacity overrides are intentionally

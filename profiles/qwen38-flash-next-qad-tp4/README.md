@@ -1,35 +1,16 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on four Sparks
 
-Status: the installer profile `qwen38-flash-next-qad-tp4` ([config.json](config.json))
-is **implemented**. Install it with
-`sudo sparkring install --profile qwen38-flash-next-qad-tp4` after the
-four-Spark driver step in
-[Install SparkRing](../../docs/operations/install.md#four-spark-rings), which
-needs console or independent management access to every Spark and has no
-hardware evidence. The profile
-serves revision `629bc3218833a38b475b719f34aa571666f4a03e` (Hugging Face
-branch `qad-step-4000`) of `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` on the
-installer image `dev-20260925-qwendecode-cuda1342-nccl2323-status031`
-(`ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f`).
-On one four-Spark ring whose ConnectX functions already had the required
-hairpin setting, `sparkring install` from source revision `f0ce5bea531f`
-installed it with these settings, including probabilistic drafting, and its
-counting, arithmetic and code checks passed; the
-[installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
-gives that installation's decode and prefill rates and the measurements behind
-each setting. Its serving is not qualified.
+[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) with MTP
+speculative decoding and 262K context, served on port 8015 as
+`Qwen3.8-Flash-Next-NVFP4-QAD-TP4`. On the Spark connected to your network:
 
-The [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md),
-`qwen38-flash-next-qad-tp4-sparkcache`, is **qualified for bounded correctness
-and restart checks** on the same checkpoint revision and the
-[SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md)
-image. The [qualification record](../../runtime/releases/shared-2026.09.3/qualification.json)
-records bounded short/16K text, finite-score, synthetic media,
-concurrent-request and retained-restart checks, plus physical cache restore.
-The [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
-owns case counts and evidence hashes. These checks do not qualify full-context,
-C16-pressure stability or performance, and they do not transfer to the
-installer profile, whose image and decode settings differ.
+```bash
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
+```
+
+Four-Spark rings need a [driver step](../../docs/operations/install.md#four-spark-rings)
+first and after a reboot. [Install SparkRing](../../docs/operations/install.md)
+covers requirements, logs and recovery.
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
@@ -49,7 +30,14 @@ The [configuration](config.json) owns these settings. GLM-specific mHC/KDA
 switches and SIRCL serving switches are disabled for this Qwen profile.
 TP2 uses the [two-Spark quickstart](../qwen38-flash-next-tp2/README.md).
 
-## Prepare image, model and fabric
+## SparkCache profile: manual setup
+
+The [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md),
+`qwen38-flash-next-qad-tp4-sparkcache`, adds a disk KV cache and runs on the
+[shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md) image;
+the commands below deploy it with `sparkring compose`.
+
+### Prepare image, model and fabric
 
 The manual commands below render and start the SparkCache profile. Install the
 installer profile with `sparkring install`, which also writes each rank's
@@ -101,7 +89,7 @@ and its private mesh site. The [fabric guide](../../spark_transport/fabric/cx7_h
 owns device order, routing and hardware forwarding. The model launcher does not
 install those resources. Do not restart fabric controllers under live collectives.
 
-## Render, check and start
+### Render, check and start
 
 Follow the [Compose prerequisites](../../docs/operations/compose.md#prepare-the-hosts).
 Create dedicated cache/deployment directories on every host. Copy and edit the
@@ -149,7 +137,7 @@ dispatcher is reachable, not that it ran. An eligible real TP4 prefill logs
 `QWEN_HC_PREFILL mode=shard` on every rank. A short request or mixed
 prefill/decode batch may not exercise that path.
 
-## Local source-image testing
+### Local source-image testing
 
 The retained [R37 source-image workflow](../../runtime/images/compositions/lil-r37-qwen-prefill/README.md)
 is an explicit developer alternative, not this shared release. It applies to
@@ -160,7 +148,7 @@ Its adapter selects R37 hooks, transport and cache contracts with a separate
 namespace. It does not inherit this release's qualification. Do not use local
 overrides to substitute an arbitrary image into the published quickstart.
 
-## Stop and rollback
+### Stop and rollback
 
 ```bash
 python3 scripts/sparkring.py compose stop --deployment "$DEPLOYMENT"
