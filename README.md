@@ -15,6 +15,8 @@ profiles support vLLM and SGLang.
    profile for your model and device count. See also
    [SparkRing commands](docs/operations/commands.md).
 
+Prefer Docker Compose? [Compose files for every profile](docs/operations/compose-files.md).
+
 Two Sparks:
 
 ```bash
