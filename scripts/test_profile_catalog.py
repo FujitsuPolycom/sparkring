@@ -48,7 +48,7 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
     for row, nodes in zip(cache_rows, (4, 2)):
         assert f'[Optional](../profiles/glm53-flash-spark-tp{nodes}-dcp1-sparkcache/README.md)' in row
     installer_rows = [row for row in glm_rows if '](../docs/operations/install.md)' in row]
-    assert len(installer_rows) == 2 and all(row.endswith('| Experimental |') for row in installer_rows)
+    assert len(installer_rows) == 2 and all(row.endswith('| Development |') for row in installer_rows)
     assert '1,048,576' not in summary
     for profile_id in catalog():
         profile, _ = load(profile_id)

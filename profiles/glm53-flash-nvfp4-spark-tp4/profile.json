@@ -3,14 +3,14 @@
   "id": "glm53-flash-nvfp4-spark-tp4",
   "title": "GLM-5.3-Flash NVFP4-Spark on four Sparks",
   "recommendation": "recommended",
-  "status": "research-only",
+  "status": "implemented",
   "configuration": {
     "format": "serving-profile",
     "path": "profiles/glm53-flash-nvfp4-spark-tp4/config.json"
   },
   "release": "runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/release.json",
   "guide": "docs/operations/install.md",
-  "evidence_scope": "MTP3 with native prefix caching on installer image dev-20260925-cuda1342-nccl2323-status031: one installation through `sparkring install` passed counting, arithmetic and code checks; single-run first-start timings are in performance/records/images/dev-20260925-installer-profiles-20260925.md. Bounded API, reasoning-split and 9K-token prompt checks passed on the dev-20260924 image. Full-context pressure, media and serving qualification are not established. The selected image dev-20260925-qwendecode-cuda1342-nccl2323-status031 differs from that image only in Qwen4Exp model files and one registered vLLM setting, VLLM_QWEN4_EXP_MXFP8_HC, which defaults to off.",
+  "evidence_scope": "MTP3 with native prefix caching on installer image dev-20260925-qwendecode-cuda1342-nccl2323-status031: one installation through `sparkring install` on a four-Spark ring, adopting the checkpoint copies on the Sparks, passed counting, arithmetic and code checks (performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md); single-run timing; not serving-qualified.",
   "overrides": [],
   "launcher": {
     "kind": "python",
