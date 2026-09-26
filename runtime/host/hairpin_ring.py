@@ -497,13 +497,24 @@ def m19(row):
 
 
 def mesh_hint(rows):
-    """Text to append to a native-mesh refusal while Sparks lack the setting; empty otherwise."""
+    """Text to append to a native-mesh refusal while Sparks lack the setting or run an older SparkRing.
+
+    An older SparkRing reports only a running mesh, so a mesh that stopped
+    when a cabled Spark restarted looks absent until ``sparkring hairpin``,
+    which updates outdated Sparks, has run. Empty otherwise.
+    """
     ranks = [row["rank"] for row in rows if row["state"] == RESTART]
-    if not ranks:
-        return ""
-    return (f" The ConnectX hairpin setting is not in effect on {ranks_text(ranks)}, so "
-            f"{_verb(ranks, 'its mesh service', 'their mesh services')} cannot start; run sudo sparkring hairpin "
-            "on Node A first.")
+    if ranks:
+        return (f" The ConnectX hairpin setting is not in effect on {ranks_text(ranks)}, so "
+                f"{_verb(ranks, 'its mesh service', 'their mesh services')} cannot start; run sudo sparkring hairpin "
+                "on Node A first.")
+    outdated = [row["rank"] for row in rows if row["state"] == UPDATE]
+    if outdated:
+        text = ranks_text(outdated)
+        return (f" {text[0].upper() + text[1:]} {_verb(outdated, 'runs', 'run')} an older SparkRing, which does not "
+                "report a stopped mesh service; run sudo sparkring hairpin on Node A to update "
+                f"{_verb(outdated, 'it', 'them')}, then repeat the installation.")
+    return ""
 
 
 def rank_rows(rows, plan=None):
