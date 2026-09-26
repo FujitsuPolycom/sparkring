@@ -1,0 +1,21 @@
+== tp4 greedy draft, temperature 1.0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+prose  end-to-end  76.23 tok/s | after first token  77.14 tok/s | acceptance 0.33 | per position [0.6, 0.28, 0.11, 1.0, 1.0, 1.0] | tokens per step 1.99
+code   end-to-end 123.29 tok/s | after first token 126.14 tok/s | acceptance 0.77 | per position [0.91, 0.76, 0.62, 1.0, 1.0, 1.0] | tokens per step 3.30
+json   end-to-end 129.47 tok/s | after first token 132.56 tok/s | acceptance 0.82 | per position [0.91, 0.85, 0.71, 1.0, 1.0, 1.0] | tokens per step 3.47
+(EngineCore pid=159) INFO 09-25 23:25:24 [kv_cache_utils.py:2850] GPU KV cache size: 3,131,214 tokens, Maximum concurrency for 262,144 tokens per request: 11.94x
+== tp4 probabilistic draft, temperature 1.0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+prose  end-to-end  82.27 tok/s | after first token  83.36 tok/s | acceptance 0.38 | per position [0.66, 0.34, 0.15, 1.0, 1.0, 1.0] | tokens per step 2.14
+code   end-to-end 123.51 tok/s | after first token 126.52 tok/s | acceptance 0.77 | per position [0.88, 0.77, 0.65, 1.0, 1.0, 1.0] | tokens per step 3.31
+json   end-to-end 135.89 tok/s | after first token 139.36 tok/s | acceptance 0.88 | per position [0.95, 0.88, 0.81, 1.0, 1.0, 1.0] | tokens per step 3.64
+== tp4 probabilistic draft, temperature 0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+prose  end-to-end  81.49 tok/s | after first token  82.61 tok/s | acceptance 0.37 | per position [0.65, 0.33, 0.14, 1.0, 1.0, 1.0] | tokens per step 2.12
+code   end-to-end 125.05 tok/s | after first token 128.17 tok/s | acceptance 0.78 | per position [0.9, 0.78, 0.67, 1.0, 1.0, 1.0] | tokens per step 3.34
+json   end-to-end 140.03 tok/s | after first token 143.57 tok/s | acceptance 0.91 | per position [0.96, 0.92, 0.85, 1.0, 1.0, 1.0] | tokens per step 3.74
+[math] 4 tok in 0.1s: '391'
+== tp4-probdraft prefill and greedy decode
+[tp4-probdraft] prefill 4066 tokens: 0.86s = 4710 tok/s (first run 0.87s)
+[tp4-probdraft] prefill 16152 tokens: 3.28s = 4918 tok/s (first run 3.24s)
+[tp4-probdraft] prefill 64779 tokens: 13.84s = 4682 tok/s (first run 13.98s)

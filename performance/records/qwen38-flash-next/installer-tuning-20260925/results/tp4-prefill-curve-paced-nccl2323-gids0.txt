@@ -1,0 +1,47 @@
+Node 3: Load 1 missing of 47 image layers through Node A's registry relay
+Node 1: Load 1 missing of 47 image layers through Node A's registry relay
+Node 2: Load 1 missing of 47 image layers through Node A's registry relay
+Done: Node 3: Load 1 missing of 47 image layers through Node A's registry relay (0.9s)
+Done: Node 1: Load 1 missing of 47 image layers through Node A's registry relay (0.8s)
+Done: Node 2: Load 1 missing of 47 image layers through Node A's registry relay (1.4s)
+"start-api:root@node-a": "succeeded",
+        "ready:root@node-a": "succeeded",
+        "ready:root@rank1": "succeeded",
+        "ready:root@rank2": "succeeded",
+        "ready:root@rank3": "succeeded",
+        "smoke:root@node-a": "succeeded"
+      },
+      "problems": {},
+      "verified": true
+    }
+  },
+  "log": "/var/log/sparkring/install.log"
+}
+  3906 tokens: best  1.121s (  3484 tok/s) runs [1.121]
+  7800 tokens: best  1.705s (  4574 tok/s) runs [1.705]
+ 15582 tokens: best  3.370s (  4624 tok/s) runs [3.37]
+ 31143 tokens: best  6.961s (  4474 tok/s) runs [6.961]
+ 62273 tokens: best 14.743s (  4224 tok/s) runs [14.743]
+  3907 tokens: best  0.888s (  4402 tok/s) runs [0.888]
+  7796 tokens: best  1.669s (  4672 tok/s) runs [1.669]
+ 15581 tokens: best  3.344s (  4659 tok/s) runs [3.344]
+ 31143 tokens: best  6.944s (  4485 tok/s) runs [6.944]
+ 62274 tokens: best 14.768s (  4217 tok/s) runs [14.768]
+== tp4-paced-installer checks
+model: Qwen3.8-Flash-Next-NVFP4-QAD-TP4 max_model_len: 262144
+[count] 70 tok in 0.6s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.1s: '391'
+[code] 91 tok in 0.7s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 13.7s = 74.8 tok/s (end-to-end, single stream)
+== tp4-paced-installer decode by prompt type (512 tokens, 2 runs)
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+prose  end-to-end  78.35 tok/s | after first token  79.35 tok/s | acceptance 0.38 | per position [0.68, 0.33, 0.14, 1.0, 1.0, 1.0] | tokens per step 2.15
+code   end-to-end 116.89 tok/s | after first token 119.09 tok/s | acceptance 0.76 | per position [0.88, 0.77, 0.63, 1.0, 1.0, 1.0] | tokens per step 3.28
+json   end-to-end 130.59 tok/s | after first token 133.71 tok/s | acceptance 0.90 | per position [0.97, 0.9, 0.82, 1.0, 1.0, 1.0] | tokens per step 3.69
+== tp4-paced-installer prefill and greedy decode
+[tp4-paced-installer] prefill 4069 tokens: 0.93s = 4382 tok/s (first run 0.91s)
+[tp4-paced-installer] prefill 16149 tokens: 3.62s = 4460 tok/s (first run 3.59s)
+[tp4-paced-installer] prefill 64782 tokens: 15.36s = 4216 tok/s (first run 15.34s)
+[tp4-paced-installer] decode (greedy, 512 tokens x3): [80.01, 77.7, 83.5] tok/s, median 80.01
+
+[exited with code 0]

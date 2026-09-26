@@ -1,0 +1,59 @@
+== tp2-mtp3 checks
+[count] 70 tok in 0.8s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.1s: '391'
+[code] 91 tok in 0.9s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 16.8s = 61.1 tok/s (end-to-end, single stream)
+== tp2-mtp3 temperature 1.0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  59.13 tok/s | after first token  59.84 tok/s | acceptance 0.37 | per position [0.65, 0.32, 0.15, 1.0, 1.0, 1.0] | tokens per step 2.12
+code   end-to-end  93.82 tok/s | after first token  95.54 tok/s | acceptance 0.81 | per position [0.93, 0.82, 0.68, 1.0, 1.0, 1.0] | tokens per step 3.43
+json   end-to-end 101.39 tok/s | after first token 103.99 tok/s | acceptance 0.89 | per position [0.95, 0.9, 0.83, 1.0, 1.0, 1.0] | tokens per step 3.68
+== tp2-mtp3 temperature 0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  62.12 tok/s | after first token  62.88 tok/s | acceptance 0.40 | per position [0.67, 0.37, 0.17, 1.0, 1.0, 1.0] | tokens per step 2.21
+code   end-to-end  94.47 tok/s | after first token  96.55 tok/s | acceptance 0.82 | per position [0.93, 0.82, 0.7, 1.0, 1.0, 1.0] | tokens per step 3.45
+json   end-to-end 102.18 tok/s | after first token 104.73 tok/s | acceptance 0.92 | per position [0.98, 0.94, 0.83, 1.0, 1.0, 1.0] | tokens per step 3.75
+tp2-mtp3 sweep {"concurrency": 1, "steady_step_ms": 35.82, "whole_run_step_ms": 36.35, "aggregate_tok_s": 93.5, "tokens_per_request_step": 3.394}
+tp2-mtp3 sweep {"concurrency": 4, "steady_step_ms": 66.37, "whole_run_step_ms": 65.97, "aggregate_tok_s": 191.2, "tokens_per_request_step": 3.156}
+tp2-mtp3 sweep {"concurrency": 8, "steady_step_ms": 89.05, "whole_run_step_ms": 92.07, "aggregate_tok_s": 267.1, "tokens_per_request_step": 3.078}
+tp2-mtp3 sweep {"concurrency": 16, "steady_step_ms": 135.23, "whole_run_step_ms": 130.25, "aggregate_tok_s": 386.1, "tokens_per_request_step": 3.143}
+== tp2-mtp4 checks
+[count] 70 tok in 0.7s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.2s: '391'
+[code] 91 tok in 0.9s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 18.0s = 56.9 tok/s (end-to-end, single stream)
+== tp2-mtp4 temperature 1.0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  52.63 tok/s | after first token  53.11 tok/s | acceptance 0.28 | per position [0.63, 0.31, 0.13, 0.05, 1.0, 1.0, 1.0, 1.0] | tokens per step 2.13
+code   end-to-end  92.98 tok/s | after first token  94.89 tok/s | acceptance 0.71 | per position [0.91, 0.77, 0.64, 0.52, 1.0, 1.0, 1.0, 1.0] | tokens per step 3.83
+json   end-to-end 105.91 tok/s | after first token 108.41 tok/s | acceptance 0.83 | per position [0.94, 0.88, 0.8, 0.71, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.33
+== tp2-mtp4 temperature 0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  57.61 tok/s | after first token  58.17 tok/s | acceptance 0.32 | per position [0.69, 0.36, 0.17, 0.07, 1.0, 1.0, 1.0, 1.0] | tokens per step 2.28
+code   end-to-end  95.94 tok/s | after first token  97.90 tok/s | acceptance 0.73 | per position [0.95, 0.78, 0.65, 0.54, 1.0, 1.0, 1.0, 1.0] | tokens per step 3.93
+json   end-to-end 108.55 tok/s | after first token 111.27 tok/s | acceptance 0.86 | per position [0.97, 0.92, 0.82, 0.72, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.43
+tp2-mtp4 sweep {"concurrency": 1, "steady_step_ms": 39.95, "whole_run_step_ms": 40.29, "aggregate_tok_s": 87.0, "tokens_per_request_step": 3.507}
+tp2-mtp4 sweep {"concurrency": 4, "steady_step_ms": 69.79, "whole_run_step_ms": 71.24, "aggregate_tok_s": 218.1, "tokens_per_request_step": 3.891}
+tp2-mtp4 sweep {"concurrency": 8, "steady_step_ms": 101.38, "whole_run_step_ms": 102.05, "aggregate_tok_s": 299.3, "tokens_per_request_step": 3.826}
+tp2-mtp4 sweep {"concurrency": 16, "steady_step_ms": 150.91, "whole_run_step_ms": 146.48, "aggregate_tok_s": 372.7, "tokens_per_request_step": 3.415}
+== tp2-mtp5 checks
+[count] 70 tok in 0.6s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.2s: '391'
+[code] 91 tok in 0.8s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 18.7s = 54.9 tok/s (end-to-end, single stream)
+== tp2-mtp5 temperature 1.0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  51.58 tok/s | after first token  51.97 tok/s | acceptance 0.25 | per position [0.66, 0.33, 0.17, 0.08, 0.03, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 2.26
+code   end-to-end  89.92 tok/s | after first token  91.59 tok/s | acceptance 0.60 | per position [0.88, 0.73, 0.6, 0.46, 0.33, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.01
+json   end-to-end 104.20 tok/s | after first token 106.86 tok/s | acceptance 0.75 | per position [0.92, 0.84, 0.74, 0.69, 0.55, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.75
+== tp2-mtp5 temperature 0
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  52.65 tok/s | after first token  53.12 tok/s | acceptance 0.25 | per position [0.66, 0.33, 0.17, 0.06, 0.02, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 2.25
+code   end-to-end  94.80 tok/s | after first token  96.76 tok/s | acceptance 0.64 | per position [0.91, 0.75, 0.64, 0.51, 0.39, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.20
+json   end-to-end 111.36 tok/s | after first token 114.28 tok/s | acceptance 0.79 | per position [0.95, 0.88, 0.78, 0.7, 0.63, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.94
+tp2-mtp5 sweep {"concurrency": 1, "steady_step_ms": 43.65, "whole_run_step_ms": 44.09, "aggregate_tok_s": 96.8, "tokens_per_request_step": 4.289}
+tp2-mtp5 sweep {"concurrency": 4, "steady_step_ms": 92.74, "whole_run_step_ms": 86.37, "aggregate_tok_s": 181.5, "tokens_per_request_step": 3.916}
+tp2-mtp5 sweep {"concurrency": 8, "steady_step_ms": 120.98, "whole_run_step_ms": 118.28, "aggregate_tok_s": 272.0, "tokens_per_request_step": 4.024}
+tp2-mtp5 sweep {"concurrency": 16, "steady_step_ms": 167.86, "whole_run_step_ms": 163.72, "aggregate_tok_s": 364.9, "tokens_per_request_step": 3.736}
+
+[exited with code 0]

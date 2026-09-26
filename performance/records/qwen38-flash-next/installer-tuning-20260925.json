@@ -1,6 +1,6 @@
 {
  "schema": "sparkring-qwen-tuning-record/v1",
- "status": "implemented; measured in serving containers derived from installer deployments; not serving-qualified",
+ "status": "implemented; measured in installer deployments and in serving containers derived from them; not serving-qualified",
  "image": {
   "release": "dev-20260925-qwendecode-cuda1342-nccl2323-status031",
   "image_id": "sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971",
@@ -276,6 +276,93 @@
     3.34,
     3.74
    ]
+  }
+ },
+ "tp2_draft_depth": {
+  "temperature": 1.0,
+  "draft_tokens": [
+   3,
+   4,
+   5
+  ],
+  "decode_tok_s_prose_code_json": [
+   [
+    59.13,
+    93.82,
+    101.39
+   ],
+   [
+    52.63,
+    92.98,
+    105.91
+   ],
+   [
+    51.58,
+    89.92,
+    104.2
+   ]
+  ],
+  "steady_c1_ms": [
+   35.82,
+   39.95,
+   43.65
+  ],
+  "aggregate_tok_s": {
+   "concurrency": [
+    1,
+    4,
+    8,
+    16
+   ],
+   "3": [
+    93.5,
+    191.2,
+    267.1,
+    386.1
+   ],
+   "4": [
+    87.0,
+    218.1,
+    299.3,
+    372.7
+   ],
+   "5": [
+    96.8,
+    181.5,
+    272.0,
+    364.9
+   ]
+  },
+  "adopted": 3
+ },
+ "installer_deployments": {
+  "fixture": "deployment and asset-admission state moved aside on every node; host setup, cached checkpoint files and images kept",
+  "temperature": 0,
+  "tp2": {
+   "source_revision": "e75451a671a3",
+   "decode_tok_s_prose_code_json": [
+    61.59,
+    88.25,
+    100.42
+   ],
+   "prefill_tok_s": {
+    "4096": 4180,
+    "16384": 4272,
+    "65536": 3900
+   }
+  },
+  "tp4": {
+   "source_revision": "f0ce5bea531f",
+   "decode_tok_s_prose_code_json": [
+    83.35,
+    122.87,
+    138.43
+   ],
+   "prefill_tok_s": {
+    "4096": 4781,
+    "16384": 5106,
+    "65536": 4657
+   }
   }
  }
 }

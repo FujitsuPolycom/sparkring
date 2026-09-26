@@ -1,7 +1,8 @@
 # Qwen3.8 Flash Next installer tuning: decode image, collectives and TP4 prefill
 
-Status: **implemented; measured in serving containers derived from installer
-deployments on one TP2 pair and one TP4 ring; not serving-qualified**.
+Status: **implemented; measured in installer deployments and in serving
+containers derived from them, on one TP2 pair and one TP4 ring; not
+serving-qualified**.
 
 This record gives the measurements behind the Qwen installer profiles'
 decode and prefill settings on image
@@ -26,7 +27,7 @@ image with its software receipts re-sealed
 [`tree_overlay.py`](installer-tuning-20260925/programs/tree_overlay.py)).
 Everything else stays as the installer deployment sets it.
 
-Measurements, all with greedy requests:
+Measurements, with greedy requests unless a section states a temperature:
 
 - **Per-step decode time** (prose / code / JSON): after-first-token rate
   divided by tokens per step, from
@@ -191,6 +192,56 @@ Step time and KV-cache capacity were unchanged (TP4 prose 25.8 and 25.7 ms;
 3,131,214 tokens in both configurations), and temperature-0 acceptance stayed
 within run-to-run spread of greedy drafting (2.18 / 3.30 / 3.71 on TP4).
 
+## Draft depth
+
+The profiles draft three tokens per step (`num_speculative_tokens` 3). On TP2,
+with probabilistic drafting, three test containers drafted three, four and
+five tokens; each also sized its all-reduce limit and CUDA-graph capture
+sizes to the larger token count per request
+([`ab_mtp_depth.sh`](installer-tuning-20260925/programs/ab_mtp_depth.sh),
+[variants](installer-tuning-20260925/programs/variants),
+[raw output](installer-tuning-20260925/results/tp2-mtp-depth.txt)). Decode
+rates are end-to-end tokens per second from `decode_probe.py` at temperature
+1.0 (three runs); the aggregate rates come from `concurrency_sweep.py`:
+
+| Draft tokens | Prose | Code | JSON | C1 steady step | Aggregate C1 / C4 / C8 / C16 |
+|---|---|---|---|---|---|
+| 3 | **59.1** | **93.8** | 101.4 | **35.8 ms** | 93.5 / 191.2 / 267.1 / **386.1** |
+| 4 | 52.6 | 93.0 | **105.9** | 40.0 ms | 87.0 / **218.1** / **299.3** / 372.7 |
+| 5 | 51.6 | 89.9 | 104.2 | 43.7 ms | **96.8** / 181.5 / 272.0 / 364.9 |
+
+Each added draft token costs about 4 ms per step at C1. In prose at
+temperature 1.0 the fourth draft token is accepted 5% of the time and the
+fifth 3%, so single-stream prose loses 11% at depth 4. Depth 4 gains only for
+predictable output at moderate concurrency: the sweep's single fixed prompt
+yields 3.4 tokens per step at depth 3, and at depth 4 its C4 and C8
+aggregates rise 14% and 12%. The profiles keep three draft tokens.
+
+## Installer deployments
+
+With the settings above committed, each profile was installed by
+`sparkring install` from the SparkRing package: TP2 from source revision
+`e75451a671a3`, TP4 from `f0ce5bea531f`, whose only further change is to the
+package's maintainer scripts. Before each installation, the deployment and
+asset-admission state on every node was moved aside; host setup, cached
+checkpoint files and images remained. Each installation re-hashed the cached
+checkpoint in place, reused the local image and ended with the model API
+ready, in about 13 minutes on each cluster; that time includes the re-hash and
+the image's first-start kernel tuning. `measure.sh` then ran against the
+installer's own containers (temperature 0; raw output
+[TP2](installer-tuning-20260925/results/tp2-fresh-e75451a.txt),
+[TP4](installer-tuning-20260925/results/tp4-fresh-f0ce5be.txt)):
+
+| Profile | Prose | Code | JSON | Prefill 4K | 16K | 64K |
+|---|---|---|---|---|---|---|
+| `qwen38-flash-next-tp2` | 61.6 | 88.3 | 100.4 | 4,180 | 4,272 | 3,900 |
+| `qwen38-flash-next-qad-tp4` | 83.4 | 122.9 | 138.4 | 4,781 | 5,106 | 4,657 |
+
+Decode values are end-to-end tokens per second for 512-token single-stream
+requests, prefill values tokens per second for one cold prompt. Counting,
+arithmetic and code checks passed on both clusters. These runs did not
+download the image or the checkpoint.
+
 ## Measured and not adopted
 
 **Local argmax for draft tokens** (`"use_local_argmax_reduction": true` in
@@ -220,7 +271,8 @@ No single switch restored the baseline, so the patches are not in the image.
 
 Each configuration ran on one TP2 pair or one TP4 ring. Identical requests
 route every sequence to the same experts, so MoE cost at C > 1 is lower than
-with mixed traffic. The test containers share the installer deployments'
-settings but are not installer deployments. The TP2 profiles pin two NIC
+with mixed traffic. Apart from the runs under Installer deployments, the test
+containers share the installer deployments' settings but are not installer
+deployments. The TP2 profiles pin two NIC
 functions and were not measured with extended GIDs; the GLM and MiMo TP4
 profiles keep `NCCL_IB_EXTENDED_IPV4_GIDS=0` and were not measured with it.

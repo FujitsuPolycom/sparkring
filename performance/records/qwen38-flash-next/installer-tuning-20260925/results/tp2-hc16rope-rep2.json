@@ -1,0 +1,44 @@
+{
+ "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+ "tokens_per_request": [
+  256,
+  768
+ ],
+ "rows": [
+  {
+   "concurrency": 1,
+   "steady_step_ms": 36.16,
+   "whole_run_step_ms": 36.59,
+   "aggregate_tok_s": 92.0,
+   "tokens_per_request_step": 3.364
+  },
+  {
+   "concurrency": 4,
+   "steady_step_ms": 62.81,
+   "whole_run_step_ms": 64.47,
+   "aggregate_tok_s": 206.7,
+   "tokens_per_request_step": 3.335
+  },
+  {
+   "concurrency": 5,
+   "steady_step_ms": 76.04,
+   "whole_run_step_ms": 74.58,
+   "aggregate_tok_s": 209.1,
+   "tokens_per_request_step": 3.12
+  },
+  {
+   "concurrency": 8,
+   "steady_step_ms": 92.43,
+   "whole_run_step_ms": 91.19,
+   "aggregate_tok_s": 275.9,
+   "tokens_per_request_step": 3.146
+  },
+  {
+   "concurrency": 16,
+   "steady_step_ms": 136.84,
+   "whole_run_step_ms": 130.84,
+   "aggregate_tok_s": 390.5,
+   "tokens_per_request_step": 3.195
+  }
+ ]
+}

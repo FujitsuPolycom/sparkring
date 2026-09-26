@@ -1,0 +1,23 @@
+{
+ "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+ "tokens_per_request": [
+  256,
+  768
+ ],
+ "rows": [
+  {
+   "concurrency": 1,
+   "steady_step_ms": 37.35,
+   "whole_run_step_ms": 37.7,
+   "aggregate_tok_s": 90.5,
+   "tokens_per_request_step": 3.413
+  },
+  {
+   "concurrency": 8,
+   "steady_step_ms": 93.3,
+   "whole_run_step_ms": 92.36,
+   "aggregate_tok_s": 274.3,
+   "tokens_per_request_step": 3.165
+  }
+ ]
+}

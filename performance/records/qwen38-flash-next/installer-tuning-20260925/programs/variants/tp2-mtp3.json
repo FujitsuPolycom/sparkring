@@ -1,0 +1,13 @@
+{
+ "name": "tp2-mtp3",
+ "spec": {
+  "num_speculative_tokens": 3,
+  "draft_sample_method": "probabilistic"
+ },
+ "env": {
+  "QWEN_DISPATCH_AR_BYTES": "327680"
+ },
+ "set_args": {
+  "--compilation-config": "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],\"custom_ops\":[\"+rotary_embedding\"]}"
+ }
+}

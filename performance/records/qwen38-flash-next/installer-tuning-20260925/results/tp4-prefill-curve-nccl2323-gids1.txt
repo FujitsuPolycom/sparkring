@@ -1,0 +1,42 @@
+      2 Channel 00/0 : 0[0] -> 1[0] [send] via NET/IB/0
+      2 Channel 00/0 : 3[0] -> 0[0] [receive] via NET/IB/0
+      2 Channel 00/04 : 0 1 2 3
+      2 Channel 01/0 : 0[0] -> 1[0] [send] via NET/IB/2
+      2 Channel 01/0 : 3[0] -> 0[0] [receive] via NET/IB/2
+      2 Channel 01/04 : 0 1 2 3
+      2 Channel 02/0 : 0[0] -> 1[0] [send] via NET/IB/1
+      2 Channel 02/0 : 3[0] -> 0[0] [receive] via NET/IB/1
+      2 Channel 02/04 : 0 1 2 3
+      2 Channel 03/0 : 0[0] -> 1[0] [send] via NET/IB/3
+      2 Channel 03/0 : 3[0] -> 0[0] [receive] via NET/IB/3
+      2 Channel 03/04 : 0 1 2 3
+      1 NCCL version 2.32.3+cuda13.4
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 0 IbDev 0 Port 1 qp_num 910 mtu 5 GID 3 (0/10012C6FFFF0000) ctsFifoRkey=0x181ccc ctsFifoLkey=0x181ccc
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 0 IbDev 0 Port 1 qp_num 912 mtu 5 GID 3 (0/10012C6FFFF0000) ctsFifoRkey=0x1823d0 ctsFifoLkey=0x1823d0
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 0 IbDev 0 Port 1 qp_num 916 mtu 5 GID 3 (0/10012C6FFFF0000) ctsFifoRkey=0x1817c9 ctsFifoLkey=0x1817c9
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 0 IbDev 0 Port 1 qp_num 917 mtu 5 GID 3 (0/10012C6FFFF0000) ctsFifoRkey=0x1815c7 ctsFifoLkey=0x1815c7
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 2 IbDev 2 Port 1 qp_num 623 mtu 5 GID 3 (0/10412C6FFFF0000) ctsFifoRkey=0x19f5dd ctsFifoLkey=0x19f5dd
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 2 IbDev 2 Port 1 qp_num 624 mtu 5 GID 3 (0/10412C6FFFF0000) ctsFifoRkey=0x19f8e1 ctsFifoLkey=0x19f8e1
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 2 IbDev 2 Port 1 qp_num 628 mtu 5 GID 3 (0/10412C6FFFF0000) ctsFifoRkey=0x19e9d4 ctsFifoLkey=0x19e9d4
+      1 NET/IB: ncclIbConnectImpl: NCCL Dev 2 IbDev 2 Port 1 qp_num 629 mtu 5 GID 3 (0/10412C6FFFF0000) ctsFifoRkey=0x19e2d0 ctsFifoLkey=0x19e2d0
+      1 NET/IB RouteFinal side=recv comm=0xe31cdc062000 mergedDev=1 qpIndex=0 qpNum=1174 devIndex=0 ibDev=1 hca=rocep1s0f1 port=1 localGid=00000000000000000000ffffc6120302 remoteGid=00000000000000000000ffffc6120301 remoteQpNum=903
+      1 NET/IB RouteFinal side=recv comm=0xe31cdc10b000 mergedDev=3 qpIndex=0 qpNum=884 devIndex=0 ibDev=3 hca=roceP2p1s0f1 port=1 localGid=00000000000000000000ffffc6120702 remoteGid=00000000000000000000ffffc6120701 remoteQpNum=628
+      1 NET/IB RouteFinal side=recv comm=0xe31cdc1b4000 mergedDev=1 qpIndex=0 qpNum=1175 devIndex=0 ibDev=1 hca=rocep1s0f1 port=1 localGid=00000000000000000000ffffc6120302 remoteGid=00000000000000000000ffffc6120301 remoteQpNum=905
+      1 NET/IB RouteFinal side=recv comm=0xe31cdc25d000 mergedDev=3 qpIndex=0 qpNum=885 devIndex=0 ibDev=3 hca=roceP2p1s0f1 port=1 localGid=00000000000000000000ffffc6120702 remoteGid=00000000000000000000ffffc6120701 remoteQpNum=629
+      1 NET/IB RouteFinal side=recv comm=0xe31d88062000 mergedDev=1 qpIndex=0 qpNum=1169 devIndex=0 ibDev=1 hca=rocep1s0f1 port=1 localGid=00000000000000000000ffffc6120302 remoteGid=00000000000000000000ffffc6120301 remoteQpNum=897
+      1 NET/IB RouteFinal side=recv comm=0xe31d8810b000 mergedDev=3 qpIndex=0 qpNum=879 devIndex=0 ibDev=3 hca=roceP2p1s0f1 port=1 localGid=00000000000000000000ffffc6120702 remoteGid=00000000000000000000ffffc6120701 remoteQpNum=623
+      1 NET/IB RouteFinal side=recv comm=0xe31d881b4000 mergedDev=1 qpIndex=0 qpNum=1170 devIndex=0 ibDev=1 hca=rocep1s0f1 port=1 localGid=00000000000000000000ffffc6120302 remoteGid=00000000000000000000ffffc6120301 remoteQpNum=898
+      1 NET/IB RouteFinal side=recv comm=0xe31d88392000 mergedDev=3 qpIndex=0 qpNum=880 devIndex=0 ibDev=3 hca=roceP2p1s0f1 port=1 localGid=00000000000000000000ffffc6120702 remoteGid=00000000000000000000ffffc6120701 remoteQpNum=624
+      1 NET/IB RouteFinal side=send comm=0xe31cdc010000 mergedDev=0 qpIndex=0 qpNum=916 devIndex=0 ibDev=0 hca=rocep1s0f0 port=1 localGid=00000000000000000000ffffc6120001 remoteGid=00000000000000000000ffffc6120002 remoteQpNum=1147
+  3906 tokens: best  0.837s (  4664 tok/s) runs [0.837]
+  7797 tokens: best  1.468s (  5313 tok/s) runs [1.468]
+ 15580 tokens: best  2.963s (  5259 tok/s) runs [2.963]
+ 31145 tokens: best  6.213s (  5013 tok/s) runs [6.213]
+ 62276 tokens: best 13.218s (  4711 tok/s) runs [13.218]
+  3908 tokens: best  0.716s (  5462 tok/s) runs [0.716]
+  7800 tokens: best  1.486s (  5248 tok/s) runs [1.486]
+ 15581 tokens: best  2.962s (  5261 tok/s) runs [2.962]
+ 31145 tokens: best  6.163s (  5053 tok/s) runs [6.163]
+ 62274 tokens: best 13.191s (  4721 tok/s) runs [13.191]
+
+[exited with code 0]
