@@ -1,5 +1,7 @@
 # DeepSeek-V4.1-Flash four-Spark cycle quickstart
 
+Checkpoint: [`deepseek-ai/DeepSeek-V4.1-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash), DeepSeek's published weights.
+
 Profile: `deepseek-v41-flash-cycle`. Status: **Development**.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve deepseek-v41-flash-cycle`.

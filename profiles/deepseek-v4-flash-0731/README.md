@@ -1,5 +1,7 @@
 # DeepSeek-V4-Flash-0731
 
+Checkpoint: [`deepseek-ai/DeepSeek-V4-Flash-0731`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731), DeepSeek's published weights.
+
 Serve on a four-Spark cycle using the [recipe](recipe.json). Status: **Development**; the selected published image still needs exact replay validation.
 
 Inspect the resolved configuration without contacting a host:

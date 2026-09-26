@@ -1,5 +1,7 @@
 # GLM-5.3 Flash on TP2, without SparkCache
 
+Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4 Spark checkpoint of Z.ai's GLM-5.3-Flash.
+
 Development installer selection using the pinned shared-2026.09.3 ARM64 image. SparkCache is disabled; native in-memory prefix caching remains profile-owned.
 
 ```bash

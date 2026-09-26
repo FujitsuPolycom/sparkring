@@ -1,5 +1,7 @@
 # DeepSeek-V4-Flash-0731 + SparkCache
 
+Checkpoint: [`deepseek-ai/DeepSeek-V4-Flash-0731`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731), DeepSeek's published weights.
+
 This deployment uses the authoritative [recipe](recipe.json). Status: **Development**. This is an alternative composition, not a standalone launcher.
 
 Inspect the resolved configuration without contacting a host:

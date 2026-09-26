@@ -1,5 +1,7 @@
 # Qwen3.8-Flash-Next with SparkCache on two Sparks
 
+Checkpoint: [`local-inference-lab/Qwen3.8-Flash-Next-NVFP4`](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4), Local Inference Lab's NVFP4 quantization-aware distillation of Qwen's [Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next).
+
 Status: **qualified for bounded correctness and restart checks**.
 Use the [Qwen TP2 quickstart](../qwen38-flash-next-tp2/README.md).
 Set `PROFILE_ID=qwen38-flash-next-tp2-sparkcache` before its image/checkpoint

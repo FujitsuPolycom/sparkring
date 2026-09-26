@@ -1,5 +1,7 @@
 # Switched TP4 quickstart
 
+Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4 Spark checkpoint of Z.ai's GLM-5.3-Flash.
+
 Profile: `glm53-flash-spark-tp4-switched`. Status: **Experimental**. Provided as-is. No switched-hardware qualification; operators must verify their HCA and GID selection.
 
 Inspect its selected defaults with `python3 scripts/profiles.py resolve glm53-flash-spark-tp4-switched`.

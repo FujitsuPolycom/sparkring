@@ -1,5 +1,7 @@
 # GLM-5.3-Flash-NVFP4 + SparkCache
 
+Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4), Local Inference Lab's NVFP4 quantization-aware distillation of Z.ai's [GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16).
+
 This deployment uses the pinned [recipe](recipe.json). Status: **Validated**.
 It is retained for reproducing that image and configuration; select the
 [profile catalog](../README.md) for maintained deployments.

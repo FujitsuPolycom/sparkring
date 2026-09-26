@@ -1,5 +1,7 @@
 # DeepSeek-V4.1-Flash on SGLang
 
+Checkpoint: [`deepseek-ai/DeepSeek-V4.1-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash), DeepSeek's published weights.
+
 Run DeepSeek-V4.1-Flash across four DGX Sparks using SGLang and the pinned Mia
 adapter. This is a separate runtime from the [vLLM profile](../deepseek-v41-flash-cycle/README.md).
 The recipe's fallback reference identifies that manual alternative; the

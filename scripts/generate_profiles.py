@@ -137,6 +137,8 @@ def profile_table(root=ROOT, *, compact=False):
         repository = resolved['model']['repository']
         if repository not in names or repository not in quant_labels or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
             raise ValueError(f'Model repository needs a standard display name: {repository}')
+        if repository.split('/')[0] not in model_labels.get('publishers', {}):
+            raise ValueError(f'Model repository needs a credited publisher: {repository}')
     capacity = read_json(root/'performance/profile-capacity.json')['profiles']
     if not compact:
         return profile_catalog_table(rows, names, root)
@@ -187,7 +189,9 @@ def profile_table(root=ROOT, *, compact=False):
             quant_url = f"https://huggingface.co/{repository}"
             if variant:
                 quant_url += '/tree/' + r['model']['revision']
-            quant = f"[{variant or quant_labels[repository]}]({quant_url})"
+            # The checkpoint's publisher is credited under its link.
+            publisher = model_labels['publishers'][repository.split('/')[0]]
+            quant = f"[{variant or quant_labels[repository]}]({quant_url})<br>by {publisher}"
             layout = f"TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']}"
             if engine == 'sglang':
                 layout = f"TP{s['tensor_parallel_size']}/EP{s['expert_parallel_size']}"

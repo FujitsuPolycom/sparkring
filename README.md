@@ -40,14 +40,14 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 
 `sparkring install --profile` accepts these profiles:
 
-| Model | Sparks | `--profile` value | API port | Decode (tok/s, one user) | Prefill 16K (tok/s) |
-|---|---|---|---|---|---|
-| Qwen3.8-Flash-Next | 2 | `qwen38-flash-next-tp2` | 8000 | 49.3–84.8 | 4,077 |
-| Qwen3.8-Flash-Next | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 70.7–118.1 | 5,024 |
-| GLM-5.3-Flash | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 32.3–40.0 | 2,440 |
-| GLM-5.3-Flash | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 59.0–73.2 | 2,900 |
-| MiMo-V2.6-Flash-RL | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 25.7–62.8 | 3,802 |
-| MiMo-V2.6-Flash-RL | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 44.8–111.5 | 4,253 |
+| Model | Checkpoint | Sparks | `--profile` value | API port | Decode (tok/s, one user) | Prefill 16K (tok/s) |
+|---|---|---|---|---|---|---|
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 49.3–84.8 | 4,077 |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 70.7–118.1 | 5,024 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 32.3–40.0 | 2,440 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 59.0–73.2 | 2,900 |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 25.7–62.8 | 3,802 |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 44.8–111.5 | 4,253 |
 
 Decode ranges from prose to JSON prompts. Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),

@@ -1,5 +1,7 @@
 # GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache
 
+Checkpoint: [`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78), brandonmusic's EXL3 3.5 bpw quantization of Z.ai's [GLM-5.2](https://huggingface.co/zai-org/GLM-5.2).
+
 This deployment uses the pinned [recipe](recipe.json). Status: **Development**.
 This is a separate GLM-5.2 cache composition, not the GLM-5.3 shared image.
 

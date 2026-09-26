@@ -1,5 +1,7 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark quickstart
 
+Checkpoint: [`malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated`](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated), malaiwah's EXL3 K5/K6 quantization of Qwen's [Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B).
+
 Profile: `qwen38-27b-exl3-k5k6`. Status: **Development**. Benchmark results apply to their recorded runtime; validate each rebuilt image.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve qwen38-27b-exl3-k5k6`.

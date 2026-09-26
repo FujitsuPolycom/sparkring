@@ -1,5 +1,7 @@
 # DeepSeek V4 Flash Vision-Exp on a four-Spark cycle
 
+Checkpoint: [`deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp), DeepSeek's published weights.
+
 Profile: `deepseek-v4-flash-vision-exp-tp4`. Status: **Experimental**.
 This four-rank configuration serves `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`.
 Contributor-reported serving results are attributed below; independent

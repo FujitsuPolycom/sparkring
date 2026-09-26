@@ -1,5 +1,7 @@
 # GLM-5.3-Flash on four Sparks
 
+Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4 Spark checkpoint of Z.ai's GLM-5.3-Flash.
+
 Status: **qualified for bounded correctness and restart/restore checks** on
 [SparkRing 2026.09.3](../../runtime/releases/shared-2026.09.3/README.md).
 Full-context, arbitrary media and long-duration stability are not qualified.

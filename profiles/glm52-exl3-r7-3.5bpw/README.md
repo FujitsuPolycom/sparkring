@@ -1,5 +1,7 @@
 # GLM-5.2 EXL3 3.5-bpw four-Spark quickstart
 
+Checkpoint: [`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78), brandonmusic's EXL3 3.5 bpw quantization of Z.ai's [GLM-5.2](https://huggingface.co/zai-org/GLM-5.2).
+
 Profile: `glm52-exl3-r7-3.5bpw`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve glm52-exl3-r7-3.5bpw`.
