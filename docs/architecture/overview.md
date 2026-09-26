@@ -23,9 +23,10 @@ forwarded.
 With `sparkring install`, only Node A needs your network: it serves the API
 and the dashboard and downloads the image and checkpoint for every Spark.
 Everything between Sparks runs over the cables: collectives, vLLM's startup
-rendezvous at rank 0's fabric address, and the administration network
-(WireGuard over the cables' IPv6 link-local addresses) that carries SSH,
-image layers and checkpoint copies.
+rendezvous at rank 0's fabric address, the administration network (WireGuard
+over the cables' IPv6 link-local addresses) that carries SSH and image layers,
+and checkpoint copies, which go straight between the fabric addresses at the
+two ends of a cable.
 
 ## Serving container
 

@@ -16,8 +16,8 @@ The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring instal
 runs on image `dev-20260925-qwendecode-cuda1342-nccl2323-status031`
 ([Install SparkRing](../docs/operations/install.md)). Their KV links point to
 the shared-2026.09.3 [correctness summary](../runtime/releases/shared-2026.09.3/correctness.json),
-whose figures were measured on the shared-2026.09.3 image with a BF16 LM head,
-not on the installer image. On the installer image, the TP4 profile's KV cache
+whose figures were measured on the shared-2026.09.3 image with checkpoint step
+4000 (revision `629bc3218833`), not on the installer image with step 5500. On the installer image, the TP4 profile's KV cache
 held 3,131,214 tokens ([installer tuning record](../performance/records/qwen38-flash-next/installer-tuning-20260925.md)).
 
 <!-- BEGIN GENERATED PROFILES -->

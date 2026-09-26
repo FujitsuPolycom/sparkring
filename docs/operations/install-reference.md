@@ -184,8 +184,10 @@ lock lists the admitted profiles and pins the image configuration, registry
 manifest, external software receipt, toolchain receipt, composition, prepared
 transport and status package. The image's
 [publication record](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/publication.json)
-lists its parent image, `dev-20260925-cuda1342-nccl2323-status031`, and every
-file its derived layer replaces. `sparkring models` marks only these profiles
+names its parent image, `dev-20260925-cuda1342-nccl2323-status031`, and
+describes its derived layer; inside the image,
+`/opt/sparkring/receipts/derived-qwen-decode.json` records every file that
+layer replaces. `sparkring models` marks only these profiles
 as installer-supported:
 
 | Profiles | Checkpoint | Speculative decoding |
@@ -525,6 +527,7 @@ anonymously; no registry or Hugging Face account is used.
 
 | Host | Used for |
 |---|---|
+| `raw.githubusercontent.com` and `github.com` | The one-line command: `install.sh`, then a full clone of the branch, on Node A |
 | `ghcr.io`, which redirects to `pkg-containers.githubusercontent.com` | The serving image, downloaded once by Node A's relay |
 | `huggingface.co`, which redirects to its download CDN | Checkpoint files that no Spark holds, downloaded once by Node A |
 | Your Ubuntu package mirror | The package's dependencies during `apt install` on Node A |
@@ -563,7 +566,7 @@ leaves the running model in place:
   the image is absent.
 
 With the checkpoint, Docker and the cache on one filesystem, the plan asks a
-Spark that holds neither the image nor any checkpoint file for 202.9 GiB
+Spark that holds neither the image nor any checkpoint file for 206.6 GiB
 (Qwen), 278.0 GiB (MiMo) or 279.5 GiB (GLM); Node A needs 14.2 GiB more in
 Docker's data root for the relay's layer cache. Checkpoints are kept in
 `/srv/sparkring/<cluster>/checkpoints/<owner>--<name>/<revision>` and caches in
@@ -718,7 +721,8 @@ enters network storage or automounts. The plan names what was not searched.
 
 **What it does with a copy.** Files are identified by SHA-256 against the pin
 manifest, not by names, so a copy of the repository's `main` branch supplies
-every Qwen file except `config.json`. SparkRing hashes each file before using
+every file of Qwen checkpoint step 4000 (`--checkpoint qad-step-4000`) except
+`config.json`. SparkRing hashes each file before using
 it. Weight files on the same filesystem as SparkRing's directory are hard-linked
 into it and take no extra space; the other files (configuration, tokenizer, chat
 template) are copied, so later edits to your copy do not reach the served model.

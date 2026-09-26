@@ -14,11 +14,11 @@ Run it on Node A, the Spark connected to your network.
 - Cables: a pair connects port p0 to p0; a four-Spark ring connects each
   Spark's p0 to the next Spark's p1. p0 is the QSFP port next to the 10GbE
   (RJ45) port.
-- Node A on your network with outbound HTTPS to `ghcr.io`, `huggingface.co`,
-  your Ubuntu mirror and, for four Sparks, `github.com`. Workers need no
-  network cable.
+- Node A on your network with outbound HTTPS to `github.com`,
+  `raw.githubusercontent.com`, `ghcr.io`, `huggingface.co` and your Ubuntu
+  mirror. Workers need no network cable.
 - Free disk on each Spark that has neither the image nor the model: about
-  203 GiB for Qwen, 278 GiB for MiMo or 280 GiB for GLM, plus 14.2 GiB on
+  207 GiB for Qwen, 278 GiB for MiMo or 280 GiB for GLM, plus 14.2 GiB on
   Node A.
 
 ![Back of a DGX Spark: p0 is the QSFP port next to the 10GbE port](assets/spark-rear-ports.svg)
@@ -51,9 +51,10 @@ A Qwen profile installs checkpoint step 5500 by default; add
 `--checkpoint qad-step-4000` for step 4000
 ([details](install-reference.md#checkpoints)).
 
-It lists every change and asks once (`Proceed? [Y/n]`). It asks again before a
-large model download and before stopping another program's GPU container. It
-prepares the image and model before it stops the running model, and restarts
+On first use it lists every change and asks `Proceed? [Y/n]`, and asks again
+before a model download larger than 1 GiB. Later runs print the plan and ask
+`Apply this installation? [Y/n]` once. It also asks before stopping another
+program's GPU container. It prepares the image and model before it stops the running model, and restarts
 the running model if the selected one fails to start. It ends with `Model ready:` and the
 API URL. If it stops early, run the same command again; it continues where it
 stopped.

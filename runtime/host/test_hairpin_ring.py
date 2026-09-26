@@ -1120,8 +1120,8 @@ def test_hairpin_interrupted_leaves_an_interrupted_receipt(command, capsys):
 def test_a_mesh_refusal_names_outdated_sparks_and_how_to_update_them():
     rows = [{"rank": 0, "state": ring_module.KEPT}, *({"rank": rank, "state": ring_module.UPDATE} for rank in (1, 2, 3))]
     assert ring_module.mesh_hint(rows) == (
-        " Ranks 1-3 run an older SparkRing, which does not report a stopped mesh service; run sudo sparkring "
-        "hairpin on Node A to update them, then repeat the installation.")
+        " Ranks 1-3 run a different SparkRing revision than Node A; run sudo sparkring hairpin on Node A to update "
+        "them, then repeat the installation.")
     rows[2]["state"] = ring_module.RESTART
     assert ring_module.mesh_hint(rows).startswith(" The ConnectX hairpin setting is not in effect on rank 2")
     assert ring_module.mesh_hint([{"rank": rank, "state": ring_module.KEPT} for rank in range(4)]) == ""

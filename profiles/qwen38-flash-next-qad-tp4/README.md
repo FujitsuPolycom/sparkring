@@ -108,8 +108,9 @@ REPO=$PWD
 `SHA256SUMS` lists the 48 files the revision needs; the coordinator itself
 checks only checkpoint metadata. A `main`-branch download made after
 2026-09-16 20:03 UTC has the same weights but a `config.json` for another
-model type; replace that file as the [TP2 Compose page](../qwen38-flash-next-tp2/compose/README.md)
-describes. Keep writable caches outside model directories.
+model type; replace that file with the revision's own:
+`"$HOME/.venvs/sparkring-download/bin/hf" download "$MODEL_REPO" config.json --revision "$MODEL_REV" --local-dir "$MODEL_DIR"`.
+Keep writable caches outside model directories.
 
 The model commands do not set up the fabric. Prepare the
 [managed ring fabric](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md) and

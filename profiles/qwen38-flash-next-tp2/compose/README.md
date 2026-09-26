@@ -98,8 +98,10 @@ Keep Spark 0 on a trusted network or firewall the port. Stop with
 
 ## Performance
 
-One pair, 512-token single-stream requests at temperature 0; prefill is one
-cold prompt. The Compose recipe matches the installer deployment.
+One pair serving checkpoint step 4000 (revision `629bc3218833`), 512-token
+single-stream requests at temperature 0; prefill is one cold prompt. The
+Compose recipe matched the installer deployment. The recipe on this page pins
+step 5500; the [profile page](../README.md#performance) gives its rates.
 
 | Deployment | Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
 |---|---|---|

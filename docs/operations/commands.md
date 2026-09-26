@@ -45,7 +45,7 @@ image and checkpoint, then starts or switches the model.
 | Flag | Meaning |
 |---|---|
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
-| `--plan` | Print and save the setup, checkpoint and model plan; change nothing |
+| `--plan` | Print and save the setup, checkpoint and model plan; change nothing. On a Spark with no cluster yet, run `sudo sparkring setup --plan` instead |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation |
 | `--json` | Print one JSON result on stdout; progress goes to stderr |
 | `--checkpoint NAME` | Another checkpoint the profile lists, by Hugging Face branch; default: the profile's own |
@@ -128,7 +128,7 @@ the next action for a Spark that needs attention, and the saved model.
 
 `sudo sparkring hairpin [flags]` applies the ConnectX hairpin setting on every
 Spark of a four-Spark ring and at every boot. It first updates any Spark that
-runs an older SparkRing than Node A. See
+runs a different SparkRing revision than Node A. See
 [Four-Spark rings](install-reference.md#four-spark-rings).
 
 | Flag | Meaning |
