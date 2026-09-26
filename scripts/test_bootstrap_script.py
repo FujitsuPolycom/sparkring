@@ -57,9 +57,14 @@ def test_managed_single_branch_checkout_can_select_another_branch_and_tag(tmp_pa
     if not bash or not Path(bash).is_file():
         pytest.skip("Bash required")
 
+    # Git variables inherited from a hook or an enclosing repository command
+    # (GIT_DIR, GIT_INDEX_FILE, ...) would point these fixture commands, and
+    # their user.name/user.email settings, at the enclosing repository.
+    isolated = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
     def git(*args, cwd=source):
         return subprocess.run(["git", *args], cwd=cwd, capture_output=True,
-                              text=True, check=True).stdout.strip()
+                              text=True, check=True, env=isolated).stdout.strip()
 
     source.mkdir()
     git("init", "-b", "main")
@@ -81,7 +86,7 @@ def test_managed_single_branch_checkout_can_select_another_branch_and_tag(tmp_pa
 
     def update(ref):
         return subprocess.run([bash], input=block, text=True, capture_output=True,
-                              env={**os.environ, "INSTALL_DIR": checkout.as_posix(), "REF": ref,
+                              env={**isolated, "INSTALL_DIR": checkout.as_posix(), "REF": ref,
                                    "REPOSITORY": source.as_posix()}, timeout=20)
 
     for ref, expected in (("topic/test", topic), ("release-test", main), (topic, topic), ("main", main)):
