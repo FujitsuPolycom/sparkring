@@ -266,17 +266,20 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
         named = checkpoint_plan.named_paths(args.model_path, count)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="model_path") from None
-    request = {"profile": profile, "image_runtime": image, "source": distribution.identity(installer.ROOT),
-               "model_path": named or None, "cache_path": args.cache_path,
-               "nodes": cluster["plan"]["spec"]["hosts"], "api_address": cluster.get("api_address")}
-    if args.checkpoint is not None:
-        request["checkpoint"] = args.checkpoint
-    instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
-    directory = state_root / "deployments" / (profile + "-" + instance)
     try:
         card = installer.setup.selection(profile, args.checkpoint)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="checkpoint_name") from None
+    # Naming the profile's default checkpoint requests the same deployment as omitting it.
+    checkpoint = (args.checkpoint if args.checkpoint is not None
+                  and card["target_variant"] != installer.setup.selection(profile)["target_variant"] else None)
+    request = {"profile": profile, "image_runtime": image, "source": distribution.identity(installer.ROOT),
+               "model_path": named or None, "cache_path": args.cache_path,
+               "nodes": cluster["plan"]["spec"]["hosts"], "api_address": cluster.get("api_address")}
+    if checkpoint is not None:
+        request["checkpoint"] = checkpoint
+    instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
+    directory = state_root / "deployments" / (profile + "-" + instance)
     pins = installer.checkpoint_pins(card)
     owned = installer.checkpoint_directory(cluster, card)
     locked = directory.exists()
@@ -305,7 +308,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
     retained, _ = retained_deployments(state_root, directory, rows)
     plan = checkpoint_plan.plan(pins, surveys, rows, named=named, ignore_local=args.ignore_local_copies,
                                 operator=operator, images_present=present, retained=retained, locked=locked,
-                                request={"profile": profile, "checkpoint": args.checkpoint, "cache_path": args.cache_path,
+                                request={"profile": profile, "checkpoint": checkpoint, "cache_path": args.cache_path,
                                          "image_lock": str(args.image_lock) if args.image_lock else None})
     if not locked:
         if plan["problems"]:
@@ -317,7 +320,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
             site = _select_mesh(site, cluster, profile, mesh_hint)
         elif installer.backend({"profile": profile}) == "glm-managed":
             site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
-        lock = installer.init(directory, profile, site, variant=args.checkpoint, image_runtime=image)
+        lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=image)
     return directory, lock, plan
 
 
