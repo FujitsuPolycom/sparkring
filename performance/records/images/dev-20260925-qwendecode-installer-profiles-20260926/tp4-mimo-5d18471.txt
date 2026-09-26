@@ -1,0 +1,16 @@
+== tp4-mimo-5d18471 checks
+model: MiMo-V2.6-Flash-RL-TP4 max_model_len: 262144
+[count] 70 tok in 0.6s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.2s: '391'
+[code] 103 tok in 0.9s: '```python\ndef is_prime(n):\n    if n <= 1:\n        return False\n    if n <= 3:\n        return True\n    if n % 2 == 0 or n % 3 == 0:\n        return False\n    i = '
+decode: 1024 tokens in 22.7s = 45.0 tok/s (end-to-end, single stream)
+== tp4-mimo-5d18471 decode by prompt type (512 tokens, 2 runs)
+model MiMo-V2.6-Flash-RL-TP4
+prose  end-to-end  44.81 tok/s | after first token  45.16 tok/s | acceptance 0.17 | per position [0.54, 0.22, 0.09, 0.03, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 1.87
+code   end-to-end  93.28 tok/s | after first token  95.62 tok/s | acceptance 0.62 | per position [0.86, 0.73, 0.6, 0.51, 0.41, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.10
+json   end-to-end 111.49 tok/s | after first token 114.96 tok/s | acceptance 0.76 | per position [0.92, 0.83, 0.77, 0.67, 0.63, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.82
+== tp4-mimo-5d18471 prefill and greedy decode
+[tp4-mimo-5d18471] prefill 4066 tokens: 0.97s = 4190 tok/s (first run 0.96s)
+[tp4-mimo-5d18471] prefill 16151 tokens: 3.80s = 4253 tok/s (first run 3.81s)
+[tp4-mimo-5d18471] prefill 64781 tokens: 17.82s = 3636 tok/s (first run 17.84s)
+[tp4-mimo-5d18471] decode (greedy, 512 tokens x3): [46.33, 43.88, 45.72] tok/s, median 45.72

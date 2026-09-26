@@ -1,0 +1,16 @@
+== tp4-glm-aef20cd checks
+model: GLM-5.3-Flash-NVFP4-Spark-TP4 max_model_len: 1048576
+[count] 111 tok in 1.5s: 'The user wants me to count from 1 to 20, separated by commas, and output only the numbers. This is a simple, clear request. I should just output the numbers 1 t'
+[math] 48 tok in 0.8s: 'The user wants me to calculate 17 × 23 and answer with just the number.\n\n17 × 23 = 17 × 20 + 17 × 3 = 340 + 51 = 391391'
+[code] 267 tok in 3.2s: 'The user wants a Python function `is_prime(n)` and nothing else. So I should just provide the code, no explanations, no extra text.\n\nLet me write a good is_prim'
+decode: 1024 tokens in 18.0s = 57.0 tok/s (end-to-end, single stream)
+== tp4-glm-aef20cd decode by prompt type (512 tokens, 2 runs)
+model GLM-5.3-Flash-NVFP4-Spark-TP4
+prose  end-to-end  58.98 tok/s | after first token  59.86 tok/s | acceptance 0.46 | per position [0.7, 0.43, 0.24, 1.0, 1.0, 1.0] | tokens per step 2.37
+code   end-to-end  69.45 tok/s | after first token  70.95 tok/s | acceptance 0.62 | per position [0.84, 0.62, 0.41, 1.0, 1.0, 1.0] | tokens per step 2.87
+json   end-to-end  73.16 tok/s | after first token  74.89 tok/s | acceptance 0.66 | per position [0.85, 0.67, 0.46, 1.0, 1.0, 1.0] | tokens per step 2.99
+== tp4-glm-aef20cd prefill and greedy decode
+[tp4-glm-aef20cd] prefill 4066 tokens: 1.49s = 2732 tok/s (first run 1.51s)
+[tp4-glm-aef20cd] prefill 16151 tokens: 5.57s = 2900 tok/s (first run 5.56s)
+[tp4-glm-aef20cd] prefill 64783 tokens: 22.59s = 2868 tok/s (first run 22.51s)
+[tp4-glm-aef20cd] decode (greedy, 512 tokens x3): [60.16, 59.74, 60.58] tok/s, median 60.16

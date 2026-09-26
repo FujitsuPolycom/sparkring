@@ -7,25 +7,24 @@ profiles. Installer package revision `eb8ec2ba3b17` installed each of the six
 installer profiles once, on one pair and one four-Spark ring, on the parent
 image `dev-20260925-cuda1342-nccl2323-status031`; its Qwen profiles pinned
 checkpoint revision `60215d26cf5e`, whereas the Qwen profiles in this source
-tree pin `629bc3218833`. These conditions have no hardware evidence:
+tree pin `629bc3218833`. On the installer image, all six installer profiles
+were installed on one pair and one four-Spark ring by adopting checkpoint
+copies already on the Sparks, including a `main`-branch Hugging Face cache,
+with the look-alike and download guards, a search that skipped network
+automounts, and recording of a ring's hairpin setting
+([record](../../performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md)). These conditions have no hardware evidence:
 
 - setup from factory-reset hosts, recovery after a reboot, and re-cabled rings;
 - a first installation on Sparks that hold neither the serving image nor the
   checkpoint, where checkpoint preparation waits for image distribution;
 - repeating `sparkring install` after a failed or interrupted asset
   preparation, including continuing a partial checkpoint download;
-- SparkRing applying the ConnectX hairpin setting that four-Spark rings need,
-  during installation and at boot; see [Four-Spark rings](#four-spark-rings);
+- SparkRing restarting ConnectX drivers to apply the hairpin setting, during
+  installation and at boot; see [Four-Spark rings](#four-spark-rings);
 - Docker's containerd image store; see
-  [Image distribution and caches](#image-distribution-and-caches);
-- adoption of checkpoint copies found on the Sparks: Hugging Face caches,
-  copies of the model repository's `main` branch and `hf download` folders;
-- the checkpoint search on Sparks with network storage or automounts;
-- the download guard, which stops an installation that would download or
-  write more checkpoint data than the approved plan;
-- checkpoint adoption on a four-Spark ring (see [Checkpoints](#checkpoints)).
+  [Image distribution and caches](#image-distribution-and-caches).
 
-Offline tests cover the second and third conditions and the last four. The
+Offline tests cover the second and third conditions. The
 [acceptance record](../development/installer-acceptance.md) states the
 conditions of each run.
 
@@ -229,8 +228,8 @@ as installer-supported:
 | Profile | Checkpoint | Status and evidence |
 |---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD, revision `629bc3218833` | **Development** (`implemented`): installed with `sparkring install` on this image, with every setting these profiles make including probabilistic drafting, on one pair (source revision `e75451a671a3`) and one four-Spark ring (`f0ce5bea531f`); counting, arithmetic and code checks passed on both. Those installations' decode and prefill rates, and the measurements behind each setting, are in the [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md). Serving is not qualified. |
-| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, with MTP3 | **Experimental** (`research-only`): one installation each, on the parent image `dev-20260925-cuda1342-nccl2323-status031` with installer package revision `eb8ec2ba3b17`, passed counting, arithmetic and code checks ([record](../../performance/records/images/dev-20260925-installer-profiles-20260925.md)). No installation on this image, or with an installer revision after `eb8ec2ba3b17`, is recorded. |
-| `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | MiMo-V2.6-Flash-RL, revision `5711b2681699`, with DFlash5 | **Experimental** (`research-only`): as for GLM. |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, with MTP3 | **Experimental** (`research-only`): installed on this image on one pair and one four-Spark ring, adopting checkpoint copies on the Sparks; counting, arithmetic and code checks passed ([record](../../performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md)). Serving is not qualified. |
+| `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | MiMo-V2.6-Flash-RL, revision `5711b2681699`, with DFlash5 | **Experimental** (`research-only`): as for GLM ([record](../../performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md)). |
 
 Each profile's `profile.json` states its own evidence scope; published
 qualifications of other images do not transfer. The installer image differs
@@ -411,10 +410,11 @@ so its administration path survives renumbering.
 
 ## Four-Spark rings
 
-Status: **implemented**. Hardware runs of four-Spark installation used a ring
-whose ConnectX functions already held the hairpin setting described below.
-SparkRing applying that setting, during an installation or at boot, has no
-hardware evidence.
+Status: **implemented**. On a ring whose functions already held the setting,
+`sudo sparkring hairpin` recorded it and armed the boot service without a
+driver restart ([record](../../performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md)). SparkRing restarting drivers to
+apply the setting, during an installation or at boot, has no hardware
+evidence.
 
 Every four-Spark installer profile (`qwen38-flash-next-qad-tp4`,
 `glm53-flash-nvfp4-spark-tp4` and `mimo-v26-flash-rl-tp4`) relays traffic

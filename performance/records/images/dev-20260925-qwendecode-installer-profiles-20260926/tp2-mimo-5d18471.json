@@ -1,0 +1,32 @@
+{
+ "label": "tp2-mimo-5d18471",
+ "model": "MiMo-V2.6-Flash-RL-TP2",
+ "prefill": {
+  "4096": {
+   "tokens": 4065,
+   "seconds": 1.067,
+   "tok_s": 3810
+  },
+  "16384": {
+   "tokens": 16150,
+   "seconds": 4.248,
+   "tok_s": 3802
+  },
+  "65536": {
+   "tokens": 64779,
+   "seconds": 21.968,
+   "tok_s": 2949
+  }
+ },
+ "decode": [
+  25.44,
+  26.21,
+  26.58
+ ],
+ "fingerprints": {
+  "count": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 2",
+  "math": "391",
+  "code": "```python\ndef is_prime(n):\n    if n <= 1:\n        return False\n    if n <= 3:\n        return True\n    if n % 2 == 0 or n % 3 == 0:\n        return False\n    i = 5\n    while i * i <= n:\n        if n % i == 0 or n % (i + 2) == 0:\n            return False\n        i += 6",
+  "story": "The sea was a sheet of hammered pewter under a sky the colour of old bone. For forty years, Elias had watched it from the lantern room of the St. Jude\u2019s Point lighthouse, a solitary sentinel against the grey. His world was one of polished brass, the steady sweep of the light, and the rhythmic groan of the tide. It was a life of predictable, mechanical grace, much like the great clock in the tower that measured his days.\n\nOne"
+ }
+}

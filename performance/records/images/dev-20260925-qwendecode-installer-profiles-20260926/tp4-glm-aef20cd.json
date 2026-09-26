@@ -1,0 +1,32 @@
+{
+ "label": "tp4-glm-aef20cd",
+ "model": "GLM-5.3-Flash-NVFP4-Spark-TP4",
+ "prefill": {
+  "4096": {
+   "tokens": 4066,
+   "seconds": 1.488,
+   "tok_s": 2732
+  },
+  "16384": {
+   "tokens": 16151,
+   "seconds": 5.569,
+   "tok_s": 2900
+  },
+  "65536": {
+   "tokens": 64783,
+   "seconds": 22.585,
+   "tok_s": 2868
+  }
+ },
+ "decode": [
+  60.16,
+  59.74,
+  60.58
+ ],
+ "fingerprints": {
+  "count": "The user wants me to count from 1 to 30, separated by commas, and output only the numbers. This is a simple task - no extra text, just the numbers.1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20",
+  "math": "17 * 23 = 17 * 20 + 17 * 3 = 340 + 51 = 391391",
+  "code": "The user wants a Python function `is_prime(n)` and nothing else. So I should just provide the function code without any explanation, comments beyond what's necessary, or additional text.\n\nLet me write a clean, efficient is_prime function:\n\n```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n < 4:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in",
+  "story": "The user wants a detailed 700-word story about a lighthouse keeper who repairs a clockwork bird. Let me craft something evocative and literary. I should aim for approximately 700 words \u2014 that's a specific target, so I should try to hit close to it.\n\nLet me think about the story elements:\n- A lighthouse keeper: solitary, methodical, perhaps lonely, living by the rhythm of the sea and the light\n- A clockwork bird: mechanical"
+ }
+}
