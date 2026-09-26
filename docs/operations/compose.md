@@ -1,28 +1,49 @@
 # Compose deployments from SparkRing profiles
 
-For one saved deployment operated through `init`, `up`, `status` and `down`, use
-the [profile installer](install.md). It also generates GLM TP2 Compose files
-from the TP2 adapter and exports portable templates with `export --share`.
-That installer path is offline-tested; its hardware rehearsal remains pending.
-The lower-level `sparkring compose` coordinator described below retains its
-existing supported-profile list and recorded serving scope.
+For one saved deployment, use [Install SparkRing](install.md):
+`sparkring install`, or the lower-level `init`, `up`, `status` and `down`
+commands it describes. That page states its own status and evidence, and its
+`export --share` writes portable per-rank Compose templates. This page
+describes the separate `sparkring compose` coordinator.
 
-Status: **Development**. The [Qwen QAD TP4 serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
-covers four-rank startup, bounded inference/performance checks and coordinated
-stop/restart. The [TP2 smoke record](../../performance/records/qwen38-flash-next/compose-tp2.json)
-covers native/cache-enabled startup, shutdown and persistent-cache restore in a
-fresh deployment. Offline tests cover configuration equivalence and coordinator failures.
-The [QAD TP4 cache record](../../performance/records/qwen38-flash-next/sparkcache-tp4.json)
-also covers four-rank disk restore and corrupted-object rejection/recomputation.
+Status: **implemented**. The hardware records below cover Qwen profiles on the
+native images they name, not the shared installer image:
 
-The `sparkring compose` coordinator supports:
+- The [Qwen QAD TP4 serving record](../../performance/records/qwen38-flash-next/r37-shared-tp4.json)
+  covers four-rank startup, bounded inference/performance checks and
+  coordinated stop/restart.
+- The [TP2 smoke record](../../performance/records/qwen38-flash-next/compose-tp2.json)
+  covers native/cache-enabled startup, shutdown and persistent-cache restore in
+  a fresh deployment.
+- The [QAD TP4 cache record](../../performance/records/qwen38-flash-next/sparkcache-tp4.json)
+  covers four-rank disk restore and corrupted-object rejection/recomputation.
 
-- `qwen38-flash-next-tp2`
-- `qwen38-flash-next-tp2-sparkcache`
-- `qwen38-flash-next-qad-tp4` ([Development quickstart](../../profiles/qwen38-flash-next-qad-tp4/README.md))
-- `qwen38-flash-next-qad-tp4-sparkcache` ([cache quickstart](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md))
+Offline tests cover configuration equivalence and coordinator failures.
+Compose deployments of the profiles on the shared installer image have no
+hardware evidence.
 
-Other profiles are rejected by this coordinator. [GLM TP4 Compose creation](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
+The `sparkring compose` coordinator supports these profiles; every other
+profile is rejected:
+
+| Profile | Image |
+|---|---|
+| `qwen38-flash-next-tp2-sparkcache` ([guide](../../profiles/qwen38-flash-next-tp2/SPARKCACHE.md)), `qwen38-flash-next-qad-tp4-sparkcache` ([guide](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md)) | The shared native image named in the profile's release |
+| `qwen38-flash-next-tp2` ([guide](../../profiles/qwen38-flash-next-tp2/README.md)), `qwen38-flash-next-qad-tp4` ([guide](../../profiles/qwen38-flash-next-qad-tp4/README.md)) | The shared installer image |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | The shared installer image |
+| `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | The shared installer image |
+
+For the six profiles on the shared installer image, the coordinator renders
+each rank's container as `sparkring install` runs it, from the installer image
+lock, and records that lock in `deployment.json`. Compose reads the loader
+seccomp policy from `runtime/common/loader-seccomp.json` in each host's
+checkout. Generated files omit the runtime-binding file that the installer
+writes per rank, so the image's runtime-status plugin reports its worker
+identity as `binding_not_configured`. [`sparkring install`](install.md) is
+the supported entry point for these profiles: it also writes that binding and
+verifies the image before any model downtime.
+
+[GLM TP4 Compose creation](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
+for the `glm53-flash-spark-tp4-dcp1-sparkcache` profile
 uses the shared container specification through `sparkring deploy`. Its managed
 coordinator retains fabric, source-verification, readiness and recovery gates.
 GLM Docker/Compose creation has been checked without starting a model; its
@@ -43,18 +64,20 @@ Compose YAML are rendered from that specification, without parsing shell command
 The [Qwen configuration](../../profiles/qwen38-flash-next-tp2/config.json) owns
 serving defaults. A site cannot change them or select an arbitrary image. The
 [SparkCache configuration](../../profiles/qwen38-flash-next-tp2/sparkcache.json)
-selects the same registered shared runtime with persistence enabled. Image capabilities do not automatically
+selects the shared native image with persistence enabled. Image capabilities do not automatically
 enable GLM-specific features in Qwen.
 
-All four Qwen profiles select the shared native image by immutable registry
-digest. The host verifier checks its native receipt, source identities and
-pinned payload without requiring a separate R37 parent pull. Published
+The two SparkCache Qwen profiles select the shared native image by immutable
+registry digest. The host verifier checks its native receipt, source identities
+and pinned payload without requiring a separate R37 parent pull. Published
 selections reject an isolated `--local-image-id` override. Explicit R37 trials
 remain a separate developer selection below.
 
 ### Local source-image trials
 
-The Qwen TP2 and TP4 adapters also support an explicit
+Profiles on the shared installer image reject the options in this section; the
+installer image lock selects their image. The SparkCache Qwen TP2 and TP4
+profiles support an explicit
 [source-image test selection](../../profiles/qwen38-flash-next-qad-tp4/README.md#local-source-image-testing):
 `--local-source-extension lil-r37-qwen-prefill --local-image-id IMAGE_ID`.
 It uses the registered source descriptor, the image's complete installed inventory
@@ -64,8 +87,8 @@ provided. R37 trials select their own hooks, transport and source contracts.
 Local KV and bootstrap-port alternatives are recorded in the
 deployment manifest.
 
-For an experimental TP2 trial, select either `qwen38-flash-next-tp2` or
-`qwen38-flash-next-tp2-sparkcache`. The source route keeps HC sharding off,
+For an experimental TP2 trial, select `qwen38-flash-next-tp2-sparkcache`.
+The source route keeps HC sharding off,
 enables recurrent-checkpoint coalescing and preserves the pair's existing
 feature and transport selection. It does not activate TP4 HC fusion or the
 `qwen-prefill` feature. KV allocation stays at 24 GiB per rank unless the explicit
@@ -185,6 +208,15 @@ model metadata hashes, local image identity/platform, active HCA ports and GIDs,
 bootstrap address, available GPU and API/bootstrap ports, and host-side Compose
 equivalence. It does not repeat the full weight-shard checksum or prove RDMA peer
 connectivity. Complete those prerequisites before start.
+
+`start` coordinates only the two SparkCache profiles. Its image step verifies
+native images with the Qwen adapter's verification containers; for the six
+profiles on the shared installer image it stops with `Shared toolchain images
+are admitted by the installer image lock`, because those images are admitted
+through the installer image lock (`runtime/common/installer_image.py`), which
+this step does not run. Deploy those six profiles with `sparkring install`, or
+start their rendered files with `docker compose` on each host after pulling the
+image by its registry digest.
 
 `start` saves a private `start-plan.json` and prints its hosts, phases and identity
 without executing it. Review the exported YAML, target hosts

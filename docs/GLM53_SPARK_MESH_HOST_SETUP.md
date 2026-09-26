@@ -427,8 +427,11 @@ Complete the retained hardware-reference sections for
 [ConnectX-7 driver configuration](GLM53_SPARK_MTP3_MESH_QUICKSTART.md#connectx-7-driver-configuration-for-hardware-forwarding)
 and [stopped-stack hairpin provisioning](GLM53_SPARK_MTP3_MESH_QUICKSTART.md#optional-stopped-stack-hairpin-provisioning).
 They discover PCI addresses, check the tested `hmfs`/legacy configuration,
-set four hairpin queues of 1,024 packets only if needed, and explain driver
-reload hazards. Do not reload through a data-link-only SSH connection. After
+set four hairpin queues with `hairpin_queue_size` 8192 only if needed, and
+explain driver reload hazards. The hairpin values are `driverinit` settings:
+the driver starts with its default queue size of 1024 at every boot, so check
+them again after each reboot and repeat the stopped-stack provisioning when
+they differ. Do not reload through a data-link-only SSH connection. After
 reload, bring up the four named data profiles, repeat pings/GID/MTU checks,
 and verify management access before proceeding.
 Those links supply hardware instructions; their retired model/image selection

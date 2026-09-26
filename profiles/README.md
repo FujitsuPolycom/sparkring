@@ -12,6 +12,14 @@ in its configuration. “Stock” identifies the publisher’s original checkpoi
 The [NVIDIA GLM NVFP4 target](glm53-nvidia-nvfp4.md) is an optional Development
 variant of the GLM TP4 settings below; NVFP4-Spark remains their default.
 
+The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
+runs on image `dev-20260925-qwendecode-cuda1342-nccl2323-status031`
+([Install SparkRing](../docs/operations/install.md)). Their KV links point to
+the shared-2026.09.3 [correctness summary](../runtime/releases/shared-2026.09.3/correctness.json),
+whose figures were measured on the shared-2026.09.3 image with a BF16 LM head,
+not on the installer image. On the installer image, the TP4 profile's KV cache
+held 3,131,214 tokens ([installer tuning record](../performance/records/qwen38-flash-next/installer-tuning-20260925.md)).
+
 <!-- BEGIN GENERATED PROFILES -->
 
 ### Four Sparks

@@ -37,6 +37,12 @@ A successful upgrade on configured nodes does not establish blank-host, single-
 uplink, reboot-recovery or cable-reordering qualification. Those require separate
 fixtures and hardware evidence. CPU tests never qualify CUDA/RDMA serving.
 
+Status: **implemented**. One upgrade of a configured four-Spark ring (TP4),
+at installer source `02a873c0a389`, meets this definition (below); that result
+does not transfer to other installer revisions. No pair (TP2) run is recorded
+against the upgrade fixture. Blank-host, reboot-recovery and cable-reordering
+acceptance have no hardware evidence.
+
 ## Configured TP4 result, 2026-09-24
 
 Installer source `02a873c0a3896957ec2c3332ff31512d2357c32e` completed one
@@ -45,11 +51,13 @@ invocation without operator repair commands. The image configuration was
 `sha256:3db79d3c6bea958aada8855b5bc6ef368484b14b798b04c8b507b8e140925276`:
 CUDA 13.4.2, NCCL 2.32.3 and runtime-status 0.3.1.
 
-The fixture began with the old owned model running, three workers on an older
-package, the candidate image absent on one worker, and complete cached weights.
+The fixture began with the previous owned model running, three workers on an
+earlier package revision, the candidate image absent on one worker, and
+complete cached weights.
 The installer updated workers, transferred the image through authenticated
 fabric SSH in 171.5 seconds, reused verified checkpoint receipts in 4.0–4.3
-seconds per rank, then stopped the old model and launched all four new ranks.
+seconds per rank, then stopped the previous model and launched all four
+candidate ranks.
 The image's cold kernel tuning and startup took 549.7 seconds after API-rank
 start. Readiness and two short generation checks passed. The active pointer
 committed only after those checks. JSON stdout parsed successfully.
@@ -59,14 +67,15 @@ The dashboard, model-list and health routes responded over the management LAN.
 These checks establish this installation and basic serving; they do not establish
 performance, broad model correctness or long-running stability.
 
-Two earlier attempts failed and remain separate evidence. The first exposed a
-Docker listing that hid an imported untagged image; it stopped before downtime.
-The second exposed Docker's default io_uring restriction after model startup.
-That attempt automatically stopped the candidate, restored the retained previous
-deployment, and passed readiness and generation checks. The fixes use exact-ID
-image inspection and a container-scoped loader policy with CPU preflight.
+Recovery evidence from the same ring and fixture: in a run whose candidate
+failed after model startup, because Docker's default seccomp profile blocked
+`io_uring`, the installer stopped the candidate and restored the retained
+previous deployment, which passed readiness and generation checks. The
+installer inspects images by exact ID and runs the checkpoint loader under a
+container-scoped `io_uring` policy with a CPU preflight, as described in
+[Install SparkRing](../operations/install.md).
 
-The final source passed 1,187 Linux tests. Its ARM64 package passed manifest,
+Installer source `02a873c0a389` passed 1,187 Linux tests. Its ARM64 package passed manifest,
 source-bundle, CLI and eight service-definition checks. Test fixture preparation
 and read-only observations are separate from installer actions. Private receipts
 and logs are retained by the operator; no site addresses or credentials are
@@ -87,16 +96,37 @@ gate failed; the unchanged TP2 baseline exhibited the same failure. Health,
 model/context identity, arithmetic, image-input acceptance and prefix-response
 checks passed. Image-input acceptance is not a visual-understanding test.
 
-GLM preparation review found a nested workspace incompatible with the managed
-backend and service paths already occupied by the current mesh. The controller
-now uses the backend's supported workspace, stages before model shutdown, and
-checks existing service ownership before mutations. Source
-`4663b6c711ffa64b3cc68d659d13de919ec456ba` returned `needs_input` for the occupied
-fabric through the public install command, leaving Qwen and the mesh unchanged.
-GLM serving is not qualified by this test; existing-mesh integration or an
-explicitly reviewed migration remains necessary.
+For the managed GLM backend, the controller uses the backend's supported
+workspace, stages assets before model shutdown, and checks existing service
+ownership before changing anything. On a ring whose mesh service paths belonged
+to another deployment, installer source
+`4663b6c711ffa64b3cc68d659d13de919ec456ba` returned `needs_input` (field
+`fabric`) through `sparkring install`, leaving the running Qwen model and the
+mesh unchanged. This run does not establish GLM serving through the managed
+backend; that requires an existing-mesh adapter or an explicitly reviewed
+migration.
 
-TP2 installer acceptance has not run: SSH access is available, but privileged
-installation awaits sudo credentials/root access, and both local disks are
-nearly full. The baseline API checks above do not establish installer acceptance.
-No TP2 packages, containers, images or network settings were changed.
+## Installer-profile installations on the shared image, 2026-09-25
+
+Installer package revision `eb8ec2ba3b17` installed each of the six installer
+profiles, as that revision defined them, with `sparkring install` on one
+directly cabled pair (TP2) and one four-Spark ring (TP4), on image
+`dev-20260925-cuda1342-nccl2323-status031`. At that revision both Qwen
+profiles pinned checkpoint revision `60215d26cf5e` (Hugging Face branch
+`qad-step5500-ple1000`), with MXFP8 LM-head and hyper-connection quantization
+off and greedy drafting. Counting, arithmetic and code checks passed for every
+profile, and first-start readiness and single-run throughput were recorded in
+the
+[six-profile installation record](../../performance/records/images/dev-20260925-installer-profiles-20260925.md).
+Installer deployments of `qwen38-flash-next-tp2` and
+`qwen38-flash-next-qad-tp4` with checkpoint revision `629bc3218833` on image
+`dev-20260925-qwendecode-cuda1342-nccl2323-status031` supplied the serving
+containers measured in the
+[installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md).
+With the settings committed, including probabilistic drafting, source
+revisions `e75451a671a3` (pair) and `f0ce5bea531f` (ring) installed the two
+profiles again after the deployment and asset-admission state on every node
+had been moved aside, reusing cached checkpoint files and images; that record's
+Installer deployments section gives the conditions and results.
+Their records do not describe the upgrade fixture above, so these runs are
+installation evidence, not acceptance under this definition.

@@ -4,7 +4,41 @@ A SparkRing image is a Docker/OCI application container for Linux ARM64 GB10
 hosts. It contains a prepared inference software stack. It is not a bootable
 operating-system image. Pulling it neither configures networking nor starts a model.
 
-## Included in the shared serving image
+`sparkring install` runs every installer profile on one installer image. Other
+profiles, including the SparkCache profiles in the Qwen guides, select their own
+image release, such as the shared 2026.09.3 image. Each profile's
+`profile.json` names its image release and evidence scope.
+
+## Included in the installer image
+
+The installer image is
+`ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f`
+(tag `dev-20260925-qwendecode-cuda1342-nccl2323-status031`, image configuration
+`sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971`). Its
+[installer image lock](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/installer-image.json)
+lists the six installer profiles and pins its identity and receipts; its
+[publication record](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/publication.json)
+names the parent image, `dev-20260925-cuda1342-nccl2323-status031`, and the
+derived layer. The registry download is 14.2 GiB and the unpacked image
+29.5 GiB. Status: **implemented**, a development image; registry verification
+does not establish serving correctness, and each profile states its own
+evidence scope.
+
+| Component | Purpose |
+|---|---|
+| `eugr/spark-vllm-b12x:nightly-20260924` base | vLLM with B12X kernels and loaders for GB10 |
+| CUDA 13.4.2 and NCCL 2.32.3 toolchain | CUDA runtime and the NCCL library the installer's container settings select |
+| Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives whose forwarded-path send window bounds traffic relayed by a ring node |
+| Runtime-status dashboard 0.3.1 | `/v1/sparkring/status/view` on the model API port |
+| Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10 and the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
+
+`sparkring install` runs this image with the image's verified entrypoint, a
+per-rank runtime-binding file, the NCCL 2.32.3 library paths and a seccomp
+policy that permits `io_uring`. The manual Qwen launcher,
+`runtime/common/qwen_flash_next.py`, refuses to create containers from this
+image. Run the installer profiles through `sparkring install`.
+
+## Included in the shared 2026.09.3 image
 
 The [2026.09.3 release](../../runtime/releases/shared-2026.09.3/README.md) includes:
 

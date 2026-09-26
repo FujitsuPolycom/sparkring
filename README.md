@@ -20,27 +20,92 @@ The repository provides setup guides, launch tooling, model profiles,
 reproducible benchmarks, and test results. Validation applies to the exact
 configurations and workloads recorded with each profile.
 
-## Setup
+## Get started
 
-Cable two Sparks as a pair or four as a ring, connect one Spark (Node A) to your
-network, then on Node A:
+**Before you start**, meet the host requirements in
+[Install SparkRing](docs/operations/install.md):
+
+- two Sparks cabled port p0 to port p0, or four in a ring with each Spark's p0
+  cabled to the next Spark's p1;
+- Ubuntu 24.04 ARM64 (DGX OS) with NVIDIA drivers, Docker, NVIDIA Container
+  Toolkit and NetworkManager on every Spark;
+- SSH enabled and a root login or a login with sudo on every Spark;
+- one Spark, Node A, connected to your network. Workers need no network
+  connection of their own.
+
+**Two Sparks.** On Node A, run:
 
 ```bash
-sudo apt install ./sparkring_<version>_arm64.deb
-sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
-The [installation guide](docs/operations/install.md) covers profiles, logs,
-`--plan`/`--json` for scripted or LLM-driven use, and recovery. Every installer
-profile runs on one shared serving image; `sparkring models` lists them. The
-installer checks each layer — access, packages, fabric, image, weights — reuses
-what is verified and prepares what is missing before switching models.
-For first boot and networking, use [host setup](docs/operations/setup.md).
+**Four Sparks.** On Node A, from a console or a management connection that
+does not use the ring cables, run:
 
-Standalone Compose recipes remain available for manual pair deployments:
-[GLM TP2](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml)
-and [Qwen TP2](profiles/qwen38-flash-next-tp2/compose/standalone.yaml). They
-require prepared networking and model weights.
+```bash
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
+```
+
+A ring whose ConnectX functions do not yet have the hairpin setting that
+four-Spark forwarding needs stops at `Driver reload required`. Review and apply
+the driver step, then install the model; repeat both after any Spark in the
+ring reboots. The driver step has no hardware evidence
+([Four-Spark rings](docs/operations/install.md#four-spark-rings)):
+
+```bash
+sudo sparkring setup --plan
+sudo sparkring setup --allow-driver-reload
+sudo sparkring install --profile qwen38-flash-next-qad-tp4
+```
+
+The [install script](install.sh) builds the SparkRing package from this
+branch and installs it on Node A. `sparkring install` then lists what it will
+change and asks `Proceed? [Y/n]`. It sets up every cabled Spark, downloads the
+serving image and, unless a Spark already holds a verified copy, the model
+checkpoint, and ends with the API address:
+
+```text
+Model ready: http://NODE_A_ADDRESS:8000/v1
+```
+
+Send a test request (four Sparks: port 8015, model
+`Qwen3.8-Flash-Next-NVFP4-QAD-TP4`):
+
+```bash
+curl http://NODE_A_ADDRESS:8000/v1/chat/completions -H 'Content-Type: application/json'   -d '{"model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+The API has no key. Keep Node A on a trusted network
+([Security and host exposure](docs/operations/install.md#security-and-host-exposure)).
+From a second terminal, `sudo sparkring logs --follow` shows progress, which
+is also saved to `/var/log/sparkring/install.log`. The
+[installation guide](docs/operations/install.md) covers recovery, storage,
+downloads, reuse of a checkpoint already on disk (`--model-path`) and
+`--plan`/`--json` for scripted use.
+
+| Sparks | Profile | API port | Status |
+|---:|---|---:|---|
+| 2 | `qwen38-flash-next-tp2` | 8000 | implemented |
+| 4 | `qwen38-flash-next-qad-tp4` | 8015 | implemented |
+| 2, 4 | `glm53-flash-nvfp4-spark-tp2`, `-tp4` | 8000, 8015 | research-only |
+| 2, 4 | `mimo-v26-flash-rl-tp2`, `-tp4` | 8020 | research-only |
+
+Both Qwen profiles serve
+[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)
+with three-token MTP drafting; their measured decode and prefill rates are in
+the [installer tuning record](performance/records/qwen38-flash-next/installer-tuning-20260925.md).
+Every installer profile runs on one shared serving image; `sparkring models`
+lists them.
+
+**Docker Compose.** Each installer profile's directory holds per-rank Compose
+files for the same image, for example
+[`profiles/qwen38-flash-next-tp2/compose`](profiles/qwen38-flash-next-tp2/compose).
+[`standalone.yaml`](profiles/qwen38-flash-next-tp2/compose/standalone.yaml)
+runs the Qwen TP2 profile on two Sparks from one file; it needs prepared
+networking, the checkpoint on each Spark, and
+[`runtime/common/loader-seccomp.json`](runtime/common/loader-seccomp.json) at
+that path relative to the Compose file. [Compose deployments](docs/operations/compose.md)
+describes both.
 
 The [SparkRing image](docs/operations/images.md) contains the inference software.
 Model weights, host drivers, Docker and network configuration are separate.

@@ -68,10 +68,13 @@ Before installation:
 - Verify direct-neighbor RoCE, the physical cable cycle, all four local
   RDMA functions, Ethernet MTU 9,000, RoCE MTU 4,096, and GID index 3.
 - Verify the [ConnectX-7 hairpin/steering prerequisites](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md#connectx-7-driver-configuration-for-hardware-forwarding):
-  four hairpin queues of 1,024 packets per function and the tested `hmfs`
-  steering profile. Any required driver reload belongs to a separate
-  stopped-all-RDMA-users maintenance step over independent management or a
-  console, not to service installation or recovery.
+  four hairpin queues (`hairpin_num_queues` 4) with `hairpin_queue_size` 8192
+  per function, and the tested `hmfs` steering profile. Both hairpin values are
+  `driverinit` settings: the driver starts with its default queue size of 1024
+  at every boot, so verify them again after each reboot. Any required driver
+  reload belongs to a separate stopped-all-RDMA-users maintenance step over
+  independent management or a console, not to service installation or
+  recovery.
 - Use identical source, site, topology, marker binary, and immutable image
   identities on all four ranks. Use the marker executable built with managed
   attachment support; a bounded-only executable is insufficient.

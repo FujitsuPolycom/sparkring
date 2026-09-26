@@ -1,9 +1,12 @@
 # SparkRing prerequisites
 
-For a first installation, follow [Set up SparkRing](setup.md). This page is a
-reference checklist. Use [host preparation](host-preparation.md) for executable
-instructions, then the [pair network guide](pair-network.md) or ring procedure.
-Check the following on every Spark for your selected profile.
+For a one-command installation with the Debian package, follow
+[Install SparkRing](install.md); it lists the host requirements that
+`sparkring install` needs. This page is a reference checklist for the manual
+procedure in [Set up SparkRing](setup.md). Use
+[host preparation](host-preparation.md) for executable instructions, then the
+[pair network guide](pair-network.md) or ring procedure. Check the following on
+every Spark for your selected profile.
 
 ## Hardware and topology
 

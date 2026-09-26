@@ -1,8 +1,13 @@
 # Bootstrap a blank SparkRing cluster
 
+For a one-command installation of a pair or four-Spark ring with the Debian
+package, follow [Install SparkRing](install.md) instead; `sparkring install`
+performs its own discovery and fabric setup. This page describes the manual
+Ring Doctor procedure.
+
 This host and network bootstrap supports four- and six-Spark direct rings.
 It does not select a serving profile or qualify six-rank inference.
-Two-node deployments use [pair networking](pair-network.md). For a first
+Two-node deployments use [pair networking](pair-network.md). For a manual
 installation, start at [setup](setup.md) and complete [host preparation](host-preparation.md)
 on every rank, including noninteractive sudo for ring repairs, before continuing.
 
@@ -31,7 +36,7 @@ export PATH="$HOME/.local/bin:$PATH"
 cd "$HOME/.local/share/sparkring"
 ```
 
-For a supplied test checkout, use its actual directory and define
+For a checkout in another directory, `cd` to that directory and define
 `sparkring() { python3 scripts/sparkring.py "$@"; }` in that Bash session.
 
 ## 3. Check the blank Spark

@@ -131,5 +131,9 @@ echo
 echo "Check this Spark first:"
 echo "  sparkring host check"
 echo
-echo "Then start a new ring on the head Spark:"
-echo "  sparkring cluster init --size 4"
+echo "This checkout runs host checks, Ring Doctor and the manual profile guides."
+echo "One-command installation (sudo sparkring install) runs only from the"
+echo "SparkRing Debian package; see:"
+echo "  $INSTALL_DIR/docs/operations/install.md"
+echo "While $BIN_DIR precedes /usr/bin in PATH, 'sparkring' without sudo runs"
+echo "this checkout; run /usr/bin/sparkring to use an installed package."

@@ -1,34 +1,60 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on four Sparks
 
-Status: the installer profile ([config.json](config.json)) is **implemented** on the QAD
-checkpoint branch `qad-step5500-ple1000` (model class `Qwen4ExpForConditionalGeneration`);
-its serving is not qualified. The SparkCache profile remains **qualified for bounded
-correctness and restart checks** on revision `629bc3218833`. This guide selects
-[SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md).
-The cache-disabled profile and [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md)
-use the same immutable image. The [qualification record](../../runtime/releases/shared-2026.09.3/qualification.json)
-records bounded short/16K text, finite-score, synthetic media, concurrent-request and retained-restart checks, plus physical cache restore
-with SparkCache. The [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
-owns case counts and evidence hashes. These checks do not qualify full-context,
-C16-pressure stability or performance.
+Status: the installer profile `qwen38-flash-next-qad-tp4` ([config.json](config.json))
+is **implemented**. Install it with
+`sudo sparkring install --profile qwen38-flash-next-qad-tp4` after the
+four-Spark driver step in
+[Install SparkRing](../../docs/operations/install.md#four-spark-rings), which
+needs console or independent management access to every Spark and has no
+hardware evidence. The profile
+serves revision `629bc3218833a38b475b719f34aa571666f4a03e` (Hugging Face
+branch `qad-step-4000`) of `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` on the
+installer image `dev-20260925-qwendecode-cuda1342-nccl2323-status031`
+(`ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f`).
+On one four-Spark ring whose ConnectX functions already had the required
+hairpin setting, `sparkring install` from source revision `f0ce5bea531f`
+installed it with these settings, including probabilistic drafting, and its
+counting, arithmetic and code checks passed; the
+[installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
+gives that installation's decode and prefill rates and the measurements behind
+each setting. Its serving is not qualified.
 
-| Setting | Selection |
-|---|---|
-| Checkpoint | Installer profile: NVFP4 QAD branch `qad-step5500-ple1000`, revision `60215d26cf5e42c2db6128774032d57fc62678da`; SparkCache profile: revision `629bc3218833a38b475b719f34aa571666f4a03e` |
-| Parallelism | TP4/DCP1 on a four-node ring with hardware-forwarded mesh paths |
-| Context / sequences / batch | 262144 / 16 / 8192; no YaRN |
-| KV allocation | 24 GiB FP8 per rank; 32-token requested attention blocks |
-| Loading / speculation | Managed B12X / MTP3; the installer profile's MXFP8 MTP experts use the humming MoE backend |
-| Collectives | Size-based RoCEnante selection and dual-domain NCCL |
-| Prefill | HC fusion and row sharding, checkpoint coalescing, paired QSA scoring and B12X #394 |
-| Media | Three images / one video, 16 configured frames |
-| SparkCache | Optional; choose its profile below. Native prefix caching stays enabled in both |
+The [SparkCache selection](../qwen38-flash-next-qad-tp4-sparkcache/README.md),
+`qwen38-flash-next-qad-tp4-sparkcache`, is **qualified for bounded correctness
+and restart checks** on the same checkpoint revision and the
+[SparkRing shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md)
+image. The [qualification record](../../runtime/releases/shared-2026.09.3/qualification.json)
+records bounded short/16K text, finite-score, synthetic media,
+concurrent-request and retained-restart checks, plus physical cache restore.
+The [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
+owns case counts and evidence hashes. These checks do not qualify full-context,
+C16-pressure stability or performance, and they do not transfer to the
+installer profile, whose image and decode settings differ.
+
+| Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
+|---|---|---|
+| Image | `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | `shared-2026.09.3` |
+| Parallelism | TP4/DCP1 on a four-node ring with hardware-forwarded mesh paths | Same |
+| Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |
+| KV allocation | 24 GiB FP8 per rank; 32-token requested attention blocks | Same |
+| Loading / speculation | Managed B12X / MTP3, drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`) | Managed B12X / MTP3, greedy drafts |
+| Decode weights | MXFP8 target LM head; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op | BF16 LM head and hyper-connection projections |
+| Collectives | Size-based RoCEnante/NCCL selection with decode all-reduces of up to 64 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=327680`); NCCL uses all four ring NIC functions (`NCCL_IB_EXTENDED_IPV4_GIDS=1`) | Size-based selection with decode all-reduces of up to 4 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=20480`); extended IPv4 GIDs off |
+| Prefill | Hyper-connection token-row ownership (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`) and checkpoint coalescing | Same |
+| Media | Three images / one video, 16 configured frames | Same |
+| Caching | vLLM native prefix cache; SparkCache off | SparkCache on; native prefix cache on |
+| API | Port 8015, model `Qwen3.8-Flash-Next-NVFP4-QAD-TP4`, no API key | Same |
 
 The [configuration](config.json) owns these settings. GLM-specific mHC/KDA
 switches and SIRCL serving switches are disabled for this Qwen profile.
 TP2 uses the [two-Spark quickstart](../qwen38-flash-next-tp2/README.md).
 
 ## Prepare image, model and fabric
+
+The manual commands below render and start the SparkCache profile. Install the
+installer profile with `sparkring install`, which also writes each rank's
+runtime-binding file and verifies the installer image before any model
+downtime.
 
 Complete [setup](../../docs/operations/setup.md) through the host and ring
 network steps. Use Bash from the recorded checkout directory on each host.
@@ -37,8 +63,7 @@ Use the same SparkRing checkout on every host and pull this image on all four:
 ```bash
 set -euo pipefail
 mkdir -p .sparkring
-PROFILE=qwen38-flash-next-qad-tp4
-# For persistent caching, select qwen38-flash-next-qad-tp4-sparkcache instead.
+PROFILE=qwen38-flash-next-qad-tp4-sparkcache
 python3 scripts/sparkring.py setup show "$PROFILE" --format shell \
   > .sparkring/selection.env
 cat .sparkring/selection.env
@@ -127,7 +152,9 @@ prefill/decode batch may not exercise that path.
 ## Local source-image testing
 
 The retained [R37 source-image workflow](../../runtime/images/compositions/lil-r37-qwen-prefill/README.md)
-is an explicit developer alternative, not this shared release. Selecting it
+is an explicit developer alternative, not this shared release. It applies to
+`qwen38-flash-next-qad-tp4-sparkcache`; the installer profile rejects it,
+because its installer image lock selects its image. Selecting it
 requires `--local-source-extension lil-r37-qwen-prefill --local-image-id IMAGE_ID`.
 Its adapter selects R37 hooks, transport and cache contracts with a separate
 namespace. It does not inherit this release's qualification. Do not use local

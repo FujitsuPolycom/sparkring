@@ -19,8 +19,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: SparkRing version
-      description: Commit, tag, or profile ID from scripts/profiles.py list, if known.
+      label: SparkRing version and profile
+      description: Package version from `dpkg-query -W sparkring` (it ends in the source commit), or the commit or tag of a checkout, and the exact profile ID from `sparkring models`, if known.
 
   - type: textarea
     id: reproduction
@@ -32,11 +32,11 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Add relevant node count, hardware, OS, drivers, image, model, or configuration. Omit anything unavailable.
+      description: Add relevant node count, hardware, OS, drivers, image, model, or configuration. For installer problems, include Docker's image store from `docker info --format '{{json .DriverStatus}}'`. Omit anything unavailable.
 
   - type: textarea
     id: logs
     attributes:
       label: Logs or other evidence
-      description: Paste sanitized output or attach evidence if available.
+      description: Paste sanitized output or attach evidence if available. For the installer, `/var/log/sparkring/install.log` and `sudo sparkring status --refresh --json` help; both contain host names and private addresses.
       render: shell

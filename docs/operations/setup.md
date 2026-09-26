@@ -1,18 +1,24 @@
 # Set up SparkRing
 
-SparkRing runs a language model across NVIDIA GB10 machines. Installation has
-three parts: prepare the hosts and network, obtain the container and model
-weights, then start and test a selected deployment.
+To install a model with one command, use the Debian package and
+`sudo sparkring install` as described in [Install SparkRing](install.md); that
+guide covers first boot requirements, networking and model assets for the
+installer profiles. This page is the manual procedure for the profile guides
+listed below.
+
+SparkRing runs a language model across NVIDIA GB10 machines. Manual
+installation has three parts: prepare the hosts and network, obtain the
+container and model weights, then start and test a selected deployment.
 
 The [SparkRing image](images.md) contains the inference software. It does not
 contain model weights or configure your hosts. Each rank needs the complete
 checkpoint. Rank means a machine's fixed position; rank 0 serves the API and is
 the default controller for these instructions.
 
-Status: **implementation ready for a supervised hardware rehearsal**. Existing
-profile records cover prepared systems and bounded serving checks. This setup
-sequence has not been qualified from factory-reset hosts. Installation checks,
-network checks and model qualification are separate results.
+Status: **implemented**. Existing profile records cover prepared systems and
+bounded serving checks. This manual sequence has not been run from
+factory-reset hosts. Installation checks, network checks and model
+qualification are separate results.
 
 ## 1. Choose your deployment
 

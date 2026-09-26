@@ -1,6 +1,9 @@
 # Prepare the Spark hosts
 
-Use this once before the [pair](pair-network.md) or four-node ring procedure.
+The one-command installer does not use this page: [Install SparkRing](install.md)
+lists its host requirements, and `sparkring install` prepares hosts from
+Node A. Use this page once before the manual [pair](pair-network.md) or
+four-node ring procedure.
 An existing installation can skip completed actions after checking their results.
 Commands use Bash on Linux. Rank 0 is the controller; run each block where stated.
 
@@ -60,29 +63,47 @@ explains that scope. Pair networking below uses interactive sudo during preparat
 
 ## 3. Install and record one checkout
 
-On **rank 0**, resolve the installation ref once and download the installer from
-that exact commit. `main` below selects a maintained checkout, not a floating image.
-For a supervised branch rehearsal, use the supplied committed checkout instead
-and skip this download/install block on every host.
+On **rank 0**, choose the branch to install, resolve it to one commit, and
+download the installer script from that exact commit. `BRANCH=main` below
+selects the repository's default branch; set `BRANCH` to another branch name
+to install that branch instead. The script clones the branch; the final `test`
+confirms that the checkout is the resolved commit, which is what every rank
+must install.
 
 ```bash
 REPOSITORY=https://github.com/FujitsuPolycom/sparkring.git
-REF=$(git ls-remote "$REPOSITORY" refs/heads/main | awk '{print $1}')
+BRANCH=main
+REF=$(git ls-remote "$REPOSITORY" "refs/heads/$BRANCH" | awk '{print $1}')
 test "${#REF}" -eq 40
+echo "$REF"
 curl --fail --location \
   "https://raw.githubusercontent.com/FujitsuPolycom/sparkring/$REF/bootstrap.sh" \
   --output /tmp/sparkring-bootstrap.sh
 less /tmp/sparkring-bootstrap.sh
-bash /tmp/sparkring-bootstrap.sh --ref "$REF"
+bash /tmp/sparkring-bootstrap.sh --ref "$BRANCH"
 export PATH="$HOME/.local/bin:$PATH"
 cd "$HOME/.local/share/sparkring"
-git rev-parse HEAD
+test "$(git rev-parse HEAD)" = "$REF"
 ```
+
+The `bootstrap.sh` on `main` passes `--ref` to `git clone --branch`, which
+accepts a branch or tag name but not a commit, so the block passes the branch
+and checks the commit afterwards.
 
 Save the printed 40-character revision. On **each other rank**, repeat this block
 with `REF` set to that recorded revision instead of the `git ls-remote` assignment.
-Do not independently resolve `main` again. The installer refuses a dirty managed
-checkout. It installs only on the machine where it runs.
+Do not independently resolve the branch again. If the final `test` fails
+because the branch has moved since rank 0 resolved it, select the recorded
+commit in the checkout and test again:
+
+```bash
+git fetch origin "$REF"
+git checkout --detach "$REF"
+test "$(git rev-parse HEAD)" = "$REF"
+```
+
+The installer refuses a dirty managed checkout. It installs only on the machine
+where it runs.
 
 For all subsequent repository commands, use this directory in each new shell:
 
@@ -91,7 +112,7 @@ cd "$HOME/.local/share/sparkring"
 python3 scripts/sparkring.py host check
 ```
 
-For an explicitly supplied test checkout, `cd` to its actual path instead. All
+For a checkout in another directory, `cd` to that directory instead. All
 ranks must have identical committed source. The generic host check's 20-GiB root
 space threshold is only a basic host check; perform the storage check below.
 
