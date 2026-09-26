@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import time
@@ -133,6 +134,17 @@ def model_files(path):
     return result
 
 
+def allocated_bytes(path):
+    """Disk space held by the regular files below ``path``; symlinks are not followed."""
+    total = 0
+    for directory, _, names in os.walk(path):
+        for name in names:
+            info = os.lstat(os.path.join(directory, name))
+            if stat.S_ISREG(info.st_mode):
+                total += info.st_blocks * 512 if POSIX_STATS else info.st_size
+    return total
+
+
 def model_file_stats(path):
     """Linux inode/change-time fingerprints for an already checksum-verified tree."""
     root = plain(path)
@@ -205,11 +217,38 @@ def pinned_differences(profile, files):
     return differences
 
 
-def hub_download(lock, model):
-    """Fetch the pinned revision into ``model``; existing identical files are kept."""
+def download_record(lock, model):
+    """Marker contents naming ``model`` as this deployment's pinned hub download destination."""
     card = lock["selection"]
+    return {"deployment": lock["id"], "path": str(model),
+            "repository": card["model_repository"], "revision": card["model_revision"]}
+
+
+def download_container(model):
+    """Name of the container that downloads into ``model``."""
+    return "sparkring-checkpoint-" + hashlib.sha256(str(model).encode()).hexdigest()[:16]
+
+
+def hub_download(lock, model):
+    """Fetch the pinned revision into ``model``; existing identical files are kept.
+
+    The hub client records each completed file under ``model/.cache``. Repeating
+    the call keeps and skips those files and fetches the rest; whether a
+    partially written file continues or restarts is left to the hub client.
+
+    The download container belongs to the Docker daemon, so it keeps running
+    when the installer's SSH session or the docker client ends, for example
+    after Ctrl-C or a timeout. Its name is derived from ``model``, so a second
+    download into the same directory is refused while that container exists.
+    """
+    card = lock["selection"]
+    name = download_container(model)
+    if run(["docker", "container", "inspect", name], check=False).returncode == 0:
+        raise ValueError(f"A checkpoint download into {model} is still in progress in container {name}. "
+                         f"Wait until sudo docker ps no longer lists it, or stop it with sudo docker rm --force {name}, "
+                         "then repeat sudo sparkring install.")
     code = "from huggingface_hub import snapshot_download; import sys; snapshot_download(repo_id=sys.argv[1],revision=sys.argv[2],local_dir='/model')"
-    run(["docker", "run", "--rm", "--pull", "never", "--runtime", "runc", "--user", f"{os.getuid()}:{os.getgid()}",
+    run(["docker", "run", "--rm", "--name", name, "--pull", "never", "--runtime", "runc", "--user", f"{os.getuid()}:{os.getgid()}",
          "--env", "HF_HOME=/tmp/huggingface", "--mount", f"type=bind,src={model},dst=/model",
          "--entrypoint", "python3" if "image_runtime" in lock else "/opt/venv/bin/python", card["image_id"], "-c", code,
          card["model_repository"], card["model_revision"]])
@@ -244,7 +283,6 @@ def verify_model(lock, row, receipt_path, *, receipt=None, measured=None):
 
 def transfer_model(operation, lock, row, state):
     """Receive only a verified checkpoint manifest into an owned destination."""
-    import shutil
     import sys
     from pathlib import PurePosixPath
     receipt_path = plain(state / "model.json")
@@ -533,16 +571,36 @@ def perform(operation, lock, number):
         # The image may still be arriving from Node A; until it is present its
         # import space stays reserved alongside the checkpoint.
         present = run(["docker", "image", "inspect", card["image_id"]], check=False).returncode == 0
+        # Unless the rank reuses a declared or discovered copy, a nonempty
+        # destination is accepted only as this deployment's own unfinished
+        # download, whose record is written before the hub client writes its
+        # first file.
+        download = plain(state / "model-download.json")
+        resuming = download.is_file() and profiles.read_json(download) == download_record(lock, model)
+        # The bytes an unfinished download already wrote are part of the
+        # checkpoint allowance, so the filesystem holding them needs only the
+        # rest of it.
+        written = allocated_bytes(model) if resuming and not row["reuse_verified_model"] and model.is_dir() else 0
+
+        def disk_usage(path):
+            usage = shutil.disk_usage(path)
+            if written and os.stat(path).st_dev == os.stat(model).st_dev:
+                usage = usage._replace(free=usage.free + written)
+            return usage
         report = setup.storage_plan(card, model_path=model, cache_path=cache, docker_path=docker_path,
-                                     reuse_model=row["reuse_verified_model"], reuse_image=present)
+                                     reuse_model=row["reuse_verified_model"], reuse_image=present, disk_usage=disk_usage)
         if not report["passed"]:
-            raise ValueError("Insufficient destination storage: " + json.dumps(report["filesystems"]))
-        if model.exists() and any(model.iterdir()) and not row["reuse_verified_model"]:
-            raise ValueError("Nonempty model path has no installer receipt; explicitly declare an independently verified copy or choose a fresh path")
+            raise ValueError("Insufficient destination storage: " + json.dumps(report["filesystems"])
+                             + '. Free space on each filesystem marked "passed": false, then repeat sudo sparkring install.')
+        if model.exists() and any(model.iterdir()) and not row["reuse_verified_model"] and not resuming:
+            raise ValueError("Nonempty model path " + str(model) + " has no installer receipt or download record; "
+                             "declare an independently verified copy with --model-path, or choose a fresh path")
         model.mkdir(parents=True, exist_ok=True)
         if not lock["backend"].startswith("glm-"):
             cache.mkdir(parents=True, exist_ok=True)
         if not row["reuse_verified_model"]:
+            if not resuming:
+                deploy_engine.save_receipt(download, download_record(lock, model))
             hub_download(lock, model)
         before = model_file_stats(model)
         hashes = remembered_checkpoint(card, model, before) or model_files(model)

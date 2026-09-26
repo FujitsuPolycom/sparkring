@@ -1,15 +1,20 @@
 """Public CLI acceptance with host/SSH boundaries simulated, not the coordinator."""
 import json
+from pathlib import Path
 import threading
 
 import pytest
 
-from runtime.host import controller, install_workflow as flow, node, rollout
+from runtime.common import installer
+from runtime.host import controller, install_assets, install_workflow as flow, node, rollout
 from runtime.host.install_errors import NeedsInput
 from runtime.host.test_fabric_ssh import cluster
-from scripts import sparkring
+from scripts import installer_runner, sparkring
 
 PROFILE = "qwen38-flash-next-tp2"
+# The asset preparer whose runner the installer uses, captured before the
+# machine fixture replaces it with a simulation.
+ASSETS = install_assets.Assets
 
 
 @pytest.fixture
@@ -45,7 +50,7 @@ def machine(tmp_path, monkeypatch):
             events.append("fill-missing-image")
         def runner(self, directory, previous=None, images=None):
             def run(host, argv, timeout):
-                if argv[1] == "image":
+                if argv[1] in ("model", "image"):
                     images.result()
                 events.append("prepare:" + argv[1])
                 return {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
@@ -74,25 +79,86 @@ def test_documented_command_updates_prepares_switches_and_emits_only_json(machin
     assert rollout.active(controller.STATE) != previous
 
 
-def test_image_distribution_runs_while_checkpoints_are_prepared(machine, monkeypatch, capsys):
-    events, _, assets, _ = machine
-    checkpoint = threading.Event()
-    original = assets.runner
-    def runner(self, directory, previous=None, images=None):
-        run = original(self, directory, previous, images)
-        def observed(host, argv, timeout):
-            result = run(host, argv, timeout)
-            if argv[1] == "model":
-                checkpoint.set()
-            return result
-        return observed
+def prepared_runner(monkeypatch, *, images, models):
+    """Install through the real asset runner; SSH actions succeed and asset transfers are simulated."""
+    monkeypatch.setattr(installer_runner.Runner, "_call",
+                        lambda self, target, argv, timeout: {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False})
+
+    class Assets(ASSETS):
+        def sync_packages(self):
+            return {"updated": []}
+    Assets.images, Assets.models = images, models
+    monkeypatch.setattr(flow.install_assets, "Assets", Assets)
+
+
+def test_checkpoint_phase_waits_for_pending_image_distribution(machine, monkeypatch, capsys):
+    image = {"present": False}
+    checkpoint_phase, checkpoint_work = threading.Event(), threading.Event()
+    call = installer_runner.Runner.__call__
+    def observed(self, target, argv, timeout):
+        if argv[1] == "model":
+            checkpoint_phase.set()
+        return call(self, target, argv, timeout)
+    monkeypatch.setattr(installer_runner.Runner, "__call__", observed)
     def images(self, card):
-        assert checkpoint.wait(10), "checkpoint preparation waited for image distribution"
-        events.append("fill-missing-image")
-    monkeypatch.setattr(assets, "runner", runner)
-    monkeypatch.setattr(assets, "images", images)
+        assert checkpoint_phase.wait(10), "the checkpoint phase did not start while image distribution was pending"
+        # The distribution is still pending here, so checkpoint work must not start.
+        assert not checkpoint_work.wait(1), "checkpoint work started before image distribution finished"
+        image["present"] = True
+    def models(self, lock, runner, previous=None):
+        checkpoint_work.set()
+        # A checkpoint download or repair runs the serving image with --pull never.
+        if not image["present"]:
+            raise RuntimeError("docker: Error response from daemon: No such image: " + lock["selection"]["image_id"])
+        return {"donor_rank": 0}
+    prepared_runner(monkeypatch, images=images, models=models)
     assert command() == 0
-    assert events.index("prepare:model") < events.index("fill-missing-image") < events.index("prepare:image")
+    assert json.loads(capsys.readouterr().out)["state"] == "complete"
+
+
+@pytest.mark.parametrize("failure", ["storage", "download", "interrupt"])
+def test_failed_or_interrupted_preparation_is_repeated_by_the_same_command(machine, monkeypatch, capsys, failure):
+    events, previous, _, _ = machine
+    calls = {"images": 0, "models": 0}
+    def images(self, card):
+        calls["images"] += 1
+        if failure == "storage" and calls["images"] == 1:
+            raise NeedsInput("Node 1: insufficient image-import space.", field="storage", details={"rank": 1})
+    def models(self, lock, runner, previous=None):
+        calls["models"] += 1
+        if calls["models"] == 1 and failure == "download":
+            raise RuntimeError("Hugging Face download failed: 503")
+        if calls["models"] == 1 and failure == "interrupt":
+            raise KeyboardInterrupt
+        return {"donor_rank": 0}
+    prepared_runner(monkeypatch, images=images, models=models)
+    if failure == "interrupt":
+        with pytest.raises(KeyboardInterrupt):
+            command()
+        capsys.readouterr()
+    else:
+        assert command() == (3 if failure == "storage" else 2)
+        out = capsys.readouterr()
+        first = json.loads(out.out)
+        if failure == "storage":
+            assert first["field"] == "storage" and calls["models"] == 0
+        else:
+            # Both ranks' checkpoint actions report one failed preparation.
+            assert first["state"] == "failed" and calls["models"] == 1
+            assert "Checkpoint preparation failed: Hugging Face download failed: 503" in out.err
+    assert rollout.active(controller.STATE) == previous and not any(e.endswith(":down") for e in events)
+    candidate = next(p for p in (controller.STATE / "deployments").iterdir() if p != previous)
+    incomplete = installer.read(candidate / "state.json")
+    assert incomplete["operation"] == "prepare" and not incomplete["complete"]
+
+    assert command() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["state"] == "complete" and Path(result["deployment"]) == candidate
+    assert rollout.active(controller.STATE) == candidate
+    state = installer.read(candidate / "state.json")
+    assert state == {**state, "generation": incomplete["generation"] + 1, "operation": "prepare", "complete": True}
+    # The incomplete receipt stays for inspection; the repeat used its own.
+    assert (candidate / incomplete["receipt"]).exists() and state["receipt"] != incomplete["receipt"]
 
 
 def test_storage_failure_keeps_current_model_and_returns_actionable_json(machine, monkeypatch, capsys):

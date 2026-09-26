@@ -3,6 +3,8 @@ import copy
 import hashlib
 import json
 import os
+from pathlib import Path
+import shutil
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -314,3 +316,118 @@ def test_checkpoint_hashes_are_remembered_only_for_an_unchanged_tree(tmp_path, m
     assert installer_host.remembered_checkpoint(card, "/models/m", {"config.json": [1, 2, 3, 4, 6]}) is None
     assert installer_host.remembered_checkpoint(card, "/models/other", receipt["file_stats"]) is None
     assert installer_host.remembered_checkpoint({**card, "model_revision": "b" * 40}, "/models/m", receipt["file_stats"]) is None
+
+
+@pytest.fixture
+def download(tmp_path, monkeypatch):
+    """Rank 0 of a deployment whose checkpoint the installer downloads into its own workspace."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    contents = {"config.json": b"{}", "model.safetensors.index.json": b'{"weight_map":{"w":"part.safetensors"}}',
+                "part.safetensors": b"checkpoint data"}
+    lock = {"id": "d" * 64, "backend": "compose",
+            "selection": {"profile": "fixture", "image_id": "sha256:" + "a" * 64,
+                          "model_repository": "fixture/model", "model_revision": "b" * 40},
+            "site": {"workspace": str(workspace), "ranks": [
+                {"rank": 0, "model": str(workspace / "models" / ("b" * 40)), "cache": str(workspace / "cache"),
+                 "reuse_verified_model": False}]}}
+    (workspace / ".installer-owner.json").write_text(json.dumps({"deployment": lock["id"]}))
+    monkeypatch.setattr(host.installer, "validate", lambda value: value)
+    monkeypatch.setattr(host, "CHECKPOINTS", tmp_path / "checkpoint-records")
+    monkeypatch.setattr(host.setup, "storage_plan", lambda *a, **k: {"passed": True, "filesystems": []})
+    monkeypatch.setattr(host, "run", lambda argv, **k: SimpleNamespace(returncode=0, stdout=str(tmp_path) + "\n"))
+    digest = {name: host.hashlib.sha256(value).hexdigest() for name, value in contents.items()}
+    monkeypatch.setattr(host.installer, "checkpoint_contract",
+                        lambda card: {"config_sha256": digest["config.json"], "index_sha256": digest["model.safetensors.index.json"]})
+    return lock, contents, workspace / "installer/model-download.json"
+
+
+def test_interrupted_checkpoint_download_resumes_in_its_recorded_destination(download, monkeypatch):
+    lock, contents, marker = download
+    model = Path(lock["site"]["ranks"][0]["model"])
+    calls = []
+    def hub_download(value, destination):
+        # The destination is recorded before the hub client writes any file.
+        assert installer.read(marker) == host.download_record(lock, destination)
+        calls.append(destination)
+        (destination / "config.json").write_bytes(contents["config.json"])
+        if len(calls) == 1:
+            raise host.CommandError(1, ["docker", "run"], "", "connection reset")
+        for name, value in contents.items():
+            (destination / name).write_bytes(value)
+    monkeypatch.setattr(host, "hub_download", hub_download)
+    with pytest.raises(host.CommandError):
+        host.perform("model", lock, 0)
+    assert any(model.iterdir()) and not (marker.parent / "model.json").exists()
+    assert host.perform("model", lock, 0) == {"ok": True}
+    assert calls == [model, model]
+    assert installer.read(marker.parent / "model.json")["origin"] == "pinned-hub-download"
+
+
+@pytest.mark.parametrize("record", [None, "other-revision", "other-deployment"])
+def test_nonempty_checkpoint_destination_without_its_download_record_is_refused(download, monkeypatch, record):
+    lock, _, marker = download
+    model = Path(lock["site"]["ranks"][0]["model"])
+    model.mkdir(parents=True)
+    (model / "notes.txt").write_text("not a download")
+    if record:
+        marker.parent.mkdir()
+        other = {**host.download_record(lock, model)}
+        other["revision" if record == "other-revision" else "deployment"] = "c" * 40
+        marker.write_text(json.dumps(other))
+    monkeypatch.setattr(host, "hub_download", lambda *a: pytest.fail("download into an unrecorded directory"))
+    with pytest.raises(ValueError, match="no installer receipt or download record"):
+        host.perform("model", lock, 0)
+    assert (model / "notes.txt").read_text() == "not a download"
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_second_download_into_a_destination_is_refused_while_the_first_container_exists(download, monkeypatch, existing):
+    lock, _, _ = download
+    model = Path(lock["site"]["ranks"][0]["model"])
+    name = host.download_container(model)
+    commands = []
+    def run(argv, **kwargs):
+        commands.append(argv)
+        if argv[:3] == ["docker", "container", "inspect"]:
+            assert argv[3] == name
+            return SimpleNamespace(returncode=0 if existing else 1, stdout="")
+        if argv[:2] == ["docker", "run"]:
+            raise host.CommandError(1, argv, "", "download stopped by the test")
+        return SimpleNamespace(returncode=0, stdout=str(model.parent) + "\n")
+    monkeypatch.setattr(host, "run", run)
+    if existing:
+        # An interrupted installer session leaves its download container running.
+        with pytest.raises(ValueError, match="still in progress in container " + name):
+            host.perform("model", lock, 0)
+        assert not any(argv[:2] == ["docker", "run"] for argv in commands)
+    else:
+        with pytest.raises(host.CommandError):
+            host.perform("model", lock, 0)
+        started = next(argv for argv in commands if argv[:2] == ["docker", "run"])
+        assert started[started.index("--name") + 1] == name
+
+
+@pytest.mark.parametrize("recorded", [False, True])
+def test_resumed_download_needs_only_the_rest_of_its_storage_allowance(download, monkeypatch, recorded):
+    lock, _, marker = download
+    model = Path(lock["site"]["ranks"][0]["model"])
+    (model / ".cache").mkdir(parents=True)
+    (model / "part.safetensors").write_bytes(os.urandom(4096))
+    (model / ".cache" / "part.safetensors.incomplete").write_bytes(os.urandom(4096))
+    if recorded:
+        marker.parent.mkdir()
+        marker.write_text(json.dumps(host.download_record(lock, model)))
+    usage = type(shutil.disk_usage(model))(total=1 << 40, used=0, free=1000)
+    monkeypatch.setattr(host.shutil, "disk_usage", lambda path: usage)
+    observed = []
+    def storage_plan(card, *, model_path, disk_usage, **kwargs):
+        observed.append(disk_usage(model_path).free)
+        return {"passed": False, "filesystems": []}
+    monkeypatch.setattr(host.setup, "storage_plan", storage_plan)
+    with pytest.raises(ValueError, match="Insufficient destination storage.*then repeat sudo sparkring install"):
+        host.perform("model", lock, 0)
+    written = host.allocated_bytes(model)
+    assert written >= 8192
+    # Only this deployment's own unfinished download is credited.
+    assert observed == [1000 + (written if recorded else 0)]

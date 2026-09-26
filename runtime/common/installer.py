@@ -298,8 +298,13 @@ def operation_plan(lock, action):
         else:
             phases = [phase("owned", ranks), phase("stop", ranks, "stops-model", "stopped")]
     else:
-        # Checkpoints are prepared before image admission so that Node A can
-        # distribute the image to workers while checkpoints download and hash.
+        # Checkpoint preparation precedes image admission, but a checkpoint
+        # download or repair runs inside the serving image, so the image must
+        # already be on the node. sparkring install distributes it before this
+        # phase starts (install_assets.Assets.runner). Callers that run this
+        # plan with the plain installer_runner.Runner, such as the lower-level
+        # sparkring up, need the image on every node beforehand; that path
+        # does not provide it.
         phases = [phase("prepare-prerequisites" if action == "prepare" else "prerequisites", ranks), phase("source", ranks, "mutates-host", "source-check"),
                   phase("model", ranks, "mutates-host", "model-check"),
                   phase("image", ranks, "mutates-host", "image-check")]
@@ -353,11 +358,18 @@ def apply(directory, action, *, runner, execute=False):
     with process_lock.hold(directory / "operation.lock"):
         state_path = directory / "state.json"
         state = read(state_path) if state_path.exists() else {"generation": 0, "operation": None, "complete": True}
-        if state["operation"] != action:
+        # Asset preparation never creates, starts or stops a model container.
+        # Its actions check hosts or verify and complete the deployment's
+        # source, checkpoint and image, and a repeated action re-verifies what
+        # an earlier one left. An incomplete preparation is therefore repeated
+        # as a new generation; resuming its receipt would refuse the actions
+        # that a failure or interruption left uncertain or running.
+        retry = action == "prepare" and state["operation"] == action and not state["complete"]
+        if state["operation"] != action or retry:
             # Stopping is always permitted after an incomplete operation: it
             # verifies ownership labels, stops only this deployment's running
             # containers and ignores ranks whose container was never created.
-            if not state["complete"] and action != "down":
+            if not state["complete"] and action != "down" and not retry:
                 raise ValueError("Previous operation is incomplete or uncertain; inspect its receipts before changing direction")
             state = {"generation": state["generation"] + 1, "operation": action, "complete": False}
         receipt_path = directory / "operations" / f"{state['generation']:04}-{action}.json"

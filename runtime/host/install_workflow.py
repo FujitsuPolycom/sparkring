@@ -17,8 +17,13 @@ from scripts import deploy_network
 
 
 def require_head(cluster=None):
-    if sys.platform != "linux" or not hasattr(os, "geteuid") or os.geteuid() != 0 or not distribution.installed(installer.ROOT):
-        raise NeedsInput("Install the ARM64 package, then run sudo sparkring install on Node A.", field="node_a")
+    if sys.platform != "linux" or not distribution.installed(installer.ROOT):
+        raise NeedsInput("sparkring install runs only from the installed ARM64 Debian package. Download the "
+                         "sparkring_*_arm64.deb asset of a prerelease at https://github.com/FujitsuPolycom/sparkring/releases "
+                         "or build it from a full clone (see \"Get the package\" in docs/operations/install.md), "
+                         "install it on Node A with sudo apt install, then run sudo sparkring install.", field="node_a")
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        raise NeedsInput("Run sudo sparkring install on Node A.", field="node_a")
     identity = node.read("/", "/etc/sparkring/node.json")["node_id"]
     if cluster is not None and cluster["plan"]["spec"]["hosts"][0]["node_id"] != identity:
         raise ValueError("This is not the enrolled Node A; image/model traffic must originate on that Spark")
@@ -214,9 +219,9 @@ def execute(args):
                 # Verify the rollback controller bundle before any downtime.
                 retained_source.checkout(previous, cache)
             assets.sync_packages()
-            # Image distribution and checkpoint preparation use different
-            # resources (registry and fabric versus Hugging Face and disk), so
-            # they run together; image admission waits for the distribution.
+            # Image distribution starts at once and overlaps the prerequisite
+            # and source phases. The checkpoint phase waits for it, because a
+            # checkpoint download or repair runs inside the serving image.
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 images = pool.submit(assets.images, lock["selection"])
                 try:

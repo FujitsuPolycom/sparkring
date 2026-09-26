@@ -174,7 +174,7 @@ class Assets:
         for rank in sorted({0, *missing}):
             required = (pull if rank in missing else 0) + (cache if rank == 0 else 0)
             if observations[rank]["free_bytes"] < required:
-                raise NeedsInput(f"Node {rank} needs more Docker storage before the pinned image can be downloaded. Current model has not been stopped.",
+                raise NeedsInput(f"Node {rank} needs more Docker storage before the pinned image can be downloaded. Free space, then repeat sudo sparkring install. A running model has not been stopped.",
                                  field="storage", details={"rank": rank, "required_bytes": required,
                                                            "free_bytes": observations[rank]["free_bytes"]})
         relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
@@ -285,7 +285,7 @@ class Assets:
             else:
                 reserve = (policy["image_allowance_gib"] + policy["cache_and_jit_allowance_gib"]) * 1024**3
             if self.remote(0, storage_probe) < reserve:
-                raise NeedsInput("Node A needs more Docker storage before the pinned image can be downloaded.",
+                raise NeedsInput("Node A needs more Docker storage before the pinned image can be downloaded. Free space, then repeat sudo sparkring install. A running model has not been stopped.",
                                  field="storage", details={"rank": 0, "required_bytes": reserve})
             with progress.step("Node 0: Download pinned image once for the cluster"):
                 progress.command(["docker", "--context", "default", "pull", "--platform", "linux/arm64", card["image_reference"]],
@@ -302,7 +302,7 @@ class Assets:
             if observations[rank]["free_bytes"] < required:
                 free = self.remote(rank, storage_probe)
                 if free < required:
-                    raise NeedsInput(f"Node {rank}: insufficient image-import space. Free space or choose a larger Docker data volume, then repeat the command. Current model has not been stopped.",
+                    raise NeedsInput(f"Node {rank}: insufficient image-import space. Free space or choose a larger Docker data volume, then repeat sudo sparkring install. A running model has not been stopped.",
                                      field="storage", details={"rank": rank, "required_bytes": required, "free_bytes": free})
         def transfer(rank):
             code = inspect.getsource(receive_image) + "\nimport json\nprint(json.dumps(receive_image(" + repr(card["image_id"]) + "," + str(required) + ")))\n"
@@ -430,25 +430,44 @@ class Assets:
         return {"donor_rank": donor, "cached_ranks": cached, "copied_ranks": [r for r in range(len(rows)) if r not in cached and r != donor]}
 
     def runner(self, directory, previous=None, images=None):
-        """Runner whose image admission waits for ``images``, a pending fan-out."""
+        """Runner whose checkpoint and image phases wait for ``images``, a pending fan-out.
+
+        Checkpoint work needs the serving image: a Hugging Face download, and a
+        repair of a reused copy, run the image's own client with ``--pull
+        never``. The checkpoint phase therefore starts only after every node
+        holds the image.
+        """
         from scripts.installer_runner import Runner
         assets = self
+
+        def failed(message):
+            return {"returncode": 1, "stdout": "", "stderr": message, "uncertain": False}
+
         class PreparedRunner(Runner):
             def __init__(self, directory):
                 super().__init__(directory)
                 self.model_lock = threading.Lock()
                 self.models_prepared = False
+                self.models_error = None
 
             def _call(self, target, argv, timeout):
-                if argv[1] == "model":
-                    with self.model_lock:
-                        if not self.models_prepared:
-                            assets.models(self.lock, self, previous)
-                            self.models_prepared = True
-                if argv[1] == "image" and images is not None and images.exception() is not None:
+                if argv[1] in ("model", "image") and images is not None and images.exception() is not None:
                     # The caller re-raises the fan-out error itself, so a request
                     # for input keeps its type.
-                    return {"returncode": 1, "stdout": "", "uncertain": False,
-                            "stderr": "Image distribution failed: " + str(images.exception())}
+                    return failed("Image distribution failed: " + str(images.exception()))
+                if argv[1] == "model":
+                    with self.model_lock:
+                        if not self.models_prepared and self.models_error is None:
+                            try:
+                                assets.models(self.lock, self, previous)
+                                self.models_prepared = True
+                            except Exception as error:  # noqa: BLE001 - reported as the phase's failure
+                                # A returned failure is recorded in the operation
+                                # receipt, where a raised error would leave every
+                                # rank's action recorded as running. Other ranks
+                                # report the same failure instead of repeating it.
+                                self.models_error = "Checkpoint preparation failed: " + str(error)
+                        if self.models_error is not None:
+                            return failed(self.models_error)
                 return super()._call(target, argv, timeout)
         return PreparedRunner(directory)
