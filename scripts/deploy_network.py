@@ -1020,16 +1020,23 @@ def _verify_hairpin(prepared_hosts):
         raise DriverSettingsError(" ".join(problems), functions)
 
 
-def verify_network(spec, inventory, *, hairpin=True):
+def verify_network(spec, inventory, *, hairpin=True, stale_gids=False):
     """Check a fresh inventory after preparation; command exit status is insufficient.
 
     Address, GID, RoCE and link checks raise NetworkPlanError. With ``hairpin``,
     a four-rank host whose ConnectX hairpin setting is not in effect, or cannot
     be read, then raises DriverSettingsError. ``hairpin=False`` serves callers
     that evaluate the hairpin setting separately.
+
+    With ``stale_gids``, a port whose GID index 3 does not hold its RoCE v2
+    IPv4 entry is listed under ``stale_gids`` instead of raising; its address,
+    MTU and link are still checked. A link that went down while a model or mesh
+    held that entry leaves this state on the neighbors of a restarted Spark.
+    The four-Spark ring step re-adds the address once nothing holds the entry.
     """
     plan = plan_network(spec, inventory)
     _, hosts, _ = _prepare_spec(spec)
+    stale = []
     for host, prepared in zip(hosts, plan["hosts"]):
         if prepared["action"] != "none":
             raise NetworkPlanError(
@@ -1041,13 +1048,17 @@ def verify_network(spec, inventory, *, hairpin=True):
                 mapped = ipaddress.IPv6Address(function["gid"]).ipv4_mapped
             except (KeyError, TypeError, ValueError):
                 mapped = None
-            if function.get("gid_index") != 3 or mapped != expected:
+            if stale_gids and (function.get("gid_index") != 3 or mapped != expected
+                               or function.get("gid_type") != "RoCE v2"
+                               or function.get("gid_netdev") != port["netdev"]):
+                stale.append({"host": host["host"], "netdev": port["netdev"]})
+            elif function.get("gid_index") != 3 or mapped != expected:
                 raise NetworkPlanError(
                     f"{host['host']}: GID index 3 does not match {port['netdev']} IPv4 address"
                 )
-            if function.get("gid_type") != "RoCE v2":
+            elif function.get("gid_type") != "RoCE v2":
                 raise NetworkPlanError(f"{host['host']}: GID index 3 must use RoCE v2")
-            if function.get('gid_netdev') != port['netdev']:
+            elif function.get('gid_netdev') != port['netdev']:
                 raise NetworkPlanError(f"{host['host']}: GID index 3 interface must be {port['netdev']}")
             if function.get("active_mtu") != 4096:
                 raise NetworkPlanError(
@@ -1068,6 +1079,7 @@ def verify_network(spec, inventory, *, hairpin=True):
         "ready": True,
         "hosts": [host["host"] for host in hosts],
         "data_functions": sum(len(h["data_interfaces"]) for h in hosts),
+        "stale_gids": stale,
         "limitations": [
             "This checks host configuration, not RDMA traffic or hardware forwarding correctness."
         ],

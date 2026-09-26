@@ -113,6 +113,12 @@ assets before stopping the previous managed model. A failed switch attempts
 recovery from the retained deployment and records the outcome. A successful
 installation ends with `Model ready:` and the model's API URL on Node A.
 
+Running the command again for the installed model leaves that model running
+while it serves: its container runs on every Spark and, on four Sparks, every
+ring check passes. Otherwise, for example after one Spark restarted, the
+command stops the model on every Spark and starts it again, because the Sparks
+that stayed up keep a model that waits for the restarted one.
+
 Asset preparation never creates, starts or stops a model container. When it
 fails or is interrupted before the model switch, for example by a storage
 check, a download error or Ctrl-C, repeating `sudo sparkring install` with the
@@ -438,19 +444,19 @@ is applied again. `--allow-driver-reload` is accepted by `sparkring setup` and
 
 The installer renders each rank's container from the profile's shared
 container specification. Every four-Spark installer profile runs on a native
-mesh. The installer discovers and verifies an installed native mesh. If none
-exists, it downloads and verifies the pinned host marker on every rank, creates
-stopped model containers, installs supervised mesh services, waits for every
-rank, and starts the model. An unhealthy or partly installed mesh stops the
-plan for inspection.
+mesh. The installer reuses the mesh service that every Spark has enabled or
+running. If no Spark has one, it downloads and verifies the pinned host marker
+on every rank, creates stopped model containers, installs supervised mesh
+services, waits for every rank, and starts the model. A mesh that only some
+Sparks have, or that differs between Sparks, stops the plan for inspection.
 
 SparkRing enables the mesh service, so it starts at each boot after the
-hairpin setting. Before an installation starts a model on an existing mesh,
-each Spark starts its mesh service when it is stopped, restarts it when its
-routes or forwarding rules are missing, and re-adds a port's IPv4 address when
-its RoCE GID has left the pinned GID index, which happens on the neighbors of a
-Spark that restarted. The installation then waits up to four minutes for the
-ring check on every Spark. `sparkring install` does not replace an existing mesh:
+hairpin setting. Before an installation starts the model, each Spark starts its
+mesh service when it is stopped, restarts it when its routes or forwarding
+rules are missing, and re-adds a port's IPv4 address when its RoCE GID has left
+the pinned GID index, which happens on the neighbors of a Spark that restarted.
+The installation then waits up to four minutes for the ring check on every
+Spark. `sparkring install` does not replace an existing mesh:
 `sparkring up PROFILE --fresh-mesh --plan` prints an explicit replacement plan,
 and `sparkring up PROFILE --instance fresh --fresh-mesh` rehearses the
 replacement beside an existing deployment. Container, source and weight

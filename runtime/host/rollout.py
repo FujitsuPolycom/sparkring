@@ -5,8 +5,13 @@ from runtime.common import installer
 from runtime.host import node
 
 
-def execute(directory, previous, *, state_root, prepare, apply, verify, supersede=False):
-    """All mutations pass through deployment adapters; the active pointer commits last."""
+def execute(directory, previous, *, state_root, prepare, apply, verify, supersede=False, serving=None):
+    """All mutations pass through deployment adapters; the active pointer commits last.
+
+    When the candidate is the active deployment, ``serving(directory)`` tells
+    whether it serves on every rank; one that does not stops before it starts
+    again.
+    """
     directory = Path(directory).resolve()
     previous = Path(previous).resolve() if previous else None
     state_root = Path(state_root)
@@ -54,6 +59,10 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
             save("stopping-previous")
             switched = True
             apply(previous, "down")
+        elif previous == directory and serving is not None and not serving(directory):
+            print("The installed model does not serve on every Spark; it stops on every Spark and starts again.")
+            save("stopping-previous")
+            apply(directory, "down")
         save("starting")
         apply(directory, "up")
         save("verifying")

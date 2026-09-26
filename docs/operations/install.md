@@ -118,7 +118,7 @@ shares Node A's Internet connection with the workers.
 | The plan does not use your copy | `--model-path N=PATH` |
 | `The checkpoint plan differs from the plan reviewed with --plan` | Run with `--plan` again, then `--yes` |
 | `in use. No ConnectX driver was restarted` | Stop what the message lists, then repeat |
-| The model is stopped after a reboot | Run the install command again |
+| The model stops answering after a Spark restarts | Run the install command again |
 | Deleting a copy freed no space | `sudo sparkring checkpoints --release PATH` |
 
 ## Uninstall

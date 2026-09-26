@@ -39,14 +39,21 @@ def _probe():
     for path in sorted(Path("/sys/class/infiniband").glob("*")):
         port = path / "ports/1"
         try:
-            netdev = (port / "gid_attrs/ndevs/3").read_text().strip()
-            gid = ipaddress.IPv6Address((port / "gids/3").read_text().strip())
+            # The function's netdev comes from its PCI device: GID index 3 is
+            # empty on a four-Spark port whose address left it.
+            [netdev] = [entry.name for entry in (path / "device/net").iterdir()]
+            try:
+                gid = ipaddress.IPv6Address((port / "gids/3").read_text().strip())
+                slot = (port / "gid_attrs/ndevs/3").read_text().strip(), (port / "gid_attrs/types/3").read_text().strip()
+            except (OSError, ValueError):
+                gid, slot = None, (None, None)
+            mapped = gid.ipv4_mapped if gid is not None and slot[0] == netdev else None
             verbs = run(["ibv_devinfo", "-d", path.name, "-i", "1"])
             active_mtu = re.search(r"active_mtu:\s+(\d+)\s+\(\d+\)", verbs)
             if active_mtu is None:
                 raise ValueError("RDMA active MTU is unavailable")
-            rdma.append({"device": path.name, "netdev": netdev, "gid_ip": str(gid.ipv4_mapped),
-                         "type": (port / "gid_attrs/types/3").read_text().strip(),
+            rdma.append({"device": path.name, "netdev": netdev, "gid_ip": str(mapped) if mapped else None,
+                         "type": slot[1],
                          "active": "ACTIVE" in (port / "state").read_text(), "ips": ipv4.get(netdev, []),
                          "rdma_mtu": int(active_mtu.group(1)),
                          "mtu": next(row["mtu"] for row in addresses if row["ifname"] == netdev)})
@@ -181,9 +188,11 @@ def check_facts(facts, row):
     devices = {entry["device"]: entry for entry in facts["rdma"]}
     for name in row["hcas"]:
         item = devices.get(name, {})
-        if (not item.get("active") or item.get("type") != "RoCE v2" or item.get("mtu", 0) < 9000 or item.get("rdma_mtu") != 4096
-                or len(item.get("ips", [])) != 1 or item.get("gid_ip") not in item.get("ips", [])
-                or row["management_ip"] in item.get("ips", [])):
+        # On four Sparks the ring step re-adds an address whose RoCE GID left
+        # index 3, and its ring check then verifies index 3.
+        gid = "fabric" in row or (item.get("type") == "RoCE v2" and item.get("gid_ip") in item.get("ips", []))
+        if (not item.get("active") or not gid or item.get("mtu", 0) < 9000 or item.get("rdma_mtu") != 4096
+                or len(item.get("ips", [])) != 1 or row["management_ip"] in item.get("ips", [])):
             raise ValueError(name + ": prepare the expected link, MTU and IPv4 RoCE-v2 GID index 3 before deployment")
 
 

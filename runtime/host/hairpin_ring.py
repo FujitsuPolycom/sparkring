@@ -1279,8 +1279,12 @@ def execute(args, context):
         finally:
             context["ranks"] = result_ranks(rows, plan, record)
             context["receipt"] = record.get("path")
-        deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"])
+        verified = deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"], stale_gids=True)
         print(COMPLETE)
+        if verified["stale_gids"]:
+            print("RoCE GID index 3 lacks the address of " + ", ".join(
+                f"{entry['host']} {entry['netdev']}" for entry in verified["stale_gids"])
+                + "; sudo sparkring install re-adds it before it starts the model.")
         stopped, problems = stopped_meshes(plan, Access(plan))
         for problem in problems:
             print(problem)

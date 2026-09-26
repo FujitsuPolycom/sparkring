@@ -490,6 +490,21 @@ def test_fresh_verification_checks_rdma_state_not_only_addresses(field, value, m
         verify_network(spec, inventory)
 
 
+@pytest.mark.parametrize("field,value", [("gid", "0000:0000:0000:0000:0000:0000:0000:0000"),
+                                         ("gid_type", "IB/RoCE v1"), ("gid_netdev", None)])
+def test_stale_gid_slots_are_listed_when_the_ring_step_repairs_them(field, value):
+    spec, inventory = network_fixture()
+    inventory["spark-r0"]["rdma"][0][field] = value
+    netdev = inventory["spark-r0"]["rdma"][0]["netdev"]
+    result = verify_network(spec, inventory, stale_gids=True)
+    assert result["ready"] and result["stale_gids"] == [{"host": "spark-r0", "netdev": netdev}]
+    assert verify_network(*network_fixture())["stale_gids"] == []
+    # The address, MTU and link of a listed port are still checked.
+    inventory["spark-r0"]["rdma"][0]["active_mtu"] = 2048
+    with pytest.raises(NetworkPlanError, match="MTU"):
+        verify_network(spec, inventory, stale_gids=True)
+
+
 def test_verification_does_not_call_an_unapplied_plan_ready():
     spec, inventory = network_fixture()
     unconfigured(spec, inventory)

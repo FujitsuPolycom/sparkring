@@ -124,16 +124,110 @@ def test_mesh_units_follow_the_managed_layout_of_their_site():
         native_mesh.mesh_unit("/etc/foreign/site.json")
 
 
-def test_starting_a_created_mesh_enables_it_for_every_boot(monkeypatch):
+def test_a_created_mesh_is_started_like_a_reused_one(monkeypatch):
     lock = installer.make_lock(PROFILE, fresh_site(), "a" * 40, "b" * 64)
     read_json = native_mesh.profiles.read_json
     monkeypatch.setattr(native_mesh.profiles, "read_json", lambda path: {"deployment": lock["id"]}
                         if str(path).endswith("installer-owner.json") else read_json(path))
     calls = []
-    monkeypatch.setattr(native_mesh.node, "call", lambda argv, **kw: calls.append(argv))
-    native_mesh.operate_local(lock, 0, "mesh-up")
+    monkeypatch.setattr(native_mesh, "serve_ring", lambda *args: calls.append(args) or {"ok": True, "action": "started"})
+    assert native_mesh.operate_local(lock, 1, "mesh-up")["action"] == "started"
+    row = lock["site"]["ranks"][1]
+    assert calls == [(row["fabric"], 1, row["hcas"], row["gid"], row["host_ip"])]
+    # The served unit is the one this deployment installed.
     unit = native_mesh.managed_deployment.layout(lock["site_input"]["native_mesh"]["name"])["mesh_unit"]
-    assert calls == [["systemctl", "enable", "--now", unit]]
+    assert native_mesh.mesh_unit(row["fabric"]["site_path"]) == unit
+
+
+class Units:
+    """systemctl on one Spark: the mesh units that run and those enabled at boot."""
+
+    def __init__(self, active=(), enabled=()):
+        self.active, self.enabled = set(active), set(enabled)
+
+    def call(self, argv, accepted=(0,)):
+        unit = argv[-1]
+        if argv[1] == "is-active":
+            return SimpleNamespace(returncode=0 if unit in self.active else 3, stdout="")
+        state = "enabled" if unit in self.enabled else "disabled"
+        return SimpleNamespace(returncode=0 if unit in self.enabled else 1, stdout=state + "\n")
+
+
+def installed(tmp_path, monkeypatch, units, *, names=(None,), failure=None):
+    """Mesh service configurations of ``names`` (None: the default layout) on one Spark."""
+    paths = []
+    for name in names:
+        layout = native_mesh.managed_deployment.layout(name)
+        path = tmp_path / (name or "default") / "service.json"
+        path.parent.mkdir()
+        site = path.parent / "site.json"
+        site.write_text("{}")
+        config = {"rank": 1, "site_path": str(site)}
+        if name:
+            config.update(deployment_name=name, site_path=layout["config_dir"] + "/site.json",
+                          key_file=layout["config_dir"] + "/health.key", state_dir=layout["state_dir"])
+        path.write_text(json.dumps(config))
+        paths.append(path)
+    manager = SimpleNamespace(plan=SimpleNamespace(sha256="d" * 64, roce_gid_index=3),
+                              site={"management_addresses": [f"192.0.2.{110 + rank}" for rank in range(4)]},
+                              local=SimpleNamespace(management_netdev="eth0",
+                                                    port=lambda direction, function: SimpleNamespace(rdma_device="mlx5_0")))
+    checks = []
+    def check(*args):
+        checks.append(args)
+        if failure:
+            raise ValueError(failure)
+        return {"ok": True}
+    monkeypatch.setattr(native_mesh, "_service_configs", lambda: paths)
+    monkeypatch.setattr(native_mesh.node, "call", units.call)
+    monkeypatch.setattr(native_mesh.qwen_mesh, "_network", lambda: SimpleNamespace(NetworkManager=lambda *a, **k: manager))
+    monkeypatch.setattr(native_mesh.qwen_mesh, "check", check)
+    return checks
+
+
+def test_a_mesh_that_failed_when_a_neighbor_restarted_is_reported_stopped(tmp_path, monkeypatch):
+    checks = installed(tmp_path, monkeypatch, Units(enabled=[UNIT]))
+    mesh = native_mesh.inspect_local(1)["mesh"]
+    assert mesh["active"] is False and mesh["snapshot"] is None and "problem" not in mesh
+    assert (mesh["unit"], mesh["host_ip"], mesh["interface"]) == (UNIT, "192.0.2.111", "eth0")
+    assert mesh["reference"]["plan_sha256"] == "d" * 64 and checks == []
+
+
+def test_a_running_mesh_that_fails_its_ring_check_is_reported_with_the_failure(tmp_path, monkeypatch):
+    installed(tmp_path, monkeypatch, Units(active=[UNIT], enabled=[UNIT]),
+              failure="GID index 3 does not match enp1s0f1np1 IPv4 address")
+    mesh = native_mesh.inspect_local(1)["mesh"]
+    assert mesh["active"] is True and mesh["snapshot"] is None
+    assert mesh["problem"] == "GID index 3 does not match enp1s0f1np1 IPv4 address"
+
+
+def test_the_running_mesh_is_reported_before_an_enabled_one(tmp_path, monkeypatch):
+    installed(tmp_path, monkeypatch, Units(active=[UNIT], enabled=["sparkring-home-mesh.service"]),
+              names=(None, "home"))
+    mesh = native_mesh.inspect_local(1)["mesh"]
+    assert mesh["unit"] == UNIT and mesh["active"] and mesh["snapshot"] == {"ok": True}
+
+
+def test_several_enabled_meshes_without_a_running_one_are_not_chosen_between(tmp_path, monkeypatch):
+    installed(tmp_path, monkeypatch, Units(enabled=[UNIT, "sparkring-home-mesh.service"]), names=(None, "home"))
+    with pytest.raises(ValueError, match="Several mesh services are enabled"):
+        native_mesh.inspect_local(1)
+
+
+def test_a_disabled_stopped_mesh_is_not_reported(tmp_path, monkeypatch):
+    installed(tmp_path, monkeypatch, Units())
+    assert native_mesh.inspect_local(1) == {"mesh": None}
+
+
+def test_meshes_stopped_when_a_neighbor_restarted_are_reused():
+    value = cluster()
+    responses = iter({"mesh": {"reference": REFERENCE, "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0",
+                               "unit": UNIT, "active": rank == 3, "snapshot": None}} for rank in range(4))
+    site = native_mesh.select(controller.model_site(value, PROFILE), value, PROFILE,
+                              invoke=lambda *a, **k: json.dumps(next(responses)))
+    assert "native_mesh" not in site and all(row["fabric"] == REFERENCE for row in site["hosts"])
+    lock = installer.make_lock(PROFILE, site, "a" * 40, "b" * 64)
+    assert "ring-serve" in [p["id"] for p in installer.operation_plan(lock, "up")["phases"]]
 
 
 class Spark:

@@ -34,7 +34,7 @@ from runtime.host.install_errors import NeedsInput
 from runtime.host.test_appliance import nodes
 from runtime.host.test_fabric_ssh import cluster as fabric_cluster
 from runtime.host.test_hairpin_ring import OLDER, Ring, document, kept, needing
-from scripts import hairpin_setting, installer_host, installer_runner, sparkring
+from scripts import deploy_network, hairpin_setting, installer_host, installer_runner, sparkring
 # The audit-hook fixtures refuse writes under protected trees; the end-to-end test requests them by name.
 from scripts.test_installer_adopt import audit_hook, audited, only_links_changed, tree_state  # noqa: F401
 
@@ -169,6 +169,8 @@ def machine(tmp_path, monkeypatch, sparks):
     node.save(controller.STATE, "active.json", {"path": str(previous)})
     monkeypatch.setattr(flow, "check_workloads", lambda *a, **k: events.append("check-workloads"))
     monkeypatch.setattr(flow.retained_source, "checkout", lambda *a: events.append("rollback-source"))
+    # An installed deployment serves on every Spark unless a test says otherwise.
+    monkeypatch.setattr(flow, "serving", lambda directory: True)
     class Transport:
         def __init__(self, cluster, directory):
             self.hosts = cluster["plan"]["spec"]["hosts"]
@@ -224,6 +226,60 @@ def test_documented_command_updates_prepares_switches_and_emits_only_json(machin
     assert events.index("prepare:model-check") < events.index("previous:down") < events.index("candidate:up") < events.index("candidate:verify")
     assert "Progress:" in out.err and "Model ready:" in out.err
     assert rollout.active(controller.STATE) != previous
+
+
+def test_installing_the_active_model_again_restarts_it_when_it_does_not_serve(machine, monkeypatch, capsys):
+    events, _, _, _ = machine
+    assert command() == 0
+    capsys.readouterr()
+    del events[:]
+    monkeypatch.setattr(flow, "serving", lambda directory: events.append("serving") or False)
+    assert command() == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["state"] == "complete"
+    assert events[events.index("serving"):] == ["serving", "candidate:down", "candidate:up", "candidate:verify"]
+    assert "The installed model does not serve on every Spark" in out.err
+
+
+class RankChecks:
+    """``Runner.remote`` of an installed deployment; the listed (rank, operation) checks fail."""
+
+    def __init__(self, count, backend="compose", failing=()):
+        self.lock = {"backend": backend, "site": {"ranks": [{"rank": rank} for rank in range(count)]}}
+        self.failing, self.calls = set(failing), []
+
+    def remote(self, number, operation):
+        self.calls.append((number, operation))
+        if (number, operation) in self.failing:
+            raise RuntimeError("Rank is not running")
+        return {"ok": True}
+
+
+def test_an_installed_model_serves_when_every_rank_runs_and_passes_its_ring_check():
+    ring = RankChecks(4)
+    assert flow.serving(None, runner=ring)
+    assert ring.calls == [(rank, operation) for rank in range(4) for operation in ("running", "ring-check")]
+    assert not flow.serving(None, runner=RankChecks(4, failing={(2, "ring-check")}))
+    pair = RankChecks(2, failing={(1, "running")})
+    assert not flow.serving(None, runner=pair) and pair.calls == [(0, "running"), (1, "running")]
+    managed = RankChecks(4, backend="glm-managed", failing={(0, "running")})
+    assert flow.serving(None, runner=managed) and managed.calls == []
+
+
+@pytest.mark.parametrize("size", [2, 4])
+def test_a_moved_roce_gid_passes_the_refresh_only_where_the_ring_step_repairs_it(monkeypatch, size):
+    value = cluster(size)
+    found = copy.deepcopy(value["plan"]["nodes"])
+    port = value["plan"]["spec"]["hosts"][1]["data_interfaces"][0]
+    next(r for r in found[1]["facts"]["rdma"] if r["device"] == port["rdma_device"])["gid"] = "0000:" * 7 + "0000"
+    monkeypatch.setattr(controller, "collect", lambda _: found)
+    monkeypatch.setattr(flow, "require_head", lambda *_: None)
+    if size == 4:
+        refreshed = flow.refresh_cluster(value)["plan"]["spec"]["hosts"]
+        assert [h["node_id"] for h in refreshed] == [h["node_id"] for h in value["plan"]["spec"]["hosts"]]
+    else:
+        with pytest.raises(deploy_network.NetworkPlanError, match="GID index 3 does not match"):
+            flow.refresh_cluster(value)
 
 
 def prepared_runner(monkeypatch, *, images, models):
@@ -1955,9 +2011,9 @@ def test_install_after_a_reboot_names_the_hairpin_setting_in_the_mesh_refusal(ma
     out = capsys.readouterr()
     result = json.loads(out.out)
     assert result["message"] == (
-        "Only part of the native mesh is active. Use a reviewed --fresh-mesh replacement after inspection. The "
-        "ConnectX hairpin setting is not in effect on ranks 1-3, so their mesh services cannot start; run sudo "
-        "sparkring hairpin on Node A first.")
+        "Only part of the native mesh is enabled or running. Use a reviewed --fresh-mesh replacement after "
+        "inspection. The ConnectX hairpin setting is not in effect on ranks 1-3, so their mesh services cannot "
+        "start; run sudo sparkring hairpin on Node A first.")
     # The hairpin listing comes before the refusal.
     assert out.err.index("  rank 1 spark1: restart 4 functions") < out.err.index("Only part of the native mesh")
     assert events == []

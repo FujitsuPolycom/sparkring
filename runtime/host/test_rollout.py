@@ -113,3 +113,33 @@ def test_unfinished_switch_still_blocks_without_approval(tmp_path):
     cluster = Cluster(before, after)
     with pytest.raises(ValueError, match="needs attention"):
         rollout.execute(after, before, state_root=tmp_path, prepare=cluster.prepare, apply=cluster.apply, verify=cluster.verify)
+
+
+@pytest.mark.parametrize("serves", [True, False])
+def test_the_active_model_restarts_only_when_it_does_not_serve(tmp_path, capsys, serves):
+    current = tmp_path / "current"
+    node.save(tmp_path, "active.json", {"path": str(current)})
+    events = []
+    result = rollout.execute(current, rollout.active(tmp_path), state_root=tmp_path,
+                             prepare=lambda directory: events.append("prepare"),
+                             apply=lambda directory, action: events.append(action),
+                             verify=lambda directory: events.append("verify") or {},
+                             serving=lambda directory: events.append("serving") or serves)
+    assert events == ["prepare", "serving", *([] if serves else ["down"]), "up", "verify"]
+    assert result["complete"] and rollout.active(tmp_path) == current
+    assert ("does not serve on every Spark" in capsys.readouterr().out) is not serves
+
+
+def test_a_restart_that_fails_leaves_no_other_model_to_recover(tmp_path):
+    current = tmp_path / "current"
+    node.save(tmp_path, "active.json", {"path": str(current)})
+    events = []
+    def apply(directory, action):
+        events.append(action)
+        if action == "up":
+            raise RuntimeError("Ring check still fails")
+    with pytest.raises(RuntimeError, match="failed: Ring check still fails"):
+        rollout.execute(current, current, state_root=tmp_path, prepare=lambda directory: None, apply=apply,
+                        verify=lambda directory: {}, serving=lambda directory: False)
+    assert events == ["down", "up"]
+    assert installer.read(tmp_path / "transaction.json")["state"] == "failed"

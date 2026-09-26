@@ -277,8 +277,10 @@ def setup(argv=None):
             config.update(ownership="observed", routes=[], forwarding=[])
             if len(nodes) == 4:
                 mesh = json.loads(discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
-                if not mesh:
+                if not mesh or not mesh.get("active", True):
                     raise ValueError("No verified native mesh found; ordinary setup can prepare one")
+                if mesh.get("problem"):
+                    raise ValueError(mesh["problem"])
                 order = ("cw_primary", "ccw_primary", "cw_secondary", "ccw_secondary")
                 config["native_mesh"] = {"reference": mesh["reference"], "host_ip": mesh["host_ip"],
                                          "hcas": [next(p["rdma_device"] for p in host["data_interfaces"] if p["role"] == role) for role in order]}

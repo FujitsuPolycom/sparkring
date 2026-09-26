@@ -35,32 +35,54 @@ def modules():
     return importlib.import_module("managed_install"), importlib.import_module("managed_units")
 
 
+def _service_configs():
+    """Service configurations of the default and every named managed mesh layout."""
+    return [Path("/etc/sparkring/managed-mesh/service.json"),
+            *sorted(Path("/etc/sparkring/deployments").glob("*/service.json"))]
+
+
 def inspect_local(rank):
-    paths = [Path("/etc/sparkring/managed-mesh/service.json")]
-    paths += sorted(Path("/etc/sparkring/deployments").glob("*/service.json"))
-    found = []
-    for path in paths:
+    """The SparkRing mesh installed on this Spark as ``{"mesh": ...}``, or ``{"mesh": None}``.
+
+    An active mesh unit is reported with ``active`` true and its ring check:
+    ``snapshot`` when the check passes, else ``problem``. Without an active
+    unit, an enabled one is reported with ``active`` false, as on the Sparks
+    whose mesh failed when a cabled neighbor restarted. The ring step of a
+    model installation starts, restarts or repairs a reported mesh.
+    """
+    active, enabled = [], []
+    for path in _service_configs():
         if not path.is_file():
             continue
         config = json.loads(path.read_text())
-        selected = managed_deployment.validate_config_paths(config)
-        active = node.call(["systemctl", "is-active", selected["mesh_unit"]], accepted=(0, 3, 4))
-        if active.returncode:
-            continue
-        if config["rank"] != rank:
-            raise ValueError("Active mesh rank order differs from the selected head/cabling; prepare a reviewed replacement")
-        site_path = Path(config["site_path"])
-        manager = qwen_mesh._network().NetworkManager(site_path, rank, "/run/sparkring-mesh-read-only", require_root=False)
-        reference = {"site_path": str(site_path), "site_sha256": hashlib.sha256(site_path.read_bytes()).hexdigest(),
-                     "plan_sha256": manager.plan.sha256}
-        hcas = [manager.local.port(d, f).rdma_device for f in (0, 1) for d in ("clockwise", "counter_clockwise")]
-        address = manager.site["management_addresses"][rank]
-        snapshot = qwen_mesh.check(reference, rank, hcas, manager.plan.roce_gid_index, address)
-        found.append({"reference": reference, "host_ip": address, "interface": manager.local.management_netdev,
-                      "unit": selected["mesh_unit"], "config": str(path), "snapshot": snapshot})
-    if len(found) > 1:
+        unit = managed_deployment.validate_config_paths(config)["mesh_unit"]
+        if node.call(["systemctl", "is-active", unit], accepted=(0, 3, 4)).returncode == 0:
+            active.append((path, config, unit))
+        elif node.call(["systemctl", "is-enabled", unit], accepted=(0, 1, 4)).stdout.strip() == "enabled":
+            enabled.append((path, config, unit))
+    if len(active) > 1:
         raise ValueError("Multiple active mesh owners found; inspect before selecting one")
-    return {"mesh": found[0] if found else None}
+    if not active and len(enabled) > 1:
+        raise ValueError("Several mesh services are enabled and none runs; inspect before selecting one")
+    if not (active or enabled):
+        return {"mesh": None}
+    path, config, unit = (active or enabled)[0]
+    if config["rank"] != rank:
+        raise ValueError("Installed mesh rank order differs from the selected head/cabling; prepare a reviewed replacement")
+    site_path = Path(config["site_path"])
+    manager = qwen_mesh._network().NetworkManager(site_path, rank, "/run/sparkring-mesh-read-only", require_root=False)
+    reference = {"site_path": str(site_path), "site_sha256": hashlib.sha256(site_path.read_bytes()).hexdigest(),
+                 "plan_sha256": manager.plan.sha256}
+    address = manager.site["management_addresses"][rank]
+    mesh = {"reference": reference, "host_ip": address, "interface": manager.local.management_netdev,
+            "unit": unit, "config": str(path), "active": bool(active), "snapshot": None}
+    if active:
+        hcas = [manager.local.port(d, f).rdma_device for f in (0, 1) for d in ("clockwise", "counter_clockwise")]
+        try:
+            mesh["snapshot"] = qwen_mesh.check(reference, rank, hcas, manager.plan.roce_gid_index, address)
+        except CHECK_FAILURES as error:
+            mesh["problem"] = str(error)
+    return {"mesh": mesh}
 
 
 def definitions(raw_site, cluster, profile):
@@ -107,15 +129,18 @@ def select(raw_site, cluster, profile, *, fresh=False, existing_only=False, invo
     result = copy.deepcopy(raw_site)
     observed = [json.loads(invoke(row["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
                 for rank, row in enumerate(result["hosts"])]
+    # A reported mesh may be stopped or fail its ring check; the ring step of
+    # the installation starts, restarts or repairs it.
     if all(observed) and not fresh:
         references = [o["reference"] for o in observed]
         if len({(r["site_sha256"], r["plan_sha256"]) for r in references}) != 1:
-            raise ValueError("Active ranks disagree about their native mesh; inspect before replacing it")
+            raise ValueError("Ranks disagree about their native mesh; inspect before replacing it")
         for row, mesh in zip(result["hosts"], observed, strict=True):
             row.update(fabric=mesh["reference"], fabric_ip=mesh["host_ip"], interface=mesh["interface"])
         return result
     if any(observed) and not fresh:
-        raise ValueError("Only part of the native mesh is active. Use a reviewed --fresh-mesh replacement after inspection.")
+        raise ValueError("Only part of the native mesh is enabled or running. Use a reviewed --fresh-mesh "
+                         "replacement after inspection.")
     if existing_only:
         return result
     planned = definitions(result, cluster, profile)
@@ -329,9 +354,11 @@ def operate_local(lock, rank, operation):
             if prior["rank"] == rank and node.call(["systemctl", "is-active", prior["unit"]], accepted=(0, 3, 4)).returncode == 0:
                 raise ValueError("Previous mesh remains active")
     elif operation == "mesh-up":
-        # Enabled, the mesh returns at every boot (after the ConnectX hairpin
-        # setting), so a model can start again after a reboot.
-        node.call(["systemctl", "enable", "--now", selected["mesh_unit"]])
+        # A mesh that this deployment created is served like a reused one:
+        # enabled for every boot, started or restarted, and with an address
+        # re-added whose RoCE GID left the pinned index.
+        row = lock["site"]["ranks"][rank]
+        return serve_ring(row["fabric"], rank, row["hcas"], row["gid"], row["host_ip"])
     elif operation == "mesh-gate":
         runner = selected["code_dir"] + "/runtime/glm53-spark-mtp3-mesh/managed_service.py"
         node.call(["python3", runner, "gate", "--config", str(config), "--timeout", "60"])
