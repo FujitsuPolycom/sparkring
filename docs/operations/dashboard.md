@@ -46,6 +46,10 @@ curl http://NODE_A:PORT/v1/sparkring/status
 model is up; the dashboard shows how the running model is configured and
 behaving.
 
+For live prefill and decode rates, queue, KV cache use and MTP acceptance in a
+terminal, point [vllm-top](https://github.com/mratsim/vllm-top) at the model
+API: `vllm-top --url http://NODE_A:PORT`.
+
 ## Access
 
 The dashboard has the same access as the model API: no key, on every interface
