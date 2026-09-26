@@ -2,5 +2,10 @@
 """Run the installed immutable payload, independent of the caller's directory."""
 import sys
 sys.path.insert(0, "/usr/lib/sparkring")
+if sys.argv[1:2] == ["node"]:
+    # Node commands, including the boot run of sparkring-hairpin.service and
+    # the mesh start check, import none of the operator CLI's modules.
+    from scripts.sparkring_node import main as node_main
+    raise SystemExit(node_main(sys.argv[2:]))
 from scripts.sparkring import main
 raise SystemExit(main())

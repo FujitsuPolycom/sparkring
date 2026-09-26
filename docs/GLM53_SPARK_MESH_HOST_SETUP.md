@@ -431,7 +431,11 @@ set four hairpin queues with `hairpin_queue_size` 8192 only if needed, and
 explain driver reload hazards. The hairpin values are `driverinit` settings:
 the driver starts with its default queue size of 1024 at every boot, so check
 them again after each reboot and repeat the stopped-stack provisioning when
-they differ. Do not reload through a data-link-only SSH connection. After
+they differ. On a four-Spark ring set up by `sparkring install` or
+`sparkring setup`, `sudo sparkring hairpin` on Node A applies them and records
+them, and SparkRing then applies them itself at every boot; see
+[Four-Spark rings](operations/install.md#four-spark-rings). Do not reload
+through a data-link-only SSH connection. After
 reload, bring up the four named data profiles, repeat pings/GID/MTU checks,
 and verify management access before proceeding.
 Those links supply hardware instructions; their retired model/image selection

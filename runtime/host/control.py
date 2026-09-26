@@ -104,7 +104,14 @@ def plan(nodes, edges, head, *, subnet="10.253.255.0/29", share_uplink=True):
     return result
 
 
-def render(config, private_key):
+def render(config, private_key, *, without_endpoint=()):
+    """The wg-quick configuration of one Spark.
+
+    Peers reached over a netdev in ``without_endpoint`` get no ``Endpoint``
+    line: wg-quick cannot resolve a link-local endpoint whose interface is
+    missing, and WireGuard learns such a peer's endpoint from its first
+    authenticated packet.
+    """
     address = ipaddress.IPv4Address(config["address"])
     rows = ["[Interface]", "Address = " + str(address) + "/32", "PrivateKey = " + key(private_key),
             f"ListenPort = {PORT}", "MTU = 1420"]
@@ -115,8 +122,10 @@ def render(config, private_key):
         if not match or match[2] != interface or not ipaddress.IPv6Address(match[1]).is_link_local:
             raise ValueError("Invalid control peer endpoint")
         allowed = [str(ipaddress.IPv4Network(ip)) for ip in peer["allowed_ips"]]
-        rows += ["", "[Peer]", "PublicKey = " + key(peer["key"]), "AllowedIPs = " + ", ".join(allowed),
-                 "Endpoint = " + endpoint, "PersistentKeepalive = 15"]
+        rows += ["", "[Peer]", "PublicKey = " + key(peer["key"]), "AllowedIPs = " + ", ".join(allowed)]
+        if interface not in without_endpoint:
+            rows.append("Endpoint = " + endpoint)
+        rows.append("PersistentKeepalive = 15")
     return "\n".join(rows) + "\n"
 
 

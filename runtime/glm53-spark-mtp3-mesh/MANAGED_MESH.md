@@ -71,8 +71,13 @@ Before installation:
   four hairpin queues (`hairpin_num_queues` 4) with `hairpin_queue_size` 8192
   per function, and the tested `hmfs` steering profile. Both hairpin values are
   `driverinit` settings: the driver starts with its default queue size of 1024
-  at every boot, so verify them again after each reboot. Any required driver
-  reload belongs to a separate stopped-all-RDMA-users maintenance step over
+  at every boot. On a four-Spark ring set up by `sparkring install` or
+  `sparkring setup`, the mesh service does not start without them, and once
+  `sudo sparkring hairpin` or an installation has recorded them,
+  `sparkring-hairpin.service` applies them at every boot; see
+  [Four-Spark rings](../../docs/operations/install.md#four-spark-rings).
+  Elsewhere, verify them again after each reboot; a required driver reload
+  belongs to a separate stopped-all-RDMA-users maintenance step over
   independent management or a console, not to service installation or
   recovery.
 - Use identical source, site, topology, marker binary, and immutable image

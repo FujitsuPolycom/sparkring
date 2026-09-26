@@ -1,5 +1,10 @@
-"""Guided Linux setup; existing network and model engines own all execution."""
+"""Guided Linux setup; existing network and model engines own all execution.
+
+On four-Spark rings setup also applies the ConnectX hairpin setting through
+``runtime/host/hairpin_ring.py`` once fabric addressing has converged.
+"""
 import argparse
+import contextlib
 import getpass
 import hashlib
 import ipaddress
@@ -9,11 +14,17 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer
-from runtime.host import discovery, node, topology
+from runtime.common import distribution, installer, process_lock
+from runtime.host import discovery, hairpin_ring, node, topology
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
 STATE = Path("/var/lib/sparkring/controller")
+# Help text and notice of --allow-driver-reload, which setup and install accept.
+ALLOW_DRIVER_RELOAD = "not needed: the approval question or --yes covers the ConnectX restarts"
+# Addressing converges in one pass; the next pass confirms it.
+ADDRESSING_PASSES = 4
+# Node status states of a Spark that needs no action.
+HEALTHY = ("network-configured", "existing-network-verified")
 
 
 def confirm(prompt, yes=False, *, default=False):
@@ -43,20 +54,70 @@ def collect(targets, *, invoke=discovery.inspect_node):
         return list(pool.map(inspect, range(len(targets))))
 
 
+def detail_lines(details):
+    """Terminal lines for the details of a needs_input result.
+
+    ``lines`` and ``scope`` are printed as they are; other scalar values and
+    lists are printed per key. A whole result document (it carries
+    ``schema``) was already printed as the plan and is skipped.
+    """
+    if not isinstance(details, dict) or not details:
+        return []
+    lines = []
+    for key in ("scope", "lines"):
+        if isinstance(details.get(key), list):
+            lines += [str(line) for line in details[key]]
+    if lines or details.get("schema"):
+        return lines
+    for key, value in details.items():
+        if isinstance(value, list):
+            lines.append(f"{key}:")
+            for item in value:
+                if isinstance(item, dict):
+                    item = ", ".join(f"{k}: {v}" for k, v in item.items() if not isinstance(v, (dict, list)))
+                lines.append("  - " + str(item))
+        elif not isinstance(value, dict):
+            lines.append(f"{key}: {value}")
+    return lines
+
+
 def summarize(plan, *, observe_only=False):
     print(f"{len(plan['nodes'])} Sparks: " + ("p0 pair" if len(plan["nodes"]) == 2 else "p0-to-p1 ring"))
+    hairpin = hairpin_ring.requirement(plan)
     for host, proposed in zip(plan["spec"]["hosts"], plan["network"]["hosts"], strict=True):
-        print(f"  rank {host['rank']}: {host['host']}  " + ("verify existing" if observe_only else proposed["action"]))
+        line = f"  rank {host['rank']}: {host['host']}  " + ("verify existing" if observe_only else proposed["action"])
+        if hairpin and not observe_only:
+            line += "  driver: " + proposed.get("driver_action", "none")
+        print(line)
         for port in host["data_interfaces"]:
             print(f"    {port['netdev']}  {port['address']}  MTU 9000")
         for problem in proposed["blocked_by"]:
             print("    BLOCKED: " + problem)
+        if hairpin:
+            # Adoption restarts no function, so its lines never announce a restart.
+            print("    ConnectX hairpin: " + hairpin_ring.summary_line(hairpin[host["rank"]], adopt=observe_only))
     print("Existing networking will be verified and recorded." if observe_only else "Setup saves network state and enables its boot service. Model images/weights are selected by 'sparkring up'.")
 
 
+def _sync_workers(plan, directory):
+    """Update the workers' SparkRing package from Node A over the plan's fabric paths."""
+    from runtime.host import fabric_ssh, install_assets
+    transport = fabric_ssh.Transport({"plan": plan}, STATE / "bulk-ssh")
+    # Each bulk path must reach the enrolled node identity before a package crosses it.
+    transport.verify()
+    return install_assets.Assets(transport, Path(directory) / "assets").sync_packages()
+
+
 def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.ssh,
-          allow_driver_reload=False, review=lambda p: None):
-    """Journal each step and re-observe after reload; never retry an unknown mutation."""
+          approved=False, review=lambda p: None, ensure=None, update_workers=None):
+    """Journal each step and re-observe after each pass; never retry an unknown mutation.
+
+    Fabric addressing passes run NetworkManager changes only
+    (``defer_driver=True``) until no host needs one. On a four-Spark ring the
+    ConnectX hairpin step (``hairpin_ring.ensure``, approved by ``approved``)
+    then applies the driver setting, and the network is verified on the plan
+    that step returns.
+    """
     directory = Path(directory)
     journal = directory / "setup.json"
     if journal.exists():
@@ -66,28 +127,41 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     deploy_engine.save_receipt(journal, record)
     head = plan["nodes"][0]["node_id"]
     targets = [h["host"] for h in plan["spec"]["hosts"]]
-    # At most one reload per data function, followed by a configuration pass.
-    for step in range(18):
-        executable = deploy_network_run.build_network_plan({"spec": plan["spec"]}, plan["inventory"])
-        if executable["driver_reload"] and not allow_driver_reload:
-            raise ValueError("Driver reload required; review with --allow-driver-reload on an idle cluster")
+    options = {"name": plan["spec"]["owner"], "fabric_cidr": plan.get("fabric_cidr", "198.18.0.0/21"),
+               "reset": plan.get("reset_requested", False),
+               "preserve_control": plan["spec"].get("preserve_control_ipv6", False)}
+
+    def rebuild(found):
+        return topology.build_spec(found, head, **options)
+
+    for step in range(ADDRESSING_PASSES):
+        executable = deploy_network_run.build_network_plan({"spec": plan["spec"]}, plan["inventory"], defer_driver=True)
         record["steps"].append({"network_plan": executable["sha256"], "state": "running"})
         deploy_engine.save_receipt(journal, record)
-        deploy_engine.execute_plan(executable, directory / f"network-{step}.json", executable["sha256"],
-                                   runner=run, allow_driver_reload=allow_driver_reload)
+        deploy_engine.execute_plan(executable, directory / f"network-{step}.json", executable["sha256"], runner=run)
         record["steps"][-1]["state"] = "succeeded"
         deploy_engine.save_receipt(journal, record)
         refreshed = inspect_nodes(targets)
         if {n["node_id"] for n in refreshed} != {n["node_id"] for n in plan["nodes"]}:
             raise ValueError("Node identities changed during setup")
-        plan = topology.build_spec(refreshed, head, name=plan["spec"]["owner"],
-                                   fabric_cidr=plan.get("fabric_cidr", "198.18.0.0/21"), reset=plan.get("reset_requested", False),
-                                   preserve_control=plan["spec"].get("preserve_control_ipv6", False))
+        plan = rebuild(refreshed)
         if not any(h["action"] != "none" for h in plan["network"]["hosts"]):
             break
         review(plan)
     else:
         raise ValueError("Networking did not converge; inspect setup receipts")
+    # Each function restarts under a NetworkManager profile that the passes
+    # normalized (autoconnect on), so NetworkManager restores its addresses.
+    record["steps"].append({"hairpin": "running"})
+    deploy_engine.save_receipt(journal, record)
+    outcome = {}
+    current = plan
+    plan = (ensure or hairpin_ring.ensure)(
+        plan, approved=approved, inspect=inspect_nodes, rebuild=rebuild,
+        update_workers=update_workers or (lambda: _sync_workers(current, directory)),
+        directory=directory, record=outcome)
+    record["steps"][-1]["hairpin"] = outcome.get("state", "complete")
+    deploy_engine.save_receipt(journal, record)
     deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"])
     # All nodes verify before any persistent service is installed.
     for rank, host in enumerate(plan["spec"]["hosts"]):
@@ -126,7 +200,7 @@ def setup(argv=None):
     parser.add_argument("--adopt", action="store_true", help="verify/save existing networking without changing links, routes or services")
     parser.add_argument("--yes", action="store_true", help="accept the printed configuration scope; never trusts SSH host keys")
     parser.add_argument("--skip-enroll", action="store_true", help="SSH keys and host trust are already configured")
-    parser.add_argument("--allow-driver-reload", action="store_true")
+    parser.add_argument("--allow-driver-reload", action="store_true", help=ALLOW_DRIVER_RELOAD)
     parser.add_argument("--inventory", type=Path, help="offline array of authenticated-node fixture records; planning only")
     parser.add_argument("--head-id", help="head node UUID for offline inventory")
     parser.add_argument("--output", type=Path, help="new private setup receipt directory")
@@ -135,6 +209,8 @@ def setup(argv=None):
         raise ValueError("Offline inventory requires --plan; --plan and --apply are exclusive")
     if args.yes and not args.apply and not args.plan:
         raise ValueError("Noninteractive setup changes require --apply --yes")
+    if args.allow_driver_reload:
+        print("--allow-driver-reload: " + ALLOW_DRIVER_RELOAD)
     if args.inventory:
         nodes = json.loads(args.inventory.read_text(encoding="utf-8"))
         head = args.head_id
@@ -177,11 +253,22 @@ def setup(argv=None):
     if args.plan or not args.apply and not sys.stdin.isatty():
         print("Plan saved. Repeat with --apply to configure these hosts.")
         return 0
-    confirm("Record this verified existing fabric without network changes?" if args.adopt else "Apply this network configuration and enable fabric/agent services?", args.yes)
+    if args.adopt:
+        question = "Record this verified existing fabric without network changes"
+        if len(nodes) == 4:
+            question += (", and record the ConnectX hairpin setting that is in effect and apply it at every boot"
+                         " (no driver restart)")
+        confirm(question + "?", args.yes)
+    else:
+        # This answer also approves the ConnectX hairpin step that summarize() listed.
+        confirm("Apply this network configuration and enable fabric/agent services?", args.yes)
 
     def review(value):
         summarize(value)
-        confirm("Apply the refreshed plan after driver/configuration discovery?", args.yes)
+        confirm("Apply the refreshed plan after configuration discovery?", args.yes)
+
+    def rebuild(found):
+        return topology.build_spec(found, head, name=args.name, fabric_cidr=args.fabric_cidr)
 
     if args.adopt:
         observed = []
@@ -198,10 +285,27 @@ def setup(argv=None):
             discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "adopt"], data=json.dumps(config))
             discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "workspace", "--operator", host["host"].split("@", 1)[0], "--name", args.name])
             observed.append({"rank": rank, "adopted": True})
-        installer.write(directory / "setup.json", {"complete": True, "network_changed": False, "nodes": observed})
-        print("Existing fabric verified. No link, route or service changes.")
+        receipt = {"complete": True, "network_changed": False, "nodes": observed}
+        armed = []
+        if len(nodes) == 4:
+            # Adoption requires an active mesh, so no function restarts here:
+            # Sparks that need one get M19 and adoption still completes.
+            outcome = {}
+            current = plan
+            plan = hairpin_ring.ensure(plan, approved=True, restart=False, inspect=collect, rebuild=rebuild,
+                                       update_workers=lambda: _sync_workers(current, directory),
+                                       directory=directory, record=outcome)
+            receipt["hairpin"] = outcome.get("state", "complete")
+            armed = (list(range(4)) if outcome.get("state") == hairpin_ring.KEPT else
+                     [entry["rank"] for entry in outcome.get("ranks") or [] if entry.get("after") == hairpin_ring.KEPT])
+        installer.write(directory / "setup.json", receipt)
+        if armed:
+            print("Existing fabric verified. No link or route changes; sparkring-hairpin.service applies the ConnectX "
+                  f"hairpin setting at every boot on {hairpin_ring.ranks_text(armed)}.")
+        else:
+            print("Existing fabric verified. No link, route or service changes.")
     else:
-        plan = apply(plan, directory, allow_driver_reload=args.allow_driver_reload, review=review)
+        plan = apply(plan, directory, approved=True, review=review)
     # workspace() established this directory for the SSH operator, not root.
     cluster = {"schema": "sparkring-appliance-cluster/v1", "name": args.name, "plan": plan,
                "setup_receipt": str(directory / "setup.json")}
@@ -234,6 +338,22 @@ def model_site(cluster, profile, instance="main"):
     if cluster.get("api_address"):
         result["api_address"] = cluster["api_address"]
     return result
+
+
+def _hairpin_problem():
+    """M6 lines when a Spark of the recorded four-Spark ring lacks the ConnectX hairpin setting, else None.
+
+    One line per Spark, then the remedy; later lines are indented for the
+    terminal.
+    """
+    if not (STATE / "cluster.json").exists():
+        return None
+    plan = installer.read(STATE / "cluster.json").get("plan") or {}
+    hosts = (plan.get("spec") or {}).get("hosts") or []
+    if len(hosts) != 4:
+        return None
+    problem = hairpin_ring.not_in_effect(plan, hairpin_ring.read_statuses(plan, invoke=discovery.ssh))
+    return problem.replace("\n", "\n  ") if problem else None
 
 
 def lifecycle(argv):
@@ -276,9 +396,25 @@ def lifecycle(argv):
         if args.json:
             print(json.dumps(result, indent=2))
         else:
+            # The top line stays Node A's own state; each Spark's line follows.
             print(result["state"] + " | next: " + result.get("next_action", "sparkring status"))
-            for row in result.get("nodes", []):
-                print("  " + row["host"] + ": " + row["state"] + (" — " + row["error"] if row.get("error") else ""))
+            if not result.get("nodes"):
+                for warning in result.get("warnings", []):
+                    print("  warning: " + warning)
+            attention = []
+            for rank, row in enumerate(result.get("nodes", [])):
+                # Named as the attention line and hairpin messages name Sparks: rank and hostname.
+                name = f"rank {rank} ({row.get('hostname') or row['host']})"
+                label = f"{name} {row['host']}" if row.get("hostname") else name
+                print(f"  {label}: " + row["state"] + (" — " + row["error"] if row.get("error") else ""))
+                if row["state"] not in HEALTHY:
+                    attention.append(name)
+                    if row.get("next_action"):
+                        print("    next: " + row["next_action"])
+                for warning in row.get("warnings", []):
+                    print("    warning: " + warning)
+            if attention:
+                print("Sparks that need attention: " + ", ".join(attention))
             if result.get("deployment"):
                 saved = result["deployment"]
                 print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
@@ -333,6 +469,10 @@ def lifecycle(argv):
         for old in result["native_mesh"]["replaces"]:
             print(f"  Stop/disable rank {old['rank']} service: {old['unit']}")
     if args.plan or not args.execute and not sys.stdin.isatty():
+        if args.operation == "up":
+            problem = _hairpin_problem()
+            if problem:
+                print("Warning: " + problem)
         print("Review, then repeat with --execute.")
         return 0
     if args.operation == "up" and (STATE / "active.json").exists():
@@ -341,6 +481,12 @@ def lifecycle(argv):
             previous = installer.status(active)["state"]
             if previous.get("operation") != "down" or not previous.get("complete"):
                 raise ValueError("Run sparkring down before selecting another model")
+    if args.operation == "up":
+        # A mesh refused by its hairpin start check would otherwise surface
+        # only as a failed systemd job, so nothing starts without the setting.
+        problem = _hairpin_problem()
+        if problem:
+            raise ValueError(problem)
     confirm("Apply these model/image actions?", args.execute)
     from runtime.host import retained_source
     result = retained_source.apply(directory, args.operation, cache=STATE / "retained-sources")
@@ -349,12 +495,28 @@ def lifecycle(argv):
     return 0
 
 
+def _setup_lock(argv):
+    """``install.lock`` for a setup that may change hosts; planning and help take no lock.
+
+    ``sparkring install`` calls ``single_uplink.main`` inside its own hold of
+    this lock, so the lock is never taken twice.
+    """
+    if any(flag in argv for flag in ("--plan", "--inventory", "-h", "--help")):
+        return contextlib.nullcontext()
+    return process_lock.hold(STATE / "install.lock")
+
+
 def main(argv):
     try:
-        if argv[0] == "setup" and not any(flag in argv for flag in ("--node", "--inventory")):
-            from runtime.host.single_uplink import main as uplink_main
-            return uplink_main(argv[1:])
-        return setup(argv[1:]) if argv[0] == "setup" else lifecycle(argv)
+        if argv[0] != "setup":
+            return lifecycle(argv)
+        with _setup_lock(argv):
+            if not any(flag in argv for flag in ("--node", "--inventory")):
+                from runtime.host.single_uplink import main as uplink_main
+                return uplink_main(argv[1:])
+            return setup(argv[1:])
     except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         print("SparkRing: " + str(error), file=sys.stderr)
+        for line in detail_lines(getattr(error, "details", None)):
+            print("  " + line, file=sys.stderr)
         return 2

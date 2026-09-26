@@ -6,6 +6,8 @@ import copy
 import inspect
 import json
 
+from runtime.host.control import INTERFACE as ADMINISTRATION_NETDEV
+
 from .deploy_engine import plan_digest, seal_plan
 from .deploy_inventory import _collect_local, _request
 from .deploy_network import plan_network
@@ -15,11 +17,20 @@ def _guard(facts, host):
     """Compare configuration, not counters, timestamps, or transient GPU usage."""
     names = {p["netdev"] for p in host["data_interfaces"]}
     devices = {p["rdma_device"] for p in host["data_interfaces"]}
+    rdma = []
+    for row in facts["rdma"]:
+        if row["device"] not in devices:
+            continue
+        # devlink.reload counts driver restarts, which the ConnectX hairpin
+        # step performs between discovery and this comparison.
+        if isinstance(row.get("devlink"), dict) and "reload" in row["devlink"]:
+            row = {**row, "devlink": {k: v for k, v in row["devlink"].items() if k != "reload"}}
+        rdma.append(row)
     return {
         "management": facts["management"],
         "routes": facts["routes"],
         "interfaces": [i for i in facts["interfaces"] if i["name"] in names],
-        "rdma": [i for i in facts["rdma"] if i["device"] in devices],
+        "rdma": rdma,
         # NetworkManager lists connections in activation order; compare them as a set.
         "connections": sorted(facts["network"]["connections"] or [],
                               key=lambda c: (str(c.get("uuid")), str(c.get("interface")))),
@@ -166,17 +177,49 @@ def remote_command(payload, operation):
     return ["sudo", "-n", "python3", "-c", source]
 
 
-def build_network_plan(preparation, inventory):
-    """Build an executable plan. Driver reload changes one function, then stops."""
+def build_network_plan(preparation, inventory, *, defer_driver=False):
+    """Build an executable plan for the data network.
+
+    ``defer_driver=True`` serves SparkRing setup, where sparkring-hairpin.service
+    applies the ConnectX hairpin setting. The plan executes NetworkManager
+    changes only, lists the hosts whose ``driver_action`` is not ``none`` in
+    ``driver_pending``, and lets GPU or RDMA users block only hosts with
+    NetworkManager changes.
+
+    ``defer_driver=False`` serves ``deploy_suite.py apply-plan`` on hosts without
+    the SparkRing package. It also executes driver steps: a driver reload
+    changes one function, then the plan stops for rediscovery. It refuses hosts
+    whose hairpin state is unknown, and driver reloads on hosts whose only
+    management path is the administration network, which a reload interrupts.
+    """
     spec = copy.deepcopy(preparation["spec"])
     identity = plan_digest({"spec": spec, "inventory": inventory})
     for host in spec["hosts"]:
         host["backup_dir"] += "/" + identity[:16]
     network = plan_network(spec, inventory["hosts"])
+    pending = [h["host"] for h in network["hosts"] if h["driver_action"] != "none"]
     for host in network["hosts"]:
+        if defer_driver and host["action"] == "none":
+            continue
         if not host["apply_permitted"]:
             raise ValueError(host["host"] + ": " + " ".join(host["blocked_by"]))
-    reload_host = next(
+    if not defer_driver:
+        for host in network["hosts"]:
+            if host["driver_action"] == "unknown":
+                raise ValueError(
+                    host["host"] + ": devlink reload statistics are unavailable; SparkRing cannot "
+                    "tell whether the hairpin setting is in effect and restarts nothing. "
+                    "Rediscover the host, then plan again."
+                )
+            if host["management_netdev"] == ADMINISTRATION_NETDEV and any(
+                c["risk"] == "driver-reload" for c in host["driver_steps"]
+            ):
+                raise ValueError(
+                    host["host"] + f": a driver reload would interrupt its only management path "
+                    f"({ADMINISTRATION_NETDEV}). On Node A, sudo sparkring hairpin applies the "
+                    "ConnectX hairpin setting."
+                )
+    reload_host = None if defer_driver else next(
         (
             h
             for h in network["hosts"]
@@ -187,9 +230,11 @@ def build_network_plan(preparation, inventory):
     payloads = []
     for host, proposed in zip(spec["hosts"], network["hosts"], strict=True):
         commands = []
-        if proposed["action"] != "none" and (
-            reload_host is None or proposed is reload_host
-        ):
+        driver = [] if defer_driver else proposed["driver_steps"]
+        if (
+            proposed["action"] != "none"
+            or (not defer_driver and proposed["driver_action"] != "none")
+        ) and (reload_host is None or proposed is reload_host):
             # Directory ownership is established atomically by the remote helper.
             commands = [
                 c
@@ -202,9 +247,9 @@ def build_network_plan(preparation, inventory):
                 )
             ]
             if reload_host is None:
-                commands += proposed["apply"] + proposed["driver_steps"]
+                commands += proposed["apply"] + driver
             else:
-                for c in proposed["driver_steps"]:
+                for c in driver:
                     commands.append(c)
                     if c.get("stop_after"):
                         break
@@ -262,6 +307,7 @@ def build_network_plan(preparation, inventory):
             "operation": "network",
             "rediscover_required": True,
             "driver_reload": reload_host is not None,
+            "driver_pending": pending,
             "network": network,
             "phases": phases,
         }

@@ -1,4 +1,5 @@
 """Named deployments cannot address the default installation or inject units."""
+import fnmatch
 import hashlib
 import json
 from pathlib import Path
@@ -45,6 +46,23 @@ def test_default_unit_bytes_remain_compatible(liveness,expected):
     units=managed_units.unit_text('/opt/sparkring/managed-mesh','/etc/sparkring/managed-mesh','a'*64,
                                   host_liveness=liveness)
     assert hashlib.sha256(json.dumps(units,sort_keys=True).encode()).hexdigest()==expected
+
+
+# The SparkRing package's systemd generator (packaging/debian/sparkring-hairpin-mesh-check)
+# adds the ConnectX hairpin start check to regular unit files in /etc/systemd/system
+# with these names. Only mesh units may match; a model unit needs no check of its
+# own because it is BindsTo= its mesh unit.
+HAIRPIN_START_CHECK_UNITS=('sparkring-mesh.service','sparkring-*-mesh.service')
+
+
+@pytest.mark.parametrize('name',[None,NAME,'a','mesh-a','a-mesh','model'])
+def test_only_the_mesh_unit_matches_the_hairpin_start_check(name):
+    selected=deployment.layout(name)
+    units=managed_units.unit_text(selected['code_dir'],selected['config_dir'],'a'*64,
+                                  host_liveness=True,deployment_name=name)
+    assert selected['unit_dir']=='/etc/systemd/system'
+    assert {unit for unit in units
+            if any(fnmatch.fnmatchcase(unit,pattern) for pattern in HAIRPIN_START_CHECK_UNITS)}=={selected['mesh_unit']}
 
 
 def test_named_layout_and_dependencies_are_isolated():

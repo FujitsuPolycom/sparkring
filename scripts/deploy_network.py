@@ -2,6 +2,9 @@
 
 Status: implemented for NetworkManager. This module does not run commands.
 Plans preserve previous connection UUIDs and isolate disruptive driver reloads.
+Each host reports NetworkManager changes (``action``) separately from the
+ConnectX hairpin setting (``driver_action`` and ``hairpin``), which four-rank
+plans classify per function with the rule in ``scripts/hairpin_setting.py``.
 """
 
 from __future__ import annotations
@@ -12,17 +15,14 @@ import uuid
 from collections.abc import Mapping
 from pathlib import PurePosixPath
 
+from scripts import hairpin_setting
+from scripts.hairpin_setting import HAIRPIN_QUEUE_SIZE
 from spark_transport.fabric.cx7_hairpin_diagonal.fabric import RANK_COUNT
 
 
 PLAN_SCHEMA = "sparkring-deploy-network-plan/v1"
 INVENTORY_SCHEMA = "sparkring-deploy-host-inventory/v1"
 ROLES = ("cw_primary", "cw_secondary", "ccw_primary", "ccw_secondary")
-# mlx5 sizes each hairpin queue at hairpin_queue_size 64-byte strides and drops
-# forwarded packets when it fills, without pausing the upstream link. The
-# driver maximum (512 KiB per queue) holds the prepared RoCEnante forwarded-path
-# send window; the 1024 default (64 KiB) does not.
-HAIRPIN_QUEUE_SIZE = 8192
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}\Z")
 _NETDEV = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,14}\Z")
 _BDF = re.compile(r"[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]\Z")
@@ -30,6 +30,18 @@ _BDF = re.compile(r"[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]\Z")
 
 class NetworkPlanError(ValueError):
     """Inventory cannot support the requested data-network changes."""
+
+
+class DriverSettingsError(NetworkPlanError):
+    """The ConnectX hairpin setting is not in effect, or cannot be read, on some host.
+
+    ``functions`` lists the affected functions as the plan's ``hairpin`` rows
+    with a ``host`` field added.
+    """
+
+    def __init__(self, message, functions):
+        super().__init__(message)
+        self.functions = functions
 
 
 def _object(value, label):
@@ -514,6 +526,16 @@ def _connection(owner, host, port, interface, connections, owned):
 
 
 def _driver(host, port, interface, function):
+    """Classify one function by the hairpin rule; return its steps and status row.
+
+    Steps follow the function state (``scripts/hairpin_setting.py``):
+    ``default`` sets the differing parameters and restarts the function,
+    ``pending`` and ``failed`` restart it without setting anything, and hardware
+    TC offload that is off gets ``ethtool -K``. ``unknown`` gets no step: a
+    function whose reload statistics cannot be read is never restarted.
+    Capabilities that no step can change (eSwitch mode, steering mode, a missing
+    parameter, fixed-off offload) raise instead.
+    """
     ssh, netdev = host["host"], port["netdev"]
     link = _object(function.get("devlink"), f"{ssh}/{netdev} devlink")
     device = "pci/" + function["pci_address"].lower()
@@ -539,8 +561,8 @@ def _driver(host, port, interface, function):
         raise NetworkPlanError(
             f"{ssh}: {netdev} must already expose runtime hmfs steering; driver/firmware replacement is unsupported"
         )
-    apply, rollback = [], []
-    for key, wanted in (("hairpin_num_queues", 4), ("hairpin_queue_size", HAIRPIN_QUEUE_SIZE)):
+    values = {}
+    for key, wanted in hairpin_setting.PARAMETERS.items():
         parameter = _object(params.get(key), key)
         prior = parameter.get("value")
         if isinstance(prior, str) and prior.isdigit():
@@ -556,7 +578,37 @@ def _driver(host, port, interface, function):
         permitted = parameter.get("allowed_values")
         if permitted and str(wanted) not in {str(value) for value in permitted}:
             raise NetworkPlanError(f"{ssh}: driver does not advertise {key}={wanted}")
-        if prior != wanted:
+        values[key] = prior
+    offload = interface.get("hw_tc_offload")
+    if offload is None:
+        raise NetworkPlanError(
+            f"{ssh}: hardware TC offload capability is unknown on {netdev}"
+        )
+    if offload is False and interface.get("hw_tc_offload_fixed") is not False:
+        raise NetworkPlanError(
+            f"{ssh}: hardware TC offload cannot be enabled from the recorded capability on {netdev}"
+        )
+    # An inventory whose probe does not read reload statistics has no "reload"
+    # object; the rule then reports "unknown" rather than guessing.
+    statistics = link.get("reload") if isinstance(link.get("reload"), Mapping) else {}
+    row = {
+        "role": port["role"],
+        "netdev": netdev,
+        "pci_address": function["pci_address"].lower(),
+        **hairpin_setting.evaluate(
+            values,
+            statistics,
+            hairpin_setting.offload_setting(offload, interface.get("hw_tc_offload_fixed")),
+        ),
+    }
+    state = row["state"]
+    apply, rollback = [], []
+    if state == hairpin_setting.UNKNOWN:
+        return apply, rollback, row
+    if state == hairpin_setting.DEFAULT:
+        for key, wanted in hairpin_setting.PARAMETERS.items():
+            if values[key] == wanted:
+                continue
             argv = [
                 "sudo",
                 "-n",
@@ -576,13 +628,13 @@ def _driver(host, port, interface, function):
                 _command(ssh, f"{port['role']}-{key}", argv, risk="mutates-host")
             )
             argv = argv.copy()
-            argv[argv.index("value") + 1] = str(prior)
+            argv[argv.index("value") + 1] = str(values[key])
             rollback.append(
                 _command(
                     ssh, f"{port['role']}-restore-{key}", argv, risk="mutates-host"
                 )
             )
-    if apply:
+    if state in hairpin_setting.RESTART_STATES:
         reload_argv = [
             "sudo",
             "-n",
@@ -604,26 +656,20 @@ def _driver(host, port, interface, function):
                 resume="Rediscover interface, IP, GID, and driver state before changing another function.",
             )
         )
-        rollback.append(
-            _command(
-                ssh,
-                f"{port['role']}-rollback-driver-reload",
-                reload_argv,
-                risk="driver-reload",
-                requires_independent_management=True,
-                stop_after=True,
+        # Only restored parameters need a restart to roll back. A pending or
+        # failed function has no earlier value that param set could restore.
+        if state == hairpin_setting.DEFAULT:
+            rollback.append(
+                _command(
+                    ssh,
+                    f"{port['role']}-rollback-driver-reload",
+                    reload_argv,
+                    risk="driver-reload",
+                    requires_independent_management=True,
+                    stop_after=True,
+                )
             )
-        )
-    offload = interface.get("hw_tc_offload")
-    if offload is None:
-        raise NetworkPlanError(
-            f"{ssh}: hardware TC offload capability is unknown on {netdev}"
-        )
     if offload is False:
-        if interface.get("hw_tc_offload_fixed") is not False:
-            raise NetworkPlanError(
-                f"{ssh}: hardware TC offload cannot be enabled from the recorded capability on {netdev}"
-            )
         apply.append(
             _command(
                 ssh,
@@ -640,7 +686,7 @@ def _driver(host, port, interface, function):
                 risk="mutates-host",
             )
         )
-    return apply, rollback
+    return apply, rollback, row
 
 
 def _verification(host, port, function):
@@ -834,7 +880,7 @@ def plan_network(spec, inventory):
         connections = network.get("connections")
         if not isinstance(connections, list):
             raise NetworkPlanError(f"{ssh}: connection UUID inventory is required")
-        records, apply, rollback, driver, verify = [], [], [], [], []
+        records, apply, rollback, driver, verify, hairpin = [], [], [], [], [], []
         for port, interface, function in functions:
             record, actions, reverse = _connection(
                 owner, host, port, interface, connections, owned
@@ -842,11 +888,22 @@ def plan_network(spec, inventory):
             records.append(record)
             apply.extend(actions)
             rollback[0:0] = reverse
-            driver_actions, driver_reverse = _driver(host, port, interface, function) if len(hosts) == 4 else ([], [])
-            driver.extend(driver_actions)
-            rollback[0:0] = driver_reverse
+            # Pairs forward nothing between nonadjacent Sparks, so they have
+            # no hairpin requirement and no driver planning.
+            if len(hosts) == RANK_COUNT:
+                driver_actions, driver_reverse, row = _driver(host, port, interface, function)
+                driver.extend(driver_actions)
+                rollback[0:0] = driver_reverse
+                hairpin.append(row)
             checks = _verification(host, port, function)
-            verify.extend(checks if len(hosts) == 4 else checks[:-2])
+            verify.extend(checks if len(hosts) == RANK_COUNT else checks[:-2])
+        # One unreadable function makes the whole host "unknown": its node
+        # service restarts nothing while any function cannot be evaluated.
+        if any(row["state"] == hairpin_setting.UNKNOWN for row in hairpin):
+            driver_action = "unknown"
+        else:
+            driver_action = "apply" if driver else "none"
+        # Backups and blockers cover every change, including driver steps.
         changed = bool(apply or driver)
         blockers = []
         if changed:
@@ -879,7 +936,9 @@ def plan_network(spec, inventory):
             {
                 "host": ssh,
                 "rank": host["rank"],
-                "action": "configure" if changed else "none",
+                "action": "configure" if apply else "none",
+                "driver_action": driver_action,
+                "hairpin": hairpin,
                 "management_netdev": host["management_netdev"],
                 "interfaces": records,
                 "backup": _backups(host, found, functions) if changed else [],
@@ -912,7 +971,13 @@ def plan_network(spec, inventory):
         "hosts": plans,
         "requires_hardware_validation": True,
         "execution_order": ["check", "backup", "apply", "driver_steps", "verify"],
-        "driver_step_policy": "Stop after each driver reload, rediscover, and regenerate the plan.",
+        "driver_step_policy": (
+            "On hosts with the SparkRing package, sparkring-hairpin.service performs driver steps "
+            "(sudo sparkring hairpin on Node A). Hosts without it run them through "
+            "deploy_suite.py apply-plan --allow-driver-reload: one driver reload per plan, then "
+            "rediscover and regenerate the plan. Neither restarts a function on a host whose "
+            "driver_action is unknown."
+        ),
         "limitations": [
             "Only NetworkManager data interfaces are supported.",
             "Mesh routes, TC rules, and services belong to the managed-mesh installer.",
@@ -921,14 +986,54 @@ def plan_network(spec, inventory):
     }
 
 
-def verify_network(spec, inventory):
-    """Check a fresh inventory after preparation; command exit status is insufficient."""
+def _verify_hairpin(prepared_hosts):
+    """Raise DriverSettingsError naming every function that is not in effect."""
+    problems, functions, restart_needed = [], [], False
+    for prepared in prepared_hosts:
+        ssh = prepared["host"]
+        rows = [
+            {**row, "host": ssh}
+            for row in prepared["hairpin"]
+            if row["state"] != hairpin_setting.IN_EFFECT
+        ]
+        if prepared["driver_action"] == "unknown":
+            unreadable = ", ".join(
+                row["netdev"] for row in rows if row["state"] == hairpin_setting.UNKNOWN
+            )
+            problems.append(
+                f"{ssh}: devlink reload statistics are unavailable for {unreadable}; SparkRing "
+                "cannot tell whether the hairpin setting is in effect and restarts nothing."
+            )
+        elif prepared["driver_action"] == "apply":
+            restart_needed = True
+            detail = hairpin_setting.grouped(rows)
+            problems.append(
+                f"{ssh}: the ConnectX hairpin setting is not in effect on {len(rows)} of "
+                f"{len(prepared['hairpin'])} functions: {detail}."
+            )
+        else:
+            continue
+        functions.extend(rows)
+    if problems:
+        if restart_needed:
+            problems.append("On Node A, sudo sparkring hairpin applies it after asking.")
+        raise DriverSettingsError(" ".join(problems), functions)
+
+
+def verify_network(spec, inventory, *, hairpin=True):
+    """Check a fresh inventory after preparation; command exit status is insufficient.
+
+    Address, GID, RoCE and link checks raise NetworkPlanError. With ``hairpin``,
+    a four-rank host whose ConnectX hairpin setting is not in effect, or cannot
+    be read, then raises DriverSettingsError. ``hairpin=False`` serves callers
+    that evaluate the hairpin setting separately.
+    """
     plan = plan_network(spec, inventory)
     _, hosts, _ = _prepare_spec(spec)
     for host, prepared in zip(hosts, plan["hosts"]):
         if prepared["action"] != "none":
             raise NetworkPlanError(
-                f"{host['host']}: persistent addresses or driver settings do not match the plan"
+                f"{host['host']}: persistent addresses do not match the plan"
             )
         for port, interface, function in _interfaces(host, inventory[host["host"]]):
             expected = ipaddress.ip_interface(port["address"]).ip
@@ -955,6 +1060,8 @@ def verify_network(spec, inventory):
                 raise NetworkPlanError(
                     f"{host['host']}: data link {port['netdev']} is not active"
                 )
+    if hairpin:
+        _verify_hairpin(plan["hosts"])
     return {
         "schema": "sparkring-deploy-network-verification/v1",
         "status": "implemented",

@@ -52,7 +52,8 @@ class Transport:
                         and all(ipaddress.ip_address(h["management_address"]) in ipaddress.ip_network(config["subnet"])
                                 for h in self.hosts))
         if uses_control:
-            control_node.underlay(root=root, run=run)
+            # Bulk paths need every administration link; one failing link stops here.
+            control_node.require_underlay(root=root, run=run)
             for host in self.hosts[1:]:
                 observed = run(["ip", "-j", "route", "get", host["management_address"]], capture_output=True, text=True, check=True)
                 rows = json.loads(observed.stdout)

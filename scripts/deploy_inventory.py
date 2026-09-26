@@ -500,11 +500,31 @@ def _collect_local(
         ),
     }
 
+    def reload_statistics(document, device):
+        # Copy of scripts/hairpin_setting.reload_statistics: this function is
+        # sent to hosts as source text and cannot import local modules. The
+        # counter is dev[device].stats.reload.driver_reinit.unspecified; any
+        # missing level gives None. iproute2 prints reload_failed only when it
+        # is true, so its absence means False.
+        entry = document.get("dev") if isinstance(document, dict) else None
+        entry = entry.get(device) if isinstance(entry, dict) else None
+        if not isinstance(entry, dict):
+            return {"driver_reinit": None, "failed": None}
+        failed = entry.get("reload_failed", False)
+        counter = entry
+        for key in ("stats", "reload", "driver_reinit", "unspecified"):
+            counter = counter.get(key) if isinstance(counter, dict) else None
+        return {
+            "driver_reinit": counter if type(counter) is int and counter >= 0 else None,
+            "failed": failed if isinstance(failed, bool) else None,
+        }
+
     def devlink(pci):
         result = {
             "available": None,
             "device": "pci/" + pci if pci else None,
             "parameters": {},
+            "reload": {"driver_reinit": None, "failed": None},
             "eswitch_mode": None,
             "eswitch_inline_mode": None,
             "eswitch_encap_mode": None,
@@ -564,6 +584,12 @@ def _collect_local(
             )
         else:
             faults.append(error or "devlink eswitch state unavailable")
+        # The reload counter shows whether the driverinit values above are in
+        # use; param show also reports a value set after the last reload. An
+        # unreadable counter stays None and is not a fault: planners report
+        # such a function as unknown and never restart it.
+        rows, _ = json_command(["devlink", "-s", "-j", "dev", "show", "pci/" + pci])
+        result["reload"] = reload_statistics(rows, "pci/" + pci)
         result["available"] = (
             True
             if any(item["value"] is not None for item in result["parameters"].values())

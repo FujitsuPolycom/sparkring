@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-UNITS="sparkring-agent.service sparkring-fabric.service sparkring-control-refresh.timer sparkring-access.service sparkring-seed.service sparkring-dns.service sparkring-control.service"
+UNITS="sparkring-agent.service sparkring-fabric.service sparkring-control-refresh.timer sparkring-access.service sparkring-seed.service sparkring-dns.service sparkring-control.service sparkring-hairpin.service"
 if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
     # Cluster setup, not the package, enables most of these units. Record the
     # ones this node has enabled so that installing the package again restores

@@ -1,7 +1,7 @@
 [Unit]
 Description=SparkRing private administration network
 Wants=network-online.target
-After=network-online.target NetworkManager.service docker.service
+After=network-online.target NetworkManager.service docker.service sparkring-hairpin.service
 Before=sparkring-fabric.service
 ConditionPathExists=/etc/sparkring/control.json
 

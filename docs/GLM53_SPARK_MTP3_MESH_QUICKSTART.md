@@ -213,6 +213,12 @@ does not prove that a TC rule is hardware resident or that RC works.
 
 ### Optional stopped-stack hairpin provisioning
 
+On a four-Spark ring set up by `sparkring install` or `sparkring setup`,
+`sudo sparkring hairpin` on Node A applies these values and records them, and
+SparkRing then applies them itself at every boot; see
+[Four-Spark rings](operations/install.md#four-spark-rings). The commands
+below are for other hosts.
+
 Skip this section when the verified settings already match. These commands
 change the NIC driver and are **not safe during serving**. Before running
 them, stop the managed stack across all four hosts and stop **every other

@@ -129,6 +129,10 @@ def test_installed_identity_must_match_ssh_target():
 def test_setup_simulation_checks_every_host_and_completes_receipts(tmp_path, size):
     found = nodes(size)
     plan = topology.build_spec(found, found[0]["node_id"])
+    # Four-Spark nodes report the ConnectX hairpin setting kept, so the hairpin
+    # step has nothing to do; the plan's nodes are the dicts inspect_nodes returns.
+    from runtime.host.test_hairpin_ring import kept
+    kept(plan)
     remote = []
 
     def invoke(host, argv, **kwargs):

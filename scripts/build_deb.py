@@ -50,11 +50,16 @@ def build(root, output, *, version=None):
         (payload / "distribution.json").write_text(json.dumps(record, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         bin_dir = package / "usr/bin"
         units = package / "usr/lib/systemd/system"
+        generators = package / "usr/lib/systemd/system-generators"
         control = package / "DEBIAN"
-        for directory in (bin_dir, units, control):
+        for directory in (bin_dir, units, generators, control):
             directory.mkdir(parents=True)
         templates = payload / "packaging/debian"
         shutil.copyfile(templates / "sparkring", bin_dir / "sparkring")
+        # systemd runs this generator at boot and on every daemon-reload; it adds
+        # the ConnectX hairpin start check to the host's mesh units.
+        generator = generators / "sparkring-hairpin-mesh-check"
+        shutil.copyfile(templates / "sparkring-hairpin-mesh-check", generator)
         for unit in [*templates.glob("*.service"), *templates.glob("*.timer")]:
             shutil.copyfile(unit, units / unit.name)
         for name in ("postinst", "prerm", "postrm"):
@@ -75,7 +80,7 @@ Description: SparkRing host setup and profile deployment controller
 """, encoding="utf-8")
         # Do not ship machine-specific state or conffiles. initialize generates
         # per-node identity once; approved fabric state is retained on removal.
-        executables = {bin_dir / "sparkring", *(control / n for n in ("postinst", "prerm", "postrm"))}
+        executables = {bin_dir / "sparkring", generator, *(control / n for n in ("postinst", "prerm", "postrm"))}
         for path in [package, *package.rglob("*")]:
             if path.is_dir():
                 path.chmod(0o755)

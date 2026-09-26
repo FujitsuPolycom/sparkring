@@ -60,9 +60,10 @@ sr network-plan --preparation "$STATE/preparation.json" \
 For a mesh already configured by host setup, replace `--fabric-range 198.18.0.0/21`
 with `--preserve-existing-network`. This retains all 16 observed endpoint addresses
 and existing NetworkManager UUIDs after checking the cable cycle and saved settings.
-The generated network plan must show `action: none` for every interface; driver
-settings are checked separately. An incomplete or inconsistent configuration fails
-planning: correct the host settings, rediscover, and plan again. The flag never
+The generated network plan must show `action: none` for every interface; each
+host's `driver_action` reports the ConnectX hairpin setting separately. An
+incomplete or inconsistent configuration fails planning: correct the host
+settings, rediscover, and plan again. The flag never
 authorizes replacing an existing connection. Omit it when provisioning fresh endpoints.
 
 
@@ -97,6 +98,11 @@ apply_reviewed "$STATE/network-plan.json" "$STATE/network-execution.json"
 A plan containing a driver reload additionally requires
 `--allow-driver-reload`. It changes one function and stops for rediscovery;
 do not loop blindly through reloads. Review the resulting device state.
+`apply-plan` refuses a reload on a host managed through SparkRing's
+administration network (`sr-control`), because the reload can cut that path.
+A ring set up with `sparkring install` or `sparkring setup` uses
+`sudo sparkring hairpin` on Node A instead; see
+[Four-Spark rings](install.md#four-spark-rings).
 Network backups remain on each host at the paths in the plan.
 
 After changes, repeat discovery into a **different** inventory filename and
@@ -108,9 +114,9 @@ sr network-check --preparation "$STATE/preparation.json" \
   --output "$STATE/network-verified.json"
 ```
 
-This reads all four hosts and verifies configuration, including GIDs and link
-state. It does not prove that RDMA traffic works. A completed execution
-receipt alone is not network verification.
+This reads all four hosts and verifies configuration, including GIDs, link
+state and the ConnectX hairpin setting. It does not prove that RDMA traffic
+works. A completed execution receipt alone is not network verification.
 
 ## Stage the runtime without starting a model
 

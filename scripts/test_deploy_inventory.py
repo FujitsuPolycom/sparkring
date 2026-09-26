@@ -10,6 +10,7 @@ import subprocess
 
 import pytest
 
+from scripts import hairpin_setting
 from scripts.deploy_inventory import (
     MANAGED_PATHS,
     SCHEMA,
@@ -19,6 +20,7 @@ from scripts.deploy_inventory import (
     summarise_inventory,
     validate_inventory,
 )
+from scripts.test_hairpin_setting import RELOAD_AFTER_ONE_RESTART
 
 
 def host_inventory():
@@ -286,9 +288,18 @@ def test_probe_is_a_complete_self_contained_python_command(monkeypatch):
     ast.parse(argv[2])
     assert "operator@node-c" in argv[2]
     assert "/etc/NetworkManager/system-connections" in argv[2]
+    # The shipped probe reads reload statistics with its own nested parser.
+    assert '["devlink", "-s", "-j", "dev", "show", "pci/" + pci]' in argv[2]
+    assert "def reload_statistics(document, device):" in argv[2]
     assert "docker run" not in argv[2]
     assert "systemctl start" not in argv[2]
     assert "health.key" not in argv[2]
+
+
+def recorded_reload(device):
+    """The recorded `devlink -s -j dev show` document, keyed to ``device``."""
+    entry = json.loads(RELOAD_AFTER_ONE_RESTART)["dev"]["pci/0000:01:00.0"]
+    return {"dev": {device: entry}}
 
 
 class LinuxFixture:
@@ -298,6 +309,9 @@ class LinuxFixture:
         self.root = root
         self.calls = []
         self.inventory = host_inventory()
+        # Maps a devlink handle to the `devlink -s -j dev show` document; None
+        # makes the query fail.
+        self.reload = recorded_reload
         for item in self.inventory["rdma"]:
             device = root / "sys/class/infiniband" / item["device"]
             (device / "ports/1/gids").mkdir(parents=True)
@@ -426,6 +440,12 @@ class LinuxFixture:
                     }
                 }
             )
+        elif command[:5] == ("devlink", "-s", "-j", "dev", "show"):
+            document = self.reload(command[5])
+            if document is None:
+                code = 1
+            else:
+                text = json.dumps(document)
         elif command[:5] == ("devlink", "-j", "dev", "eswitch", "show"):
             text = json.dumps(
                 {
@@ -480,6 +500,10 @@ def test_collector_parses_linux_fixtures_without_remote_access(tmp_path):
         "allowed_values": None,
     }
     assert result["rdma"][0]["devlink"]["eswitch_encap_mode"] == "basic"
+    assert all(
+        row["devlink"]["reload"] == {"driver_reinit": 1, "failed": False}
+        for row in result["rdma"]
+    )
     assert result["network"]["rdma_resources"][0]["state"] == "RTS"
     assert result["paths"]["/srv/models"]["nonempty"] is True
     assert result["paths"]["/"]["free_bytes"] > 0
@@ -579,3 +603,94 @@ def test_networkd_only_matters_when_it_manages_a_fabric_interface(tmp_path, setu
         return original(argv, **kwargs)
     fixture.run = run
     assert fixture.collect()["network"]["backend"] == backend
+
+
+def test_collector_records_reload_counter_and_failure(tmp_path):
+    fixture = LinuxFixture(tmp_path)
+
+    def statistics(device):
+        document = recorded_reload(device)
+        entry = document["dev"][device]
+        if device.endswith(".1"):
+            entry["reload_failed"] = True
+            entry["stats"]["reload"]["driver_reinit"]["unspecified"] = 0
+        return document
+
+    fixture.reload = statistics
+    result = fixture.collect()
+    validate_inventory(result, require_ready=True)
+    assert {row["pci_address"]: row["devlink"]["reload"] for row in result["rdma"]} == {
+        "0000:01:00.0": {"driver_reinit": 1, "failed": False},
+        "0000:01:00.1": {"driver_reinit": 0, "failed": True},
+        "0001:01:00.0": {"driver_reinit": 1, "failed": False},
+        "0001:01:00.1": {"driver_reinit": 0, "failed": True},
+    }
+    assert ["devlink", "-s", "-j", "dev", "show", "pci/0000:01:00.0"] in fixture.calls
+
+
+def test_missing_reload_answer_is_none_and_not_a_devlink_fault(tmp_path):
+    fixture = LinuxFixture(tmp_path)
+    fixture.reload = lambda device: None
+    result = fixture.collect()
+    for row in result["rdma"]:
+        assert row["devlink"]["reload"] == {"driver_reinit": None, "failed": None}
+        # Planners treat an unreadable counter as "unknown", never as a
+        # devlink capability failure.
+        assert row["devlink"]["error"] is None
+        assert row["devlink"]["available"] is True
+
+
+def statistics_variants():
+    """`devlink -s -j dev show` documents covering every parser branch."""
+
+    def edit(change):
+        def document(device):
+            value = recorded_reload(device)
+            change(value, value["dev"][device])
+            return value
+        return document
+
+    def counter(entry, value):
+        entry["stats"]["reload"]["driver_reinit"]["unspecified"] = value
+
+    return {
+        "recorded": recorded_reload,
+        "pending": edit(lambda doc, entry: counter(entry, 0)),
+        "failed": edit(lambda doc, entry: entry.update(reload_failed=True)),
+        "failed-not-bool": edit(lambda doc, entry: entry.update(reload_failed=1)),
+        "remote-only": edit(lambda doc, entry: entry["stats"].pop("reload")),
+        "no-stats": edit(lambda doc, entry: entry.pop("stats")),
+        "no-unspecified": edit(lambda doc, entry: entry["stats"]["reload"]["driver_reinit"].clear()),
+        "counter-text": edit(lambda doc, entry: counter(entry, "1")),
+        "counter-bool": edit(lambda doc, entry: counter(entry, True)),
+        "other-device": lambda device: recorded_reload("pci/0000:ff:00.0"),
+        "no-dev": lambda device: {"param": {}},
+        "list": lambda device: [],
+    }
+
+
+@pytest.mark.parametrize("name", sorted(statistics_variants()))
+def test_nested_reload_parser_matches_shared_rule_module(tmp_path, name):
+    """The probe's nested parser and scripts/hairpin_setting.py read devlink alike."""
+    fixture = LinuxFixture(tmp_path)
+    variant = statistics_variants()[name]
+    fixture.reload = variant
+    result = fixture.collect()
+    for row in result["rdma"]:
+        device = "pci/" + row["pci_address"]
+        assert row["devlink"]["reload"] == hairpin_setting.reload_statistics(variant(device), device)
+    expected = {
+        "recorded": {"driver_reinit": 1, "failed": False},
+        "pending": {"driver_reinit": 0, "failed": False},
+        "failed": {"driver_reinit": 1, "failed": True},
+        "failed-not-bool": {"driver_reinit": 1, "failed": None},
+        "remote-only": {"driver_reinit": None, "failed": False},
+        "no-stats": {"driver_reinit": None, "failed": False},
+        "no-unspecified": {"driver_reinit": None, "failed": False},
+        "counter-text": {"driver_reinit": None, "failed": False},
+        "counter-bool": {"driver_reinit": None, "failed": False},
+        "other-device": {"driver_reinit": None, "failed": None},
+        "no-dev": {"driver_reinit": None, "failed": None},
+        "list": {"driver_reinit": None, "failed": None},
+    }[name]
+    assert result["rdma"][0]["devlink"]["reload"] == expected
