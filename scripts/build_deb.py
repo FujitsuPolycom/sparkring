@@ -86,8 +86,9 @@ Description: SparkRing host setup and profile deployment controller
                 path.chmod(0o755 if path.stat().st_mode & 0o111 else 0o644)
             os.utime(path, (epoch, epoch))
         environment = {**os.environ, "SOURCE_DATE_EPOCH": str(epoch), "TZ": "UTC", "LC_ALL": "C"}
+        # dpkg-deb reports progress on stdout; keep stdout for the JSON result.
         subprocess.run(["dpkg-deb", "--root-owner-group", "-Zxz", "-z6", "--build", str(package), str(artifact)],
-                       check=True, env=environment)
+                       check=True, env=environment, stdout=sys.stderr)
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
     (artifact.with_suffix(".deb.sha256")).write_text(digest + "  " + artifact.name + "\n", encoding="utf-8")
     return {"path": str(artifact), "sha256": digest, "revision": revision, "version": version}
