@@ -46,8 +46,15 @@ def test_checkpoint_table_names_the_default_and_its_alternatives():
     assert adapter.checkpoint_names(profile) == ("qad-step5500-ple1000", ("qad-step-4000", "qad-step5500-ple1000"))
     assert adapter.checkpoint_settings(profile, None) is profile
     assert adapter.checkpoint_settings(profile, "qad-step5500-ple1000") is profile
+    # qad-step-5500 spells step 5500 like the step-4000 branch.
+    assert adapter.checkpoint_name(profile, "qad-step-5500") == "qad-step5500-ple1000"
+    assert adapter.checkpoint_settings(profile, "qad-step-5500") is profile
     tp4 = adapter.read(ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json")
     assert tp4["checkpoint"] == profile["checkpoint"] and tp4["checkpoints"] == profile["checkpoints"]
+    assert tp4["checkpoint_aliases"] == profile["checkpoint_aliases"]
+    for aliases in ({"qad-step-5500": "main"}, {"qad-step-4000": "qad-step5500-ple1000"}, {"Step 5500": "qad-step-4000"}):
+        with pytest.raises(ValueError, match="new name for a listed checkpoint"):
+            adapter.checkpoint_names({**profile, "checkpoint_aliases": aliases})
     with pytest.raises(ValueError, match="lists: qad-step-4000, qad-step5500-ple1000"):
         adapter.checkpoint_settings(profile, "main")
     added = copy.deepcopy(profile)

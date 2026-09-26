@@ -686,10 +686,11 @@ manifest in [`profiles/checkpoints/`](../../profiles/checkpoints) requires, 53
 for Qwen; the profile's `SHA256SUMS` lists the same files.
 
 **Another checkpoint of a profile.** The Qwen profiles list two checkpoints by
-Hugging Face branch: `qad-step5500-ple1000`, installed by default, and
-`qad-step-4000`. `--checkpoint NAME` installs a listed one with the settings
-that checkpoint needs, as its own deployment with its own pinned revision and
-checkpoint directory; a name the profile does not list changes nothing.
+Hugging Face branch: `qad-step5500-ple1000`, installed by default and also
+named `qad-step-5500`, and `qad-step-4000`. `--checkpoint NAME` installs a
+listed one with the settings that checkpoint needs, as its own deployment with
+its own pinned revision and checkpoint directory; a name the profile does not
+list changes nothing.
 Installing again without `--checkpoint` switches back to the default.
 
 ```bash

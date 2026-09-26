@@ -41,6 +41,8 @@ def test_qad_selection_changes_weights_not_the_image():
     assert qad["model_repository"] != default["model_repository"]
     assert qad["model_revision"] != default["model_revision"]
     assert qad["image_id"] == default["image_id"]
+    # An alias selects the checkpoint it names.
+    assert setup.selection(QWEN, "qad-step-5500") == setup.selection(QWEN)
     # The Qwen profile lists its own checkpoints; a profile without a table accepts none.
     with pytest.raises(ValueError, match="lists: qad-step-4000, qad-step5500-ple1000"):
         setup.selection(QWEN, "nvfp4-qad")

@@ -578,10 +578,11 @@ def test_an_unlisted_checkpoint_changes_nothing(machine, sparks, capsys):
 def test_naming_the_default_checkpoint_installs_the_same_deployment(machine, capsys):
     assert command() == 0
     first = json.loads(capsys.readouterr().out)
-    assert command("--checkpoint", "qad-step5500-ple1000") == 0
-    second = json.loads(capsys.readouterr().out)
-    assert second["deployment"] == first["deployment"] and second["replaces"] is None
-    assert second["checkpoint"]["command"] == REPEAT
+    for name in ("qad-step5500-ple1000", "qad-step-5500"):
+        assert command("--checkpoint", name) == 0
+        second = json.loads(capsys.readouterr().out)
+        assert second["deployment"] == first["deployment"] and second["replaces"] is None
+        assert second["checkpoint"]["command"] == REPEAT
 
 
 def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, sparks, capsys):

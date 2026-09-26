@@ -270,8 +270,9 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
         card = installer.setup.selection(profile, args.checkpoint)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="checkpoint_name") from None
-    # Naming the profile's default checkpoint requests the same deployment as omitting it.
-    checkpoint = (args.checkpoint if args.checkpoint is not None
+    # A checkpoint is requested by its listed name: an alias requests the same
+    # deployment as that name, and the profile's default the same as no flag.
+    checkpoint = (card["target_variant"] if args.checkpoint is not None
                   and card["target_variant"] != installer.setup.selection(profile)["target_variant"] else None)
     request = {"profile": profile, "image_runtime": image, "source": distribution.identity(installer.ROOT),
                "model_path": named or None, "cache_path": args.cache_path,

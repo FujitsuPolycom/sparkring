@@ -77,7 +77,9 @@ def checkpoint_names(profile):
     The table, `checkpoints`, maps each name (a Hugging Face branch of the
     profile's repository) to its pinned `model` and optional `environment` and
     `speculative` settings. `checkpoint` names the default entry, whose model is
-    the profile's top-level `model` and which changes no setting.
+    the profile's top-level `model` and which changes no setting. The optional
+    `checkpoint_aliases` maps further names, such as a spelling that matches
+    the other branches, to listed checkpoints.
     """
     table = profile.get("checkpoints")
     if table is None:
@@ -94,7 +96,16 @@ def checkpoint_names(profile):
             raise ValueError(f"Invalid checkpoint entry: {name}")
     if table[default] != {"model": profile["model"]}:
         raise ValueError("The default checkpoint must be the profile's model without other settings")
+    aliases = profile.get("checkpoint_aliases", {})
+    if not isinstance(aliases, dict) or any(not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,62}", alias) or alias in table
+                                            or target not in table for alias, target in aliases.items()):
+        raise ValueError("Each checkpoint alias must be a new name for a listed checkpoint")
     return default, tuple(sorted(table))
+
+
+def checkpoint_name(profile, name):
+    """The listed checkpoint that ``name`` selects, directly or as an alias; other values are returned unchanged."""
+    return (profile.get("checkpoint_aliases") or {}).get(name, name)
 
 
 def checkpoint_settings(profile, name):
@@ -105,6 +116,7 @@ def checkpoint_settings(profile, name):
     profile's validated command with only its pinned differences.
     """
     default, names = checkpoint_names(profile)
+    name = checkpoint_name(profile, name)
     if name is None or name == default:
         return profile
     if not names:

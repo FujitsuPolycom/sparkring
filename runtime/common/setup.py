@@ -36,7 +36,7 @@ def selection(profile_id, variant=None, root=profiles.ROOT):
     if checkpoints:
         # A serving profile's checkpoints table names Hugging Face branches of
         # its repository; runtime/common/qwen_flash_next.py applies the settings.
-        variant = variant or source["checkpoint"]
+        variant = (source.get("checkpoint_aliases") or {}).get(variant, variant) or source["checkpoint"]
         if variant not in checkpoints:
             raise ValueError("Select a checkpoint the profile lists: " + ", ".join(sorted(checkpoints)))
         model = checkpoints[variant]["model"]
