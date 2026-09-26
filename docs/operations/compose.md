@@ -18,9 +18,12 @@ native images they name, not the shared installer image:
 - The [QAD TP4 cache record](../../performance/records/qwen38-flash-next/sparkcache-tp4.json)
   covers four-rank disk restore and corrupted-object rejection/recomputation.
 
-Offline tests cover configuration equivalence and coordinator failures.
-Compose deployments of the profiles on the shared installer image have no
-hardware evidence.
+Offline tests cover configuration equivalence and coordinator failures. On
+the shared installer image, the standalone `qwen38-flash-next-tp2` recipe
+served on one pair with `docker compose` and matched the installer
+deployment's decode and prefill rates
+([installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md#installation-from-the-published-branch-and-the-standalone-compose-recipe));
+per-rank Compose files of the installer profiles have no hardware evidence.
 
 The `sparkring compose` coordinator supports these profiles; every other
 profile is rejected:

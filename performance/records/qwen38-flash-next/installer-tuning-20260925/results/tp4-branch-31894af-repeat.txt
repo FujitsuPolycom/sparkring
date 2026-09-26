@@ -1,0 +1,14 @@
+# The decode-by-prompt-type pass in tp4-branch-31894af.txt ran while other
+# chat traffic reached the same API; these passes ran without it.
+== tp4-branch-31894af temperature 1.0 (512 tokens, 3 runs)
+prose  end-to-end  78.28 tok/s | after first token  79.31 tok/s | acceptance 0.37 | per position [0.65, 0.33, 0.13, 1.0, 1.0, 1.0] | tokens per step 2.11
+code   end-to-end 123.22 tok/s | after first token 126.02 tok/s | acceptance 0.76 | per position [0.89, 0.77, 0.63, 1.0, 1.0, 1.0] | tokens per step 3.29
+json   end-to-end 134.24 tok/s | after first token 137.73 tok/s | acceptance 0.87 | per position [0.94, 0.89, 0.77, 1.0, 1.0, 1.0] | tokens per step 3.61
+== tp4-branch-31894af decode by prompt type, repeat 1 (512 tokens, 2 runs, temperature 0)
+prose  end-to-end  86.04 tok/s | after first token  87.29 tok/s | acceptance 0.41 | per position [0.68, 0.37, 0.18, 1.0, 1.0, 1.0] | tokens per step 2.23
+code   end-to-end 126.98 tok/s | after first token 130.17 tok/s | acceptance 0.80 | per position [0.92, 0.81, 0.67, 1.0, 1.0, 1.0] | tokens per step 3.40
+json   end-to-end 137.20 tok/s | after first token 140.68 tok/s | acceptance 0.89 | per position [0.96, 0.9, 0.82, 1.0, 1.0, 1.0] | tokens per step 3.68
+== tp4-branch-31894af decode by prompt type, repeat 2 (512 tokens, 2 runs, temperature 0)
+prose  end-to-end  86.29 tok/s | after first token  87.34 tok/s | acceptance 0.43 | per position [0.72, 0.39, 0.18, 1.0, 1.0, 1.0] | tokens per step 2.28
+code   end-to-end 123.52 tok/s | after first token 126.35 tok/s | acceptance 0.77 | per position [0.9, 0.77, 0.64, 1.0, 1.0, 1.0] | tokens per step 3.31
+json   end-to-end 138.89 tok/s | after first token 142.53 tok/s | acceptance 0.91 | per position [0.97, 0.92, 0.84, 1.0, 1.0, 1.0] | tokens per step 3.72

@@ -1,0 +1,20 @@
+== tp2-compose-bundle checks
+model: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 max_model_len: 262144
+[count] 70 tok in 0.8s: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+[math] 4 tok in 0.1s: '391'
+[code] 91 tok in 0.9s: '```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    for i in range(3, i'
+decode: 1024 tokens in 17.2s = 59.6 tok/s (end-to-end, single stream)
+== tp2-compose-bundle decode by prompt type (512 tokens, 2 runs)
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  62.27 tok/s | after first token  62.96 tok/s | acceptance 0.40 | per position [0.66, 0.37, 0.18, 1.0, 1.0, 1.0] | tokens per step 2.21
+code   end-to-end  89.69 tok/s | after first token  91.34 tok/s | acceptance 0.76 | per position [0.88, 0.77, 0.63, 1.0, 1.0, 1.0] | tokens per step 3.28
+json   end-to-end 101.45 tok/s | after first token 103.68 tok/s | acceptance 0.91 | per position [0.96, 0.91, 0.84, 1.0, 1.0, 1.0] | tokens per step 3.72
+== tp2-compose-bundle prefill and greedy decode
+[tp2-compose-bundle] prefill 4067 tokens: 1.00s = 4079 tok/s (first run 0.98s)
+[tp2-compose-bundle] prefill 16149 tokens: 3.81s = 4236 tok/s (first run 3.85s)
+[tp2-compose-bundle] prefill 64782 tokens: 16.48s = 3932 tok/s (first run 16.44s)
+[tp2-compose-bundle] decode (greedy, 512 tokens x3): [62.81, 62.73, 62.6] tok/s, median 62.73
+== tp2-compose-bundle temperature 1.0 (512 tokens, 3 runs)
+prose  end-to-end  58.87 tok/s | after first token  59.47 tok/s | acceptance 0.36 | per position [0.64, 0.32, 0.13, 1.0, 1.0, 1.0] | tokens per step 2.09
+code   end-to-end  90.93 tok/s | after first token  92.88 tok/s | acceptance 0.77 | per position [0.9, 0.78, 0.63, 1.0, 1.0, 1.0] | tokens per step 3.31
+json   end-to-end 100.66 tok/s | after first token 102.94 tok/s | acceptance 0.90 | per position [0.97, 0.9, 0.84, 1.0, 1.0, 1.0] | tokens per step 3.71

@@ -364,5 +364,60 @@
     "65536": 4657
    }
   }
+ },
+ "published_branch_installations": {
+  "source_revision": "31894aff38c6",
+  "temperature": 0,
+  "tp2_install_sh": {
+   "minutes": 5.77,
+   "model_start_seconds": 261.5,
+   "decode_tok_s_prose_code_json": [
+    61.04,
+    89.22,
+    100.82
+   ],
+   "prefill_tok_s": {
+    "4096": 4325,
+    "16384": 4258,
+    "65536": 3939
+   },
+   "prose_t1_tok_s": 61.11
+  },
+  "tp2_standalone_compose": {
+   "healthy_seconds": 240,
+   "decode_tok_s_prose_code_json": [
+    62.27,
+    89.69,
+    101.45
+   ],
+   "prefill_tok_s": {
+    "4096": 4079,
+    "16384": 4236,
+    "65536": 3932
+   },
+   "prose_t1_tok_s": 58.87
+  },
+  "tp4_install_sh_from_github": {
+   "minutes": 6.2,
+   "model_start_seconds": 244.6,
+   "decode_tok_s_prose_code_json": [
+    [
+     86.04,
+     126.98,
+     137.2
+    ],
+    [
+     86.29,
+     123.52,
+     138.89
+    ]
+   ],
+   "prefill_tok_s": {
+    "4096": 4855,
+    "16384": 4977,
+    "65536": 4694
+   },
+   "prose_t1_tok_s": 78.28
+  }
  }
 }

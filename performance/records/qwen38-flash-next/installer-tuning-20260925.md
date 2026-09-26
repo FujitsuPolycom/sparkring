@@ -242,6 +242,43 @@ requests, prefill values tokens per second for one cold prompt. Counting,
 arithmetic and code checks passed on both clusters. These runs did not
 download the image or the checkpoint.
 
+## Installation from the published branch, and the standalone Compose recipe
+
+With source revision `31894aff38c6` (the `one-command-installer` branch),
+[`install.sh`](../../../install.sh) installed each profile over a running
+installer deployment, reusing the nodes' image and checkpoint: on TP2 from a
+Git bundle of that revision, on TP4 by the published command
+(`curl … install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4`), which
+cloned the branch from GitHub. Each run built and installed the package,
+verified the checkpoint on every node while the previous model kept serving,
+switched models and ended with the API ready: 5 minutes 46 seconds on TP2 and
+6 minutes 12 seconds on TP4, of which the model start took 261.5 and 244.6
+seconds.
+
+The standalone Compose recipe
+([`profiles/qwen38-flash-next-tp2/compose/standalone.yaml`](../../../profiles/qwen38-flash-next-tp2/compose/standalone.yaml))
+ran on the same TP2 pair with the installer containers stopped, from a
+directory holding only that file, `runtime/common/loader-seccomp.json` and a
+`.env` file, with the checkpoint folder and the installer's kernel cache
+mounted. Rank 0 reported healthy 240 seconds after `docker compose up`.
+
+| Deployment | Prose | Code | JSON | Prefill 4K | 16K | 64K |
+|---|---|---|---|---|---|---|
+| TP2, `install.sh` | 61.0 | 89.2 | 100.8 | 4,325 | 4,258 | 3,939 |
+| TP2, standalone Compose | 62.3 | 89.7 | 101.5 | 4,079 | 4,236 | 3,932 |
+| TP4, `install.sh` from GitHub | 86.0 / 86.3 | 127.0 / 123.5 | 137.2 / 138.9 | 4,855 | 4,977 | 4,694 |
+
+Decode values are temperature-0 end-to-end rates as above. TP4's first
+decode pass ran while other chat traffic reached the same API and is kept
+only in the raw output; the TP4 row gives two later passes. At temperature
+1.0, prose decoded at 61.1 (TP2, `install.sh`), 58.9 (TP2, Compose) and 78.3
+(TP4) tokens per second. Counting, arithmetic and code checks passed on every
+deployment. Raw output:
+[TP2 `install.sh`](installer-tuning-20260925/results/tp2-branch-31894af.txt),
+[TP2 Compose](installer-tuning-20260925/results/tp2-compose-bundle.txt),
+[TP4](installer-tuning-20260925/results/tp4-branch-31894af.txt) and
+[TP4 repeat passes](installer-tuning-20260925/results/tp4-branch-31894af-repeat.txt).
+
 ## Measured and not adopted
 
 **Local argmax for draft tokens** (`"use_local_argmax_reduction": true` in
