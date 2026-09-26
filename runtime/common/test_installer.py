@@ -186,6 +186,18 @@ def test_managed_glm_uses_managed_native_checks_and_lifecycle():
     assert all(r["cache"] == installer.managed_workspace(lock["site"]["name"]) + "/cache" for r in lock["site"]["ranks"])
 
 
+def test_a_pair_restores_roce_gid_index_3_before_its_preflight():
+    from scripts import deploy_engine
+    lock = installer.make_lock("qwen38-flash-next-tp2", site(2), "1" * 40, "2" * 64)
+    plan = installer.operation_plan(lock, "up")
+    deploy_engine.validate_plan(plan)
+    phases = [entry["id"] for entry in plan["phases"]]
+    assert phases.index("image") < phases.index("gid-serve") < phases.index("preflight") < phases.index("create")
+    serve = next(entry for entry in plan["phases"] if entry["id"] == "gid-serve")
+    assert [action["verify"]["argv"][1] for action in serve["actions"]] == ["gid-check", "gid-check"]
+    assert "ring-serve" not in phases
+
+
 def test_managed_glm_rejects_cache_paths_its_stager_cannot_honor():
     raw = site(4)
     raw["hosts"][0]["cache"] = "/srv/external-cache"

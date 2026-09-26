@@ -1468,6 +1468,9 @@ def perform(operation, lock, number):
         from runtime.common import qwen_mesh
         qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
         return {"ok": True}
+    if operation in ("gid-serve", "gid-check"):
+        from runtime.host import roce_gid
+        return (roce_gid.serve if operation == "gid-serve" else roce_gid.check)(row["hcas"], row["gid"])
     if operation.startswith("mesh-"):
         from runtime.host import native_mesh
         if operation == "mesh-prepare":

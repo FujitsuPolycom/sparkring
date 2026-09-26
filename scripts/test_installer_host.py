@@ -51,7 +51,7 @@ def test_image_prepare_accepts_verified_untagged_id_hidden_from_default_listing(
     assert json.loads((tmp_path / "installer/image.json").read_text())["verified_image"] == image
 
 
-@pytest.mark.parametrize("mutation", ["architecture", "missing-tool", "management", "wrong-gid", "mtu", "down-link"])
+@pytest.mark.parametrize("mutation", ["architecture", "missing-tool", "management", "two-addresses", "mtu", "down-link"])
 def test_prerequisites_fail_before_host_changes(mutation):
     row = installer.make_lock(GLM, site(), "1" * 40, "2" * 64)["site"]["ranks"][0]
     value = facts(row)
@@ -62,8 +62,8 @@ def test_prerequisites_fail_before_host_changes(mutation):
         value["tools"]["PyYAML"] = False
     elif mutation == "management":
         value["management_ip"] = "192.0.2.99"
-    elif mutation == "wrong-gid":
-        value["rdma"][0]["gid_ip"] = "198.18.99.1"
+    elif mutation == "two-addresses":
+        value["rdma"][0]["ips"] = ["198.18.20.1", "198.18.99.1"]
     elif mutation == "mtu":
         value["rdma"][0]["rdma_mtu"] = 1024
     else:
@@ -85,12 +85,12 @@ def test_tp4_bootstrap_uses_management_while_rdma_devices_remain_independent():
         runner.check_facts(value, row)
 
 
-def test_a_four_spark_port_whose_gid_left_index_3_is_left_to_the_ring_step():
+def test_a_port_whose_address_left_gid_index_3_passes_the_prerequisites():
+    # The installation re-adds the address before the model starts.
     row = installer.make_lock(GLM, site(), "1" * 40, "2" * 64)["site"]["ranks"][0]
     value = facts(row)
     value["rdma"][0].update(gid_ip=None, type=None)
-    with pytest.raises(ValueError, match="GID index 3"):
-        runner.check_facts(value, row)
+    runner.check_facts(value, row)
     row.update(fabric={"site_path": "/etc/sparkring/site.json"}, host_ip="192.0.2.50", interface="management0")
     value.update(fabric_ip="198.18.20.1", interface="data0", ipv4={"management0": ["192.0.2.50"], "data0": ["198.18.20.1"]})
     for device in value["rdma"]:

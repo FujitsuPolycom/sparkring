@@ -40,7 +40,7 @@ def _probe():
         port = path / "ports/1"
         try:
             # The function's netdev comes from its PCI device: GID index 3 is
-            # empty on a four-Spark port whose address left it.
+            # empty on a port whose address left it.
             [netdev] = [entry.name for entry in (path / "device/net").iterdir()]
             try:
                 gid = ipaddress.IPv6Address((port / "gids/3").read_text().strip())
@@ -188,12 +188,12 @@ def check_facts(facts, row):
     devices = {entry["device"]: entry for entry in facts["rdma"]}
     for name in row["hcas"]:
         item = devices.get(name, {})
-        # On four Sparks the ring step re-adds an address whose RoCE GID left
-        # index 3, and its ring check then verifies index 3.
-        gid = "fabric" in row or (item.get("type") == "RoCE v2" and item.get("gid_ip") in item.get("ips", []))
-        if (not item.get("active") or not gid or item.get("mtu", 0) < 9000 or item.get("rdma_mtu") != 4096
+        # RoCE GID index 3 is not required here: an address that left it when
+        # the cabled Spark restarted is re-added before the model starts, and
+        # the ring or GID check then verifies index 3.
+        if (not item.get("active") or item.get("mtu", 0) < 9000 or item.get("rdma_mtu") != 4096
                 or len(item.get("ips", [])) != 1 or row["management_ip"] in item.get("ips", [])):
-            raise ValueError(name + ": prepare the expected link, MTU and IPv4 RoCE-v2 GID index 3 before deployment")
+            raise ValueError(name + ": prepare the expected link, MTU and IPv4 address before deployment")
 
 
 def check_workloads(facts, lock, number, *, managed_prepared=False):
@@ -335,6 +335,7 @@ class Runner:
                   "mesh-prepare": "Prepare native fabric helper",
                   "mesh-install": "Install supervised native fabric", "mesh-up": "Start native fabric",
                   "ring-serve": "Start and check the ring mesh", "ring-check": "Check the ring mesh",
+                  "gid-serve": "Restore fabric addresses in RoCE GID index 3", "gid-check": "Check RoCE GID index 3",
                   "mesh-gate": "Verify all four fabric ranks", "stop": "Stop model", "stopped": "Confirm model stopped"}
         operation = argv[1] if len(argv) > 1 else "operation"
         rank = argv[2] if len(argv) > 2 else "?"

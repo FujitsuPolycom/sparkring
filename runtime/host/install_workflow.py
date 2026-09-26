@@ -94,8 +94,8 @@ def refresh_cluster(cluster):
     The ConnectX hairpin setting is not verified here: workers that run an
     older SparkRing, or a ring rebooted before its Sparks were armed, are
     handled by the hairpin step (``hairpin_ring.requirement`` and ``ensure``).
-    On four Sparks a port whose RoCE GID index 3 lacks its address passes this
-    check: the ring step of the model installation re-adds the address.
+    A port whose RoCE GID index 3 lacks its address passes this check: the
+    model installation re-adds the address.
     """
     hosts = cluster["plan"]["spec"]["hosts"]
     found = controller.collect([h["host"] for h in hosts])
@@ -103,8 +103,7 @@ def refresh_cluster(cluster):
     plan = rebuild(cluster, found)
     if [h["node_id"] for h in plan["spec"]["hosts"]] != [h["node_id"] for h in hosts]:
         raise NeedsInput("Cable order changed. Run sparkring setup to review the new fabric first.", field="fabric")
-    deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"], hairpin=False,
-                                  stale_gids=len(hosts) == 4)
+    deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"], hairpin=False, stale_gids=True)
     return {**cluster, "plan": plan}
 
 
@@ -461,12 +460,12 @@ def check_managed_namespace(lock):
 def serving(directory, *, runner=None):
     """Whether the deployment in ``directory`` runs on every Spark and, on four Sparks, passes each ring check.
 
-    Read-only; a check that cannot run counts as not serving. An installation
-    of the active deployment stops it on every Spark first when it does not
-    serve: after one Spark restarted, the others keep a model that waits for
-    it, and on four Sparks that model holds the RoCE GID entries that the ring
-    step re-adds. Managed GLM deployments keep their own lifecycle and count
-    as serving.
+    A pair checks RoCE GID index 3 instead of a ring. Read-only; a check that
+    cannot run counts as not serving. An installation of the active deployment
+    stops it on every Spark first when it does not serve: after one Spark
+    restarted, the others keep a model that waits for it and that holds the
+    RoCE GID entries which the installation then re-adds. Managed GLM
+    deployments keep their own lifecycle and count as serving.
     """
     if runner is None:
         from scripts.installer_runner import Runner
@@ -475,7 +474,8 @@ def serving(directory, *, runner=None):
     if lock["backend"] == "glm-managed":
         return True
     ranks = lock["site"]["ranks"]
-    operations = ["running"] + (["ring-check"] if len(ranks) == 4 and lock["backend"] == "compose" else [])
+    checks = {2: "gid-check", 4: "ring-check"} if lock["backend"] == "compose" else {}
+    operations = ["running"] + ([checks[len(ranks)]] if len(ranks) in checks else [])
     for row in ranks:
         for operation in operations:
             try:

@@ -34,7 +34,7 @@ from runtime.host.install_errors import NeedsInput
 from runtime.host.test_appliance import nodes
 from runtime.host.test_fabric_ssh import cluster as fabric_cluster
 from runtime.host.test_hairpin_ring import OLDER, Ring, document, kept, needing
-from scripts import deploy_network, hairpin_setting, installer_host, installer_runner, sparkring
+from scripts import hairpin_setting, installer_host, installer_runner, sparkring
 # The audit-hook fixtures refuse writes under protected trees; the end-to-end test requests them by name.
 from scripts.test_installer_adopt import audit_hook, audited, only_links_changed, tree_state  # noqa: F401
 
@@ -261,25 +261,21 @@ def test_an_installed_model_serves_when_every_rank_runs_and_passes_its_ring_chec
     assert ring.calls == [(rank, operation) for rank in range(4) for operation in ("running", "ring-check")]
     assert not flow.serving(None, runner=RankChecks(4, failing={(2, "ring-check")}))
     pair = RankChecks(2, failing={(1, "running")})
-    assert not flow.serving(None, runner=pair) and pair.calls == [(0, "running"), (1, "running")]
+    assert not flow.serving(None, runner=pair) and pair.calls == [(0, "running"), (0, "gid-check"), (1, "running")]
     managed = RankChecks(4, backend="glm-managed", failing={(0, "running")})
     assert flow.serving(None, runner=managed) and managed.calls == []
 
 
 @pytest.mark.parametrize("size", [2, 4])
-def test_a_moved_roce_gid_passes_the_refresh_only_where_the_ring_step_repairs_it(monkeypatch, size):
+def test_a_moved_roce_gid_passes_the_refresh_for_the_installation_to_repair(monkeypatch, size):
     value = cluster(size)
     found = copy.deepcopy(value["plan"]["nodes"])
     port = value["plan"]["spec"]["hosts"][1]["data_interfaces"][0]
     next(r for r in found[1]["facts"]["rdma"] if r["device"] == port["rdma_device"])["gid"] = "0000:" * 7 + "0000"
     monkeypatch.setattr(controller, "collect", lambda _: found)
     monkeypatch.setattr(flow, "require_head", lambda *_: None)
-    if size == 4:
-        refreshed = flow.refresh_cluster(value)["plan"]["spec"]["hosts"]
-        assert [h["node_id"] for h in refreshed] == [h["node_id"] for h in value["plan"]["spec"]["hosts"]]
-    else:
-        with pytest.raises(deploy_network.NetworkPlanError, match="GID index 3 does not match"):
-            flow.refresh_cluster(value)
+    refreshed = flow.refresh_cluster(value)["plan"]["spec"]["hosts"]
+    assert [h["node_id"] for h in refreshed] == [h["node_id"] for h in value["plan"]["spec"]["hosts"]]
 
 
 def prepared_runner(monkeypatch, *, images, models):

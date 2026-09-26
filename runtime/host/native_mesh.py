@@ -16,7 +16,7 @@ import tempfile
 import time
 
 from runtime.common import compose, managed_deployment, profiles, qwen_mesh, setup
-from runtime.host import discovery, node
+from runtime.host import discovery, node, roce_gid
 
 ROOT = profiles.ROOT
 COMPONENT = ROOT / "runtime/glm53-spark-mtp3-mesh"
@@ -271,18 +271,6 @@ def _active_mesh_units(call):
     return {line.split()[0] for line in listing.splitlines() if line.split()}
 
 
-def _readd_address(netdev, ipv4, call):
-    """Delete and add one IPv4 address with its prefix and flags, re-registering its RoCE GIDs."""
-    links = json.loads(call(["ip", "-j", "-4", "addr", "show", "dev", netdev]).stdout)
-    entries = [entry for link in links for entry in link.get("addr_info", []) if entry.get("local") == ipv4]
-    if len(entries) != 1:
-        raise ValueError(f"{netdev} does not hold its fabric address {ipv4}")
-    address = f"{ipv4}/{entries[0]['prefixlen']}"
-    extra = (["broadcast", entries[0]["broadcast"]] if entries[0].get("broadcast") else []) +         (["noprefixroute"] if entries[0].get("noprefixroute") else [])
-    call(["ip", "addr", "del", address, "dev", netdev])
-    call(["ip", "addr", "add", address, *extra, "dev", netdev])
-
-
 def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check,
                stale=qwen_mesh.stale_gid_ports, sleep=time.sleep, clock=time.monotonic):
     """Serve the pinned four-Spark mesh on this Spark and wait until its ring check passes.
@@ -306,7 +294,7 @@ def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwe
     if repaired:
         call(["systemctl", "stop", unit])
         for netdev, ipv4 in repaired:
-            _readd_address(netdev, ipv4, call)
+            roce_gid.readd_address(netdev, ipv4, call)
         action = "repaired"
     elif unit in active:
         try:

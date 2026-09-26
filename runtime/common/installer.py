@@ -450,6 +450,11 @@ def operation_plan(lock, action):
                     # A reused mesh is started, repaired and awaited on all
                     # four ranks before the read-only ring check.
                     phases += [phase("ring-serve", ranks, "mutates-host", "ring-check")]
+                elif len(ranks) == 2:
+                    # A pair's fabric addresses return to RoCE GID index 3,
+                    # which they leave when the cabled Spark restarts while
+                    # the model runs.
+                    phases += [phase("gid-serve", ranks, "mutates-host", "gid-check")]
                 phases += [phase("preflight", ranks), phase("create", ranks, "starts-model", "created")]
             phases += [
                        phase("start", ranks[1:], "starts-model", "running"),
