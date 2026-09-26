@@ -127,7 +127,8 @@ the next action for a Spark that needs attention, and the saved model.
 ## hairpin
 
 `sudo sparkring hairpin [flags]` applies the ConnectX hairpin setting on every
-Spark of a four-Spark ring and at every boot. See
+Spark of a four-Spark ring and at every boot. It first updates any Spark that
+runs an older SparkRing than Node A. See
 [Four-Spark rings](install-reference.md#four-spark-rings).
 
 | Flag | Meaning |

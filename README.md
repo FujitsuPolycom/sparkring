@@ -53,8 +53,9 @@ Decode ranges from prose to JSON prompts. Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),
 [GLM and MiMo](performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md).
 
-Older profiles, SparkCache variants and other models are in the
-[full profile catalog](profiles/README.md). Each has its own setup guide.
+The [full profile catalog](profiles/README.md) lists every profile, including
+SparkCache variants and models that `sparkring install` does not set up. Each
+has its own setup guide.
 
 ## Documentation
 

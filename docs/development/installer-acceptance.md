@@ -38,10 +38,11 @@ uplink, reboot-recovery or cable-reordering qualification. Those require separat
 fixtures and hardware evidence. CPU tests never qualify CUDA/RDMA serving.
 
 Status: **implemented**. One upgrade of a configured four-Spark ring (TP4),
-at installer source `02a873c0a389`, meets this definition (below); that result
-does not transfer to other installer revisions. No pair (TP2) run is recorded
-against the upgrade fixture. Blank-host, reboot-recovery and cable-reordering
-acceptance have no hardware evidence.
+at installer source `02a873c0a389`, meets this definition (below). Reboot
+recovery on a four-Spark ring and on a pair, and upgrades through the published
+one-line command on both, completed without operator repair commands on
+2026-09-26 (below). Each result holds for its installer revision only.
+Blank-host and cable-reordering acceptance have no hardware evidence.
 
 ## Configured TP4 result, 2026-09-24
 
@@ -80,6 +81,37 @@ source-bundle, CLI and eight service-definition checks. Test fixture preparation
 and read-only observations are separate from installer actions. Private receipts
 and logs are retained by the operator; no site addresses or credentials are
 published here. The existing mesh, TP2 and published release inputs were unchanged.
+
+## Reboot recovery and one-line upgrades, 2026-09-26
+
+Reboot recovery. With `qwen38-flash-next-qad-tp4` serving on TP4, rank 3 was
+rebooted. When it was back, the other three Sparks' mesh services had failed,
+their model containers were still running, and on their ports facing rank 3
+the fabric address had left RoCE GID index 3. One
+`sudo sparkring install --profile qwen38-flash-next-qad-tp4 --yes --json` at
+installer source `d135e35566da`, the revision already installed on every
+Spark, found that the installed model did not serve, stopped it on every Spark,
+re-added the addresses to GID index 3, started the four mesh services, passed
+every ring check and started the model: 269 seconds from command to
+`Model ready`. With `qwen38-flash-next-tp2` serving on TP2, the worker was
+rebooted; Node A's two fabric ports lost GID index 3 the same way. One
+`sudo sparkring install --profile qwen38-flash-next-tp2 --yes --json` at
+installer source `a320c87a8c3d` stopped both ranks, re-added Node A's two
+addresses and started the model in 288 seconds. Both models answered a short
+arithmetic question correctly afterwards.
+
+One-line upgrade. The published command
+`curl -fsSL …/one-command-installer/install.sh | bash -s -- --profile PROFILE --yes`
+built installer source `21d07dc6670d` on Node A of each cluster and upgraded
+every Spark from the revision above: 357 seconds on TP2 and 349 seconds on TP4
+from command to `Model ready`, with no operator repair command. The serving
+image and checkpoint were already present, so image distribution and
+checkpoint transfer were not exercised. On TP4 the same command with
+`--checkpoint qad-step-4000`, then without it, switched the served checkpoint
+and back in 288 and 253 seconds.
+
+These runs establish recovery and upgrade on these two clusters, not
+performance or long-running stability.
 
 ## Additional profiles and TP2 preparation, 2026-09-24
 
