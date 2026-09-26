@@ -1,6 +1,5 @@
 """Direct fabric checkpoint streams over loopback, and the cable-ordered copy plan."""
 import hashlib
-import json
 import queue
 import threading
 from types import SimpleNamespace

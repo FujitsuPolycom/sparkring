@@ -176,7 +176,8 @@ def test_tp2_row_sharding_requires_an_image_that_declares_it(supported):
             return SimpleNamespace(stdout=receipts[argv[-1]])
         return SimpleNamespace(stdout="verified")
     environment = {"VLLM_QWEN3_8_HC_PREFILL_MODE": "shard", "SPARKRING_FEATURES": "qwen-collectives,qwen4-prefill"}
-    admit = lambda: installer_image.admit(value, run=run, profile="qwen38-flash-next-tp2", nodes=2, environment=environment)
+    def admit():
+        return installer_image.admit(value, run=run, profile="qwen38-flash-next-tp2", nodes=2, environment=environment)
     if supported:
         assert admit()["image_id"] == value["image_id"]
     else:

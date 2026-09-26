@@ -14,3 +14,9 @@ extend-exclude = [
 # The pinned upstream QSA fixture contains an unused diagnostic allocation;
 # its bytes are part of the release's reference-fixture identity.
 "runtime/releases/shared-2026.09.0-rc.1/qualification/fixtures/tests/attention/test_qsa_contract.py" = ["F841"]
+# The decode A/B record binds this benchmark program by SHA-256
+# (decode-ab-20260925.json). Its CUDA-graph timing lambdas run inside each
+# module-level loop iteration, before that iteration deletes `weights`. Ruff
+# analyses the lambda bodies after the module-level `del weights` and reports
+# `weights` inside them as an undefined name (F821).
+"performance/records/qwen38-flash-next/decode-ab-20260925/bench_skinny.py" = ["F821"]

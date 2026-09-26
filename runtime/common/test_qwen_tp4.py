@@ -163,8 +163,9 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
                    "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR", "VLLM_MXFP8_LM_HEAD",
                    "VLLM_QWEN4_EXP_MXFP8_HC", "QWEN_DISPATCH_AR_BYTES",
                    "NCCL_IB_EXTENDED_IPV4_GIDS"}
-    comparable = lambda environment: {key: value for key, value in environment.items()
-                                      if key not in image_bound and not value.startswith("/cache/qwen-flash-next-")}
+    def comparable(environment):
+        return {key: value for key, value in environment.items()
+                if key not in image_bound and not value.startswith("/cache/qwen-flash-next-")}
     assert comparable(spec.environment) == comparable(base.environment)
     assert spec.environment["SPARKCACHE_ENABLED"] == "1" and base.environment["SPARKCACHE_ENABLED"] == "0"
     args = list(spec.command)

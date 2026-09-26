@@ -80,7 +80,7 @@ def test_legacy_wire_path_and_kernel_math_are_preserved():
     # attributes and data/flag placement as the preserved adaptive proxy.
     prepared = (ROOT / "roce/_roce_proxy.c").read_text()
     legacy = (LEGACY / "_roce_proxy.c").read_text()
-    abi = next(l for l in prepared.splitlines() if l.startswith("#define ROCE_ABI_VERSION"))
+    abi = next(line for line in prepared.splitlines() if line.startswith("#define ROCE_ABI_VERSION"))
     assert abi in legacy.splitlines()
     for signature, terminator in (
         ("typedef struct {\n    uint32_t abi_version;", "} roce_blob_t;"),
