@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
-  "status": "research-only",
+  "status": "implemented",
   "model": {
     "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
     "revision": "a608241037e4c2565356bff7ca293f2133888f88",

@@ -158,11 +158,15 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     # projections to MXFP8, and its paced
     # transport takes every decode all-reduce on RoCEnante. Its NCCL 2.32.3
     # publishes all four ring NIC functions only with extended IPv4 GIDs; the
-    # native image's routed NCCL 2.31.2 finds them without.
+    # native image's routed NCCL 2.31.2 finds them without. The native image
+    # loads that NCCL from /opt/local-inference/nccl; the installer image's
+    # adapter supplies its own NCCL 2.32.3 paths, so the installer profile
+    # names no NCCL library.
     image_bound = {"SPARKCACHE_ENABLED", "SPARKRING_TRANSPORT_PROFILE", "SPARKRING_TRANSPORT_MANIFEST_SHA256",
                    "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR",
                    "VLLM_QWEN4_EXP_MXFP8_HC", "QWEN_DISPATCH_AR_BYTES",
-                   "NCCL_IB_EXTENDED_IPV4_GIDS"}
+                   "NCCL_IB_EXTENDED_IPV4_GIDS", "NCCL_ROOT", "NCCL_LIB_DIR", "NCCL_INCLUDE_DIR",
+                   "NCCL_LOCAL_INFERENCE_PATH", "VLLM_NCCL_SO_PATH", "LD_PRELOAD"}
     def comparable(environment):
         return {key: value for key, value in environment.items()
                 if key not in image_bound and not value.startswith("/cache/qwen-flash-next-")}

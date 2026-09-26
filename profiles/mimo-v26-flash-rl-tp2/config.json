@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
-  "status": "research-only",
+  "status": "implemented",
   "model": {
     "repository": "XiaomiMiMo/MiMo-V2.6-Flash-RL",
     "revision": "5711b268169967567844e1e560e8a3966da959b1",
