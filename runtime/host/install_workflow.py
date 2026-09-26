@@ -1,4 +1,9 @@
-"""One Linux entrypoint for cluster setup, asset preparation and model replacement."""
+"""One Linux entrypoint for cluster setup, asset preparation and model replacement.
+
+On an installed four-Spark ring the installation also applies the ConnectX
+hairpin setting (``runtime/host/hairpin_ring.py``) where a Spark lacks it or its
+boot record, after the one approval and before the model transaction.
+"""
 import argparse
 import concurrent.futures
 import contextlib
@@ -9,21 +14,23 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 from runtime.common import distribution, installer, installer_image, process_lock
-from runtime.host import controller, discovery, fabric_ssh, install_assets, models, native_mesh, node, progress, retained_source, rollout, topology
+from runtime.host import (controller, discovery, fabric_ssh, hairpin_ring, install_assets, models, native_mesh, node,
+                          progress, retained_source, rollout, topology)
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
 
 
-def require_head(cluster=None):
+def require_head(cluster=None, *, command="install"):
     if sys.platform != "linux" or not distribution.installed(installer.ROOT):
-        raise NeedsInput("sparkring install runs only from the installed ARM64 Debian package. Download the "
+        raise NeedsInput(f"sparkring {command} runs only from the installed ARM64 Debian package. Download the "
                          "sparkring_*_arm64.deb asset of a prerelease at https://github.com/FujitsuPolycom/sparkring/releases "
                          "or build it from a full clone (see \"Get the package\" in docs/operations/install.md), "
-                         "install it on Node A with sudo apt install, then run sudo sparkring install.", field="node_a")
+                         f"install it on Node A with sudo apt install, then run sudo sparkring {command}.", field="node_a")
     if not hasattr(os, "geteuid") or os.geteuid() != 0:
-        raise NeedsInput("Run sudo sparkring install on Node A.", field="node_a")
+        raise NeedsInput(f"Run sudo sparkring {command} on Node A.", field="node_a")
     identity = node.read("/", "/etc/sparkring/node.json")["node_id"]
     if cluster is not None and cluster["plan"]["spec"]["hosts"][0]["node_id"] != identity:
         raise ValueError("This is not the enrolled Node A; image/model traffic must originate on that Spark")
@@ -52,16 +59,27 @@ def check_access(cluster, *, invoke=None):
                          field="access", details={"hosts": missing})
 
 
-def refresh_cluster(cluster):
-    """Re-observe cables without reconfiguring the adopted fabric."""
-    hosts = cluster["plan"]["spec"]["hosts"]
-    found = controller.collect([h["host"] for h in hosts])
-    plan = topology.build_spec(found, require_head(cluster), name=cluster["name"],
+def rebuild(cluster, found):
+    """The plan of the recorded cluster from fresh inspect documents; Node A stays rank 0."""
+    return topology.build_spec(found, cluster["plan"]["spec"]["hosts"][0]["node_id"], name=cluster["name"],
                                fabric_cidr=cluster["plan"].get("fabric_cidr", "198.18.0.0/21"),
                                preserve_control=cluster["plan"]["spec"].get("preserve_control_ipv6", False))
+
+
+def refresh_cluster(cluster):
+    """Re-observe cables without reconfiguring the adopted fabric.
+
+    The ConnectX hairpin setting is not verified here: workers that run an
+    older SparkRing, or a ring rebooted before its Sparks were armed, are
+    handled by the hairpin step (``hairpin_ring.requirement`` and ``ensure``).
+    """
+    hosts = cluster["plan"]["spec"]["hosts"]
+    found = controller.collect([h["host"] for h in hosts])
+    require_head(cluster)
+    plan = rebuild(cluster, found)
     if [h["node_id"] for h in plan["spec"]["hosts"]] != [h["node_id"] for h in hosts]:
         raise NeedsInput("Cable order changed. Run sparkring setup to review the new fabric first.", field="fabric")
-    deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"])
+    deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"], hairpin=False)
     return {**cluster, "plan": plan}
 
 
@@ -79,7 +97,24 @@ def choose_profile(value, count, interactive):
     return models.select(value, count)
 
 
-def select_deployment(args, cluster, state_root):
+def _select_mesh(site, cluster, profile, hint, **options):
+    """``native_mesh.select``; ``hint`` is appended to its refusals (why mesh services may not run)."""
+    try:
+        return native_mesh.select(site, cluster, profile, invoke=discovery.ssh, **options)
+    except NeedsInput:
+        raise
+    except ValueError as error:
+        if hint:
+            raise ValueError(str(error) + hint) from error
+        raise
+
+
+def select_deployment(args, cluster, state_root, *, mesh_hint=""):
+    """The deployment directory and lock of the requested profile, created when new.
+
+    ``mesh_hint`` is appended to a native-mesh refusal, for example when Sparks
+    lack the ConnectX hairpin setting, so their mesh services cannot start.
+    """
     profile = choose_profile(args.profile, len(cluster["plan"]["nodes"]), not args.json and sys.stdin.isatty())
     image = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
     request = {"profile": profile, "image_runtime": image, "source": distribution.identity(installer.ROOT),
@@ -106,9 +141,9 @@ def select_deployment(args, cluster, state_root):
         # alternating installs reuse earlier kernel tuning.
         row["cache"] = args.cache_path or "/srv/sparkring/" + cluster["name"] + "/cache"
     if profile in installer.compose.TP4_PROFILES:
-        site = native_mesh.select(site, cluster, profile, invoke=discovery.ssh)
+        site = _select_mesh(site, cluster, profile, mesh_hint)
     elif installer.backend({"profile": profile}) == "glm-managed":
-        site = native_mesh.select(site, cluster, profile, existing_only=True, invoke=discovery.ssh)
+        site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
     lock = installer.init(directory, profile, site, image_runtime=image)
     return directory, lock
 
@@ -160,20 +195,46 @@ def check_managed_namespace(lock):
                              field="fabric", details={"rank": row["rank"], "occupied": observed["occupied"]})
 
 
+def hairpin_step(cluster, assets, state_root, record, *, restart_approved=True):
+    """Apply the ConnectX hairpin setting on the approved ring, then verify the whole network.
+
+    Returns the cluster with the resulting plan; ``record`` receives the
+    receipt. Runs before the model transaction, so a refusal or failure
+    creates no transaction record. ``restart_approved`` is False when the
+    approval text named no driver restart. Mesh units that the start check
+    refused are not started here: the model installation that follows owns
+    the mesh.
+    """
+    directory = state_root / "hairpin" / str(time.time_ns())
+    try:
+        plan = hairpin_ring.ensure(cluster["plan"], approved=True, restart_approved=restart_approved,
+                                   inspect=controller.collect, rebuild=lambda found: rebuild(cluster, found),
+                                   update_workers=assets.sync_packages, directory=directory, record=record)
+    except NeedsInput as error:
+        if record.get("path"):
+            error.details = {**error.details, "receipt": record["path"]}
+        raise
+    deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"])
+    return {**cluster, "plan": plan}
+
+
 def execute(args):
     state_root = controller.STATE
     require_head()
     interactive = not args.json and sys.stdin.isatty()
+    if args.allow_driver_reload:
+        print("--allow-driver-reload: " + controller.ALLOW_DRIVER_RELOAD)
     with process_lock.hold(state_root / "install.lock"):
         if not (state_root / "cluster.json").exists():
             if args.plan:
                 raise NeedsInput("Run sparkring setup --plan to discover this unconfigured cluster.", field="setup")
-            if not args.yes and not interactive:
-                raise NeedsInput("First installation requires setup approval. Review sparkring setup --plan, then use --yes.", field="approval")
             from runtime.host import single_uplink
             options = ((["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
                        + (["--stop-workloads"] if args.stop_workloads else []))
             follow = "then install " + (args.profile or "the model profile you choose") + " and start it"
+            if not args.yes and not interactive:
+                raise NeedsInput("First installation requires setup approval. Review sparkring setup --plan, then use --yes.",
+                                 field="approval", details={"scope": single_uplink.scope(options, follow=follow)})
             if single_uplink.main(options, follow=follow):
                 raise ValueError("Cluster setup did not complete")
             # The setup approval listed this installation as its final step.
@@ -181,26 +242,47 @@ def execute(args):
         cluster = installer.read(state_root / "cluster.json")
         check_access(cluster)
         cluster = refresh_cluster(cluster)
-        directory, lock = select_deployment(args, cluster, state_root)
+        hairpin = hairpin_ring.requirement(cluster["plan"])
+        needs_hairpin = hairpin_ring.required(hairpin)
+        # Printed before the deployment is selected, so that a native-mesh
+        # refusal caused by Sparks without the setting follows its listing.
+        for line in hairpin_ring.consent_lines(cluster["plan"], hairpin):
+            print(line)
+        mesh_hint = hairpin_ring.mesh_hint(hairpin)
+        directory, lock = select_deployment(args, cluster, state_root, mesh_hint=mesh_hint)
         check_managed_namespace(lock)
         previous = rollout.active(state_root)
+        steps = ["verify-fabric", "update-workers", "prepare-images-and-checkpoints", "switch-model", "verify-serving"]
+        if needs_hairpin:
+            steps.insert(steps.index("update-workers") + 1, "apply-hairpin-setting")
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
                 "nodes": len(lock["site"]["ranks"]), "replaces": str(previous) if previous and previous != directory else None,
-                "steps": ["verify-fabric", "update-workers", "prepare-images-and-checkpoints", "switch-model", "verify-serving"],
-                **installer.connection(lock)}
+                "steps": steps, **installer.connection(lock)}
+        if hairpin:
+            plan["hairpin"] = {"required": needs_hairpin, "ranks": hairpin_ring.rank_rows(hairpin, cluster["plan"])}
         print(f"Install {plan['profile']} on {plan['nodes']} Sparks.")
         print("Update workers and prepare assets; then " + ("replace the current model." if plan["replaces"] else "start the selected model."))
         if "native_mesh" in lock["site_input"]:
             if previous:
-                raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before replacing a running deployment.", field="fabric")
+                raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "
+                                 "replacing a running deployment." + mesh_hint, field="fabric")
             print("Configure and start the profile's supervised native fabric.")
         if args.plan:
             return plan
+        if needs_hairpin:
+            # Sparks whose reload statistics are unavailable stop the step
+            # before the question, not after the answer.
+            hairpin_ring.refuse_unknown(hairpin)
         if not args.yes:
             if not interactive:
-                raise NeedsInput("Review with --plan; add --yes to apply these changes.", field="approval", details=plan)
-            controller.confirm("Apply this installation?", default=True)
+                raise NeedsInput(hairpin_ring.m7(hairpin) if needs_hairpin else "Review with --plan; add --yes to apply these changes.",
+                                 field="approval", details=plan)
+            if needs_hairpin:
+                controller.confirm("Apply the ConnectX hairpin setting and this installation?",
+                                   default=hairpin_ring.consent_default(cluster["plan"], hairpin))
+            else:
+                controller.confirm("Apply this installation?", default=True)
         def approve_stop(host, names):
             print(f"{host}: stopping unrelated GPU containers (not removing them): " + ", ".join(names))
             if not args.stop_workloads:
@@ -209,6 +291,12 @@ def execute(args):
         transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
         plan["transfer"] = transport.verify()
         assets = install_assets.Assets(transport, directory / "assets")
+        if needs_hairpin:
+            record = {}
+            cluster = hairpin_step(cluster, assets, state_root, record,
+                                   restart_approved=hairpin_ring.restart_expected(hairpin))
+            plan["hairpin"].update(ranks=hairpin_ring.result_ranks(hairpin, cluster["plan"], record),
+                                   receipt=record.get("path"))
         cache = state_root / "retained-sources"
 
         def apply(path, operation):
@@ -245,10 +333,13 @@ def main(argv=None):
     parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")
     parser.add_argument("--env", type=Path, help="optional literal setup preferences, read on first installation")
     parser.add_argument("--plan", action="store_true", help="inspect and save the plan without updating workers or models")
-    parser.add_argument("--yes", action="store_true", help="approve the displayed setup and model replacement; SSH trust is still required")
+    parser.add_argument("--yes", action="store_true",
+                        help="approve the displayed setup, the listed ConnectX driver restarts on an idle ring, and "
+                             "model replacement; SSH trust is still required")
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
     parser.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that are not SparkRing's current deployment")
+    parser.add_argument("--allow-driver-reload", action="store_true", help=controller.ALLOW_DRIVER_RELOAD)
     args = parser.parse_args(argv)
     output = sys.stdout
     code = 0
@@ -268,9 +359,13 @@ def main(argv=None):
                 result["transaction"] = installer.read(transaction)
             progress.failure(str(error))
         if result["state"] == "complete":
+            if (result.get("hairpin") or {}).get("required"):
+                print(hairpin_ring.COMPLETE)
             print("Model ready: " + result["api_url"])
         elif result["state"] == "needs_input":
             print(result["message"])
+            for line in controller.detail_lines(result.get("details")):
+                print("  " + line)
         elif result["state"] == "planned":
             print("Plan saved. Repeat with --yes to install.")
     if args.json:

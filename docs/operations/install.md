@@ -14,9 +14,8 @@ tree pin `629bc3218833`. These conditions have no hardware evidence:
   checkpoint, where checkpoint preparation waits for image distribution;
 - repeating `sparkring install` after a failed or interrupted asset
   preparation, including continuing a partial checkpoint download;
-- the four-Spark driver step, `sudo sparkring setup --allow-driver-reload`,
-  which four-Spark rings need before the first installation and after every
-  reboot; see [Four-Spark rings](#four-spark-rings);
+- SparkRing applying the ConnectX hairpin setting that four-Spark rings need,
+  during installation and at boot; see [Four-Spark rings](#four-spark-rings);
 - Docker's containerd image store; see
   [Image distribution and caches](#image-distribution-and-caches).
 
@@ -126,16 +125,18 @@ On Node A, for a pair:
 sudo sparkring install --profile qwen38-flash-next-tp2
 ```
 
-On a four-Spark ring, complete the [driver step](#four-spark-rings) first and
-use `qwen38-flash-next-qad-tp4`. Without `--profile`, the command lists the
-installer profiles for the cabled node count and asks for one.
+On a four-Spark ring, use `qwen38-flash-next-qad-tp4`; the approval also
+covers the [ConnectX hairpin setting](#four-spark-rings). Without `--profile`,
+the command lists the installer profiles for the cabled node count and asks
+for one.
 
 On first use the command lists everything automated setup will do and asks one
 question, `Proceed? [Y/n]`; Enter approves. That approval covers discovery,
 trusting each cabled Spark's SSH host key on first contact (setup prints the
 fingerprints it recorded), package installation, the administration network,
 fabric addressing, including replacement of incompatible fabric IPv4 settings
-(see [Setup and access](#setup-and-access)), and the first model installation.
+(see [Setup and access](#setup-and-access)), the ConnectX driver restarts that
+four-Spark rings need, and the first model installation.
 SSH still asks for each worker's password when no key login exists, and a
 worker signed in as a non-root user asks for its sudo password twice. Stopping
 a running GPU container always needs its own answer or `--stop-workloads`.
@@ -166,9 +167,13 @@ sudo sparkring status --refresh --json
 `--json` writes one result to stdout; progress stays on stderr and in the log.
 Exit codes are 0 for success/planning, 3 for missing input, and 2 for failure.
 `needs_input` identifies the required choice, such as profile, approval or
-storage. `--yes` approves model replacement and first-use setup without a
-terminal; it does not trust unknown SSH host keys or authorize stopping
-unrelated workloads. A configured ring is inspected without changing links.
+storage; `driver` means a four-Spark ConnectX driver restart cannot run, and
+its details list what to stop or what did not complete. `--yes`
+approves model replacement, first-use setup and, on an idle four-Spark ring,
+the ConnectX driver restarts, without a terminal; it does not trust unknown SSH
+host keys or authorize stopping unrelated workloads. When a four-Spark ring
+needs the ConnectX step, `--plan` lists it as `apply-hairpin-setting`. A
+configured ring is inspected without changing links.
 Use `sparkring setup` to review cable or network changes separately.
 `sparkring models` lists the exact profiles.
 
@@ -356,6 +361,15 @@ the inspected container ID, start time and actual image ID. Missing identities
 are `null`, with a reason, rather than guessed from hostname or rank. Network
 observations do not establish model readiness or serving qualification.
 
+On a four-Spark ring, each Spark's host observation also covers the
+[ConnectX hairpin setting](#four-spark-rings). A function without the setting
+makes that Spark `needs-attention`, with an error naming the function and its
+value and the next action `on Node A: sudo sparkring hairpin`. The
+observation's `warnings` report a setting that is in effect but not applied at
+boot, boot restarts suspended after a failed restart (naming the function and
+the time), a boot started with `sparkring.hairpin=off`, and a mesh unit without
+the hairpin start check.
+
 ## Setup and access
 
 Setup finds neighbors over IPv6 link-local addresses and signs in to each
@@ -385,82 +399,86 @@ so its administration path survives renumbering.
 
 ## Four-Spark rings
 
-Status: four-Spark installation is **implemented**. Its hardware runs used a
-ring whose ConnectX functions already held the hairpin setting described
-below. Applying that setting through `sudo sparkring setup
---allow-driver-reload` (step 3) has no hardware evidence. Setup reaches the
-workers through its WireGuard administration network, which runs over the
-fabric links that each reload takes down, and a reload changes the interface
-index that the network's link-local endpoints depend on. Use the steps below
-only with console access or an independent management connection to every
-Spark; start with a pair otherwise.
+Status: **implemented**. Hardware runs of four-Spark installation used a ring
+whose ConnectX functions already held the hairpin setting described below.
+SparkRing applying that setting, during an installation or at boot, has no
+hardware evidence.
 
 Every four-Spark installer profile (`qwen38-flash-next-qad-tp4`,
 `glm53-flash-nvfp4-spark-tp4` and `mimo-v26-flash-rl-tp4`) relays traffic
-between nonadjacent Sparks through ConnectX hardware forwarding. Forwarding
-requires a hairpin queue size (`hairpin_queue_size`) of 8192 on every ConnectX
-function; the driver starts with 1024 at every boot. Applying 8192 reloads the
-NIC driver (`devlink dev reload ... action driver_reinit`), which
-`sparkring install` cannot authorize. Without the step below, a first
-installation stops with `Driver reload required; review with
---allow-driver-reload on an idle cluster`, and an installation after a reboot
-stops with `persistent addresses or driver settings do not match the plan`.
-SparkRing's boot services do not restore the setting. Pairs never need this
-step.
+between nonadjacent Sparks through ConnectX hardware forwarding. That needs the
+ConnectX hairpin setting on each of a Spark's four ConnectX functions: a
+hairpin queue of 8192 packets (`hairpin_queue_size`), four hairpin queues
+(`hairpin_num_queues`) and hardware TC offload. The driver starts every boot
+with 1024 packets and uses the larger queue only after that function's driver
+restarts (`devlink dev reload … action driver_reinit`). A restart takes the
+function's link down for about 8 seconds. Pairs do not use the setting.
 
-Before the first four-Spark installation, and again after any Spark in the
-ring reboots:
+SparkRing applies the setting itself; a first installation needs no flag or
+separate step.
 
-**1. Keep an independent path to every Spark.** Connect to every Spark
-through a console or a management network that does not use the ring cables.
-The reload takes each ConnectX function's links down, and a worker without its
-own Ethernet connection reaches Node A only through those links. Setup does not
-check that an independent path exists.
+- **First installation.** The approval question of the first
+  `sudo sparkring install` on four Sparks lists the driver restarts. After
+  fabric addressing is configured, SparkRing restarts each function once:
+  Node A first, then one worker at a time, about 30 seconds per Spark.
+- **Every boot.** `sparkring-hairpin.service` restarts each function before
+  NetworkManager starts, which adds about 30 seconds to each boot. SparkRing
+  enables the service on a Spark after a run on it in which every restart
+  succeeded; from then on, a reboot needs no manual step for the setting.
 
-**2. Stop every GPU and RDMA user on all four Sparks.** List SparkRing's active
-services and stop each unit whose name ends in `mesh.service`, such as
-`sparkring-mesh.service`; its model unit stops with it. Stop any other GPU or
-RDMA workload the same way it was started. `nvidia-smi` must then list no
-compute process, and `rdma resource show qp` must list no queue pair with a
-`pid`; queue pairs without one belong to the kernel.
-
-```bash
-systemctl list-units --type=service --state=active 'sparkring-*'
-nvidia-smi --query-compute-apps=pid,process_name --format=csv,noheader
-rdma resource show qp
-```
-
-**3. Review, then apply the driver setting from Node A**, through that
-console or management connection:
+A ring installed with an earlier SparkRing has no boot record for the setting.
+After installing this package on Node A, run `sudo sparkring hairpin` there
+before the next reboot; until then, a reboot leaves the ring's mesh services
+stopped by their start check. For any installed ring whose Sparks lack the
+setting or its boot service, run this on Node A:
 
 ```bash
-sudo sparkring setup --plan
-sudo sparkring setup --allow-driver-reload
+sudo sparkring hairpin
 ```
 
-`--plan` inspects every Spark without changing a host. It prints each rank's
-action, `configure` when its fabric settings or driver setting differ from the
-plan, and any blocker, such as a GPU process or an RDMA user. It saves the plan
-as `plan.json` in the newest directory under
-`/var/lib/sparkring/controller/setups/`; the `driver_steps` of each host in its
-`network` section list the `devlink` commands, including every driver reload.
-Do not continue while a rank shows a blocker.
+It lists what it will change, including a SparkRing package update on workers
+that run another revision, and asks once. `--plan` only prints the list, and
+`--yes` approves without asking. When the setting is already in effect, it only
+records the approval and enables the boot service, without a restart. When an
+updated worker then needs a driver restart that the list did not show, it stops
+and asks for that restart first. `sudo sparkring install` includes the same
+step in its question when a Spark needs it. With `--json`,
+`sudo sparkring hairpin` prints one `sparkring-hairpin-result/v1` document; its
+exit codes are those of `sparkring install`, and it keeps a receipt of each run
+below `/var/lib/sparkring/controller/hairpin/`.
 
-`--allow-driver-reload` asks one question, `Proceed? [Y/n]`, before it prints
-the plan. The list shown with that question does not mention the driver
-reload, and the one answer approves everything that follows: setup prints the
-plan and, without asking again, reloads one ConnectX function per step,
-inspects every Spark again after each reload, and saves the resulting network.
+SparkRing never restarts a driver while a model, a mesh service, mesh
+forwarding rules or another RDMA program is present on the ring. It lists what
+to stop and restarts nothing.
 
-On Sparks without SparkRing setup, `--plan` only discovers them. Run
-`sudo sparkring setup` first: it completes first-use setup, then stops with
-`Driver reload required` before changing fabric IPv4 addresses or driver
-settings. Then review with `--plan` and apply as above.
+When the setting is not in effect on a Spark, that Spark's mesh service does
+not start and its log names the function, `sparkring status` reports the Spark
+as `needs-attention` with the function and its value, and
+`sparkring up --execute` starts nothing. Run `sudo sparkring hairpin` on
+Node A: once every Spark has the setting, it starts each enabled mesh service
+that the check refused. `sudo sparkring install` does not start them, because
+the model installation that follows owns the mesh.
 
-**4. Install the model.** For a first installation, run
-`sudo sparkring install --profile qwen38-flash-next-qad-tp4`. Restarting an
-installed four-Spark model after a reboot has no hardware evidence; complete
-steps 1–3 before any attempt to start it.
+If a restart fails during a boot, or a boot ends during a restart, later boots
+of that Spark restart nothing and `sparkring status` warns about it, until
+`sudo sparkring hairpin` succeeds. A Spark that is unreachable after a failed
+restart becomes reachable after a power cycle, without the setting. A failed
+restart of a function that carries the administration network to other Sparks
+cuts those Sparks off from Node A, while the Spark itself stays reachable over
+its other links; `sparkring status` then names the Spark to reboot. Its next
+boot restarts no function, and `sudo sparkring hairpin` then retries it. To
+boot once without the restarts, add `sparkring.hairpin=off` to the kernel
+command line. On a Spark, `journalctl -b -u sparkring-hairpin.service` shows
+the boot run, `sudo sparkring node hairpin status` prints each function's
+setting, and `sudo sparkring node hairpin apply --dry-run --boot` prints the
+restarts that the next boot performs, in order, or none while the service is
+not enabled.
+
+`sudo sparkring hairpin --revoke` on Node A stops applying the setting at boot
+on every Spark; the setting stays in effect until each Spark reboots, and after
+that reboot the start check keeps each mesh service stopped until the setting
+is applied again. `--allow-driver-reload` is accepted by `sparkring setup` and
+`sparkring install` and is not needed.
 
 The installer renders each rank's container from the profile's shared
 container specification. Every four-Spark installer profile runs on a native
@@ -650,20 +668,32 @@ It distinguishes cached/stale observations, network configuration and saved mode
 progress; `--refresh` contacts the enrolled nodes and observes the model containers.
 Network configuration is not proof of working RDMA collectives or model accuracy.
 
-At boot, SparkRing's enabled host services start the administration network
-and its SSH service, and `sparkring-fabric.service` restores the approved
-fabric routes, per-interface IPv4 forwarding and forwarding rules;
-NetworkManager keeps the fabric addresses. The ConnectX hairpin setting that
-four-Spark rings require is not restored; see [Four-Spark rings](#four-spark-rings).
-Models start only when requested. `sparkring down` stops the selected
-deployment.
+At boot on a four-Spark ring, `sparkring-hairpin.service` first applies the
+approved [ConnectX hairpin setting](#four-spark-rings), before NetworkManager
+starts. SparkRing's enabled host services then start the administration
+network and its SSH service, also over the remaining links when one
+administration link fails, and `sparkring-fabric.service` restores the
+approved fabric routes, per-interface IPv4 forwarding and forwarding rules;
+NetworkManager keeps the fabric addresses. Models start only when requested.
+`sparkring down` stops the selected deployment.
+
+The package's systemd generator,
+`/usr/lib/systemd/system-generators/sparkring-hairpin-mesh-check`, adds a
+start check to each mesh unit in `/etc/systemd/system`
+(`sparkring-mesh.service` and `sparkring-*-mesh.service`) without changing the
+unit file. On a four-Spark ring the unit then starts only when the ConnectX
+hairpin setting is in effect; elsewhere the check passes. Each Spark of a
+four-Spark ring records its approval of the setting in
+`/etc/sparkring/hairpin.json`.
 
 Package removal (`sudo apt remove sparkring`) records which SparkRing host
 services are enabled, then disables and stops them. It retains configuration,
 weights, caches, receipts, network state and any running model deployment.
 Installing the package again re-enables the recorded services and starts the
-administration services; the fabric service is enabled for the next boot and
-not started. No command reverts setup's network, SSH, sudo or service changes.
+administration services; the fabric and hairpin services are enabled for the
+next boot and not started. Installing or updating the package never restarts a
+ConnectX driver. No command reverts setup's network, SSH, sudo or service
+changes.
 
 `sparkring models` lists exact model/version/quantization/topology profiles and
 marks which support automated installation. Family names such as `qwen` are
@@ -742,9 +772,10 @@ sudo env SPARKRING_LINUX_LAB=1 .venv/bin/python -m pytest scripts/test_appliance
 A failed asset preparation can be repeated; see
 [Install a model](#install-a-model). For any other operation, if an execution
 receipt says `running` or `uncertain`, inspect it and host state before
-recovery. Do not delete receipts to force a blind retry. A driver reload
-requires `sudo sparkring setup --allow-driver-reload`, stopped containers and
-GPU work, and no RDMA users; see [Four-Spark rings](#four-spark-rings).
+recovery. Do not delete receipts to force a blind retry. A ConnectX driver
+restart requires stopped models, mesh services and other RDMA users;
+`sudo sparkring hairpin` checks this before it restarts anything; see
+[Four-Spark rings](#four-spark-rings).
 
 ## Lower-level commands and Compose sharing
 

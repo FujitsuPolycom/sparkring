@@ -1,8 +1,13 @@
 [Unit]
 Description=SparkRing key-authenticated administration access
-Requires=sparkring-control.service
+# sparkring-control.service fails while one administration link fails, but it
+# still creates sr-control over the healthy links; this service then starts,
+# so the Spark stays reachable over those links. Without sr-control the
+# service is skipped, and the refresh timer starts it once sr-control exists.
+Wants=sparkring-control.service
 After=sparkring-control.service
 ConditionPathExists=/etc/sparkring/sshd_config
+ConditionPathExists=/sys/class/net/sr-control
 
 [Service]
 Type=simple

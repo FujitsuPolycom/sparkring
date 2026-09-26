@@ -1,0 +1,34 @@
+#!/bin/sh
+# systemd generator: the SparkRing ConnectX hairpin start check for mesh units.
+#
+# For every regular unit file /etc/systemd/system/sparkring-mesh.service and
+# /etc/systemd/system/sparkring-*-mesh.service, write the drop-in
+# <unit>.d/10-sparkring-hairpin.conf to the normal generator directory ($1).
+# The drop-in orders the unit after sparkring-hairpin.service and runs
+# "sparkring node hairpin require" before the unit starts. That check passes on
+# hosts without a SparkRing four-Spark fabric record.
+#
+# Model units (sparkring-mesh-model.service, sparkring-*-model.service) do not
+# match. Symbolic links, including masked units, are skipped. systemd runs
+# generators at boot and on every daemon-reload, so the drop-ins exist only
+# while this package is installed; the unit files themselves are not changed.
+#
+# SPARKRING_UNIT_DIRECTORY replaces /etc/systemd/system when the generator is
+# run outside systemd, for example by tests.
+set -eu
+output=${1:?usage: sparkring-hairpin-mesh-check NORMAL_DIR [EARLY_DIR LATE_DIR]}
+units=${SPARKRING_UNIT_DIRECTORY:-/etc/systemd/system}
+for path in "$units"/sparkring-mesh.service "$units"/sparkring-*-mesh.service; do
+    if [ ! -f "$path" ] || [ -h "$path" ]; then
+        continue
+    fi
+    name=${path##*/}
+    mkdir -p "$output/$name.d"
+    cat > "$output/$name.d/10-sparkring-hairpin.conf" <<'EOF'
+[Unit]
+After=sparkring-hairpin.service
+
+[Service]
+ExecStartPre=/usr/bin/sparkring node hairpin require --unit %n
+EOF
+done

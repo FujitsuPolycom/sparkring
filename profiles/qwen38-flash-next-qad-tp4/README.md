@@ -8,8 +8,8 @@ speculative decoding and 262K context, served on port 8015 as
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
-Four-Spark rings need a [driver step](../../docs/operations/install.md#four-spark-rings)
-first and after a reboot. [Install SparkRing](../../docs/operations/install.md)
+The installer applies the [ConnectX driver setting](../../docs/operations/install.md#four-spark-rings)
+that four-Spark rings need and repeats it at every boot. [Install SparkRing](../../docs/operations/install.md)
 covers requirements, logs and recovery.
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |

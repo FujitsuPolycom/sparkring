@@ -24,9 +24,9 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-comman
 ```
 
 It sets up every Spark, downloads the image and model, and prints the API
-address when the model is ready. Four-Spark rings need a
-[driver step](docs/operations/install.md#four-spark-rings) first and after a
-reboot. To run with Docker
+address when the model is ready. On four Sparks it also applies the ring's
+[ConnectX driver setting](docs/operations/install.md#four-spark-rings) and
+repeats it at every boot. To run with Docker
 Compose instead, see [Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
 
 ## Profiles

@@ -1,0 +1,27 @@
+[Unit]
+Description=Apply the approved SparkRing ConnectX hairpin setting before networking starts
+DefaultDependencies=no
+Wants=network-pre.target
+After=local-fs.target systemd-udev-trigger.service systemd-modules-load.service systemd-sysctl.service
+Before=network-pre.target NetworkManager.service sparkring-control.service sparkring-fabric.service sparkring-mesh.service sparkring-mesh-model.service shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/etc/sparkring/hairpin.json
+ConditionKernelCommandLine=!sparkring.hairpin=off
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/sparkring node hairpin apply
+TimeoutStartSec=330
+TimeoutStopSec=60
+# A stop sends SIGTERM to the run only, which then starts no further function
+# and exits once the function it is restarting has returned; a devlink child
+# must not receive it in the middle of a reload. SIGKILL reaches every process
+# after TimeoutStopSec.
+KillMode=mixed
+RuntimeDirectory=sparkring-hairpin
+RuntimeDirectoryPreserve=yes
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

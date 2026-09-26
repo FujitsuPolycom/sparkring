@@ -1,7 +1,7 @@
 [Unit]
 Description=Restore the approved SparkRing data fabric
 Wants=network-online.target
-After=network-online.target NetworkManager.service docker.service
+After=network-online.target NetworkManager.service docker.service sparkring-hairpin.service
 Before=sparkring-mesh.service sparkring-mesh-model.service
 ConditionPathExists=/etc/sparkring/fabric.json
 

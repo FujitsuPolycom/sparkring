@@ -10,6 +10,22 @@ import time
 
 from runtime.common import distribution, installer
 from runtime.host import bootstrap, control, control_node, controller, discovery, node, packages, seed, settings, topology
+from scripts import hairpin_setting
+
+# The approval line for the ConnectX hairpin setting on four-Spark rings. The
+# restart timing is measured on running hosts (5.1-7.8 s from command to link up).
+HAIRPIN_SCOPE = (
+    "  - on a four-Spark ring: apply the ConnectX hairpin setting that four-Spark",
+    "    forwarding needs (a hairpin queue of " + str(hairpin_setting.HAIRPIN_QUEUE_SIZE) + " packets on each fabric port",
+    "    function), now and at every boot. After fabric addressing is configured,",
+    "    each function's driver restarts once, one at a time: its link is down for",
+    "    about 8 seconds, about 30 seconds per Spark and about 3 minutes for the",
+    "    ring. Every later boot takes about 30 seconds longer before networking",
+    "    starts. SparkRing restarts nothing while a model, a mesh service or",
+    "    another RDMA program runs on the ring. A worker that reaches Node A only",
+    "    through the ring cables stays unreachable if one of its restarts fails,",
+    "    until it is power-cycled; it then starts without the setting.",
+)
 
 
 def identity_key(directory):
@@ -91,24 +107,55 @@ def provision(discovered, transport, archive, *, private_key, public_key, contro
     return targets
 
 
-def approve(args, *, fresh, follow=None):
+def scope_lines(args, *, fresh, follow=None, four=None):
+    """The automated setup scope that the one approval covers.
+
+    ``four`` adds the ConnectX hairpin line; it defaults to ``fresh``, because
+    a fresh setup does not know the ring size before discovery.
+    """
+    lines = []
+    if fresh:
+        lines += ["  - find cabled Sparks over IPv6 link-local fabric addresses, adding link-local"
+                  " addressing to fabric connections without it (their IPv4 addresses and MTU are kept)",
+                  f"  - sign in as {args.ssh_user} on SSH port {args.ssh_port} (SSH asks for passwords; change with"
+                  " --ssh-user) and trust each cabled Spark's SSH host key on first contact; fingerprints are printed",
+                  "  - install SparkRing and its packaged dependencies, then a private WireGuard administration network",
+                  "  - " + ("do not share" if args.no_share_internet else "share") + " Node A's Internet connection with workers"]
+    lines.append("  - keep compatible fabric IPv4 addresses and replace incompatible ones, saving connection backups")
+    if fresh if four is None else four:
+        lines += HAIRPIN_SCOPE
+    if follow:
+        lines.append("  - " + follow)
+    lines.append("Running GPU containers that block setup are listed and stopped only after a separate answer.")
+    return lines
+
+
+def approve(args, *, fresh, follow=None, four=None):
     """One default-yes approval for the whole automated setup scope."""
     print("Automated setup of this Spark (Node A) and the Sparks cabled to it:")
-    if fresh:
-        print("  - find cabled Sparks over IPv6 link-local fabric addresses, adding link-local"
-              " addressing to fabric connections without it (their IPv4 addresses and MTU are kept)")
-        print(f"  - sign in as {args.ssh_user} on SSH port {args.ssh_port} (SSH asks for passwords; change with"
-              " --ssh-user) and trust each cabled Spark's SSH host key on first contact; fingerprints are printed")
-        print("  - install SparkRing and its packaged dependencies, then a private WireGuard administration network")
-        print("  - " + ("do not share" if args.no_share_internet else "share") + " Node A's Internet connection with workers")
-    print("  - keep compatible fabric IPv4 addresses and replace incompatible ones, saving connection backups")
-    if follow:
-        print("  - " + follow)
-    print("Running GPU containers that block setup are listed and stopped only after a separate answer.")
+    for line in scope_lines(args, fresh=fresh, follow=follow, four=four):
+        print(line)
     controller.confirm("Proceed?", default=True)
 
 
-def main(argv=None, *, follow=None):
+def announce(args, *, fresh, follow=None, four=None):
+    """Print the scope that --yes approved; asks nothing."""
+    print("Approved with --yes:")
+    for line in scope_lines(args, fresh=fresh, follow=follow, four=four):
+        print(line)
+
+
+def ring_state(base):
+    """(fresh, four): whether setup starts from nothing, and whether the ring has, or may have, four Sparks."""
+    base = Path(base)
+    if (base / "cluster.json").exists():
+        return False, len(installer.read(base / "cluster.json")["plan"]["nodes"]) == 4
+    if (base / "enrolled.json").exists():
+        return False, len(installer.read(base / "enrolled.json")["targets"]) == 4
+    return True, True
+
+
+def _arguments(argv):
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--env", type=Path)
     env, _ = pre.parse_known_args(argv)
@@ -124,11 +171,31 @@ def main(argv=None, *, follow=None):
     parser.add_argument("--reset-links", action="store_true", default=values["SPARKRING_LINK_POLICY"] == "reset")
     parser.add_argument("--plan", action="store_true", help="discover/review with existing SSH access; no host configuration")
     parser.add_argument("--yes", action="store_true", help="accept configuration scope; SSH host identity still requires verification")
-    parser.add_argument("--allow-driver-reload", action="store_true")
+    parser.add_argument("--allow-driver-reload", action="store_true", help=controller.ALLOW_DRIVER_RELOAD)
     parser.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that block fabric preparation")
     parser.add_argument("--worker-bundle", action="store_true", help="build a USB/offline preparation bundle for workers without SSH")
-    args = parser.parse_args(argv)
+    return parser.parse_args(argv), env.env
+
+
+def _default_user(args, argv, env, fresh):
+    if fresh and "--ssh-user" not in (argv or []) and not env and args.ssh_port == 22:
+        # Sparks are usually set up with one account name; sudo records it.
+        args.ssh_user = os.environ.get("SUDO_USER") or "root"
+
+
+def scope(argv=None, *, follow=None):
+    """The approval scope lines that ``main(argv)`` would list, for a non-interactive approval request."""
+    args, env = _arguments(argv)
+    fresh, four = ring_state(controller.STATE)
+    _default_user(args, argv, env, fresh)
+    return scope_lines(args, fresh=fresh, follow=follow, four=four)
+
+
+def main(argv=None, *, follow=None):
+    args, env = _arguments(argv)
+    if args.allow_driver_reload:
+        print("--allow-driver-reload: " + controller.ALLOW_DRIVER_RELOAD)
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,34}", args.name):
         raise ValueError("Choose a lowercase cluster name of at most 35 characters")
     if not hasattr(os, "geteuid") or os.geteuid() != 0:
@@ -143,13 +210,13 @@ def main(argv=None, *, follow=None):
         print("Copy/extract " + str(archive) + " on a worker, then run: sudo python3 install.py --apply --prepare")
         return 0
     directory = base / "setups" / str(time.time_ns())
-    fresh = not (base / "cluster.json").exists() and not (base / "enrolled.json").exists()
-    if fresh and "--ssh-user" not in (argv or []) and not env.env and args.ssh_port == 22:
-        # Sparks are usually set up with one account name; sudo records it.
-        args.ssh_user = os.environ.get("SUDO_USER") or "root"
+    fresh, four = ring_state(base)
+    _default_user(args, argv, env, fresh)
     trust_new = False
-    if not args.plan and not args.yes and sys.stdin.isatty():
-        approve(args, fresh=fresh, follow=follow)
+    if not args.plan and args.yes:
+        announce(args, fresh=fresh, follow=follow, four=four)
+    elif not args.plan and sys.stdin.isatty():
+        approve(args, fresh=fresh, follow=follow, four=four)
         args.yes = trust_new = True
     if (base / "cluster.json").exists():
         cluster = installer.read(base / "cluster.json")
@@ -190,6 +257,10 @@ def main(argv=None, *, follow=None):
         print("Node A Internet sharing: " + ("disabled" if args.no_share_internet else "enabled (package/image/model downloads)"))
         installer.write(directory / "discovery.json", found)
         if args.plan:
+            if len(found["nodes"]) == 4:
+                print("Setup of these Sparks also includes this step:")
+                for line in HAIRPIN_SCOPE:
+                    print(line)
             print("Discovery saved: " + str(directory / "discovery.json"))
             return 0
         controller.confirm("Install on these Sparks and establish the private administration network?", args.yes)
@@ -216,7 +287,9 @@ def main(argv=None, *, follow=None):
     if args.plan:
         return 0
     controller.confirm("Apply these fabric IPv4/MTU settings? Existing connection backups will be retained.", args.yes)
-    final = controller.apply(plan, directory, allow_driver_reload=args.allow_driver_reload,
+    # The setup approval (the question, or --yes) lists the ConnectX hairpin
+    # step on four-Spark rings; controller.apply runs it after addressing.
+    final = controller.apply(plan, directory, approved=args.yes,
                              review=lambda p: (controller.summarize(p), controller.confirm("Apply this refreshed fabric plan?", args.yes)))
     node.save(base, "cluster.json", {"schema": "sparkring-appliance-cluster/v1", "name": args.name,
                                     "plan": final, "api_address": api_address, "setup_receipt": str(directory / "setup.json")}, mode=0o600)

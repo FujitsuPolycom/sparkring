@@ -1,12 +1,14 @@
-"""Management routing and optional settings, without host access."""
+"""Management routing, administration link checks and optional settings, without host access."""
 import base64
 import copy
 import json
+import os
 import shlex
+import subprocess
 
 import pytest
 
-from runtime.host import bootstrap, control, settings
+from runtime.host import bootstrap, control, control_node, node, settings
 
 
 def fixture(size=4):
@@ -109,3 +111,155 @@ def test_bootstrap_discovery_uses_authenticated_identity_and_rejects_wrong_neigh
     b["functions"][0]["mac"] = "02:00:00:00:00:ff"
     with pytest.raises(ValueError, match="matched"):
         bootstrap.discover(FakeSSH())
+
+
+CONTROL_PRIVATE = base64.b64encode(b"k" * 32).decode()
+CONTROL_PUBLIC = base64.b64encode(b"p" * 32).decode()
+
+
+class ControlHost:
+    """One Spark's administration links as fake sysfs files and command answers."""
+
+    def __init__(self, root, config, *, interface=True):
+        self.root, self.interface, self.calls = root, interface, []
+        self.link_local = {link["netdev"]: [link["address"]] for link in config["links"]}
+        node.save(root, "/etc/sparkring/control.json", config, mode=0o600)
+        (root / "etc/sparkring/control.key").write_text(CONTROL_PRIVATE + "\n")
+        (root / "etc/ssh").mkdir(parents=True)
+        (root / "etc/ssh/ssh_host_ed25519_key.pub").write_text("ssh-ed25519 " + CONTROL_PUBLIC + " host\n")
+        for link in config["links"]:
+            self.set_mac(link["netdev"], link["mac"])
+
+    def set_mac(self, netdev, mac):
+        directory = self.root / "sys/class/net" / netdev
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "address").write_text(mac + "\n")
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        stdout, code = "", 0
+        if argv[:5] == ["ip", "-j", "-6", "address", "show"]:
+            stdout = json.dumps([{"addr_info": [{"local": a, "scope": "link"} for a in self.link_local[argv[-1]]]}])
+        elif argv[:4] == ["ip", "-j", "link", "show"]:
+            code = 0 if self.interface else 1
+        elif argv[:2] in (["wg", "pubkey"], ["wg", "show"]):
+            stdout = CONTROL_PUBLIC + "\n"
+        return subprocess.CompletedProcess(argv, code, stdout, "")
+
+    def refreshed(self):
+        return [call[4] for call in self.calls if call[:3] == ["wg", "set", control.INTERFACE]]
+
+
+def head_config():
+    config = control.plan(*fixture(), "0")[0]
+    assert [p["netdev"] for p in config["peers"]] == ["port0", "port1"]
+    return config
+
+
+def break_link(host, config, netdev, kind):
+    link = next(link for link in config["links"] if link["netdev"] == netdev)
+    if kind == "mac":
+        host.set_mac(netdev, "02:00:00:00:00:ff")
+    elif kind == "link-local":
+        host.link_local[netdev] = [link["address"], "fe80::99"]
+    else:
+        (host.root / "sys/class/net" / netdev / "address").unlink()
+
+
+@pytest.mark.parametrize("kind", ["mac", "link-local", "absent"])
+def test_up_refreshes_healthy_peers_and_names_the_failed_link(tmp_path, kind):
+    config = head_config()
+    host = ControlHost(tmp_path, config)
+    break_link(host, config, "port1", kind)
+    with pytest.raises(ValueError, match="port1") as raised:
+        control_node.up(root=tmp_path, run=host)
+    assert "port0" not in str(raised.value)
+    healthy = next(p for p in config["peers"] if p["netdev"] == "port0")
+    assert host.refreshed() == [healthy["key"]]
+    assert not any(call[0] == "wg-quick" for call in host.calls)
+    # Forwarding and firewall rules still apply, so the healthy links carry traffic.
+    assert ["sysctl", "-w", f"net.ipv4.conf.{control.INTERFACE}.forwarding=1"] in host.calls
+    assert any(call[:2] == ["iptables", "-w"] for call in host.calls)
+
+
+def test_a_changed_mac_is_never_refreshed_or_queried(tmp_path):
+    config = head_config()
+    host = ControlHost(tmp_path, config)
+    for netdev in ("port0", "port1"):
+        break_link(host, config, netdev, "mac")
+    with pytest.raises(ValueError, match="port0: MAC 02:00:00:00:00:ff differs"):
+        control_node.up(root=tmp_path, run=host)
+    assert host.refreshed() == []
+    assert not any(call[:2] == ["ip", "-j"] and "-6" in call for call in host.calls)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="file modes need POSIX")
+@pytest.mark.parametrize("kind", ["mac", "link-local", "absent"])
+def test_up_creates_the_interface_without_the_endpoints_of_failed_links(tmp_path, kind):
+    config = head_config()
+    host = ControlHost(tmp_path, config, interface=False)
+    break_link(host, config, "port0", kind)
+    with pytest.raises(ValueError, match="port0") as raised:
+        control_node.up(root=tmp_path, run=host)
+    assert "port1" not in str(raised.value)
+    [up] = [call for call in host.calls if call[0] == "wg-quick"]
+    path = tmp_path / "run/sparkring-control" / (control.INTERFACE + ".conf")
+    assert up == ["wg-quick", "up", str(path)]
+    rendered = path.read_text()
+    failed, healthy = (next(p for p in config["peers"] if p["netdev"] == name) for name in ("port0", "port1"))
+    assert "PublicKey = " + failed["key"] in rendered and failed["endpoint"] not in rendered
+    assert "Endpoint = " + healthy["endpoint"] in rendered
+    assert path.stat().st_mode & 0o777 == 0o600 and path.parent.stat().st_mode & 0o777 == 0o700
+    assert host.refreshed() == [healthy["key"]]
+    assert ["sysctl", "-w", f"net.ipv4.conf.{control.INTERFACE}.forwarding=1"] in host.calls
+    assert any(call[:2] == ["iptables", "-w"] for call in host.calls)
+
+
+def test_up_creates_the_interface_from_its_configuration_when_every_link_passes(tmp_path):
+    config = head_config()
+    host = ControlHost(tmp_path, config, interface=False)
+    assert control_node.up(root=tmp_path, run=host) == {"control_up": True}
+    assert ["wg-quick", "up", control.INTERFACE] in host.calls
+    assert host.refreshed() == [p["key"] for p in config["peers"]]
+    assert not (tmp_path / "run/sparkring-control").exists()
+
+
+def test_render_leaves_out_the_endpoints_of_named_links():
+    config = head_config()
+    private = base64.b64encode(b"a" * 32).decode()
+    full, partial = control.render(config, private), control.render(config, private, without_endpoint={"port1"})
+    assert full.count("Endpoint = ") == 2 and partial.count("Endpoint = ") == 1
+    assert partial == full.replace("Endpoint = " + config["peers"][1]["endpoint"] + "\n", "")
+
+
+def test_refresh_endpoint_checks_and_sets_one_peer_only(tmp_path):
+    config = head_config()
+    host = ControlHost(tmp_path, config)
+    peer = control_node.refresh_endpoint("port1", root=tmp_path, run=host)
+    assert peer == next(p for p in config["peers"] if p["netdev"] == "port1")
+    assert host.calls == [["ip", "-j", "-6", "address", "show", "dev", "port1"],
+                          ["wg", "set", control.INTERFACE, "peer", peer["key"], "endpoint", peer["endpoint"]]]
+
+    host.calls.clear()
+    break_link(host, config, "port1", "mac")
+    with pytest.raises(ValueError, match="port1: MAC"):
+        control_node.refresh_endpoint("port1", root=tmp_path, run=host)
+    with pytest.raises(ValueError, match="port2: no administration network link"):
+        control_node.refresh_endpoint("port2", root=tmp_path, run=host)
+    assert host.refreshed() == []
+
+
+def test_underlay_lists_every_failing_link_and_require_raises(tmp_path):
+    assert control_node.underlay(root=tmp_path, run=pytest.fail) == []
+    control_node.require_underlay(root=tmp_path, run=pytest.fail)
+    config = head_config()
+    host = ControlHost(tmp_path, config)
+    assert control_node.underlay(root=tmp_path, run=host) == []
+    break_link(host, config, "port0", "absent")
+    break_link(host, config, "port1", "link-local")
+    problems = control_node.underlay(root=tmp_path, run=host)
+    assert [p["netdev"] for p in problems] == ["port0", "port1"]
+    assert problems[0]["error"] == "interface is not present"
+    assert control_node.underlay("port1", root=tmp_path, run=host) == problems[1:]
+    with pytest.raises(ValueError, match="port0: interface is not present; port1: link-local"):
+        control_node.require_underlay(root=tmp_path, run=host)

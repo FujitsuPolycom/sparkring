@@ -1,5 +1,6 @@
 """Fixed local administrative actions for the Linux appliance package."""
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -31,9 +32,30 @@ def main(argv=None):
     agent.add_argument("--once", action="store_true")
     status = commands.add_parser("status")
     status.add_argument("--refresh", action="store_true")
+    hairpin = commands.add_parser("hairpin", help="ConnectX hairpin setting of a four-Spark ring member")
+    hairpin_actions = hairpin.add_subparsers(dest="hairpin_action", required=True)
+    hairpin_actions.add_parser("approve", help="record this Spark's approval; enables and restarts nothing")
+    hairpin_apply = hairpin_actions.add_parser("apply", help="run by sparkring-hairpin.service only")
+    hairpin_apply.add_argument("--dry-run", action="store_true", help="print the plan as JSON and change nothing")
+    hairpin_apply.add_argument("--boot", action="store_true", help="with --dry-run: plan the next boot's run")
+    hairpin_status = hairpin_actions.add_parser("status", help="print sparkring-hairpin-status/v1")
+    hairpin_status.add_argument("--busy", action="store_true", help="add what blocks a driver restart now")
+    hairpin_require = hairpin_actions.add_parser("require", help="mesh start check run by the generated drop-in")
+    hairpin_require.add_argument("--unit", required=True)
+    hairpin_start = hairpin_actions.add_parser(
+        "start", help="start sparkring-hairpin.service without waiting unless a newer run exists (ring procedure)")
+    hairpin_start.add_argument("--after", required=True,
+                               help="the unit's InvocationID before the dispatch; empty when it has not run")
+    hairpin_actions.add_parser("resume", help="start the enabled mesh units that the start check refused (ring "
+                                              "procedure)")
+    hairpin_actions.add_parser("revoke", help="disable the boot service and remove the approval")
     args = parser.parse_args(argv)
+    if args.action == "hairpin" and args.hairpin_action == "apply" and args.boot and not args.dry_run:
+        parser.error("--boot requires --dry-run")
+    unprivileged = ((args.action == "status" and not args.refresh)
+                    or (args.action == "hairpin" and args.hairpin_action == "status" and not args.busy))
     try:
-        if not (args.action == "status" and not args.refresh) and (not hasattr(os, "geteuid") or os.geteuid() != 0):
+        if not unprivileged and (not hasattr(os, "geteuid") or os.geteuid() != 0):
             raise ValueError("This local administrative action requires sudo")
         if args.action == "initialize":
             result = node.initialize()
@@ -81,10 +103,33 @@ def main(argv=None):
         elif args.action == "agent":
             node.agent(once=args.once)
             return 0
+        elif args.action == "hairpin":
+            from runtime.host import hairpin
+            if args.hairpin_action == "apply" and not args.dry_run:
+                return hairpin.apply_unit()
+            if args.hairpin_action == "require":
+                return hairpin.require(args.unit)
+            # The ring procedure parses stdout as one JSON document, so log
+            # lines of these actions go to stderr.
+            with contextlib.redirect_stdout(sys.stderr):
+                if args.hairpin_action == "apply":
+                    result = hairpin.preview(boot=args.boot)
+                elif args.hairpin_action == "approve":
+                    result = hairpin.approve()
+                elif args.hairpin_action == "status":
+                    result = hairpin.status(busy=args.busy)
+                elif args.hairpin_action == "start":
+                    result = hairpin.start(args.after)
+                elif args.hairpin_action == "resume":
+                    result = hairpin.resume()
+                else:
+                    result = hairpin.revoke()
         else:
             result = node.snapshot() if args.refresh else node.status()
         print(json.dumps(result, indent=2))
         return 0
     except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError) as error:
-        print("SparkRing node: " + str(error), file=sys.stderr)
+        # Hairpin messages carry their own "SparkRing hairpin: " prefix.
+        text = str(error)
+        print(text if text.startswith("SparkRing ") else "SparkRing node: " + text, file=sys.stderr)
         return 2

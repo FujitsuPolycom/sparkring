@@ -9,7 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.deploy_network import NetworkPlanError, plan_network, verify_network
+from scripts.deploy_network import (
+    DriverSettingsError,
+    NetworkPlanError,
+    plan_network,
+    verify_network,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -139,6 +144,9 @@ def network_fixture():
                         "devlink": {
                             "available": True,
                             "device": "pci/" + pci,
+                            # One successful driver_reinit since the probe:
+                            # the 8192/4 values below are in use.
+                            "reload": {"driver_reinit": 1, "failed": False},
                             "eswitch_mode": "legacy",
                             "eswitch_inline_mode": "none",
                             "eswitch_encap_mode": "basic",
@@ -167,6 +175,30 @@ def network_fixture():
     return spec, inventory
 
 
+def pair_fixture():
+    """Ranks 0 and 1 of the ring fixture cabled as a pair on their clockwise functions."""
+    spec, inventory = network_fixture()
+    spec["hosts"] = spec["hosts"][:2]
+    for rank, host in enumerate(spec["hosts"]):
+        observed = inventory[host["host"]]
+        host["data_interfaces"] = [
+            p for p in host["data_interfaces"] if p["role"].startswith("cw_")
+        ]
+        for port in host["data_interfaces"]:
+            address = f"198.18.{int(port['role'] == 'cw_secondary')}.{rank + 1}/24"
+            port["address"] = address
+            interface = next(i for i in observed["interfaces"] if i["name"] == port["netdev"])
+            interface["ipv4"] = [address]
+            interface["network_manager"]["ipv4_addresses"] = [address]
+            function = next(r for r in observed["rdma"] if r["device"] == port["rdma_device"])
+            function["gid"] = "::ffff:" + address.split("/")[0]
+    return spec, {host["host"]: inventory[host["host"]] for host in spec["hosts"]}
+
+
+def devlink(inventory, rank=0, index=0):
+    return inventory[f"spark-r{rank}"]["rdma"][index]["devlink"]
+
+
 def unconfigured(spec, inventory, rank=0, port_index=0):
     observed = inventory[f"spark-r{rank}"]
     interface = observed["interfaces"][port_index]
@@ -185,10 +217,22 @@ def test_configured_hosts_are_noop_without_adopting_foreign_connections():
     before = copy.deepcopy((spec, inventory))
     plan = plan_network(spec, inventory)
     assert all(host["action"] == "none" for host in plan["hosts"])
+    assert all(host["driver_action"] == "none" for host in plan["hosts"])
     assert all(
         not host["apply"] and not host["driver_steps"] and not host["rollback"]
         for host in plan["hosts"]
     )
+    assert plan["hosts"][0]["hairpin"][0] == {
+        "role": "cw_primary",
+        "netdev": "enp1s0f0np0",
+        "pci_address": "0000:01:00.0",
+        "values": {"hairpin_num_queues": 4, "hairpin_queue_size": 8192},
+        "driver_reinit": 1,
+        "reload_failed": False,
+        "offload": "on",
+        "state": "in-effect",
+    }
+    assert [len(host["hairpin"]) for host in plan["hosts"]] == [4, 4, 4, 4]
     assert all(
         port["created_connection_uuid"] is None
         for host in plan["hosts"]
@@ -286,6 +330,9 @@ def test_driver_reload_is_separate_and_requires_rediscovery():
     params["hairpin_queue_size"]["value"] = 0
     host = plan_network(spec, inventory)["hosts"][0]
     assert not host["apply"]
+    assert host["action"] == "none" and host["driver_action"] == "apply"
+    assert host["hairpin"][0]["state"] == "default"
+    assert host["backup"] and host["apply_permitted"]
     assert len(host["driver_steps"]) == 3
     reload = host["driver_steps"][-1]
     assert reload["argv"] == [
@@ -338,7 +385,9 @@ def test_disabled_offload_requires_proven_toggle_support():
         plan_network(spec, inventory)
     interface["hw_tc_offload_fixed"] = False
     host = plan_network(spec, inventory)["hosts"][0]
-    assert host["driver_steps"][0]["argv"][-2:] == ["hw-tc-offload", "on"]
+    assert host["action"] == "none" and host["driver_action"] == "apply"
+    assert host["hairpin"][0]["state"] == "offload-off"
+    assert [c["argv"][-2:] for c in host["driver_steps"]] == [["hw-tc-offload", "on"]]
     assert host["rollback"][0]["argv"][-2:] == ["hw-tc-offload", "off"]
 
 
@@ -478,3 +527,138 @@ def test_synthetic_command_text_cannot_enter_interface_identity():
     spec["hosts"][0]["data_interfaces"][0]["netdev"] = "eth0; reboot"
     with pytest.raises(NetworkPlanError, match="invalid"):
         plan_network(spec, inventory)
+
+
+def test_pending_values_restart_without_param_set():
+    spec, inventory = network_fixture()
+    devlink(inventory)["reload"]["driver_reinit"] = 0
+    host = plan_network(spec, inventory)["hosts"][0]
+    assert host["hairpin"][0]["state"] == "pending"
+    assert host["action"] == "none" and host["driver_action"] == "apply"
+    assert [c["argv"][3:5] for c in host["driver_steps"]] == [["dev", "reload"]]
+    assert host["driver_steps"][0]["stop_after"]
+    # Nothing was set, so there is no earlier value to roll back to.
+    assert host["rollback"] == []
+
+
+def test_failed_restart_is_retried_without_param_set():
+    spec, inventory = network_fixture()
+    devlink(inventory)["reload"]["failed"] = True
+    host = plan_network(spec, inventory)["hosts"][0]
+    assert host["hairpin"][0]["state"] == "failed"
+    assert [c["id"] for c in host["driver_steps"]] == ["cw_primary-driver-reload"]
+    # Differing values take param set first, even after a failed restart.
+    devlink(inventory)["parameters"]["hairpin_queue_size"]["value"] = 1024
+    host = plan_network(spec, inventory)["hosts"][0]
+    assert host["hairpin"][0]["state"] == "default"
+    assert [c["id"] for c in host["driver_steps"]] == [
+        "cw_primary-hairpin_queue_size",
+        "cw_primary-driver-reload",
+    ]
+
+
+@pytest.mark.parametrize("missing", ["reload", "counter"])
+def test_unreadable_reload_statistics_plan_nothing_and_fail_verification(missing):
+    spec, inventory = network_fixture()
+    if missing == "reload":
+        del devlink(inventory)["reload"]
+    else:
+        devlink(inventory)["reload"]["driver_reinit"] = None
+    devlink(inventory)["parameters"]["hairpin_queue_size"]["value"] = 1024
+    host = plan_network(spec, inventory)["hosts"][0]
+    assert host["hairpin"][0]["state"] == "unknown"
+    assert host["driver_action"] == "unknown" and host["action"] == "none"
+    assert host["driver_steps"] == [] and host["rollback"] == []
+    with pytest.raises(DriverSettingsError, match="reload statistics are unavailable for enp1s0f0np0") as error:
+        verify_network(spec, inventory)
+    assert "restarts nothing" in str(error.value)
+    assert [row["netdev"] for row in error.value.functions] == ["enp1s0f0np0"]
+    assert verify_network(spec, inventory, hairpin=False)["ready"]
+
+
+def test_unknown_function_makes_its_host_unknown_but_keeps_other_steps():
+    spec, inventory = network_fixture()
+    del devlink(inventory, index=0)["reload"]
+    devlink(inventory, index=1)["reload"]["driver_reinit"] = 0
+    host = plan_network(spec, inventory)["hosts"][0]
+    assert [row["state"] for row in host["hairpin"]] == ["unknown", "pending", "in-effect", "in-effect"]
+    assert host["driver_action"] == "unknown"
+    assert [c["id"] for c in host["driver_steps"]] == ["cw_secondary-driver-reload"]
+
+
+def test_hairpin_drift_names_each_function_and_value():
+    spec, inventory = network_fixture()
+    devlink(inventory, rank=2)["parameters"]["hairpin_queue_size"]["value"] = 1024
+    devlink(inventory, rank=2)["reload"]["driver_reinit"] = 0
+    devlink(inventory, rank=2, index=3)["reload"]["driver_reinit"] = 0
+    with pytest.raises(DriverSettingsError) as error:
+        verify_network(spec, inventory)
+    message = str(error.value)
+    assert message.startswith(
+        "spark-r2: the ConnectX hairpin setting is not in effect on 2 of 4 functions: "
+        "enp1s0f0np0: hairpin_queue_size 1024, required 8192; "
+    )
+    assert ("enP2p1s0f1np1: hairpin_queue_size 8192 set, applied only by a driver restart (none since boot)."
+            in message)
+    assert message.endswith("On Node A, sudo sparkring hairpin applies it after asking.")
+    assert [(row["host"], row["netdev"], row["state"]) for row in error.value.functions] == [
+        ("spark-r2", "enp1s0f0np0", "default"),
+        ("spark-r2", "enP2p1s0f1np1", "pending"),
+    ]
+    assert isinstance(error.value, NetworkPlanError)
+
+
+def test_offload_only_drift_is_hairpin_drift():
+    spec, inventory = network_fixture()
+    interface = inventory["spark-r1"]["interfaces"][2]
+    interface.update(hw_tc_offload=False, hw_tc_offload_fixed=False)
+    with pytest.raises(DriverSettingsError, match=interface["name"] + ": hw-tc-offload off"):
+        verify_network(spec, inventory)
+    assert verify_network(spec, inventory, hairpin=False)["ready"]
+
+
+def test_address_drift_message_names_only_addresses():
+    spec, inventory = network_fixture()
+    unconfigured(spec, inventory)
+    devlink(inventory)["parameters"]["hairpin_queue_size"]["value"] = 1024
+    for hairpin in (True, False):
+        with pytest.raises(NetworkPlanError) as error:
+            verify_network(spec, inventory, hairpin=hairpin)
+        assert not isinstance(error.value, DriverSettingsError)
+        assert str(error.value) == "spark-r0: persistent addresses do not match the plan"
+
+
+def test_verification_without_hairpin_still_checks_gid():
+    spec, inventory = network_fixture()
+    devlink(inventory)["parameters"]["hairpin_queue_size"]["value"] = 1024
+    del devlink(inventory, rank=3)["reload"]
+    assert verify_network(spec, inventory, hairpin=False)["data_functions"] == 16
+    inventory["spark-r1"]["rdma"][0]["gid"] = "::ffff:198.18.9.9"
+    with pytest.raises(NetworkPlanError, match="GID index 3") as error:
+        verify_network(spec, inventory, hairpin=False)
+    assert not isinstance(error.value, DriverSettingsError)
+
+
+def test_pairs_have_no_driver_planning():
+    spec, inventory = pair_fixture()
+    plan = plan_network(spec, inventory)
+    assert [host["driver_action"] for host in plan["hosts"]] == ["none", "none"]
+    assert verify_network(spec, inventory)["data_functions"] == 4
+    for facts in inventory.values():
+        for row in facts["rdma"]:
+            row["devlink"]["parameters"]["hairpin_queue_size"]["value"] = 1024
+            del row["devlink"]["reload"]
+        facts["interfaces"][0]["hw_tc_offload"] = False
+    plan = plan_network(spec, inventory)
+    assert all(
+        host["driver_action"] == "none" and host["hairpin"] == [] and host["driver_steps"] == []
+        for host in plan["hosts"]
+    )
+    assert verify_network(spec, inventory)["ready"]
+
+
+def test_driver_step_policy_names_both_executors():
+    spec, inventory = network_fixture()
+    policy = plan_network(spec, inventory)["driver_step_policy"]
+    assert "sparkring-hairpin.service" in policy
+    assert "deploy_suite.py apply-plan --allow-driver-reload" in policy
