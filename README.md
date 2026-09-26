@@ -91,6 +91,11 @@ running AI inference on personal hardware
 - Their [vLLM fork](https://github.com/local-inference-lab/vllm), which several
   catalog profiles build on.
 
+Joseph Rose's [nccl-spark-switchless](https://github.com/josephdrose/nccl-spark-switchless)
+ran NCCL over RoCE on four DGX Sparks without a switch, relaying traffic
+between diagonal Sparks in two hops. SparkRing's NCCL compatibility patches
+follow its approach to skipping NCCL's Tree and PAT connections.
+
 Thanks also to Eugene Rakhmatulin for the `eugr/spark-vllm-b12x` base of the
 installer image, and to the contributors to vLLM, NVIDIA NCCL and ExLlamaV3.
 The [third-party notices](THIRD_PARTY_NOTICES.md) give source origins,
