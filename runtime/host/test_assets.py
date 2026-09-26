@@ -1,71 +1,64 @@
-import hashlib
+"""`sparkring node assets` prints this Spark's checkpoint survey summary.
+
+The survey itself (discovery, identification, the path guard, the portable
+probe) is tested in test_checkpoint_search.py.
+"""
 import json
-from types import SimpleNamespace
 
-from runtime.host import assets
+from runtime.common import installer, setup
+from runtime.host import assets, checkpoint_search
 
-
-def test_cache_candidate_requires_exact_metadata_and_every_shard(tmp_path):
-    config = b'{"model_type":"fixture"}\n'
-    index = json.dumps({"weight_map": {"weight": "weights.safetensors"}}).encode()
-    (tmp_path / "config.json").write_bytes(config)
-    (tmp_path / "model.safetensors.index.json").write_bytes(index)
-    contract = {"config_sha256": hashlib.sha256(config).hexdigest(), "index_sha256": hashlib.sha256(index).hexdigest()}
-    assert not assets.metadata_matches(tmp_path, contract)
-    (tmp_path / "weights.safetensors").write_bytes(b"fixture")
-    assert assets.metadata_matches(tmp_path, contract)
-    (tmp_path / "config.json").write_bytes(b"wrong version")
-    assert not assets.metadata_matches(tmp_path, contract)
+PROFILE = "qwen38-flash-next-tp2"
+DIRECTORY = ("/srv/sparkring/{}/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
+             "629bc3218833a38b475b719f34aa571666f4a03e")
 
 
-def test_discovery_does_not_download_or_call_gpu_tools(tmp_path, monkeypatch):
-    monkeypatch.setattr(assets.setup, "selection", lambda p: {"profile": p, "model_repository": "org/model", "model_revision": "a" * 40})
-    monkeypatch.setattr(assets.installer, "checkpoint_contract", lambda c: {})
-    monkeypatch.setattr(assets, "metadata_matches", lambda path, contract: str(path) == str(tmp_path))
+def test_discover_returns_the_local_survey_summary(monkeypatch):
     calls = []
+    folder = "/var/tmp/models/qwen"
+    document = {
+        "schema": "sparkring-checkpoint-survey/v1", "host": "spark-aa42",
+        "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+        "operator": "root", "docker": {"userns": False, "driver": "overlay2"},
+        "owned": {"path": DIRECTORY.format("tp2"), "state": "absent", "fstype": "ext4", "free_bytes": 5, "files": {}},
+        "search": {"complete": True, "passes": 1, "seconds": 1.2, "entries": 812, "unvisited": {}, "skipped_mounts": [],
+                   "large_directories": 0, "unreadable": 0, "errors": ["docker: unavailable: timeout"]},
+        "candidates": [{"path": folder, "layout": "local-dir", "found_by": ["folder"], "commit": None, "branches": [],
+                        "home": None, "sparkring": False, "mount_id": 29, "device": 66306, "rotational": False,
+                        "files": {"config.json": {"state": "match"}}, "counts": {"match": 48}}],
+        "not_used": [], "named": []}
 
-    def run(argv, **kwargs):
-        calls.append(argv)
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-    found = assets.discover("fixture", run=run, extra_roots=[tmp_path])
-    assert found["model_path"] == str(tmp_path)
-    assert found["full_shard_verification"] == "required-before-launch"
-    assert calls == [["docker", "--context", "default", "ps", "-aq"]]
-
-
-def test_portable_discovery_uses_head_pins_without_worker_profile_imports(tmp_path, monkeypatch, capsys):
-    import subprocess
-    config = b'{}'
-    index = b'{"weight_map":{"weight":"weights.safetensors"}}'
-    (tmp_path / 'config.json').write_bytes(config)
-    (tmp_path / 'model.safetensors.index.json').write_bytes(index)
-    (tmp_path / 'weights.safetensors').write_bytes(b'fixture')
-    card = {'profile': 'new-profile-unknown-to-worker', 'model_repository': 'org/model', 'model_revision': 'a' * 40}
-    contract = {'config_sha256': hashlib.sha256(config).hexdigest(), 'index_sha256': hashlib.sha256(index).hexdigest()}
-    def run(argv, **kwargs):
-        assert argv[:3] == ['docker', '--context', 'default']
-        data = json.dumps([{'Mounts': [{'Type': 'bind', 'Source': str(tmp_path), 'Destination': '/models/target'}]}]) if 'inspect' in argv else 'container\n'
-        return SimpleNamespace(stdout=data, returncode=0)
-    monkeypatch.setattr(subprocess, 'run', run)
-    code = assets.probe_code(card, contract)
-    assert 'from runtime' not in code and '/usr/bin/sparkring' not in code
-    exec(compile(code, '<portable-asset-probe>', 'exec'), {})
-    assert json.loads(capsys.readouterr().out)['model_path'] == str(tmp_path)
+    def survey(pins, options):
+        calls.append((pins, options))
+        return document
+    monkeypatch.setattr(checkpoint_search, "survey", survey)
+    result = assets.discover(PROFILE, cluster="tp2")
+    pins, options = calls[0]
+    assert pins == installer.checkpoint_pins(setup.selection(PROFILE))
+    assert options == checkpoint_search.options(owned=DIRECTORY.format("tp2"), root="/")
+    assert result["owned"] == {"path": DIRECTORY.format("tp2"), "state": "absent", "fstype": "ext4", "free_bytes": 5,
+                               "files": 0}
+    # Per-file entries stay out of the summary; counts and layouts remain.
+    assert result["candidates"] == [{"path": folder, "layout": "local-dir", "commit": None, "branches": [], "home": None,
+                                     "sparkring": False, "found_by": ["folder"], "counts": {"match": 48}}]
+    assert result["search"]["complete"] and result["errors"] == 1 and result["cluster"] == "tp2"
+    json.dumps(result)
 
 
-def test_hub_named_folder_without_revision_is_a_candidate(tmp_path, monkeypatch):
-    import hashlib as _hashlib
-    import json as _json
-    from runtime.host import assets as _assets
-    root = tmp_path / "models" / "Example--Model"
-    root.mkdir(parents=True)
-    (root / "config.json").write_text("{}")
-    (root / "model.safetensors.index.json").write_text(_json.dumps({"weight_map": {"w": "w.safetensors"}}))
-    (root / "w.safetensors").write_text("x")
-    contract = {"config_sha256": _hashlib.sha256(b"{}").hexdigest(),
-                "index_sha256": _hashlib.sha256((root / "model.safetensors.index.json").read_bytes()).hexdigest()}
-    card = {"profile": "p", "model_repository": "Example/Model", "model_revision": "a" * 40}
-    result = _assets.discover_contract(card, contract, run=lambda *a, **k: SimpleNamespace(stdout=""),
-                                       model_roots=(str(tmp_path / "models"),))
-    assert result["model_path"] == str(root)
+def test_checkpoint_directory_names_this_sparks_cluster(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(checkpoint_search, "survey", lambda pins, options: seen.append(options["owned"]) or {})
+    # No controller record and no workspace: setup's default cluster name.
+    assets.discover(PROFILE, root=str(tmp_path))
+    # A worker holds its cluster's workspace; deployment workspaces of managed
+    # GLM installations sit beside it.
+    (tmp_path / "srv/sparkring/tp4").mkdir(parents=True)
+    (tmp_path / "srv/sparkring/tp4-managed").mkdir()
+    assets.discover(PROFILE, root=str(tmp_path))
+    # Node A's controller record names the cluster.
+    record = tmp_path / "var/lib/sparkring/controller/cluster.json"
+    record.parent.mkdir(parents=True)
+    record.write_text(json.dumps({"name": "ring"}))
+    assets.discover(PROFILE, root=str(tmp_path))
+    assert seen == [DIRECTORY.format("sparkring"), DIRECTORY.format("tp4"), DIRECTORY.format("ring")]
+

@@ -240,7 +240,7 @@ def lifecycle(argv):
     parser = argparse.ArgumentParser(prog="sparkring " + argv[0])
     parser.add_argument("operation", choices=("up", "down", "status"))
     parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
-    parser.add_argument("--model-path", help="reuse this verified checkpoint path on every rank")
+    parser.add_argument("--model-path", help="serve this complete copy read-only on every rank; it is verified, never changed")
     parser.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
     parser.add_argument("--fresh-mesh", action="store_true", help="review replacement of an existing native mesh")
     parser.add_argument("--instance", default="main", help="separate local deployment name for a rehearsal")
@@ -300,17 +300,15 @@ def lifecycle(argv):
             directory = directory.with_name(profile + "-" + args.instance)
         if not directory.exists():
             site = model_site(cluster, profile, args.instance)
-            if args.model_path:
-                for row in site["hosts"]:
-                    row.update(model=args.model_path, reuse_verified_model=True)
-            else:
-                for rank, row in enumerate(site["hosts"]):
-                    found = json.loads(discovery.ssh(row["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "assets", "--profile", profile]))
-                    if found["model_path"]:
-                        row.update(model=found["model_path"], reuse_verified_model=True)
-                        print(f"rank {rank}: cached checkpoint found; full shard checks required before launch")
-                    else:
-                        print(f"rank {rank}: checkpoint missing; plan includes a pinned download")
+            # Every rank uses the cluster's SparkRing checkpoint directory for the
+            # profile's revision, whose model operation adopts what that
+            # directory holds and downloads the rest on that rank. A copy
+            # SparkRing did not create is used only when named, and is then
+            # served in place: verified, never written. Copies found elsewhere
+            # on the Sparks are adopted by sparkring install.
+            model = args.model_path or installer.checkpoint_directory(cluster, installer.setup.selection(profile))
+            for row in site["hosts"]:
+                row.update(model=model, reuse_verified_model=bool(args.model_path))
             if profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)

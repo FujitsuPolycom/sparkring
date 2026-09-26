@@ -160,8 +160,12 @@ allowance.
 Planning allowances are 300 GiB for GLM or 220 GiB for Qwen when all three paths
 share one filesystem: checkpoint 200/120 GiB, image 68 GiB, cache/JIT 32 GiB.
 These are conservative budgets, not measured minima. [The policy](../../profiles/storage-planning.json)
-owns them. Image archives require additional space. A verified existing checkpoint
-can use `--reuse-model`; a verified installed image can use `--reuse-image`.
+owns them. `sudo sparkring install` does not use the checkpoint allowance: it
+reserves the bytes a Spark copies, receives or downloads plus the largest such
+file, and nothing for files it hard-links from an existing copy. Image archives
+require additional space. A verified
+existing checkpoint can use `--reuse-model`; a verified installed image can use
+`--reuse-image`.
 These flags change the budget only and do not verify the assets.
 
 After a pass, create model/cache directories owned by the operator on each rank:

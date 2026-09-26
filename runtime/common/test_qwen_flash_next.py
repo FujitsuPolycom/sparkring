@@ -1,7 +1,11 @@
 """Offline admission checks for the isolated Qwen Flash-Next TP2 plan."""
 
+import hashlib
 import json
+import os
 from pathlib import Path
+import sys
+
 import pytest
 from runtime.common.qwen_flash_next import ROOT, render, publication
 from runtime.common import qwen_flash_next as adapter
@@ -290,3 +294,26 @@ def test_media_evidence_does_not_claim_strict_combined_json():
     assert all(row['semantic_pass'] and row['http_status'] == 200 for row in evidence['results'])
     combined = next(row for row in evidence['results'] if row['test'] == 'combined')
     assert combined['strict_json_response'] is False
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="O_NOATIME and relatime access times are Linux behavior")
+def test_start_checks_read_checkpoint_metadata_without_changing_access_times(tmp_path):
+    folder, cache = tmp_path / "mnt/usb/qwen", tmp_path / "cache"
+    folder.mkdir(parents=True)
+    cache.mkdir()
+    contents = {"config.json": b'{"model_type": "qwen"}', "model.safetensors.index.json": b'{"weight_map": {}}'}
+    before = {}
+    for name, value in contents.items():
+        (folder / name).write_bytes(value)
+        info = os.stat(folder / name)
+        # An access time three days old would move on an ordinary read, even under relatime.
+        os.utime(folder / name, ns=(info.st_atime_ns - 3 * 86400 * 10 ** 9, info.st_mtime_ns))
+        before[name] = os.stat(folder / name).st_atime_ns
+    profile = {"model": {"config_sha256": hashlib.sha256(contents["config.json"]).hexdigest(),
+                         "index_sha256": hashlib.sha256(contents["model.safetensors.index.json"]).hexdigest()}}
+    adapter.verify_model_paths(profile, folder, cache)
+    # preflight, create and start run this check on copies served in place, which SparkRing did not create.
+    assert {name: os.stat(folder / name).st_atime_ns for name in contents} == before
+    profile["model"]["config_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="Checkpoint metadata mismatch: config.json"):
+        adapter.verify_model_paths(profile, folder, cache)

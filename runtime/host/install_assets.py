@@ -1,18 +1,20 @@
-"""Prepare head/worker packages and cached images through verified fabric paths."""
+"""Prepare head/worker packages, cached images and the pinned checkpoint through verified fabric paths."""
 import concurrent.futures
 import inspect
 import json
 from pathlib import Path
+import posixpath
 import random
 import re
 import secrets
+import shlex
 import subprocess
 import tempfile
 import threading
 import time
 
-from runtime.common import distribution
-from runtime.host import fabric_stream, node, packages, progress, registry_relay
+from runtime.common import distribution, installer
+from runtime.host import checkpoint_plan, fabric_stream, node, packages, progress, registry_relay
 from runtime.host.install_errors import NeedsInput
 
 DOCKER = ["docker", "--context", "default"]
@@ -334,18 +336,30 @@ class Assets:
         node.save(self.directory, "images.json", result, mode=0o600)
         return result
 
-    def stream_checkpoint(self, runner, rows, manifest, source, target):
-        """Copy the verified checkpoint from ``source`` to cable-adjacent ``target`` over the fabric."""
+    def stream_checkpoint(self, runner, rows, manifest, source, target, names=None):
+        """Copy ``names`` (default: every name of ``manifest``) from ``source`` to cable-adjacent ``target``.
+
+        ``manifest`` holds the pinned ``files`` (SHA-256) and ``sizes`` of the
+        names; its subset for ``names`` is the transfer manifest of the target's
+        ``model-transfer-prepare`` and ``model-transfer-complete``, so the sender
+        needs no receipt and the same call serves pooling and ring receives. The
+        target runs ``fabric_stream.receiver_source``, which places each file
+        only after its SHA-256 equals the pin. Returns the result of
+        ``model-transfer-complete``.
+        """
+        subset = transfer_manifest(manifest, names)
         pairs = fabric_stream.links(self.transport.hosts, source, target)
         if not pairs:
             raise ValueError(f"Node {source} and Node {target} share no fabric subnet")
-        runner.remote(target, "model-transfer-prepare", data=json.dumps(manifest).encode())
-        files = {name: [manifest["sizes"][name], digest] for name, digest in manifest["files"].items()}
+        data = json.dumps(subset).encode()
+        files = {name: [subset["sizes"][name], digest] for name, digest in subset["files"].items()}
         mine, theirs = [pair[0] for pair in pairs], [pair[1] for pair in pairs]
         token = secrets.token_bytes(32)
-        receive = self.code(fabric_stream.receive, theirs, mine, rows[target]["model"], files)
-        with progress.step(f"Node {target}: Copy verified checkpoint from Node {source} over the fabric"), \
+        receive = fabric_stream.receiver_source(theirs, mine, rows[target]["model"], subset["repository"],
+                                                subset["revision"], files)
+        with progress.step(f"Node {target}: Copy checkpoint files from Node {source} over the fabric"), \
                 tempfile.TemporaryFile() as errors:
+            operation(runner, target, "model-transfer-prepare", data)
             receiver = self.popen(self.command(target, ["python3", "-I", "-c", receive]),
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
             try:
@@ -353,8 +367,10 @@ class Assets:
                 receiver.stdin.close()
                 line = receiver.stdout.readline()
                 offer = json.loads(line) if line else None
+                if offer and not set(offer["needed"]) <= set(files):
+                    raise ValueError(f"Node {target}: the checkpoint receiver asked for unplanned files")
                 if offer and offer["needed"]:
-                    groups = fabric_stream.balance(offer["needed"], manifest["sizes"], len(pairs))
+                    groups = fabric_stream.balance(offer["needed"], subset["sizes"], len(pairs))
                     send = self.code(fabric_stream.send, mine, theirs, offer["ports"], rows[source]["model"], groups)
                     sender = self.run(self.command(source, ["python3", "-I", "-c", send]), input=token,
                                       capture_output=True, timeout=7200)
@@ -368,77 +384,211 @@ class Assets:
                 if receiver.poll() is None:
                     receiver.kill()
                     receiver.wait()
-        runner.remote(target, "model-transfer-complete", data=json.dumps(manifest).encode())
-        return target
+            return operation(runner, target, "model-transfer-complete", data)
 
-    def models(self, lock, runner, previous=None):
-        """Verify one cached/downloaded checkpoint, then fill missing peers.
+    def copy(self, runner, rows, manifest, source, target, names=None):
+        """Copy ``names`` from ``source`` to ``target`` with rsync over the administration path.
 
-        Copies use direct fabric streams along the cables; ranks that a stream
-        could not fill are copied with rsync over the administration SSH path.
+        One end is Node A, which runs rsync; the other is reached through the
+        transport's SSH command. rsync writes only into the target's empty
+        staging directory ``receive/rsync/`` (``rsync_staging``), never into the
+        checkpoint directory, and transfers only the names that
+        ``model-transfer-prepare`` reports as needed, which it reads on stdin. It
+        runs without ``-t``, ``-a``, ``--inplace``, ``--append``, ``--partial``
+        and ``--checksum``; ``model-transfer-complete`` then hashes each staged
+        file and places it. Returns the result of ``model-transfer-complete``.
         """
-        import shlex
+        if 0 not in (source, target) or source == target:
+            raise ValueError("rsync copies run between Node A and one other Spark")
+        subset = transfer_manifest(manifest, names)
+        data = json.dumps(subset).encode()
+        with progress.step(f"Node {target}: Copy checkpoint files from Node {source} over {self.transport.mode}"):
+            prepared = operation(runner, target, "model-transfer-prepare", data)
+            needed = sorted(subset["files"])
+            if isinstance(prepared, dict) and isinstance(prepared.get("needed"), list):
+                needed = sorted(set(prepared["needed"]) & set(subset["files"]))
+            if needed:
+                remote = source if source != 0 else target
+                ssh = shlex.join(self.transport.argv(remote)[:-1])
+                alias = self.transport.argv(remote)[-1]
+                origin = (alias + ":" if source != 0 else "") + rows[source]["model"] + "/"
+                destination = (alias + ":" if target != 0 else "") + rsync_staging(rows[target]["model"]) + "/"
+                progress.command([*RSYNC, "--files-from=-", "-e", ssh, origin, destination],
+                                 title=f"Node {target}: Transfer checkpoint files", invoke=self.run, check=True,
+                                 input=("\n".join(needed) + "\n").encode())
+            return operation(runner, target, "model-transfer-complete", data)
+
+    def assemble(self, runner, rows, manifest, item):
+        """Pool ``item["names"]`` into Node A from ``item["source"]``: fabric when cable-adjacent, else rsync.
+
+        A failed fabric stream falls back to rsync. Returns the result of
+        ``model-transfer-complete`` and the transport used.
+        """
+        if item["transport"] == "fabric":
+            try:
+                return self.stream_checkpoint(runner, rows, manifest, item["source"], 0, item["names"]), "fabric"
+            except NeedsInput:
+                raise
+            except FALLBACK as error:
+                progress.say(f"Direct fabric checkpoint copy from Node {item['source']} unavailable ({error}); "
+                             f"copying over {self.transport.mode}.")
+        return self.copy(runner, rows, manifest, item["source"], 0, item["names"]), "rsync"
+
+    def distribute(self, runner, rows, manifest, donor, receives, complete):
+        """Send each receive of ``receives`` along the cables, level by level, then rsync what remains.
+
+        Streams of one level run in parallel. After a failed stream the fabric
+        is not used again; the remaining Sparks are copied with rsync through
+        Node A, which first receives from ``donor`` when it lacks files.
+        ``complete`` gains every Spark that completes. Returns what was sent.
+        """
+        def stream(item):
+            try:
+                return self.stream_checkpoint(runner, rows, manifest, item["source"], item["target"], item["names"])
+            except NeedsInput:
+                raise
+            except FALLBACK as error:
+                return error
+
+        pending, sent = sorted(receives, key=lambda item: (item["level"], item["target"])), []
+        for level in sorted({item["level"] for item in pending}):
+            batch = [item for item in pending if item["level"] == level]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as pool:
+                outcomes = list(pool.map(stream, batch))
+            failure = None
+            for item, outcome in zip(batch, outcomes):
+                if isinstance(outcome, BaseException):
+                    failure = failure or outcome
+                    continue
+                finished(outcome, item["target"], f"receiving from Node {item['source']}")
+                complete.add(item["target"])
+                pending.remove(item)
+                sent.append({**item, "transport": "fabric"})
+            if failure is not None:
+                progress.say(f"Direct fabric checkpoint copy unavailable ({failure}); copying over {self.transport.mode}.")
+                break
+        # The head is the relay for the opposite side of the ring, never the PC.
+        for item in sorted(pending, key=lambda item: (item["target"] != 0, item["level"], item["target"])):
+            source = donor if item["target"] == 0 else 0
+            if source not in complete:
+                raise ValueError(f"Node {source} holds no complete checkpoint to copy to Node {item['target']}")
+            outcome = self.copy(runner, rows, manifest, source, item["target"], item["names"])
+            finished(outcome, item["target"], f"receiving from Node {source}")
+            complete.add(item["target"])
+            sent.append({**item, "source": source, "transport": "rsync"})
+        return sent
+
+    def models(self, lock, runner, previous=None, plan=None, receipts=None):
+        """Place the pinned checkpoint on every Spark within the approved checkpoint plan.
+
+        ``plan`` is the approved ``sparkring-checkpoint-plan/v1`` document (the
+        plan reviewed with ``--plan`` when one bounds this run). Without one, the
+        approval is ``standing_plan``: adoption uses no source outside SparkRing's
+        directories, nothing is downloaded, and each Spark may write at most the
+        guard's tolerance. ``receipts`` lists, for every Spark or per rank, the
+        other deployments' model receipts that adoption refreshes.
+
+        1. The previous deployment's receipts are reused where the hosts and
+           paths are equal.
+        2. ``model-adopt`` runs on every Spark with an owned row, in parallel,
+           with its local actions from the plan. Rows served in place are
+           verified later by the ``model`` operation itself.
+        3. The guard (``checkpoint_plan.unplanned``) compares what adoption left
+           with the plan before any download, pooling or receive; beyond it the
+           install stops with ``NeedsInput(field="checkpoint")``.
+        4. Without a complete Spark, Node A pools the names other Sparks verified
+           and downloads only the names no Spark holds (``model-fetch``).
+        5. The lowest-numbered complete Spark is the donor; the others receive
+           their missing names along the cables, with rsync through Node A as the
+           fallback.
+
+        Every Spark with an owned row ends with a receipt, so the ``model``
+        operation that follows only verifies. The result is saved as
+        ``checkpoint-result.json``.
+        """
         rows = lock["site"]["ranks"]
+        pins = installer.checkpoint_pins(lock["selection"])
+        approved = plan if plan is not None else standing_plan(lock, pins)
+        check_plan(approved, pins, rows)
+        problems = approved.get("problems") or []
+        if problems:
+            # The workflow stops on these before approval; a plan carrying one approves nothing.
+            raise NeedsInput(problems[0]["message"], field=problems[0]["field"], details={"problems": problems})
+        count = len(rows)
+        in_place = [rank for rank, row in enumerate(rows) if row.get("reuse_verified_model")]
+        owned = [rank for rank in range(count) if rank not in in_place]
         if previous:
-            from runtime.common import installer
             saved = installer.read(Path(previous) / "deployment.lock.json")
             if [r["host"] for r in saved["site"]["ranks"]] == [r["host"] for r in rows]:
                 payload = json.dumps({"workspace": saved["site"]["workspace"], "deployment": saved["id"]}).encode()
                 for row in rows:
-                    runner.remote(row["rank"], "model-reuse-receipt", data=payload)
-        cached = [r["rank"] for r in rows if runner.remote(r["rank"], "model-present")["present"]]
-        donor = cached[0] if cached else 0
-        runner.remote(donor, "model")
-        manifest = runner.remote(donor, "model-transfer-manifest")
-        names = sorted(manifest["files"])
-        listing = self.directory / "checkpoint-files.txt"
-        listing.write_text("\n".join(names) + "\n", encoding="utf-8")
-        missing = [r["rank"] for r in rows if r["rank"] not in cached and r["rank"] != donor]
-        have = {donor, *cached}
-        if missing:
-            # Copies follow the cables outward from the donor, each level in
-            # parallel; a failed direct copy leaves the rest to the SSH path.
-            try:
-                for level in fabric_stream.tree(len(rows), donor):
-                    level = [(s, t) for s, t in level if t not in have]
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(level))) as pool:
-                        for target in pool.map(lambda edge: self.stream_checkpoint(runner, rows, manifest, *edge), level):
-                            have.add(target)
-            except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
-                progress.say(f"Direct fabric checkpoint copy unavailable ({error}); copying over {self.transport.mode}.")
+                    operation(runner, row["rank"], "model-reuse-receipt", payload)
 
-        def copy(source, target):
-            runner.remote(target, "model-transfer-prepare", data=json.dumps(manifest).encode())
-            remote = source if source != 0 else target
-            ssh = shlex.join(self.transport.argv(remote)[:-1])
-            alias = self.transport.argv(remote)[-1]
-            origins = (alias + ":" if source != 0 else "") + rows[source]["model"] + "/"
-            destination = (alias + ":" if target != 0 else "") + rows[target]["model"] + "/"
-            with progress.step(f"Node {target}: Copy verified checkpoint over {self.transport.mode}"):
-                progress.command(["rsync", "-rlt", "--partial", "--checksum", "--protect-args", "--rsync-path=sudo -n rsync",
-                                  "--files-from=" + str(listing), "-e", ssh, origins, destination],
-                                 title=f"Node {target}: Transfer checkpoint files", invoke=self.run, check=True)
-            runner.remote(target, "model-transfer-complete", data=json.dumps(manifest).encode())
+        def adopt(rank):
+            data = json.dumps(checkpoint_plan.adoption(approved, rank, receipts_for(receipts, rank))).encode()
+            with progress.step(f"Node {rank}: " + adoption_label(approved["nodes"][rank])):
+                return operation(runner, rank, "model-adopt", data)
+        results = [None] * count
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(owned))) as pool:
+            futures = [(rank, pool.submit(adopt, rank)) for rank in owned]
+        for rank, future in futures:
+            results[rank] = future.result()
+        items = checkpoint_plan.unplanned(approved, results)
+        if items:
+            raise NeedsInput(checkpoint_plan.unplanned_message(items, approved.get("command") or checkpoint_plan.COMMAND),
+                             field="checkpoint", details={"items": items})
+        after = checkpoint_plan.redistribute(approved, results)
+        complete = set(after["complete"])
+        manifest = transfer_manifest({"repository": pins["repository"], "revision": pins["revision"],
+                                      "files": {n: pins["files"][n]["sha256"] for n in approved["required"]["sizes"]},
+                                      "sizes": approved["required"]["sizes"]})
+        pooled = []
+        if after["pool"] or after["hub"]:
+            outcome = None
+            for item in after["pool"]:
+                outcome, transport = self.assemble(runner, rows, manifest, item)
+                pooled.append({**item, "transport": transport})
+            if after["hub"]:
+                with progress.step("Node 0: Download missing checkpoint files from huggingface.co"):
+                    outcome = operation(runner, 0, "model-fetch", json.dumps({"names": after["hub"]}).encode())
+            finished(outcome, 0, "assembling it from the other Sparks and huggingface.co")
+            complete.add(0)
+        received = self.distribute(runner, rows, manifest, after["donor"], after["receive"], complete)
+        incomplete = [rank for rank in owned if rank not in complete]
+        if incomplete:
+            raise ValueError("The checkpoint is incomplete on " + ", ".join(f"Node {rank}" for rank in incomplete)
+                             + " after adoption and transfers; repeat sudo sparkring install")
+        result = {"schema": RESULT_SCHEMA, "repository": pins["repository"], "revision": pins["revision"],
+                  "approval": approved.get("approval"), "donor_rank": after["donor"], "in_place_ranks": in_place,
+                  "complete_after_adoption": sorted(after["complete"]),
+                  "adopted": [{"rank": rank, "complete_after_adoption": results[rank].get("complete"),
+                               **{key: results[rank].get(key) for key in ("linked", "copied", "bytes_written",
+                                                                          "refreshed")}}
+                              for rank in owned],
+                  "pooled": pooled, "downloaded": list(after["hub"]), "received": received}
+        node.save(self.directory, "checkpoint-result.json", result, mode=0o600)
+        return result
 
-        # The head is the relay for the opposite side of the ring, never the PC.
-        if 0 not in have:
-            copy(donor, 0)
-            have.add(0)
-        for rank in missing:
-            if rank not in have:
-                copy(0, rank)
-        return {"donor_rank": donor, "cached_ranks": cached, "copied_ranks": [r for r in range(len(rows)) if r not in cached and r != donor]}
-
-    def runner(self, directory, previous=None, images=None):
+    def runner(self, directory, previous=None, images=None, plan=None, receipts=None):
         """Runner whose checkpoint and image phases wait for ``images``, a pending fan-out.
 
-        Checkpoint work needs the serving image: a Hugging Face download, and a
-        repair of a reused copy, run the image's own client with ``--pull
-        never``. The checkpoint phase therefore starts only after every node
-        holds the image.
+        Every checkpoint write (a copy, a fabric receive, rsync or a download)
+        needs the serving image on its Spark, and a download runs the image's own
+        Hugging Face client with ``--pull never``. The first ``model`` action
+        therefore waits for the image future, then runs ``models`` once with the
+        approved ``plan`` and ``receipts``; the other ranks' ``model`` actions
+        report its outcome. A ``NeedsInput`` raised there is kept, with its type,
+        in ``needs_input``, and every rank's action reports only that the plan
+        needs a decision, so the request itself is printed once, by the caller,
+        which raises ``needs_input`` when the preparation fails. Any other
+        failure is kept as ``models_error``, whose text names the Spark and the
+        cause. ``checkpoint`` holds the result of ``models``.
         """
         from scripts.installer_runner import Runner
         assets = self
+        # ``models`` receives ``plan`` and ``receipts`` only when they are given, so
+        # a replacement taking (lock, runner, previous) also serves as ``models``.
+        extra = {key: value for key, value in (("plan", plan), ("receipts", receipts)) if value is not None}
 
         def failed(message):
             return {"returncode": 1, "stdout": "", "stderr": message, "uncertain": False}
@@ -449,6 +599,8 @@ class Assets:
                 self.model_lock = threading.Lock()
                 self.models_prepared = False
                 self.models_error = None
+                self.needs_input = None
+                self.checkpoint = None
 
             def _call(self, target, argv, timeout):
                 if argv[1] in ("model", "image") and images is not None and images.exception() is not None:
@@ -459,8 +611,11 @@ class Assets:
                     with self.model_lock:
                         if not self.models_prepared and self.models_error is None:
                             try:
-                                assets.models(self.lock, self, previous)
+                                self.checkpoint = assets.models(self.lock, self, previous, **extra)
                                 self.models_prepared = True
+                            except NeedsInput as error:
+                                self.needs_input = error
+                                self.models_error = STOPPED
                             except Exception as error:  # noqa: BLE001 - reported as the phase's failure
                                 # A returned failure is recorded in the operation
                                 # receipt, where a raised error would leave every
@@ -471,3 +626,141 @@ class Assets:
                             return failed(self.models_error)
                 return super()._call(target, argv, timeout)
         return PreparedRunner(directory)
+
+
+# Transfer errors after which the rsync path is tried; NeedsInput is re-raised before.
+FALLBACK = (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError)
+RESULT_SCHEMA = "sparkring-checkpoint-result/v1"
+# What each Spark's checkpoint action reports when the plan needs a decision; the request is printed once.
+STOPPED = "Stopped: the checkpoint plan needs a decision; the request is printed at the end."
+# rsync writes new files into an empty staging directory. Without -t, -a,
+# --inplace, --append, --partial or --checksum it neither sets times nor writes
+# into existing files. --perms with --chmod gives every received file mode
+# 0644, like every file SparkRing writes into a checkpoint directory, whatever
+# the receiving rsync's umask. --open-noatime keeps the sender's reads from
+# changing access times of files SparkRing did not create; it needs rsync 3.2.3
+# or later on both ends.
+RSYNC = ["rsync", "-r", "--perms", "--no-owner", "--no-group", "--chmod=D0755,F0644", "--protect-args",
+         "--open-noatime", "--rsync-path=sudo -n rsync"]
+
+
+def cause(error):
+    """What went wrong, as the last line of an error's text without its exception name.
+
+    A rank operation's failure arrives as the remote traceback; its last line
+    names the cause, such as ``ValueError: Downloading config.json from
+    huggingface.co failed: ...``.
+    """
+    lines = [line.strip() for line in str(error).splitlines() if line.strip()]
+    text = lines[-1] if lines else type(error).__name__
+    return re.sub(r"^(?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*(?:Error|Exception|Exit|Interrupt|Expired):\s*", "", text,
+                  count=1)[:500]
+
+
+def operation(runner, rank, name, data=None):
+    """Run checkpoint rank operation ``name`` on ``rank``; a failure names the Spark and its cause."""
+    try:
+        return runner.remote(rank, name, data=data)
+    except NeedsInput:
+        raise
+    except Exception as error:  # noqa: BLE001 - reported with the Spark it came from
+        raise RuntimeError(f"Node {rank}: {cause(error)}") from error
+
+
+def transfer_manifest(manifest, names=None):
+    """``{"repository", "revision", "files": {name: sha256}, "sizes": {name: size}}`` restricted to ``names``."""
+    names = sorted(manifest["files"] if names is None else names)
+    unknown = [name for name in names if name not in manifest["files"] or name not in manifest["sizes"]]
+    if unknown:
+        raise ValueError("Checkpoint transfer names unpinned files: " + ", ".join(unknown[:5]))
+    return {"repository": manifest["repository"], "revision": manifest["revision"],
+            "files": {name: manifest["files"][name] for name in names},
+            "sizes": {name: int(manifest["sizes"][name]) for name in names}}
+
+
+def rsync_staging(model):
+    """rsync's destination for checkpoint directory ``model``: ``receive/rsync`` in its state directory.
+
+    The state directory is ``.<name of model>.sparkring`` beside ``model``
+    (``checkpoint_place.Claim.state``).
+    """
+    parent, name = posixpath.split(posixpath.normpath(model))
+    return posixpath.join(parent, "." + name + ".sparkring", "receive", "rsync")
+
+
+def receipts_for(receipts, rank):
+    """The receipts adoption refreshes on ``rank``: one list for every Spark, or a mapping from rank."""
+    if not receipts:
+        return []
+    if isinstance(receipts, dict):
+        return list(receipts.get(rank, receipts.get(str(rank), ())))
+    return list(receipts)
+
+
+def adoption_label(node):
+    """Progress label of one Spark's ``model-adopt``.
+
+    A Spark whose plan holds no present, linked or copied file only claims and
+    settles SparkRing's directory before it receives or downloads.
+    """
+    actions = {entry["action"] for entry in node["files"].values()}
+    if not actions & {"present", "link", "copy"}:
+        return "Prepare SparkRing's checkpoint directory"
+    sources = {source["path"]: source for source in node.get("sources") or []}
+    other_disks = any(entry["action"] == "copy" and (sources.get(entry.get("candidate")) or {}).get("other_filesystem")
+                      for entry in node["files"].values())
+    if other_disks and not actions & {"link", "present"}:
+        return "Copy checkpoint files from other disks"
+    return "Link and verify local checkpoint files"
+
+
+def finished(outcome, rank, doing):
+    """Refuse a rank-operation result that leaves ``rank`` without its complete checkpoint.
+
+    ``model-adopt``, ``model-fetch`` and ``model-transfer-complete`` report
+    ``complete``; a result without that key reports success with ``ok``.
+    """
+    complete = outcome.get("complete", outcome.get("ok") is True) if isinstance(outcome, dict) else False
+    if complete is not True:
+        missing = outcome.get("missing") if isinstance(outcome, dict) else None
+        names = [item.get("name") if isinstance(item, dict) else item for item in missing or []]
+        raise ValueError(f"Node {rank}: the checkpoint is incomplete after {doing}"
+                         + (" (missing " + ", ".join(str(n) for n in names[:5]) + ")" if names else ""))
+
+
+def standing_plan(lock, pins):
+    """The approval that holds without a checkpoint plan.
+
+    Rows keep their locked mode; owned rows plan no local source, no download
+    and no write, so the guard permits only the tolerance of unplanned writes
+    per Spark.
+    """
+    sizes = checkpoint_plan.required_files(pins)
+    nodes = []
+    for rank, row in enumerate(lock["site"]["ranks"]):
+        in_place = bool(row.get("reuse_verified_model"))
+        nodes.append({"rank": rank, "host": row["host"], "hostname": row["host"],
+                      "mode": "in-place" if in_place else "owned", "path": row["model"],
+                      "files": {name: {"action": "in-place", "size": size} for name, size in sizes.items()}
+                      if in_place else {},
+                      "bytes": {key: 0 for key in checkpoint_plan.BYTE_KEYS}, "write_bytes": 0, "sources": []})
+    return {"schema": checkpoint_plan.SCHEMA, "repository": pins["repository"], "revision": pins["revision"],
+            "pins_sha256": checkpoint_plan.pins_digest(pins), "approval": None,
+            "required": {"files": len(sizes), "bytes": sum(sizes.values()), "sizes": sizes},
+            "hub_files": [], "hub_bytes": 0, "nodes": nodes}
+
+
+def check_plan(plan, pins, rows):
+    """Refuse an approved plan made for another checkpoint, other Sparks, other paths or other modes."""
+    if (plan.get("schema") != checkpoint_plan.SCHEMA
+            or (plan.get("repository"), plan.get("revision")) != (pins["repository"], pins["revision"])
+            or plan.get("pins_sha256") != checkpoint_plan.pins_digest(pins)
+            or plan["required"]["sizes"] != checkpoint_plan.required_files(pins)):
+        raise ValueError("The approved checkpoint plan is for another checkpoint revision or pin manifest")
+    nodes = plan["nodes"]
+    if len(nodes) != len(rows) or any(
+            (node["host"], node["path"], node["mode"] == "in-place") != (row["host"], row["model"],
+                                                                       bool(row.get("reuse_verified_model")))
+            for node, row in zip(nodes, rows)):
+        raise ValueError("The approved checkpoint plan names other Sparks, checkpoint paths or modes than the "
+                         "deployment lock")

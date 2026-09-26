@@ -68,6 +68,117 @@ def checkpoint_contract(card):
     return model
 
 
+PIN_SCHEMA = "sparkring-checkpoint-pins/v1"
+PIN_KEYS = {"schema", "repository", "revision", "index", "weights", "optional", "files"}
+PIN_ENTRY_KEYS = {"size", "sha256", "git_blob", "lfs", "xet_hash"}
+
+
+def _checkpoint_slug(card):
+    """`<owner>--<name>` of the card's repository, after checking repository and revision.
+
+    Hub repository names never contain "--" or "..", so the slug names exactly
+    one repository, as the Hub cache's `models--<owner>--<name>` does.
+    """
+    repository, revision = card["model_repository"], card["model_revision"]
+    part = r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,94}[A-Za-z0-9])?"
+    if (not isinstance(repository, str) or not re.fullmatch(part + "/" + part, repository)
+            or "--" in repository or ".." in repository):
+        raise ValueError("Checkpoint repository must be a Hugging Face owner/name")
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Checkpoint revision must be a full 40-character commit id")
+    return repository.replace("/", "--")
+
+
+def _pinned_name(name):
+    """A normalized relative POSIX path that cannot leave a checkpoint directory."""
+    return (isinstance(name, str) and bool(name) and not name.startswith("/")
+            and not any(character in name for character in "\0\r\n\\")
+            and PurePosixPath(name).as_posix() == name
+            and not {"", ".", "..", ".cache", ".git"} & set(name.split("/")))
+
+
+def checkpoint_pins(card, *, root=None):
+    """The validated pin manifest of the card's checkpoint revision.
+
+    `profiles/checkpoints/<owner>--<name>/<revision>.json`, written by
+    `scripts/pin_checkpoint.py`, pins every file of the revision in `files`
+    (size, SHA-256, Git blob id, and LFS and Xet identities). `index` names the
+    weight index, `weights` is the sorted set of the index's weight files, and
+    `optional` lists documentation and repository metadata that no serving
+    component reads. The required files are `files` minus `optional`.
+
+    The manifest is refused unless it names the card's repository and revision,
+    its `config.json` and index SHA-256 equal `checkpoint_contract(card)`, every
+    name is a normalized relative path without `..`, `.cache` or `.git`
+    components, NUL, CR, LF or backslash, every size is a positive integer and
+    every digest well formed, the index and weights are required files, and
+    `optional` names only pinned files. `root` selects another checkout.
+    """
+    relative = f"profiles/checkpoints/{_checkpoint_slug(card)}/{card['model_revision']}.json"
+    path = Path(root if root is not None else ROOT) / relative
+    if not path.is_file():
+        raise ValueError(f"No pin manifest {relative}; generate it with scripts/pin_checkpoint.py")
+    pins = profiles.read_json(path)
+
+    def check(condition, reason):
+        if not condition:
+            raise ValueError(f"{relative}: {reason}")
+
+    check(isinstance(pins, dict) and set(pins) == PIN_KEYS, "expected exactly " + ", ".join(sorted(PIN_KEYS)))
+    check(pins["schema"] == PIN_SCHEMA, "expected " + PIN_SCHEMA)
+    check((pins["repository"], pins["revision"]) == (card["model_repository"], card["model_revision"]),
+          "pins another repository or revision than the profile")
+    files = pins["files"]
+    check(isinstance(files, dict) and files, "files must map each file name to its pins")
+    for name, entry in files.items():
+        check(_pinned_name(name), f"unsafe file name {name!r}")
+        check(isinstance(entry, dict) and {"size", "sha256", "git_blob"} <= set(entry) <= PIN_ENTRY_KEYS,
+              f"{name}: expected size, sha256, git_blob and optionally lfs and xet_hash")
+        check(type(entry["size"]) is int and entry["size"] > 0, f"{name}: size must be a positive integer")
+        check(isinstance(entry["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]),
+              f"{name}: sha256 must be 64 lowercase hexadecimal digits")
+        check(isinstance(entry["git_blob"], str) and re.fullmatch(r"[0-9a-f]{40}", entry["git_blob"]),
+              f"{name}: git_blob must be 40 lowercase hexadecimal digits")
+        check(entry.get("lfs", True) is True, f"{name}: lfs, when present, must be true")
+        check("xet_hash" not in entry or (isinstance(entry["xet_hash"], str) and re.fullmatch(r"[0-9a-f]{64}", entry["xet_hash"])),
+              f"{name}: xet_hash must be 64 lowercase hexadecimal digits")
+    directories = {parent for name in files for parent in PurePosixPath(name).parents}
+    check(not any(PurePosixPath(name) in directories for name in files), "a file name is also a directory of another file")
+    for key in ("weights", "optional"):
+        values = pins[key]
+        check(isinstance(values, list) and all(isinstance(value, str) for value in values)
+              and len(set(values)) == len(values), f"{key} must be a list of distinct file names")
+    check(pins["weights"] == sorted(pins["weights"]), "weights must be sorted")
+    check(set(pins["optional"]) <= set(files), "optional names a file that is not pinned")
+    required = set(files) - set(pins["optional"])
+    check(isinstance(pins["index"], str) and pins["index"] in required, "index must be a required file")
+    check(pins["weights"] and set(pins["weights"]) <= required, "weights must name at least one file, all required")
+    check("config.json" in required, "config.json must be a required file")
+    contract = checkpoint_contract(card)
+    check(files["config.json"]["sha256"] == contract.get("config_sha256"),
+          "config.json differs from the profile's checkpoint contract")
+    check(files[pins["index"]]["sha256"] == contract.get("index_sha256"),
+          "the index differs from the profile's checkpoint contract")
+    return pins
+
+
+def checkpoint_directory(cluster, card):
+    """SparkRing's checkpoint directory for the card's revision on one cluster.
+
+    `/srv/sparkring/<cluster>/checkpoints/<owner>--<name>/<revision>` is shared
+    by every deployment of that revision on the cluster, whatever its profile or
+    node count. It is disjoint from the cluster cache
+    `/srv/sparkring/<cluster>/cache` and from deployment workspaces
+    `/srv/sparkring/<cluster>/<profile>[-<instance>]`, whose names start with a
+    profile ID. `cluster` is the cluster record, whose `name` is used, or that
+    name itself.
+    """
+    name = cluster.get("name") if isinstance(cluster, dict) else cluster
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name):
+        raise ValueError("Choose a lowercase cluster name")
+    return f"/srv/sparkring/{name}/checkpoints/{_checkpoint_slug(card)}/{card['model_revision']}"
+
+
 def managed_workspace(name):
     if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name):
         raise ValueError("Invalid managed deployment name")
@@ -299,12 +410,12 @@ def operation_plan(lock, action):
             phases = [phase("owned", ranks), phase("stop", ranks, "stops-model", "stopped")]
     else:
         # Checkpoint preparation precedes image admission, but a checkpoint
-        # download or repair runs inside the serving image, so the image must
-        # already be on the node. sparkring install distributes it before this
-        # phase starts (install_assets.Assets.runner). Callers that run this
-        # plan with the plain installer_runner.Runner, such as the lower-level
-        # sparkring up, need the image on every node beforehand; that path
-        # does not provide it.
+        # download runs the serving image's Hugging Face client, so the image
+        # must already be on the node. sparkring install distributes it before
+        # this phase starts (install_assets.Assets.runner). Callers that run
+        # this plan with the plain installer_runner.Runner, such as the
+        # lower-level sparkring up, need the image on every node beforehand;
+        # that path does not provide it.
         phases = [phase("prepare-prerequisites" if action == "prepare" else "prerequisites", ranks), phase("source", ranks, "mutates-host", "source-check"),
                   phase("model", ranks, "mutates-host", "model-check"),
                   phase("image", ranks, "mutates-host", "image-check")]
@@ -338,7 +449,10 @@ def operation_plan(lock, action):
                        phase("start", ranks[:1], "starts-model", "running"), phase("ready", ranks)]
             # Phase IDs are receipt keys, so API/worker barriers need distinct IDs.
             phases[-3]["id"], phases[-2]["id"] = "start-workers", "start-api"
-        phases += [phase("smoke", ranks[:1])]
+        # Checkpoint files verified before start must still be unchanged once
+        # every rank has loaded the model; a change fails the switch, so the
+        # previous deployment is restored.
+        phases += [phase("smoke", ranks[:1]), phase("model-settled", ranks)]
     return deploy_engine.seal_plan({"schema": "sparkring-deploy-plan/v1", "deployment": lock["id"],
                                     "operation": action, "phases": phases})
 

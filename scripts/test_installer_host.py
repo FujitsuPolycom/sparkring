@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -14,7 +15,14 @@ import pytest
 from runtime.common import compose, installer
 from runtime.common.container_spec import expected_inspection
 from runtime.common.test_installer import GLM, QWEN, site
+from runtime.host import checkpoint_place as place
 from scripts import installer_host as host, installer_runner as runner
+from scripts.test_installer_adopt import (DEPLOYMENT, IMAGE, REPOSITORY, REVISION, SHARDS, changes, contents, entry,
+                                          environment, journal, plain_folder, required, sha256, state_directory,
+                                          tree_state, weights, write)
+
+linux = pytest.mark.skipif(not sys.platform.startswith("linux"),
+                           reason="SparkRing checkpoint directories use Linux hard links, /proc/self/fd and flock")
 
 
 def facts(row):
@@ -139,27 +147,164 @@ def test_daemon_empty_capabilities_and_nvidia_selinux_default(selinux, monkeypat
         host.owned(spec, info, image)
 
 
-def test_unchanged_verified_checkpoint_uses_file_identity_but_changes_rehash(tmp_path, monkeypatch):
-    model = tmp_path / "model"
-    model.mkdir()
-    for name, content in {"config.json": b"{}", "model.safetensors.index.json": b'{"weight_map":{"w":"weights.safetensors"}}', "weights.safetensors": b"original"}.items():
-        (model / name).write_bytes(content)
-    hashes = host.model_files(model)
-    receipt = {"repository": "test/model", "revision": "a" * 40, "path": str(model), "files": hashes,
-               "file_stats": host.model_file_stats(model)}
-    lock = {"selection": {"profile": "fixture", "model_repository": "test/model", "model_revision": "a" * 40}}
-    row = {"model": str(model)}
+def served_copy(tmp_path, monkeypatch, name="models/qwen"):
+    """A named exact copy served in place, verified once, with Linux-style stat fast paths."""
+    data = contents()
+    folder = plain_folder(tmp_path / name, data, required(data))
+    env = environment(tmp_path, monkeypatch, reuse=True, model=folder)
     monkeypatch.setattr(host, "POSIX_STATS", True)
-    monkeypatch.setattr(installer, "checkpoint_contract", lambda _: {"config_sha256": hashes["config.json"], "index_sha256": hashes["model.safetensors.index.json"]})
-    original = host.model_files
-    calls = []
-    monkeypatch.setattr(host, "model_files", lambda path: calls.append(path) or original(path))
-    host.verify_model(lock, row, tmp_path / "receipt.json", receipt=receipt)
-    assert calls == []
-    (model / "weights.safetensors").write_bytes(b"changed")
-    with pytest.raises(ValueError, match="Checkpoint differs"):
-        host.verify_model(lock, row, tmp_path / "receipt.json", receipt=receipt)
-    assert calls
+    assert env.call("model") == {"ok": True}
+    return env, folder
+
+
+def touch(path, seconds=1):
+    info = os.stat(path)
+    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + seconds * 10**9))
+
+
+def test_verify_rehashes_only_changed_entries(tmp_path, monkeypatch):
+    env, folder = served_copy(tmp_path, monkeypatch)
+    receipt_path = env.state / "model.json"
+    hashed = []
+    original = host._hash_files
+    monkeypatch.setattr(host, "_hash_files", lambda root, recorded: hashed.append(sorted(recorded)) or original(root, recorded))
+    host.verify_model(env.lock, env.row, receipt_path)
+    assert hashed == []
+    # A new modification time with unchanged content re-hashes only that file.
+    touch(folder / "config.json")
+    saved = receipt_path.read_bytes()
+    receipt = host.verify_model(env.lock, env.row, receipt_path)
+    assert hashed == [["config.json"]]
+    assert receipt["file_stats"]["config.json"] == host.model_file_stats(folder, required(env.data), in_place=True)["config.json"]
+    assert receipt_path.read_bytes() == saved
+    # Changed content of the same size is found; the unchanged files are not read.
+    (folder / SHARDS[0]).write_bytes(env.data[SHARDS[0]].upper())
+    touch(folder / SHARDS[0], 2)
+    with pytest.raises(ValueError, match=r"differs from its recorded files \(model-00001-of-00002.safetensors\); "
+                                         "SparkRing does not change it"):
+        host.verify_model(env.lock, env.row, receipt_path)
+    assert hashed[-1] == ["config.json", SHARDS[0]]
+    # Unknown receipt keys and receipt entries outside the pinned names are ignored.
+    (folder / SHARDS[0]).write_bytes(env.data[SHARDS[0]])
+    document = json.loads(receipt_path.read_text())
+    document.update(sources=[{"path": "/elsewhere"}], extra="ignored")
+    document["files"]["README.md"] = "0" * 64
+    host.verify_model(env.lock, env.row, receipt_path, receipt=document)
+
+
+def test_receipt_refresh_writes_only_the_ranks_own_receipt(tmp_path, monkeypatch):
+    env, folder = served_copy(tmp_path, monkeypatch)
+    receipt_path, record = env.state / "model.json", host._checkpoint_record(env.row["model"])
+    touch(folder / "config.json")
+    current = host.model_file_stats(folder, required(env.data), in_place=True)
+    saved, saved_record = receipt_path.read_bytes(), record.read_bytes()
+    host.verify_model(env.lock, env.row, receipt_path)
+    assert (receipt_path.read_bytes(), record.read_bytes()) == (saved, saved_record)
+    host.verify_model(env.lock, env.row, receipt_path, refresh=True)
+    for path in (receipt_path, record):
+        assert json.loads(path.read_text())["file_stats"] == current
+    hashed = []
+    original = host._hash_files
+    monkeypatch.setattr(host, "_hash_files", lambda root, recorded: hashed.append(sorted(recorded)) or original(root, recorded))
+    assert env.call("model-check") == {"ok": True} and hashed == []
+    # Receipt reuse reads another deployment's receipt and never rewrites it.
+    previous = tmp_path / "previous"
+    (previous / "installer").mkdir(parents=True)
+    (previous / ".installer-owner.json").write_text(json.dumps({"deployment": "e" * 64}))
+    shutil.copyfile(receipt_path, previous / "installer/model.json")
+    theirs = (previous / "installer/model.json").read_bytes()
+    receipt_path.unlink()
+    touch(folder / "tokenizer.json")
+    assert env.call("model-reuse-receipt", {"workspace": str(previous), "deployment": "e" * 64}) == {"reused": True}
+    assert (previous / "installer/model.json").read_bytes() == theirs
+    assert json.loads(receipt_path.read_text())["file_stats"] == host.model_file_stats(folder, required(env.data), in_place=True)
+
+
+def owned_workspace(root, deployment, receipt):
+    """A retained deployment's workspace holding its checkpoint receipt; returns the receipt path."""
+    path = root / "installer/model.json"
+    path.parent.mkdir(parents=True)
+    if deployment is not None:
+        (root / ".installer-owner.json").write_text(json.dumps({"deployment": deployment}))
+    path.write_text(json.dumps(receipt, indent=2) + "\n")
+    return path
+
+
+def receipt_for(data, folder, names, **changes):
+    return {"repository": REPOSITORY, "revision": REVISION, "path": str(folder),
+            "files": {name: changes.get(name, sha256(data[name])) for name in names},
+            "file_stats": {name: place.stats(os.lstat(folder / name)) for name in names},
+            "origin": "operator-declared-verified-copy"}
+
+
+@linux
+def test_other_receipts_are_refreshed_only_for_verified_inodes(tmp_path, monkeypatch):
+    env = environment(tmp_path, monkeypatch)
+    data = env.data
+    user = plain_folder(tmp_path / "var/tmp/models/qwen", data)
+    other = plain_folder(tmp_path / "var/tmp/models/other", data, weights(data))
+    workspaces = tmp_path / "srv/sparkring/tp2"
+    served = owned_workspace(workspaces / "qwen-a", "a" * 64, receipt_for(data, user, sorted(data)))
+    stale = owned_workspace(workspaces / "qwen-b", "b" * 64, receipt_for(data, user, required(data), **{SHARDS[0]: "0" * 64}))
+    elsewhere = owned_workspace(workspaces / "qwen-c", "c" * 64, receipt_for(data, other, weights(data)))
+    unowned = owned_workspace(workspaces / "qwen-d", None, receipt_for(data, user, required(data)))
+    claimed = owned_workspace(workspaces / "qwen-e", "e" * 64, receipt_for(data, user, required(data)))
+    record = host._checkpoint_record(str(user))
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps(receipt_for(data, user, sorted(data))))
+    untouched = {path: path.read_bytes() for path in (elsewhere, unowned, claimed)}
+    before = {path: json.loads(path.read_text()) for path in (served, stale, record)}
+    files = {name: entry("link" if name in weights(data) else "copy", user / name, data, name) for name in required(data)}
+    # Linking sets the change time from the kernel's coarse clock; let it move past the files' creation.
+    time.sleep(0.05)
+    listed = [str(served), str(stale), str(elsewhere), str(unowned), {"path": str(claimed), "deployment": "f" * 64}]
+    result = env.call("model-adopt", {"files": files, "receipts": listed, "tolerance_bytes": 0})
+    assert result["complete"] and sorted(result["refreshed"]) == sorted([str(served), str(stale), str(record)])
+    for path, document in before.items():
+        after = json.loads(path.read_text())
+        assert {key: value for key, value in after.items() if key != "file_stats"} == {
+            key: value for key, value in document.items() if key != "file_stats"}
+        for name, recorded in document["file_stats"].items():
+            refreshed = name in weights(data) and document["files"][name] == sha256(data[name])
+            expected = place.stats(os.lstat(user / name)) if refreshed else recorded
+            assert after["file_stats"][name] == expected, (path, name)
+            assert (after["file_stats"][name] != recorded) is refreshed
+    assert {path: path.read_bytes() for path in untouched} == untouched
+    # The refreshed deployment's receipt again describes its files, so it verifies without hashing.
+    row = {**env.row, "model": str(user), "reuse_verified_model": True}
+    hashed = []
+    original = host._hash_files
+    monkeypatch.setattr(host, "_hash_files", lambda root, recorded: hashed.append(sorted(recorded)) or original(root, recorded))
+    host.verify_model(env.lock, row, served)
+    assert hashed == []
+
+
+def test_reused_copy_that_differs_is_reported_not_repaired(tmp_path, monkeypatch):
+    data = contents()
+    changed = {"config.json": data["config.json"].upper()}
+    folder = plain_folder(tmp_path / "models/qwen", data, required(data), changed=changed)
+    env = environment(tmp_path, monkeypatch, reuse=True, model=folder)
+    monkeypatch.setattr(host, "fetch_model", lambda *a, **k: pytest.fail("download into a copy SparkRing does not own"))
+    monkeypatch.setattr(host, "adopt_model", lambda *a, **k: pytest.fail("placement into a copy SparkRing does not own"))
+    monkeypatch.setattr(host, "run", lambda argv, **k: pytest.fail(f"command for a copy SparkRing does not own: {argv}"))
+    before = tree_state(folder)
+    with pytest.raises(ValueError, match=r"Checkpoint at .* differs from the pinned revision in config.json; "
+                                         "SparkRing does not change it"):
+        env.call("model")
+    assert changes(before, tree_state(folder)) == {}
+    assert not (env.state / "model.json").exists()
+
+
+def test_missing_named_copy_is_not_created(tmp_path, monkeypatch):
+    folder = tmp_path / "models/absent"
+    env = environment(tmp_path, monkeypatch, reuse=True, model=folder)
+    monkeypatch.setattr(host, "run", lambda argv, **k: pytest.fail(f"command for a missing copy: {argv}"))
+    for operation in ("model", "model-transfer-prepare"):
+        document = None if operation == "model" else {"repository": REPOSITORY, "revision": REVISION, "files": {}, "sizes": {}}
+        with pytest.raises(ValueError, match=r"does not exist; SparkRing does not create it|serves .* in place; "
+                                             "SparkRing never writes into a copy it did not create"):
+            env.call(operation, document)
+    assert not folder.exists() and not folder.parent.exists()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Linux ctime is the change-detection contract")
@@ -239,6 +384,21 @@ def test_model_inventory_requires_every_weight_shard_and_detects_changes(tmp_pat
     first = host.model_files(tmp_path)
     (tmp_path / "part.safetensors").write_bytes(b"changed")
     assert host.model_files(tmp_path)["part.safetensors"] != first["part.safetensors"]
+    # With the required names, a SparkRing directory holds exactly them; a copy served in
+    # place may also hold its optional names and its download client's metadata.
+    names = ["config.json", "model.safetensors.index.json", "part.safetensors"]
+    assert sorted(host.model_files(tmp_path, names)) == names
+    (tmp_path / "README.md").write_text("notes")
+    (tmp_path / ".cache/huggingface/download").mkdir(parents=True)
+    (tmp_path / ".cache/huggingface/download/part.safetensors.metadata").write_text("record")
+    with pytest.raises(host.NameSetError, match="also holds .cache/huggingface/download/part.safetensors.metadata, README.md"):
+        host.model_files(tmp_path, names)
+    assert sorted(host.model_files(tmp_path, names, in_place=True, optional=["README.md"])) == names
+    with pytest.raises(host.NameSetError, match="also holds README.md"):
+        host.model_file_stats(tmp_path, names, in_place=True)
+    (tmp_path / "part.safetensors").unlink()
+    with pytest.raises(host.NameSetError, match="lacks part.safetensors"):
+        host.model_file_stats(tmp_path, names, in_place=True, optional=["README.md"])
 
 
 def test_source_bootstrap_checks_bundle_commit_and_owner(tmp_path):
@@ -318,116 +478,174 @@ def test_checkpoint_hashes_are_remembered_only_for_an_unchanged_tree(tmp_path, m
     assert installer_host.remembered_checkpoint({**card, "model_revision": "b" * 40}, "/models/m", receipt["file_stats"]) is None
 
 
-@pytest.fixture
-def download(tmp_path, monkeypatch):
-    """Rank 0 of a deployment whose checkpoint the installer downloads into its own workspace."""
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    contents = {"config.json": b"{}", "model.safetensors.index.json": b'{"weight_map":{"w":"part.safetensors"}}',
-                "part.safetensors": b"checkpoint data"}
-    lock = {"id": "d" * 64, "backend": "compose",
-            "selection": {"profile": "fixture", "image_id": "sha256:" + "a" * 64,
-                          "model_repository": "fixture/model", "model_revision": "b" * 40},
-            "site": {"workspace": str(workspace), "ranks": [
-                {"rank": 0, "model": str(workspace / "models" / ("b" * 40)), "cache": str(workspace / "cache"),
-                 "reuse_verified_model": False}]}}
-    (workspace / ".installer-owner.json").write_text(json.dumps({"deployment": lock["id"]}))
-    monkeypatch.setattr(host.installer, "validate", lambda value: value)
-    monkeypatch.setattr(host, "CHECKPOINTS", tmp_path / "checkpoint-records")
-    monkeypatch.setattr(host.setup, "storage_plan", lambda *a, **k: {"passed": True, "filesystems": []})
-    monkeypatch.setattr(host, "run", lambda argv, **k: SimpleNamespace(returncode=0, stdout=str(tmp_path) + "\n"))
-    digest = {name: host.hashlib.sha256(value).hexdigest() for name, value in contents.items()}
-    monkeypatch.setattr(host.installer, "checkpoint_contract",
-                        lambda card: {"config_sha256": digest["config.json"], "index_sha256": digest["model.safetensors.index.json"]})
-    return lock, contents, workspace / "installer/model-download.json"
+class Hub:
+    """``host.run`` for Docker: inspections answer from ``containers``; ``run`` writes pinned files into the staging mount.
+
+    ``fail_after`` makes a download stop after that many files, as a dropped
+    connection does. Every ``docker run`` argv is kept in ``runs``.
+    """
+
+    def __init__(self, data, *, containers=(), fail_after=None):
+        self.data, self.containers, self.fail_after = data, set(containers), fail_after
+        self.commands, self.runs = [], []
+
+    def __call__(self, argv, **kwargs):
+        self.commands.append(argv)
+        assert argv[0] == "docker"
+        if argv[1:3] == ["container", "inspect"]:
+            return SimpleNamespace(returncode=0 if argv[3] in self.containers else 1, stdout="")
+        if argv[1:3] == ["image", "inspect"]:
+            return SimpleNamespace(returncode=0, stdout="[]")
+        assert argv[1] == "run"
+        self.runs.append(argv)
+        mount = dict(item.split("=", 1) for item in argv[argv.index("--mount") + 1].split(","))
+        names = argv[argv.index(IMAGE) + 5:]
+        for count, name in enumerate(names):
+            if self.fail_after is not None and count >= self.fail_after:
+                raise host.CommandError(1, argv, "", "connection reset")
+            write(Path(mount["src"]) / name, self.data[name])
+        return SimpleNamespace(returncode=0, stdout="")
 
 
-def test_interrupted_checkpoint_download_resumes_in_its_recorded_destination(download, monkeypatch):
-    lock, contents, marker = download
-    model = Path(lock["site"]["ranks"][0]["model"])
-    calls = []
-    def hub_download(value, destination):
-        # The destination is recorded before the hub client writes any file.
-        assert installer.read(marker) == host.download_record(lock, destination)
-        calls.append(destination)
-        (destination / "config.json").write_bytes(contents["config.json"])
-        if len(calls) == 1:
-            raise host.CommandError(1, ["docker", "run"], "", "connection reset")
-        for name, value in contents.items():
-            (destination / name).write_bytes(value)
-    monkeypatch.setattr(host, "hub_download", hub_download)
-    with pytest.raises(host.CommandError):
-        host.perform("model", lock, 0)
-    assert any(model.iterdir()) and not (marker.parent / "model.json").exists()
-    assert host.perform("model", lock, 0) == {"ok": True}
-    assert calls == [model, model]
-    assert installer.read(marker.parent / "model.json")["origin"] == "pinned-hub-download"
+@linux
+def test_interrupted_checkpoint_download_resumes_in_its_staging_directory(tmp_path, monkeypatch):
+    env = environment(tmp_path, monkeypatch)
+    hub = Hub(env.data, fail_after=2)
+    monkeypatch.setattr(host, "run", hub)
+    # The failure names the client's last error line and what the next run does, not the docker argv.
+    with pytest.raises(ValueError, match=r"^Downloading 8 files from huggingface\.co failed: connection reset\. "
+                                         "Nothing was placed for those files; files the download completed are placed "
+                                         r"by the next run\. Check that Node 0 reaches huggingface\.co, then repeat "
+                                         r"the command\.$"):
+        env.call("model")
+    assert not (env.state / "model.json").exists() and os.listdir(env.model) == []
+    hub.fail_after = None
+    assert env.call("model") == {"ok": True}
+    first = hub.runs[0][hub.runs[0].index(IMAGE) + 5:]
+    assert first == required(env.data)
+    # The two files the interrupted download completed are placed, not downloaded again.
+    assert hub.runs[1][hub.runs[1].index(IMAGE) + 5:] == first[2:]
+    receipt = json.loads((env.state / "model.json").read_text())
+    assert receipt["origin"] == "pinned-hub-download" and receipt["fetched"] == required(env.data)
+    assert not (state_directory(env.model) / "fetch").exists()
+    assert sorted(journal(env.model)) == required(env.data)
 
 
-@pytest.mark.parametrize("record", [None, "other-revision", "other-deployment"])
-def test_nonempty_checkpoint_destination_without_its_download_record_is_refused(download, monkeypatch, record):
-    lock, _, marker = download
-    model = Path(lock["site"]["ranks"][0]["model"])
-    model.mkdir(parents=True)
-    (model / "notes.txt").write_text("not a download")
-    if record:
-        marker.parent.mkdir()
-        other = {**host.download_record(lock, model)}
-        other["revision" if record == "other-revision" else "deployment"] = "c" * 40
-        marker.write_text(json.dumps(other))
-    monkeypatch.setattr(host, "hub_download", lambda *a: pytest.fail("download into an unrecorded directory"))
-    with pytest.raises(ValueError, match="no installer receipt or download record"):
-        host.perform("model", lock, 0)
-    assert (model / "notes.txt").read_text() == "not a download"
+@linux
+@pytest.mark.parametrize("case", ["files", "state-without-owner", "download-record"])
+def test_nonempty_checkpoint_destination_not_created_by_sparkring_is_refused(tmp_path, monkeypatch, case):
+    env = environment(tmp_path, monkeypatch)
+    env.model.mkdir(parents=True)
+    (env.model / "notes.txt").write_text("not a download")
+    if case == "state-without-owner":
+        state_directory(env.model).mkdir(mode=0o700)
+    if case == "download-record":
+        env.state.mkdir()
+        (env.state / "model-download.json").write_text(json.dumps(
+            {"deployment": DEPLOYMENT, "path": str(env.model), "repository": REPOSITORY, "revision": REVISION}))
+    monkeypatch.setattr(host, "run", lambda *a, **k: pytest.fail("download into a directory SparkRing did not create"))
+    with pytest.raises(ValueError, match="is not empty and was not created by SparkRing"):
+        env.call("model")
+    assert os.listdir(env.model) == ["notes.txt"] and (env.model / "notes.txt").read_text() == "not a download"
 
 
+@linux
 @pytest.mark.parametrize("existing", [False, True])
-def test_second_download_into_a_destination_is_refused_while_the_first_container_exists(download, monkeypatch, existing):
-    lock, _, _ = download
-    model = Path(lock["site"]["ranks"][0]["model"])
-    name = host.download_container(model)
-    commands = []
-    def run(argv, **kwargs):
-        commands.append(argv)
-        if argv[:3] == ["docker", "container", "inspect"]:
-            assert argv[3] == name
-            return SimpleNamespace(returncode=0 if existing else 1, stdout="")
-        if argv[:2] == ["docker", "run"]:
-            raise host.CommandError(1, argv, "", "download stopped by the test")
-        return SimpleNamespace(returncode=0, stdout=str(model.parent) + "\n")
-    monkeypatch.setattr(host, "run", run)
+def test_second_download_into_a_directory_is_refused_while_the_first_container_exists(tmp_path, monkeypatch, existing):
+    env = environment(tmp_path, monkeypatch)
+    name = host.fetch_container(env.model)
+    hub = Hub(env.data, containers=[name] if existing else [], fail_after=0)
+    monkeypatch.setattr(host, "run", hub)
     if existing:
         # An interrupted installer session leaves its download container running.
         with pytest.raises(ValueError, match="still in progress in container " + name):
-            host.perform("model", lock, 0)
-        assert not any(argv[:2] == ["docker", "run"] for argv in commands)
+            env.call("model")
+        assert hub.runs == []
     else:
-        with pytest.raises(host.CommandError):
-            host.perform("model", lock, 0)
-        started = next(argv for argv in commands if argv[:2] == ["docker", "run"])
-        assert started[started.index("--name") + 1] == name
+        with pytest.raises(ValueError, match="from huggingface.co failed: connection reset"):
+            env.call("model")
+        assert hub.runs[0][hub.runs[0].index("--name") + 1] == name
+    inspected = [argv for argv in hub.commands if argv[1:3] == ["container", "inspect"]]
+    assert inspected and all(argv[3] == name for argv in inspected)
 
 
-@pytest.mark.parametrize("recorded", [False, True])
-def test_resumed_download_needs_only_the_rest_of_its_storage_allowance(download, monkeypatch, recorded):
-    lock, _, marker = download
-    model = Path(lock["site"]["ranks"][0]["model"])
-    (model / ".cache").mkdir(parents=True)
-    (model / "part.safetensors").write_bytes(os.urandom(4096))
-    (model / ".cache" / "part.safetensors.incomplete").write_bytes(os.urandom(4096))
-    if recorded:
-        marker.parent.mkdir()
-        marker.write_text(json.dumps(host.download_record(lock, model)))
-    usage = type(shutil.disk_usage(model))(total=1 << 40, used=0, free=1000)
-    monkeypatch.setattr(host.shutil, "disk_usage", lambda path: usage)
+@linux
+@pytest.mark.parametrize("staged", [False, True])
+def test_resumed_download_needs_only_the_rest_of_its_storage_allowance(tmp_path, monkeypatch, staged):
+    from runtime.host import checkpoint_plan
+    env = environment(tmp_path, monkeypatch)
+    if staged:
+        monkeypatch.setattr(host, "run", Hub(env.data, fail_after=2))
+        with pytest.raises(ValueError, match="from huggingface.co failed: connection reset"):
+            env.call("model")
+    monkeypatch.setattr(host, "run", lambda argv, **k: pytest.fail("download without free space") if argv[1] == "run"
+                        else SimpleNamespace(returncode=1, stdout=""))
+    monkeypatch.setattr(host.shutil, "disk_usage", lambda path: SimpleNamespace(total=1 << 40, used=0, free=1000))
     observed = []
-    def storage_plan(card, *, model_path, disk_usage, **kwargs):
-        observed.append(disk_usage(model_path).free)
-        return {"passed": False, "filesystems": []}
-    monkeypatch.setattr(host.setup, "storage_plan", storage_plan)
-    with pytest.raises(ValueError, match="Insufficient destination storage.*then repeat sudo sparkring install"):
-        host.perform("model", lock, 0)
-    written = host.allocated_bytes(model)
-    assert written >= 8192
-    # Only this deployment's own unfinished download is credited.
-    assert observed == [1000 + (written if recorded else 0)]
+    original = checkpoint_plan.required_space
+    monkeypatch.setattr(checkpoint_plan, "required_space",
+                        lambda written, **kwargs: observed.append(sorted(written)) or original(written, **kwargs))
+    with pytest.raises(ValueError, match="needs .* GiB free on the filesystem of .*; 0.0 GiB is free. Free space, then "
+                                         "repeat sudo sparkring install. The running model has not been stopped."):
+        env.call("model")
+    names = required(env.data)[2:] if staged else required(env.data)
+    # Only the files still to be written count, each at its pinned size.
+    assert observed == [sorted(len(env.data[name]) for name in names)]
+    if staged:
+        assert sorted(journal(env.model)) == required(env.data)[:2]
+
+
+def test_command_errors_name_the_program_and_its_last_output_lines_not_its_arguments():
+    argv = ["docker", "--context", "default", "run", "--rm", "--mount", "type=bind,src=/srv/x/fetch,dst=/fetch",
+            "sha256:" + "a" * 64, "-c", "print(1)", "owner/model", "a" * 40, *[f"model-{n:05d}.safetensors" for n in range(40)]]
+    error = host.CommandError(1, argv, "", "Traceback (most recent call last):\n  ...\nhttpx.ConnectError: [Errno 101] "
+                              "Network is unreachable\n")
+    assert str(error) == ("docker run exited with status 1: Traceback (most recent call last): | ... | "
+                          "httpx.ConnectError: [Errno 101] Network is unreachable")
+    assert error.lines(1) == ["httpx.ConnectError: [Errno 101] Network is unreachable"]
+    assert str(host.CommandError(2, ["nvidia-smi", "--query-compute-apps=pid"], "", "")) == \
+        "nvidia-smi exited with status 2"
+
+
+def test_rank_operations_run_with_umask_0022():
+    # Files a rank operation copies into a checkpoint directory get mode 0644 whatever the SSH session's umask.
+    assert runner.HOST.splitlines()[:2] == ["import base64,json,os,pathlib,subprocess,sys", "os.umask(0o022)"]
+
+
+@pytest.mark.parametrize("user", ["code", "root", None])
+def test_every_rank_operation_runs_under_sudo_when_the_ssh_user_is_not_root(user, monkeypatch, tmp_path):
+    raw = site()
+    for number, row in enumerate(raw["hosts"]):
+        row["host"] = f"{user}@spark{number}" if user else f"spark{number}"
+    lock = installer.make_lock(QWEN, raw, "1" * 40, "2" * 64)
+    current = object.__new__(runner.Runner)
+    current.lock, current.directory = lock, tmp_path
+    (tmp_path / "source.bundle").write_bytes(b"bundle")
+    calls = []
+
+    def ssh(target, argv, **kwargs):
+        calls.append(argv)
+        if "is_dir()" in " ".join(argv):
+            return "True\n"
+        return "ok\n" if runner.SOURCE in argv else '{"ok": true}'
+    monkeypatch.setattr(runner, "ssh", ssh)
+    actions = [action for phase in installer.operation_plan(lock, "up")["phases"] for action in phase["actions"]]
+    phases = {action["argv"][1] for action in actions} | {action["verify"]["argv"][1] for action in actions if "verify" in action}
+    operations = sorted(phases - {"prerequisites"} | {
+        "source-check", "model-adopt", "model-fetch", "model-transfer-manifest", "model-transfer-prepare",
+        "model-transfer-complete", "model-reuse-receipt", "model-settled", "status"})
+    assert "model-settled" in phases
+    expected = [] if user == "root" else ["sudo", "-n"]
+    for operation in operations:
+        calls.clear()
+        result = current._call(lock["site"]["ranks"][1]["host"], ["installer", operation, "1"], 30)
+        assert result["returncode"] == 0, (operation, result["stderr"])
+        assert calls and all(argv[:len(expected)] == expected and argv[len(expected)] == "python3" for argv in calls), (
+            operation, calls)
+    # The host probe reads the SSH session's address, which sudo does not keep, so it runs as the login user.
+    calls.clear()
+    monkeypatch.setattr(runner, "check_facts", lambda facts, row: None)
+    monkeypatch.setattr(runner, "check_workloads", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "ssh", lambda target, argv, **kwargs: calls.append(argv) or "{}")
+    current._call(lock["site"]["ranks"][1]["host"], ["installer", "prerequisites", "1"], 30)
+    assert calls[0][0] == "python3"

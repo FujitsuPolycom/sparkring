@@ -1,71 +1,74 @@
-"""Find complete checkpoint candidates; existing launch gates verify every shard."""
-import hashlib
-import inspect
-import json
+"""This Spark's checkpoint survey for one profile, printed by ``sparkring node assets``.
+
+The survey (``runtime.host.checkpoint_search``) only reads: it looks for copies
+of the profile's pinned checkpoint on this Spark and classifies them by content
+evidence. ``sparkring install`` runs the same survey on every Spark before it
+plans the checkpoint; this module runs it locally, for diagnostics, and returns
+a summary without per-file entries.
+"""
 from pathlib import Path
-import subprocess
+import re
 
 from runtime.common import installer, setup
+from runtime.host import checkpoint_search
+
+CONTROLLER_CLUSTER = "/var/lib/sparkring/controller/cluster.json"
+WORKSPACES = "/srv/sparkring"
+# The cluster name sparkring setup uses when none is given.
+DEFAULT_CLUSTER = "sparkring"
+CANDIDATE_KEYS = ("path", "layout", "commit", "branches", "home", "sparkring", "found_by", "counts")
+SEARCH_KEYS = ("complete", "stopped", "passes", "seconds", "entries", "unvisited", "skipped_mounts",
+               "large_directories", "unreadable")
 
 
-def metadata_matches(path, contract):
-    root = Path(path)
-    if not root.is_absolute() or root.is_symlink() or not root.is_dir():
-        return False
-    for filename, field in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
-        item = root / filename
-        if item.is_symlink() or not item.is_file() or hashlib.sha256(item.read_bytes()).hexdigest() != contract[field]:
-            return False
-    index = json.loads((root / "model.safetensors.index.json").read_text())
-    names = set(index["weight_map"].values())
-    return bool(names) and all((root / name).is_file() and not (root / name).is_symlink()
-                               and (root / name).resolve().is_relative_to(root.resolve()) for name in names)
+def cluster_name(root="/"):
+    """The name of the cluster this Spark belongs to, which names its checkpoint directories.
+
+    Node A records it in the controller's cluster record. Every Spark of a
+    cluster holds that cluster's workspace ``/srv/sparkring/<name>``; when the
+    record is absent and exactly one such workspace exists, its name is used.
+    Otherwise the name is setup's default, ``sparkring``.
+    """
+    base = Path(root)
+    try:
+        name = installer.read(base / CONTROLLER_CLUSTER.lstrip("/"))["name"]
+        if isinstance(name, str) and re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name):
+            return name
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        names = [entry.name for entry in (base / WORKSPACES.lstrip("/")).iterdir()
+                 if entry.is_dir() and not entry.is_symlink() and not entry.name.endswith("-managed")
+                 and re.fullmatch(r"[a-z][a-z0-9-]{0,39}", entry.name)]
+    except OSError:
+        names = []
+    return names[0] if len(names) == 1 else DEFAULT_CLUSTER
 
 
-def discover(profile, *, run=subprocess.run, extra_roots=()):
+def summary(profile, cluster, survey):
+    """The survey without per-file entries: where copies are, their layout and how many files match."""
+    owned = survey.get("owned") or {}
+    return {"schema": "sparkring-node-assets/v1", "profile": profile, "cluster": cluster, "host": survey.get("host"),
+            "repository": survey.get("repository"), "revision": survey.get("revision"),
+            "owned": {"path": owned.get("path"), "state": owned.get("state"), "fstype": owned.get("fstype"),
+                      "free_bytes": owned.get("free_bytes"), "files": len(owned.get("files") or {})},
+            "docker": survey.get("docker"),
+            "candidates": [{key: candidate.get(key) for key in CANDIDATE_KEYS} for candidate in survey.get("candidates") or []],
+            "not_used": survey.get("not_used") or [], "named": survey.get("named") or [],
+            "search": {key: (survey.get("search") or {}).get(key) for key in SEARCH_KEYS},
+            "errors": len((survey.get("search") or {}).get("errors") or [])}
+
+
+def discover(profile, *, cluster=None, root="/"):
+    """Survey this Spark for the profile's pinned checkpoint and return the summary; never writes.
+
+    ``cluster`` names the cluster whose checkpoint directory is reported under
+    ``owned`` (default: ``cluster_name``). ``root`` prefixes every host path,
+    for tests against a fixture tree.
+    """
     card = setup.selection(profile)
-    contract = installer.checkpoint_contract(card)
-    return discover_contract(card, contract, run=run, extra_roots=extra_roots)
-
-
-def discover_contract(card, contract, *, run=None, extra_roots=(), model_roots=("/var/tmp/models", "/models", "/srv/models")):
-    """Read cache metadata using the controller's pins, even on older workers."""
-    import json
-    from pathlib import Path
-    import subprocess
-    run = run or subprocess.run
-    def docker(*args):
-        return run(["docker", "--context", "default", *args], capture_output=True, text=True, check=True).stdout
-    candidates = set(map(str, extra_roots))
-    ids = docker("ps", "-aq").splitlines()
-    if ids:
-        containers = json.loads(docker("inspect", *ids))
-        for container in containers:
-            for mount in container.get("Mounts", []):
-                if mount.get("Type") == "bind" and "model" in mount.get("Destination", "").lower():
-                    candidates.add(mount["Source"])
-    revision = card["model_revision"]
-    # Hub-style folders are named "<owner>--<name>", with or without a revision
-    # subfolder. Metadata hashes, not folder names, decide a match.
-    repository = card["model_repository"].replace("/", "--")
-    for directory in map(Path, model_roots):
-        if directory.is_dir():
-            candidates.update(str(p) for p in directory.glob("*/" + revision))
-            if (directory / repository).is_dir():
-                candidates.add(str(directory / repository))
-    base = Path("/srv/sparkring")
-    if base.is_dir():
-        candidates.update(str(p) for p in base.glob("*/models/" + revision))
-        candidates.update(str(p) for p in base.glob("*/*/models/" + revision))
-    matches = [path for path in sorted(candidates) if metadata_matches(path, contract)]
-    return {"profile": card["profile"], "model_repository": card["model_repository"], "model_revision": revision,
-            "model_path": matches[0] if matches else None, "candidates": len(matches),
-            "verification": "metadata-and-completeness" if matches else "not-found",
-            "full_shard_verification": "required-before-launch"}
-
-
-def probe_code(card, contract):
-    # Only read metadata and Docker mounts. Worker package updates still precede
-    # executable profile operations; planning never installs a package.
-    return ("import hashlib,json\nfrom pathlib import Path\n" + inspect.getsource(metadata_matches) + "\n"
-            + inspect.getsource(discover_contract) + "\nprint(json.dumps(discover_contract(" + repr(card) + "," + repr(contract) + ")))\n")
+    pins = installer.checkpoint_pins(card)
+    name = cluster or cluster_name(root)
+    owned = installer.checkpoint_directory(name, card)
+    result = checkpoint_search.survey(pins, checkpoint_search.options(owned=owned, root=root))
+    return summary(profile, name, result)

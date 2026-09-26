@@ -36,7 +36,7 @@ def environment(monkeypatch, tmp_path):
     monkeypatch.setattr(host, 'container', lambda _: info)
     monkeypatch.setattr(host, 'owned', lambda spec, current, image: current)
     monkeypatch.setattr(host, 'admit_image', lambda _: events.append('image'))
-    monkeypatch.setattr(host, 'verify_model', lambda *a: events.append('model'))
+    monkeypatch.setattr(host, 'verify_model', lambda *a, **k: events.append('model' if k == {'refresh': True} else k))
     monkeypatch.setattr(host, 'require_idle', lambda: events.append('idle'))
     monkeypatch.setattr(host, 'run', lambda argv: events.append(argv))
     monkeypatch.setattr(lifecycle.qwen_mesh, 'check', lambda *a: events.append('mesh-verified'))

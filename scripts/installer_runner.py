@@ -118,7 +118,10 @@ if actual!=revision or dirty: raise SystemExit('Host source changed; restore the
 print('ok')
 '''
 
-HOST = r'''import base64,json,pathlib,subprocess,sys
+# The rank-operation program. Its umask is 0022, so the files it copies into a
+# checkpoint directory get mode 0644 whatever the umask of the SSH session.
+HOST = r'''import base64,json,os,pathlib,subprocess,sys
+os.umask(0o022)
 root=pathlib.Path(sys.argv[1])
 lock=json.loads(base64.b64decode(sys.argv[2]))
 actual=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
@@ -199,6 +202,25 @@ def check_workloads(facts, lock, number, *, managed_prepared=False):
     raise ValueError("Another GPU workload is running. Stop only the intended workload in the approved test window, then rerun up; no assets were downloaded")
 
 
+def elevation(row, operation):
+    """``["sudo", "-n"]`` when ``operation`` on ``row``'s Spark must be raised to root, else ``[]``.
+
+    Rank operations run as root: they write root-only receipts and SparkRing's
+    checkpoint directories, and they add hard links to other accounts' files,
+    which ``fs.protected_hardlinks`` reserves for root. Every operation uses
+    ``sudo -n`` unless the row's SSH target names the root user (``root@...``);
+    an SSH alias may log in as any account, so it is raised too.
+    ``install_workflow.check_access`` confirms noninteractive sudo on every
+    Spark first. Four-Spark launch and mesh operations always use it.
+    """
+    user, separator, _ = row["host"].partition("@")
+    if not separator or user != "root":
+        return ["sudo", "-n"]
+    if "fabric" in row and (operation in ("preflight", "create", "start") or operation.startswith("mesh-")):
+        return ["sudo", "-n"]
+    return []
+
+
 class Runner:
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
@@ -210,8 +232,7 @@ class Runner:
     def remote(self, number, operation, *, data=None):
         row = self.lock["site"]["ranks"][number]
         payload = base64.b64encode(json.dumps(self.lock).encode()).decode()
-        prefix = ["sudo", "-n"] if "fabric" in row and (operation in ("preflight", "create", "start") or operation.startswith("mesh-")) else []
-        return json.loads(ssh(row["host"], prefix + ["python3", "-I", "-B", "-c", HOST,
+        return json.loads(ssh(row["host"], elevation(row, operation) + ["python3", "-I", "-B", "-c", HOST,
                           row["repository"], payload, operation, str(number)], data=data))
 
     def native_mesh(self, operation):
@@ -300,7 +321,8 @@ class Runner:
                   "model": "Prepare checkpoint and verify all shards", "model-check": "Verify checkpoint receipt",
                   "preflight": "Check model and fabric", "create": "Create stopped model container", "created": "Verify model container",
                   "start": "Start model", "running": "Check model process", "ready": "Wait for API readiness",
-                  "smoke": "Test a short model response", "mesh-prepare": "Prepare native fabric helper",
+                  "smoke": "Test a short model response", "model-settled": "Confirm checkpoint unchanged during loading",
+                  "mesh-prepare": "Prepare native fabric helper",
                   "mesh-install": "Install supervised native fabric", "mesh-up": "Start native fabric",
                   "mesh-gate": "Verify all four fabric ranks", "stop": "Stop model", "stopped": "Confirm model stopped"}
         operation = argv[1] if len(argv) > 1 else "operation"
@@ -328,7 +350,9 @@ class Runner:
                                     managed_prepared=(self.directory / "managed/runtime/prepared.json").is_file())
                 result = {"ok": True}
             elif operation in ("source", "source-check"):
-                ssh(target, ["python3", "-I", "-B", "-c", SOURCE, self.lock["site"]["workspace"],
+                # The workspace is created by, and later read by, rank operations
+                # that run as root, so the source step runs as root too.
+                ssh(target, elevation(row, operation) + ["python3", "-I", "-B", "-c", SOURCE, self.lock["site"]["workspace"],
                              row["repository"], self.lock["source_revision"], self.lock["id"],
                              self.lock["bundle_sha256"], "install" if operation == "source" else "check"],
                     data=(self.directory / "source.bundle").read_bytes() if operation == "source" else None)
@@ -341,7 +365,8 @@ class Runner:
                     result = self.native_mesh(operation)
             elif operation == "status":
                 managed = self.lock["backend"] == "glm-managed"
-                staged = ssh(target, ["python3", "-I", "-c", "from pathlib import Path; import sys; print(Path(sys.argv[1]).is_dir())", row["repository"]]).strip() == "True"
+                # The staged source lies in the root-only workspace.
+                staged = ssh(target, elevation(row, operation) + ["python3", "-I", "-c", "from pathlib import Path; import sys; print(Path(sys.argv[1]).is_dir())", row["repository"]]).strip() == "True"
                 if not managed and staged:
                     result = self.remote(number, "status")
                     return {"returncode": 0, "stdout": json.dumps(result), "stderr": "", "uncertain": False}

@@ -71,7 +71,9 @@ def perform(operation, lock, rank, state):
     if operation in ("preflight", "create", "start"):
         qwen_mesh.check(row["fabric"], rank, row["hcas"], row["gid"], row["host_ip"])
         host.admit_image(lock)
-        host.verify_model(lock, row, state / "model.json")
+        # The rank's own receipt: stats re-measured here are saved, so the
+        # model-settled check after loading compares with them.
+        host.verify_model(lock, row, state / "model.json", refresh=True)
         if not (info and info["State"].get("Running")):
             host.require_idle()
         if operation == "create" and info is None:

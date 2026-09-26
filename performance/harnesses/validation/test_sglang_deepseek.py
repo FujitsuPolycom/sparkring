@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import os
 from pathlib import Path
 import threading
 
@@ -11,6 +12,15 @@ spec = importlib.util.spec_from_file_location("sglang_deepseek", Path(__file__).
 harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(harness)
 KEYS = ("fixture-key-a", "fixture-key-b")
+
+
+@pytest.fixture(autouse=True)
+def process_umask():
+    """The harness sets a private umask for its result files; later tests in this process keep their own."""
+    previous = os.umask(0o022)
+    os.umask(previous)
+    yield
+    os.umask(previous)
 
 
 @pytest.fixture

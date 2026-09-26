@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
@@ -330,15 +331,26 @@ def render(profile, **site):
 
 
 def verify_model_paths(profile, model, cache):
-    """Check local directories and checkpoint metadata; full shard checks remain explicit."""
+    """Check local directories and checkpoint metadata; full shard checks remain explicit.
+
+    The metadata files are read with ``O_NOATIME`` when permitted, so this
+    check, which runs at every preflight, create and start, leaves the access
+    times of a copy served in place unchanged.
+    """
     model, cache = Path(model), Path(cache)
     if not model.is_dir() or not cache.is_dir():
         raise ValueError("Existing model and dedicated cache directories are required")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
     for filename, key in [
         ("config.json", "config_sha256"),
         ("model.safetensors.index.json", "index_sha256"),
     ]:
-        with (model / filename).open("rb") as stream:
+        try:
+            descriptor = os.open(model / filename, flags | getattr(os, "O_NOATIME", 0))
+        except PermissionError:
+            # O_NOATIME needs the file's owner or CAP_FOWNER; other accounts read normally.
+            descriptor = os.open(model / filename, flags)
+        with os.fdopen(descriptor, "rb") as stream:
             if hashlib.file_digest(stream, "sha256").hexdigest() != profile["model"][key]:
                 raise ValueError("Checkpoint metadata mismatch: " + filename)
 

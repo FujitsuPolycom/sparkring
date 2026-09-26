@@ -22,8 +22,12 @@ def main(argv=None):
     inspect.add_argument("--witness", required=True)
     native = commands.add_parser("native-mesh")
     native.add_argument("--rank", type=int, required=True, choices=range(4))
-    assets = commands.add_parser("assets")
+    assets = commands.add_parser("assets", help="survey this Spark for the profile's pinned checkpoint and print "
+                                 "where copies are (read-only)")
     assets.add_argument("--profile", required=True)
+    checkpoints = commands.add_parser("checkpoints", help="list this Spark's SparkRing checkpoint directories, "
+                                      "or release one; Node A sends the request on stdin")
+    checkpoints.add_argument("--release", metavar="PATH")
     workspace = commands.add_parser("workspace")
     workspace.add_argument("--operator", required=True)
     workspace.add_argument("--name", required=True)
@@ -65,6 +69,9 @@ def main(argv=None):
         elif args.action == "assets":
             from runtime.host.assets import discover
             result = discover(args.profile)
+        elif args.action == "checkpoints":
+            from runtime.host import checkpoints
+            result = checkpoints.node(args.release)
         elif args.action == "workspace":
             result = node.workspace(args.operator, args.name)
         elif args.action == "restore":

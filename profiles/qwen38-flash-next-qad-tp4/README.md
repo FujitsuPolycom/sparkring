@@ -80,9 +80,23 @@ REPO=$PWD
   sha256sum --check "$REPO/profiles/qwen38-flash-next-qad-tp4/SHA256SUMS")
 ```
 
-The model repository's `main` branch is not a substitute for this QAD revision.
-The coordinator verifies metadata, not every weight shard. Mount weights
-read-only and keep writable caches outside model directories.
+`SHA256SUMS` lists the 48 files the pinned revision requires; the download's
+`README.md` and `.gitattributes` are not served and not checked. `sudo sparkring
+install` finds an existing copy on a local disk by itself, in a Hugging Face
+cache, an `hf download` folder or any other folder (a copy in another account's
+home or on network storage needs `--model-path`), so `MODEL_DIR` matters only
+for manual runs.
+
+A copy of the model repository's `main` branch downloaded after 2026-09-16
+20:03 UTC holds the same weights; only `config.json` and `README.md` differ.
+`sudo sparkring install` reuses its weight files and supplies the pinned
+`config.json`. Do not serve a `main` copy directly, because its `config.json`
+names another model type; for manual runs, fetch the pinned `config.json` as
+the [TP2 Compose page](../qwen38-flash-next-tp2/compose/README.md) describes.
+
+For manual runs, the managed mesh coordinator verifies metadata, not every
+weight shard. Mount weights read-only and keep writable caches outside model
+directories.
 
 Prepare the [managed ring fabric](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
 and its private mesh site. The [fabric guide](../../spark_transport/fabric/cx7_hairpin_diagonal/README.md)

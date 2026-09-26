@@ -96,6 +96,72 @@ def test_plan_only_named_model_does_not_construct_runner(tmp_path, monkeypatch, 
     assert "--execute" in capsys.readouterr().out
 
 
+UP_PROFILE = "qwen38-flash-next-tp2"
+
+
+@pytest.fixture
+def plain_up(tmp_path, monkeypatch):
+    """`sparkring up <profile>` on a recorded two-Spark cluster whose rank operations are simulated.
+
+    SSH from the controller fails the test: `sparkring up` neither surveys nor
+    probes the Sparks. Every rank operation runs through the plain
+    installer_runner.Runner, which records it with the row it acted on.
+    """
+    from runtime.common import distribution
+    from runtime.host import discovery, node
+    from runtime.host.test_fabric_ssh import cluster
+    from scripts import installer_runner
+    monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(controller, "STATE", tmp_path / "state")
+    node.save(controller.STATE, "cluster.json", cluster(2))
+    monkeypatch.setattr(distribution, "identity", lambda _: "a" * 40)
+    monkeypatch.setattr(distribution, "bundle", lambda root, dest: dest.write_bytes(b"retained source"))
+    monkeypatch.setattr(discovery, "ssh", lambda *a, **k: pytest.fail("sparkring up contacted a Spark: " + repr(a[1])))
+    calls = []
+
+    def call(self, target, argv, timeout):
+        row = self.lock["site"]["ranks"][int(argv[2])]
+        calls.append({"runner": type(self), "operation": argv[1], "rank": row["rank"], "model": row["model"],
+                      "reuse": row["reuse_verified_model"]})
+        return {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
+    monkeypatch.setattr(installer_runner.Runner, "_call", call)
+    return calls
+
+
+def test_sparkring_up_uses_the_cluster_checkpoint_directory_through_a_plain_runner(plain_up):
+    from runtime.common import installer, setup
+    from scripts import installer_runner
+    assert controller.lifecycle(["up", UP_PROFILE, "--execute"]) == 0
+    directory = installer.checkpoint_directory("test", setup.selection(UP_PROFILE))
+    assert directory == ("/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
+                         "629bc3218833a38b475b719f34aa571666f4a03e")
+    lock = installer.load(controller.STATE / "deployments" / UP_PROFILE)
+    assert [(row["model"], row["reuse_verified_model"]) for row in lock["site"]["ranks"]] == [(directory, False)] * 2
+    # The plain runner's model operation adopts what that directory holds and
+    # downloads the rest on each rank; no survey or asset probe precedes it. The
+    # ranks' model actions run in parallel, so they may finish in either order.
+    model = [call for call in plain_up if call["operation"] == "model"]
+    assert sorted(call["rank"] for call in model) == [0, 1]
+    assert all(call["runner"] is installer_runner.Runner and call["model"] == directory and not call["reuse"]
+               for call in plain_up)
+
+
+def test_sparkring_up_model_path_is_served_in_place_and_never_written(plain_up):
+    from runtime.common import installer
+    named = "/data/qwen-copy"
+    assert controller.lifecycle(["up", UP_PROFILE, "--model-path", named, "--execute"]) == 0
+    lock = installer.load(controller.STATE / "deployments" / UP_PROFILE)
+    # reuse_verified_model means "verify; never write": the rank operations
+    # verify the named copy and never create, link, fetch or repair under it.
+    assert [(row["model"], row["reuse_verified_model"]) for row in lock["site"]["ranks"]] == [(named, True)] * 2
+    assert all(call["model"] == named and call["reuse"] for call in plain_up)
+    assert sorted(call["rank"] for call in plain_up if call["operation"] == "model") == [0, 1]
+    # The in-place decision belongs to that deployment; naming another copy
+    # needs another instance.
+    with pytest.raises(ValueError, match="another model path"):
+        controller.lifecycle(["up", UP_PROFILE, "--model-path", "/data/other", "--plan"])
+
+
 def test_adoption_records_facts_without_running_network_commands(tmp_path, monkeypatch):
     from runtime.host import node
     found = nodes(2)

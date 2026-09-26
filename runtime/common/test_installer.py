@@ -2,7 +2,7 @@
 import copy
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import zipfile
 
@@ -257,3 +257,133 @@ def test_source_bundle_initializes_a_real_git_checkout(tmp_path, monkeypatch):
     git("clone", "-q", str(output / "source.bundle"), str(checkout))
     assert git("rev-parse", "HEAD", cwd=checkout) == lock["source_revision"]
     assert installer.load(output) == lock
+
+
+QWEN_PINS = ("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
+             "629bc3218833a38b475b719f34aa571666f4a03e.json")
+
+
+def test_checkpoint_pins_agree_with_every_installer_profile():
+    for profile in sorted(installer.INSTALLABLE):
+        card = installer.setup.selection(profile)
+        pins = installer.checkpoint_pins(card)
+        contract = installer.checkpoint_contract(card)
+        files = pins["files"]
+        assert files["config.json"]["sha256"] == contract["config_sha256"]
+        assert files[pins["index"]]["sha256"] == contract["index_sha256"]
+        required = sorted(set(files) - set(pins["optional"]))
+        sums = (installer.ROOT / "profiles" / profile / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+        assert sums == [f"{files[name]['sha256']}  {name}" for name in required]
+    # The Qwen revision: 50 files, of which 48 are served (36 weight files).
+    qwen = installer.checkpoint_pins(installer.setup.selection(QWEN))
+    required = set(qwen["files"]) - set(qwen["optional"])
+    assert (len(qwen["files"]), len(required), len(qwen["weights"])) == (50, 48, 36)
+    assert qwen["optional"] == [".gitattributes", "README.md"]
+    assert sum(qwen["files"][name]["size"] for name in qwen["weights"]) == 105_839_492_200
+    assert sum(qwen["files"][name]["size"] for name in required - set(qwen["weights"])) == 56_497_920
+    with pytest.raises(ValueError, match="No pin manifest"):
+        installer.checkpoint_pins({**installer.setup.selection(QWEN), "model_revision": "0" * 40})
+
+
+def _extra(name):
+    return lambda pins: pins["files"].__setitem__(name, dict(pins["files"]["vocab.json"]))
+
+
+def _entry(name, key, value):
+    return lambda pins: pins["files"][name].__setitem__(key, value)
+
+
+UNSAFE_PINS = {
+    "schema": lambda pins: pins.update(schema="sparkring-checkpoint-pins/v0"),
+    "unknown-key": lambda pins: pins.update(note="unexpected"),
+    "repository": lambda pins: pins.update(repository="huginnfork/Qwen3.8-Flash-Next-NVFP4-Abliterated"),
+    "revision": lambda pins: pins.update(revision="7c4f1bc1a2d6847e0cbc01ac6b823f00251de8dd"),
+    "config-hash": _entry("config.json", "sha256", "b1ecb2697178111fb10b73354a681d10884c19ecd830af1073ea93d2a09a5358"),
+    "index-hash": _entry("model.safetensors.index.json", "sha256", "0" * 64),
+    "parent": _extra("../vocab.json"),
+    "nested-parent": _extra("tokenizer/../../vocab.json"),
+    "absolute": _extra("/etc/vocab.json"),
+    "cache": _extra(".cache/huggingface/download/vocab.json.metadata"),
+    "git": _extra("sub/.git/config"),
+    "nul": _extra("vocab\0.json"),
+    "cr": _extra("vocab\r.json"),
+    "lf": _extra("vocab\n.json"),
+    "backslash": _extra("sub\\vocab.json"),
+    "double-slash": _extra("sub//vocab.json"),
+    "dot": _extra("./vocab2.json"),
+    "trailing-slash": _extra("sub/"),
+    "empty": _extra(""),
+    "file-and-directory": _extra("config.json/extra.json"),
+    "size-zero": _entry("vocab.json", "size", 0),
+    "size-negative": _entry("vocab.json", "size", -1),
+    "size-text": _entry("vocab.json", "size", "6722759"),
+    "size-bool": _entry("vocab.json", "size", True),
+    "size-float": _entry("vocab.json", "size", 6722759.0),
+    "sha256-upper": _entry("vocab.json", "sha256", "CE99B4CB2983D118806CE0A8B777A35B093E2000A503EBDE25853284C9DFA003"),
+    "sha256-short": _entry("vocab.json", "sha256", "ce99b4cb"),
+    "git-blob-short": _entry("vocab.json", "git_blob", "0aa0ce0658d60ac4a5d609f4eadb0e8e4351417"),
+    "lfs-false": _entry("vocab.json", "lfs", False),
+    "xet-hash": _entry("model-00001-of-00036.safetensors", "xet_hash", "x"),
+    "entry-key": _entry("vocab.json", "sha265", "0" * 64),
+    "entry-missing-sha256": lambda pins: pins["files"]["vocab.json"].pop("sha256"),
+    "index-optional": lambda pins: pins["optional"].append("model.safetensors.index.json"),
+    "index-unpinned": lambda pins: pins.update(index="model.index.json"),
+    "config-optional": lambda pins: pins["optional"].append("config.json"),
+    "weight-unpinned": lambda pins: pins.update(weights=sorted(pins["weights"] + ["model-00037-of-00036.safetensors"])),
+    "weight-optional": lambda pins: pins["optional"].append("model-00001-of-00036.safetensors"),
+    "weights-unsorted": lambda pins: pins["weights"].reverse(),
+    "weights-duplicate": lambda pins: pins["weights"].insert(0, pins["weights"][0]),
+    "weights-empty": lambda pins: pins.update(weights=[]),
+    "optional-unpinned": lambda pins: pins["optional"].append("LICENSE"),
+}
+
+
+@pytest.mark.parametrize("change", UNSAFE_PINS.values(), ids=UNSAFE_PINS.keys())
+def test_checkpoint_pins_reject_unsafe_or_malformed_entries(tmp_path, change):
+    card = installer.setup.selection(QWEN)
+    pins = installer.checkpoint_pins(card)
+    path = tmp_path / QWEN_PINS
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(pins), encoding="utf-8")
+    assert installer.checkpoint_pins(card, root=tmp_path) == pins
+    changed = copy.deepcopy(pins)
+    change(changed)
+    path.write_text(json.dumps(changed), encoding="utf-8")
+    with pytest.raises(ValueError):
+        installer.checkpoint_pins(card, root=tmp_path)
+
+
+def test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint():
+    cards = {profile: installer.setup.selection(profile) for profile in sorted(installer.INSTALLABLE)}
+    qwen = installer.checkpoint_directory("tp2", cards[QWEN])
+    assert qwen == ("/srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
+                    "629bc3218833a38b475b719f34aa571666f4a03e")
+    # One directory per cluster and revision, whatever the profile or node count.
+    assert installer.checkpoint_directory({"name": "tp2"}, cards["qwen38-flash-next-qad-tp4"]) == qwen
+    assert installer.checkpoint_directory("tp4-installer", cards[QWEN]) != qwen
+    main = {**cards[QWEN], "model_revision": "7c4f1bc1a2d6847e0cbc01ac6b823f00251de8dd"}
+    assert installer.checkpoint_directory("tp2", main) == qwen.rsplit("/", 1)[0] + "/" + main["model_revision"]
+    assert len({installer.checkpoint_directory("tp2", card) for card in cards.values()}) == 3
+    # Deployment workspaces are named after profiles, so none is the checkpoints or cache directory.
+    assert not {"checkpoints", "cache"} & set(installer.profiles.catalog())
+    for profile, card in cards.items():
+        model = installer.checkpoint_directory("tp2", card)
+        raw = {"schema": "sparkring-install-site/v1", "name": "tp2-site", "workspace": "/srv/sparkring/tp2/" + profile,
+               "hosts": [{"host": f"spark{n}", "management_ip": f"192.0.2.{20 + n}", "fabric_ip": f"198.18.20.{n + 1}",
+                          "interface": "enp1s0f0np0", "model": model, "cache": "/srv/sparkring/tp2/cache"}
+                         for n in range(card["nodes"])]}
+        if profile in compose.TP4_PROFILES:
+            for row in raw["hosts"]:
+                row["fabric"] = {"site_path": "/srv/sparkring/mesh-site.json", "site_sha256": "0" * 64, "plan_sha256": "0" * 64}
+        for row in installer.site_document(raw, card, "1" * 40)["ranks"]:
+            assert row["model"] == model
+            for key in ("cache", "repository", "deployment_root"):
+                other = PurePosixPath(row[key])
+                assert not PurePosixPath(model).is_relative_to(other) and not other.is_relative_to(model)
+    for name in ("", "TP2", "tp2/../x", "../tp2", "tp2/", "-tp2", "a" * 41, None, {"name": "../tp2"}):
+        with pytest.raises(ValueError):
+            installer.checkpoint_directory(name, cards[QWEN])
+    for field, value in (("model_revision", "qad-step-4000"), ("model_repository", "../etc"),
+                         ("model_repository", "owner--name/model"), ("model_repository", "owner/na..me")):
+        with pytest.raises(ValueError):
+            installer.checkpoint_directory("tp2", {**cards[QWEN], field: value})

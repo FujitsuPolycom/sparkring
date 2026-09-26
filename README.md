@@ -23,8 +23,8 @@ Four Sparks:
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
-It sets up every Spark, downloads the image and model, and prints the API
-address when the model is ready. Four-Spark rings need a
+It sets up every Spark, downloads the image and the model (or reuses a copy
+already on the Sparks), and prints the API address when the model is ready. Four-Spark rings need a
 [driver step](docs/operations/install.md#four-spark-rings) first and after a
 reboot. To run with Docker
 Compose instead, see [Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).

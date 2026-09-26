@@ -18,9 +18,15 @@ tree pin `629bc3218833`. These conditions have no hardware evidence:
   which four-Spark rings need before the first installation and after every
   reboot; see [Four-Spark rings](#four-spark-rings);
 - Docker's containerd image store; see
-  [Image distribution and caches](#image-distribution-and-caches).
+  [Image distribution and caches](#image-distribution-and-caches);
+- adoption of checkpoint copies found on the Sparks: Hugging Face caches,
+  copies of the model repository's `main` branch and `hf download` folders;
+- the checkpoint search on Sparks with network storage or automounts;
+- the download guard, which stops an installation that would download or
+  write more checkpoint data than the approved plan;
+- checkpoint adoption on a four-Spark ring (see [Checkpoints](#checkpoints)).
 
-Offline tests cover the second and third conditions. The
+Offline tests cover the second and third conditions and the last four. The
 [acceptance record](../development/installer-acceptance.md) states the
 conditions of each run.
 
@@ -130,12 +136,16 @@ On a four-Spark ring, complete the [driver step](#four-spark-rings) first and
 use `qwen38-flash-next-qad-tp4`. Without `--profile`, the command lists the
 installer profiles for the cabled node count and asks for one.
 
-On first use the command lists everything automated setup will do and asks one
-question, `Proceed? [Y/n]`; Enter approves. That approval covers discovery,
-trusting each cabled Spark's SSH host key on first contact (setup prints the
-fingerprints it recorded), package installation, the administration network,
-fabric addressing, including replacement of incompatible fabric IPv4 settings
-(see [Setup and access](#setup-and-access)), and the first model installation.
+On first use the command lists everything automated setup will do and asks
+`Proceed? [Y/n]`; Enter approves. That approval covers discovery, trusting each
+cabled Spark's SSH host key on first contact (setup prints the fingerprints it
+recorded), package installation, the administration network, fabric
+addressing, including replacement of incompatible fabric IPv4 settings (see
+[Setup and access](#setup-and-access)), and the first model installation,
+unless the checkpoint plan downloads more than 1 GiB or a Spark's search
+stopped early or failed. Then the command prints that plan and asks
+`Proceed with this checkpoint plan? [y/N]`; answer `y`. Enter cancels; setup
+stays complete, and the same command asks again.
 SSH still asks for each worker's password when no key login exists, and a
 worker signed in as a non-root user asks for its sudo password twice. Stopping
 a running GPU container always needs its own answer or `--stop-workloads`.
@@ -165,11 +175,11 @@ sudo sparkring status --refresh --json
 
 `--json` writes one result to stdout; progress stays on stderr and in the log.
 Exit codes are 0 for success/planning, 3 for missing input, and 2 for failure.
-`needs_input` identifies the required choice, such as profile, approval or
-storage. `--yes` approves model replacement and first-use setup without a
-terminal; it does not trust unknown SSH host keys or authorize stopping
-unrelated workloads. A configured ring is inspected without changing links.
-Use `sparkring setup` to review cable or network changes separately.
+`needs_input` identifies the required choice, such as profile, approval,
+storage or checkpoint. `--yes` approves model replacement and first-use setup
+without a terminal; it does not trust unknown SSH host keys or authorize
+stopping unrelated workloads. A configured ring is inspected without changing
+links. Use `sparkring setup` to review cable or network changes separately.
 `sparkring models` lists the exact profiles.
 
 Follow the installation from another terminal:
@@ -298,9 +308,10 @@ layers pulls. The relay reads anonymous pulls, as public GHCR and Docker Hub
 repositories allow. Node A needs room for the relay's layer cache, which is
 removed after distribution, in addition to its own pull. Image distribution
 starts first and overlaps the prerequisite and source checks. Checkpoint
-preparation waits until every node holds the image, because a checkpoint
-download or repair runs the image's own Hugging Face client; image admission
-follows. Offline tests cover this ordering; it has no hardware evidence.
+preparation waits until every node holds the image, because a download runs
+the image's own Hugging Face client and every checkpoint write is checked
+against free space after the image is in place; image admission follows.
+Offline tests cover this ordering; it has no hardware evidence.
 
 Docker's containerd image store is untested and probably unsupported: the
 installer identifies an image by comparing Docker's image ID with the pinned
@@ -371,7 +382,8 @@ Before changing anything, `sparkring install` confirms noninteractive SSH and
 `access` and, per Spark, the one-time command a person runs there; it prompts
 for that Spark's password. SparkRing never accepts passwords as options or
 settings. [Security and host exposure](#security-and-host-exposure) describes
-what that command grants.
+what that command grants. Installer operations on a Spark run as root: when a
+Spark's SSH account is not `root`, they run through `sudo -n`.
 
 Existing compatible fabric addresses are kept. When existing addresses are
 incompatible, interactive setup prints the problem and replaces the fabric
@@ -536,15 +548,15 @@ anonymously; no registry or Hugging Face account is used.
 | Host | Used for |
 |---|---|
 | `ghcr.io`, which redirects to `pkg-containers.githubusercontent.com` | The serving image, downloaded once by Node A's relay |
-| `huggingface.co`, which redirects to its download CDN | The model checkpoint, downloaded once when no Spark holds a matching copy |
+| `huggingface.co`, which redirects to its download CDN | Checkpoint files that no Spark holds, downloaded once by Node A |
 | Your Ubuntu package mirror | The package's dependencies during `apt install` on Node A |
 | `github.com` and its release-asset download host | Four-Spark rings only: every rank downloads the native mesh host marker from `https://github.com/FujitsuPolycom/sparkring/releases/download/r33-host-tools-c8646b0/mlx5-rdma-tx-marker` when the installer creates a mesh |
 
-Workers receive the package, image and checkpoint from Node A. A Spark that
-repairs a reused checkpoint copy (see [Checkpoints](#checkpoints)) downloads the
-differing files itself, and each rank of a four-Spark ring downloads the mesh
-marker itself; workers reach the Internet through Node A's sharing unless they
-have their own connection.
+Workers receive the package, image and checkpoint from Node A. In `sparkring
+install`, only Node A contacts huggingface.co, and only for checkpoint files
+that no Spark holds. Each
+rank of a four-Spark ring downloads the mesh marker itself; workers reach the
+Internet through Node A's sharing unless they have their own connection.
 
 | Asset | Size |
 |---|---:|
@@ -560,18 +572,25 @@ leaves the running model in place:
 - Image: each Spark without the image needs the unpacked size plus the
   download size plus 8 GiB (51.7 GiB) free in Docker's data root. Node A needs
   a further 14.2 GiB there for the relay's layer cache.
-- Checkpoint and caches: each Spark needs the planning allowances in
-  [storage planning](../../profiles/storage-planning.json) on the filesystems
-  that hold the checkpoint, Docker's data root (while the image is absent) and
-  the compile cache: a checkpoint allowance of 120 GiB (Qwen), 190 GiB (MiMo)
-  or 200 GiB (GLM), 68 GiB for the image and 32 GiB for caches.
+- Checkpoint: the bytes a Spark copies, receives or downloads, plus the largest
+  of those files once more for its staging copy. Hard-linked files need no
+  space. The printed plan shows each Spark's total, which also counts 32 GiB
+  for the compile cache when the cache shares that filesystem and, on a Spark
+  without the image, 68 GiB for the image. `sparkring up`, whose image step
+  pulls the image itself, reserves the full checkpoint allowance of
+  [storage planning](../../profiles/storage-planning.json), 120 GiB (Qwen),
+  190 GiB (MiMo) or 200 GiB (GLM), unless the Spark holds a verified
+  checkpoint.
+- Caches: 32 GiB for the compile cache, and 68 GiB in Docker's data root while
+  the image is absent.
 
-With the checkpoint, Docker and the cache on one filesystem, keep at least
-220 GiB (Qwen), 290 GiB (MiMo) or 300 GiB (GLM) free on every Spark, and about
-15 GiB more on Node A. Checkpoints default to
-`/srv/sparkring/<cluster>/<profile>-<instance>/models/<revision>` and caches to
-`/srv/sparkring/<cluster>/cache`; `--model-path` and `--cache-path` choose other
-locations.
+With the checkpoint, Docker and the cache on one filesystem, the plan asks a
+Spark that holds neither the image nor any checkpoint file for 202.9 GiB
+(Qwen), 278.0 GiB (MiMo) or 279.5 GiB (GLM); Node A needs 14.2 GiB more in
+Docker's data root for the relay's layer cache. Checkpoints are kept in
+`/srv/sparkring/<cluster>/checkpoints/<owner>--<name>/<revision>` and caches in
+`/srv/sparkring/<cluster>/cache`; `--cache-path` chooses another cache
+location.
 
 ## If a worker has no SSH
 
@@ -671,50 +690,124 @@ ambiguous and are rejected. Guide-only profiles remain listed with their guides.
 
 ## Checkpoints
 
-The installer checks existing container model mounts and standard model
-directories under `/srv/models`, `/models`, `/var/tmp/models` and
-`/srv/sparkring` for the selected checkpoint. A directory whose
-configuration and index hashes match, with every indexed weight file present,
-is proposed for reuse, then every pinned shard is verified during preparation.
-On Linux, each host records the verified hashes per checkpoint path in
-`/var/lib/sparkring/checkpoints/`; later gates and later installations reuse
-them only while the complete file list, device, inode, size, modification time
-and change time match; changes trigger checksum verification again. A missing
-checkpoint is copied from a verified peer, or downloaded once on Node A if none
-has it. Copies travel over the fabric cables outward from the Spark that holds
-the checkpoint, ring neighbors in parallel: plain TCP between the two ends of
-each cable, one stream per shared fabric function. The receiver binds only its
-fabric addresses, accepts only the sender's fabric address and a one-time token
-delivered over administration SSH, and writes only files named in the verified
-manifest; files that already match are kept. When a direct copy fails, the
-remaining Sparks are filled with rsync over administration SSH. Copies are
-checksum-verified before launch.
+SparkRing keeps one checkpoint directory per cluster and checkpoint revision,
+`/srv/sparkring/<cluster>/checkpoints/<owner>--<name>/<revision>`, shared by
+every deployment of that revision. It holds exactly the files that the pin
+manifest in [`profiles/checkpoints/`](../../profiles/checkpoints) requires, 48
+for Qwen; the profile's `SHA256SUMS` lists the same files.
 
-Each installer profile's `SHA256SUMS` file pins the checkpoint files it lists.
-A reused copy, whether discovered or given with `--model-path`, whose files
-differ from those pins is repaired in place: a root container synchronizes the
-directory from the pinned hub revision, replacing only the differing files,
-and the copy is verified again. Discovered directories need not belong to
-SparkRing, and the installer does not ask before repairing them. To keep such a
-directory unchanged, move it out of the searched locations or pass
-`--model-path` with a copy you own. Hub-style folders named `<owner>--<name>`
-are found with or without a revision subfolder; metadata hashes decide a match,
-not folder names.
+**Where the installer looks.** Before it prints the plan, `sudo sparkring
+install` searches every Spark at once, for up to 20 s each; a Spark whose search
+runs out of time searches once more for up to 40 s, and Docker queries take up
+to 15 s, so one Spark's search ends within 75 s:
 
-Before a download writes its first file, the installer records the destination
-as that deployment's download. A nonempty directory at the installer's default
-model path is accepted only as that recorded, unfinished download; repeating
-`sudo sparkring install` continues it, keeping completed files. Any other
-nonempty directory without an installer receipt is refused. Offline tests
-cover continuing a download; it has no hardware evidence.
+- SparkRing's own checkpoint directories and records;
+- Hugging Face caches in every account's home, and those that `HF_HOME`,
+  `HF_HUB_CACHE` and similar variables name in system files, systemd units and
+  root's and your own shell files;
+- Docker containers' model mounts, volumes and Hugging Face caches;
+- folders with any name, such as `hf download --local-dir` folders and git-lfs
+  clones, under `/var/tmp/models`, `/models`, home directories, `/data`,
+  `/srv`, `/mnt`, `/opt` and other local disks.
 
-`--model-path /absolute/checkpoint` selects a cache explicitly when it is stored
-elsewhere. This avoids downloading weights already present on the ranks.
-`--cache-path /absolute/cache` chooses another writable compilation cache. Image
-imports and checkpoint copies check storage before the model switch;
-insufficient space leaves the running model in place. The installer does not
-delete model weights or unrelated archives to make room. Arbitrary upstream
-images still need their own compatible transport adapter.
+The search runs as root and reads directory listings, file sizes, download
+metadata and SparkRing's records, home directories included; it hashes only
+files up to 64 MiB and does not read other accounts' shell files. It never
+enters network storage or automounts. The plan names what was not searched.
+
+**What it does with a copy.** Files are identified by SHA-256 against the pin
+manifest, not by names, so a copy of the repository's `main` branch supplies
+every Qwen file except `config.json`. SparkRing hashes each file before using
+it. Weight files on the same filesystem as SparkRing's directory are hard-linked
+into it and take no extra space; the other files (configuration, tokenizer, chat
+template) are copied, so later edits to your copy do not reach the served model.
+**SparkRing never writes, moves or deletes files it did not create.**
+Hard-linking changes only the link count and change time of your weight files;
+a backup tool that compares change times reads them once more. A copy in
+another account's home is listed but used only when named with `--model-path`.
+Files that no Spark holds are downloaded once by Node A.
+
+Copies between Sparks travel over the fabric cables outward from a Spark that
+holds the checkpoint. The receiver binds only its fabric addresses and accepts
+only the sender's address and a one-time token sent over administration SSH;
+when a direct copy fails, rsync over administration SSH fills in. rsync sends
+only the files the receiver lacks, into an empty staging directory beside
+SparkRing's directory, and reads them without changing their access times
+(`--open-noatime`, which needs rsync 3.2.3 or later on both ends; Ubuntu 24.04
+ships 3.2.7). Every received file is placed only after its SHA-256
+matches. Later starts compare each file's recorded device, inode, size and
+times, and re-hash a file that changed. The last step of a model switch,
+`Confirm checkpoint unchanged during loading`, compares them again on every
+Spark once the model has loaded; a change fails the switch, and the previous
+deployment is restored.
+
+**Approval.** The plan shows, for each Spark, its sources and their owners, how
+many files it hard-links, and the bytes it copies, receives or downloads. A plan
+reviewed with `--plan`, or approved at a terminal prompt, bounds every later
+`--yes` run: such a run searches again and proceeds only while its plan stays
+within the reviewed one, with no new downloads, at most 1 GiB more written per
+Spark, the same mode and no new source folders on each Spark. A run whose plan
+leaves it stops, prints the difference and keeps the reviewed plan as the bound,
+so repeating `--yes` stops again; review the new plan with `--plan`, then
+repeat `--yes`. The refused plan is saved as `checkpoint-plan.refused.json`
+beside the reviewed one. A download or write that the approved plan does not
+include stops the installation with `needs_input` (field `checkpoint`) before it
+starts; the running model is not changed. Setup's approval of a first
+installation does not cover a download over 1 GiB or a search that stopped early
+or failed: a terminal asks `Proceed with this checkpoint plan? [y/N]`, and a
+run without one stops. A plan whose problems stop the installation, such as a
+named path that exists on no Spark or too little free space, records no
+deployment. Commands that messages suggest repeat your `--profile`,
+`--model-path`, `--cache-path` and `--image-lock` options, which identify the
+deployment. With `--json`, the result carries a summary of the plan as
+`checkpoint`; the full plan, with each file's action, is `checkpoint-plan.json`
+in the result's `deployment` directory.
+
+**Options.**
+
+- `--model-path PATH` names a copy for every Spark, `--model-path N=PATH` one
+  for Node N; repeat it as needed. Named copies are used first and the search
+  still runs. A named copy on another filesystem than SparkRing's directory that
+  holds exactly the pinned files is served in place, read-only, and the model
+  does not start while that folder is changed or missing. SparkRing never
+  creates or writes a named path. Named paths are part of the deployment:
+  repeat every command with the same `--model-path` options, because other
+  named paths plan another deployment. Whether a named copy is served in place
+  is decided when its deployment is first planned; if that copy later changes,
+  the installation stops and says how to continue.
+- `--ignore-local-copies` uses only SparkRing's own checkpoint directories and
+  named copies.
+- A file named `.sparkring-ignore` keeps SparkRing out of its folder and
+  everything below, even a named path. For a Hugging Face cache, put it in
+  `$HF_HOME` (the parent of `hub`) or in a `models--*` folder; in `hub` itself
+  it makes `hf cache scan` report an error.
+- `--cache-path /absolute/cache` chooses another writable compilation cache.
+
+`sparkring up PROFILE` does not search: each Spark uses SparkRing's checkpoint
+directory and downloads the files it lacks itself, with the serving image's
+Hugging Face client, so every Spark must already hold the image (`sudo
+sparkring install` distributes it). `sparkring up --model-path PATH` serves a
+complete copy in place.
+
+**Disk space held by links.** While SparkRing's directory links a copy's weight
+files, deleting that copy or pruning the Hugging Face cache frees nothing.
+`sudo sparkring checkpoints` lists SparkRing's checkpoint directories on every
+Spark, the deployments that use each, the copies it shares files with and the
+space a release frees. `sudo sparkring checkpoints --release PATH` removes one
+from every Spark: it refuses a directory that the active deployment or the
+rollback target uses, also one served in place, and a directory that a running
+container mounts; it names other deployments that use it (they need `sudo
+sparkring install` again) and asks first (`--yes` in scripts). It removes only
+the names and directories SparkRing placed and never writes, moves or deletes
+the copies they were linked from.
+
+**If SparkRing did not find your copy,** read the plan's `Not searched` line and
+whether a Spark's search stopped at its time limit, and repeat the plan; a
+repeated search is faster. Otherwise name the copy with `--model-path N=PATH`.
+
+**If deleting your copy did not free space,** run `sudo sparkring checkpoints`,
+then `sudo sparkring checkpoints --release PATH` for a directory that no running
+deployment uses.
 
 ## Local build and tests
 
@@ -765,6 +858,15 @@ count selects the profile. For an offline site, fill in
 [the site example](../../profiles/install-site.example.json) and pass
 `--site YOUR_FILE` instead of `--host`. No live command runs without `--execute`
 except discovery and status refresh.
+
+A site's checkpoint path (`<workspace>/models/<revision>` unless a row names
+another) becomes a SparkRing checkpoint directory. Docker's download mount and
+rsync's destination name its staging directory by path, so SparkRing claims the
+path only when every existing directory above it is writable by its owner alone
+or carries the sticky bit, as `/tmp` does, and an existing directory at the
+path is empty, owned by root and writable by root alone. Keep it below
+directories that only root or the operator can change: an account that owns a
+directory above it could still rename what is inside.
 
 `sparkring export --share --output profile-template.zip` writes a portable
 template: the pinned profile, the image lock, an example site and per-rank

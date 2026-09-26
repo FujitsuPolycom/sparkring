@@ -79,7 +79,12 @@ Reuse an existing verified model copy. Otherwise download the approximately
 (cd "$MODEL_DIR" && sha256sum --check "$REPO/profiles/qwen38-flash-next-tp2/SHA256SUMS")
 ```
 
-Directory names do not prove model identity. Model mounts are read-only; do not
+`SHA256SUMS` lists the 48 files the pinned revision requires; the download's
+`README.md` and `.gitattributes` are not served and not checked. `sudo sparkring
+install` finds an existing copy on a local disk by itself, in a Hugging Face
+cache, an `hf download` folder or any other folder (a copy in another account's
+home or on network storage needs `--model-path`), so `MODEL_DIR` matters only
+for manual runs. Directory names do not prove model identity. Model mounts are read-only; do not
 put the writable cache inside the model directory.
 
 When switching from plain NVFP4, recreate the serving containers with this
