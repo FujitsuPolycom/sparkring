@@ -180,7 +180,7 @@ def option(entry, *, abbreviate=False):
 def install_command(request=None, named=(), *, ignore_local=False):
     """The ``sudo sparkring install`` command that repeats one deployment request.
 
-    ``request`` holds ``profile``, ``cache_path`` and ``image_lock``. With the
+    ``request`` holds ``profile``, ``checkpoint``, ``cache_path`` and ``image_lock``. With the
     ``--model-path`` entries ``named`` they make the deployment's identity, so
     a command that leaves one out plans another deployment.
     ``--ignore-local-copies`` is kept when set, because it narrows the search
@@ -190,6 +190,8 @@ def install_command(request=None, named=(), *, ignore_local=False):
     argv = ["sudo", "sparkring", "install"]
     if request.get("profile"):
         argv += ["--profile", str(request["profile"])]
+    if request.get("checkpoint"):
+        argv += ["--checkpoint", str(request["checkpoint"])]
     for entry in named_paths(named):
         argv += ["--model-path", (f"{entry['rank']}=" if entry["rank"] is not None else "") + entry["path"]]
     if request.get("cache_path"):
@@ -698,7 +700,7 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     each retained deployment's name to the model path of each rank, to name the
     deployments whose receipts adoption refreshes. ``locked`` keeps every row's
     mode, for a deployment that already exists. ``request`` holds the
-    ``profile``, ``cache_path`` and ``image_lock`` of the deployment request;
+    ``profile``, ``checkpoint``, ``cache_path`` and ``image_lock`` of the deployment request;
     with ``named`` and ``ignore_local`` it gives the command that the plan's
     messages suggest (``install_command``).
     """
@@ -707,7 +709,7 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     if len(surveys) != count:
         raise ValueError("The checkpoint plan needs one survey per Spark")
     entries = named_paths(named, count)
-    request = {key: (request or {}).get(key) for key in ("profile", "cache_path", "image_lock")}
+    request = {key: (request or {}).get(key) for key in ("profile", "checkpoint", "cache_path", "image_lock")}
     context = {"request": request, "named": entries, "ignore_local_copies": bool(ignore_local)}
     command = install_command(request, entries, ignore_local=ignore_local)
     policy = policy or storage_policy()

@@ -32,7 +32,15 @@ def selection(profile_id, variant=None, root=profiles.ROOT):
     model = resolved["model"]
     source = profiles.read_json(profiles.local_path(definition["configuration"]["path"], root))
     variants = source.get("target_variants", {})
-    if variants:
+    checkpoints = source.get("checkpoints", {})
+    if checkpoints:
+        # A serving profile's checkpoints table names Hugging Face branches of
+        # its repository; runtime/common/qwen_flash_next.py applies the settings.
+        variant = variant or source["checkpoint"]
+        if variant not in checkpoints:
+            raise ValueError("Select a checkpoint the profile lists: " + ", ".join(sorted(checkpoints)))
+        model = checkpoints[variant]["model"]
+    elif variants:
         variant = variant or "nvfp4-spark"
         if variant not in variants:
             raise ValueError("Select a declared target variant: " + ", ".join(variants))

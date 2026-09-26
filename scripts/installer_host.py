@@ -299,19 +299,25 @@ def model_files(path, expected=None, *, in_place=False, optional=()):
     return result
 
 
-def checksum_manifest(profile):
+def checksum_manifest(profile, revision=None):
     """Per-file SHA-256 pins for a profile's checkpoint revision, if recorded.
 
-    Each profile keeps its own file, because profiles that share a model
-    repository can pin different revisions of it.
+    Each profile keeps its own file for its default checkpoint, because
+    profiles that share a model repository can pin different revisions of it.
+    Another checkpoint of the profile's table (``revision`` differs) has no
+    such file; its pin manifest lists every required file instead.
     """
     own = profiles.ROOT / "profiles" / profile / "SHA256SUMS"
-    return own if own.is_file() else None
+    if not own.is_file():
+        return None
+    if revision is not None and revision != profiles.resolve(profile)["model"]["revision"]:
+        return None
+    return own
 
 
-def pinned_differences(profile, files):
+def pinned_differences(profile, files, revision=None):
     """Names whose recorded pin differs from, or is absent in, a measured tree."""
-    sums = checksum_manifest(profile)
+    sums = checksum_manifest(profile, revision)
     if sums is None:
         return []
     differences = []
@@ -328,7 +334,7 @@ def _check_pins(card, files, required=None):
     for filename, key in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
         if files.get(filename) != model[key]:
             raise ValueError("Checkpoint metadata differs from the selected profile: " + filename)
-    sums = checksum_manifest(card["profile"])
+    sums = checksum_manifest(card["profile"], card["model_revision"])
     if sums is not None:
         for line in sums.read_text().splitlines():
             digest, name = line.split(maxsplit=1)
@@ -1066,7 +1072,7 @@ def verify_in_place(lock, row, state, *, number):
     if model_file_stats(model, names, in_place=True, optional=optional) != current:
         raise ValueError("Checkpoint changed while preparing its checksum receipt")
     differs = (sorted(n for n in names if hashes[n] != required[n]["sha256"]) if names is not None
-               else pinned_differences(card["profile"], hashes))
+               else pinned_differences(card["profile"], hashes, card["model_revision"]))
     if differs:
         raise ValueError(_in_place_message(model, differs=differs))
     receipt = {"repository": card["model_repository"], "revision": card["model_revision"], "path": row["model"],
@@ -1559,6 +1565,7 @@ def perform(operation, lock, number):
             else:
                 metadata, _ = profiles.load(card["profile"])
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
+                profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
                 qwen_flash_next.verify_model_paths(profile, Path(row["model"]), Path(row["cache"]))
             if card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
                 from runtime.common import qwen_mesh

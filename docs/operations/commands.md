@@ -11,6 +11,7 @@ sudo sparkring install --profile qwen38-flash-next-tp2        # install on two S
 sudo sparkring install --profile qwen38-flash-next-qad-tp4    # install on four Sparks
 sudo sparkring install --profile qwen38-flash-next-tp2 --plan # print the plan, change nothing
 sudo sparkring install --profile qwen38-flash-next-tp2 --model-path /data/models/qwen  # reuse a copy
+sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000  # another listed checkpoint
 sudo sparkring logs --follow                                  # follow progress
 ```
 
@@ -47,6 +48,7 @@ image and checkpoint, then starts or switches the model.
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation |
 | `--json` | Print one JSON result on stdout; progress goes to stderr |
+| `--checkpoint NAME` | Another checkpoint the profile lists, by Hugging Face branch; default: the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
 | `--ignore-local-copies` | Use only SparkRing's own checkpoint directories and named copies |
 | `--cache-path PATH` | Another writable compile cache on each Spark |

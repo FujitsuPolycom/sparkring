@@ -7,6 +7,7 @@ Creation refuses existing names; source verification runs inside the image.
 
 from __future__ import annotations
 import argparse
+import copy
 import hashlib
 import ipaddress
 import json
@@ -64,6 +65,69 @@ def canonical(profile):
 
 def node_count(profile):
     return int(profile["vllm_args"][profile["vllm_args"].index("--nnodes") + 1])
+
+
+CHECKPOINT_KEYS = {"model", "environment", "speculative"}
+MODEL_KEYS = {"repository", "revision", "config_sha256", "index_sha256"}
+
+
+def checkpoint_names(profile):
+    """(default, names) of a profile's checkpoint table; (None, ()) without one.
+
+    The table, `checkpoints`, maps each name (a Hugging Face branch of the
+    profile's repository) to its pinned `model` and optional `environment` and
+    `speculative` settings. `checkpoint` names the default entry, whose model is
+    the profile's top-level `model` and which changes no setting.
+    """
+    table = profile.get("checkpoints")
+    if table is None:
+        if "checkpoint" in profile:
+            raise ValueError("A default checkpoint requires a checkpoints table")
+        return None, ()
+    default = profile.get("checkpoint")
+    if not isinstance(table, dict) or default not in table:
+        raise ValueError("The checkpoints table must include the default checkpoint")
+    for name, entry in table.items():
+        if (not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,62}", name) or not isinstance(entry, dict)
+                or "model" not in entry or not set(entry) <= CHECKPOINT_KEYS or set(entry["model"]) != MODEL_KEYS
+                or entry["model"]["repository"] != profile["model"]["repository"]):
+            raise ValueError(f"Invalid checkpoint entry: {name}")
+    if table[default] != {"model": profile["model"]}:
+        raise ValueError("The default checkpoint must be the profile's model without other settings")
+    return default, tuple(sorted(table))
+
+
+def checkpoint_settings(profile, name):
+    """The profile with the named checkpoint's model and settings applied; None keeps the default.
+
+    An entry may change existing environment variables and existing keys of
+    --speculative-config, never add new ones, so every checkpoint runs the
+    profile's validated command with only its pinned differences.
+    """
+    default, names = checkpoint_names(profile)
+    if name is None or name == default:
+        return profile
+    if not names:
+        raise ValueError("This profile offers no checkpoint choice")
+    if name not in names:
+        raise ValueError("Select a checkpoint the profile lists: " + ", ".join(names))
+    entry = profile["checkpoints"][name]
+    result = copy.deepcopy(profile)
+    result["model"] = dict(entry["model"])
+    environment = entry.get("environment", {})
+    if not set(environment) <= set(result["environment"]):
+        raise ValueError(f"Checkpoint {name} may only change existing environment settings")
+    result["environment"].update(environment)
+    speculative = entry.get("speculative", {})
+    if speculative:
+        args = result["vllm_args"]
+        index = args.index("--speculative-config") + 1
+        spec = json.loads(args[index])
+        if not set(speculative) <= set(spec):
+            raise ValueError(f"Checkpoint {name} may only change existing speculative settings")
+        spec.update(speculative)
+        args[index] = json.dumps(spec, separators=(",", ":"))
+    return result
 
 
 def image_policy(profile, *, local_source_extension=None):
@@ -208,8 +272,9 @@ def verify_image(image, *, cache_enabled=False, feature_enabled=False,
 
 def container_spec(profile, *, rank, master, host_ip, interface, image, model, cache,
                    remote=False, hcas=None, gid=None, local_source_extension=None,
-                   local_kv_cache_gib=None, local_master_port=None):
+                   local_kv_cache_gib=None, local_master_port=None, checkpoint=None):
     canonical(profile)
+    profile = checkpoint_settings(profile, checkpoint)
     policy = image_policy(profile, local_source_extension=local_source_extension)
     entrypoint = candidate.ENTRYPOINT
     if policy["kind"] == "toolchain":

@@ -1,5 +1,6 @@
 """Offline admission checks for the isolated Qwen Flash-Next TP2 plan."""
 
+import copy
 import hashlib
 import json
 import os
@@ -26,7 +27,7 @@ PROFILE = (
 )
 
 
-def plan(rank=0):
+def plan(rank=0, **extra):
     return render(
         json.loads(PROFILE.read_text()),
         rank=rank,
@@ -36,7 +37,46 @@ def plan(rank=0):
         image=installer_image_id(),
         model=str(ROOT / "fixture-model"),
         cache=str(ROOT / "fixture-cache"),
+        **extra,
     )
+
+
+def test_checkpoint_table_names_the_default_and_its_alternatives():
+    profile = adapter.read(PROFILE)
+    assert adapter.checkpoint_names(profile) == ("qad-step5500-ple1000", ("qad-step-4000", "qad-step5500-ple1000"))
+    assert adapter.checkpoint_settings(profile, None) is profile
+    assert adapter.checkpoint_settings(profile, "qad-step5500-ple1000") is profile
+    tp4 = adapter.read(ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json")
+    assert tp4["checkpoint"] == profile["checkpoint"] and tp4["checkpoints"] == profile["checkpoints"]
+    with pytest.raises(ValueError, match="lists: qad-step-4000, qad-step5500-ple1000"):
+        adapter.checkpoint_settings(profile, "main")
+    added = copy.deepcopy(profile)
+    added["checkpoints"]["qad-step-4000"]["environment"]["VLLM_NEW_SETTING"] = "1"
+    with pytest.raises(ValueError, match="existing environment"):
+        adapter.checkpoint_settings(added, "qad-step-4000")
+    added = copy.deepcopy(profile)
+    added["checkpoints"]["qad-step-4000"]["speculative"]["new_key"] = 1
+    with pytest.raises(ValueError, match="existing speculative"):
+        adapter.checkpoint_settings(added, "qad-step-4000")
+    changed = copy.deepcopy(profile)
+    changed["checkpoints"]["qad-step5500-ple1000"]["environment"] = {"VLLM_MXFP8_LM_HEAD": "1"}
+    with pytest.raises(ValueError, match="default checkpoint"):
+        adapter.checkpoint_names(changed)
+
+
+def test_the_step_4000_checkpoint_runs_its_pinned_settings():
+    command = plan(checkpoint="qad-step-4000")
+    # Revision 629bc3218833 stores NVFP4 MTP routed experts, which B12X runs,
+    # and quantizes its target LM head to MXFP8 at load.
+    assert "VLLM_MXFP8_LM_HEAD=1" in command
+    draft = json.loads(command[command.index("--speculative-config") + 1])
+    assert draft["moe_backend"] == "b12x" and draft["draft_sample_method"] == "probabilistic"
+    namespace = f"qwen-flash-next-{installer_image_id()[7:19]}-629bc3218833"
+    assert f"VLLM_CACHE_ROOT=/cache/{namespace}/vllm" in command
+    default = plan()
+    assert command[command.index("--served-model-name") + 1] == default[default.index("--served-model-name") + 1]
+    with pytest.raises(ValueError, match="lists"):
+        plan(checkpoint="main")
 
 
 def test_qwen_model_and_native_prefix_only():

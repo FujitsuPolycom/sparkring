@@ -11,6 +11,10 @@ On the Spark connected to your network:
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
+Add `--checkpoint qad-step-4000` to install checkpoint step 4000 (revision
+`629bc3218833`) instead; the installer then uses the MXFP8 target LM head and
+runs the draft's NVFP4 experts on B12X, as that checkpoint needs.
+
 [Install SparkRing](../../docs/operations/install.md) covers requirements,
 logs and recovery. To run the same containers with Docker Compose, see
 [Compose](compose/README.md).

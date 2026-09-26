@@ -263,8 +263,11 @@ def installer_image_runtime(profile_id):
 
 
 def specifications(profile_id, site, *, local_image_id=None, local_source_extension=None,
-                   local_kv_cache_gib=None, local_master_port=None, image_runtime=None):
+                   local_kv_cache_gib=None, local_master_port=None, image_runtime=None, checkpoint=None):
     """Per-rank container specifications and the image reference Compose names.
+
+    ``checkpoint`` selects an entry of the profile's checkpoints table; None
+    keeps the profile's default checkpoint.
 
     ``image_runtime`` is an installer image lock. With it, each rank is the
     container that installer_container derives for the host; build records the
@@ -340,6 +343,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
             local_source_extension=local_source_extension,
             local_kv_cache_gib=local_kv_cache_gib,
             local_master_port=local_master_port,
+            checkpoint=checkpoint,
         )
         if image_runtime is not None:
             spec = installer_container(spec, image_runtime, profile_id=profile_id,

@@ -682,6 +682,17 @@ every deployment of that revision. It holds exactly the files that the pin
 manifest in [`profiles/checkpoints/`](../../profiles/checkpoints) requires, 53
 for Qwen; the profile's `SHA256SUMS` lists the same files.
 
+**Another checkpoint of a profile.** The Qwen profiles list two checkpoints by
+Hugging Face branch: `qad-step5500-ple1000`, installed by default, and
+`qad-step-4000`. `--checkpoint NAME` installs a listed one with the settings
+that checkpoint needs, as its own deployment with its own pinned revision and
+checkpoint directory; a name the profile does not list changes nothing.
+Installing again without `--checkpoint` switches back to the default.
+
+```bash
+sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
+```
+
 **Where the installer looks.** Before it prints the plan, `sudo sparkring
 install` searches every Spark at once, for up to 20 s each; a Spark whose search
 runs out of time searches once more for up to 40 s, and Docker queries take up

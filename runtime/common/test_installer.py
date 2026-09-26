@@ -259,6 +259,21 @@ def test_source_bundle_initializes_a_real_git_checkout(tmp_path, monkeypatch):
     assert installer.load(output) == lock
 
 
+def test_a_listed_checkpoint_selects_its_revision_and_pins():
+    card = installer.setup.selection(QWEN, "qad-step-4000")
+    assert card["target_variant"] == "qad-step-4000"
+    assert card["model_revision"] == "629bc3218833a38b475b719f34aa571666f4a03e"
+    pins = installer.checkpoint_pins(card)
+    contract = installer.checkpoint_contract(card)
+    assert pins["files"]["config.json"]["sha256"] == contract["config_sha256"]
+    assert pins["files"][pins["index"]]["sha256"] == contract["index_sha256"]
+    assert installer.setup.selection(QWEN)["target_variant"] == "qad-step5500-ple1000"
+    with pytest.raises(ValueError, match="lists"):
+        installer.setup.selection(QWEN, "main")
+    with pytest.raises(ValueError, match="does not accept"):
+        installer.setup.selection("mimo-v26-flash-rl-tp2", "qad-step-4000")
+
+
 QWEN_PINS = ("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
              "60215d26cf5e42c2db6128774032d57fc62678da.json")
 

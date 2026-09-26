@@ -11,6 +11,10 @@ On the Spark connected to your network:
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
+Add `--checkpoint qad-step-4000` to install checkpoint step 4000 (revision
+`629bc3218833`) instead; the installer then uses the MXFP8 target LM head and
+runs the draft's NVFP4 experts on B12X, as that checkpoint needs.
+
 The installer applies the [ConnectX driver setting](../../docs/operations/install.md#four-spark-rings)
 that four-Spark rings need and repeats it at every boot. [Install SparkRing](../../docs/operations/install.md)
 covers requirements, logs and recovery. Per-rank Compose files:

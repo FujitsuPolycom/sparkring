@@ -47,6 +47,10 @@ script builds and installs the SparkRing package, then runs
 `sudo sparkring install` with your options. To install a published package
 instead, see [Get the package](install-reference.md#get-the-package).
 
+A Qwen profile installs checkpoint step 5500 by default; add
+`--checkpoint qad-step-4000` for step 4000
+([details](install-reference.md#checkpoints)).
+
 It lists every change and asks once (`Proceed? [Y/n]`). It asks again before a
 large model download and before stopping another program's GPU container. It
 prepares the image and model before it stops the running model, and restarts

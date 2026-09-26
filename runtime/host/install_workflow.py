@@ -270,9 +270,14 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
     request = {"profile": profile, "image_runtime": image, "source": distribution.identity(installer.ROOT),
                "model_path": named or None, "cache_path": args.cache_path,
                "nodes": cluster["plan"]["spec"]["hosts"], "api_address": cluster.get("api_address")}
+    if args.checkpoint is not None:
+        request["checkpoint"] = args.checkpoint
     instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
     directory = state_root / "deployments" / (profile + "-" + instance)
-    card = installer.setup.selection(profile)
+    try:
+        card = installer.setup.selection(profile, args.checkpoint)
+    except ValueError as error:
+        raise NeedsInput(str(error) + ". Nothing has been changed.", field="checkpoint_name") from None
     pins = installer.checkpoint_pins(card)
     owned = installer.checkpoint_directory(cluster, card)
     locked = directory.exists()
@@ -301,7 +306,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
     retained, _ = retained_deployments(state_root, directory, rows)
     plan = checkpoint_plan.plan(pins, surveys, rows, named=named, ignore_local=args.ignore_local_copies,
                                 operator=operator, images_present=present, retained=retained, locked=locked,
-                                request={"profile": profile, "cache_path": args.cache_path,
+                                request={"profile": profile, "checkpoint": args.checkpoint, "cache_path": args.cache_path,
                                          "image_lock": str(args.image_lock) if args.image_lock else None})
     if not locked:
         if plan["problems"]:
@@ -313,7 +318,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
             site = _select_mesh(site, cluster, profile, mesh_hint)
         elif installer.backend({"profile": profile}) == "glm-managed":
             site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
-        lock = installer.init(directory, profile, site, image_runtime=image)
+        lock = installer.init(directory, profile, site, variant=args.checkpoint, image_runtime=image)
     return directory, lock, plan
 
 
@@ -695,6 +700,8 @@ def main(argv=None):
                         help="a local copy of the checkpoint; PATH for every Spark or N=PATH for Node N (repeatable); "
                              "SparkRing links or copies its files into its own directory, or serves an exact copy on "
                              "another filesystem read-only, and never writes to it")
+    parser.add_argument("--checkpoint", metavar="NAME",
+                        help="another checkpoint the profile lists (a Hugging Face branch); default: the profile's own")
     parser.add_argument("--ignore-local-copies", action="store_true",
                         help="use only SparkRing's own checkpoint directories and named copies")
     parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")

@@ -7,6 +7,31 @@
     "index_sha256": "956f5224119a4bc8b09c481ddfee095feae8b650bb02861e2a4d1e5b5735455c",
     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
   },
+  "checkpoint": "qad-step5500-ple1000",
+  "checkpoints": {
+    "qad-step5500-ple1000": {
+      "model": {
+        "revision": "60215d26cf5e42c2db6128774032d57fc62678da",
+        "config_sha256": "e0a704d86793ff7c84f4ef99eb9908e13b1684f60bc61b3b3fb1c1a7f3688abc",
+        "index_sha256": "956f5224119a4bc8b09c481ddfee095feae8b650bb02861e2a4d1e5b5735455c",
+        "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
+      }
+    },
+    "qad-step-4000": {
+      "model": {
+        "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+        "config_sha256": "2d655dfa625c3c018f9685031367bc83f8532d3faf3333d7c838b2bdc13b8a7e",
+        "index_sha256": "c528e5628a0f448edc52023933c207a8dbded850afdd960d893c9171a7665dde",
+        "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
+      },
+      "environment": {
+        "VLLM_MXFP8_LM_HEAD": "1"
+      },
+      "speculative": {
+        "moe_backend": "b12x"
+      }
+    }
+  },
   "topology": "direct-cycle-4",
   "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
   "environment": {

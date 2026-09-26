@@ -63,8 +63,11 @@ def address(value):
 def checkpoint_contract(card):
     source, _ = profiles.load(card["profile"])
     model = profiles.resolve(card["profile"])["model"]
+    configuration = profiles.read_json(profiles.local_path(source["configuration"]["path"]))
     if source["configuration"]["format"] == "release-profile":
-        model = profiles.read_json(profiles.local_path(source["configuration"]["path"]))["target_variants"][card["target_variant"]]
+        model = configuration["target_variants"][card["target_variant"]]
+    elif card.get("target_variant") and "checkpoints" in configuration:
+        model = configuration["checkpoints"][card["target_variant"]]["model"]
     return model
 
 
@@ -334,7 +337,7 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     if lock["backend"] != "compose":
         raise ValueError("Managed GLM Compose files are produced by its existing staging lifecycle")
     if card["profile"] in compose.SUPPORTED:
-        specs, _ = compose.specifications(card["profile"], compose_site(lock))
+        specs, _ = compose.specifications(card["profile"], compose_site(lock), checkpoint=card["target_variant"])
         if "image_runtime" in lock:
             from runtime.common import installer_image
             specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row),

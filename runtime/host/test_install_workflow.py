@@ -572,6 +572,13 @@ def test_install_surveys_every_node_in_parallel_and_prints_the_plan_after_the_he
     assert node0["bytes"]["link"] == 110131860580 and node0["bytes"]["copy"] == 56080100
 
 
+def test_an_unlisted_checkpoint_changes_nothing(machine, sparks, capsys):
+    assert command("--checkpoint", "main") == 3
+    result = json.loads(capsys.readouterr().out)
+    assert result["field"] == "checkpoint_name"
+    assert "qad-step-4000, qad-step5500-ple1000" in result["message"] and not sparks.surveys
+
+
 def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, sparks, capsys):
     assert command("--plan") == 0
     first = json.loads(capsys.readouterr().out)
@@ -1364,7 +1371,7 @@ def simulated(machine, monkeypatch, tmp_path):
         "index_sha256": pins["files"][pins["index"]]["sha256"]})
     sums = tmp_path / "SHA256SUMS"
     sums.write_text("".join(f"{pins['files'][name]['sha256']}  {name}\n" for name in required))
-    monkeypatch.setattr(installer_host, "checksum_manifest", lambda profile: sums)
+    monkeypatch.setattr(installer_host, "checksum_manifest", lambda profile, revision=None: sums)
     # Rank operations validate the lock they receive; a Spark's view of the validated lock is accepted.
     monkeypatch.setattr(installer, "validate",
                         lambda lock: lock if id(lock) in simulation.translated else validate(lock))

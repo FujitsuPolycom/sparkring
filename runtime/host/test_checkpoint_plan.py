@@ -795,9 +795,14 @@ def test_install_command_repeats_the_deployment_request():
     assert cp.install_command(request, ["/data/qwen", "1=/mnt/usb/qwen"], ignore_local=True) == (
         "sudo sparkring install --profile qwen38-flash-next-tp2 --model-path /data/qwen --model-path 1=/mnt/usb/qwen "
         "--cache-path '/mnt/fast cache' --image-lock locks/dev.json --ignore-local-copies")
+    assert cp.install_command({**request, "checkpoint": "qad-step-4000"}).startswith(
+        "sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000 ")
     result = make(owner_copy_surveys(2), named=["1=" + FOLDER], ignore_local=True, request=request)
     assert result["command"] == cp.install_command(request, ["1=" + FOLDER], ignore_local=True)
-    assert result["request"] == request and result["profile"] == "qwen38-flash-next-tp2"
+    assert result["request"] == {**request, "checkpoint": None} and result["profile"] == "qwen38-flash-next-tp2"
+    # The command that a plan's messages suggest keeps a selected checkpoint.
+    chosen = make(owner_copy_surveys(2), request={**request, "checkpoint": "qad-step-4000"})
+    assert chosen["command"] == cp.install_command({**request, "checkpoint": "qad-step-4000"})
 
 
 def test_adoption_input_and_saved_plan():

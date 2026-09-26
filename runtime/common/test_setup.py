@@ -41,8 +41,11 @@ def test_qad_selection_changes_weights_not_the_image():
     assert qad["model_repository"] != default["model_repository"]
     assert qad["model_revision"] != default["model_revision"]
     assert qad["image_id"] == default["image_id"]
-    with pytest.raises(ValueError, match="does not accept"):
+    # The Qwen profile lists its own checkpoints; a profile without a table accepts none.
+    with pytest.raises(ValueError, match="lists: qad-step-4000, qad-step5500-ple1000"):
         setup.selection(QWEN, "nvfp4-qad")
+    with pytest.raises(ValueError, match="does not accept"):
+        setup.selection("mimo-v26-flash-rl-tp2", "nvfp4-qad")
 
 
 def test_selection_rejects_unknown_profiles_and_missing_publication():
