@@ -1,10 +1,10 @@
 # SparkRing
 
-SparkRing runs large language models across two or four NVIDIA DGX Sparks
+SparkRing runs large language models distributed across two or four NVIDIA GB10-based devices
 cabled directly to each other, with no switch. Its collectives (SIRCL,
-RoCEnante and patched NCCL) run over the ConnectX-7 cables, and on four-Spark
+RoCEnante and patched NCCL) run over the ConnectX-7 DACs, and on four-Spark
 rings ConnectX hardware forwarding connects every Spark to every other over the
-ring. Profiles use vLLM and [SGLang](runtime/deepseek-v41-sglang/README.md).
+ring. Profiles use vLLM and SGLang.
 
 ## Quick start
 
