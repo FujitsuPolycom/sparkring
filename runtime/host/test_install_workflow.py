@@ -743,6 +743,22 @@ def test_unplanned_download_returns_needs_input_and_keeps_the_model_running(mach
     assert rollout.active(controller.STATE) == previous and not any(e.endswith(":down") for e in events)
 
 
+@pytest.mark.parametrize("field, shown", [("checkpoint", False), ("access", True)])
+def test_terminal_prints_needs_input_details_only_when_the_message_lacks_them(machine, monkeypatch, capsys, field,
+                                                                                shown):
+    details = {"items": [{"rank": 0, "path": "/data/copy", "names": "model-00002-of-00036.safetensors"}]}
+
+    def execute(args):
+        raise NeedsInput("The message names every file and path.", field=field, details=details)
+    monkeypatch.setattr(flow, "execute", execute)
+    assert sparkring.main(["install", "--profile", PROFILE]) == 3
+    err = capsys.readouterr().err
+    assert err.count("The message names every file and path.") == 1
+    assert ("items:" in err and "/data/copy" in err) is shown
+    assert sparkring.main(["install", "--profile", PROFILE, "--json"]) == 3
+    assert json.loads(capsys.readouterr().out)["details"] == details
+
+
 def test_needs_input_is_not_masked_by_an_image_failure(machine, monkeypatch, capsys):
     events, previous, assets, _ = machine
     released = threading.Event()

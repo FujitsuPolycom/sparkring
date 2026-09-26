@@ -152,9 +152,17 @@ class Ring:
         if argv == ["lldpcli", "update"]:
             return ""
         if argv[:2] == ["systemctl", "list-unit-files"]:
-            return "sparkring-mesh.service enabled enabled\n"
+            return ("sparkring-mesh.service enabled enabled\n"
+                    "sparkring-glm-mesh.service enabled enabled\n"
+                    "sparkring-old-mesh.service disabled enabled\n")
         if argv[:3] == ["systemctl", "show", "-p"]:
-            return "Id=sparkring-mesh.service\nActiveState=" + ("inactive" if rank == 3 else "active") + "\n"
+            # Rank 3 runs no mesh; every rank also holds an enabled mesh unit of
+            # another deployment and a disabled one, both stopped.
+            # systemctl show prints the units in the order requested (sorted).
+            return ("Id=sparkring-glm-mesh.service\nActiveState=inactive\nUnitFileState=enabled\n\n"
+                    "Id=sparkring-mesh.service\nActiveState=" + ("inactive" if rank == 3 else "active")
+                    + "\nUnitFileState=enabled\n\n"
+                    "Id=sparkring-old-mesh.service\nActiveState=inactive\nUnitFileState=disabled\n")
         raise AssertionError(f"unexpected command on rank {rank}: {argv}")
 
     def start(self, spark, *, blocking):
@@ -748,11 +756,13 @@ def test_hairpin_with_yes_applies_and_lists_stopped_meshes(command, capsys):
     assert result["state"] == "complete" and [row["after"] for row in result["ranks"]] == ["kept"] * 4
     assert json.loads(open(result["receipt"]).read())["schema"] == ring_module.RECEIPT_SCHEMA
     assert ring_module.COMPLETE in out.err
-    # Units that nobody stopped are not called stopped by hand.
-    assert ("Mesh services that are not running (SparkRing starts only the enabled ones that its start check "
-            "refused). Start each one when it should serve:") in out.err
+    # Only a Spark with no running mesh is listed, with its enabled mesh units;
+    # the stopped units of Sparks whose mesh runs, and disabled units, are not.
+    assert "No mesh service runs on these Sparks. Start the one that should serve:" in out.err
     assert "rank 3: sparkring-mesh.service: ssh -t root@192.0.2.13 sudo systemctl start sparkring-mesh.service" in out.err
-    assert result["stopped_mesh_units"] == [{"rank": 3, "unit": "sparkring-mesh.service"}]
+    assert result["stopped_mesh_units"] == [{"rank": 3, "unit": "sparkring-glm-mesh.service"},
+                                            {"rank": 3, "unit": "sparkring-mesh.service"}]
+    assert "sparkring-old-mesh.service" not in out.err and "rank 0: sparkring-glm-mesh" not in out.err
 
 
 def test_hairpin_revoke_defaults_to_no(command, capsys, monkeypatch):

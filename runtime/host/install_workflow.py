@@ -703,8 +703,11 @@ def main(argv=None):
             print("Model ready: " + result["api_url"])
         elif result["state"] == "needs_input":
             print(result["message"])
-            for line in controller.detail_lines(result.get("details")):
-                print("  " + line)
+            # A checkpoint message already names every file, path and size its
+            # details hold; --json keeps the details for scripts.
+            if result.get("field") != "checkpoint":
+                for line in controller.detail_lines(result.get("details")):
+                    print("  " + line)
         elif result["state"] == "planned":
             command = (result.get("checkpoint") or {}).get("command") or checkpoint_plan.COMMAND
             print(f"Plan saved. Install it with {command} --yes.")

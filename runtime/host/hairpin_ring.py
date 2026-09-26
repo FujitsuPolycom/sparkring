@@ -1150,7 +1150,12 @@ def result_ranks(rows, plan, record):
 
 
 def stopped_meshes(plan, access):
-    """(mesh units that are not running as (rank, unit), problems): the operator starts them when they should serve."""
+    """(enabled mesh units of Sparks on which no mesh unit runs, as (rank, unit), problems).
+
+    The operator starts one of them when it should serve. A Spark whose mesh
+    runs is left out: its other mesh units belong to deployments that are not
+    active, and a Spark runs one mesh at a time.
+    """
     stopped, problems = [], []
     for rank in range(len(plan["spec"]["hosts"])):
         try:
@@ -1159,19 +1164,25 @@ def stopped_meshes(plan, access):
             units = sorted({line.split()[0] for line in listing.splitlines() if line.split()})
             if not units:
                 continue
-            shown = access.run(rank, ["systemctl", "show", "-p", "Id,ActiveState", *units], timeout=SSH_LIMIT)
+            shown = access.run(rank, ["systemctl", "show", "-p", "Id,ActiveState,UnitFileState", *units],
+                               timeout=SSH_LIMIT)
         except FAILURES as error:
             problems.append(f"rank {rank}: cannot list its mesh services: {error}")
             continue
-        current = {}
+        found, current = [], {}
         for line in [*shown.splitlines(), ""]:
             if not line.strip():
-                if current.get("Id") and current.get("ActiveState") in ("inactive", "failed"):
-                    stopped.append((rank, current["Id"]))
+                if current.get("Id"):
+                    found.append(current)
                 current = {}
                 continue
             key, _, value = line.partition("=")
             current[key] = value
+        if any(unit.get("ActiveState") in ("active", "activating", "reloading") for unit in found):
+            continue
+        stopped.extend((rank, unit["Id"]) for unit in found
+                       if unit.get("ActiveState") in ("inactive", "failed")
+                       and unit.get("UnitFileState") in ("enabled", "enabled-runtime"))
     return stopped, problems
 
 
@@ -1274,8 +1285,7 @@ def execute(args, context):
         for problem in problems:
             print(problem)
         if stopped:
-            print("Mesh services that are not running (SparkRing starts only the enabled ones that its start check "
-                  "refused). Start each one when it should serve:")
+            print("No mesh service runs on these Sparks. Start the one that should serve:")
             for rank, unit in stopped:
                 print(f"  rank {rank}: {unit}: {command_text(plan, rank, ['systemctl', 'start', unit])}")
         return {"schema": RESULT_SCHEMA, "state": "complete", "ranks": context["ranks"], "receipt": record.get("path"),
