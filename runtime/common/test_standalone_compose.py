@@ -33,6 +33,38 @@ def test_one_file_has_two_explicit_rank_profiles_and_no_site_secrets(profile):
     assert "deployment.lock" not in text and "source.bundle" not in text
 
 
+def test_installer_profile_recipe_runs_the_installer_container():
+    from dataclasses import replace
+    from runtime.common import installer_image, loader_policy
+    profile = "qwen38-flash-next-tp2"
+    lock = installer_image.default_lock()
+    text = standalone_compose.render(profile)
+    assert loader_policy.RELATIVE in text.split("\n\n")[0] and "binding_not_configured" in text
+    data = yaml.safe_load(text)
+    for number in (0, 1):
+        service = data["services"][f"rank{number}"]
+        assert service["entrypoint"] == list(installer_image.ENTRYPOINT) and service["command"][0] == "serve"
+        # Compose resolves a relative seccomp path from the project directory.
+        assert service["security_opt"] == ["seccomp=" + loader_policy.RELATIVE]
+        assert [volume["target"] for volume in service["volumes"]] == ["/models/target", "/cache"]
+        assert service["labels"] == {"io.sparkring.image-lock": lock["name"]}
+        environment = service["environment"]
+        assert "SPARKRING_RUNTIME_BINDING" not in environment
+        assert environment["VLLM_PLUGINS"] == "b12x_loader,sparkring_status"
+        assert environment["SPARKRING_TRANSPORT_PROFILE"] == lock["transport_profile"]
+    # The same values as a per-rank site select the same containers as a Compose export.
+    _, specs = standalone_compose.specifications(profile)
+    site = {"schema": "sparkring-compose-site/v1", "name": "standalone", "master": "192.0.2.240", "ranks": [
+        {"rank": number, "host": f"spark{number}", "host_ip": f"192.0.2.{240 + number}", "interface": "enp1s0f0np0",
+         "hcas": ["rocep1s0f0", "roceP2p1s0f0"], "gid": 3, "model": "/srv/models/selected",
+         "cache": "/srv/cache/selected", "repository": "/opt/sparkring", "deployment_root": "/srv/deployments"}
+        for number in (0, 1)]}
+    exported, _ = compose.specifications(profile, site, image_runtime=lock)
+    for standalone, export in zip(specs, exported, strict=True):
+        assert export.security_opt == ("seccomp=/opt/sparkring/" + loader_policy.RELATIVE,)
+        assert replace(standalone, name=export.name, security_opt=export.security_opt) == export
+
+
 def test_qad_export_uses_same_image_with_distinct_checkpoint():
     profile = standalone_compose.SUPPORTED[0]
     spark = yaml.safe_load(standalone_compose.render(profile))

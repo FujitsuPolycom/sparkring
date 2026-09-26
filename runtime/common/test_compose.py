@@ -98,9 +98,15 @@ def compose_cli():
         pytest.skip("Docker Compose CLI unavailable; no daemon is required")
 
 
+def exported_specifications(profile, site):
+    """Rank containers that a rendered deployment of this site selects."""
+    manifest, _ = compose.build(profile, site)
+    return compose.specifications(profile, site, **compose.selection_options(manifest))
+
+
 @pytest.mark.parametrize("profile", ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache"))
 def test_tp2_backends_preserve_canonical_profile(site, profile, compose_cli):
-    specs, image = compose.specifications(profile, site)
+    specs, image = exported_specifications(profile, site)
     for number, spec in enumerate(specs):
         result = compose.check_equivalence(
             spec, image, compose.compose_text(spec, image)
@@ -112,11 +118,13 @@ def test_tp2_backends_preserve_canonical_profile(site, profile, compose_cli):
             == service["entrypoint"][1:] + service["command"]
         )
         assert argv[argv.index("--entrypoint") + 1] == service["entrypoint"][0]
-        from runtime.common import native_candidate, qwen_flash_next
-        # The installer profile runs on the installer toolchain image; its
+        from runtime.common import installer_image, native_candidate
+        # The installer profile runs the installer's toolchain entrypoint; its
         # SparkCache variant runs on the shared-2026.09.3 native image.
-        assert spec.command[0] == (native_candidate.ENTRYPOINT if profile.endswith("-sparkcache")
-                                   else qwen_flash_next.TOOLCHAIN_ENTRYPOINT)
+        if profile.endswith("-sparkcache"):
+            assert spec.command[0] == native_candidate.ENTRYPOINT
+        else:
+            assert spec.entrypoint == installer_image.ENTRYPOINT and spec.command[0] == "serve"
         for option, expected in (
             ("--max-model-len", "262144"),
             ("--max-num-seqs", "16"),
@@ -194,10 +202,15 @@ def test_literal_dollars_spaces_json_and_ambient_variables(compose_cli, monkeypa
             count=0
         ),
         lambda s: s.update(healthcheck={"disable": True}),
+        lambda s: s.pop("security_opt"),
+        lambda s: s["environment"].update(VLLM_NCCL_SO_PATH="/opt/local-inference/nccl/lib/libnccl.so.2"),
+        lambda s: s["volumes"].append({"type": "bind", "source": "/run/binding.json",
+                                       "target": "/run/sparkring/runtime-binding.json", "read_only": True,
+                                       "bind": {"create_host_path": False}}),
     ],
 )
 def test_resolved_semantic_drift_is_rejected(site, compose_cli, mutation):
-    specs, image = compose.specifications(compose.SUPPORTED[0], site)
+    specs, image = exported_specifications(compose.SUPPORTED[0], site)
     value = yaml.safe_load(compose.compose_text(specs[0], image))
     mutation(value["services"]["model"])
     with pytest.raises((ValueError, subprocess.CalledProcessError)):

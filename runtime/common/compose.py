@@ -13,15 +13,19 @@ import yaml
 from runtime.common import profiles, qwen_flash_next
 
 ROOT = Path(__file__).resolve().parents[2]
-# Published Qwen profiles with generated public Compose examples.
+# Qwen Flash-Next profiles: the two installer profiles, which run on the shared
+# toolchain image, and their SparkCache variants, which run on the
+# shared-2026.09.3 native image.
 EXAMPLE_TP4 = ("qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache")
 EXAMPLES = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", *EXAMPLE_TP4)
-# Serving profiles that run only on the installer's shared toolchain image.
-# Their Compose files are rendered by the installer with that image applied.
+# GLM and MiMo installer profiles. Like the two Qwen installer profiles they run
+# only on the shared toolchain image of an installer image lock; see
+# installer_container for how Compose exports apply that image.
 TOOLCHAIN_TP4 = ("glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4")
 TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-rl-tp2", *TOOLCHAIN_TP4)
 # Four-node profiles require each host's prepared mesh fabric reference.
 TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4)
+# Every supported profile has generated public examples under profiles/*/compose.
 SUPPORTED = (*EXAMPLES, *TOOLCHAIN)
 LABEL = "io.sparkring.deployment"
 
@@ -86,7 +90,7 @@ def site_settings(site, *, nodes=2):
             "Site name must be a lowercase deployment name, at most 40 characters"
         )
     if nodes not in (2, 4) or not isinstance(site["ranks"], list) or len(site["ranks"]) != nodes:
-        raise ValueError(f"Qwen TP{nodes} requires exactly {nodes} hosts")
+        raise ValueError(f"This TP{nodes} profile requires exactly {nodes} hosts")
     hosts, addresses = set(), set()
     for number, rank in enumerate(site["ranks"]):
         keys = {
@@ -185,8 +189,11 @@ def source_inventory(profile_id, *, local_source_extension=None):
         paths.add("runtime/common/native_candidate.py")
         paths.add(f"runtime/releases/{policy['native_release']}/publication.json")
     if policy["kind"] == "toolchain":
-        paths.add("runtime/common/installer_image.py")
-        paths.add(installer_image_lock_path())
+        from runtime.common import loader_policy
+        # Compose reads the seccomp file named by security_opt on each host,
+        # from that host's repository checkout; its hash is checked there.
+        paths.update(("runtime/common/installer_image.py", installer_image_lock_path(),
+                      "runtime/common/loader_policy.py", loader_policy.RELATIVE))
     if profile_id in TP4_PROFILES:
         from runtime.common import qwen_mesh
         paths.add("runtime/common/feature_candidate.py")
@@ -215,8 +222,56 @@ def source_inventory(profile_id, *, local_source_extension=None):
     }
 
 
+def installer_container(spec, image_runtime, *, profile_id, source_root):
+    """One rank's container as the installer runs it, for a host without the installer.
+
+    installer_image.adapt supplies the toolchain entrypoint, the CUDA 13.4 and
+    NCCL 2.32.3 library selection, the runtime-status plugin, image-scoped
+    cache paths and the loader seccomp policy. Compose reads that policy file
+    on the host from ``source_root``/runtime/common/loader-seccomp.json.
+
+    The runtime binding is omitted: the installer writes it per rank with the
+    created container's ID and the host's persistent node ID, which a
+    generated file cannot know. Without SPARKRING_RUNTIME_BINDING the image's
+    runtime-status plugin reports its worker identity facts as
+    binding_not_configured; serving is otherwise unchanged.
+    """
+    from runtime.common import installer_image
+    adapted = installer_image.adapt(spec, image_runtime, binding=installer_image.BINDING_TARGET,
+                                    source_root=source_root, profile=profile_id)
+    mounts = tuple(mount for mount in adapted.mounts if mount.target != installer_image.BINDING_TARGET)
+    environment = dict(adapted.environment)
+    if (len(mounts) != len(adapted.mounts) - 1
+            or environment.pop("SPARKRING_RUNTIME_BINDING") != installer_image.BINDING_TARGET):
+        raise ValueError("Installer image adapter returned an unexpected runtime binding")
+    return replace(adapted, mounts=mounts, environment=environment)
+
+
+def installer_image_runtime(profile_id):
+    """The image lock that `sparkring install` selects for this profile, or None.
+
+    Profiles whose canonical configuration selects the shared toolchain image
+    run only through an installer image lock; other profiles name their image
+    in their release.
+    """
+    metadata, _ = profiles.load(profile_id)
+    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
+    if qwen_flash_next.image_policy(profile)["kind"] != "toolchain":
+        return None
+    from runtime.common import installer_image
+    return installer_image.for_profile(profile_id)
+
+
 def specifications(profile_id, site, *, local_image_id=None, local_source_extension=None,
-                   local_kv_cache_gib=None, local_master_port=None):
+                   local_kv_cache_gib=None, local_master_port=None, image_runtime=None):
+    """Per-rank container specifications and the image reference Compose names.
+
+    ``image_runtime`` is an installer image lock. With it, each rank is the
+    container that installer_container derives for the host; build records the
+    lock so every later check and host operation selects the same containers.
+    Without it, toolchain profiles return the canonical envelope that
+    runtime/common/installer.py adapts itself.
+    """
     if profile_id not in SUPPORTED:
         raise ValueError(
             "Compose adapter unsupported for "
@@ -227,6 +282,11 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
     site_settings(site, nodes=qwen_flash_next.node_count(profile))
     policy = qwen_flash_next.image_policy(profile, local_source_extension=local_source_extension)
+    if image_runtime is not None:
+        if policy["kind"] != "toolchain":
+            raise ValueError("Only profiles on the shared toolchain image select an installer image lock")
+        from runtime.common import installer_image
+        image_runtime = installer_image.for_profile(profile_id, image_runtime)
     if policy["kind"] == "source" and not policy["local"]:
         from runtime.common import source_candidate
         publication = source_candidate.release_publication(release, policy["source_extension"])
@@ -261,6 +321,8 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         raise ValueError(
             "Release must select its registered Linux ARM64 manifest digest"
         )
+    if image_runtime is not None:
+        image = image_runtime["image_reference"]
     specs = []
     for rank in site["ranks"]:
         spec = qwen_flash_next.container_spec(
@@ -279,6 +341,9 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
             local_kv_cache_gib=local_kv_cache_gib,
             local_master_port=local_master_port,
         )
+        if image_runtime is not None:
+            spec = installer_container(spec, image_runtime, profile_id=profile_id,
+                                       source_root=rank["repository"])
         specs.append(replace(spec, name=f"sr-{site['name']}-r{rank['rank']}"))
     return specs, image
 
@@ -368,14 +433,24 @@ def selection_options(manifest):
     """Carry only explicit image/test selections into deterministic regeneration."""
     return {name: manifest[name] for name in (
         "local_image_id", "local_source_extension", "local_kv_cache_gib", "local_master_port",
+        "image_runtime",
     ) if name in manifest}
 
 
 def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
-          local_kv_cache_gib=None, local_master_port=None):
+          local_kv_cache_gib=None, local_master_port=None, image_runtime=None):
+    """Deployment manifest and generated files for one site.
+
+    Profiles on the shared toolchain image always deploy the installer's
+    containers: without an explicit ``image_runtime`` the installer's default
+    image lock is selected, and the manifest records the lock document.
+    """
+    if image_runtime is None and profile_id in SUPPORTED:
+        image_runtime = installer_image_runtime(profile_id)
     options = {key: value for key, value in {
         "local_image_id": local_image_id, "local_source_extension": local_source_extension,
         "local_kv_cache_gib": local_kv_cache_gib, "local_master_port": local_master_port,
+        "image_runtime": image_runtime,
     }.items() if value is not None}
     specs, image = specifications(profile_id, site, **options)
     inputs = (source_inventory(profile_id) if local_source_extension is None else
@@ -385,6 +460,9 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     identity = digest(encoded(identity_inputs))
     files = {}
     for number, spec in enumerate(specs):
+        # Labels are exactly this deployment's identity and rank, which the
+        # host coordinator (scripts/sparkring_compose.py) re-derives when it
+        # checks a staged file. The manifest, not a label, records the image lock.
         spec = replace(spec, labels={LABEL: identity, "io.sparkring.rank": str(number)})
         files[f"rank{number}/compose.yaml"] = compose_text(spec, image)
         files[f"rank{number}/container.json"] = encoded(spec.document())
@@ -404,10 +482,11 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
 
 
 def render(profile_id, site, output, *, local_image_id=None, local_source_extension=None,
-           local_kv_cache_gib=None, local_master_port=None):
+           local_kv_cache_gib=None, local_master_port=None, image_runtime=None):
     manifest, files = build(profile_id, site, local_image_id=local_image_id,
                           local_source_extension=local_source_extension,
-                          local_kv_cache_gib=local_kv_cache_gib, local_master_port=local_master_port)
+                          local_kv_cache_gib=local_kv_cache_gib, local_master_port=local_master_port,
+                          image_runtime=image_runtime)
     output = Path(output).resolve()
     if output.is_relative_to(ROOT) and not output.is_relative_to(ROOT / ".sparkring"):
         raise ValueError(

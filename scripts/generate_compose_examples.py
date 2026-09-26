@@ -14,7 +14,8 @@ from runtime.common import compose, standalone_compose  # noqa: E402
 def examples():
     for profile in standalone_compose.SUPPORTED:
         yield ROOT / "profiles" / profile / "compose/standalone.yaml", standalone_compose.render(profile)
-    for profile in compose.EXAMPLES:
+    for profile in compose.SUPPORTED:
+        # A SparkCache variant shares its base profile's site example.
         owner = profile.removesuffix("-sparkcache")
         source = ROOT / "profiles" / owner / "compose/site.example.yaml"
         site = compose.read_site(source)

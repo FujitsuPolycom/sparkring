@@ -20,7 +20,10 @@ def deployment():
 
 
 def rank_spec(manifest, number=0):
-    spec = compose.specifications(manifest["profile"], manifest["site"])[0][number]
+    """The rank container as host_operation derives it from the deployment manifest."""
+    spec = compose.specifications(
+        manifest["profile"], manifest["site"], **compose.selection_options(manifest)
+    )[0][number]
     return replace(
         spec, labels={compose.LABEL: manifest["id"], "io.sparkring.rank": str(number)}
     )
@@ -305,6 +308,29 @@ def test_create_cannot_recreate_a_project_container(
         assert calls[-1][-6:] == [
             "create", "--no-build", "--no-recreate", "--pull", "never", "model"
         ]
+
+
+@pytest.mark.parametrize("profile", compose.SUPPORTED)
+def test_host_create_checks_the_exact_staged_file(profile, tmp_path, monkeypatch):
+    """Each host re-derives the staged file's container, including the installer adaptation."""
+    owner = profile.removesuffix("-sparkcache")
+    site = compose.read_site(compose.ROOT / "profiles" / owner / "compose/site.example.yaml")
+    manifest, files = compose.build(profile, site)
+    monkeypatch.setattr(coordinator, "container", lambda _: None)
+    monkeypatch.setattr(coordinator, "check_project_containers", lambda *a, **k: None)
+    monkeypatch.setattr(coordinator, "run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, stdout=""))
+    checked = []
+    monkeypatch.setattr(compose, "check_equivalence",
+                        lambda spec, image, text, **_: checked.append((spec, image, text)))
+    for number in range(len(site["ranks"])):
+        payload = {"manifest": manifest, "files": files, "rank": number}
+        monkeypatch.setattr(coordinator, "stage_path", lambda *_, n=number: tmp_path / str(n))
+        coordinator.host_operation("stage", payload)
+        coordinator.host_operation("create", payload)
+        spec, image, text = checked[-1]
+        assert text == files[f"rank{number}/compose.yaml"]
+        assert compose.compose_text(spec, image) == text
+        assert spec == rank_spec(manifest, number)
 
 
 def test_edited_stage_cannot_start_a_container(deployment, tmp_path, monkeypatch):

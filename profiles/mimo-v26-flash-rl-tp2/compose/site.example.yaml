@@ -1,0 +1,25 @@
+# Public documentation addresses. Copy to a private *.site.yaml and edit each host.
+schema: sparkring-compose-site/v1
+name: mimo-example
+master: 192.0.2.10
+ranks:
+  - rank: 0
+    host: spark0
+    host_ip: 192.0.2.10
+    interface: eth0
+    hcas: [rocep1s0f0, roceP2p1s0f0]
+    gid: 3
+    model: /srv/models/MiMo-V2.6-Flash-RL/5711b2681699
+    cache: /srv/cache/mimo-v26-flash-rl-tp2
+    repository: /opt/sparkring
+    deployment_root: /srv/sparkring-deployments
+  - rank: 1
+    host: spark1
+    host_ip: 192.0.2.11
+    interface: eth0
+    hcas: [rocep1s0f0, roceP2p1s0f0]
+    gid: 3
+    model: /srv/models/MiMo-V2.6-Flash-RL/5711b2681699
+    cache: /srv/cache/mimo-v26-flash-rl-tp2
+    repository: /opt/sparkring
+    deployment_root: /srv/sparkring-deployments
