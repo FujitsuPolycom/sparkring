@@ -329,6 +329,167 @@
       "tokens_per_step": 2.03
      }
     ]
+   },
+   "matrix_prefill_128k": {
+    "file": "tp2-matrix-installer-prefill128k.json",
+    "package": "sparkring_0.1.0~dev.1790447896+git21d07dc6670d",
+    "cell_seconds": 20.0,
+    "decode_aggregate_tok_s": {
+     "0": {
+      "1": 52.6,
+      "8": 198.0,
+      "16": 284.2
+     },
+     "8192": {
+      "1": 44.8,
+      "8": 171.9,
+      "16": 241.8
+     },
+     "16384": {
+      "1": 46.8,
+      "8": 159.2,
+      "16": 240.1
+     },
+     "32768": {
+      "1": 44.9,
+      "8": 160.2,
+      "16": 241.6
+     },
+     "65536": {
+      "1": 48.0,
+      "8": 164.6,
+      "16": 237.6
+     }
+    },
+    "prefill": {
+     "8192": {
+      "tok_s": 3744,
+      "time_to_first_token_s": 2.19
+     },
+     "16384": {
+      "tok_s": 3927,
+      "time_to_first_token_s": 4.17
+     },
+     "32768": {
+      "tok_s": 3841,
+      "time_to_first_token_s": 8.53
+     },
+     "65536": {
+      "tok_s": 3689,
+      "time_to_first_token_s": 17.77
+     },
+     "131072": {
+      "tok_s": 3366,
+      "time_to_first_token_s": 38.94
+     }
+    },
+    "cells": [
+     {
+      "context_tokens": 0,
+      "concurrency": 1,
+      "aggregate_tok_s": 52.6,
+      "steps_per_s": 23.42,
+      "tokens_per_step": 2.25
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 1,
+      "aggregate_tok_s": 44.8,
+      "steps_per_s": 23.42,
+      "tokens_per_step": 1.91
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 1,
+      "aggregate_tok_s": 46.8,
+      "steps_per_s": 23.18,
+      "tokens_per_step": 2.02
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 1,
+      "aggregate_tok_s": 44.9,
+      "steps_per_s": 23.05,
+      "tokens_per_step": 1.95
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 1,
+      "aggregate_tok_s": 48.0,
+      "steps_per_s": 22.74,
+      "tokens_per_step": 2.11
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 8,
+      "aggregate_tok_s": 198.0,
+      "steps_per_s": 83.27,
+      "tokens_per_step": 2.38
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 8,
+      "aggregate_tok_s": 171.9,
+      "steps_per_s": 85.8,
+      "tokens_per_step": 2.0
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 8,
+      "aggregate_tok_s": 159.2,
+      "steps_per_s": 83.67,
+      "tokens_per_step": 1.9
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 8,
+      "aggregate_tok_s": 160.2,
+      "steps_per_s": 82.66,
+      "tokens_per_step": 1.94
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 8,
+      "aggregate_tok_s": 164.6,
+      "steps_per_s": 81.06,
+      "tokens_per_step": 2.03
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 16,
+      "aggregate_tok_s": 284.2,
+      "steps_per_s": 121.97,
+      "tokens_per_step": 2.33
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 16,
+      "aggregate_tok_s": 241.8,
+      "steps_per_s": 120.9,
+      "tokens_per_step": 2.0
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 16,
+      "aggregate_tok_s": 240.1,
+      "steps_per_s": 122.49,
+      "tokens_per_step": 1.96
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 16,
+      "aggregate_tok_s": 241.6,
+      "steps_per_s": 120.28,
+      "tokens_per_step": 2.01
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 16,
+      "aggregate_tok_s": 237.6,
+      "steps_per_s": 118.77,
+      "tokens_per_step": 2.0
+     }
+    ]
    }
   },
   {
@@ -642,6 +803,167 @@
       "aggregate_tok_s": 396.2,
       "steps_per_s": 163.27,
       "tokens_per_step": 2.43
+     }
+    ]
+   },
+   "matrix_prefill_128k": {
+    "file": "tp4-matrix-installer-prefill128k.json",
+    "package": "sparkring_0.1.0~dev.1790447896+git21d07dc6670d",
+    "cell_seconds": 20.0,
+    "decode_aggregate_tok_s": {
+     "0": {
+      "1": 73.6,
+      "8": 276.0,
+      "16": 407.5
+     },
+     "8192": {
+      "1": 81.2,
+      "8": 267.6,
+      "16": 408.3
+     },
+     "16384": {
+      "1": 80.2,
+      "8": 273.6,
+      "16": 413.9
+     },
+     "32768": {
+      "1": 72.3,
+      "8": 268.3,
+      "16": 397.4
+     },
+     "65536": {
+      "1": 67.2,
+      "8": 270.1,
+      "16": 393.7
+     }
+    },
+    "prefill": {
+     "8192": {
+      "tok_s": 4722,
+      "time_to_first_token_s": 1.74
+     },
+     "16384": {
+      "tok_s": 4855,
+      "time_to_first_token_s": 3.38
+     },
+     "32768": {
+      "tok_s": 4756,
+      "time_to_first_token_s": 6.89
+     },
+     "65536": {
+      "tok_s": 4559,
+      "time_to_first_token_s": 14.38
+     },
+     "131072": {
+      "tok_s": 4098,
+      "time_to_first_token_s": 31.98
+     }
+    },
+    "cells": [
+     {
+      "context_tokens": 0,
+      "concurrency": 1,
+      "aggregate_tok_s": 73.6,
+      "steps_per_s": 33.83,
+      "tokens_per_step": 2.17
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 1,
+      "aggregate_tok_s": 81.2,
+      "steps_per_s": 33.58,
+      "tokens_per_step": 2.42
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 1,
+      "aggregate_tok_s": 80.2,
+      "steps_per_s": 33.82,
+      "tokens_per_step": 2.37
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 1,
+      "aggregate_tok_s": 72.3,
+      "steps_per_s": 33.13,
+      "tokens_per_step": 2.18
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 1,
+      "aggregate_tok_s": 67.2,
+      "steps_per_s": 32.3,
+      "tokens_per_step": 2.08
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 8,
+      "aggregate_tok_s": 276.0,
+      "steps_per_s": 119.4,
+      "tokens_per_step": 2.31
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 8,
+      "aggregate_tok_s": 267.6,
+      "steps_per_s": 119.5,
+      "tokens_per_step": 2.24
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 8,
+      "aggregate_tok_s": 273.6,
+      "steps_per_s": 119.07,
+      "tokens_per_step": 2.3
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 8,
+      "aggregate_tok_s": 268.3,
+      "steps_per_s": 115.47,
+      "tokens_per_step": 2.32
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 8,
+      "aggregate_tok_s": 270.1,
+      "steps_per_s": 112.02,
+      "tokens_per_step": 2.41
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 16,
+      "aggregate_tok_s": 407.5,
+      "steps_per_s": 172.69,
+      "tokens_per_step": 2.36
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 16,
+      "aggregate_tok_s": 408.3,
+      "steps_per_s": 170.26,
+      "tokens_per_step": 2.4
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 16,
+      "aggregate_tok_s": 413.9,
+      "steps_per_s": 172.8,
+      "tokens_per_step": 2.39
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 16,
+      "aggregate_tok_s": 397.4,
+      "steps_per_s": 168.26,
+      "tokens_per_step": 2.36
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 16,
+      "aggregate_tok_s": 393.7,
+      "steps_per_s": 160.13,
+      "tokens_per_step": 2.46
      }
     ]
    }

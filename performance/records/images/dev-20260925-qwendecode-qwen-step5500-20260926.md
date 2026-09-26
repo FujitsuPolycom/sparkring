@@ -35,10 +35,11 @@ checks.
   runs), and three greedy 512-token decodes.
 - Matrix: [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
   `llm_decode_bench.py` 0.6.2 at temperature 1.0 with exact token targeting,
-  1, 8 and 16 concurrent streams, 0/8K/16K/32K/64K context, 8K–64K prefill, up
-  to 2,048 output tokens and 17 s per cell after a 5 s warm-up. Decode is the
-  aggregate output rate across streams; steps per second and tokens per step
-  come from vLLM's speculative-decoding counters.
+  1, 8 and 16 concurrent streams, 0/8K/16K/32K/64K context, up to 2,048 output
+  tokens and a 5 s warm-up: 17 s per cell with 8K–64K prefill, and 20 s per
+  cell with 8K–128K prefill. Decode is the aggregate output rate across
+  streams; steps per second and tokens per step come from vLLM's
+  speculative-decoding counters.
 
 ## Probe results
 
@@ -71,6 +72,46 @@ Aggregate decode in tokens per second; prefill in tokens per second.
 | 32K | 4,777 | 64.8 | 225.4 | 325.9 |
 | 64K | 4,559 | 63.1 | 232.5 | 331.2 |
 
+### Prefill to 128K
+
+The 20-second-cell matrices measured deployments installed by package
+`sparkring_0.1.0~dev.1790447896+git21d07dc6670d`. Its profile configuration
+differs from package `sparkring_0.1.0~dev.1790439220+git47ca98112842` only by
+the checkpoint selection table, so the serving settings are the same.
+
+| Prompt | Two Sparks (tok/s) | Time to first token | Four Sparks (tok/s) | Time to first token |
+|---|---:|---:|---:|---:|
+| 8K | 3,744 | 2.19 s | 4,722 | 1.74 s |
+| 16K | 3,927 | 4.17 s | 4,855 | 3.38 s |
+| 32K | 3,841 | 8.53 s | 4,756 | 6.89 s |
+| 64K | 3,689 | 17.77 s | 4,559 | 14.38 s |
+| 128K | 3,366 | 38.94 s | 4,098 | 31.98 s |
+
+Decode: aggregate output tokens per second, then (verification steps per
+second × tokens per step).
+
+| Two Sparks | 1 stream | 8 streams | 16 streams |
+|---|---:|---:|---:|
+| 0 context | 52.6 (23.4 × 2.25) | 198.0 (83.3 × 2.38) | 284.2 (122.0 × 2.33) |
+| 8K | 44.8 (23.4 × 1.91) | 171.9 (85.8 × 2.00) | 241.8 (120.9 × 2.00) |
+| 16K | 46.8 (23.2 × 2.02) | 159.2 (83.7 × 1.90) | 240.1 (122.5 × 1.96) |
+| 32K | 44.9 (23.1 × 1.95) | 160.2 (82.7 × 1.94) | 241.6 (120.3 × 2.01) |
+| 64K | 48.0 (22.7 × 2.11) | 164.6 (81.1 × 2.03) | 237.6 (118.8 × 2.00) |
+
+| Four Sparks | 1 stream | 8 streams | 16 streams |
+|---|---:|---:|---:|
+| 0 context | 73.6 (33.8 × 2.17) | 276.0 (119.4 × 2.31) | 407.5 (172.7 × 2.36) |
+| 8K | 81.2 (33.6 × 2.42) | 267.6 (119.5 × 2.24) | 408.3 (170.3 × 2.40) |
+| 16K | 80.2 (33.8 × 2.37) | 273.6 (119.1 × 2.30) | 413.9 (172.8 × 2.39) |
+| 32K | 72.3 (33.1 × 2.18) | 268.3 (115.5 × 2.32) | 397.4 (168.3 × 2.36) |
+| 64K | 67.2 (32.3 × 2.08) | 270.1 (112.0 × 2.41) | 393.7 (160.1 × 2.46) |
+
+Against the 17-second-cell matrices, decode rates differ by −9% to +38% per
+cell, verification steps per second by at most 4.4% and prefill by at most
+1.4%: at temperature 1.0 the tokens per step follow the generated text.
+
+### Comparison runs
+
 The repository owner's matrices of the same checkpoint and settings, run in
 serving containers derived from the installer deployments before installation,
 are kept beside these results. Prefill agreed within 2% and verification steps
@@ -83,8 +124,9 @@ acceptance follows the generated text, not the deployment.
 
 The [measurement directory](dev-20260925-qwendecode-qwen-step5500-20260926/)
 holds each probe's output (`*-probe.txt`, `*-probe.json`,
-`*-probe-temperature1.txt`) and each matrix (`*-matrix-installer.json` for the
-installer deployments, `*-matrix-test-containers.json` for the owner's runs).
+`*-probe-temperature1.txt`) and each matrix (`*-matrix-installer.json` and
+`*-matrix-installer-prefill128k.json` for the installer deployments,
+`*-matrix-test-containers.json` for the owner's runs).
 Matrix files keep the benchmark settings, prefill, per-cell results and summary
 tables; the benchmark client's host diagnostics and the server address are
 removed.
