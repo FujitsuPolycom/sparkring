@@ -107,7 +107,9 @@ topology profile, and marks the ones `sparkring install` supports.
 
 `sudo sparkring status [flags]` prints Node A's state, one line per Spark with
 the next action for a Spark that needs attention, and the saved model: its
-profile, checkpoint (name, repository and revision) and image release.
+profile, checkpoint (name, repository and revision) and image release. A
+profile with one checkpoint has no checkpoint name, so the line shows only the
+repository and revision.
 
 ```text
 Saved model operation: qwen38-flash-next-qad-tp4 | up complete

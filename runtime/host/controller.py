@@ -423,8 +423,10 @@ def lifecycle(argv):
             if result.get("deployment"):
                 saved = result["deployment"]
                 print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
-                print(f"Checkpoint: {saved['checkpoint']} ({saved['model_repository']} @ {saved['model_revision'][:12]})"
-                      f" | Image: {saved['image_release']}")
+                # A profile with one checkpoint has no checkpoint name.
+                source = f"{saved['model_repository']} @ {saved['model_revision'][:12]}"
+                print("Checkpoint: " + (f"{saved['checkpoint']} ({source})" if saved["checkpoint"] else source)
+                      + f" | Image: {saved['image_release']}")
                 print(saved["api_url"])
                 if saved.get("observations"):
                     print(json.dumps(saved["observations"], indent=2))

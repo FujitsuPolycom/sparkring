@@ -257,6 +257,14 @@ def test_status_names_the_saved_deployment_checkpoint_and_image(tmp_path, monkey
     assert controller.lifecycle(["status", "--json"]) == 0
     deployment = json.loads(capsys.readouterr().out)["deployment"]
     assert (deployment["checkpoint"], deployment["image_release"]) == ("qad-step4000", "dev-image")
+    # A profile with one checkpoint names only its repository and revision.
+    lock = installer.read(tmp_path / "model" / "deployment.lock.json")
+    lock["selection"].update(target_variant=None, model_repository="local-inference-lab/GLM-5.3-Flash-NVFP4-Spark")
+    (tmp_path / "model" / "deployment.lock.json").unlink()
+    installer.write(tmp_path / "model" / "deployment.lock.json", lock)
+    assert controller.lifecycle(["status"]) == 0
+    assert ("Checkpoint: local-inference-lab/GLM-5.3-Flash-NVFP4-Spark @ 60215d26cf5e | Image: dev-image"
+            in capsys.readouterr().out.splitlines())
 
 
 def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, monkeypatch, capsys):
