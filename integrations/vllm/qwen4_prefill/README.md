@@ -1,7 +1,8 @@
 # Qwen prepared-runtime prefill hooks
 
-Status: implemented; CPU admission and call-contract checks only. GPU serving
-qualification is required before selecting this bundle in a profile.
+Status: implemented. The installer image runs these hooks for the Qwen
+profiles on two and four Sparks; the tests here are CPU admission and
+call-contract checks.
 
 The bundle retains two Qwen prefill optimizations for the prepared B12X runtime:
 Hyperconnection (HC) up-projection/gate fusion and BF16 MTP projection GEMMs at
@@ -10,13 +11,21 @@ It targets the Qwen4Exp NVIDIA implementation, including checkpoints registered
 under the Qwen3.8-Flash-Next architecture aliases. HC state has four streams;
 that count is distinct from the tensor-parallel rank count.
 
-The hooks require TP4, BF16, hidden size 2560 and HC rank 320. Smaller MTP batches
-keep the upstream prepared projection callables. HC uses its declared
-`scaled_silu` preparation binding. These are source-specific hooks, not general
-model or TP2 support.
+The hooks run in tensor-parallel groups of two or four ranks with BF16 weights,
+hidden size 2560 and HC rank 320, or with the HC projection split into four
+parts of HC rank 80. A split projection runs batches of 128 or more rows
+sharded: each rank projects its share, and the bottleneck and the output are
+all-gathered. The fused gate kernel takes hidden widths of 640, 1,280 and 2,560.
+Batches below 128 rows and smaller MTP batches keep the upstream prepared
+projection callables. HC uses its declared `scaled_silu` preparation binding.
+These are source-specific hooks, not general model support.
 
 `package_prefill.py` emits a manifest-bound bundle for
-`/opt/sparkring/qwen4-prefill`. The selected image feature installs only
+`/opt/sparkring/qwen4-prefill`. The manifest records the image files that the
+hooks patch and their SHA-256: `--image sparkring`, the default, for images
+SparkRing builds, whose Python packages live in `/opt/venv`; `--image
+external-base` for the installer image, whose packages live in
+`/usr/local/lib/python3.12/dist-packages`. The selected image feature installs only
 `qwen4_prefill.pth`; do not activate the R37 `qwen-prefill` bundle alongside it.
 The distinct Python module names prevent accidental reuse of the R37 hook modules.
 

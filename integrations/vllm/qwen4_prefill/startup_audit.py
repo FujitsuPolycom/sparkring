@@ -54,12 +54,12 @@ def inspect_settings(environment, *, tp, batch, source):
             rows.append(
                 ("WARNING", "HC_ROUTE_UNKNOWN", "Cannot verify multimodal HC routing.")
             )
-        if tp != 4:
+        if tp not in (2, 4):
             rows.append(
                 (
                     "WARNING",
                     "HC_TOPOLOGY",
-                    "This HC sharding implementation requires TP4.",
+                    "This HC sharding implementation requires TP2 or TP4.",
                 )
             )
         if batch < 1024:

@@ -8,9 +8,19 @@ from pathlib import Path
 import re
 import sys
 
-IMAGE_SOURCES = {
-    "/opt/venv/lib/python3.12/site-packages/vllm/models/qwen4_exp/nvidia/hyperconnection.py": "22c088a9ef80a7896ddfac7d46978754149cb6ba12f91b7ad4236aac29f0bbc7",
-    "/opt/venv/lib/python3.12/site-packages/b12x/sequence/mtp_feedback/_kernels.py": "460dd75b633dc935e642f94ea06420c2f5a394eb5842a6cc1ea43887cec94e8c",
+# The image files that the hooks patch, with the SHA-256 each supported image
+# holds. Images that SparkRing builds keep Python packages in /opt/venv; the
+# installer image, built on an external vLLM base, keeps them in
+# /usr/local/lib/python3.12/dist-packages. A bundle records one binding.
+IMAGE_BINDINGS = {
+    "sparkring": {
+        "/opt/venv/lib/python3.12/site-packages/vllm/models/qwen4_exp/nvidia/hyperconnection.py": "22c088a9ef80a7896ddfac7d46978754149cb6ba12f91b7ad4236aac29f0bbc7",
+        "/opt/venv/lib/python3.12/site-packages/b12x/sequence/mtp_feedback/_kernels.py": "460dd75b633dc935e642f94ea06420c2f5a394eb5842a6cc1ea43887cec94e8c",
+    },
+    "external-base": {
+        "/usr/local/lib/python3.12/dist-packages/vllm/models/qwen4_exp/nvidia/hyperconnection.py": "386bcc4ff5957b5b86aa62e338347f5ba57667bb0653dbc4c88c15d879daebff",
+        "/usr/local/lib/python3.12/dist-packages/b12x/sequence/mtp_feedback/_kernels.py": "460dd75b633dc935e642f94ea06420c2f5a394eb5842a6cc1ea43887cec94e8c",
+    },
 }
 FILES = {
     "qwen4_prefill_bootstrap.py",
@@ -31,14 +41,14 @@ def verify(root, expected, filesystem_root=Path("/")):
     if (
         record.get("schema") != "sparkring-qwen4-prefill/v1"
         or set(record.get("files", {})) != FILES
-        or record.get("image_source_preimages") != IMAGE_SOURCES
+        or record.get("image_source_preimages") not in IMAGE_BINDINGS.values()
     ):
         raise ValueError("Unsupported Qwen prefill bundle contract")
     for name, digest in record["files"].items():
         path = root / name
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError("Qwen prefill bundle file mismatch: " + name)
-    for name, digest in IMAGE_SOURCES.items():
+    for name, digest in record["image_source_preimages"].items():
         path = filesystem_root / name.lstrip("/")
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError("Qwen prefill image source mismatch: " + name)
@@ -60,7 +70,7 @@ def verify_cache_namespace(expected, environment):
 def install():
     try:
         expected = os.environ.get("SPARKRING_QWEN4_PREFILL_MANIFEST_SHA256", "")
-        verify(Path(__file__).resolve().parent, expected)
+        sources = verify(Path(__file__).resolve().parent, expected)["image_source_preimages"]
         verify_cache_namespace(expected, os.environ)
         targets = [
             "vllm.models.qwen4_exp.nvidia.hyperconnection",
@@ -69,12 +79,12 @@ def install():
         if any(name in sys.modules for name in targets):
             raise ValueError("Qwen prefill hooks must load before their target modules")
         os.environ["QWEN_HC_FUSION"] = "1"
-        os.environ["QWEN_HC_SOURCE_SHA256"] = IMAGE_SOURCES[
-            next(p for p in IMAGE_SOURCES if p.endswith("hyperconnection.py"))
+        os.environ["QWEN_HC_SOURCE_SHA256"] = sources[
+            next(p for p in sources if p.endswith("hyperconnection.py"))
         ]
         os.environ["QWEN_MTP_TORCH_PREFILL"] = "1"
-        os.environ["QWEN_MTP_SOURCE_SHA256"] = IMAGE_SOURCES[
-            next(p for p in IMAGE_SOURCES if p.endswith("_kernels.py"))
+        os.environ["QWEN_MTP_SOURCE_SHA256"] = sources[
+            next(p for p in sources if p.endswith("_kernels.py"))
         ]
         importlib.import_module("qwen4_hc_fusion")
         importlib.import_module("qwen4_mtp_gemm")

@@ -66,7 +66,7 @@ def patch(module):
             )
             votes = [None] * group.world_size
             dist.all_gather_object(votes, identity, group=group.cpu_group)
-            if group.world_size != 4 or any(v != identity for v in votes):
+            if group.world_size not in (2, 4) or any(v != identity for v in votes):
                 raise RuntimeError("Qwen MTP GEMM rank agreement failed")
             voted = True
             print(

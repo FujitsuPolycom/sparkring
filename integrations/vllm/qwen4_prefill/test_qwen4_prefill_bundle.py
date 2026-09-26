@@ -146,7 +146,12 @@ class BundleTests(unittest.TestCase):
                 )
             )
         )
-        namespace = {"module": module, "operation": lambda x, w, n: (x, w, n)}
+        namespace = {
+            "module": module,
+            "operation": lambda x, w, n: (x, w, n),
+            "original_mix_normalized": lambda layer, n: ("prepared", n),
+            "mix_sharded": lambda layer, n: ("sharded", n),
+        }
         exec(
             compile(ast.Module(body=[function], type_ignores=[]), str(source), "exec"),
             namespace,
@@ -159,28 +164,48 @@ class BundleTests(unittest.TestCase):
                 binding if operation == "scaled_silu" else None
             ),
         )
-        output, injection = namespace["mix_normalized"](layer, "normalized")
-        self.assertEqual(output, ("normalized", "weight", "normalized"))
+        normalized = SimpleNamespace(shape=(128, 10240))
+        output, injection = namespace["mix_normalized"](layer, normalized)
+        self.assertEqual(output, (normalized, "weight", normalized))
         self.assertIsNone(injection)
         self.assertEqual(calls, [{"binding": binding}])
+        # Decode and graph-sized batches keep the prepared projection, and a
+        # tensor-parallel HC projection runs the sharded path.
+        small = SimpleNamespace(shape=(127, 10240))
+        self.assertEqual(namespace["mix_normalized"](layer, small), ("prepared", small))
+        layer.tp_size = 2
+        self.assertEqual(namespace["mix_normalized"](layer, normalized), ("sharded", normalized))
 
-    def fixture(self, directory):
+    def fixture(self, directory, name="sparkring"):
         root = Path(directory)
         image = root / "image"
         sources = {}
-        for name in prefill_bootstrap.IMAGE_SOURCES:
-            path = image / name.lstrip("/")
+        for path_name in prefill_bootstrap.IMAGE_BINDINGS[name]:
+            path = image / path_name.lstrip("/")
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(name.encode())
-            sources[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-        with patch.dict(prefill_bootstrap.IMAGE_SOURCES, sources, clear=True):
-            digest = package_prefill.package(root / "bundle")
+            path.write_bytes(path_name.encode())
+            sources[path_name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        with patch.dict(prefill_bootstrap.IMAGE_BINDINGS, {name: sources}):
+            digest = package_prefill.package(root / "bundle", name)
         return root / "bundle", image, sources, digest
+
+    def test_a_bundle_binds_the_files_of_the_image_it_was_packaged_for(self):
+        for name in ("sparkring", "external-base"):
+            with tempfile.TemporaryDirectory() as directory:
+                root, image, sources, digest = self.fixture(directory, name)
+                with patch.dict(prefill_bootstrap.IMAGE_BINDINGS, {name: sources}):
+                    record = prefill_bootstrap.verify(root, digest, image)
+                self.assertEqual(record["image_source_preimages"], sources)
+        # A binding that no supported image holds is refused.
+        with tempfile.TemporaryDirectory() as directory:
+            root, image, sources, digest = self.fixture(directory)
+            with self.assertRaisesRegex(ValueError, "Unsupported Qwen prefill bundle contract"):
+                prefill_bootstrap.verify(root, digest, image)
 
     def test_valid_bundle_and_isolated_cache(self):
         with tempfile.TemporaryDirectory() as directory:
             root, image, sources, digest = self.fixture(directory)
-            with patch.dict(prefill_bootstrap.IMAGE_SOURCES, sources, clear=True):
+            with patch.dict(prefill_bootstrap.IMAGE_BINDINGS, {"sparkring": sources}):
                 prefill_bootstrap.verify(root, digest, image)
             namespace = "/cache/qwen4-prefill-" + digest[:12]
             prefill_bootstrap.verify_cache_namespace(
@@ -195,7 +220,7 @@ class BundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root, image, sources, digest = self.fixture(directory)
             (root / "qwen4_hc_fusion.py").write_text("changed")
-            with patch.dict(prefill_bootstrap.IMAGE_SOURCES, sources, clear=True):
+            with patch.dict(prefill_bootstrap.IMAGE_BINDINGS, {"sparkring": sources}):
                 with self.assertRaisesRegex(ValueError, "bundle file mismatch"):
                     prefill_bootstrap.verify(root, digest, image)
 
@@ -203,7 +228,7 @@ class BundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root, image, sources, digest = self.fixture(directory)
             (image / next(iter(sources)).lstrip("/")).write_text("changed")
-            with patch.dict(prefill_bootstrap.IMAGE_SOURCES, sources, clear=True):
+            with patch.dict(prefill_bootstrap.IMAGE_BINDINGS, {"sparkring": sources}):
                 with self.assertRaisesRegex(ValueError, "image source mismatch"):
                     prefill_bootstrap.verify(root, digest, image)
 
