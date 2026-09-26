@@ -1,9 +1,11 @@
 # Qwen3.8-Flash-Next on two DGX Sparks with Docker Compose
 
-[`standalone.yaml`](standalone.yaml) runs the `qwen38-flash-next-tp2` profile
-on two DGX Sparks connected by one direct cable, with one Compose file on each
-Spark. Unlike [`sparkring install`](../../../docs/operations/install.md), it
-assumes you have already set up the network, image and checkpoint.
+[`standalone.yaml`](standalone.yaml) runs the [`qwen38-flash-next-tp2`](../README.md)
+profile on two DGX Sparks connected by one direct cable, with the same file on
+each Spark. Spark 0 serves `Qwen3.8-Flash-Next-NVFP4-QAD-TP2` on port 8000.
+The containers are the ones [`sparkring install`](../../../docs/operations/install.md)
+runs; unlike the installer, this recipe assumes the network, image and
+checkpoint are already set up.
 
 ## Files
 
@@ -37,7 +39,7 @@ which Docker's default seccomp policy blocks.
 
    `ping -c 3 -M do -s 8972 198.18.0.2` and `… 198.18.1.2` from Spark 0 must
    succeed.
-4. **The checkpoint** (99 GB), as real files, verified:
+4. **The checkpoint** (about 106 GB), as real files, verified:
    ```bash
    hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 --revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir /path/to/Qwen3.8-Flash-Next-NVFP4
    (cd /path/to/Qwen3.8-Flash-Next-NVFP4 && sha256sum -c /path/to/SHA256SUMS)   # every line OK
@@ -96,6 +98,20 @@ The API listens on port 8000 on every interface of Spark 0, with no API key.
 Keep Spark 0 on a trusted network or firewall the port. Stop with
 `docker compose --profile rank0 stop` on Spark 0 and
 `docker compose --profile rank1 stop` on Spark 1.
+
+## Performance
+
+One pair, 512-token single-stream requests at temperature 0; prefill is one
+cold prompt. The Compose recipe matches the installer deployment.
+
+| Deployment | Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
+|---|---|---|
+| This recipe | 62.3 / 89.7 / 101.5 | 4,236 / 3,932 |
+| `install.sh` | 61.0 / 89.2 / 100.8 | 4,258 / 3,939 |
+
+With the installer's kernel cache mounted, rank 0 was healthy 240 seconds
+after `docker compose up`. Measurements:
+[installer tuning record](../../../performance/records/qwen38-flash-next/installer-tuning-20260925.md#installation-from-the-published-branch-and-the-standalone-compose-recipe).
 
 ## If it fails
 

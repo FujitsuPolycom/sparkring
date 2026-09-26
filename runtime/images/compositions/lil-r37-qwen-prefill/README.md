@@ -59,7 +59,8 @@ on all four hosts. The profile supports cache-disabled and SparkCache selections
 the cache selection mounts model/cache data without any application-source mounts.
 
 An explicit local TP2 source-image trial is also supported for
-`qwen38-flash-next-tp2` and `qwen38-flash-next-tp2-sparkcache`. It keeps HC
+`qwen38-flash-next-tp2-sparkcache`; `qwen38-flash-next-tp2` runs on the
+installer image and refuses local source-image options. The trial keeps HC
 sharding off and existing TP2 features unchanged, enables recurrent-checkpoint
 coalescing, and preserves the canonical 24 GiB KV allocation. The optional
 `--local-kv-cache-gib 33` selects a bounded TP2 memory alternative. It cannot

@@ -49,7 +49,7 @@ def require_head(cluster=None, *, command="install"):
     if sys.platform != "linux" or not distribution.installed(installer.ROOT):
         raise NeedsInput(f"sparkring {command} runs only from the installed ARM64 Debian package. Download the "
                          "sparkring_*_arm64.deb asset of a prerelease at https://github.com/FujitsuPolycom/sparkring/releases "
-                         "or build it from a full clone (see \"Get the package\" in docs/operations/install.md), "
+                         "or build it from a full clone (see \"Get the package\" in docs/operations/install-reference.md), "
                          f"install it on Node A with sudo apt install, then run sudo sparkring {command}.", field="node_a")
     if not hasattr(os, "geteuid") or os.geteuid() != 0:
         raise NeedsInput(f"Run sudo sparkring {command} on Node A.", field="node_a")

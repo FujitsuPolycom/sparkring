@@ -73,7 +73,7 @@ failed after model startup, because Docker's default seccomp profile blocked
 previous deployment, which passed readiness and generation checks. The
 installer inspects images by exact ID and runs the checkpoint loader under a
 container-scoped `io_uring` policy with a CPU preflight, as described in
-[Install SparkRing](../operations/install.md).
+[Install SparkRing: reference](../operations/install-reference.md#serving-image-and-profiles).
 
 Installer source `02a873c0a389` passed 1,187 Linux tests. Its ARM64 package passed manifest,
 source-bundle, CLI and eight service-definition checks. Test fixture preparation

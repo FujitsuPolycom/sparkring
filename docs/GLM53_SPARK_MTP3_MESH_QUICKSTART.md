@@ -216,7 +216,7 @@ does not prove that a TC rule is hardware resident or that RC works.
 On a four-Spark ring set up by `sparkring install` or `sparkring setup`,
 `sudo sparkring hairpin` on Node A applies these values and records them, and
 SparkRing then applies them itself at every boot; see
-[Four-Spark rings](operations/install.md#four-spark-rings). The commands
+[Four-Spark rings](operations/install-reference.md#four-spark-rings). The commands
 below are for other hosts.
 
 Skip this section when the verified settings already match. These commands

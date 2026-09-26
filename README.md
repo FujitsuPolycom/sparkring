@@ -23,49 +23,35 @@ Four Sparks:
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
-It sets up every Spark, downloads the image and the model (or reuses a copy
-already on the Sparks), and prints the API address when the model is ready. On
-four Sparks it also applies the ring's
+The command sets up every Spark, downloads the image and the model (or reuses a
+copy already on the Sparks), and prints the API address when the model is ready.
+Each model also serves a live [status dashboard](docs/operations/dashboard.md).
+On four Sparks it also applies the ring's
 [ConnectX driver setting](docs/operations/install.md#four-spark-rings) and
 repeats it at every boot. To run with Docker
 Compose instead, see [Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
 
+To install GLM or MiMo instead, use a `--profile` value from [Profiles](#profiles).
+All commands and flags: [SparkRing commands](docs/operations/commands.md).
+
 ## Profiles
 
-[Full profile catalog](profiles/README.md).
+`sparkring install --profile` accepts these profiles:
 
-<!-- BEGIN GENERATED PROFILES -->
-
-### Four Sparks
-
-| Model | Quant | DCP | Context / KV* | SparkCache | Status |
+| Model | Sparks | `--profile` value | API port | Decode (tok/s, one user) | Prefill 16K (tok/s) |
 |---|---|---|---|---|---|
-| **[GLM-5.3-Flash](docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / — | No | Development |
-| **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1/4 | 1M / ([2.3M](runtime/releases/shared-2026.09.3/correctness.json)/[8.4M](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated |
-| **[MiMo-V2.6-Flash-RL](docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / — | No | Development |
-| **[Qwen3.8-Flash-Next](profiles/qwen38-flash-next-qad-tp4/README.md)**<br>vLLM | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | 1 | 262K / [3.1M](runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
-| [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development |
-| [DeepSeek-V4-Flash-Vision-Exp](profiles/deepseek-v4-flash-vision-exp-tp4/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | 1 | 1M / — | No | Experimental |
-| [DeepSeek-V4.1-Flash](profiles/deepseek-v41-flash-cycle/README.md)<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 1 | 1M / [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development |
-| [DeepSeek-V4.1-Flash](profiles/deepseek-v41-flash-sglang-cycle/README.md)<br>SGLang | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | — | 262K / [1.5M](performance/records/deepseek-v41-flash/sglang-soak-20260912.md) | No | Development |
-| [GLM-5.2](profiles/glm52-exl3-r7-3.5bpw/README.md)<br>vLLM | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | 4 | 1M / [1.2M](profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development |
-| [Qwen3.8-27B](profiles/qwen38-27b-exl3-k5k6/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [8.7M](profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development |
+| Qwen3.8-Flash-Next | 2 | `qwen38-flash-next-tp2` | 8000 | 59.5–101.0 | 4,259 |
+| Qwen3.8-Flash-Next | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 87.9–142.2 | 5,003 |
+| GLM-5.3-Flash | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 32.3–40.0 | 2,440 |
+| GLM-5.3-Flash | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 59.0–73.2 | 2,900 |
+| MiMo-V2.6-Flash-RL | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 25.7–62.8 | 3,802 |
+| MiMo-V2.6-Flash-RL | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 44.8–111.5 | 4,253 |
 
-### Two Sparks
+Decode ranges from prose to JSON prompts;
+[measurement details](performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md).
 
-| Model | Quant | DCP | Context / KV* | SparkCache | Status |
-|---|---|---|---|---|---|
-| **[GLM-5.3-Flash](docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 262K / — | No | Development |
-| **[GLM-5.3-Flash](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 1 | 1M / [1.1M](runtime/releases/shared-2026.09.3/correctness.json) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated |
-| **[MiMo-V2.6-Flash-RL](docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 1 | 262K / — | No | Development |
-| **[Qwen3.8-Flash-Next](profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) | 1 | 262K / [2.9M](runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
-| [DeepSeek-V4-Flash-0731](profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | 1 | 1M / [2.2M](performance/records/deepseek-v4-flash/image827a8e8c-tp2.json) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
-| [Qwen3.8-27B](profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | 1 | 1M / [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
-
-<!-- END GENERATED PROFILES -->
-
-\* KV capacity changes with configuration and enabled features, including
-SparkCache. Linked sources provide the settings and basis for each figure.
+Older profiles, SparkCache variants and other models are in the
+[full profile catalog](profiles/README.md). Each has its own setup guide.
 
 ## Documentation
 

@@ -434,7 +434,7 @@ them again after each reboot and repeat the stopped-stack provisioning when
 they differ. On a four-Spark ring set up by `sparkring install` or
 `sparkring setup`, `sudo sparkring hairpin` on Node A applies them and records
 them, and SparkRing then applies them itself at every boot; see
-[Four-Spark rings](operations/install.md#four-spark-rings). Do not reload
+[Four-Spark rings](operations/install-reference.md#four-spark-rings). Do not reload
 through a data-link-only SSH connection. After
 reload, bring up the four named data profiles, repeat pings/GID/MTU checks,
 and verify management access before proceeding.

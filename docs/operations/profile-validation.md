@@ -1,33 +1,24 @@
 # Validate a serving profile
 
-For initial installation, finish the selected guide's short inference test in
-[setup](setup.md#6-test-a-response-and-save-restart-instructions) first. This
-runbook is the subsequent workload qualification and benchmarking procedure.
-
-Use this runbook to measure a deployed profile's speed, long-context
-accuracy, concurrency behavior, and restart/cache behavior. Keep the results
-with the recipe so another operator can repeat the same workload.
-
-Status: **implemented**—the test tools are ready to use. Record which checks
-pass and how the profile performs, then use those results to decide whether
-it is ready for your workload.
+This runbook measures a running deployment's prefill and decode speed,
+long-context accuracy, concurrency and restart/cache behavior with a repeatable
+workload. Run it after the model serves, whether installed with
+`sudo sparkring install` ([Install SparkRing](install.md)) or a profile guide
+([setup, step 6](setup.md#6-test-a-response-and-save-restart-instructions)).
+Keep the results with the recipe so another operator can repeat them.
 
 ## Required test card
 
-Start by filling the report with results you already have. Reuse completed
-runs when their model, configuration, workload, and measurement method fit
-the check. Keep different configurations in separate rows, and record how
-many repeats are actually available. Then run only the missing checks or
-the repeats needed for the comparison you want to make.
-
-The [MTP3 hybrid report](../../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
-shows an example: existing decode, Estonia, needle, and cache results are
-combined with three-pass prefill measurements, leaving a short gap list.
+Fill the report with results you already have when their model, configuration,
+workload and measurement method match, then run only the missing checks or
+repeats. Keep different configurations in separate rows and record how many
+repeats each cell has. Example: the
+[GLM MTP3 report](../../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md).
 
 | Check | Standard workload | Repetitions | Record |
 |---|---|---:|---|
 | Startup and readiness | Every rank, API, scheduler, configured warmup | Initial start and one planned restart | Versions, startup time, errors, readiness |
-| Prefill | C1; 8K, 16K, 32K, 64K, 128K | 3 samples per context | TTFT, actual prompt tokens, tokens/s, cache evidence |
+| Prefill | C1; 8K, 16K, 32K, 64K, 128K | 3 samples per context | TTFT, actual prompt tokens, tokens/s, cached tokens |
 | Sustained decode | 8K, 32K, 64K × C1, C2, C4, C8, C12, C16 | 3 complete sweeps | Aggregate tokens/s, TTFT, ITL, effective concurrency, acceptance |
 | Coding peak | Built-in coding workload, temperature 1 | 3 samples | Generation tokens/s, output length, truncation |
 | Estonia accuracy | Estonia v2, C1 and C8, temperature 1 | 30 requests at each concurrency | Correct/attempted, truncation, completion-token distribution |
@@ -36,21 +27,20 @@ combined with three-pass prefill measurements, leaving a short gap list.
 | Mixed traffic | C4 decode while a fresh 64K prefill arrives | 3 paired idle/loaded trials | Decode throughput/ITL change and prefill TTFT |
 | Sustained operation | Representative context and concurrency | 30 minutes | Request errors, memory/cache trend, transport health |
 
-Choose contexts and concurrency within the profile's declared limits. Record
-unavailable cells as **unsupported by this profile**, not as zero throughput.
-For profiles supporting more than 512K context, add a retrieval case near the
-declared limit while reserving room for the answer. Actual tokenization, not
-the context label, determines whether a request fits.
+Stay within the profile's context and concurrency limits, and mark cells beyond
+them **unsupported by this profile**, not zero. For profiles above 512K
+context, add a retrieval case near the limit that leaves room for the answer.
+Actual tokenization, not the context label, decides whether a request fits.
 
-For a quick tuning screen, run one prefill sweep, 32K/C1/C4/C8 decode, and
-three retrieval modes at one long context. Use the complete card for a
-recommendation or a comparison intended for publication.
+For a quick tuning screen, run one prefill sweep, 32K decode at C1/C4/C8, and
+the three retrieval modes at one long context. Use the full card for a
+recommendation or a published comparison.
 
 ## Prepare one private results directory
 
-Commands below use Bash on Linux and a trusted, OpenAI-compatible local
-endpoint. Run them from the SparkRing checkout. Replace these values from
-the profile's quickstart; the example limits describe a TP4/DCP4 profile.
+Commands use Bash on Linux, run from the SparkRing checkout, against a trusted
+OpenAI-compatible endpoint. Take the values from the profile's guide; the
+example limits are for a TP4/DCP4 profile.
 
 ```bash
 set -euo pipefail
@@ -70,20 +60,19 @@ curl --fail --silent --show-error --max-time 10 "$ENDPOINT/health" > "$RUN/healt
 
 Record the recipe path, image digest, model revision, quantization, TP/DCP/PP,
 context/sequence/batch limits, attention/MoE/linear backends, graph shapes,
-transport routes, speculation settings, cache policy, and request sampling.
-Keep a copy of the resolved launch configuration privately. Do not include
-API credentials in receipts or public documents. Record thinking mode and
-chat-template settings; keep them fixed between comparison runs.
+transport routes, speculation settings, cache policy, request sampling,
+thinking mode and chat-template settings. Keep the last two fixed between
+compared runs. Keep the resolved launch configuration privately, and keep API
+credentials out of receipts and public documents.
 
-Use the profile's documented all-rank readiness check. Start measurements only
-after its warmup completes and unrelated traffic is stopped. If custom native
-collective checks are supplied, run them in their documented stopped-model
-window before serving; do not launch GPU transport probes beside the model.
+Start measuring only after the profile's all-rank readiness check and warmup
+pass and unrelated traffic has stopped. Run native collective checks only in
+their documented stopped-model window, never beside the model.
 
 ### Obtain the throughput/accuracy benchmark
 
-Use [Local Inference Lab's llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench).
-These commands use revision `bd88816e9e7bcc97e1bcfd954c3053528f31af69`.
+Use [Local Inference Lab's llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
+at revision `bd88816e9e7bcc97e1bcfd954c3053528f31af69`:
 
 ```bash
 BENCH="$RUN/llm-inference-bench"
@@ -99,20 +88,18 @@ COMMON=("$BENCH_PY" "$BENCH/llm_decode_bench.py"
   --display-mode plain --no-resume)
 ```
 
-Decline automatic source updates during a measurement campaign. The commands
-redirect stdin from `/dev/null`; verify the source hash after the campaign.
-Authenticated endpoints require the benchmark's documented authentication
-configuration. SparkRing's two validation probes accept an API key through
-the environment named by `--api-key-env`, default `OPENAI_API_KEY`.
+Decline automatic source updates during a campaign; the commands redirect stdin
+from `/dev/null`, and the source hash is checked at the end. For authenticated
+endpoints, configure the benchmark's authentication. SparkRing's two probes read
+an API key from the environment variable named by `--api-key-env`
+(default `OPENAI_API_KEY`).
 
 ## Prefill: three samples per context
 
 The [prefill probe](../../performance/harnesses/validation/prefill_probe.py)
-explicitly sends temperature one, creates a unique prompt prefix for each
-sample, and measures client time to the first content or reasoning token.
-It requests one generated token and records server usage. The benchmark's
-integrated scouts are useful displays, but this probe supplies the explicit
-sampling and repeat policy for the test card.
+sends temperature 1, gives each sample a unique prompt prefix, requests one
+token, and measures client time to the first content or reasoning token along
+with server usage.
 
 ```bash
 python3 performance/harnesses/validation/prefill_probe.py \
@@ -121,16 +108,16 @@ python3 performance/harnesses/validation/prefill_probe.py \
   --repeats 3 --temperature 1 --output "$RUN/prefill.jsonl"
 ```
 
-Report median, minimum, and maximum TTFT and prompt tokens/s for each context.
-Use actual server prompt counts. Require zero cached tokens for a confirmed
-cold-prefix sample; if the server omits that field, corroborate with its
-cache/compute counters. Keep cache-primed measurements separately labeled.
-Do not clear unrelated persistent cache data to manufacture a cold result.
+Report median, minimum and maximum TTFT and prompt tokens/s per context, using
+the server's prompt counts. A cold sample needs zero cached tokens; if the
+server omits that field, confirm with its cache counters. Label cache-primed
+samples separately, and do not clear unrelated persistent cache data to force
+a cold result.
 
 ## Decode matrix and coding peak
 
-Run the full matrix three times. The first sweep also collects three coding
-peak samples; that benchmark runs the coding workload after its decode matrix.
+Run the matrix three times. The first sweep also takes three coding-peak
+samples after its decode matrix.
 
 ```bash
 for repeat in 1 2 3; do
@@ -148,23 +135,20 @@ for repeat in 1 2 3; do
 done
 ```
 
-Require the achieved concurrency to match the requested concurrency. Review
-errors, underfilled cells, capacity limits, warmup timeouts, and token-count
-method before aggregating. Report per-cell median and range across the three
-sweeps. Keep failed attempts with their reason and a separately named retry.
+Achieved concurrency must match the request. Before aggregating, review errors,
+underfilled cells, capacity limits, warmup timeouts and the token-count method.
+Report each cell's median and range across the three sweeps, and keep failed
+attempts with their reason next to a separately named retry.
 
-Record speculative depth and acceptance alongside output throughput.
-Tokens/s divided by acceptance length is a derived rate; GPU forward counts
-need separate instrumentation. For coding peak, report median and peak
-generation speed plus output lengths and truncation. Coding peak measures
-speed; functional coding accuracy belongs to a separately scored test suite.
+Record speculative depth and acceptance with output throughput. Coding peak
+reports median and peak generation speed, output lengths and truncation; it
+measures speed, not coding accuracy.
 
 ## Estonia: long-context accuracy and consistency
 
 Run the [Estonia benchmark](https://github.com/local-inference-lab/llm-inference-bench)
-at C1 and C8. Each setting uses thirty sampled runs of the same task. Change
-C8 to a supported concurrency if the profile's sequence limit is lower.
-Ensure the fixed prompt plus its output budget fits the profile before starting.
+at C1 and C8, thirty sampled runs each. Lower C8 if the profile's sequence
+limit requires it, and make sure the prompt plus output budget fits.
 
 ```bash
 for concurrency in 1 8; do
@@ -178,19 +162,18 @@ for concurrency in 1 8; do
 done
 ```
 
-Report correct/attempted, errors, output-budget hits, and completion-token
-distributions. Inspect wrong or unparseable final answers. The test primes
-the prefix cache, so its TTFT describes that workload. Its weighted generation
-rate uses summed request times; use the decode matrix for aggregate cluster
-throughput. Preserve full outputs privately for review.
+Report correct/attempted, errors, output-budget hits and completion-token
+distributions, and inspect wrong or unparseable answers. The test primes the
+prefix cache, so its TTFT describes only this workload; use the decode matrix
+for aggregate throughput. Keep full outputs private.
 
 ## Long needle hunt: retrieval, revisions, and cross-references
 
-The [repository retrieval harness](../../performance/harnesses/validation/README.md)
-places opaque values at controlled document depths. `exact` retrieves a value,
-`revision` selects a superseding record over a decoy, and `join` follows an
-alias between separated records. Tokenization and completion-budget checks
-run before submission.
+The [retrieval harness](../../performance/harnesses/validation/README.md)
+places opaque values at set document depths. `exact` retrieves a value,
+`revision` picks a superseding record over a decoy, and `join` follows an alias
+between separated records. It checks tokenization and completion budget before
+sending.
 
 ```bash
 python3 performance/harnesses/validation/needle_hunt.py \
@@ -200,20 +183,20 @@ python3 performance/harnesses/validation/needle_hunt.py \
   --max-tokens 2048 --output "$RUN/needle.jsonl"
 ```
 
-Require the expected answer and normal completion for every supported cell.
-Record actual prompt tokens, position, seed, answer, and finish reason.
-Repeat failures with the same fixture and a shorter-context control before
-changing the runtime. For one-million-token profiles, add a `--contexts 960k`
-sweep if tokenization confirms that the complete request fits.
+Every supported cell needs the expected answer and a normal finish. Record
+actual prompt tokens, position, seed, answer and finish reason. Repeat failures
+with the same fixture and a shorter-context control before changing the
+runtime. For one-million-token profiles, add `--contexts 960k` if the complete
+request fits.
 
 ## SparkCache publication and restoration
 
-For profiles without SparkCache, mark this check **not applicable**. For enabled
-profiles, use the profile's documented publication threshold, cache namespace,
-all-rank stop/restart procedure, and restoration logs. Do not rename cache
-entries or change checkpoint/speculation identity between the two requests.
+Mark this check **not applicable** for profiles without SparkCache. Otherwise
+use the profile's publication threshold, cache namespace, all-rank stop/restart
+procedure and restoration logs. Do not rename cache entries or change the
+checkpoint or speculation settings between the two requests.
 
-Run this sequence for three distinct seeds, using separate before/after files:
+Run this for three seeds, with separate before and after files:
 
 ```bash
 SEED=20260905  # Repeat the sequence with 20260906 and 20260907.
@@ -224,29 +207,29 @@ CACHE_PROBE=(python3 performance/harnesses/validation/needle_hunt.py
 "${CACHE_PROBE[@]}" --output "$RUN/cache-${SEED}-before.jsonl"
 ```
 
-1. Require a correct answer and confirm compatible publication on **every rank**.
-2. Save rank cache logs/counters and record the model process identities.
-3. Drain requests. Use the selected quickstart's coordinated model stop and
-   restart commands; preserve its cache directories. Do not restart NIC helpers
-   independently or substitute guessed container names.
-4. Wait for all-rank readiness and completed warmup.
-5. Submit the identical fixture:
+1. Require a correct answer and cache publication on **every rank**.
+2. Save each rank's cache logs and counters and the model process identities.
+3. Drain requests. Stop and restart the model with the guide's coordinated
+   commands, keeping its cache directories. Do not restart NIC helpers on their
+   own or guess container names.
+4. Wait for all-rank readiness and warmup.
+5. Send the identical fixture:
 
 ```bash
 "${CACHE_PROBE[@]}" --output "$RUN/cache-${SEED}-after.jsonl"
 ```
 
-Require matching prompt hashes, correct output, compatible cache identities,
-external-hit counters, and explicit per-rank restoration evidence. GPU prefix
-reuse within one process does not exercise disk restoration. For the managed
-MTP3 profile, the [cache procedure](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md#model-output-and-persistent-cache-restoration)
-provides concrete coordinated restart commands and a second recall fixture.
+Require matching prompt hashes, a correct answer, compatible cache identities,
+external-hit counters and per-rank restoration in the logs. GPU prefix reuse
+inside one process does not test disk restoration. For the managed MTP3
+profile, the [cache procedure](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md#model-output-and-persistent-cache-restoration)
+gives concrete restart commands and a second recall fixture.
 
 ## Mixed traffic and sustained operation
 
-For each of three trials, measure a 60-second idle decode control, then run
-the same decode cell while submitting one fresh 64K prefill. Use the same
-sampling and workload settings for both arms.
+For each of three trials, measure a 60-second idle decode control, then run the
+same decode cell while one fresh 64K prefill arrives. Use the same sampling and
+workload settings for both.
 
 ```bash
 DECODE_CELL=("${COMMON[@]}" --skip-prefill --contexts 32k
@@ -258,8 +241,8 @@ for repeat in 1 2 3; do
 done
 ```
 
-For each loaded trial, use two terminals on the same benchmark controller.
-Set `repeat` to 1, then 2, then 3. In terminal A, with the variables above:
+Each loaded trial uses two terminals on the same benchmark host. Set `repeat`
+to 1, then 2, then 3. In terminal A, with the variables above:
 
 ```bash
 repeat=1
@@ -268,9 +251,9 @@ repeat=1
 ```
 
 Wait until the live display shows `ready C=... ctx=32K` for the selected
-concurrency and the measurement countdown advances. A warmup timeout is not
-that readiness event. Then, in terminal B with the same `RUN`, `ENDPOINT`,
-`MODEL`, `CONTEXT_LIMIT`, and `repeat` values, submit the prefill:
+concurrency and the measurement countdown is running; a warmup timeout does not
+count. Then, in terminal B with the same `RUN`, `ENDPOINT`, `MODEL`,
+`CONTEXT_LIMIT` and `repeat`, send the prefill:
 
 ```bash
 date -u +%FT%TZ > "$RUN/mixed-prefill-r${repeat}-started.txt"
@@ -281,10 +264,10 @@ python3 performance/harnesses/validation/prefill_probe.py \
 date -u +%FT%TZ > "$RUN/mixed-prefill-r${repeat}-finished.txt"
 ```
 
-Check the saved decode event log and timestamps to confirm the prefill
-overlapped the measured decode window, not context preparation or warmup.
-Repeat a trial with a longer duration in both arms if that condition is not
-met. After the three paired trials, run the sustained workload:
+Use the decode event log and timestamps to confirm the prefill overlapped the
+measured window, not context preparation or warmup; if not, repeat the trial
+with a longer duration in both arms. After the three pairs, run the sustained
+workload:
 
 ```bash
 "${COMMON[@]}" --skip-prefill --contexts 32k --concurrency "$BUSY_C" \
@@ -294,47 +277,42 @@ met. After the three paired trials, run the sustained workload:
 sha256sum --check "$RUN/benchmark-source.sha256"
 ```
 
-Review memory/cache capacity trends, request failures, transport counters,
-and rank health during the sustained run. Report the mixed-load throughput,
-ITL, and TTFT changes relative to the paired idle controls. Fault injection
-requires its own reviewed maintenance procedure; this runbook does not kill
-hosts or alter networking during load.
+Watch memory and cache trends, request failures, transport counters and rank
+health during the sustained run. Report mixed-load throughput, ITL and TTFT
+changes against the paired idle controls. This runbook does not kill hosts or
+change networking under load; fault injection needs its own procedure.
 
 ## Additional checks for the intended application
 
-- **Quantization accuracy:** a fixed GSM8K, MMLU-Pro, or GPQA subset using the
-  benchmark's dataset profiles; preserve dataset identity and compare the same
-  items/seeds against the reference quantization.
-- **Scored coding:** a pinned coding-task suite with executable unit tests.
-  Run generated code only in a disposable sandbox with no secrets, host mounts,
-  or network and with CPU/memory/time limits. Record pass counts separately
-  from coding peak speed.
-- **Structured output and tool use:** schema-valid JSON, valid tool arguments,
-  and correct stop behavior for the tool/template configuration actually served.
-- **Multimodal input:** image/video checks only for profiles that support them.
+- **Quantization accuracy:** a fixed GSM8K, MMLU-Pro or GPQA subset from the
+  benchmark's dataset profiles, with the same items and seeds as the reference
+  quantization.
+- **Scored coding:** a pinned coding-task suite with executable unit tests, run
+  only in a disposable sandbox with no secrets, host mounts or network and with
+  CPU, memory and time limits. Record pass counts separately from coding peak.
+- **Structured output and tool use:** schema-valid JSON, valid tool arguments
+  and correct stop behavior for the served tool/template configuration.
+- **Multimodal input:** image and video checks, only for profiles that support them.
 
 ## Report and operator decision
 
-For shared-image GLM activation receipts using schema
-`sparkring-r33-activation-receipt/v1`, run the maintained offline validator:
+For shared-image GLM activation receipts (schema
+`sparkring-r33-activation-receipt/v1`), run the offline validator:
 
 ```bash
 python3 runtime/common/verify_activation.py --receipt /path/to/activation.json
 ```
 
-It requires each rank exactly once, checks the declared SparkCache state, and
-applies the retained profile's image, source and runtime evidence checks. It
-does not contact hosts or establish that a reported measurement occurred.
+It requires each rank exactly once and checks the declared SparkCache state and
+the profile's image, source and runtime identities. It does not contact hosts.
 
-Use [the report template](../PROFILE_VALIDATION_REPORT_TEMPLATE.md). Include the
+Write the report with [the template](../PROFILE_VALIDATION_REPORT_TEMPLATE.md):
 recipe and source identities, commands, raw-receipt hashes, three-run medians
-and ranges, accuracy counts, failure details, and restart/cache evidence.
-Keep the report concise; link detailed receipts rather than embedding private
-host configuration or complete model responses in the public repository.
+and ranges, accuracy counts, failures and restart/cache results. Link detailed
+receipts rather than embedding private host configuration or full model
+responses.
 
-Transport correctness, required retrieval cases, service health, and cache
-restoration are explicit functional gates. For sampled reasoning/coding tests,
-record scores and agree on the accuracy floor before comparing profiles.
-Agree on latency/throughput budgets for the intended workload before declaring
-a performance regression or a winner. A complete test card supplies evidence;
-promotion remains an operator decision.
+Transport correctness, the required retrieval cases, service health and cache
+restoration are pass/fail. For sampled reasoning and coding tests, and for
+latency and throughput, agree on the thresholds for the intended workload
+before comparing profiles. Adopting a profile is the operator's decision.

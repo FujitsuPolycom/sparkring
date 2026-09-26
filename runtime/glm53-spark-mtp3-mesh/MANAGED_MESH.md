@@ -75,7 +75,7 @@ Before installation:
   `sparkring setup`, the mesh service does not start without them, and once
   `sudo sparkring hairpin` or an installation has recorded them,
   `sparkring-hairpin.service` applies them at every boot; see
-  [Four-Spark rings](../../docs/operations/install.md#four-spark-rings).
+  [Four-Spark rings](../../docs/operations/install-reference.md#four-spark-rings).
   Elsewhere, verify them again after each reboot; a required driver reload
   belongs to a separate stopped-all-RDMA-users maintenance step over
   independent management or a console, not to service installation or

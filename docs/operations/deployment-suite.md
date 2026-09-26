@@ -102,7 +102,7 @@ do not loop blindly through reloads. Review the resulting device state.
 administration network (`sr-control`), because the reload can cut that path.
 A ring set up with `sparkring install` or `sparkring setup` uses
 `sudo sparkring hairpin` on Node A instead; see
-[Four-Spark rings](install.md#four-spark-rings).
+[Four-Spark rings](install-reference.md#four-spark-rings).
 Network backups remain on each host at the paths in the plan.
 
 After changes, repeat discovery into a **different** inventory filename and

@@ -303,14 +303,15 @@ def generate(check=False, root=ROOT):
         if not target.is_relative_to(root.resolve()) or target in expected:
             raise ValueError('Environment exports must have unique destinations within the checkout')
         expected[target] = render_environment(row['profile'], root=root, template_only=True).encode('utf-8')
-    for relative, compact in (('README.md', True), ('profiles/README.md', False)):
-        readme = root/relative
-        text = readme.read_text(encoding='utf-8-sig')
-        if START not in text or END not in text:
-            raise ValueError(f'{relative} requires generated profile region markers')
-        before, tail = text.split(START, 1)
-        _, after = tail.split(END, 1)
-        expected[readme] = (before+profile_table(root, compact=compact)+after).encode()
+    # The repository README lists only the installer's profiles, maintained by
+    # hand; every catalog profile appears in the generated catalog page.
+    readme = root/'profiles/README.md'
+    text = readme.read_text(encoding='utf-8-sig')
+    if START not in text or END not in text:
+        raise ValueError('profiles/README.md requires generated profile region markers')
+    before, tail = text.split(START, 1)
+    _, after = tail.split(END, 1)
+    expected[readme] = (before+profile_table(root)+after).encode()
     stale = []
     for path, content in expected.items():
         if not path.exists() or path.read_bytes().replace(b'\r\n', b'\n') != content.replace(b'\r\n', b'\n'):

@@ -1,21 +1,26 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e) with MTP
-speculative decoding and 262K context, served on port 8000 as
-`Qwen3.8-Flash-Next-NVFP4-QAD-TP2`. On the Spark connected to your network:
+[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)
+(QAD checkpoint, revision `629bc3218833`) on two DGX Sparks, with MTP
+speculative decoding and 262K context. Node A serves the API on port 8000 as
+`Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, with no API key. Status: Development.
+
+On the Spark connected to your network:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
-To run it with Docker Compose instead, see [Compose](compose/README.md).
 [Install SparkRing](../../docs/operations/install.md) covers requirements,
-logs and recovery.
+logs and recovery. To run the same containers with Docker Compose, see
+[Compose](compose/README.md).
+
+## Settings
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
 | Image | `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | `shared-2026.09.3` |
-| Parallelism | TP2/DCP1; one DAC, both Socket Direct functions | Same |
+| Parallelism | TP2/DCP1; one p0-to-p0 cable, both PCIe functions of p0 | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |
 | KV | 24 GiB FP8 per rank | 24 GiB FP8 per rank; separate from host cache buffers |
 | Loading / speculation | Managed B12X / MTP3, drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`) | Managed B12X / MTP3, greedy drafts |
@@ -26,27 +31,45 @@ logs and recovery.
 | Caching | vLLM native prefix cache; SparkCache off | 4 GiB disk per rank, reclaim toward 3 GiB; about 1.25 GiB data buffers per rank |
 | API | Port 8000, model `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, no API key | Same |
 
+## Performance
+
+One pair, 512-token single-stream requests at temperature 0; prefill is one
+cold prompt.
+
+| Deployment | Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
+|---|---|---|
+| `sudo sparkring install` | 59.5 / 88.4 / 101.0 | 4,259 / 3,922 |
+| `install.sh` | 61.0 / 89.2 / 100.8 | 4,258 / 3,939 |
+| [Compose](compose/README.md) | 62.3 / 89.7 / 101.5 | 4,236 / 3,932 |
+
+- At temperature 1.0, the checkpoint's default sampling, prose decodes at
+  59–61 tokens/s.
+- Sampling drafts from the draft distribution raises prose tokens per step at
+  temperature 1.0 from 1.97 (greedy drafts) to 2.16.
+- Three draft tokens per step decode prose fastest: 59.1 tokens/s, against
+  52.6 with four and 51.6 with five.
+- With kernels already tuned, the model starts in about 4.5 minutes
+  (261.5–267.6 s).
+
+Measurements: [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
+and [installation record](../../performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md).
+
 ## SparkCache profile: manual setup
 
-`qwen38-flash-next-tp2-sparkcache` ([sparkcache.json](sparkcache.json)) adds a
-disk KV cache and runs on the
-[shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md) image.
-The commands below create its containers. Complete the
-[host preparation](../../docs/operations/host-preparation.md) and
-[pair network procedure](../../docs/operations/pair-network.md) first; these
-commands do not configure networking.
+The SparkCache profile, `qwen38-flash-next-tp2-sparkcache`, adds a disk KV
+cache and runs on the [shared-2026.09.3](../../runtime/releases/shared-2026.09.3/README.md)
+image. `sparkring install` does not deploy it; these commands do, as does
+[`sparkring compose`](../../docs/operations/compose.md). Complete the
+[host preparation](../../docs/operations/host-preparation.md) and the
+[pair network procedure](../../docs/operations/pair-network.md) first.
 
 ### Image and checkpoint
 
-Use the same SparkRing checkout on both nodes. Set these variables in Bash;
-`MODEL_DIR` must contain the verified checkpoint, and `CACHE_DIR` must be a
-separate writable directory. The block selects the SparkCache profile, whose
-image the manual launcher admits. Make the same choice on both ranks before
-creating containers.
+On both Sparks, in Bash from the same SparkRing checkout:
 
 ```bash
-REPO=$PWD
 set -euo pipefail
+REPO=$PWD
 PROFILE_ID=qwen38-flash-next-tp2-sparkcache
 mkdir -p .sparkring
 python3 scripts/sparkring.py setup show "$PROFILE_ID" --format shell \
@@ -54,51 +77,33 @@ python3 scripts/sparkring.py setup show "$PROFILE_ID" --format shell \
 cat .sparkring/selection.env
 source .sparkring/selection.env
 PROFILE="$PROFILE_CONFIG"
-if test "$SPARKCACHE_ENABLED" = 1; then
-  CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
-else
-  CONTAINER_PREFIX=qwen-flash-next-tp2
-fi
+CONTAINER_PREFIX=qwen-flash-next-sparkcache-tp2
 MODEL_DIR="/srv/models/${MODEL_REPO##*/}/${MODEL_REV}"
 CACHE_DIR="/srv/cache/${PROFILE_ID}/${RELEASE}"
 
-# No separate parent-image pull is required for native-image verification.
 docker pull --platform linux/arm64 "$IMAGE_REF"
 IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
 test "$IMAGE_ID" = "$EXPECTED_IMAGE_ID"
 mkdir -p "$CACHE_DIR"
 ```
 
-Reuse an existing verified model copy. Otherwise download the approximately
-106 GB checkpoint once per rank, or transfer the verified files over the data fabric:
+Download the checkpoint (about 106 GB) on each Spark, or copy checked files
+over the fabric, then check it:
 
 ```bash
-# Skip this download when MODEL_DIR already contains the verified checkpoint.
+# Skip the download when MODEL_DIR already holds the checkpoint.
 "$HOME/.venvs/sparkring-download/bin/hf" download "$MODEL_REPO" \
   --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
 (cd "$MODEL_DIR" && sha256sum --check "$REPO/profiles/qwen38-flash-next-tp2/SHA256SUMS")
 ```
 
-`SHA256SUMS` lists the 48 files the pinned revision requires; the download's
-`README.md` and `.gitattributes` are not served and not checked. `sudo sparkring
-install` finds an existing copy on a local disk by itself, in a Hugging Face
-cache, an `hf download` folder or any other folder (a copy in another account's
-home or on network storage needs `--model-path`), so `MODEL_DIR` matters only
-for manual runs. Directory names do not prove model identity. Model mounts are read-only; do not
-put the writable cache inside the model directory.
-
-When switching from plain NVFP4, recreate the serving containers with this
-profile; restarting an existing container does not change its model mount.
-Preserve the original containers and weights for rollback. QAD uses a distinct
-served name, checkpoint identity and persistent-cache namespace. Do not carry
-the plain-NVFP4 checkpoint digests into the QAD cache configuration.
+`SHA256SUMS` lists the 48 files the revision needs. The model directory is
+mounted read-only; `CACHE_DIR` must be outside it.
 
 ### Plan and create
 
-Replace the example addresses/interface on **each node** with the prepared
-high-speed fabric IPs and Linux interface, so worker/control traffic also uses
-that fabric. Rank1 uses `RANK=1` and its own `HOST_IP`; both ranks use the same
-reachable `MASTER_ADDR`. SSH and API clients may use the management network.
+Set each Spark's rank, fabric address and interface. Both ranks use rank 0's
+address as `MASTER_ADDR`; on rank 1 set `RANK=1` and `HOST_IP=198.18.20.2`.
 
 ```bash
 RANK=0
@@ -114,37 +119,30 @@ launch_rank() {
 launch_rank plan
 ```
 
-Those addresses match the fresh-pair example. On rank 1 set `RANK=1` and
-`HOST_IP=198.18.20.2`; both ranks retain rank 0's `MASTER_ADDR`. For prepared
-hosts, substitute their actual primary fabric addresses and discovered interface.
-Inspect both plans before running `launch_rank create` on **each rank**.
-
-The defaults select `rocep1s0f0` and `roceP2p1s0f0`, the two PCI-domain views
-of cage p0. Confirm the cable/device mapping. The bootstrap interface is a
-separate input, not an RDMA device list. `plan` is offline; `create` verifies
-the image and refuses existing names. Neither action stops a running workload.
+`plan` checks the checkpoint metadata and prints the `docker create` command.
+Review both plans, then run `launch_rank create` on each rank; it verifies the
+image and refuses an existing container name. RDMA uses `rocep1s0f0` and
+`roceP2p1s0f0`, the two PCIe functions of port p0.
 
 ### Controlled startup
 
-During an authorized test window, stop competing GPU workloads explicitly and
-preserve them for rollback. Start rank1, then rank0, on their respective hosts:
+Stop other GPU workloads first. On each rank, save its inputs for later shells:
 
 ```bash
-# Save rank-local inputs on EACH rank before starting either container.
 for key in RANK MASTER_ADDR HOST_IP INTERFACE PROFILE IMAGE_ID MODEL_DIR CACHE_DIR CONTAINER_PREFIX; do
   printf '%s=%q\n' "$key" "${!key}"
 done > .sparkring/qwen-pair-session.env
 declare -f launch_rank >> .sparkring/qwen-pair-session.env
 ```
 
-Run on **rank 1 first**, then **rank 0**, in their respective shells:
+Start rank 1 first, then rank 0:
 
 ```bash
 docker start "${CONTAINER_PREFIX}-r${RANK}"
 docker logs --follow --tail 100 "${CONTAINER_PREFIX}-r${RANK}"
 ```
 
-From rank0 or a client that can reach its bootstrap address:
+From rank 0, or a client that reaches its address:
 
 ```bash
 curl --fail "http://${MASTER_ADDR}:8000/health"
@@ -154,25 +152,19 @@ curl --fail "http://${MASTER_ADDR}:8000/v1/chat/completions" \
   -d '{"model":"Qwen3.8-Flash-Next-NVFP4-QAD-TP2","messages":[{"role":"user","content":"Reply only READY"}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}'
 ```
 
-The API is `http://RANK0_ADDRESS:8000/v1`, with model name
-`Qwen3.8-Flash-Next-NVFP4-QAD-TP2`. It has no configured authentication: restrict access
-to trusted clients or an authenticated gateway. The short completion checks basic
-generation, not cache persistence or capacity. The `SPARKRING STARTUP AUDIT`
-banner appears before API readiness. Read its warnings: requested flags are not
-proof of runtime execution or performance. The bundled SparkCache does not
-isolate disk entries by request `cache_salt`; use separate deployments/cache
-namespaces when tenant isolation is required.
-
-Monitor host `MemAvailable`; Docker's 108 GiB memory and 112 GiB combined
-memory/swap limits do not cover every GB10 GPU allocation. This profile installs
-no persistent memory guard, boot service or network changes. Containers do not autostart.
+- The API has no key: restrict it to trusted clients or an authenticated
+  gateway.
+- The `SPARKRING STARTUP AUDIT` banner lists configuration warnings before the
+  API is ready.
+- Docker limits each container to 108 GiB of memory (112 GiB with swap), which
+  does not cover every GB10 GPU allocation; watch the host's `MemAvailable`.
+- Containers do not start at boot.
 
 #### Restart existing containers
 
-Do not rerun `create`. From the same checkout in a fresh Bash shell on each rank,
-restore the locally generated inputs, then stop the container. Inspect the file
-before sourcing it. Use the startup
-commands above in rank1/rank0 order. Disk cache entries remain intact:
+Do not rerun `create`. On each rank, in a fresh shell from the same checkout,
+inspect and source the saved inputs and stop the container; then start rank 1
+and rank 0 as above. The disk cache is kept.
 
 ```bash
 source .sparkring/qwen-pair-session.env
@@ -181,36 +173,14 @@ docker stop --timeout 30 "${CONTAINER_PREFIX}-r${RANK}"
 
 #### Cache-disabled alternative
 
-The cache-disabled configuration of this checkpoint is the installer profile
-`qwen38-flash-next-tp2`; install it with
-`sudo sparkring install --profile qwen38-flash-next-tp2`. The manual launcher
-does not create its containers. Changing a variable does not change an existing
-container; use the documented stop/create sequence for a new selection.
+The installer profile `qwen38-flash-next-tp2` serves this checkpoint without
+SparkCache; install it with the command at the top of this page. The manual
+launcher does not create its containers.
 
-### Evidence and remaining checks
+### SparkCache limits
 
-Configuration is owned by [sparkcache.json](sparkcache.json) and
-[config.json](config.json), not this table. Capacity overrides are intentionally
-not accepted. The [release qualification](../../runtime/releases/shared-2026.09.3/qualification.json)
-records passing bounded short/16K text, finite-score, synthetic image/video,
-concurrent-request and retained-restart checks on the shared-2026.09.3 image
-for revision `629bc3218833`, both with and without SparkCache. That evidence
-covers the shared-2026.09.3 configuration with a BF16 LM head; it does not
-transfer to the installer profile, whose image and decode settings differ. The
-cache-enabled profile also restored two fixtures on every rank after restart.
-The [correctness summary](../../runtime/releases/shared-2026.09.3/correctness.json)
-owns exact image identities, case counts and evidence hashes. The installer
-profile's evidence is in its `profile.json` evidence scope and the
-[installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md).
-
-These checks do not qualify arbitrary/high-resolution video, C16 multimedia,
-sixteen simultaneous full-context requests or prolonged store-pressure stability.
-Sixteen video frames are not sixteen visual tokens. A 512 MiB capture slot can
-reject a snapshot below the configured 65536-token span ceiling; serving must
-continue without optional cache publication.
-
-[Release sources and rollback](../../runtime/releases/shared-2026.09.3/README.md).
-[Generated Compose deployments](../../docs/operations/compose.md) cover both
-profiles; `sparkring install` is the installer profile's supported entry point.
-Historical R37 evidence remains attached to its original image and is not
-reattributed to this release.
+- Disk entries are not isolated by request `cache_salt`; use separate
+  deployments and cache directories for tenant isolation.
+- A prefix snapshot that does not fit a 512 MiB capture slot is not cached,
+  even below the 65,536-token span limit; the request is still served.
+- Capacity overrides are not accepted.
