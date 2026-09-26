@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-Spark
 
-Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4 Spark checkpoint of Z.ai's GLM-5.3-Flash.
+Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4/MXFP8 quantization of Z.ai's [GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16).
 
 This deployment uses the pinned [recipe](recipe.json). Status: **Experimental**.
 It is retained for reproducing that image and configuration; select the

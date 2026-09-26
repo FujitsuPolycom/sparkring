@@ -1,16 +1,19 @@
 # SparkRing
 
-SparkRing runs large language models distributed across two or four NVIDIA GB10-based devices
-cabled directly to each other, with no switch. Its collectives (SIRCL,
-RoCEnante and patched NCCL) run over the ConnectX-7 DACs, and on four-Spark
-rings ConnectX hardware forwarding connects every Spark to every other over the
-ring. Profiles use vLLM and SGLang.
+SparkRing runs large language models across two or four NVIDIA GB10-based
+devices connected by direct-attach cables, without a network switch. SIRCL,
+RoCEnante and patched NCCL provide collective transport and communication over
+the ConnectX-7 links. On four-device rings, ConnectX hardware forwarding
+provides connectivity between all devices over the existing ring cables. Model
+profiles support vLLM and SGLang.
 
 ## Quick start
 
-Check the [requirements](docs/operations/install.md#requirements), cable the
-Sparks as shown there, then run one command on the Spark connected to your
-network.
+1. Check the [requirements](docs/operations/install.md#requirements).
+2. Cable your GB10 devices as the requirements show.
+3. On the device connected to your network, run the installer command with the
+   profile for your model and device count. See also
+   [SparkRing commands](docs/operations/commands.md).
 
 Two Sparks:
 

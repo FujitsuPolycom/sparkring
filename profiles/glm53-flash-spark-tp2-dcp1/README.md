@@ -1,6 +1,6 @@
 # GLM-5.3-Flash TP2 without SparkCache
 
-Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4 Spark checkpoint of Z.ai's GLM-5.3-Flash.
+Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4/MXFP8 quantization of Z.ai's [GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16).
 
 Status: **Experimental**. Use the [retained R37 TP2 procedure](https://github.com/FujitsuPolycom/sparkring/blob/5b28d768b37b21f5c97d910887e07144fcf251ef/profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md#sparkcache-off).
 Use that document's repository revision, image receipt and checkpoint selection;

@@ -1,6 +1,6 @@
 # GLM-5.3-Flash DCP4 without SparkCache
 
-Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4 Spark checkpoint of Z.ai's GLM-5.3-Flash.
+Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark), Local Inference Lab's NVFP4/MXFP8 quantization of Z.ai's [GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16).
 
 Use the [four-Spark quickstart](../glm53-flash-spark-tp4-dcp1-sparkcache/README.md#dcp4-alternative)
 and select `tp4-dcp4`. DCP1 is the default; DCP4 is an alternative.
