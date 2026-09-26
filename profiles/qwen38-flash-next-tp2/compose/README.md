@@ -39,23 +39,20 @@ which Docker's default seccomp policy blocks.
 
    `ping -c 3 -M do -s 8972 198.18.0.2` and `… 198.18.1.2` from Spark 0 must
    succeed.
-4. **The checkpoint** (about 106 GB), as real files, verified:
+4. **The checkpoint** (about 110 GB), as real files, verified:
    ```bash
-   hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 --revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir /path/to/Qwen3.8-Flash-Next-NVFP4
+   hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 --revision 60215d26cf5e42c2db6128774032d57fc62678da --local-dir /path/to/Qwen3.8-Flash-Next-NVFP4
    (cd /path/to/Qwen3.8-Flash-Next-NVFP4 && sha256sum -c /path/to/SHA256SUMS)   # every line OK
    ```
    Already in your Hugging Face cache? Hard-link it instead (same filesystem,
    no extra space, the cache is not modified):
    ```bash
-   SNAP=~/.cache/huggingface/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4/snapshots/629bc3218833a38b475b719f34aa571666f4a03e
+   SNAP=~/.cache/huggingface/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4/snapshots/60215d26cf5e42c2db6128774032d57fc62678da
    DEST=/path/to/Qwen3.8-Flash-Next-NVFP4
    mkdir -p "$DEST" && for f in "$SNAP"/*; do ln "$(readlink -f "$f")" "$DEST/$(basename "$f")"; done
    ```
-   A `main` download from after 2026-09-16 has the same weights: link it the
-   same way, then `rm "$DEST/config.json"` and fetch the pinned one with
-   `hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 config.json --revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir "$DEST"`.
-   Older `main` downloads, `qad-step5500-ple1000` and other quantizations are
-   different weights; `sha256sum -c` catches them.
+   Downloads of `main`, `qad-step-4000` and other quantizations are different
+   weights; `sha256sum -c` catches them.
 5. **A writable cache directory**, for example `/var/tmp/sparkring-cache`.
 
 ## Configure and start

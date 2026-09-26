@@ -300,13 +300,13 @@ def model_files(path, expected=None, *, in_place=False, optional=()):
 
 
 def checksum_manifest(profile):
-    """Per-file SHA-256 pins for a profile's checkpoint revision, if recorded."""
+    """Per-file SHA-256 pins for a profile's checkpoint revision, if recorded.
+
+    Each profile keeps its own file, because profiles that share a model
+    repository can pin different revisions of it.
+    """
     own = profiles.ROOT / "profiles" / profile / "SHA256SUMS"
-    if own.is_file():
-        return own
-    if profile in compose.EXAMPLES:
-        return profiles.ROOT / "profiles/qwen38-flash-next-tp2/SHA256SUMS"
-    return None
+    return own if own.is_file() else None
 
 
 def pinned_differences(profile, files):

@@ -1,7 +1,7 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)
-(QAD checkpoint, revision `629bc3218833`) on two DGX Sparks, with MTP
+[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)
+(QAD checkpoint step 5500, revision `60215d26cf5e`) on two DGX Sparks, with MTP
 speculative decoding and 262K context. Node A serves the API on port 8000 as
 `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, with no API key. Status: Development.
 
@@ -20,11 +20,12 @@ logs and recovery. To run the same containers with Docker Compose, see
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
 | Image | `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | `shared-2026.09.3` |
+| Checkpoint | Step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
 | Parallelism | TP2/DCP1; one p0-to-p0 cable, both PCIe functions of p0 | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |
 | KV | 24 GiB FP8 per rank | 24 GiB FP8 per rank; separate from host cache buffers |
-| Loading / speculation | Managed B12X / MTP3, drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`) | Managed B12X / MTP3, greedy drafts |
-| Decode weights | MXFP8 target LM head; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op | BF16 LM head and hyper-connection projections |
+| Loading / speculation | Managed B12X / MTP3; the draft's MXFP8 experts run on the `humming` MoE backend; drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`) | Managed B12X / MTP3; the draft's NVFP4 experts run on B12X; greedy drafts |
+| Decode weights | BF16 target LM head; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op | BF16 LM head and hyper-connection projections |
 | Prefill | Hyper-connection token-row ownership (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`) with the image's `qwen-collectives` and `qwen4-prefill` features | Hyper-connection row sharding off |
 | Decode collectives | All-reduces of up to 64 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=327680`) | No Qwen dispatch setting |
 | Media | Three images, one video; 16 configured video frames | Same |
@@ -33,26 +34,32 @@ logs and recovery. To run the same containers with Docker Compose, see
 
 ## Performance
 
-One pair, 512-token single-stream requests at temperature 0; prefill is one
-cold prompt.
+One pair, step 5500 ([record](../../performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md)). Single stream, 512 tokens at
+temperature 0; prefill is one cold prompt:
 
-| Deployment | Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
-|---|---|---|
-| `sudo sparkring install` | 59.5 / 88.4 / 101.0 | 4,259 / 3,922 |
-| `install.sh` | 61.0 / 89.2 / 100.8 | 4,258 / 3,939 |
-| [Compose](compose/README.md) | 62.3 / 89.7 / 101.5 | 4,236 / 3,932 |
+| Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
+|---|---|
+| 49.3 / 77.4 / 84.8 | 4,077 / 3,762 |
 
-- At temperature 1.0, the checkpoint's default sampling, prose decodes at
-  59–61 tokens/s.
-- Sampling drafts from the draft distribution raises prose tokens per step at
-  temperature 1.0 from 1.97 (greedy drafts) to 2.16.
-- Three draft tokens per step decode prose fastest: 59.1 tokens/s, against
-  52.6 with four and 51.6 with five.
-- With kernels already tuned, the model starts in about 4.5 minutes
-  (261.5–267.6 s).
+Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench), temperature 1.0), total
+tokens/s across streams:
 
-Measurements: [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
-and [installation record](../../performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md).
+| Context | Prefill | 1 stream | 8 streams | 16 streams |
+|---|---:|---:|---:|---:|
+| 0 | — | 56.2 | 196.6 | 283.3 |
+| 8K | 3,692 | 44.3 | 163.8 | 232.6 |
+| 16K | 3,883 | 47.2 | 172.2 | 238.9 |
+| 32K | 3,820 | 49.3 | 160.9 | 237.9 |
+| 64K | 3,666 | 43.3 | 162.4 | 233.1 |
+
+- At temperature 1.0, decode rates move by up to 20% between runs with how many
+  draft tokens the model accepts; the step rate stays within 3%.
+- Step 4000 (revision `629bc3218833`) decodes 14–21% faster on the same
+  probe (59.5 / 88.4 / 101.0).
+- The first start after installation compiles kernels for about 9.5
+  minutes.
+
+Tuning measurements: [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md).
 
 ## SparkCache profile: manual setup
 
@@ -94,7 +101,7 @@ over the fabric, then check it:
 # Skip the download when MODEL_DIR already holds the checkpoint.
 "$HOME/.venvs/sparkring-download/bin/hf" download "$MODEL_REPO" \
   --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
-(cd "$MODEL_DIR" && sha256sum --check "$REPO/profiles/qwen38-flash-next-tp2/SHA256SUMS")
+(cd "$MODEL_DIR" && sha256sum --check "$REPO/profiles/qwen38-flash-next-tp2-sparkcache/SHA256SUMS")
 ```
 
 `SHA256SUMS` lists the 48 files the revision needs. The model directory is

@@ -50,9 +50,8 @@ def test_qwen_model_and_native_prefix_only():
     assert "VLLM_USE_V2_MODEL_RUNNER=1" in command
     assert not any(value.startswith("VLLM_PLE_TABLE_MEMORY=") for value in command)
     assert "VLLM_PLE_CPU_OFFLOAD=0" in command
-    # The installer profile quantizes the target LM head to MXFP8; see
-    # performance/records/qwen38-flash-next/decode-ab-20260925.md.
-    assert "VLLM_MXFP8_LM_HEAD=1" in command
+    # The step-5500 checkpoint serves with its BF16 target LM head.
+    assert "VLLM_MXFP8_LM_HEAD=0" in command
     # The installer image registers this setting and quantizes the BF16
     # hyper-connection down/injection projections to MXFP8 at load.
     assert "VLLM_QWEN4_EXP_MXFP8_HC=1" in command
@@ -62,10 +61,11 @@ def test_qwen_model_and_native_prefix_only():
     # Drafts sample from the draft distribution, so sampled requests accept
     # by distribution overlap rather than by the target's probability of one token.
     assert json.loads(command[command.index("--speculative-config") + 1])["draft_sample_method"] == "probabilistic"
-    # Revision 629bc3218833 stores NVFP4 MTP routed experts, which B12X runs.
+    # The qad-step5500-ple1000 MTP experts are MXFP8, which the B12X MoE
+    # backend does not implement; the draft uses the MXFP8-capable backend.
     assert (
         json.loads(command[command.index("--speculative-config") + 1])["moe_backend"]
-        == "b12x"
+        == "humming"
     )
     assert command[command.index("--decode-context-parallel-size") + 1] == "1"
 
@@ -82,12 +82,13 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     plain = adapter.read(root / 'config.json')
     cached = adapter.read(root / 'sparkcache.json')
     tp4 = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/config.json')
-    # The installer and SparkCache profiles pin the release-qualified revision.
+    # The installer profiles follow checkpoint branch qad-step5500-ple1000; the
+    # qualified SparkCache profiles keep the release-qualified revision.
     tp4_cached = adapter.read(ROOT / 'profiles/qwen38-flash-next-qad-tp4/sparkcache.json')
     assert plain['model'] == tp4['model']
     assert cached['model'] == tp4_cached['model']
     assert cached['model']['revision'] == '629bc3218833a38b475b719f34aa571666f4a03e'
-    assert plain['model'] == cached['model']
+    assert plain['model']['revision'] == '60215d26cf5e42c2db6128774032d57fc62678da'
     assert plain['served_model_name'] == cached['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP2'
     assert tp4['served_model_name'] == 'Qwen3.8-Flash-Next-NVFP4-QAD-TP4'
     assert tp4_cached['served_model_name'] == tp4['served_model_name']
@@ -95,7 +96,12 @@ def test_tp2_qad_pins_manifest_and_cache_identity_are_consistent():
     hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in manifest}
     assert hashes['config.json'] == plain['model']['config_sha256']
     assert hashes['model.safetensors.index.json'] == plain['model']['index_sha256']
-    assert len([name for name in hashes if name.endswith('-of-00036.safetensors')]) == 36
+    assert len([name for name in hashes if name.endswith('-of-00041.safetensors')]) == 41
+    # The SparkCache profiles keep their own sums for revision 629bc3218833.
+    cached_sums = (ROOT / 'profiles/qwen38-flash-next-tp2-sparkcache/SHA256SUMS').read_text().splitlines()
+    cached_hashes = {line.split(maxsplit=1)[1].strip(): line.split()[0] for line in cached_sums}
+    assert cached_hashes['config.json'] == cached['model']['config_sha256']
+    assert len([name for name in cached_hashes if name.endswith('-of-00036.safetensors')]) == 36
     assert (root / 'SHA256SUMS').read_bytes() == (ROOT / 'profiles/qwen38-flash-next-qad-tp4/SHA256SUMS').read_bytes()
     args = cached['vllm_args']
     config = json.loads(args[args.index('--kv-transfer-config') + 1])
@@ -185,7 +191,7 @@ def test_explicit_entrypoint_and_compile_identity():
     # The installer toolchain image runs its system Python and toolchain entrypoint.
     assert command[command.index('--entrypoint') + 1] == 'python3'
     assert adapter.TOOLCHAIN_ENTRYPOINT in command
-    namespace = f"qwen-flash-next-{installer_image_id()[7:19]}-629bc3218833"
+    namespace = f"qwen-flash-next-{installer_image_id()[7:19]}-60215d26cf5e"
     assert f'VLLM_CACHE_ROOT=/cache/{namespace}/vllm' in command
     assert 'VLLM_SPARK_TP4_MODE=' in command
     assert 'VLLM_SPARK_TP4_VOCAB_MODE=' in command

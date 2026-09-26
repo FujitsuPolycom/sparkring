@@ -1,0 +1,4 @@
+model Qwen3.8-Flash-Next-NVFP4-QAD-TP2
+prose  end-to-end  51.00 tok/s | after first token  51.37 tok/s | acceptance 0.39 | per position [0.66, 0.37, 0.15, 1.0, 1.0, 1.0] | tokens per step 2.18
+code   end-to-end  75.54 tok/s | after first token  76.97 tok/s | acceptance 0.79 | per position [0.91, 0.79, 0.67, 1.0, 1.0, 1.0] | tokens per step 3.38
+json   end-to-end  81.53 tok/s | after first token  83.27 tok/s | acceptance 0.86 | per position [0.93, 0.87, 0.76, 1.0, 1.0, 1.0] | tokens per step 3.57

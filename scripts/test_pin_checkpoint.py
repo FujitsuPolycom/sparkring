@@ -17,12 +17,18 @@ REPOSITORY = "example-owner/Example-Model"
 REVISION = "0123456789abcdef0123456789abcdef01234567"
 WEIGHTS = ("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors")
 COMMITTED = {
-    ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "629bc3218833a38b475b719f34aa571666f4a03e"):
+    ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "60215d26cf5e42c2db6128774032d57fc62678da"):
         ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2"],
     ("local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "a608241037e4c2565356bff7ca293f2133888f88"):
         ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4"],
     ("XiaomiMiMo/MiMo-V2.6-Flash-RL", "5711b268169967567844e1e560e8a3966da959b1"):
         ["mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4"],
+}
+# Revisions pinned only by profiles outside the installer: the Qwen SparkCache
+# profiles run the step-4000 checkpoint and keep their own SHA256SUMS.
+RETAINED = {
+    ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "629bc3218833a38b475b719f34aa571666f4a03e"):
+        ["qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-tp2-sparkcache"],
 }
 
 
@@ -159,7 +165,7 @@ def test_optional_files_are_only_documentation_and_repository_metadata():
 
 
 def test_committed_manifests_and_sums_are_generator_output(tmp_path):
-    for (repository, revision), profile_ids in COMMITTED.items():
+    for (repository, revision), profile_ids in {**COMMITTED, **RETAINED}.items():
         path = pin_checkpoint.manifest_path(pin_checkpoint.ROOT, repository, revision)
         text = path.read_bytes().decode("utf-8")
         pins = json.loads(text)
@@ -174,7 +180,7 @@ def test_committed_manifests_and_sums_are_generator_output(tmp_path):
     pins = json.loads(pin_checkpoint.manifest_path(pin_checkpoint.ROOT, *next(iter(COMMITTED))).read_text(encoding="utf-8"))
     written = pin_checkpoint.write(tmp_path, pins, ["example-profile"])
     assert [path.relative_to(tmp_path).as_posix() for path in written] == [
-        "profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e.json",
+        "profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da.json",
         "profiles/example-profile/SHA256SUMS"]
     assert all(b"\r" not in path.read_bytes() for path in written)
     assert sorted(p.name for p in written[0].parent.iterdir()) == [written[0].name]

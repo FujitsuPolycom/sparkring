@@ -171,7 +171,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-629bc3218833
     labels:
-      io.sparkring.deployment: 15caf1023e51334fb59ef9d2d70b6ddc5672c35b7d3ab413874f0e84be5d7f09
+      io.sparkring.deployment: 0da2b4161d1a6342d7f095eb843f67203d4a7418a6de7c3870ba94d6b6b7eb4a
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host
@@ -191,7 +191,7 @@ services:
     - /dev/infiniband
     volumes:
     - type: bind
-      source: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833
+      source: /srv/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e
       target: /models/target
       read_only: true
       bind:

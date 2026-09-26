@@ -260,7 +260,7 @@ def test_source_bundle_initializes_a_real_git_checkout(tmp_path, monkeypatch):
 
 
 QWEN_PINS = ("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
-             "629bc3218833a38b475b719f34aa571666f4a03e.json")
+             "60215d26cf5e42c2db6128774032d57fc62678da.json")
 
 
 def test_checkpoint_pins_agree_with_every_installer_profile():
@@ -274,13 +274,13 @@ def test_checkpoint_pins_agree_with_every_installer_profile():
         required = sorted(set(files) - set(pins["optional"]))
         sums = (installer.ROOT / "profiles" / profile / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
         assert sums == [f"{files[name]['sha256']}  {name}" for name in required]
-    # The Qwen revision: 50 files, of which 48 are served (36 weight files).
+    # The Qwen revision: 56 files, of which 53 are served (41 weight files).
     qwen = installer.checkpoint_pins(installer.setup.selection(QWEN))
     required = set(qwen["files"]) - set(qwen["optional"])
-    assert (len(qwen["files"]), len(required), len(qwen["weights"])) == (50, 48, 36)
-    assert qwen["optional"] == [".gitattributes", "README.md"]
-    assert sum(qwen["files"][name]["size"] for name in qwen["weights"]) == 105_839_492_200
-    assert sum(qwen["files"][name]["size"] for name in required - set(qwen["weights"])) == 56_497_920
+    assert (len(qwen["files"]), len(required), len(qwen["weights"])) == (56, 53, 41)
+    assert qwen["optional"] == [".gitattributes", "LICENSE", "README.md"]
+    assert sum(qwen["files"][name]["size"] for name in qwen["weights"]) == 110_131_860_580
+    assert sum(qwen["files"][name]["size"] for name in required - set(qwen["weights"])) == 56_080_100
     with pytest.raises(ValueError, match="No pin manifest"):
         installer.checkpoint_pins({**installer.setup.selection(QWEN), "model_revision": "0" * 40})
 
@@ -323,14 +323,14 @@ UNSAFE_PINS = {
     "sha256-short": _entry("vocab.json", "sha256", "ce99b4cb"),
     "git-blob-short": _entry("vocab.json", "git_blob", "0aa0ce0658d60ac4a5d609f4eadb0e8e4351417"),
     "lfs-false": _entry("vocab.json", "lfs", False),
-    "xet-hash": _entry("model-00001-of-00036.safetensors", "xet_hash", "x"),
+    "xet-hash": _entry("model-00001-of-00041.safetensors", "xet_hash", "x"),
     "entry-key": _entry("vocab.json", "sha265", "0" * 64),
     "entry-missing-sha256": lambda pins: pins["files"]["vocab.json"].pop("sha256"),
     "index-optional": lambda pins: pins["optional"].append("model.safetensors.index.json"),
     "index-unpinned": lambda pins: pins.update(index="model.index.json"),
     "config-optional": lambda pins: pins["optional"].append("config.json"),
-    "weight-unpinned": lambda pins: pins.update(weights=sorted(pins["weights"] + ["model-00037-of-00036.safetensors"])),
-    "weight-optional": lambda pins: pins["optional"].append("model-00001-of-00036.safetensors"),
+    "weight-unpinned": lambda pins: pins.update(weights=sorted(pins["weights"] + ["model-00042-of-00041.safetensors"])),
+    "weight-optional": lambda pins: pins["optional"].append("model-00001-of-00041.safetensors"),
     "weights-unsorted": lambda pins: pins["weights"].reverse(),
     "weights-duplicate": lambda pins: pins["weights"].insert(0, pins["weights"][0]),
     "weights-empty": lambda pins: pins.update(weights=[]),
@@ -357,7 +357,7 @@ def test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint():
     cards = {profile: installer.setup.selection(profile) for profile in sorted(installer.INSTALLABLE)}
     qwen = installer.checkpoint_directory("tp2", cards[QWEN])
     assert qwen == ("/srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
-                    "629bc3218833a38b475b719f34aa571666f4a03e")
+                    "60215d26cf5e42c2db6128774032d57fc62678da")
     # One directory per cluster and revision, whatever the profile or node count.
     assert installer.checkpoint_directory({"name": "tp2"}, cards["qwen38-flash-next-qad-tp4"]) == qwen
     assert installer.checkpoint_directory("tp4-installer", cards[QWEN]) != qwen

@@ -1,7 +1,7 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on four Sparks
 
-[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)
-(QAD checkpoint, revision `629bc3218833`) on a ring of four DGX Sparks, with
+[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)
+(QAD checkpoint step 5500, revision `60215d26cf5e`) on a ring of four DGX Sparks, with
 MTP speculative decoding and 262K context. Node A serves the API on port 8015
 as `Qwen3.8-Flash-Next-NVFP4-QAD-TP4`, with no API key. Status: Development.
 
@@ -21,11 +21,12 @@ covers requirements, logs and recovery. Per-rank Compose files:
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
 | Image | `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | `shared-2026.09.3` |
+| Checkpoint | Step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
 | Parallelism | TP4/DCP1 on a four-node ring with hardware-forwarded mesh paths | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |
 | KV allocation | 24 GiB FP8 per rank; 32-token requested attention blocks | Same |
-| Loading / speculation | Managed B12X / MTP3, drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`) | Managed B12X / MTP3, greedy drafts |
-| Decode weights | MXFP8 target LM head; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op | BF16 LM head and hyper-connection projections |
+| Loading / speculation | Managed B12X / MTP3; the draft's MXFP8 experts run on the `humming` MoE backend; drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`) | Managed B12X / MTP3; the draft's NVFP4 experts run on B12X; greedy drafts |
+| Decode weights | BF16 target LM head; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op | BF16 LM head and hyper-connection projections |
 | Collectives | Size-based RoCEnante/NCCL selection with decode all-reduces of up to 64 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=327680`); NCCL uses all four ring NIC functions (`NCCL_IB_EXTENDED_IPV4_GIDS=1`) | Size-based selection with decode all-reduces of up to 4 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=20480`); extended IPv4 GIDs off |
 | Prefill | Hyper-connection token-row ownership (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`) and checkpoint coalescing | Same |
 | Media | Three images / one video, 16 configured frames | Same |
@@ -34,26 +35,32 @@ covers requirements, logs and recovery. Per-rank Compose files:
 
 ## Performance
 
-One four-Spark ring, 512-token single-stream requests at temperature 0;
-prefill is one cold prompt.
+One four-Spark ring, step 5500 ([record](../../performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md)). Single stream, 512 tokens at
+temperature 0; prefill is one cold prompt:
 
-| Deployment | Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
-|---|---|---|
-| `sudo sparkring install` | 87.9 / 126.8 / 142.2 | 5,003 / 4,723 |
-| `install.sh` | 86.0 / 127.0 / 137.2 | 4,977 / 4,694 |
+| Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
+|---|---|
+| 70.7 / 108.4 / 118.1 | 5,024 / 4,664 |
 
-- At temperature 1.0, the checkpoint's default sampling, prose decodes at
-  78–79 tokens/s.
-- NCCL uses all four ring NIC functions only with
-  `NCCL_IB_EXTENDED_IPV4_GIDS=1`, which raises prefill from 4,659 to 5,261
-  tokens/s at 16K and from 4,224 to 4,721 at 64K.
-- Sending decode all-reduces of up to 64 rows over RoCEnante instead of NCCL
-  lowers the steady-state step at 16 concurrent requests from 101.5 to 94.5 ms.
-- With kernels already tuned, the model starts in about 4 minutes
-  (234.2–244.6 s).
+Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench), temperature 1.0), total
+tokens/s across streams:
 
-Measurements: [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
-and [installation record](../../performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md).
+| Context | Prefill | 1 stream | 8 streams | 16 streams |
+|---|---:|---:|---:|---:|
+| 0 | — | 76.8 | 289.3 | 415.6 |
+| 8K | 4,768 | 58.8 | 232.9 | 337.7 |
+| 16K | 4,810 | 62.4 | 227.0 | 342.5 |
+| 32K | 4,777 | 64.8 | 225.4 | 325.9 |
+| 64K | 4,559 | 63.1 | 232.5 | 331.2 |
+
+- At temperature 1.0, decode rates move by up to 20% between runs with how many
+  draft tokens the model accepts; the step rate stays within 3%.
+- Step 4000 (revision `629bc3218833`) decodes 17–24% faster on the same
+  probe (87.9 / 126.8 / 142.2).
+- The first start after installation compiles kernels for about 8
+  minutes.
+
+Tuning measurements: [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md).
 
 ## SparkCache profile: manual setup
 
@@ -91,7 +98,7 @@ MODEL_DIR="/srv/models/${MODEL_REPO##*/}/${MODEL_REV}"
   --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
 REPO=$PWD
 (cd "$MODEL_DIR" && \
-  sha256sum --check "$REPO/profiles/qwen38-flash-next-qad-tp4/SHA256SUMS")
+  sha256sum --check "$REPO/profiles/qwen38-flash-next-qad-tp4-sparkcache/SHA256SUMS")
 ```
 
 `SHA256SUMS` lists the 48 files the revision needs; the coordinator itself

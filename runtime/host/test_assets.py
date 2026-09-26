@@ -10,7 +10,7 @@ from runtime.host import assets, checkpoint_search
 
 PROFILE = "qwen38-flash-next-tp2"
 DIRECTORY = ("/srv/sparkring/{}/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
-             "629bc3218833a38b475b719f34aa571666f4a03e")
+             "60215d26cf5e42c2db6128774032d57fc62678da")
 
 
 def test_discover_returns_the_local_survey_summary(monkeypatch):
@@ -18,7 +18,7 @@ def test_discover_returns_the_local_survey_summary(monkeypatch):
     folder = "/var/tmp/models/qwen"
     document = {
         "schema": "sparkring-checkpoint-survey/v1", "host": "spark-aa42",
-        "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
+        "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "revision": "60215d26cf5e42c2db6128774032d57fc62678da",
         "operator": "root", "docker": {"userns": False, "driver": "overlay2"},
         "owned": {"path": DIRECTORY.format("tp2"), "state": "absent", "fstype": "ext4", "free_bytes": 5, "files": {}},
         "search": {"complete": True, "passes": 1, "seconds": 1.2, "entries": 812, "unvisited": {}, "skipped_mounts": [],

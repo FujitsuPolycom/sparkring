@@ -2,9 +2,9 @@
   "schema": "sparkring-serving-profile/v1",
   "status": "implemented",
   "model": {
-    "revision": "629bc3218833a38b475b719f34aa571666f4a03e",
-    "config_sha256": "2d655dfa625c3c018f9685031367bc83f8532d3faf3333d7c838b2bdc13b8a7e",
-    "index_sha256": "c528e5628a0f448edc52023933c207a8dbded850afdd960d893c9171a7665dde",
+    "revision": "60215d26cf5e42c2db6128774032d57fc62678da",
+    "config_sha256": "e0a704d86793ff7c84f4ef99eb9908e13b1684f60bc61b3b3fb1c1a7f3688abc",
+    "index_sha256": "956f5224119a4bc8b09c481ddfee095feae8b650bb02861e2a4d1e5b5735455c",
     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
   },
   "topology": "direct-pair-2",
@@ -20,7 +20,7 @@
     "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
     "OMP_NUM_THREADS": "16",
     "VLLM_PLE_CPU_OFFLOAD": "0",
-    "VLLM_MXFP8_LM_HEAD": "1",
+    "VLLM_MXFP8_LM_HEAD": "0",
     "VLLM_QWEN4_EXP_MXFP8_HC": "1",
     "VLLM_MTP_NVFP4_LM_HEAD": "1",
     "VLLM_LM_HEAD_A16": "1",
@@ -113,7 +113,7 @@
     "qwen3_xml",
     "--enable-auto-tool-choice",
     "--speculative-config",
-    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\",\"draft_sample_method\":\"probabilistic\"}",
+    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"humming\",\"attention_backend\":\"B12X\",\"draft_sample_method\":\"probabilistic\"}",
     "--compilation-config",
     "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],\"custom_ops\":[\"+rotary_embedding\"]}",
     "--media-io-kwargs",
@@ -123,7 +123,7 @@
     "--enable-prompt-tokens-details"
   ],
   "qualification": {
-    "scope": "Revision 629bc3218833a38b475b719f34aa571666f4a03e of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 runs on the shared installer image with HC token-row prefill ownership; its release qualification covers the shared-2026.09.3 native image, not this image."
+    "scope": "Revision 60215d26cf5e42c2db6128774032d57fc62678da (branch qad-step5500-ple1000) of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 runs on the shared installer image with HC token-row prefill ownership; no release qualification covers this revision."
   },
   "image_extension": "toolchain"
 }

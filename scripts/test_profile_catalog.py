@@ -25,7 +25,7 @@ def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
 def test_qad_quant_link_identifies_the_pinned_checkpoint_for_tp2_and_tp4():
     summary = profile_table().split('## Configuration variants', 1)[0]
     ring, pair = summary.split('### Two Sparks', 1)
-    link = '[NVFP4 QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/629bc3218833a38b475b719f34aa571666f4a03e)'
+    link = '[NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)'
     assert link in ring and link in pair
     assert '[NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)' not in pair
     qad = next(line for line in ring.splitlines() if '| [Qwen3.8-Flash-Next](' in line.replace('**', ''))

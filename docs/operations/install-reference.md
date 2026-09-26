@@ -181,7 +181,7 @@ as installer-supported:
 
 | Profiles | Checkpoint | Speculative decoding |
 |---|---|---|
-| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD, revision `629bc3218833` | MTP, three tokens, probabilistic drafting |
+| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
 | `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | MiMo-V2.6-Flash-RL, revision `5711b2681699` | DFlash5 |
 
@@ -197,11 +197,12 @@ Both Qwen profiles use one prefill recipe on TP2 and TP4: each rank owns a
 share of the token rows in the hyper-connection (HC) prefill path
 (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`), which excludes HC projection sharding,
 and the image's `qwen-collectives` collective policy and `qwen4-prefill` hooks
-are active. Both quantize the target LM head (`VLLM_MXFP8_LM_HEAD=1`) and the
-hyper-connection down/injection projections (`VLLM_QWEN4_EXP_MXFP8_HC=1`) from
-BF16 to MXFP8 at load. Every rank reads these weights in full at each decode
-step, so halving their bytes shortens the step; batches above 16 rows, such as
-prefill chunks, keep using the BF16 hyper-connection weights. The image runs
+are active. Both keep the BF16 target LM head (`VLLM_MXFP8_LM_HEAD=0`) and
+quantize the hyper-connection down/injection projections
+(`VLLM_QWEN4_EXP_MXFP8_HC=1`) from BF16 to MXFP8 at load. Every rank reads these
+projections in full at each decode step, so halving their bytes shortens the
+step; batches above 16 rows, such as prefill chunks, keep using the BF16
+hyper-connection weights. The image runs
 the remaining BF16 projections, such as the MoE router, through skinny-GEMM
 plans measured on GB10, and the profiles select vLLM's fused rotary-embedding
 op. Decode all-reduces of up to 64 rows (`QWEN_DISPATCH_AR_BYTES=327680`) run on
@@ -211,7 +212,9 @@ NIC functions for prefill collectives.
 
 Both Qwen profiles speculate three tokens with the checkpoint's MTP head and
 sample drafts from the draft distribution
-(`"draft_sample_method": "probabilistic"` in `--speculative-config`). The
+(`"draft_sample_method": "probabilistic"` in `--speculative-config`). The MTP
+head's routed experts are MXFP8, which the B12X MoE backend does not implement,
+so the draft runs them on the `humming` backend (`"moe_backend": "humming"`). The
 rejection test then uses the full draft/target probability ratio, so outputs
 follow the target model's sampling distribution. At the checkpoint's default
 sampling (temperature 1.0, top-k 20, top-p 0.95), probabilistic drafting raises
@@ -519,7 +522,7 @@ Internet through Node A's sharing unless they have their own connection.
 | Asset | Size |
 |---|---:|
 | Serving image `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | 14.2 GiB download, 29.5 GiB unpacked |
-| Qwen checkpoint, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `629bc3218833` | 98.6 GiB |
+| Qwen checkpoint, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB |
 | MiMo checkpoint, `XiaomiMiMo/MiMo-V2.6-Flash-RL` @ `5711b2681699` | 165.6 GiB |
 | GLM checkpoint, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB |
 
@@ -662,7 +665,7 @@ ambiguous and are rejected. Guide-only profiles remain listed with their guides.
 SparkRing keeps one checkpoint directory per cluster and checkpoint revision,
 `/srv/sparkring/<cluster>/checkpoints/<owner>--<name>/<revision>`, shared by
 every deployment of that revision. It holds exactly the files that the pin
-manifest in [`profiles/checkpoints/`](../../profiles/checkpoints) requires, 48
+manifest in [`profiles/checkpoints/`](../../profiles/checkpoints) requires, 53
 for Qwen; the profile's `SHA256SUMS` lists the same files.
 
 **Where the installer looks.** Before it prints the plan, `sudo sparkring

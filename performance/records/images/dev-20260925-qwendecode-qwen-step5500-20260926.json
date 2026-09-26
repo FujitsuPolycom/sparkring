@@ -1,0 +1,650 @@
+{
+ "schema": "sparkring-installer-profile-record/v1",
+ "status": "implemented; functional checks passed; measured on one pair and one ring; not serving-qualified",
+ "image": {
+  "release": "dev-20260925-qwendecode-cuda1342-nccl2323-status031",
+  "image_id": "sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971"
+ },
+ "checkpoint": {
+  "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+  "branch": "qad-step5500-ple1000",
+  "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
+ },
+ "package": "sparkring_0.1.0~dev.1790439220+git47ca98112842",
+ "settings": {
+  "draft_moe_backend": "humming",
+  "VLLM_MXFP8_LM_HEAD": "0",
+  "draft_sample_method": "probabilistic",
+  "num_speculative_tokens": 3
+ },
+ "installations": [
+  {
+   "profile": "qwen38-flash-next-tp2",
+   "checkpoint": "adopted",
+   "downloaded_bytes": 0,
+   "link_and_verify_seconds_per_spark": [
+    18.7,
+    19.5
+   ],
+   "api_readiness_seconds": 571.0,
+   "decode_tok_s_prose_code_json_t0": [
+    49.26,
+    77.41,
+    84.76
+   ],
+   "decode_tok_s_prose_code_json_t1": [
+    51.0,
+    75.54,
+    81.53
+   ],
+   "prefill_tok_s": {
+    "4096": 4038,
+    "16384": 4077,
+    "65536": 3762
+   },
+   "greedy_decode_median_tok_s": 49.15,
+   "checks": "passed",
+   "matrix": {
+    "file": "tp2-matrix-installer.json",
+    "decode_aggregate_tok_s": {
+     "0": {
+      "1": 56.2,
+      "8": 196.6,
+      "16": 283.3
+     },
+     "8192": {
+      "1": 44.3,
+      "8": 163.8,
+      "16": 232.6
+     },
+     "16384": {
+      "1": 47.2,
+      "8": 172.2,
+      "16": 238.9
+     },
+     "32768": {
+      "1": 49.3,
+      "8": 160.9,
+      "16": 237.9
+     },
+     "65536": {
+      "1": 43.3,
+      "8": 162.4,
+      "16": 233.1
+     }
+    },
+    "prefill_tok_s": {
+     "8192": 3692,
+     "16384": 3883,
+     "32768": 3820,
+     "65536": 3666
+    },
+    "cells": [
+     {
+      "context_tokens": 0,
+      "concurrency": 1,
+      "aggregate_tok_s": 56.2,
+      "steps_per_s": 23.54,
+      "tokens_per_step": 2.39
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 1,
+      "aggregate_tok_s": 44.3,
+      "steps_per_s": 23.14,
+      "tokens_per_step": 1.92
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 1,
+      "aggregate_tok_s": 47.2,
+      "steps_per_s": 23.08,
+      "tokens_per_step": 2.04
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 1,
+      "aggregate_tok_s": 49.3,
+      "steps_per_s": 22.93,
+      "tokens_per_step": 2.15
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 1,
+      "aggregate_tok_s": 43.3,
+      "steps_per_s": 21.87,
+      "tokens_per_step": 1.98
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 8,
+      "aggregate_tok_s": 196.6,
+      "steps_per_s": 84.15,
+      "tokens_per_step": 2.34
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 16,
+      "aggregate_tok_s": 283.3,
+      "steps_per_s": 121.15,
+      "tokens_per_step": 2.34
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 8,
+      "aggregate_tok_s": 163.8,
+      "steps_per_s": 82.19,
+      "tokens_per_step": 1.99
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 16,
+      "aggregate_tok_s": 232.6,
+      "steps_per_s": 119.63,
+      "tokens_per_step": 1.94
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 8,
+      "aggregate_tok_s": 172.2,
+      "steps_per_s": 83.76,
+      "tokens_per_step": 2.06
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 16,
+      "aggregate_tok_s": 238.9,
+      "steps_per_s": 120.19,
+      "tokens_per_step": 1.99
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 8,
+      "aggregate_tok_s": 160.9,
+      "steps_per_s": 82.28,
+      "tokens_per_step": 1.96
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 16,
+      "aggregate_tok_s": 237.9,
+      "steps_per_s": 115.87,
+      "tokens_per_step": 2.05
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 8,
+      "aggregate_tok_s": 162.4,
+      "steps_per_s": 79.53,
+      "tokens_per_step": 2.04
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 16,
+      "aggregate_tok_s": 233.1,
+      "steps_per_s": 115.56,
+      "tokens_per_step": 2.02
+     }
+    ]
+   },
+   "matrix_test_containers": {
+    "file": "tp2-matrix-test-containers.json",
+    "decode_aggregate_tok_s": {
+     "0": {
+      "1": 52.1,
+      "8": 205.1,
+      "16": 291.0
+     },
+     "8192": {
+      "1": 49.8,
+      "8": 161.0,
+      "16": 242.7
+     },
+     "16384": {
+      "1": 43.7,
+      "8": 166.6,
+      "16": 236.8
+     },
+     "32768": {
+      "1": 44.1,
+      "8": 161.8,
+      "16": 230.3
+     },
+     "65536": {
+      "1": 45.6,
+      "8": 167.4,
+      "16": 232.0
+     }
+    },
+    "prefill_tok_s": {
+     "8192": 3717,
+     "16384": 3927,
+     "32768": 3848,
+     "65536": 3696
+    },
+    "cells": [
+     {
+      "context_tokens": 0,
+      "concurrency": 1,
+      "aggregate_tok_s": 52.1,
+      "steps_per_s": 23.16,
+      "tokens_per_step": 2.25
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 1,
+      "aggregate_tok_s": 49.8,
+      "steps_per_s": 22.96,
+      "tokens_per_step": 2.17
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 1,
+      "aggregate_tok_s": 43.7,
+      "steps_per_s": 23.08,
+      "tokens_per_step": 1.89
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 1,
+      "aggregate_tok_s": 44.1,
+      "steps_per_s": 22.88,
+      "tokens_per_step": 1.93
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 1,
+      "aggregate_tok_s": 45.6,
+      "steps_per_s": 22.69,
+      "tokens_per_step": 2.01
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 8,
+      "aggregate_tok_s": 205.1,
+      "steps_per_s": 83.13,
+      "tokens_per_step": 2.47
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 16,
+      "aggregate_tok_s": 291.0,
+      "steps_per_s": 122.69,
+      "tokens_per_step": 2.37
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 8,
+      "aggregate_tok_s": 161.0,
+      "steps_per_s": 81.96,
+      "tokens_per_step": 1.96
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 16,
+      "aggregate_tok_s": 242.7,
+      "steps_per_s": 121.25,
+      "tokens_per_step": 2.0
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 8,
+      "aggregate_tok_s": 166.6,
+      "steps_per_s": 84.04,
+      "tokens_per_step": 1.98
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 16,
+      "aggregate_tok_s": 236.8,
+      "steps_per_s": 119.75,
+      "tokens_per_step": 1.98
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 8,
+      "aggregate_tok_s": 161.8,
+      "steps_per_s": 83.83,
+      "tokens_per_step": 1.93
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 16,
+      "aggregate_tok_s": 230.3,
+      "steps_per_s": 118.8,
+      "tokens_per_step": 1.94
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 8,
+      "aggregate_tok_s": 167.4,
+      "steps_per_s": 80.77,
+      "tokens_per_step": 2.07
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 16,
+      "aggregate_tok_s": 232.0,
+      "steps_per_s": 114.41,
+      "tokens_per_step": 2.03
+     }
+    ]
+   }
+  },
+  {
+   "profile": "qwen38-flash-next-qad-tp4",
+   "checkpoint": "adopted",
+   "downloaded_bytes": 0,
+   "link_and_verify_seconds_per_spark": [
+    18.0,
+    17.3,
+    18.6,
+    18.1
+   ],
+   "api_readiness_seconds": 492.0,
+   "decode_tok_s_prose_code_json_t0": [
+    70.73,
+    108.4,
+    118.11
+   ],
+   "decode_tok_s_prose_code_json_t1": [
+    67.57,
+    109.76,
+    118.2
+   ],
+   "prefill_tok_s": {
+    "4096": 4740,
+    "16384": 5024,
+    "65536": 4664
+   },
+   "greedy_decode_median_tok_s": 70.83,
+   "checks": "passed",
+   "matrix": {
+    "file": "tp4-matrix-installer.json",
+    "decode_aggregate_tok_s": {
+     "0": {
+      "1": 76.8,
+      "8": 289.3,
+      "16": 415.6
+     },
+     "8192": {
+      "1": 58.8,
+      "8": 232.9,
+      "16": 337.7
+     },
+     "16384": {
+      "1": 62.4,
+      "8": 227.0,
+      "16": 342.5
+     },
+     "32768": {
+      "1": 64.8,
+      "8": 225.4,
+      "16": 325.9
+     },
+     "65536": {
+      "1": 63.1,
+      "8": 232.5,
+      "16": 331.2
+     }
+    },
+    "prefill_tok_s": {
+     "8192": 4768,
+     "16384": 4810,
+     "32768": 4777,
+     "65536": 4559
+    },
+    "cells": [
+     {
+      "context_tokens": 0,
+      "concurrency": 1,
+      "aggregate_tok_s": 76.8,
+      "steps_per_s": 33.33,
+      "tokens_per_step": 2.31
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 1,
+      "aggregate_tok_s": 58.8,
+      "steps_per_s": 32.74,
+      "tokens_per_step": 1.8
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 1,
+      "aggregate_tok_s": 62.4,
+      "steps_per_s": 32.88,
+      "tokens_per_step": 1.9
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 1,
+      "aggregate_tok_s": 64.8,
+      "steps_per_s": 32.73,
+      "tokens_per_step": 1.98
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 1,
+      "aggregate_tok_s": 63.1,
+      "steps_per_s": 32.06,
+      "tokens_per_step": 1.97
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 8,
+      "aggregate_tok_s": 289.3,
+      "steps_per_s": 117.86,
+      "tokens_per_step": 2.45
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 16,
+      "aggregate_tok_s": 415.6,
+      "steps_per_s": 172.71,
+      "tokens_per_step": 2.41
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 8,
+      "aggregate_tok_s": 232.9,
+      "steps_per_s": 120.11,
+      "tokens_per_step": 1.94
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 16,
+      "aggregate_tok_s": 337.7,
+      "steps_per_s": 169.72,
+      "tokens_per_step": 1.99
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 8,
+      "aggregate_tok_s": 227.0,
+      "steps_per_s": 116.36,
+      "tokens_per_step": 1.95
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 16,
+      "aggregate_tok_s": 342.5,
+      "steps_per_s": 169.62,
+      "tokens_per_step": 2.02
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 8,
+      "aggregate_tok_s": 225.4,
+      "steps_per_s": 113.41,
+      "tokens_per_step": 1.99
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 16,
+      "aggregate_tok_s": 325.9,
+      "steps_per_s": 168.94,
+      "tokens_per_step": 1.93
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 8,
+      "aggregate_tok_s": 232.5,
+      "steps_per_s": 113.31,
+      "tokens_per_step": 2.05
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 16,
+      "aggregate_tok_s": 331.2,
+      "steps_per_s": 162.03,
+      "tokens_per_step": 2.04
+     }
+    ]
+   },
+   "matrix_test_containers": {
+    "file": "tp4-matrix-test-containers.json",
+    "decode_aggregate_tok_s": {
+     "0": {
+      "1": 69.2,
+      "8": 273.9,
+      "16": 394.7
+     },
+     "8192": {
+      "1": 74.5,
+      "8": 283.3,
+      "16": 402.7
+     },
+     "16384": {
+      "1": 78.4,
+      "8": 275.8,
+      "16": 398.1
+     },
+     "32768": {
+      "1": 75.2,
+      "8": 270.9,
+      "16": 394.4
+     },
+     "65536": {
+      "1": 78.0,
+      "8": 268.7,
+      "16": 396.2
+     }
+    },
+    "prefill_tok_s": {
+     "8192": 4810,
+     "16384": 4900,
+     "32768": 4789,
+     "65536": 4564
+    },
+    "cells": [
+     {
+      "context_tokens": 0,
+      "concurrency": 1,
+      "aggregate_tok_s": 69.2,
+      "steps_per_s": 33.68,
+      "tokens_per_step": 2.05
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 1,
+      "aggregate_tok_s": 74.5,
+      "steps_per_s": 33.71,
+      "tokens_per_step": 2.21
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 1,
+      "aggregate_tok_s": 78.4,
+      "steps_per_s": 33.41,
+      "tokens_per_step": 2.35
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 1,
+      "aggregate_tok_s": 75.2,
+      "steps_per_s": 33.5,
+      "tokens_per_step": 2.24
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 1,
+      "aggregate_tok_s": 78.0,
+      "steps_per_s": 32.53,
+      "tokens_per_step": 2.4
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 8,
+      "aggregate_tok_s": 273.9,
+      "steps_per_s": 120.58,
+      "tokens_per_step": 2.27
+     },
+     {
+      "context_tokens": 0,
+      "concurrency": 16,
+      "aggregate_tok_s": 394.7,
+      "steps_per_s": 175.54,
+      "tokens_per_step": 2.25
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 8,
+      "aggregate_tok_s": 283.3,
+      "steps_per_s": 119.02,
+      "tokens_per_step": 2.38
+     },
+     {
+      "context_tokens": 8192,
+      "concurrency": 16,
+      "aggregate_tok_s": 402.7,
+      "steps_per_s": 169.72,
+      "tokens_per_step": 2.37
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 8,
+      "aggregate_tok_s": 275.8,
+      "steps_per_s": 119.28,
+      "tokens_per_step": 2.31
+     },
+     {
+      "context_tokens": 16384,
+      "concurrency": 16,
+      "aggregate_tok_s": 398.1,
+      "steps_per_s": 169.57,
+      "tokens_per_step": 2.35
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 8,
+      "aggregate_tok_s": 270.9,
+      "steps_per_s": 114.67,
+      "tokens_per_step": 2.36
+     },
+     {
+      "context_tokens": 32768,
+      "concurrency": 16,
+      "aggregate_tok_s": 394.4,
+      "steps_per_s": 167.69,
+      "tokens_per_step": 2.35
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 8,
+      "aggregate_tok_s": 268.7,
+      "steps_per_s": 113.71,
+      "tokens_per_step": 2.36
+     },
+     {
+      "context_tokens": 65536,
+      "concurrency": 16,
+      "aggregate_tok_s": 396.2,
+      "steps_per_s": 163.27,
+      "tokens_per_step": 2.43
+     }
+    ]
+   }
+  }
+ ]
+}

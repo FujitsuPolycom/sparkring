@@ -148,19 +148,19 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     native, native_image = compose.specifications(PROFILE, site)
     cached, cache_image = compose.specifications(PROFILE + "-sparkcache", site)
     base, spec = native[rank], cached[rank]
-    # Both profiles pin revision 629bc3218833. The installer profile runs on the
-    # installer image and the SparkCache profile on the shared-2026.09.3 native
-    # image. Compute, transport and memory settings match; image-bound paths, the
-    # image's transport identity and cache settings differ.
+    # The installer profile runs checkpoint branch qad-step5500-ple1000 on the
+    # installer image; the SparkCache profile runs revision 629bc3218833 on the
+    # shared-2026.09.3 native image. Compute, transport and memory settings match;
+    # image-bound paths, the image's transport identity and cache settings differ.
     assert native_image == adapter.read(INSTALLER)["image_reference"]
     assert cache_image == adapter.read(PUBLICATION)["image_reference"]
-    # The installer profile also quantizes its target LM head and its
-    # hyper-connection down/injection projections to MXFP8, and its paced
+    # The installer profile also quantizes its hyper-connection down/injection
+    # projections to MXFP8, and its paced
     # transport takes every decode all-reduce on RoCEnante. Its NCCL 2.32.3
     # publishes all four ring NIC functions only with extended IPv4 GIDs; the
     # native image's routed NCCL 2.31.2 finds them without.
     image_bound = {"SPARKCACHE_ENABLED", "SPARKRING_TRANSPORT_PROFILE", "SPARKRING_TRANSPORT_MANIFEST_SHA256",
-                   "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR", "VLLM_MXFP8_LM_HEAD",
+                   "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "B12X_CUTE_COMPILE_CACHE_DIR",
                    "VLLM_QWEN4_EXP_MXFP8_HC", "QWEN_DISPATCH_AR_BYTES",
                    "NCCL_IB_EXTENDED_IPV4_GIDS"}
     def comparable(environment):
@@ -192,10 +192,8 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     for flag in ("--kv-transfer-config",):
         index = args.index(flag)
         del args[index:index + 2]
-    # Both drafts run the checkpoint's NVFP4 MTP experts on B12X.
     native = list(base.command)
     draft = native.index("--speculative-config") + 1
-    assert json.loads(native[draft])["moe_backend"] == json.loads(args[draft])["moe_backend"] == "b12x"
     # The installer profile also selects the fused rotary-embedding op, measured
     # on the installer image; the SparkCache profile keeps its compilation config.
     graphs = native.index("--compilation-config") + 1
@@ -203,11 +201,15 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert installer_graphs.pop("custom_ops") == ["+rotary_embedding"]
     assert installer_graphs == json.loads(args[graphs])
     native[graphs] = args[graphs]
-    # The installer profile samples its drafts; the SparkCache profile keeps
-    # greedy drafting.
+    # The installer profile samples its drafts and runs its checkpoint's MXFP8
+    # MTP experts on the humming MoE backend; the SparkCache profile keeps greedy
+    # drafting and runs its checkpoint's NVFP4 MTP experts on B12X.
     installer_draft = json.loads(native[draft])
     assert installer_draft.pop("draft_sample_method") == "probabilistic"
-    assert installer_draft == json.loads(args[draft])
+    assert installer_draft.pop("moe_backend") == "humming"
+    cache_draft = json.loads(args[draft])
+    assert cache_draft.pop("moe_backend") == "b12x"
+    assert installer_draft == cache_draft
     native[draft] = args[draft]
     assert args[1:] == native[1:]
     assert spec.mounts == base.mounts

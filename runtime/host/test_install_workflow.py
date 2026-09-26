@@ -55,11 +55,11 @@ def cluster(size):
 # machine fixture replaces it with a simulation.
 ASSETS = install_assets.Assets
 GIB = 1024 ** 3
-REVISION = "629bc3218833a38b475b719f34aa571666f4a03e"
+REVISION = "60215d26cf5e42c2db6128774032d57fc62678da"
 DIRECTORY = "/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/" + REVISION
 # The owner's copy, a Hugging Face download folder on the root filesystem of every Spark.
 FOLDER = "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/" + REVISION
-SHARD = "model-00002-of-00036.safetensors"
+SHARD = "model-00002-of-00041.safetensors"
 DEVICE, MOUNT = 66306, 29
 OK = {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
 
@@ -498,13 +498,13 @@ def test_install_surveys_every_node_in_parallel_and_prints_the_plan_after_the_he
         assert options["cache"] == "/srv/sparkring/test/cache"
     lines = output_lines(out.err)
     assert (line_index(lines, "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at "
-                              "629bc3218833 on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search "
+                              "60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search "
                               "needs a second pass).")
             < line_index(lines, "Install qwen38-flash-next-tp2 on 2 Sparks.")
             < line_index(lines, "Update workers and prepare assets; then replace the current model.")
-            < line_index(lines, "Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 629bc3218833: 48 files, 98.6 GiB")
+            < line_index(lines, "Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB")
             < line_index(lines, "Node 0 spark-10 -> " + DIRECTORY)
-            < line_index(lines, "    hard-link 36 weight files (no copy, no extra space); copy 12 other files (56.5 MB)")
+            < line_index(lines, "    hard-link 41 weight files (no copy, no extra space); copy 12 other files (56.1 MB)")
             < line_index(lines, "Node 1 spark-11: as Node 0 (300 GiB free)"))
     # The bottom line of the plan stays directly above the next message or prompt.
     assert lines[line_index(lines, "Plan saved.") - 1] == "Nothing is downloaded."
@@ -512,8 +512,8 @@ def test_install_surveys_every_node_in_parallel_and_prints_the_plan_after_the_he
     assert lines[line_index(lines, "Plan saved.")] == f"Plan saved. Install it with {REPEAT} --yes."
     assert result["checkpoint"]["command"] == REPEAT and result["checkpoint"]["reviewed"] is True
     node0 = result["checkpoint"]["nodes"][0]
-    assert node0["mode"] == "owned" and node0["path"] == DIRECTORY and node0["required_bytes"] == 34449531758
-    assert node0["bytes"]["link"] == 105839492200 and node0["bytes"]["copy"] == 56497920
+    assert node0["mode"] == "owned" and node0["path"] == DIRECTORY and node0["required_bytes"] == 34448927703
+    assert node0["bytes"]["link"] == 110131860580 and node0["bytes"]["copy"] == 56080100
 
 
 def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, sparks, capsys):
@@ -528,7 +528,7 @@ def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, spark
     assert second["deployment"] == first["deployment"] and len(sparks.surveys) == 4
     plan = saved(second)
     assert plan["reviewed"] is True
-    assert plan["nodes"][1]["files"]["config.json"] == {"action": "receive", "size": 109897, "from": 0,
+    assert plan["nodes"][1]["files"]["config.json"] == {"action": "receive", "size": 29820, "from": 0,
                                                         "transport": "fabric"}
 
 
@@ -541,7 +541,7 @@ def test_reviewed_plan_bounds_a_later_yes(machine, sparks, capsys, change):
         # Both copies lost the same shard, so it must come from huggingface.co.
         sparks.survey = holding({host: {"without": (SHARD,)} for host in ("root@192.0.2.10", "root@192.0.2.11")})
     elif change == "writes":
-        # Node 1's copy is gone: it would receive 98.6 GiB over the fabric.
+        # Node 1's copy is gone: it would receive 102.6 GiB over the fabric.
         sparks.survey = holding({"root@192.0.2.11": None})
     code = command()
     out = capsys.readouterr()
@@ -557,10 +557,10 @@ def test_reviewed_plan_bounds_a_later_yes(machine, sparks, capsys, change):
     assert result["message"].endswith(f"Nothing was changed. Review the plan again with {REPEAT} --plan, then "
                                       f"repeat {REPEAT} --yes.")
     if change == "download":
-        assert ("Node 0 spark-10 would download 1.68 GiB from huggingface.co (" + SHARD + "), which the reviewed "
+        assert ("Node 0 spark-10 would download 3.96 GiB from huggingface.co (" + SHARD + "), which the reviewed "
                 "plan took from " + FOLDER + ", where that file is absent") in result["message"]
     else:
-        assert "Node 1 spark-11 would write 98.62 GiB instead of 56.5 MB" in result["message"]
+        assert "Node 1 spark-11 would write 102.62 GiB instead of 56.1 MB" in result["message"]
     assert not events and rollout.active(controller.STATE) == previous
     # The reviewed plan stays the bound; the refused plan is kept beside it.
     deployment = next(p for p in (controller.STATE / "deployments").iterdir() if p != previous)
@@ -601,7 +601,7 @@ def first_installation(machine, monkeypatch):
 def test_first_installation_asks_before_attention_items(machine, sparks, first_installation, monkeypatch, capsys,
                                                         approval):
     events, previous, assets, _ = machine
-    # No Spark holds a copy: Node 0 downloads 98.6 GiB, more than setup's approval covers.
+    # No Spark holds a copy: Node 0 downloads 102.6 GiB, more than setup's approval covers.
     sparks.survey = holding({host: None for host in ("root@192.0.2.10", "root@192.0.2.11")})
     prompts = []
     if approval == "no-terminal":
@@ -613,7 +613,7 @@ def test_first_installation_asks_before_attention_items(machine, sparks, first_i
         with pytest.raises(NeedsInput) as caught:
             flow.approve(fresh, None, command_line=False, setup_only=True, interactive=False, request={})
         assert caught.value.field == "checkpoint"
-        assert str(caught.value).startswith("The checkpoint plan downloads 98.6 GiB from huggingface.co on Node 0 "
+        assert str(caught.value).startswith("The checkpoint plan downloads 102.6 GiB from huggingface.co on Node 0 "
                                             "root@192.0.2.10, the search on Node 0 root@192.0.2.10 failed (timeout), "
                                             "and the search on Node 1 root@192.0.2.11 failed (timeout).")
         assert str(caught.value).endswith("Setup's approval did not show this plan. Review it with sudo sparkring "
@@ -634,7 +634,7 @@ def test_first_installation_asks_before_attention_items(machine, sparks, first_i
         assert first_installation == [[]]
         [(prompt, printed)] = prompts
         assert prompt == "Proceed with this checkpoint plan? [y/N]: "
-        assert [line for line in printed if line][-1] == "Downloads 98.6 GiB from huggingface.co on Node 0."
+        assert [line for line in printed if line][-1] == "Downloads 102.6 GiB from huggingface.co on Node 0."
         assert assets.prepared["plan"]["approval"] == "prompt"
     else:
         monkeypatch.setattr(builtins, "input", lambda prompt: pytest.fail("prompted: " + prompt))
@@ -848,8 +848,8 @@ def test_replanning_after_a_linked_file_changed(machine, sparks, capsys):
     assert command("--plan") == 0
     out = capsys.readouterr()
     lines = output_lines(out.err)
-    assert lines[line_index(lines, "Plan saved.") - 1] == "Downloads 1.7 GiB from huggingface.co on Node 0."
-    assert "        47 of 48 files identified by SparkRing's earlier checksums; " + SHARD + \
+    assert lines[line_index(lines, "Plan saved.") - 1] == "Downloads 4.0 GiB from huggingface.co on Node 0."
+    assert "        52 of 53 files identified by SparkRing's earlier checksums; " + SHARD + \
         " differs from the pinned revision" in lines
     assert command() == 0
     result = json.loads(capsys.readouterr().out)
@@ -946,7 +946,7 @@ def test_suggested_commands_repeat_the_deployment_request(machine, sparks, capsy
 def test_cancelling_the_checkpoint_prompt_keeps_setup_and_names_the_command(machine, sparks, first_installation,
                                                                           monkeypatch, capsys):
     events, previous, assets, _ = machine
-    # No Spark holds a copy: the 98.6 GiB download needs its own answer after setup's approval.
+    # No Spark holds a copy: the 102.6 GiB download needs its own answer after setup's approval.
     sparks.survey = holding({host: None for host in ("root@192.0.2.10", "root@192.0.2.11")})
 
     class Terminal:
@@ -1379,8 +1379,8 @@ def test_node_a_links_a_main_cache_downloads_config_once_and_streams_to_an_empty
     assert "Node 0 spark-10 -> " + DIRECTORY in lines and "    from " + MAIN_CACHE in lines
     assert any(line.startswith("        Hugging Face cache, snapshot 7c4f1bc1a2d6 (branch main), in code's home "
                                "(the operator's)") for line in lines)
-    assert "        47 of 48 files identified by their blob names; config.json differs from the pinned revision" in lines
-    assert any(line.startswith("    hard-link 36 weight files (no copy, no extra space); copy 11 other files (")
+    assert "        52 of 53 files identified by their blob names; config.json differs from the pinned revision" in lines
+    assert any(line.startswith("    hard-link 41 weight files (no copy, no extra space); copy 11 other files (")
                for line in lines)
     assert any(line.startswith("Node 1 spark-11: no copy found") for line in lines)
     assert any(line.startswith("Downloads ") and line.endswith(" from huggingface.co on Node 0.") for line in lines)
@@ -1447,10 +1447,10 @@ def test_each_node_links_its_own_download_folder_and_nothing_is_downloaded_or_co
     before = [tree_state(folder) for folder in folders]
     result, lines = install_simulated(request, capsys, *folders)
     assert result["state"] == "complete"
-    assert any(line.startswith("        Hugging Face download folder, commit 629bc3218833 (the pinned revision)")
+    assert any(line.startswith("        Hugging Face download folder, commit 60215d26cf5e (the pinned revision)")
                for line in lines)
-    assert "        48 of 48 files identified by their download records" in lines
-    assert any(line.startswith("    hard-link 36 weight files (no copy, no extra space); copy 12 other files (")
+    assert "        53 of 53 files identified by their download records" in lines
+    assert any(line.startswith("    hard-link 41 weight files (no copy, no extra space); copy 12 other files (")
                for line in lines)
     assert any(line.startswith("Node 1 spark-11: as Node 0") for line in lines)
     assert "Nothing is downloaded." in lines

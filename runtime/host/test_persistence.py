@@ -177,7 +177,7 @@ def test_sparkring_up_uses_the_cluster_checkpoint_directory_through_a_plain_runn
     assert controller.lifecycle(["up", UP_PROFILE, "--execute"]) == 0
     directory = installer.checkpoint_directory("test", setup.selection(UP_PROFILE))
     assert directory == ("/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
-                         "629bc3218833a38b475b719f34aa571666f4a03e")
+                         "60215d26cf5e42c2db6128774032d57fc62678da")
     lock = installer.load(controller.STATE / "deployments" / UP_PROFILE)
     assert [(row["model"], row["reuse_verified_model"]) for row in lock["site"]["ranks"]] == [(directory, False)] * 2
     # The plain runner's model operation adopts what that directory holds and

@@ -462,6 +462,9 @@ def test_pinned_differences_name_stale_or_missing_files():
     stale.pop("tokenizer.json")
     assert installer_host.pinned_differences("mimo-v26-flash-rl-tp4", stale) == ["dflash/config.json", "tokenizer.json"]
     assert installer_host.checksum_manifest("qwen38-flash-next-qad-tp4").name == "SHA256SUMS"
+    # The SparkCache profiles pin their own revision; each keeps its own file.
+    cache = installer_host.checksum_manifest("qwen38-flash-next-tp2-sparkcache")
+    assert cache.parent.name == "qwen38-flash-next-tp2-sparkcache"
 
 
 def test_checkpoint_hashes_are_remembered_only_for_an_unchanged_tree(tmp_path, monkeypatch):
