@@ -71,7 +71,14 @@ def test_administrative_services_do_not_start_models_or_rewrite_ssh_policy():
     root = Path(__file__).resolve().parents[2] / "packaging/debian"
     postinst = (root / "postinst").read_text()
     assert "node initialize" in postinst and "sparkring up" not in postinst
-    assert "sparkring-fabric" not in postinst
+    # Reinstalling restores the units prerm recorded; a recorded fabric unit is
+    # enabled for the next boot but never started by the package, so package
+    # installation does not change the data network.
+    fabric_rules = [line for line in postinst.splitlines() if "sparkring-fabric" in line]
+    assert fabric_rules and all("systemctl enable \"$unit\"" in line for line in fabric_rules)
+    assert not any(word in line for line in fabric_rules for word in ("--now", "start", "restart"))
+    assert "/var/lib/sparkring/package-enabled-units" in postinst
+    assert "/var/lib/sparkring/package-enabled-units" in (root / "prerm").read_text()
     assert "sshd_config" not in postinst
     for unit in root.glob("*.service"):
         assert "installer_host" not in unit.read_text()

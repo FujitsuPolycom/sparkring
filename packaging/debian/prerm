@@ -1,5 +1,17 @@
 #!/bin/sh
 set -eu
+UNITS="sparkring-agent.service sparkring-fabric.service sparkring-control-refresh.timer sparkring-access.service sparkring-seed.service sparkring-dns.service sparkring-control.service"
 if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
-    systemctl disable --now sparkring-agent.service sparkring-fabric.service sparkring-control-refresh.timer sparkring-access.service sparkring-seed.service sparkring-dns.service sparkring-control.service
+    # Cluster setup, not the package, enables most of these units. Record the
+    # ones this node has enabled so that installing the package again restores
+    # them (see postinst).
+    mkdir -p /var/lib/sparkring
+    : > /var/lib/sparkring/package-enabled-units.tmp
+    for unit in $UNITS; do
+        if systemctl is-enabled --quiet "$unit" 2>/dev/null; then
+            echo "$unit" >> /var/lib/sparkring/package-enabled-units.tmp
+        fi
+    done
+    mv /var/lib/sparkring/package-enabled-units.tmp /var/lib/sparkring/package-enabled-units
+    systemctl disable --now $UNITS
 fi
