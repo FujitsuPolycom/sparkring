@@ -106,7 +106,13 @@ topology profile, and marks the ones `sparkring install` supports.
 ## status
 
 `sudo sparkring status [flags]` prints Node A's state, one line per Spark with
-the next action for a Spark that needs attention, and the saved model.
+the next action for a Spark that needs attention, and the saved model: its
+profile, checkpoint (name, repository and revision) and image release.
+
+```text
+Saved model operation: qwen38-flash-next-qad-tp4 | up complete
+Checkpoint: qad-step5500-ple1000 (local-inference-lab/Qwen3.8-Flash-Next-NVFP4 @ 60215d26cf5e) | Image: dev-20260925-qwendecode-cuda1342-nccl2323-status031
+```
 
 | Flag | Meaning |
 |---|---|

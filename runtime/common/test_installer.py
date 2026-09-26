@@ -82,7 +82,11 @@ def test_default_up_and_status_do_not_contact_hosts(deployment):
     result = installer.apply(directory, "up", runner=lambda *a: pytest.fail("SSH"))
     assert not result["executed"]
     assert not (directory / "state.json").exists()
-    assert installer.status(directory)["live_observed"] is False
+    saved = installer.status(directory)
+    assert saved["live_observed"] is False
+    card = installer.load(directory)["selection"]
+    assert (saved["checkpoint"], saved["model_revision"], saved["image_release"]) == (
+        card["target_variant"], card["model_revision"], card["release"])
 
 
 def test_read_only_failure_blocks_mutation_and_can_resume(deployment):

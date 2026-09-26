@@ -325,8 +325,10 @@ described above
 
 ## Status observations
 
-`sparkring status --json --refresh` reports the saved deployment/image IDs and
-separate host and container observations. Host observations include persistent
+`sparkring status --json --refresh` reports the saved deployment and image IDs,
+the deployment's checkpoint (`checkpoint`, `model_repository`,
+`model_revision`) and image release (`image_release`), and separate host and
+container observations. Host observations include persistent
 node ID, boot ID and their own `observed_at`; cached observations retain their
 original time and become stale after 90 seconds. Container observations include
 the inspected container ID, start time and actual image ID. Missing identities

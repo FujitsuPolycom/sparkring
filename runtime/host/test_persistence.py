@@ -236,6 +236,29 @@ def test_status_text_names_the_sparks_that_need_attention(tmp_path, monkeypatch,
     assert json.loads(capsys.readouterr().out)["state"] == "network-configured"
 
 
+def test_status_names_the_saved_deployment_checkpoint_and_image(tmp_path, monkeypatch, capsys):
+    from runtime.common import installer
+    from runtime.host import retained_source
+    monkeypatch.setattr(controller, "STATE", tmp_path)
+    monkeypatch.setattr(controller.node, "status", lambda: {"state": "network-configured"})
+    installer.write(tmp_path / "active.json", {"path": str(tmp_path / "model")})
+    installer.write(tmp_path / "model" / "deployment.lock.json", {"selection": {
+        "target_variant": "qad-step4000", "model_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+        "model_revision": "60215d26cf5e42c2db6128774032d57fc62678da", "release": "dev-image"}})
+    # A retained source from before these fields reports none of them.
+    saved = {"profile": "qwen38-flash-next-tp2", "state": {"operation": "up", "complete": True},
+             "api_url": "http://192.0.2.10:8000/v1"}
+    monkeypatch.setattr(retained_source, "apply", lambda *a, **k: dict(saved))
+    assert controller.lifecycle(["status"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    at = lines.index("Saved model operation: qwen38-flash-next-tp2 | up complete")
+    assert lines[at + 1] == ("Checkpoint: qad-step4000 (local-inference-lab/Qwen3.8-Flash-Next-NVFP4 @ 60215d26cf5e)"
+                             " | Image: dev-image")
+    assert controller.lifecycle(["status", "--json"]) == 0
+    deployment = json.loads(capsys.readouterr().out)["deployment"]
+    assert (deployment["checkpoint"], deployment["image_release"]) == ("qad-step4000", "dev-image")
+
+
 def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, monkeypatch, capsys):
     from runtime.common import installer
     from runtime.host import retained_source

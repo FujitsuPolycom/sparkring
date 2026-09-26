@@ -395,6 +395,9 @@ def lifecycle(argv):
             path = installer.read(STATE / "active.json")["path"]
             from runtime.host import retained_source
             result["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=STATE / "retained-sources")
+            # Read here rather than by the retained source, whose revision may
+            # predate these fields.
+            result["deployment"].update(installer.identity(installer.read(Path(path) / "deployment.lock.json")))
         if args.json:
             print(json.dumps(result, indent=2))
         else:
@@ -420,6 +423,8 @@ def lifecycle(argv):
             if result.get("deployment"):
                 saved = result["deployment"]
                 print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
+                print(f"Checkpoint: {saved['checkpoint']} ({saved['model_repository']} @ {saved['model_revision'][:12]})"
+                      f" | Image: {saved['image_release']}")
                 print(saved["api_url"])
                 if saved.get("observations"):
                     print(json.dumps(saved["observations"], indent=2))

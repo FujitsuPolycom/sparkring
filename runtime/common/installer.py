@@ -509,6 +509,13 @@ def apply(directory, action, *, runner, execute=False):
         return {"executed": True, **state, **connection(lock)}
 
 
+def identity(lock):
+    """The checkpoint and image release that a deployment lock selects."""
+    card = lock["selection"]
+    return {"checkpoint": card["target_variant"], "model_repository": card["model_repository"],
+            "model_revision": card["model_revision"], "image_release": card["release"]}
+
+
 def status(directory):
     directory = Path(directory)
     lock = load(directory)
@@ -516,7 +523,8 @@ def status(directory):
     result = {"profile": lock["selection"]["profile"], "state": state,
               "deployment_id": lock["id"], "source_revision": lock["source_revision"],
               "image_id": lock["selection"]["image_id"], "image_reference": lock["selection"]["image_reference"],
-              "live_observed": False, "hosts": [r["host"] for r in lock["site"]["ranks"]], **connection(lock)}
+              "live_observed": False, "hosts": [r["host"] for r in lock["site"]["ranks"]],
+              **identity(lock), **connection(lock)}
     if state.get("receipt"):
         receipt = read(directory / state["receipt"])
         result["actions"] = {key: value["state"] for key, value in receipt["actions"].items()}
