@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+<title id="title">SparkRing on two or four DGX Sparks</title>
+<desc id="desc">Node A, the DGX Spark on your network, runs sparkring install and serves the OpenAI-compatible API and the status dashboard. The installer sets up every Spark, distributes the image once, places the pinned checkpoint and starts one serving container per Spark, each a tensor-parallel rank. Sparks are joined only by direct 200 Gb/s ConnectX-7 cables: a pair by one cable from p0 to p0, a four-Spark ring by four cables from each Spark&#x27;s p0 to the next Spark&#x27;s p1. Traffic between opposite Sparks of a ring crosses two cables, and the ConnectX-7 of the Spark between them forwards it in hardware.</desc>
+<rect x="1" y="1" width="1398" height="898" rx="12" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="40" y="52" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700" fill="#1f2328" text-anchor="start">SparkRing on two or four DGX Sparks</text>
+<rect x="578.0" y="34" width="16" height="16" rx="4" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="601.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">SparkRing</text>
+<rect x="688.0" y="34" width="16" height="16" rx="4" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="711.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">vLLM with B12X kernels</text>
+<rect x="889.0" y="34" width="16" height="16" rx="4" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
+<text x="912.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Model files</text>
+<line x1="1013.0" y1="42" x2="1037.0" y2="42" stroke="#424a53" stroke-width="5" stroke-linecap="butt"/>
+<text x="1045.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">ConnectX-7 cable</text>
+<line x1="1181.0" y1="42" x2="1205.0" y2="42" stroke="#CC79A7" stroke-width="2.5" stroke-linecap="butt" stroke-dasharray="6 4"/>
+<text x="1213.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Forwarded in hardware</text>
+<rect x="40" y="80" width="500" height="136" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="58" y="104" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">Your network</text>
+<text x="522" y="104" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="end">workers need no cable to it</text>
+<rect x="58" y="116" width="200" height="84" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="72" y="139" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Clients</text>
+<text x="72" y="158" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">OpenAI-compatible API</text>
+<text x="72" y="175" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">requests · dashboard</text>
+<rect x="270" y="116" width="252" height="84" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="284" y="139" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Internet, through Node A</text>
+<text x="284" y="158" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12">ghcr.io</tspan><tspan fill="#57606a">  serving image</tspan></text>
+<text x="284" y="175" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12">huggingface.co</tspan><tspan fill="#57606a">  checkpoint files</tspan></text>
+<text x="284" y="192" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12">github.com</tspan><tspan fill="#57606a">  ring mesh marker</tspan></text>
+<path d="M540,148 L700,148 L700,229" fill="none" stroke="#57606a" stroke-width="2" stroke-linejoin="round" stroke-linecap="butt"/>
+<polygon points="695.2,227.2 704.8,227.2 700,235" fill="#57606a"/>
+<polygon points="541.8,143.2 541.8,152.8 534,148" fill="#57606a"/>
+<text x="708" y="204" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">10GbE</text>
+<rect x="40" y="236" width="500" height="448" rx="10" fill="#ffffff" stroke="#0072B2" stroke-width="1.5"/>
+<text x="58" y="262" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">sparkring install</tspan><tspan fill="#57606a">  runs on Node A</tspan></text>
+<text x="58" y="282" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">sudo sparkring install --profile qwen38-flash-next-tp2</text>
+<circle cx="70" cy="307" r="10" fill="#0072B2" stroke="#0072B2" stroke-width="1"/>
+<text x="70" y="311.3" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+<text x="90" y="312" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Set up the Sparks</text>
+<text x="90" y="331" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Finds cabled Sparks over IPv6 link-local and copies</text>
+<text x="90" y="348" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">the package to them; builds a WireGuard administration</text>
+<text x="90" y="365" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">network and fabric IPv4 addresses on the cables.</text>
+<circle cx="70" cy="391" r="10" fill="#0072B2" stroke="#0072B2" stroke-width="1"/>
+<text x="70" y="395.3" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+<text x="90" y="396" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Distribute the image</text>
+<text x="90" y="415" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">A registry relay on Node A downloads each layer once;</text>
+<text x="90" y="432" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">every Spark pulls the verified layers through it.</text>
+<circle cx="70" cy="458" r="10" fill="#0072B2" stroke="#0072B2" stroke-width="1"/>
+<text x="70" y="462.3" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+<text x="90" y="463" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Place the checkpoint</text>
+<text x="90" y="482" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Finds the pinned files on every Spark by SHA-256 and</text>
+<text x="90" y="499" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">hard-links weight files it finds; copies missing files</text>
+<text x="90" y="516" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">over the cables; downloads only what no Spark holds.</text>
+<circle cx="70" cy="542" r="10" fill="#0072B2" stroke="#0072B2" stroke-width="1"/>
+<text x="70" y="546.3" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+<text x="90" y="547" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Four Sparks: enable forwarding</text>
+<text x="90" y="566" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Applies the ConnectX hairpin setting and starts the</text>
+<text x="90" y="583" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">mesh services; both return at every boot.</text>
+<circle cx="70" cy="609" r="10" fill="#0072B2" stroke="#0072B2" stroke-width="1"/>
+<text x="70" y="613.3" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+<text x="90" y="614" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Start the model</text>
+<text x="90" y="633" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Checks the image against its lock, creates one</text>
+<text x="90" y="650" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">container per rank, starts them, prints the API URL.</text>
+<rect x="40" y="700" width="500" height="120" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="58" y="724" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">What the cables carry</text>
+<text x="58" y="743" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Each 200 Gb/s cable carries all traffic between Sparks:</text>
+<text x="58" y="760" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">collectives, vLLM rendezvous, the administration</text>
+<text x="58" y="777" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">network, and image and checkpoint copies. Your network</text>
+<text x="58" y="794" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">carries the API, the dashboard and downloads.</text>
+<rect x="780" y="84" width="580" height="132" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="798" y="108" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">Two Sparks</tspan><tspan fill="#57606a">   Spark 0 and Spark 1 only</tspan></text>
+<rect x="798" y="122" width="138" height="78" rx="8" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+<text x="810" y="142" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">Spark 0</text>
+<rect x="846" y="150" width="88" height="40" rx="6" fill="#3d444d" stroke="#32383f" stroke-width="1.5"/>
+<text x="890.0" y="174" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">ConnectX-7</text>
+<rect x="1000" y="122" width="138" height="78" rx="8" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+<text x="1012" y="142" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">Spark 1</text>
+<rect x="1002" y="150" width="88" height="40" rx="6" fill="#3d444d" stroke="#32383f" stroke-width="1.5"/>
+<text x="1046.0" y="174" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">ConnectX-7</text>
+<path d="M934,170 L1002,170" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M934,170 L1002,170" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
+<text x="940" y="162" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start">p0</text>
+<text x="996" y="162" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="end">p0</text>
+<text x="1158" y="138" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">One cable from p0 to p0.</text>
+<text x="1158" y="155" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">RDMA uses both PCIe</text>
+<text x="1158" y="172" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">functions of p0; nothing</text>
+<text x="1158" y="189" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">is forwarded.</text>
+<rect x="580" y="236" width="300" height="200" rx="10" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+<text x="596" y="262" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">Spark 0 · Node A</tspan><tspan fill="#57606a">   rank 0</tspan></text>
+<rect x="596" y="276" width="268" height="26" rx="6" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="606" y="293.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Installer and host services</text>
+<rect x="596" y="308" width="268" height="26" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="606" y="325.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Serving container · rank 0</text>
+<rect x="596" y="340" width="268" height="26" rx="6" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="606" y="357.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">API :8000 or :8015 · dashboard</text>
+<rect x="596" y="386" width="172" height="26" rx="6" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
+<text x="606" y="403.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Checkpoint copy</text>
+<rect x="780" y="372" width="88" height="52" rx="6" fill="#3d444d" stroke="#32383f" stroke-width="1.5"/>
+<text x="824.0" y="393" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">ConnectX-7</text>
+<rect x="1060" y="236" width="300" height="200" rx="10" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+<text x="1076" y="262" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">Spark 1</tspan><tspan fill="#57606a">   rank 1 · headless</tspan></text>
+<rect x="1076" y="276" width="268" height="26" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="1086" y="293.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Serving container · rank 1</text>
+<rect x="1076" y="308" width="268" height="26" rx="6" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="1086" y="325.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Host services</text>
+<rect x="1172" y="386" width="172" height="26" rx="6" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
+<text x="1182" y="403.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Checkpoint copy</text>
+<rect x="1072" y="372" width="88" height="52" rx="6" fill="#3d444d" stroke="#32383f" stroke-width="1.5"/>
+<text x="1116.0" y="393" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">ConnectX-7</text>
+<rect x="1060" y="620" width="300" height="200" rx="10" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="1072" y="632" width="88" height="52" rx="6" fill="#3d444d" stroke="#32383f" stroke-width="1.5"/>
+<text x="1116.0" y="672" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">ConnectX-7</text>
+<text x="1176" y="654" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">Spark 2</tspan><tspan fill="#57606a">   rank 2</tspan></text>
+<rect x="1176" y="664" width="92" height="20" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="1222.0" y="678.2" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#1f2328" text-anchor="middle">four Sparks</text>
+<text x="1280" y="678.2" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#57606a" text-anchor="start">headless</text>
+<rect x="1076" y="704" width="268" height="26" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="1086" y="721.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Serving container · rank 2</text>
+<rect x="1076" y="736" width="268" height="26" rx="6" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="1086" y="753.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Host services</text>
+<rect x="1076" y="768" width="172" height="26" rx="6" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
+<text x="1086" y="785.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Checkpoint copy</text>
+<rect x="580" y="620" width="300" height="200" rx="10" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="780" y="632" width="88" height="52" rx="6" fill="#3d444d" stroke="#32383f" stroke-width="1.5"/>
+<text x="824.0" y="672" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">ConnectX-7</text>
+<text x="596" y="654" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">Spark 3</tspan><tspan fill="#57606a">   rank 3</tspan></text>
+<rect x="596" y="664" width="92" height="20" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="642.0" y="678.2" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#1f2328" text-anchor="middle">four Sparks</text>
+<text x="700" y="678.2" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#57606a" text-anchor="start">headless</text>
+<rect x="596" y="704" width="268" height="26" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="606" y="721.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Serving container · rank 3</text>
+<rect x="596" y="736" width="268" height="26" rx="6" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="606" y="753.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Host services</text>
+<rect x="596" y="768" width="172" height="26" rx="6" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
+<text x="606" y="785.68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Checkpoint copy</text>
+<path d="M540,289 L590,289" fill="none" stroke="#0072B2" stroke-width="2" stroke-linejoin="round" stroke-linecap="butt" stroke-dasharray="5 4"/>
+<polygon points="588.9,284.6 588.9,293.4 596,289" fill="#0072B2"/>
+<path d="M868,398 L1072,398" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M868,398 L1072,398" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M1116,424 L1116,632" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M1116,424 L1116,632" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M1072,658 L868,658" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M1072,658 L868,658" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M824,632 L824,424" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M824,632 L824,424" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
+<path d="M868,412 L1102,412 L1102,632" fill="none" stroke="#CC79A7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="butt" stroke-dasharray="7 5"/>
+<path d="M838,424 L838,644 L1072,644" fill="none" stroke="#CC79A7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="butt" stroke-dasharray="7 5"/>
+<text x="886" y="390" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start">p0</text>
+<text x="1054" y="390" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="end">p1</text>
+<text x="1124" y="446" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start">p0</text>
+<text x="1124" y="612" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start">p1</text>
+<text x="1054" y="678" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="end">p0</text>
+<text x="886" y="678" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start">p1</text>
+<text x="816" y="610" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="end">p0</text>
+<text x="816" y="448" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="end">p1</text>
+<text x="970" y="458" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="middle">Opposite Sparks</text>
+<text x="970" y="479" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">Sparks 0 and 2, and 1 and 3,</text>
+<text x="970" y="496" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">have no cable between them.</text>
+<text x="970" y="513" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">Their RDMA traffic crosses two</text>
+<text x="970" y="530" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">cables; the ConnectX-7 of the</text>
+<text x="970" y="547" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">Spark between them forwards</text>
+<text x="970" y="564" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">it in hardware (hairpin setting).</text>
+<text x="970" y="590" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#94386b" text-anchor="middle">RoCEnante sends one path</text>
+<text x="970" y="607" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#94386b" text-anchor="middle">each way round the ring.</text>
+<text x="700" y="874" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#57606a" text-anchor="middle">Node A runs the installer and serves the API; every Spark runs one tensor-parallel rank of the same serving container.</text>
+</svg>

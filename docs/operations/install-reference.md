@@ -225,12 +225,12 @@ sample drafts from the draft distribution
 head's routed experts are MXFP8, which the B12X MoE backend does not implement,
 so the draft runs them on the `humming` backend (`"moe_backend": "humming"`). The
 rejection test then uses the full draft/target probability ratio, so outputs
-follow the target model's sampling distribution. At the checkpoint's default
-sampling (temperature 1.0, top-k 20, top-p 0.95), probabilistic drafting raises
-tokens per decode step for prose (accepted draft tokens plus the one token the
-target model adds) from 1.97 to 2.16 on TP2 and from 1.99 to 2.14 on TP4
-compared with greedy drafting, with unchanged TP4 step time and KV-cache
-capacity. The
+follow the target model's sampling distribution. With checkpoint step 4000 at
+its default sampling (temperature 1.0, top-k 20, top-p 0.95), probabilistic
+drafting raised tokens per decode step for prose (accepted draft tokens plus
+the one token the target model adds) from 1.97 to 2.16 on TP2 and from 1.99 to
+2.14 on TP4 compared with greedy drafting, with unchanged TP4 step time and
+KV-cache capacity. The
 [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md)
 gives these measurements, the decode and prefill rates and the measurement
 behind each setting; the

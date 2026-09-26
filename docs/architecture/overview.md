@@ -8,16 +8,7 @@ sets up; the [profile catalog](../../profiles/README.md) lists every profile.
 
 ## Topology
 
-```text
-management LAN ─┬─────────────┬─────────────┬─────────────┐
-            ┌───┴────┐    ┌───┴────┐    ┌───┴────┐    ┌───┴────┐
-     API ──>│ rank 0 ╞════╡ rank 1 ╞════╡ rank 2 ╞════╡ rank 3 │
-            └───╤────┘    └────────┘    └────────┘    └───╤────┘
-                ╚═════════════════════════════════════════╝
-
-  ═══  one 200 Gb/s ConnectX-7 DAC per edge (RoCEv2); the inference fabric
-  ───  management LAN: SSH, rendezvous, rank-0 API; never a fabric edge
-```
+![Node A runs the installer and serves the API; every Spark runs one tensor-parallel rank, joined by direct ConnectX-7 cables in a pair or a ring](assets/sparkring-cluster.svg)
 
 A four-Spark ring is cabled as the cycle `0-1-2-3-0`, so each Spark has two
 neighbors: rank 0 connects to ranks 1 and 3, rank 1 to ranks 0 and 2, and so
@@ -26,12 +17,28 @@ through a neighbor's ConnectX card, which forwards it in hardware. That needs
 the ConnectX [hairpin setting](../operations/install.md#four-spark-rings),
 which `sparkring install` applies and repeats at every boot.
 
-A pair uses ranks 0 and 1 and one direct link, so no traffic is forwarded.
+A pair uses ranks 0 and 1 and one cable from p0 to p0, so no traffic is
+forwarded.
 
-The management LAN carries SSH, startup coordination and API requests. Model
-traffic never uses it.
+With `sparkring install`, only Node A needs your network: it serves the API
+and the dashboard and downloads the image and checkpoint for every Spark.
+Everything between Sparks runs over the cables: collectives, vLLM's startup
+rendezvous at rank 0's fabric address, and the administration network
+(WireGuard over the cables' IPv6 link-local addresses) that carries SSH,
+image layers and checkpoint copies.
+
+## Serving container
+
+![One serving container per Spark: vLLM with B12X kernels, SparkRing's status plugin and Qwen hooks, RoCEnante and NCCL; the Qwen3.8-Flash-Next and GLM-5.3-Flash model structures](assets/sparkring-serving-stack.svg)
+
+Every Spark runs one container of the same image, one tensor-parallel rank.
+Each profile's `profiles/<id>/config.json` selects the model, the vLLM
+arguments and the transport limits; the
+[install reference](../operations/install-reference.md) explains them.
 
 ## Collective path
+
+![One decode step: per-layer all-reduces on RoCEnante, the LM head all-gather, verification of three draft tokens and the MTP draft of three more](assets/sparkring-decode-step.svg)
 
 Tensor-parallel ranks exchange data in collectives: all-reduce and all-gather.
 The installer profiles (Qwen3.8-Flash-Next, GLM-5.3-Flash and MiMo-V2.6-Flash-RL)
@@ -42,10 +49,9 @@ split them by size:
 | Small all-reduce and all-gather, the per-token traffic of decode | RoCEnante, which sends each rank's data straight to the others over RDMA |
 | Larger collectives, mostly prefill | NCCL 2.32.3 from the image; on four-Spark rings it runs ring algorithms along the cable cycle |
 
-RoCEnante takes all-reduces up to 2 MiB and all-gathers up to 16 MiB. In the
-Qwen profiles, decode all-reduces of up to 64 rows run on RoCEnante. Each
-profile's settings are in `profiles/<id>/config.json`; the
-[install reference](../operations/install-reference.md) explains them.
+RoCEnante takes all-reduces up to 2 MiB and all-gathers up to 16 MiB per
+shard. In the Qwen profiles, decode all-reduces of up to 64 rows run on
+RoCEnante.
 
 ## Profile composition
 
