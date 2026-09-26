@@ -13,12 +13,19 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import time
 
 from runtime.common import compose, managed_deployment, profiles, qwen_mesh, setup
 from runtime.host import discovery, node
 
 ROOT = profiles.ROOT
 COMPONENT = ROOT / "runtime/glm53-spark-mtp3-mesh"
+MESH_UNITS = ("sparkring-mesh.service", "sparkring-*-mesh.service")
+# A started mesh needs all four ranks up before its markers attach.
+RING_READY_SECONDS = 240
+# A ring check fails with ValueError on a fabric difference and with
+# RuntimeError or OSError when a command or a /proc or /sys read fails.
+CHECK_FAILURES = (ValueError, RuntimeError, OSError)
 
 
 def modules():
@@ -221,6 +228,85 @@ def install_local(lock, rank, payload):
     return {"ok": True}
 
 
+def mesh_unit(site_path):
+    """The systemd unit of the managed mesh whose configuration directory holds site_path."""
+    default = managed_deployment.layout()
+    directory = site_path.rsplit("/", 1)[0]
+    if directory == default["config_dir"]:
+        return default["mesh_unit"]
+    prefix = "/etc/sparkring/deployments/"
+    if directory.startswith(prefix):
+        return managed_deployment.layout(directory[len(prefix):])["mesh_unit"]
+    raise ValueError(f"{site_path} is not the site of a SparkRing managed mesh")
+
+
+def _active_mesh_units(call):
+    listing = call(["systemctl", "list-units", "--type=service", "--state=active", "--no-legend", "--plain",
+                    *MESH_UNITS]).stdout
+    return {line.split()[0] for line in listing.splitlines() if line.split()}
+
+
+def _readd_address(netdev, ipv4, call):
+    """Delete and add one IPv4 address with its prefix and flags, re-registering its RoCE GIDs."""
+    links = json.loads(call(["ip", "-j", "-4", "addr", "show", "dev", netdev]).stdout)
+    entries = [entry for link in links for entry in link.get("addr_info", []) if entry.get("local") == ipv4]
+    if len(entries) != 1:
+        raise ValueError(f"{netdev} does not hold its fabric address {ipv4}")
+    address = f"{ipv4}/{entries[0]['prefixlen']}"
+    extra = (["broadcast", entries[0]["broadcast"]] if entries[0].get("broadcast") else []) +         (["noprefixroute"] if entries[0].get("noprefixroute") else [])
+    call(["ip", "addr", "del", address, "dev", netdev])
+    call(["ip", "addr", "add", address, *extra, "dev", netdev])
+
+
+def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check,
+               stale=qwen_mesh.stale_gid_ports, sleep=time.sleep, clock=time.monotonic):
+    """Serve the pinned four-Spark mesh on this Spark and wait until its ring check passes.
+
+    Every rank runs this at the same time before the ring check of an
+    installation that reuses an existing mesh. The mesh unit is enabled, so it
+    returns at each boot. An inactive unit starts. A running unit whose ring
+    check fails restarts, which rebuilds routes and rules lost when a cabled
+    neighbor restarted. When a port's pinned RoCE GID slot lacks its IPv4
+    address, as on the neighbors of a restarted Spark, the mesh stops, the
+    address is deleted and added again, and the mesh starts. A Spark on which
+    another SparkRing mesh unit is active is left unchanged; the ring check
+    then reports it.
+    """
+    unit = mesh_unit(qwen_mesh.validate_site_reference(reference)["site_path"])
+    active = _active_mesh_units(call)
+    others = sorted(active - {unit})
+    if others:
+        return {"ok": True, "unit": unit, "action": "none", "active": others}
+    repaired = stale(reference, rank)
+    if repaired:
+        call(["systemctl", "stop", unit])
+        for netdev, ipv4 in repaired:
+            _readd_address(netdev, ipv4, call)
+        action = "repaired"
+    elif unit in active:
+        try:
+            check(reference, rank, hcas, gid, host_ip)
+            call(["systemctl", "enable", unit])
+            return {"ok": True, "unit": unit, "action": "checked", "repaired": []}
+        except CHECK_FAILURES:
+            call(["systemctl", "restart", unit])
+            action = "restarted"
+    else:
+        action = "started"
+    call(["systemctl", "enable", "--now", unit])
+    deadline = clock() + RING_READY_SECONDS
+    while True:
+        try:
+            check(reference, rank, hcas, gid, host_ip)
+            break
+        except CHECK_FAILURES as error:
+            if clock() >= deadline:
+                raise ValueError(f"{unit} is running, but the ring check still fails after "
+                                 f"{RING_READY_SECONDS} s: {error}") from None
+            sleep(3)
+    return {"ok": True, "unit": unit, "action": action, "repaired": [netdev for netdev, _ in repaired]}
+
+
 def operate_local(lock, rank, operation):
     value = validate(lock["site_input"]["native_mesh"], lock["site_input"])
     selected = managed_deployment.layout(value["name"])
@@ -243,7 +329,9 @@ def operate_local(lock, rank, operation):
             if prior["rank"] == rank and node.call(["systemctl", "is-active", prior["unit"]], accepted=(0, 3, 4)).returncode == 0:
                 raise ValueError("Previous mesh remains active")
     elif operation == "mesh-up":
-        node.call(["systemctl", "start", selected["mesh_unit"]])
+        # Enabled, the mesh returns at every boot (after the ConnectX hairpin
+        # setting), so a model can start again after a reboot.
+        node.call(["systemctl", "enable", "--now", selected["mesh_unit"]])
     elif operation == "mesh-gate":
         runner = selected["code_dir"] + "/runtime/glm53-spark-mtp3-mesh/managed_service.py"
         node.call(["python3", runner, "gate", "--config", str(config), "--timeout", "60"])

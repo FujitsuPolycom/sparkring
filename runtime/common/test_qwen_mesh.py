@@ -274,6 +274,16 @@ def test_complete_snapshot_requires_every_rank_network_and_managed_attachment(ri
     assert not rig["host"].manager.state_dir.exists()
 
 
+def test_stale_gid_ports_name_each_port_whose_pinned_slot_lacks_its_address(rig):
+    host = rig["host"]
+    assert mesh.stale_gid_ports(rig["reference"], rig["rank"], host=host) == []
+    # A cabled neighbor restarted: each port's IPv4 GID moved out of the pinned slot.
+    host.gid_override = "::ffff:198.51.100.1"
+    assert mesh.stale_gid_ports(rig["reference"], rig["rank"], host=host) == [
+        (port.netdev, port.ipv4) for port in host.manager.local.ports]
+    assert not any(argv[:2] == ["ip", "addr"] and "show" not in argv for argv in host.commands)
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

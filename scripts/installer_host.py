@@ -1455,6 +1455,13 @@ def perform(operation, lock, number):
     model_receipt = state / "model.json"
     if operation in MODEL_OPERATIONS:
         return model_operation(operation, lock, number, row, state)
+    if operation == "ring-serve":
+        from runtime.host import native_mesh
+        return native_mesh.serve_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+    if operation == "ring-check":
+        from runtime.common import qwen_mesh
+        qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+        return {"ok": True}
     if operation.startswith("mesh-"):
         from runtime.host import native_mesh
         if operation == "mesh-prepare":

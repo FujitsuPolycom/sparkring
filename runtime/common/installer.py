@@ -443,6 +443,10 @@ def operation_plan(lock, action):
                            phase("mesh-up", ranks, "mutates-host", "mesh-up-check"),
                            phase("mesh-gate", ranks), phase("preflight", ranks)]
             else:
+                if len(ranks) == 4 and lock["backend"] != "glm-existing-mesh":
+                    # A reused mesh is started, repaired and awaited on all
+                    # four ranks before the read-only ring check.
+                    phases += [phase("ring-serve", ranks, "mutates-host", "ring-check")]
                 phases += [phase("preflight", ranks), phase("create", ranks, "starts-model", "created")]
             phases += [
                        phase("start", ranks[1:], "starts-model", "running"),

@@ -216,7 +216,8 @@ def elevation(row, operation):
     user, separator, _ = row["host"].partition("@")
     if not separator or user != "root":
         return ["sudo", "-n"]
-    if "fabric" in row and (operation in ("preflight", "create", "start") or operation.startswith("mesh-")):
+    if "fabric" in row and (operation in ("preflight", "create", "start", "ring-serve", "ring-check")
+                            or operation.startswith("mesh-")):
         return ["sudo", "-n"]
     return []
 
@@ -324,6 +325,7 @@ class Runner:
                   "smoke": "Test a short model response", "model-settled": "Confirm checkpoint unchanged during loading",
                   "mesh-prepare": "Prepare native fabric helper",
                   "mesh-install": "Install supervised native fabric", "mesh-up": "Start native fabric",
+                  "ring-serve": "Start and check the ring mesh", "ring-check": "Check the ring mesh",
                   "mesh-gate": "Verify all four fabric ranks", "stop": "Stop model", "stopped": "Confirm model stopped"}
         operation = argv[1] if len(argv) > 1 else "operation"
         rank = argv[2] if len(argv) > 2 else "?"

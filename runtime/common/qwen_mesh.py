@@ -3,6 +3,7 @@
 from functools import lru_cache
 import hashlib
 import importlib.util
+import ipaddress
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -218,19 +219,10 @@ def _markers(host, site, plan, rank):
     return observed
 
 
-def check(reference, rank, hcas, gid, host_ip, *, host=None):
-    """Check local fabric and persistent attachment identities without changing state.
-
-    hcas must list primary clockwise/counterclockwise then secondary
-    clockwise/counterclockwise. The pinned site's management address is also
-    the requested rank bootstrap address. The caller checks all four hosts.
-    This snapshot does not attest end-to-end RC traffic, ongoing supervision,
-    or compatibility with a separately running model's lifecycle owner.
-    """
-    reference = validate_site_reference(reference)
+def _pinned_manager(reference, rank, host):
+    """The read-only network manager of the pinned site, after both hash checks."""
     if type(rank) is not int or rank not in range(4):
         raise ValueError("TP4 mesh rank must be an integer from zero through three")
-    host = Host() if host is None else host
     site_path = Path(reference["site_path"])
     if (
         hashlib.sha256(host.read_bytes(site_path)).hexdigest()
@@ -254,6 +246,46 @@ def check(reference, rank, hcas, gid, host_ip, *, host=None):
         != reference["site_sha256"]
     ):
         raise ValueError("Fabric site changed while loading the canonical plan")
+    return manager
+
+
+def stale_gid_ports(reference, rank, *, host=None):
+    """(netdev, IPv4 address) of each fabric port whose pinned RoCE GID slot lacks its address.
+
+    The kernel lists one RoCE GID per address of a port's netdev. When a
+    cabled neighbor restarts, the link drops, and the port's IPv4 address can
+    return in a later slot while the fabric pins one GID index on every rank.
+    This reads sysfs only; an empty slot counts as stale.
+    """
+    reference = validate_site_reference(reference)
+    host = Host() if host is None else host
+    manager = _pinned_manager(reference, rank, host)
+    index = manager.plan.roce_gid_index
+    stale = []
+    for port in manager.local.ports:
+        root = Path("/sys/class/infiniband") / port.rdma_device / "ports/1"
+        try:
+            gid = ipaddress.IPv6Address(host.read_text(root / f"gids/{index}").strip())
+            netdev = host.read_text(root / f"gid_attrs/ndevs/{index}").strip()
+        except (OSError, ValueError):
+            gid = netdev = None
+        if gid is None or gid.ipv4_mapped != ipaddress.IPv4Address(port.ipv4) or netdev != port.netdev:
+            stale.append((port.netdev, port.ipv4))
+    return stale
+
+
+def check(reference, rank, hcas, gid, host_ip, *, host=None):
+    """Check local fabric and persistent attachment identities without changing state.
+
+    hcas must list primary clockwise/counterclockwise then secondary
+    clockwise/counterclockwise. The pinned site's management address is also
+    the requested rank bootstrap address. The caller checks all four hosts.
+    This snapshot does not attest end-to-end RC traffic, ongoing supervision,
+    or compatibility with a separately running model's lifecycle owner.
+    """
+    reference = validate_site_reference(reference)
+    host = Host() if host is None else host
+    manager = _pinned_manager(reference, rank, host)
     expected_hcas = [
         manager.local.port(direction, function).rdma_device
         for function in (0, 1)

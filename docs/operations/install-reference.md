@@ -412,8 +412,8 @@ not start and its log names the function, `sparkring status` reports the Spark
 as `needs-attention` with the function and its value, and
 `sparkring up --execute` starts nothing. Run `sudo sparkring hairpin` on
 Node A: once every Spark has the setting, it starts each enabled mesh service
-that the check refused. `sudo sparkring install` does not start them, because
-the model installation that follows owns the mesh.
+that the check refused. `sudo sparkring install` starts the mesh its
+installation uses, as described below.
 
 If a restart fails during a boot, or a boot ends during a restart, later boots
 of that Spark restart nothing and `sparkring status` warns about it, until
@@ -442,7 +442,15 @@ mesh. The installer discovers and verifies an installed native mesh. If none
 exists, it downloads and verifies the pinned host marker on every rank, creates
 stopped model containers, installs supervised mesh services, waits for every
 rank, and starts the model. An unhealthy or partly installed mesh stops the
-plan for inspection. `sparkring install` does not replace an existing mesh:
+plan for inspection.
+
+SparkRing enables the mesh service, so it starts at each boot after the
+hairpin setting. Before an installation starts a model on an existing mesh,
+each Spark starts its mesh service when it is stopped, restarts it when its
+routes or forwarding rules are missing, and re-adds a port's IPv4 address when
+its RoCE GID has left the pinned GID index, which happens on the neighbors of a
+Spark that restarted. The installation then waits up to four minutes for the
+ring check on every Spark. `sparkring install` does not replace an existing mesh:
 `sparkring up PROFILE --fresh-mesh --plan` prints an explicit replacement plan,
 and `sparkring up PROFILE --instance fresh --fresh-mesh` rehearses the
 replacement beside an existing deployment. Container, source and weight

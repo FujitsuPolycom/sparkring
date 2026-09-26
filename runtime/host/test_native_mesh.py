@@ -46,7 +46,7 @@ def test_new_mesh_is_fully_planned_without_manual_site_hashes_or_host_changes():
     names = [p["id"] for p in installer.operation_plan(lock, "up")["phases"]]
     assert names.index("model") < names.index("create") < names.index("mesh-install")
     assert names.index("mesh-up") < names.index("mesh-gate") < names.index("preflight") < names.index("start-workers") < names.index("start-api")
-    assert "mesh-replace" in names
+    assert "mesh-replace" in names and "ring-serve" not in names
     assert len(installer.rendered(lock)) == 8
 
 
@@ -63,7 +63,13 @@ def test_existing_mesh_is_verified_and_uses_its_bootstrap_addresses():
     assert lock["site"]["ranks"][0]["interface"] == "eth0"
     names = [p["id"] for p in installer.operation_plan(lock, "up")["phases"]]
     assert "mesh-install" not in names
-    assert names.index("preflight") < names.index("create")
+    # The reused mesh is started and awaited on every rank before the read-only ring check.
+    assert names.index("ring-serve") < names.index("preflight") < names.index("create")
+    from scripts import deploy_engine
+    plan = installer.operation_plan(lock, "up")
+    deploy_engine.validate_plan(plan)
+    serve = next(p for p in plan["phases"] if p["id"] == "ring-serve")
+    assert all(a["risk"] == "mutates-host" and a["verify"]["argv"][1] == "ring-check" for a in serve["actions"])
 
 
 def test_mixed_or_disagreeing_meshes_do_not_silently_reconfigure():
@@ -102,9 +108,107 @@ def test_read_only_native_admission_uses_root_for_all_launch_phases(monkeypatch)
     runner.lock = installer.make_lock(PROFILE, site, "a" * 40, "b" * 64)
     calls = []
     monkeypatch.setattr(installer_runner, "ssh", lambda host, argv, **kw: calls.append(argv) or '{"ok":true}')
-    for action in ("preflight", "create", "start", "mesh-install-local"):
+    for action in ("preflight", "create", "start", "ring-serve", "ring-check", "mesh-install-local"):
         runner.remote(0, action)
         assert calls[-1][:2] == ["sudo", "-n"]
+
+
+REFERENCE = {"site_path": "/etc/sparkring/managed-mesh/site.json", "site_sha256": "c" * 64, "plan_sha256": "d" * 64}
+UNIT = "sparkring-mesh.service"
+
+
+def test_mesh_units_follow_the_managed_layout_of_their_site():
+    assert native_mesh.mesh_unit("/etc/sparkring/managed-mesh/site.json") == UNIT
+    assert native_mesh.mesh_unit("/etc/sparkring/deployments/home/site.json") == "sparkring-home-mesh.service"
+    with pytest.raises(ValueError, match="not the site"):
+        native_mesh.mesh_unit("/etc/foreign/site.json")
+
+
+def test_starting_a_created_mesh_enables_it_for_every_boot(monkeypatch):
+    lock = installer.make_lock(PROFILE, fresh_site(), "a" * 40, "b" * 64)
+    read_json = native_mesh.profiles.read_json
+    monkeypatch.setattr(native_mesh.profiles, "read_json", lambda path: {"deployment": lock["id"]}
+                        if str(path).endswith("installer-owner.json") else read_json(path))
+    calls = []
+    monkeypatch.setattr(native_mesh.node, "call", lambda argv, **kw: calls.append(argv))
+    native_mesh.operate_local(lock, 0, "mesh-up")
+    unit = native_mesh.managed_deployment.layout(lock["site_input"]["native_mesh"]["name"])["mesh_unit"]
+    assert calls == [["systemctl", "enable", "--now", unit]]
+
+
+class Spark:
+    """systemctl, ip and the ring check of one simulated Spark."""
+
+    def __init__(self, active=(), failures=0, stale=()):
+        self.active, self.failures, self.stale_ports = set(active), failures, list(stale)
+        self.commands, self.checks = [], 0
+
+    def call(self, argv, **kwargs):
+        self.commands.append(argv)
+        if argv[:2] == ["systemctl", "list-units"]:
+            return SimpleNamespace(stdout="".join(f"{unit} loaded active running mesh\n" for unit in sorted(self.active)))
+        if argv[:4] == ["ip", "-j", "-4", "addr"]:
+            info = [{"local": "198.51.100.7", "prefixlen": 31, "noprefixroute": True}]
+            return SimpleNamespace(stdout=json.dumps([{"addr_info": info}]))
+        return SimpleNamespace(stdout="")
+
+    def check(self, *args):
+        self.checks += 1
+        if self.checks <= self.failures:
+            raise ValueError("Missing mesh network objects: ['route:rank1-to-rank3']")
+
+    def stale(self, reference, rank):
+        return self.stale_ports
+
+    def serve(self, clock=lambda: 0.0):
+        return native_mesh.serve_ring(REFERENCE, 1, ["mlx5_0"], 3, "192.0.2.111", call=self.call, check=self.check,
+                                      stale=self.stale, sleep=lambda seconds: None, clock=clock)
+
+    def changes(self):
+        return [argv for argv in self.commands if argv[:2] != ["systemctl", "list-units"] and "show" not in argv]
+
+
+def test_a_mesh_stopped_by_a_reboot_is_enabled_started_and_awaited():
+    spark = Spark(failures=2)
+    assert spark.serve()["action"] == "started"
+    assert spark.changes() == [["systemctl", "enable", "--now", UNIT]]
+    assert spark.checks == 3
+
+
+def test_a_healthy_mesh_is_only_enabled():
+    spark = Spark(active=[UNIT])
+    assert spark.serve()["action"] == "checked"
+    assert spark.changes() == [["systemctl", "enable", UNIT]]
+
+
+def test_a_running_mesh_with_missing_routes_restarts():
+    spark = Spark(active=[UNIT], failures=1)
+    assert spark.serve()["action"] == "restarted"
+    assert spark.changes() == [["systemctl", "restart", UNIT], ["systemctl", "enable", "--now", UNIT]]
+
+
+def test_a_stale_gid_slot_is_rebuilt_with_the_mesh_stopped():
+    spark = Spark(active=[UNIT], stale=[("enp1s0f1np1", "198.51.100.7")])
+    result = spark.serve()
+    assert result == {"ok": True, "unit": UNIT, "action": "repaired", "repaired": ["enp1s0f1np1"]}
+    assert spark.changes() == [
+        ["systemctl", "stop", UNIT],
+        ["ip", "addr", "del", "198.51.100.7/31", "dev", "enp1s0f1np1"],
+        ["ip", "addr", "add", "198.51.100.7/31", "noprefixroute", "dev", "enp1s0f1np1"],
+        ["systemctl", "enable", "--now", UNIT]]
+
+
+def test_another_active_mesh_is_left_for_the_ring_check_to_report():
+    spark = Spark(active=["sparkring-home-mesh.service"], stale=[("enp1s0f1np1", "198.51.100.7")])
+    assert spark.serve()["action"] == "none"
+    assert spark.changes() == []
+
+
+def test_a_ring_that_never_becomes_ready_fails_with_the_last_check():
+    times = iter([0.0, 10.0, 250.0])
+    spark = Spark(failures=99)
+    with pytest.raises(ValueError, match="still fails after 240 s: Missing mesh network objects"):
+        spark.serve(clock=lambda: next(times))
 
 
 def test_live_lldp_direct_chassis_without_hostname_is_normalized():
