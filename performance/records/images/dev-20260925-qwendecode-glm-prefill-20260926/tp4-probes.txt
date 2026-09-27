@@ -1,0 +1,114 @@
+== installer prefill
+prompt    8106 tokens: TTFT   2.84s =    2851 tok/s prefill
+prompt   32311 tokens: TTFT  11.05s =    2925 tok/s prefill
+prompt  129525 tokens: TTFT  46.37s =    2793 tok/s prefill
+== installer prefill repeat
+prompt    8107 tokens: TTFT   2.82s =    2870 tok/s prefill
+prompt   32314 tokens: TTFT  11.05s =    2924 tok/s prefill
+== installer decode
+model GLM-5.3-Flash-NVFP4-Spark-TP4
+prose  end-to-end  56.43 tok/s | after first token  57.20 tok/s | acceptance 0.44 | per position [0.67, 0.4, 0.24, 1.0, 1.0, 1.0] | tokens per step 2.31
+code   end-to-end  66.83 tok/s | after first token  68.22 tok/s | acceptance 0.61 | per position [0.81, 0.59, 0.43, 1.0, 1.0, 1.0] | tokens per step 2.83
+json   end-to-end  76.88 tok/s | after first token  78.84 tok/s | acceptance 0.72 | per position [0.89, 0.72, 0.55, 1.0, 1.0, 1.0] | tokens per step 3.17
+gid1: healthy after 246s
+== gid1 prefill
+prompt    8106 tokens: TTFT   2.76s =    2940 tok/s prefill
+prompt   32309 tokens: TTFT  10.38s =    3114 tok/s prefill
+prompt  129526 tokens: TTFT  42.08s =    3078 tok/s prefill
+== gid1 prefill repeat
+prompt    8107 tokens: TTFT   2.58s =    3142 tok/s prefill
+prompt   32311 tokens: TTFT  10.04s =    3217 tok/s prefill
+== gid1 decode
+model GLM-5.3-Flash-NVFP4-Spark-TP4
+prose  end-to-end  58.54 tok/s | after first token  59.29 tok/s | acceptance 0.45 | per position [0.73, 0.41, 0.22, 1.0, 1.0, 1.0] | tokens per step 2.36
+code   end-to-end  72.01 tok/s | after first token  73.75 tok/s | acceptance 0.67 | per position [0.87, 0.66, 0.49, 1.0, 1.0, 1.0] | tokens per step 3.02
+json   end-to-end  75.15 tok/s | after first token  76.97 tok/s | acceptance 0.69 | per position [0.88, 0.7, 0.48, 1.0, 1.0, 1.0] | tokens per step 3.06
+gid1: removed
+gid1-coalesce: healthy after 246s
+== gid1-coalesce prefill
+prompt    8107 tokens: TTFT   2.71s =    2994 tok/s prefill
+prompt   32309 tokens: TTFT  10.06s =    3213 tok/s prefill
+prompt  129526 tokens: TTFT  41.94s =    3088 tok/s prefill
+== gid1-coalesce prefill repeat
+prompt    8106 tokens: TTFT   2.50s =    3243 tok/s prefill
+prompt   32312 tokens: TTFT  10.03s =    3220 tok/s prefill
+== gid1-coalesce decode
+model GLM-5.3-Flash-NVFP4-Spark-TP4
+prose  end-to-end  59.45 tok/s | after first token  60.38 tok/s | acceptance 0.49 | per position [0.73, 0.45, 0.27, 1.0, 1.0, 1.0] | tokens per step 2.46
+code   end-to-end  69.87 tok/s | after first token  71.53 tok/s | acceptance 0.65 | per position [0.85, 0.66, 0.45, 1.0, 1.0, 1.0] | tokens per step 2.96
+json   end-to-end  76.73 tok/s | after first token  78.58 tok/s | acceptance 0.74 | per position [0.9, 0.76, 0.57, 1.0, 1.0, 1.0] | tokens per step 3.23
+gid1-coalesce: removed
+installer containers restarted
+== done 20:13:08
+#### sircl
+sircl: healthy after 231s
+      2 installed Spark TP4 vLLM backend in custom mode: bidirectional_prefill_exposure=fused
+== sircl prefill
+prompt    8109 tokens: TTFT   2.62s =    3091 tok/s prefill
+prompt   32312 tokens: TTFT  10.17s =    3177 tok/s prefill
+prompt  129524 tokens: TTFT  42.71s =    3033 tok/s prefill
+== sircl prefill repeat
+prompt    8107 tokens: TTFT   2.45s =    3304 tok/s prefill
+prompt   32312 tokens: TTFT  10.15s =    3185 tok/s prefill
+== sircl decode
+model GLM-5.3-Flash-NVFP4-Spark-TP4
+prose  end-to-end  56.11 tok/s | after first token  56.93 tok/s | acceptance 0.42 | per position [0.64, 0.39, 0.23, 1.0, 1.0, 1.0] | tokens per step 2.26
+code   end-to-end  66.55 tok/s | after first token  67.96 tok/s | acceptance 0.59 | per position [0.8, 0.58, 0.39, 1.0, 1.0, 1.0] | tokens per step 2.77
+json   end-to-end  74.65 tok/s | after first token  76.37 tok/s | acceptance 0.68 | per position [0.89, 0.66, 0.49, 1.0, 1.0, 1.0] | tokens per step 3.04
+(Worker_TP0 pid=242) SIRCL capability vote accepted: physical_ranks=4
+(Worker_TP0 pid=242) Spark TP4 fused prefill session ready: rank=0 shape=(8192, 4096) rails=2 exposure=fused primary_ports=(19006, 19007) secondary_ports=(19106, 19107)
+== done (sircl left running) 21:35:09
+#### knobs
+split512: healthy after 266s
+      1 (EngineCore pid=151) WARNING 09-27 03:44:27 [kv_cache_utils.py:2744] Keeping split GLM-5.3 cache groups with physical page sizes [287232, 1187840].
+      1 (Worker_TP0 pid=239) WARNING 09-27 03:43:07 [interface.py:900] Using split GLM-5.3 cache pages: target block size 512 tokens, recurrent-state block size 512 tokens.
+== split512 prefill
+prompt    8108 tokens: TTFT   2.95s =    2748 tok/s prefill
+prompt   32308 tokens: TTFT   9.18s =    3520 tok/s prefill
+prompt  129527 tokens: TTFT  37.14s =    3487 tok/s prefill
+== split512 prefill repeat
+prompt    8106 tokens: TTFT   2.56s =    3167 tok/s prefill
+prompt   32312 tokens: TTFT   9.11s =    3548 tok/s prefill
+== split512 decode
+prose  end-to-end  61.32 tok/s | after first token  62.15 tok/s | acceptance 0.50 | per position [0.75, 0.46, 0.28, 1.0, 1.0, 1.0] | tokens per step 2.50
+code   end-to-end  67.02 tok/s | after first token  68.35 tok/s | acceptance 0.60 | per position [0.8, 0.6, 0.4, 1.0, 1.0, 1.0] | tokens per step 2.81
+json   end-to-end  76.58 tok/s | after first token  78.62 tok/s | acceptance 0.73 | per position [0.91, 0.73, 0.55, 1.0, 1.0, 1.0] | tokens per step 3.19
+== split512 score 3401
+split512: removed
+ckv0: healthy after 231s
+      1 (Worker_TP0 pid=239) INFO 09-27 03:50:09 [interface.py:1051] Setting attention block size to 2560 tokens to ensure that attention page size is >= mamba page size.
+== ckv0 prefill
+prompt    8107 tokens: TTFT   2.42s =    3350 tok/s prefill
+prompt   32312 tokens: TTFT  10.02s =    3226 tok/s prefill
+prompt  129525 tokens: TTFT  41.81s =    3098 tok/s prefill
+== ckv0 prefill repeat
+prompt    8104 tokens: TTFT   2.48s =    3272 tok/s prefill
+prompt   32311 tokens: TTFT  10.01s =    3229 tok/s prefill
+== ckv0 decode
+prose  end-to-end  61.06 tok/s | after first token  61.94 tok/s | acceptance 0.49 | per position [0.73, 0.47, 0.27, 1.0, 1.0, 1.0] | tokens per step 2.47
+code   end-to-end  70.32 tok/s | after first token  71.91 tok/s | acceptance 0.65 | per position [0.85, 0.65, 0.44, 1.0, 1.0, 1.0] | tokens per step 2.94
+json   end-to-end  80.19 tok/s | after first token  82.31 tok/s | acceptance 0.76 | per position [0.9, 0.78, 0.6, 1.0, 1.0, 1.0] | tokens per step 3.28
+== ckv0 score 3200
+ckv0: removed
+split512-ckv0: healthy after 216s
+      1 (EngineCore pid=149) WARNING 09-27 03:57:40 [kv_cache_utils.py:2744] Keeping split GLM-5.3 cache groups with physical page sizes [287232, 1187840].
+      1 (Worker_TP0 pid=207) WARNING 09-27 03:56:31 [interface.py:900] Using split GLM-5.3 cache pages: target block size 512 tokens, recurrent-state block size 512 tokens.
+== split512-ckv0 prefill
+prompt    8109 tokens: TTFT   2.71s =    2994 tok/s prefill
+prompt   32311 tokens: TTFT   9.09s =    3554 tok/s prefill
+prompt  129529 tokens: TTFT  37.22s =    3480 tok/s prefill
+== split512-ckv0 prefill repeat
+prompt    8108 tokens: TTFT   2.55s =    3181 tok/s prefill
+prompt   32312 tokens: TTFT   9.00s =    3589 tok/s prefill
+== split512-ckv0 decode
+prose  end-to-end  59.25 tok/s | after first token  60.10 tok/s | acceptance 0.47 | per position [0.73, 0.45, 0.24, 1.0, 1.0, 1.0] | tokens per step 2.42
+code   end-to-end  66.23 tok/s | after first token  67.63 tok/s | acceptance 0.60 | per position [0.83, 0.57, 0.38, 1.0, 1.0, 1.0] | tokens per step 2.79
+json   end-to-end  77.89 tok/s | after first token  79.61 tok/s | acceptance 0.73 | per position [0.92, 0.74, 0.54, 1.0, 1.0, 1.0] | tokens per step 3.19
+== split512-ckv0 score 3417
+split512-ckv0: removed
+== best: split512-ckv0
+3401 split512
+3200 ckv0
+3417 split512-ckv0
+split512-ckv0: healthy after 231s
+== done (split512-ckv0 left running) 23:04:58

@@ -1,0 +1,56 @@
+== installer prefill
+prompt    8104 tokens: TTFT   3.90s =    2077 tok/s prefill
+prompt   32311 tokens: TTFT  13.20s =    2449 tok/s prefill
+prompt  129526 tokens: TTFT  53.95s =    2401 tok/s prefill
+== installer prefill repeat
+prompt    8111 tokens: TTFT   3.28s =    2470 tok/s prefill
+prompt   32312 tokens: TTFT  13.05s =    2476 tok/s prefill
+== installer decode
+model GLM-5.3-Flash-NVFP4-Spark-TP2
+prose  end-to-end  34.53 tok/s | after first token  35.05 tok/s | acceptance 0.46 | per position [0.74, 0.41, 0.23, 1.0, 1.0, 1.0] | tokens per step 2.38
+code   end-to-end  39.88 tok/s | after first token  40.88 tok/s | acceptance 0.62 | per position [0.82, 0.62, 0.42, 1.0, 1.0, 1.0] | tokens per step 2.87
+json   end-to-end  43.50 tok/s | after first token  44.65 tok/s | acceptance 0.68 | per position [0.88, 0.69, 0.48, 1.0, 1.0, 1.0] | tokens per step 3.05
+pair-gid1-coalesce: healthy after 362s
+== pair-gid1-coalesce prefill
+prompt    8104 tokens: TTFT   5.85s =    1386 tok/s prefill
+prompt   32310 tokens: TTFT  13.71s =    2356 tok/s prefill
+prompt  129527 tokens: TTFT  54.27s =    2387 tok/s prefill
+== pair-gid1-coalesce prefill repeat
+prompt    8105 tokens: TTFT   3.27s =    2475 tok/s prefill
+prompt   32312 tokens: TTFT  13.14s =    2459 tok/s prefill
+== pair-gid1-coalesce decode
+model GLM-5.3-Flash-NVFP4-Spark-TP2
+prose  end-to-end  35.72 tok/s | after first token  36.31 tok/s | acceptance 0.49 | per position [0.76, 0.46, 0.24, 1.0, 1.0, 1.0] | tokens per step 2.46
+code   end-to-end  38.61 tok/s | after first token  39.50 tok/s | acceptance 0.58 | per position [0.82, 0.55, 0.38, 1.0, 1.0, 1.0] | tokens per step 2.75
+json   end-to-end  44.20 tok/s | after first token  45.36 tok/s | acceptance 0.69 | per position [0.9, 0.71, 0.47, 1.0, 1.0, 1.0] | tokens per step 3.08
+pair-gid1-coalesce: removed
+pair-split: healthy after 382s
+== pair-split prefill
+prompt    8106 tokens: TTFT   4.82s =    1682 tok/s prefill
+prompt   32311 tokens: TTFT  14.70s =    2198 tok/s prefill
+prompt  129526 tokens: TTFT  52.14s =    2484 tok/s prefill
+== pair-split prefill repeat
+prompt    8107 tokens: TTFT   3.86s =    2100 tok/s prefill
+prompt   32312 tokens: TTFT  13.44s =    2404 tok/s prefill
+== pair-split decode
+model GLM-5.3-Flash-NVFP4-Spark-TP2
+prose  end-to-end  34.13 tok/s | after first token  34.60 tok/s | acceptance 0.45 | per position [0.69, 0.42, 0.24, 1.0, 1.0, 1.0] | tokens per step 2.36
+code   end-to-end  37.60 tok/s | after first token  39.04 tok/s | acceptance 0.58 | per position [0.84, 0.55, 0.36, 1.0, 1.0, 1.0] | tokens per step 2.75
+json   end-to-end  41.24 tok/s | after first token  42.36 tok/s | acceptance 0.64 | per position [0.85, 0.63, 0.43, 1.0, 1.0, 1.0] | tokens per step 2.91
+pair-split: removed
+pair-lmheads: healthy after 326s
+== pair-lmheads prefill
+prompt    8107 tokens: TTFT   5.23s =    1551 tok/s prefill
+prompt   32309 tokens: TTFT  15.13s =    2136 tok/s prefill
+prompt  129527 tokens: TTFT  54.83s =    2362 tok/s prefill
+== pair-lmheads prefill repeat
+prompt    8108 tokens: TTFT   3.84s =    2111 tok/s prefill
+prompt   32311 tokens: TTFT  14.39s =    2246 tok/s prefill
+== pair-lmheads decode
+model GLM-5.3-Flash-NVFP4-Spark-TP2
+prose  end-to-end  34.52 tok/s | after first token  35.05 tok/s | acceptance 0.47 | per position [0.73, 0.45, 0.24, 1.0, 1.0, 1.0] | tokens per step 2.42
+code   end-to-end  39.56 tok/s | after first token  40.77 tok/s | acceptance 0.60 | per position [0.83, 0.6, 0.37, 1.0, 1.0, 1.0] | tokens per step 2.81
+json   end-to-end  44.14 tok/s | after first token  45.27 tok/s | acceptance 0.69 | per position [0.87, 0.69, 0.5, 1.0, 1.0, 1.0] | tokens per step 3.07
+pair-lmheads: removed
+installer containers restarted
+== done 21:08:34

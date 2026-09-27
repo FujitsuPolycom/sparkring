@@ -12,6 +12,8 @@ results from different conditions are not matched comparisons.
 |---|---:|---:|---:|---:|---:|---:|
 | [Qwen3.8-Flash-Next NVFP4 QAD step 5500 · `sparkring install` · 2 Sparks](records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md) | 16K | 3,927 (16K scout) | 46.8 | 159.2 | C16: 240.1 | — |
 | [Qwen3.8-Flash-Next NVFP4 QAD step 5500 · `sparkring install` · 4 Sparks](records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md) | 16K | 4,855 (16K scout) | 80.2 | 273.6 | C16: 413.9 | — |
+| [GLM-5.3-Flash NVFP4-Spark · `sparkring install` · 2 Sparks](records/images/dev-20260925-qwendecode-glm-prefill-20260926.md) | 8K | 2,320 (16K scout) | 38.3 | 113.8 | C8: 113.8 | — |
+| [GLM-5.3-Flash NVFP4-Spark · `sparkring install` · 4 Sparks](records/images/dev-20260925-qwendecode-glm-prefill-20260926.md) | 8K | 3,758 (16K scout) | 61.6 | 197.5 | C16: 265.1 | — |
 | [GLM-5.3-Flash NVFP4-Spark · MTP3 + mesh · 4 Sparks](records/glm53-flash/spark-mtp3-mesh-20260905.md) | 8K | 2,703 (8K scout) | 48.2 | 168.8 | C16: 231.3 | — |
 | [GLM-5.3-Flash NVFP4-Spark · DFlash2 exact request-batch graphs · 4 Sparks](records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md) | 16K | 2,717 (16K scout) | 43.05 | 134.3 | C16: 187.0 | — |
 | [GLM-5.3-Flash NVFP4 · DFlash2/B12X-KDA DCP4 · 4 Sparks](records/glm53-flash/b12x-kda-dcp4-20260903.md) | 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |
