@@ -2,6 +2,18 @@
   "schema": "sparkring-image-builders/v1",
   "builders": [
     {
+      "id": "cuda134-nccl232",
+      "path": "runtime/images/toolchain_context.py",
+      "kind": "python",
+      "reason": "Prepare the CUDA 13.4.2 toolkit stage and the patched NCCL 2.32.3 build from pinned sources, and separately selectable CUDA, NCCL or combined layers over the pinned shared-2026.09.4-rc.4 image; preparation does not invoke Docker."
+    },
+    {
+      "id": "cuda134-nccl232-assembly",
+      "path": "runtime/images/toolchain_assembly.py",
+      "kind": "python",
+      "reason": "Bind the recorded prebuilt CUDA 13.4.2 toolkit stage and NCCL 2.32.3 library to a software-layer parent and seal the toolchain receipt; preparation does not invoke Docker."
+    },
+    {
       "id": "sglang-deepseek-bounded-prefill",
       "path": "runtime/images/sglang_extension.py",
       "kind": "python",

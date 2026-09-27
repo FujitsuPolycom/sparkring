@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-toolchain-candidate/v1",
+  "status": "research-only",
+  "parent": {
+    "release": "shared-2026.09.4-rc.4",
+    "reference": "ghcr.io/fujitsupolycom/sparkring@sha256:3d3411b66dd2a4f78ea062ec0a923308f302df14f0e0f9a6ae8961946ae603c8"
+  },
+  "cuda": {
+    "version": "13.4.2",
+    "base": "nvidia/cuda@sha256:d44d6dc249c2c8330d0b380c595a514f0e86137fcc717fe7a4389a25720ade37",
+    "platform": "linux/arm64",
+    "toolkit_package": "13.4.2-1",
+    "compat_package": "615.71.09-2ubuntu1",
+    "cublas_package": "13.8.0.4-1",
+    "nvcc_version": "V13.4.92"
+  },
+  "nccl": {
+    "version": "2.32.3",
+    "repository": "https://github.com/NVIDIA/nccl.git",
+    "revision": "12df1a11afad322be5a204a2db890161cbf8131d",
+    "archive_sha256": "d29f65ec559cf2aaba0a39738e9949227204a73175677d1d53d31e3248503a3e",
+    "patch": "spark_transport/nccl/nccl-2.32.3-dual-pci-domain.patch",
+    "patch_sha256": "a0deca2f21b8cad56bc68a5f5468936b7a6b894db160cfa1d62a6a3d59358836"
+  },
+  "framework_policy": "Retain RC4 PyTorch/vLLM/FlashInfer native binaries built against CUDA 13.0. CUDA runtime/toolkit and rebuilt NCCL are independently versioned. Import, JIT, collective and model qualification remain required."
+}

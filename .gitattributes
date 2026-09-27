@@ -14,6 +14,7 @@ runtime/deepseek0731-gb10/upstream/*.gz -text
 runtime/sparkring/source_image/** -text whitespace=cr-at-eol
 runtime/sparkring/source_image/patches/*.patch whitespace=cr-at-eol,-trailing-space
 spark_transport/nccl/nccl-2.30.7-dual-pci-domain.patch -text whitespace=cr-at-eol,-trailing-space
+spark_transport/nccl/nccl-2.32.3-dual-pci-domain.patch text eol=lf whitespace=-trailing-space
 runtime/glm53-spark-mtp3-mesh/compute/*.tar.gz -text
 runtime/glm53-spark-mtp3-mesh/compute/*.patch whitespace=-trailing-space
 runtime/sparkring/jovian-r33/patches/*.patch whitespace=-trailing-space

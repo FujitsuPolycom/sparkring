@@ -20,3 +20,7 @@ extend-exclude = [
 # analyses the lambda bodies after the module-level `del weights` and reports
 # `weights` inside them as an undefined name (F821).
 "performance/records/qwen38-flash-next/decode-ab-20260925/bench_skinny.py" = ["F821"]
+# The CUDA/NCCL assembly installs this probe verbatim as
+# /opt/sparkring/toolchain/gpu_smoke.py. It verifies the toolchain receipt
+# before importing Torch, so that import follows the check deliberately.
+"runtime/images/toolchain_gpu_smoke.py" = ["E402"]
