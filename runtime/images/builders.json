@@ -35,7 +35,7 @@
       "id": "installer-derived-layer",
       "path": "runtime/images/derived_layer.py",
       "kind": "python",
-      "reason": "Add or replace a few site-packages Python files over a pinned installer image in one layer, re-recording its external-base and toolchain receipts; prepare does not invoke Docker, and record admits the built image for every profile of its lock."
+      "reason": "Add or replace a few site-packages Python files, or the runtime-status package, over a pinned installer image in one layer, re-recording its external-base and toolchain receipts; prepare does not invoke Docker, and record admits the built image for every profile of its lock."
     },
     {
       "id": "sparkring-source",

@@ -10,6 +10,16 @@ each file's SHA-256 in the external-base receipt, re-records the toolchain
 receipt, and adds a provenance receipt listing every path with its inherited
 and resulting SHA-256.
 
+A layer may also replace the runtime-status package. The image installs that
+package from a pinned pure wheel into the owned Python root
+``/opt/sparkring/python``, whose complete inventory ``verify`` compares with the
+receipt's ``python_roots``; the installer's admission compares the receipt's
+``capabilities.runtime_status.version`` with the lock's ``status_version``. The
+builder admits a replacement wheel with the image preparer's rules, removes the
+previous version's files in the layer, and rewrites ``files``,
+``python_roots``, ``removed_files`` and ``capabilities.runtime_status``
+together, so both checks hold for the new version.
+
 ``prepare`` works offline from a descriptor and the parent's two receipts and
 writes a Docker build context. ``record`` inspects the image built from that
 context, runs the installer's admission for every profile of the lock
@@ -17,20 +27,31 @@ context, runs the installer's admission for every profile of the lock
 ``verify``), and writes the derived image lock. Neither action pushes,
 publishes or selects an image for a profile.
 
-Derived files live in the serving interpreter's site-packages. The builder
-refuses native libraries, the startup hooks that select the transport, feature
-and status packages, and the B12X sources whose SHA-256 the prepared RoCE
-transport verifies at startup: changing those needs a new transport manifest.
+Other derived files live in the serving interpreter's site-packages. The
+builder refuses native libraries, the startup hooks that select the transport,
+feature and status packages, and the B12X sources whose SHA-256 the prepared
+RoCE transport verifies at startup: changing those needs a new transport
+manifest.
 """
 
 import argparse
+import base64
+import configparser
 import copy
+import csv
 import hashlib
+import io
 import json
+from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 import re
+import shlex
+import stat
 import subprocess
 import sys
+import tarfile
+import tomllib
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from integrations.vllm.rocenante_prepared.sparkring_transport_selector import HOST_SOURCE_FILES  # noqa: E402
@@ -46,11 +67,43 @@ HOOKS = {SITE + name for name in (
     "sparkring_features.pth", "sparkring_transport.pth", "sparkring_runtime_status.pth")}
 TRANSPORT_SOURCES = {SITE + "b12x/" + name for name in HOST_SOURCE_FILES}
 NATIVE = (".so", ".dll", ".pyd", ".a", ".o", ".pyc")
-DOCKERFILE = "ARG PARENT_IMAGE\nFROM ${PARENT_IMAGE}\nCOPY files/ /\n"
+PYTHON_ROOT = "/opt/sparkring/python"
+STATUS_DISTRIBUTION = "sparkring-runtime-status"
+STATUS_PACKAGE = "sparkring_runtime_status"
+# The installer admits runtime-status 0.3.x (installer_image.validate).
+STATUS_VERSION = r"0\.3\.[0-9]+"
+STATUS_ENTRY_POINTS = {
+    "vllm.endpoint_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:StatusPlugin"},
+    "vllm.general_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"},
+}
+# Source files the image preparer (runtime/images/external_context.py on the
+# status branch) accepts in a status source archive besides package modules.
+STATUS_SOURCES = {
+    "pyproject.toml", "README.md", "schema-v1.json", "test_runtime_status.py", "test_status_browser.py",
+    "test_resources.py", "test_metrics.py", "test_transport.py", "test_binding.py",
+    "test_resources_linux.py", "test_status_views.py", "sparkring_runtime_status/dashboard.html",
+}
 
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def dockerfile(removed=(), directories=()):
+    """Return the layer's Dockerfile; removals precede the copied files."""
+    lines = ["ARG PARENT_IMAGE", "FROM ${PARENT_IMAGE}"]
+    if removed:
+        command = "rm -f -- " + " ".join(shlex.quote(path) for path in removed)
+        if directories:
+            command += " && rmdir -- " + " ".join(shlex.quote(path) for path in directories)
+        lines.append("RUN " + command)
+    lines.append("COPY files/ /")
+    return "\n".join(lines) + "\n"
 
 
 def _image_path(name, *, root):
@@ -59,6 +112,15 @@ def _image_path(name, *, root):
             or not name.startswith(root)):
         raise ValueError(f"Derived path must be a normalized absolute path under {root}: {name}")
     return name
+
+
+def _pinned_row(row, label):
+    require(isinstance(row, dict) and set(row) == {"path", "sha256"}, label + " requires path and sha256")
+    name = PurePosixPath(row["path"])
+    require(len(name.parts) == 1 and name.name not in ("", ".", "..") and "\\" not in row["path"],
+            label + " path must be a file name")
+    require(isinstance(row["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", row["sha256"]),
+            label + " requires a SHA-256")
 
 
 def descriptor(path):
@@ -70,9 +132,15 @@ def descriptor(path):
     if not isinstance(record.get("purpose"), str) or not record["purpose"].strip():
         raise ValueError("Derived-layer descriptor requires a purpose")
     _image_path(record.get("provenance", ""), root=RECEIPTS)
-    files = record.get("files")
-    if not isinstance(files, dict) or not files:
+    files = record.get("files", {})
+    status = record.get("runtime_status")
+    if not isinstance(files, dict) or not (files or status):
         raise ValueError("Derived-layer descriptor lists no files")
+    if status is not None:
+        require(isinstance(status, dict) and set(status) == {"wheel", "source_archive"},
+                "runtime_status requires a pinned wheel and source archive")
+        _pinned_row(status["wheel"], "Status wheel")
+        _pinned_row(status["source_archive"], "Status source archive")
     for target, row in files.items():
         _image_path(target, root=SITE)
         name = PurePosixPath(target).name
@@ -106,7 +174,141 @@ def _parent_lock(record, repository):
     return lock
 
 
-def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output):
+def _relative(name, label):
+    path = PurePosixPath(name)
+    require(name and not path.is_absolute() and ".." not in path.parts and "\\" not in name,
+            label + " contains an unsafe path: " + name)
+    return path
+
+
+def status_package(artifacts, record, versions):
+    """Admit a pinned status wheel with the image preparer's rules.
+
+    Returns the wheel's files, keyed by path relative to the owned Python root,
+    and the package version. The package modules must equal the pinned source
+    archive's, and the metadata must name the official plugin entry points.
+    """
+    raw = {}
+    for key in ("wheel", "source_archive"):
+        path = Path(artifacts) / record[key]["path"]
+        require(path.is_file() and not path.is_symlink(), "Status artifact is missing: " + record[key]["path"])
+        raw[key] = path.read_bytes()
+        require(digest(raw[key]) == record[key]["sha256"], "Status artifact differs from its pin: " + record[key]["path"])
+    sources = {}
+    with tarfile.open(fileobj=io.BytesIO(raw["source_archive"])) as bundle:
+        members = bundle.getmembers()
+        rooted = any(member.name.rstrip("/") == "runtime_status/pyproject.toml" for member in members)
+        for member in members:
+            path = _relative(member.name.rstrip("/"), "Status source archive")
+            require(not rooted or path.parts[0] == "runtime_status", "Status source archive has an unexpected owner")
+            require(member.isfile() or member.isdir(), "Status source archive contains a non-regular entry")
+            if member.isdir():
+                continue
+            name = "/".join(path.parts[1:]) if rooted else str(path)
+            require(name and name not in sources, "Duplicate status source entry: " + name)
+            require(name in STATUS_SOURCES or name.startswith(STATUS_PACKAGE + "/") and path.suffix == ".py",
+                    "Status source is outside its declared owners: " + name)
+            sources[name] = bundle.extractfile(member).read()
+    require("pyproject.toml" in sources, "Status source lacks its project metadata")
+    project = tomllib.loads(sources["pyproject.toml"].decode())["project"]
+    version = project.get("version", "")
+    require(project.get("name") == STATUS_DISTRIBUTION and re.fullmatch(STATUS_VERSION, version),
+            "Status source must be sparkring-runtime-status 0.3.x, which the installer admits")
+    require(project.get("entry-points") == STATUS_ENTRY_POINTS,
+            "Status source must declare the official API and worker entry points")
+    require(project.get("dependencies") == ["fastapi>=0.115"], "Status dependencies require a reviewed update")
+    require(not any(re.sub(r"[-_.]+", "-", name).lower() == STATUS_DISTRIBUTION for name in versions),
+            "The external base already owns the status distribution")
+    fastapi = versions.get("fastapi", "")
+    require(re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", fastapi) and tuple(map(int, fastapi.split(".")[:2])) >= (0, 115),
+            "The parent image does not satisfy the status FastAPI dependency")
+    require(record["wheel"]["path"] == f"{STATUS_PACKAGE}-{version}-py3-none-any.whl",
+            "Status wheel must be the matching pure Python wheel")
+    distribution = f"{STATUS_PACKAGE}-{version}.dist-info"
+    files = {}
+    with zipfile.ZipFile(io.BytesIO(raw["wheel"])) as bundle:
+        for item in bundle.infolist():
+            name = item.filename.rstrip("/")
+            path = _relative(name, "Status wheel")
+            require(not stat.S_ISLNK(item.external_attr >> 16), "Status wheel contains a symlink")
+            require(path.parts[0] in {STATUS_PACKAGE, distribution}, "Status wheel contains files outside its owners: "
+                    + name)
+            if item.is_dir():
+                continue
+            require(name not in files, "Status wheel contains a duplicate file: " + name)
+            require(path.suffix not in {".pyc", ".pth", ".so", ".dll", ".pyd", ".a", ".o"} and ".so." not in path.name,
+                    "Status wheel is not pure Python: " + name)
+            files[name] = bundle.read(item)
+    package = {name: data for name, data in files.items() if name.startswith(STATUS_PACKAGE + "/")}
+    require(package and package == {name: data for name, data in sources.items()
+                                    if name.startswith(STATUS_PACKAGE + "/")},
+            "Status wheel package differs from its pinned source archive")
+    required = {distribution + "/" + name for name in ("METADATA", "WHEEL", "RECORD", "entry_points.txt")}
+    require(required <= files.keys(), "Status wheel lacks required metadata")
+    metadata = BytesParser().parsebytes(files[distribution + "/METADATA"])
+    require(metadata["Name"] == project["name"] and metadata["Version"] == version
+            and metadata.get("Requires-Python") == project.get("requires-python")
+            and metadata.get_all("Requires-Dist", []) == project["dependencies"],
+            "Status wheel metadata differs from its source project")
+    wheel = BytesParser().parsebytes(files[distribution + "/WHEEL"])
+    require(wheel["Root-Is-Purelib"] == "true" and wheel.get_all("Tag", []) == ["py3-none-any"],
+            "Status wheel has a native or platform-specific payload")
+    entry_points = configparser.ConfigParser(interpolation=None)
+    entry_points.optionxform = str
+    entry_points.read_string(files[distribution + "/entry_points.txt"].decode())
+    require({section: dict(entry_points[section]) for section in entry_points.sections()} == STATUS_ENTRY_POINTS,
+            "Status wheel must expose the official API and worker entry points")
+    record_name = distribution + "/RECORD"
+    rows = {}
+    for row in csv.reader(io.StringIO(files[record_name].decode())):
+        require(len(row) == 3 and row[0] not in rows, "Status wheel RECORD has invalid or duplicate entries")
+        rows[row[0]] = row[1:]
+    require(rows.keys() == files.keys(), "Status wheel RECORD inventory differs")
+    for name, data in files.items():
+        expected = ["", ""] if name == record_name else [
+            "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode(), str(len(data))]
+        require(rows[name] == expected, "Status wheel RECORD digest differs: " + name)
+    return files, version
+
+
+def _replace_status(derived, base, record, artifacts):
+    """Rewrite the receipt fields that verify and admission read for the status package."""
+    require(artifacts is not None, "Replacing the status package requires --status-artifacts")
+    capability = base.get("capabilities", {}).get("runtime_status")
+    require(isinstance(capability, dict) and capability.get("python_root") == PYTHON_ROOT
+            and capability.get("entry_points") == STATUS_ENTRY_POINTS,
+            "The parent image does not carry the runtime-status package in its owned Python root")
+    roots = base.get("python_roots", {})
+    require(set(roots) == {PYTHON_ROOT}, "The parent receipt must own exactly the status Python root")
+    inherited = {PYTHON_ROOT + "/" + name: value for name, value in roots[PYTHON_ROOT].items()}
+    recorded = {name: value for name, value in base["files"].items() if Path(name).is_relative_to(PYTHON_ROOT)}
+    require(recorded == inherited, "The parent receipt's owned Python files and python_roots differ")
+    files, version = status_package(artifacts, record, base.get("versions", {}))
+    require(version != capability["version"], "The status package version must differ from the parent's "
+            + capability["version"])
+    for name in recorded:
+        del derived["files"][name]
+    resulting = {name: digest(data) for name, data in sorted(files.items())}
+    derived["python_roots"] = {PYTHON_ROOT: resulting}
+    payloads = {}
+    for name, data in files.items():
+        derived["files"][PYTHON_ROOT + "/" + name] = resulting[name]
+        payloads[PYTHON_ROOT + "/" + name] = data
+    removed = sorted(set(recorded) - set(payloads))
+    derived["removed_files"] = sorted(set(derived.get("removed_files", [])) | set(removed))
+    kept = {str(PurePosixPath(name).parent) for name in payloads}
+    directories = sorted({str(PurePosixPath(name).parent) for name in removed} - kept - {PYTHON_ROOT},
+                         key=lambda item: (-len(PurePosixPath(item).parts), item))
+    derived["capabilities"]["runtime_status"] = {
+        **capability, "version": version, "wheel_sha256": record["wheel"]["sha256"],
+        "source_archive_sha256": record["source_archive"]["sha256"]}
+    provenance = {"inherited_version": capability["version"], "version": version,
+                  "wheel": dict(record["wheel"]), "source_archive": dict(record["source_archive"]),
+                  "removed": removed, "files": resulting}
+    return payloads, removed, directories, version, provenance
+
+
+def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output, status_artifacts=None):
     """Write a build context whose receipts record the derived files."""
     record = descriptor(descriptor_path)
     repository, output = Path(repository).resolve(), Path(output).resolve()
@@ -123,9 +325,11 @@ def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output
         raise ValueError("Toolchain receipt does not record the external-base receipt")
     if record["provenance"] in base["files"]:
         raise ValueError("Provenance path already belongs to the parent")
+    if base.get("capabilities", {}).get("runtime_status", {}).get("version") != lock["status_version"]:
+        raise ValueError("Parent receipt's status version differs from its lock")
     payloads, rows = {}, {}
     derived = copy.deepcopy(base)
-    for target, row in record["files"].items():
+    for target, row in record.get("files", {}).items():
         source = repository / row["source"]
         if source.is_symlink() or not source.resolve().is_relative_to(repository):
             raise ValueError("Derived file source escapes the repository: " + row["source"])
@@ -135,6 +339,11 @@ def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output
         derived["files"][target] = row["sha256"]
         rows[target] = {"source": row["source"], "inherited_sha256": row["inherited_sha256"],
                         "sha256": row["sha256"]}
+    removed, directories, status_version, status_provenance = [], [], lock["status_version"], None
+    if record.get("runtime_status") is not None:
+        status_payloads, removed, directories, status_version, status_provenance = _replace_status(
+            derived, base, record["runtime_status"], status_artifacts)
+        payloads.update(status_payloads)
     base_out = (json.dumps(derived, indent=2, sort_keys=True) + "\n").encode()
     toolchain["parent_receipt_sha256"] = digest(base_out)
     toolchain_out = (json.dumps(toolchain, indent=2) + "\n").encode()
@@ -144,6 +353,8 @@ def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output
         "parent_receipt_sha256": digest(base_raw), "files": rows,
         "receipts": {BASE_RECEIPT: digest(base_out), TOOLCHAIN_RECEIPT: digest(toolchain_out)},
     }
+    if status_provenance is not None:
+        provenance["runtime_status"] = status_provenance
     provenance_out = (json.dumps(provenance, indent=2, sort_keys=True) + "\n").encode()
     written = {**payloads, BASE_RECEIPT: base_out, TOOLCHAIN_RECEIPT: toolchain_out,
                record["provenance"]: provenance_out}
@@ -152,16 +363,18 @@ def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output
         path = output / "files" / target.lstrip("/")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
-    (output / "Dockerfile").write_text(DOCKERFILE)
+    (output / "Dockerfile").write_text(dockerfile(removed, directories))
     plan = {
         "schema": "sparkring-derived-layer-plan/v1", "id": record["id"],
         "descriptor_sha256": digest(Path(descriptor_path).read_bytes()), "parent_lock": lock,
         "added": sorted(target for target, row in rows.items() if row["inherited_sha256"] is None),
         "replaced": sorted(target for target, row in rows.items() if row["inherited_sha256"] is not None),
+        "removed": removed, "status_version": status_version,
         "receipts": provenance["receipts"], "payload_bytes": sum(len(raw) for raw in written.values()),
     }
     (output / "plan.json").write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
-    return {"context": str(output), "files": len(payloads), "receipts": plan["receipts"],
+    return {"context": str(output), "files": len(payloads), "removed": len(removed),
+            "status_version": status_version, "receipts": plan["receipts"],
             "build": ["docker", "build", "--build-arg", "PARENT_IMAGE=<local tag of "
                       + lock["image_id"] + ">", "-t", "<tag>", str(output)]}
 
@@ -177,7 +390,8 @@ def derived_lock(plan, image, name):
     lock.update(name=name, image_id=image["Id"], image_reference=image["Id"], image_bytes=image["Size"],
                 download_bytes=lock["download_bytes"] + plan["payload_bytes"],
                 parent_receipt_sha256=plan["receipts"][BASE_RECEIPT],
-                toolchain_receipt_sha256=plan["receipts"][TOOLCHAIN_RECEIPT])
+                toolchain_receipt_sha256=plan["receipts"][TOOLCHAIN_RECEIPT],
+                status_version=plan.get("status_version", lock["status_version"]))
     for profile in installer_image.profiles_of(lock):
         installer_image.validate(lock, profile)
     return lock
@@ -207,7 +421,7 @@ def record(context, image_id, name, output, run=_run):
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
     return {"lock": str(output), "image_id": lock["image_id"], "profiles": lock["profiles"],
-            "serving_qualified": False}
+            "status_version": lock["status_version"], "serving_qualified": False}
 
 
 def main(argv=None):
@@ -220,6 +434,8 @@ def main(argv=None):
                           help="the parent's " + BASE_RECEIPT)
     prepared.add_argument("--toolchain-receipt", required=True, type=Path,
                           help="the parent's " + TOOLCHAIN_RECEIPT)
+    prepared.add_argument("--status-artifacts", type=Path,
+                          help="directory holding the descriptor's pinned status wheel and source archive")
     prepared.add_argument("--output", required=True, type=Path)
     recorded = actions.add_parser("record", help="admit a built image and write its installer lock")
     recorded.add_argument("--context", required=True, type=Path)
@@ -230,7 +446,7 @@ def main(argv=None):
     try:
         if args.action == "prepare":
             result = prepare(args.descriptor, args.repository, args.base_receipt, args.toolchain_receipt,
-                             args.output)
+                             args.output, args.status_artifacts)
         else:
             result = record(args.context, args.image, args.name, args.output)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:

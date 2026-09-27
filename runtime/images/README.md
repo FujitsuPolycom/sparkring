@@ -135,6 +135,27 @@ transport, feature and status packages, and the B12X sources that the prepared
 RoCE transport verifies at startup; changing those needs a new transport
 manifest or composition instead.
 
+A descriptor may also replace the runtime-status package with a
+`runtime_status` entry that pins a pure wheel and its source archive by file
+name and SHA-256; `prepare --status-artifacts DIRECTORY` reads both. The image
+installs that package from its wheel into `/opt/sparkring/python`. The image's
+`verify` requires the complete inventory of that directory to equal the
+receipt's `python_roots` and the receipt's `files` entries under it, and
+requires every path in `removed_files` to be absent. The installer's admission
+requires the receipt's `capabilities.runtime_status.version` to equal the lock's
+`status_version`, which must match `0.3.x`. The builder therefore admits the
+wheel with the image preparer's rules (package modules equal to the source
+archive's, official entry points, `fastapi>=0.115` as the only dependency,
+consistent `METADATA`, `WHEEL` and `RECORD`), requires a `0.3.x` version other
+than the parent's, and rewrites those receipt fields together: the parent
+version's files leave `files` and `python_roots` and enter `removed_files`, and
+`capabilities.runtime_status` records the wheel's version and the wheel and
+source-archive SHA-256. The layer's Dockerfile removes the parent version's
+`dist-info` directory before copying the wheel's files, and `record` writes the
+wheel's version into the lock's `status_version`. `composition_sha256` keeps
+naming the parent's composition; the provenance receipt records the replaced
+status version and files.
+
 1. On a host that holds the parent image, copy its two receipts:
 
    ```bash
