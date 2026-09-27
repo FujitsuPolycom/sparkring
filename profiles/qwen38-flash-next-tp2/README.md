@@ -39,14 +39,7 @@ logs and recovery. To run the same containers with Docker Compose, see
 
 ## Performance
 
-One pair, step 5500 ([record](../../performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md)). Single stream, 512 tokens at
-temperature 0; prefill is one cold prompt:
-
-| Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
-|---|---|
-| 49.3 / 77.4 / 84.8 | 4,077 / 3,762 |
-
-Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench), temperature 1.0), total
+One pair, step 5500 ([record](../../performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md)). Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench), temperature 1.0), total
 tokens/s across streams:
 
 | Context | Prefill | 1 stream | 8 streams | 16 streams |

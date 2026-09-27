@@ -40,14 +40,7 @@ covers requirements, logs and recovery. Per-rank Compose files:
 
 ## Performance
 
-One four-Spark ring, step 5500 ([record](../../performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md)). Single stream, 512 tokens at
-temperature 0; prefill is one cold prompt:
-
-| Decode prose / code / JSON (tokens/s) | Prefill 16K / 64K (tokens/s) |
-|---|---|
-| 70.7 / 108.4 / 118.1 | 5,024 / 4,664 |
-
-Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench), temperature 1.0), total
+One four-Spark ring, step 5500 ([record](../../performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md)). Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench), temperature 1.0), total
 tokens/s across streams:
 
 | Context | Prefill | 1 stream | 8 streams | 16 streams |
