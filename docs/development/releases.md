@@ -17,6 +17,18 @@ when build inputs change; do not rewrite a publication receipt, retag evidence,
 or update preserved hashes merely to pass CI. Record a rollback image and its
 compatible site configuration before changing an operational default.
 
+A shared installer image lock (`sparkring-installer-image/v2`),
+`runtime/releases/<release>/installer-image.json`, pins one image and lists the
+installer profiles admitted to run on it. Admitting a profile to that image
+changes only the lock's sorted `profiles` list: the lock and its `sha256` entry
+in the same directory's `release.json` are rewritten in place, and the release
+keeps its identifier because the image and its receipts are unchanged. Any
+other change to the lock, such as its image, a receipt digest or a size, needs
+a distinct release. Each installer deployment's identity includes the lock, so
+after an admission the next `sparkring install` of any profile on the lock
+creates a separate deployment. [Contributing an installer profile](installer-profiles.md)
+gives the admission steps.
+
 Prepare the candidate and local PR description before requesting adoption.
 Pushes, GitHub posts, merges, image publication and cluster operations require
 the user's applicable authorization. Normal reviewed Git history makes rollback

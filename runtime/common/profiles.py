@@ -92,7 +92,12 @@ def load(profile_id, root=ROOT):
         if set(item) != {"path", "sha256"} or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"]):
             raise ValueError(f"{profile_id}: invalid release input digest")
         if hashlib.sha256(local_path(item["path"], root).read_bytes()).hexdigest() != item["sha256"]:
-            raise ValueError(f"{item['path']}: release input changed; select a distinct release instead of relabeling evidence")
+            remedy = "select a distinct release instead of relabeling evidence"
+            if Path(item["path"]).name == "installer-image.json":
+                # Admitting a profile to an installer image lock rewrites the lock and
+                # this digest in place (docs/development/releases.md).
+                remedy = f"if only its profiles list changed, record its new SHA-256 in {p['release']}; otherwise {remedy}"
+            raise ValueError(f"{item['path']}: release input changed; {remedy}")
     return p, release
 
 

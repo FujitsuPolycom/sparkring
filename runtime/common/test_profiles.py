@@ -198,12 +198,21 @@ def test_bad_references_rejected(repository, path):
         profiles.local_path(path, repository)
 
 
-def test_release_hash_change_rejected(repository):
+@pytest.mark.parametrize('name,remedy', [
+    ('launcher.py', 'release input changed; select a distinct release'),
+    # Only an installer image lock names the in-place admission case.
+    ('runtime/releases/example/installer-image.json',
+     'release input changed; if only its profiles list changed, record its new SHA-256 in '
+     'runtime/releases/example/release.json; otherwise select a distinct release'),
+], ids=['release-input', 'installer-image-lock'])
+def test_release_hash_change_rejected(repository, name, remedy):
+    if not (repository/name).exists():
+        write(repository/name, {'schema': 'sparkring-installer-image/v2'})
     path = repository/'runtime/releases/example/release.json'
     data = profiles.read_json(path)
-    data['inputs'] = [{'path': 'launcher.py', 'sha256': 'a'*64}]
+    data['inputs'] = [{'path': name, 'sha256': 'a'*64}]
     write(path, data)
-    with pytest.raises(ValueError, match='release input changed'):
+    with pytest.raises(ValueError, match=remedy):
         profiles.resolve('example', root=repository)
 
 
