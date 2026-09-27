@@ -115,3 +115,67 @@ The original receipt, patch, and descriptor remain under
 `/opt/sparkring/receipts/source-*`. Build each extension from its recorded parent;
 the installer rejects applying another extension over an already extended image.
 This keeps each recipe's source changes relative to an explicit shared base.
+
+## Derived installer layers
+
+[derived_layer.py](derived_layer.py) derives an installer image that adds or
+replaces a few Python files in the serving interpreter's site-packages, in one
+layer over a pinned installer image. The installer image lock pins the SHA-256
+of two receipts inside the image: the external-base receipt, whose file map the
+image's `verify` checks, and the toolchain receipt, which records the
+external-base receipt. The derived layer records each file in the first,
+re-records the second, and adds a provenance receipt that lists every path with
+its inherited and resulting SHA-256.
+
+A `sparkring-derived-layer-descriptor/v1` descriptor names the parent installer
+lock, each image path with its repository source, pinned SHA-256 and inherited
+SHA-256 (`null` for an addition), the provenance receipt path and the layer's
+purpose. The builder refuses native libraries, the startup hooks that select the
+transport, feature and status packages, and the B12X sources that the prepared
+RoCE transport verifies at startup; changing those needs a new transport
+manifest or composition instead.
+
+1. On a host that holds the parent image, copy its two receipts:
+
+   ```bash
+   docker run --rm --pull never --network none --entrypoint cat PARENT_IMAGE_ID \
+     /opt/sparkring/receipts/external-base-installed.json > base.json
+   docker run --rm --pull never --network none --entrypoint cat PARENT_IMAGE_ID \
+     /opt/sparkring/toolchain/installed.json > toolchain.json
+   ```
+
+2. Prepare the context offline. `prepare` checks both receipts against the
+   parent lock and every source against its pinned SHA-256:
+
+   ```bash
+   python3 runtime/images/derived_layer.py prepare \
+     --descriptor runtime/images/compositions/DESCRIPTOR_DIRECTORY/descriptor.json \
+     --base-receipt base.json --toolchain-receipt toolchain.json --output CONTEXT
+   ```
+
+3. Build. BuildKit resolves a bare image ID as a registry name, so give the
+   parent a local tag first:
+
+   ```bash
+   docker tag PARENT_IMAGE_ID sparkring-dev/parent:PARENT_ID_PREFIX
+   docker build --build-arg PARENT_IMAGE=sparkring-dev/parent:PARENT_ID_PREFIX -t TAG CONTEXT
+   ```
+
+4. Record the lock. `record` confirms that the parent has none of the added
+   paths, runs the installer's admission for every profile of the lock,
+   including the image's isolated `verify`, and writes the lock:
+
+   ```bash
+   python3 runtime/images/derived_layer.py record --context CONTEXT \
+     --image BUILT_IMAGE_ID --name RELEASE --output LOCK
+   ```
+
+The written lock is a development lock: its `image_reference` is the local
+configuration ID and its `download_bytes` is an upper bound. Publication
+replaces both from the registry and adds the release's `publication.json` and
+`release.json` ([release procedure](../../docs/development/releases.md)). No
+step selects the image for a profile.
+
+| Descriptor | Parent | Adds | Status |
+|---|---|---|---|
+| [installer-b12x-selection-cache](compositions/installer-b12x-selection-cache/descriptor.json) | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | [B12X reconciled selection-cache correction](../../integrations/b12x/selection_cache/README.md) | No image built |
