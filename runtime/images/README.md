@@ -199,4 +199,4 @@ step selects the image for a profile.
 
 | Descriptor | Parent | Adds | Status |
 |---|---|---|---|
-| [installer-b12xcache-status032](compositions/installer-b12xcache-status032/descriptor.json) | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | [B12X reconciled selection-cache correction](../../integrations/b12x/selection_cache/README.md) | No image built |
+| [installer-b12xcache-status032](compositions/installer-b12xcache-status032/descriptor.json) | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | [B12X reconciled selection-cache correction](../../integrations/b12x/selection_cache/README.md) and runtime-status 0.3.2 | Built locally as `dev-20260927-b12xcache-cuda1342-nccl2323-status032` (configuration `sha256:c11021dc9849`, [development lock](../releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/installer-image.json)); not published |
