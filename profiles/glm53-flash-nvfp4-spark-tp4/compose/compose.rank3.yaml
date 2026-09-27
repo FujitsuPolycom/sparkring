@@ -41,7 +41,7 @@ services:
     - --kv-cache-memory-bytes
     - '25769803776'
     - --mamba-block-size
-    - '256'
+    - '512'
     - --limit-mm-per-prompt
     - '{"image":4,"video":1}'
     - --media-io-kwargs
@@ -79,7 +79,7 @@ services:
     - --attention-backend
     - B12X
     - --block-size
-    - '256'
+    - '512'
     - --moe-backend
     - b12x
     - --linear-backend
@@ -122,7 +122,7 @@ services:
       NCCL_DEBUG: WARN
       NCCL_DEBUG_SUBSYS: NET,INIT,GRAPH
       NCCL_IB_DISABLE: '0'
-      NCCL_IB_EXTENDED_IPV4_GIDS: '0'
+      NCCL_IB_EXTENDED_IPV4_GIDS: '1'
       NCCL_IB_GID_INDEX: '3'
       NCCL_IB_HCA: =rocep1s0f0:1,rocep1s0f1:1,roceP2p1s0f0:1,roceP2p1s0f1:1
       NCCL_IB_MERGE_NICS: '0'
@@ -158,14 +158,16 @@ services:
       TVM_FFI_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-4100e1d2bd03-a608241037e4/tvm-ffi
       VLLM_ALLREDUCE_USE_FLASHINFER: '0'
       VLLM_ALLREDUCE_USE_SYMM_MEM: '0'
-      VLLM_B12X_MLA_CKV_GATHER: auto
-      VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS: '524288'
+      VLLM_B12X_KDA_PREFILL_COALESCING: '1'
+      VLLM_B12X_MLA_CKV_GATHER: '0'
       VLLM_B12X_MOE_FP4_FORCE_A16: '0'
       VLLM_CACHE_ROOT: /cache/glm53-flash-nvfp4-spark-4100e1d2bd03-a608241037e4/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH: '1'
       VLLM_GLM53_MHC_PREFILL_SHARD: '1'
+      VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE: '512'
+      VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE: '512'
       VLLM_HOST_IP: 192.0.2.13
       VLLM_NCCL_INCLUDE_PATH: /opt/sparkring/toolchain/nccl/include
       VLLM_NCCL_SO_PATH: /opt/sparkring/toolchain/nccl/lib/libnccl.so.2
@@ -180,7 +182,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-4100e1d2bd03-a608241037e4
     labels:
-      io.sparkring.deployment: 4f2a73acbc582728101035ddeff07018142356879dc9764346b8ea18238ba3dd
+      io.sparkring.deployment: 8e55c504f8076e015254d247c465c4cf518f04fea892fa456ec928c5be06c593
       io.sparkring.rank: '3'
     network_mode: host
     ipc: host
