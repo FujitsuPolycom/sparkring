@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
-  "status": "research-only",
+  "status": "implemented",
   "model": {
     "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
     "revision": "dba1be0a40aa45a94ad051997016db3960a90277",

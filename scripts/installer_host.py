@@ -1311,6 +1311,18 @@ def require_idle():
         raise ValueError("GPU has a workload; stop only the intended workload before retrying")
 
 
+def release_host_memory():
+    """Write back dirty pages, drop clean page cache and reclaimable kernel caches, and compact free memory.
+
+    A GB10's GPU allocates from the host's memory, so each model starts from
+    cleared memory whatever the Spark read beforehand; verifying a checkpoint
+    reads all of it. The GPU is idle when this runs, and the cost is re-reading
+    files, the checkpoint's weights among them.
+    """
+    run(["sync"], timeout=600)
+    run(["sysctl", "-q", "-w", "vm.drop_caches=3", "vm.compact_memory=1"], timeout=600)
+
+
 def smoke_request(card):
     """Chat-template settings for the smoke request, owned by the serving profile.
 
@@ -1604,6 +1616,7 @@ def perform(operation, lock, number):
                 if "image_runtime" in lock:
                     check_runtime_binding(lock, row, info)
                 if not info["State"].get("Running"):
+                    release_host_memory()
                     run(["docker", "start", info["Id"]])
             return {"ok": True}
         if operation == "ready":

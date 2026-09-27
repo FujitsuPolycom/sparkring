@@ -1,6 +1,7 @@
 # DeepSeek-V4.1-Flash on four Sparks with the installer image
 
-Status: **research-only; measured on one four-Spark ring; not
+Status: **implemented; one installation through `sparkring install` on one
+four-Spark ring passed the functional checks; single-run timing; not
 serving-qualified**.
 
 The `deepseek-v41-flash-tp4` profile serves `deepseek-ai/DeepSeek-V4.1-Flash`
@@ -122,6 +123,37 @@ sets. The conditions differ, so these values are not a matched comparison:
 | Prefill | 1,873 tokens/s at 16K, 2,058 at 64K (packed Engram shards, from the [profile guide](../../../profiles/deepseek-v41-flash-cycle/README.md)) | 4,445 at 16K, 4,358 at 64K (first pass) |
 | One stream | code 81-83, prose 31-33 tokens/s (decode shapes probe) | code 99.9, prose 50.4 tokens/s (greedy, 512 tokens) |
 | Eight streams | 88-98 tokens/s aggregate (temperature 1.0, 256-token replies) | 145.9 tokens/s (temperature 1.0, up to 2,048 tokens) |
+
+## Installation
+
+The published one-line installer at source revision `f88f5a217538` ran
+`sparkring install --profile deepseek-v41-flash-tp4 --yes` on Node A of the
+same ring, replacing GLM-5.3-Flash. It found the checkpoint copy on each Spark
+in 8.6-12.2 s, whose SHA-256 it had recorded when it hard-linked them, and
+downloaded nothing. The B12X tuning cache for this profile was empty.
+
+| Measure | Result |
+|---|---|
+| Command start to `Model ready:` | 803 s |
+| Rank 0 API readiness | 741.4 s: weights (74.6 GiB per rank) loaded in 30.5 s, then B12X prepared 1,882 kernel requests |
+| [`functional.py`](dev-20260927-h2dstaging-deepseek-v41-tp4-20260927/programs/functional.py) | 7 of 7 passed: counting, arithmetic, code, an automatic and a forced tool call, an image, and thinking on |
+
+Every start of this profile's settings on these Sparks, in the settings search
+and in the installation, logged 160-260 kernel messages `NVRM: ... Out of
+memory [NV_ERR_NO_MEMORY]` on Node A while B12X prepared kernels after the KV
+cache allocation, then served normally.
+
+An earlier installation from the same revision failed. Its rank-0 engine exited
+52 s after starting, in NCCL initialization, with `Cuda failure 'out of
+memory'` and 4 `NV_ERR_NO_MEMORY` kernel messages, and the installer restored
+the previous deployment. That start came 33 s after the installer had hashed
+the whole checkpoint on every Spark with no model running. Two restarts of the
+same containers after reading the whole checkpoint the same way (16 concurrent
+readers per Spark, leaving 91-106 GiB of page cache and 11-24 GiB free)
+initialized NCCL and loaded the weights normally, so the cause is not
+established. Installer revisions after `f88f5a217538` clear each Spark's host
+memory immediately before its model starts
+([install reference](../../../docs/operations/install-reference.md#install-a-model)).
 
 ## Correctness screen
 

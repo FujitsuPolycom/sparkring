@@ -109,9 +109,14 @@ recognized from that Spark's inventory.
 
 The command updates workers from Node A's package, reuses cached images and
 weights, and copies missing assets over verified fabric paths. It prepares
-assets before stopping the previous managed model. A failed switch attempts
-recovery from the retained deployment and records the outcome. A successful
-installation ends with `Model ready:` and the model's API URL on Node A.
+assets before stopping the previous managed model. Immediately before a
+Spark's model container starts, that Spark writes back dirty pages, drops its
+clean page cache and reclaimable kernel caches, and compacts free memory: a
+GB10's GPU allocates from the same memory, so the model starts from cleared
+memory whatever the Spark read before, and it reads its weights from disk. A
+failed switch attempts recovery from the retained deployment and records the
+outcome. A successful installation ends with `Model ready:` and the model's API
+URL on Node A.
 
 Running the command again for the installed model leaves that model running
 while it serves: its container runs on every Spark, and every ring check

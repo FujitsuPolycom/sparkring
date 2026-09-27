@@ -144,6 +144,36 @@ def test_container_ownership_is_more_than_a_name(profile, change, monkeypatch):
         host.owned(spec, info, image)
 
 
+@pytest.mark.parametrize("running", [False, True])
+def test_a_model_starts_from_cleared_host_memory(running, tmp_path, monkeypatch):
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    lock["site"]["workspace"] = str(tmp_path / "workspace")
+    (tmp_path / "workspace").mkdir()
+    (tmp_path / "workspace/.installer-owner.json").write_text(json.dumps({"deployment": lock["id"]}))
+    spec = installer.specifications(lock, only_rank=0)[0]
+    info, image = inspection(spec)
+    info["State"]["Running"] = running
+    events = []
+    monkeypatch.setattr(host, "run", lambda argv, **kwargs: events.append(argv) or SimpleNamespace(returncode=0, stdout=""))
+    monkeypatch.setattr(installer, "validate", lambda value: value)
+    monkeypatch.setattr(host, "image_info", lambda lock: image)
+    monkeypatch.setattr(host, "container", lambda spec: info)
+    monkeypatch.setattr(host, "owned", lambda spec, value, image: value)
+    monkeypatch.setattr(host, "admit_image", lambda lock: {})
+    monkeypatch.setattr(host, "verify_model", lambda *a, **k: None)
+    monkeypatch.setattr(host, "check_runtime_binding", lambda *a, **k: None)
+    monkeypatch.setattr(host.qwen_flash_next, "verify_model_paths", lambda *a: None)
+    monkeypatch.setattr(compose, "check_project_containers", lambda *a, **k: None)
+    monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
+    assert host.perform("start", lock, 0) == {"ok": True}
+    if running:
+        assert events == []
+        return
+    assert events == [["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], ["sync"],
+                      ["sysctl", "-q", "-w", "vm.drop_caches=3", "vm.compact_memory=1"],
+                      ["docker", "start", info["Id"]]]
+
+
 @pytest.mark.parametrize("selinux", [False, True])
 def test_daemon_empty_capabilities_and_nvidia_selinux_default(selinux, monkeypatch):
     lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)

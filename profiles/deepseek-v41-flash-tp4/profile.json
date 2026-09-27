@@ -3,14 +3,14 @@
   "id": "deepseek-v41-flash-tp4",
   "title": "DeepSeek-V4.1-Flash on four Sparks",
   "recommendation": "recommended",
-  "status": "research-only",
+  "status": "implemented",
   "configuration": {
     "format": "serving-profile",
     "path": "profiles/deepseek-v41-flash-tp4/config.json"
   },
   "release": "runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/release.json",
   "guide": "docs/operations/install.md",
-  "evidence_scope": "DSpark5 with NVFP4 draft, Engram tables on disk read before each step, 16 sequences, on installer image dev-20260927-h2dstaging-cuda1342-nccl2323-status031: a settings search in serving containers derived from the installer deployment and two concurrency matrices on one four-Spark ring (performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md); single-run timing; not serving-qualified.",
+  "evidence_scope": "DSpark5 with NVFP4 draft, Engram tables on disk read before each step, 16 sequences, on installer image dev-20260927-h2dstaging-cuda1342-nccl2323-status031: one installation through `sparkring install` on a four-Spark ring, adopting the checkpoint copies on the Sparks, passed counting, arithmetic, code, tool-call, image and thinking checks; the settings come from a search in serving containers derived from the installer deployment, with two concurrency matrices (performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md); single-run timing; not serving-qualified.",
   "overrides": [],
   "launcher": {
     "kind": "python",
