@@ -48,17 +48,18 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 ## Profiles
 
 `sparkring install --profile` accepts these profiles. Every profile runs image
-`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`. The Qwen, GLM and MiMo
-figures were measured on its parent image,
+`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`. The four-Spark GLM and
+DeepSeek figures were measured on it. The Qwen, MiMo and two-Spark GLM figures
+were measured on its parent image,
 `dev-20260925-qwendecode-cuda1342-nccl2323-status031`, which lacks vLLM's
-host-to-device staging fix; they have not been measured on the selected image.
+host-to-device staging fix, and have not been measured on the selected image.
 
 | Model | Checkpoint | Sparks | `--profile` value | API port | Decode (tok/s, one user) | Decode (tok/s, 8 / 16 users) | Prefill 16K (tok/s) |
 |---|---|---|---|---|---|---|---|
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 49.3–84.8 | 198 / 284 | 4,077 |
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 70.7–118.1 | 276 / 408 | 5,024 |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 32.3–40.0 | 104 / — | 2,440 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 60.6–77.5 | 205 / 282 | 3,399 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 60.6–77.5 | 200 / 278 | 3,399 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 25.7–62.8 | — | 3,802 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 44.8–111.5 | — | 4,253 |
 | DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 49.8–110.8 | 146 / 216 | 4,406 |

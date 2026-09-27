@@ -110,14 +110,19 @@ split pages of 512 tokens for both caches and no attention block-size
 adjustment; the KV pool is 2,173,412 tokens. With no other traffic, the probe
 measured prefill 3,374-3,399 tokens/s at 16K and decode 60.6 / 64.7 / 77.5
 tokens/s (prose / code / JSON); the issue #294 concurrency probe returned no
-degenerate response in 1,024 requests.
+degenerate response in 1,024 requests. A later installation of the same profile and image
+from the one-line installer at `f7495d3899b2`, matrix with no added context
+(`tp4-matrix-installed-profile.json`): 66.0 tokens/s at one stream (25.4
+steps/s × 2.60), 199.5 at 8 streams (73.8 × 2.70) and 278.4 at 16 streams
+(102.8 × 2.71); prefill 3,800 / 3,657 / 3,523 tokens/s at 8K / 64K / 128K.
 
 ## Files
 
 The [measurement directory](dev-20260925-qwendecode-glm-prefill-20260926/)
 holds each matrix (`tp4-matrix-shared-pages.json`,
 `tp4-matrix-profile-settings.json`,
-`tp4-matrix-profile-settings-long-context.json`, `tp2-matrix-installer.json`
+`tp4-matrix-profile-settings-long-context.json`, `tp4-matrix-installed-profile.json`,
+`tp2-matrix-installer.json`
 and the QAD reference `tp4-matrix-native-qad-reference.json`, with the
 benchmark client's host diagnostics and the server address removed), the probe
 output of both settings searches (`tp4-probes.txt`, `tp2-probes.txt`) and the
