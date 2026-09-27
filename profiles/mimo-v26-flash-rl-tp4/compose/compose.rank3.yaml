@@ -109,7 +109,7 @@ services:
       NCCL_DEBUG: WARN
       NCCL_DEBUG_SUBSYS: NET,INIT,GRAPH
       NCCL_IB_DISABLE: '0'
-      NCCL_IB_EXTENDED_IPV4_GIDS: '0'
+      NCCL_IB_EXTENDED_IPV4_GIDS: '1'
       NCCL_IB_GID_INDEX: '3'
       NCCL_IB_HCA: =rocep1s0f0:1,rocep1s0f1:1,roceP2p1s0f0:1,roceP2p1s0f1:1
       NCCL_IB_MERGE_NICS: '0'
@@ -162,7 +162,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/mimo-v26-flash-rl-c11021dc9849-5711b2681699
     labels:
-      io.sparkring.deployment: 75551feb36fb677d636e962a0729b52a470f11a4e5e70ee43f5fb2b172f1cd4e
+      io.sparkring.deployment: 76f79003f6dda86a5fd3b7f102a6ebb60c84af78f14b803db3c7cae421600712
       io.sparkring.rank: '3'
     network_mode: host
     ipc: host

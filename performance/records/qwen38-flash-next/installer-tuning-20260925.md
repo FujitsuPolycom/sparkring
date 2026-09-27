@@ -311,5 +311,6 @@ route every sequence to the same experts, so MoE cost at C > 1 is lower than
 with mixed traffic. Apart from the runs under Installer deployments, the test
 containers share the installer deployments' settings but are not installer
 deployments. The TP2 profiles pin two NIC
-functions and were not measured with extended GIDs; the GLM and MiMo TP4
-profiles keep `NCCL_IB_EXTENDED_IPV4_GIDS=0` and were not measured with it.
+functions and were not measured with extended GIDs. The GLM, MiMo and
+DeepSeek four-Spark profiles also set `NCCL_IB_EXTENDED_IPV4_GIDS=1`; their
+measurements are in their own records.
