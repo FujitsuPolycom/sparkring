@@ -67,7 +67,7 @@ Decode is the aggregate output rate from
 added context, up to 2,048 output tokens, 20 s per cell after a 5 s warm-up.
 Prefill is one cold 64K-token prompt divided by its time to first token, from
 the same run. Every profile runs image
-`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`; the four-Spark GLM and
+`dev-20260927-b12xcache-cuda1342-nccl2323-status032`; the four-Spark GLM and
 DeepSeek rows and the two-Spark Swift row were measured on it, and the Qwen and
 two-Spark GLM rows on its parent image,
 `dev-20260925-qwendecode-cuda1342-nccl2323-status031`. The GLM pair profile

@@ -13,7 +13,7 @@ The [NVIDIA GLM NVFP4 target](glm53-nvidia-nvfp4.md) is an optional Development
 variant of the GLM TP4 settings below; NVFP4-Spark remains their default.
 
 The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
-runs on image `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`
+runs on image `dev-20260927-b12xcache-cuda1342-nccl2323-status032`
 ([Install SparkRing](../docs/operations/install.md)). Their KV links point to
 the shared-2026.09.3 [correctness summary](../runtime/releases/shared-2026.09.3/correctness.json),
 whose figures were measured on the shared-2026.09.3 image with checkpoint step

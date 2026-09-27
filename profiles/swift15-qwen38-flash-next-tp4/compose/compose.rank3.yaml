@@ -3,7 +3,7 @@ name: sr-swift-tp4-example-r3
 services:
   model:
     container_name: sr-swift-tp4-example-r3
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:3901a80816898e3265a9012f2e263940706ff6e7bfc273949d1b2eec26f08d3b
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -99,8 +99,8 @@ services:
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
       CUDA_VERSION: 13.4.2
-      CUTE_DSL_CACHE_DIR: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2/cute
-      FLASHINFER_WORKSPACE_BASE: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2/flashinfer
+      CUTE_DSL_CACHE_DIR: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2/cute
+      FLASHINFER_WORKSPACE_BASE: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2/flashinfer
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       NCCL_ALGO: Ring
@@ -141,13 +141,13 @@ services:
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 2eef276d54030a71c4774b92c89008dd563104b791734f6f588a3ca34a7c4943
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TILELANG_CACHE_DIR: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2/tilelang
-      TORCHINDUCTOR_CACHE_DIR: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2/inductor
+      TILELANG_CACHE_DIR: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2/tilelang
+      TORCHINDUCTOR_CACHE_DIR: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2/triton
-      TVM_FFI_CACHE_DIR: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2/tvm-ffi
+      TRITON_CACHE_DIR: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2/triton
+      TVM_FFI_CACHE_DIR: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2/tvm-ffi
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-      VLLM_CACHE_ROOT: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2/vllm
+      VLLM_CACHE_ROOT: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -173,9 +173,9 @@ services:
       VLLM_SSM_CONV_STATE_LAYOUT: DS
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/swift15-qwen38-flash-next-fb6be60ff426-3ff0520224f2
+      XDG_CACHE_HOME: /cache/swift15-qwen38-flash-next-c11021dc9849-3ff0520224f2
     labels:
-      io.sparkring.deployment: c7624565007a3ddee3c34ba1a1c50461e074b64e19f5bc1233edb96b3a67f658
+      io.sparkring.deployment: 0f9288a1e475670e8b5625d1c9b0ba0dfbce1ebfe6370f34e2a2e2bf1f309615
       io.sparkring.rank: '3'
     network_mode: host
     ipc: host

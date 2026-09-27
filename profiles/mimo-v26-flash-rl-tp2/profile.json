@@ -8,9 +8,9 @@
     "format": "serving-profile",
     "path": "profiles/mimo-v26-flash-rl-tp2/config.json"
   },
-  "release": "runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/release.json",
+  "release": "runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/release.json",
   "guide": "docs/operations/install.md",
-  "evidence_scope": "DFlash5 draft, MXFP8 MoE and safetensors draft loader, with two-node settings derived from the TP4 profile, on installer image dev-20260925-qwendecode-cuda1342-nccl2323-status031: one installation through `sparkring install` on a pair, adopting the checkpoint copies on the Sparks, passed counting, arithmetic and code checks (performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md); single-run timing; not serving-qualified. This profile runs image dev-20260927-h2dstaging-cuda1342-nccl2323-status031, which is dev-20260925-qwendecode-cuda1342-nccl2323-status031 with vLLM's host-to-device staging fix (CpuGpuBuffer.copy_to_gpu copies through fresh pinned memory); the evidence above was measured on dev-20260925-qwendecode-cuda1342-nccl2323-status031.",
+  "evidence_scope": "DFlash5 draft, MXFP8 MoE and safetensors draft loader, with two-node settings derived from the TP4 profile, on installer image dev-20260925-qwendecode-cuda1342-nccl2323-status031: one installation through `sparkring install` on a pair, adopting the checkpoint copies on the Sparks, passed counting, arithmetic and code checks (performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md); single-run timing; not serving-qualified. This profile runs image dev-20260927-b12xcache-cuda1342-nccl2323-status032, which is dev-20260927-h2dstaging-cuda1342-nccl2323-status031 with a B12X selection-cache correction, so starts on several Sparks reuse the kernel tuning the ranks have already agreed on, and runtime-status 0.3.2, whose dashboard shows the served model name; the evidence above was measured on dev-20260925-qwendecode-cuda1342-nccl2323-status031.",
   "overrides": [],
   "launcher": {
     "kind": "python",

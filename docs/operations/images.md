@@ -16,11 +16,11 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`.
+Development image, tag `dev-20260927-b12xcache-cuda1342-nccl2323-status032`.
 The download is 14.2 GiB and the unpacked image 29.5 GiB. Its
-[installer image lock](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/installer-image.json)
 lists the nine profiles and pins its identity; its
-[publication record](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/publication.json)
+[publication record](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/publication.json)
 names the parent image and the added layer.
 
 | Component | Purpose |
@@ -28,9 +28,10 @@ names the parent image and the added layer.
 | `eugr/spark-vllm-b12x:nightly-20260924` base | vLLM with [Local Inference Lab's B12X](https://github.com/local-inference-lab/b12x) kernels and loaders for GB10 |
 | CUDA 13.4.2 and NCCL 2.32.3 | CUDA runtime and the NCCL library the installer selects |
 | Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives whose forwarded-path send window bounds traffic relayed by a ring node |
-| Runtime-status dashboard 0.3.1 | `/v1/sparkring/status/view` on the model API port |
+| Runtime-status dashboard 0.3.2 | `/v1/sparkring/status/view` on the model API port; the header shows the served model name and the checkpoint architecture on its own line |
 | Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10, and the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
 | Host-to-device staging fix | vLLM's `CpuGpuBuffer.copy_to_gpu` copies through fresh pinned memory, so a host buffer rewritten for the next step while its copy is still queued cannot change the copied data. Without it, Qwen with MTP, async scheduling and FULL CUDA graphs decoded about 0.2-0.5% of concurrent requests as token 8191 (` Register`) repeated ([#294](https://github.com/FujitsuPolycom/sparkring/issues/294)) |
+| B12X selection-cache correction | When kernel tuning is shared across the ranks of a two- or four-Spark deployment, B12X reads its tuning cache once the ranks have reconciled it, so a restart reuses earlier tuning instead of measuring every kernel again ([integrations/b12x/selection_cache](../../integrations/b12x/selection_cache/README.md)). A DeepSeek-V4.1-Flash four-Spark restart became healthy in 200-225 s instead of 652-741 s |
 
 `sparkring install` starts it with the image's entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that

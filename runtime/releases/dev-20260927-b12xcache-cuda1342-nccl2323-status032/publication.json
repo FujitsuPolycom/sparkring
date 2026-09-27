@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260927-b12xcache-cuda1342-nccl2323-status032",
+  "image_id": "sha256:c11021dc9849b6552ac7f5cb7281b41de4c35d4c2c65b47078c90417ff0a55b0",
+  "image_config_id": "sha256:c11021dc9849b6552ac7f5cb7281b41de4c35d4c2c65b47078c90417ff0a55b0",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:3901a80816898e3265a9012f2e263940706ff6e7bfc273949d1b2eec26f08d3b",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260927-b12xcache-cuda1342-nccl2323-status032",
+  "registry_manifest_digest": "sha256:3901a80816898e3265a9012f2e263940706ff6e7bfc273949d1b2eec26f08d3b",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.2",
+  "derivation": {
+    "parent_release": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031",
+    "parent_image_id": "sha256:fb6be60ff426d17f69a287f1f488e22ee037cf7ff865b2cd3971cb16e3dca03c",
+    "layers": [
+      "B12X selection cache: sparkring_b12x_selection_cache.py and its .pth file in site-packages replace PreparationJob._lookup in memory so that, when tuning is sharded across ranks, it reads the selection cache once the ranks have reconciled it; B12X package files, which the prepared RoCE transport verifies, are unchanged (integrations/b12x/selection_cache). Runtime-status 0.3.2 (source commit fc31b66c3aa006e8f478413dfca4c17cc0aeb20a, wheel 1fca6e26cb55) replaces 0.3.1 in /opt/sparkring/python; its views show the served model name. The image's composition_sha256 still names the 0.3.1 composition. /opt/sparkring/receipts/derived-b12xcache-status032.json records every added, replaced and removed file"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}
