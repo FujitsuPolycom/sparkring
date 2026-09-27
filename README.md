@@ -57,9 +57,9 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 40.2 / 104 / — | 2,375 |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 66.0 / 200 / 278 | 3,657 |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | — | — |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | — | — |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 51.9 / 146 / 216 | 4,411 |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 27.1 / 139 / 206 | 2,749 |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 48.5 / 189 / 336 | 4,064 |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 63.8 / 196 / 280 | 4,284 |
 
 Decode is the aggregate output rate from
 [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
@@ -67,14 +67,19 @@ Decode is the aggregate output rate from
 added context, up to 2,048 output tokens, 20 s per cell after a 5 s warm-up.
 Prefill is one cold 64K-token prompt divided by its time to first token, from
 the same run. Every profile runs image
-`dev-20260927-b12xcache-cuda1342-nccl2323-status032`; the four-Spark GLM and
-DeepSeek rows and the two-Spark Swift row were measured on it, and the Qwen and
-two-Spark GLM rows on its parent image,
-`dev-20260925-qwendecode-cuda1342-nccl2323-status031`. The GLM pair profile
-serves at most 8 requests. MiMo and the four-Spark Swift profile have not been
-measured with this benchmark. Measurements:
+`dev-20260927-b12xcache-cuda1342-nccl2323-status032`. The DeepSeek and
+four-Spark MiMo rows were measured on it; the four-Spark GLM row and the
+two-Spark Swift and MiMo rows on its parent image,
+`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, which lacks the B12X
+selection-cache correction and runtime-status 0.3.2; and the Qwen and
+two-Spark GLM rows on that image's parent,
+`dev-20260925-qwendecode-cuda1342-nccl2323-status031`, which also lacks vLLM's
+host-to-device staging fix. The GLM pair profile serves at most 8 requests.
+The four-Spark Swift profile has not been measured with this benchmark.
+Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),
 [GLM](performance/records/images/dev-20260925-qwendecode-glm-prefill-20260926.md),
+[MiMo](performance/records/images/dev-20260927-b12xcache-mimo-v26-20260927.md),
 [DeepSeek](performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md),
 [Swift](performance/records/images/dev-20260927-h2dstaging-swift15-qwen38-tp2-20260927.md).
 

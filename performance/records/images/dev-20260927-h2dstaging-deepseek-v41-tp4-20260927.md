@@ -1,12 +1,15 @@
 # DeepSeek-V4.1-Flash on four Sparks with the installer image
 
-Status: **implemented; two installations through `sparkring install` on one
+Status: **implemented; three installations through `sparkring install` on one
 four-Spark ring passed the functional checks; single-run timing; not
 serving-qualified**.
 
 The `deepseek-v41-flash-tp4` profile serves `deepseek-ai/DeepSeek-V4.1-Flash`
 revision `dba1be0a40aa` as four tensor-parallel ranks on image
-`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`. On GB10 the image's
+`dev-20260927-b12xcache-cuda1342-nccl2323-status032`. The settings search and
+the first two installations ran on its parent image,
+`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, which lacks the B12X
+selection-cache correction and runtime-status 0.3.2. On GB10 the image's
 vLLM runs the model through its native B12X path: B12X sparse MLA attention,
 the DSA indexer, MXFP4 routed experts on the `b12x` MoE backend (vLLM does not
 select it automatically, so the profile names it), the checkpoint's own FP8
@@ -237,6 +240,24 @@ cache (`281 cached, 0 measured` and `273 cached, 20 measured`), against
 652-741 s for the installations without it. The matrices are
 `tp4-matrix-speculative-*.json`.
 
+A third installation, `install.sh --profile deepseek-v41-flash-tp4 --yes
+--json` from commit `e9d998406c92` on image
+`dev-20260927-b12xcache-cuda1342-nccl2323-status032`, replaced a MiMo
+deployment. The API was ready 416 s after the model started: B12X took its
+GEMM and attention selections from the cache (281 and 273 cached, 0 and 20
+measured) and measured 711 RoCE transport candidates. `functional.py` passed
+7 of 7. The same benchmark at 20 s per cell
+(`tp4-matrix-installed-profile.json`):
+
+| Streams | Aggregate tokens/s |
+|---:|---:|
+| 1 | 63.8 (24.9 × 2.56) |
+| 8 | 196.1 (82.0 × 2.41) |
+| 16 | 279.9 (114.1 × 2.47) |
+
+Prefill of cold scout prompts in the same run: 4,262 / 4,284 / 4,056 tokens/s
+at 8K / 64K / 128K.
+
 ## Correctness screen
 
 On the first variant (Engram overlap on), 256 requests (8 rounds of
@@ -251,5 +272,6 @@ holds the variants, the probe output of the settings search
 (`tp4-probes.txt`, rank addresses replaced by `r0`-`r3`), the installed
 deployment's probe output (`tp4-probes-installed.txt`), both candidate
 matrices (`tp4-matrix-8-sequences.json`, `tp4-matrix-16-sequences.json`, with
-the benchmark client's host diagnostics and the server address removed) and
-the programs.
+the benchmark client's host diagnostics and the server address removed), the
+speculative-decoding matrices, the third installation's matrix
+(`tp4-matrix-installed-profile.json`) and the programs.
