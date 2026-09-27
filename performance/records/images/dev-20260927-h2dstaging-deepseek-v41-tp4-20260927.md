@@ -150,7 +150,23 @@ nothing:
 | [`functional.py`](dev-20260927-h2dstaging-deepseek-v41-tp4-20260927/programs/functional.py) | 7 of 7 | 7 of 7 |
 
 The functional checks are counting, arithmetic, code, an automatic and a forced
-tool call, an image, and thinking on. Most of each readiness time is B12X kernel
+tool call, an image, and thinking on.
+
+On the installation from `f3f7d01ed990`, the settings search's probes
+(`prefill_probe.py`, then `decode_probe.py` with 512 greedy tokens, two runs;
+output in `tp4-probes-installed.txt`) measured:
+
+| Prefill, first pass | 8K | 16K | 32K | 64K | 128K |
+|---|---:|---:|---:|---:|---:|
+| Tokens/s | 2,557 | 4,406 | 4,458 | 4,345 | 4,079 |
+
+| One stream | Prose | Code | JSON |
+|---|---:|---:|---:|
+| End-to-end tokens/s | 49.8 | 100.0 | 110.8 |
+| Tokens per verification step | 2.04 | 4.36 | 4.79 |
+
+The 8K prompt was the first long prompt after the start. Repeats of 16K and
+64K prompts prefilled at 4,184 and 4,336 tokens/s. Most of each readiness time is B12X kernel
 preparation of 1,882 requests: with every kernel already compiled, the
 installation from `f3f7d01ed990` still spent 6 min 12 s there, measuring
 `norm.mhc` candidates again although the tuning cache file on each Spark, under
@@ -185,7 +201,8 @@ On the first variant (Engram overlap on), 256 requests (8 rounds of
 
 The [measurement directory](dev-20260927-h2dstaging-deepseek-v41-tp4-20260927/)
 holds the variants, the probe output of the settings search
-(`tp4-probes.txt`, rank addresses replaced by `r0`-`r3`), both candidate
+(`tp4-probes.txt`, rank addresses replaced by `r0`-`r3`), the installed
+deployment's probe output (`tp4-probes-installed.txt`), both candidate
 matrices (`tp4-matrix-8-sequences.json`, `tp4-matrix-16-sequences.json`, with
 the benchmark client's host diagnostics and the server address removed) and
 the programs.

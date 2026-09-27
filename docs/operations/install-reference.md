@@ -28,7 +28,12 @@ When the built version is already installed, it skips `apt`. `--yes` also
 answers `sparkring install`'s questions. With `--plan` the script installs
 nothing: if this Spark has the package version it built,
 `sparkring install --plan` prints the plan; otherwise the script stops and
-names both versions. Its progress, questions and `apt` output go to standard
+names both versions. `--package-only` asks the same question, installs or
+keeps the package and stops before `sparkring install`, so
+`sudo sparkring install --profile PROFILE --plan` can review the rest; its
+JSON result has `state` `package-installed`, the `version`, the `previous`
+version and whether it `changed`. It cannot be combined with `--plan`. The
+script's progress, questions and `apt` output go to standard
 error, so with `--json` standard output holds one `sparkring-install-result/v1`
 document: the installer's result, or the script's own when it stops first,
 with `state` `failed` and the `stage` that failed (exit status 2) or

@@ -167,3 +167,29 @@ def test_bootstrap_failure_is_a_failed_result(tmp_path):
     assert (document["state"], document["stage"]) == ("failed", "fetch")
     assert "repository not found" in result.stderr
     assert calls == []
+
+
+@pytest.mark.parametrize("installed", [None, "0.1.0~dev.1+gitaaaa", BUILT])
+def test_package_only_stops_before_sparkring_install(tmp_path, installed):
+    result, calls = run_script(tmp_path, "--package-only", "--profile", "qwen38-flash-next-tp2", "--yes", "--json",
+                               installed=installed)
+    assert result.returncode == 0, result.stderr
+    document = only_document(result.stdout)
+    assert document["state"] == "package-installed"
+    assert (document["version"], document["previous"], document["changed"]) == (BUILT, installed, installed != BUILT)
+    assert document["source_revision"] == "a" * 40
+    assert [call.split()[0] for call in calls] == ([] if installed == BUILT else ["apt-get"])
+
+
+def test_package_only_still_needs_approval(tmp_path):
+    result, calls = run_script(tmp_path, "--package-only", "--json")
+    assert result.returncode == 3
+    assert only_document(result.stdout)["field"] == "approval"
+    assert calls == []
+
+
+def test_package_only_and_plan_are_exclusive(tmp_path):
+    result, calls = run_script(tmp_path, "--package-only", "--plan", "--json")
+    assert result.returncode == 2
+    assert only_document(result.stdout)["stage"] == "arguments"
+    assert calls == []

@@ -61,15 +61,14 @@ host-to-device staging fix; they have not been measured on the selected image.
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 60.6–77.5 | 205 / 282 | 3,399 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 25.7–62.8 | — | 3,802 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 44.8–111.5 | — | 4,253 |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | — | 146 / 216 | — |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 49.8–110.8 | 146 / 216 | 4,406 |
 
 One-user decode ranges from prose to JSON prompts at temperature 0. Decode for
 8 and 16 users is the aggregate llm-inference-bench rate at temperature 1.0
 with no added context; the GLM pair profile serves at most 8 requests, and
-MiMo is not yet measured this way. DeepSeek was measured on the selected image
-with its profile's settings through that benchmark only, which prefilled
-4,639 tokens/s at 8K and 4,411 at 64K; its one-user decode by prompt type and
-its 16K prefill were measured on neighboring settings. Measurements:
+MiMo is not yet measured this way. DeepSeek's figures were measured on the
+selected image with its profile's settings: one-user decode and prefill on an
+installed deployment, and 8 and 16 users in its settings search. Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),
 [GLM](performance/records/images/dev-20260925-qwendecode-glm-prefill-20260926.md),
 [MiMo](performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md),

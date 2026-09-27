@@ -16,6 +16,7 @@ REF="one-command-installer"
 YES=0
 PLAN=0
 JSON=0
+PACKAGE_ONLY=0
 
 say() {
   printf '%s\n' "$*" >&2
@@ -51,7 +52,7 @@ INSTALL_ARGS=()
 
 usage() {
   cat <<'EOF'
-usage: install.sh [--ref BRANCH_TAG_OR_COMMIT] [--repository URL] [SPARKRING_INSTALL_OPTION ...]
+usage: install.sh [--ref BRANCH_TAG_OR_COMMIT] [--repository URL] [--package-only] [SPARKRING_INSTALL_OPTION ...]
 
 Run on Node A, the Spark connected to your network, as a user with sudo.
 Clones the SparkRing repository at --ref and builds its Debian package, asks
@@ -59,6 +60,8 @@ before installing the package on this Spark, then runs `sudo sparkring install`
 with every other option, for example --profile qwen38-flash-next-tp2. That
 command asks for approval before it changes any Spark. --yes approves both.
 
+--package-only stops after installing the package, before any other Spark or
+model changes; `sudo sparkring install --plan` can then review the rest.
 --plan installs nothing: when this Spark already has the package version just
 built, `sparkring install --plan` prints the plan; otherwise the script stops
 and names both versions. --json prints one result document on standard output.
@@ -82,6 +85,10 @@ while (($#)); do
       usage
       exit 0
       ;;
+    --package-only)
+      PACKAGE_ONLY=1
+      shift
+      ;;
     *)
       case "$1" in
         --yes) YES=1 ;;
@@ -96,6 +103,9 @@ done
 
 if [[ $(uname -m) != aarch64 ]]; then
   stop failed requirements "SparkRing installs on DGX Spark (ARM64) hosts; this host is $(uname -m)."
+fi
+if ((PACKAGE_ONLY && PLAN)); then
+  stop failed arguments "--package-only installs the package and --plan installs nothing; use one of them."
 fi
 for command_name in git python3 dpkg dpkg-deb dpkg-query apt-get; do
   command -v "$command_name" >/dev/null 2>&1 || stop failed requirements "missing required command: $command_name"
@@ -168,6 +178,17 @@ else
   say "Installing $(basename "$package")"
   "${SUDO[@]}" apt-get install --yes --allow-downgrades "$package" >&2 \
     || stop failed package "apt could not install $(basename "$package")."
+fi
+
+if ((PACKAGE_ONLY)); then
+  say "SparkRing $version is installed on this Spark; no other Spark and no model changed."
+  say "Review the rest with: sudo sparkring install --profile PROFILE --plan"
+  if ((JSON)); then
+    printf '{"schema": "sparkring-install-result/v1", "state": "package-installed", "version": %s, "previous": %s, "changed": %s, "source_revision": %s}\n' \
+      "$(json_string "$version")" "$(if [[ -n $installed ]]; then json_string "$installed"; else printf null; fi)" \
+      "$([[ $installed == "$version" ]] && printf false || printf true)" "$(json_string "$revision")"
+  fi
+  exit 0
 fi
 
 say ""

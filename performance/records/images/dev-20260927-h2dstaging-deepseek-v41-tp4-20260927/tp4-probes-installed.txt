@@ -1,0 +1,15 @@
+== prefill 11:15:33
+prompt    8421 tokens: TTFT   3.29s =    2557 tok/s prefill
+prompt   16833 tokens: TTFT   3.82s =    4406 tok/s prefill
+prompt   33553 tokens: TTFT   7.53s =    4458 tok/s prefill
+prompt   67206 tokens: TTFT  15.47s =    4345 tok/s prefill
+prompt  134479 tokens: TTFT  32.97s =    4079 tok/s prefill
+== prefill repeat
+prompt   16834 tokens: TTFT   4.02s =    4184 tok/s prefill
+prompt   67207 tokens: TTFT  15.50s =    4336 tok/s prefill
+== decode
+model DeepSeek-V4.1-Flash-TP4
+prose  end-to-end  49.78 tok/s | after first token  50.15 tok/s | acceptance 0.21 | per position [0.58, 0.29, 0.11, 0.05, 0.02, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 2.04
+code   end-to-end  99.95 tok/s | after first token 102.40 tok/s | acceptance 0.67 | per position [0.88, 0.79, 0.69, 0.56, 0.45, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.36
+json   end-to-end 110.84 tok/s | after first token 113.95 tok/s | acceptance 0.76 | per position [0.94, 0.8, 0.73, 0.68, 0.64, 1.0, 1.0, 1.0, 1.0, 1.0] | tokens per step 4.79
+== done 11:17:36

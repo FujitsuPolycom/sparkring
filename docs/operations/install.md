@@ -47,7 +47,9 @@ script builds the SparkRing package and asks `Install the package? [Y/n]`
 before installing it on this Spark, then runs `sudo sparkring install` with
 your options. `--yes` answers both commands' questions. `--plan` installs
 nothing and prints the plan when this Spark already has the package the script
-built. To install a published package instead, see
+built. `--package-only` installs the package and stops before any other Spark
+or model changes; `sudo sparkring install --profile PROFILE --plan` then shows
+the rest. To install a published package instead, see
 [Get the package](install-reference.md#get-the-package).
 
 A Qwen profile installs checkpoint step 5500 by default; add
