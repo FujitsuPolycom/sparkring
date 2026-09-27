@@ -27,7 +27,11 @@ other change to the lock, such as its image, a receipt digest or a size, needs
 a distinct release. Each installer deployment's identity includes the lock, so
 after an admission the next `sparkring install` of any profile on the lock
 creates a separate deployment. [Contributing an installer profile](installer-profiles.md)
-gives the admission steps.
+gives the admission steps. A new installer image release also names the
+builder of its final layer in the `releases` field of
+[builders.json](../../runtime/images/builders.json); the repository layout check
+rejects an installer image lock without one. [Installer image builders](../../runtime/images/installer-images.md)
+describes the chain.
 
 Prepare the candidate and local PR description before requesting adoption.
 Pushes, GitHub posts, merges, image publication and cluster operations require

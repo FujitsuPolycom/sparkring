@@ -58,6 +58,20 @@ def validate_imports(root=ROOT):
     return len(paths)
 
 
+def validate_release_builders(builders, root=ROOT):
+    """Require a repository builder for the final layer of every installer image release."""
+    named = {}
+    for row in builders['builders']:
+        for release in row.get('releases', []):
+            if release in named or not (root/'runtime/releases'/release/'release.json').is_file():
+                raise ValueError(f'{release}: a builder names an existing release selection, and only one builder names it')
+            named[release] = row['id']
+    unbuilt = {path.parent.name for path in (root/'runtime/releases').glob('*/installer-image.json')} - set(named)
+    if unbuilt:
+        raise ValueError('Installer image releases without a builder in runtime/images/builders.json: ' + ', '.join(sorted(unbuilt)))
+    return named
+
+
 def validate_build_contracts(root=ROOT):
     builders = read_json(root/'runtime/images/builders.json')
     names = set()
@@ -66,6 +80,7 @@ def validate_build_contracts(root=ROOT):
             raise ValueError('Image builders require unique IDs, a supported interpreter and a composition reason')
         names.add(row['id'])
         local_path(row['path'], root)
+    validate_release_builders(builders, root)
     # Inspect the literal allowlist without importing lifecycle code.
     install = root/'runtime/glm53-spark-mtp3-mesh/managed_install.py'
     tree = ast.parse(install.read_text(encoding='utf-8-sig'))

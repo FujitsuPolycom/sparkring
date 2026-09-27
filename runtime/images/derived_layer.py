@@ -1,4 +1,4 @@
-"""Derive an installer image that adds or replaces a few Python files in one layer.
+"""Derive an installer image by adding or replacing receipt-recorded files in one layer.
 
 An installer image lock (``runtime/releases/<release>/installer-image.json``)
 pins the image and the SHA-256 of two receipts inside it. The external-base
@@ -7,31 +7,36 @@ installed file that the image's ``verify`` checks to its SHA-256. The toolchain
 receipt, ``/opt/sparkring/toolchain/installed.json``, records the external-base
 receipt's SHA-256. A derived layer copies its files over the parent, records
 each file's SHA-256 in the external-base receipt, re-records the toolchain
-receipt, and adds a provenance receipt listing every path with its inherited
-and resulting SHA-256.
+receipt and writes a provenance receipt listing every path with its inherited
+and resulting SHA-256 (``null`` for an added file).
 
-A layer may also replace the runtime-status package. The image installs that
-package from a pinned pure wheel into the owned Python root
-``/opt/sparkring/python``, whose complete inventory ``verify`` compares with the
-receipt's ``python_roots``; the installer's admission compares the receipt's
-``capabilities.runtime_status.version`` with the lock's ``status_version``. The
-builder admits a replacement wheel with the image preparer's rules, removes the
-previous version's files in the layer, and rewrites ``files``,
-``python_roots``, ``removed_files`` and ``capabilities.runtime_status``
-together, so both checks hold for the new version.
+A layer is defined in one of two ways:
 
-``prepare`` works offline from a descriptor and the parent's two receipts and
-writes a Docker build context. ``record`` inspects the image built from that
-context, runs the installer's admission for every profile of the lock
-(``runtime/common/installer_image.py``, including the image's isolated
-``verify``), and writes the derived image lock. Neither action pushes,
-publishes or selects an image for a profile.
+- A ``sparkring-derived-layer-descriptor/v1`` descriptor (data) adds or
+  replaces site-packages Python files from pinned repository sources, and may
+  replace the runtime-status package with a pinned pure wheel. Descriptors
+  cannot carry native libraries, the startup hooks that select the transport,
+  feature and status packages, or the B12X sources that the prepared RoCE
+  transport verifies at startup.
+- A ``Layer`` (code, in a ``derive_*.py`` module) computes replacement bytes
+  from the parent's own files, usually with exact substitutions that must match
+  once, and may pin each replaced file's inherited and resulting SHA-256 and
+  edit other receipt fields.
 
-Other derived files live in the serving interpreter's site-packages. The
-builder refuses native libraries, the startup hooks that select the transport,
-feature and status packages, and the B12X sources whose SHA-256 the prepared
-RoCE transport verifies at startup: changing those needs a new transport
-manifest.
+Replacing the runtime-status package also rewrites the receipt fields the
+image's ``verify`` and the installer's admission read: the owned Python root
+``/opt/sparkring/python`` in ``files`` and ``python_roots``, the previous
+version's files in ``removed_files``, and ``capabilities.runtime_status``.
+
+``prepare`` checks the parent's receipts against the parent lock and writes a
+Docker build context; it never builds. A descriptor needs only the two
+receipts; a code layer also reads the parent files it edits, from the local
+image through a network-less container or from an exported root filesystem.
+``record`` inspects the built image, runs the installer's admission for every
+profile of the lock (``runtime/common/installer_image.py``, including the
+image's isolated ``verify``) and writes the derived lock. ``build`` tags the
+parent, builds the context and then records. No action pushes, publishes or
+selects an image for a profile.
 """
 
 import argparse
@@ -39,6 +44,7 @@ import base64
 import configparser
 import copy
 import csv
+from dataclasses import dataclass, field
 import hashlib
 import io
 import json
@@ -51,6 +57,7 @@ import subprocess
 import sys
 import tarfile
 import tomllib
+from typing import Callable
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -68,6 +75,7 @@ HOOKS = {SITE + name for name in (
 TRANSPORT_SOURCES = {SITE + "b12x/" + name for name in HOST_SOURCE_FILES}
 NATIVE = (".so", ".dll", ".pyd", ".a", ".o", ".pyc")
 PYTHON_ROOT = "/opt/sparkring/python"
+IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
 STATUS_DISTRIBUTION = "sparkring-runtime-status"
 STATUS_PACKAGE = "sparkring_runtime_status"
 # The installer admits runtime-status 0.3.x (installer_image.validate).
@@ -76,8 +84,8 @@ STATUS_ENTRY_POINTS = {
     "vllm.endpoint_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:StatusPlugin"},
     "vllm.general_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"},
 }
-# Source files the image preparer (runtime/images/external_context.py on the
-# status branch) accepts in a status source archive besides package modules.
+# Files a status source archive may carry besides package modules; the
+# component directory integrations/vllm/runtime_status holds the same set.
 STATUS_SOURCES = {
     "pyproject.toml", "README.md", "schema-v1.json", "test_runtime_status.py", "test_status_browser.py",
     "test_resources.py", "test_metrics.py", "test_transport.py", "test_binding.py",
@@ -89,9 +97,79 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+sha = digest
+
+
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def canonical_json(value, sort_keys=True):
+    """Serialize a receipt as the image's installers write it."""
+    return (json.dumps(value, indent=2, sort_keys=sort_keys) + "\n").encode()
+
+
+def swap(text, old, new):
+    """Replace exactly one occurrence, so a changed parent source fails instead of drifting."""
+    count = text.count(old)
+    if count != 1:
+        raise ValueError(f"Expected one occurrence, found {count}: {old.strip()[:80]}")
+    return text.replace(old, new)
+
+
+@dataclass
+class Layer:
+    """A layer whose bytes are computed from the parent's own files.
+
+    ``replace(read, receipt)`` returns the new bytes of each replaced absolute
+    path; every path must already be recorded by the parent receipt.
+    ``update_receipt(receipt, replaced)`` edits receipt fields other than file
+    hashes and returns fields to set in the derived lock. ``pins`` maps a
+    replaced path to its required (inherited, resulting) SHA-256. Without
+    ``provenance`` the layer writes no provenance receipt.
+    """
+    name: str
+    purpose: str
+    replace: Callable[[Callable[[str], bytes], dict], dict]
+    provenance: str | None = None
+    update_receipt: Callable[[dict, dict], dict] | None = None
+    pins: dict = field(default_factory=dict)
+
+
+# Readers of parent files.
+
+def docker_reader(image_id, run=subprocess.run):
+    """Read parent files from a local image in a container without network access."""
+    def read(path):
+        return run(["docker", "run", "--rm", "--pull", "never", "--network", "none", "--entrypoint", "cat",
+                    image_id, path], capture_output=True, check=True).stdout
+    return read
+
+
+def root_reader(root):
+    """Read parent files from an exported image root filesystem."""
+    root = Path(root)
+
+    def read(path):
+        relative = PurePosixPath(path)
+        if not relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("Parent paths are absolute and normalized: " + path)
+        return root.joinpath(*relative.parts[1:]).read_bytes()
+    return read
+
+
+def receipt_reader(base_receipt, toolchain_receipt, fallback=None):
+    """Serve the two receipts from copied files and other paths from ``fallback``."""
+    receipts = {BASE_RECEIPT: Path(base_receipt), TOOLCHAIN_RECEIPT: Path(toolchain_receipt)}
+
+    def read(path):
+        if path in receipts:
+            return receipts[path].read_bytes()
+        if fallback is None:
+            raise ValueError("This layer reads parent files; supply --parent-root or the local parent image: " + path)
+        return fallback(path)
+    return read
 
 
 def dockerfile(removed=(), directories=()):
@@ -105,6 +183,8 @@ def dockerfile(removed=(), directories=()):
     lines.append("COPY files/ /")
     return "\n".join(lines) + "\n"
 
+
+# Descriptors.
 
 def _image_path(name, *, root):
     path = PurePosixPath(name)
@@ -164,14 +244,20 @@ def descriptor(path):
     return record
 
 
+def load_lock(path):
+    """Read an installer image lock and validate it for every profile it lists."""
+    lock = json.loads(Path(path).read_text(encoding="utf-8"))
+    for profile in installer_image.profiles_of(lock):
+        installer_image.validate(lock, profile)
+    require(IMAGE_ID.fullmatch(lock["image_id"]), "The parent lock must name a local image ID")
+    return lock
+
+
 def _parent_lock(record, repository):
     path = repository / record["parent_lock"]
     if not path.resolve().is_relative_to(repository):
         raise ValueError("Parent lock escapes the repository")
-    lock = json.loads(path.read_text(encoding="utf-8"))
-    for profile in installer_image.profiles_of(lock):
-        installer_image.validate(lock, profile)
-    return lock
+    return load_lock(path)
 
 
 def _relative(name, label):
@@ -180,6 +266,8 @@ def _relative(name, label):
             label + " contains an unsafe path: " + name)
     return path
 
+
+# Runtime-status package replacement.
 
 def status_package(artifacts, record, versions):
     """Admit a pinned status wheel with the image preparer's rules.
@@ -308,14 +396,51 @@ def _replace_status(derived, base, record, artifacts):
     return payloads, removed, directories, version, provenance
 
 
-def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output, status_artifacts=None):
-    """Write a build context whose receipts record the derived files."""
-    record = descriptor(descriptor_path)
-    repository, output = Path(repository).resolve(), Path(output).resolve()
+# Preparation.
+
+def _descriptor_entries(record, repository, base):
+    """Pinned repository sources; the descriptor states each inherited SHA-256."""
+    entries = {}
+    for target, row in record.get("files", {}).items():
+        source = repository / row["source"]
+        if source.is_symlink() or not source.resolve().is_relative_to(repository):
+            raise ValueError("Derived file source escapes the repository: " + row["source"])
+        data = pinned_bytes(source.read_bytes(), row["sha256"])
+        if base["files"].get(target) != row["inherited_sha256"]:
+            raise ValueError("Parent receipt records a different inherited file: " + target)
+        entries[target] = (data, row["inherited_sha256"], {"source": row["source"]})
+    return entries
+
+
+def _layer_entries(layer, read, base):
+    """Bytes computed from the parent's files; each replaced file must match its receipt."""
+    replaced = layer.replace(read, base)
+    require(replaced, "The layer replaces no file")
+    entries = {}
+    for target, data in sorted(replaced.items()):
+        inherited = base["files"].get(target)
+        require(inherited is not None, "Replaced path is not recorded by the parent: " + target)
+        require(digest(read(target)) == inherited, "Parent file differs from its receipt: " + target)
+        if target in layer.pins and layer.pins[target] != (inherited, digest(data)):
+            raise ValueError("Replaced file differs from its pinned inherited or resulting SHA-256: " + target)
+        entries[target] = (data, inherited, {})
+    missing = set(layer.pins) - set(replaced)
+    require(not missing, "Pinned paths were not replaced: " + ", ".join(sorted(missing)))
+    return entries
+
+
+def prepare_layer(layer, lock, read, output, *, status=None, status_artifacts=None, identity=None,
+                  descriptor_sha256=None):
+    """Write a build context whose receipts record the derived files.
+
+    ``layer`` is a ``Layer`` or a validated descriptor record (then ``identity``
+    holds its id and repository). ``read`` supplies the parent's receipts and,
+    for a ``Layer``, the files it edits.
+    """
+    output = Path(output).resolve()
     if output.exists():
         raise ValueError("Build context must not exist")
-    lock = _parent_lock(record, repository)
-    base_raw, toolchain_raw = Path(base_receipt).read_bytes(), Path(toolchain_receipt).read_bytes()
+    base_raw, toolchain_raw = read(BASE_RECEIPT), read(TOOLCHAIN_RECEIPT)
     if digest(base_raw) != lock["parent_receipt_sha256"]:
         raise ValueError("External-base receipt differs from the parent lock")
     if digest(toolchain_raw) != lock["toolchain_receipt_sha256"]:
@@ -323,41 +448,45 @@ def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output
     base, toolchain = json.loads(base_raw), json.loads(toolchain_raw)
     if toolchain.get("parent_receipt_sha256") != digest(base_raw):
         raise ValueError("Toolchain receipt does not record the external-base receipt")
-    if record["provenance"] in base["files"]:
-        raise ValueError("Provenance path already belongs to the parent")
     if base.get("capabilities", {}).get("runtime_status", {}).get("version") != lock["status_version"]:
         raise ValueError("Parent receipt's status version differs from its lock")
-    payloads, rows = {}, {}
+    if isinstance(layer, Layer):
+        name, purpose, provenance_path = layer.name, layer.purpose, layer.provenance
+        entries = _layer_entries(layer, read, base)
+    else:
+        name, purpose, provenance_path = layer["id"], layer["purpose"], layer["provenance"]
+        entries = _descriptor_entries(layer, identity["repository"], base)
+    if provenance_path and provenance_path in base["files"]:
+        raise ValueError("Provenance path already belongs to the parent")
     derived = copy.deepcopy(base)
-    for target, row in record.get("files", {}).items():
-        source = repository / row["source"]
-        if source.is_symlink() or not source.resolve().is_relative_to(repository):
-            raise ValueError("Derived file source escapes the repository: " + row["source"])
-        payloads[target] = pinned_bytes(source.read_bytes(), row["sha256"])
-        if base["files"].get(target) != row["inherited_sha256"]:
-            raise ValueError("Parent receipt records a different inherited file: " + target)
-        derived["files"][target] = row["sha256"]
-        rows[target] = {"source": row["source"], "inherited_sha256": row["inherited_sha256"],
-                        "sha256": row["sha256"]}
+    payloads, rows = {}, {}
+    for target, (data, inherited, extra) in entries.items():
+        payloads[target] = data
+        derived["files"][target] = digest(data)
+        rows[target] = {**extra, "inherited_sha256": inherited, "sha256": digest(data)}
     removed, directories, status_version, status_provenance = [], [], lock["status_version"], None
-    if record.get("runtime_status") is not None:
+    if status is not None:
         status_payloads, removed, directories, status_version, status_provenance = _replace_status(
-            derived, base, record["runtime_status"], status_artifacts)
+            derived, base, status, status_artifacts)
         payloads.update(status_payloads)
-    base_out = (json.dumps(derived, indent=2, sort_keys=True) + "\n").encode()
+    lock_fields = {}
+    if isinstance(layer, Layer) and layer.update_receipt:
+        lock_fields = layer.update_receipt(derived, dict(payloads)) or {}
+    base_out = canonical_json(derived)
     toolchain["parent_receipt_sha256"] = digest(base_out)
-    toolchain_out = (json.dumps(toolchain, indent=2) + "\n").encode()
-    provenance = {
-        "schema": "sparkring-derived-layer/v1", "id": record["id"], "purpose": record["purpose"],
-        "parent_release": lock["name"], "parent_image_id": lock["image_id"],
-        "parent_receipt_sha256": digest(base_raw), "files": rows,
-        "receipts": {BASE_RECEIPT: digest(base_out), TOOLCHAIN_RECEIPT: digest(toolchain_out)},
-    }
-    if status_provenance is not None:
-        provenance["runtime_status"] = status_provenance
-    provenance_out = (json.dumps(provenance, indent=2, sort_keys=True) + "\n").encode()
-    written = {**payloads, BASE_RECEIPT: base_out, TOOLCHAIN_RECEIPT: toolchain_out,
-               record["provenance"]: provenance_out}
+    toolchain_out = canonical_json(toolchain, sort_keys=False)
+    receipts = {BASE_RECEIPT: digest(base_out), TOOLCHAIN_RECEIPT: digest(toolchain_out)}
+    written = {**payloads, BASE_RECEIPT: base_out, TOOLCHAIN_RECEIPT: toolchain_out}
+    if provenance_path:
+        provenance = {"schema": "sparkring-derived-layer/v1", "purpose": purpose,
+                      "parent_image_id": lock["image_id"], "parent_receipt_sha256": digest(base_raw),
+                      "files": rows, "receipts": receipts}
+        if identity is not None:
+            # Descriptor layers also name themselves and their parent release.
+            provenance.update(id=name, parent_release=lock["name"])
+        if status_provenance is not None:
+            provenance["runtime_status"] = status_provenance
+        written[provenance_path] = canonical_json(provenance)
     output.mkdir(parents=True)
     for target, raw in written.items():
         path = output / "files" / target.lstrip("/")
@@ -365,21 +494,40 @@ def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output
         path.write_bytes(raw)
     (output / "Dockerfile").write_text(dockerfile(removed, directories))
     plan = {
-        "schema": "sparkring-derived-layer-plan/v1", "id": record["id"],
-        "descriptor_sha256": digest(Path(descriptor_path).read_bytes()), "parent_lock": lock,
+        "schema": "sparkring-derived-layer-plan/v1", "id": name, "parent_lock": lock,
         "added": sorted(target for target, row in rows.items() if row["inherited_sha256"] is None),
         "replaced": sorted(target for target, row in rows.items() if row["inherited_sha256"] is not None),
-        "removed": removed, "status_version": status_version,
-        "receipts": provenance["receipts"], "payload_bytes": sum(len(raw) for raw in written.values()),
+        "removed": removed, "status_version": status_version, "lock_fields": lock_fields,
+        "receipts": receipts, "payload_bytes": sum(len(raw) for raw in written.values()),
     }
+    if descriptor_sha256 is not None:
+        plan["descriptor_sha256"] = descriptor_sha256
     (output / "plan.json").write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
     return {"context": str(output), "files": len(payloads), "removed": len(removed),
-            "status_version": status_version, "receipts": plan["receipts"],
-            "build": ["docker", "build", "--build-arg", "PARENT_IMAGE=<local tag of "
-                      + lock["image_id"] + ">", "-t", "<tag>", str(output)]}
+            "status_version": status_version, "receipts": receipts,
+            "build": ["docker", "build", "--build-arg", "PARENT_IMAGE=" + parent_tag(lock["image_id"]),
+                      "-t", "<tag>", str(output)]}
 
 
-def derived_lock(plan, image, name):
+def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output, status_artifacts=None):
+    """Prepare a descriptor layer offline from the parent's two copied receipts."""
+    record = descriptor(descriptor_path)
+    repository = Path(repository).resolve()
+    lock = _parent_lock(record, repository)
+    return prepare_layer(record, lock, receipt_reader(base_receipt, toolchain_receipt), output,
+                         status=record.get("runtime_status"), status_artifacts=status_artifacts,
+                         identity={"repository": repository},
+                         descriptor_sha256=digest(Path(descriptor_path).read_bytes()))
+
+
+# Build and record.
+
+def parent_tag(image_id):
+    """BuildKit resolves a bare image ID as a registry name; the parent gets this local tag."""
+    return "sparkring-dev/parent:" + image_id.removeprefix("sha256:")[:12]
+
+
+def derived_lock(plan, image, name, profiles=None):
     """Bind the parent lock's contract to the built image.
 
     ``image_reference`` is the local configuration ID until a registry digest
@@ -387,11 +535,14 @@ def derived_lock(plan, image, name):
     parent's download, an upper bound until the registry reports the layer.
     """
     lock = dict(plan["parent_lock"])
+    lock.update(plan.get("lock_fields", {}))
     lock.update(name=name, image_id=image["Id"], image_reference=image["Id"], image_bytes=image["Size"],
                 download_bytes=lock["download_bytes"] + plan["payload_bytes"],
                 parent_receipt_sha256=plan["receipts"][BASE_RECEIPT],
                 toolchain_receipt_sha256=plan["receipts"][TOOLCHAIN_RECEIPT],
                 status_version=plan.get("status_version", lock["status_version"]))
+    if profiles:
+        lock["profiles"] = sorted(profiles)
     for profile in installer_image.profiles_of(lock):
         installer_image.validate(lock, profile)
     return lock
@@ -401,7 +552,7 @@ def _run(command, text=True):
     return subprocess.run(command, capture_output=True, check=True, text=text)
 
 
-def record(context, image_id, name, output, run=_run):
+def record(context, image_id, name, output, run=_run, profiles=None):
     """Admit the built image for every profile of the lock and write that lock."""
     plan = json.loads((Path(context) / "plan.json").read_text(encoding="utf-8"))
     output = Path(output)
@@ -415,7 +566,7 @@ def record(context, image_id, name, output, run=_run):
         except subprocess.CalledProcessError as error:
             raise ValueError("The parent image already has an added path: " + target) from error
     image = json.loads(run(["docker", "image", "inspect", image_id]).stdout)[0]
-    lock = derived_lock(plan, image, name)
+    lock = derived_lock(plan, image, name, profiles)
     for profile in installer_image.profiles_of(lock):
         installer_image.admit(lock, run=run, profile=profile)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -424,31 +575,72 @@ def record(context, image_id, name, output, run=_run):
             "status_version": lock["status_version"], "serving_qualified": False}
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def build(context, tag, name, output, run=_run, profiles=None):
+    """Tag the parent, build the context, then ``record`` the built image."""
+    plan = json.loads((Path(context) / "plan.json").read_text(encoding="utf-8"))
+    parent = plan["parent_lock"]["image_id"]
+    run(["docker", "tag", parent, parent_tag(parent)])
+    run(["docker", "build", "-q", "--build-arg", "PARENT_IMAGE=" + parent_tag(parent), "-t", tag, str(context)])
+    image_id = json.loads(run(["docker", "image", "inspect", tag]).stdout)[0]["Id"]
+    return record(context, image_id, name, output, run=run, profiles=profiles)
+
+
+# Command line.
+
+def main(layer=None, argv=None):
+    """Descriptor layers run this module; code layers call ``main(LAYER)``."""
+    description = layer.purpose if layer else __doc__.split("\n\n")[0]
+    parser = argparse.ArgumentParser(description=description)
     actions = parser.add_subparsers(dest="action", required=True)
-    prepared = actions.add_parser("prepare", help="write a build context offline")
-    prepared.add_argument("--descriptor", required=True, type=Path)
-    prepared.add_argument("--repository", type=Path, default=Path(__file__).resolve().parents[2])
-    prepared.add_argument("--base-receipt", required=True, type=Path,
-                          help="the parent's " + BASE_RECEIPT)
-    prepared.add_argument("--toolchain-receipt", required=True, type=Path,
-                          help="the parent's " + TOOLCHAIN_RECEIPT)
-    prepared.add_argument("--status-artifacts", type=Path,
-                          help="directory holding the descriptor's pinned status wheel and source archive")
+    prepared = actions.add_parser("prepare", help="write a build context; does not build")
+    if layer is None:
+        prepared.add_argument("--descriptor", required=True, type=Path)
+        prepared.add_argument("--repository", type=Path, default=Path(__file__).resolve().parents[2])
+        prepared.add_argument("--status-artifacts", type=Path,
+                              help="directory holding the descriptor's pinned status wheel and source archive")
+    else:
+        prepared.add_argument("--parent-lock", required=True, type=Path, help="installer lock of the parent image")
+    prepared.add_argument("--base-receipt", type=Path, help="the parent's " + BASE_RECEIPT)
+    prepared.add_argument("--toolchain-receipt", type=Path, help="the parent's " + TOOLCHAIN_RECEIPT)
+    prepared.add_argument("--parent-root", type=Path,
+                          help="exported parent root filesystem; default: read from the local parent image")
     prepared.add_argument("--output", required=True, type=Path)
     recorded = actions.add_parser("record", help="admit a built image and write its installer lock")
     recorded.add_argument("--context", required=True, type=Path)
     recorded.add_argument("--image", required=True, help="built image configuration ID")
-    recorded.add_argument("--name", required=True, help="release name for the derived lock")
-    recorded.add_argument("--output", required=True, type=Path)
+    built = actions.add_parser("build", help="build a prepared context, then record it")
+    built.add_argument("--context", required=True, type=Path)
+    built.add_argument("--tag", required=True, help="local tag for the built image")
+    for action in (recorded, built):
+        action.add_argument("--name", required=True, help="release name for the derived lock")
+        action.add_argument("--output", required=True, type=Path)
+        action.add_argument("--profiles", help="comma-separated profiles for the derived lock; default: the parent's")
     args = parser.parse_args(argv)
     try:
         if args.action == "prepare":
-            result = prepare(args.descriptor, args.repository, args.base_receipt, args.toolchain_receipt,
-                             args.output, args.status_artifacts)
+            require(bool(args.base_receipt) == bool(args.toolchain_receipt),
+                    "Supply both copied receipts or neither")
+            if layer is None:
+                spec = descriptor(args.descriptor)
+                repository = args.repository.resolve()
+                lock = _parent_lock(spec, repository)
+            else:
+                lock = load_lock(args.parent_lock)
+            fallback = root_reader(args.parent_root) if args.parent_root else docker_reader(lock["image_id"])
+            read = (receipt_reader(args.base_receipt, args.toolchain_receipt, fallback)
+                    if args.base_receipt else fallback)
+            if layer is None:
+                result = prepare_layer(spec, lock, read, args.output, status=spec.get("runtime_status"),
+                                       status_artifacts=args.status_artifacts, identity={"repository": repository},
+                                       descriptor_sha256=digest(args.descriptor.read_bytes()))
+            else:
+                result = prepare_layer(layer, lock, read, args.output)
         else:
-            result = record(args.context, args.image, args.name, args.output)
+            profiles = args.profiles.split(",") if args.profiles else None
+            if args.action == "record":
+                result = record(args.context, args.image, args.name, args.output, profiles=profiles)
+            else:
+                result = build(args.context, args.tag, args.name, args.output, profiles=profiles)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2))

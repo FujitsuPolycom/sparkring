@@ -11,7 +11,10 @@
       "id": "cuda134-nccl232-assembly",
       "path": "runtime/images/toolchain_assembly.py",
       "kind": "python",
-      "reason": "Bind the recorded prebuilt CUDA 13.4.2 toolkit stage and NCCL 2.32.3 library to a software-layer parent and seal the toolchain receipt; preparation does not invoke Docker."
+      "reason": "Bind the recorded prebuilt CUDA 13.4.2 toolkit stage and NCCL 2.32.3 library to a software-layer parent and seal the toolchain receipt; preparation does not invoke Docker.",
+      "releases": [
+        "dev-20260924-cuda1342-nccl2323-status031"
+      ]
     },
     {
       "id": "sglang-deepseek-bounded-prefill",
@@ -47,7 +50,43 @@
       "id": "installer-derived-layer",
       "path": "runtime/images/derived_layer.py",
       "kind": "python",
-      "reason": "Add or replace a few site-packages Python files, or the runtime-status package, over a pinned installer image in one layer, re-recording its external-base and toolchain receipts; prepare does not invoke Docker, and record admits the built image for every profile of its lock."
+      "reason": "Derive an installer image in one layer from a descriptor that adds or replaces site-packages Python files or replaces the runtime-status package, re-recording its external-base and toolchain receipts; prepare does not invoke Docker, and record admits the built image for every profile of its lock. The derive_*.py builders use the same module.",
+      "releases": [
+        "dev-20260927-b12xcache-cuda1342-nccl2323-status032"
+      ]
+    },
+    {
+      "id": "installer-transport-window",
+      "path": "runtime/images/derive_transport_window.py",
+      "kind": "python",
+      "reason": "Derive an image whose prepared RoCEnante transport is the repository bundle, which paces hardware-forwarded stripes within a send window; produces the unpublished intermediate image between dev-20260924 and dev-20260925."
+    },
+    {
+      "id": "installer-tp2-hc",
+      "path": "runtime/images/derive_tp2_hc.py",
+      "kind": "python",
+      "reason": "Derive an image whose Qwen HC token-row ownership, qwen4-prefill hooks and startup audit accept TP2 as well as TP4.",
+      "releases": [
+        "dev-20260925-cuda1342-nccl2323-status031"
+      ]
+    },
+    {
+      "id": "installer-qwen-decode",
+      "path": "performance/records/qwen38-flash-next/installer-tuning-20260925/programs/build_qwen_decode.py",
+      "kind": "python",
+      "reason": "Derive an image with the Qwen4Exp SM121 decode patch that qwen_decode_patch.py writes; the installer tuning record retains both programs at their recorded paths.",
+      "releases": [
+        "dev-20260925-qwendecode-cuda1342-nccl2323-status031"
+      ]
+    },
+    {
+      "id": "installer-staging-fix",
+      "path": "runtime/images/derive_staging_fix.py",
+      "kind": "python",
+      "reason": "Derive an image whose vLLM CpuGpuBuffer.copy_to_gpu stages each host-to-device copy through fresh pinned memory.",
+      "releases": [
+        "dev-20260927-h2dstaging-cuda1342-nccl2323-status031"
+      ]
     },
     {
       "id": "sparkring-source",

@@ -1,6 +1,8 @@
 """CPU checks for derived installer layers: receipts, refusals and the lock."""
 
 import base64
+import dataclasses
+import functools
 import hashlib
 import io
 import json
@@ -14,6 +16,7 @@ import zipfile
 import pytest
 
 from runtime.common import installer_image
+from runtime.images import derive_staging_fix, derive_tp2_hc, derive_transport_window
 from runtime.images import derived_layer as layer
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -401,3 +404,281 @@ def test_repository_descriptors_pin_their_current_sources():
         layer._parent_lock(record, ROOT)
         for row in record.get("files", {}).values():
             layer.pinned_bytes((ROOT / row["source"]).read_bytes(), row["sha256"])
+
+
+# Code-defined layers: bytes computed from the parent's own files.
+
+CODE_PARENT = "sha256:" + "a" * 64
+
+
+def code_parent(tmp_path, files, capabilities=None):
+    """An exported parent root whose receipts record every given file, and its lock."""
+    root = tmp_path / "parent"
+    for path, data in files.items():
+        target = root / path.lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    receipt = {"schema": "sparkring-external-installed/v1", "composition_sha256": "c" * 64,
+               "capabilities": {"transport_profile": "tp2-rocenante-adaptive-prepared",
+                                "transport_manifest_sha256": "3" * 64,
+                                "runtime_status": {"version": "0.3.1"}, **(capabilities or {})},
+               "files": {path: sha(data) for path, data in files.items()}}
+    base_raw = layer.canonical_json(receipt)
+    toolchain_raw = layer.canonical_json({"variant": "combined", "parent_receipt_sha256": sha(base_raw)},
+                                         sort_keys=False)
+    for path, data in ((layer.BASE_RECEIPT, base_raw), (layer.TOOLCHAIN_RECEIPT, toolchain_raw)):
+        target = root / path.lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    lock = {"schema": installer_image.SCHEMA, "name": "dev-parent", "image_id": CODE_PARENT,
+            "image_reference": CODE_PARENT, "parent_receipt_sha256": sha(base_raw),
+            "toolchain_receipt_sha256": sha(toolchain_raw), "composition_sha256": "c" * 64,
+            "transport_profile": "tp2-rocenante-adaptive-prepared",
+            "transport_manifest_sha256": receipt["capabilities"]["transport_manifest_sha256"],
+            "status_version": "0.3.1", "profiles": ["glm53-flash-nvfp4-spark-tp2"],
+            "image_bytes": 1000, "download_bytes": 500}
+    return root, lock
+
+
+def context_file(context, path):
+    return (Path(context) / "files" / path.lstrip("/")).read_bytes()
+
+
+def simple_layer(**changes):
+    code = layer.Layer(name="fixture", purpose="fixture layer", provenance="/opt/sparkring/receipts/derived-code.json",
+                       replace=lambda read, receipt: {"/opt/app/a.py": read("/opt/app/a.py") + b"# changed\n"})
+    return dataclasses.replace(code, **changes)
+
+
+def test_code_layer_rewrites_receipts_from_the_parents_files(tmp_path):
+    root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n", "/opt/app/b.py": b"b\n"})
+    result = layer.prepare_layer(simple_layer(), lock, layer.root_reader(root), tmp_path / "context")
+    context = Path(result["context"])
+    base_raw = context_file(context, layer.BASE_RECEIPT)
+    base = json.loads(base_raw)
+    assert base["files"] == {"/opt/app/a.py": sha(b"a\n# changed\n"), "/opt/app/b.py": sha(b"b\n")}
+    toolchain_raw = context_file(context, layer.TOOLCHAIN_RECEIPT)
+    assert json.loads(toolchain_raw)["parent_receipt_sha256"] == sha(base_raw)
+    assert list(json.loads(toolchain_raw)) == ["variant", "parent_receipt_sha256"]
+    provenance = json.loads(context_file(context, "/opt/sparkring/receipts/derived-code.json"))
+    # Code layers keep the provenance format of the published chain: no id,
+    # parent release or repository source.
+    assert set(provenance) == {"schema", "purpose", "parent_image_id", "parent_receipt_sha256", "files", "receipts"}
+    assert provenance["files"] == {"/opt/app/a.py": {"inherited_sha256": sha(b"a\n"), "sha256": sha(b"a\n# changed\n")}}
+    assert provenance["receipts"] == result["receipts"]
+    assert (context / "Dockerfile").read_text() == "ARG PARENT_IMAGE\nFROM ${PARENT_IMAGE}\nCOPY files/ /\n"
+    assert not (context / "files/opt/app/b.py").exists()
+    plan = json.loads((context / "plan.json").read_text())
+    assert plan["replaced"] == ["/opt/app/a.py"] and plan["added"] == [] and plan["lock_fields"] == {}
+    with pytest.raises(ValueError, match="must not exist"):
+        layer.prepare_layer(simple_layer(), lock, layer.root_reader(root), context)
+
+
+@pytest.mark.parametrize("change, message", [
+    ({"replace": lambda read, receipt: {"/opt/app/unrecorded.py": b"x"}}, "not recorded"),
+    ({"replace": lambda read, receipt: {}}, "replaces no file"),
+    ({"pins": {"/opt/app/a.py": ("0" * 64, "1" * 64)}}, "pinned"),
+    ({"pins": {"/opt/app/b.py": (sha(b"b\n"), sha(b"b\n"))}}, "were not replaced"),
+])
+def test_code_layer_refuses_unbound_replacements_without_output(tmp_path, change, message):
+    root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n", "/opt/app/b.py": b"b\n"})
+    with pytest.raises(ValueError, match=message):
+        layer.prepare_layer(simple_layer(**change), lock, layer.root_reader(root), tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+
+
+def test_code_layer_refuses_a_parent_file_or_receipt_that_differs(tmp_path):
+    root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    (root / "opt/app/a.py").write_bytes(b"edited after installation\n")
+    with pytest.raises(ValueError, match="differs from its receipt"):
+        layer.prepare_layer(simple_layer(), lock, layer.root_reader(root), tmp_path / "context")
+    with pytest.raises(ValueError, match="External-base receipt differs"):
+        layer.prepare_layer(simple_layer(), dict(lock, parent_receipt_sha256="0" * 64), layer.root_reader(root),
+                            tmp_path / "context")
+
+
+def test_readers_are_strict(tmp_path):
+    with pytest.raises(ValueError, match="normalized"):
+        layer.root_reader(tmp_path)("/opt/../etc/passwd")
+    base, toolchain = tmp_path / "base.json", tmp_path / "toolchain.json"
+    base.write_bytes(b"{}")
+    toolchain.write_bytes(b"{}")
+    read = layer.receipt_reader(base, toolchain)
+    assert read(layer.BASE_RECEIPT) == b"{}"
+    with pytest.raises(ValueError, match="reads parent files"):
+        read("/opt/app/a.py")
+
+
+def test_build_tags_the_parent_and_records_the_image(tmp_path, monkeypatch):
+    root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    result = layer.prepare_layer(simple_layer(), lock, layer.root_reader(root), tmp_path / "context")
+    commands, admitted = [], []
+    built = "sha256:" + "b" * 64
+
+    def run(command, text=True):
+        commands.append(command)
+        stdout = json.dumps([{"Id": built, "Size": 123}]) if command[1:3] == ["image", "inspect"] else ""
+        return subprocess.CompletedProcess(command, 0, stdout)
+
+    monkeypatch.setattr(installer_image, "admit",
+                        lambda value, *, run, profile: admitted.append((value["name"], profile)))
+    output = tmp_path / "lock.json"
+    summary = layer.build(tmp_path / "context", "sparkring:derived", "dev-derived", output, run=run,
+                          profiles=["mimo-v26-flash-rl-tp4", "glm53-flash-nvfp4-spark-tp2"])
+    tag = "sparkring-dev/parent:" + "a" * 12
+    assert commands[0] == ["docker", "tag", CODE_PARENT, tag]
+    assert commands[1][:2] == ["docker", "build"] and "PARENT_IMAGE=" + tag in commands[1]
+    assert admitted == [("dev-derived", "glm53-flash-nvfp4-spark-tp2"), ("dev-derived", "mimo-v26-flash-rl-tp4")]
+    written = json.loads(output.read_text())
+    assert written["profiles"] == ["glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-rl-tp4"]
+    assert written["image_id"] == summary["image_id"] == built and written["image_bytes"] == 123
+    assert written["parent_receipt_sha256"] == result["receipts"][layer.BASE_RECEIPT]
+
+
+def transport_fixture(tmp_path, proxy=b"// paced proxy\n"):
+    source = tmp_path / "bundle"
+    files = {"LICENSE": b"license\n", "roce/api.py": b"api\n", "roce/_roce_proxy.c": proxy}
+    for name, data in files.items():
+        (source / name).parent.mkdir(parents=True, exist_ok=True)
+        (source / name).write_bytes(data)
+    (source / "manifest.json").write_text(json.dumps({"name": derive_transport_window.PROFILE,
+                                                      "files": {name: sha(data) for name, data in files.items()}}))
+    installed_files = dict(files, **{"roce/_roce_proxy.c": b"// unpaced proxy\n"})
+    installed = layer.canonical_json({"name": derive_transport_window.PROFILE, "dependencies": {"b12x": "pinned"},
+                                      "files": {name: sha(data) for name, data in installed_files.items()}})
+    parent = {f"{derive_transport_window.BUNDLE}/{name}": data for name, data in installed_files.items()}
+    parent[derive_transport_window.BUNDLE + "/manifest.json"] = installed
+    capabilities = {"transport_profile": derive_transport_window.PROFILE, "transport_manifest_sha256": sha(installed)}
+    return (source, *code_parent(tmp_path, parent, capabilities))
+
+
+def test_transport_window_replaces_changed_bundle_files_and_names_the_manifest(tmp_path):
+    source, root, lock = transport_fixture(tmp_path)
+    code = dataclasses.replace(derive_transport_window.LAYER,
+                               replace=functools.partial(derive_transport_window.replace, source=source))
+    layer.prepare_layer(code, lock, layer.root_reader(root), tmp_path / "context")
+    context = tmp_path / "context"
+    plan = json.loads((context / "plan.json").read_text())
+    manifest_path = derive_transport_window.BUNDLE + "/manifest.json"
+    assert plan["replaced"] == [manifest_path, derive_transport_window.BUNDLE + "/roce/_roce_proxy.c"]
+    manifest = json.loads(context_file(context, manifest_path))
+    assert manifest["dependencies"] == {"b12x": "pinned"}
+    assert manifest["files"]["roce/_roce_proxy.c"] == sha(b"// paced proxy\n")
+    new_manifest = sha(context_file(context, manifest_path))
+    base = json.loads(context_file(context, layer.BASE_RECEIPT))
+    assert base["capabilities"]["transport_manifest_sha256"] == new_manifest
+    assert plan["lock_fields"] == {"transport_manifest_sha256": new_manifest}
+    assert [path.name for path in (context / "files/opt/sparkring/receipts").iterdir()] == [
+        "external-base-installed.json"]
+    derived = layer.derived_lock(plan, {"Id": "sha256:" + "9" * 64, "Size": 7}, "dev-window")
+    assert derived["transport_manifest_sha256"] == new_manifest
+
+
+def test_transport_window_refuses_unchanged_or_different_bundles(tmp_path):
+    source, root, _ = transport_fixture(tmp_path, proxy=b"// unpaced proxy\n")
+    read = layer.root_reader(root)
+    receipt = json.loads(read(layer.BASE_RECEIPT))
+    with pytest.raises(ValueError, match="already carries"):
+        derive_transport_window.replace(read, receipt, source=source)
+    (source / "roce/extra.py").write_bytes(b"extra\n")
+    manifest = json.loads((source / "manifest.json").read_text())
+    manifest["files"]["roce/extra.py"] = sha(b"extra\n")
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="different files"):
+        derive_transport_window.replace(read, receipt, source=source)
+
+
+def test_repository_transport_bundle_matches_its_manifest():
+    manifest = json.loads((derive_transport_window.SOURCE / "manifest.json").read_text())
+    assert manifest["name"] == derive_transport_window.PROFILE
+    for name, expected in manifest["files"].items():
+        assert sha((derive_transport_window.SOURCE / name).read_bytes()) == expected, name
+
+
+def tp2_fixture(tmp_path):
+    hc = "".join(old for old, _ in derive_tp2_hc.HC_SWAPS).encode()
+    fusion_old = derive_tp2_hc.FEATURE_SWAPS[derive_tp2_hc.PREFILL + "qwen4_hc_fusion.py"][0]
+    gemm_old = derive_tp2_hc.FEATURE_SWAPS[derive_tp2_hc.PREFILL + "qwen4_mtp_gemm.py"][0]
+    features = {"qwen4-prefill/qwen4_hc_fusion.py": fusion_old.encode(),
+                "qwen4-prefill/qwen4_mtp_gemm.py": gemm_old.encode(),
+                "qwen4-prefill/qwen4_prefill.pth": b"import qwen4_prefill_bootstrap\n",
+                "sparkring_features.py": b"# loader\n"}
+    manifest = {"name": "qwen4-prefill", "files": {name.split("/", 1)[1]: sha(data) for name, data in features.items()
+                                                    if name.startswith("qwen4-prefill/")}}
+    features["qwen4-prefill/manifest.json"] = layer.canonical_json(manifest)
+    capabilities = {"features": {"qwen4-prefill": {"manifest_sha256": sha(features["qwen4-prefill/manifest.json"]),
+                                                   "supported_tp": [4],
+                                                   "files": {name: sha(data) for name, data in features.items()
+                                                             if name.startswith("qwen4-prefill/")}}}}
+    features["capabilities.json"] = layer.canonical_json(capabilities)
+    files = {derive_tp2_hc.FEATURES + name: data for name, data in features.items()}
+    files[derive_tp2_hc.HC] = hc
+    files[derive_tp2_hc.AUDIT] = ("raise SystemExit(" + derive_tp2_hc.AUDIT_SWAP[0] + ")\n").encode()
+    modes = {"2": [{"prefill_row_ownership": "off", "projection_tp": "1"}],
+             "4": [{"prefill_row_ownership": "shard", "projection_tp": "0"}]}
+    return code_parent(tmp_path, files, {"hc_supported_modes": modes})
+
+
+def test_tp2_hc_edits_rank_gates_and_rehashes_the_feature_bundle(tmp_path):
+    root, lock = tp2_fixture(tmp_path)
+    layer.prepare_layer(derive_tp2_hc.LAYER, lock, layer.root_reader(root), tmp_path / "context")
+    context = tmp_path / "context"
+    hc = context_file(context, derive_tp2_hc.HC).decode()
+    assert all(new in hc for _, new in derive_tp2_hc.HC_SWAPS)
+    assert "TP2 or TP4" in context_file(context, derive_tp2_hc.AUDIT).decode()
+    prefill = derive_tp2_hc.PREFILL
+    manifest_bytes = context_file(context, prefill + "manifest.json")
+    manifest = json.loads(manifest_bytes)
+    assert manifest["files"]["qwen4_hc_fusion.py"] == sha(context_file(context, prefill + "qwen4_hc_fusion.py"))
+    feature = json.loads(context_file(context, derive_tp2_hc.FEATURES + "capabilities.json"))["features"]["qwen4-prefill"]
+    assert feature["manifest_sha256"] == sha(manifest_bytes) and feature["supported_tp"] == [2, 4]
+    assert feature["files"]["qwen4-prefill/qwen4_mtp_gemm.py"] == sha(context_file(context, prefill + "qwen4_mtp_gemm.py"))
+    provenance = json.loads(context_file(context, derive_tp2_hc.LAYER.provenance))
+    # Unchanged feature files are listed too, so the provenance covers the whole tree.
+    assert provenance["files"][derive_tp2_hc.FEATURES + "sparkring_features.py"]["inherited_sha256"] == sha(b"# loader\n")
+    assert provenance["purpose"] == derive_tp2_hc.LAYER.purpose
+    base = json.loads(context_file(context, layer.BASE_RECEIPT))
+    assert derive_tp2_hc.TP2_SHARD in base["capabilities"]["hc_supported_modes"]["2"]
+
+
+def test_tp2_hc_refuses_a_parent_without_the_expected_gate(tmp_path):
+    root, _ = tp2_fixture(tmp_path)
+    (root / derive_tp2_hc.AUDIT.lstrip("/")).write_bytes(b"# no TP4 gate\n")
+    receipt = json.loads((root / layer.BASE_RECEIPT.lstrip("/")).read_text())
+    with pytest.raises(ValueError, match="Expected one occurrence"):
+        derive_tp2_hc.replace(layer.root_reader(root), receipt)
+
+
+def test_staging_fix_snapshots_rows_before_the_copy():
+    source = "        cpu, gpu = self.cpu, self.gpu\n" + derive_staging_fix.COPY
+    result = derive_staging_fix.replace(lambda path: source.encode(), {})[derive_staging_fix.UTILS].decode()
+    assert "staging = torch.empty_like(cpu, pin_memory=True)" in result
+    assert result.index("staging.copy_(cpu)") < result.index("return gpu.copy_(staging, non_blocking=True)")
+    assert derive_staging_fix.COPY not in result
+    assert derive_staging_fix.LAYER.pins == {derive_staging_fix.UTILS: (derive_staging_fix.INHERITED,
+                                                                        derive_staging_fix.RESULT)}
+
+
+def test_staging_fix_refuses_an_unpinned_parent_file(tmp_path):
+    root, lock = code_parent(tmp_path, {derive_staging_fix.UTILS: derive_staging_fix.COPY.encode()})
+    with pytest.raises(ValueError, match="pinned"):
+        layer.prepare_layer(derive_staging_fix.LAYER, lock, layer.root_reader(root), tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+
+
+def test_command_lines_prepare_code_and_descriptor_layers(parent, tmp_path, capsys):
+    root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    lock_path = tmp_path / "parent-lock.json"
+    lock_path.write_text(json.dumps(lock))
+    layer.main(simple_layer(), ["prepare", "--parent-lock", str(lock_path), "--parent-root", str(root),
+                                "--output", str(tmp_path / "code-context")])
+    assert json.loads(capsys.readouterr().out)["files"] == 1
+    layer.main(argv=["prepare", "--descriptor", str(parent.descriptor), "--repository", str(parent.repository),
+                     "--base-receipt", str(parent.receipts / "base.json"),
+                     "--toolchain-receipt", str(parent.receipts / "toolchain.json"),
+                     "--output", str(tmp_path / "descriptor-context")])
+    assert json.loads(capsys.readouterr().out)["files"] == 2
+    with pytest.raises(SystemExit):
+        layer.main(argv=["prepare", "--descriptor", str(parent.descriptor), "--repository", str(parent.repository),
+                         "--base-receipt", str(parent.receipts / "base.json"), "--output", str(tmp_path / "other")])
+    assert not (tmp_path / "other").exists()

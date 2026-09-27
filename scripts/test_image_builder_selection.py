@@ -31,3 +31,23 @@ def test_catalog_plans_preserve_arguments_without_execution():
         assert result['command'][0] == (sys.executable if row['kind'] == 'python' else 'bash')
         assert Path(result['command'][1]) == (ROOT / row['path']).resolve()
         assert result['command'][2:] == ['argument with spaces', '--execute']
+
+
+def test_every_installer_image_release_names_one_builder(tmp_path):
+    from runtime.common.profiles import ROOT, read_json
+    from scripts.check_repository_layout import validate_release_builders
+
+    catalog = read_json(ROOT / "runtime/images/builders.json")
+    named = validate_release_builders(catalog)
+    installer = {path.parent.name for path in (ROOT / "runtime/releases").glob("*/installer-image.json")}
+    assert installer <= set(named)
+    for release in ("unbuilt", "built"):
+        (tmp_path / "runtime/releases" / release).mkdir(parents=True)
+        (tmp_path / "runtime/releases" / release / "release.json").write_text("{}")
+        (tmp_path / "runtime/releases" / release / "installer-image.json").write_text("{}")
+    rows = {"builders": [{"id": "sample", "releases": ["built"]}]}
+    with pytest.raises(ValueError, match="without a builder.*unbuilt"):
+        validate_release_builders(rows, tmp_path)
+    rows["builders"].append({"id": "other", "releases": ["built"]})
+    with pytest.raises(ValueError, match="only one builder"):
+        validate_release_builders(rows, tmp_path)

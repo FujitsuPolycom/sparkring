@@ -118,85 +118,16 @@ This keeps each recipe's source changes relative to an explicit shared base.
 
 ## Derived installer layers
 
-[derived_layer.py](derived_layer.py) derives an installer image that adds or
-replaces a few Python files in the serving interpreter's site-packages, in one
-layer over a pinned installer image. The installer image lock pins the SHA-256
-of two receipts inside the image: the external-base receipt, whose file map the
-image's `verify` checks, and the toolchain receipt, which records the
-external-base receipt. The derived layer records each file in the first,
-re-records the second, and adds a provenance receipt that lists every path with
-its inherited and resulting SHA-256.
-
-A `sparkring-derived-layer-descriptor/v1` descriptor names the parent installer
-lock, each image path with its repository source, pinned SHA-256 and inherited
-SHA-256 (`null` for an addition), the provenance receipt path and the layer's
-purpose. The builder refuses native libraries, the startup hooks that select the
-transport, feature and status packages, and the B12X sources that the prepared
-RoCE transport verifies at startup; changing those needs a new transport
-manifest or composition instead.
-
-A descriptor may also replace the runtime-status package with a
-`runtime_status` entry that pins a pure wheel and its source archive by file
-name and SHA-256; `prepare --status-artifacts DIRECTORY` reads both. The image
-installs that package from its wheel into `/opt/sparkring/python`. The image's
-`verify` requires the complete inventory of that directory to equal the
-receipt's `python_roots` and the receipt's `files` entries under it, and
-requires every path in `removed_files` to be absent. The installer's admission
-requires the receipt's `capabilities.runtime_status.version` to equal the lock's
-`status_version`, which must match `0.3.x`. The builder therefore admits the
-wheel with the image preparer's rules (package modules equal to the source
-archive's, official entry points, `fastapi>=0.115` as the only dependency,
-consistent `METADATA`, `WHEEL` and `RECORD`), requires a `0.3.x` version other
-than the parent's, and rewrites those receipt fields together: the parent
-version's files leave `files` and `python_roots` and enter `removed_files`, and
-`capabilities.runtime_status` records the wheel's version and the wheel and
-source-archive SHA-256. The layer's Dockerfile removes the parent version's
-`dist-info` directory before copying the wheel's files, and `record` writes the
-wheel's version into the lock's `status_version`. `composition_sha256` keeps
-naming the parent's composition; the provenance receipt records the replaced
-status version and files.
-
-1. On a host that holds the parent image, copy its two receipts:
-
-   ```bash
-   docker run --rm --pull never --network none --entrypoint cat PARENT_IMAGE_ID \
-     /opt/sparkring/receipts/external-base-installed.json > base.json
-   docker run --rm --pull never --network none --entrypoint cat PARENT_IMAGE_ID \
-     /opt/sparkring/toolchain/installed.json > toolchain.json
-   ```
-
-2. Prepare the context offline. `prepare` checks both receipts against the
-   parent lock and every source against its pinned SHA-256:
-
-   ```bash
-   python3 runtime/images/derived_layer.py prepare \
-     --descriptor runtime/images/compositions/DESCRIPTOR_DIRECTORY/descriptor.json \
-     --base-receipt base.json --toolchain-receipt toolchain.json --output CONTEXT
-   ```
-
-3. Build. BuildKit resolves a bare image ID as a registry name, so give the
-   parent a local tag first:
-
-   ```bash
-   docker tag PARENT_IMAGE_ID sparkring-dev/parent:PARENT_ID_PREFIX
-   docker build --build-arg PARENT_IMAGE=sparkring-dev/parent:PARENT_ID_PREFIX -t TAG CONTEXT
-   ```
-
-4. Record the lock. `record` confirms that the parent has none of the added
-   paths, runs the installer's admission for every profile of the lock,
-   including the image's isolated `verify`, and writes the lock:
-
-   ```bash
-   python3 runtime/images/derived_layer.py record --context CONTEXT \
-     --image BUILT_IMAGE_ID --name RELEASE --output LOCK
-   ```
-
-The written lock is a development lock: its `image_reference` is the local
-configuration ID and its `download_bytes` is an upper bound. Publication
-replaces both from the registry and adds the release's `publication.json` and
-`release.json` ([release procedure](../../docs/development/releases.md)). No
-step selects the image for a profile.
-
-| Descriptor | Parent | Adds | Status |
-|---|---|---|---|
-| [installer-b12xcache-status032](compositions/installer-b12xcache-status032/descriptor.json) | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | [B12X reconciled selection-cache correction](../../integrations/b12x/selection_cache/README.md) and runtime-status 0.3.2 | Built locally as `dev-20260927-b12xcache-cuda1342-nccl2323-status032` (configuration `sha256:c11021dc9849`, [development lock](../releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/installer-image.json)); not published |
+[derived_layer.py](derived_layer.py) derives an installer image in one layer
+over a pinned installer image: it adds or replaces receipt-recorded files,
+optionally replaces the runtime-status package, re-records the image's
+external-base and toolchain receipts, and writes a new installer lock after the
+installer's admission accepts the built image. A layer is either a
+`sparkring-derived-layer-descriptor/v1` descriptor under
+[compositions/](compositions/) or a `derive_*.py` module that edits the
+parent's own files with exact substitutions. The images that `sparkring install`
+uses are built as a chain of such layers over a toolchain layer;
+[installer image builders](installer-images.md) names the builder of each image,
+describes both layer forms and their commands, and records the replayed receipt
+evidence. The [CUDA 13.4.2 and NCCL 2.32.3 toolchain layer](cuda134-nccl232.md)
+documents the toolchain preparers.

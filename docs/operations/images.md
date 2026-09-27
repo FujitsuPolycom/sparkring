@@ -21,7 +21,9 @@ The download is 14.2 GiB and the unpacked image 29.5 GiB. Its
 [installer image lock](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/installer-image.json)
 lists the nine profiles and pins its identity; its
 [publication record](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/publication.json)
-names the parent image and the added layer.
+names the parent image and the added layer. The
+[installer image builders](../../runtime/images/installer-images.md) list the
+builder of each layer in the chain.
 
 | Component | Purpose |
 |---|---|
