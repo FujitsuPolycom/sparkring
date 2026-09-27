@@ -158,7 +158,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-fb6be60ff426-60215d26cf5e
     labels:
-      io.sparkring.deployment: be2723131cf4253e98cf6b495063e0a9610f720add08b6823da7040804737544
+      io.sparkring.deployment: 78961402c695b072b8ae8a7654a4f300738fc7fcd6171d1329ec558a456411ac
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
@@ -201,5 +201,5 @@ services:
       - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).close()
       interval: 10s
       timeout: 5s
-      start_period: 900s
+      start_period: 1800s
       retries: 3

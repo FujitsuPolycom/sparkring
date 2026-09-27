@@ -62,7 +62,8 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
 def test_catalog_keeps_separate_deepseek_engines_and_variant_validation():
     table = profile_table()
     summary, variants = table.split('## Configuration variants', 1)
-    rows = [line for line in summary.splitlines() if line.startswith('| [DeepSeek-V4.1-Flash](')]
+    rows = [line for line in summary.splitlines()
+            if line.startswith(('| [DeepSeek-V4.1-Flash](', '| **[DeepSeek-V4.1-Flash]('))]
     assert len(rows) == 2
     assert any('<br>vLLM |' in row for row in rows)
     assert any('<br>SGLang |' in row for row in rows)

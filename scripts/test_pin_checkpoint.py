@@ -23,6 +23,8 @@ COMMITTED = {
         ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4"],
     ("XiaomiMiMo/MiMo-V2.6-Flash-RL", "5711b268169967567844e1e560e8a3966da959b1"):
         ["mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4"],
+    ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
+        ["deepseek-v41-flash-tp4"],
 }
 # Revisions pinned only by profiles outside the installer: the Qwen SparkCache
 # profiles run the step-4000 checkpoint and keep their own SHA256SUMS.

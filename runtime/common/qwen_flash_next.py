@@ -32,7 +32,7 @@ TP4_CACHE_CONFIG = ROOT / "profiles/qwen38-flash-next-qad-tp4/sparkcache.json"
 # rank and transport envelope; the installer image lock supplies the image's
 # entrypoint, NCCL/CUDA paths, status plugin and runtime binding.
 TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
-    "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
+    "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
     "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4",
     "qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4"))
 TOOLCHAIN_ENTRYPOINT = "/opt/sparkring/toolchain/toolchain.py"

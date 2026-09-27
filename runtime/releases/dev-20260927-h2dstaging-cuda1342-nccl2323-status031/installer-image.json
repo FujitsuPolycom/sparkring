@@ -7,6 +7,7 @@
   "name": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031",
   "parent_receipt_sha256": "9861346f291e7808828e7e0e28fab2e6c6df208829e309cec3592b0e873b5290",
   "profiles": [
+    "deepseek-v41-flash-tp4",
     "glm53-flash-nvfp4-spark-tp2",
     "glm53-flash-nvfp4-spark-tp4",
     "mimo-v26-flash-rl-tp2",

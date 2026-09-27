@@ -220,8 +220,8 @@ def test_controller_allows_preview_while_another_deployment_is_running(tmp_path,
     assert installer.read(tmp_path / "active.json")["path"] == str(tmp_path / "baseline")
 
 
-SHARED = ("glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp2",
-          "mimo-v26-flash-rl-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2")
+SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
+          "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2")
 
 
 def test_release_lock_lists_every_installer_profile_on_one_image():
@@ -252,8 +252,9 @@ def test_shared_lock_profile_list_is_exact(change):
         installer_image.validate(value, PROFILE)
 
 
-@pytest.mark.parametrize("profile", ["glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4", "glm53-flash-nvfp4-spark-tp2"])
-def test_glm_and_mimo_render_on_the_shared_image(monkeypatch, profile):
+@pytest.mark.parametrize("profile", ["deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4",
+                                     "glm53-flash-nvfp4-spark-tp2"])
+def test_other_models_render_on_the_shared_image(monkeypatch, profile):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("Offline render contacted a host"))
     lock_value = installer_image.default_lock()
     nodes = 4 if profile.endswith("tp4") else 2
@@ -272,11 +273,13 @@ def test_glm_and_mimo_render_on_the_shared_image(monkeypatch, profile):
         assert spec.environment["SPARKCACHE_ENABLED"] == "0" and "--kv-transfer-config" not in spec.command
         assert "--enable-prefix-caching" in spec.command
         assert spec.environment["VLLM_NCCL_SO_PATH"] == "/opt/sparkring/toolchain/nccl/lib/libnccl.so.2"
-        family = "glm53-flash-nvfp4-spark" if profile.startswith("glm") else "mimo-v26-flash-rl"
+        family = json.loads((installer.ROOT / "profiles" / profile / "config.json").read_text())["cache_namespace"]
         assert spec.environment["XDG_CACHE_HOME"] == f"/cache/{family}-{lock_value['image_id'][7:19]}-{lock['selection']['model_revision'][:12]}"
         assert spec.mounts[-1].target == installer_image.BINDING_TARGET
         if rank == 0:
             assert spec.health_command[0] == "python3"
+            # Health failures count only after the installer's 30-minute readiness window.
+            assert spec.health_start_period == installer_image.HEALTH_START_SECONDS == 1800
     connection = installer.connection(lock)
     assert connection["model"].endswith(f"-TP{nodes}")
 

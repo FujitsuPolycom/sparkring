@@ -181,7 +181,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-fb6be60ff426-a608241037e4
     labels:
-      io.sparkring.deployment: 15c8301d445bd55a1fd7e0a1474842afdfd006a606241daa02cbe24f669d8f3c
+      io.sparkring.deployment: ca7c27a1ddf7ddc532e6c2b518652eb377857fdc494a1ee05b2ff2ba956487b3
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
@@ -224,5 +224,5 @@ services:
       - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8015/health', timeout=4).close()
       interval: 10s
       timeout: 5s
-      start_period: 900s
+      start_period: 1800s
       retries: 3

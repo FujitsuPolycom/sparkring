@@ -164,7 +164,7 @@ services:
       - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).close()
       interval: 10s
       timeout: 5s
-      start_period: 900s
+      start_period: 1800s
       retries: 3
     profiles:
     - rank0

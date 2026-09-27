@@ -147,7 +147,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/mimo-v26-flash-rl-fb6be60ff426-5711b2681699
     labels:
-      io.sparkring.deployment: 1fd055c5007e7379d56003eb6af2a3b8f47dbfb5df66c2b025935838cc4c21a9
+      io.sparkring.deployment: 3c14f7666a62504381873a071bd6661d3bd50bec5db03a3a2ad1edd828cc9b0c
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
@@ -190,5 +190,5 @@ services:
       - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/health', timeout=4).close()
       interval: 10s
       timeout: 5s
-      start_period: 900s
+      start_period: 1800s
       retries: 3

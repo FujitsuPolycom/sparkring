@@ -36,9 +36,14 @@ SCHEMA = "sparkring-installer-image/v2"
 # supplies an explicit development lock.
 DEFAULT_LOCK = ROOT / "runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json"
 QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
-SUPPORTED = (*QWEN, "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
+SUPPORTED = (*QWEN, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
              "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4")
 PLUGINS = ("b12x_loader", "sparkring_status")
+# The installer waits up to 30 minutes for rank 0 to report healthy. A first
+# start compiles and tunes kernels for every CUDA graph size, so the health
+# check tolerates failures for the same period instead of marking a rank that
+# is still starting unhealthy.
+HEALTH_START_SECONDS = 1800
 COMMON = {"schema", "name", "image_id", "image_reference", "parent_receipt_sha256",
           "toolchain_receipt_sha256", "composition_sha256", "transport_profile",
           "transport_manifest_sha256", "status_version"}
@@ -171,7 +176,7 @@ def adapt(spec, value, *, binding, source_root, profile=None):
     if any(option.startswith(("seccomp=", "seccomp:")) for option in spec.security_opt):
         raise ValueError("External loader policy cannot replace an existing profile policy")
     return replace(spec, image_id=value["image_id"], entrypoint=ENTRYPOINT, command=spec.command[1:],
-                   environment=environment, health_command=health,
+                   environment=environment, health_command=health, health_start_period=HEALTH_START_SECONDS,
                    security_opt=(*spec.security_opt, "seccomp=" + str(PurePosixPath(source_root) / loader_policy.RELATIVE)),
                    mounts=(*spec.mounts, Bind(binding, BINDING_TARGET, True)),
                    labels={**spec.labels, "io.sparkring.image-lock": value["name"]})

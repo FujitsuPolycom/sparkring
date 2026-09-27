@@ -394,7 +394,7 @@ def test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint():
     assert installer.checkpoint_directory("tp4-installer", cards[QWEN]) != qwen
     main = {**cards[QWEN], "model_revision": "7c4f1bc1a2d6847e0cbc01ac6b823f00251de8dd"}
     assert installer.checkpoint_directory("tp2", main) == qwen.rsplit("/", 1)[0] + "/" + main["model_revision"]
-    assert len({installer.checkpoint_directory("tp2", card) for card in cards.values()}) == 3
+    assert len({installer.checkpoint_directory("tp2", card) for card in cards.values()}) == 4
     # Deployment workspaces are named after profiles, so none is the checkpoints or cache directory.
     assert not {"checkpoints", "cache"} & set(installer.profiles.catalog())
     for profile, card in cards.items():
