@@ -29,20 +29,19 @@ Four Sparks:
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
-The command asks before it installs the SparkRing package on that device and
-again before it changes any Spark; `--yes` answers both, and `--plan` installs
-nothing. It sets up every Spark, downloads the image and the model (or reuses a
-copy already on the Sparks), and prints the API address when the model is ready.
-Each model also serves a live [status dashboard](docs/operations/dashboard.md).
-On four Sparks it also applies the ring's
-[ConnectX driver setting](docs/operations/install.md#four-spark-rings) and
-repeats it at every boot. Running the same command again upgrades to the
-branch's newest SparkRing, image and model settings and reuses files already
-on the Sparks; to repeat an installation exactly, use the
-[pinned command](docs/operations/install-reference.md#get-the-package). To run
-with Docker Compose instead, see [Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
+The command asks before it installs the SparkRing package and before it
+changes any Spark; `--yes` answers both, and `--plan` changes nothing. It sets
+up every Spark, downloads the image and model unless the Sparks already hold
+them, and prints the API address when the model is ready. Each model serves a
+[status dashboard](docs/operations/dashboard.md), and on four Sparks the
+installer also applies the ring's
+[ConnectX driver setting](docs/operations/install.md#four-spark-rings) at every
+boot. Running it again upgrades to the branch's newest release; the
+[pinned command](docs/operations/install-reference.md#get-the-package) repeats
+an installation exactly.
 
-To install Swift, GLM, MiMo or DeepSeek instead, use a `--profile` value from [Profiles](#profiles).
+Other models: a `--profile` value from [Profiles](#profiles). Docker Compose:
+[Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
 All commands and flags: [SparkRing commands](docs/operations/commands.md).
 
 ## Profiles
@@ -63,19 +62,9 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 
 Decode is the aggregate output rate from
 [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
-0.6.2 (`llm_decode_bench.py`) at temperature 1.0 with exact token targeting, no
-added context, up to 2,048 output tokens, 20 s per cell after a 5 s warm-up.
-Prefill is one cold 64K-token prompt divided by its time to first token, from
-the same run. Every profile runs image
-`dev-20260927-b12xcache-cuda1342-nccl2323-status032`. The DeepSeek and
-four-Spark MiMo rows were measured on it; the four-Spark GLM row and the
-two-Spark Swift and MiMo rows on its parent image,
-`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, which lacks the B12X
-selection-cache correction and runtime-status 0.3.2; and the Qwen and
-two-Spark GLM rows on that image's parent,
-`dev-20260925-qwendecode-cuda1342-nccl2323-status031`, which also lacks vLLM's
-host-to-device staging fix. The GLM pair profile serves at most 8 requests.
-The four-Spark Swift profile has not been measured with this benchmark.
+0.6.2 at temperature 1.0 with no added context, 20 s per cell; prefill is one
+cold 64K-token prompt divided by its time to first token. Every profile runs
+image `dev-20260927-b12xcache-cuda1342-nccl2323-status032`.
 Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),
 [GLM](performance/records/images/dev-20260925-qwendecode-glm-prefill-20260926.md),
