@@ -100,7 +100,7 @@
     "--engram-config",
     "{\"table_memory\":\"disk\",\"disk_resident_scales\":true}",
     "--speculative-config",
-    "{\"method\":\"dspark\",\"num_speculative_tokens\":5,\"draft_sample_method\":\"greedy\",\"rejection_sample_method\":\"block\",\"enable_adaptive_verification\":false}",
+    "{\"method\":\"dspark\",\"num_speculative_tokens\":5,\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"block\",\"enable_adaptive_verification\":true}",
     "--compilation-config",
     "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"cudagraph_capture_sizes\":[5,6,10,12,15,18,20,24,25,30,35,36,40,42,45,48,50,54,55,60,65,66,70,72,75,78,80,84,90,96]}",
     "--max-cudagraph-capture-size",

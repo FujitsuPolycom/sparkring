@@ -232,7 +232,7 @@ as installer-supported:
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
 | `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | MiMo-V2.6-Flash-RL, revision `5711b2681699` | DFlash5 |
-| `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens |
+| `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
 
 The installer image differs from `dev-20260925-cuda1342-nccl2323-status031`

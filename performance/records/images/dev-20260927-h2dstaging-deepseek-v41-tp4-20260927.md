@@ -17,7 +17,7 @@ quantization and DSpark speculative decoding.
 | Engram tables | `--engram-config '{"table_memory":"disk","disk_resident_scales":true}'` | The two Engram n-gram tables (94.6 GiB each) stay in the checkpoint's last two shards; each step reads the rows it needs with io_uring. Their scale bytes stay in host RAM, 1.4 GiB per rank |
 | `VLLM_DS41_ENGRAM_OVERLAP=0` | Engram rows are read before the step | See [Engram overlap](#engram-overlap) |
 | `VLLM_DS41_MARKOV_NVFP4=1`, `VLLM_DS41_DRAFT_NVFP4_HEAD=1` | NVFP4 DSpark draft layers and vocabulary head | Single-stream decode 3-8% faster; acceptance unchanged. The target model verifies every draft, so outputs do not depend on the draft's precision |
-| Speculative decoding | DSpark, 5 tokens (the checkpoint's `dspark_block_size`), greedy draft, block rejection, adaptive verification off | |
+| Speculative decoding | DSpark, 5 tokens (the checkpoint's `dspark_block_size`), probabilistic drafting, block rejection, adaptive verification on | Aggregate decode 26-37% higher at 4-16 streams, temperature 1.0; see [Speculative decoding](#speculative-decoding) |
 | Sequences and graphs | `--max-num-seqs 16`; CUDA graphs `FULL_AND_PIECEWISE` at every multiple of 5 and 6 tokens up to 96 | |
 | `NCCL_IB_EXTENDED_IPV4_GIDS=1` | NCCL publishes all four ring NIC functions | Prefill 4-9% faster from 16K to 128K than with it off |
 | Other | Request limit 1,048,576 tokens, 8,192 scheduler tokens, memory utilization 0.83, 256-token pages (128 for the sliding window), prefix caching on | |
@@ -189,6 +189,53 @@ established. The memory release before each start
 ([install reference](../../../docs/operations/install-reference.md#install-a-model))
 removes that page cache; no installation has hashed a checkpoint and then
 started this profile with it.
+
+## Speculative decoding
+
+Serving containers derived from the installer deployment, with the profile's
+settings otherwise, on image `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`
+plus the B12X selection-cache correction mounted as an in-memory hook (the
+correction the image `dev-20260927-b12xcache-cuda1342-nccl2323-status032`
+ships). Each variant changes only the speculative configuration.
+llm-inference-bench 0.6.2, temperature 1.0, exact token targeting, no added
+context, up to 2,048 output tokens, 5 s warm-up; aggregate tokens/s, then
+verification steps/s × tokens per step.
+
+First pass, 20 s per cell:
+
+| Variant | 1 stream | 8 streams | 16 streams |
+|---|---:|---:|---:|
+| Greedy drafting, block rejection (then the profile) | 59.4 (24.1 × 2.46) | 140.0 (63.7 × 2.20) | 208.7 (95.5 × 2.19) |
+| Probabilistic drafting, block rejection | 54.1 (24.4 × 2.22) | 158.6 (63.9 × 2.48) | 244.3 (90.7 × 2.69) |
+| Probabilistic drafting, standard rejection | 55.5 (24.1 × 2.30) | 161.1 (61.6 × 2.61) | 237.7 (92.1 × 2.58) |
+| Adaptive verification | 55.0 (25.8 × 2.14) | 180.5 (82.9 × 2.19) | 249.1 (120.4 × 2.08) |
+| 10 draft tokens | 42.4 (19.6 × 2.16) | 103.7 (53.1 × 1.95) | 152.5 (76.7 × 1.99) |
+| 8 NCCL channels | 54.9 (24.5 × 2.24) | 146.1 (63.4 × 2.30) | 215.0 (94.5 × 2.27) |
+| 12,288 scheduler tokens | 54.4 (24.2 × 2.25) | 142.0 (61.9 × 2.29) | 206.6 (92.4 × 2.23) |
+
+Probabilistic drafting raises tokens per step; adaptive verification raises
+verification steps per second. Ten draft tokens are rarely accepted beyond the
+fifth (the first five positions' acceptance also fell) and shrink the KV pool
+to 9,509,146 tokens. Eight NCCL channels and 12,288 scheduler tokens left
+repeated prefill within 4% of the profile's (4,406-4,549 tokens/s at 16K and
+4,153-4,239 at 64K, against 4,461 and 4,305), and decode within the
+run-to-run spread.
+
+Confirmation, 60 s per cell:
+
+| Variant | 4 streams | 8 streams | 16 streams |
+|---|---:|---:|---:|
+| Greedy drafting, block rejection | 108.6 (47.7 × 2.28) | 142.5 (62.6 × 2.28) | 207.8 (90.3 × 2.30) |
+| Adaptive verification | 130.5 (58.7 × 2.25) | 184.6 (82.8 × 2.23) | 252.9 (124.6 × 2.12) |
+| **Adaptive verification, probabilistic drafting, block rejection (profile)** | **138.9 (56.8 × 2.48)** | **195.2 (86.0 × 2.30)** | **260.9 (120.6 × 2.22)** |
+| Adaptive verification, probabilistic drafting, standard rejection | 142.1 (58.6 × 2.44) | 190.2 (81.1 × 2.35) | 258.2 (120.8 × 2.19) |
+
+The two rejection methods differ by less than the spread between runs; the
+profile keeps block rejection. With the correction, each variant's restart
+became healthy in 200-306 s, and B12X reported its kernel selections from the
+cache (`281 cached, 0 measured` and `273 cached, 20 measured`), against
+652-741 s for the installations without it. The matrices are
+`tp4-matrix-speculative-*.json`.
 
 ## Correctness screen
 

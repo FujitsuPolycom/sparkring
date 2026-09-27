@@ -53,7 +53,7 @@ services:
     - --engram-config
     - '{"table_memory":"disk","disk_resident_scales":true}'
     - --speculative-config
-    - '{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"greedy","rejection_sample_method":"block","enable_adaptive_verification":false}'
+    - '{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"probabilistic","rejection_sample_method":"block","enable_adaptive_verification":true}'
     - --compilation-config
     - '{"cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[5,6,10,12,15,18,20,24,25,30,35,36,40,42,45,48,50,54,55,60,65,66,70,72,75,78,80,84,90,96]}'
     - --max-cudagraph-capture-size
@@ -147,7 +147,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/deepseek-v41-flash-c11021dc9849-dba1be0a40aa
     labels:
-      io.sparkring.deployment: 0ae87b2602f99ea68a1b39f77750bfaa460c44698bf6d90d146be566dacec0a9
+      io.sparkring.deployment: 44a133663c84bbd7bda152ab2932f512cef81fa71208027da8570c9cac71feda
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
