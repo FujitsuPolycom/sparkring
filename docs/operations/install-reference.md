@@ -20,11 +20,34 @@ full, builds its package, installs it with `apt`, then runs
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
+Installing the package initializes the Spark's SparkRing node, enables and
+starts `avahi-daemon` and `lldpd` for discovery, and restarts
+`sparkring-agent`, so the script names the installed and built versions and
+asks `Install the package? [Y/n]` first; without a terminal it needs `--yes`.
+When the built version is already installed, it skips `apt`. `--yes` also
+answers `sparkring install`'s questions. With `--plan` the script installs
+nothing: if this Spark has the package version it built,
+`sparkring install --plan` prints the plan; otherwise the script stops and
+names both versions. Its progress, questions and `apt` output go to standard
+error, so with `--json` standard output holds one `sparkring-install-result/v1`
+document: the installer's result, or the script's own when it stops first,
+with `state` `failed` and the `stage` that failed (exit status 2) or
+`needs_input` and the `field` it needs (exit status 3).
+
+The branch command installs the branch's newest revision each time. To repeat
+an installation exactly, fetch the script and the source at one commit; the
+script prints the commit it installs as `Source revision:`. Replace `COMMIT`
+with that full 40-character ID:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/COMMIT/install.sh | bash -s -- --ref COMMIT --profile qwen38-flash-next-tp2
+```
+
 `--ref BRANCH_TAG_OR_COMMIT` selects another source and `--repository URL`
 another repository or a local Git bundle; the script's own copy must come from
 the same ref. It builds in a temporary directory under `/var/tmp` and removes
-it afterwards. When the script arrives through a pipe, the installer's
-questions are read from the terminal.
+it before `sparkring install` starts. When the script arrives through a pipe,
+its questions and the installer's are read from the terminal.
 
 **Download a published build.** A GitHub prerelease of
 [FujitsuPolycom/sparkring](https://github.com/FujitsuPolycom/sparkring/releases)

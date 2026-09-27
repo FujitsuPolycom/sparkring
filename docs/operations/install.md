@@ -43,9 +43,12 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-comman
 
 Use the `--profile` value for your model and Spark count from the
 [profile table](../../README.md#profiles); without `--profile`, it asks. The
-script builds and installs the SparkRing package, then runs
-`sudo sparkring install` with your options. To install a published package
-instead, see [Get the package](install-reference.md#get-the-package).
+script builds the SparkRing package and asks `Install the package? [Y/n]`
+before installing it on this Spark, then runs `sudo sparkring install` with
+your options. `--yes` answers both commands' questions. `--plan` installs
+nothing and prints the plan when this Spark already has the package the script
+built. To install a published package instead, see
+[Get the package](install-reference.md#get-the-package).
 
 A Qwen profile installs checkpoint step 5500 by default; add
 `--checkpoint qad-step-4000` for step 4000
@@ -57,7 +60,10 @@ before a model download larger than 1 GiB. Later runs print the plan and ask
 program's GPU container. It prepares the image and model before it stops the running model, and restarts
 the running model if the selected one fails to start. It ends with `Model ready:` and the
 API URL. If it stops early, run the same command again; it continues where it
-stopped.
+stopped. The command above always installs the branch's newest SparkRing; to
+continue or repeat an installation with the same version, pin it to the
+`Source revision:` the script printed
+([pinned command](install-reference.md#get-the-package)).
 
 ## Four-Spark rings
 

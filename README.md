@@ -29,21 +29,29 @@ Four Sparks:
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
-The command sets up every Spark, downloads the image and the model (or reuses a
+The command asks before it installs the SparkRing package on that device and
+again before it changes any Spark; `--yes` answers both, and `--plan` installs
+nothing. It sets up every Spark, downloads the image and the model (or reuses a
 copy already on the Sparks), and prints the API address when the model is ready.
 Each model also serves a live [status dashboard](docs/operations/dashboard.md).
 On four Sparks it also applies the ring's
 [ConnectX driver setting](docs/operations/install.md#four-spark-rings) and
-repeats it at every boot. Run the same command again to update SparkRing and
-the model; files already on the Sparks are reused. To run with Docker
-Compose instead, see [Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
+repeats it at every boot. Running the same command again upgrades to the
+branch's newest SparkRing, image and model settings and reuses files already
+on the Sparks; to repeat an installation exactly, use the
+[pinned command](docs/operations/install-reference.md#get-the-package). To run
+with Docker Compose instead, see [Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
 
-To install GLM or MiMo instead, use a `--profile` value from [Profiles](#profiles).
+To install GLM, MiMo or DeepSeek instead, use a `--profile` value from [Profiles](#profiles).
 All commands and flags: [SparkRing commands](docs/operations/commands.md).
 
 ## Profiles
 
-`sparkring install --profile` accepts these profiles:
+`sparkring install --profile` accepts these profiles. Every profile runs image
+`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`. The Qwen, GLM and MiMo
+figures were measured on its parent image,
+`dev-20260925-qwendecode-cuda1342-nccl2323-status031`, which lacks vLLM's
+host-to-device staging fix; they have not been measured on the selected image.
 
 | Model | Checkpoint | Sparks | `--profile` value | API port | Decode (tok/s, one user) | Decode (tok/s, 8 / 16 users) | Prefill 16K (tok/s) |
 |---|---|---|---|---|---|---|---|
@@ -53,14 +61,19 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 60.6–77.5 | 205 / 282 | 3,399 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 25.7–62.8 | — | 3,802 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 44.8–111.5 | — | 4,253 |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | — | 146 / 216 | — |
 
 One-user decode ranges from prose to JSON prompts at temperature 0. Decode for
 8 and 16 users is the aggregate llm-inference-bench rate at temperature 1.0
 with no added context; the GLM pair profile serves at most 8 requests, and
-MiMo is not yet measured this way. Measurements:
+MiMo is not yet measured this way. DeepSeek was measured on the selected image
+with its profile's settings through that benchmark only, which prefilled
+4,639 tokens/s at 8K and 4,411 at 64K; its one-user decode by prompt type and
+its 16K prefill were measured on neighboring settings. Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),
 [GLM](performance/records/images/dev-20260925-qwendecode-glm-prefill-20260926.md),
-[MiMo](performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md).
+[MiMo](performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md),
+[DeepSeek](performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md).
 
 The [full profile catalog](profiles/README.md) lists every profile, including
 SparkCache variants and models that `sparkring install` does not set up. Each

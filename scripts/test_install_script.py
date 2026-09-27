@@ -1,17 +1,42 @@
-"""Static checks for install.sh; nothing is cloned, built, installed or contacted."""
+"""Checks for install.sh; nothing is cloned, built, installed or contacted.
+
+The behavior tests run the script with stub git, package-build, dpkg, apt-get
+and sudo commands and without a controlling terminal.
+"""
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "install.sh"
+BUILT = "0.1.0~dev.2+gitbbbbbbbbbbbb"
+
+STUBS = {
+    "uname": 'echo aarch64\n',
+    "git": ('[ -n "${STUB_GIT_FAILS:-}" ] && { echo "fatal: repository not found"; exit 128; }\n'
+            'case "$1" in\n'
+            '  clone) for last; do :; done; mkdir -p "$last" ;;\n'
+            '  -C) [ "$3" = rev-parse ] && echo ' + "a" * 40 + ' ;;\n'
+            'esac\n'),
+    "python3": 'mkdir -p "$3" && : > "$3/sparkring_${STUB_BUILT}_arm64.deb"\n',
+    "dpkg-deb": 'echo "$STUB_BUILT"\n',
+    "dpkg-query": '[ -n "${STUB_INSTALLED:-}" ] || exit 1\nprintf "ii %s" "$STUB_INSTALLED"\n',
+    "dpkg": '[ "$2" != "$4" ] && [ "$(printf "%s\\n%s\\n" "$2" "$4" | sort -V | head -1)" = "$2" ]\n',
+    "apt-get": 'echo "Reading package lists..."\necho "apt-get $*" >> "$STUB_LOG"\n',
+    "sudo": ('if [ "$1" = /usr/bin/sparkring ]; then\n'
+             '  shift; echo "sparkring $*" >> "$STUB_LOG"\n'
+             '  echo \'{"schema": "sparkring-install-result/v1", "state": "planned"}\'\n'
+             'else exec "$@"; fi\n'),
+}
 
 
 def _bash():
@@ -64,3 +89,81 @@ def test_unrecognized_options_pass_through_to_sparkring_install():
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
         "topic", "/srv/sparkring.bundle", "--profile", "qwen38-flash-next-tp2", "--yes", "--json"]
+
+
+def run_script(tmp_path, *arguments, installed=None, git_fails=False):
+    """Run install.sh with stub commands; returns the process and the logged apt and sparkring calls."""
+    if not sys.platform.startswith("linux"):
+        pytest.skip("install.sh runs on Linux")
+    if os.geteuid() == 0:
+        pytest.skip("As root the script runs /usr/bin/sparkring directly instead of through the sudo stub")
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    for name, body in STUBS.items():
+        (stubs / name).write_text("#!/bin/sh\n" + body)
+        (stubs / name).chmod(0o755)
+    log = tmp_path / "calls.log"
+    log.touch()
+    environment = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", "STUB_LOG": str(log),
+                   "STUB_BUILT": BUILT, "STUB_INSTALLED": installed or "", "STUB_GIT_FAILS": "1" if git_fails else ""}
+    # A new session has no controlling terminal, as for an agent or a CI job.
+    result = subprocess.run(["bash", str(SCRIPT), *arguments], stdin=subprocess.DEVNULL, capture_output=True,
+                            text=True, env=environment, timeout=60, start_new_session=True)
+    return result, log.read_text().splitlines()
+
+
+def only_document(stdout):
+    lines = stdout.splitlines()
+    assert len(lines) == 1, stdout
+    return json.loads(lines[0])
+
+
+def test_json_output_is_one_document_and_progress_goes_to_stderr(tmp_path):
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--yes", "--json")
+    assert result.returncode == 0, result.stderr
+    assert only_document(result.stdout)["schema"] == "sparkring-install-result/v1"
+    assert "Reading package lists..." in result.stderr and "Fetching SparkRing" in result.stderr
+    assert calls == [f"apt-get install --yes --allow-downgrades {calls[0].split()[-1]}",
+                     "sparkring install --profile qwen38-flash-next-tp2 --yes --json"]
+
+
+def test_package_install_needs_approval_before_apt(tmp_path):
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--json", installed="0.1.0~dev.1+gitaaaa")
+    assert result.returncode == 3
+    document = only_document(result.stdout)
+    assert (document["state"], document["field"]) == ("needs_input", "approval")
+    assert "Replace SparkRing 0.1.0~dev.1+gitaaaa on this Spark with " + BUILT in result.stderr
+    assert calls == []
+
+
+def test_downgrade_is_named_in_the_question(tmp_path):
+    result, _ = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", installed="0.1.0~dev.3+gitcccc")
+    assert result.returncode == 3 and result.stdout == ""
+    assert f"with the earlier version {BUILT}" in result.stderr
+
+
+def test_plan_installs_nothing_and_plans_with_the_matching_package(tmp_path):
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--plan", "--json", installed=BUILT)
+    assert result.returncode == 0, result.stderr
+    assert only_document(result.stdout)["state"] == "planned"
+    assert calls == ["sparkring install --profile qwen38-flash-next-tp2 --plan --json"]
+
+
+@pytest.mark.parametrize("installed", [None, "0.1.0~dev.1+gitaaaa"])
+def test_plan_stops_when_the_installed_package_differs(tmp_path, installed):
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--plan", "--yes", "--json",
+                               installed=installed)
+    assert result.returncode == 3
+    document = only_document(result.stdout)
+    assert (document["state"], document["field"]) == ("needs_input", "package")
+    assert document["details"] == {"built": BUILT, "installed": installed}
+    assert calls == []
+
+
+def test_bootstrap_failure_is_a_failed_result(tmp_path):
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--yes", "--json", git_fails=True)
+    assert result.returncode == 2
+    document = only_document(result.stdout)
+    assert (document["state"], document["stage"]) == ("failed", "fetch")
+    assert "repository not found" in result.stderr
+    assert calls == []
