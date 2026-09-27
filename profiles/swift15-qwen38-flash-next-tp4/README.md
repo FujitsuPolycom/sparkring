@@ -12,7 +12,7 @@ Experimental; no GB10 serving run covers this profile.
 On the Spark connected to your network:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile swift15-qwen38-flash-next-tp4
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile swift15-qwen38-flash-next-tp4
 ```
 
 [Install SparkRing](../../docs/operations/install.md) covers requirements,

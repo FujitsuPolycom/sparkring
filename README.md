@@ -20,13 +20,13 @@ Prefer Docker Compose? [Compose files for every profile](docs/operations/compose
 Two Sparks:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
 Four Sparks:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
 The command asks before it installs the SparkRing package and before it

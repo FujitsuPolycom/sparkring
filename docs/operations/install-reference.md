@@ -12,12 +12,12 @@ workers. A Git checkout cannot replace the package: `sparkring install` runs
 only from an installed package. Obtain the package in one of three ways.
 
 **Build, install and run in one command.** On Node A, as a user with sudo,
-[`install.sh`](../../install.sh) clones the `one-command-installer` branch in
+[`install.sh`](../../install.sh) clones the `main` branch in
 full, builds its package, installs it with `apt`, then runs
 `sudo sparkring install` with every option you pass it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
 Installing the package initializes the Spark's SparkRing node, enables and
@@ -53,6 +53,9 @@ another repository or a local Git bundle; the script's own copy must come from
 the same ref. It builds in a temporary directory under `/var/tmp` and removes
 it before `sparkring install` starts. When the script arrives through a pipe,
 its questions and the installer's are read from the terminal.
+
+Changes reach the `one-command-installer` branch before `main`; to test them,
+fetch the script from that branch and pass `--ref one-command-installer`.
 
 **Download a published build.** A GitHub prerelease of
 [FujitsuPolycom/sparkring](https://github.com/FujitsuPolycom/sparkring/releases)

@@ -12,7 +12,7 @@ Development.
 On the Spark connected to your network:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile swift15-qwen38-flash-next-tp2
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile swift15-qwen38-flash-next-tp2
 ```
 
 [Install SparkRing](../../docs/operations/install.md) covers requirements,

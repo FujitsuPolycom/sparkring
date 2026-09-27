@@ -38,7 +38,7 @@ image store ([check which one a Spark uses](install-reference.md#image-distribut
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
 Use the `--profile` value for your model and Spark count from the

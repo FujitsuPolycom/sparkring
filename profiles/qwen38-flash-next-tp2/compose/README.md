@@ -12,7 +12,7 @@ checkpoint are already set up.
 On each Spark, in an empty directory:
 
 ```bash
-BASE=https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer
+BASE=https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main
 mkdir -p runtime/common
 curl -fsSLo compose.yaml "$BASE/profiles/qwen38-flash-next-tp2/compose/standalone.yaml"
 curl -fsSLo runtime/common/loader-seccomp.json "$BASE/runtime/common/loader-seccomp.json"

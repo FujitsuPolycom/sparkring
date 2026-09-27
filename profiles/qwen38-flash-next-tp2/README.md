@@ -9,7 +9,7 @@ speculative decoding and 262K context. Node A serves the API on port 8000 as
 On the Spark connected to your network:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
 Add `--checkpoint qad-step-4000` to install checkpoint step 4000 (revision

@@ -9,7 +9,7 @@ as `Qwen3.8-Flash-Next-NVFP4-QAD-TP4`, with no API key. Status: Development.
 On the Spark connected to your network:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
 ```
 
 Add `--checkpoint qad-step-4000` to install checkpoint step 4000 (revision

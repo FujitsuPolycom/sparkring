@@ -12,7 +12,7 @@ set -euo pipefail
 REPOSITORY="https://github.com/FujitsuPolycom/sparkring.git"
 # The branch that publishes this script. A copy fetched from another branch,
 # tag or commit must be run with a matching --ref.
-REF="one-command-installer"
+REF="main"
 YES=0
 PLAN=0
 JSON=0
@@ -66,7 +66,7 @@ model changes; `sudo sparkring install --plan` can then review the rest.
 built, `sparkring install --plan` prints the plan; otherwise the script stops
 and names both versions. --json prints one result document on standard output.
 
-  curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh \
+  curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh \
     | bash -s -- --profile qwen38-flash-next-tp2
 EOF
 }

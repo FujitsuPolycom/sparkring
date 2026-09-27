@@ -10,7 +10,7 @@ profiles share. The default installer image lock, `runtime/releases/<release>/in
 `qwen38-flash-next-qad-tp4` (own guides and a `--checkpoint` table). Users install a profile with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/one-command-installer/install.sh | bash -s -- --profile <id>
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile <id>
 ```
 
 ## Files in `profiles/<id>/`
