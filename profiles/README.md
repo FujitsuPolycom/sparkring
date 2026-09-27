@@ -20,6 +20,9 @@ whose figures were measured on the shared-2026.09.3 image with checkpoint step
 4000 (revision `629bc3218833`), not on the installer image with step 5500. On the installer image, the TP4 profile's KV cache
 held 3,131,214 tokens ([installer tuning record](../performance/records/qwen38-flash-next/installer-tuning-20260925.md)).
 
+To contribute a profile that `sparkring install` sets up, see
+[Contributing an installer profile](../docs/development/installer-profiles.md).
+
 <!-- BEGIN GENERATED PROFILES -->
 
 ### Four Sparks

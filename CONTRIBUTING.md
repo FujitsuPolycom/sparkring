@@ -50,6 +50,8 @@ acceptable. Report suspected vulnerabilities privately as described in
 For a small profile or layout check, run `python scripts/check_repository_layout.py`.
 See the [testing guide](docs/development/testing.md) for component checks and
 [Write Without Hidden Context](docs/development/writing.md) for clear technical prose.
+To add a profile that `sparkring install` sets up, follow
+[Contributing an installer profile](docs/development/installer-profiles.md).
 
 Maintainers help complete partial reports. Issues are not automatically closed
 for inactivity or because a reporter cannot provide hardware evidence. A partial

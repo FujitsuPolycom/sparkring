@@ -39,4 +39,6 @@ The [layout guide](docs/development/layout.md) defines ownership; the
 The [maintainer prompt](docs/development/maintainer-prompt.md) provides a reusable
 workflow. [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [release procedure](docs/development/releases.md) define contribution and promotion.
+[Contributing an installer profile](docs/development/installer-profiles.md) lists
+every registration of a `sparkring install` profile.
 Do not duplicate model inventories or release defaults in agent instructions.
