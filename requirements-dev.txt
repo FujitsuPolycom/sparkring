@@ -5,6 +5,7 @@ httpx==0.28.1
 jsonschema==4.26.0
 numpy==2.4.4
 openai==2.29.0
+prometheus_client==0.26.0
 pydantic==2.12.5
 PyYAML==6.0.3
 pytest==8.4.2
