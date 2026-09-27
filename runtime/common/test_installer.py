@@ -209,6 +209,15 @@ def test_managed_glm_rejects_cache_paths_its_stager_cannot_honor():
         installer.make_lock(installer.GLM_LEGACY[4], raw, "1" * 40, "2" * 64)
 
 
+def test_profile_refusals_state_the_condition_for_every_model():
+    with pytest.raises(ValueError, match="does not deploy deepseek-v41-flash-cycle; 'sparkring models'"):
+        installer.make_lock("deepseek-v41-flash-cycle", site(4), "1" * 40, "2" * 64)
+    with pytest.raises(ValueError, match="This four-Spark profile needs the prepared mesh fabric reference"):
+        installer.make_lock("deepseek-v41-flash-tp4", site(4), "1" * 40, "2" * 64)
+    with pytest.raises(ValueError, match="native-mesh plan requires a four-Spark Compose profile"):
+        installer.make_lock("mimo-v26-flash-rl-tp2", {**site(2), "native_mesh": {}}, "1" * 40, "2" * 64)
+
+
 def test_cli_offline_init_never_discovers_hosts(tmp_path, monkeypatch, capsys):
     path = tmp_path / "site.json"
     path.write_text(json.dumps(site()))

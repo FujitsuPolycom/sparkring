@@ -242,7 +242,7 @@ def site_document(raw, card, revision):
             qwen_mesh.validate_site_reference(row["fabric"])
             item["fabric"] = row["fabric"]
         if card["profile"] in compose.TP4_PROFILES and "fabric" not in item:
-            raise ValueError("Qwen TP4 needs the prepared mesh fabric reference in each host; import the existing site")
+            raise ValueError("This four-Spark profile needs the prepared mesh fabric reference in each host; import the existing site")
         ranks.append(item)
     for field in ("host", "management_ip", "host_ip"):
         if len({r[field] for r in ranks}) != len(ranks):
@@ -256,7 +256,7 @@ def site_document(raw, card, revision):
         result["api_address"] = address(raw["api_address"])
     if "native_mesh" in raw:
         if card["profile"] not in compose.TP4_PROFILES:
-            raise ValueError("This native-mesh plan requires a Qwen TP4 profile")
+            raise ValueError("A native-mesh plan requires a four-Spark Compose profile")
         from runtime.host import native_mesh
         native_mesh.validate(raw["native_mesh"], raw)
     return result
@@ -268,7 +268,8 @@ def backend(card):
 
 def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None):
     if profile not in SUPPORTED:
-        raise ValueError("Installer supports the shared GLM/Qwen pair/ring profiles; other profiles retain their own guides")
+        raise ValueError(f"The installer does not deploy {profile}; 'sparkring models' marks the profiles it installs, "
+                         "and other profiles use their own guides")
     if not re.fullmatch(r"[0-9a-f]{40}", revision) or not re.fullmatch(r"[0-9a-f]{64}", bundle_sha256):
         raise ValueError("Lock requires the exact source commit and bundle checksum")
     card = setup.selection(profile, variant)
