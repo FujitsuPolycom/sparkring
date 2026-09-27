@@ -1,0 +1,2 @@
+attempt 1: TTFT 5.18s prompt 20075 cached 0
+attempt 2: TTFT 0.99s prompt 20075 cached 17088

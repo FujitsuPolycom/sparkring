@@ -49,7 +49,7 @@ To contribute a profile that `sparkring install` sets up, see
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [1.1M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated |
 | **[MiMo-V2.6-Flash-RL](../docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL)<br>by Xiaomi MiMo | 1 | 262K / — | No | Development |
 | **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [2.9M](../runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
-| **[Swift-1.5-Qwen3.8-Flash-Next](../profiles/swift15-qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 experts/BF16](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4)<br>by UkisAI | 1 | 262K / — | No | Experimental |
+| **[Swift-1.5-Qwen3.8-Flash-Next](../profiles/swift15-qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 experts/BF16](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4)<br>by UkisAI | 1 | 262K / — | No | Development |
 | [DeepSeek-V4-Flash-0731](../profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)<br>by DeepSeek | 1 | 1M / [2.2M](../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
 | [Qwen3.8-27B](../profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated)<br>by malaiwah | 1 | 1M / [4.1M](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
 
@@ -209,7 +209,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Experimental | [swift15-qwen38-flash-next-tp2 (default)](../profiles/swift15-qwen38-flash-next-tp2/README.md) |
+| DCP1 | direct-pair-2 | Off | Development | [swift15-qwen38-flash-next-tp2 (default)](../profiles/swift15-qwen38-flash-next-tp2/README.md) |
 
 </details>
 

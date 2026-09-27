@@ -53,7 +53,7 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 |---|---|---|---|---|---|---|
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 56.2 / 197 / 283 | 3,666 |
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 76.8 / 289 / 416 | 4,559 |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | — | — |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | 46.9 / 184 / 259 | 3,634 |
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 40.2 / 104 / — | 2,375 |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 66.0 / 200 / 278 | 3,657 |
@@ -68,13 +68,15 @@ added context, up to 2,048 output tokens, 20 s per cell after a 5 s warm-up.
 Prefill is one cold 64K-token prompt divided by its time to first token, from
 the same run. Every profile runs image
 `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`; the four-Spark GLM and
-DeepSeek rows were measured on it, and the Qwen and two-Spark GLM rows on its
-parent image, `dev-20260925-qwendecode-cuda1342-nccl2323-status031`. The GLM
-pair profile serves at most 8 requests. MiMo and Swift have not been measured
-with this benchmark. Measurements:
+DeepSeek rows and the two-Spark Swift row were measured on it, and the Qwen and
+two-Spark GLM rows on its parent image,
+`dev-20260925-qwendecode-cuda1342-nccl2323-status031`. The GLM pair profile
+serves at most 8 requests. MiMo and the four-Spark Swift profile have not been
+measured with this benchmark. Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),
 [GLM](performance/records/images/dev-20260925-qwendecode-glm-prefill-20260926.md),
-[DeepSeek](performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md).
+[DeepSeek](performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md),
+[Swift](performance/records/images/dev-20260927-h2dstaging-swift15-qwen38-tp2-20260927.md).
 
 The [full profile catalog](profiles/README.md) lists every profile, including
 SparkCache variants and models that `sparkring install` does not set up. Each

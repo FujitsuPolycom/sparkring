@@ -7,7 +7,7 @@ reasoning-efficient fine-tune of Qwen's
 `3ff0520224f2`) on two DGX Sparks, with MTP speculative decoding and 262K
 context. Node A serves the API on port 8000 as
 `Swift-1.5-Qwen3.8-Flash-Next-NVFP4-TP2`, with no API key. Status:
-Experimental; no GB10 serving run covers this profile.
+Development.
 
 On the Spark connected to your network:
 
@@ -47,10 +47,28 @@ memory budget (`--gpu-memory-utilization 0.85`) and the container's 108 GiB
 memory limit. The [four-Spark profile](../swift15-qwen38-flash-next-tp4/README.md)
 keeps the table in GPU memory.
 
+## Performance
+
+One pair ([record](../../performance/records/images/dev-20260927-h2dstaging-swift15-qwen38-tp2-20260927.md)).
+Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench),
+temperature 1.0), total tokens/s across streams:
+
+| Context | Prefill | 1 stream | 8 streams | 16 streams |
+|---|---:|---:|---:|---:|
+| 0 | — | 46.9 | 183.9 | 259.3 |
+| 64K | 3,634 | 40.4 | 147.0 | 206.0 |
+
+- The installer's first start compiles kernels; the API was ready after about
+  9 minutes.
+- Against `qwen38-flash-next-tp2` on the same pair, decode is 17% slower at
+  one stream, mostly from fewer accepted draft tokens per step, and 6–8%
+  slower at 8 and 16 streams, mostly from a lower step rate; 64K prefill is
+  within 1%.
+
 ## Limitations
 
-- Performance, MTP draft acceptance and the cost of reading PLE rows from
-  NVMe are unmeasured. The model card's evaluations ran with MTP disabled.
+- The cost of reading PLE rows from NVMe is not separated from the other
+  per-step costs. The model card's evaluations ran with MTP disabled.
 - The model card's scores are for the BF16 checkpoint; the publisher's
   `QUANTIZATION_MANIFEST.json` records no quality benchmark of this NVFP4
   checkpoint.

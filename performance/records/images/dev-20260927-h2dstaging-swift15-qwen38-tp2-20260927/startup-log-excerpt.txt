@@ -1,0 +1,27 @@
+INFO 09-27 15:50:25 [config.py:58] Resolved PLE embedding storage dtype from checkpoint: bfloat16
+(APIServer pid=56) INFO 09-27 15:49:35 [config.py:58] Resolved PLE embedding storage dtype from checkpoint: bfloat16
+(APIServer pid=56) INFO 09-27 15:49:47 [config.py:58] Resolved PLE embedding storage dtype from checkpoint: bfloat16
+(APIServer pid=56) INFO 09-27 15:49:49 [config.py:58] Resolved PLE embedding storage dtype from checkpoint: bfloat16
+(Worker_TP0 pid=470) INFO 09-27 15:50:38 [nvfp4.py:271] Using 'B12X' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'HUMMING', 'EMULATION'].
+(Worker_TP0 pid=470) INFO 09-27 15:51:15 [unquantized.py:319] Using FlashInfer CUTLASS Unquantized MoE backend out of potential backends: ['FlashInfer TRTLLM', 'FlashInfer CUTLASS', 'TRITON', 'BATCHED_TRITON'].
+(Worker_TP0 pid=470) INFO 09-27 15:51:19 [model_runner.py:444] Model loading took 43.44 GiB memory and 46.719114 seconds
+(Worker_TP0 pid=470) INFO 09-27 15:51:19 [unquantized.py:401] Using FlashInferExperts MoE backend
+(EngineCore pid=412) INFO 09-27 15:53:16 [kv_cache_utils.py:2850] GPU KV cache size: 2,877,721 tokens, Maximum concurrency for 262,144 tokens per request: 10.98x
+(EngineCore pid=412) INFO 09-27 15:57:51 [core.py:390] init engine (profile, create kv cache, warmup model) took 391.72 s
+(EngineCore pid=412) INFO 09-27 15:57:52 [config.py:58] Resolved PLE embedding storage dtype from checkpoint: bfloat16
+(APIServer pid=56) INFO 09-27 15:57:59 [sparkring_startup_audit.py:125] SPARKRING AUDIT [HC_ROUTE_VERIFIED] HC dispatcher reachable; execution is unverified until an eligible real prefill.
+(APIServer pid=56) INFO 09-27 15:57:59 [sparkring_startup_audit.py:125] SPARKRING AUDIT [VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT] compact MTP: requested; runtime activation not proven
+(APIServer pid=56) INFO 09-27 15:57:59 [sparkring_startup_audit.py:125] SPARKRING AUDIT [VLLM_QWEN3_8_FLASH_NEXT_OVERLAP] projection overlap: requested; runtime activation not proven
+(APIServer pid=56) INFO 09-27 15:57:59 [sparkring_startup_audit.py:125] SPARKRING AUDIT [VLLM_QWEN3_8_PREFILL_COALESCE] checkpoint coalescing: requested; runtime activation not proven
+(Worker_TP0 pid=470) INFO 09-27 16:15:11 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=2848 owner_rows=1424 rs=96 ag=99
+(Worker_TP0 pid=470) INFO 09-27 16:15:51 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=6034 owner_rows=3017 rs=96 ag=99
+(Worker_TP0 pid=470) INFO 09-27 16:16:17 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=5814 owner_rows=2907 rs=96 ag=99
+(Worker_TP0 pid=470) INFO 09-27 16:16:29 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=2944 owner_rows=1472 rs=96 ag=99
+(Worker_TP0 pid=470) INFO 09-27 16:16:42 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=6016 owner_rows=3008 rs=96 ag=99
+(Worker_TP0 pid=470) INFO 09-27 16:18:28 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=5696 owner_rows=2848 rs=96 ag=99
+(Worker_TP0 pid=470) INFO 09-27 16:18:30 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=5696 owner_rows=2848 rs=96 ag=99
+(Worker_TP0 pid=470) INFO 09-27 16:18:31 [hc_prefill.py:135] QWEN_HC_PREFILL mode=shard rows=2848 owner_rows=1424 rs=96 ag=99
+(APIServer pid=56) WARNING 09-27 15:57:59 [sparkring_startup_audit.py:125] SPARKRING AUDIT [HC_TOPOLOGY] This HC sharding implementation requires TP2 or TP4.
+(APIServer pid=56) WARNING 09-27 15:57:59 [sparkring_startup_audit.py:126] SPARKRING AUDIT: 1 warning(s); settings unchanged. Real HC activation logs QWEN_HC_PREFILL.
+b12x weights loaded: 3.91 GB selected on rank 0 · 4.77 GB physical reads; 1.16 s total loading; ROUTE 0.71s · SETUP 0.00s · PLAN 0.00s · READ 0.45s · SYNC 0.00s
+b12x weights loaded: 40.58 GB selected on rank 0 · 53.12 GB physical reads; 31.82 s total loading; ROUTE 20.90s · SETUP 0.00s · PLAN 0.00s · READ 10.92s · SYNC 0.00s

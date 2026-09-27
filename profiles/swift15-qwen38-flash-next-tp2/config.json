@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
-  "status": "research-only",
+  "status": "implemented",
   "model": {
     "revision": "3ff0520224f264a2d0ac4ab56ece8f2f13aadb38",
     "config_sha256": "4d4e2b825edff957ffc9d962c40f636527fe08f9f76ae02b16080693ed911b36",

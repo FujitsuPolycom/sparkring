@@ -1,0 +1,156 @@
+SparkRing install. Progress: /var/log/sparkring/install.log
+Follow from another terminal: sudo sparkring logs --follow
+Node 0: inspect hardware, links and software
+Node 1: inspect hardware, links and software
+Done: Node 0: inspect hardware, links and software (2.5s)
+Done: Node 1: inspect hardware, links and software (2.5s)
+Looking for existing copies of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2 on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).
+Install swift15-qwen38-flash-next-tp2 on 2 Sparks.
+Update workers and prepare assets; then replace the current model.
+Checkpoint ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2: 95 files, 173.7 GiB
+Searched node-a in 0.7 s and node-b in 0.6 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+
+Node 0 node-a: no copy found (searched 299,746 folder entries in 0.7 s)
+    downloads 95 files (173.7 GiB) from huggingface.co; needs 213.7 GiB free on / (181.7 GiB for checkpoint files, 32 GiB for the compile cache; 275 GiB free)
+Node 1 node-b: no copy found (searched 261,584 folder entries in 0.6 s)
+    95 files (173.7 GiB) are downloaded once on Node 0 from huggingface.co and copied over the fabric; needs 213.7 GiB free on / (181.7 GiB for checkpoint files, 32 GiB for the compile cache; 296 GiB free)
+
+No Spark holds the checkpoint: Node 0 downloads it once from huggingface.co (173.7 GiB) and copies it to the other Sparks over the fabric.
+Downloads 173.7 GiB from huggingface.co on Node 0.
+Refresh the package index on Node A
+Done: Refresh the package index on Node A (4.5s)
+Download worker prerequisites on Node A
+Done: Download worker prerequisites on Node A (3.2s)
+Package the installed SparkRing revision for workers
+Done: Package the installed SparkRing revision for workers (10.8s)
+Node 1: Update SparkRing from Node A's package
+Node 1: Install verified package bundle
+Done: Node 1: Install verified package bundle (7.4s)
+Done: Node 1: Update SparkRing from Node A's package (8.5s)
+Node 0: Check host before preparing assets
+Node 1: Check host before preparing assets
+Done: Node 1: Check host before preparing assets (0.5s)
+Done: Node 0: Check host before preparing assets (0.8s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Done: Node 0: Copy installer source (1.1s)
+Node 0: Verify installer source
+Done: Node 1: Copy installer source (1.1s)
+Node 1: Verify installer source
+Done: Node 0: Verify installer source (0.5s)
+Done: Node 1: Verify installer source (0.5s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Node 0: Prepare SparkRing's checkpoint directory
+Node 1: Prepare SparkRing's checkpoint directory
+Done: Node 0: Prepare SparkRing's checkpoint directory (0.4s)
+Done: Node 1: Prepare SparkRing's checkpoint directory (0.4s)
+Node 0: Download missing checkpoint files from huggingface.co
+Done: Node 0: Download missing checkpoint files from huggingface.co (1910.0s)
+Node 1: Copy checkpoint files from Node 0 over the fabric
+Done: Node 1: Copy checkpoint files from Node 0 over the fabric (167.3s)
+Done: Node 1: Prepare checkpoint and verify all shards (2079.4s)
+Node 1: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.4s)
+Done: Node 0: Prepare checkpoint and verify all shards (2080.0s)
+Node 0: Verify checkpoint receipt
+Done: Node 0: Verify checkpoint receipt (0.4s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Done: Node 1: Prepare pinned image (10.7s)
+Node 1: Verify image
+Done: Node 1: Verify image (0.4s)
+Done: Node 0: Prepare pinned image (20.8s)
+Node 0: Verify image
+Done: Node 0: Verify image (19.9s)
+SparkRing retained deployment down. Progress: /var/log/sparkring/install.log
+Follow from another terminal: sudo sparkring logs --follow
+Node 0: owned
+Node 1: owned
+Done: Node 1: owned (0.6s)
+Done: Node 0: owned (0.7s)
+Node 0: Stop model
+Node 1: Stop model
+Done: Node 1: Stop model (14.7s)
+Node 1: Confirm model stopped
+Done: Node 1: Confirm model stopped (0.7s)
+Done: Node 0: Stop model (15.9s)
+Node 0: Confirm model stopped
+Done: Node 0: Confirm model stopped (0.8s)
+Node 0: Check host and GPU availability
+Node 1: Check host and GPU availability
+Done: Node 1: Check host and GPU availability (0.5s)
+Done: Node 0: Check host and GPU availability (0.5s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Done: Node 0: Copy installer source (0.6s)
+Node 0: Verify installer source
+Done: Node 1: Copy installer source (0.7s)
+Node 1: Verify installer source
+Done: Node 0: Verify installer source (0.4s)
+Done: Node 1: Verify installer source (0.3s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Done: Node 1: Prepare checkpoint and verify all shards (0.4s)
+Node 1: Verify checkpoint receipt
+Done: Node 0: Prepare checkpoint and verify all shards (0.5s)
+Node 0: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.4s)
+Done: Node 0: Verify checkpoint receipt (0.4s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Done: Node 0: Prepare pinned image (0.5s)
+Node 0: Verify image
+Done: Node 0: Verify image (0.5s)
+Done: Node 1: Prepare pinned image (9.5s)
+Node 1: Verify image
+Done: Node 1: Verify image (0.5s)
+Node 0: Restore fabric addresses in RoCE GID index 3
+Node 1: Restore fabric addresses in RoCE GID index 3
+Done: Node 1: Restore fabric addresses in RoCE GID index 3 (0.5s)
+Node 1: Check RoCE GID index 3
+Done: Node 0: Restore fabric addresses in RoCE GID index 3 (0.5s)
+Node 0: Check RoCE GID index 3
+Done: Node 0: Check RoCE GID index 3 (0.4s)
+Done: Node 1: Check RoCE GID index 3 (0.5s)
+Node 0: Check model and fabric
+Node 1: Check model and fabric
+Done: Node 0: Check model and fabric (0.6s)
+Done: Node 1: Check model and fabric (0.6s)
+Node 0: Create stopped model container
+Node 1: Create stopped model container
+Done: Node 0: Create stopped model container (0.8s)
+Node 0: Verify model container
+Done: Node 1: Create stopped model container (0.9s)
+Node 1: Verify model container
+Done: Node 0: Verify model container (0.5s)
+Done: Node 1: Verify model container (0.6s)
+Node 1: Start model
+Done: Node 1: Start model (3.0s)
+Node 1: Check model process
+Done: Node 1: Check model process (0.9s)
+Node 0: Start model
+Done: Node 0: Start model (3.8s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.8s)
+Node 0: Wait for API readiness
+Node 1: Wait for API readiness
+Done: Node 1: Wait for API readiness (0.5s)
+Done: Node 0: Wait for API readiness (545.3s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (1.1s)
+Node 0: Confirm checkpoint unchanged during loading
+Node 1: Confirm checkpoint unchanged during loading
+Done: Node 0: Confirm checkpoint unchanged during loading (0.4s)
+Done: Node 1: Confirm checkpoint unchanged during loading (0.9s)
+Node 0: owned
+Done: Node 0: owned (0.5s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.5s)
+Node 1: owned
+Done: Node 1: owned (0.6s)
+Node 1: Check model process
+Done: Node 1: Check model process (0.5s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (0.7s)
+Model ready: http://NODE_A:8000/v1
