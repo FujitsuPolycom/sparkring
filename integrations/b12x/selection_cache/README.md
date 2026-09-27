@@ -63,7 +63,7 @@ Both files go into the serving interpreter's site-packages,
 The module inserts its import finder immediately before Python's path finder,
 so finders that SparkRing inserts at the front of `sys.meta_path`, such as the
 transport selector, keep their position. The derived-layer
-[descriptor](../../../runtime/images/compositions/installer-b12x-selection-cache/descriptor.json)
+[descriptor](../../../runtime/images/compositions/installer-b12xcache-status032/descriptor.json)
 pins both files for [`runtime/images/derived_layer.py`](../../../runtime/images/README.md#derived-installer-layers).
 
 Remove the correction from derived layers once SparkRing's B12X composition

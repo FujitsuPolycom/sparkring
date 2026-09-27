@@ -1,0 +1,29 @@
+{
+  "schema": "sparkring-derived-layer-descriptor/v1",
+  "id": "b12xcache-status032",
+  "parent_lock": "runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json",
+  "provenance": "/opt/sparkring/receipts/derived-b12xcache-status032.json",
+  "purpose": "B12X PreparationJob._lookup reads the reconciled selection cache when tuning is sharded across ranks, so two- and four-rank starts reuse cached kernel selections instead of measuring every kernel family again, with the B12X package files that the prepared RoCE transport verifies unchanged (integrations/b12x/selection_cache); and runtime-status 0.3.2, whose views show the served model name, replaces 0.3.1 (source commit fc31b66c3aa006e8f478413dfca4c17cc0aeb20a, component tree 74407675db01502e57ad6131103a8bbdb3db3bd8)",
+  "files": {
+    "/usr/local/lib/python3.12/dist-packages/sparkring_b12x_selection_cache.py": {
+      "source": "integrations/b12x/selection_cache/sparkring_b12x_selection_cache.py",
+      "sha256": "2bb5e46264ffcb81a175edc674a75825a3ca019d961f8cea45bd716f3259d3dc",
+      "inherited_sha256": null
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkring_b12x_selection_cache.pth": {
+      "source": "integrations/b12x/selection_cache/sparkring_b12x_selection_cache.pth",
+      "sha256": "7b5bc85509bb8e36b337fd0bb7e124be3f195d07c479e760b94fd806d0c09242",
+      "inherited_sha256": null
+    }
+  },
+  "runtime_status": {
+    "wheel": {
+      "path": "sparkring_runtime_status-0.3.2-py3-none-any.whl",
+      "sha256": "1fca6e26cb55624c2673cb88ccd95eb27c5992d5a37d954573a388284663efc1"
+    },
+    "source_archive": {
+      "path": "sparkring-runtime-status-0.3.2-source.tar.gz",
+      "sha256": "702d2ac550701b0dd8abccca287eb57139d0b204472dba79a75eac287ab65eba"
+    }
+  }
+}
