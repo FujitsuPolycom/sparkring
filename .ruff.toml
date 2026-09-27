@@ -24,3 +24,8 @@ extend-exclude = [
 # /opt/sparkring/toolchain/gpu_smoke.py. It verifies the toolchain receipt
 # before importing Torch, so that import follows the check deliberately.
 "runtime/images/toolchain_gpu_smoke.py" = ["E402"]
+# The runtime-status tree is byte-identical to the source archive from which
+# the installer image builds its sparkring_runtime_status wheel; these two
+# files keep their local lambda helpers so the tree keeps that identity.
+"integrations/vllm/runtime_status/sparkring_runtime_status/presentation.py" = ["E731"]
+"integrations/vllm/runtime_status/test_status_views.py" = ["E731"]

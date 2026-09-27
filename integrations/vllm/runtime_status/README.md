@@ -1,0 +1,328 @@
+# SparkRing runtime status endpoint
+
+This optional vLLM plugin adds `GET /v1/sparkring/status` and browser/text views. It reports the
+configuration of the running API process and passive CPU metadata from its
+workers. It does not benchmark, change a setting, inspect prompts, or execute a
+GPU operation. Its implementation status is **Development**: offline API and
+collector checks do not qualify a serving deployment.
+
+## Installation and activation
+
+Install this directory as a Python package in the same environment as vLLM.
+The image composition must record the package files with its other source-bound
+assets. Add `sparkring_status` to the existing `VLLM_PLUGINS` allowlist on the
+API server and every worker. Preserve any other required plugin names. Activation
+requires process startup; copying files into a running server does not activate
+the endpoint.
+
+The package declares two official vLLM entry points with the same allowlist
+name: `vllm.endpoint_plugins` attaches the router and initializes application
+state; `vllm.general_plugins` registers the unique worker RPC method
+`sparkring_status_snapshot_v1` on `WorkerBase`. It does not wrap model execution
+or replace vLLM's application builder. vLLM must provide the
+`EndpointPlugin.attach_router/init_state` interface and
+`EngineClient.collective_rpc(method, timeout, args, kwargs)` API. The plugin
+applies to the `generate` task.
+
+The `/v1` route inherits vLLM's authentication middleware. If API authentication
+is enabled, supply the same bearer token used for inference. Tokens are never
+included in the response. Without server authentication, this route has the
+same network exposure as the other `/v1` routes.
+
+## Query from a terminal
+
+No installed status client is required. Open `/v1/sparkring/status/view` in a
+browser for a self-contained dashboard, or use the text endpoint from Windows
+Command Prompt:
+
+```bat
+curl.exe --fail --silent --show-error http://localhost:8000/v1/sparkring/status.txt
+```
+
+Replace `localhost:8000` with the inference server's address. The existing
+`/v1/sparkring/status` route still returns its original JSON schema. The browser
+and text routes use the same cached worker reports; they introduce no separate
+GPU operation or benchmark. All views return HTTP 503 until plugin initialization.
+
+The browser refreshes every five seconds while visible, with a pause checkbox
+and a manual refresh button. Failed refreshes retain the previous display and
+mark it outdated. Sections preserve their expanded/collapsed state. JavaScript
+is optional for the initial server-rendered report; refresh the page manually
+when JavaScript is disabled. No fonts, scripts or styles are downloaded from
+another server. Runtime values are escaped for HTML and stripped of terminal
+control characters for text.
+
+All three routes inherit the inference API's authentication. For a protected
+API, curl requires the same bearer header shown below. Browser navigation needs
+an authenticated proxy/session that supplies that header; these views do not
+bypass authentication or accept API keys in URLs. Responses are not cached.
+
+The header uses the recorded SparkRing/eugr startup identity when supplied by
+the deployment, otherwise it says `SparkRing runtime status`. Worker agreement,
+effective configuration and preparation remain distinct from execution evidence.
+Rank values can be expanded in the browser; mismatches appear inline in text.
+
+Version 0.3.1 provides passive transport, resource, library and acceptance views.
+Configured cells distinguish absent environment settings, omitted arguments and
+runtime-derived fields. Resolved cells use stored worker evidence where available;
+an unset NCCL variable is not treated as proof of a native default. Expand rank
+details for local differences and hover over evidence labels for their sources.
+Deploy its wheel through a new
+source-recorded image composition and restart the server when a deployment
+window is available. Published image receipts and running installations are
+not changed by building this package.
+
+Offline view tests are included in the component suite:
+
+```bash
+python -m pytest integrations/vllm/runtime_status -q
+```
+
+The optional browser test uses Playwright Chromium and a loopback-only FastAPI
+server with synthetic snapshots. It covers automatic/manual refresh, pause,
+failure recovery, preserved section state and a narrow viewport. It skips when
+Playwright or Chromium is unavailable. Set `SPARKRING_BROWSER_ARTIFACTS` to a
+local directory to retain its desktop/mobile screenshots.
+`SPARKRING_CHROMIUM_EXECUTABLE` can select an already installed Chromium binary.
+
+Replace the example address with the existing inference API address. These
+commands use `SPARKRING_API_KEY` when the server requires authentication.
+
+Windows Command Prompt:
+
+```bat
+curl.exe --fail --silent --show-error -H "Authorization: Bearer %SPARKRING_API_KEY%" http://localhost:8000/v1/sparkring/status
+```
+
+PowerShell:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:SPARKRING_API_KEY" }
+$status = Invoke-RestMethod -Headers $headers -Uri http://localhost:8000/v1/sparkring/status
+$status | ConvertTo-Json -Depth 20
+$status.workers.ranks | ForEach-Object { $_.effective.hc_projection_tp_size }
+```
+
+Bash:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer ${SPARKRING_API_KEY}" \
+  http://localhost:8000/v1/sparkring/status
+```
+
+Omit the authorization header if the server does not require one. The endpoint
+accepts no mutation, refresh, arbitrary RPC, file path, or environment-variable
+parameter. `POST` returns 405. A request before plugin initialization returns
+503 with `state: initializing`; other responses return 200 with explicit
+collection status. HTTP caches are disabled.
+
+## Response contract
+
+The schema identifier is `sparkring-runtime-status/v1`; the JSON Schema is
+[schema-v1.json](schema-v1.json). Facts contain a `state`, `source`, and a `value`
+when known. An absent setting is `unknown`, not implicitly false. A known JSON
+null means that the stored setting is null. `not_observed` means this collector
+has no execution evidence, even when the corresponding optimization is enabled.
+
+| Field | Meaning |
+| --- | --- |
+| `configured` | Parsed server arguments and a strict allowlist of explicitly set process environment controls, captured during plugin initialization. Parsed arguments may include defaults. |
+| `effective` | Stored resolved `VllmConfig` fields in the API process, captured at initialization. Includes parallelism, MTP depth, cache/checkpoint policy, batch capacity, capture capacity, loader and backend choices. |
+| `observed` | Request execution evidence. Uninstrumented paths remain `not_observed`; configuration or preparation is not proof that a request used a kernel. |
+| `workers.ranks` | Per-worker identity, rank-local configured environment, resolved config and passive resident state at the worker's `collected_at_unix_ns`. These can differ from the API process. |
+| `workers.state` | `complete`, `partial`, `pending`, `error`, or `unavailable`. Complete means the expected count and unique rank identities were returned; it is not a health or correctness certification. |
+| `provenance` | Bounded installed receipt summary read once at plugin startup, including receipt/composition/source hashes and the parent image config ID when recorded. This read does not perform a fresh source-file audit. |
+
+### Transport, versions and node resources
+
+Each worker may add `transport`, `versions` and `resources`. Failure of one
+optional collector leaves that section unknown and preserves the core report.
+The tables keep rank-local values rather than treating different local NIC names
+or library paths as configuration mismatches.
+
+- `transport.groups` inspects existing TP, PP, DP, EP, DCP and PCP communicators.
+  RoCEnante availability, AR and AG shard ceilings, selected HCAs and GID index
+  come from resident objects. PyNCCL supplies its runtime version and library
+  handle name. NCCL algorithm/protocol selection and channel counts remain
+  unknown because these objects do not expose them; selection can vary by
+  collective or communicator. An available backend need not have served a request.
+- `transport.nics` reads bounded sysfs fields for up to eight selected HCAs:
+  PCI address/domain, current and maximum PCIe link, associated interface,
+  negotiated link rate, MTU, MAC and RDMA port counters. Functions sharing a PCI
+  device key may share one uplink, so their capacities must not be summed.
+  Counters are host cumulative, not process attributed. RDMA data counters use
+  four-byte words in JSON and are converted to bytes in the views. Negotiated
+  link rate is not measured payload bandwidth; no latency test is run. IP
+  addresses and saved host diagnostics require the existing host-agent adapter.
+- `versions` separates the host NVIDIA kernel driver, Torch build CUDA, image
+  toolkit/NVCC, package metadata and libraries mapped by that worker. A newer
+  runtime does not imply that framework native extensions were rebuilt. Library
+  filename versions are labeled separately from the NCCL runtime version.
+- `resources.memory` uses Linux total and available memory; used is their
+  difference. On Spark this host pool is shared by CPU and GPU. Cgroup current
+  usage and limits are separate views and must not be added to host usage.
+  Filesystem reads cover only `/`, `/cache` and `/models/target`, deduplicate
+  repeated devices, and skip remote or unrecognized mount types. Available space
+  uses the unprivileged-process count, which can differ from total free blocks.
+  The worker hostname is process metadata, not a verified persistent node ID.
+
+Host/deployment joins must use identities supplied by the existing installer
+and host agent, with their own collection timestamps. A matching hostname or
+rank alone does not bind historical measurements to the current deployment.
+
+### Speculative acceptance
+
+`observed.speculative_acceptance` reads only already registered in-memory
+Prometheus counters for draft rounds, drafted tokens, accepted tokens and draft
+positions. It does not scrape an endpoint, collect unrelated metrics, inspect
+tokens or change verification. The first snapshot has no recent interval;
+later snapshots distinguish idle windows, counter resets and unavailable data.
+Lifetime and recent acceptance are `accepted / drafted`. Estimated tokens per
+verification is `1 + accepted / rounds`, including one bonus token. This is not
+measured throughput and cannot predict acceptance on another prompt or sampling
+configuration. The metric scope is the reporting API process's engine counters.
+
+The rank snapshot includes the resident HC workspace's projection TP size and
+the model's token-row ownership mode when those Python fields exist. These are
+effective construction choices. Lookup follows at most four stored `model` or
+`language_model` wrapper edges; it does not traverse vision modules or tensors.
+The source-bound HC fusion hook's first-use
+markers, when available, are reported with phase
+`unspecified_includes_warmup`; they do not establish current request execution.
+
+`effective.kernel_preparation` on each rank inspects at most 32 already resident
+B12X session plans. It includes the prepared selection source, selected
+allowlisted tile/backend/split-K fields and declared shapes. The sample reports
+its inspected count and truncation; it is not an exhaustive kernel inventory.
+Device compute capability and SM count come only from already stored preparation
+metadata. No CUDA device query is made. Closed or unprepared plan payloads are
+not resolved. Prepared selections have `phase: preparation` and
+`execution: not_observed`, including cached/default selections. Their presence
+does not establish that a specific request used them.
+
+Coalescing, current prefill execution, actual transport execution, kernel
+execution and cache publication remain `not_observed` without existing safe
+per-request counters. In particular, this collector does not call
+transport `stats()` methods that read device-backed tensors. It does not parse
+logs, so historical tests and startup messages cannot
+silently become current execution claims.
+
+An installed image cannot reliably discover its own OCI image config ID.
+`provenance.runtime_image_id` therefore remains `unknown` unless a separately
+bound deployment identity is provided by a future composition. The parent image
+config ID is labeled separately. Version labels, source pins and observed
+execution are different identities. This endpoint is not release admission or
+a replacement for startup receipt verification.
+
+## Installer identity and freshness
+
+The installer may bind a stopped container to its deployment with
+`SPARKRING_RUNTIME_BINDING=/run/sparkring/runtime-binding.json`. It must stage
+this read-only mount as a regular local file, finalize it after Docker assigns
+the container ID and before startup, and never modify it under a running model.
+The JSON object has exactly these fields:
+
+| Field | Value |
+|---|---|
+| `schema` | `sparkring-runtime-binding/v1` |
+| `deployment_id` | Full 64-hex immutable deployment-lock ID |
+| `node_id` | Canonical persistent node UUID |
+| `container_id` | Full 64-hex Docker container ID |
+| `image_id` | Docker image config ID, `sha256:` plus 64 hex digits |
+| `rank` | Expected nonnegative rank, below 256 |
+
+Plugin registration reads at most 16 KiB once, before serving. Worker snapshots
+then read cached CPU facts only. The actual boot UUID comes independently from
+`/proc/sys/kernel/random/boot_id`; process ID and sample time come from the
+worker. These installer-provided assertions are not cryptographic attestation.
+Missing, malformed, duplicate-key or rank-mismatched bindings remain unknown;
+binding validation failure does not abort model startup. The installer must
+provide a regular local file, not a remote mount or a FIFO.
+
+The pure `binding.join(expected, host, model, runtime, now=...)` helper compares
+one expected rank against authenticated host-agent, Docker-inspection and
+runtime-status records. `expected` supplies `deployment_id`, `node_id`,
+`image_id` and `rank`. The model observation uses
+`sparkring-model-observation/v1`; host observations use
+`sparkring-node-status/v1`. The helper rejects incomplete/duplicate runtime
+rank identities and never substitutes a hostname/rank-only match.
+
+The result is `matched`, `unbound`, `mismatch` or `stale`. Host and model ages
+default to 90 seconds each; worker age defaults to 10 seconds, with a five-second
+future-clock tolerance. A producer's stale flag also prevents a match, and a
+worker sample predating Docker's container-start timestamp is rejected. A
+matched identity does not prove process liveness after the sample, model
+readiness, RDMA correctness or performance. The helper performs no I/O or
+lifecycle action. Dashboard/controller consumers must retain each source's
+timestamp and qualification scope rather than using page reception time.
+
+## Cost, freshness and failure behavior
+
+Each API process has at most one worker RPC in flight. GET waits at most 250 ms
+for it, then returns `pending` plus any cached result. Further GET requests reuse
+that RPC. A completed result is cached for five seconds; failures are also
+rate-limited. There is no background polling thread or new daemon.
+
+The HTTP wait deliberately does **not** cancel the worker RPC or set a short
+executor timeout. vLLM workers share ordered response queues with serving, and
+late replies must be consumed. A slow or stuck worker leaves one pending RPC
+until it completes or the process exits. It does not create a new RPC on every
+GET. The RPC uses the existing engine control path; scheduling it can still add
+a small CPU control-plane cost, so this endpoint is not a zero-overhead hot-loop
+telemetry interface.
+
+`cache_age_seconds` measures time since the response was received, while each
+rank's `collected_at_unix_ns` records when that worker read its metadata.
+`stale`, `rpc_pending`, and `pending_age_seconds` expose delayed refreshes.
+`missing_rpc_slots` identifies absent positions in the executor's response list;
+it does not invent global rank IDs. The scope is the **addressed engine executor**,
+not a claim that every data-parallel engine was queried. Expected coverage uses
+the stored executor world size, with TP × PP × PCP as a metadata-only fallback.
+It does not multiply ordinary MP/Ray coverage by global DP. The external-launcher
+executor owns one local worker, so its expected response count is one even when
+its distributed world contains additional ranks. Worker collection errors
+are returned per rank when available. An engine RPC failure may lose the entire
+response batch; the API reports that honestly without exposing exception text.
+
+Only named CPU fields and fixed local metadata sources are read. No full
+config/environment dump, model checkpoint path, connector extra-config, API key,
+request ID, token ID or prompt is emitted. NIC names/MACs, worker hostname,
+fixed mount paths and selected library paths are included for diagnostics.
+Receipt reads are capped at 4 MiB and never enumerate runtime files.
+
+Filesystem sampling pins directories component by component with Linux
+`O_PATH`, `O_DIRECTORY` and `O_NOFOLLOW`. Each descriptor's mount ID is checked
+against a fresh bounded `/proc/self/mountinfo` read before proceeding. Only
+confirmed local mounts reach `fstatvfs`; symlinks, remote or automount mounts,
+missing mount proof and unavailable descriptor support produce unknown results
+without sampling that filesystem. A later pathname replacement cannot redirect
+the pinned descriptor. Local filesystem metadata still has an I/O cost.
+The directory-handle behavior follows Linux
+[`open(2)`](https://man7.org/linux/man-pages/man2/open.2.html), including its
+`O_PATH` rules for symlinks and untriggered automounts.
+
+Single-rank groups without an available cross-rank communicator are shown in a
+collapsed section. Unknown group sizes and available communicators remain in
+the main table. NVIDIA driver parsing accepts proprietary and
+architecture-qualified open-kernel module version lines; unsupported or
+ambiguous text remains unknown.
+
+## Offline verification
+
+```bash
+python -m pytest integrations/vllm/runtime_status/test_runtime_status.py -q
+```
+
+Set `SPARKRING_TEST_VLLM_ROOT` to the pinned vLLM source checkout to also exercise
+its actual authentication middleware. That optional test skips when the source
+is unavailable. JSON Schema validation requires `jsonschema`; the package wheel
+smoke test uses installed `pip`, `setuptools` and `wheel`, with index access and
+build isolation disabled.
+
+The suite covers configured/effective distinctions, missing values, strict
+field selection, bounded prepared-plan inspection, warmup labeling, receipt
+limits, authentication with the pinned vLLM middleware when present, rank errors,
+cache freshness, concurrent callers, client cancellation and read-only routing.
+It uses fake worker metadata and an in-memory ASGI app; it never starts an engine
+or accesses a GPU.

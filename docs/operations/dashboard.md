@@ -55,3 +55,9 @@ API: `vllm-top --url http://NODE_A:PORT`.
 The dashboard has the same access as the model API: no key, on every interface
 of Node A. It shows hostnames, NIC MAC addresses and software versions, so keep
 Node A on a trusted network ([Security](install.md#security)).
+
+## Source
+
+The page is served by the runtime-status vLLM plugin; the installer image
+lock's `status_version` names the version the image carries. The plugin's
+source, response schema, collection cost and offline tests are in [integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md).
