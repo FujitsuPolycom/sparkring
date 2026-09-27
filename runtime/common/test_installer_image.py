@@ -254,8 +254,8 @@ def test_shared_lock_profile_list_is_exact(change):
         installer_image.validate(value, PROFILE)
 
 
-@pytest.mark.parametrize("profile", ["deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4",
-                                     "glm53-flash-nvfp4-spark-tp2"])
+@pytest.mark.parametrize("profile", [profile for profile in installer_image.SUPPORTED
+                                     if profile not in installer_image.QWEN4_EXP])
 def test_other_models_render_on_the_shared_image(monkeypatch, profile):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("Offline render contacted a host"))
     lock_value = installer_image.default_lock()

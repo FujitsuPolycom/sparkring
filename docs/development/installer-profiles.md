@@ -61,7 +61,7 @@ or `profiles/glm53-flash-nvfp4-spark-tp2/` (two Sparks) and set:
 
 Tests that list installer profiles:
 
-- `runtime/common/test_installer_image.py`: `SHARED`; outside `QWEN4_EXP`, the parameters of `test_other_models_render_on_the_shared_image`, which forbids Qwen variables (a `QWEN4_EXP` profile needs render assertions of its own).
+- `runtime/common/test_installer_image.py`: `SHARED`. `test_other_models_render_on_the_shared_image` runs for every `SUPPORTED` profile outside `QWEN4_EXP` and forbids Qwen variables; a `QWEN4_EXP` profile needs render assertions of its own.
 - `scripts/test_pin_checkpoint.py`: `COMMITTED[(repository, revision)]`.
 - `runtime/common/test_installer.py`: the directory count in `test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint`, when no other installer profile pins the revision.
 - `runtime/host/test_install_workflow.py`, four Sparks only: the parameters of `test_tp4_command_adopts_the_discovered_mesh_without_network_changes`.
