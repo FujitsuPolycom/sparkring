@@ -205,6 +205,20 @@ def test_unregistered_image_rejected():
         adapter.image_verification_options(json.loads(PROFILE.read_text()))
 
 
+def test_toolchain_image_profiles_offer_only_the_plan_action():
+    # check and create verify the image with image_verification_options, which
+    # refuses toolchain images, so the catalog launcher offers only plan for them.
+    from runtime.common import profiles
+    toolchain = []
+    for profile_id, path in profiles.catalog().items():
+        record = profiles.read_json(path)
+        if (record['launcher'].get('path') == 'runtime/common/qwen_flash_next.py'
+                and adapter.read(ROOT / record['configuration']['path']).get('image_extension') == 'toolchain'):
+            toolchain.append(profile_id)
+            assert record['launcher']['actions'] == ['plan'], profile_id
+    assert {'qwen38-flash-next-tp2', 'qwen38-flash-next-qad-tp4'} <= set(toolchain)
+
+
 def test_profile_arguments_and_environment_cannot_bypass_canonical():
     for location in ('vllm_args', 'environment'):
         profile = json.loads(PROFILE.read_text())

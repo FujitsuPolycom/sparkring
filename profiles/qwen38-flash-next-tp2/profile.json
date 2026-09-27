@@ -16,9 +16,7 @@
     "kind": "python",
     "path": "runtime/common/qwen_flash_next.py",
     "actions": [
-      "plan",
-      "check",
-      "create"
+      "plan"
     ],
     "fixed_args": [
       "--profile",
