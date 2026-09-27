@@ -117,7 +117,7 @@ def admit_image(lock):
             "policy": hashlib.sha256(loader_policy.PROFILE.read_bytes()).hexdigest(),
             # Qwen admission depends on the profile's HC mode and feature selection.
             "recipe": repr(installer_image.qwen_recipe(installer_image.profile_environment(card["profile"])))
-            if card["profile"] in installer_image.QWEN else None,
+            if card["profile"] in installer_image.QWEN4_EXP else None,
         }, sort_keys=True).encode()).hexdigest()
         record = ADMISSIONS / (key + ".json")
         if record.is_file() and not record.is_symlink():

@@ -231,6 +231,7 @@ as installer-supported:
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
 | `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | MiMo-V2.6-Flash-RL, revision `5711b2681699` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens |
+| `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
 
 The installer image differs from `dev-20260925-cuda1342-nccl2323-status031`
 only in Qwen model files, one vLLM setting, `VLLM_QWEN4_EXP_MXFP8_HC`, which is
@@ -412,8 +413,8 @@ so its administration path survives renumbering.
 ## Four-Spark rings
 
 Every four-Spark installer profile (`qwen38-flash-next-qad-tp4`,
-`glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-rl-tp4` and
-`deepseek-v41-flash-tp4`) relays traffic
+`glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-rl-tp4`,
+`deepseek-v41-flash-tp4` and `swift15-qwen38-flash-next-tp4`) relays traffic
 between nonadjacent Sparks through ConnectX hardware forwarding. That needs the
 ConnectX hairpin setting on each of a Spark's four ConnectX functions: a
 hairpin queue of 8192 packets (`hairpin_queue_size`), four hairpin queues
@@ -513,10 +514,11 @@ The installer changes each Spark's network exposure as follows. Review this
 list before approving `Proceed? [Y/n]`.
 
 - **Open model API.** The model's OpenAI-compatible API listens on all of
-  Node A's interfaces with no API key: port 8000 for `qwen38-flash-next-tp2`
-  and `glm53-flash-nvfp4-spark-tp2`, 8015 for `qwen38-flash-next-qad-tp4`,
-  `glm53-flash-nvfp4-spark-tp4` and `deepseek-v41-flash-tp4`, and 8020 for `mimo-v26-flash-rl-tp2` and
-  `mimo-v26-flash-rl-tp4`. Containers use host networking, and the
+  Node A's interfaces with no API key: port 8000 for `qwen38-flash-next-tp2`,
+  `glm53-flash-nvfp4-spark-tp2` and `swift15-qwen38-flash-next-tp2`, 8015 for
+  `qwen38-flash-next-qad-tp4`, `glm53-flash-nvfp4-spark-tp4`,
+  `deepseek-v41-flash-tp4` and `swift15-qwen38-flash-next-tp4`, and 8020 for
+  `mimo-v26-flash-rl-tp2` and `mimo-v26-flash-rl-tp4`. Containers use host networking, and the
   runtime-status dashboard (`/v1/sparkring/status/view`) answers on the same
   port. Anyone who can reach that port can use the model. Keep Node A on a
   trusted network or restrict the port with a firewall.
@@ -586,6 +588,7 @@ Internet through Node A's sharing unless they have their own connection.
 | MiMo checkpoint, `XiaomiMiMo/MiMo-V2.6-Flash-RL` @ `5711b2681699` | 165.6 GiB |
 | GLM checkpoint, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB |
 | DeepSeek checkpoint, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB |
+| Swift checkpoint, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB |
 
 The installer checks free space before each download or copy and before the
 model switch. It does not delete anything to make room, and a failed check
@@ -601,14 +604,15 @@ leaves the running model in place:
   without the image, 68 GiB for the image. `sparkring up`, whose image step
   pulls the image itself, reserves the full checkpoint allowance of
   [storage planning](../../profiles/storage-planning.json), 120 GiB (Qwen),
-  190 GiB (MiMo), 200 GiB (GLM) or 500 GiB (DeepSeek), unless the Spark holds a verified
-  checkpoint.
+  190 GiB (MiMo), 200 GiB (GLM or Swift) or 500 GiB (DeepSeek), unless the
+  Spark holds a verified checkpoint.
 - Caches: 32 GiB for the compile cache, and 68 GiB in Docker's data root while
   the image is absent.
 
 With the checkpoint, Docker and the cache on one filesystem, the plan asks a
 Spark that holds neither the image nor any checkpoint file for 206.6 GiB
-(Qwen), 278.0 GiB (MiMo), 279.5 GiB (GLM) or 669.8 GiB (DeepSeek); Node A needs 14.2 GiB more in
+(Qwen), 278.0 GiB (MiMo), 279.5 GiB (GLM), 281.7 GiB (Swift) or 669.8 GiB
+(DeepSeek); Node A needs 14.2 GiB more in
 Docker's data root for the relay's layer cache. Checkpoints are kept in
 `/srv/sparkring/<cluster>/checkpoints/<owner>--<name>/<revision>` and caches in
 `/srv/sparkring/<cluster>/cache`; `--cache-path` chooses another cache

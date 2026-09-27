@@ -18,11 +18,13 @@ ROOT = Path(__file__).resolve().parents[2]
 # shared-2026.09.3 native image.
 EXAMPLE_TP4 = ("qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache")
 EXAMPLES = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", *EXAMPLE_TP4)
-# DeepSeek, GLM and MiMo installer profiles. Like the two Qwen installer profiles they run
-# only on the shared toolchain image of an installer image lock; see
+# DeepSeek, GLM, MiMo and Swift installer profiles. Like the two Qwen installer profiles
+# they run only on the shared toolchain image of an installer image lock; see
 # installer_container for how Compose exports apply that image.
-TOOLCHAIN_TP4 = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4")
-TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-rl-tp2", *TOOLCHAIN_TP4)
+TOOLCHAIN_TP4 = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4",
+                 "swift15-qwen38-flash-next-tp4")
+TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-rl-tp2", "swift15-qwen38-flash-next-tp2",
+             *TOOLCHAIN_TP4)
 # Four-node profiles require each host's prepared mesh fabric reference.
 TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4)
 # Every supported profile has generated public examples under profiles/*/compose.

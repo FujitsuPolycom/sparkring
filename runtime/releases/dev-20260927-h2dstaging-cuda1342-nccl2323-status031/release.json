@@ -10,7 +10,7 @@
     },
     {
       "path": "runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json",
-      "sha256": "e5cf8bccd7d02f5c05913bb3f510ff322dfc7cfcbcc561c0a969956cff863634"
+      "sha256": "7e0ec2c14804b562f90481b595ae1f6feeb8ecf6c2305e212553978f05fef384"
     }
   ]
 }

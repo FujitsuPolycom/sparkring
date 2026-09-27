@@ -12,11 +12,11 @@ are in [SparkRing commands](commands.md).
 | Profile | Image | `start` and `stop` |
 |---|---|---|
 | `qwen38-flash-next-tp2-sparkcache`, `qwen38-flash-next-qad-tp4-sparkcache` | Shared 2026.09.3 image named in the profile's release | Yes |
-| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4`, `deepseek-v41-flash-tp4` | Installer image, from the installer image lock | No: `render` and `check` only |
+| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4`, `deepseek-v41-flash-tp4`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Installer image, from the installer image lock | No: `render` and `check` only |
 
 Every other profile is rejected.
 
-For the six installer-image profiles, each rank's generated container matches
+For the nine installer-image profiles, each rank's generated container matches
 the one `sparkring install` runs, and `deployment.json` records the image lock.
 Compose reads the loader seccomp policy from `runtime/common/loader-seccomp.json`
 in each host's checkout. The generated files omit the per-rank runtime-binding

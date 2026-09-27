@@ -8,7 +8,7 @@ image: pulling it neither configures networking nor starts a model.
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The seven `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7` | `sha256:fb6be60ff426d17f69a287f1f488e22ee037cf7ff865b2cd3971cb16e3dca03c` |
+| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7` | `sha256:fb6be60ff426d17f69a287f1f488e22ee037cf7ff865b2cd3971cb16e3dca03c` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Each profile's `profile.json` names its image release; other profiles use
@@ -19,7 +19,7 @@ other releases.
 Development image, tag `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`.
 The download is 14.2 GiB and the unpacked image 29.5 GiB. Its
 [installer image lock](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json)
-lists the seven profiles and pins its identity; its
+lists the nine profiles and pins its identity; its
 [publication record](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/publication.json)
 names the parent image and the added layer.
 

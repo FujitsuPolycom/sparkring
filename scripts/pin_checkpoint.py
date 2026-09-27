@@ -64,6 +64,7 @@ LFS_POINTER = "version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsiz
 # back to exactly one repository, as the Hub cache's `models--<owner>--<name>`.
 REPOSITORY_PART = r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,94}[A-Za-z0-9])?"
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp")
+VIDEO_SUFFIXES = (".mp4", ".webm", ".mov")
 DOCUMENT_SUFFIXES = (".md", ".pdf")
 
 
@@ -93,15 +94,15 @@ def optional(name):
     """True for documentation and repository metadata no serving component reads.
 
     These are ``.gitattributes``, names starting with ``README``, ``LICENSE`` or
-    ``NOTICE``, top-level Markdown and PDF documents, and image files. Every
-    other file, including nested Markdown, is required.
+    ``NOTICE``, top-level Markdown and PDF documents, and image and video files.
+    Every other file, including nested Markdown, is required.
     """
     path = PurePosixPath(name)
     suffix = path.suffix.lower()
     return (path.name == ".gitattributes"
             or path.name.startswith(("README", "LICENSE", "NOTICE"))
             or (len(path.parts) == 1 and suffix in DOCUMENT_SUFFIXES)
-            or suffix in IMAGE_SUFFIXES)
+            or suffix in IMAGE_SUFFIXES or suffix in VIDEO_SUFFIXES)
 
 
 def git_blob_id(data):

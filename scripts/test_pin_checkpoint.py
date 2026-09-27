@@ -25,6 +25,8 @@ COMMITTED = {
         ["mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
         ["deepseek-v41-flash-tp4"],
+    ("ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4", "3ff0520224f264a2d0ac4ab56ece8f2f13aadb38"):
+        ["swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"],
 }
 # Revisions pinned only by profiles outside the installer: the Qwen SparkCache
 # profiles run the step-4000 checkpoint and keep their own SHA256SUMS.
@@ -144,7 +146,8 @@ def test_generator_downloads_are_bounded(monkeypatch):
 
 def test_optional_files_are_only_documentation_and_repository_metadata():
     documentation = [".gitattributes", "README.md", "README", "LICENSE", "LICENSE.txt", "NOTICE", "USAGE.md",
-                     "MiMo_V2_6_technical_report.pdf", "assets/architecture.png", "figure.JPG", "docs/README.md"]
+                     "MiMo_V2_6_technical_report.pdf", "assets/architecture.png", "figure.JPG", "docs/README.md",
+                     "swift-1.5-flash-next-demo.mp4", "assets/demo.WEBM"]
     served = ["config.json", "generation_config.json", "chat_template.jinja", "tokenizer.json", "tokenizer_config.json",
               "vocab.json", "merges.txt", "preprocessor_config.json", "hf_quant_config.json", "export-manifest.json",
               "configuration_mimo_v2.py", "dflash/mask_embedding.pt", "dflash/model.safetensors.index.json",

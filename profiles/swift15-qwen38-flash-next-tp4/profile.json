@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "swift15-qwen38-flash-next-tp4",
+  "title": "Swift 1.5 Qwen3.8-Flash-Next NVFP4 on four Sparks",
+  "recommendation": "recommended",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/swift15-qwen38-flash-next-tp4/config.json"
+  },
+  "release": "runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/release.json",
+  "guide": "profiles/swift15-qwen38-flash-next-tp4/README.md",
+  "evidence_scope": "Revision 3ff0520224f264a2d0ac4ab56ece8f2f13aadb38 of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 with the qwen38-flash-next-qad-tp4 settings for the same Qwen4Exp architecture, except where this checkpoint's format differs: ModelOpt NVFP4 routed experts (--quantization modelopt_fp4), the BF16 PLE n-gram table resident in GPU memory (VLLM_PLE_CPU_OFFLOAD=0, 23.8 GiB per rank), and BF16 MTP draft experts on vLLM's unquantized MoE kernel, on installer image dev-20260927-h2dstaging-cuda1342-nccl2323-status031. No GB10 serving run covers this profile; CPU configuration, rendering and checkpoint-pin checks only.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/swift15-qwen38-flash-next-tp4/config.json"
+    ]
+  }
+}

@@ -370,3 +370,44 @@ def test_start_checks_read_checkpoint_metadata_without_changing_access_times(tmp
     profile["model"]["config_sha256"] = "0" * 64
     with pytest.raises(ValueError, match="Checkpoint metadata mismatch: config.json"):
         adapter.verify_model_paths(profile, folder, cache)
+
+
+@pytest.mark.parametrize("swift_id, qwen_id, master_port", [
+    ("swift15-qwen38-flash-next-tp2", "qwen38-flash-next-tp2", "29639"),
+    ("swift15-qwen38-flash-next-tp4", "qwen38-flash-next-qad-tp4", "29780"),
+])
+def test_swift_follows_the_qwen_profile_except_its_checkpoint_format(swift_id, qwen_id, master_port):
+    """Swift 1.5 keeps the Qwen3.8-Flash-Next architecture, so its profiles take the Qwen
+    installer settings; only settings its checkpoint format or identity requires may differ.
+    A Qwen setting change fails here until the Swift profile adopts or declines it."""
+    swift = adapter.canonical(adapter.read(ROOT / "profiles" / swift_id / "config.json"))
+    qwen = adapter.read(ROOT / "profiles" / qwen_id / "config.json")
+    owned = {"model", "served_model_name", "cache_namespace", "status", "qualification",
+             "checkpoint", "checkpoints", "checkpoint_aliases", "environment", "vllm_args"}
+    assert {k: v for k, v in swift.items() if k not in owned} == {k: v for k, v in qwen.items() if k not in owned}
+    expected = dict(qwen["environment"])
+    if adapter.node_count(swift) == 2:
+        # Two Sparks cannot keep the 95.4 GiB BF16 PLE table resident beside the other weights and KV.
+        del expected["VLLM_PLE_CPU_OFFLOAD"]
+        expected["VLLM_PLE_TABLE_MEMORY"] = "disk"
+    assert swift["environment"] == expected
+    args, expected_args = list(swift["vllm_args"]), list(qwen["vllm_args"])
+    expected_args[expected_args.index("--master-port") + 1] = master_port
+    # The checkpoint declares ModelOpt NVFP4 routed experts, not MIXED_PRECISION.
+    expected_args[expected_args.index("--quantization") + 1] = "modelopt_fp4"
+    index = expected_args.index("--speculative-config") + 1
+    draft = json.loads(expected_args[index])
+    # The draft's BF16 experts run on vLLM's unquantized MoE kernel, not an MXFP8 backend.
+    del draft["moe_backend"]
+    assert json.loads(args[index]) == draft
+    args[index] = expected_args[index] = None
+    assert args == expected_args
+    nodes = adapter.node_count(swift)
+    assert swift["served_model_name"] == f"Swift-1.5-Qwen3.8-Flash-Next-NVFP4-TP{nodes}"
+    assert swift["model"]["repository"] == "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4"
+    spec = adapter.container_spec(swift, rank=0, master="192.0.2.1", host_ip="192.0.2.1", interface="test0",
+                                  image=installer_image_id(), model=str(ROOT / "fixture-model"),
+                                  cache=str(ROOT / "fixture-cache"))
+    # Compile caches and container names stay separate from the Qwen checkpoint's.
+    assert spec.name == f"swift15-qwen38-flash-next-tp{nodes}-r0"
+    assert spec.environment["B12X_COMPILE_CACHE_DIR"].startswith("/cache/swift15-qwen38-flash-next-cuda")

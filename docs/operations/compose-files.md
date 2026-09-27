@@ -4,7 +4,7 @@ SparkRing publishes Docker Compose files that run a profile's model without the
 installer: one file per Spark (rank), and for three two-Spark profiles one
 standalone file that both Sparks share. [`sparkring install`](install.md) is
 the recommended path; it also prepares the network, image and checkpoint these
-files expect. For the six installer profiles each rank is the container
+files expect. For the nine installer profiles each rank is the container
 `sparkring install` runs, with the same image and serving settings but without
 the per-rank runtime-binding file, so the status plugin reports worker identity
 as `binding_not_configured`; serving is unaffected.
@@ -22,6 +22,8 @@ as `binding_not_configured`; serving is unaffected.
 | MiMo-V2.6-Flash-RL | 2 | `mimo-v26-flash-rl-tp2` | Ranks [0](../../profiles/mimo-v26-flash-rl-tp2/compose/compose.rank0.yaml), [1](../../profiles/mimo-v26-flash-rl-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/mimo-v26-flash-rl-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
 | MiMo-V2.6-Flash-RL | 4 | `mimo-v26-flash-rl-tp4` | Ranks [0](../../profiles/mimo-v26-flash-rl-tp4/compose/compose.rank0.yaml), [1](../../profiles/mimo-v26-flash-rl-tp4/compose/compose.rank1.yaml), [2](../../profiles/mimo-v26-flash-rl-tp4/compose/compose.rank2.yaml), [3](../../profiles/mimo-v26-flash-rl-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/mimo-v26-flash-rl-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
 | DeepSeek-V4.1-Flash | 4 | `deepseek-v41-flash-tp4` | Ranks [0](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank0.yaml), [1](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank1.yaml), [2](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank2.yaml), [3](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/deepseek-v41-flash-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| Swift-1.5-Qwen3.8-Flash-Next | 2 | `swift15-qwen38-flash-next-tp2` | Ranks [0](../../profiles/swift15-qwen38-flash-next-tp2/compose/compose.rank0.yaml), [1](../../profiles/swift15-qwen38-flash-next-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/swift15-qwen38-flash-next-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| Swift-1.5-Qwen3.8-Flash-Next | 4 | `swift15-qwen38-flash-next-tp4` | Ranks [0](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank0.yaml), [1](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank1.yaml), [2](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank2.yaml), [3](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/swift15-qwen38-flash-next-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
 | Qwen3.8-Flash-Next with SparkCache | 2 | `qwen38-flash-next-tp2-sparkcache` | Ranks [0](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/compose.rank1.yaml) · [standalone](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/standalone.yaml) · [site example](../../profiles/qwen38-flash-next-tp2/compose/site.example.yaml) | [Notes](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/README.md) |
 | Qwen3.8-Flash-Next with SparkCache | 4 | `qwen38-flash-next-qad-tp4-sparkcache` | Ranks [0](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank1.yaml), [2](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank2.yaml), [3](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank3.yaml) · [site example](../../profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml) | [Notes](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/README.md) |
 | GLM-5.3-Flash with SparkCache | 2 | `glm53-flash-spark-tp2-dcp1-sparkcache` | [Standalone](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml) | [Standalone file](#standalone-file-two-sparks); hosts: [profile guide](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
@@ -31,7 +33,7 @@ as `binding_not_configured`; serving is unaffected.
   run release `shared-2026.09.3`'s image. Files name images by registry digest.
   Qwen SparkCache variants use their base profile's site example.
 - `sparkring compose start` coordinates only the two Qwen SparkCache variants;
-  for the six installer profiles it supports `render` and `check` only.
+  for the nine installer profiles it supports `render` and `check` only.
 - GLM-5.3-Flash with SparkCache on four Sparks publishes no YAML: its
   [Compose creation guide](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
   (status Development) generates private files through `sparkring deploy`.

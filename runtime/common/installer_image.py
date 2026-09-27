@@ -11,9 +11,10 @@ Two lock schemas exist:
   run on one shared image. The installer applies the release's v2 lock to every
   profile it lists; see ``default_lock``.
 
-Admission is model-aware: Qwen profiles additionally require the image's Qwen
-collective features and hybrid-attention modes, while GLM and MiMo profiles
-rely on the verified receipts and the installed-tree check alone.
+Admission is model-aware: profiles of Qwen3.8-Flash-Next-architecture
+checkpoints (``QWEN4_EXP``) additionally require the image's Qwen collective
+features and hybrid-attention modes, while DeepSeek, GLM and MiMo profiles rely
+on the verified receipts and the installed-tree check alone.
 """
 from dataclasses import replace
 import hashlib
@@ -35,8 +36,13 @@ SCHEMA = "sparkring-installer-image/v2"
 # The release whose image every installer profile uses unless an operator
 # supplies an explicit development lock.
 DEFAULT_LOCK = ROOT / "runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json"
+# The Qwen3.8-Flash-Next profiles, the only profiles a v1 lock can name.
 QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
-SUPPORTED = (*QWEN, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
+# Profiles whose checkpoints use the Qwen3.8-Flash-Next (Qwen4Exp) architecture,
+# including derivatives of other publishers. They run the image's Qwen collective
+# features and HC modes, which admission requires and ``adapt`` configures.
+QWEN4_EXP = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
+SUPPORTED = (*QWEN4_EXP, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
              "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4")
 PLUGINS = ("b12x_loader", "sparkring_status")
 # The installer waits up to 30 minutes for rank 0 to report healthy. A first
@@ -167,7 +173,7 @@ def adapt(spec, value, *, binding, source_root, profile=None):
         TILELANG_CACHE_DIR=cache + "/tilelang", TVM_FFI_CACHE_DIR=cache + "/tvm-ffi",
         FLASHINFER_WORKSPACE_BASE=cache + "/flashinfer",
     )
-    if profile in QWEN:
+    if profile in QWEN4_EXP:
         environment["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] = qwen_recipe(environment)[0]["projection_tp"]
     if len(spec.command) < 2 or spec.command[1] != "serve":
         raise ValueError("External image adapter requires a canonical vLLM serve command")
@@ -212,7 +218,7 @@ def admit(value, *, run, profile=None, nodes=None, environment=None):
             or capabilities.get("transport_manifest_sha256") != value["transport_manifest_sha256"]
             or capabilities.get("runtime_status", {}).get("version") != value["status_version"]):
         raise ValueError("External software receipt does not satisfy this runtime contract")
-    if profile in QWEN:
+    if profile in QWEN4_EXP:
         # The profile selects its HC mode and feature bundles; the image receipt
         # declares which modes each node count supports.
         hc_mode, required_features = qwen_recipe(environment if environment is not None else profile_environment(profile))

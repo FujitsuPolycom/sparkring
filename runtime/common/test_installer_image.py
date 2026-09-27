@@ -221,7 +221,9 @@ def test_controller_allows_preview_while_another_deployment_is_running(tmp_path,
 
 
 SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
-          "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2")
+          "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2",
+          "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
+SWIFT = ("swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 
 
 def test_release_lock_lists_every_installer_profile_on_one_image():
@@ -307,3 +309,41 @@ def test_qwen_admission_features_do_not_apply_to_other_models():
     assert installer_image.admit(value, run=run, profile="glm53-flash-nvfp4-spark-tp4", nodes=4)["serving_qualified"] is False
     with pytest.raises(ValueError, match="Qwen topology"):
         installer_image.admit(value, run=run, profile=PROFILE, nodes=4)
+    # A derivative checkpoint of the Qwen3.8-Flash-Next architecture needs the same image features.
+    value["profiles"] = sorted([*value["profiles"], "swift15-qwen38-flash-next-tp4"])
+    with pytest.raises(ValueError, match="Qwen topology"):
+        installer_image.admit(value, run=run, profile="swift15-qwen38-flash-next-tp4", nodes=4)
+
+
+@pytest.mark.parametrize("profile", SWIFT)
+def test_swift_renders_the_qwen_architecture_settings_for_its_checkpoint_format(monkeypatch, profile):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("Offline render contacted a host"))
+    lock_value = installer_image.default_lock()
+    nodes = 4 if profile.endswith("tp4") else 2
+    lock = installer.make_lock(profile, ring_site() if nodes == 4 else site(2), "1" * 40, "2" * 64,
+                               image_runtime=lock_value)
+    assert lock["backend"] == "compose" and lock["selection"]["release"] == lock_value["name"]
+    specs = installer.specifications(lock)
+    assert len(specs) == nodes
+    for rank, spec in enumerate(specs):
+        assert spec.image_id == lock_value["image_id"] and spec.entrypoint == installer_image.ENTRYPOINT
+        env, command = spec.environment, spec.command
+        # The Qwen features, HC token-row ownership and decode dispatch apply as for Qwen3.8-Flash-Next.
+        assert env["SPARKRING_FEATURES"] == "qwen-collectives,qwen4-prefill"
+        assert env["VLLM_QWEN3_8_HC_PREFILL_MODE"] == "shard" and env["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] == "0"
+        assert env["QWEN_DISPATCH_AR_BYTES"] == "327680" and env["VLLM_QWEN4_EXP_MXFP8_HC"] == "1"
+        # The checkpoint declares ModelOpt NVFP4, which modelopt_mixed refuses.
+        assert command[command.index("--quantization") + 1] == "modelopt_fp4"
+        # Its draft experts are BF16, so no quantized draft MoE backend is named.
+        draft = json.loads(command[command.index("--speculative-config") + 1])
+        assert draft["method"] == "mtp" and draft["num_speculative_tokens"] == 3 and "moe_backend" not in draft
+        # Two Sparks read the 95.4 GiB BF16 PLE table from disk; four hold it in GPU memory.
+        if nodes == 2:
+            assert env["VLLM_PLE_TABLE_MEMORY"] == "disk" and "VLLM_PLE_CPU_OFFLOAD" not in env
+        else:
+            assert env["VLLM_PLE_CPU_OFFLOAD"] == "0" and "VLLM_PLE_TABLE_MEMORY" not in env
+        assert env["SPARKCACHE_ENABLED"] == "0" and "--enable-prefix-caching" in command
+        assert env["XDG_CACHE_HOME"].startswith("/cache/swift15-qwen38-flash-next-")
+        if rank == 0:
+            assert spec.health_start_period == installer_image.HEALTH_START_SECONDS
+    assert installer.connection(lock)["model"] == f"Swift-1.5-Qwen3.8-Flash-Next-NVFP4-TP{nodes}"
