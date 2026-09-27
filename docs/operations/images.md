@@ -8,7 +8,7 @@ image: pulling it neither configures networking nor starts a model.
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The six `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f` | `sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971` |
+| Installer image | The six `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7` | `sha256:fb6be60ff426d17f69a287f1f488e22ee037cf7ff865b2cd3971cb16e3dca03c` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Each profile's `profile.json` names its image release; other profiles use
@@ -16,11 +16,11 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20260925-qwendecode-cuda1342-nccl2323-status031`.
+Development image, tag `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`.
 The download is 14.2 GiB and the unpacked image 29.5 GiB. Its
-[installer image lock](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json)
 lists the six profiles and pins its identity; its
-[publication record](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/publication.json)
+[publication record](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/publication.json)
 names the parent image and the added layer.
 
 | Component | Purpose |
@@ -30,6 +30,7 @@ names the parent image and the added layer.
 | Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives whose forwarded-path send window bounds traffic relayed by a ring node |
 | Runtime-status dashboard 0.3.1 | `/v1/sparkring/status/view` on the model API port |
 | Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10, and the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
+| Host-to-device staging fix | vLLM's `CpuGpuBuffer.copy_to_gpu` copies through fresh pinned memory, so a host buffer rewritten for the next step while its copy is still queued cannot change the copied data. Without it, Qwen with MTP, async scheduling and FULL CUDA graphs decoded about 0.2-0.5% of concurrent requests as token 8191 (` Register`) repeated ([#294](https://github.com/FujitsuPolycom/sparkring/issues/294)) |
 
 `sparkring install` starts it with the image's entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that

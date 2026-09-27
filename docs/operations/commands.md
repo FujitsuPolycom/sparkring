@@ -113,7 +113,7 @@ repository and revision.
 
 ```text
 Saved model operation: qwen38-flash-next-qad-tp4 | up complete
-Checkpoint: qad-step5500-ple1000 (local-inference-lab/Qwen3.8-Flash-Next-NVFP4 @ 60215d26cf5e) | Image: dev-20260925-qwendecode-cuda1342-nccl2323-status031
+Checkpoint: qad-step5500-ple1000 (local-inference-lab/Qwen3.8-Flash-Next-NVFP4 @ 60215d26cf5e) | Image: dev-20260927-h2dstaging-cuda1342-nccl2323-status031
 ```
 
 | Flag | Meaning |

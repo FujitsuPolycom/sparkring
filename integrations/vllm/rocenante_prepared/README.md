@@ -7,7 +7,7 @@ The profile identity `tp2-rocenante-adaptive-prepared` bridges SparkRing's
 adaptive peer-path transport to B12X's prepared execution API. It is separate
 from the immutable `tp2-rocenante-adaptive` source bundle.
 
-The installer image `dev-20260925-qwendecode-cuda1342-nccl2323-status031` pins
+The installer image `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` pins
 transport manifest `2eef276d5403`. Its twelve files are the files that
 `package.py` stages from this directory, with the same SHA-256 values. The
 manifest that `package.py` writes here, `8e6bc565ae7f`, differs only in the

@@ -5,7 +5,7 @@ run the [`qwen38-flash-next-qad-tp4`](../README.md) profile on four DGX Sparks,
 one Compose project per Spark. Rank 0 serves `Qwen3.8-Flash-Next-NVFP4-QAD-TP4`
 on port 8015, with no API key. Each rank is the container
 [`sparkring install`](../../../docs/operations/install.md) runs, on image
-`dev-20260925-qwendecode-cuda1342-nccl2323-status031`, without the per-rank
+`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, without the per-rank
 runtime-status binding file.
 
 The files are generated from the [configuration](../config.json) and the
@@ -29,7 +29,7 @@ python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/q
 ```
 
 On each Spark, pull the image by its digest
-(`ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f`)
+(`ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7`)
 and run `docker compose -f compose.yaml up -d` with that rank's
 `rankN/compose.yaml`: ranks 1, 2 and 3 first, then rank 0. Compose reads the
 loader seccomp policy from `runtime/common/loader-seccomp.json` under the

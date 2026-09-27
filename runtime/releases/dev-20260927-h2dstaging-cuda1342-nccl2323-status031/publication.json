@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031",
+  "image_id": "sha256:fb6be60ff426d17f69a287f1f488e22ee037cf7ff865b2cd3971cb16e3dca03c",
+  "image_config_id": "sha256:fb6be60ff426d17f69a287f1f488e22ee037cf7ff865b2cd3971cb16e3dca03c",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260927-h2dstaging-cuda1342-nccl2323-status031",
+  "registry_manifest_digest": "sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.1",
+  "derivation": {
+    "parent_release": "dev-20260925-qwendecode-cuda1342-nccl2323-status031",
+    "parent_image_id": "sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971",
+    "layers": [
+      "vLLM host-to-device staging: CpuGpuBuffer.copy_to_gpu (vllm/v1/utils.py) copies through fresh pinned memory, so a pinned host buffer rewritten for the next step while its copy is still queued under async scheduling cannot change the copied data. Without it, Qwen3.8-Flash-Next with MTP speculative decoding, async scheduling and FULL CUDA graphs turned about 0.2-0.5% of concurrent requests into NaN state that decoded as token 8191 repeated (FujitsuPolycom/sparkring#294); /opt/sparkring/receipts/derived-staging-fix.json records the replaced file"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

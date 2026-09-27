@@ -171,23 +171,25 @@ is waiting for log lines; it does not indicate model readiness.
 ## Serving image and profiles
 
 Every installer profile runs on one shared serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/installer-image.json)
 (`sparkring-installer-image/v2`). It is the ARM64 image
-`ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f`
-(tag `dev-20260925-qwendecode-cuda1342-nccl2323-status031`, configuration
-`sha256:4100e1d2bd038f885d92f8c0021d482b23f9a38a003cd7bfc3e700e7e0afa971`),
+`ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7`
+(tag `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, configuration
+`sha256:fb6be60ff426d17f69a287f1f488e22ee037cf7ff865b2cd3971cb16e3dca03c`),
 built on the `eugr/spark-vllm-b12x:nightly-20260924` base image with CUDA
 13.4.2, NCCL 2.32.3, the runtime-status dashboard 0.3.1, the paced RoCEnante
 transport, whose forwarded-path send window bounds traffic that a ring node
-relays for its neighbours, and the Qwen decode kernels described below. The
+relays for its neighbours, the Qwen decode kernels described below, and
+vLLM host-to-device staging that copies through fresh pinned memory. The
 lock lists the admitted profiles and pins the image configuration, registry
 manifest, external software receipt, toolchain receipt, composition, prepared
 transport and status package. The image's
-[publication record](../../runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/publication.json)
-names its parent image, `dev-20260925-cuda1342-nccl2323-status031`, and
+[publication record](../../runtime/releases/dev-20260927-h2dstaging-cuda1342-nccl2323-status031/publication.json)
+names its parent image, `dev-20260925-qwendecode-cuda1342-nccl2323-status031`, and
 describes its derived layer; inside the image,
-`/opt/sparkring/receipts/derived-qwen-decode.json` records every file that
-layer replaces. `sparkring models` marks only these profiles
+`/opt/sparkring/receipts/derived-qwen-decode.json` and
+`/opt/sparkring/receipts/derived-staging-fix.json` record every file the two
+derived layers replace. `sparkring models` marks only these profiles
 as installer-supported:
 
 | Profiles | Checkpoint | Speculative decoding |
@@ -196,9 +198,10 @@ as installer-supported:
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
 | `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | MiMo-V2.6-Flash-RL, revision `5711b2681699` | DFlash5 |
 
-The installer image differs from its parent image only in Qwen model files and
-one vLLM setting, `VLLM_QWEN4_EXP_MXFP8_HC`, which is off unless a profile sets
-it. All installer profiles run with SparkCache off and vLLM's native prefix
+The installer image differs from `dev-20260925-cuda1342-nccl2323-status031`
+only in Qwen model files, one vLLM setting, `VLLM_QWEN4_EXP_MXFP8_HC`, which is
+off unless a profile sets it, and `vllm/v1/utils.py`, whose
+`CpuGpuBuffer.copy_to_gpu` stages each copy through fresh pinned memory. All installer profiles run with SparkCache off and vLLM's native prefix
 cache on. Profiles that select other images, such as the
 `shared-2026.09.3` release, keep their own guides and are not installed by
 `sparkring install`. `--image-lock FILE` replaces the shared lock for a
@@ -543,7 +546,7 @@ Internet through Node A's sharing unless they have their own connection.
 
 | Asset | Size |
 |---|---:|
-| Serving image `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | 14.2 GiB download, 29.5 GiB unpacked |
+| Serving image `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | 14.2 GiB download, 29.5 GiB unpacked |
 | Qwen checkpoint, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB |
 | MiMo checkpoint, `XiaomiMiMo/MiMo-V2.6-Flash-RL` @ `5711b2681699` | 165.6 GiB |
 | GLM checkpoint, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB |

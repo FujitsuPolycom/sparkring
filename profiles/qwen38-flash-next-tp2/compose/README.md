@@ -27,7 +27,7 @@ which Docker's default seccomp policy blocks.
 1. **Docker** with the NVIDIA Container Toolkit and `docker compose`.
 2. **The image** (31.6 GB):
    ```bash
-   docker pull ghcr.io/fujitsupolycom/sparkring@sha256:451c5e23a90e0df2fc904e8851aab12c3ec9ffdcd1258b6f14cf502222e46b5f
+   docker pull ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7
    ```
 3. **The fabric**: port p0 cabled to port p0, and both of its functions
    addressed, one subnet each, MTU 9000:
