@@ -47,32 +47,33 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 
 ## Profiles
 
-`sparkring install --profile` accepts these profiles. Every profile runs image
-`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`. The four-Spark GLM and
-DeepSeek figures were measured on it. The Qwen, MiMo and two-Spark GLM figures
-were measured on its parent image,
-`dev-20260925-qwendecode-cuda1342-nccl2323-status031`, which lacks vLLM's
-host-to-device staging fix, and have not been measured on the selected image.
+`sparkring install --profile` accepts these profiles:
 
-| Model | Checkpoint | Sparks | `--profile` value | API port | Decode (tok/s, one user) | Decode (tok/s, 8 / 16 users) | Prefill 16K (tok/s) |
-|---|---|---|---|---|---|---|---|
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 49.3–84.8 | 198 / 284 | 4,077 |
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 70.7–118.1 | 276 / 408 | 5,024 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 32.3–40.0 | 104 / — | 2,440 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 60.6–77.5 | 200 / 278 | 3,399 |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 25.7–62.8 | — | 3,802 |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 44.8–111.5 | — | 4,253 |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 49.8–110.8 | 146 / 216 | 4,406 |
+| Model | Checkpoint | Sparks | `--profile` value | API port | Decode, 1 / 8 / 16 users (tok/s) | Prefill 64K (tok/s) |
+|---|---|---|---|---|---|---|
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 52.6 / 198 / 284 | 3,689 |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 73.6 / 276 / 408 | 4,559 |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | — | — |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 40.2 / 104 / — | 2,375 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 66.0 / 200 / 278 | 3,657 |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | — | — |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | — | — |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 51.9 / 146 / 216 | 4,411 |
 
-One-user decode ranges from prose to JSON prompts at temperature 0. Decode for
-8 and 16 users is the aggregate llm-inference-bench rate at temperature 1.0
-with no added context; the GLM pair profile serves at most 8 requests, and
-MiMo is not yet measured this way. DeepSeek's figures were measured on the
-selected image with its profile's settings: one-user decode and prefill on an
-installed deployment, and 8 and 16 users in its settings search. Measurements:
+Decode is the aggregate output rate from
+[llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
+0.6.2 (`llm_decode_bench.py`) at temperature 1.0 with exact token targeting, no
+added context, up to 2,048 output tokens, 20 s per cell after a 5 s warm-up.
+Prefill is one cold 64K-token prompt divided by its time to first token, from
+the same run. Every profile runs image
+`dev-20260927-h2dstaging-cuda1342-nccl2323-status031`; the four-Spark GLM and
+DeepSeek rows were measured on it, and the Qwen and two-Spark GLM rows on its
+parent image, `dev-20260925-qwendecode-cuda1342-nccl2323-status031`. The GLM
+pair profile serves at most 8 requests. MiMo and Swift have not been measured
+with this benchmark. Measurements:
 [Qwen](performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md),
 [GLM](performance/records/images/dev-20260925-qwendecode-glm-prefill-20260926.md),
-[MiMo](performance/records/images/dev-20260925-qwendecode-installer-profiles-20260926.md),
 [DeepSeek](performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md).
 
 The [full profile catalog](profiles/README.md) lists every profile, including
