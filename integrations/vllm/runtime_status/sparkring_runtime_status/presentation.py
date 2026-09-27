@@ -14,6 +14,7 @@ from .collector import ARG_FIELDS
 # label, configured argument or environment variable, resolved field.
 GROUPS = {
     "Model and topology": [
+        ("Served model name", None, "served_model_name"),
         ("Model architecture", None, "model_type"),
         ("Tensor parallel", "tensor_parallel_size", "tensor_parallel_size"),
         ("Decode context parallel", "decode_context_parallel_size", "decode_context_parallel_size"),
@@ -105,7 +106,8 @@ AUTO_FIELDS = {'model_dtype', 'quantization', 'attention_backend', 'draft_tensor
                'fuse_act_quant', 'max_model_len', 'max_num_seqs', 'max_num_batched_tokens',
                'block_size', 'kv_cache_memory_bytes', 'prefix_caching_enabled', 'chunked_prefill_enabled',
                'draft_load_format', 'linear_backend', 'moe_backend'}
-RUNTIME_ONLY = {'model_type': 'From checkpoint', 'decoder_attention_modules': 'Runtime sample',
+RUNTIME_ONLY = {'served_model_name': 'From launch arguments',
+                'model_type': 'From checkpoint', 'decoder_attention_modules': 'Runtime sample',
                 'sampled_qk_head_dims': 'From model', 'sampled_value_head_dims': 'From model',
                 'hc_projection_tp_size': 'From topology', 'target_head_quantization': 'Runtime selection',
                 'draft_head_quantization': 'Runtime selection', 'draft_head_shared': 'Runtime selection'}
@@ -262,8 +264,12 @@ def summarize(doc):
     stale = workers.get("stale") is True
     complete = state == "complete" and unique_ranks and not stale
     age = workers.get("cache_age_seconds")
+    # The header names the model as clients request it. The architecture has its
+    # own line and never substitutes for an unknown name, because an architecture
+    # such as qwen4_exp is not a value clients can put in a request.
     return {"title": title, "identity": identity, "provenance": doc.get("provenance", {}),
-            "model": display(effective(doc, "model_type")),
+            "model": display(effective(doc, "served_model_name")),
+            "architecture": display(effective(doc, "model_type")),
             "topology": " / ".join(name + " " + display(effective(doc, key)) for name, key in (
                 ("TP", "tensor_parallel_size"), ("DCP", "decode_context_parallel_size"), ("PP", "pipeline_parallel_size"))),
             "workers": f"{workers.get('received_count', 0)}/{expected if expected is not None else '?'}",
@@ -276,6 +282,7 @@ def summarize(doc):
 def render_text(doc):
     view = summarize(doc)
     lines = [view["title"], f"Model: {view['model']} | {view['topology']}",
+             f"Model architecture: {view['architecture']}",
              f"Workers: {view['workers']} | reporting: {view['state']} | stale: {view['stale']} | snapshot age: {view['age']}", "", NOTE]
     for section in detail_sections(doc, view):
         lines += ["", section['title'].upper(), section['note'], " | ".join(section['headers'])]
@@ -493,7 +500,8 @@ def render_report(doc):
     e = lambda value: escape(clean(value), quote=True)
     state_class = "good" if view["complete"] else "warn"
     parts = [f'<main id="report"><header><p class="eyebrow">CLUSTER / RUNTIME STATUS</p><h1>{e(view["title"])}</h1>',
-             f'<p class="subtitle">{e(view["model"])} <span>·</span> {e(view["topology"])}</p></header>',
+             f'<p class="subtitle">{e(view["model"])} <span>·</span> {e(view["topology"])}</p>',
+             f'<p class="subtitle">Model architecture: {e(view["architecture"])}</p></header>',
              '<div class="cards">',
              f'<section class="card"><span>Worker reports</span><strong>{e(view["workers"])}</strong><small class="{state_class}">{e(view["state"])}{ " · stale" if view["stale"] else ""}</small></section>',
              f'<section class="card"><span>Snapshot age</span><strong>{e(view["age"])}</strong><small>Cached worker metadata</small></section>',

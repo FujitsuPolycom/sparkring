@@ -212,6 +212,56 @@ def test_mismatch_partial_unknown_and_stale_are_not_presented_as_success():
     assert "2/2 agree" not in presentation.render_text(doc)
 
 
+def test_header_names_the_served_model_and_keeps_the_architecture_line():
+    doc = fixture()
+    name = {"state": "known", "value": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2", "source": "resolved_vllm_config"}
+    doc["effective"]["served_model_name"] = dict(name)
+    doc["effective"]["model_type"]["value"] = "qwen4_exp"
+    for rank in doc["workers"]["ranks"]:
+        rank["effective"]["served_model_name"] = dict(name)
+    text = presentation.render_text(doc)
+    assert text.splitlines()[1:3] == ["Model: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 | TP 2 / DCP 1 / PP 1",
+                                      "Model architecture: qwen4_exp"]
+    html = presentation.render_report(doc)[1]
+    assert '<p class="subtitle">Qwen3.8-Flash-Next-NVFP4-QAD-TP2 <span>·</span> TP 2 / DCP 1 / PP 1</p>' in html
+    assert '<p class="subtitle">Model architecture: qwen4_exp</p></header>' in html
+    rows = {row["label"]: row for row in dict(presentation.summarize(doc)["groups"])["Model and topology"]}
+    served, architecture = rows["Served model name"], rows["Model architecture"]
+    assert (served["configured"], served["resolved"], served["evidence"], served["agreement"]) == (
+        "From launch arguments", "Qwen3.8-Flash-Next-NVFP4-QAD-TP2", "Resolved configuration", "2/2 agree")
+    assert (architecture["configured"], architecture["resolved"]) == ("From checkpoint", "qwen4_exp")
+    # Architecture-specific settings still follow model_type, never the name.
+    assert "HC prefill ownership" in text
+    doc["effective"]["model_type"]["value"] = "mimo_v2"
+    assert "HC prefill ownership" not in presentation.render_text(doc)
+    doc["workers"]["ranks"][1]["effective"]["served_model_name"]["value"] = "Other-Name"
+    served = next(row for row in dict(presentation.summarize(doc)["groups"])["Model and topology"]
+                  if row["label"] == "Served model name")
+    assert served["severity"] == "bad" and served["agreement"] == "Workers differ"
+
+
+def test_unknown_served_name_is_not_replaced_by_the_architecture():
+    doc = fixture()
+    # The test configuration has no model_config, so the name was not collected.
+    assert doc["effective"]["served_model_name"]["reason"] == "not_collected"
+    text = presentation.render_text(doc)
+    assert "Model: Not collected | TP 2 / DCP 1 / PP 1\nModel architecture: mimo_v2\n" in text
+    assert '<p class="subtitle">Model architecture: mimo_v2</p>' in presentation.render_report(doc)[1]
+    # A document produced without the field renders as unknown, not as mimo_v2.
+    del doc["effective"]["served_model_name"]
+    assert "Model: Unknown | TP 2" in presentation.render_text(doc)
+
+
+def test_served_name_is_escaped_in_html_and_stripped_in_text():
+    doc = fixture()
+    doc["effective"]["served_model_name"] = {"state": "known", "source": "resolved_vllm_config",
+                                             "value": '<img src=x onerror=alert(1)>\x1b[31m\nFAKE'}
+    page = plugin.dashboard_response(doc).body.decode()
+    text = presentation.render_text(doc)
+    assert "<img src=x" not in page and "&lt;img src=x onerror=alert(1)&gt;" in page
+    assert "\x1b" not in text and "\nFAKE" not in text
+
+
 def test_identity_and_qwen_specific_fields():
     doc = fixture()
     text = presentation.render_text(doc)

@@ -286,6 +286,53 @@ def test_prepared_mxfp8_and_gdn_choices_use_current_metadata_fields(component, c
     assert result["execution"] == "not_observed"
 
 
+def test_served_model_name_is_a_known_fact_separate_from_the_architecture():
+    cfg = config()
+    # vLLM's ModelConfig keeps one string: the first alias, or --model without one.
+    cfg.model_config = NS(served_model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+                          hf_config=NS(model_type="qwen4_exp"))
+    facts = c.configuration(cfg)
+    assert facts["served_model_name"] == {"state": "known", "source": "resolved_vllm_config",
+                                          "value": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2"}
+    assert facts["model_type"] == {"state": "known", "source": "resolved_vllm_config", "value": "qwen4_exp"}
+    obj = worker()
+    obj.vllm_config = cfg
+    assert c.worker_snapshot(obj, environ={}, modules={})["effective"]["served_model_name"] == facts["served_model_name"]
+    cfg.model_config.served_model_name = "/models/Qwen3.8-Flash-Next"
+    assert c.configuration(cfg)["served_model_name"]["value"] == "/models/Qwen3.8-Flash-Next"
+    # Text outside the scalar allowlist is withheld, not echoed or guessed.
+    cfg.model_config.served_model_name = "test-only <script>"
+    withheld = c.configuration(cfg)["served_model_name"]
+    assert withheld == {"state": "unknown", "source": "resolved_vllm_config"}
+    assert "test-only" not in json.dumps(withheld)
+    assert c.configuration(config())["served_model_name"] == {
+        "state": "unknown", "source": "resolved_vllm_config", "reason": "not_collected"}
+
+
+def test_served_model_name_is_always_reported_beside_model_type_and_schema_valid():
+    jsonschema = pytest.importorskip("jsonschema")
+    cfg = config()
+    cfg.model_config = NS(served_model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+                          hf_config=NS(model_type="qwen4_exp"))
+    ranks = []
+    for rank in range(2):
+        obj = worker(rank)
+        obj.vllm_config = cfg
+        ranks.append(c.worker_snapshot(obj, environ={}, modules={}))
+    status = p.StatusService(cfg, NS(), Engine(result=ranks), receipt={"state": "unknown"}, environ={})
+    result = asyncio.run(status.snapshot())
+    unnamed = asyncio.run(service(Engine()).snapshot())
+    # The key is present whether or not the name is known; model_type is kept.
+    assert {"served_model_name", "model_type"} <= set(unnamed["effective"])
+    assert set(result["effective"]) == set(unnamed["effective"])
+    assert result["effective"]["served_model_name"]["value"] == "Qwen3.8-Flash-Next-NVFP4-QAD-TP2"
+    assert result["effective"]["model_type"]["value"] == "qwen4_exp"
+    assert all(row["effective"]["served_model_name"]["value"] == "Qwen3.8-Flash-Next-NVFP4-QAD-TP2"
+               for row in result["workers"]["ranks"])
+    schema = json.loads(Path(__file__).with_name("schema-v1.json").read_text())
+    jsonschema.Draft202012Validator(schema).validate(result)
+
+
 def test_no_speculation_is_known_disabled_missing_config_remains_unknown():
     cfg = config()
     cfg.speculative_config = None

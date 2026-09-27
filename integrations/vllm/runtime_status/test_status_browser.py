@@ -18,6 +18,7 @@ def demo_snapshot():
     doc = observed_fixture()
     values = {"tensor_parallel_size": 4, "decode_context_parallel_size": 1,
               "pipeline_parallel_size": 1, "model_type": "mimo_v2", "max_model_len": 262144,
+              "served_model_name": "MiMo-V2.6-Flash-RL-TP4",
               "quantization": "fp8", "model_dtype": "torch.bfloat16", "max_num_seqs": 16,
               "attention_backend": "B12X", "decoder_attention_modules": ["B12xPagedAttentionImpl"],
               "sampled_qk_head_dims": [192], "sampled_value_head_dims": [128], "fuse_act_quant": True,
@@ -92,6 +93,9 @@ def test_browser_refresh_pause_failure_recovery_and_mobile_layout():
             url = f"http://127.0.0.1:{port}/v1/sparkring/status/view"
             page.goto(url)
             assert "SparkRing shared-2026.09.4-rc.4" in page.title()
+            header = page.locator("header .subtitle")
+            assert header.nth(0).inner_text().startswith("MiMo-V2.6-Flash-RL-TP4")
+            assert header.nth(1).inner_text() == "Model architecture: mimo_v2"
             assert page.locator(".card").first.inner_text().startswith("Worker reports\n4/4")
             assert page.locator("#report").evaluate("el => el.scrollWidth <= el.clientWidth")
             assert '32.0 GiB' in page.locator('#nodes').inner_text()
@@ -133,6 +137,11 @@ def test_browser_refresh_pause_failure_recovery_and_mobile_layout():
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             if output:
                 page.screenshot(path=str(Path(output) / "status-mobile.png"))
+            # Without an alias vLLM serves the --model path, which can be one long token.
+            document["effective"]["served_model_name"]["value"] = "/models/" + "x" * 160
+            page.locator("#refresh").click()
+            playwright.expect(page.locator("header .subtitle").first).to_contain_text("x" * 160)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             assert not errors
         finally:
             if browser:

@@ -58,11 +58,18 @@ an authenticated proxy/session that supplies that header; these views do not
 bypass authentication or accept API keys in URLs. Responses are not cached.
 
 The header uses the recorded SparkRing/eugr startup identity when supplied by
-the deployment, otherwise it says `SparkRing runtime status`. Worker agreement,
-effective configuration and preparation remain distinct from execution evidence.
-Rank values can be expanded in the browser; mismatches appear inline in text.
+the deployment, otherwise it says `SparkRing runtime status`. Its model line
+shows the served model name, the name clients put in the `model` field of a
+request: the first `--served-model-name` alias, or the `--model` value when no
+alias is given. The checkpoint architecture (`model_type` from the Hugging Face
+config, for example `qwen4_exp`) appears on its own `Model architecture` line.
+When the served name is unknown, the model line says so instead of showing the
+architecture. The Model and topology settings list both with per-rank values.
+Worker agreement, effective configuration and preparation remain distinct from
+execution evidence. Rank values can be expanded in the browser; mismatches
+appear inline in text.
 
-Version 0.3.1 provides passive transport, resource, library and acceptance views.
+Version 0.3.2 provides passive transport, resource, library and acceptance views.
 Configured cells distinguish absent environment settings, omitted arguments and
 runtime-derived fields. Resolved cells use stored worker evidence where available;
 an unset NCCL variable is not treated as proof of a native default. Expand rank
@@ -128,7 +135,7 @@ has no execution evidence, even when the corresponding optimization is enabled.
 | Field | Meaning |
 | --- | --- |
 | `configured` | Parsed server arguments and a strict allowlist of explicitly set process environment controls, captured during plugin initialization. Parsed arguments may include defaults. |
-| `effective` | Stored resolved `VllmConfig` fields in the API process, captured at initialization. Includes parallelism, MTP depth, cache/checkpoint policy, batch capacity, capture capacity, loader and backend choices. |
+| `effective` | Stored resolved `VllmConfig` fields in the API process, captured at initialization. Includes parallelism, MTP depth, cache/checkpoint policy, batch capacity, capture capacity, loader and backend choices. `served_model_name` is the primary name clients request (`model_config.served_model_name`); `model_type` is the checkpoint architecture (`model_config.hf_config.model_type`). Both have source `resolved_vllm_config`. |
 | `observed` | Request execution evidence. Uninstrumented paths remain `not_observed`; configuration or preparation is not proof that a request used a kernel. |
 | `workers.ranks` | Per-worker identity, rank-local configured environment, resolved config and passive resident state at the worker's `collected_at_unix_ns`. These can differ from the API process. |
 | `workers.state` | `complete`, `partial`, `pending`, `error`, or `unavailable`. Complete means the expected count and unique rank identities were returned; it is not a health or correctness certification. |

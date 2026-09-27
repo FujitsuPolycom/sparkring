@@ -30,6 +30,10 @@ CONFIG_FIELDS = {
     "data_parallel_rank": "parallel_config.data_parallel_rank",
     "enable_expert_parallel": "parallel_config.enable_expert_parallel",
     "max_model_len": "model_config.max_model_len",
+    # The name clients put in requests. ModelConfig stores one string: the first
+    # --served-model-name alias, or the --model value when no alias is given.
+    "served_model_name": "model_config.served_model_name",
+    # The checkpoint architecture, not a name clients can request.
     "model_type": "model_config.hf_config.model_type",
     "quantization": "model_config.quantization",
     "model_dtype": "model_config.dtype",
