@@ -107,6 +107,24 @@ def refresh_cluster(cluster):
     return {**cluster, "plan": plan}
 
 
+def planned_head(cluster):
+    """The refreshed cluster with Node A at this controller's revision, for ``--plan``.
+
+    Node A's inspection reports the package installed there. ``install.sh
+    --plan`` runs this controller from the package it built, extracted and not
+    installed, when Node A has another version; the installation that such a
+    plan describes runs after that package is installed on Node A. The ConnectX
+    hairpin step compares every Spark with Node A's revision, so the plan uses
+    this controller's. When Node A runs this controller's package, the cluster
+    is returned unchanged.
+    """
+    revision = distribution.identity(installer.ROOT)
+    nodes = cluster["plan"]["nodes"]
+    if nodes[0].get("revision") == revision:
+        return cluster
+    return {**cluster, "plan": {**cluster["plan"], "nodes": [{**nodes[0], "revision": revision}, *nodes[1:]]}}
+
+
 def choose_profile(value, count, interactive):
     if not value:
         choices = [r for r in models.catalog() if r["automated"] and r["nodes"] == count]
@@ -545,6 +563,8 @@ def execute(args):
         cluster = installer.read(state_root / "cluster.json")
         check_access(cluster)
         cluster = refresh_cluster(cluster)
+        if args.plan:
+            cluster = planned_head(cluster)
         hairpin = hairpin_ring.requirement(cluster["plan"])
         needs_hairpin = hairpin_ring.required(hairpin)
         # Printed before the deployment is selected, so that a native-mesh

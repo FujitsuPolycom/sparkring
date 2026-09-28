@@ -30,7 +30,8 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
 ```
 
 The command asks before it installs the SparkRing package and before it
-changes any Spark; `--yes` answers both, and `--plan` changes nothing. It sets
+changes any Spark; `--yes` answers both, and `--plan` prints what the command
+would do, also for an upgrade, and changes nothing. It sets
 up every Spark, downloads the image and model unless the Sparks already hold
 them, and prints the API address when the model is ready. Each model serves a
 [status dashboard](docs/operations/dashboard.md), and on four Sparks the

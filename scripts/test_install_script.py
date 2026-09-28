@@ -1,7 +1,9 @@
 """Checks for install.sh; nothing is cloned, built, installed or contacted.
 
 The behavior tests run the script with stub git, package-build, dpkg, apt-get
-and sudo commands and without a controlling terminal.
+and sudo commands and without a controlling terminal. The stub package's
+payload holds a stand-in `scripts/sparkring.py`, which the system Python runs
+when the script plans with the built package.
 """
 
 from __future__ import annotations
@@ -27,8 +29,11 @@ STUBS = {
             '  clone) for last; do :; done; mkdir -p "$last" ;;\n'
             '  -C) [ "$3" = rev-parse ] && echo ' + "a" * 40 + ' ;;\n'
             'esac\n'),
-    "python3": 'mkdir -p "$3" && : > "$3/sparkring_${STUB_BUILT}_arm64.deb"\n',
-    "dpkg-deb": 'echo "$STUB_BUILT"\n',
+    # Builds into WORK/dist and records WORK.
+    "python3": ('mkdir -p "$3" && : > "$3/sparkring_${STUB_BUILT}_arm64.deb"\n'
+                'printf "%s\\n" "${3%/dist}" > "$STUB_WORK"\n'),
+    "dpkg-deb": ('if [ "$1" = -x ]; then mkdir -p "$3" && cp -R "$STUB_PAYLOAD/." "$3/"; exit; fi\n'
+                 'echo "$STUB_BUILT"\n'),
     "dpkg-query": '[ -n "${STUB_INSTALLED:-}" ] || exit 1\nprintf "ii %s" "$STUB_INSTALLED"\n',
     "dpkg": '[ "$2" != "$4" ] && [ "$(printf "%s\\n%s\\n" "$2" "$4" | sort -V | head -1)" = "$2" ]\n',
     "apt-get": 'echo "Reading package lists..."\necho "apt-get $*" >> "$STUB_LOG"\n',
@@ -37,6 +42,28 @@ STUBS = {
              '  echo \'{"schema": "sparkring-install-result/v1", "state": "planned"}\'\n'
              'else exec "$@"; fi\n'),
 }
+
+# The payload's scripts/sparkring.py. It logs its arguments, records where it
+# was imported from and the import path, then acts as STUB_PLAN says: print a
+# planned or needs_input result, or fail without one.
+PLANNER = '''\
+import json
+import os
+from pathlib import Path
+import sys
+
+
+def main():
+    with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
+        log.write("extracted sparkring " + " ".join(sys.argv[1:]) + "\\n")
+    Path(os.environ["STUB_PLANNER"]).write_text(json.dumps(
+        {"root": str(Path(__file__).resolve().parents[1]), "path": sys.path}), encoding="utf-8")
+    state = os.environ["STUB_PLAN"]
+    if state == "crash":
+        raise RuntimeError("the payload failed")
+    print(json.dumps({"schema": "sparkring-install-result/v1", "state": state}))
+    return 3 if state == "needs_input" else 0
+'''
 
 
 def _bash():
@@ -73,6 +100,8 @@ def test_installer_runs_from_the_package_and_reads_the_terminal():
     runs = [line.strip() for line in text.splitlines() if "sparkring install" in line and "SUDO" in line]
     assert runs and all('/usr/bin/sparkring install "${INSTALL_ARGS[@]}"' in line for line in runs)
     assert any(line.endswith("</dev/tty") for line in runs)
+    # A plan with the built package reads the terminal in the same way.
+    assert '"${planner[@]}" </dev/tty >"$result"' in text
 
 
 def test_unrecognized_options_pass_through_to_sparkring_install():
@@ -91,8 +120,11 @@ def test_unrecognized_options_pass_through_to_sparkring_install():
         "topic", "/srv/sparkring.bundle", "--profile", "qwen38-flash-next-tp2", "--yes", "--json"]
 
 
-def run_script(tmp_path, *arguments, installed=None, git_fails=False):
-    """Run install.sh with stub commands; returns the process and the logged apt and sparkring calls."""
+def run_script(tmp_path, *arguments, installed=None, git_fails=False, plan="planned"):
+    """Run install.sh with stub commands; returns the process and the logged apt and sparkring calls.
+
+    ``plan`` is the stand-in payload's behavior (see ``PLANNER``).
+    """
     if not sys.platform.startswith("linux"):
         pytest.skip("install.sh runs on Linux")
     if os.geteuid() == 0:
@@ -102,10 +134,15 @@ def run_script(tmp_path, *arguments, installed=None, git_fails=False):
     for name, body in STUBS.items():
         (stubs / name).write_text("#!/bin/sh\n" + body)
         (stubs / name).chmod(0o755)
+    payload = tmp_path / "payload"
+    (payload / "usr/lib/sparkring/scripts").mkdir(parents=True)
+    (payload / "usr/lib/sparkring/scripts/sparkring.py").write_text(PLANNER, encoding="utf-8")
     log = tmp_path / "calls.log"
     log.touch()
     environment = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", "STUB_LOG": str(log),
-                   "STUB_BUILT": BUILT, "STUB_INSTALLED": installed or "", "STUB_GIT_FAILS": "1" if git_fails else ""}
+                   "STUB_BUILT": BUILT, "STUB_INSTALLED": installed or "", "STUB_GIT_FAILS": "1" if git_fails else "",
+                   "STUB_WORK": str(tmp_path / "work"), "STUB_PAYLOAD": str(payload),
+                   "STUB_PLANNER": str(tmp_path / "planner.json"), "STUB_PLAN": plan}
     # A new session has no controlling terminal, as for an agent or a CI job.
     result = subprocess.run(["bash", str(SCRIPT), *arguments], stdin=subprocess.DEVNULL, capture_output=True,
                             text=True, env=environment, timeout=60, start_new_session=True)
@@ -116,6 +153,18 @@ def only_document(stdout):
     lines = stdout.splitlines()
     assert len(lines) == 1, stdout
     return json.loads(lines[0])
+
+
+def work_directory(tmp_path):
+    """The temporary directory the script built in."""
+    work = Path((tmp_path / "work").read_text().strip())
+    assert work.name.startswith("sparkring-install.")
+    return work
+
+
+def requires_system_python():
+    if not Path("/usr/bin/python3").is_file():
+        pytest.skip("Planning with the built package runs /usr/bin/python3")
 
 
 def test_json_output_is_one_document_and_progress_goes_to_stderr(tmp_path):
@@ -147,17 +196,53 @@ def test_plan_installs_nothing_and_plans_with_the_matching_package(tmp_path):
     assert result.returncode == 0, result.stderr
     assert only_document(result.stdout)["state"] == "planned"
     assert calls == ["sparkring install --profile qwen38-flash-next-tp2 --plan --json"]
+    assert not (tmp_path / "planner.json").exists()
+    assert not work_directory(tmp_path).exists()
 
 
-@pytest.mark.parametrize("installed", [None, "0.1.0~dev.1+gitaaaa"])
-def test_plan_stops_when_the_installed_package_differs(tmp_path, installed):
+@pytest.mark.parametrize("installed", ["0.1.0~dev.1+gitaaaa", "0.1.0~dev.3+gitcccc"])
+def test_plan_of_another_version_runs_the_built_package_without_installing_it(tmp_path, installed):
+    """An upgrade or a downgrade is planned by the extracted payload; apt and /usr/bin/sparkring do not run."""
+    requires_system_python()
     result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--plan", "--yes", "--json",
                                installed=installed)
+    assert result.returncode == 0, result.stderr
+    assert only_document(result.stdout)["state"] == "planned"
+    assert calls == ["extracted sparkring install --profile qwen38-flash-next-tp2 --plan --yes --json"]
+    assert f"This Spark has SparkRing {installed}; planning with the built package {BUILT}" in result.stderr
+    work = work_directory(tmp_path)
+    planner = json.loads((tmp_path / "planner.json").read_text())
+    root = str(work / "package/usr/lib/sparkring")
+    # The payload imports itself: it heads the import path, and neither the
+    # installed payload nor the working directory is on it.
+    assert planner["root"] == root and planner["path"][0] == root
+    assert "/usr/lib/sparkring" not in planner["path"] and "" not in planner["path"]
+    assert not work.exists()
+
+
+@pytest.mark.parametrize(("plan", "code", "state"), [("needs_input", 3, "needs_input"), ("crash", 2, "failed")])
+def test_plan_of_another_version_keeps_one_result_and_its_exit_status(tmp_path, plan, code, state):
+    requires_system_python()
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--plan", "--json",
+                               installed="0.1.0~dev.1+gitaaaa", plan=plan)
+    assert result.returncode == code, result.stderr
+    document = only_document(result.stdout)
+    assert document["state"] == state
+    if plan == "crash":
+        assert document["stage"] == "plan" and "the payload failed" in result.stderr
+    assert calls == ["extracted sparkring install --profile qwen38-flash-next-tp2 --plan --json"]
+    assert not work_directory(tmp_path).exists()
+
+
+def test_plan_without_a_package_stops(tmp_path):
+    """The plan reads this Spark's SparkRing node, which installing a package sets up."""
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--plan", "--yes", "--json")
     assert result.returncode == 3
     document = only_document(result.stdout)
     assert (document["state"], document["field"]) == ("needs_input", "package")
-    assert document["details"] == {"built": BUILT, "installed": installed}
+    assert document["details"] == {"built": BUILT, "installed": None}
     assert calls == []
+    assert not work_directory(tmp_path).exists()
 
 
 def test_bootstrap_failure_is_a_failed_result(tmp_path):

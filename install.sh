@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Build the SparkRing Debian package from a Git ref, install it on this Spark
 # (Node A), then run `sparkring install` to set up the cabled Sparks and start
-# a model.
+# a model. With --plan it installs nothing and runs `sparkring install --plan`
+# from the built package.
 #
 # Standard output carries only results: with --json it holds exactly one
 # sparkring-install-result/v1 document, from `sparkring install` or, when this
-# script stops before running it, from this script. Progress, questions and
-# apt's output go to standard error.
+# script stops before running it or a plan ends without a result, from this
+# script. Progress, questions and apt's output go to standard error.
 set -euo pipefail
 
 REPOSITORY="https://github.com/FujitsuPolycom/sparkring.git"
@@ -32,9 +33,9 @@ json_string() {
   printf '"%s"' "$value"
 }
 
-# Stop before `sparkring install` runs, with the states and exit statuses of
-# its own results: failed (2) names the stage that failed, needs_input (3) the
-# missing input. DETAILS is an optional JSON object.
+# Stop with the states and exit statuses of the results of `sparkring install`:
+# failed (2) names the stage that failed, needs_input (3) the missing input.
+# DETAILS is an optional JSON object.
 stop() {
   local state=$1 key=$2 message=$3 details=${4:-} name=stage
   say "$message"
@@ -46,6 +47,37 @@ stop() {
   fi
   [[ $state == needs_input ]] && exit 3
   exit 2
+}
+
+# Print the plan of the built package, which this Spark does not have
+# installed, without installing it: run `sparkring install` from the package's
+# payload extracted into WORK. Isolated mode (-I) keeps the installed payload,
+# the working directory and PYTHON* variables off the import path, as
+# /usr/bin/sparkring does for /usr/lib/sparkring. The plan still inspects every
+# Spark, Node A included, through the package installed there. Exits with the
+# plan's status; the EXIT trap removes WORK.
+plan_with_built_package() {
+  local root=$WORK/package/usr/lib/sparkring result=$WORK/plan-result status=0
+  say "This Spark has SparkRing $installed; planning with the built package $version without installing it."
+  dpkg-deb -x "$package" "$WORK/package" >&2 \
+    || stop failed package "Could not extract $(basename "$package")."
+  local planner=("${SUDO[@]}" /usr/bin/python3 -I -B -c \
+    'import sys; sys.path.insert(0, sys.argv.pop(1)); from scripts.sparkring import main; raise SystemExit(main())' \
+    "$root" install "${INSTALL_ARGS[@]}")
+  say ""
+  say "Starting: sudo sparkring install ${INSTALL_ARGS[*]} (from the extracted package)"
+  if [[ ! -t 0 ]] && { : </dev/tty; } 2>/dev/null; then
+    "${planner[@]}" </dev/tty >"$result" || status=$?
+  else
+    "${planner[@]}" >"$result" || status=$?
+  fi
+  # `sparkring install` exits 0, 2 or 3; with --json it has then printed its
+  # result document. Anything else is reported as this script's own result.
+  if ((status != 0 && status != 2 && status != 3)) || { ((JSON)) && [[ ! -s $result ]]; }; then
+    stop failed plan "SparkRing $version stopped without a plan result (exit status $status)."
+  fi
+  cat "$result"
+  exit "$status"
 }
 
 INSTALL_ARGS=()
@@ -62,9 +94,11 @@ command asks for approval before it changes any Spark. --yes approves both.
 
 --package-only stops after installing the package, before any other Spark or
 model changes; `sudo sparkring install --plan` can then review the rest.
---plan installs nothing: when this Spark already has the package version just
-built, `sparkring install --plan` prints the plan; otherwise the script stops
-and names both versions. --json prints one result document on standard output.
+--plan installs nothing and prints the plan of the version just built: from
+the installed package when this Spark has that version, otherwise from the
+built package extracted into the temporary directory. This Spark needs some
+SparkRing package installed. --json prints one result document on standard
+output.
 
   curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh \
     | bash -s -- --profile qwen38-flash-next-tp2
@@ -151,9 +185,12 @@ else
 fi
 
 if ((PLAN)); then
+  if [[ -z $installed ]]; then
+    stop needs_input package "--plan changes nothing on this Spark, and the plan reads the SparkRing node that the package sets up; this Spark has no SparkRing package. Run the command without --plan to install SparkRing $version, then plan again." \
+      "{\"built\": $(json_string "$version"), \"installed\": null}"
+  fi
   if [[ $installed != "$version" ]]; then
-    stop needs_input package "--plan changes nothing on this Spark, and the plan needs SparkRing $version installed; this Spark has ${installed:-no SparkRing package}. Run the command without --plan to install it, then plan again." \
-      "{\"built\": $(json_string "$version"), \"installed\": $(if [[ -n $installed ]]; then json_string "$installed"; else printf null; fi)}"
+    plan_with_built_package
   fi
   say "SparkRing $version is installed; planning with it."
 elif [[ $installed == "$version" ]]; then

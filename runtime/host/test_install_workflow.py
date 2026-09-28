@@ -1638,6 +1638,25 @@ def test_mixed_revisions_plan_without_changes_then_update_and_apply(machine, mon
     assert ring.commands("lldpcli", "update")
 
 
+def test_plan_from_a_package_node_a_lacks_compares_every_spark_with_that_package(machine, monkeypatch, capsys):
+    """install.sh --plan runs a built package that Node A does not have yet; Node A reports its installed one.
+
+    The installation that the plan describes runs after the built package is
+    installed on Node A, so the workers are listed for an update to it.
+    """
+    events, _, _, _ = machine
+    value = four(monkeypatch)
+    for row in value["plan"]["nodes"]:
+        row["revision"] = row["hairpin"]["revision"] = OLDER
+    ring = simulate(monkeypatch, value)
+    assert sparkring.main(["install", "--profile", TP4, "--plan", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["steps"][:3] == ["verify-fabric", "update-workers", "apply-hairpin-setting"]
+    assert [row["before"] for row in result["hairpin"]["ranks"]] == ["kept"] + ["update"] * 3
+    assert all(row["message"].endswith("update to aaaaaaaaaaaa.") for row in result["hairpin"]["ranks"][1:])
+    assert events == [] and ring.calls == []
+
+
 def test_busy_ring_needs_input_without_approval_or_restart(machine, monkeypatch, capsys):
     events, previous, _, _ = machine
     value = four(monkeypatch)

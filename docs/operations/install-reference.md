@@ -26,18 +26,26 @@ starts `avahi-daemon` and `lldpd` for discovery, and restarts
 asks `Install the package? [Y/n]` first; without a terminal it needs `--yes`.
 When the built version is already installed, it skips `apt`. `--yes` also
 answers `sparkring install`'s questions. With `--plan` the script installs
-nothing: if this Spark has the package version it built,
-`sparkring install --plan` prints the plan; otherwise the script stops and
-names both versions. `--package-only` asks the same question, installs or
+nothing and runs `sparkring install --plan` with the version it built: from
+the installed package when this Spark has that version, otherwise from the
+built package extracted into the script's temporary directory. Either way the
+plan inspects every Spark, Node A included, through the SparkRing package
+installed on it, and compares the Sparks' revisions with the built one, which
+the installation puts on Node A first. As with any `sparkring install --plan`,
+the plan is saved on Node A and bounds a later `--yes` run with the same source
+revision and options. Planning needs a SparkRing package on this Spark; without
+one the script stops with `needs_input` (field `package`). `--package-only`
+asks the same question, installs or
 keeps the package and stops before `sparkring install`, so
 `sudo sparkring install --profile PROFILE --plan` can review the rest; its
 JSON result has `state` `package-installed`, the `version`, the `previous`
 version and whether it `changed`. It cannot be combined with `--plan`. The
 script's progress, questions and `apt` output go to standard
 error, so with `--json` standard output holds one `sparkring-install-result/v1`
-document: the installer's result, or the script's own when it stops first,
-with `state` `failed` and the `stage` that failed (exit status 2) or
-`needs_input` and the `field` it needs (exit status 3).
+document: the installer's result, or the script's own when it stops first or
+a plan from the extracted package ends without a result (stage `plan`), with
+`state` `failed` and the `stage` that failed (exit status 2) or `needs_input`
+and the `field` it needs (exit status 3).
 
 The branch command installs the branch's newest revision each time. To repeat
 an installation exactly, fetch the script and the source at one commit; the
@@ -51,7 +59,8 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/COMMIT/ins
 `--ref BRANCH_TAG_OR_COMMIT` selects another source and `--repository URL`
 another repository or a local Git bundle; the script's own copy must come from
 the same ref. It builds in a temporary directory under `/var/tmp` and removes
-it before `sparkring install` starts. When the script arrives through a pipe,
+it before `sparkring install` starts, or after a plan from the extracted
+package ends. When the script arrives through a pipe,
 its questions and the installer's are read from the terminal.
 
 Changes reach the `one-command-installer` branch before `main`; to test them,
