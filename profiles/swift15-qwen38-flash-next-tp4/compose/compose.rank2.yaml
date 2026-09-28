@@ -139,6 +139,7 @@ services:
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
+      SPARKRING_TOOL_CHOICE_CONTRACT: '1'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 2eef276d54030a71c4774b92c89008dd563104b791734f6f588a3ca34a7c4943
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
       TILELANG_CACHE_DIR: /cache/swift15-qwen38-flash-next-8e4de5f05f02-3ff0520224f2/tilelang
@@ -175,7 +176,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/swift15-qwen38-flash-next-8e4de5f05f02-3ff0520224f2
     labels:
-      io.sparkring.deployment: 3dc710838cf2a6f297aa30188b5db4d7b440fad5f698f0c6762db19dd3869c4d
+      io.sparkring.deployment: 5fbd7dca39745f6354ae4da7e15bbb0275cce47cbfb2290819322c182ff23536
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

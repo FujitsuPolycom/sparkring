@@ -136,6 +136,7 @@ services:
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: ''
+      SPARKRING_TOOL_CHOICE_CONTRACT: '1'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 2eef276d54030a71c4774b92c89008dd563104b791734f6f588a3ca34a7c4943
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
       TILELANG_CACHE_DIR: /cache/mimo-v26-flash-rl-8e4de5f05f02-5711b2681699/tilelang
@@ -162,7 +163,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/mimo-v26-flash-rl-8e4de5f05f02-5711b2681699
     labels:
-      io.sparkring.deployment: 92158081b8d948c4d76c4f7bf74f91b7052cac73b378a44526e8ee8a878e6e94
+      io.sparkring.deployment: b9c411a042b5647ce5a7ec8ee55da806162469ac5e360dfaadc621d27c66b6e3
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

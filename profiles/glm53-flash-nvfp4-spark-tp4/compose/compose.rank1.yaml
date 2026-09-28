@@ -149,6 +149,7 @@ services:
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: ''
+      SPARKRING_TOOL_CHOICE_CONTRACT: '1'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 2eef276d54030a71c4774b92c89008dd563104b791734f6f588a3ca34a7c4943
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
       TILELANG_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-8e4de5f05f02-a608241037e4/tilelang
@@ -182,7 +183,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-8e4de5f05f02-a608241037e4
     labels:
-      io.sparkring.deployment: ac459434612afd8bf0ef57ef5b0a054719ea9c3d5b25af3a1474539e570d3d31
+      io.sparkring.deployment: 4c0b58e7d20ba8b5cba0b6e5e49c7af7534aaf1e343c872b26dec69f95d826db
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

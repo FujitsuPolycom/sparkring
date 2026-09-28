@@ -264,6 +264,16 @@ cache on. Profiles that select other images, such as the
 `sparkring install`. `--image-lock FILE` replaces the shared lock for a
 development rehearsal and must list the selected profile.
 
+Installer containers set `SPARKRING_TOOL_CHOICE_CONTRACT=1` unless the
+profile's environment sets it to `0`. On an image built by the
+[tool-choice layer](../../runtime/images/derive_tool_choice_contract.py), a Chat
+Completions request whose `tool_choice` is `required` or names a function then
+fails with HTTP 500 `ToolChoiceContractError` (an SSE error event when
+streaming) if generation ends without a complete call, for example because
+reasoning used up `max_tokens`. The shared image above lacks that layer and
+answers such a request with HTTP 200, `finish_reason: "length"` and an empty
+`tool_calls` list ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)).
+
 Both Qwen profiles use one prefill recipe on TP2 and TP4: each rank owns a
 share of the token rows in the hyper-connection (HC) prefill path
 (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`), which excludes HC projection sharding,

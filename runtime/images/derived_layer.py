@@ -21,7 +21,8 @@ A layer is defined in one of two ways:
 - A ``Layer`` (code, in a ``derive_*.py`` module) computes replacement bytes
   from the parent's own files, usually with exact substitutions that must match
   once, and may pin each replaced file's inherited and resulting SHA-256 and
-  edit other receipt fields.
+  edit other receipt fields. It may also add site-packages Python files under
+  the descriptor rules; each addition is pinned with inherited SHA-256 ``None``.
 
 Replacing the runtime-status package also rewrites the receipt fields the
 image's ``verify`` and the installer's admission read: the owned Python root
@@ -122,11 +123,14 @@ def swap(text, old, new):
 class Layer:
     """A layer whose bytes are computed from the parent's own files.
 
-    ``replace(read, receipt)`` returns the new bytes of each replaced absolute
-    path; every path must already be recorded by the parent receipt.
+    ``replace(read, receipt)`` returns the new bytes of each replaced or added
+    absolute path. A replaced path must already be recorded by the parent
+    receipt. An added path must be pinned in ``pins`` with inherited SHA-256
+    ``None``, must be a site-packages Python file that a descriptor could add,
+    and must not be recorded by the parent.
     ``update_receipt(receipt, replaced)`` edits receipt fields other than file
     hashes and returns fields to set in the derived lock. ``pins`` maps a
-    replaced path to its required (inherited, resulting) SHA-256. Without
+    path to its required (inherited, resulting) SHA-256. Without
     ``provenance`` the layer writes no provenance receipt.
     """
     name: str
@@ -194,6 +198,19 @@ def _image_path(name, *, root):
     return name
 
 
+def _python_file(target):
+    """Refuse a derived file outside site-packages Python sources that image startup does not own."""
+    _image_path(target, root=SITE)
+    name = PurePosixPath(target).name
+    if name.endswith(NATIVE) or ".so." in name:
+        raise ValueError("A derived layer carries Python source, not native files: " + target)
+    if target in HOOKS:
+        raise ValueError("Startup hooks that select image components are not derived-layer files: " + target)
+    if target in TRANSPORT_SOURCES:
+        raise ValueError("The prepared transport verifies this B12X source; it needs a new transport manifest: "
+                         + target)
+
+
 def _pinned_row(row, label):
     require(isinstance(row, dict) and set(row) == {"path", "sha256"}, label + " requires path and sha256")
     name = PurePosixPath(row["path"])
@@ -222,15 +239,7 @@ def descriptor(path):
         _pinned_row(status["wheel"], "Status wheel")
         _pinned_row(status["source_archive"], "Status source archive")
     for target, row in files.items():
-        _image_path(target, root=SITE)
-        name = PurePosixPath(target).name
-        if name.endswith(NATIVE) or ".so." in name:
-            raise ValueError("A derived layer carries Python source, not native files: " + target)
-        if target in HOOKS:
-            raise ValueError("Startup hooks that select image components are not derived-layer files: " + target)
-        if target in TRANSPORT_SOURCES:
-            raise ValueError("The prepared transport verifies this B12X source; it needs a new transport manifest: "
-                             + target)
+        _python_file(target)
         if set(row) != {"source", "sha256", "inherited_sha256"}:
             raise ValueError("Each derived file records source, sha256 and inherited_sha256: " + target)
         source = PurePosixPath(row["source"])
@@ -413,19 +422,26 @@ def _descriptor_entries(record, repository, base):
 
 
 def _layer_entries(layer, read, base):
-    """Bytes computed from the parent's files; each replaced file must match its receipt."""
+    """Bytes computed from the parent's files; each replaced file must match its receipt.
+
+    A path pinned with inherited SHA-256 ``None`` is an addition.
+    """
     replaced = layer.replace(read, base)
     require(replaced, "The layer replaces no file")
     entries = {}
     for target, data in sorted(replaced.items()):
         inherited = base["files"].get(target)
-        require(inherited is not None, "Replaced path is not recorded by the parent: " + target)
-        require(digest(read(target)) == inherited, "Parent file differs from its receipt: " + target)
+        if target in layer.pins and layer.pins[target][0] is None:
+            _python_file(target)
+            require(inherited is None, "Added path is already recorded by the parent: " + target)
+        else:
+            require(inherited is not None, "Replaced path is not recorded by the parent: " + target)
+            require(digest(read(target)) == inherited, "Parent file differs from its receipt: " + target)
         if target in layer.pins and layer.pins[target] != (inherited, digest(data)):
-            raise ValueError("Replaced file differs from its pinned inherited or resulting SHA-256: " + target)
+            raise ValueError("Derived file differs from its pinned inherited or resulting SHA-256: " + target)
         entries[target] = (data, inherited, {})
     missing = set(layer.pins) - set(replaced)
-    require(not missing, "Pinned paths were not replaced: " + ", ".join(sorted(missing)))
+    require(not missing, "Pinned paths were not written: " + ", ".join(sorted(missing)))
     return entries
 
 

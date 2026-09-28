@@ -45,6 +45,12 @@ QWEN4_EXP = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-
 SUPPORTED = (*QWEN4_EXP, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
              "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4")
 PLUGINS = ("b12x_loader", "sparkring_status")
+# The variable that selects the tool-result policy: with 1, a named or required
+# tool_choice request without a complete call fails instead of returning an
+# empty tool_calls list (integrations/vllm/tool_choice_contract). ``adapt`` sets
+# it to 1 unless the profile's environment sets it; only an image derived with
+# runtime/images/derive_tool_choice_contract.py reads it.
+TOOL_CHOICE_CONTRACT = "SPARKRING_TOOL_CHOICE_CONTRACT"
 # The installer waits up to 30 minutes for rank 0 to report healthy. A first
 # start compiles and tunes kernels for every CUDA graph size, so the health
 # check tolerates failures for the same period instead of marking a rank that
@@ -173,6 +179,7 @@ def adapt(spec, value, *, binding, source_root, profile=None):
         TILELANG_CACHE_DIR=cache + "/tilelang", TVM_FFI_CACHE_DIR=cache + "/tvm-ffi",
         FLASHINFER_WORKSPACE_BASE=cache + "/flashinfer",
     )
+    environment.setdefault(TOOL_CHOICE_CONTRACT, "1")
     if profile in QWEN4_EXP:
         environment["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] = qwen_recipe(environment)[0]["projection_tp"]
     if len(spec.command) < 2 or spec.command[1] != "serve":

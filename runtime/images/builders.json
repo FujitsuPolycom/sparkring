@@ -98,6 +98,12 @@
       ]
     },
     {
+      "id": "installer-tool-choice-contract",
+      "path": "runtime/images/derive_tool_choice_contract.py",
+      "kind": "python",
+      "reason": "Derive an image whose vLLM Chat Completions serving module installs the named and required tool_choice policy of integrations/vllm/tool_choice_contract when SPARKRING_TOOL_CHOICE_CONTRACT=1, from dev-20260927-mimovision-cuda1342-nccl2323-status032."
+    },
+    {
       "id": "sparkring-source",
       "path": "runtime/sparkring/source_image/prepare_context.py",
       "kind": "python",

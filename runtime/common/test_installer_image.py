@@ -1,5 +1,6 @@
 """Image switches bind receipts and preserve model, mesh and lifecycle ownership."""
 import copy
+import dataclasses
 import hashlib
 import json
 import subprocess
@@ -50,6 +51,7 @@ def test_image_selection_preserves_profile_weights_network_and_model_arguments(m
         assert after.environment["VLLM_PLUGINS"] == "b12x_loader,sparkring_status"
         assert after.environment["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] == "0"
         assert after.environment["VLLM_QWEN3_8_HC_PREFILL_MODE"] == "shard"
+        assert after.environment[installer_image.TOOL_CHOICE_CONTRACT] == "1"
         assert "PYTHONPATH" not in after.environment and "LD_PRELOAD" not in after.environment
         # Image-scoped caches follow the selected image. Compiled B12X kernels
         # carry their own content key and are shared across installer images of
@@ -68,6 +70,16 @@ def test_image_selection_preserves_profile_weights_network_and_model_arguments(m
     assert "toolchain/toolchain.py" in rendered["rank0/compose.yaml"]
     assert "python3" in rendered["rank0/compose.yaml"]
     assert "Development" in selected["selection"]["evidence_scope"]
+
+
+@pytest.mark.parametrize("setting", ["0", "1"])
+def test_profile_environment_selects_the_tool_choice_policy(setting):
+    baseline = installer.make_lock(PROFILE, ring_site(), "1" * 40, "2" * 64)
+    spec = installer.specifications(baseline)[0]
+    assert installer_image.TOOL_CHOICE_CONTRACT not in spec.environment
+    chosen = dataclasses.replace(spec, environment={**spec.environment, installer_image.TOOL_CHOICE_CONTRACT: setting})
+    adapted = installer_image.adapt(chosen, image_lock(), binding="/run/binding.json", source_root="/opt/source")
+    assert adapted.environment[installer_image.TOOL_CHOICE_CONTRACT] == setting
 
 
 @pytest.mark.parametrize("change", ["tag", "digest", "profile", "unknown", "version"])
@@ -274,6 +286,8 @@ def test_other_models_render_on_the_shared_image(monkeypatch, profile):
         assert not any(key.startswith(("VLLM_QWEN3_8_", "QWEN_")) for key in spec.environment)
         assert spec.environment["SPARKCACHE_ENABLED"] == "0" and "--kv-transfer-config" not in spec.command
         assert "--enable-prefix-caching" in spec.command
+        # Named and required tool_choice fail closed on an image that carries the policy.
+        assert spec.environment[installer_image.TOOL_CHOICE_CONTRACT] == "1"
         assert spec.environment["VLLM_NCCL_SO_PATH"] == "/opt/sparkring/toolchain/nccl/lib/libnccl.so.2"
         family = json.loads((installer.ROOT / "profiles" / profile / "config.json").read_text())["cache_namespace"]
         assert spec.environment["XDG_CACHE_HOME"] == f"/cache/{family}-{lock_value['image_id'][7:19]}-{lock['selection']['model_revision'][:12]}"

@@ -1,4 +1,9 @@
-"""Optional response validation for named and required Chat Completions tools."""
+"""Optional response validation for named and required Chat Completions tools.
+
+An installer image derived with runtime/images/derive_tool_choice_contract.py
+carries this file unchanged as vLLM's ``sparkring_tool_choice_contract``
+module, so it imports only the standard library.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +12,10 @@ from dataclasses import dataclass, field
 from functools import wraps
 from http import HTTPStatus
 import json
+import os
+
+ENVIRONMENT = "SPARKRING_TOOL_CHOICE_CONTRACT"
+MARKER = "_sparkring_tool_choice_contract"
 
 
 def value(obj, name, default=None):
@@ -27,17 +36,25 @@ def _reject_constant(text):
 
 
 def violation(request, calls, finish_reason):
-    """Return a bounded diagnostic; never include generated arguments or text."""
+    """Return a bounded diagnostic that names the engine's finish reason, or None.
+
+    The diagnostic never includes generated arguments or text.
+    """
     contract = scope(request)
     if contract is None:
         return None
+    problem = _problem(request, contract, calls, finish_reason)
+    return None if problem is None else f"{problem}; finish_reason: {finish_reason}."
+
+
+def _problem(request, contract, calls, finish_reason):
     if finish_reason not in ("stop", "tool_calls", "length"):
-        return "Generation did not finish normally; required tool output is incomplete."
+        return "Generation did not finish normally; required tool output is incomplete"
     if not calls:
-        return "Named or required tool_choice produced no tool calls."
+        return "Named or required tool_choice produced no tool calls"
     mode, name = contract
     if value(request, "parallel_tool_calls") is False and len(calls) != 1:
-        return "Tool response contains parallel calls when parallel_tool_calls is false."
+        return "Tool response contains parallel calls when parallel_tool_calls is false"
     declared = {value(value(tool, "function"), "name")
                 for tool in value(request, "tools", []) or []
                 if value(tool, "type") == "function"}
@@ -45,9 +62,9 @@ def violation(request, calls, finish_reason):
         function = value(call, "function")
         call_name = value(function, "name")
         if not call_name or call_name not in declared:
-            return "Tool output names a function absent from the request's tool definitions."
+            return "Tool output names a function absent from the request's tool definitions"
         if mode == "named" and call_name != name:
-            return "Tool output does not match the function selected by tool_choice."
+            return "Tool output does not match the function selected by tool_choice"
         arguments = value(function, "arguments")
         try:
             if not isinstance(arguments, str):
@@ -56,7 +73,7 @@ def violation(request, calls, finish_reason):
             if not isinstance(parsed, dict):
                 raise ValueError("Expected a JSON object")
         except (ValueError, RecursionError):
-            return "Tool arguments are not a complete JSON object."
+            return "Tool arguments are not a complete JSON object"
     return None
 
 
@@ -177,3 +194,37 @@ def wrap_stream(original):
                     yield f"data: {_error(self, 'Tool stream ended without a terminal event.', streaming=True)}\n\n"
                     yield "data: [DONE]\n\n"
     return checked
+
+
+def enabled(environ):
+    """Whether ``environ`` enables the policy; it is off unless the variable is 1."""
+    setting = environ.get(ENVIRONMENT, "0")
+    if setting not in ("0", "1"):
+        raise ValueError(f"{ENVIRONMENT} must be 0 or 1.")
+    return setting == "1"
+
+
+def install(cls):
+    """Wrap the full and streaming Chat Completions generators of ``cls`` once.
+
+    Subclasses that inherit these generators, such as vLLM's Anthropic Messages
+    handler, inherit the policy.
+    """
+    if getattr(cls, MARKER, False):
+        return
+    cls.chat_completion_full_generator = wrap_full(cls.chat_completion_full_generator)
+    cls.chat_completion_stream_generator = wrap_stream(cls.chat_completion_stream_generator)
+    setattr(cls, MARKER, True)
+
+
+def install_from_environment(cls, environ=None):
+    """Install the policy on ``cls`` when SPARKRING_TOOL_CHOICE_CONTRACT is 1.
+
+    An image derived with runtime/images/derive_tool_choice_contract.py calls
+    this when vLLM imports its Chat Completions serving module, so every Python
+    API server process reads the same setting. A value other than 0 or 1
+    raises, which stops the server instead of serving without the requested
+    policy.
+    """
+    if enabled(os.environ if environ is None else environ):
+        install(cls)

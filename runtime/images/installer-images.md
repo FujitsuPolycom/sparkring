@@ -17,6 +17,14 @@ builder for every release that has an `installer-image.json` lock.
 | `dev-20260927-b12xcache-cuda1342-nccl2323-status032` | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | [B12X reconciled selection-cache correction](../../integrations/b12x/selection_cache/README.md) and runtime-status 0.3.2 | `installer-derived-layer`, [derived_layer.py](derived_layer.py) with descriptor [installer-b12xcache-status032](compositions/installer-b12xcache-status032/descriptor.json) |
 | `dev-20260927-mimovision-cuda1342-nccl2323-status032` | `dev-20260927-b12xcache-cuda1342-nccl2323-status032` | MiMo vision encoder attention sinks in the softmax denominator | `installer-mimo-vision`, [derive_mimo_vision.py](derive_mimo_vision.py) |
 
+The `installer-tool-choice-contract` builder,
+[derive_tool_choice_contract.py](derive_tool_choice_contract.py), derives a
+layer from `dev-20260927-mimovision-cuda1342-nccl2323-status032` in which named
+and required Chat Completions `tool_choice` requests without a complete call
+fail with `ToolChoiceContractError`
+([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)).
+No release records an image built by it.
+
 Each release's `publication.json` names its parent and describes its layer.
 [cuda134-nccl232.md](cuda134-nccl232.md) documents the toolchain layer and the
 inputs recorded for `dev-20260924`.
@@ -70,7 +78,11 @@ and records the new transport manifest in the receipt and the derived lock;
 [derive_tp2_hc.py](derive_tp2_hc.py) lists the TP2 row-sharding HC mode;
 [derive_staging_fix.py](derive_staging_fix.py) pins `vllm/v1/utils.py`. Every
 replaced path must already be recorded by the parent receipt, and its bytes in
-the parent must match that record.
+the parent must match that record. A code layer may also add a site-packages
+Python file under the descriptor rules: `pins` names the added path with
+inherited SHA-256 `None`, and the parent receipt must not record it.
+[derive_tool_choice_contract.py](derive_tool_choice_contract.py) adds the
+tool-result policy as a vLLM module and pins the `serving.py` that installs it.
 
 ### Replacing the runtime-status package
 
@@ -182,3 +194,9 @@ the published image's. Conclusion: these builders reproduce the recorded file
 and receipt identities of the published chain. Docker layer metadata and image
 IDs of a rebuild differ from the published images; a rebuilt image is not a
 published release and carries no serving qualification.
+
+The tool-choice layer's `prepare`, replayed offline with copies of the
+`dev-20260927-mimovision-cuda1342-nccl2323-status032` receipts, which match the
+SHA-256 values its lock records, and of its `serving.py`, accepted the pinned
+inherited `serving.py` and wrote a context that adds one file and replaces one.
+No image was built from it.

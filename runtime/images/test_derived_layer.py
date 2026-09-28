@@ -10,13 +10,15 @@ from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import tarfile
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 import zipfile
 
 import pytest
 
 from runtime.common import installer_image
-from runtime.images import derive_mimo_vision, derive_staging_fix, derive_tp2_hc, derive_transport_window
+from runtime.images import derive_mimo_vision, derive_staging_fix, derive_tool_choice_contract, derive_tp2_hc
+from runtime.images import derive_transport_window
 from runtime.images import derived_layer as layer
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -478,12 +480,50 @@ def test_code_layer_rewrites_receipts_from_the_parents_files(tmp_path):
     ({"replace": lambda read, receipt: {"/opt/app/unrecorded.py": b"x"}}, "not recorded"),
     ({"replace": lambda read, receipt: {}}, "replaces no file"),
     ({"pins": {"/opt/app/a.py": ("0" * 64, "1" * 64)}}, "pinned"),
-    ({"pins": {"/opt/app/b.py": (sha(b"b\n"), sha(b"b\n"))}}, "were not replaced"),
+    ({"pins": {"/opt/app/b.py": (sha(b"b\n"), sha(b"b\n"))}}, "were not written"),
 ])
 def test_code_layer_refuses_unbound_replacements_without_output(tmp_path, change, message):
     root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n", "/opt/app/b.py": b"b\n"})
     with pytest.raises(ValueError, match=message):
         layer.prepare_layer(simple_layer(**change), lock, layer.root_reader(root), tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+
+
+POLICY = layer.SITE + "vllm/fixture_policy.py"
+
+
+def adding(path, data=b"POLICY = 1\n", pin=None):
+    """A code layer that replaces /opt/app/a.py and adds ``path``, pinned unless ``pin`` is False."""
+    def replace(read, receipt):
+        return {"/opt/app/a.py": read("/opt/app/a.py") + b"# changed\n", path: data}
+    pins = {} if pin is False else {path: pin or (None, sha(data))}
+    return simple_layer(replace=replace, pins=pins)
+
+
+def test_code_layer_adds_a_pinned_site_packages_file(tmp_path):
+    root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    result = layer.prepare_layer(adding(POLICY), lock, layer.root_reader(root), tmp_path / "context")
+    context = Path(result["context"])
+    assert context_file(context, POLICY) == b"POLICY = 1\n"
+    assert json.loads(context_file(context, layer.BASE_RECEIPT))["files"][POLICY] == sha(b"POLICY = 1\n")
+    provenance = json.loads(context_file(context, "/opt/sparkring/receipts/derived-code.json"))
+    assert provenance["files"][POLICY] == {"inherited_sha256": None, "sha256": sha(b"POLICY = 1\n")}
+    plan = json.loads((context / "plan.json").read_text())
+    assert plan["added"] == [POLICY] and plan["replaced"] == ["/opt/app/a.py"]
+
+
+@pytest.mark.parametrize("path, pin, message", [
+    (layer.SITE + "vllm/present.py", None, "already recorded"),
+    (layer.SITE + "vllm/unpinned.py", False, "not recorded by the parent"),
+    (POLICY, (None, "0" * 64), "pinned"),
+    ("/opt/app/new.py", None, "normalized absolute path"),
+    (layer.SITE + "vllm/_C.abi3.so", None, "not native files"),
+    (layer.SITE + "sparkring_transport.pth", None, "Startup hooks"),
+])
+def test_code_layer_refuses_unpinned_or_unowned_additions(tmp_path, path, pin, message):
+    root, lock = code_parent(tmp_path, {"/opt/app/a.py": b"a\n", layer.SITE + "vllm/present.py": b"p\n"})
+    with pytest.raises(ValueError, match=message):
+        layer.prepare_layer(adding(path, pin=pin), lock, layer.root_reader(root), tmp_path / "context")
     assert not (tmp_path / "context").exists()
 
 
@@ -697,3 +737,66 @@ def test_command_lines_prepare_code_and_descriptor_layers(parent, tmp_path, caps
         layer.main(argv=["prepare", "--descriptor", str(parent.descriptor), "--repository", str(parent.repository),
                          "--base-receipt", str(parent.receipts / "base.json"), "--output", str(tmp_path / "other")])
     assert not (tmp_path / "other").exists()
+
+
+# The tool-choice layer: vLLM's Chat Completions serving module and the policy it installs.
+
+TOOL = derive_tool_choice_contract
+SERVING_FIXTURE = """\
+class OpenAIServingChat:
+    async def chat_completion_full_generator(self, request, result_generator):
+        pass
+
+    async def chat_completion_stream_generator(self, request, result_generator):
+        yield None
+
+    def _create_chat_logprobs(self, logprobs_content):
+""" + TOOL.END
+
+
+def test_tool_choice_layer_adds_the_policy_and_installs_it_after_the_serving_class():
+    replaced = TOOL.replace(lambda path: SERVING_FIXTURE.encode(), {})
+    assert set(replaced) == {TOOL.SERVING, TOOL.MODULE}
+    assert replaced[TOOL.SERVING].decode() == SERVING_FIXTURE.replace(TOOL.END, TOOL.INSTALL)
+    contract = (ROOT / "integrations/vllm/tool_choice_contract/contract.py").read_bytes()
+    assert replaced[TOOL.MODULE] == contract.replace(b"\r\n", b"\n")
+    assert TOOL.LAYER.pins == {TOOL.SERVING: (TOOL.INHERITED, TOOL.RESULT), TOOL.MODULE: (None, TOOL.MODULE_SHA256)}
+    assert TOOL.MODULE.startswith(layer.SITE + "vllm/") and TOOL.LAYER.provenance.startswith(layer.RECEIPTS)
+
+
+@pytest.mark.parametrize("setting, installed", [(None, False), ("0", False), ("1", True)])
+def test_tool_choice_serving_module_installs_the_policy_only_when_enabled(monkeypatch, setting, installed):
+    replaced = TOOL.replace(lambda path: SERVING_FIXTURE.encode(), {})
+    package = "vllm.entrypoints.openai.chat_completion"
+    policy = ModuleType(package + ".sparkring_tool_choice_contract")
+    for name in ("vllm", "vllm.entrypoints", "vllm.entrypoints.openai", package):
+        monkeypatch.setitem(sys.modules, name, ModuleType(name))
+    monkeypatch.setitem(sys.modules, policy.__name__, policy)
+    exec(compile(replaced[TOOL.MODULE], TOOL.MODULE, "exec"), policy.__dict__)
+    sys.modules[package].sparkring_tool_choice_contract = policy
+    if setting is None:
+        monkeypatch.delenv(policy.ENVIRONMENT, raising=False)
+    else:
+        monkeypatch.setenv(policy.ENVIRONMENT, setting)
+    namespace = {"__name__": package + ".serving"}
+    exec(compile(replaced[TOOL.SERVING], TOOL.SERVING, "exec"), namespace)
+    serving = namespace["OpenAIServingChat"]
+    assert getattr(serving, policy.MARKER, False) is installed
+    assert hasattr(serving.chat_completion_full_generator, "__wrapped__") is installed
+    assert hasattr(serving.chat_completion_stream_generator, "__wrapped__") is installed
+
+
+def test_tool_choice_layer_refuses_a_parent_other_than_the_pinned_serving_module(tmp_path):
+    root, lock = code_parent(tmp_path, {TOOL.SERVING: SERVING_FIXTURE.encode()})
+    with pytest.raises(ValueError, match="pinned"):
+        layer.prepare_layer(TOOL.LAYER, lock, layer.root_reader(root), tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+    unpinned = dataclasses.replace(TOOL.LAYER, pins={TOOL.MODULE: TOOL.LAYER.pins[TOOL.MODULE]})
+    result = layer.prepare_layer(unpinned, lock, layer.root_reader(root), tmp_path / "context")
+    plan = json.loads((Path(result["context"]) / "plan.json").read_text())
+    assert plan["added"] == [TOOL.MODULE] and plan["replaced"] == [TOOL.SERVING]
+
+
+def test_tool_choice_layer_refuses_a_parent_without_the_serving_modules_last_statement():
+    with pytest.raises(ValueError, match="Expected one occurrence"):
+        TOOL.replace(lambda path: b"class OpenAIServingChat:\n    pass\n", {})

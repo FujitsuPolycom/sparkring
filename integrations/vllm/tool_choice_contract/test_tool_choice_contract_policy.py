@@ -66,7 +66,14 @@ def test_unconstrained_requests_unchanged(choice):
     assert contract.violation(request(choice), [], "length") is None
 
 
-def full_probe(calls, *, choice="required", finish="stop", **req_kwargs):
+@pytest.mark.parametrize("mode", ["required", "named"])
+def test_diagnostic_names_the_engine_finish_reason(mode):
+    message = contract.violation(request(mode), [], "length")
+    assert message == "Named or required tool_choice produced no tool calls; finish_reason: length."
+    assert contract.violation(request(mode), [call()], None).endswith("finish_reason: None.")
+
+
+def full_probe(calls, *, choice="required", finish="stop", generator=None, **req_kwargs):
     closed = []
 
     async def engine():
@@ -82,8 +89,8 @@ def full_probe(calls, *, choice="required", finish="stop", **req_kwargs):
                                  "message": {"tool_calls": calls}}]}
 
     async def run():
-        return await contract.wrap_full(original)(Service(), request(choice, **req_kwargs),
-                                                   engine(), "id", parser="fixture")
+        return await (generator or contract.wrap_full(original))(Service(), request(choice, **req_kwargs),
+                                                                   engine(), "id", parser="fixture")
 
     result = asyncio.run(run())
     assert closed == [True]
@@ -100,6 +107,63 @@ def test_full_named_and_required_success_and_legacy_auto():
         result = full_probe([call()], choice=mode, finish="length")
         assert result["choices"][0]["finish_reason"] == "length"
     assert full_probe([], choice="auto")["choices"][0]["message"]["tool_calls"] == []
+
+
+class Serving:
+    """The generator interface of vLLM's OpenAIServingChat, with one fixture result."""
+
+    result = None
+
+    async def chat_completion_full_generator(self, req, generator, *args, **kwargs):
+        async for _ in generator:
+            pass
+        return Serving.result
+
+    async def chat_completion_stream_generator(self, req, generator):
+        async for _ in generator:
+            yield "data: [DONE]\n\n"
+
+
+def serving_class():
+    return type("OpenAIServingChat", (Serving,), {})
+
+
+@pytest.mark.parametrize("choice", ["required", "named"])
+def test_forced_tool_choice_without_a_call_fails_closed_after_install(choice):
+    cls = serving_class()
+    contract.install(cls)
+    Serving.result = {"choices": [{"index": 0, "finish_reason": "length", "message": {"tool_calls": []}}]}
+    result = full_probe(None, choice=choice, finish="length", generator=cls.chat_completion_full_generator)
+    assert_error(result)
+    assert result["error"]["message"].endswith("finish_reason: length.")
+    Serving.result = {"choices": [{"index": 0, "finish_reason": "stop", "message": {"tool_calls": [call()]}}]}
+    assert full_probe(None, choice=choice, generator=cls.chat_completion_full_generator) is Serving.result
+
+
+@pytest.mark.parametrize("choice", [None, "auto", "none"])
+def test_unforced_tool_choice_is_unchanged_after_install(choice):
+    cls = serving_class()
+    contract.install(cls)
+    Serving.result = {"choices": [{"index": 0, "finish_reason": "length", "message": {"tool_calls": []}}]}
+    assert full_probe(None, choice=choice, finish="length",
+                      generator=cls.chat_completion_full_generator) is Serving.result
+
+
+def test_environment_switch_installs_once_and_subclasses_inherit():
+    cls = serving_class()
+    original = cls.chat_completion_full_generator
+    for environ in ({}, {contract.ENVIRONMENT: "0"}):
+        contract.install_from_environment(cls, environ)
+        assert cls.chat_completion_full_generator is original
+    with pytest.raises(ValueError, match="must be 0 or 1"):
+        contract.install_from_environment(cls, {contract.ENVIRONMENT: "true"})
+    contract.install_from_environment(cls, {contract.ENVIRONMENT: "1"})
+    wrapped = cls.chat_completion_full_generator
+    assert wrapped is not original and wrapped.__wrapped__ is original
+    subclass = type("AnthropicServingMessages", (cls,), {})
+    contract.install_from_environment(subclass, {contract.ENVIRONMENT: "1"})
+    contract.install(cls)
+    assert cls.chat_completion_full_generator is wrapped and subclass.chat_completion_full_generator is wrapped
 
 
 def frame(delta=None, finish=None, index=0):
@@ -227,8 +291,10 @@ def test_api_probe_reassembles_stream_fragments_and_preserves_error():
     assert error["type"] == "ToolChoiceContractError" and done and not choices
 
 
-def test_api_probe_one_token_budget_and_named_contract():
-    query = api_probe.payload("fixture-model", "named", True, True)
+def test_api_probe_budget_thinking_and_named_contract():
+    query = api_probe.payload("fixture-model", "named", True, 16)
     assert query["tool_choice"]["function"]["name"] == "lookup"
-    assert query["max_tokens"] == 1 and query["stream"] is True
+    assert query["max_tokens"] == 16 and query["stream"] is True
     assert query["parallel_tool_calls"] is False
+    assert query["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "chat_template_kwargs" not in api_probe.payload("fixture-model", "required", False, 400, "default")

@@ -116,6 +116,7 @@ services:
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: ''
+      SPARKRING_TOOL_CHOICE_CONTRACT: '1'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 2eef276d54030a71c4774b92c89008dd563104b791734f6f588a3ca34a7c4943
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
       TILELANG_CACHE_DIR: /cache/deepseek-v41-flash-8e4de5f05f02-dba1be0a40aa/tilelang
@@ -147,7 +148,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/deepseek-v41-flash-8e4de5f05f02-dba1be0a40aa
     labels:
-      io.sparkring.deployment: c259e5ae6298f511618c2a346effecc2b4f495c3eac057e7fc678abeb0835868
+      io.sparkring.deployment: e3433537c9d9a96d86eb4cabb15fd664fe4a42ce8b8f4502e3a87c7eaddfd500
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
