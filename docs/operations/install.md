@@ -55,6 +55,9 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
 
 A model that is already running keeps serving while the selected model's image
 and weights are prepared, and runs again if the selected model fails to start.
+The first start on new
+Sparks can take 10 to 30 minutes; progress names what the model is doing.
+
 The install ends with `Model ready:` and the API address. If it stops early, run the same command
 again; it continues where it stopped.
 

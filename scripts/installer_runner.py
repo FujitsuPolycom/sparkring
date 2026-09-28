@@ -6,9 +6,11 @@ import contextlib
 import inspect
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
+import time
 
 from runtime.common import distribution, installer
 from scripts import deploy_engine
@@ -153,6 +155,75 @@ print(json.dumps(result))
 '''
 
 
+# Printed once when rank 0's readiness wait starts.
+READINESS_INTRO = ("The model is loading: weights, then kernel compilation and tuning, then CUDA graph capture. "
+                   "A first start on new Sparks can take 10-30 minutes.")
+# The newest lines of the model container's log that each readiness report reads.
+LOG_TAIL = 200
+# Log silence after which a readiness report says that the log is quiet.
+QUIET_SECONDS = 300
+# Reads the model container's log with both output streams. Arguments: line count, container name.
+LOG_COMMAND = 'exec docker --context default logs --timestamps --tail "$1" "$2" 2>&1'
+# Startup phases, recognized by phrases of vLLM's and its kernel libraries' log. The
+# newest line that matches any phrase names the phase; within a line the first
+# matching phrase wins. A pattern's groups fill its text. The phrases are words of
+# log messages, not configuration keys such as compilation_config or
+# cudagraph_capture_sizes, which the engine prints once at start.
+MODEL_PHASES = (
+    (re.compile(r"Loading safetensors checkpoint shards:.*?(\d+)/(\d+)"), "loading weights (shard {0}/{1})"),
+    (re.compile(r"Loading weights took|Model loading took"), "weights loaded"),
+    (re.compile(r"Loading safetensors|Loading weights|Starting to load model", re.I), "loading weights"),
+    (re.compile(r"Capturing CUDA graphs?\b.*?\b(\d+)/(\d+)\b"), "capturing CUDA graphs ({0}/{1})"),
+    (re.compile(r"capturing cuda ?graphs?\b|cudagraph capturing", re.I), "capturing CUDA graphs"),
+    (re.compile(r"Graph capturing finished|init engine .*took|warming up|warmup model", re.I), "warming up"),
+    (re.compile(r"autotuning|autotuner|\btuning\b", re.I), "tuning kernels"),
+    (re.compile(r"torch\.compile\b|\bcompiling\b|compiled graph|Dynamo bytecode|\bJIT\b", re.I), "compiling kernels"),
+    (re.compile(r"KV cache", re.I), "setting up the KV cache"),
+    (re.compile(r"Starting vLLM API server|Application startup|Uvicorn running", re.I), "starting the API server"),
+)
+
+
+def model_phase(lines):
+    """The startup phase that the newest matching log line names, or None.
+
+    ``lines`` are log lines, oldest first. A progress bar's line holds every
+    redraw separated by carriage returns; its last redraw counts.
+    """
+    for line in reversed(lines):
+        text = line.rstrip("\r").rsplit("\r", 1)[-1]
+        for pattern, label in MODEL_PHASES:
+            match = pattern.search(text)
+            if match:
+                return label.format(*match.groups())
+    return None
+
+
+class ModelLog:
+    """The readiness report: the model's startup phase and how long its log has been quiet.
+
+    ``read()`` returns the newest log lines with Docker's timestamps. The log
+    counts as quiet while its newest line stays the same; after
+    ``QUIET_SECONDS`` the report says so. A failed read gives no report.
+    """
+
+    def __init__(self, read, *, clock=time.monotonic):
+        self.read, self.clock = read, clock
+        self.newest, self.since = None, clock()
+
+    def __call__(self, elapsed=None):
+        # Only newlines end a log line; carriage returns stay inside it.
+        lines = [line for line in self.read().split("\n") if line.strip()]
+        now = self.clock()
+        if not lines or lines[-1] != self.newest:
+            self.newest, self.since = (lines[-1] if lines else None), now
+        texts = [line.split(" ", 1)[1] if " " in line else line for line in lines]
+        parts = [part for part in [model_phase(texts)] if part]
+        quiet = now - self.since
+        if quiet >= QUIET_SECONDS:
+            parts.append(f"no new model log output for {int(quiet // 60)} min")
+        return {"detail": ", ".join(parts) or None, "log_quiet_s": int(quiet)}
+
+
 def ssh(target, argv, *, data=None, timeout=7200):
     installer.host(target)
     result = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target,
@@ -244,6 +315,13 @@ class Runner:
         payload = base64.b64encode(json.dumps(self.lock).encode()).decode()
         return json.loads(ssh(row["host"], elevation(row, operation) + ["python3", "-I", "-B", "-c", HOST,
                           row["repository"], payload, operation, str(number)], data=data))
+
+    def model_log(self, number):
+        """The newest ``LOG_TAIL`` lines of rank ``number``'s model container log, with Docker's timestamps."""
+        row = self.lock["site"]["ranks"][number]
+        name = installer.specifications(self.lock, only_rank=number)[0].name
+        return ssh(row["host"], elevation(row, "logs") + ["sh", "-c", LOG_COMMAND, "sh", str(LOG_TAIL), name],
+                   timeout=20)
 
     def native_mesh(self, operation):
         from scripts.deploy_stage import prepare_secrets
@@ -339,7 +417,12 @@ class Runner:
                   "mesh-gate": "Verify all four fabric ranks", "stop": "Stop model", "stopped": "Confirm model stopped"}
         operation = argv[1] if len(argv) > 1 else "operation"
         rank = argv[2] if len(argv) > 2 else "?"
-        with progress.step(f"Node {rank}: {labels.get(operation, operation.replace('-', ' '))}") as outcome:
+        report = None
+        if operation == "ready" and rank == "0" and self.lock.get("backend") == "compose":
+            progress.say(READINESS_INTRO)
+            report = ModelLog(lambda: self.model_log(0))
+        with progress.step(f"Node {rank}: {labels.get(operation, operation.replace('-', ' '))}", phase=operation,
+                           report=report) as outcome:
             result = self._call(target, argv, timeout)
             if result["returncode"]:
                 outcome["failed"] = True

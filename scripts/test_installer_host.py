@@ -735,3 +735,89 @@ def test_every_rank_operation_runs_under_sudo_when_the_ssh_user_is_not_root(user
     monkeypatch.setattr(runner, "ssh", lambda target, argv, **kwargs: calls.append(argv) or "{}")
     current._call(lock["site"]["ranks"][1]["host"], ["installer", "prerequisites", "1"], 30)
     assert calls[0][0] == "python3"
+
+
+STARTUP_LOG = [
+    "(APIServer pid=7) INFO 09-27 07:32:34 [api_server.py:1851] vLLM API server version 0.11.0",
+    "(Worker_TP0 pid=393) INFO 09-27 07:32:40 [gpu_model_runner.py:2602] Starting to load model /model...",
+    "\rLoading safetensors checkpoint shards:   0% Completed | 0/131 [00:00<?, ?it/s]"
+    "\rLoading safetensors checkpoint shards:  32% Completed | 42/131 [01:10<02:28,  1.7s/it]",
+]
+
+
+@pytest.mark.parametrize(("lines", "phase"), [
+    (STARTUP_LOG, "loading weights (shard 42/131)"),
+    (STARTUP_LOG[:2], "loading weights"),
+    (["INFO [default_loader.py:560] Loading weights took 183.90 seconds",
+      "INFO [model_runner.py:444] Model loading took 74.59 GiB memory and 218.08 seconds"], "weights loaded"),
+    (["INFO [backends.py:548] Dynamo bytecode transform time: 12.1 s"], "compiling kernels"),
+    (["INFO [monitor.py:34] torch.compile takes 41.5 s in total"], "compiling kernels"),
+    (["[Autotuner]: Autotuning process starts ..."], "tuning kernels"),
+    (["INFO [kv_cache_utils.py:2850] GPU KV cache size: 14,360,826 tokens"], "setting up the KV cache"),
+    (["\rCapturing CUDA graphs (mixed prefill-decode, PIECEWISE):  45%|####5     | 30/67 [00:05<00:06]"],
+     "capturing CUDA graphs (30/67)"),
+    (["INFO [gpu_model_runner.py:3480] Graph capturing finished in 26 secs, took 1.10 GiB"], "warming up"),
+    (["INFO [core.py:390] init engine (profile, create kv cache, warmup model) took 509.37 s"], "warming up"),
+    (["INFO:     Application startup complete."], "starting the API server"),
+    (["INFO [backends.py:215] Compiling a graph for dynamic shape takes 20.10 s"], "compiling kernels"),
+    (["INFO [backends.py:160] Directly load the compiled graph(s) for dynamic shape from the cache"],
+     "compiling kernels"),
+    (["INFO [loggers.py:123] Engine 000: Avg prompt throughput: 0.0 tokens/s"], None),
+    (["INFO [core.py:77] Initializing a V1 LLM engine with config: model='/model', kv_cache_dtype=fp8, "
+      "compilation_config={'level': 3, 'cudagraph_capture_sizes': [1, 2]}, enable_flashinfer_autotune=True"], None),
+    ([], None),
+])
+def test_model_phase_names_the_newest_recognized_startup_step(lines, phase):
+    assert runner.model_phase(lines) == phase
+
+
+def test_model_log_report_names_the_phase_and_a_quiet_log():
+    stamp = "2026-09-28T10:00:00.000000000Z "
+    text = ["\n".join(stamp + line for line in STARTUP_LOG) + "\n"]
+    now = [0.0]
+    report = runner.ModelLog(lambda: text[0], clock=lambda: now[0])
+    assert report() == {"detail": "loading weights (shard 42/131)", "log_quiet_s": 0}
+    now[0] = 240.0
+    assert report()["detail"] == "loading weights (shard 42/131)"
+    now[0] = 400.0
+    assert report() == {"detail": "loading weights (shard 42/131), no new model log output for 6 min",
+                        "log_quiet_s": 400}
+    text[0] += "2026-09-28T10:06:40.000000000Z [Autotuner]: Autotuning process starts\n"
+    assert report() == {"detail": "tuning kernels", "log_quiet_s": 0}
+    text[0] = ""
+    assert report() == {"detail": None, "log_quiet_s": 0}
+
+
+def test_readiness_wait_prints_the_loading_note_and_reads_rank_zero_log(monkeypatch, capsys):
+    from runtime.host import progress
+    current = object.__new__(runner.Runner)
+    current.lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    calls = []
+
+    def ssh(target, argv, **kwargs):
+        calls.append((target, argv, kwargs))
+        return "2026-09-28T10:00:00Z " + STARTUP_LOG[-1] + "\n"
+    monkeypatch.setattr(runner, "ssh", ssh)
+    monkeypatch.setattr(progress, "HEARTBEAT", 0.05)
+
+    def call(target, argv, timeout):
+        deadline = time.monotonic() + 5
+        while not calls and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.1)
+        return {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
+    current._call = call
+    rows = current.lock["site"]["ranks"]
+    current(rows[0]["host"], ["installer", "ready", "0"], 30)
+    err = capsys.readouterr().err
+    assert runner.READINESS_INTRO in err
+    assert "Still working: Node 0: Wait for API readiness (0s) - loading weights (shard 42/131)" in err
+    target, argv, kwargs = calls[0]
+    name = installer.specifications(current.lock, only_rank=0)[0].name
+    assert target == rows[0]["host"] and kwargs == {"timeout": 20}
+    assert argv[-6:] == ["sh", "-c", runner.LOG_COMMAND, "sh", str(runner.LOG_TAIL), name]
+    del calls[:]
+    current._call = lambda target, argv, timeout: {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
+    current(rows[1]["host"], ["installer", "ready", "1"], 30)
+    assert runner.READINESS_INTRO not in capsys.readouterr().err and calls == []
+

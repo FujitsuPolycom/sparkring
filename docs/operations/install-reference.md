@@ -236,7 +236,14 @@ sudo sparkring logs --follow
 
 - Concise timestamped progress is appended to
   `/var/log/sparkring/install.log`; long steps report that they are still
-  working.
+  working every 30 seconds.
+- While Node 0 waits for the API, the line names the model's startup step from
+  the last 200 lines of its container log: `loading weights (shard 42/131)`,
+  `weights loaded`, `compiling kernels`, `tuning kernels`,
+  `setting up the KV cache`, `capturing CUDA graphs`, `warming up` or
+  `starting the API server`. Without a recognized line it names none. After 5
+  minutes without a new log line it adds, for example,
+  `no new model log output for 6 min`. The wait ends after 30 minutes.
 - Verbose command output goes to `install-details.log`;
   `sparkring logs --details --follow` shows it when investigating an error.
 - Credentials entered through SSH are not recorded.
