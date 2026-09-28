@@ -60,8 +60,9 @@ and weights are prepared, and runs again if the selected model fails to start.
 A download shows how much is done and the time left. The first start on new
 Sparks can take 10 to 30 minutes; progress names what the model is doing.
 
-The install ends with `Model ready:` and the API address. If it stops early, run the same command
-again; it continues where it stopped.
+The install ends with `Model ready:`, the API and dashboard addresses, a sample
+request and the commands to switch back or stop. If it stops early, run the
+same command again; it continues where it stopped.
 
 The command installs the newest SparkRing from `main`. To repeat an
 installation exactly, use the

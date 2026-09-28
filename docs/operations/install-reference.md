@@ -107,8 +107,11 @@ sparkring models
 
 `sudo sparkring install --profile PROFILE` on Node A installs one installer
 profile ([commands](install.md#install)) and ends with `Model ready:` and the
-model's API URL on Node A. Without `--profile`, it lists the installer
-profiles for the cabled node count and asks for one.
+model's API URL on Node A. Below it a short card names the served model, the
+API and [dashboard](dashboard.md) addresses, a sample `curl` request, and the
+commands that switch back to the model it replaced, stop the model and remove
+the package. Without `--profile`, it lists the installer profiles for the
+cabled node count and asks for one.
 
 ### Questions and approvals
 
@@ -227,6 +230,10 @@ sudo sparkring status --refresh --json
   network changes separately with `sparkring setup`.
 - With a [download limit](#limit-the-download-rate), the result holds it in
   `download_limit_bps`, in bits per second.
+- A `complete` result also holds the card's fields: `dashboard_url` (null
+  when the image has no dashboard), `example_request` (a `curl` command for
+  `/v1/chat/completions` with the served model name) and `commands` with
+  `switch_back` (null when no other model ran before), `stop` and `remove`.
 
 ### Logs
 

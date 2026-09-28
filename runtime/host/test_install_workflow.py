@@ -228,6 +228,44 @@ def test_documented_command_updates_prepares_switches_and_emits_only_json(machin
     assert rollout.active(controller.STATE) != previous
 
 
+def test_completion_prints_a_summary_card_after_model_ready(machine, capsys):
+    assert command() == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["schema"] == "sparkring-install-result/v1" and "download_limit_bps" not in result
+    assert result["dashboard_url"] == result["api_url"].removesuffix("/v1") + "/v1/sparkring/status/view"
+    assert result["example_request"].startswith(f"curl {result['api_url']}/chat/completions ")
+    assert json.dumps(result["model"]) in result["example_request"]
+    assert result["commands"] == {"switch_back": None, "stop": "sudo sparkring down --execute",
+                                  "remove": "sudo apt remove sparkring"}
+    card = out.err[out.err.index("Model ready:"):]
+    assert f"  Model:       {result['model']}" in card and f"  Dashboard:   {result['dashboard_url']}" in card
+    assert "  Try it:      curl " in card and "  Stop:        sudo sparkring down --execute" in card
+    assert "  Uninstall:   stop the model, then sudo apt remove sparkring on each Spark" in card
+
+
+def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
+    connection = {"api_url": "http://192.0.2.10:8000/v1", "model": "Model-A"}
+    previous = tmp_path / "previous"
+    previous.mkdir()
+    (previous / flow.PLAN_FILE).write_text(json.dumps({"schema": checkpoint_plan.SCHEMA,
+                                                       "command": REPEAT + " --checkpoint qad-step-4000"}))
+    value = flow.summary({"image_runtime": {}}, connection, str(previous))
+    assert value["commands"]["switch_back"] == REPEAT + " --checkpoint qad-step-4000"
+    assert value["dashboard_url"] == "http://192.0.2.10:8000/v1/sparkring/status/view"
+    body = value["example_request"].split(" -d ", 1)[1].strip("'")
+    assert json.loads(body) == {"model": "Model-A", "messages": [{"role": "user", "content": "Hello"}]}
+    (previous / flow.PLAN_FILE).unlink()
+    (previous / "deployment.lock.json").write_text(json.dumps({"selection": {"profile": "older-profile"}}))
+    assert flow.summary({}, connection, str(previous)) == {**value, "dashboard_url": None, "commands": {
+        **value["commands"], "switch_back": "sudo sparkring install --profile older-profile"}}
+    lines = flow.summary_lines({**connection, **value})
+    assert lines[:3] == ["  Model:       Model-A", "  API:         http://192.0.2.10:8000/v1",
+                         "  Dashboard:   http://192.0.2.10:8000/v1/sparkring/status/view"]
+    assert "  Switch back: " + REPEAT + " --checkpoint qad-step-4000" in lines
+    assert flow.summary_lines({"api_url": connection["api_url"]}) == []
+
+
 def test_download_limit_comes_from_the_flag_or_the_settings_file(tmp_path):
     settings_file = tmp_path / "settings.env"
     settings_file.write_text("SPARKRING_DOWNLOAD_LIMIT=2Gbit\n")

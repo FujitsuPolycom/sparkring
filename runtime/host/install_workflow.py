@@ -546,6 +546,55 @@ def download_limit(args):
         raise NeedsInput(f"{error}. Nothing has been changed.", field="download_limit") from None
 
 
+DASHBOARD = "/v1/sparkring/status/view"
+STOP_COMMAND = "sudo sparkring down --execute"
+REMOVE_COMMAND = "sudo apt remove sparkring"
+
+
+def switch_back_command(previous):
+    """The command that reinstalls the deployment in ``previous``, or None when it cannot be read."""
+    if not previous:
+        return None
+    plan = saved_plan(previous)
+    if plan and plan.get("command"):
+        return plan["command"]
+    try:
+        profile = installer.read(Path(previous) / "deployment.lock.json")["selection"]["profile"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return checkpoint_plan.install_command({"profile": profile})
+
+
+def summary(lock, connection, previous):
+    """The additive result fields that tell the operator how to use and leave the model.
+
+    ``connection`` holds ``api_url`` and ``model`` (``installer.connection``);
+    ``previous`` is the deployment directory the installation replaced, or None.
+
+    ``dashboard_url`` is null for a model whose image has no status dashboard.
+    ``commands.switch_back`` is null when no other model ran before.
+    """
+    base = connection["api_url"].removesuffix("/v1")
+    body = json.dumps({"model": connection["model"], "messages": [{"role": "user", "content": "Hello"}]})
+    return {"dashboard_url": base + DASHBOARD if "image_runtime" in lock else None,
+            "example_request": (f"curl {connection['api_url']}/chat/completions "
+                                f"-H 'Content-Type: application/json' -d '{body}'"),
+            "commands": {"switch_back": switch_back_command(previous), "stop": STOP_COMMAND,
+                         "remove": REMOVE_COMMAND}}
+
+
+def summary_lines(result):
+    """The card printed after ``Model ready:``; empty when the result lacks the summary fields."""
+    if "example_request" not in result:
+        return []
+    commands = result.get("commands") or {}
+    rows = [("Model", result.get("model")), ("API", result.get("api_url")), ("Dashboard", result.get("dashboard_url")),
+            ("Try it", result["example_request"]), ("Switch back", commands.get("switch_back")),
+            ("Stop", commands.get("stop")),
+            ("Uninstall", f"stop the model, then {commands['remove']} on each Spark" if commands.get("remove") else None)]
+    return [f"  {name + ':':<13}{value}" for name, value in rows if value]
+
+
 def execute(args):
     state_root = controller.STATE
     require_head()
@@ -734,7 +783,8 @@ def execute(args):
             plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
         except (OSError, ValueError):
             pass
-        return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log")}
+        return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
+                **summary(lock, plan, replaces)}
 
 
 def main(argv=None):
@@ -786,6 +836,8 @@ def main(argv=None):
             if (result.get("hairpin") or {}).get("required"):
                 print(hairpin_ring.COMPLETE)
             print("Model ready: " + result["api_url"])
+            for line in summary_lines(result):
+                print(line)
         elif result["state"] == "needs_input":
             print(result["message"])
             # A checkpoint message already names every file, path and size its
