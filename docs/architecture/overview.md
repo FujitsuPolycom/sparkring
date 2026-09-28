@@ -44,7 +44,7 @@ arguments and the transport limits; the
 ![One decode step: per-layer all-reduces on RoCEnante, the LM head all-gather, verification of three draft tokens and the MTP draft of three more](assets/sparkring-decode-step.svg)
 
 Tensor-parallel ranks exchange data in collectives: all-reduce and all-gather.
-The installer profiles (Qwen3.8-Flash-Next, GLM-5.3-Flash and MiMo-V2.6-Flash-RL)
+The installer profiles (Qwen3.8-Flash-Next, GLM-5.3-Flash and MiMo-V2.6-Flash-MOPD)
 split them by size:
 
 | Collective | Transport |

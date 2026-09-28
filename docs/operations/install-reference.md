@@ -332,7 +332,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 |---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
-| `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` | MiMo-V2.6-Flash-RL, revision `5711b2681699` | DFlash5 |
+| `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
 
@@ -565,7 +565,7 @@ separate step.
 ### The hairpin setting
 
 Every four-Spark installer profile (`qwen38-flash-next-qad-tp4`,
-`glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-rl-tp4`,
+`glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-mopd-tp4`,
 `deepseek-v41-flash-tp4` and `swift15-qwen38-flash-next-tp4`) relays traffic
 between nonadjacent Sparks through ConnectX hardware forwarding. That needs,
 on each of a Spark's four ConnectX functions, a hairpin queue of 8192 packets
@@ -693,7 +693,7 @@ host networking, and the runtime-status dashboard
 |---|---|
 | 8000 | `qwen38-flash-next-tp2`, `glm53-flash-nvfp4-spark-tp2`, `swift15-qwen38-flash-next-tp2` |
 | 8015 | `qwen38-flash-next-qad-tp4`, `glm53-flash-nvfp4-spark-tp4`, `deepseek-v41-flash-tp4`, `swift15-qwen38-flash-next-tp4` |
-| 8020 | `mimo-v26-flash-rl-tp2`, `mimo-v26-flash-rl-tp4` |
+| 8020 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` |
 
 **Passwordless sudo.** When noninteractive `sudo` is missing, the command
 `needs_input` prints for a Spark writes `USER ALL=(ALL) NOPASSWD:ALL` to
@@ -778,7 +778,7 @@ checkpoint, Docker and the cache on one filesystem.
 | Checkpoint | Size | `sparkring up` allowance | Plan total, empty Spark |
 |---|---:|---:|---:|
 | Qwen, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB | 120 GiB | 206.6 GiB |
-| MiMo, `XiaomiMiMo/MiMo-V2.6-Flash-RL` @ `5711b2681699` | 165.6 GiB | 190 GiB | 278.0 GiB |
+| MiMo, `XiaomiMiMo/MiMo-V2.6-Flash-MOPD` @ `2479e2d0029e` | 165.6 GiB | 190 GiB | 276.9 GiB |
 | GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 200 GiB | 279.5 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 500 GiB | 669.8 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 200 GiB | 281.7 GiB |

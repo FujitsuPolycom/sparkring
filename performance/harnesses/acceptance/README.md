@@ -72,7 +72,7 @@ Install the published `main` script on a pair whose Node A is
 
 ```bash
 python performance/harnesses/acceptance/accept_profile.py \
-  --profile mimo-v26-flash-rl-tp2 --node-a user@192.0.2.10 --api-host 192.0.2.10 \
+  --profile mimo-v26-flash-mopd-tp2 --node-a user@192.0.2.10 --api-host 192.0.2.10 \
   --install published --bench-dir /path/to/llm-inference-bench \
   --out /path/outside/git/accept-mimo-tp2
 ```

@@ -179,7 +179,7 @@ profile of the lock. The written lock names the local image ID, so
 from Node A to the other Sparks
 ([image distribution](../../../docs/operations/install-reference.md#image-distribution-and-caches)).
 Run the probe against the installed API with the measured budgets, for
-`mimo-v26-flash-rl-tp4` and `glm53-flash-nvfp4-spark-tp2`:
+`mimo-v26-flash-mopd-tp4` and `glm53-flash-nvfp4-spark-tp2`:
 
 ```bash
 python integrations/vllm/tool_choice_contract/api_probe.py \
