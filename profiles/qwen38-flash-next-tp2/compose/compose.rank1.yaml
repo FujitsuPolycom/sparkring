@@ -3,7 +3,7 @@ name: sr-qwen-example-r1
 services:
   model:
     container_name: sr-qwen-example-r1
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:2c45153abf19af4f2b4bf10445cfc96c711c375a6fc5c04d3a2b55496f3acfe3
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -98,8 +98,8 @@ services:
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
       CUDA_VERSION: 13.4.2
-      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e/cute
-      FLASHINFER_WORKSPACE_BASE: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e/flashinfer
+      CUTE_DSL_CACHE_DIR: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e/cute
+      FLASHINFER_WORKSPACE_BASE: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e/flashinfer
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       NCCL_CROSS_NIC: '1'
@@ -124,15 +124,15 @@ services:
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
       SPARKRING_TOOL_CHOICE_CONTRACT: '1'
-      SPARKRING_TRANSPORT_MANIFEST_SHA256: 2eef276d54030a71c4774b92c89008dd563104b791734f6f588a3ca34a7c4943
+      SPARKRING_TRANSPORT_MANIFEST_SHA256: 9f2c0ae62e1e045b0c90dab99313de2f627f2a2f8bc68143c50eafa0531cf27c
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TILELANG_CACHE_DIR: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e/tilelang
-      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e/inductor
+      TILELANG_CACHE_DIR: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e/tilelang
+      TORCHINDUCTOR_CACHE_DIR: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e/triton
-      TVM_FFI_CACHE_DIR: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e/tvm-ffi
+      TRITON_CACHE_DIR: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e/triton
+      TVM_FFI_CACHE_DIR: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e/tvm-ffi
       VLLM_B12X_KDA_PREFILL_COALESCING: '0'
-      VLLM_CACHE_ROOT: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e/vllm
+      VLLM_CACHE_ROOT: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GLM53_KDA_GATE_SIDE_STREAM: '0'
@@ -158,9 +158,9 @@ services:
       VLLM_SSM_CONV_STATE_LAYOUT: DS
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/qwen-flash-next-8e4de5f05f02-60215d26cf5e
+      XDG_CACHE_HOME: /cache/qwen-flash-next-4b7049d1e00f-60215d26cf5e
     labels:
-      io.sparkring.deployment: e4db3b869c723af05895358efbacae54be2af21508cfc3ed16d9e760a83f8120
+      io.sparkring.deployment: d04e9cce0d7b24c9e6aef62b30905daed77ae2871948e1eee776d66c1f38245a
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

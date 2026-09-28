@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260928-toolchoice-cuda1342-nccl2323-status032",
+  "image_id": "sha256:8859e0dbf2e42c6abba09b2d63a6dcbc45ca9ba6df7736e2cdc28795b66b04aa",
+  "image_config_id": "sha256:8859e0dbf2e42c6abba09b2d63a6dcbc45ca9ba6df7736e2cdc28795b66b04aa",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:ab6320ff00dc9c1b3e934008381539cbb5693636e58824845211bed41b810f11",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260928-toolchoice-cuda1342-nccl2323-status032",
+  "registry_manifest_digest": "sha256:ab6320ff00dc9c1b3e934008381539cbb5693636e58824845211bed41b810f11",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.2",
+  "derivation": {
+    "parent_release": "dev-20260928-peerwait-cuda1342-nccl2323-status032",
+    "parent_image_id": "sha256:e6ea1f241b1612267446dd2b3caae4605e3701ed5274c94706a305ab2b0f62cb",
+    "layers": [
+      "Tool-result contract: with SPARKRING_TOOL_CHOICE_CONTRACT=1, which installer containers set by default, a Chat Completions request whose tool_choice is required or names a function, and whose output lacks a complete call to a declared function, returns HTTP 400 when the token limit ended generation and HTTP 500 otherwise, instead of HTTP 200 with empty tool_calls (runtime/images/derive_tool_choice_contract.py, FujitsuPolycom/sparkring#217). /opt/sparkring/receipts/derived-tool-choice-contract.json records the added module and the replaced serving.py"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

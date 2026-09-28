@@ -52,7 +52,8 @@
       "kind": "python",
       "reason": "Derive an installer image in one layer from a descriptor that adds or replaces site-packages Python files or replaces the runtime-status package, re-recording its external-base and toolchain receipts; prepare does not invoke Docker, and record admits the built image for every profile of its lock. The derive_*.py builders use the same module.",
       "releases": [
-        "dev-20260927-b12xcache-cuda1342-nccl2323-status032"
+        "dev-20260927-b12xcache-cuda1342-nccl2323-status032",
+        "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
       ]
     },
     {
@@ -65,7 +66,10 @@
       "id": "installer-transport-peer-wait",
       "path": "runtime/images/derive_transport_peer_wait.py",
       "kind": "python",
-      "reason": "Derive an image whose prepared RoCEnante transport waits for a late peer while its queue pairs acknowledge checks and poisons the runtime only for an unreachable, stopped or inconsistent peer or after B12X_ROCE_PEER_TIMEOUT_S; its six replaced bundle files are pinned to the dev-20260927-mimovision-cuda1342-nccl2323-status032 parent."
+      "reason": "Derive an image whose prepared RoCEnante transport waits for a late peer while its queue pairs acknowledge checks and poisons the runtime only for an unreachable, stopped or inconsistent peer or after B12X_ROCE_PEER_TIMEOUT_S; its six replaced bundle files are pinned to the dev-20260927-mimovision-cuda1342-nccl2323-status032 parent.",
+      "releases": [
+        "dev-20260928-peerwait-cuda1342-nccl2323-status032"
+      ]
     },
     {
       "id": "installer-tp2-hc",
@@ -107,7 +111,10 @@
       "id": "installer-tool-choice-contract",
       "path": "runtime/images/derive_tool_choice_contract.py",
       "kind": "python",
-      "reason": "Derive an image whose vLLM Chat Completions serving module installs the named and required tool_choice policy of integrations/vllm/tool_choice_contract when SPARKRING_TOOL_CHOICE_CONTRACT=1, from dev-20260927-mimovision-cuda1342-nccl2323-status032."
+      "reason": "Derive an image whose vLLM Chat Completions serving module installs the named and required tool_choice policy of integrations/vllm/tool_choice_contract when SPARKRING_TOOL_CHOICE_CONTRACT=1, from a parent whose serving.py is the dev-20260927-mimovision-cuda1342-nccl2323-status032 file; the published release derives from dev-20260928-peerwait-cuda1342-nccl2323-status032.",
+      "releases": [
+        "dev-20260928-toolchoice-cuda1342-nccl2323-status032"
+      ]
     },
     {
       "id": "sparkring-source",

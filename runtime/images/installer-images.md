@@ -16,14 +16,9 @@ builder for every release that has an `installer-image.json` lock.
 | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | vLLM host-to-device copies staged through fresh pinned memory | `installer-staging-fix`, [derive_staging_fix.py](derive_staging_fix.py) |
 | `dev-20260927-b12xcache-cuda1342-nccl2323-status032` | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | [B12X reconciled selection-cache correction](../../integrations/b12x/selection_cache/README.md) and runtime-status 0.3.2 | `installer-derived-layer`, [derived_layer.py](derived_layer.py) with descriptor [installer-b12xcache-status032](compositions/installer-b12xcache-status032/descriptor.json) |
 | `dev-20260927-mimovision-cuda1342-nccl2323-status032` | `dev-20260927-b12xcache-cuda1342-nccl2323-status032` | MiMo vision encoder attention sinks in the softmax denominator | `installer-mimo-vision`, [derive_mimo_vision.py](derive_mimo_vision.py) |
-
-The `installer-tool-choice-contract` builder,
-[derive_tool_choice_contract.py](derive_tool_choice_contract.py), derives a
-layer from `dev-20260927-mimovision-cuda1342-nccl2323-status032` in which named
-and required Chat Completions `tool_choice` requests without a complete call
-fail with HTTP 400 when the token limit ended generation and HTTP 500 otherwise
-([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)).
-No release records an image built by it.
+| `dev-20260928-peerwait-cuda1342-nccl2323-status032` | `dev-20260927-mimovision-cuda1342-nccl2323-status032` | Supervised RoCEnante peer waits: a late peer is waited for up to `B12X_ROCE_PEER_TIMEOUT_S`, and each stall is logged | `installer-transport-peer-wait`, [derive_transport_peer_wait.py](derive_transport_peer_wait.py) |
+| `dev-20260928-toolchoice-cuda1342-nccl2323-status032` | `dev-20260928-peerwait-cuda1342-nccl2323-status032` | Named and required Chat Completions `tool_choice` requests without a complete call fail with HTTP 400 when the token limit ended generation and HTTP 500 otherwise ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)) | `installer-tool-choice-contract`, [derive_tool_choice_contract.py](derive_tool_choice_contract.py) |
+| `dev-20260928-plainstatus-cuda1342-nccl2323-status033` | `dev-20260928-toolchoice-cuda1342-nccl2323-status032` | Runtime-status 0.3.3 | `installer-derived-layer`, [derived_layer.py](derived_layer.py) with descriptor [installer-plainstatus-status033](compositions/installer-plainstatus-status033/descriptor.json) |
 
 Each release's `publication.json` names its parent and describes its layer.
 [cuda134-nccl232.md](cuda134-nccl232.md) documents the toolchain layer and the
@@ -88,8 +83,8 @@ inherited SHA-256 `None`, and the parent receipt must not record it.
 [derive_tool_choice_contract.py](derive_tool_choice_contract.py) adds the
 tool-result policy as a vLLM module and pins the `serving.py` that installs it.
 
-No image has been built from the peer-wait layer. Its build takes the parent
-lock and reads the parent's installed bundle from the local parent image:
+The peer-wait layer's build takes the parent lock and reads the parent's
+installed bundle from the local parent image:
 
 ```bash
 python3 runtime/images/derive_transport_peer_wait.py prepare \
@@ -98,9 +93,8 @@ python3 runtime/images/derive_transport_peer_wait.py prepare \
 ```
 
 `record` then writes a lock whose `transport_manifest_sha256` names the
-installed manifest; installer containers export it as
-`SPARKRING_TRANSPORT_MANIFEST_SHA256` once that lock is published and selected
-as the installer image lock. Ranks of this image and of its parent refuse to
+installed manifest, `9f2c0ae62e1e` for the published layer; installer
+containers export it as `SPARKRING_TRANSPORT_MANIFEST_SHA256`. Ranks of this image and of its parent refuse to
 connect to each other (proxy ABI 5 and 4), so every Spark of a deployment must
 run the same image.
 
@@ -129,7 +123,9 @@ status version and files. The `installer-b12xcache-status032` descriptor pins
 the version 0.3.2 wheel and source archive, built from Git tree
 `74407675db01502e57ad6131103a8bbdb3db3bd8` of
 [integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md#building-the-image-artifacts),
-whose README gives the build commands.
+whose README gives the build commands. The `installer-plainstatus-status033`
+descriptor pins the version 0.3.3 wheel and source archive, built the same way
+from Git tree `b82d56e0a8a5a04470fc679be9c7a665a7ab7fef`.
 
 ### Commands
 
@@ -216,8 +212,8 @@ and receipt identities of the published chain. Docker layer metadata and image
 IDs of a rebuild differ from the published images; a rebuilt image is not a
 published release and carries no serving qualification.
 
-The tool-choice layer's `prepare`, replayed offline with copies of the
-`dev-20260927-mimovision-cuda1342-nccl2323-status032` receipts, which match the
-SHA-256 values its lock records, and of its `serving.py`, accepted the pinned
-inherited `serving.py` and wrote a context that adds one file and replaces one.
-No image was built from it.
+The peer-wait, tool-choice and runtime-status 0.3.3 layers were built on one
+Spark from their parent images; each build ran the installer's admission,
+including the image's `verify`, for all nine profiles. Building the peer-wait
+layer twice on that Spark from the same parent produced the same image ID,
+`sha256:e6ea1f241b16…`.

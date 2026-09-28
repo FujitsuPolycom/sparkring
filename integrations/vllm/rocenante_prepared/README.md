@@ -7,15 +7,23 @@ The profile identity `tp2-rocenante-adaptive-prepared` bridges SparkRing's
 adaptive peer-path transport to B12X's prepared execution API. It is separate
 from the immutable `tp2-rocenante-adaptive` source bundle.
 
-The installer image `dev-20260927-mimovision-cuda1342-nccl2323-status032` pins
-transport manifest `2eef276d5403`, whose kernels end a peer wait after a fixed
-number of polls. This directory adds the [supervised peer wait](#peer-wait):
-the manifest that `package.py` writes here, `31481e43b9a5`, differs from the
-image's in six files and in the adaptation, B12X file paths and qualification
-fields it records. The supervised peer wait is **implemented** here and in the
-image layer builder
-[derive_transport_peer_wait.py](../../../runtime/images/derive_transport_peer_wait.py);
-no published image carries it and it is not qualified on hardware.
+The installer image `dev-20260928-plainstatus-cuda1342-nccl2323-status033` pins
+transport manifest `9f2c0ae62e1e`, which carries the
+[supervised peer wait](#peer-wait); the image layer builder
+[derive_transport_peer_wait.py](../../../runtime/images/derive_transport_peer_wait.py)
+installs it over `dev-20260927-mimovision-cuda1342-nccl2323-status032`, whose
+manifest `2eef276d5403` ends a peer wait after a fixed number of polls. The
+manifest that `package.py` writes here, `31481e43b9a5`, holds the same six
+transport files and records this directory's adaptation, B12X file paths and
+qualification fields.
+
+The supervised peer wait is **implemented**. On one four-Spark ring, with one
+rank's collective held back on purpose: a 60 s delay was logged at 5 s by the
+waiting ranks and by the late rank, ended with exact sums and left every
+runtime healthy; a late rank that exited stopped the other ranks within 3.5 s;
+a 20 s `B12X_ROCE_PEER_TIMEOUT_S` stopped all four ranks at 20 s with the cause
+in every log. The previous fixed budget of 20,000,000 polls lasted 9.2-9.3 s on
+that ring.
 
 The native proxy paces each stripe on a hardware-forwarded (two-hop) path: it
 posts signaled 32 KiB chunks and keeps at most 128 KiB of unacknowledged bytes

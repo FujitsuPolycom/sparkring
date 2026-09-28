@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-derived-layer-descriptor/v1",
+  "id": "plainstatus-status033",
+  "parent_lock": "runtime/releases/dev-20260928-toolchoice-cuda1342-nccl2323-status032/installer-image.json",
+  "provenance": "/opt/sparkring/receipts/derived-plainstatus-status033.json",
+  "purpose": "runtime-status 0.3.3, whose browser and text views describe settings in plain words, color only rows to check, and show dtype refinements and vLLM block-size adjustments as neutral, replaces 0.3.2 (source commit e060cc34b81522dd4194694c5d84bb0aa5c9769b, component tree b82d56e0a8a5a04470fc679be9c7a665a7ab7fef)",
+  "files": {},
+  "runtime_status": {
+    "wheel": {
+      "path": "sparkring_runtime_status-0.3.3-py3-none-any.whl",
+      "sha256": "40f138db38be34ae59609e2baff23c2b79b98b660a78f8ee7acab43585cf80be"
+    },
+    "source_archive": {
+      "path": "sparkring-runtime-status-0.3.3-source.tar.gz",
+      "sha256": "2fc19ee191352a730f7c6bcd1b9c5337825909b66c8eeaeff73c55ae37343a45"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260928-plainstatus-cuda1342-nccl2323-status033",
+  "image_id": "sha256:4b7049d1e00f263c65713b62247a4497eba72fb38977087941830cec38609a8c",
+  "image_config_id": "sha256:4b7049d1e00f263c65713b62247a4497eba72fb38977087941830cec38609a8c",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260928-plainstatus-cuda1342-nccl2323-status033",
+  "registry_manifest_digest": "sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.3",
+  "derivation": {
+    "parent_release": "dev-20260928-toolchoice-cuda1342-nccl2323-status032",
+    "parent_image_id": "sha256:8859e0dbf2e42c6abba09b2d63a6dcbc45ca9ba6df7736e2cdc28795b66b04aa",
+    "layers": [
+      "Runtime-status 0.3.3 (source commit e060cc34b81522dd4194694c5d84bb0aa5c9769b, wheel 40f138db38be) replaces 0.3.2 in /opt/sparkring/python; its browser and text views describe settings in plain words, color only the rows to check, and show dtype refinements and vLLM block-size adjustments as neutral (runtime/images/compositions/installer-plainstatus-status033/descriptor.json). The image's composition_sha256 still names the 0.3.1 composition. /opt/sparkring/receipts/derived-plainstatus-status033.json records every added, replaced and removed file"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

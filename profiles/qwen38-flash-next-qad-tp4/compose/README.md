@@ -5,7 +5,7 @@ run the [`qwen38-flash-next-qad-tp4`](../README.md) profile on four DGX Sparks,
 one Compose project per Spark. Rank 0 serves `Qwen3.8-Flash-Next-NVFP4-QAD-TP4`
 on port 8015, with no API key. Each rank is the container
 [`sparkring install`](../../../docs/operations/install.md) runs, on image
-`dev-20260927-mimovision-cuda1342-nccl2323-status032`, without the per-rank
+`dev-20260928-plainstatus-cuda1342-nccl2323-status033`, without the per-rank
 runtime-status binding file.
 
 The files are generated from the [configuration](../config.json) and the

@@ -248,27 +248,28 @@ is waiting for log lines; it does not indicate model readiness.
 ## Serving image and profiles
 
 Every installer profile runs on one shared serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/installer-image.json)
 (`sparkring-installer-image/v2`). It is the ARM64 image
-`ghcr.io/fujitsupolycom/sparkring@sha256:3901a80816898e3265a9012f2e263940706ff6e7bfc273949d1b2eec26f08d3b`
-(tag `dev-20260927-mimovision-cuda1342-nccl2323-status032`, configuration
-`sha256:8e4de5f05f0287c4d0326f3a6ed5d25d3248ec4d482f369308a08a36a2f893bf`),
+`ghcr.io/fujitsupolycom/sparkring@sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582`
+(tag `dev-20260928-plainstatus-cuda1342-nccl2323-status033`, configuration
+`sha256:4b7049d1e00f263c65713b62247a4497eba72fb38977087941830cec38609a8c`),
 built on the `eugr/spark-vllm-b12x:nightly-20260924` base image with CUDA
-13.4.2, NCCL 2.32.3, the runtime-status dashboard 0.3.2, the paced RoCEnante
+13.4.2, NCCL 2.32.3, the runtime-status dashboard 0.3.3, the paced RoCEnante
 transport, whose forwarded-path send window bounds traffic that a ring node
-relays for its neighbours, the Qwen decode kernels described below, and
-vLLM host-to-device staging that copies through fresh pinned memory, and a
-B12X correction that reuses reconciled kernel tuning on multi-Spark starts. The
+relays for its neighbours and whose supervised peer wait tolerates a late peer,
+the Qwen decode kernels described below, vLLM host-to-device staging that
+copies through fresh pinned memory, a B12X correction that reuses reconciled
+kernel tuning on multi-Spark starts, the MiMo vision attention-sink fix and the
+tool-result contract for named and required tool calls. The
 lock lists the admitted profiles and pins the image configuration, registry
 manifest, external software receipt, toolchain receipt, composition, prepared
 transport and status package. The image's
-[publication record](../../runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/publication.json)
-names its parent image, `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, and
-describes its derived layer; inside the image,
-`/opt/sparkring/receipts/derived-qwen-decode.json`,
-`/opt/sparkring/receipts/derived-staging-fix.json` and
-`/opt/sparkring/receipts/derived-b12xcache-status032.json` record every file the
-three derived layers add, replace or remove. `sparkring models` marks only these profiles
+[publication record](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/publication.json)
+names its parent image, `dev-20260928-toolchoice-cuda1342-nccl2323-status032`, and
+describes its derived layer; the
+[installer image builders](../../runtime/images/installer-images.md) list every
+layer of the chain, and inside the image each layer's receipt under
+`/opt/sparkring/receipts/` records every file it adds, replaces or removes. `sparkring models` marks only these profiles
 as installer-supported:
 
 | Profiles | Checkpoint | Speculative decoding |
@@ -444,18 +445,16 @@ the hairpin start check.
 ## When a model stops serving
 
 A multi-Spark model's ranks exchange every all-reduce and all-gather over RoCE
-with the prepared RoCEnante transport. In the serving image
-`dev-20260927-mimovision-cuda1342-nccl2323-status032`, a rank that waits for a
-peer longer than a fixed poll budget stops waiting, even when the peer is only
-late, and poisons its runtime. Rank 0's log then reads
-`RoCE collective on rank 0 timed out waiting for rank 1 at sequence ...; the
-runtime is poisoned`, rank 0's model container exits and the other Sparks'
-containers keep running without serving. The transport's
-[supervised peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait),
-which no published image carries, waits for a peer whose queue pairs still
-answer for up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default), logs
-each stall, and stops only for an unreachable, stopped or inconsistent peer or
-at that limit; it then tells the other ranks, whose logs name the cause.
+with the prepared RoCEnante transport. Its
+[supervised peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait)
+waits for a late peer whose queue pairs still answer for up to
+`B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) and logs each wait longer
+than 5 s. It stops only when a peer is unreachable, sends a stop notice or
+reports an inconsistent sequence, or at that limit; it then tells the other
+ranks, whose logs name the cause, and the stopping rank poisons its runtime.
+Rank 0's model container then exits and the other Sparks' containers keep
+running without serving. A Spark that restarts, or whose model container
+exits, stops the model the same way.
 
 Model containers do not restart themselves (`restart: 'no'`): the installer
 starts every rank of a model together, right after clearing each Spark's page
@@ -465,8 +464,8 @@ cache, and a single restarted rank cannot rejoin the others.
 model container log (`sudo docker ps -a` names the container; keep
 `sudo docker logs CONTAINER`), then run the command that installed the model
 again, `sudo sparkring install --profile PROFILE`. It stops the model on every
-Spark and starts it again. With the supervised peer wait, the lines that begin
-`RoCEnante rank` in both logs tell which rank was late and why.
+Spark and starts it again. The lines that begin `RoCEnante rank` in the saved
+logs tell which rank was late and why.
 
 ## Setup and access
 
@@ -670,7 +669,7 @@ Internet through Node A's sharing unless they have their own connection.
 
 | Asset | Size |
 |---|---:|
-| Serving image `dev-20260927-mimovision-cuda1342-nccl2323-status032` | 14.2 GiB download, 29.5 GiB unpacked |
+| Serving image `dev-20260928-plainstatus-cuda1342-nccl2323-status033` | 14.2 GiB download, 29.5 GiB unpacked |
 | Qwen checkpoint, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB |
 | MiMo checkpoint, `XiaomiMiMo/MiMo-V2.6-Flash-RL` @ `5711b2681699` | 165.6 GiB |
 | GLM checkpoint, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB |

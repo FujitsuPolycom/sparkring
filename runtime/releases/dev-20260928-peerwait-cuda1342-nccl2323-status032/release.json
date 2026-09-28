@@ -1,0 +1,16 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "dev-20260928-peerwait-cuda1342-nccl2323-status032",
+  "selection": "published-immutable-reference",
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:c9dd9a9a54c534e2b77cc987ff06f2aa485fe9420f71b105df514889b60582af",
+  "inputs": [
+    {
+      "path": "runtime/releases/dev-20260928-peerwait-cuda1342-nccl2323-status032/publication.json",
+      "sha256": "f5ab2ac21f3fd3c04510ac176167b575be34791f666a2eed9c8072091cafd74e"
+    },
+    {
+      "path": "runtime/releases/dev-20260928-peerwait-cuda1342-nccl2323-status032/installer-image.json",
+      "sha256": "718d1582e478837c44d8ecac6879885f40280a06422ed7d32a9d6c67dc6cafc9"
+    }
+  ]
+}

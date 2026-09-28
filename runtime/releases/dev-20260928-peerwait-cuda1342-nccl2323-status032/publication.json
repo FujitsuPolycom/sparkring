@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260928-peerwait-cuda1342-nccl2323-status032",
+  "image_id": "sha256:e6ea1f241b1612267446dd2b3caae4605e3701ed5274c94706a305ab2b0f62cb",
+  "image_config_id": "sha256:e6ea1f241b1612267446dd2b3caae4605e3701ed5274c94706a305ab2b0f62cb",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:c9dd9a9a54c534e2b77cc987ff06f2aa485fe9420f71b105df514889b60582af",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260928-peerwait-cuda1342-nccl2323-status032",
+  "registry_manifest_digest": "sha256:c9dd9a9a54c534e2b77cc987ff06f2aa485fe9420f71b105df514889b60582af",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.2",
+  "derivation": {
+    "parent_release": "dev-20260927-mimovision-cuda1342-nccl2323-status032",
+    "parent_image_id": "sha256:8e4de5f05f0287c4d0326f3a6ed5d25d3248ec4d482f369308a08a36a2f893bf",
+    "layers": [
+      "Supervised RoCEnante peer waits: waiting kernels read a host abort word every 1,024 polls, and the proxy thread stops a wait only when a peer is unreachable, sends a stop notice or reports an inconsistent sequence, or after B12X_ROCE_PEER_TIMEOUT_S (300 s by default); it then notifies every peer, and it logs each wait longer than 5 s with the flags still missing (runtime/images/derive_transport_peer_wait.py, FujitsuPolycom/sparkring#278). Proxy ABI 5: ranks of this image and of its parent refuse to connect to each other. /opt/sparkring/receipts/derived-transport-peer-wait.json records the six replaced transport files and the replaced bundle manifest"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

@@ -12,8 +12,9 @@ This optional API policy addresses [issue #217](https://github.com/FujitsuPolyco
 named or required tool requests can finish with an empty, malformed, or
 incorrectly named tool result. The published DeepSeek native image, the
 SparkRing LIL R37 source and the vLLM of the installer images serialize parser
-results without these checks. On the installer image
-`dev-20260927-mimovision-cuda1342-nccl2323-status032`, a `required` or named
+results without these checks. On installer image
+`dev-20260927-mimovision-cuda1342-nccl2323-status032`, which does not carry the
+policy, a `required` or named
 `get_weather` request with `max_tokens` 16 at temperature 0 returned HTTP 200,
 `finish_reason: "length"` and no tool call on MiMo-V2.6-Flash-RL (four Sparks)
 and GLM-5.3-Flash (two Sparks); with `max_tokens` 400 both returned the call.
@@ -57,8 +58,10 @@ server at startup.
 ## Installer images
 
 [derive_tool_choice_contract.py](../../../runtime/images/derive_tool_choice_contract.py)
-derives an installer image from `dev-20260927-mimovision-cuda1342-nccl2323-status032`
-in one layer. It adds [contract.py](contract.py), unchanged, as
+derives an installer image in one layer from a parent whose `serving.py` is the
+one in `dev-20260927-mimovision-cuda1342-nccl2323-status032`; the published
+layer, `dev-20260928-toolchoice-cuda1342-nccl2323-status032`, derives from
+`dev-20260928-peerwait-cuda1342-nccl2323-status032`. It adds [contract.py](contract.py), unchanged, as
 `vllm/entrypoints/openai/chat_completion/sparkring_tool_choice_contract.py` and
 appends two statements to that package's `serving.py` that call
 `install_from_environment(OpenAIServingChat)` when vLLM imports the module.
@@ -72,11 +75,14 @@ resulting `serving.py` and the added module by SHA-256, and the image's
 The installer container of every installer profile sets
 `SPARKRING_TOOL_CHOICE_CONTRACT=1` unless the profile's `environment` sets the
 variable (`installer_image.adapt`); a profile opts out with `0`. Only an image
-built by this layer reads the variable. The default installer image lock
-selects `dev-20260927-mimovision-cuda1342-nccl2323-status032`, which does not
-carry the layer, so installer deployments keep vLLM's unchecked responses until
-a release built by this layer becomes the default lock
-([release procedure](../../../docs/development/releases.md)). The Rust
+built by this layer, or derived from one, reads the variable. The default
+installer image lock selects
+`dev-20260928-plainstatus-cuda1342-nccl2323-status033`, whose parent is the
+published layer, so installer deployments apply the policy. On that layer,
+`api_probe.py` passed all eight cases (named and required, streaming and not,
+`max_tokens` 400 and 16) on MiMo-V2.6-Flash-RL (four Sparks) and
+Qwen3.8-Flash-Next (two Sparks); each non-streaming truncated call returned
+HTTP 400. The Rust
 frontend and gRPC do not use `OpenAIServingChat` and are not covered.
 
 ## Entrypoint wrapper for other images
@@ -152,12 +158,13 @@ performance.
 ### Installer image build and hardware check
 
 On Node A, which holds the parent image
-`sha256:8e4de5f05f0287c4d0326f3a6ed5d25d3248ec4d482f369308a08a36a2f893bf`,
+`sha256:e6ea1f241b1612267446dd2b3caae4605e3701ed5274c94706a305ab2b0f62cb`
+(`dev-20260928-peerwait-cuda1342-nccl2323-status032`),
 from a checkout of this repository:
 
 ```bash
 python3 runtime/images/derive_tool_choice_contract.py prepare \
-  --parent-lock runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/installer-image.json \
+  --parent-lock runtime/releases/dev-20260928-peerwait-cuda1342-nccl2323-status032/installer-image.json \
   --output CONTEXT
 python3 runtime/images/derive_tool_choice_contract.py build --context CONTEXT \
   --tag sparkring:RELEASE --name RELEASE --output LOCK
