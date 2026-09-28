@@ -117,6 +117,19 @@ loading is disabled and literal `$` signs are escaped.
 An edited export is a custom configuration: `check` and `start` refuse it. To
 change a deployment, edit the site file and render again.
 
+The deployment ID in `deployment.json` is each container's
+`io.sparkring.deployment` label. It is a digest of the profile ID, the site,
+the image selection and the source inventory, in which a profile document
+counts without its descriptive fields: a profile's title, recommendation,
+evidence status and scope, and guide, and a serving configuration's evidence
+status and qualification notes (`DESCRIPTIVE_FIELDS` in
+`runtime/common/profiles.py`). `deployment.json` also records the SHA-256 of
+every input file, which each host verifies before it runs the coordinator, so
+a rendered deployment is refused once the checkout changes. A deployment
+rendered again from a checkout that changed only descriptive fields has the
+same ID and Compose files, so it checks and stops the containers already
+running.
+
 ## Check and coordinate hosts
 
 ```bash

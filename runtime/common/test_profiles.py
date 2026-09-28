@@ -518,3 +518,18 @@ def test_adapter_configuration_input_requires_a_known_contract(repository, value
     write(path, profile)
     with pytest.raises(ValueError, match="configuration_input"):
         profiles.load("example", root=repository)
+
+
+def test_identity_view_drops_only_descriptive_fields():
+    definition = profiles.read_json(profiles.ROOT / "profiles/mimo-v26-flash-rl-tp2/profile.json")
+    view = profiles.identity_view(definition)
+    assert set(view) == set(definition) - profiles.DESCRIPTIVE_FIELDS["sparkring-deployment/v1"]
+    assert {"schema", "id", "configuration", "release", "overrides", "launcher"} <= set(view)
+    assert "evidence_scope" in definition and "evidence_scope" not in view
+    configuration = profiles.read_json(profiles.ROOT / "profiles/mimo-v26-flash-rl-tp2/config.json")
+    view = profiles.identity_view(configuration)
+    assert set(view) == set(configuration) - {"status", "qualification"}
+    assert view["vllm_args"] == configuration["vllm_args"] and view["model"] == configuration["model"]
+    catalog = profiles.read_json(profiles.ROOT / "profiles/catalog.json")
+    assert profiles.identity_view(catalog) is catalog
+    assert profiles.identity_view({"schema": ["sparkring-deployment/v1"], "title": "x"})["title"] == "x"

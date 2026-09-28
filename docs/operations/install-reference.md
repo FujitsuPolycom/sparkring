@@ -158,14 +158,22 @@ failed switch attempts recovery from the retained deployment and records the
 outcome. A successful installation ends with `Model ready:` and the model's API
 URL on Node A.
 
-Running the command again for the installed model leaves that model running
-while it serves: its container runs on every Spark, and every ring check
-passes on four Sparks or every fabric address is in RoCE GID index 3 on a pair.
-Otherwise, for example after one Spark restarted, the command stops the model
-on every Spark and starts it again, because the Sparks that stayed up keep a
-model that waits for the restarted one. Before a pair's model starts, each
-Spark re-adds a fabric address whose RoCE GID has left GID index 3, as the ring
-step does on four Sparks.
+Running the command again for the installed model from the same SparkRing
+package leaves that model running while it serves: its container runs on every
+Spark, and every ring check passes on four Sparks or every fabric address is in
+RoCE GID index 3 on a pair. Otherwise, for example after one Spark restarted,
+the command stops the model on every Spark and starts it again, because the
+Sparks that stayed up keep a model that waits for the restarted one. Before a
+pair's model starts, each Spark re-adds a fabric address whose RoCE GID has
+left GID index 3, as the ring step does on four Sparks.
+
+A package built from another source revision selects a separate deployment,
+even when the revisions differ only in documentation or profile text: the
+deployment lock and its ID cover the source revision and the source bundle's
+SHA-256, and the deployment's directory, workspace and container names derive
+from the source revision. Installing that package prepares the separate
+deployment and then replaces the running model with it, which restarts the
+model.
 
 Asset preparation never creates, starts or stops a model container. When it
 fails or is interrupted before the model switch, for example by a storage

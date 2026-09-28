@@ -16,6 +16,18 @@ PROFILE_FIELDS = {"schema", "id", "title", "recommendation", "status", "configur
 COMMON = {"decode_context_parallel_size": 1, "pipeline_parallel_size": 1}
 TOPOLOGIES = {"direct-pair-2", "direct-cycle-4", "sparkring-rocenante-mesh",
               "tp2-rocenante-adaptive", "switched"}
+# Top-level fields that describe a profile to people, by document schema: a
+# profile definition's title, recommendation, evidence status and scope, and
+# guide, and a serving configuration's evidence status and qualification notes.
+# No container setting derives from them, so the Compose deployment identity
+# (compose.identity_inventory) covers a profile document without them
+# (identity_view); summaries and records still show them. An installer
+# deployment lock covers its whole source revision instead.
+DESCRIPTIVE_FIELDS = {
+    "sparkring-deployment/v1": frozenset({"title", "recommendation", "status", "quickstart_status",
+                                          "guide", "evidence_scope"}),
+    "sparkring-serving-profile/v1": frozenset({"status", "qualification"}),
+}
 
 
 def read_json(path):
@@ -27,6 +39,19 @@ def read_json(path):
             result[key] = value
         return result
     return json.loads(Path(path).read_text(encoding="utf-8-sig"), object_pairs_hook=unique)
+
+
+def identity_view(document):
+    """The part of ``document`` that the Compose deployment identity covers.
+
+    A document whose schema is listed in DESCRIPTIVE_FIELDS is returned as a
+    new dictionary without those fields; any other value is returned itself.
+    """
+    schema = document.get("schema") if isinstance(document, dict) else None
+    fields = DESCRIPTIVE_FIELDS.get(schema) if isinstance(schema, str) else None
+    if fields is None:
+        return document
+    return {key: value for key, value in document.items() if key not in fields}
 
 
 def local_path(value, root=ROOT):

@@ -218,10 +218,31 @@ def source_inventory(profile_id, *, local_source_extension=None):
             for p in (ROOT / "runtime/images/compositions" / folder).glob("*.json")
         )
     paths.add(profiles.load(profile_id)[0]["release"])
-    return {
-        name: digest((ROOT / name).read_bytes().replace(b"\r\n", b"\n"))
-        for name in sorted(paths)
-    }
+    return {name: digest(source_bytes(name)) for name in sorted(paths)}
+
+
+def source_bytes(name):
+    """A repository file's bytes with CRLF line ends normalized to LF."""
+    return (ROOT / name).read_bytes().replace(b"\r\n", b"\n")
+
+
+def identity_inventory(inventory):
+    """The source inventory as the deployment identity covers it.
+
+    ``inventory`` holds each file's byte digest, which hosts verify before
+    they import the coordinator. For a profile document under ``profiles/``
+    the identity instead covers the digest of profiles.identity_view, so text
+    in its descriptive fields (profiles.DESCRIPTIVE_FIELDS) does not change the
+    deployment identity or the generated Compose files.
+    """
+    result = dict(inventory)
+    for name in inventory:
+        if name.startswith("profiles/") and name.endswith(".json"):
+            document = json.loads(source_bytes(name))
+            view = profiles.identity_view(document)
+            if view is not document:
+                result[name] = digest(encoded(view))
+    return result
 
 
 def installer_container(spec, image_runtime, *, profile_id, source_root):
@@ -450,6 +471,10 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     Profiles on the shared toolchain image always deploy the installer's
     containers: without an explicit ``image_runtime`` the installer's default
     image lock is selected, and the manifest records the lock document.
+
+    The manifest ``id``, which labels every container, is the digest of the
+    profile ID, the site, the selection options and identity_inventory of the
+    source inventory. The manifest's ``inputs`` keep every file's byte digest.
     """
     if image_runtime is None and profile_id in SUPPORTED:
         image_runtime = installer_image_runtime(profile_id)
@@ -461,7 +486,7 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     specs, image = specifications(profile_id, site, **options)
     inputs = (source_inventory(profile_id) if local_source_extension is None else
               source_inventory(profile_id, local_source_extension=local_source_extension))
-    identity_inputs = {"profile": profile_id, "site": site, "inputs": inputs}
+    identity_inputs = {"profile": profile_id, "site": site, "inputs": identity_inventory(inputs)}
     identity_inputs.update(options)
     identity = digest(encoded(identity_inputs))
     files = {}

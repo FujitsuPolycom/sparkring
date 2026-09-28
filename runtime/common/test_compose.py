@@ -10,7 +10,7 @@ import sys
 import pytest
 import yaml
 
-from runtime.common import compose
+from runtime.common import compose, profiles
 from runtime.common.container_spec import Bind, ContainerSpec, docker_create
 from scripts import generate_compose_examples
 
@@ -285,6 +285,77 @@ def test_source_drift_and_existing_output_are_rejected(site, tmp_path, monkeypat
     monkeypatch.setattr(compose, "source_inventory", lambda _: inventory)
     with pytest.raises(ValueError, match="inputs changed"):
         compose.load_deployment(directory)
+
+
+def example_site(profile):
+    owner = profile.removesuffix("-sparkcache")
+    return compose.read_site(compose.ROOT / "profiles" / owner / "compose/site.example.yaml")
+
+
+def edit_sources(monkeypatch, edits):
+    """Serve repository files to the inventory with ``edits`` ({path: edit(document)}) applied."""
+    read = compose.source_bytes
+
+    def edited(name):
+        data = read(name)
+        if name in edits:
+            document = json.loads(data)
+            edits[name](document)
+            data = compose.encoded(document).encode()
+        return data
+
+    monkeypatch.setattr(compose, "source_bytes", edited)
+
+
+@pytest.mark.parametrize("profile", compose.SUPPORTED)
+def test_descriptive_profile_text_keeps_deployment_identity(monkeypatch, profile):
+    site = example_site(profile)
+    manifest, files = compose.build(profile, site)
+    definition = f"profiles/{profile}/profile.json"
+    configuration = profiles.load(profile)[0]["configuration"]["path"]
+
+    def describe(document):
+        for field in profiles.DESCRIPTIVE_FIELDS[document["schema"]]:
+            document[field] = "Edited description"
+
+    edit_sources(monkeypatch, {definition: describe, configuration: describe})
+    edited, edited_files = compose.build(profile, site)
+    assert edited["inputs"][definition] != manifest["inputs"][definition]
+    assert edited["inputs"][configuration] != manifest["inputs"][configuration]
+    assert edited["id"] == manifest["id"] and edited_files == files
+
+
+SERVING_CHANGES = {
+    "vllm-argument": ("config.json", lambda d: d["vllm_args"].__setitem__(d["vllm_args"].index("--max-num-seqs") + 1, "8")),
+    "environment-value": ("config.json", lambda d: d["environment"].update(NCCL_DEBUG="INFO")),
+    "checkpoint-revision": ("config.json", lambda d: d["model"].update(revision="0" * 40)),
+    "served-model-name": ("config.json", lambda d: d.update(served_model_name="Another-TP2")),
+    "profile-release": ("profile.json", lambda d: d.update(release="runtime/releases/another/release.json")),
+    "profile-launcher": ("profile.json", lambda d: d["launcher"].update(actions=["plan", "check"])),
+}
+
+
+@pytest.mark.parametrize("change", sorted(SERVING_CHANGES))
+def test_serving_settings_change_deployment_identity(monkeypatch, change):
+    profile = "mimo-v26-flash-rl-tp2"
+    site = example_site(profile)
+    manifest, _ = compose.build(profile, site)
+    name, edit = SERVING_CHANGES[change]
+    edit_sources(monkeypatch, {f"profiles/{profile}/{name}": edit})
+    assert compose.build(profile, site)[0]["id"] != manifest["id"]
+
+
+def test_image_changes_deployment_identity():
+    from runtime.common import installer_image
+    profile = "mimo-v26-flash-rl-tp2"
+    site = example_site(profile)
+    lock = installer_image.default_lock()
+    manifest, _ = compose.build(profile, site, image_runtime=lock)
+    other = {**lock, "image_id": "sha256:" + "e" * 64, "image_reference": "sha256:" + "e" * 64}
+    assert compose.build(profile, site, image_runtime=other)[0]["id"] != manifest["id"]
+    changed = copy.deepcopy(site)
+    changed["ranks"][1]["host_ip"] = "198.51.100.77"
+    assert compose.build(profile, changed)[0]["id"] != manifest["id"]
 
 
 def test_deterministic_private_export_passes_compose(site, tmp_path, compose_cli):
