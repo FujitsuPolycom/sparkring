@@ -53,20 +53,22 @@ rank and verify the exact image ID before rendering a deployment.
 
 ## Run through the profile
 
-Use the explicit [local source-image options](../../../../docs/operations/compose.md)
-with the Qwen QAD TP4 profile. The image must have the same local tag and image ID
-on all four hosts. The profile supports cache-disabled and SparkCache selections;
-the cache selection mounts model/cache data without any application-source mounts.
+Only the two Qwen SparkCache variants accept the
+[local source-image options](../../../../docs/operations/compose.md#local-source-image-trials):
+`qwen38-flash-next-qad-tp4-sparkcache` on four Sparks and
+`qwen38-flash-next-tp2-sparkcache` on two. The installer profiles, including
+`qwen38-flash-next-qad-tp4` and `qwen38-flash-next-tp2`, take their image from
+the installer image lock and refuse these options.
 
-An explicit local TP2 source-image trial is also supported for
-`qwen38-flash-next-tp2-sparkcache`; `qwen38-flash-next-tp2` runs on the
-installer image and refuses local source-image options. The trial keeps HC
-sharding off and existing TP2 features unchanged, enables recurrent-checkpoint
-coalescing, and preserves the canonical 24 GiB KV allocation. The optional
-`--local-kv-cache-gib 33` selects a bounded TP2 memory alternative. It cannot
-select TP4-only HC fusion or the 40 GiB TP4 alternative. SparkCache uses the
-packaged source lease contract and its own TP2 persistent namespace. See the
-[rendering command and trial scope](../../../../docs/operations/compose.md).
+- Every rank needs the image under the same local tag and image ID.
+- The SparkCache selection mounts model and cache data without application-source
+  mounts, and uses the packaged source lease contract with its own persistent
+  namespace.
+- TP4 keeps its HC sharding and recurrent-checkpoint coalescing.
+- TP2 keeps HC sharding off and its other features unchanged, enables
+  recurrent-checkpoint coalescing, and keeps the 24 GiB KV allocation.
+  `--local-kv-cache-gib 33` selects a bounded TP2 memory alternative; it cannot
+  select TP4-only HC fusion or the 40 GiB TP4 alternative.
 
 Published image selections remain unchanged. This local route does not promote
 TP2 or GLM or transfer TP4 serving results to TP2. Each profile retains its own
@@ -91,10 +93,12 @@ After authorized publication of the tested image:
    `selection: registered-source-extension-image`, the same registry reference
    as `image`, and hash-pinned inputs for this publication and descriptor, with
    the publication first. Preserve the existing release records.
-3. Point only the qualified TP4 profile's `profile.json` at that release. Set
-   its canonical configuration's `image_extension` to `lil-r37-qwen-prefill`.
-   The adapter selects source admission and the verified source entrypoint;
-   feature settings still come from the canonical configuration.
+3. Point only the qualified TP4 SparkCache variant at that release: in
+   `profiles/qwen38-flash-next-qad-tp4/sparkcache.json`, set `image_release` to
+   the release and `image_extension` to `lil-r37-qwen-prefill`. The adapter
+   selects source admission and the verified source entrypoint; feature
+   settings still come from that configuration. The installer profiles keep the
+   installer image lock.
 4. For the enhanced TP4 configuration, explicitly set
    `VLLM_QWEN3_8_HC_PREFILL_MODE=shard` and `VLLM_QWEN3_8_PREFILL_COALESCE=1`.
    A SparkCache selection must reference the packaged
