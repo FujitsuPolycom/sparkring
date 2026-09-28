@@ -776,6 +776,50 @@ def test_model_phase_names_the_newest_recognized_startup_step(lines, phase):
     assert runner.model_phase(lines) == phase
 
 
+QWEN_START = [
+    ("(EngineCore_DP0 pid=210) INFO 09-28 10:00:01 [cache.py:180] Using fp8 data type to store kv cache. It reduces "
+     "the GPU memory footprint and boosts the performance.", None),
+    ("(EngineCore_DP0 pid=210) INFO 09-28 10:00:02 [interface.py:639] Setting kv cache block size to 256 for B12X "
+     "backend.", None),
+    ("(Worker_TP0 pid=393) INFO 09-28 10:00:05 [gpu_model_runner.py:2602] Starting to load model /model...",
+     "loading weights"),
+    ("\rLoading safetensors checkpoint shards:  50% Completed | 9/18 [00:40<00:40]", "loading weights (shard 9/18)"),
+    ("(Worker_TP0 pid=393) INFO 09-28 10:02:30 [default_loader.py:560] Loading weights took 141.20 seconds",
+     "weights loaded"),
+    ("(Worker_TP0 pid=393) INFO 09-28 10:02:31 [gpu_model_runner.py:2653] Model loading took 51.3 GiB memory and "
+     "146.1 seconds", "weights loaded"),
+    ("(Worker_TP0 pid=393) INFO 09-28 10:03:10 [backends.py:215] Compiling a graph for dynamic shape takes 30.1 s",
+     "compiling kernels"),
+    ("(Worker_TP0 pid=393) INFO 09-28 10:03:40 [gpu_worker.py:298] Memory profiling takes 62.4 seconds",
+     "setting up the KV cache"),
+    ("(Worker_TP0 pid=393) INFO 09-28 10:03:40 [gpu_worker.py:299] Available KV cache memory: 31.2 GiB",
+     "setting up the KV cache"),
+    ("(EngineCore_DP0 pid=210) INFO 09-28 10:03:41 [kv_cache_utils.py:1087] GPU KV cache size: 1,021,952 tokens",
+     "setting up the KV cache"),
+    ("[Autotuner]: Autotuning process starts ...", "tuning kernels"),
+    ("\rCapturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|##########| 18/18 [00:09<00:00]",
+     "capturing CUDA graphs (18/18)"),
+    # A kernel compiled for one capture size does not move the report back.
+    ("(Worker_TP0 pid=393) INFO 09-28 10:04:30 [backends.py:215] Compiling a graph for compile range (1, 1) takes "
+     "0.4 s", "capturing CUDA graphs (18/18)"),
+    ("(Worker_TP0 pid=393) INFO 09-28 10:04:40 [gpu_model_runner.py:3480] Graph capturing finished in 20 secs, took "
+     "0.9 GiB", "warming up"),
+    ("(EngineCore_DP0 pid=210) INFO 09-28 10:04:41 [core.py:390] init engine (profile, create kv cache, warmup "
+     "model) took 97.3 s", "warming up"),
+    ("(APIServer pid=7) INFO:     Application startup complete.", "starting the API server"),
+]
+
+
+def test_readiness_report_follows_the_order_of_a_qwen_start():
+    log = []
+    report = runner.ModelLog(lambda: "".join(f"2026-09-28T10:00:00Z {line}\n" for line in log), clock=lambda: 0.0)
+    seen = []
+    for line, _ in QWEN_START:
+        log.append(line)
+        seen.append(report()["detail"])
+    assert seen == [phase for _, phase in QWEN_START]
+
+
 def test_model_log_report_names_the_phase_and_a_quiet_log():
     stamp = "2026-09-28T10:00:00.000000000Z "
     text = ["\n".join(stamp + line for line in STARTUP_LOG) + "\n"]

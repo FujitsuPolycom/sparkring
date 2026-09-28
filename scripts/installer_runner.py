@@ -164,38 +164,55 @@ LOG_TAIL = 200
 QUIET_SECONDS = 300
 # Reads the model container's log with both output streams. Arguments: line count, container name.
 LOG_COMMAND = 'exec docker --context default logs --timestamps --tail "$1" "$2" 2>&1'
-# Startup phases, recognized by phrases of vLLM's and its kernel libraries' log. The
-# newest line that matches any phrase names the phase; within a line the first
-# matching phrase wins. A pattern's groups fill its text. The phrases are words of
-# log messages, not configuration keys such as compilation_config or
-# cudagraph_capture_sizes, which the engine prints once at start.
+# Startup phases, recognized by phrases of vLLM's and its kernel libraries' log:
+# (pattern, text, position in vLLM's startup order). The newest line that matches
+# any phrase names the phase; within a line the first matching phrase wins. A
+# pattern's groups fill its text. The phrases are words of log messages, not
+# configuration keys such as compilation_config or cudagraph_capture_sizes, which
+# the engine prints once at start. The KV-cache phrases are those vLLM prints
+# while it measures memory and allocates the cache; other lines that mention the
+# KV cache, such as "Using fp8 data type to store kv cache" or a backend's block
+# size, appear before the weights load.
 MODEL_PHASES = (
-    (re.compile(r"Loading safetensors checkpoint shards:.*?(\d+)/(\d+)"), "loading weights (shard {0}/{1})"),
-    (re.compile(r"Loading weights took|Model loading took"), "weights loaded"),
-    (re.compile(r"Loading safetensors|Loading weights|Starting to load model", re.I), "loading weights"),
-    (re.compile(r"Capturing CUDA graphs?\b.*?\b(\d+)/(\d+)\b"), "capturing CUDA graphs ({0}/{1})"),
-    (re.compile(r"capturing cuda ?graphs?\b|cudagraph capturing", re.I), "capturing CUDA graphs"),
-    (re.compile(r"Graph capturing finished|init engine .*took|warming up|warmup model", re.I), "warming up"),
-    (re.compile(r"autotuning|autotuner|\btuning\b", re.I), "tuning kernels"),
-    (re.compile(r"torch\.compile\b|\bcompiling\b|compiled graph|Dynamo bytecode|\bJIT\b", re.I), "compiling kernels"),
-    (re.compile(r"KV cache", re.I), "setting up the KV cache"),
-    (re.compile(r"Starting vLLM API server|Application startup|Uvicorn running", re.I), "starting the API server"),
+    (re.compile(r"Loading safetensors checkpoint shards:.*?(\d+)/(\d+)"), "loading weights (shard {0}/{1})", 0),
+    (re.compile(r"Loading weights took|Model loading took"), "weights loaded", 1),
+    (re.compile(r"Loading safetensors|Loading weights|Starting to load model", re.I), "loading weights", 0),
+    (re.compile(r"Capturing CUDA graphs?\b.*?\b(\d+)/(\d+)\b"), "capturing CUDA graphs ({0}/{1})", 5),
+    (re.compile(r"capturing cuda ?graphs?\b|cudagraph capturing", re.I), "capturing CUDA graphs", 5),
+    (re.compile(r"Graph capturing finished|init engine .*took|warming up|warmup model", re.I), "warming up", 6),
+    (re.compile(r"autotuning|autotuner|\btuning\b", re.I), "tuning kernels", 4),
+    (re.compile(r"torch\.compile\b|\bcompiling\b|compiled graph|Dynamo bytecode|\bJIT\b", re.I),
+     "compiling kernels", 2),
+    (re.compile(r"GPU KV cache size|Available KV cache memory|# GPU blocks|Memory profiling takes"),
+     "setting up the KV cache", 3),
+    (re.compile(r"Starting vLLM API server|Application startup|Uvicorn running", re.I), "starting the API server", 7),
 )
+# From CUDA graph capture on, the phase shown never moves back: kernels that
+# compile or tune for one capture size belong to the capture. Earlier phases
+# follow the newest line, so one early match of a later phrase cannot hold the
+# report there.
+HOLD_FROM = 5
 
 
-def model_phase(lines):
-    """The startup phase that the newest matching log line names, or None.
+def newest_phase(lines):
+    """``(position, text)`` of the startup phase that the newest matching log line names, or None.
 
     ``lines`` are log lines, oldest first. A progress bar's line holds every
     redraw separated by carriage returns; its last redraw counts.
     """
     for line in reversed(lines):
         text = line.rstrip("\r").rsplit("\r", 1)[-1]
-        for pattern, label in MODEL_PHASES:
+        for pattern, label, position in MODEL_PHASES:
             match = pattern.search(text)
             if match:
-                return label.format(*match.groups())
+                return position, label.format(*match.groups())
     return None
+
+
+def model_phase(lines):
+    """The text of ``newest_phase(lines)``, or None."""
+    found = newest_phase(lines)
+    return found[1] if found else None
 
 
 class ModelLog:
@@ -203,12 +220,22 @@ class ModelLog:
 
     ``read()`` returns the newest log lines with Docker's timestamps. The log
     counts as quiet while its newest line stays the same; after
-    ``QUIET_SECONDS`` the report says so. A failed read gives no report.
+    ``QUIET_SECONDS`` the report says so. Once a phase at ``HOLD_FROM`` or
+    later was reported, an earlier one is not. A failed read gives no report.
     """
 
     def __init__(self, read, *, clock=time.monotonic):
         self.read, self.clock = read, clock
         self.newest, self.since = None, clock()
+        self.held = None
+
+    def phase(self, texts):
+        found = newest_phase(texts)
+        if self.held is not None and (found is None or found[0] < self.held[0]):
+            return self.held[1]
+        if found is not None and found[0] >= HOLD_FROM:
+            self.held = found
+        return found[1] if found else None
 
     def __call__(self, elapsed=None):
         # Only newlines end a log line; carriage returns stay inside it.
@@ -217,7 +244,7 @@ class ModelLog:
         if not lines or lines[-1] != self.newest:
             self.newest, self.since = (lines[-1] if lines else None), now
         texts = [line.split(" ", 1)[1] if " " in line else line for line in lines]
-        parts = [part for part in [model_phase(texts)] if part]
+        parts = [part for part in [self.phase(texts)] if part]
         quiet = now - self.since
         if quiet >= QUIET_SECONDS:
             parts.append(f"no new model log output for {int(quiet // 60)} min")
