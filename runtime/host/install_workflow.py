@@ -29,7 +29,7 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer, installer_image, process_lock
+from runtime.common import distribution, installer, installer_image, process_lock, profiles
 from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
                           install_assets, models, native_mesh, node, progress, retained_source, rollout, settings,
                           topology)
@@ -552,17 +552,25 @@ REMOVE_COMMAND = "sudo apt remove sparkring"
 
 
 def switch_back_command(previous):
-    """The command that reinstalls the deployment in ``previous``, or None when it cannot be read."""
+    """The command that reinstalls the deployment in ``previous``, or None when it cannot be read.
+
+    A profile that the catalog replaced (``profiles.REPLACED``) is named by its
+    replacement, because the installer refuses the replaced ID.
+    """
     if not previous:
         return None
     plan = saved_plan(previous)
     if plan and plan.get("command"):
-        return plan["command"]
-    try:
-        profile = installer.read(Path(previous) / "deployment.lock.json")["selection"]["profile"]
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    return checkpoint_plan.install_command({"profile": profile})
+        command = plan["command"]
+    else:
+        try:
+            profile = installer.read(Path(previous) / "deployment.lock.json")["selection"]["profile"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        command = checkpoint_plan.install_command({"profile": profile})
+    for old, new in profiles.REPLACED.items():
+        command = command.replace(f"--profile {old}", f"--profile {new}")
+    return command
 
 
 def summary(lock, connection, previous):

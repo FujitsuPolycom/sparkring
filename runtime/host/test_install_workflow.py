@@ -244,6 +244,17 @@ def test_completion_prints_a_summary_card_after_model_ready(machine, capsys):
     assert "  Uninstall:   stop the model, then sudo apt remove sparkring on each Spark" in card
 
 
+def test_switch_back_names_the_replacement_of_a_replaced_profile(tmp_path):
+    previous = tmp_path / "previous"
+    previous.mkdir()
+    (previous / flow.PLAN_FILE).write_text(json.dumps({
+        "schema": checkpoint_plan.SCHEMA, "command": "sudo sparkring install --profile mimo-v26-flash-rl-tp2 --yes"}))
+    assert flow.switch_back_command(str(previous)) == "sudo sparkring install --profile mimo-v26-flash-mopd-tp2 --yes"
+    (previous / flow.PLAN_FILE).unlink()
+    (previous / "deployment.lock.json").write_text(json.dumps({"selection": {"profile": "mimo-v26-flash-rl-tp4"}}))
+    assert flow.switch_back_command(str(previous)) == "sudo sparkring install --profile mimo-v26-flash-mopd-tp4"
+
+
 def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
     connection = {"api_url": "http://192.0.2.10:8000/v1", "model": "Model-A"}
     previous = tmp_path / "previous"
