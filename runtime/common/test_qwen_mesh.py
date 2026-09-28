@@ -274,13 +274,36 @@ def test_complete_snapshot_requires_every_rank_network_and_managed_attachment(ri
     assert not rig["host"].manager.state_dir.exists()
 
 
-def test_stale_gid_ports_name_each_port_whose_pinned_slot_lacks_its_address(rig):
-    host = rig["host"]
-    assert mesh.stale_gid_ports(rig["reference"], rig["rank"], host=host) == []
-    # A cabled neighbor restarted: each port's IPv4 GID moved out of the pinned slot.
-    host.gid_override = "::ffff:198.51.100.1"
-    assert mesh.stale_gid_ports(rig["reference"], rig["rank"], host=host) == [
-        (port.netdev, port.ipv4) for port in host.manager.local.ports]
+def write_gid(sysfs, port, index):
+    """Register ``port``'s IPv4 address as its RoCE v2 GID at ``index`` and empty its other entries."""
+    root = sysfs / port.rdma_device / "ports/1"
+    for kind in ("gids", "gid_attrs/types", "gid_attrs/ndevs"):
+        (root / kind).mkdir(parents=True, exist_ok=True)
+    for number in range(8):
+        (root / f"gids/{number}").write_text("0000:0000:0000:0000:0000:0000:0000:0000\n")
+        for kind in ("types", "ndevs"):
+            (root / f"gid_attrs/{kind}/{number}").unlink(missing_ok=True)
+    (root / f"gids/{index}").write_text(mesh.spark_roce_gid.ipv4_mapped_gid(port.ipv4) + "\n")
+    (root / f"gid_attrs/types/{index}").write_text("RoCE v2\n")
+    (root / f"gid_attrs/ndevs/{index}").write_text(port.netdev + "\n")
+
+
+def test_stale_gid_ports_name_each_port_whose_roce_v2_gid_left_the_pinned_index(rig, tmp_path):
+    host, sysfs = rig["host"], tmp_path / "sysfs"
+    ports = host.manager.local.ports
+    pinned = host.manager.plan.roce_gid_index
+    for port in ports:
+        write_gid(sysfs, port, pinned)
+    assert mesh.stale_gid_ports(rig["reference"], rig["rank"], host=host, sysfs_root=sysfs) == []
+    # A cabled neighbor restarted: the first port's address returned at another index.
+    write_gid(sysfs, ports[0], pinned + 2)
+    assert mesh.stale_gid_ports(rig["reference"], rig["rank"], host=host, sysfs_root=sysfs) == [
+        (ports[0].netdev, ports[0].ipv4)]
+    # A port with no entry for its address at all is stale too.
+    (sysfs / ports[1].rdma_device / f"ports/1/gids/{pinned}").write_text(
+        "0000:0000:0000:0000:0000:0000:0000:0000\n")
+    assert mesh.stale_gid_ports(rig["reference"], rig["rank"], host=host, sysfs_root=sysfs) == [
+        (port.netdev, port.ipv4) for port in ports[:2]]
     assert not any(argv[:2] == ["ip", "addr"] and "show" not in argv for argv in host.commands)
 
 

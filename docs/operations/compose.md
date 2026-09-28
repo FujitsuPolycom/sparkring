@@ -60,7 +60,12 @@ is `sparkring-compose-site/v1` with only `schema`, `name`, `master` and `ranks`;
 
 - Use the profile's two or four Linux ARM64 Sparks, one GPU each, with working
   fabric and matching HCA/GID selection. TP4 also needs the prepared mesh
-  fabric and its site reference.
+  fabric and its site reference. A rank's `gid` is the one GID index its
+  container uses for every HCA, so each fabric address's RoCE v2 GID must be
+  at that index when the container starts;
+  [`spark_roce_gid.py`](../../integrations/vllm/spark_roce_gid.py) prints the
+  index on a host. `sparkring install` restores index 3 before it starts a
+  model; a host started only from these files does not.
 - Download the model, check every shard, pull the image and meet the host
   prerequisites as the profile guide describes:
   [Qwen TP2](../../profiles/qwen38-flash-next-tp2/README.md) or

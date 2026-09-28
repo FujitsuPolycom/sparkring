@@ -167,6 +167,22 @@ Sparks that stayed up keep a model that waits for the restarted one. Before a
 pair's model starts, each Spark re-adds a fabric address whose RoCE GID has
 left GID index 3, as the ring step does on four Sparks.
 
+The installer's containers use RoCE GID index 3 for every fabric function:
+the profiles set `NCCL_IB_GID_INDEX=3`, and the image's B12X RoCE transport
+reads one `B12X_ROCE_GID_INDEX` (or `NCCL_IB_GID_INDEX`) for all HCAs of a
+rank. A GID index is not a fixed property of an address. When a link drops
+while a model holds the address's GID entry, as on the Sparks cabled to one
+that restarts, the address's RoCE v2 GID returns at another index, and the
+ports facing the restarted Spark can differ from a Spark's other ports.
+Restoring index 3 before the model starts keeps one index valid for every
+HCA. The pair's GID check and the four-Spark ring step locate each address's
+RoCE v2 GID with the resolver in
+[`spark_roce_gid.py`](../../integrations/vllm/spark_roce_gid.py), which reads
+the host's GID table; a failed pair check names the index the GID moved to,
+or the RoCE v2 entries present when the address has none. To see the index
+yourself, run `python3 /usr/lib/sparkring/integrations/vllm/spark_roce_gid.py
+DEVICE ADDRESS` on the Spark.
+
 A package built from another source revision selects a separate deployment,
 even when the revisions differ only in documentation or profile text: the
 deployment lock and its ID cover the source revision and the source bundle's
@@ -561,8 +577,9 @@ Sparks have, or that differs between Sparks, stops the plan for inspection.
 SparkRing enables the mesh service, so it starts at each boot after the
 hairpin setting. Before an installation starts the model, each Spark starts its
 mesh service when it is stopped, restarts it when its routes or forwarding
-rules are missing, and re-adds a port's IPv4 address when its RoCE GID has left
-the pinned GID index, which happens on the neighbors of a Spark that restarted.
+rules are missing, and re-adds a port's IPv4 address when its RoCE v2 GID is
+not at the pinned GID index 3, which happens on the neighbors of a Spark that
+restarted.
 The installation then waits up to four minutes for the ring check on every
 Spark. `sparkring install` does not replace an existing mesh:
 `sparkring up PROFILE --fresh-mesh --plan` prints an explicit replacement plan,

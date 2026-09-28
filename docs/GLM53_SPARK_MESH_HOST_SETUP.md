@@ -389,28 +389,44 @@ operator-controlled recovery copy, not an automatic rollback program.
 
 ## 7. Verify GID index 3 and provision hardware hairpins
 
-For each RDMA device, inspect GID index 3 and its associated netdev:
+The serving containers and mesh services on this mesh use RoCE GID index 3
+on every RDMA function: the mesh plan's `roce_gid_index`, `NCCL_IB_GID_INDEX`
+and the image's B12X RoCE transport, which takes one index for all HCAs of a
+rank. For each RDMA device, print the index at which its data address has its
+RoCE v2 GID. The resolver is read-only; run it from a SparkRing checkout or
+from the installed package directory `/usr/lib/sparkring`:
 
 ```bash
 MESH_RDMA_DEVICE='rocep1s0f0'
-cat "/sys/class/infiniband/$MESH_RDMA_DEVICE/ports/1/gids/3"
-cat "/sys/class/infiniband/$MESH_RDMA_DEVICE/ports/1/gid_attrs/ndevs/3"
-cat "/sys/class/infiniband/$MESH_RDMA_DEVICE/ports/1/gid_attrs/types/3"
+MESH_IPV4='198.18.1.1'
+python3 integrations/vllm/spark_roce_gid.py "$MESH_RDMA_DEVICE" "$MESH_IPV4"
 ibv_devinfo -d "$MESH_RDMA_DEVICE" -i 1
 ```
 
+The resolver reads the GID table under
+`/sys/class/infiniband/$MESH_RDMA_DEVICE/ports/1` and prints the index of the
+single entry of type `RoCE v2` whose GID is the IPv4-mapped data address
+(`::ffff:198.18.1.1` for the table's rank-zero primary example; substitute the
+actual address if shared bootstrap allocated a different subnet). It ignores
+IPv6 and RoCE v1 entries. When no entry or more than one matches, it exits
+with status 1 and lists the RoCE v2 IPv4 entries present. Require it to print
+`3` for every function, with active MTU 4,096.
+
 Preserve IPv6 link-local addressing on the data netdevs. The example uses
 `ipv6.method link-local`; disabling IPv6 can change GID allocation so an
-IPv4 RoCE-v2 GID appears at index 1 instead of the required index 3. On the
+IPv4 RoCE-v2 GID appears at index 1 instead of index 3. On the
 netplan-managed primary profiles, retain IPv6 link-local support rather than
 adding a global IPv6-disable setting.
 
-Require index 3 to be the IPv4-mapped GID of the configured data address on
-the expected netdev, with RoCE v2 type and active MTU 4,096. For example,
-`::ffff:198.18.1.1` denotes the table's rank-zero primary example; substitute
-the actual address if shared bootstrap allocated a different subnet.
+An address whose link drops while a model or mesh service holds its GID entry
+returns at another index, typically 5; this happens on the Sparks cabled to
+one that restarts. With the model and mesh services stopped, deleting and
+adding the address again, with its prefix and flags, returns it to index 3.
+For the four-Spark installer profiles, `sparkring install` does this on every
+Spark before it starts the model; see
+[Four-Spark rings](operations/install-reference.md#four-spark-rings).
 
-If index 3 is absent, zero, mapped to another address, or has the wrong type:
+If the resolver fails or prints another index on a freshly configured host:
 
 1. Confirm the intended data profile is active and the cable link is up.
 2. Check that the netdev has the single intended IPv4 address, rather than
@@ -418,7 +434,7 @@ If index 3 is absent, zero, mapped to another address, or has the wrong type:
    explicitly created, never an unknown address or management profile.
 3. Inspect all entries under that device's `gids/` and `gid_attrs/` directories
    to identify how the driver populated the table.
-4. If the required mapping is still not at index 3, stop. This published
+4. If the address still does not resolve to index 3, stop. This published
    profile fixes GID index 3; editing only a JSON value does not retarget all
    transport paths. Do not write GID sysfs files or claim a different index
    is equivalent without a validated transport change.

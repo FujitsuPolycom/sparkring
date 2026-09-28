@@ -1162,3 +1162,18 @@ def test_control_peer_cannot_claim_another_ranks_fabric_address(document):
     peer["address"] = other["ring_ports"][0]["address"]
     with pytest.raises(SiteConfigError, match="ring address of rank"):
         validate_site(document)
+
+
+def test_roce_gid_index_is_an_optional_pin(document):
+    for rank in document["ranks"]:
+        for port in rank["ring_ports"]:
+            del port["roce_gid_index"]
+    document["ranks"][1]["ring_ports"][0]["roce_gid_index"] = 5
+    site = validate_site(document)
+    pinned = site.rank(1).ring_ports[0]
+    resolved = site.rank(0).ring_ports[0]
+    assert (pinned.roce_gid_index, pinned.gid_label, pinned.gid_fields()) == (
+        5, "gid5", {"roce_gid_index": 5})
+    assert (resolved.roce_gid_index, resolved.gid_label, resolved.gid_fields()) == (
+        None, "gid resolved", {})
+    assert "gid resolved" in "\n".join(site.summary_lines())

@@ -319,7 +319,10 @@ class RingPort:
     address: ipaddress.IPv4Address
     rdma_device: str
     rdma_port: int
-    roce_gid_index: int
+    # An explicit RoCE GID index, or None when the site pins none: preflight
+    # then reports the index of the address's RoCE v2 GID, and launchers that
+    # need a rank-wide index refuse the site.
+    roce_gid_index: int | None
     # Filled during cross-validation once both endpoints of the edge are known.
     peer_rank: int = -1
     peer_address: ipaddress.IPv4Address | None = None
@@ -336,6 +339,16 @@ class RingPort:
     @property
     def expected_gid(self) -> str:
         return ipv4_mapped_gid(self.address)
+
+    @property
+    def gid_label(self) -> str:
+        return ("gid resolved" if self.roce_gid_index is None
+                else f"gid{self.roce_gid_index}")
+
+    def gid_fields(self) -> dict[str, int]:
+        """The ``roce_gid_index`` site field, omitted when the index is resolved."""
+        return ({} if self.roce_gid_index is None
+                else {"roce_gid_index": self.roce_gid_index})
 
 
 @dataclass(frozen=True)
@@ -648,9 +661,9 @@ class SiteConfig:
             lines.append(
                 f"  {edge.id:<10} {str(edge.subnet):<18} "
                 f"rank{first} {port_a.address} ({port_a.interface}/"
-                f"{port_a.rdma_key} gid{port_a.roce_gid_index})"
+                f"{port_a.rdma_key} {port_a.gid_label})"
                 f"  <->  rank{second} {port_b.address} ({port_b.interface}/"
-                f"{port_b.rdma_key} gid{port_b.roce_gid_index})"
+                f"{port_b.rdma_key} {port_b.gid_label})"
             )
         lines.append("")
         lines.append("ranks       :")
@@ -857,8 +870,8 @@ def _validate_ring_port(raw: Any, where: str, topology: Topology) -> RingPort:
     item = _mapping(raw, where)
     _keys(
         item, where,
-        ("edge", "interface", "address", "rdma_device", "rdma_port",
-         "roce_gid_index"),
+        ("edge", "interface", "address", "rdma_device", "rdma_port"),
+        ("roce_gid_index",),
     )
     edge_id = _string(item, where, "edge", _NAME_RE, "edge id")
     try:
@@ -877,7 +890,10 @@ def _validate_ring_port(raw: Any, where: str, topology: Topology) -> RingPort:
         item, where, "rdma_device", _NAME_RE, "RDMA device name"
     )
     rdma_port = _integer(item, where, "rdma_port", RDMA_PORT_RANGE)
-    gid_index = _integer(item, where, "roce_gid_index", GID_INDEX_RANGE)
+    gid_index = (
+        _integer(item, where, "roce_gid_index", GID_INDEX_RANGE)
+        if "roce_gid_index" in item else None
+    )
     return RingPort(
         edge=edge.id,
         interface=interface,

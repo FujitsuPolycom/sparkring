@@ -37,6 +37,14 @@ site override. SparkCache recipes inherit the model, cache, ports, and serving
 values from the generated GLM base profile.
 
 The site template is a declarative input for four directly connected ranks.
+Each ring port's `roce_gid_index` is an optional pin. `scripts/preflight.py`
+resolves every ring address's RoCE v2 GID index from the host's GID table and
+reports it under `RING.ROCE_GID`. The check fails when the address has no
+single RoCE v2 GID on its ring interface, or when a pinned index differs from
+the resolved one. The generic four-rank launcher,
+`scripts/sparkring_generic_launcher.py`, requires the pin on both ring ports of
+every rank: it passes one `NCCL_IB_GID_INDEX` per rank and the same values as
+`SPARK_TP4_GID0` and `SPARK_TP4_GID1`.
 The image-identity template, `exl3-r7-candidate.example.json`, binds the
 selected image and model hashes to the transport and runtime options. Treat a
 mismatch between that template, pins, and

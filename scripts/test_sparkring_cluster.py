@@ -105,3 +105,14 @@ def test_ring_doctor_loads_cluster_without_a_deployment_site(four_document, tmp_
     assert [spec.name for spec in loaded.specs] == [
         "rank0", "rank1", "rank2", "rank3"
     ]
+
+
+def test_an_unpinned_gid_index_round_trips_as_an_absent_field(four_document):
+    for rank in four_document["ranks"]:
+        for port in rank["ring_ports"]:
+            del port["roce_gid_index"]
+    cluster = validate_cluster(four_document)
+    ports = [port for rank in cluster.to_dict()["ranks"] for port in rank["ring_ports"]]
+    assert ports and not any("roce_gid_index" in port for port in ports)
+    assert validate_cluster(cluster.to_dict()).to_dict() == cluster.to_dict()
+    assert "gid resolved" in "\n".join(cluster.summary_lines())

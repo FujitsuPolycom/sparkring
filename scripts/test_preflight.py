@@ -84,9 +84,7 @@ def healthy_lines(site, rank) -> list[str]:
         )
         lines.append(f"RDMA_STATE {port.rdma_key} 4: ACTIVE")
         lines.append(f"RDMA_LINK {port.rdma_key} Ethernet")
-        gid_key = f"{port.rdma_key}:{port.roce_gid_index}"
-        lines.append(f"GID {gid_key} {ipv4_mapped_gid(port.address)}")
-        lines.append(f"GID_TYPE {gid_key} RoCE v2")
+        lines.extend(gid_rows(port))
         lines.append(f"PING {port.edge} ok")
     for index in range(len(rank.transport_peers)):
         lines.append(f"PEER {index} ok")
@@ -114,6 +112,27 @@ def healthy_lines(site, rank) -> list[str]:
         f"@{site.runtime.container_image_digest}"
     )
     return lines
+
+
+LINK_LOCAL_GID = "fe80:0000:0000:0000:5e25:73ff:fe01:0203"
+
+
+def gid_rows(port, index=None, *, netdev=None, kind="RoCE v2") -> list[str]:
+    """GIDROW records of a port with IPv6 link-local entries at 0 and 1.
+
+    The address's RoCE v1 entry is at 2 and its RoCE v2 entry (``kind``) at
+    ``index``, which defaults to the site's pinned index or 3.
+    """
+    if index is None:
+        index = 3 if port.roce_gid_index is None else port.roce_gid_index
+    owner = netdev or port.interface
+    mapped = ipv4_mapped_gid(port.address)
+    return [
+        f"GIDROW {port.rdma_key} 0 {LINK_LOCAL_GID} {port.interface} IB/RoCE v1",
+        f"GIDROW {port.rdma_key} 1 {LINK_LOCAL_GID} {port.interface} RoCE v2",
+        f"GIDROW {port.rdma_key} 2 {mapped} {port.interface} IB/RoCE v1",
+        f"GIDROW {port.rdma_key} {index} {mapped} {owner} {kind}",
+    ]
 
 
 def healthy_transcript(site, rank) -> str:
@@ -153,8 +172,7 @@ def healthy_fabric_transcript(site, rank) -> str:
         "IF ",
         "RDMA_STATE ",
         "RDMA_LINK ",
-        "GID ",
-        "GID_TYPE ",
+        "GIDROW ",
         "PING ",
         "PEER ",
     )
@@ -273,7 +291,7 @@ def test_generated_probe_script_never_mentions_mutating_docker_verbs(site):
 def test_fabric_probe_omits_unresolved_deployment_surfaces(site):
     script = build_probe_script(site, site.rank(0), scope="fabric")
     assert "RDMA_STATE" in script
-    assert "GID_TYPE" in script
+    assert "GIDROW" in script
     assert "PING " in script
     assert "PEER " in script
     for deployment_probe in (
@@ -312,7 +330,7 @@ def test_probe_script_pings_the_far_end_of_each_edge_with_the_mtu(site):
             )
 
 
-def test_probe_script_reads_the_configured_gid_index(site):
+def test_probe_script_reads_every_populated_gid_table_entry(site):
     rank = site.rank(0)
     script = build_probe_script(site, rank)
     for port in rank.ring_ports:
@@ -320,8 +338,9 @@ def test_probe_script_reads_the_configured_gid_index(site):
             f"/sys/class/infiniband/{port.rdma_device}"
             f"/ports/{port.rdma_port}"
         )
-        assert f"{base}/gids/{port.roce_gid_index}" in script
-        assert f"{base}/gid_attrs/types/{port.roce_gid_index}" in script
+        assert f"for _g in {base}/gids/*; do" in script
+        assert f"$(v {base}/gid_attrs/ndevs/$_i)" in script
+        assert f"$(v {base}/gid_attrs/types/$_i)" in script
 
 
 def test_probe_script_covers_every_pinned_artifact(site):
@@ -389,9 +408,11 @@ def test_parse_healthy_transcript(site):
         assert state.addresses[port.interface] == {port.cidr}
         assert "ACTIVE" in state.rdma_state[port.rdma_key]
         assert state.rdma_link[port.rdma_key] == "Ethernet"
-        gid_key = f"{port.rdma_key}:{port.roce_gid_index}"
-        assert state.gids[gid_key] == ipv4_mapped_gid(port.address)
-        assert state.gid_types[gid_key] == "RoCE v2"
+        assert state.gid_tables[port.rdma_key][-1] == preflight.spark_roce_gid.GidEntry(
+            port.roce_gid_index, ipv4_mapped_gid(port.address), "RoCE v2",
+            port.interface,
+        )
+        assert len(state.gid_tables[port.rdma_key]) == 4
         assert state.pings[port.edge] == "ok"
     assert state.listening_ports == {22}
     assert state.image_id == site.runtime.container_image_digest
@@ -412,10 +433,12 @@ def test_parse_empty_output_is_not_ready():
 
 def test_parse_tolerates_unknown_and_short_records():
     state = parse_probe_output(
-        f"{preflight.PROBE_SENTINEL}\nWAT\nIF\nIPROW\nGID\n"
+        f"{preflight.PROBE_SENTINEL}\nWAT\nIF\nIPROW\nGID\nGIDROW a\n"
+        "GIDROW mlx5_0:1 x 0000:0000:0000:0000:0000:ffff:c000:020a eth1\n"
     )
     assert state.ready
     assert state.interfaces == {}
+    assert state.gid_tables == {}
 
 
 def test_parse_extracts_ports_from_ipv6_socket_rows():
@@ -678,12 +701,13 @@ DEGRADED_CASES = [
         "RING.RDMA_LINK_LAYER",
     ),
     (
-        "gid-index-shifted",
+        "gid-moved-from-the-pinned-index",
         lambda lines, site, rank: _replace(
             lines,
-            lambda line: line.startswith("GID "),
-            lambda line: " ".join(line.split()[:2])
-            + " fe80:0000:0000:0000:0000:0000:0000:0001",
+            lambda line: line.startswith(
+                f"GIDROW {rank.ring_ports[0].rdma_key} 3 "
+            ),
+            lambda line: line.replace(" 3 ", " 5 ", 1),
         ),
         "RING.ROCE_GID",
     ),
@@ -691,15 +715,26 @@ DEGRADED_CASES = [
         "gid-is-rocev1",
         lambda lines, site, rank: _replace(
             lines,
-            lambda line: line.startswith("GID_TYPE"),
-            lambda line: line.replace("RoCE v2", "RoCE v1"),
+            lambda line: line.startswith("GIDROW") and " 3 " in line,
+            lambda line: line.replace("RoCE v2", "IB/RoCE v1"),
+        ),
+        "RING.ROCE_GID",
+    ),
+    (
+        "gid-owned-by-another-interface",
+        lambda lines, site, rank: _replace(
+            lines,
+            lambda line: line.startswith("GIDROW") and " 3 " in line,
+            lambda line: line.replace(
+                f" {rank.ring_ports[0].interface} ", " br-fabric ", 1
+            ),
         ),
         "RING.ROCE_GID",
     ),
     (
         "gid-missing",
         lambda lines, site, rank: _drop(
-            lines, lambda line: line.startswith("GID ")
+            lines, lambda line: line.startswith("GIDROW")
         ),
         "RING.ROCE_GID",
     ),
@@ -1248,3 +1283,82 @@ def test_missing_or_malformed_socket_snapshot_cannot_prove_free_ports(site, snap
     results = evaluate_rank(site, site.ranks[0], parse_probe_output(transcript))
     ports = [result for result in results if result.check_id == "PORT.FREE"]
     assert ports and all(not result.passed for result in ports)
+
+
+# ==========================================================================
+# RoCEv2 GID resolution
+# ==========================================================================
+
+
+def unpinned_site(site):
+    document = yaml.safe_load(EXAMPLE_PATH.read_text(encoding="utf-8"))
+    for rank in document["ranks"]:
+        for port in rank["ring_ports"]:
+            del port["roce_gid_index"]
+    return validate_site(document)
+
+
+def gid_result(site, rank, rows_for):
+    lines = [line for line in healthy_lines(site, rank)
+             if not line.startswith("GIDROW")]
+    for port in rank.ring_ports:
+        lines.extend(rows_for(port))
+    state = parse_probe_output("\n".join(lines) + "\n")
+    return {
+        result.subject: result
+        for result in evaluate_rank(site, rank, state)
+        if result.check_id == "RING.ROCE_GID"
+    }
+
+
+def test_an_unpinned_site_passes_wherever_the_roce_v2_gid_is(site):
+    unpinned = unpinned_site(site)
+    rank = unpinned.rank(0)
+    results = gid_result(unpinned, rank, lambda port: gid_rows(port, 5))
+    for port in rank.ring_ports:
+        result = results[port.rdma_key]
+        assert result.passed
+        assert result.detail == (
+            f"resolved gid index 5 (RoCE v2 {port.address} on "
+            f"{port.interface}); no index pinned"
+        )
+
+
+def test_a_pinned_site_reports_where_the_gid_moved(site):
+    rank = site.rank(0)
+    results = gid_result(site, rank, lambda port: gid_rows(port, 5))
+    for port in rank.ring_ports:
+        result = results[port.rdma_key]
+        assert not result.passed
+        assert result.detail.startswith(
+            f"resolved gid index 5 (RoCE v2 {port.address} on "
+            f"{port.interface}); the site pins roce_gid_index 3, which "
+            "launchers use verbatim"
+        )
+    results = gid_result(site, rank, gid_rows)
+    assert all(result.passed for result in results.values())
+    assert all(result.detail.endswith("matches the pinned roce_gid_index 3")
+               for result in results.values())
+
+
+@pytest.mark.parametrize("rows,message", [
+    (lambda port: gid_rows(port, kind="IB/RoCE v1"),
+     "has no RoCE v2 GID for IPv4 address {address} on {interface} "
+     "(RoCE v2 IPv4 GIDs present: none)"),
+    (lambda port: [], "RoCE v2 IPv4 GIDs present: none"),
+    (lambda port: gid_rows(port, netdev="br-fabric"),
+     "has no RoCE v2 GID for IPv4 address {address} on {interface} "
+     "(RoCE v2 IPv4 GIDs present: index 3 ({address}, RoCE v2, br-fabric))"),
+    (lambda port: gid_rows(port) + gid_rows(port, 7)[-1:],
+     "has several RoCE v2 GIDs for IPv4 address {address} on {interface}: "
+     "index 3 "),
+])
+def test_an_unpinned_site_fails_without_exactly_one_roce_v2_gid(site, rows, message):
+    unpinned = unpinned_site(site)
+    rank = unpinned.rank(0)
+    results = gid_result(unpinned, rank, rows)
+    for port in rank.ring_ports:
+        result = results[port.rdma_key]
+        assert not result.passed
+        assert message.format(address=port.address, interface=port.interface) in result.detail
+        assert result.detail.startswith(port.rdma_key)

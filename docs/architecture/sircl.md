@@ -78,8 +78,13 @@ records the four-rank functional result and its limits.
 
 Before native construction, the GLM-5.3 adapter exchanges a capability record
 over the CPU process group. Shared protocol and artifact identities must match,
-while each rank proves its own RDMA device and GID availability. Model output
-is checked against every process-local native session after vLLM's existing
+while each rank proves its own RDMA device and GID availability. A GID index
+left unset in the launch environment is resolved per device from the host's GID
+table: the entry of type RoCE v2 that carries the device's IPv4 address. An
+index set in `SPARK_TP4_GID0`, `SPARK_TP4_GID1` or a secondary-rail variable is
+used verbatim; see the adapter's
+[GID resolution](../../integrations/vllm/README.md#roce-gid-resolution). Model
+output is checked against every process-local native session after vLLM's existing
 output synchronization. Fused kernels publish poison into mapped host control
 state so this check can reject their output without adding CUDA synchronization.
 

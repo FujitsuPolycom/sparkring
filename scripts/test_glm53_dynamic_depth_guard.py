@@ -144,3 +144,12 @@ def test_non_option_values_are_preserved():
                  "--hf-overrides", '{"some_key":"--tensor_parallel_size=4"}']
     document["extra_vllm_args"] = arguments
     assert runtime.parse_runtime_profile(document).extra_vllm_args == tuple(arguments)
+
+
+def test_generic_launch_requires_pinned_gid_indices_for_its_rank_wide_nccl_setting():
+    site, profile = configured({}, method="mtp", dcp=1)
+    port = site.rank(2).ring_ports[1]
+    object.__setattr__(port, "roce_gid_index", None)
+    with pytest.raises(runtime.ProfileError,
+                       match="rank 2 needs roce_gid_index on both ring ports"):
+        generic.build_actions(site, profile, "plan")

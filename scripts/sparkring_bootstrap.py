@@ -368,7 +368,6 @@ def build_cluster_document(
                         "address": str(outgoing.network_address + 10),
                         "rdma_device": fact.rdma_devices[0],
                         "rdma_port": 1,
-                        "roce_gid_index": 3,
                     },
                     {
                         "edge": f"r{previous}-r{rank}",
@@ -376,7 +375,6 @@ def build_cluster_document(
                         "address": str(incoming.network_address + 11),
                         "rdma_device": fact.rdma_devices[1],
                         "rdma_port": 1,
-                        "roce_gid_index": 3,
                     },
                 ],
                 "transport_peers": [

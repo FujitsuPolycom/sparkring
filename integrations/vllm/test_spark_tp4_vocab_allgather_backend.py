@@ -9,8 +9,18 @@ import unittest
 from typing import ClassVar, Self
 from unittest.mock import patch
 
+import pytest
+
 import spark_collective_audit
 import spark_tp4_vocab_allgather_backend as backend_module
+
+_RESOLVE_GID_FROM_SYSFS = backend_module._resolve_gid_index
+
+
+@pytest.fixture(autouse=True)
+def _gid_resolution_without_host_sysfs(monkeypatch):
+    """Sessions whose GID variables are unset resolve index 3, not the test host's sysfs."""
+    monkeypatch.setattr(backend_module, "_resolve_gid_index", lambda _name, _device: 3)
 
 
 class _FakeScalar:
@@ -977,3 +987,30 @@ def test_native_config_rejects_narrowing_and_preserves_boundaries(monkeypatch):
     assert config.gid0 == 255
     assert config.graph_submit_cpu_plus_one == 0xFFFFFFFF
     assert backend_module._cpu_plus_one(-1) == 0
+
+
+def test_unset_vocab_gid_indices_are_resolved_per_device(monkeypatch, tmp_path):
+    import spark_roce_gid
+
+    library = _FakeLibrary()
+    monkeypatch.setattr(backend_module, "_resolve_gid_index", _RESOLVE_GID_FROM_SYSFS)
+    monkeypatch.setattr(spark_roce_gid, "SYSFS_ROOT", tmp_path)
+    for device, netdev, address, index in (("rocep1s0f0", "enp1s0f0np0", "198.18.0.1", 5),
+                                           ("rocep1s0f1", "enp1s0f1np1", "198.18.1.1", 3)):
+        port = tmp_path / device / "ports" / "1"
+        (tmp_path / device / "device" / "net" / netdev).mkdir(parents=True)
+        for kind in ("gids", "gid_attrs/types", "gid_attrs/ndevs"):
+            (port / kind).mkdir(parents=True)
+        (port / "gids" / str(index)).write_text(spark_roce_gid.ipv4_mapped_gid(address) + "\n")
+        (port / "gid_attrs/types" / str(index)).write_text("RoCE v2\n")
+        (port / "gid_attrs/ndevs" / str(index)).write_text(netdev + "\n")
+    monkeypatch.setenv("SPARK_TP4_LIBRARY", "/fake.so")
+    monkeypatch.delenv("SPARK_TP4_GID0", raising=False)
+    monkeypatch.setenv("SPARK_TP4_GID1", "7")
+    monkeypatch.setattr(backend_module.ctypes, "CDLL", lambda _path: library)
+    backend_module._NativeVocabSession(0)
+    config = library.spark_tp4_vocab_allgather_create.calls[0][0]._obj
+    assert (config.gid0, config.gid1) == (5, 7)
+    monkeypatch.setenv("SPARK_TP4_DEVICE0", "rocep9s0f0")
+    with pytest.raises(ValueError, match="SPARK_TP4_GID0 is unset and rocep9s0f0 port 1 has no readable GID table"):
+        backend_module._NativeVocabSession(0)

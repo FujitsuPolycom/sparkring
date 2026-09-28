@@ -104,7 +104,7 @@ class ClusterConfig:
                             "address": str(port.address),
                             "rdma_device": port.rdma_device,
                             "rdma_port": port.rdma_port,
-                            "roce_gid_index": port.roce_gid_index,
+                            **port.gid_fields(),
                         }
                         for port in rank.ring_ports
                     ],
@@ -141,9 +141,9 @@ class ClusterConfig:
             lines.append(
                 f"  {edge.id:<10} {str(edge.subnet):<18} "
                 f"rank{left} {left_port.address} ({left_port.interface}/"
-                f"{left_port.rdma_key} gid{left_port.roce_gid_index}) <-> "
+                f"{left_port.rdma_key} {left_port.gid_label}) <-> "
                 f"rank{right} {right_port.address} ({right_port.interface}/"
-                f"{right_port.rdma_key} gid{right_port.roce_gid_index})"
+                f"{right_port.rdma_key} {right_port.gid_label})"
             )
         lines.append("ranks       :")
         for rank in self.ranks:

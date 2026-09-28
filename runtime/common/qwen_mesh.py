@@ -3,7 +3,6 @@
 from functools import lru_cache
 import hashlib
 import importlib.util
-import ipaddress
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -11,9 +10,12 @@ import re
 import stat
 import sys
 
+from integrations.vllm import spark_roce_gid
+
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_FILES = (
     "runtime/common/qwen_mesh.py",
+    "integrations/vllm/spark_roce_gid.py",
     "runtime/common/__init__.py",
     "runtime/common/candidate.py",
     "runtime/common/glm_source_candidate.py",
@@ -249,13 +251,15 @@ def _pinned_manager(reference, rank, host):
     return manager
 
 
-def stale_gid_ports(reference, rank, *, host=None):
-    """(netdev, IPv4 address) of each fabric port whose pinned RoCE GID slot lacks its address.
+def stale_gid_ports(reference, rank, *, host=None, sysfs_root=None):
+    """(netdev, IPv4 address) of each fabric port whose RoCE v2 GID is not at the pinned index.
 
     The kernel lists one RoCE GID per address of a port's netdev. When a
     cabled neighbor restarts, the link drops, and the port's IPv4 address can
-    return in a later slot while the fabric pins one GID index on every rank.
-    This reads sysfs only; an empty slot counts as stale.
+    return at another index while the fabric pins one GID index on every rank.
+    The address's index comes from the shared RoCE v2 GID resolver; an address
+    without a resolvable entry counts as stale. This reads sysfs only, under
+    ``sysfs_root`` when given instead of ``/sys/class/infiniband``.
     """
     reference = validate_site_reference(reference)
     host = Host() if host is None else host
@@ -263,13 +267,13 @@ def stale_gid_ports(reference, rank, *, host=None):
     index = manager.plan.roce_gid_index
     stale = []
     for port in manager.local.ports:
-        root = Path("/sys/class/infiniband") / port.rdma_device / "ports/1"
         try:
-            gid = ipaddress.IPv6Address(host.read_text(root / f"gids/{index}").strip())
-            netdev = host.read_text(root / f"gid_attrs/ndevs/{index}").strip()
-        except (OSError, ValueError):
-            gid = netdev = None
-        if gid is None or gid.ipv4_mapped != ipaddress.IPv4Address(port.ipv4) or netdev != port.netdev:
+            resolved = spark_roce_gid.resolve_gid_index(
+                port.rdma_device, port.ipv4, netdev=port.netdev, root=sysfs_root
+            )
+        except ValueError:
+            resolved = None
+        if resolved != index:
             stale.append((port.netdev, port.ipv4))
     return stale
 

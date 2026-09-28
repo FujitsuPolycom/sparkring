@@ -82,7 +82,7 @@ the following variables:
 | `SPARK_TP4_LIBRARY` | Path to `libspark_transport_capi.so` for candidate execution in either `shadow` or `custom` mode. |
 | `SPARK_TP4_PEER0`, `SPARK_TP4_PEER1` | Required site-specific direct-peer addresses; do not use placeholder defaults for serving. |
 | `SPARK_TP4_DEVICE0`, `SPARK_TP4_DEVICE1` | Local RoCE devices; defaults are `rocep1s0f0` and `rocep1s0f1`. |
-| `SPARK_TP4_GID0`, `SPARK_TP4_GID1` | GID indices; default is `3` for each device. |
+| `SPARK_TP4_GID0`, `SPARK_TP4_GID1` | Optional RoCE GID index for each device, 0-255, used verbatim. When unset, the session resolves the index from sysfs; see [RoCE GID resolution](#roce-gid-resolution). |
 | `SPARK_TP4_CONTROL_PORT0`, `SPARK_TP4_CONTROL_PORT1` | All-reduce control-port base pair, default 11000/11001. Default-width row Q adds `2*(Q-1)`; width-extension slots begin at 512. |
 | `VLLM_SPARK_TP4_GRAPH_Q1` | Set to `1` to enable width-6144 all-reduce graph sessions and, with vocabulary mode `custom`, captured vocabulary all-gather. |
 | `VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH` | Enables the implemented width-4096 captured-graph performance-testing session; mutually exclusive with the width-6144 graph paths. |
@@ -118,7 +118,7 @@ the following variables:
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0`, `SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1` | Primary prefill control-port base pair. Four admitted capacities consume this pair and the next six ports. |
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0`, `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1` | Required second-rail peer addresses in dual mode. All primary and secondary peer addresses must be distinct. |
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0`, `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1` | Required second-rail RoCE devices in dual mode. All primary and secondary device names must be distinct. |
-| `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0`, `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1` | Second-rail GID indices in the inclusive range 0-255. |
+| `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0`, `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1` | Optional second-rail GID indices, 0-255, used verbatim; resolved like `SPARK_TP4_GID0` when unset. |
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0`, `SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1` | Secondary prefill control-port base pair. |
 | `SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS` | Positive setup and operation timeout for a prefill session. |
 | `SPARK_TP4_VOCAB_CONTROL_PORT0`, `SPARK_TP4_VOCAB_CONTROL_PORT1` | Vocabulary control-port pair. |
@@ -146,6 +146,32 @@ the ABI comparison. Update the adapter on every rank together. Device names,
 GID mappings and local addresses remain rank-specific. The vote occurs when
 an eligible collective first reaches it, so it cannot diagnose a rank that
 never enters the vote; consistent launch configuration remains required.
+
+## RoCE GID resolution
+
+Each native session needs the RoCE GID table index of every local device it
+opens. An index set in `SPARK_TP4_GID0`, `SPARK_TP4_GID1` or a secondary-rail
+GID variable is used verbatim. For an unset variable the session reads the
+device's GID table from `/sys/class/infiniband/<device>/ports/1` when it is
+created and selects the single entry of type `RoCE v2` whose GID is the
+IPv4-mapped address of the device's own network interface (the interface under
+`/sys/class/infiniband/<device>/device/net`). IPv6 and RoCE v1 entries are never
+selected. The index therefore follows the address when it is registered at
+another index, for example on a Spark whose cabled neighbor restarted.
+
+Session creation fails, naming the device and the RoCE v2 IPv4 entries present,
+when the interface has no such entry or more than one IPv4 address. Set the
+variable explicitly to choose among several addresses. The rank capability
+vote resolves unset indices the same way and reports each device's index and
+whether it was configured or resolved; a resolution failure is a rank error.
+
+Resolution is implemented by [`spark_roce_gid.py`](../../../integrations/vllm/spark_roce_gid.py), which
+must be importable beside the adapters when any index is unset. It uses only
+the Python standard library, reads sysfs only, and is shared with the site
+preflight and the installer's host checks. The container needs the host's
+`/sys/class/infiniband` and, to identify the device's interface, host
+networking. On a host, `python3 spark_roce_gid.py DEVICE [IPV4]` prints the
+index or the reason none can be selected.
 
 ## Minimal qualified GLM configuration
 

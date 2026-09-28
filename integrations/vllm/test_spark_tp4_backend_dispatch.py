@@ -9,8 +9,18 @@ import types
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 import spark_collective_audit
 import spark_tp4_backend
+
+_RESOLVE_GID_FROM_SYSFS = spark_tp4_backend._resolve_gid_index
+
+
+@pytest.fixture(autouse=True)
+def _gid_resolution_without_host_sysfs(monkeypatch):
+    """Sessions whose GID variables are unset resolve index 3, not the test host's sysfs."""
+    monkeypatch.setattr(spark_tp4_backend, "_resolve_gid_index", lambda _name, _device: 3)
 
 
 class _FakeCuda:
@@ -2887,3 +2897,107 @@ def test_allreduce_native_indices_reject_narrowing(monkeypatch):
     for bad in (-2, 0xFFFFFFFF, 0x100000000):
         with pytest.raises(ValueError, match="CPU index"):
             adapter._cpu_plus_one(bad)
+
+
+def _write_roce_v2_gid(root, device, netdev, address, index):
+    import spark_roce_gid
+
+    port = root / device / "ports" / "1"
+    (root / device / "device" / "net" / netdev).mkdir(parents=True)
+    for kind in ("gids", "gid_attrs/types", "gid_attrs/ndevs"):
+        (port / kind).mkdir(parents=True)
+    (port / "gids" / str(index)).write_text(spark_roce_gid.ipv4_mapped_gid(address) + "\n")
+    (port / "gid_attrs/types" / str(index)).write_text("RoCE v2\n")
+    (port / "gid_attrs/ndevs" / str(index)).write_text(netdev + "\n")
+    return port
+
+
+def test_unset_gid_indices_are_resolved_per_device_and_set_ones_are_verbatim(monkeypatch, tmp_path):
+    import spark_roce_gid
+    import spark_tp4_backend as adapter
+    library = _FakeLibrary()
+    monkeypatch.setattr(adapter, "_resolve_gid_index", _RESOLVE_GID_FROM_SYSFS)
+    monkeypatch.setattr(spark_roce_gid, "SYSFS_ROOT", tmp_path)
+    moved = _write_roce_v2_gid(tmp_path, "rocep1s0f0", "enp1s0f0np0", "198.18.0.1", 5)
+    _write_roce_v2_gid(tmp_path, "rocep1s0f1", "enp1s0f1np1", "198.18.1.1", 3)
+    monkeypatch.setenv("SPARK_TP4_LIBRARY", "/fake.so")
+    monkeypatch.delenv("SPARK_TP4_GID0", raising=False)
+    monkeypatch.delenv("SPARK_TP4_GID1", raising=False)
+    monkeypatch.setattr(adapter.ctypes, "CDLL", lambda _path: library)
+    adapter._NativeSession(0, 12288)
+    assert (library.configs[0]["gid0"], library.configs[0]["gid1"]) == (5, 3)
+    monkeypatch.setenv("SPARK_TP4_GID0", "3")
+    adapter._NativeSession(0, 12288)
+    assert (library.configs[1]["gid0"], library.configs[1]["gid1"]) == (3, 3)
+    monkeypatch.delenv("SPARK_TP4_GID0")
+    (moved / "gids/5").write_text("0000:0000:0000:0000:0000:0000:0000:0000\n")
+    with pytest.raises(ValueError, match="SPARK_TP4_GID0 is unset and rocep1s0f0 port 1 has no RoCE v2 GID"):
+        adapter._NativeSession(0, 12288)
+    assert len(library.configs) == 2
+
+
+def test_dual_rail_secondary_gids_are_resolved_for_the_secondary_devices(monkeypatch):
+    captured = {}
+
+    def create(config_pointer, error, error_bytes):
+        del error, error_bytes
+        config = ctypes.cast(
+            config_pointer,
+            ctypes.POINTER(spark_tp4_backend._BidirectionalPrefillConfigV1),
+        ).contents
+        captured.update(primary=(config.primary.base.gid0, config.primary.base.gid1),
+                        secondary=(config.secondary_gid0, config.secondary_gid1))
+        return 1
+
+    library = types.SimpleNamespace(
+        spark_tp4_bidirectional_prefill_create=_FakeFunction(create),
+        spark_tp4_bidirectional_prefill_all_reduce=_FakeFunction(),
+        spark_tp4_bidirectional_prefill_get_health_status=_FakeFunction(),
+        spark_tp4_bidirectional_prefill_destroy=_FakeFunction(),
+    )
+    indices = {"primary0": 3, "primary1": 4, "secondary0": 5, "secondary1": 6}
+    resolved = []
+
+    def resolve(name, device):
+        resolved.append((name, device))
+        return indices[device]
+
+    monkeypatch.setattr(spark_tp4_backend, "_resolve_gid_index", resolve)
+    environment = {
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+        "SPARK_TP4_LIBRARY": "libspark_transport_capi.so",
+        "SPARK_TP4_PEER0": "192.0.2.10",
+        "SPARK_TP4_PEER1": "192.0.2.11",
+        "SPARK_TP4_DEVICE0": "primary0",
+        "SPARK_TP4_DEVICE1": "primary1",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": "192.0.2.12",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": "192.0.2.13",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": "secondary0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": "secondary1",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1": "9",
+    }
+    with (
+        patch.dict(os.environ, environment, clear=True),
+        patch.object(spark_tp4_backend.ctypes, "CDLL", return_value=library),
+    ):
+        spark_tp4_backend._BidirectionalPrefillNativeSession(0, (1024, 4096)).close()
+    assert captured == {"primary": (3, 4), "secondary": (5, 9)}
+    assert resolved == [("SPARK_TP4_GID0", "primary0"), ("SPARK_TP4_GID1", "primary1"),
+                        ("SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0", "secondary0")]
+
+
+def test_an_unset_gid_without_the_resolver_module_names_the_variable(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def without_resolver(name, *args, **kwargs):
+        if name == "spark_roce_gid":
+            raise ModuleNotFoundError("No module named 'spark_roce_gid'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_resolver)
+    with pytest.raises(ValueError, match="SPARK_TP4_GID1 is unset and the GID resolver spark_roce_gid.py"):
+        _RESOLVE_GID_FROM_SYSFS("SPARK_TP4_GID1", "rocep1s0f1")

@@ -5,12 +5,20 @@ the link goes down while a model or mesh holds that GID entry, as on the
 Sparks cabled to one that restarts, the address returns in another GID index
 and the pinned index stays empty until nothing holds the old entry. Once the
 holders have stopped, deleting and adding the address again puts it back.
+
+The installer's serving containers pin one index for every HCA of a rank: the
+image's prepared B12X RoCE transport takes one index for all of its HCAs
+(``B12X_ROCE_GID_INDEX``, else ``NCCL_IB_GID_INDEX``), and the profiles set
+``NCCL_IB_GID_INDEX`` to the pinned index. Restoring that index before a model
+starts is therefore what keeps those settings valid. The shared resolver in
+``integrations/vllm/spark_roce_gid.py`` locates each address's RoCE v2 GID; a
+failed check names the index it found or the resolver's error.
 """
-import ipaddress
 import json
 from pathlib import Path
 import time
 
+from integrations.vllm import spark_roce_gid
 from runtime.host import node
 
 SETTLE_SECONDS = 10
@@ -29,40 +37,44 @@ def readd_address(netdev, ipv4, call):
     call(["ip", "addr", "add", address, *extra, "dev", netdev])
 
 
-def stale_ports(hcas, index, *, call=node.call, root=Path("/")):
-    """(netdev, IPv4 address) of each RDMA device in ``hcas`` whose GID ``index`` lacks its RoCE v2 address.
+def locate(hcas, *, call=node.call, root=Path("/")):
+    """(netdev, IPv4 address, resolved index or resolution error) of each RDMA device in ``hcas``.
 
     Each device's netdev comes from its PCI function and must hold exactly one
-    IPv4 address. This reads sysfs and ``ip`` only; an empty index is stale.
+    IPv4 address. The index is that of the address's RoCE v2 GID owned by the
+    netdev. This reads sysfs and ``ip`` only.
     """
-    stale = []
+    sysfs = root / "sys/class/infiniband"
+    ports = []
     for device in hcas:
-        base = root / "sys/class/infiniband" / device
-        netdevs = [entry.name for entry in (base / "device/net").iterdir()]
+        netdevs = [entry.name for entry in (sysfs / device / "device/net").iterdir()]
         if len(netdevs) != 1:
             raise ValueError(f"{device} has no single network interface")
         links = json.loads(call(["ip", "-j", "-4", "addr", "show", "dev", netdevs[0]]).stdout)
         addresses = [entry["local"] for link in links for entry in link.get("addr_info", [])]
         if len(addresses) != 1:
             raise ValueError(f"{netdevs[0]} must hold exactly one IPv4 address")
-        port = base / "ports/1"
         try:
-            gid = ipaddress.IPv6Address((port / f"gids/{index}").read_text().strip())
-            owner = (port / f"gid_attrs/ndevs/{index}").read_text().strip()
-            kind = (port / f"gid_attrs/types/{index}").read_text().strip()
-        except (OSError, ValueError):
-            gid = owner = kind = None
-        if gid is None or owner != netdevs[0] or kind != "RoCE v2" or str(gid.ipv4_mapped) != addresses[0]:
-            stale.append((netdevs[0], addresses[0]))
-    return stale
+            where = spark_roce_gid.resolve_gid_index(device, addresses[0], netdev=netdevs[0], root=sysfs)
+        except ValueError as error:
+            where = error
+        ports.append((netdevs[0], addresses[0], where))
+    return ports
+
+
+def stale_ports(hcas, index, *, call=node.call, root=Path("/")):
+    """(netdev, IPv4 address) of each RDMA device in ``hcas`` whose RoCE v2 GID is not at ``index``."""
+    return [(netdev, ipv4) for netdev, ipv4, where in locate(hcas, call=call, root=root) if where != index]
 
 
 def check(hcas, index, **options):
-    """Raise ValueError naming each port whose GID ``index`` lacks its address."""
-    stale = stale_ports(hcas, index, **options)
+    """Raise ValueError naming each port whose RoCE v2 GID is not at ``index``, and where it is."""
+    stale = [(netdev, ipv4, where) for netdev, ipv4, where in locate(hcas, **options) if where != index]
     if stale:
-        raise ValueError(f"RoCE GID index {index} lacks the address of "
-                         + ", ".join(f"{netdev} ({ipv4})" for netdev, ipv4 in stale))
+        raise ValueError(f"RoCE GID index {index} lacks the address of " + ", ".join(
+            f"{netdev} ({ipv4}): " + (f"its RoCE v2 GID is at index {where}" if isinstance(where, int)
+                                      else str(where))
+            for netdev, ipv4, where in stale))
     return {"ok": True}
 
 

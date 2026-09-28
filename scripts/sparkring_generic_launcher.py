@@ -536,7 +536,7 @@ def _target_topology(site: Any) -> dict[str, Any] | None:
                         "address": str(port.address),
                         "rdma_device": port.rdma_device,
                         "rdma_port": port.rdma_port,
-                        "roce_gid_index": port.roce_gid_index,
+                        **port.gid_fields(),
                         "peer_rank": port.peer_rank,
                         "peer_address": str(port.peer_address),
                         "prefix_length": port.prefix_length,

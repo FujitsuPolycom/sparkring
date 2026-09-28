@@ -651,6 +651,12 @@ def site_context(site: Any, rank_id: int) -> dict[str, str]:
     ports = {port.peer_rank: port for port in rank.ring_ports}
     if any(peer not in peers_by_rank or peer not in ports for peer in required_peers):
         raise ProfileError(f"rank {rank_id} lacks the required XOR1/XOR3 transport peers")
+    if any(ports[peer].roce_gid_index is None for peer in required_peers):
+        raise ProfileError(
+            f"rank {rank_id} needs roce_gid_index on both ring ports: this "
+            "launcher passes one NCCL_IB_GID_INDEX for the whole rank. "
+            "scripts/preflight.py reports each port's resolved index"
+        )
     peers = [peers_by_rank[peer] for peer in required_peers]
     master = site.rank(site.serving.master_rank)
     return {

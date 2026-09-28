@@ -120,10 +120,14 @@ after `docker compose up`. Measurements:
   permitted" error**: `runtime/common/loader-seccomp.json` is not at that path
   relative to `compose.yaml`.
 - **The ranks hang at startup, or NCCL reports no usable device**: check the
-  fabric (both functions addressed, MTU 9000, GID index 3 is RoCE v2 IPv4,
-  jumbo ping works) and the `SPARKRING_*` values. `NCCL_IB_HCA` and
-  `B12X_ROCE_HCA` name `rocep1s0f0` and `roceP2p1s0f0`, the DGX Spark device
-  names for port p0.
+  fabric (both functions addressed, MTU 9000, jumbo ping works, and each
+  function's RoCE v2 IPv4 GID at index 3) and the `SPARKRING_*` values.
+  `python3 integrations/vllm/spark_roce_gid.py rocep1s0f0` in a SparkRing
+  checkout prints a function's index. After the other Spark restarted while
+  the model ran, the address can be at another index: stop both containers,
+  then delete and add the address again with its prefix and flags.
+  `NCCL_IB_HCA` and `B12X_ROCE_HCA` name `rocep1s0f0` and `roceP2p1s0f0`, the
+  DGX Spark device names for port p0.
 - **Loading fails with a missing file or a shape mismatch**: the checkpoint
   folder is incomplete, holds unresolved symlinks, or is another revision.
 

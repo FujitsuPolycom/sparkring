@@ -59,6 +59,30 @@ def _device_gid_available(
     return False
 
 
+def _gid_for_device(
+    device: str, configured: str, errors: list[str]
+) -> tuple[str, str]:
+    """``(index, source)`` the native session will use for ``device``.
+
+    A configured index is reported verbatim. Without one, the transport
+    resolves the index from sysfs, so the vote resolves it the same way and
+    records a resolution failure as a rank error.
+    """
+    if configured:
+        return configured, "configured"
+    if not device:
+        return "", "unresolved"
+    try:
+        # Imported only when an index is not configured; see
+        # spark_tp4_backend._resolve_gid_index.
+        from spark_roce_gid import resolve_device_gid_index
+
+        return str(resolve_device_gid_index(device)), "resolved"
+    except (ImportError, OSError, ValueError) as error:
+        errors.append(f"RDMA GID resolution failed: {device}: {error}")
+        return "", "unresolved"
+
+
 def _integer_setting(
     name: str,
     default: int,
@@ -292,7 +316,8 @@ def _local_capability(rank: int) -> dict[str, Any]:
             ),
         )
     rdma = []
-    for device, gid in device_specs:
+    for device, configured in device_specs:
+        gid, source = _gid_for_device(device, configured, errors)
         available = False
         try:
             available = bool(device and gid and _device_gid_available(device, gid))
@@ -302,7 +327,9 @@ def _local_capability(rank: int) -> dict[str, Any]:
             )
         if not available:
             errors.append(f"RDMA device/GID is unavailable: {device or '-'}:{gid or '-'}")
-        rdma.append({"device": device, "gid": gid, "available": available})
+        rdma.append(
+            {"device": device, "gid": gid, "gid_source": source, "available": available}
+        )
 
     manifest_path = Path(
         os.environ.get(

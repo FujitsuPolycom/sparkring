@@ -144,25 +144,34 @@ PRIMARY_NETDEV=REPLACE_WITH_PRIMARY_NETDEV
 SECONDARY_NETDEV=REPLACE_WITH_SECONDARY_NETDEV
 PEER_PRIMARY=198.18.20.2
 PEER_SECONDARY=198.18.21.2
+SPARKRING_ROOT=/usr/lib/sparkring
 ping -c 3 -I "$PRIMARY_NETDEV" "$PEER_PRIMARY"
 ping -c 3 -M do -s 8972 -I "$PRIMARY_NETDEV" "$PEER_PRIMARY"
 ping -c 3 -I "$SECONDARY_NETDEV" "$PEER_SECONDARY"
 ping -c 3 -M do -s 8972 -I "$SECONDARY_NETDEV" "$PEER_SECONDARY"
 for device in rocep1s0f0 roceP2p1s0f0; do
   printf '\n%s\n' "$device"
-  cat "/sys/class/infiniband/$device/ports/1/gids/3"
-  cat "/sys/class/infiniband/$device/ports/1/gid_attrs/ndevs/3"
-  cat "/sys/class/infiniband/$device/ports/1/gid_attrs/types/3"
+  python3 "$SPARKRING_ROOT/integrations/vllm/spark_roce_gid.py" "$device"
   ibv_devinfo -d "$device" -i 1
 done
 ```
 
+`SPARKRING_ROOT` is the installed package directory; use a SparkRing checkout
+on a host without the package. The read-only resolver prints the GID index of the
+single `RoCE v2` entry whose GID is the IPv4-mapped address of the device's
+own netdev, and fails, listing the RoCE v2 IPv4 entries present, when there is
+no such entry or the netdev holds more than one IPv4 address. Pass the address
+as a second argument to check a specific one.
+
 **Pass on each rank:** all four pings succeed, both ports are active, RDMA MTU is
-4096, and GID index 3 is RoCE v2 with the intended local IPv4-mapped address and
-matching netdev. For example `::ffff:198.18.20.1` corresponds to rank 0's primary
-address. Preserve IPv6 link-local support; disabling it can change GID ordering.
-If index 3 differs, stop and inspect addressing/driver state. Do not edit only a
-profile GID value or write GID sysfs files.
+4096, and the resolver prints `3` for both devices. The installed pair profiles
+use GID index 3 for both functions. Preserve IPv6 link-local support; disabling
+it can move the IPv4 RoCE v2 entry to index 1. If the resolver fails or prints
+another index on a freshly configured host, stop and inspect addressing/driver
+state. Do not edit only a profile GID value or write GID sysfs files. An index
+other than 3 on a host whose neighbor restarted under a running model is
+restored by the installer before the model starts
+([install reference](install-reference.md)).
 
 Recheck after reboot before model startup. These observations establish link,
 IP/MTU and GID configuration; actual RDMA collectives still require the selected

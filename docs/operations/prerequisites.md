@@ -35,9 +35,13 @@ the actual destination filesystems with `sparkring setup storage`
 - Working RoCEv2, link state, addressing and MTU on the fabric interfaces.
 - SSH from the controller, plus the profile's rendezvous and control ports.
 - Rank 0's API port reachable by the intended clients.
-- The configured GID index must still resolve to the intended address after a
-  reboot; automatic interface configuration can reorder GIDs
+- Each fabric address needs exactly one RoCE v2 GID on its interface. Its GID
+  index can change after a reboot, a neighbor restart or automatic interface
+  configuration
   ([secondary-port record](../../performance/records/transport/nccl-dual-domain-deepseek.md#serving-measurements-and-library-compatibility)).
+  `scripts/preflight.py` reports the index for each ring port, and
+  [`spark_roce_gid.py`](../../integrations/vllm/spark_roce_gid.py) prints it
+  on a host. A launch path that pins an index needs the address at that index.
 
 ### Four-Spark managed hardware-forwarded mesh
 

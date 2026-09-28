@@ -119,11 +119,36 @@ _DEFAULT_PEERS = {
 }
 
 
-def _gid_index(name: str) -> int:
-    value = int(os.getenv(name, "3"))
+def _gid_index(name: str, device: str) -> int:
+    """The RoCE GID index for ``device``: ``name`` when set, else resolved from sysfs.
+
+    A set value is used verbatim. When unset, the index is the one whose RoCE
+    v2 GID carries the IPv4 address of the device's own interface, read when
+    the session is created.
+    """
+    raw = os.getenv(name, "").strip()
+    value = _resolve_gid_index(name, device) if not raw else int(raw)
     if not 0 <= value <= 255:
         raise ValueError(f"{name} must be in [0, 255]")
     return value
+
+
+def _resolve_gid_index(name: str, device: str) -> int:
+    # Imported only when an index is not configured, so a launch bundle that
+    # sets every index explicitly does not have to carry the resolver module.
+    try:
+        from spark_roce_gid import resolve_device_gid_index
+    except ImportError as error:
+        raise ValueError(
+            f"{name} is unset and the GID resolver spark_roce_gid.py is not "
+            f"importable beside the adapter; ship it or set {name}"
+        ) from error
+    try:
+        return resolve_device_gid_index(device)
+    except ValueError as error:
+        raise ValueError(
+            f"{name} is unset and {error}; set {name} to the intended index"
+        ) from error
 
 
 def _cpu_plus_one(value: int) -> int:
@@ -990,8 +1015,8 @@ class _BidirectionalPrefillNativeSession:
             peer1=peer1.encode(),
             device0=device0.encode(),
             device1=device1.encode(),
-            gid0=_gid_index("SPARK_TP4_GID0"),
-            gid1=_gid_index("SPARK_TP4_GID1"),
+            gid0=_gid_index("SPARK_TP4_GID0", device0),
+            gid1=_gid_index("SPARK_TP4_GID1", device1),
             control_port0=control_port0,
             control_port1=control_port1,
             payload_bytes=payload_bytes,
@@ -1033,17 +1058,12 @@ class _BidirectionalPrefillNativeSession:
                 raise ValueError(
                     "dual-rail primary/secondary devices must be distinct"
                 )
-            try:
-                secondary_gid0 = int(os.getenv(
-                    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0", "3"
-                ))
-                secondary_gid1 = int(os.getenv(
-                    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1", "3"
-                ))
-            except ValueError as error:
-                raise ValueError("dual-rail secondary GIDs must be integers") from error
-            if not (0 <= secondary_gid0 <= 255 and 0 <= secondary_gid1 <= 255):
-                raise ValueError("dual-rail secondary GIDs must be in [0, 255]")
+            secondary_gid0 = _gid_index(
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0", secondary_device0
+            )
+            secondary_gid1 = _gid_index(
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1", secondary_device1
+            )
             secondary_port0, secondary_port1 = (
                 bidirectional_prefill_secondary_control_ports(query_rows)
             )
@@ -1458,14 +1478,16 @@ class _NativeSession:
 
         default_peer0, default_peer1 = _DEFAULT_PEERS[rank]
         submit_cpu, progress_cpu = graph_cpu_affinity or (-1, -1)
+        device0 = os.getenv("SPARK_TP4_DEVICE0", "rocep1s0f0")
+        device1 = os.getenv("SPARK_TP4_DEVICE1", "rocep1s0f1")
         config = _NativeConfig(
             rank=rank,
             peer0=os.getenv("SPARK_TP4_PEER0", default_peer0).encode(),
             peer1=os.getenv("SPARK_TP4_PEER1", default_peer1).encode(),
-            device0=os.getenv("SPARK_TP4_DEVICE0", "rocep1s0f0").encode(),
-            device1=os.getenv("SPARK_TP4_DEVICE1", "rocep1s0f1").encode(),
-            gid0=_gid_index("SPARK_TP4_GID0"),
-            gid1=_gid_index("SPARK_TP4_GID1"),
+            device0=device0.encode(),
+            device1=device1.encode(),
+            gid0=_gid_index("SPARK_TP4_GID0", device0),
+            gid1=_gid_index("SPARK_TP4_GID1", device1),
             control_port0=control_port0,
             control_port1=control_port1,
             payload_bytes=payload_bytes,

@@ -257,3 +257,40 @@ def test_successful_vote_is_cached_on_communicator(monkeypatch, capsys) -> None:
     assert capsys.readouterr().out == (
         "SIRCL capability vote accepted: physical_ranks=4\n"
     )
+
+
+def test_local_record_resolves_unset_gid_indices_like_the_transport(monkeypatch, tmp_path) -> None:
+    import spark_roce_gid
+
+    monkeypatch.setattr(spark_roce_gid, "SYSFS_ROOT", tmp_path)
+    port = tmp_path / "rdma0" / "ports" / "1"
+    (tmp_path / "rdma0" / "device" / "net" / "enp1s0f0np0").mkdir(parents=True)
+    for kind in ("gids", "gid_attrs/types", "gid_attrs/ndevs"):
+        (port / kind).mkdir(parents=True)
+    (port / "gids/5").write_text(spark_roce_gid.ipv4_mapped_gid("198.18.0.1") + "\n")
+    (port / "gid_attrs/types/5").write_text("RoCE v2\n")
+    (port / "gid_attrs/ndevs/5").write_text("enp1s0f0np0\n")
+    monkeypatch.setenv("SPARK_TP4_DEVICE0", "rdma0")
+    monkeypatch.setenv("SPARK_TP4_DEVICE1", "rdma1")
+    monkeypatch.delenv("SPARK_TP4_GID0", raising=False)
+    monkeypatch.setenv("SPARK_TP4_GID1", "3")
+    checked = []
+    monkeypatch.setattr(capability, "_device_gid_available",
+                        lambda device, gid: checked.append((device, gid)) or True)
+    monkeypatch.setattr(capability, "_cuda_capability", lambda errors: {"available": True, "device_count": 1})
+
+    record = capability.local_capability(0)
+
+    assert record["local"]["rdma"] == (
+        {"device": "rdma0", "gid": "5", "gid_source": "resolved", "available": True},
+        {"device": "rdma1", "gid": "3", "gid_source": "configured", "available": True},
+    )
+    assert checked == [("rdma0", "5"), ("rdma1", "3")]
+    assert not any("RDMA" in error for error in record["errors"])
+
+    (port / "gid_attrs/types/5").write_text("IB/RoCE v1\n")
+    record = capability.local_capability(0)
+    assert record["local"]["rdma"][0] == {"device": "rdma0", "gid": "", "gid_source": "unresolved",
+                                          "available": False}
+    assert any(error.startswith("RDMA GID resolution failed: rdma0: rdma0 port 1 has no RoCE v2 GID")
+               for error in record["errors"])

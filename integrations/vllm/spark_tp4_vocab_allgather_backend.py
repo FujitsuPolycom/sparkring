@@ -47,11 +47,36 @@ _DEFAULT_PEERS = {
 _Signature = int
 
 
-def _gid_index(name: str) -> int:
-    value = int(os.getenv(name, "3"))
+def _gid_index(name: str, device: str) -> int:
+    """The RoCE GID index for ``device``: ``name`` when set, else resolved from sysfs.
+
+    A set value is used verbatim. When unset, the index is the one whose RoCE
+    v2 GID carries the IPv4 address of the device's own interface, read when
+    the session is created.
+    """
+    raw = os.getenv(name, "").strip()
+    value = _resolve_gid_index(name, device) if not raw else int(raw)
     if not 0 <= value <= 255:
         raise ValueError(f"{name} must be in [0, 255]")
     return value
+
+
+def _resolve_gid_index(name: str, device: str) -> int:
+    # Imported only when an index is not configured, so a launch bundle that
+    # sets every index explicitly does not have to carry the resolver module.
+    try:
+        from spark_roce_gid import resolve_device_gid_index
+    except ImportError as error:
+        raise ValueError(
+            f"{name} is unset and the GID resolver spark_roce_gid.py is not "
+            f"importable beside the adapter; ship it or set {name}"
+        ) from error
+    try:
+        return resolve_device_gid_index(device)
+    except ValueError as error:
+        raise ValueError(
+            f"{name} is unset and {error}; set {name} to the intended index"
+        ) from error
 
 
 def _cpu_plus_one(value: int) -> int:
@@ -348,6 +373,8 @@ class _NativeVocabSession:
         _validate_control_ports(ports)
         port0, port1 = ports
         submit_cpu, progress_cpu = graph_cpu_affinity or (-1, -1)
+        device0 = os.getenv("SPARK_TP4_DEVICE0", "rocep1s0f0")
+        device1 = os.getenv("SPARK_TP4_DEVICE1", "rocep1s0f1")
         common_config = {
             "rank": rank,
             "peer0": os.getenv(
@@ -356,14 +383,10 @@ class _NativeVocabSession:
             "peer1": os.getenv(
                 "SPARK_TP4_PEER1", default_peer1
             ).encode(),
-            "device0": os.getenv(
-                "SPARK_TP4_DEVICE0", "rocep1s0f0"
-            ).encode(),
-            "device1": os.getenv(
-                "SPARK_TP4_DEVICE1", "rocep1s0f1"
-            ).encode(),
-            "gid0": _gid_index("SPARK_TP4_GID0"),
-            "gid1": _gid_index("SPARK_TP4_GID1"),
+            "device0": device0.encode(),
+            "device1": device1.encode(),
+            "gid0": _gid_index("SPARK_TP4_GID0", device0),
+            "gid1": _gid_index("SPARK_TP4_GID1", device1),
             "control_port0": port0,
             "control_port1": port1,
         }

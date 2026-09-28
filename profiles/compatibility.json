@@ -132,6 +132,11 @@
       "kind": "source"
     },
     {
+      "source": "integrations/vllm/spark_roce_gid.py",
+      "destination": "spark_transport/integrations/vllm/spark_roce_gid.py",
+      "kind": "source"
+    },
+    {
       "source": "integrations/vllm/spark_tp4_backend.py",
       "destination": "spark_transport/integrations/vllm/spark_tp4_backend.py",
       "kind": "source"

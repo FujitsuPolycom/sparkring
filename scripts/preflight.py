@@ -34,13 +34,14 @@ from pathlib import Path
 from typing import Protocol, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(1, str(Path(__file__).resolve().parents[1]))
 
+from integrations.vllm import spark_roce_gid  # noqa: E402
 from sparkring_site import (  # noqa: E402  (local import after sys.path fix)
     Rank,
     RingPort,
     SiteConfig,
     SiteConfigError,
-    ipv4_mapped_gid,
     load_site,
 )
 from sparkring_cluster import ClusterConfig  # noqa: E402
@@ -79,7 +80,8 @@ CHECK_DESCRIPTIONS: dict[str, str] = {
     "RING.RDMA_LINK_LAYER":
         "that RDMA port's link layer is Ethernet (RoCE, not InfiniBand)",
     "RING.ROCE_GID":
-        "GID at the configured index is the RoCEv2 IPv4-mapped ring address",
+        "the ring address has one RoCEv2 GID on its interface; any pinned "
+        "index matches it",
     "RING.JUMBO_PING":
         "don't-fragment ping fills the MTU across the edge to the far end",
     "PEER.CONTROL_CHANNEL":
@@ -367,15 +369,16 @@ def build_probe_script(
     for port in rank.ring_ports:
         base = f"/sys/class/infiniband/{port.rdma_device}/ports/{port.rdma_port}"
         key = port.rdma_key
-        gid_key = f"{key}:{port.roce_gid_index}"
         lines.append(f'echo "RDMA_STATE {key} $(v {base}/state)"')
         lines.append(f'echo "RDMA_LINK {key} $(v {base}/link_layer)"')
+        # One GIDROW per populated entry of the port's GID table: index, GID,
+        # owning interface, then the type last because it contains a space.
         lines.append(
-            f'echo "GID {gid_key} $(v {base}/gids/{port.roce_gid_index})"'
-        )
-        lines.append(
-            f'echo "GID_TYPE {gid_key} '
-            f'$(v {base}/gid_attrs/types/{port.roce_gid_index})"'
+            f"for _g in {base}/gids/*; do _i=${{_g##*/}}; _v=$(v \"$_g\"); "
+            'case "$_v" in -|0000:0000:0000:0000:0000:0000:0000:0000) '
+            "continue ;; esac; "
+            f'echo "GIDROW {key} $_i $_v $(v {base}/gid_attrs/ndevs/$_i) '
+            f'$(v {base}/gid_attrs/types/$_i)"; done'
         )
 
     payload = site.topology.jumbo_payload_bytes
@@ -466,8 +469,9 @@ class ProbeState:
     addresses: dict[str, set[str]] = field(default_factory=dict)
     rdma_state: dict[str, str] = field(default_factory=dict)
     rdma_link: dict[str, str] = field(default_factory=dict)
-    gids: dict[str, str] = field(default_factory=dict)
-    gid_types: dict[str, str] = field(default_factory=dict)
+    gid_tables: dict[str, list[spark_roce_gid.GidEntry]] = field(
+        default_factory=dict
+    )
     pings: dict[str, str] = field(default_factory=dict)
     peers: dict[int, str] = field(default_factory=dict)
     artifacts: dict[int, dict[str, str]] = field(default_factory=dict)
@@ -530,10 +534,15 @@ def parse_probe_output(text: str) -> ProbeState:
             state.rdma_state[tokens[1]] = " ".join(tokens[2:])
         elif key == "RDMA_LINK" and len(tokens) >= 3:
             state.rdma_link[tokens[1]] = " ".join(tokens[2:])
-        elif key == "GID" and len(tokens) >= 3:
-            state.gids[tokens[1]] = tokens[2]
-        elif key == "GID_TYPE" and len(tokens) >= 3:
-            state.gid_types[tokens[1]] = " ".join(tokens[2:])
+        elif key == "GIDROW" and len(tokens) >= 5 and tokens[2].isdigit():
+            netdev = None if tokens[4] == "-" else tokens[4]
+            kind = " ".join(tokens[5:])
+            state.gid_tables.setdefault(tokens[1], []).append(
+                spark_roce_gid.GidEntry(
+                    int(tokens[2]), tokens[3].lower(),
+                    None if kind in ("", "-") else kind, netdev,
+                )
+            )
         elif key == "PING" and len(tokens) >= 3:
             state.pings[tokens[1]] = tokens[2]
         elif key == "PEER" and len(tokens) >= 3:
@@ -858,17 +867,7 @@ def _evaluate_ring_port(site: FabricConfiguration, rank: Rank, port: RingPort,
         f"link_layer={link_layer} (want Ethernet for RoCE)",
     )
 
-    gid_key = f"{port.rdma_key}:{port.roce_gid_index}"
-    wanted_gid = ipv4_mapped_gid(port.address)
-    observed_gid = state.gids.get(gid_key, "-")
-    observed_type = state.gid_types.get(gid_key, "-")
-    type_ok = observed_type.replace(" ", "").lower() == "rocev2"
-    record(
-        "RING.ROCE_GID", f"{gid_key} (gid index {port.roce_gid_index})",
-        observed_gid == wanted_gid and type_ok,
-        f"gid={observed_gid} type={observed_type!r} "
-        f"(want {wanted_gid} 'RoCE v2')",
-    )
+    record("RING.ROCE_GID", port.rdma_key, *_roce_gid_result(port, state))
 
     outcome = state.pings.get(port.edge, "missing")
     record(
@@ -878,6 +877,37 @@ def _evaluate_ring_port(site: FabricConfiguration, rank: Rank, port: RingPort,
         f"ping -M do -s {site.topology.jumbo_payload_bytes} => {outcome}",
     )
     return results
+
+
+def _roce_gid_result(port: RingPort, state: ProbeState) -> tuple[bool, str]:
+    """Resolve the ring address's RoCEv2 GID index from the probed GID table.
+
+    Fails only when the table has no single RoCEv2 GID for the address on the
+    ring interface, or when the site pins a different index: launchers pass a
+    pinned index verbatim, so it must be the resolved one.
+    """
+    try:
+        index = spark_roce_gid.select_gid_index(
+            state.gid_tables.get(port.rdma_key, ()),
+            ipv4=str(port.address), netdev=port.interface,
+            where=port.rdma_key,
+        )
+    except ValueError as error:
+        return False, str(error)
+    detail = (
+        f"resolved gid index {index} (RoCE v2 {port.address} "
+        f"on {port.interface})"
+    )
+    pinned = port.roce_gid_index
+    if pinned is None:
+        return True, detail + "; no index pinned"
+    if pinned != index:
+        return False, (
+            f"{detail}; the site pins roce_gid_index {pinned}, which "
+            "launchers use verbatim: re-add the address while no RDMA user "
+            "runs to return it to that index, or change the pin"
+        )
+    return True, detail + f"; matches the pinned roce_gid_index {pinned}"
 
 
 def unreachable_results(rank: Rank, detail: str) -> list[CheckResult]:
