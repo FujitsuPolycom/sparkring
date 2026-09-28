@@ -16,6 +16,7 @@ identify the measurements supporting it.
 
 | Path | Purpose |
 |---|---|
+| `harnesses/acceptance/` | Installer profile acceptance: optional installation, functional checks, correctness screen, throughput, and a drafted evidence record |
 | `harnesses/bench/` | Python programs and tests for roofline, collective-attribution, and expert-bitwidth accounting |
 | `harnesses/q2r_phase_timing/` | CUDA-event phase timing and the optional Q-to-route probe bridge |
 | `harnesses/vllm/` | vLLM timing, payload-planning, flight-recording, and prefill-capacity research |
