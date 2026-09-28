@@ -2,12 +2,14 @@
 import concurrent.futures
 import inspect
 import json
+import os
 from pathlib import Path
 import posixpath
 import random
 import re
 import secrets
 import shlex
+import stat
 import subprocess
 import tempfile
 import threading
@@ -126,11 +128,18 @@ def worker_revision():
 
 
 class Assets:
-    def __init__(self, transport, directory, *, run=subprocess.run, popen=subprocess.Popen):
+    """Asset preparation for one installation.
+
+    ``download_limit`` caps checkpoint downloads from huggingface.co in bytes
+    per second; None downloads at full speed.
+    """
+
+    def __init__(self, transport, directory, *, run=subprocess.run, popen=subprocess.Popen, download_limit=None):
         self.transport = transport
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.run, self.popen = run, popen
+        self.download_limit = download_limit
 
     def command(self, rank, argv):
         return self.transport.command(rank, argv if rank == 0 else ["sudo", "-n", *argv])
@@ -549,8 +558,13 @@ class Assets:
                 outcome, transport = self.assemble(runner, rows, manifest, item)
                 pooled.append({**item, "transport": transport})
             if after["hub"]:
-                with progress.step("Node 0: Download missing checkpoint files from huggingface.co"):
-                    outcome = operation(runner, 0, "model-fetch", json.dumps({"names": after["hub"]}).encode())
+                document = {"names": after["hub"]}
+                if self.download_limit:
+                    document["limit"] = self.download_limit
+                meter = download_meter(rows[0]["model"], manifest, after["hub"])
+                with progress.step("Node 0: Download missing checkpoint files from huggingface.co", phase="model-fetch",
+                                   report=meter):
+                    outcome = operation(runner, 0, "model-fetch", json.dumps(document).encode())
             finished(outcome, 0, "assembling it from the other Sparks and huggingface.co")
             complete.add(0)
         received = self.distribute(runner, rows, manifest, after["donor"], after["receive"], complete)
@@ -686,6 +700,41 @@ def rsync_staging(model):
     """
     parent, name = posixpath.split(posixpath.normpath(model))
     return posixpath.join(parent, "." + name + ".sparkring", "receive", "rsync")
+
+
+def fetch_staging(model):
+    """``model-fetch``'s staging directory for checkpoint directory ``model``: ``fetch`` in its state directory."""
+    parent, name = posixpath.split(posixpath.normpath(model))
+    return posixpath.join(parent, "." + name + ".sparkring", "fetch")
+
+
+def staged_bytes(path):
+    """Bytes written below ``path``, counting allocated blocks so a preallocated file counts what it holds.
+
+    A missing or unreadable directory counts as empty; symlinks are not followed.
+    """
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            try:
+                info = os.lstat(os.path.join(root, name))
+            except OSError:
+                continue
+            if stat.S_ISREG(info.st_mode):
+                blocks = getattr(info, "st_blocks", None)
+                total += info.st_size if blocks is None else min(info.st_size, blocks * 512)
+    return total
+
+
+def download_meter(model, manifest, names):
+    """The progress report of a ``model-fetch`` of ``names`` into ``model`` on Node A, which runs the installer.
+
+    The download client writes into the staging directory, partial files
+    included, so the bytes there measure what arrived.
+    """
+    total = sum(int(manifest["sizes"][name]) for name in names)
+    staging = fetch_staging(model)
+    return progress.Meter(total, lambda: staged_bytes(staging))
 
 
 def receipts_for(receipts, rank):

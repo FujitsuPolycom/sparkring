@@ -57,7 +57,8 @@ image and checkpoint, then starts or switches the model.
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
 | `--ignore-local-copies` | Use only SparkRing's own checkpoint directories and named copies |
 | `--cache-path PATH` | Another writable compile cache on each Spark |
-| `--env FILE` | Setup preferences file, read on first installation ([keys](install-reference.md#optional-preferences)) |
+| `--download-limit RATE` | Cap the checkpoint download from Hugging Face: `850Mbit`, `2Gbit` or `none` ([details](install-reference.md#limit-the-download-rate)) |
+| `--env FILE` | Preferences file: setup keys on first installation, the download limit on every run ([keys](install-reference.md#optional-preferences)) |
 | `--stop-workloads` | Stop (never remove) GPU containers that are not SparkRing's |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |

@@ -225,6 +225,8 @@ sudo sparkring status --refresh --json
 - `--plan` lists a needed four-Spark ConnectX step as `apply-hairpin-setting`.
 - A configured ring is inspected without changing links; review cable or
   network changes separately with `sparkring setup`.
+- With a [download limit](#limit-the-download-rate), the result holds it in
+  `download_limit_bps`, in bits per second.
 
 ### Logs
 
@@ -237,6 +239,9 @@ sudo sparkring logs --follow
 - Concise timestamped progress is appended to
   `/var/log/sparkring/install.log`; long steps report that they are still
   working every 30 seconds.
+- A Hugging Face download adds its progress to that line, for example
+  `121 of 166 GiB, 850 Mb/s, about 7 min left`, measured from the bytes in its
+  staging directory on Node A.
 - While Node 0 waits for the API, the line names the model's startup step from
   the last 200 lines of its container log: `loading weights (shard 42/131)`,
   `weights loaded`, `compiling kernels`, `tuning kernels`,
@@ -736,6 +741,27 @@ checkpoint, Docker and the cache on one filesystem.
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 500 GiB | 669.8 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 200 GiB | 281.7 GiB |
 
+### Limit the download rate
+
+```bash
+sudo sparkring install --profile PROFILE --download-limit 850Mbit
+```
+
+`RATE` is megabits or gigabits per second, as network links are rated:
+`850Mbit`, `1.5Gbit` or `2Gbit` (any letter case, at least `1Mbit`), or
+`none`. Without the flag, the [preference](#optional-preferences)
+`SPARKRING_DOWNLOAD_LIMIT` of an `--env` file applies; the default is `none`.
+The plan prints the limit when it downloads checkpoint files.
+
+- It caps only checkpoint files that Node A downloads from huggingface.co.
+  Image pulls, copies between Sparks and `sparkring up` are not limited.
+- The download container, which runs the serving image's Hugging Face client,
+  paces every TLS read to the limit, so TCP flow control slows the sender. No
+  host network setting changes.
+- With a limit, the client's parallel downloaders (Xet and `hf_transfer`) are
+  turned off and each file arrives over one HTTPS stream. A limit above what
+  one stream reaches has no further effect.
+
 ### Finding and freeing space
 
 `sudo sparkring storage` reports each Spark's filesystem use and everything
@@ -791,8 +817,9 @@ SPARKRING_SHARE_INTERNET=yes
 SPARKRING_LINK_POLICY=keep
 ```
 
-`sudo sparkring install --env /path/to/settings.env` reads the file only for
-first-use setup, before the cluster is configured;
+`sudo sparkring install --env /path/to/settings.env` reads the setup keys
+only for first-use setup, before the cluster is configured, and
+`SPARKRING_DOWNLOAD_LIMIT` on every run;
 `sudo sparkring setup --env /path/to/settings.env` reads it on every run.
 Values are parsed as literal settings, never sourced as shell code, and SSH
 handles credential prompts.
@@ -806,6 +833,7 @@ handles credential prompts.
 | `SPARKRING_CONTROL_CIDR` | `10.253.255.0/29` | An IPv4 `/29` network | `--control-cidr` |
 | `SPARKRING_FABRIC_CIDR` | `198.18.0.0/21` | An IPv4 `/16` through `/21` network that does not overlap the control network | `--fabric-cidr` |
 | `SPARKRING_LINK_POLICY` | `keep` | `keep`, or `reset` to request reviewed replacement of fabric IPv4 settings | `--reset-links` |
+| `SPARKRING_DOWNLOAD_LIMIT` | `none` | `none`, or a rate such as `850Mbit` or `2Gbit` ([details](#limit-the-download-rate)) | `sparkring install --download-limit`, which takes precedence |
 
 `sparkring install` passes only `--env`, `--yes` and `--stop-workloads` to
 setup. `sparkring setup --plan` discovers and reviews through existing access

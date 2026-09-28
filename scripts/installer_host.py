@@ -17,6 +17,7 @@ from __future__ import annotations
 import concurrent.futures
 import errno
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -51,6 +52,67 @@ FETCH_CODE = ("import sys; from huggingface_hub import hf_hub_download; repo, re
               "[hf_hub_download(repo_id=repo, revision=rev, filename=n, local_dir='/fetch') for n in names]")
 # How long one checkpoint download container may run.
 FETCH_SECONDS = 7200
+
+
+def limit_download(rate, clock=None, sleep=None):
+    """Pace every TLS read of this Python process to ``rate`` bytes per second; returns the pacing function.
+
+    Runs inside the download container before its Hugging Face client is
+    imported. The client's HTTP libraries (requests and httpx) read through
+    ``ssl.SSLSocket.recv_into`` and ``recv``; each read is followed by a wait
+    that keeps the transfer within a token bucket holding one second of
+    ``rate``. A paused reader leaves data in the socket buffer, so TCP flow
+    control slows the sender too. The client's Xet and hf_transfer
+    downloaders read outside Python, so they are turned off and every file
+    arrives over one HTTPS stream.
+    """
+    import os
+    import ssl
+    import threading
+    import time
+    clock, sleep = clock or time.monotonic, sleep or time.sleep
+    os.environ["HF_HUB_DISABLE_XET"] = "1"
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+    lock = threading.Lock()
+    bucket = {"tokens": float(rate), "at": clock()}
+
+    def take(count):
+        with lock:
+            now = clock()
+            bucket["tokens"] = min(float(rate), bucket["tokens"] + (now - bucket["at"]) * rate) - count
+            bucket["at"] = now
+            wait = -bucket["tokens"] / rate
+        if wait > 0:
+            sleep(wait)
+
+    recv, recv_into = ssl.SSLSocket.recv, ssl.SSLSocket.recv_into
+
+    def paced_recv(self, *args, **kwargs):
+        data = recv(self, *args, **kwargs)
+        take(len(data))
+        return data
+
+    def paced_recv_into(self, *args, **kwargs):
+        count = recv_into(self, *args, **kwargs)
+        take(count)
+        return count
+
+    ssl.SSLSocket.recv, ssl.SSLSocket.recv_into = paced_recv, paced_recv_into
+    try:
+        from huggingface_hub import file_download
+    except ImportError:
+        return take
+    if hasattr(file_download, "is_xet_available"):
+        # Client versions without the HF_HUB_DISABLE_XET setting check this function.
+        file_download.is_xet_available = lambda: False
+    return take
+
+
+def fetch_code(limit=None):
+    """The download container's program: ``FETCH_CODE``, preceded by ``limit_download(limit)`` when a limit is set."""
+    if not limit:
+        return FETCH_CODE
+    return inspect.getsource(limit_download) + f"\nlimit_download({int(limit)})\n" + FETCH_CODE
 
 
 class CommandError(subprocess.CalledProcessError):
@@ -920,8 +982,11 @@ def _require_image(card):
                          "install distributes it), then repeat the command.")
 
 
-def fetch_model(lock, row, state, names, *, number):
+def fetch_model(lock, row, state, names, *, number, limit=None):
     """``model-fetch``: download pinned files that the checkpoint directory lacks, then place them.
+
+    ``limit`` caps the download in bytes per second (``limit_download``);
+    None downloads at the client's full speed.
 
     Every name must be a required file that is absent from the directory. The
     serving image's Hugging Face client writes only into the marked ``fetch``
@@ -980,13 +1045,14 @@ def fetch_model(lock, row, state, names, *, number):
                     if not _same_directory(where, fetch):
                         raise ValueError(f"{where} is no longer SparkRing's staging directory; nothing was "
                                          "downloaded. Check who can change the directories above " + str(model))
+                    limited = ["--env", "HF_HUB_DISABLE_XET=1", "--env", "HF_HUB_ENABLE_HF_TRANSFER=0"] if limit else []
                     try:
                         run(["docker", "run", "--rm", "--name", container, "--pull", "never", "--runtime", "runc",
                              "--user", "0:0", "--env", "HF_HOME=/tmp/huggingface", "--env",
-                             "HF_HUB_DISABLE_TELEMETRY=1", "--mount", f"type=bind,src={where},dst=/fetch",
+                             "HF_HUB_DISABLE_TELEMETRY=1", *limited, "--mount", f"type=bind,src={where},dst=/fetch",
                              "--entrypoint", "python3" if "image_runtime" in lock else "/opt/venv/bin/python",
-                             card["image_id"], "-c", FETCH_CODE, card["model_repository"], card["model_revision"],
-                             *pending], timeout=FETCH_SECONDS)
+                             card["image_id"], "-c", fetch_code(limit), card["model_repository"],
+                             card["model_revision"], *pending], timeout=FETCH_SECONDS)
                     except CommandError as error:
                         cause = (error.lines(1) or [f"docker run exited with status {error.returncode}"])[0]
                         raise ValueError(f"Downloading {what} from huggingface.co failed: {cause[:300]}. "
@@ -1475,9 +1541,12 @@ def model_operation(operation, lock, number, row, state):
         return adopt_model(lock, row, state, json.load(sys.stdin), number=number)
     if operation == "model-fetch":
         document = json.load(sys.stdin)
-        if not isinstance(document, dict) or set(document) != {"names"}:
-            raise ValueError("model-fetch expects {names}")
-        return fetch_model(lock, row, state, document["names"], number=number)
+        if not isinstance(document, dict) or "names" not in document or not set(document) <= {"names", "limit"}:
+            raise ValueError("model-fetch expects {names} and an optional limit")
+        limit = document.get("limit")
+        if limit is not None and (type(limit) is not int or limit <= 0):
+            raise ValueError("model-fetch expects a limit in whole bytes per second")
+        return fetch_model(lock, row, state, document["names"], number=number, limit=limit)
     if operation == "model-settled":
         return model_settled(lock, row, receipt, number=number)
     if operation == "model-check" or receipt.exists():

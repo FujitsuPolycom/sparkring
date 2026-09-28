@@ -31,7 +31,8 @@ import time
 
 from runtime.common import distribution, installer, installer_image, process_lock
 from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
-                          install_assets, models, native_mesh, node, progress, retained_source, rollout, topology)
+                          install_assets, models, native_mesh, node, progress, retained_source, rollout, settings,
+                          topology)
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
 
@@ -530,9 +531,25 @@ def hairpin_step(cluster, assets, state_root, record, *, restart_approved=True):
     return {**cluster, "plan": plan}
 
 
+def download_limit(args):
+    """Bytes per second for checkpoint downloads: ``--download-limit``, else the ``--env`` file's value; None for none.
+
+    The ``--env`` file's ``SPARKRING_DOWNLOAD_LIMIT`` is read on every run
+    that names the file, unlike its setup keys.
+    """
+    text = getattr(args, "download_limit", None)
+    try:
+        if text is None and getattr(args, "env", None):
+            text = settings.load(args.env)["SPARKRING_DOWNLOAD_LIMIT"]
+        return settings.download_limit(text or "none")
+    except (OSError, ValueError) as error:
+        raise NeedsInput(f"{error}. Nothing has been changed.", field="download_limit") from None
+
+
 def execute(args):
     state_root = controller.STATE
     require_head()
+    limit = download_limit(args)
     interactive = not args.json and sys.stdin.isatty()
     if args.allow_driver_reload:
         print("--allow-driver-reload: " + controller.ALLOW_DRIVER_RELOAD)
@@ -584,6 +601,8 @@ def execute(args):
                 raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "
                                  "replacing a running deployment." + mesh_hint, field="fabric")
             print("Configure and start the profile's supervised native fabric.")
+        if limit and checkpoint["hub_files"]:
+            print(f"Downloads from huggingface.co are limited to {progress.rate_text(limit)}.")
         # The plan's last line says what is downloaded, so it stays directly
         # above any prompt.
         for line in checkpoint_plan.describe(checkpoint):
@@ -612,6 +631,8 @@ def execute(args):
                 "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps, **installer.connection(lock)}
         if hairpin:
             plan["hairpin"] = {"required": needs_hairpin, "ranks": hairpin_ring.rank_rows(hairpin, cluster["plan"])}
+        if limit:
+            plan["download_limit_bps"] = limit * 8
         plan["checkpoint"] = checkpoint_plan.summary(checkpoint)
         if args.plan:
             save_plan(directory, {**checkpoint, "reviewed": True})
@@ -655,7 +676,7 @@ def execute(args):
         check_workloads(directory, previous, stop=approve_stop if args.stop_workloads or interactive else None)
         transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
         plan["transfer"] = transport.verify()
-        assets = install_assets.Assets(transport, directory / "assets")
+        assets = install_assets.Assets(transport, directory / "assets", download_limit=limit)
         if needs_hairpin:
             record = {}
             cluster = hairpin_step(cluster, assets, state_root, record,
@@ -740,6 +761,9 @@ def main(argv=None):
     parser.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that are not SparkRing's current deployment")
     parser.add_argument("--allow-driver-reload", action="store_true", help=controller.ALLOW_DRIVER_RELOAD)
+    parser.add_argument("--download-limit", metavar="RATE",
+                        help="cap checkpoint downloads from huggingface.co, in bits per second: 850Mbit, 2Gbit or none; "
+                             "default: SPARKRING_DOWNLOAD_LIMIT of the --env file, else none")
     args = parser.parse_args(argv)
     output = sys.stdout
     code = 0

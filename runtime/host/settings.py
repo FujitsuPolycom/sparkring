@@ -5,7 +5,29 @@ import re
 
 DEFAULTS = {"SPARKRING_NAME": "sparkring", "SPARKRING_SSH_USER": "root", "SPARKRING_SSH_PORT": "22",
             "SPARKRING_SHARE_INTERNET": "yes", "SPARKRING_CONTROL_CIDR": "10.253.255.0/29",
-            "SPARKRING_FABRIC_CIDR": "198.18.0.0/21", "SPARKRING_LINK_POLICY": "keep"}
+            "SPARKRING_FABRIC_CIDR": "198.18.0.0/21", "SPARKRING_LINK_POLICY": "keep",
+            "SPARKRING_DOWNLOAD_LIMIT": "none"}
+# The slowest accepted download limit, in bits per second.
+MIN_DOWNLOAD_BITS = 10 ** 6
+DOWNLOAD_LIMIT_HELP = "use none, or a rate in megabits or gigabits per second such as 850Mbit or 2Gbit"
+
+
+def download_limit(text):
+    """Bytes per second for a download limit such as ``850Mbit`` or ``1.5Gbit``; None for ``none``.
+
+    The unit is bits per second, as network links are rated; ``Mbit`` is 10^6
+    and ``Gbit`` 10^9 bits per second, in any letter case. A limit below 1 Mbit
+    per second is refused.
+    """
+    if text.strip().lower() == "none":
+        return None
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)([mg])bit", text.strip(), re.IGNORECASE)
+    if not match:
+        raise ValueError(f"Download limit {text!r}: " + DOWNLOAD_LIMIT_HELP)
+    bits = float(match.group(1)) * (10 ** 6 if match.group(2).lower() == "m" else 10 ** 9)
+    if bits < MIN_DOWNLOAD_BITS:
+        raise ValueError(f"Download limit {text!r} is below 1Mbit; " + DOWNLOAD_LIMIT_HELP)
+    return int(bits // 8)
 
 
 def load(path=None):
@@ -31,4 +53,5 @@ def load(path=None):
     fabric = ipaddress.IPv4Network(values["SPARKRING_FABRIC_CIDR"])
     if control.prefixlen != 29 or fabric.prefixlen not in range(16, 22) or control.overlaps(fabric):
         raise ValueError("Control requires /29; fabric requires a separate /16 through /21")
+    download_limit(values["SPARKRING_DOWNLOAD_LIMIT"])
     return values

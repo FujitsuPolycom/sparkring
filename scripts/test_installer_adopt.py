@@ -638,6 +638,22 @@ def test_fetch_refuses_unpinned_present_or_concurrent_names(env, docker):
     assert docker.runs() == [] and not (env.model / "config.json").exists()
     with pytest.raises(ValueError, match="expects"):
         env.call("model-fetch", {"names": ["config.json"], "extra": True})
+    for limit in (0, -1, 1.5, "850Mbit", True):
+        with pytest.raises(ValueError, match="limit in whole bytes per second"):
+            env.call("model-fetch", {"names": ["config.json"], "limit": limit})
+    assert docker.runs() == []
+
+
+def test_fetch_with_a_limit_runs_the_paced_program_without_the_parallel_downloaders(env, docker):
+    user = plain_folder(env.tmp / "copy", env.data, weights(env.data))
+    adopt_weights(env, user)
+    missing = sorted(set(required(env.data)) - set(weights(env.data)))
+    assert env.call("model-fetch", {"names": missing, "limit": 106_250_000})["complete"]
+    [argv] = docker.runs()
+    assert "HF_HUB_DISABLE_XET=1" in argv and "HF_HUB_ENABLE_HF_TRANSFER=0" in argv
+    code = argv[argv.index("-c") + 1]
+    assert "limit_download(106250000)" in code and code.endswith(host.FETCH_CODE)
+    assert all((env.model / name).read_bytes() == env.data[name] for name in missing)
 
 
 def in_place_env(tmp_path, monkeypatch, folder):

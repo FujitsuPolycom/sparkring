@@ -183,7 +183,7 @@ def machine(tmp_path, monkeypatch, sparks):
         # approved plan, it returns that action's result.
         on_model = None
         prepared = {}
-        def __init__(self, *a):
+        def __init__(self, *a, **kw):
             pass
         def sync_packages(self):
             events.append("update-workers")
@@ -226,6 +226,19 @@ def test_documented_command_updates_prepares_switches_and_emits_only_json(machin
     assert events.index("prepare:model-check") < events.index("previous:down") < events.index("candidate:up") < events.index("candidate:verify")
     assert "Progress:" in out.err and "Model ready:" in out.err
     assert rollout.active(controller.STATE) != previous
+
+
+def test_download_limit_comes_from_the_flag_or_the_settings_file(tmp_path):
+    settings_file = tmp_path / "settings.env"
+    settings_file.write_text("SPARKRING_DOWNLOAD_LIMIT=2Gbit\n")
+    args = SimpleNamespace(download_limit=None, env=None)
+    assert flow.download_limit(args) is None
+    assert flow.download_limit(SimpleNamespace(download_limit=None, env=settings_file)) == 250_000_000
+    assert flow.download_limit(SimpleNamespace(download_limit="850Mbit", env=settings_file)) == 106_250_000
+    assert flow.download_limit(SimpleNamespace(download_limit="none", env=settings_file)) is None
+    with pytest.raises(NeedsInput, match="850Mbit or 2Gbit") as error:
+        flow.download_limit(SimpleNamespace(download_limit="100MB/s", env=None))
+    assert error.value.field == "download_limit"
 
 
 def test_installing_the_active_model_again_restarts_it_when_it_does_not_serve(machine, monkeypatch, capsys):

@@ -73,6 +73,29 @@ def test_optional_env_is_literal_and_has_defaults(tmp_path):
             settings.load(path)
 
 
+@pytest.mark.parametrize(("text", "expected"), [
+    ("none", None), ("None", None), ("850Mbit", 106_250_000), ("850mbit", 106_250_000), ("2Gbit", 250_000_000),
+    ("1.5Gbit", 187_500_000), ("1Mbit", 125_000)])
+def test_download_limit_is_a_rate_in_bits_per_second(text, expected):
+    assert settings.download_limit(text) == expected
+
+
+@pytest.mark.parametrize("text", ["850", "850M", "100MB/s", "850 Mbit", "0.5Mbit", "-1Gbit", "fast", ""])
+def test_download_limit_refuses_other_forms_with_an_example(text):
+    with pytest.raises(ValueError, match="850Mbit or 2Gbit"):
+        settings.download_limit(text)
+
+
+def test_download_limit_is_a_settings_file_preference(tmp_path):
+    assert settings.load()["SPARKRING_DOWNLOAD_LIMIT"] == "none"
+    path = tmp_path / ".env"
+    path.write_text("SPARKRING_DOWNLOAD_LIMIT=850Mbit\n")
+    assert settings.load(path)["SPARKRING_DOWNLOAD_LIMIT"] == "850Mbit"
+    path.write_text("SPARKRING_DOWNLOAD_LIMIT=100MB\n")
+    with pytest.raises(ValueError, match="850Mbit"):
+        settings.load(path)
+
+
 def test_ssh_hops_resolve_link_scope_on_the_jump_host_and_keep_key_local(tmp_path):
     route = [{"user": "root", "address": "fe80::1", "interface": "port0", "port": 22},
              {"user": "cody", "address": "fe80::2", "interface": "port1", "port": 22}]

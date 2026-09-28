@@ -112,12 +112,14 @@ def test_unrecognized_options_pass_through_to_sparkring_install():
                + 'printf "%s\\n" "$REF" "$REPOSITORY" "${INSTALL_ARGS[@]}"\n')
     result = subprocess.run(
         [_bash(), "-s", "--", "--profile", "qwen38-flash-next-tp2", "--ref", "topic", "--yes",
-         "--repository", "/srv/sparkring.bundle", "--json"],
+         "--repository", "/srv/sparkring.bundle", "--json", "--download-limit", "850Mbit", "--events",
+         "/var/tmp/install-events.jsonl"],
         input=program, capture_output=True, text=True, timeout=10,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
-        "topic", "/srv/sparkring.bundle", "--profile", "qwen38-flash-next-tp2", "--yes", "--json"]
+        "topic", "/srv/sparkring.bundle", "--profile", "qwen38-flash-next-tp2", "--yes", "--json",
+        "--download-limit", "850Mbit", "--events", "/var/tmp/install-events.jsonl"]
 
 
 def run_script(tmp_path, *arguments, installed=None, git_fails=False, plan="planned"):

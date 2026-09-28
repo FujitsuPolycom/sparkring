@@ -473,6 +473,39 @@ def test_node_a_pools_from_adjacent_peers_by_fabric_and_others_by_rsync(tmp_path
     assert all(held == REQUIRED for held in spark.held.values())
 
 
+def test_a_download_carries_the_limit_and_reports_the_bytes_in_staging(tmp_path, pinned, monkeypatch):
+    reports = {}
+
+    @contextlib.contextmanager
+    def step(message, **kwargs):
+        reports[kwargs.get("phase")] = kwargs.get("report")
+        yield {"failed": False}
+    monkeypatch.setattr(assets.progress, "step", step)
+    rows = ranks(4)
+    plan = pooling_plan(rows)
+    spark = Spark(4)
+    fabric = Fabric(spark, 4)
+    current = assets.Assets(fabric.transport, tmp_path, run=fabric.run, popen=fabric.popen, download_limit=106_250_000)
+    current.models(lock(rows), spark, plan=plan)
+    assert ("model-fetch", 0, {"names": [W3], "limit": 106_250_000}) in transfers(spark)
+    meter = reports["model-fetch"]
+    assert meter.total == plan["required"]["sizes"][W3] and meter()["bytes_done"] == 0
+
+
+def test_staged_bytes_count_partial_files_below_the_fetch_directory(tmp_path):
+    model = tmp_path / "checkpoints" / "revision"
+    staging = Path(assets.fetch_staging(model.as_posix()))
+    assert staging == tmp_path / "checkpoints" / ".revision.sparkring" / "fetch"
+    assert assets.staged_bytes(staging) == 0
+    (staging / ".cache/huggingface/download").mkdir(parents=True)
+    (staging / "config.json").write_bytes(b"x" * 100)
+    (staging / ".cache/huggingface/download/model-1.safetensors.incomplete").write_bytes(b"y" * 5000)
+    meter = assets.download_meter(model.as_posix(), {"sizes": {"config.json": 100, "model-1.safetensors": 9900}},
+                                  ["config.json", "model-1.safetensors"])
+    fields = meter()
+    assert fields["bytes_done"] == 5100 and fields["bytes_total"] == 10000 and fields["percent"] == 51.0
+
+
 def differing_weights(payload):
     return set(payload["files"]) - {W1, W2}, {"differs": [{"name": W1, "source": f"{FOLDER}/{W1}"},
                                                           {"name": W2, "source": f"{FOLDER}/{W2}"}]}

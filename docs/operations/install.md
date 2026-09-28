@@ -52,10 +52,12 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   SparkRing, run with `--package-only` first; it installs only the package.
 - Qwen profiles install checkpoint step 5500; add `--checkpoint qad-step-4000`
   for step 4000 ([checkpoints](install-reference.md#checkpoints)).
+- `--download-limit 850Mbit` caps the model download from Hugging Face
+  ([details](install-reference.md#limit-the-download-rate)).
 
 A model that is already running keeps serving while the selected model's image
 and weights are prepared, and runs again if the selected model fails to start.
-The first start on new
+A download shows how much is done and the time left. The first start on new
 Sparks can take 10 to 30 minutes; progress names what the model is doing.
 
 The install ends with `Model ready:` and the API address. If it stops early, run the same command

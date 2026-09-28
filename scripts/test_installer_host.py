@@ -821,3 +821,32 @@ def test_readiness_wait_prints_the_loading_note_and_reads_rank_zero_log(monkeypa
     current(rows[1]["host"], ["installer", "ready", "1"], 30)
     assert runner.READINESS_INTRO not in capsys.readouterr().err and calls == []
 
+
+def test_download_limit_paces_reads_to_the_rate(monkeypatch):
+    import ssl
+    for name in ("recv", "recv_into"):
+        monkeypatch.setattr(ssl.SSLSocket, name, getattr(ssl.SSLSocket, name))
+    for key in ("HF_HUB_DISABLE_XET", "HF_HUB_ENABLE_HF_TRANSFER"):
+        monkeypatch.delenv(key, raising=False)
+    now, waits = [0.0], []
+
+    def sleep(seconds):
+        waits.append(round(seconds, 3))
+        now[0] += seconds
+    take = host.limit_download(1000, clock=lambda: now[0], sleep=sleep)
+    assert os.environ["HF_HUB_DISABLE_XET"] == "1" and os.environ["HF_HUB_ENABLE_HF_TRANSFER"] == "0"
+    assert ssl.SSLSocket.recv.__name__ == "paced_recv" and ssl.SSLSocket.recv_into.__name__ == "paced_recv_into"
+    take(1000)                  # the bucket holds one second of the rate
+    take(500)
+    take(500)
+    assert waits == [0.5, 0.5]
+    now[0] += 10                # idle time refills at most one second
+    take(1500)
+    assert waits == [0.5, 0.5, 0.5]
+
+
+def test_download_program_is_unchanged_without_a_limit_and_compiles_with_one():
+    assert host.fetch_code(None) == host.FETCH_CODE
+    code = host.fetch_code(106_250_000)
+    assert code.endswith(host.FETCH_CODE) and "\nlimit_download(106250000)\n" in code
+    compile(code, "<fetch>", "exec")
