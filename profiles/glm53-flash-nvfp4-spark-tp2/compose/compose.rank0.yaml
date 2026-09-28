@@ -75,7 +75,9 @@ services:
     - --attention-backend
     - B12X
     - --block-size
-    - '256'
+    - '1024'
+    - --mamba-block-size
+    - '1024'
     - --moe-backend
     - b12x
     - --linear-backend
@@ -148,6 +150,8 @@ services:
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH: '1'
       VLLM_GLM53_MHC_PREFILL_SHARD: '1'
+      VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE: '1024'
+      VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE: '1024'
       VLLM_HOST_IP: 192.0.2.10
       VLLM_NCCL_INCLUDE_PATH: /opt/sparkring/toolchain/nccl/include
       VLLM_NCCL_SO_PATH: /opt/sparkring/toolchain/nccl/lib/libnccl.so.2
@@ -162,7 +166,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-8e4de5f05f02-a608241037e4
     labels:
-      io.sparkring.deployment: 6afd41cff9f273f152141ac9584bcd4a04cdbcb337b2d92845b6823f8a95fbed
+      io.sparkring.deployment: 7f6d8985f3e56a8f058192a0defc2c044a4787cc5ae870234b7695e17f222248
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
