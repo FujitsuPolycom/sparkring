@@ -1,0 +1,204 @@
+SparkRing install. Progress: /var/log/sparkring/install.log
+Follow from another terminal: sudo sparkring logs --follow
+Node 0: inspect hardware, links and software
+Node 1: inspect hardware, links and software
+Done: Node 0: inspect hardware, links and software (2.4s)
+Done: Node 1: inspect hardware, links and software (3.0s)
+Looking for existing copies of XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).
+Install mimo-v26-flash-rl-tp2 on 2 Sparks.
+Update workers and prepare assets; then replace the current model.
+Checkpoint XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e: 150 files, 165.6 GiB
+Searched spark-aa42 in 7.4 s and spark-931e in 6.1 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+
+Node 0 spark-aa42 -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
+    from /var/tmp/models/XiaomiMiMo--MiMo-V2.6-Flash-MOPD
+        plain folder, files owned by root
+        2 small files checked by SHA-256; 128 weight files match by name and size only
+        SparkRing hashes them before linking. If any differs, SparkRing stops before downloading a replacement.
+    from /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-RL/5711b268169967567844e1e560e8a3966da959b1
+        plain folder, files owned by code and root
+        20 of 150 files identified by SparkRing's earlier checksums; 66 files differ from the pinned revision
+    hard-link 131 weight files (no copy, no extra space); copy 19 other files (23.0 MB)
+    needs 32.0 GiB free on / (34.4 MB for checkpoint files, 32 GiB for the compile cache; 91 GiB free)
+Node 1 spark-931e -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
+    from /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-RL/5711b268169967567844e1e560e8a3966da959b1
+        plain folder, files owned by code and root
+        20 of 150 files identified by SparkRing's earlier checksums; 66 files differ from the pinned revision
+    hard-link 3 weight files (no copy, no extra space); copy 17 other files (16.0 MB)
+    receives 130 files (160.0 GiB) from Node 0 over the fabric
+    needs 203.3 GiB free on / (171.3 GiB for checkpoint files, 32 GiB for the compile cache; 264 GiB free)
+
+Also updates the recorded file identities of the retained deployments that serve the linked folders: mimo-v26-flash-rl-tp2-i1ffa006a9860, mimo-v26-flash-rl-tp2-i4176eeeca3ae, mimo-v26-flash-rl-tp2-i6e5630b3f088, mimo-v26-flash-rl-tp2-i78c0446ccdb9, mimo-v26-flash-rl-tp2-i7b899f89050a, mimo-v26-flash-rl-tp2-ie89e8f6f0fd8, mimo-v26-flash-rl-tp2-ifc2d3e4c5157
+SparkRing checks the SHA-256 of every file before it links or copies it (about 20 s to 5 minutes per Spark); later starts compare recorded file identities and re-hash any file that changed.
+SparkRing only reads your copies and adds hard links to their weight files; it never writes, moves or deletes them.
+While this checkpoint directory exists, deleting a linked copy does not free its disk space (see sudo sparkring checkpoints).
+Nothing is downloaded.
+Refresh the package index on Node A
+Done: Refresh the package index on Node A (4.2s)
+Download worker prerequisites on Node A
+Done: Download worker prerequisites on Node A (9.1s)
+Package the installed SparkRing revision for workers
+Done: Package the installed SparkRing revision for workers (11.4s)
+Node 1: Update SparkRing from Node A's package
+Node 1: Install verified package bundle
+Done: Node 1: Install verified package bundle (8.7s)
+Done: Node 1: Update SparkRing from Node A's package (10.0s)
+Node 0: Check host before preparing assets
+Node 1: Check host before preparing assets
+Done: Node 1: Check host before preparing assets (0.5s)
+Done: Node 0: Check host before preparing assets (0.7s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Done: Node 0: Copy installer source (1.2s)
+Node 0: Verify installer source
+Done: Node 1: Copy installer source (1.2s)
+Node 1: Verify installer source
+Done: Node 1: Verify installer source (0.5s)
+Done: Node 0: Verify installer source (0.5s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Node 0: Link and verify local checkpoint files
+Node 1: Link and verify local checkpoint files
+Done: Node 1: Link and verify local checkpoint files (6.0s)
+Still working: Node 1: Prepare checkpoint and verify all shards (30s)
+Still working: Node 0: Prepare checkpoint and verify all shards (30s)
+Done: Node 0: Link and verify local checkpoint files (29.1s)
+Node 1: Copy checkpoint files from Node 0 over the fabric
+Still working: Node 1: Prepare checkpoint and verify all shards (60s)
+Still working: Node 0: Prepare checkpoint and verify all shards (60s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (30s)
+Still working: Node 1: Prepare checkpoint and verify all shards (90s)
+Still working: Node 0: Prepare checkpoint and verify all shards (90s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (60s)
+Still working: Node 1: Prepare checkpoint and verify all shards (120s)
+Still working: Node 0: Prepare checkpoint and verify all shards (120s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (90s)
+Still working: Node 1: Prepare checkpoint and verify all shards (150s)
+Still working: Node 0: Prepare checkpoint and verify all shards (150s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (120s)
+Done: Node 1: Copy checkpoint files from Node 0 over the fabric (144.4s)
+Done: Node 1: Prepare checkpoint and verify all shards (175.1s)
+Node 1: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.4s)
+Done: Node 0: Prepare checkpoint and verify all shards (175.6s)
+Node 0: Verify checkpoint receipt
+Done: Node 0: Verify checkpoint receipt (0.4s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Done: Node 1: Prepare pinned image (19.2s)
+Node 1: Verify image
+Done: Node 0: Prepare pinned image (19.4s)
+Node 0: Verify image
+Done: Node 1: Verify image (0.5s)
+Done: Node 0: Verify image (0.6s)
+SparkRing retained deployment down. Progress: /var/log/sparkring/install.log
+Follow from another terminal: sudo sparkring logs --follow
+Node 0: owned
+Node 1: owned
+Done: Node 1: owned (0.6s)
+Done: Node 0: owned (0.6s)
+Node 0: Stop model
+Node 1: Stop model
+Done: Node 0: Stop model (10.6s)
+Node 0: Confirm model stopped
+Done: Node 0: Confirm model stopped (0.6s)
+Done: Node 1: Stop model (14.4s)
+Node 1: Confirm model stopped
+Done: Node 1: Confirm model stopped (0.6s)
+Node 0: Check host and GPU availability
+Node 1: Check host and GPU availability
+Done: Node 0: Check host and GPU availability (0.5s)
+Done: Node 1: Check host and GPU availability (0.5s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Done: Node 1: Copy installer source (0.5s)
+Node 1: Verify installer source
+Done: Node 0: Copy installer source (0.6s)
+Node 0: Verify installer source
+Done: Node 1: Verify installer source (0.4s)
+Done: Node 0: Verify installer source (0.3s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Done: Node 1: Prepare checkpoint and verify all shards (0.4s)
+Node 1: Verify checkpoint receipt
+Done: Node 0: Prepare checkpoint and verify all shards (0.4s)
+Node 0: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.4s)
+Done: Node 0: Verify checkpoint receipt (0.4s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Done: Node 1: Prepare pinned image (0.5s)
+Node 1: Verify image
+Done: Node 0: Prepare pinned image (0.5s)
+Node 0: Verify image
+Done: Node 0: Verify image (0.4s)
+Done: Node 1: Verify image (0.5s)
+Node 0: Restore fabric addresses in RoCE GID index 3
+Node 1: Restore fabric addresses in RoCE GID index 3
+Done: Node 1: Restore fabric addresses in RoCE GID index 3 (0.5s)
+Node 1: Check RoCE GID index 3
+Done: Node 0: Restore fabric addresses in RoCE GID index 3 (0.5s)
+Node 0: Check RoCE GID index 3
+Done: Node 0: Check RoCE GID index 3 (0.5s)
+Done: Node 1: Check RoCE GID index 3 (0.5s)
+Node 0: Check model and fabric
+Node 1: Check model and fabric
+Done: Node 1: Check model and fabric (0.6s)
+Done: Node 0: Check model and fabric (0.6s)
+Node 0: Create stopped model container
+Node 1: Create stopped model container
+Done: Node 0: Create stopped model container (0.8s)
+Node 0: Verify model container
+Done: Node 1: Create stopped model container (0.8s)
+Node 1: Verify model container
+Done: Node 0: Verify model container (0.6s)
+Done: Node 1: Verify model container (0.6s)
+Node 1: Start model
+Done: Node 1: Start model (1.9s)
+Node 1: Check model process
+Done: Node 1: Check model process (0.8s)
+Node 0: Start model
+Done: Node 0: Start model (1.9s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.9s)
+Node 0: Wait for API readiness
+Node 1: Wait for API readiness
+Done: Node 1: Wait for API readiness (0.5s)
+Still working: Node 0: Wait for API readiness (30s)
+Still working: Node 0: Wait for API readiness (60s)
+Still working: Node 0: Wait for API readiness (90s)
+Still working: Node 0: Wait for API readiness (120s)
+Still working: Node 0: Wait for API readiness (150s)
+Still working: Node 0: Wait for API readiness (180s)
+Still working: Node 0: Wait for API readiness (210s)
+Still working: Node 0: Wait for API readiness (240s)
+Still working: Node 0: Wait for API readiness (270s)
+Still working: Node 0: Wait for API readiness (300s)
+Still working: Node 0: Wait for API readiness (330s)
+Still working: Node 0: Wait for API readiness (360s)
+Still working: Node 0: Wait for API readiness (390s)
+Still working: Node 0: Wait for API readiness (420s)
+Still working: Node 0: Wait for API readiness (450s)
+Still working: Node 0: Wait for API readiness (480s)
+Still working: Node 0: Wait for API readiness (510s)
+Still working: Node 0: Wait for API readiness (540s)
+Still working: Node 0: Wait for API readiness (570s)
+Still working: Node 0: Wait for API readiness (600s)
+Done: Node 0: Wait for API readiness (617.6s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (1.2s)
+Node 0: Confirm checkpoint unchanged during loading
+Node 1: Confirm checkpoint unchanged during loading
+Done: Node 0: Confirm checkpoint unchanged during loading (0.4s)
+Done: Node 1: Confirm checkpoint unchanged during loading (1.2s)
+Node 0: owned
+Done: Node 0: owned (0.6s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.5s)
+Node 1: owned
+Done: Node 1: owned (0.6s)
+Node 1: Check model process
+Done: Node 1: Check model process (0.5s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (0.8s)
+Model ready: http://NODE_A:8020/v1
