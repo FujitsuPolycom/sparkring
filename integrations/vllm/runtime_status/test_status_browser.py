@@ -96,7 +96,7 @@ def test_browser_refresh_pause_failure_recovery_and_mobile_layout():
             header = page.locator("header .subtitle")
             assert header.nth(0).inner_text().startswith("MiMo-V2.6-Flash-RL-TP4")
             assert header.nth(1).inner_text() == "Model architecture: mimo_v2"
-            assert page.locator(".card").first.inner_text().startswith("Worker reports\n4/4")
+            assert page.locator(".card").first.inner_text().startswith("Workers reporting\n4/4")
             assert page.locator("#report").evaluate("el => el.scrollWidth <= el.clientWidth")
             assert '32.0 GiB' in page.locator('#nodes').inner_text()
             assert '200.0 Gb/s' in page.locator('#links').inner_text()
@@ -113,11 +113,11 @@ def test_browser_refresh_pause_failure_recovery_and_mobile_layout():
             assert not page.locator("#group-1").evaluate("el => el.open")
             document["workers"]["stale"] = True
             page.locator("#refresh").click()
-            playwright.expect(page.locator(".card").first).to_contain_text("stale")
+            playwright.expect(page.locator(".card").first).to_contain_text("out of date")
             assert not page.locator("#group-1").evaluate("el => el.open")
             page.route(url, lambda route: route.abort())
             page.locator("#refresh").click()
-            playwright.expect(page.locator("#connection")).to_contain_text("previous snapshot")
+            playwright.expect(page.locator("#connection")).to_contain_text("Showing the last update")
             assert "outdated" in page.locator("#report").get_attribute("class")
             page.unroute(url)
             document["workers"]["stale"] = False

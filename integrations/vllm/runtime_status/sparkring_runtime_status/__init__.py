@@ -1,3 +1,3 @@
 """CPU metadata only; importing this package does not import vLLM or torch."""
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"

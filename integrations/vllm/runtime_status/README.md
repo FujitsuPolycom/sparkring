@@ -65,19 +65,45 @@ alias is given. The checkpoint architecture (`model_type` from the Hugging Face
 config, for example `qwen4_exp`) appears on its own `Model architecture` line.
 When the served name is unknown, the model line says so instead of showing the
 architecture. The Model and topology settings list both with per-rank values.
-Worker agreement, effective configuration and preparation remain distinct from
-execution evidence. Rank values can be expanded in the browser; mismatches
-appear inline in text.
 
-Version 0.3.2 provides passive transport, resource, library and acceptance views.
-Configured cells distinguish absent environment settings, omitted arguments and
-runtime-derived fields. Resolved cells use stored worker evidence where available;
-an unset NCCL variable is not treated as proof of a native default. Expand rank
-details for local differences and hover over evidence labels for their sources.
-Deploy its wheel through a new
-source-recorded image composition and restart the server when a deployment
-window is available. Published image receipts and running installations are
-not changed by building this package.
+The package version is 0.3.3. It provides passive transport, resource, library
+and acceptance views, and the settings tables described below. Deploy its wheel
+through a new source-recorded image composition and restart the server when a
+deployment window is available. Published image receipts and running
+installations are not changed by building this package.
+
+### Settings tables
+
+Each settings row has five columns:
+
+| Column | Content |
+| --- | --- |
+| Setting | Plain name of the setting |
+| Configured | Parsed launch argument, including its default, or allowlisted environment variable. `Not set in environment` marks an absent variable; `No separate setting` marks a value without its own launch option. |
+| Runtime value | The resolved `VllmConfig` value in the API process, or the workers' common value when the API process has none. Environment-only settings show `Not checked at runtime`. |
+| Source | `vLLM config`, `Running worker`, `Launch setting only` or `Not reported`; the tooltip names the fact source and reason in words. |
+| Workers | How the per-rank reports compare, for example `Same on both workers`; the browser expands it to per-rank values. |
+
+Colors mark rows to check. Red marks workers that report different values and a
+value that differs between the API process and the workers. Orange marks an
+explicit launch argument that vLLM replaced, a report missing from some workers,
+and missing or repeated rank numbers. Every other row is neutral. The
+`Settings to check` card counts red and orange rows.
+
+Two differences that vLLM makes by design are neutral:
+
+- A dtype that names a more specific form of the configured or API-process
+  dtype, such as `fp8_ds_mla` or `fp8_e4m3` for `fp8`, or any dtype for `auto`.
+  A worker value of this kind is shown as `fp8 (fp8_ds_mla on workers)`. The
+  rule applies only to settings whose key ends in `_dtype`; other prefixes, such
+  as CUDA graph modes `FULL` and `FULL_AND_PIECEWISE`, remain differences.
+- A KV cache block size that vLLM changed from the configured value. The
+  runtime value carries a `*` marker and a footnote under its table.
+
+Configured and runtime values, worker agreement and kernel preparation describe
+configuration; they do not show which kernel or transport served a request. An
+unset NCCL variable is not treated as proof of a native default. The text view
+prints the same tables and lists per-rank values under each red row.
 
 Offline view tests are included in the component suite:
 
@@ -333,3 +359,33 @@ limits, authentication with the pinned vLLM middleware when present, rank errors
 cache freshness, concurrent callers, client cancellation and read-only routing.
 It uses fake worker metadata and an in-memory ASGI app; it never starts an engine
 or accesses a GPU.
+
+## Building the image artifacts
+
+An installer image replaces its runtime-status package from a pure wheel and a
+source archive pinned by file name and SHA-256
+([Replacing the runtime-status package](../../../runtime/images/installer-images.md#replacing-the-runtime-status-package)).
+Both are built from a commit of this directory into a directory outside the
+repository. Run the commands from the repository root with Python 3.12,
+setuptools 78.1.0 and pip 24.0:
+
+```bash
+COMMIT=$(git rev-parse HEAD)
+VERSION=0.3.3
+OUT=~/status-$VERSION
+mkdir -p "$OUT" ~/status-$VERSION-stage
+git archive --format=tar.gz -9 --prefix=runtime_status/ \
+  "$COMMIT:integrations/vllm/runtime_status" > "$OUT/sparkring-runtime-status-$VERSION-source.tar.gz"
+tar -xzf "$OUT/sparkring-runtime-status-$VERSION-source.tar.gz" -C ~/status-$VERSION-stage
+EPOCH=$(stat -c %Y ~/status-$VERSION-stage/runtime_status/pyproject.toml)
+cd ~/status-$VERSION-stage/runtime_status
+SOURCE_DATE_EPOCH=$EPOCH python -m pip wheel --no-deps --no-build-isolation --no-index --wheel-dir "$OUT" .
+sha256sum "$OUT"/*
+```
+
+`git archive` of a tree stamps every member with the time it runs; the wheel
+takes that time from `SOURCE_DATE_EPOCH`, so its bytes follow from the archive.
+For Git tree `74407675db01502e57ad6131103a8bbdb3db3bd8` of this directory, the
+archive differs from the pinned 0.3.2 source archive only in that time stamp
+(1790540628 in the pinned archive), and the wheel built from the pinned archive
+equals the pinned 0.3.2 wheel byte for byte.

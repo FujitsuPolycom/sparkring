@@ -125,10 +125,11 @@ source-archive SHA-256. The layer's Dockerfile removes the parent version's
 `dist-info` directory before copying the wheel's files, and `record` writes the
 wheel's version into the lock's `status_version`. `composition_sha256` keeps
 naming the parent's composition; the provenance receipt records the replaced
-status version and files. The `installer-b12xcache-status032` wheel and source
-archive were built from the source now in
-[integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md)
-(version 0.3.2).
+status version and files. The `installer-b12xcache-status032` descriptor pins
+the version 0.3.2 wheel and source archive, built from Git tree
+`74407675db01502e57ad6131103a8bbdb3db3bd8` of
+[integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md#building-the-image-artifacts),
+whose README gives the build commands.
 
 ### Commands
 

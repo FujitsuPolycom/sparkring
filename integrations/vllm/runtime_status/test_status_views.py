@@ -71,15 +71,15 @@ def test_resident_transport_resolves_without_inventing_nccl_defaults():
     view = presentation.summarize(doc)
     rows = {row['label']: row for _, group in view['groups'] for row in group}
     assert rows['RoCEnante available (TP)']['resolved'] == 'ON'
-    assert rows['RoCE AR ceiling']['resolved'] == '2 MiB'
+    assert rows['RoCE all-reduce size limit']['resolved'] == '2 MiB'
     assert rows['NCCL runtime version (TP)']['resolved'] == '2.32.3'
     assert rows['NCCL algorithm override']['configured'] == 'Not set in environment'
-    assert rows['NCCL algorithm override']['resolved'] == 'No runtime confirmation'
-    assert rows['NCCL algorithm override']['evidence'] != 'Resident runtime'
+    assert rows['NCCL algorithm override']['resolved'] == 'Not checked at runtime'
+    assert rows['NCCL algorithm override']['evidence'] != 'Running worker'
     doc['workers']['ranks'][1]['effective']['tp_roce_hcas']['value'] = 'rdma2,rdma3'
     row = next(row for _, group in presentation.summarize(doc)['groups'] for row in group
                if row['label'] == 'RoCEnante selected HCAs')
-    assert row['severity'] != 'bad' and row['resolved'] == 'See per-node values'
+    assert row['severity'] != 'bad' and row['resolved'] == 'Differs by node'
 
 
 def test_resource_versions_link_rates_and_acceptance_have_explicit_scopes():
@@ -89,11 +89,11 @@ def test_resource_versions_link_rates_and_acceptance_have_explicit_scopes():
     for value in ('32.0 GiB', '256.0 GiB', '580.173.02', '13.0', '13.4.2', '2.32.3',
                   '200.0 Gb/s', '16.0 GT/s × 4', '0002:01:00.0', '60.0%', '2.80', '1.0 MiB'):
         assert value in text and value in html
-    assert 'No drafts in this window' in text
-    assert 'not measured payload bandwidth' in html
-    assert 'Host cumulative port counters, not process traffic' in html
-    assert 'No bandwidth or latency test is run' in html
-    assert 'Unlimited' in text and 'Not observed' in text
+    assert 'No drafts in this period' in text
+    assert 'not measured throughput' in html
+    assert 'Running totals for the whole host, not only this model' in html
+    assert 'This page runs no bandwidth or latency test' in html
+    assert 'Unlimited' in text and 'No data' in text
 
 
 def test_unused_single_rank_groups_are_collapsed_without_hiding_active_groups():
@@ -106,7 +106,7 @@ def test_unused_single_rank_groups_are_collapsed_without_hiding_active_groups():
     sections = {s['id']: s for s in presentation.detail_sections(doc, presentation.summarize(doc))}
     assert sections['singleton-groups']['open'] is False
     assert sections['singleton-groups']['rows'][0][1] == 'PP'
-    assert sections['singleton-groups']['rows'][0][3] == 'Not applicable (one rank)'
+    assert sections['singleton-groups']['rows'][0][3] == 'Not needed (one worker)'
     assert any(row[1] == 'EP' for row in sections['communicators']['rows'])
     assert not any(row[1] == 'PP' for row in sections['communicators']['rows'])
     groups['PP']['nccl']['available'] = fact(True)
@@ -151,7 +151,8 @@ def test_views_share_the_existing_snapshot_cache_and_preserve_json():
         assert text.headers["content-type"].startswith("text/plain")
         assert html.headers["content-type"].startswith("text/html")
         assert "Tensor parallel" in text.text and "Tensor parallel" in html.text
-        assert "Configured and prepared values are not request execution evidence" in text.text
+        assert "Unknown values do not mean OFF." in text.text and "Unknown values do not mean OFF." in html.text
+        assert "execution evidence" not in text.text + html.text
         assert len(engine.calls) == 1
         for path in ("/v1/sparkring/status", "/v1/sparkring/status.txt", "/v1/sparkring/status/view"):
             assert client.post(path).status_code == 405
@@ -165,7 +166,8 @@ def test_initialization_preserves_503_with_correct_representation(suffix):
     with TestClient(app) as client:
         response = client.get("/v1/sparkring/status" + suffix)
     assert response.status_code == 503
-    assert "initializing" in response.text
+    # JSON keeps the schema's state value; the text and browser views name it plainly.
+    assert ("initializing" in response.text) if suffix == "" else ("starting up" in response.text.lower())
     assert response.headers["cache-control"] == "no-store"
 
 
@@ -202,14 +204,91 @@ def test_mismatch_partial_unknown_and_stale_are_not_presented_as_success():
     doc["workers"]["ranks"][1]["effective"]["tensor_parallel_size"]["value"] = 4
     view = presentation.summarize(doc)
     row = next(row for _, rows in view["groups"] for row in rows if row["label"] == "Tensor parallel")
-    assert row["severity"] == "bad" and row["agreement"] == "Workers differ"
+    assert row["severity"] == "bad" and row["agreement"] == "Workers report different values"
     assert "rank 0=2; rank 1=4" in presentation.render_text(doc)
-    assert "Unknown on all 2 ranks" in presentation.render_text(doc)
+    assert "Unknown on both workers" in presentation.render_text(doc)
     doc["workers"]["stale"] = True
     assert presentation.summarize(doc)["complete"] is False
-    assert "stale" in presentation.render_report(doc)[1]
+    assert "out of date" in presentation.render_report(doc)[1]
     doc["workers"]["rank_identities_unique"] = False
-    assert "2/2 agree" not in presentation.render_text(doc)
+    text = presentation.render_text(doc)
+    assert "Same on both workers" not in text
+    assert "2 of 2 reported, but rank numbers are missing or repeated" in text
+
+
+def settings_row(doc, label):
+    return next(row for _, rows in presentation.summarize(doc)["groups"] for row in rows if row["label"] == label)
+
+
+def test_specific_cache_format_on_workers_agrees_with_its_family():
+    doc = fixture()
+    doc["configured"]["arguments"]["cache_dtype"] = {"state": "known", "value": "fp8",
+                                                     "source": "parsed_server_arguments"}
+    for rank in doc["workers"]["ranks"]:
+        rank["effective"]["cache_dtype"]["value"] = "fp8_ds_mla"
+    row = settings_row(doc, "KV cache dtype")
+    assert (row["resolved"], row["agreement"], row["comparison"], row["severity"]) == (
+        "fp8 (fp8_ds_mla on workers)", "Same on both workers", "", "neutral")
+    html = presentation.render_report(doc)[1]
+    assert '<details class="rank-detail neutral"><summary>Same on both workers</summary><ul><li>Rank 0: fp8_ds_mla</li>' in html
+    assert "API != workers" not in html + presentation.render_text(doc)
+    assert presentation.summarize(doc)["issue_count"] == presentation.summarize(fixture())["issue_count"]
+    # An automatic cache dtype resolves to a concrete one.
+    doc["effective"]["cache_dtype"]["value"] = "auto"
+    assert settings_row(doc, "KV cache dtype")["resolved"] == "auto (fp8_ds_mla on workers)"
+    # A different family is a real disagreement between the API process and the workers.
+    doc["effective"]["cache_dtype"]["value"] = "bfloat16"
+    row = settings_row(doc, "KV cache dtype")
+    assert row["comparison"] == "vLLM changed the configured value. The API and the workers report different values"
+    assert row["severity"] == row["comparison_severity"] == "bad"
+    assert row["agreement_severity"] == "neutral"
+
+
+def test_prefix_rule_applies_only_to_dtypes():
+    fact = lambda value: {"state": "known", "value": value}
+    assert presentation.refines(fact("fp8"), fact("fp8_e4m3"), "cache_dtype")
+    assert not presentation.refines(fact("fp8_e4m3"), fact("fp8"), "cache_dtype")
+    assert not presentation.refines(fact("fp8"), fact("fp8x"), "cache_dtype")
+    assert not presentation.refines(fact("FULL"), fact("FULL_AND_PIECEWISE"), "cudagraph_mode")
+
+
+def test_block_size_enlarged_by_vllm_is_footnoted_not_flagged():
+    doc = fixture()
+    # The shared fixture configures block_size 32; vLLM resolved 1440 in the API process and workers.
+    row = settings_row(doc, "KV cache block size")
+    assert (row["configured"], row["resolved"], row["agreement"], row["severity"]) == (
+        "32", "1,440 *", "Same on both workers", "neutral")
+    assert row["footnote"].startswith("* vLLM adjusts the KV cache block size")
+    text = presentation.render_text(doc)
+    html = presentation.render_report(doc)[1]
+    assert "\n* vLLM adjusts the KV cache block size to suit the model" in text
+    assert '<p class="footnote">* vLLM adjusts the KV cache block size' in html
+    assert "Adjusted for alignment" not in text + html
+    # A worker that differs is still a real problem.
+    doc["workers"]["ranks"][1]["effective"]["block_size"]["value"] = 16
+    row = settings_row(doc, "KV cache block size")
+    assert row["agreement"] == "Workers report different values" and row["severity"] == "bad"
+
+
+def test_changed_setting_marks_the_note_without_coloring_agreeing_workers():
+    doc = fixture()
+    doc["configured"]["arguments"]["max_num_seqs"] = {"state": "known", "value": 8,
+                                                      "source": "parsed_server_arguments"}
+    row = settings_row(doc, "Max sequences per batch")
+    assert (row["comparison"], row["comparison_severity"]) == ("vLLM changed the configured value", "warn")
+    assert (row["agreement"], row["agreement_severity"], row["severity"]) == ("Same on both workers", "neutral", "warn")
+    html = presentation.render_report(doc)[1]
+    assert ('<details class="rank-detail neutral"><summary>Same on both workers</summary><ul><li>Rank 0: 16</li>'
+            '<li>Rank 1: 16</li></ul></details><small class="comparison warn">vLLM changed the configured value</small>') in html
+
+
+def test_partial_worker_reports_are_worded_plainly():
+    doc = fixture()
+    del doc["workers"]["ranks"][1]["effective"]["max_num_seqs"]
+    row = settings_row(doc, "Max sequences per batch")
+    assert (row["agreement"], row["severity"]) == ("Only 1 of 2 workers reported", "warn")
+    doc["workers"]["expected_count"] = None
+    assert settings_row(doc, "Max sequences per batch")["agreement"] == "Reported by 1 worker; expected count unknown"
 
 
 def test_header_names_the_served_model_and_keeps_the_architecture_line():
@@ -228,16 +307,16 @@ def test_header_names_the_served_model_and_keeps_the_architecture_line():
     rows = {row["label"]: row for row in dict(presentation.summarize(doc)["groups"])["Model and topology"]}
     served, architecture = rows["Served model name"], rows["Model architecture"]
     assert (served["configured"], served["resolved"], served["evidence"], served["agreement"]) == (
-        "From launch arguments", "Qwen3.8-Flash-Next-NVFP4-QAD-TP2", "Resolved configuration", "2/2 agree")
+        "From launch arguments", "Qwen3.8-Flash-Next-NVFP4-QAD-TP2", "vLLM config", "Same on both workers")
     assert (architecture["configured"], architecture["resolved"]) == ("From checkpoint", "qwen4_exp")
     # Architecture-specific settings still follow model_type, never the name.
-    assert "HC prefill ownership" in text
+    assert "Hyper-connection prefill row ownership" in text
     doc["effective"]["model_type"]["value"] = "mimo_v2"
-    assert "HC prefill ownership" not in presentation.render_text(doc)
+    assert "Hyper-connection prefill row ownership" not in presentation.render_text(doc)
     doc["workers"]["ranks"][1]["effective"]["served_model_name"]["value"] = "Other-Name"
     served = next(row for row in dict(presentation.summarize(doc)["groups"])["Model and topology"]
                   if row["label"] == "Served model name")
-    assert served["severity"] == "bad" and served["agreement"] == "Workers differ"
+    assert served["severity"] == "bad" and served["agreement"] == "Workers report different values"
 
 
 def test_unknown_served_name_is_not_replaced_by_the_architecture():
@@ -266,6 +345,6 @@ def test_identity_and_qwen_specific_fields():
     doc = fixture()
     text = presentation.render_text(doc)
     assert "SparkRing shared-2026.09.4-rc.4" in text and "eugr/spark-vllm-b12x:nightly-20260923" in text
-    assert "HC prefill ownership" not in text
+    assert "Hyper-connection prefill row ownership" not in text
     doc["effective"]["model_type"]["value"] = "qwen4_exp"
-    assert "HC prefill ownership" in presentation.render_text(doc)
+    assert "Hyper-connection prefill row ownership" in presentation.render_text(doc)
