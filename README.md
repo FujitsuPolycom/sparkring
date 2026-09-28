@@ -56,7 +56,7 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | 57.6 / 181 / 258 | 3,628 |
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 38.0 / 108 / — | 2,419 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 65.9 / 208 / 267 | 3,631 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 64.0 / 206 / 284 | 3,644 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 31.0 / 123 / 193 | 2,473 |
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 47.2 / 197 / 340 | 4,002 |
 | DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 63.5 / 195 / 277 | 4,271 |
@@ -67,15 +67,16 @@ Decode is the aggregate output rate from
 cold 64K-token prompt divided by its time to first token. Every profile runs
 image `dev-20260928-plainstatus-cuda1342-nccl2323-status033`; the rows were
 measured on its parent, `dev-20260928-toolchoice-cuda1342-nccl2323-status032`,
-which differs only in the runtime-status dashboard, except the four-Spark Qwen
-row, measured on `dev-20260927-b12xcache-cuda1342-nccl2323-status032`. The
+which differs only in the runtime-status dashboard, except the four-Spark GLM
+row, the median of two runs on this image, and the four-Spark Qwen row,
+measured on `dev-20260927-b12xcache-cuda1342-nccl2323-status032`. The
 tokens accepted per speculative step follow the sampled text at temperature
 1.0, so one-stream decode varies between single runs: MiMo on two Sparks has
 measured from 31.0 to 44.9 tok/s at the same step rate.
 Measurements:
 Qwen [two](performance/records/images/dev-20260928-toolchoice-qwen38-flash-next-tp2-20260928.md) and [four](performance/records/images/dev-20260927-b12xcache-qwen38-flash-next-tp4-20260927.md) Sparks,
 Swift [two](performance/records/images/dev-20260928-toolchoice-swift15-qwen38-flash-next-tp2-20260928.md),
-GLM [two](performance/records/images/dev-20260928-toolchoice-glm53-flash-nvfp4-spark-tp2-20260928.md) and [four](performance/records/images/dev-20260928-toolchoice-glm53-flash-nvfp4-spark-tp4-20260928.md),
+GLM [two](performance/records/images/dev-20260928-toolchoice-glm53-flash-nvfp4-spark-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-20260928.md),
 MiMo [two](performance/records/images/dev-20260928-toolchoice-mimo-v26-flash-rl-tp2-20260928.md) and [four](performance/records/images/dev-20260928-toolchoice-mimo-v26-flash-rl-tp4-20260928.md),
 DeepSeek [four](performance/records/images/dev-20260928-toolchoice-deepseek-v41-flash-tp4-20260928.md).
 
