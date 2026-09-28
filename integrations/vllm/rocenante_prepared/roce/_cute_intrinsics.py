@@ -2,10 +2,11 @@
 
 Payload slots and flags live in pinned host memory that the NIC writes by
 RDMA and the GPU reads in place, so every access to them is spelled out with
-system scope: ``ld.relaxed.sys`` for payload packs, ``ld.acquire.sys`` for the
-arrival flag, ``st.relaxed.sys`` plus ``fence.sc.sys`` for the doorbell the
-proxy thread polls.  Keeping them as small user ops makes the protocol
-explicit and independent of compiler defaults.
+system scope: ``ld.relaxed.sys`` for payload packs and the host abort word,
+``ld.acquire.sys`` for the arrival flag, ``st.relaxed.sys`` plus
+``fence.sc.sys`` for the doorbell the proxy thread polls.  Keeping them as
+small user ops makes the protocol explicit and independent of compiler
+defaults.
 """
 
 from __future__ import annotations
@@ -115,27 +116,16 @@ def fence_sc_gpu(*, loc=None, ip=None) -> None:
     _asm(None, [], "fence.sc.gpu;", "", loc=loc, ip=ip)
 
 
-@dsl_user_op
-def spin_until_eq_acquire_sys(
-    addr: Int64, expected: Uint32, limit: Uint32, *, loc=None, ip=None
-) -> Uint32:
-    """Spin until the word at ``addr`` equals ``expected`` (system scope).
+# Polls between two reads of the host abort word; a power of two, so the
+# check is a mask of the poll counter.
+ABORT_CHECK_POLLS = 1024
 
-    Returns 0 on success and 1 after ``limit`` polls without a match, so a
-    dead peer or proxy surfaces as an error instead of a hung kernel.
-    """
-    return Uint32(
-        _asm(
-            T.i32(),
-            [
-                Int64(addr).ir_value(loc=loc, ip=ip),
-                Uint32(expected).ir_value(loc=loc, ip=ip),
-                Uint32(limit).ir_value(loc=loc, ip=ip),
-            ],
-            """
-            {
-                .reg .pred pending, expired;
-                .reg .b32 seen, polls;
+# The peer-wait loop. Operands: $0 result, $1 flag address, $2 expected
+# sequence, $3 abort-word address, $4 device poll bound.
+PEER_WAIT_PTX = f"""
+            {{
+                .reg .pred pending, expired, skip;
+                .reg .b32 seen, polls, phase, verdict;
                 mov.u32 polls, 0;
                 mov.u32 $0, 0;
             roce_wait:
@@ -143,13 +133,44 @@ def spin_until_eq_acquire_sys(
                 setp.ne.u32 pending, seen, $2;
                 @!pending bra roce_done;
                 add.u32 polls, polls, 1;
-                setp.ge.u32 expired, polls, $3;
-                @!expired bra roce_wait;
+                setp.ge.u32 expired, polls, $4;
+                @expired bra roce_stop;
+                and.b32 phase, polls, {ABORT_CHECK_POLLS - 1};
+                setp.ne.u32 skip, phase, 0;
+                @skip bra roce_wait;
+                ld.relaxed.sys.global.u32 verdict, [$3];
+                setp.eq.u32 skip, verdict, 0;
+                @skip bra roce_wait;
+            roce_stop:
                 mov.u32 $0, 1;
             roce_done:
-            }
-            """,
-            "=r,l,r,r",
+            }}
+            """
+
+
+@dsl_user_op
+def spin_until_eq_or_abort_sys(
+    addr: Int64, expected: Uint32, abort_addr: Int64, limit: Uint32, *, loc=None, ip=None
+) -> Uint32:
+    """Spin until the word at ``addr`` equals ``expected`` (system scope).
+
+    Every ``ABORT_CHECK_POLLS`` polls the loop also reads the host-written
+    abort word at ``abort_addr`` and stops once it is nonzero, so the proxy
+    thread decides how long a live peer may take. ``limit`` polls bound the
+    wait on the device alone, for a host that can no longer write the abort
+    word. Returns 0 when the flag arrived and 1 when the wait stopped.
+    """
+    return Uint32(
+        _asm(
+            T.i32(),
+            [
+                Int64(addr).ir_value(loc=loc, ip=ip),
+                Uint32(expected).ir_value(loc=loc, ip=ip),
+                Int64(abort_addr).ir_value(loc=loc, ip=ip),
+                Uint32(limit).ir_value(loc=loc, ip=ip),
+            ],
+            PEER_WAIT_PTX,
+            "=r,l,r,l,r",
             loc=loc,
             ip=ip,
         )

@@ -1,8 +1,9 @@
 """CuTe DSL kernel for the RoCE one-shot all-gather.
 
 Same transport and protocol as the one-shot all-reduce (stage, doorbell,
-wait on per-peer flags, advance the epoch) with the reduction replaced by a
-strided copy that writes the concatenated output directly:
+supervised wait on per-peer flags, advance the epoch and publish the completed
+sequence) with the reduction replaced by a strided copy that writes the
+concatenated output directly:
 
 * ``dim == 0`` concat: ``rows == 1``, output is shard 0, shard 1, ... in order;
 * last-dim concat: each shard is ``rows`` rows of ``row_packs`` 16-byte packs
@@ -38,11 +39,12 @@ from ._cute_intrinsics import (
     ld_relaxed_gpu_u32,
     ld_relaxed_sys_u32,
     ld_relaxed_sys_v4_u32,
-    spin_until_eq_acquire_sys,
+    spin_until_eq_or_abort_sys,
     st_global_v4_u32,
     st_release_gpu_u32,
     st_relaxed_sys_u32,
 )
+from ._oneshot_cute import CTRL_ABORT, CTRL_DONE, CTRL_FAILED
 
 PACK_BYTES = 16
 PATH_COUNT = 2
@@ -154,11 +156,11 @@ class _RoceAllGatherLaunch:
         index = Int32(bidx) * Int32(self._threads) + Int32(tidx)
         stride = Int32(gdim) * Int32(self._threads)
 
-        # A recorded timeout poisons the runtime: later launches do nothing so
-        # the host sees the failure without waiting another spin limit per op.
-        # The device poison word (fourth counter) is written by the same waiting
-        # threads that write the host error word and only ever goes from 0 to
-        # the failed sequence, so a cheap GPU-scope load is enough here.
+        # A stopped wait poisons the runtime: later launches do nothing so the
+        # host sees the failure without another wait per op. The device poison
+        # word (fourth counter) is written by the same waiting threads that
+        # write the host stopped flag and only ever goes from 0 to 1, whatever
+        # the sequence, so a cheap GPU-scope load is enough here.
         poisoned = ld_relaxed_gpu_u32(poison_ptr)
         if poisoned == Uint32(0):
             # 1. stage the local shard into the pinned send slot
@@ -205,15 +207,16 @@ class _RoceAllGatherLaunch:
                                     * Int64(PATH_COUNT)
                                     + Int64(flag_column)
                                 ) * Int64(self._flag_stride)
-                                timed_out = spin_until_eq_acquire_sys(
-                                    flag_addr, seq, spin_limit
+                                stopped = spin_until_eq_or_abort_sys(
+                                    flag_addr, seq, ctrl_base + Int64(CTRL_ABORT), spin_limit
                                 )
-                                if timed_out != Uint32(0):
+                                if stopped != Uint32(0):
                                     st_relaxed_sys_u32(
                                         ctrl_base + Int64(12), Uint32(peer)
                                     )
                                     st_relaxed_sys_u32(ctrl_base + Int64(8), seq)
-                                    st_release_gpu_u32(poison_ptr, seq)
+                                    st_relaxed_sys_u32(ctrl_base + Int64(CTRL_FAILED), Uint32(1))
+                                    st_release_gpu_u32(poison_ptr, Uint32(1))
                             waiter += 1
             else:
                 if Int32(tidx) < Int32(self._world_size):
@@ -224,17 +227,18 @@ class _RoceAllGatherLaunch:
                                 * Int64(PATH_COUNT)
                                 + Int64(path)
                             ) * Int64(self._flag_stride)
-                            timed_out = spin_until_eq_acquire_sys(
-                                flag_addr, seq, spin_limit
+                            stopped = spin_until_eq_or_abort_sys(
+                                flag_addr, seq, ctrl_base + Int64(CTRL_ABORT), spin_limit
                             )
-                            if timed_out != Uint32(0):
+                            if stopped != Uint32(0):
                                 st_relaxed_sys_u32(
                                     ctrl_base + Int64(12), Uint32(tidx)
                                 )
                                 st_relaxed_sys_u32(ctrl_base + Int64(8), seq)
-                                st_release_gpu_u32(poison_ptr, seq)
+                                st_relaxed_sys_u32(ctrl_base + Int64(CTRL_FAILED), Uint32(1))
+                                st_release_gpu_u32(poison_ptr, Uint32(1))
             cute.arch.sync_threads()
-            # A wait that timed out in this block leaves the peer slot unreliable:
+            # A wait that stopped in this block leaves the peer slot unreliable:
             # skip the data phase so nothing derived from it is stored.
             failed = ld_relaxed_gpu_u32(poison_ptr)
             if failed == Uint32(0):
@@ -271,11 +275,14 @@ class _RoceAllGatherLaunch:
                 prior = atomic_add_relaxed_gpu_u32(tail_counter_ptr, Uint32(1))
                 if (prior + Uint32(1)) % Uint32(gdim) == Uint32(0):
                     fence_sc_gpu()
-                    # Every block's timeout store precedes its tail arrival, so the
-                    # error word is final here.  A failed sequence keeps the epoch,
-                    # which makes every later launch a no-op until the host raises.
-                    if ld_relaxed_sys_u32(ctrl_base + Int64(8)) == Uint32(0):
+                    # Every block's stopped-flag store precedes its tail arrival,
+                    # so the flag is final here.  A stopped sequence keeps the
+                    # epoch, which makes every later launch a no-op until the
+                    # host raises.  The sticky flag, unlike the stopped
+                    # sequence, stays nonzero when the sequence wraps to 0.
+                    if ld_relaxed_sys_u32(ctrl_base + Int64(CTRL_FAILED)) == Uint32(0):
                         st_release_gpu_u32(epoch_ptr, seq)
+                        st_relaxed_sys_u32(ctrl_base + Int64(CTRL_DONE), seq)
 
 
 def _dummy(dtype, alignment: int):
@@ -361,7 +368,7 @@ def get_launcher(
         1,
         1,
         current_cuda_stream(),
-        compile_spec=KernelCompileSpec.from_key("comm.roce.sparkring_adaptive.allgather", 1, cache_key),
+        compile_spec=KernelCompileSpec.from_key("comm.roce.sparkring_adaptive.allgather", 2, cache_key),
     )
 
     def run(

@@ -417,6 +417,33 @@ boot, boot restarts suspended after a failed restart (naming the function and
 the time), a boot started with `sparkring.hairpin=off`, and a mesh unit without
 the hairpin start check.
 
+## When a model stops serving
+
+A multi-Spark model's ranks exchange every all-reduce and all-gather over RoCE
+with the prepared RoCEnante transport. In the serving image
+`dev-20260927-mimovision-cuda1342-nccl2323-status032`, a rank that waits for a
+peer longer than a fixed poll budget stops waiting, even when the peer is only
+late, and poisons its runtime. Rank 0's log then reads
+`RoCE collective on rank 0 timed out waiting for rank 1 at sequence ...; the
+runtime is poisoned`, rank 0's model container exits and the other Sparks'
+containers keep running without serving. The transport's
+[supervised peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait),
+which no published image carries, waits for a peer whose queue pairs still
+answer for up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default), logs
+each stall, and stops only for an unreachable, stopped or inconsistent peer or
+at that limit; it then tells the other ranks, whose logs name the cause.
+
+Model containers do not restart themselves (`restart: 'no'`): the installer
+starts every rank of a model together, right after clearing each Spark's page
+cache, and a single restarted rank cannot rejoin the others.
+`sudo sparkring status --refresh --json` shows rank 0's container with
+`running: false` while the others still run. To recover, save each Spark's
+model container log (`sudo docker ps -a` names the container; keep
+`sudo docker logs CONTAINER`), then run the command that installed the model
+again, `sudo sparkring install --profile PROFILE`. It stops the model on every
+Spark and starts it again. With the supervised peer wait, the lines that begin
+`RoCEnante rank` in both logs tell which rank was late and why.
+
 ## Setup and access
 
 Setup finds neighbors over IPv6 link-local addresses and signs in to each

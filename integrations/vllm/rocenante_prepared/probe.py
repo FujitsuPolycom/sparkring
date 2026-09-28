@@ -3,6 +3,12 @@
 Adapts the pinned B12X tests/comm/test_roce_oneshot_gpu.py methodology
 (a83336581a3a907076e60797df69ab66df5a2ff1, Apache-2.0). Run with torchrun
 only in an explicitly reserved idle-hardware window. No model is loaded.
+
+Two opt-in cases exercise the supervised peer wait after the standard cases:
+``--peer-delay-seconds`` holds the last rank back before one all-reduce, which
+the other ranks must wait for without poisoning their runtimes, and
+``--peer-exit`` closes the last rank's runtime while the other ranks wait, which
+must stop their waits and report the unreachable peer.
 """
 
 from __future__ import annotations
@@ -59,9 +65,24 @@ def main():
     )
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--timeout-seconds", type=int, default=180)
+    parser.add_argument(
+        "--peer-delay-seconds",
+        type=float,
+        default=0.0,
+        help="hold the last rank back this long before one all-reduce; the other "
+        "ranks must wait for it and stay healthy",
+    )
+    parser.add_argument(
+        "--peer-exit",
+        action="store_true",
+        help="finally close the last rank's runtime while the other ranks wait in an "
+        "all-reduce; their runtimes must stop the wait and name the peer",
+    )
     args = parser.parse_args()
     if not args.run:
         parser.error("real hardware execution requires --run")
+    if args.peer_delay_seconds < 0:
+        parser.error("--peer-delay-seconds must not be negative")
     world = int(os.environ.get("WORLD_SIZE", "1"))
     if world not in (2, 4):
         parser.error("requires torchrun WORLD_SIZE=2 or 4")
@@ -347,6 +368,75 @@ def main():
                     bytes_per_hca=byte_delta,
                     path_counters=after_paths,
                 )
+                late = world - 1
+                if args.peer_delay_seconds > 0:
+                    before = runtime.stats()
+                    delayed = torch.full(
+                        (4096,), rank + 1, dtype=torch.bfloat16, device=device
+                    )
+                    dist.barrier(group=control)
+                    if rank == late:
+                        time.sleep(args.peer_delay_seconds)
+                    waited = time.monotonic()
+                    with kernel_resolution_guard("prepared RoCE delayed peer"):
+                        out = runtime.all_reduce(delayed, plan=declaration)
+                    torch.cuda.synchronize()
+                    waited = time.monotonic() - waited
+                    torch.testing.assert_close(
+                        out,
+                        torch.full_like(delayed, world * (world + 1) // 2),
+                        rtol=0,
+                        atol=0,
+                    )
+                    runtime.check_health()
+                    # The proxy records a resolved stall at its next supervision
+                    # tick, milliseconds after the kernel completes.
+                    settle = time.monotonic() + 2.0
+                    while True:
+                        after = runtime.stats()
+                        stalls = after["peer_wait_stalls"] - before["peer_wait_stalls"]
+                        resolved = (
+                            after["peer_wait_stalls_resolved"]
+                            - before["peer_wait_stalls_resolved"]
+                        )
+                        if resolved >= stalls or time.monotonic() > settle:
+                            break
+                        time.sleep(0.01)
+                    # A wait longer than the stall report threshold is logged and
+                    # resolved on every rank that was not held back.
+                    if rank != late and args.peer_delay_seconds >= 10:
+                        assert stalls >= 1 and resolved == stalls
+                    runtime.check_health()
+                    record(
+                        "delayed-peer",
+                        delay_seconds=args.peer_delay_seconds,
+                        waited_seconds=waited,
+                        stalls=stalls,
+                        stalls_resolved=resolved,
+                        notices_received=after["peer_notices_received"]
+                        - before["peer_notices_received"],
+                    )
+                if args.peer_exit:
+                    dist.barrier(group=control)
+                    if rank == late:
+                        runtime.close()
+                        record("peer-exit", role="closed")
+                    else:
+                        waiting = torch.ones(4096, dtype=torch.bfloat16, device=device)
+                        stopped = time.monotonic()
+                        runtime.all_reduce(waiting, plan=declaration)
+                        torch.cuda.synchronize()
+                        stopped = time.monotonic() - stopped
+                        try:
+                            runtime.check_health()
+                        except RuntimeError as error:
+                            message = str(error)
+                        else:
+                            raise AssertionError(
+                                "the runtime stayed healthy after its peer closed"
+                            )
+                        assert message.startswith(f"RoCE transport on rank {rank} stopped:")
+                        record("peer-exit", role="waiting", stopped_after_seconds=stopped, error=message)
                 dist.barrier(group=control)
             finally:
                 result.close()

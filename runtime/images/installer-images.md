@@ -75,6 +75,10 @@ inherited and resulting SHA-256 and edit other receipt fields:
 [derive_transport_window.py](derive_transport_window.py) installs
 [integrations/vllm/rocenante_prepared](../../integrations/vllm/rocenante_prepared/README.md)
 and records the new transport manifest in the receipt and the derived lock;
+[derive_transport_peer_wait.py](derive_transport_peer_wait.py) installs the
+same bundle's supervised peer wait over
+`dev-20260927-mimovision-cuda1342-nccl2323-status032`, replacing exactly six
+bundle files pinned to their parent and resulting SHA-256;
 [derive_tp2_hc.py](derive_tp2_hc.py) lists the TP2 row-sharding HC mode;
 [derive_staging_fix.py](derive_staging_fix.py) pins `vllm/v1/utils.py`. Every
 replaced path must already be recorded by the parent receipt, and its bytes in
@@ -83,6 +87,22 @@ Python file under the descriptor rules: `pins` names the added path with
 inherited SHA-256 `None`, and the parent receipt must not record it.
 [derive_tool_choice_contract.py](derive_tool_choice_contract.py) adds the
 tool-result policy as a vLLM module and pins the `serving.py` that installs it.
+
+No image has been built from the peer-wait layer. Its build takes the parent
+lock and reads the parent's installed bundle from the local parent image:
+
+```bash
+python3 runtime/images/derive_transport_peer_wait.py prepare \
+  --parent-lock runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/installer-image.json \
+  --output CONTEXT
+```
+
+`record` then writes a lock whose `transport_manifest_sha256` names the
+installed manifest; installer containers export it as
+`SPARKRING_TRANSPORT_MANIFEST_SHA256` once that lock is published and selected
+as the installer image lock. Ranks of this image and of its parent refuse to
+connect to each other (proxy ABI 5 and 4), so every Spark of a deployment must
+run the same image.
 
 ### Replacing the runtime-status package
 

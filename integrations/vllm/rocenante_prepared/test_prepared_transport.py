@@ -6,6 +6,7 @@ import ast
 from contextlib import nullcontext
 import importlib.util
 from pathlib import Path
+import re
 import sys
 from types import ModuleType, SimpleNamespace as NS
 
@@ -66,48 +67,96 @@ def c_definition(source, signature, terminator="\n}\n"):
     return source[start:end]
 
 
+def top_level(path, kinds=(ast.FunctionDef, ast.ClassDef)):
+    return {
+        node.name: ast.dump(node)
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, kinds)
+    }
+
+
+def supervised_legacy_kernel(text):
+    """The legacy kernel source with the supervised peer wait applied."""
+    text = text.replace(
+        "timed_out = spin_until_eq_acquire_sys(flag_addr, seq, spin_limit)",
+        "stopped = spin_until_eq_or_abort_sys(flag_addr, seq, ctrl_base + Int64(CTRL_ABORT), spin_limit)",
+    ).replace("if timed_out != Uint32(0):", "if stopped != Uint32(0):")
+    text = re.sub(
+        r"(\n *)st_release_gpu_u32\(poison_ptr, seq\)",
+        r"\1st_relaxed_sys_u32(ctrl_base + Int64(CTRL_FAILED), Uint32(1))"
+        r"\1st_release_gpu_u32(poison_ptr, Uint32(1))",
+        text,
+    )
+    return re.sub(
+        r"if ld_relaxed_sys_u32\(ctrl_base \+ Int64\(8\)\) == Uint32\(0\):(\n *)"
+        r"st_release_gpu_u32\(epoch_ptr, seq\)",
+        r"if ld_relaxed_sys_u32(ctrl_base + Int64(CTRL_FAILED)) == Uint32(0):\1"
+        r"st_release_gpu_u32(epoch_ptr, seq)\1st_relaxed_sys_u32(ctrl_base + Int64(CTRL_DONE), seq)",
+        text,
+    )
+
+
 def test_legacy_wire_path_and_kernel_math_are_preserved():
-    for name in (
-        "_proxy.py",
-        "_path_config.py",
-        "_cute_intrinsics.py",
-    ):
-        assert (ROOT / "roce" / name).read_text().strip() == (
-            LEGACY / name
-        ).read_text().strip()
-    # The prepared proxy paces hardware-forwarded stripes on the sending side;
-    # peers still exchange the same connection blob, region layout, queue-pair
-    # attributes and data/flag placement as the preserved adaptive proxy.
+    assert (ROOT / "roce/_path_config.py").read_text().strip() == (
+        LEGACY / "_path_config.py"
+    ).read_text().strip()
+    # The binding adds the peer-wait timeout and counters; peer maps and the
+    # region layout are bound as before.
+    prepared_binding, legacy_binding = (
+        top_level(ROOT / "roce/_proxy.py"), top_level(LEGACY / "_proxy.py")
+    )
+    for name in ("_peer_path_count", "_flatten_peer_hca_map", "Layout", "_build"):
+        assert prepared_binding[name] == legacy_binding[name], name
+    # Every legacy intrinsic except the unsupervised flag wait is unchanged.
+    prepared_ops, legacy_ops = (
+        top_level(ROOT / "roce/_cute_intrinsics.py"),
+        top_level(LEGACY / "_cute_intrinsics.py"),
+    )
+    assert set(legacy_ops) - set(prepared_ops) == {"spin_until_eq_acquire_sys"}
+    assert set(prepared_ops) - set(legacy_ops) == {"spin_until_eq_or_abort_sys"}
+    for name in set(legacy_ops) & set(prepared_ops):
+        assert prepared_ops[name] == legacy_ops[name], name
+    # The prepared proxy paces hardware-forwarded stripes and supervises peer
+    # waits; peers still exchange the same connection blob, region layout,
+    # queue-pair attributes and data/flag placement as the preserved adaptive
+    # proxy. The ABI version differs, so a prepared rank refuses a legacy peer.
     prepared = (ROOT / "roce/_roce_proxy.c").read_text()
     legacy = (LEGACY / "_roce_proxy.c").read_text()
-    abi = next(line for line in prepared.splitlines() if line.startswith("#define ROCE_ABI_VERSION"))
-    assert abi in legacy.splitlines()
+    assert "#define ROCE_ABI_VERSION 5" in prepared.splitlines()
+    assert "#define ROCE_ABI_VERSION 4" in legacy.splitlines()
     for signature, terminator in (
         ("typedef struct {\n    uint32_t abi_version;", "} roce_blob_t;"),
         ("int roce_layout(", "\n}\n"),
         ("static int connect_qp(", "\n}\n"),
+        ("static void split_stripes(", "\n}\n"),
     ):
         assert c_definition(prepared, signature, terminator) == c_definition(
             legacy, signature, terminator
         )
+    # Kernel math and launch entry points are unchanged; the kernel bodies
+    # differ only in the supervised wait, the sticky stopped flag and the
+    # completed-sequence store.
     for name in ("_oneshot_cute.py", "_allgather_cute.py"):
 
-        def classes(path):
-            return [
-                ast.dump(node)
-                for node in ast.parse(path.read_text()).body
-                if isinstance(node, ast.ClassDef)
-            ]
+        def methods(path):
+            cls = next(
+                node for node in ast.parse(path.read_text()).body if isinstance(node, ast.ClassDef)
+            )
+            return {node.name: node for node in cls.body if isinstance(node, ast.FunctionDef)}
 
-        assert classes(ROOT / "roce" / name) == classes(LEGACY / name)
+        prepared_methods, legacy_methods = methods(ROOT / "roce" / name), methods(LEGACY / name)
+        assert set(prepared_methods) == set(legacy_methods)
+        for method in set(legacy_methods) - {"kernel"}:
+            assert ast.dump(prepared_methods[method]) == ast.dump(legacy_methods[method]), method
+        assert ast.unparse(prepared_methods["kernel"]) == supervised_legacy_kernel(
+            ast.unparse(legacy_methods["kernel"])
+        ), name
     for name in (
-        "__init__",
         "_launcher_key",
         "_gather_launcher_key",
         "_counter_addresses",
         "_order_stream",
         "_mark_stream",
-        "check_health",
     ):
 
         def method(path):

@@ -26,20 +26,21 @@
     "Retain adaptive size-based grids, per-grid arrival counters, peer HCA mapping, proxy wire protocol and native collective math.",
     "Add caller-owned prepared RoCE declarations and execution handles without runtime kernel resolution.",
     "Keep stream waits before shared staging writes and completion events after output copies.",
-    "Bind immutable peer-path and capacity settings in prepared query identity; opposite_paths is distinct from HCA inventory count."
+    "Bind immutable peer-path and capacity settings in prepared query identity; opposite_paths is distinct from HCA inventory count.",
+    "Supervise every peer wait from the proxy thread: kernels poll a host abort word, the proxy stops waits only for an unreachable, stopped or inconsistent peer or after B12X_ROCE_PEER_TIMEOUT_S, notifies peers when it stops, and logs each stall."
   ],
   "files": {
     "roce/__init__.py": "0126b2176991804142336b31395e4d5ca1567a4c0a7a6683264f7d0f4965512e",
-    "roce/_allgather_cute.py": "2bab616e7a0949fb83b8e933dbb9c531647659840a607bcd0118652569e389e5",
-    "roce/_cute_intrinsics.py": "11737796a80a0966c04ee347d5ef83a662bde16dc188022134d2cbaa1567410b",
-    "roce/_oneshot_cute.py": "2c791413e084f343f782321e0187d5f8e863832a6ef38cff7c2a365e7b83a0ea",
+    "roce/_allgather_cute.py": "749b839f0db91878c964d21e3af9b921cd6273215d9599b3e35dffa4d3375f09",
+    "roce/_cute_intrinsics.py": "a65f247336a7056e8f161096021e4e9954c3142ba9e76452ccb6d6460756cf6d",
+    "roce/_oneshot_cute.py": "98591c7432cf1ad1af8ec0ad7f3d24741cc9086f42f7763409126e5786b305b0",
     "roce/_path_config.py": "d0ac6f1de1934e74202118a94b4f911001869e3da514bf599ca5ea696e82f0c9",
     "roce/_preparation.py": "905c3cf8311f14d7cafba6808443163297a18a1800fa95c698d06444b2e6b59d",
-    "roce/_proxy.py": "f783d078d06953f79bcf3a26a61c1ba853d5ec56d07f3e927e5c14275852d854",
+    "roce/_proxy.py": "8ece853f5d05e2bd3b7a8c9a0f41138843a4521cda68ca317c1fba14877e4a71",
     "roce/_tuning.py": "60298918980d092ec09fe59e65cfae0bb9090af3855fb2ffc42c67d853e28c4a",
     "roce/api.py": "f8cadfa227d9ce3e115353ef5b5e61004ab27e83799270c210d41c32712f0d38",
-    "roce/roce_oneshot.py": "1033895ecd87c6b7d5d0728d7ba598c5a6f50db50a4417db901a87761820bd70",
-    "roce/_roce_proxy.c": "1dcdf4d1a5b3bec2f64029d010a628d5ea3554c8c616c02da0d7aee9be123e35",
+    "roce/roce_oneshot.py": "3aff7e4a78bcb90ddac8aa99985025b301b376aebf8775bc394209d74d315e42",
+    "roce/_roce_proxy.c": "dae4d94f98650c55a4a2042836324203042b7e4fb279eb2aa6eded976e8b0456",
     "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
   },
   "image_source_preimages": {

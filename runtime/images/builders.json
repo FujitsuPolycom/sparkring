@@ -62,6 +62,12 @@
       "reason": "Derive an image whose prepared RoCEnante transport is the repository bundle, which paces hardware-forwarded stripes within a send window; produces the unpublished intermediate image between dev-20260924 and dev-20260925."
     },
     {
+      "id": "installer-transport-peer-wait",
+      "path": "runtime/images/derive_transport_peer_wait.py",
+      "kind": "python",
+      "reason": "Derive an image whose prepared RoCEnante transport waits for a late peer while its queue pairs acknowledge checks and poisons the runtime only for an unreachable, stopped or inconsistent peer or after B12X_ROCE_PEER_TIMEOUT_S; its six replaced bundle files are pinned to the dev-20260927-mimovision-cuda1342-nccl2323-status032 parent."
+    },
+    {
       "id": "installer-tp2-hc",
       "path": "runtime/images/derive_tp2_hc.py",
       "kind": "python",

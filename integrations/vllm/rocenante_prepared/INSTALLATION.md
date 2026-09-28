@@ -75,5 +75,16 @@ and proxy health. All ranks must report `passed` in `rank-N.json`. The controlle
 must enforce an outer timeout and retain logs/image identity with those records.
 Run TP4 first when qualifying the Qwen TP4 launch, then repeat on TP2.
 
+Two opt-in cases check the supervised peer wait (proxy ABI 5) after the others.
+`--peer-delay-seconds SECONDS` adds `delayed-peer`: the last rank sleeps before
+one all-reduce, and every other rank must wait for it, return exact sums and
+stay healthy; with a delay of at least 10 s each of them must log and resolve
+one stall. `--peer-exit` adds a final `peer-exit` case: the last rank closes its
+runtime, which destroys its queue pairs, while the other ranks wait in an
+all-reduce; each of them must stop the wait and raise
+`RoCE transport on rank N stopped: ...` with the cause. Keep the delay below
+`B12X_ROCE_PEER_TIMEOUT_S` and give the outer timeout room for the delay plus
+the stall report and a failed peer check.
+
 These tests do not measure serving throughput or qualify the model/cache path.
 Startup/generation and source-matched SparkCache restore checks follow them.

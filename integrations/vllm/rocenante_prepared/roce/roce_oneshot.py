@@ -14,13 +14,21 @@ Runtime constraints:
 * two paths per peer by default; the research-only TP4 cycle mode selected by
   ``B12X_ROCE_OPPOSITE_PATHS=4`` keeps two neighbor paths and uses four paths
   to the opposite rank;
-* every rank of the exchange group must construct the runtime collectively.
+* every rank of the exchange group must construct the runtime collectively;
+* a collective waits for a late peer as long as the peer's queue pairs
+  acknowledge the proxy's checks, up to ``B12X_ROCE_PEER_TIMEOUT_S`` seconds
+  (300 by default). An unreachable peer, a peer that stopped its runtime,
+  flags that contradict this rank's sequence, or the timeout stop every wait
+  on the rank and poison the runtime; the rank then tells its peers, which
+  stop as well. Each stall is logged to standard error with the flags it is
+  missing.
 """
 
 from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import os
 import threading
 from contextlib import contextmanager
@@ -54,9 +62,25 @@ DEFAULT_MAX_GATHER_BYTES = 16 * 1024 * 1024
 DEFAULT_THREADS = 512
 DEFAULT_BLOCKS = 8
 DEFAULT_GID_INDEX = 3
-# Polls of a peer flag before the kernel gives up (each poll is a system-scope
-# load of host memory, roughly a microsecond): about 20 s.
-DEFAULT_SPIN_LIMIT = 20_000_000
+# Polls of one peer flag after which a waiting kernel stops without a host
+# verdict. The proxy thread decides how long a live peer may take; this bound
+# only ends a wait whose host can no longer write the abort word, so the
+# default is the largest value the kernel argument holds. The time one poll
+# takes (a system-scope load of host memory) is not a fixed quantity, so a
+# poll count is not a timeout.
+DEFAULT_SPIN_LIMIT = 0xFFFFFFFF
+# Seconds one collective may wait for peers whose queue pairs acknowledge the
+# proxy's checks before the proxy stops every wait on the rank.
+DEFAULT_PEER_TIMEOUT_S = 300.0
+# Control-record words (``_roce_proxy.c``): the stopped sequence and its
+# missing peer, the host abort word, the completed sequence and the sticky
+# stopped flag.
+_CTRL_STOPPED_SEQ = 2
+_CTRL_MISSING_PEER = 3
+_CTRL_ABORT = 6
+_CTRL_DONE = 7
+_CTRL_FAILED = 8
+_U32 = 0xFFFFFFFF
 _SLOT_ALIGNMENT = 4096
 _DTYPE_NAMES = {
     torch.float16: "float16",
@@ -87,6 +111,26 @@ def _env_int(*names: str, default: int) -> int:
         if raw:
             return int(raw)
     return default
+
+
+def _env_float(name: str, *, default: float) -> float:
+    """Float value of the environment variable ``name``, else ``default``."""
+    raw = os.getenv(name)
+    return float(raw) if raw else default
+
+
+def wait_settings() -> tuple[int, float]:
+    """Validated ``B12X_ROCE_SPIN_LIMIT`` polls and ``B12X_ROCE_PEER_TIMEOUT_S`` seconds."""
+
+    spin_limit = _env_int("B12X_ROCE_SPIN_LIMIT", default=DEFAULT_SPIN_LIMIT)
+    if not 1 <= spin_limit <= DEFAULT_SPIN_LIMIT:
+        raise ValueError(
+            f"B12X_ROCE_SPIN_LIMIT must be between 1 and {DEFAULT_SPIN_LIMIT} polls"
+        )
+    timeout = _env_float("B12X_ROCE_PEER_TIMEOUT_S", default=DEFAULT_PEER_TIMEOUT_S)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("B12X_ROCE_PEER_TIMEOUT_S must be a positive number of seconds")
+    return spin_limit, timeout
 
 
 def default_gid_index() -> int:
@@ -239,7 +283,15 @@ class RoceOneshotAllReduce:
         self._blocks = int(blocks)
         self._counter_classes = self._blocks.bit_length()
         self.gid_index = default_gid_index() if gid_index is None else int(gid_index)
-        self.spin_limit = _env_int("B12X_ROCE_SPIN_LIMIT", default=DEFAULT_SPIN_LIMIT)
+        self.spin_limit, self.peer_timeout_s = wait_settings()
+        if self.spin_limit < DEFAULT_SPIN_LIMIT and self.rank == 0:
+            logger.warning(
+                "B12X_ROCE_SPIN_LIMIT=%d ends every peer wait after that many polls "
+                "whether or not the peer is alive; leave it unset so that "
+                "B12X_ROCE_PEER_TIMEOUT_S=%g governs peer waits",
+                self.spin_limit,
+                self.peer_timeout_s,
+            )
         names = tuple(hca_names) if hca_names else discover_hcas(self.gid_index)
         if not names:
             raise RuntimeError("no active RDMA device found for the RoCE all-reduce")
@@ -311,10 +363,11 @@ class RoceOneshotAllReduce:
         self._flag_base = host_ptr + self._layout.flag_off
         self._send_base = host_ptr + self._layout.send_off
         self._ctrl_base = host_ptr + self._layout.ctrl_off
-        # ctrl record (kernel-written): seq, nbytes, error seq, missing peer,
-        # nbytes per slot (the proxy uses these when it has to catch up)
+        # ctrl record: seq, nbytes, stopped seq, missing peer, nbytes per slot
+        # (the proxy uses these when it has to catch up), then the abort,
+        # completed-sequence and stopped words and the peer notices.
         self._ctrl_words = self._region[
-            self._layout.ctrl_off : self._layout.ctrl_off + 24
+            self._layout.ctrl_off : self._layout.ctrl_off + self._layout.flag_stride
         ].view(torch.int32)
         self._error_word = self._ctrl_words[2:3]
         # numpy view of the control words: reading it costs nanoseconds, so the
@@ -338,6 +391,7 @@ class RoceOneshotAllReduce:
                 peer_hca_map=self._peer_hca_map,
                 opposite_paths=self._opposite_paths,
             )
+            self._proxy.set_wait_timeout(self.peer_timeout_s)
             blob = self._proxy.local_blob()
         except Exception as exc:  # noqa: BLE001 - reported collectively below
             error = str(exc)
@@ -370,6 +424,7 @@ class RoceOneshotAllReduce:
             "max_size": self.max_size,
             "max_gather_bytes": self.max_gather_bytes,
             "spin_limit": self.spin_limit,
+            "peer_timeout_s": self.peer_timeout_s,
             "threads": self._threads,
             "blocks": self._blocks,
         }
@@ -573,7 +628,7 @@ class RoceOneshotAllReduce:
         Eligibility (``should_allreduce``) depends only on dtype, shape and size,
         so every tensor-parallel rank takes the same decision; a pointer that is
         not 16-byte aligned is staged through runtime scratch instead of being
-        rejected.  A poisoned runtime (a previous wait timed out) raises here
+        rejected.  A poisoned runtime (a previous wait stopped) raises here
         before anything is launched: a failed collective is fatal, never a
         fallback.  Admission through kernel enqueue holds the lifecycle lock so
         ``close`` cannot release the proxy meanwhile.  Launches on different
@@ -693,29 +748,37 @@ class RoceOneshotAllReduce:
         self._last_stream = current
 
     def check_health(self) -> None:
-        """Raise if the proxy thread died or a kernel wait timed out.
+        """Raise if the proxy thread stopped the transport or a kernel wait stopped.
 
-        Cheap (two host memory reads); call it after graph replays, which
-        cannot check inline.
+        Cheap (a few host memory reads); call it after graph replays, which
+        cannot check inline. The proxy's error names the cause: an
+        unreachable or stopped peer, contradictory flags, the peer-wait
+        timeout, or a kernel that reached its device poll bound.
         """
 
         if self._proxy is not None and self._proxy.failed():
-            raise RuntimeError(f"RoCE proxy failed: {self._proxy.error()}")
-        failed_seq = int(self._ctrl_np[2])
-        if failed_seq != 0:
-            peer = int(self._ctrl_np[3])
             raise RuntimeError(
-                f"RoCE collective on rank {self.rank} timed out waiting for rank {peer} "
-                f"at sequence {failed_seq}; the runtime is poisoned (its epoch stopped at "
-                f"{failed_seq - 1}, later launches do nothing) and rank data is no "
+                f"RoCE transport on rank {self.rank} stopped: {self._proxy.error()}; "
+                "the runtime is poisoned (later launches do nothing) and rank data "
+                "is no longer trustworthy"
+            )
+        if int(self._ctrl_np[_CTRL_FAILED]) != 0:
+            stopped = int(self._ctrl_np[_CTRL_STOPPED_SEQ]) & _U32
+            peer = int(self._ctrl_np[_CTRL_MISSING_PEER])
+            raise RuntimeError(
+                f"RoCE collective on rank {self.rank} stopped waiting for rank {peer} "
+                f"at sequence {stopped}; the runtime is poisoned (its epoch stopped at "
+                f"{(stopped - 1) & _U32}, later launches do nothing) and rank data is no "
                 "longer trustworthy"
             )
 
     @property
     def poisoned(self) -> bool:
-        """True once a wait timed out or the proxy failed; the runtime cannot be reused."""
+        """True once a wait stopped or the proxy failed; the runtime cannot be reused."""
 
-        return (self._proxy is not None and self._proxy.failed()) or int(self._ctrl_np[2]) != 0
+        return (self._proxy is not None and self._proxy.failed()) or int(
+            self._ctrl_np[_CTRL_FAILED]
+        ) != 0
 
     # -- all-gather ---------------------------------------------------------------
 
@@ -935,11 +998,15 @@ class RoceOneshotAllReduce:
             "max_size": self.max_size,
             "max_gather_bytes": self.max_gather_bytes,
             "slot_bytes": self._slot_bytes,
-            "epoch": int(self._counters[0].item()),
-            "error_seq": int(self._error_word.item()),
-            "error_peer": int(self._ctrl_words[3].item()),
-            "ctrl_seq": int(self._ctrl_words[0].item()),
+            "epoch": int(self._counters[0].item()) & _U32,
+            "error_seq": int(self._error_word.item()) & _U32,
+            "error_peer": int(self._ctrl_words[_CTRL_MISSING_PEER].item()),
+            "ctrl_seq": int(self._ctrl_words[0].item()) & _U32,
+            "completed_seq": int(self._ctrl_words[_CTRL_DONE].item()) & _U32,
+            "wait_stopped": int(self._ctrl_words[_CTRL_FAILED].item()) != 0,
+            "abort_seq": int(self._ctrl_words[_CTRL_ABORT].item()) & _U32,
             "spin_limit": self.spin_limit,
+            "peer_timeout_s": self.peer_timeout_s,
             "opposite_paths": self._opposite_paths,
         }
         if self._proxy is not None:
@@ -996,10 +1063,13 @@ class _nullcontext:
 __all__ = [
     "DEFAULT_MAX_GATHER_BYTES",
     "DEFAULT_MAX_SIZE",
+    "DEFAULT_PEER_TIMEOUT_S",
+    "DEFAULT_SPIN_LIMIT",
     "SUPPORTED_DTYPES",
     "SUPPORTED_WORLD_SIZES",
     "RoceOneshotAllReduce",
     "default_gid_index",
     "discover_hcas",
     "is_supported",
+    "wait_settings",
 ]

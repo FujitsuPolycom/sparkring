@@ -22,6 +22,10 @@ _LOCK = threading.Lock()
 _LIB: ctypes.CDLL | None = None
 
 BLOB_STRUCT_ERR = "roce proxy blob size mismatch"
+# ABI version 5 includes the supervised peer wait: the control record's abort,
+# completion, stopped-wait and peer-notice words. Ranks refuse to connect to
+# a peer with another version.
+ABI_VERSION = 5
 
 
 def _peer_path_count(world_size: int, rank: int, peer: int, opposite_paths: int) -> int:
@@ -153,6 +157,8 @@ def load() -> ctypes.CDLL:
         lib.roce_local_blob.argtypes = [p, p, u64]
         lib.roce_connect.restype = ctypes.c_int
         lib.roce_connect.argtypes = [p, p, u64]
+        lib.roce_set_wait_timeout.restype = ctypes.c_int
+        lib.roce_set_wait_timeout.argtypes = [p, u64]
         lib.roce_start.restype = ctypes.c_int
         lib.roce_start.argtypes = [p]
         lib.roce_stop.restype = None
@@ -173,7 +179,7 @@ def load() -> ctypes.CDLL:
         lib.roce_path_stat.argtypes = [p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
         lib.roce_destroy.restype = None
         lib.roce_destroy.argtypes = [p]
-        if lib.roce_abi_version() != 4:
+        if lib.roce_abi_version() != ABI_VERSION:
             raise RuntimeError("unexpected b12x RoCE proxy ABI version")
         _LIB = lib
         return lib
@@ -280,6 +286,16 @@ class Proxy:
         if self._lib.roce_connect(self._ctx, buf, len(joined)) != 0:
             raise RuntimeError(f"RoCE queue-pair connect failed: {self.error()}")
 
+    def set_wait_timeout(self, seconds: float) -> None:
+        """Set how long one collective may wait for peers that still acknowledge checks.
+
+        Must precede ``start``; the proxy logs a stall after five seconds (half
+        a shorter timeout) and stops every wait on this rank at the timeout.
+        """
+        nanoseconds = int(round(float(seconds) * 1e9))
+        if nanoseconds <= 0 or self._lib.roce_set_wait_timeout(self._ctx, nanoseconds) != 0:
+            raise RuntimeError("RoCE peer wait timeout must be positive and set before start")
+
     def start(self) -> None:
         """Start the proxy thread; a restart resumes from the last posted sequence."""
         if self._lib.roce_start(self._ctx) != 0:
@@ -299,16 +315,32 @@ class Proxy:
         return raw.decode(errors="replace") if raw else ""
 
     def stats(self) -> dict[str, int | str]:
-        """Operation, completion, sequence, and two-wave scheduling counters."""
+        """Operation, completion, sequence, two-wave scheduling and peer-wait counters.
+
+        ``peer_wait_stalls`` counts waits that crossed the stall report
+        threshold and ``peer_wait_stalls_resolved`` those that then completed;
+        ``peer_notices_posted`` counts the checks and stop notices this rank
+        wrote to peers and ``peer_notices_received`` the notices it read.
+        """
+        def stat(which: int) -> int:
+            return int(self._lib.roce_stat(self._ctx, which))
+
         return {
-            "ops_posted": int(self._lib.roce_stat(self._ctx, 0)),
-            "writes_completed": int(self._lib.roce_stat(self._ctx, 1)),
-            "last_seq": int(self._lib.roce_stat(self._ctx, 2)),
-            "two_wave_activations": int(self._lib.roce_stat(self._ctx, 3)),
+            "ops_posted": stat(0),
+            "writes_completed": stat(1),
+            "last_seq": stat(2),
+            "two_wave_activations": stat(3),
             "two_wave_threshold_bytes": int(
                 self._lib.roce_two_wave_threshold_bytes(self._ctx)
             ),
             "wave_mode": self.wave_mode(),
+            "peer_wait_stalls": stat(5),
+            "peer_wait_stalls_resolved": stat(6),
+            "longest_resolved_stall_ms": stat(7) // 1_000_000,
+            "peer_notices_posted": stat(8),
+            "peer_notices_received": stat(9),
+            "longest_proxy_loop_gap_ms": stat(10) // 1_000_000,
+            "peer_wait_timeout_ms": stat(11) // 1_000_000,
         }
 
     def two_wave_threshold_bytes(self) -> int:

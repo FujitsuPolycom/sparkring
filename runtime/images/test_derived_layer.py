@@ -18,7 +18,7 @@ import pytest
 
 from runtime.common import installer_image
 from runtime.images import derive_mimo_vision, derive_staging_fix, derive_tool_choice_contract, derive_tp2_hc
-from runtime.images import derive_transport_window
+from runtime.images import derive_transport_peer_wait, derive_transport_window
 from runtime.images import derived_layer as layer
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -633,6 +633,70 @@ def test_repository_transport_bundle_matches_its_manifest():
     assert manifest["name"] == derive_transport_window.PROFILE
     for name, expected in manifest["files"].items():
         assert sha((derive_transport_window.SOURCE / name).read_bytes()) == expected, name
+
+
+def peer_wait_fixture(tmp_path, *, also_changed=(), unchanged=()):
+    """A repository bundle and a parent whose installed bundle differs in the pinned files."""
+    source = tmp_path / "bundle"
+    names = sorted(derive_transport_peer_wait.FILES) + ["roce/api.py", "LICENSE"]
+    files = {name: f"supervised {name}\n".encode() for name in names}
+    installed_files = {
+        name: (data if name in unchanged or (name not in derive_transport_peer_wait.FILES
+                                              and name not in also_changed)
+               else f"parent {name}\n".encode())
+        for name, data in files.items()
+    }
+    for name, data in files.items():
+        (source / name).parent.mkdir(parents=True, exist_ok=True)
+        (source / name).write_bytes(data)
+    (source / "manifest.json").write_text(json.dumps({"name": derive_transport_window.PROFILE,
+                                                      "files": {name: sha(data) for name, data in files.items()}}))
+    installed = layer.canonical_json({"name": derive_transport_window.PROFILE, "dependencies": {"b12x": "pinned"},
+                                      "files": {name: sha(data) for name, data in installed_files.items()}})
+    parent = {f"{derive_transport_window.BUNDLE}/{name}": data for name, data in installed_files.items()}
+    parent[derive_transport_window.BUNDLE + "/manifest.json"] = installed
+    capabilities = {"transport_profile": derive_transport_window.PROFILE, "transport_manifest_sha256": sha(installed)}
+    return (source, *code_parent(tmp_path, parent, capabilities))
+
+
+def test_transport_peer_wait_replaces_exactly_its_pinned_files(tmp_path):
+    source, root, lock = peer_wait_fixture(tmp_path)
+    # Fixture bytes cannot match the real pins; the pinned set is still enforced.
+    code = dataclasses.replace(derive_transport_peer_wait.LAYER, pins={},
+                               replace=functools.partial(derive_transport_peer_wait.replace, source=source))
+    layer.prepare_layer(code, lock, layer.root_reader(root), tmp_path / "context")
+    context = tmp_path / "context"
+    plan = json.loads((context / "plan.json").read_text())
+    bundle = derive_transport_window.BUNDLE
+    assert plan["replaced"] == sorted([bundle + "/manifest.json"]
+                                      + [f"{bundle}/{name}" for name in derive_transport_peer_wait.FILES])
+    manifest_bytes = context_file(context, bundle + "/manifest.json")
+    assert json.loads(manifest_bytes)["dependencies"] == {"b12x": "pinned"}
+    assert plan["lock_fields"] == {"transport_manifest_sha256": sha(manifest_bytes)}
+    provenance = json.loads(context_file(context, derive_transport_peer_wait.LAYER.provenance))
+    assert provenance["purpose"] == derive_transport_peer_wait.LAYER.purpose
+    assert set(provenance["files"]) == set(plan["replaced"])
+
+
+@pytest.mark.parametrize("change", ["also_changed", "unchanged"])
+def test_transport_peer_wait_refuses_a_different_file_set(tmp_path, change):
+    extra = {"also_changed": {"also_changed": ("roce/api.py",)},
+             "unchanged": {"unchanged": (sorted(derive_transport_peer_wait.FILES)[0],)}}[change]
+    source, root, _ = peer_wait_fixture(tmp_path, **extra)
+    read = layer.root_reader(root)
+    receipt = json.loads(read(layer.BASE_RECEIPT))
+    with pytest.raises(ValueError, match="other files than this layer pins"):
+        derive_transport_peer_wait.replace(read, receipt, source=source)
+
+
+def test_transport_peer_wait_pins_the_repository_bundle():
+    manifest = json.loads((derive_transport_window.SOURCE / "manifest.json").read_text())
+    pins = derive_transport_peer_wait.LAYER.pins
+    assert set(pins) == {f"{derive_transport_window.BUNDLE}/{name}" for name in derive_transport_peer_wait.FILES}
+    for name, (inherited, resulting) in derive_transport_peer_wait.FILES.items():
+        assert resulting == manifest["files"][name], name
+        assert inherited != resulting, name
+    assert derive_transport_peer_wait.LAYER.update_receipt is derive_transport_window.update_receipt
 
 
 def tp2_fixture(tmp_path):

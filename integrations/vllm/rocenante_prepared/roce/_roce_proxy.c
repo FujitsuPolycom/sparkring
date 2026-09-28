@@ -8,10 +8,14 @@
 //                         lanes 0/1 in the source row and stores opposite-path
 //                         lanes 2/3 in the otherwise-unused receiver row.
 //   send[slot]       (SLOTS * slot_bytes)          staged by the local GPU kernel
-//   ctrl             (FLAG_STRIDE)                 {u32 seq, u32 nbytes, u32 error,
-//                                                   u32 missing_peer} doorbell; the
-//                                                  last two are set by the kernel
-//                                                  when a wait times out
+//   ctrl             (FLAG_STRIDE)                 u32 words:
+//                                                    0 seq (doorbell), 1 nbytes,
+//                                                    2 stopped seq, 3 missing peer,
+//                                                    4-5 nbytes per slot,
+//                                                    6 abort (host-written),
+//                                                    7 completed seq,
+//                                                    8 sticky wait-stopped flag,
+//                                                    16+r notice from rank r
 //
 // The GPU kernel stages its input into send[seq & 1], publishes nbytes and seq
 // in ctrl, then spins on every active path flag for every peer. The proxy uses
@@ -19,6 +23,18 @@
 // quarter-payload paths to the opposite rank. Each stripe is followed by its
 // 4-byte sequence flag on the same reliable QP, so a path flag cannot become
 // visible before its stripe. Nothing on the receive path involves the host.
+//
+// Peer waits are supervised from this thread. A waiting kernel also reads the
+// abort word every 1024 polls and stops only when it is nonzero (or after its
+// own device poll bound). The proxy writes the abort word when a peer's queue
+// pair no longer acknowledges a check, when a peer reports that it stopped,
+// when the peer's flags contradict this rank's sequence, when one wait
+// exceeds the configured timeout, or when the kernel reached its device
+// bound; a peer that is merely late is waited for. Stopping also writes a
+// stop notice to every peer, so no rank keeps waiting for this one. Each
+// stall and its end are logged to standard error with the flag values the
+// host sees, and the waiting rank writes a notice into the late peer's
+// control record so that the peer logs its own doorbell and posting state.
 //
 // This file is compiled by b12x.comm.roce._proxy at first use with the host
 // gcc and libibverbs; it must stay plain C with no CUDA dependency.
@@ -28,6 +44,7 @@
 #include <infiniband/verbs.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdarg.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -43,7 +60,26 @@
 #define ROCE_FLAG_STRIDE 128
 #define ROCE_PORT 1
 #define ROCE_SEND_DEPTH 256
-#define ROCE_ABI_VERSION 4
+#define ROCE_ABI_VERSION 5
+// Control-record word indices; the kernels use the same byte offsets.
+#define ROCE_CTRL_STOPPED_SEQ 2
+#define ROCE_CTRL_MISSING_PEER 3
+#define ROCE_CTRL_ABORT 6
+#define ROCE_CTRL_DONE 7
+#define ROCE_CTRL_FAILED 8
+#define ROCE_CTRL_NOTICE 16
+_Static_assert(ROCE_CTRL_NOTICE + ROCE_MAX_PEERS <= ROCE_FLAG_STRIDE / 4,
+               "peer notices must fit in the control record");
+// A notice word carries the low 31 bits of a sequence; the top bit marks a
+// peer that stopped its runtime rather than one that waits for this rank.
+#define ROCE_NOTICE_ABORT 0x80000000u
+#define ROCE_NOTICE_SEQ 0x7fffffffu
+// Work-request ID bit of notice writes, which are not payload traffic.
+#define ROCE_NOTICE_WR (1ull << 63)
+#define ROCE_DEFAULT_WAIT_TIMEOUT_NS 300000000000ull
+#define ROCE_STALL_REPORT_NS 5000000000ull
+#define ROCE_PROBE_INTERVAL_NS 1000000000ull
+#define ROCE_LOOP_GAP_REPORT_NS 1000000000ull
 // Keep the proxy hot across sub-millisecond compute gaps inside model graphs.
 #define ROCE_IDLE_SPINS 20000000
 #define ROCE_DEFAULT_TWO_WAVE_THRESHOLD_BYTES 131072u
@@ -151,6 +187,24 @@ typedef struct {
         uint32_t end;
     } streams[ROCE_MAX_STREAMS];
     int n_streams;
+    // Peer-wait supervision, owned by the proxy thread; the atomics are
+    // diagnostic counters that other threads sample.
+    uint64_t wait_timeout_ns;
+    uint64_t stall_report_ns;
+    uint64_t posted_ns;
+    uint64_t last_tick_ns;
+    uint32_t watched_seq;
+    int watching;
+    int stall_reported;
+    uint64_t watch_posted_ns;
+    uint64_t next_probe_ns;
+    uint32_t notice_seen[ROCE_MAX_PEERS];
+    atomic_uint_fast64_t stalls;
+    atomic_uint_fast64_t stalls_resolved;
+    atomic_uint_fast64_t longest_stall_ns;
+    atomic_uint_fast64_t notices_posted;
+    atomic_uint_fast64_t notices_received;
+    atomic_uint_fast64_t longest_loop_gap_ns;
     char err[512];
 } roce_ctx_t;
 
@@ -159,6 +213,69 @@ void roce_destroy(roce_ctx_t *c);
 static void set_err(roce_ctx_t *c, const char *what, int e) {
     snprintf(c->err, sizeof(c->err), "%s: %s", what, e ? strerror(e) : "failed");
 }
+
+static uint64_t roce_now_ns(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec;
+}
+
+static void roce_log(const roce_ctx_t *c, const char *format, ...) {
+    char line[768];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(line, sizeof(line), format, args);
+    va_end(args);
+    fprintf(stderr, "RoCEnante rank %d: %s\n", c->rank, line);
+}
+
+static double roce_seconds(uint64_t ns) { return (double)ns / 1e9; }
+
+static void roce_raise_max(atomic_uint_fast64_t *value, uint64_t candidate) {
+    uint_fast64_t current = atomic_load(value);
+    while (candidate > current &&
+           !atomic_compare_exchange_weak(value, &current, candidate)) {
+    }
+}
+
+// Pure peer-wait decisions. The tests compile this section on its own.
+// ROCE_SUPERVISION_BEGIN
+#define ROCE_FLAG_ARRIVED 0
+#define ROCE_FLAG_PENDING 1
+#define ROCE_FLAG_INCONSISTENT 2
+
+// Classifies one path's flags for the awaited sequence ``seq``: ``current``
+// is the flag of slot seq & 1 and ``other`` the flag of the other slot. One
+// reliable connection delivers a path's flags in posting order, and a sender
+// posts ``seq`` only after it received this rank's ``seq - 1``. A sender that
+// has not posted ``seq`` therefore leaves ``current`` at seq - 2 (0 while the
+// slot is unused) and ``other`` at seq - 1; any other pair means the two
+// ranks disagree about the collective sequence.
+static int roce_flag_state(uint32_t seq, uint32_t current, uint32_t other) {
+    if (current == seq) {
+        return other == seq - 1u || other == seq + 1u ? ROCE_FLAG_ARRIVED
+                                                      : ROCE_FLAG_INCONSISTENT;
+    }
+    if ((current == seq - 2u || (seq == 1u && current == 0u)) && other == seq - 1u) {
+        return ROCE_FLAG_PENDING;
+    }
+    return ROCE_FLAG_INCONSISTENT;
+}
+
+// Recovers the full sequence of a notice from its low 31 bits, choosing the
+// value nearest ``reference``; exact while the two differ by less than 2^30.
+static uint32_t roce_notice_seq(uint32_t notice, uint32_t reference) {
+    uint32_t delta = (notice - reference) & ROCE_NOTICE_SEQ;
+    return delta >= 0x40000000u ? reference - (ROCE_NOTICE_SEQ + 1u - delta)
+                                : reference + delta;
+}
+
+// Stall report threshold for a wait timeout: 5 s, or half a shorter timeout.
+static uint64_t roce_stall_report_ns(uint64_t timeout_ns) {
+    return timeout_ns / 2u < ROCE_STALL_REPORT_NS ? timeout_ns / 2u
+                                                  : ROCE_STALL_REPORT_NS;
+}
+// ROCE_SUPERVISION_END
 
 int roce_abi_version(void) { return ROCE_ABI_VERSION; }
 
@@ -370,6 +487,8 @@ roce_ctx_t *roce_create(int world, int rank, const char *const *hca_names, int n
         }
         c->two_wave_threshold_bytes = (uint32_t)value;
     }
+    c->wait_timeout_ns = ROCE_DEFAULT_WAIT_TIMEOUT_NS;
+    c->stall_report_ns = roce_stall_report_ns(ROCE_DEFAULT_WAIT_TIMEOUT_NS);
     c->forward_window_bytes = ROCE_DEFAULT_FORWARD_WINDOW_BYTES;
     c->forward_chunk_bytes = ROCE_DEFAULT_FORWARD_CHUNK_BYTES;
     const char *const forward_names[2] = {"B12X_ROCE_FORWARD_WINDOW_BYTES",
@@ -681,7 +800,8 @@ static int drain_cq(roce_ctx_t *c, int h) {
         return -1;
     }
     for (int i = 0; i < n; i++) {
-        uint64_t wr_id = wc[i].wr_id;
+        int notice = (wc[i].wr_id & ROCE_NOTICE_WR) != 0;
+        uint64_t wr_id = wc[i].wr_id & ~ROCE_NOTICE_WR;
         int peer = (int)(wr_id / ROCE_MAX_PATHS);
         int path = (int)(wr_id % ROCE_MAX_PATHS);
         if (peer < 0 || peer >= c->world || peer == c->rank ||
@@ -689,21 +809,71 @@ static int drain_cq(roce_ctx_t *c, int h) {
             c->peer_hca[peer][path] != h) {
             snprintf(c->err, sizeof(c->err),
                      "RDMA completion has invalid path identifier %llu",
-                     (unsigned long long)wr_id);
+                     (unsigned long long)wc[i].wr_id);
             return -1;
         }
         if (wc[i].status != IBV_WC_SUCCESS) {
             atomic_fetch_add(&c->completion_errors[peer][path], 1);
-            snprintf(c->err, sizeof(c->err),
-                     "RDMA write to rank %d path %d failed: %s (vendor_err 0x%x, seq %u)",
-                     peer, path, ibv_wc_status_str(wc[i].status), wc[i].vendor_err,
-                     c->last_seq);
+            if (notice) {
+                snprintf(c->err, sizeof(c->err),
+                         "rank %d did not acknowledge a peer check on path %d (%s, "
+                         "vendor_err 0x%x) while this rank waited at sequence %u; its "
+                         "queue pair is gone or unreachable",
+                         peer, path, ibv_wc_status_str(wc[i].status),
+                         wc[i].vendor_err, c->last_seq);
+            } else {
+                snprintf(c->err, sizeof(c->err),
+                         "RDMA write to rank %d path %d failed: %s (vendor_err 0x%x, seq %u)",
+                         peer, path, ibv_wc_status_str(wc[i].status), wc[i].vendor_err,
+                         c->last_seq);
+            }
             return -1;
         }
         c->hca[h].outstanding[peer] -= 1;
+        if (notice) {
+            continue;
+        }
         atomic_fetch_add(&c->send_completions[peer][path], 1);
         c->writes_completed += 1;
     }
+    return 0;
+}
+
+// Posts one signaled 4-byte notice into ``peer``'s control record on
+// ``path``. Its completion confirms that the peer's queue pair still
+// acknowledges writes. A failed post leaves c->err unchanged, so a caller
+// that is already failing keeps its original error.
+static int post_notice(roce_ctx_t *c, int peer, int path, uint32_t value) {
+    int h = c->peer_hca[peer][path];
+    if (h < 0 || h >= c->n_hca) {
+        return -1;
+    }
+    roce_hca_t *hca = &c->hca[h];
+    if (hca->qp[peer] == NULL || hca->outstanding[peer] >= ROCE_SEND_DEPTH - 1) {
+        return -1;
+    }
+    uint32_t value_copy = value;
+    struct ibv_sge sge = {
+        .addr = (uint64_t)(uintptr_t)&value_copy,
+        .length = 4,
+        .lkey = 0,
+    };
+    struct ibv_send_wr wr;
+    memset(&wr, 0, sizeof(wr));
+    wr.wr_id = ROCE_NOTICE_WR | ((uint64_t)peer * ROCE_MAX_PATHS + (uint64_t)path);
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.opcode = IBV_WR_RDMA_WRITE;
+    wr.send_flags = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
+    wr.wr.rdma.remote_addr = c->peer_addr[peer] + c->ctrl_off +
+                             4u * (uint64_t)(ROCE_CTRL_NOTICE + c->rank);
+    wr.wr.rdma.rkey = c->peer_rkey[peer][path];
+    struct ibv_send_wr *bad = NULL;
+    if (ibv_post_send(hca->qp[peer], &wr, &bad) != 0) {
+        return -1;
+    }
+    hca->outstanding[peer] += 1;
+    atomic_fetch_add(&c->notices_posted, 1);
     return 0;
 }
 
@@ -1226,6 +1396,219 @@ posted:
     return 0;
 }
 
+// Flag of ``peer``'s ``path`` for ``slot`` in this rank's region, at the
+// address the kernel polls: opposite-path lanes 2/3 of four-path mode live in
+// the receiver-local row.
+static uint32_t local_flag(const roce_ctx_t *c, int peer, int path, uint32_t slot) {
+    uint32_t row = path < ROCE_LAYOUT_PATHS ? (uint32_t)peer : (uint32_t)c->rank;
+    uint32_t column = path < ROCE_LAYOUT_PATHS ? (uint32_t)path
+                                               : (uint32_t)(path - ROCE_LAYOUT_PATHS);
+    const uint32_t *flag = (const uint32_t *)(c->region + c->flag_off +
+                                              (((uint64_t)row * ROCE_SLOTS + slot) *
+                                                   ROCE_LAYOUT_PATHS +
+                                               column) *
+                                                  ROCE_FLAG_STRIDE);
+    return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
+}
+
+// Handles notices that peers wrote into this rank's control record. A peer
+// that stopped its runtime stops this one; a waiting peer is logged with this
+// rank's doorbell, posting and completion state, which tells whether this
+// rank's GPU work, its proxy or the network held the peer up.
+static int read_notices(roce_ctx_t *c, volatile uint32_t *ctrl) {
+    for (int p = 0; p < c->world; p++) {
+        if (p == c->rank) {
+            continue;
+        }
+        uint32_t notice = __atomic_load_n(&ctrl[ROCE_CTRL_NOTICE + p], __ATOMIC_ACQUIRE);
+        if (notice == c->notice_seen[p]) {
+            continue;
+        }
+        c->notice_seen[p] = notice;
+        atomic_fetch_add(&c->notices_received, 1);
+        uint32_t doorbell = ctrl[0];
+        uint32_t seq = roce_notice_seq(notice & ROCE_NOTICE_SEQ, doorbell);
+        if ((notice & ROCE_NOTICE_ABORT) != 0) {
+            snprintf(c->err, sizeof(c->err),
+                     "rank %d stopped its RoCE runtime at sequence %u while this rank's "
+                     "doorbell was %u",
+                     p, seq, doorbell);
+            return -1;
+        }
+        roce_log(c,
+                 "rank %d reports waiting for this rank at sequence %u; this rank's "
+                 "doorbell is %u, posted %u, completed %u",
+                 p, seq, doorbell, c->last_seq, ctrl[ROCE_CTRL_DONE]);
+    }
+    return 0;
+}
+
+static void end_watch(roce_ctx_t *c, uint64_t ended_ns) {
+    if (c->watching && c->stall_reported) {
+        uint64_t waited = ended_ns - c->watch_posted_ns;
+        atomic_fetch_add(&c->stalls_resolved, 1);
+        roce_raise_max(&c->longest_stall_ns, waited);
+        roce_log(c, "the wait at sequence %u ended within %.1f s; serving continues",
+                 c->watched_seq, roce_seconds(waited));
+    }
+    c->watching = 0;
+}
+
+// Records the time since the proxy loop last made progress (a supervision
+// tick or a completed post). A long gap means this thread was not scheduled
+// or one post waited for completions, either of which delays the peers.
+static void note_progress(roce_ctx_t *c, volatile uint32_t *ctrl, uint64_t now) {
+    if (c->last_tick_ns != 0 && now > c->last_tick_ns) {
+        uint64_t gap = now - c->last_tick_ns;
+        roce_raise_max(&c->longest_loop_gap_ns, gap);
+        if (gap >= ROCE_LOOP_GAP_REPORT_NS) {
+            roce_log(c, "the proxy loop made no progress for %.1f s (doorbell %u, posted %u)",
+                     roce_seconds(gap), ctrl[0], c->last_seq);
+        }
+    }
+    c->last_tick_ns = now;
+}
+
+// Supervises the collective whose doorbell this thread posted last. Returns
+// -1 with c->err set when every wait on this rank must stop.
+static int supervise(roce_ctx_t *c, volatile uint32_t *ctrl, uint64_t now) {
+    note_progress(c, ctrl, now);
+    if (read_notices(c, ctrl) != 0) {
+        return -1;
+    }
+    uint32_t seq = c->last_seq;
+    if (c->watching && c->watched_seq != seq) {
+        // A later doorbell means the watched collective completed before it.
+        end_watch(c, c->posted_ns);
+    }
+    if (ctrl[ROCE_CTRL_FAILED] != 0) {
+        // Only the device poll bound stops a wait without the abort word; the
+        // runtime is poisoned either way, so the peers are told to stop too.
+        snprintf(c->err, sizeof(c->err),
+                 "the kernel stopped waiting for rank %u at sequence %u after its device "
+                 "poll bound (B12X_ROCE_SPIN_LIMIT) without a host verdict",
+                 ctrl[ROCE_CTRL_MISSING_PEER], ctrl[ROCE_CTRL_STOPPED_SEQ]);
+        return -1;
+    }
+    if (__atomic_load_n(&ctrl[ROCE_CTRL_DONE], __ATOMIC_ACQUIRE) == seq) {
+        end_watch(c, now);
+        return 0;
+    }
+    if (!c->watching) {
+        c->watching = 1;
+        c->watched_seq = seq;
+        c->stall_reported = 0;
+        c->watch_posted_ns = c->posted_ns;
+        c->next_probe_ns = 0;
+    }
+    uint64_t elapsed = now > c->watch_posted_ns ? now - c->watch_posted_ns : 0;
+    if (elapsed < c->stall_report_ns) {
+        return 0;
+    }
+    char pending[384];
+    size_t used = 0;
+    pending[0] = '\0';
+    uint32_t late_peers = 0;
+    for (int p = 0; p < c->world; p++) {
+        if (p == c->rank) {
+            continue;
+        }
+        for (int path = 0; path < (int)c->peer_path_count[p]; path++) {
+            uint32_t current = local_flag(c, p, path, seq & 1u);
+            uint32_t other = local_flag(c, p, path, (seq + 1u) & 1u);
+            int state = roce_flag_state(seq, current, other);
+            if (state == ROCE_FLAG_INCONSISTENT) {
+                snprintf(c->err, sizeof(c->err),
+                         "rank %d path %d flags hold %u and %u while this rank waits at "
+                         "sequence %u; the ranks disagree about the collective sequence",
+                         p, path, current, other, seq);
+                return -1;
+            }
+            if (state == ROCE_FLAG_PENDING) {
+                late_peers |= 1u << p;
+                if (used < sizeof(pending)) {
+                    int wrote = snprintf(pending + used, sizeof(pending) - used,
+                                         "%srank %d path %d (flag %u)", used ? ", " : "",
+                                         p, path, current);
+                    used += wrote > 0 ? (size_t)wrote : 0;
+                }
+            }
+        }
+    }
+    if (!c->stall_reported) {
+        c->stall_reported = 1;
+        atomic_fetch_add(&c->stalls, 1);
+        if (late_peers != 0) {
+            roce_log(c,
+                     "waited %.1f s at sequence %u for %s; waiting up to %.0f s while "
+                     "their queue pairs acknowledge checks",
+                     roce_seconds(elapsed), seq, pending, roce_seconds(c->wait_timeout_ns));
+        } else {
+            roce_log(c,
+                     "waited %.1f s at sequence %u although every peer flag for it is in "
+                     "host memory; the kernel has not observed them",
+                     roce_seconds(elapsed), seq);
+        }
+    }
+    if (elapsed >= c->wait_timeout_ns) {
+        if (late_peers != 0) {
+            snprintf(c->err, sizeof(c->err),
+                     "waited %.1f s at sequence %u, the B12X_ROCE_PEER_TIMEOUT_S limit, for "
+                     "%s whose queue pairs still acknowledge checks",
+                     roce_seconds(elapsed), seq, pending);
+        } else {
+            snprintf(c->err, sizeof(c->err),
+                     "waited %.1f s at sequence %u, the B12X_ROCE_PEER_TIMEOUT_S limit, "
+                     "although every peer flag for it is in host memory",
+                     roce_seconds(elapsed), seq);
+        }
+        return -1;
+    }
+    if (late_peers != 0 && now >= c->next_probe_ns) {
+        c->next_probe_ns = now + ROCE_PROBE_INTERVAL_NS;
+        for (int p = 0; p < c->world; p++) {
+            if ((late_peers & (1u << p)) != 0 &&
+                post_notice(c, p, 0, seq & ROCE_NOTICE_SEQ) != 0) {
+                snprintf(c->err, sizeof(c->err),
+                         "could not post a peer check to rank %d while waiting at "
+                         "sequence %u; its queue pair is in an error state",
+                         p, seq);
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+// Completes finished writes and supervises the outstanding wait.
+static int proxy_tick(roce_ctx_t *c, volatile uint32_t *ctrl, uint64_t now) {
+    for (int h = 0; h < c->n_hca; h++) {
+        if (drain_cq(c, h) != 0) {
+            return -1;
+        }
+    }
+    return supervise(c, ctrl, now);
+}
+
+// Stops every wait on this rank and tells each peer, on every path, that this
+// runtime stopped, so that no rank keeps waiting for it. The thread exits.
+static void *fail_proxy(roce_ctx_t *c, volatile uint32_t *ctrl) {
+    uint32_t seq = c->last_seq;
+    __atomic_store_n(&ctrl[ROCE_CTRL_ABORT], seq != 0u ? seq : UINT32_MAX,
+                     __ATOMIC_RELEASE);
+    atomic_store(&c->failed, 1);
+    roce_log(c, "%s; every RoCE wait on this rank stops and its runtime is poisoned", c->err);
+    for (int p = 0; p < c->world; p++) {
+        if (p == c->rank) {
+            continue;
+        }
+        for (int path = 0; path < (int)c->peer_path_count[p]; path++) {
+            (void)post_notice(c, p, path, ROCE_NOTICE_ABORT | (seq & ROCE_NOTICE_SEQ));
+        }
+    }
+    return NULL;
+}
+
 static void *proxy_main(void *arg) {
     roce_ctx_t *c = (roce_ctx_t *)arg;
     volatile uint32_t *ctrl = (volatile uint32_t *)(c->region + c->ctrl_off);
@@ -1240,13 +1623,8 @@ static void *proxy_main(void *arg) {
         uint32_t seq = __atomic_load_n(&ctrl[0], __ATOMIC_ACQUIRE);
         if (seq == c->last_seq) {
             idle++;
-            if (idle % 64 == 0) {
-                for (int h = 0; h < c->n_hca; h++) {
-                    if (drain_cq(c, h) != 0) {
-                        atomic_store(&c->failed, 1);
-                        return NULL;
-                    }
-                }
+            if (idle % 64 == 0 && proxy_tick(c, ctrl, roce_now_ns()) != 0) {
+                return fail_proxy(c, ctrl);
             }
             if (idle >= ROCE_IDLE_SPINS) {
                 nanosleep(&nap, NULL);
@@ -1264,19 +1642,29 @@ static void *proxy_main(void *arg) {
         if (pending > ROCE_SLOTS) {
             snprintf(c->err, sizeof(c->err),
                      "doorbell skipped %u ops (last %u, now %u)", pending, c->last_seq, seq);
-            atomic_store(&c->failed, 1);
-            return NULL;
+            return fail_proxy(c, ctrl);
         }
         for (uint32_t s = c->last_seq + 1; pending > 0; s++, pending--) {
             uint32_t nbytes = ctrl[4 + (s & 1u)];
             if (post_op(c, s, nbytes) != 0) {
-                atomic_store(&c->failed, 1);
-                return NULL;
+                return fail_proxy(c, ctrl);
             }
             c->last_seq = s;
         }
+        // The host-side wait for the newest sequence starts once it is posted.
+        c->posted_ns = roce_now_ns();
+        note_progress(c, ctrl, c->posted_ns);
     }
     return NULL;
+}
+
+int roce_set_wait_timeout(roce_ctx_t *c, uint64_t timeout_ns) {
+    if (timeout_ns == 0 || atomic_load(&c->running)) {
+        return -1;
+    }
+    c->wait_timeout_ns = timeout_ns;
+    c->stall_report_ns = roce_stall_report_ns(timeout_ns);
+    return 0;
 }
 
 int roce_start(roce_ctx_t *c) {
@@ -1290,6 +1678,9 @@ int roce_start(roce_ctx_t *c) {
         c->last_seq = ctrl[0];
         c->started = 1;
     }
+    c->posted_ns = roce_now_ns();
+    c->last_tick_ns = c->posted_ns;
+    c->watching = 0;
     atomic_store(&c->failed, 0);
     atomic_store(&c->running, 1);
     int rc = pthread_create(&c->thread, NULL, proxy_main, c);
@@ -1323,6 +1714,20 @@ uint64_t roce_stat(roce_ctx_t *c, int which) {
         return atomic_load(&c->two_wave_activations);
     case 4:
         return atomic_load(&c->forward_chunks);
+    case 5:
+        return atomic_load(&c->stalls);
+    case 6:
+        return atomic_load(&c->stalls_resolved);
+    case 7:
+        return atomic_load(&c->longest_stall_ns);
+    case 8:
+        return atomic_load(&c->notices_posted);
+    case 9:
+        return atomic_load(&c->notices_received);
+    case 10:
+        return atomic_load(&c->longest_loop_gap_ns);
+    case 11:
+        return c->wait_timeout_ns;
     default:
         return 0;
     }
