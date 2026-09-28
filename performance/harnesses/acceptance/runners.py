@@ -96,10 +96,15 @@ class HttpClient:
 
 
 def run_process(argv, *, log_path, cwd=None, timeout=None):
-    """Run a local program with standard output and error appended to one log file."""
+    """Run a local program with standard output and error appended to one log file.
+
+    Standard input is closed, so a prompt (llm_decode_bench.py asks whether to
+    upgrade itself when a newer release exists) ends instead of waiting forever.
+    """
     with Path(log_path).open("ab") as log:
         try:
-            return subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, cwd=cwd, timeout=timeout).returncode
+            return subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                  cwd=cwd, timeout=timeout).returncode
         except subprocess.TimeoutExpired:
             log.write(f"\nNo exit within {timeout} s; the process was stopped.\n".encode())
             return -1

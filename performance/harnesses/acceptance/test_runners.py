@@ -85,3 +85,11 @@ def test_run_process_appends_output_to_the_log(tmp_path):
     assert runners.run_process([sys.executable, "-c", "import time; time.sleep(5)"], log_path=log, timeout=0.5) == -1
     text = log.read_text()
     assert text.startswith("first") and "No exit within 0.5 s" in text
+
+
+def test_run_process_gives_a_prompt_end_of_input(tmp_path):
+    """A program that asks a question gets end of input instead of waiting for an answer."""
+    log = tmp_path / "prompt.log"
+    ask = "try:\n    input('Upgrade? ')\nexcept EOFError:\n    print('no answer')\n"
+    assert runners.run_process([sys.executable, "-c", ask], log_path=log, timeout=30) == 0
+    assert "no answer" in log.read_text()
