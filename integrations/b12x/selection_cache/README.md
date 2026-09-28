@@ -1,8 +1,8 @@
 # Reconciled B12X tuning selections on multi-rank starts
 
-Status: **implemented** and CPU-tested. No published image contains it; the
-installer image `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` runs
-without it.
+Status: **implemented**. Installer image
+`dev-20260927-b12xcache-cuda1342-nccl2323-status032`, which every installer
+profile runs, carries it.
 
 ## Condition
 
@@ -87,6 +87,12 @@ because its SHA-256 differs.
   CPU with import stubs for Triton and CUTLASS; without it the four two-rank
   cases fail. One unrelated test needs `triton.language` and fails in that
   environment either way.
+- **Two starts of an installer deployment.** `qwen38-flash-next-tp2` on image
+  `dev-20260927-b12xcache-cuda1342-nccl2323-status032` on one pair. The first
+  start of the deployment compiled 136, 200 and 38 kernels across the RoCE and
+  two GEMM families and was ready 342.7 s after start. After `sparkring down`
+  and `sparkring up`, the second start took every selection from the cache,
+  compiled nothing and was ready in 181.1 s.
 - **One four-Spark start.** Conditions: DeepSeek-V4.1-Flash on four GB10 Sparks
   with the installer profile's serving arguments, the installer image, a B12X
   tuning cache that already held the installer deployment's selections, and a
