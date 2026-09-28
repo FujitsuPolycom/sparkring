@@ -43,8 +43,8 @@ More: [all commands](docs/operations/commands.md) ·
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 38.0 / 108 / — | 2,419 |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 64.0 / 206 / 284 | 3,644 |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 31.0 / 123 / 193 | 2,473 |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 47.2 / 197 / 340 | 4,002 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | 41.0 / 123 / 204 | 2,806 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | 52.0 / 216 / 334 | 4,025 |
 | DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 63.5 / 195 / 277 | 4,271 |
 
 Decode is the total output rate at 1, 8 and 16 concurrent users, from
@@ -54,7 +54,7 @@ one cold 64K-token prompt divided by its time to first token. Details per row:
 Qwen [two](performance/records/images/dev-20260928-toolchoice-qwen38-flash-next-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next-qad-tp4-20260928.md) Sparks,
 Swift [two](performance/records/images/dev-20260928-toolchoice-swift15-qwen38-flash-next-tp2-20260928.md),
 GLM [two](performance/records/images/dev-20260928-toolchoice-glm53-flash-nvfp4-spark-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-20260928.md),
-MiMo [two](performance/records/images/dev-20260928-toolchoice-mimo-v26-flash-rl-tp2-20260928.md) and [four](performance/records/images/dev-20260928-toolchoice-mimo-v26-flash-rl-tp4-20260928.md),
+MiMo [two](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp4-20260928.md),
 DeepSeek [four](performance/records/images/dev-20260928-toolchoice-deepseek-v41-flash-tp4-20260928.md).
 
 Other setups, including SparkCache variants and models the installer doesn't
