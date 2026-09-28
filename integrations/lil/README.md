@@ -12,8 +12,16 @@ Upstream lil does not provide these commands.
 
 ## Before starting
 
-The default is GLM-5.3 Flash NVFP4-Spark with built-in MTP3 speculation, TP4/DCP4,
-and optional SparkCache. **Install and verify the managed mesh separately** using
+The adapter's two model descriptors both select TP4 with decode context
+parallelism 4 (DCP4), which SparkRing does not offer or support. The default,
+`integrations/lil/glm53-mtp3.json`, runs GLM-5.3 Flash NVFP4-Spark with built-in
+MTP3 speculation and optional SparkCache, as in the retired
+`glm53-spark-mtp3-managed-mesh-tp4` profile; `integrations/lil/glm53.json` runs
+the retired BF16 DFlash2 configuration. The adapter is retained for reproducing
+those configurations. For a supported GLM-5.3 Flash deployment on four Sparks,
+use a DCP1 profile from the [profile catalog](../../profiles/README.md).
+
+**Install and verify the managed mesh separately** using
 the [MTP3 mesh quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md).
 This adapter does not install the mesh or take over its systemd model units.
 Use it for supervised trials on a prepared fabric.

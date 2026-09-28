@@ -3,9 +3,12 @@
 These generated compatibility recipes add durable, rank-local prefix-state
 storage to the base recipes they name. The [profile catalog](../../profiles/README.md)
 owns deployment selection and also includes release-profile compositions not
-listed here. The DFlash2 configuration below is retained for reproduction;
-its DCP4 preference is not a default for the maintained GLM-5.3 MTP3 profiles.
-Edit authoritative sources under `profiles/` and regenerate these exports.
+listed here. The GLM-5.3 Flash DFlash2 and GLM-5.2 EXL3 compositions below
+belong to retired profiles and are retained for reproduction only. Both select
+decode context parallelism 4 (DCP4), which SparkRing does not support;
+supported GLM-5.3 Flash profiles use DCP1, and no supported profile serves
+GLM-5.2. Edit authoritative sources under `profiles/` and regenerate these
+exports.
 
 Each composition names a base
 SparkRing recipe and records only the serving values, immutable artifacts,
@@ -16,8 +19,8 @@ SparkCache.
 |---|---|---:|---:|---:|---:|
 | [`deepseek-v4-flash-0731-tp2-dcp1.json`](deepseek-v4-flash-0731-tp2-dcp1.json) | implemented | TP2/DCP1 | 1,048,576 / 32 | 131,072 / 6 | 4,096 |
 | [`deepseek-v4-flash-0731-tp4-dcp1.json`](deepseek-v4-flash-0731-tp4-dcp1.json) | implemented | TP4/DCP1 | 1,048,576 / 32 | 524,288 / 32 | 4,096 |
-| [`glm53-flash-nvfp4-dflash2-bf16-tp4.json`](glm53-flash-nvfp4-dflash2-bf16-tp4.json) | DCP1/DCP2 implemented; DCP4 qualified and preferred | TP4 with DCP1/DCP2/DCP4 | 1,048,576 / 16 | DCP4 publication through 124,928 stored tokens; restores through 999,424 tokens | 8,192 |
-| [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | implemented | TP4/DCP4 | 1,048,576 / 16 | 262,144 / 8 | 4,096 |
+| [`glm53-flash-nvfp4-dflash2-bf16-tp4.json`](glm53-flash-nvfp4-dflash2-bf16-tp4.json) | Retired; DCP1/DCP2 implemented; DCP4 qualified and preferred | TP4 with DCP1/DCP2/DCP4 | 1,048,576 / 16 | DCP4 publication through 124,928 stored tokens; restores through 999,424 tokens | 8,192 |
+| [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | Retired; implemented | TP4/DCP4 | 1,048,576 / 16 | 262,144 / 8 | 4,096 |
 
 ## Unsupported integrations
 
@@ -26,8 +29,8 @@ cache evidence is published for Qwen. The four-Spark base profile disables
 external key-value caching, and the two-Spark base profile explicitly
 omits LMCache to keep its 8,192-token scheduler budget.
 
-The GLM-5.3 Flash composition uses one operator image for DCP1, DCP2, and
-DCP4. Asynchronous publication is disabled in the DCP1 and DCP2 recipe
+The retired GLM-5.3 Flash DFlash2 composition uses one operator image for
+DCP1, DCP2, and DCP4. Asynchronous publication is disabled in the DCP1 and DCP2 recipe
 profiles because their capture-ring sizes are not live-qualified. DCP4 is the
 preferred profile and enables two 3 GiB capture slots per rank.
 

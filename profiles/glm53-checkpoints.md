@@ -33,6 +33,6 @@ Use `--target-model-variant nvfp4-qad` with the native-image
 [TP4](glm53-flash-spark-tp4-dcp1-sparkcache/README.md) procedure. The
 [qualification record](../runtime/releases/shared-2026.09.3/qualification.json)
 scopes bounded text/media and restart/restore evidence. It does not qualify
-full-context load, arbitrary media, DCP4 or cache-disabled GLM selections.
+full-context load, arbitrary media or cache-disabled GLM selections.
 Retargeting another recipe requires matching metadata, cache identity and
 serving checks; a completed download alone is not runtime qualification.

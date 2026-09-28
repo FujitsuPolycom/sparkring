@@ -40,14 +40,14 @@ recommendation or a published comparison.
 
 Commands use Bash on Linux, run from the SparkRing checkout, against a trusted
 OpenAI-compatible endpoint. Take the values from the profile's guide; the
-example limits are for a TP4/DCP4 profile.
+example limits are for a TP4/DCP1 profile.
 
 ```bash
 set -euo pipefail
 SPARKRING_REPO=$(pwd)
 ENDPOINT='http://REPLACE_WITH_RANK0_ADDRESS:8015'
 MODEL='REPLACE_WITH_SERVED_MODEL_ID'
-DCP=4
+DCP=1
 CONTEXT_LIMIT=1048576
 CONCURRENCIES='1,2,4,8,12,16'
 BUSY_C=4

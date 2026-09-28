@@ -61,10 +61,9 @@ long-duration stability for every mode.
 ## TP4
 
 Use the managed mesh site's private topology and an extracted, verified SIRCL
-bundle. Select `tp4-dcp1`, `tp4-dcp1-sparkcache`, `tp4-dcp4`, or
-`tp4-dcp4-sparkcache` in `runtime_profile`. DCP1 remains the default deployment;
-DCP4 is an alternative. Do not supply `r33_profile_contract_roots`: R35 verifies
-its installed contract directly.
+bundle. Select `tp4-dcp1` or `tp4-dcp1-sparkcache` in `runtime_profile`.
+DCP4 selections are retired and not supported. Do not supply
+`r33_profile_contract_roots`: R35 verifies its installed contract directly.
 
 For a controlled R35 runtime comparison, the private site can include:
 

@@ -126,19 +126,13 @@ curl --fail --max-time 180 http://127.0.0.1:8015/v1/chat/completions \
 Require the expected model and a successful generation. This is the installation
 smoke test; physical cache restore and workload qualification are separate checks.
 
-DCP4 and cache-disabled GLM configurations retain separate image selections
-and evidence. They do not inherit this cache-enabled DCP1 qualification.
+Cache-disabled GLM configurations retain separate image selections and
+evidence. They do not inherit this cache-enabled DCP1 qualification.
 
-## DCP4 alternative
-
-Use the separately pinned [R33 DCP4 reproduction procedure](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md#reproduction-overlay-and-quickstart).
-It does not qualify DCP4 on 2026.09.3. Do not apply its entrypoint overlay to
-the native image or edit a staged DCP1 deployment into DCP4.
-
-For that R33 procedure, select `tp4-dcp4-sparkcache` for persistent caching or
-`tp4-dcp4` without it in the private site's `runtime_profile`. Use the R33 image
-receipt and contract paths named by the reproduction guide, not this native
-image receipt. The deployment-suite planner above remains DCP1-only.
+This deployment runs at DCP1 only, and the deployment-suite planner accepts
+DCP1 selections only. DCP4 configurations are retired and not supported; the
+retired R33 DCP4 catalog entries are listed under retired configurations in the
+[profile catalog](../README.md). Do not edit a staged DCP1 deployment into DCP4.
 
 ## Validation and results
 

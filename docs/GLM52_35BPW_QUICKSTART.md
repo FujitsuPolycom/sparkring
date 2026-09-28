@@ -1,6 +1,8 @@
 # GLM-5.2 EXL3 3.5-bpw four-Spark quickstart
 
-See the [maintained guide](../profiles/glm52-exl3-r7-3.5bpw/README.md). Section links below retain existing anchors.
+The GLM-5.2 EXL3 profile is retired: it is defined only for TP4/DCP4, which
+SparkRing does not support. See the [retired profile guide](../profiles/glm52-exl3-r7-3.5bpw/README.md)
+for its reproduction steps. Section links below retain existing anchors.
 
 ## [Serving contract](../profiles/glm52-exl3-r7-3.5bpw/README.md#serving-contract)
 

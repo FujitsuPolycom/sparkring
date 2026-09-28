@@ -42,8 +42,10 @@ They are not a standalone build directory.
 
 The `sparkring-r33-dcp4` selection pins the published image and the merged
 contract/entrypoint overlay separately. It does not change the published image
-identity. DCP4 activation requires the overlay and managed fabric; DCP1 remains
-available without that additional deployment choice.
+identity. Its DCP4 selections, `tp4-dcp4` and `tp4-dcp4-sparkcache`, belong to
+retired catalog profiles; SparkRing does not offer or support DCP4
+deployments. The DCP1 profiles that also select this release do not use the
+DCP4 activation path.
 
 Its evidence pins include the correction in upstream commit
 `f575d421d72c7fbdef3d6165eb6bbe241517fa87`: gathered global KV entries are

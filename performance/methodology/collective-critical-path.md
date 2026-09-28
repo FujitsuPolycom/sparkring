@@ -7,8 +7,10 @@ performance evidence.
 
 ## Scope
 
-This design applies only to the GLM-5.2 EXL3 3.5-bpw four-Spark TP4/DCP4
-profile. It compares its SIRCL transport with the patched NCCL fallback on the
+This design applies only to the retired GLM-5.2 EXL3 3.5-bpw four-Spark
+TP4/DCP4 profile. SparkRing does not support DCP4 configurations, so the design
+has no supported deployment target; it is retained with its offline analyzer.
+It compares that profile's SIRCL transport with the patched NCCL fallback on the
 same directly cabled four-rank cycle. It does not describe the Qwen profiles,
 where SIRCL does not support the width-5120 all-reduce, or the DeepSeek
 profiles.

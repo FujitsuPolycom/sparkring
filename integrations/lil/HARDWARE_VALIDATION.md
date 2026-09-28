@@ -1,7 +1,10 @@
 # MTP3 image deployment and persistent recall
 
 Status: qualified for the bounded trial below. Fresh-host installation and
-unattended managed lifecycle are not established by this test.
+unattended managed lifecycle are not established by this test. The tested
+TP4/DCP4 configuration is retired; SparkRing does not offer or support DCP4
+deployments, and this record remains evidence for the named image and
+settings only.
 
 ## Conditions
 

@@ -82,9 +82,9 @@ request scheduling/multimodal limits. The launcher reads these fields rather
 than inheriting the legacy profile's values for the cache composition.
 
 The published image contains the [preserved profile contract](../../releases/sparkring-r33/published-inputs/profiles/profile-contract.json)
-and has a matching verified image receipt. The checkout's profile contract also
-defines the separately deployed DCP4 overlay; it is not byte-identical to the
-embedded contract. TP2 uses the published image without that overlay. Its
+and has a matching verified image receipt. The checkout's profile contract is
+not byte-identical to the embedded contract: it also defines the DCP4 overlay
+selections, which are retired and not supported. TP2 uses the published image without that overlay. Its
 bounded checks are recorded separately from TP4. Use
 `runtime/common/tp2.py` with the published image
 receipt and `--r33-sparkcache`, as shown above.

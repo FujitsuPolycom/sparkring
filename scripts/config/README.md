@@ -8,6 +8,11 @@ or evidence of a healthy cluster.
 
 ## GLM-5.2 EXL3 3.5-bpw R7
 
+These inputs reproduce the retired `glm52-exl3-r7-3.5bpw` profile. It is
+defined only for TP4 with decode context parallelism 4 (DCP4), which SparkRing
+does not offer or support; choose a maintained deployment from the
+[profile catalog](../../profiles/README.md).
+
 The R7 configuration is split by responsibility:
 
 | File | Role |

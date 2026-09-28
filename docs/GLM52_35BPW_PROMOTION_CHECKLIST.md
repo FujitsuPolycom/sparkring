@@ -1,9 +1,15 @@
 # Promote a rebuilt GLM-5.2 EXL3 3.5-bpw image
 
+Status: **retired**. The GLM-5.2 EXL3 profile is defined only for TP4 with
+decode context parallelism 4 (DCP4), which SparkRing does not offer or support,
+so passing this checklist does not make a rebuilt image a supported deployment.
+The checklist is retained as the qualification criteria recorded for that
+profile.
+
 Use this checklist for an image built from the tracked GLM recipe
 `recipes/glm52-exl3-r7-3.5bpw.json`. The qualified status of the operator image
 does not transfer to another image ID.
-Use the [GLM-5.2 quickstart](../profiles/glm52-exl3-r7-3.5bpw/README.md)
+Use the [retired GLM-5.2 profile guide](../profiles/glm52-exl3-r7-3.5bpw/README.md)
 for build and profile-generation commands.
 
 ## Offline qualification

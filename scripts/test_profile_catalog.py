@@ -44,7 +44,8 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
     # SparkCache DCP1 profile.
     assert len(glm_rows) == 4
     cache_rows = [row for row in glm_rows if '[Optional](' in row]
-    assert len(cache_rows) == 2 and '| 1/4 |' in cache_rows[0]
+    # DCP4 profiles are retired, so each topology offers DCP1 only.
+    assert len(cache_rows) == 2 and all('| 1 |' in row for row in cache_rows)
     for row, nodes in zip(cache_rows, (4, 2)):
         assert f'[Optional](../profiles/glm53-flash-spark-tp{nodes}-dcp1-sparkcache/README.md)' in row
     installer_rows = [row for row in glm_rows if '](../docs/operations/install.md)' in row]
@@ -57,6 +58,29 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
                  else f'profiles/{profile_id}/README.md')
         assert f"[{label}](../{guide})" in variants
     assert '| DCP1 | switched | Off | Experimental |' in variants
+
+
+def test_dcp4_profiles_are_listed_only_as_retired_configurations():
+    dcp4_profiles = (
+        'glm53-flash-spark-tp4-dcp4',
+        'glm53-flash-spark-tp4-dcp4-sparkcache',
+        'glm52-exl3-r7-3.5bpw',
+        'sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4',
+    )
+    table = profile_table()
+    summary, variants = table.split('## Configuration variants', 1)
+    active, retired = variants.split('### Retired profiles', 1)
+    assert '[GLM-5.2](' not in summary
+    assert '| DCP4 |' not in active
+    for profile_id in dcp4_profiles:
+        assert load(profile_id)[0]['recommendation'] == 'retired'
+        assert resolve(profile_id)['serving']['decode_context_parallel_size'] == 4
+        assert f'profiles/{profile_id}/' not in summary + active
+        assert f'[{profile_id}](../profiles/{profile_id}/README.md)' in retired
+    for profile_id in catalog():
+        profile, _ = load(profile_id)
+        if profile['recommendation'] != 'retired':
+            assert resolve(profile_id)['serving'].get('decode_context_parallel_size') != 4
 
 
 def test_catalog_keeps_separate_deepseek_engines_and_variant_validation():

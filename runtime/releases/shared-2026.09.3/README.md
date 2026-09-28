@@ -65,8 +65,9 @@ memory handling remains unchanged. Avoid competing GPU workloads and monitor
 host memory. Cold kernel preparation can take many minutes; native GLM readiness
 allows 30 minutes.
 
-GLM cache-disabled/DCP4 and DeepSeek profiles retain independently qualified
-image selections. Included components do not imply qualification.
+GLM cache-disabled and DeepSeek profiles retain independently qualified image
+selections. GLM DCP4 configurations are retired and not supported. Included
+components do not imply qualification.
 
 ## Sources and rollback
 

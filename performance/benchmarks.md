@@ -97,7 +97,8 @@ checks and describe the missing measurement details.
 | [R33 two-Spark pair](records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md) | 8K | 2,340 | 33.1 | 66.1 |
 
 The [TP4/DCP4 record](records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)
-contains the DCP4 configuration's 8.36M KV pool and functional checks.
+contains the 8.36M KV pool and functional checks of a DCP4 configuration that
+is retired and not supported.
 For its throughput observations, apply the [published correction](https://github.com/FujitsuPolycom/sparkring/pull/271):
 the first measurement windows overlap host-level distribution traffic and lack
 replacement measurements. The C4 difference has no profiling-based attribution;

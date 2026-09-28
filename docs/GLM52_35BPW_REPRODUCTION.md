@@ -1,8 +1,12 @@
 # Reproduce the GLM-5.2 EXL3 3.5-bpw deployment profile
 
+Status: **retired**. The GLM-5.2 EXL3 profile is defined only for TP4 with
+decode context parallelism 4 (DCP4), which SparkRing does not offer or support.
+This procedure is retained for reproducing the recorded configuration.
+
 This procedure derives the recorded GLM serving configuration from tracked
 inputs. It is for four directly cabled DGX Sparks. The resulting image has
-status **Development** until it completes
+evidence status **Development** unless it completes
 [the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md).
 
 ## Inputs

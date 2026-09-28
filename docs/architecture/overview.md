@@ -61,9 +61,10 @@ RoCEnante.
 Catalog profiles that the installer does not set up use other collective paths
 and their own images:
 
-- GLM-5.2 EXL3 uses SIRCL, SparkRing's RDMA collective layer for the four-Spark
-  cycle, for its tensor-parallel all-reduce and vocabulary collectives; NCCL
-  handles the rest. See [SIRCL](sircl.md).
+- The retired GLM-5.2 EXL3 profile, a TP4/DCP4 configuration that SparkRing
+  does not support, uses SIRCL, SparkRing's RDMA collective layer for the
+  four-Spark cycle, for its tensor-parallel all-reduce and vocabulary
+  collectives; NCCL handles the rest. See [SIRCL](sircl.md).
 - DeepSeek-V4-Flash-0731 and Qwen3.8-27B EXL3 use patched NCCL with the
   environments in `scripts/config/`, and no SIRCL.
 - On four-Spark rings, these profiles need routes to the non-adjacent fabric
@@ -72,7 +73,7 @@ and their own images:
   them and [`scripts/ring_doctor.py`](../../scripts/ring_doctor.py) checks them.
 
 Their guides have the setup and details:
-[GLM-5.2 EXL3 3.5-bpw](../../profiles/glm52-exl3-r7-3.5bpw/README.md),
+[GLM-5.2 EXL3 3.5-bpw (retired)](../../profiles/glm52-exl3-r7-3.5bpw/README.md),
 [DeepSeek-V4-Flash-0731](../operations/deepseek-0731.md),
 [Qwen3.8-27B EXL3 K5/K6 pair](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md) and
 [Qwen3.8-27B EXL3 K5/K6 ring](../../profiles/qwen38-27b-exl3-k5k6/README.md).

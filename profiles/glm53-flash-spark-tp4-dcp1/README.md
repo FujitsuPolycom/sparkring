@@ -4,7 +4,8 @@ Checkpoint: [`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`](https://huggingfac
 
 Status: **Experimental**. Use the [retained R37 four-Spark procedure](https://github.com/FujitsuPolycom/sparkring/blob/5b28d768b37b21f5c97d910887e07144fcf251ef/profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md#3-discover-and-plan-dcp1)
 and select `tp4-dcp1`. Use that document's repository revision, R37 image receipt
-and checkpoint selection. DCP1 is the default; DCP4 is an alternative.
+and checkpoint selection. This profile runs at DCP1 only; DCP4 selections are
+retired and not supported.
 
 Keep the R37 image receipt when choosing the cache-disabled selection. This is
 Experimental; the R37 hardware record covers cache-on DCP1, not this selection.

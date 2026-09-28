@@ -1,8 +1,10 @@
 # GLM-5.2 EXL3 3.5-bpw ARM64 builder
 
-This directory builds the ARM64/SM121 runtime used by the GLM-5.2 EXL3
-3.5-bpw profile. Filesystem and environment contracts retain the literal
-`exl3-r7` identifier where operators must type it.
+This directory builds the ARM64/SM121 runtime used by the retired GLM-5.2
+EXL3 3.5-bpw profile, a TP4/DCP4 configuration that SparkRing does not offer or
+support. The builder is retained for reproducing that profile. Filesystem and
+environment contracts retain the literal `exl3-r7` identifier where operators
+must type it.
 
 Status: **implemented**. The builder and its receipt checks pass offline without
 a live cluster. A derived image is not qualified until the four-Spark promotion

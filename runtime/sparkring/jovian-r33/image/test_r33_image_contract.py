@@ -35,14 +35,19 @@ class PublicationDocumentationTests(unittest.TestCase):
         for name in ("tp2-dcp1-sparkcache", "tp4-dcp1-sparkcache"):
             self.assertIn(f"`{name}`", document)
 
-    def test_canonical_tp4_guide_documents_dcp4_cache_alternative(self):
-        guide = HERE.parents[3] / "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md"
-        document = guide.read_text(encoding="utf-8")
+    def test_dcp4_cache_selection_is_documented_only_by_its_retired_entry(self):
+        root = HERE.parents[3]
         contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
         profile = contract["profiles"]["tp4-dcp4-sparkcache"]
         self.assertTrue(profile["sparkcache"])
         self.assertEqual(profile["decode_context_parallel_size"], 4)
-        self.assertIn("`tp4-dcp4-sparkcache`", document)
+        entry = root / "profiles/glm53-flash-spark-tp4-dcp4-sparkcache"
+        catalog_entry = json.loads((entry / "profile.json").read_text(encoding="utf-8"))
+        self.assertEqual(catalog_entry["recommendation"], "retired")
+        self.assertEqual(catalog_entry["configuration"]["key"], "tp4-dcp4-sparkcache")
+        self.assertIn("`tp4-dcp4-sparkcache`", (entry / "README.md").read_text(encoding="utf-8"))
+        guide = root / "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md"
+        self.assertNotIn("tp4-dcp4", guide.read_text(encoding="utf-8"))
 
 
 def load_entrypoint():

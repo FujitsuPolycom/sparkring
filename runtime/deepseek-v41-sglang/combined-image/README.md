@@ -72,9 +72,10 @@ successful Qwen cache check; the underlying restart failure remains unresolved.
 
 ## Local GLM admission
 
-The explicit local GLM source adapter accepts TP2/DCP1 and TP4/DCP1/DCP4 with
+The explicit local GLM source adapter accepts TP2/DCP1 and TP4/DCP1 with
 SparkCache disabled by default. A separate receipt option admits their SparkCache
-variants for isolated local trials. It verifies the complete source receipt chain
+variants for isolated local trials. The adapter also admits TP4/DCP4 selections
+structurally; DCP4 configurations are retired and not supported. It verifies the complete source receipt chain
 and disables Qwen feature selection. This is structural admission, not GLM serving evidence.
 Existing R33/R37 registrations and public selections are unchanged.
 
@@ -98,8 +99,7 @@ To create an isolated SparkCache trial receipt, add `--allow-sparkcache-trial`
 to the admission command and choose a new private output path. Its boolean
 `allow_sparkcache_trial` field defaults to `false`; a missing or false value
 rejects cache profiles, and non-boolean values are invalid. The TP2 planner then
-accepts `--sparkcache`; TP4 sites may select `tp4-dcp1-sparkcache` or
-`tp4-dcp4-sparkcache`.
+accepts `--sparkcache`; TP4 sites select `tp4-dcp1-sparkcache`.
 
 The trial selects the packaged
 `/opt/sparkring/contracts/vllm-connector-jobs-r37-qwen-prefill.json` lease and the

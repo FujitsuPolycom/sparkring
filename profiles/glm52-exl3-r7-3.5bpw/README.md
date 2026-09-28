@@ -2,11 +2,17 @@
 
 Checkpoint: [`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78), brandonmusic's EXL3 3.5 bpw quantization of Z.ai's [GLM-5.2](https://huggingface.co/zai-org/GLM-5.2).
 
-Profile: `glm52-exl3-r7-3.5bpw`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
+Profile: `glm52-exl3-r7-3.5bpw`. Status: **retired**. This profile is defined
+only for TP4 with decode context parallelism 4 (DCP4), which SparkRing does not
+offer or support. No supported profile serves GLM-5.2; select the
+[profile catalog](../README.md) for maintained deployments. The procedure below
+is retained for reproducing the recorded image and configuration. Its evidence
+status remains **implemented**: the recipe records configuration and evidence
+boundaries, and that status does not qualify a rebuilt image.
 
 Inspect its selected defaults with `python scripts/profiles.py resolve glm52-exl3-r7-3.5bpw`.
 
-This quickstart deploys the tested 1,048,576-token, 16-sequence GLM-5.2 EXL3
+This procedure reproduces the tested 1,048,576-token, 16-sequence GLM-5.2 EXL3
 profile on four directly cabled NVIDIA DGX Sparks. The machine-readable settings are in
 [`recipes/glm52-exl3-r7-3.5bpw.json`](../../recipes/glm52-exl3-r7-3.5bpw.json).
 

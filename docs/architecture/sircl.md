@@ -43,7 +43,8 @@ RoCEnante's origins and local adaptations are recorded in its
 
 ## Profile use
 
-The GLM-5.2 EXL3 3.5-bpw profile uses SIRCL for qualified tensor-parallel
+The retired GLM-5.2 EXL3 3.5-bpw profile, a TP4/DCP4 configuration that
+SparkRing does not support, uses SIRCL for qualified tensor-parallel
 all-reduce and vocabulary collective families. Patched NCCL handles operations
 outside those families; DCP and indexer collectives use stock paths.
 
@@ -54,6 +55,7 @@ API health, and zero overflow for the target and DSpark capture path; see the
 [DeepSeek SIRCL evidence record](../../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
 The [GLM-5.3 DFlash2 operator image](../../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+belongs to a retired profile; DCP4 configurations are not supported. It
 embeds a source-bound SIRCL bundle. Its receipt records **qualified** four-rank TP4/DCP4
 functional checks: capability agreement, startup, semantic inference,
 persistent SparkCache restore, concurrent store-ownership drain, and injected

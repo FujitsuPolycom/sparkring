@@ -1,10 +1,11 @@
 # Run GLM-5.3 Flash Spark with MTP3 and hardware-forwarded mesh
 
-This guide reproduces the retained `glm53-spark-mtp3-managed-mesh-tp4` recipe
+This guide reproduces the retired `glm53-spark-mtp3-managed-mesh-tp4` recipe
 with the `sparkring-glm53-sparkcache` image pinned below, DCP4, and a 40 GiB
-SparkCache ceiling. For deployment with the shared-image MTP3 profile, use the
+SparkCache ceiling. SparkRing does not offer or support DCP4 deployments. For
+deployment with the shared-image MTP3 profile, use the
 [maintained TP4 guide](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md),
-which defaults to DCP1 and offers optional SparkCache. Its host setup links
+which uses DCP1 and offers optional SparkCache. Its host setup links
 here only for the hardware-forwarding instructions.
 
 Status: **research-only** profile with **implemented** source packaging and

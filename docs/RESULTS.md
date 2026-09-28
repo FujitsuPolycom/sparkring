@@ -6,6 +6,11 @@ and similar labels mean one, eight or that many simultaneous requests.
 The records use different models, images, sampling settings and sample counts;
 consult their conditions and limitations before comparing results.
 
+The GLM-5.3 Flash DCP4 rows and the GLM-5.2 EXL3 rows measure TP4/DCP4
+configurations of retired profiles. SparkRing does not offer or support DCP4
+deployments; these records remain measurement evidence for their named images
+and settings only.
+
 ## Recorded throughput at 16K context
 
 | Profile | Prefill | C1 decode | C8 decode | Highest recorded concurrency at 16K |

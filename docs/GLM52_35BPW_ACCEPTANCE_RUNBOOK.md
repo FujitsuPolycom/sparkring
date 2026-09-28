@@ -1,5 +1,10 @@
 # GLM-5.2 rebuilt-image acceptance workload
 
+Status: **retired**. The GLM-5.2 EXL3 profile is defined only for TP4 with
+decode context parallelism 4 (DCP4), which SparkRing does not offer or support.
+This workload is retained for reproducing that profile's recorded evidence; it
+does not lead to a supported deployment.
+
 Use this procedure for the fixed-seed and bounded-concurrency item in
 [`GLM52_35BPW_PROMOTION_CHECKLIST.md`](GLM52_35BPW_PROMOTION_CHECKLIST.md).
 It produces functional-equivalence, speculative-counter, transport, and C1/C2/C8
