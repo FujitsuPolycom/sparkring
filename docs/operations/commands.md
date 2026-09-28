@@ -114,7 +114,7 @@ repository and revision.
 
 ```text
 Saved model operation: qwen38-flash-next-qad-tp4 | up complete
-Checkpoint: qad-step5500-ple1000 (local-inference-lab/Qwen3.8-Flash-Next-NVFP4 @ 60215d26cf5e) | Image: dev-20260927-b12xcache-cuda1342-nccl2323-status032
+Checkpoint: qad-step5500-ple1000 (local-inference-lab/Qwen3.8-Flash-Next-NVFP4 @ 60215d26cf5e) | Image: dev-20260927-mimovision-cuda1342-nccl2323-status032
 ```
 
 | Flag | Meaning |

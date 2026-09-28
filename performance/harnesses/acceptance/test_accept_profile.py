@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from performance.harnesses.acceptance import accept_profile, install
+from performance.harnesses.acceptance import accept_profile, install, profile_info, record
 from performance.harnesses.acceptance.fakes import FakeBench, FakeModel, FakeNodeA
 
 LAN = ".".join(("192", "168", "0", "200"))
@@ -19,7 +19,8 @@ STDERR = (f"Source revision: {REVISION}\nSparkRing install. Progress: /var/log/s
           "Done: Node 0: Wait for API readiness (550.2s)\nModel ready: http://" + LAN + ":8020/v1\n")
 COMPLETE = json.dumps({"schema": install.RESULT_SCHEMA, "state": "complete", "profile": PROFILE, "nodes": 2,
                        "api_url": f"http://{LAN}:8020/v1"}, indent=2) + "\n"
-NAME = "dev-20260927-b12xcache-" + PROFILE + "-20260927"
+# The record is named after the image the profile runs.
+NAME = record.image_short(profile_info.load(PROFILE).image) + "-" + PROFILE + "-20260927"
 
 
 def require_repository_drive(path):

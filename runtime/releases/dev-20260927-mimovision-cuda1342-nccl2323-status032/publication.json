@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260927-mimovision-cuda1342-nccl2323-status032",
+  "image_id": "sha256:8e4de5f05f0287c4d0326f3a6ed5d25d3248ec4d482f369308a08a36a2f893bf",
+  "image_config_id": "sha256:8e4de5f05f0287c4d0326f3a6ed5d25d3248ec4d482f369308a08a36a2f893bf",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:2c45153abf19af4f2b4bf10445cfc96c711c375a6fc5c04d3a2b55496f3acfe3",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260927-mimovision-cuda1342-nccl2323-status032",
+  "registry_manifest_digest": "sha256:2c45153abf19af4f2b4bf10445cfc96c711c375a6fc5c04d3a2b55496f3acfe3",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.2",
+  "derivation": {
+    "parent_release": "dev-20260927-b12xcache-cuda1342-nccl2323-status032",
+    "parent_image_id": "sha256:c11021dc9849b6552ac7f5cb7281b41de4c35d4c2c65b47078c90417ff0a55b0",
+    "layers": [
+      "MiMo vision attention sinks: vLLM's mimo_v2_omni.py passes sinks_bias_key0=False to context_attention_fwd, so the MiMo-V2.6 vision encoder applies its per-head attention sinks in the softmax denominator, as the model was trained (runtime/images/derive_mimo_vision.py). /opt/sparkring/receipts/derived-mimo-vision.json records the replaced file"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

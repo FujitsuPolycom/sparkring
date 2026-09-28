@@ -224,11 +224,11 @@ is waiting for log lines; it does not indicate model readiness.
 ## Serving image and profiles
 
 Every installer profile runs on one shared serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/installer-image.json)
 (`sparkring-installer-image/v2`). It is the ARM64 image
 `ghcr.io/fujitsupolycom/sparkring@sha256:3901a80816898e3265a9012f2e263940706ff6e7bfc273949d1b2eec26f08d3b`
-(tag `dev-20260927-b12xcache-cuda1342-nccl2323-status032`, configuration
-`sha256:c11021dc9849b6552ac7f5cb7281b41de4c35d4c2c65b47078c90417ff0a55b0`),
+(tag `dev-20260927-mimovision-cuda1342-nccl2323-status032`, configuration
+`sha256:8e4de5f05f0287c4d0326f3a6ed5d25d3248ec4d482f369308a08a36a2f893bf`),
 built on the `eugr/spark-vllm-b12x:nightly-20260924` base image with CUDA
 13.4.2, NCCL 2.32.3, the runtime-status dashboard 0.3.2, the paced RoCEnante
 transport, whose forwarded-path send window bounds traffic that a ring node
@@ -238,7 +238,7 @@ B12X correction that reuses reconciled kernel tuning on multi-Spark starts. The
 lock lists the admitted profiles and pins the image configuration, registry
 manifest, external software receipt, toolchain receipt, composition, prepared
 transport and status package. The image's
-[publication record](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/publication.json)
+[publication record](../../runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/publication.json)
 names its parent image, `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, and
 describes its derived layer; inside the image,
 `/opt/sparkring/receipts/derived-qwen-decode.json`,
@@ -605,7 +605,7 @@ Internet through Node A's sharing unless they have their own connection.
 
 | Asset | Size |
 |---|---:|
-| Serving image `dev-20260927-b12xcache-cuda1342-nccl2323-status032` | 14.2 GiB download, 29.5 GiB unpacked |
+| Serving image `dev-20260927-mimovision-cuda1342-nccl2323-status032` | 14.2 GiB download, 29.5 GiB unpacked |
 | Qwen checkpoint, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB |
 | MiMo checkpoint, `XiaomiMiMo/MiMo-V2.6-Flash-RL` @ `5711b2681699` | 165.6 GiB |
 | GLM checkpoint, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB |

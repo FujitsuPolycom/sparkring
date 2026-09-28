@@ -64,10 +64,10 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 Decode is the aggregate output rate from
 [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
 0.6.2 at temperature 1.0 with no added context, 20 s per cell; prefill is one
-cold 64K-token prompt divided by its time to first token. Every profile runs,
-and every row was measured on, image
-`dev-20260927-b12xcache-cuda1342-nccl2323-status032`. MiMo's image input does not
-work on this image; its text and tool calls do. Measurements:
+cold 64K-token prompt divided by its time to first token. Every profile runs
+image `dev-20260927-mimovision-cuda1342-nccl2323-status032`; the rows were
+measured on its parent, `dev-20260927-b12xcache-cuda1342-nccl2323-status032`,
+which differs only in MiMo's vision encoder. Measurements:
 Qwen [two](performance/records/images/dev-20260927-b12xcache-qwen38-flash-next-tp2-20260927.md) and [four](performance/records/images/dev-20260927-b12xcache-qwen38-flash-next-tp4-20260927.md) Sparks,
 Swift [two](performance/records/images/dev-20260927-b12xcache-swift15-qwen38-tp2-20260927.md),
 GLM [two](performance/records/images/dev-20260927-b12xcache-glm53-flash-tp2-20260927.md) and [four](performance/records/images/dev-20260927-b12xcache-glm53-flash-tp4-20260927.md),

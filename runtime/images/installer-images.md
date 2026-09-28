@@ -15,6 +15,7 @@ builder for every release that has an `installer-image.json` lock.
 | `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | `dev-20260925-cuda1342-nccl2323-status031` | Qwen4Exp decode GEMM plans and MXFP8 hyper-connection projections | `installer-qwen-decode`, [build_qwen_decode.py](../../performance/records/qwen38-flash-next/installer-tuning-20260925/programs/build_qwen_decode.py) |
 | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | `dev-20260925-qwendecode-cuda1342-nccl2323-status031` | vLLM host-to-device copies staged through fresh pinned memory | `installer-staging-fix`, [derive_staging_fix.py](derive_staging_fix.py) |
 | `dev-20260927-b12xcache-cuda1342-nccl2323-status032` | `dev-20260927-h2dstaging-cuda1342-nccl2323-status031` | [B12X reconciled selection-cache correction](../../integrations/b12x/selection_cache/README.md) and runtime-status 0.3.2 | `installer-derived-layer`, [derived_layer.py](derived_layer.py) with descriptor [installer-b12xcache-status032](compositions/installer-b12xcache-status032/descriptor.json) |
+| `dev-20260927-mimovision-cuda1342-nccl2323-status032` | `dev-20260927-b12xcache-cuda1342-nccl2323-status032` | MiMo vision encoder attention sinks in the softmax denominator | `installer-mimo-vision`, [derive_mimo_vision.py](derive_mimo_vision.py) |
 
 Each release's `publication.json` names its parent and describes its layer.
 [cuda134-nccl232.md](cuda134-nccl232.md) documents the toolchain layer and the

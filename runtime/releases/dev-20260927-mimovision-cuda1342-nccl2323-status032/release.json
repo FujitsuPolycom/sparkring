@@ -1,0 +1,16 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "dev-20260927-mimovision-cuda1342-nccl2323-status032",
+  "selection": "published-immutable-reference",
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:2c45153abf19af4f2b4bf10445cfc96c711c375a6fc5c04d3a2b55496f3acfe3",
+  "inputs": [
+    {
+      "path": "runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/publication.json",
+      "sha256": "ee154fe096fb5b7770785a8a97e90113d58eda461527a743833a3deacfa76e9d"
+    },
+    {
+      "path": "runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/installer-image.json",
+      "sha256": "4197d0f273103c38828b8c0caa00d12ea81ebc4704c47a9466ce1e72e86b3b8c"
+    }
+  ]
+}

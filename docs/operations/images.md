@@ -16,11 +16,11 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20260927-b12xcache-cuda1342-nccl2323-status032`.
+Development image, tag `dev-20260927-mimovision-cuda1342-nccl2323-status032`.
 The download is 14.2 GiB and the unpacked image 29.5 GiB. Its
-[installer image lock](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/installer-image.json)
 lists the nine profiles and pins its identity; its
-[publication record](../../runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/publication.json)
+[publication record](../../runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/publication.json)
 names the parent image and the added layer. The
 [installer image builders](../../runtime/images/installer-images.md) list the
 builder of each layer in the chain.
@@ -34,6 +34,7 @@ builder of each layer in the chain.
 | Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10, and the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
 | Host-to-device staging fix | vLLM's `CpuGpuBuffer.copy_to_gpu` copies through fresh pinned memory, so a host buffer rewritten for the next step while its copy is still queued cannot change the copied data. Without it, Qwen with MTP, async scheduling and FULL CUDA graphs decoded about 0.2-0.5% of concurrent requests as token 8191 (` Register`) repeated ([#294](https://github.com/FujitsuPolycom/sparkring/issues/294)) |
 | B12X selection-cache correction | When kernel tuning is shared across the ranks of a two- or four-Spark deployment, B12X reads its tuning cache once the ranks have reconciled it, so a restart reuses earlier tuning instead of measuring every kernel again ([integrations/b12x/selection_cache](../../integrations/b12x/selection_cache/README.md)). A DeepSeek-V4.1-Flash four-Spark restart became healthy in 200-225 s instead of 652-741 s |
+| MiMo vision attention sinks | The MiMo-V2.6 vision encoder applies its per-head attention sinks in the softmax denominator, as the model was trained ([derive_mimo_vision.py](../../runtime/images/derive_mimo_vision.py)). With the sink added to each image's first key instead, MiMo read a red-and-blue test image as black and white |
 
 `sparkring install` starts it with the image's entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that

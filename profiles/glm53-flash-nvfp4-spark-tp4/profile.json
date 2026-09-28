@@ -8,9 +8,9 @@
     "format": "serving-profile",
     "path": "profiles/glm53-flash-nvfp4-spark-tp4/config.json"
   },
-  "release": "runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/release.json",
+  "release": "runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/release.json",
   "guide": "docs/operations/install.md",
-  "evidence_scope": "MTP3 with native prefix caching, on installer image dev-20260927-b12xcache-cuda1342-nccl2323-status032: an installation through install.sh on one four-Spark ring, adopting the checkpoint copies on the Sparks, passed 7 of 7 functional checks (counting, arithmetic, code, tool calls, image, thinking) and a 256-request correctness screen with no degenerate response, and decoded 68.0 / 202 / 291 tokens/s at 1 / 8 / 16 streams at temperature 1.0 with 64K-token prefill at 3,647 tokens/s (performance/records/images/dev-20260927-b12xcache-glm53-flash-tp4-20260927.md); single-run timing; not serving-qualified.",
+  "evidence_scope": "MTP3 with native prefix caching, on installer image dev-20260927-b12xcache-cuda1342-nccl2323-status032: an installation through install.sh on one four-Spark ring, adopting the checkpoint copies on the Sparks, passed 7 of 7 functional checks (counting, arithmetic, code, tool calls, image, thinking) and a 256-request correctness screen with no degenerate response, and decoded 68.0 / 202 / 291 tokens/s at 1 / 8 / 16 streams at temperature 1.0 with 64K-token prefill at 3,647 tokens/s (performance/records/images/dev-20260927-b12xcache-glm53-flash-tp4-20260927.md); single-run timing; not serving-qualified. This profile runs image dev-20260927-mimovision-cuda1342-nccl2323-status032, which is dev-20260927-b12xcache-cuda1342-nccl2323-status032 with the MiMo vision encoder's attention sinks applied in the softmax denominator.",
   "overrides": [],
   "launcher": {
     "kind": "python",

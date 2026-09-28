@@ -89,6 +89,15 @@
       ]
     },
     {
+      "id": "installer-mimo-vision",
+      "path": "runtime/images/derive_mimo_vision.py",
+      "kind": "python",
+      "reason": "Derive an image whose vLLM MiMo-V2.6 vision encoder applies its attention sinks in the softmax denominator.",
+      "releases": [
+        "dev-20260927-mimovision-cuda1342-nccl2323-status032"
+      ]
+    },
+    {
       "id": "sparkring-source",
       "path": "runtime/sparkring/source_image/prepare_context.py",
       "kind": "python",
