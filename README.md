@@ -57,8 +57,8 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 35.7 / 100 / — | 2,347 |
 | GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 68.0 / 202 / 291 | 3,647 |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 44.9 / 136 / 215 | 2,583 |
-| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 48.5 / 189 / 336 | 4,064 |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 2 | `mimo-v26-flash-rl-tp2` | 8020 | 36.1 / 138 / 212 | 2,509 |
+| MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 52.9 / 188 / 342 | 4,076 |
 | DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 63.8 / 196 / 280 | 4,284 |
 
 Decode is the aggregate output rate from
@@ -67,11 +67,12 @@ Decode is the aggregate output rate from
 cold 64K-token prompt divided by its time to first token. Every profile runs
 image `dev-20260927-mimovision-cuda1342-nccl2323-status032`; the rows were
 measured on its parent, `dev-20260927-b12xcache-cuda1342-nccl2323-status032`,
-which differs only in MiMo's vision encoder. Measurements:
+which differs only in MiMo's vision encoder; the MiMo rows were measured on
+this image. Measurements:
 Qwen [two](performance/records/images/dev-20260927-b12xcache-qwen38-flash-next-tp2-20260927.md) and [four](performance/records/images/dev-20260927-b12xcache-qwen38-flash-next-tp4-20260927.md) Sparks,
 Swift [two](performance/records/images/dev-20260927-b12xcache-swift15-qwen38-tp2-20260927.md),
 GLM [two](performance/records/images/dev-20260927-b12xcache-glm53-flash-tp2-20260927.md) and [four](performance/records/images/dev-20260927-b12xcache-glm53-flash-tp4-20260927.md),
-MiMo [two](performance/records/images/dev-20260927-b12xcache-mimo-v26-flash-tp2-20260927.md) and [four](performance/records/images/dev-20260927-b12xcache-mimo-v26-20260927.md),
+MiMo [two](performance/records/images/dev-20260927-mimovision-mimo-v26-flash-tp2-20260927.md) and [four](performance/records/images/dev-20260927-mimovision-mimo-v26-flash-tp4-20260927.md),
 DeepSeek [four](performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md#speculative-decoding).
 
 The [full profile catalog](profiles/README.md) lists every profile, including
