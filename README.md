@@ -9,41 +9,27 @@ profiles support vLLM and SGLang.
 
 ## Quick start
 
-1. Check the [requirements](docs/operations/install.md#requirements).
-2. Cable your GB10 devices as the requirements show.
-3. On the device connected to your network, run the installer command with the
-   profile for your model and device count. See also
-   [SparkRing commands](docs/operations/commands.md).
-
-Prefer Docker Compose? [Compose files for every profile](docs/operations/compose-files.md).
-
-Two Sparks:
+1. Check the [requirements](docs/operations/install.md#requirements) and cable
+   your Sparks as shown there.
+2. Pick a `--profile` value from the [table below](#profiles) for your model and
+   number of Sparks.
+3. On the Spark connected to your network, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
 ```
 
-Four Sparks:
+The installer asks before it changes anything (`--yes` skips the questions,
+`--plan` only shows what it would do). It sets up every Spark, downloads the
+image and model if needed, and prints the API address when the model is ready.
+Run the same command again to upgrade. Each model has a
+[status dashboard](docs/operations/dashboard.md); on four Sparks the installer
+also applies a [ConnectX driver setting](docs/operations/install.md#four-spark-rings)
+at every boot.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-qad-tp4
-```
-
-The command asks before it installs the SparkRing package and before it
-changes any Spark; `--yes` answers both, and `--plan` prints what the command
-would do, also for an upgrade, and changes nothing. It sets
-up every Spark, downloads the image and model unless the Sparks already hold
-them, and prints the API address when the model is ready. Each model serves a
-[status dashboard](docs/operations/dashboard.md), and on four Sparks the
-installer also applies the ring's
-[ConnectX driver setting](docs/operations/install.md#four-spark-rings) at every
-boot. Running it again upgrades to the branch's newest release; the
-[pinned command](docs/operations/install-reference.md#get-the-package) repeats
-an installation exactly.
-
-Other models: a `--profile` value from [Profiles](#profiles). Docker Compose:
-[Qwen on two Sparks with Compose](profiles/qwen38-flash-next-tp2/compose/README.md).
-All commands and flags: [SparkRing commands](docs/operations/commands.md).
+More: [all commands](docs/operations/commands.md) ·
+[Docker Compose files](docs/operations/compose-files.md) ·
+[pinned install command](docs/operations/install-reference.md#get-the-package)
 
 ## Profiles
 
@@ -61,27 +47,18 @@ All commands and flags: [SparkRing commands](docs/operations/commands.md).
 | MiMo-V2.6-Flash-RL | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL) | 4 | `mimo-v26-flash-rl-tp4` | 8020 | 47.2 / 197 / 340 | 4,002 |
 | DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 63.5 / 195 / 277 | 4,271 |
 
-Decode is the aggregate output rate from
+Decode is the total output rate at 1, 8 and 16 concurrent users, from
 [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
-0.6.2 at temperature 1.0 with no added context, 20 s per cell; prefill is one
-cold 64K-token prompt divided by its time to first token. Every profile runs
-image `dev-20260928-plainstatus-cuda1342-nccl2323-status033`; the rows were
-measured on its parent, `dev-20260928-toolchoice-cuda1342-nccl2323-status032`,
-which differs only in the runtime-status dashboard, except the four-Spark
-Qwen and GLM rows, measured on this image (GLM: the median of two runs). The
-tokens accepted per speculative step follow the sampled text at temperature
-1.0, so one-stream decode varies between single runs: MiMo on two Sparks has
-measured from 31.0 to 44.9 tok/s at the same step rate.
-Measurements:
+0.6.2 at temperature 1.0, 20 s per cell. Prefill, from the same benchmark, is
+one cold 64K-token prompt divided by its time to first token. Details per row:
 Qwen [two](performance/records/images/dev-20260928-toolchoice-qwen38-flash-next-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next-qad-tp4-20260928.md) Sparks,
 Swift [two](performance/records/images/dev-20260928-toolchoice-swift15-qwen38-flash-next-tp2-20260928.md),
 GLM [two](performance/records/images/dev-20260928-toolchoice-glm53-flash-nvfp4-spark-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-20260928.md),
 MiMo [two](performance/records/images/dev-20260928-toolchoice-mimo-v26-flash-rl-tp2-20260928.md) and [four](performance/records/images/dev-20260928-toolchoice-mimo-v26-flash-rl-tp4-20260928.md),
 DeepSeek [four](performance/records/images/dev-20260928-toolchoice-deepseek-v41-flash-tp4-20260928.md).
 
-The [full profile catalog](profiles/README.md) lists every profile, including
-SparkCache variants and models that `sparkring install` does not set up. Each
-has its own setup guide.
+Other setups, including SparkCache variants and models the installer doesn't
+cover, each have their own guide in the [profile catalog](profiles/README.md).
 
 ## Documentation
 
