@@ -1,0 +1,82 @@
+{
+  "schema": "sparkring-tool-contract-api-probe/v1",
+  "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+  "policy": "enabled",
+  "thinking": "default",
+  "passed": true,
+  "cases": [
+    {
+      "case": "named-full-positive",
+      "max_tokens": 400,
+      "http_status": 200,
+      "passed": true,
+      "error_type": null,
+      "error_message": null,
+      "elapsed_seconds": 1.282
+    },
+    {
+      "case": "named-full-truncated",
+      "max_tokens": 16,
+      "http_status": 400,
+      "passed": true,
+      "error_type": "BadRequestError",
+      "error_message": "Named or required tool_choice produced no tool calls; finish_reason: length. Increase max_tokens so generation can complete the tool call.",
+      "elapsed_seconds": 0.515
+    },
+    {
+      "case": "named-stream-positive",
+      "max_tokens": 400,
+      "http_status": 200,
+      "passed": true,
+      "error_type": null,
+      "error_message": null,
+      "elapsed_seconds": 2.578
+    },
+    {
+      "case": "named-stream-truncated",
+      "max_tokens": 16,
+      "http_status": 200,
+      "passed": true,
+      "error_type": "BadRequestError",
+      "error_message": "Named or required tool_choice produced no tool calls; finish_reason: length. Increase max_tokens so generation can complete the tool call.",
+      "elapsed_seconds": 0.532
+    },
+    {
+      "case": "required-full-positive",
+      "max_tokens": 400,
+      "http_status": 200,
+      "passed": true,
+      "error_type": null,
+      "error_message": null,
+      "elapsed_seconds": 1.218
+    },
+    {
+      "case": "required-full-truncated",
+      "max_tokens": 16,
+      "http_status": 400,
+      "passed": true,
+      "error_type": "BadRequestError",
+      "error_message": "Named or required tool_choice produced no tool calls; finish_reason: length. Increase max_tokens so generation can complete the tool call.",
+      "elapsed_seconds": 0.516
+    },
+    {
+      "case": "required-stream-positive",
+      "max_tokens": 400,
+      "http_status": 200,
+      "passed": true,
+      "error_type": null,
+      "error_message": null,
+      "elapsed_seconds": 1.578
+    },
+    {
+      "case": "required-stream-truncated",
+      "max_tokens": 16,
+      "http_status": 200,
+      "passed": true,
+      "error_type": "BadRequestError",
+      "error_message": "Named or required tool_choice produced no tool calls; finish_reason: length. Increase max_tokens so generation can complete the tool call.",
+      "elapsed_seconds": 0.563
+    }
+  ],
+  "scope": "Eight requests. A truncated budget is a truncation probe, not a deterministic parser fault injector."
+}
