@@ -37,36 +37,32 @@ image store ([check which one a Spark uses](install-reference.md#image-distribut
 
 ## Install
 
+Pick the `--profile` value for your model and number of Sparks from the
+[profile table](../../README.md#profiles), then run on Node A:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
 ```
 
-Use the `--profile` value for your model and Spark count from the
-[profile table](../../README.md#profiles); without `--profile`, it asks. The
-script builds the SparkRing package and asks `Install the package? [Y/n]`
-before installing it on this Spark, then runs `sudo sparkring install` with
-your options. `--yes` answers both commands' questions. `--plan` installs
-nothing and prints the plan of the package the script built, also when this
-Spark has another SparkRing version installed; it needs some SparkRing package
-on this Spark. `--package-only` installs the package and stops before any
-other Spark or model changes; `sudo sparkring install --profile PROFILE --plan`
-then shows the rest. To install a published package instead, see
-[Get the package](install-reference.md#get-the-package).
+- It asks before it installs the SparkRing package, before it changes any
+  Spark and before a model download larger than 1 GiB. `--yes` answers these.
+- Stopping another program's GPU container always needs its own answer, or
+  `--stop-workloads`.
+- `--plan` shows what it would change and changes nothing. On a Spark without
+  SparkRing, run with `--package-only` first; it installs only the package.
+- Qwen profiles install checkpoint step 5500; add `--checkpoint qad-step-4000`
+  for step 4000 ([checkpoints](install-reference.md#checkpoints)).
 
-A Qwen profile installs checkpoint step 5500 by default; add
-`--checkpoint qad-step-4000` for step 4000
-([details](install-reference.md#checkpoints)).
+A model that is already running keeps serving while the selected model's image
+and weights are prepared, and runs again if the selected model fails to start.
+The install ends with `Model ready:` and the API address. If it stops early, run the same command
+again; it continues where it stopped.
 
-On first use it lists every change and asks `Proceed? [Y/n]`, and asks again
-before a model download larger than 1 GiB. Later runs print the plan and ask
-`Apply this installation? [Y/n]` once. It also asks before stopping another
-program's GPU container. It prepares the image and model before it stops the running model, and restarts
-the running model if the selected one fails to start. It ends with `Model ready:` and the
-API URL. If it stops early, run the same command again; it continues where it
-stopped. The command above always installs the branch's newest SparkRing; to
-continue or repeat an installation with the same version, pin it to the
-`Source revision:` the script printed
-([pinned command](install-reference.md#get-the-package)).
+The command installs the newest SparkRing from `main`. To repeat an
+installation exactly, use the
+[pinned command](install-reference.md#get-the-package) with the
+`Source revision:` it printed; that section also covers installing a published
+package.
 
 ## Four-Spark rings
 
@@ -85,11 +81,11 @@ the cables. If the search misses your copy, name it:
 
 ```bash
 # The same folder on every Spark
-sudo sparkring install --profile qwen38-flash-next-tp2 --model-path /data/models/qwen
+sudo sparkring install --profile PROFILE --model-path /data/models/my-model
 
 # A different folder per Spark (Node 0 is Node A)
-sudo sparkring install --profile qwen38-flash-next-tp2 \
-  --model-path 0=/data/models/qwen --model-path 1=/mnt/nvme/qwen
+sudo sparkring install --profile PROFILE \
+  --model-path 0=/data/models/my-model --model-path 1=/mnt/nvme/my-model
 ```
 
 - `--ignore-local-copies` uses only SparkRing's own copies and the paths you

@@ -7,9 +7,9 @@ Node A:
 http://NODE_A:PORT/v1/sparkring/status/view
 ```
 
-`PORT` is the profile's API port: 8000, 8015 or 8020 (see
-[Profiles](../../README.md#profiles)). The page refreshes every 5 seconds. It
-only reads status: it runs no benchmark and changes no setting.
+`PORT` is the profile's API port: 8000, 8015 or 8020
+([profile table](../../README.md#profiles)). The page refreshes every 5
+seconds. It only reads status: it runs no benchmark and changes no setting.
 
 ![Dashboard summary and draft acceptance](assets/dashboard-overview.png)
 
@@ -17,15 +17,17 @@ only reads status: it runs no benchmark and changes no setting.
 
 | Section | What you see |
 |---|---|
-| Summary | How many Sparks reported, how old the data is, and how many settings need a look |
-| Draft acceptance | How many MTP draft tokens the model accepted, since the last refresh and since start, overall and per draft position |
+| Summary | Sparks reporting, data age and settings to check |
+| Draft acceptance | MTP draft tokens accepted since the last refresh and since start, overall and per draft position |
 | Memory and disk | Used and available memory on each Spark (CPU and GPU share it) and free disk space |
 | Versions | NVIDIA driver, CUDA, NCCL, library and package versions on each Spark |
 | Transport | Whether RoCEnante and NCCL are available, the NICs in use, link rates and RDMA traffic |
-| Settings | Every serving setting as configured and as the model resolved it, and whether all Sparks agree |
+| Settings | Each serving setting as configured and as the model resolved it, and whether all Sparks agree |
+| Workers | Draft tokens, KV transfer and kernel setup on each worker |
+| Build information | Image, packages and source commits |
 
-The links under the summary jump to each section. Append `#nodes` to the
-address to open it at memory and disk.
+Links under the summary jump to each section. Add `#nodes` to the address to
+open the page at memory and disk.
 
 ![Memory and disk space on each Spark](assets/dashboard-memory.png)
 
@@ -35,29 +37,27 @@ address to open it at memory and disk.
 
 ## From a terminal
 
-The same report as text or JSON:
-
 ```bash
-curl http://NODE_A:PORT/v1/sparkring/status.txt
-curl http://NODE_A:PORT/v1/sparkring/status
+curl http://NODE_A:PORT/v1/sparkring/status.txt   # the report as text
+curl http://NODE_A:PORT/v1/sparkring/status       # the report as JSON
+vllm-top --url http://NODE_A:PORT                 # live rates
 ```
+
+[vllm-top](https://github.com/mratsim/vllm-top) shows live prefill and decode
+rates, queue, KV cache use and MTP acceptance.
 
 `sudo sparkring status` checks the installation on every Spark and whether the
 model is up; the dashboard shows how the running model is configured and
 behaving.
 
-For live prefill and decode rates, queue, KV cache use and MTP acceptance in a
-terminal, point [vllm-top](https://github.com/mratsim/vllm-top) at the model
-API: `vllm-top --url http://NODE_A:PORT`.
-
 ## Access
 
-The dashboard has the same access as the model API: no key, on every interface
-of Node A. It shows hostnames, NIC MAC addresses and software versions, so keep
+Like the model API, the dashboard has no key and listens on every interface of
+Node A. It shows hostnames, NIC MAC addresses and software versions, so keep
 Node A on a trusted network ([Security](install.md#security)).
 
 ## Source
 
-The page is served by the runtime-status vLLM plugin; the installer image
-lock's `status_version` names the version the image carries. The plugin's
-source, response schema, collection cost and offline tests are in [integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md).
+SparkRing's runtime-status vLLM plugin serves the page. Its source, response
+schema, collection cost and offline tests are in
+[integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md).

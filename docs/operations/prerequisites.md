@@ -1,10 +1,13 @@
 # SparkRing prerequisites
 
-What every Spark needs for the manual profile guides in
-[Set up SparkRing manually](setup.md). For the normal path,
-`sudo sparkring install`, see the requirements in [Install SparkRing](install.md).
-[Host preparation](host-preparation.md) has the commands; the
-[pair network guide](pair-network.md) or the ring procedure sets up the fabric.
+What every Spark needs for the [manual setup](setup.md). For
+`sudo sparkring install`, the normal path, see [Install SparkRing](install.md)
+instead.
+
+Commands: [host preparation](host-preparation.md), then the
+[pair network guide](pair-network.md) or
+[ring host setup](../GLM53_SPARK_MESH_HOST_SETUP.md#2-cable-the-four-node-data-ring)
+for the fabric.
 
 ## Hardware and topology
 
@@ -15,8 +18,9 @@ What every Spark needs for the manual profile guides in
 | Switched | 4 | Switch-connected ports, as the profile specifies |
 | Six-node ring (experimental) | 6 | Six cables in a closed cycle |
 
-Keep rank assignments fixed; rank 0 serves the API. Keep a separate management
-connection that stays reachable while you configure the data fabric.
+- Keep rank assignments fixed; rank 0 serves the API.
+- Keep a separate management connection that stays reachable while you
+  configure the data fabric.
 
 ## Operating system and storage
 
@@ -25,9 +29,9 @@ connection that stays reachable while you configure the data fabric.
 - Local disk for the **complete checkpoint on each rank**, the image and caches.
 - The same model revision and image ID on every rank.
 
-The profile guide gives model-specific storage and memory needs. Budget space on
-the actual destination filesystems with `sparkring setup storage`
-([host preparation, step 5](host-preparation.md#5-check-storage-on-every-rank)).
+The profile guide gives model-specific storage and memory needs. Check the
+actual destination filesystems with `sparkring setup storage`
+([host preparation, step 5](host-preparation.md#5-check-storage-on-every-rank));
 `host check` only requires 20 GiB free on the root filesystem.
 
 ## Network requirements
@@ -35,13 +39,14 @@ the actual destination filesystems with `sparkring setup storage`
 - Working RoCEv2, link state, addressing and MTU on the fabric interfaces.
 - SSH from the controller, plus the profile's rendezvous and control ports.
 - Rank 0's API port reachable by the intended clients.
-- Each fabric address needs exactly one RoCE v2 GID on its interface. Its GID
-  index can change after a reboot, a neighbor restart or automatic interface
+- Exactly one RoCE v2 GID per fabric address, on its interface. Its index can
+  change after a reboot, a neighbor restart or automatic interface
   configuration
-  ([secondary-port record](../../performance/records/transport/nccl-dual-domain-deepseek.md#serving-measurements-and-library-compatibility)).
-  `scripts/preflight.py` reports the index for each ring port, and
+  ([secondary-port record](../../performance/records/transport/nccl-dual-domain-deepseek.md#serving-measurements-and-library-compatibility)),
+  and a launch path that pins an index needs the address there.
+  `scripts/preflight.py` reports the index for each ring port;
   [`spark_roce_gid.py`](../../integrations/vllm/spark_roce_gid.py) prints it
-  on a host. A launch path that pins an index needs the address at that index.
+  on a host.
 
 ### Four-Spark managed hardware-forwarded mesh
 
@@ -53,7 +58,8 @@ before loading the model.
 ### Routing and forwarding across the fabric
 
 Rings need routes, IPv4 forwarding and forwarding rules between fabric
-interfaces. Inspect them with [Ring Doctor](fabric-repair.md) before applying repairs.
+interfaces. Inspect them with [Ring Doctor](fabric-repair.md) before applying
+repairs.
 
 ### Management safety during repair
 
@@ -63,12 +69,13 @@ controller identity checks and persistent routing rules.
 
 ## Local configuration and preflight
 
-Use the site or environment template the profile guide names. Fill in each
-rank's addresses, interfaces and paths, and keep private inputs in an ignored
-directory such as `.sparkring/`. Run the guide's checks and review its launch
-plan before starting containers.
+1. Use the site or environment template the profile guide names.
+2. Fill in each rank's addresses, interfaces and paths. Keep private inputs in
+   an ignored directory such as `.sparkring/`.
+3. Run the guide's checks and review its launch plan before starting containers.
 
 ## Safety boundary
 
-Stop affected workloads before changing NICs, routes or services. Keep
-independent management access, and use the guide's coordinated start and stop steps.
+- Stop affected workloads before changing NICs, routes or services.
+- Keep independent management access.
+- Start and stop with the guide's coordinated steps.

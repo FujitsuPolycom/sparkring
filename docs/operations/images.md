@@ -1,10 +1,9 @@
 # What is a SparkRing image?
 
-A SparkRing image is a Docker container image for Linux ARM64 GB10 hosts that
-holds a prepared inference software stack. It is not an operating-system
-image: pulling it neither configures networking nor starts a model.
-`sudo sparkring install` pulls and runs the right image for you; see
-[Install SparkRing](install.md). This page lists what each image contains.
+A SparkRing image is a Docker container image with the inference software for
+Linux ARM64 GB10 hosts. It is not an operating-system image: pulling it neither
+configures networking nor starts a model. `sudo sparkring install` pulls and
+runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
@@ -17,35 +16,38 @@ other releases.
 ## Installer image
 
 Development image, tag `dev-20260928-plainstatus-cuda1342-nccl2323-status033`.
-The download is 14.2 GiB and the unpacked image 29.5 GiB. Its
-[installer image lock](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/installer-image.json)
-lists the nine profiles and pins its identity; its
-[publication record](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/publication.json)
-names the parent image and the added layer. The
-[installer image builders](../../runtime/images/installer-images.md) list the
-builder of each layer in the chain.
+The download is 14.2 GiB and the unpacked image 29.5 GiB.
+
+- The [installer image lock](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/installer-image.json)
+  lists the nine profiles and pins the image's identity.
+- The [publication record](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/publication.json)
+  names the parent image and the added layer.
+- The [installer image builders](../../runtime/images/installer-images.md) list
+  the builder of each layer in the chain.
 
 | Component | Purpose |
 |---|---|
 | `eugr/spark-vllm-b12x:nightly-20260924` base | vLLM with [Local Inference Lab's B12X](https://github.com/local-inference-lab/b12x) kernels and loaders for GB10 |
 | CUDA 13.4.2 and NCCL 2.32.3 | CUDA runtime and the NCCL library the installer selects |
-| Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives whose forwarded-path send window bounds traffic relayed by a ring node. A rank waits for a late peer for up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) instead of stopping after a fixed poll count, and logs each wait longer than 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
-| Runtime-status dashboard 0.3.3 | `/v1/sparkring/status/view` on the model API port: settings, memory, transport and versions in plain words, with only the rows to check colored |
-| Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10, and the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
-| Host-to-device staging fix | vLLM's `CpuGpuBuffer.copy_to_gpu` copies through fresh pinned memory, so a host buffer rewritten for the next step while its copy is still queued cannot change the copied data. Without it, Qwen with MTP, async scheduling and FULL CUDA graphs decoded about 0.2-0.5% of concurrent requests as token 8191 (` Register`) repeated ([#294](https://github.com/FujitsuPolycom/sparkring/issues/294)) |
-| B12X selection-cache correction | When kernel tuning is shared across the ranks of a two- or four-Spark deployment, B12X reads its tuning cache once the ranks have reconciled it, so a restart reuses earlier tuning instead of measuring every kernel again ([integrations/b12x/selection_cache](../../integrations/b12x/selection_cache/README.md)). A DeepSeek-V4.1-Flash four-Spark restart became healthy in 200-225 s instead of 652-741 s |
-| MiMo vision attention sinks | The MiMo-V2.6 vision encoder applies its per-head attention sinks in the softmax denominator, as the model was trained ([derive_mimo_vision.py](../../runtime/images/derive_mimo_vision.py)). With the sink added to each image's first key instead, MiMo read a red-and-blue test image as black and white |
-| Tool-result contract | A Chat Completions request whose `tool_choice` is `required` or names a function, and whose output lacks a complete call, returns HTTP 400 when the token limit ended generation and HTTP 500 otherwise, instead of HTTP 200 with no tool call ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md), [#217](https://github.com/FujitsuPolycom/sparkring/issues/217)). `SPARKRING_TOOL_CHOICE_CONTRACT=0` in a profile's environment turns it off |
+| Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives; a send window bounds the traffic a ring node relays. A rank waits up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) for a late peer and logs waits over 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
+| Runtime-status dashboard 0.3.3 | [Status dashboard](dashboard.md) at `/v1/sparkring/status/view` on the model API port: settings, memory, transport and versions, with only the rows to check colored |
+| Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10; the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
+| Host-to-device staging fix | vLLM's `CpuGpuBuffer.copy_to_gpu` copies through fresh pinned memory, so a queued copy cannot pick up later writes to its host buffer. Without it, Qwen with MTP, async scheduling and FULL CUDA graphs decoded about 0.2-0.5% of concurrent requests as token 8191 (` Register`) repeated ([#294](https://github.com/FujitsuPolycom/sparkring/issues/294)) |
+| B12X selection-cache correction | When the ranks of a two- or four-Spark deployment share kernel tuning, B12X reads its tuning cache after they reconcile it, so a restart reuses earlier tuning instead of measuring every kernel again ([selection cache](../../integrations/b12x/selection_cache/README.md)). A DeepSeek-V4.1-Flash four-Spark restart was healthy after 200-225 s with it, 652-741 s without |
+| MiMo vision attention sinks | The MiMo-V2.6 vision encoder applies its per-head attention sinks in the softmax denominator, as the model was trained ([derive_mimo_vision.py](../../runtime/images/derive_mimo_vision.py)). With the sinks on each image's first key instead, MiMo read a red-and-blue test image as black and white |
+| Tool-result contract | A Chat Completions request whose `tool_choice` is `required` or names a function, and whose output lacks a complete call, gets HTTP 400 if the token limit ended generation and HTTP 500 otherwise, not HTTP 200 without a tool call ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md), [#217](https://github.com/FujitsuPolycom/sparkring/issues/217)). `SPARKRING_TOOL_CHOICE_CONTRACT=0` in a profile's environment turns it off |
 
-`sparkring install` starts it with the image's entrypoint, a per-rank
+`sparkring install` starts the image with its entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that
-allows `io_uring` (`runtime/common/loader-seccomp.json`). The manual Qwen
-launcher, `runtime/common/qwen_flash_next.py`, refuses this image; use
-`sparkring install` or [Compose](compose.md).
+allows `io_uring` (`runtime/common/loader-seccomp.json`). Run it with
+`sparkring install` or [Compose](compose.md); the manual Qwen launcher,
+`runtime/common/qwen_flash_next.py`, refuses it.
 
 ## Shared 2026.09.3 image
 
 See the [2026.09.3 release](../../runtime/releases/shared-2026.09.3/README.md).
+The [component record](../../runtime/releases/shared-2026.09.3/components.md)
+lists sources and libraries.
 
 | Component | Purpose |
 |---|---|
@@ -57,9 +59,7 @@ See the [2026.09.3 release](../../runtime/releases/shared-2026.09.3/README.md).
 | Verification helpers, receipts, contracts and notices | Installed-file identities, integration checks and attribution |
 
 Components are off unless the profile enables them, and a profile uses one
-serving engine. Some kernels still compile at startup. The
-[component record](../../runtime/releases/shared-2026.09.3/components.md) lists
-sources and libraries.
+serving engine. Some kernels compile at startup.
 
 ## Supplied separately
 
@@ -84,6 +84,7 @@ container keeps them.
 | Local image ID | Docker's image configuration ID; differs from the registry digest |
 | Receipt | A record of specific identity or verification checks |
 
+Do not pick an image by tag alone.
 `python3 scripts/sparkring.py setup show PROFILE_ID` prints a profile's image
 and checkpoint from the repository records; the profile guide then pulls the
-image and checks its local image ID. Do not pick an image by tag alone.
+image and checks its local image ID.

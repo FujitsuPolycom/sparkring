@@ -4,9 +4,10 @@ Status: **implemented**; CPU source replay covers all four admitted serving
 modules. The [Qwen TP4 evidence](serving-evidence.json) and
 [DeepSeek TP2 record](../../../performance/records/deepseek-v4-flash/api-ipc-tp2-k5-20260917.md)
 qualify bounded empty-result checks on their identified images with the
-entrypoint wrapper. The installer image layer is **implemented** without a
-built image or hardware result. Other images and model parsers require their
-own serving qualification.
+entrypoint wrapper. The installer image layer is **implemented** and runs in
+the default installer image, where `api_probe.py` passed on three installer
+profiles ([Installer images](#installer-images)). Other images and model
+parsers require their own serving qualification.
 
 This optional API policy addresses [issue #217](https://github.com/FujitsuPolycom/sparkring/issues/217):
 named or required tool requests can finish with an empty, malformed, or
@@ -80,9 +81,9 @@ installer image lock selects
 `dev-20260928-plainstatus-cuda1342-nccl2323-status033`, whose parent is the
 published layer, so installer deployments apply the policy. On that layer,
 `api_probe.py` passed all eight cases (named and required, streaming and not,
-`max_tokens` 400 and 16) on MiMo-V2.6-Flash-RL (four Sparks) and
-Qwen3.8-Flash-Next (two Sparks); each non-streaming truncated call returned
-HTTP 400. The Rust
+`max_tokens` 400 and 16) on MiMo-V2.6-Flash-RL (four Sparks),
+Qwen3.8-Flash-Next (two Sparks) and DeepSeek-V4.1-Flash (four Sparks); each
+non-streaming truncated call returned HTTP 400. The Rust
 frontend and gRPC do not use `OpenAIServingChat` and are not covered.
 
 ## Entrypoint wrapper for other images
@@ -190,9 +191,9 @@ python integrations/vllm/tool_choice_contract/api_probe.py \
 Every truncated request must return `BadRequestError` with code 400 (HTTP 400
 nonstreamed; an SSE error and `[DONE]` streamed) and every positive request one
 `lookup` call with arguments `{"key": "cedar"}`. The same command with
-`--policy disabled` against a profile installed on the default lock, whose
-image lacks the layer, records the baseline: HTTP 200 without a tool call for
-the truncated requests.
+`--policy disabled` against a deployment whose profile environment sets
+`SPARKRING_TOOL_CHOICE_CONTRACT=0` records the baseline: HTTP 200 without a
+tool call for the truncated requests.
 
 ## Evidence
 

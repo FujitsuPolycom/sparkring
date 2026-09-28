@@ -66,9 +66,10 @@ and built by
   ([sweep](decode-ab-20260925/gb10-skinny-gemm-sweep.json)).
 - `VLLM_QWEN4_EXP_MXFP8_HC=1` quantizes the hyper-connection down/injection
   projections (97 in the target, 3 in the draft), which every rank reads in
-  full at each step, to MXFP8 at load. Batches of at most 16 rows use the
-  MXFP8 weights; larger batches use the retained BF16 weights, because the
-  B12X MXFP8 kernel with BF16 activations runs 16-row tiles.
+  full at each step, to MXFP8 at load, roughly halving the bytes those reads
+  move. Batches of at most 16 rows use the MXFP8 weights; larger batches use
+  the retained BF16 weights, because the B12X MXFP8 kernel with BF16
+  activations runs 16-row tiles.
 
 Per-step decode time on TP4, ms (prose / code / JSON):
 
@@ -176,7 +177,8 @@ With greedy drafting, the rejection test treats each draft token as certain,
 so under sampling a draft token survives with the target's probability for it.
 The profiles set `"draft_sample_method": "probabilistic"` in
 `--speculative-config`: drafts sample from the draft distribution and the
-rejection test uses the full probability ratio. Tokens per step from
+rejection test uses the full probability ratio, so outputs follow the target
+model's sampling distribution. Tokens per step from
 `decode_probe.py` (three runs at temperature 1.0, two at temperature 0):
 
 | Configuration | Prose | Code | JSON |

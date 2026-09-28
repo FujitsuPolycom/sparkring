@@ -40,15 +40,18 @@ release's installer image lock records.
 ## Derived layers
 
 Every layer above `dev-20260924` except the Qwen decode layer is built by
-[derived_layer.py](derived_layer.py). The installer image lock pins the SHA-256
-of two receipts inside the image: the external-base receipt
+[derived_layer.py](derived_layer.py). The installer image lock
+(`sparkring-installer-image/v2`) lists the profiles it admits and pins the
+image configuration, the registry manifest, the composition, the prepared
+transport manifest, the runtime-status version and the SHA-256 of two receipts
+inside the image: the external-base receipt
 (`/opt/sparkring/receipts/external-base-installed.json`), whose file map the
 image's `verify` checks, and the toolchain receipt
 (`/opt/sparkring/toolchain/installed.json`), which records the external-base
 receipt. A derived layer copies its files over the parent, records each file in
 the external-base receipt, re-records the toolchain receipt and writes a
-provenance receipt that lists every path with its inherited and resulting
-SHA-256 (`null` for an added file).
+provenance receipt under `/opt/sparkring/receipts/` that lists every path with
+its inherited and resulting SHA-256 (`null` for an added file).
 
 A layer is defined in one of two ways.
 

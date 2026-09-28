@@ -35,6 +35,27 @@ or development history.
 Final test: if understanding any sentence requires “you had to be there,”
 rewrite it.
 
+## Reader-facing documents
+
+The README, install and setup guides, command references and dashboard pages
+are read by people installing or running SparkRing. Keep them short:
+
+- Lead with what the reader does or gets. Steps and commands come before
+  explanation.
+- One idea per sentence and short paragraphs. Use a list or a table instead of a
+  paragraph of clauses.
+- Say each thing once, where the reader needs it, and link to the reference
+  for the rest.
+- Keep mechanisms, measurement conditions, image lineage and edge cases in
+  references, records and developer documents; a guide links to them.
+- Examples do not favor one model: use `PROFILE` and point to the profile
+  table, unless the example needs a specific profile.
+- Plain words. Name an internal component only when the reader must type or
+  recognize it.
+
+Test: a reader who skims the headings and the first line of each section can
+finish the task.
+
 ## Applying the policy
 
 Review meaning and context, not a banned-word list. Literal flags, paths and
