@@ -153,7 +153,7 @@ class Acceptance:
             self.env.log(f"install: following run {launch['run_id']} on Node A, started {launch['started_at']}")
         else:
             run_id = f"{self.profile.id}-{self.stamp()}"
-            command = install.install_command(self.source, self.profile.id)
+            command = install.install_command(self.source, self.profile.id, self.args.install_arg)
             launch = {"run_id": run_id, "command": command, "source": asdict(self.source),
                       "started_at": self.env.now().isoformat(timespec="seconds")}
             # Saved before the launch, so a later invocation follows this run
@@ -351,6 +351,9 @@ def parser():
     p.add_argument("--thinking-on", type=json_object, help="request fields for the reasoning check (default: none)")
     p.add_argument("--private-name", action="append", default=[],
                    help="another host or name the record must not contain; repeatable")
+    p.add_argument("--install-arg", action="append", default=[], metavar="ARG",
+                   help="further argument for sparkring install, repeatable (e.g. --install-arg=--image-lock "
+                        "--install-arg=/var/tmp/lock.json)")
     p.add_argument("--install-timeout", type=positive, default=14400, help="seconds to wait for the installer")
     p.add_argument("--ready-timeout", type=positive, default=3600, help="seconds to wait for /v1/models")
     p.add_argument("--bench-timeout", type=positive, default=3600, help="seconds per benchmark run")

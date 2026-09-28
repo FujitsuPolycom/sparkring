@@ -64,9 +64,13 @@ def _remote_path(path):
     raise ValueError("The bundle path on Node A must be absolute or start with ~/")
 
 
-def install_command(source, profile):
-    """The shell command a person would type on Node A for this source."""
-    flags = f"--profile {shlex.quote(profile)} --yes --json"
+def install_command(source, profile, extra=()):
+    """The shell command a person would type on Node A for this source.
+
+    ``extra`` holds further `sparkring install` arguments, for example
+    ``--image-lock PATH`` for a development image lock on Node A.
+    """
+    flags = " ".join([f"--profile {shlex.quote(profile)} --yes --json", *(shlex.quote(arg) for arg in extra)])
     if source.kind == "published":
         url = PUBLISHED_SCRIPT.format(ref=source.ref)
         ref = "" if source.ref == "main" else f"--ref {shlex.quote(source.ref)} "

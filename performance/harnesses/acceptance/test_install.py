@@ -186,3 +186,9 @@ def test_detached_run_round_trip_in_local_bash(tmp_path):
     assert code == 0 and summary["ok"] and summary["api_ready_seconds"] == 12.5
     assert sorted(p.name for p in Path(tmp_path, install.REMOTE_ROOT, "run-1").iterdir()) == \
         ["command.sh", "exit_code", "stderr.log", "stdout.json"]
+
+
+def test_install_command_appends_further_install_arguments():
+    command = install.install_command(install.parse_source("bundle:/var/tmp/s.bundle:sync/next"), "p-tp2",
+                                      ["--image-lock", "/var/tmp/lock one.json"])
+    assert command.endswith("--profile p-tp2 --yes --json --image-lock '/var/tmp/lock one.json'")
