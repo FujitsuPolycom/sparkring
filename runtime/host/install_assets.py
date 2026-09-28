@@ -531,7 +531,10 @@ class Assets:
             if [r["host"] for r in saved["site"]["ranks"]] == [r["host"] for r in rows]:
                 payload = json.dumps({"workspace": saved["site"]["workspace"], "deployment": saved["id"]}).encode()
                 for row in rows:
-                    operation(runner, row["rank"], "model-reuse-receipt", payload)
+                    reused = operation(runner, row["rank"], "model-reuse-receipt", payload)
+                    if isinstance(reused, dict) and reused.get("changed"):
+                        progress.say(f"Node {row['rank']}: the checkpoint no longer matches the earlier installation's "
+                                     "record; missing or changed files are acquired again.")
 
         def adopt(rank):
             data = json.dumps(checkpoint_plan.adoption(approved, rank, receipts_for(receipts, rank))).encode()

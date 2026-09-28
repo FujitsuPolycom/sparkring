@@ -1260,7 +1260,9 @@ def transfer_model(operation, lock, row, state):
       every placed name from the journal, and write the receipt when the
       directory is complete.
     - ``model-reuse-receipt``: copy an earlier deployment's verified receipt
-      for the same path.
+      for the same path. When SparkRing's own directory no longer matches that
+      receipt, nothing is copied and ``changed`` names the difference; a copy
+      served in place is refused instead, because SparkRing never repairs it.
     """
     number = row.get("rank", "?")
     receipt_path = plain(state / "model.json")
@@ -1285,7 +1287,16 @@ def transfer_model(operation, lock, row, state):
             return {"reused": False}
         # The earlier deployment's receipt is read, never rewritten; this
         # deployment saves its own copy with any re-measured stats.
-        receipt = verify_model(lock, row, saved)
+        try:
+            receipt = verify_model(lock, row, saved)
+        except ValueError as error:
+            if row.get("reuse_verified_model"):
+                raise
+            # SparkRing's own directory no longer matches the earlier receipt, for
+            # example after a file was moved away. The receipt is not reused;
+            # adoption settles the directory and the checkpoint plan acquires the
+            # missing or differing files from another Spark or huggingface.co.
+            return {"reused": False, "changed": str(error)}
         state.mkdir(parents=True, exist_ok=True)
         deploy_engine.save_receipt(receipt_path, receipt)
         if not lock["backend"].startswith("glm-"):

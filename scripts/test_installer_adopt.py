@@ -644,6 +644,27 @@ def test_fetch_refuses_unpinned_present_or_concurrent_names(env, docker):
     assert docker.runs() == []
 
 
+def test_a_file_moved_out_of_sparkrings_directory_is_downloaded_again_by_the_next_install(env, docker, tmp_path):
+    # A directory SparkRing filled by download, recorded by an earlier deployment's receipt.
+    assert env.call("model-adopt", {"files": {}, "receipts": [], "tolerance_bytes": 0})["missing"]
+    assert env.call("model-fetch", {"names": required(env.data)})["complete"]
+    previous = tmp_path / "previous"
+    (previous / "installer").mkdir(parents=True)
+    (previous / ".installer-owner.json").write_text(json.dumps({"deployment": "e" * 64}))
+    os.replace(env.state / "model.json", previous / "installer/model.json")
+    moved = SHARDS[0]
+    os.replace(env.model / moved, tmp_path / moved)
+    # The next installation is another deployment: its receipt reuse no longer stops the preparation.
+    reused = env.call("model-reuse-receipt", {"workspace": str(previous), "deployment": "e" * 64})
+    assert reused["reused"] is False and moved in reused["changed"]
+    assert not (env.state / "model.json").exists()
+    adopted = env.call("model-adopt", {"files": {}, "receipts": [], "tolerance_bytes": 0})
+    assert adopted["missing"] == [moved] and not adopted["complete"]
+    assert env.call("model-fetch", {"names": [moved]})["fetched"] == [moved]
+    assert env.call("model") == {"ok": True}
+    assert (env.model / moved).read_bytes() == env.data[moved] == (tmp_path / moved).read_bytes()
+
+
 def test_fetch_with_a_limit_runs_the_paced_program_without_the_parallel_downloaders(env, docker):
     user = plain_folder(env.tmp / "copy", env.data, weights(env.data))
     adopt_weights(env, user)

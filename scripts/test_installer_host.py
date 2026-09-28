@@ -297,6 +297,11 @@ def test_receipt_refresh_writes_only_the_ranks_own_receipt(tmp_path, monkeypatch
     assert env.call("model-reuse-receipt", {"workspace": str(previous), "deployment": "e" * 64}) == {"reused": True}
     assert (previous / "installer/model.json").read_bytes() == theirs
     assert json.loads(receipt_path.read_text())["file_stats"] == host.model_file_stats(folder, required(env.data), in_place=True)
+    # A copy served in place that lost a file is refused, never repaired.
+    receipt_path.unlink()
+    (folder / "tokenizer.json").rename(tmp_path / "tokenizer.json")
+    with pytest.raises(ValueError, match="SparkRing does not change it"):
+        env.call("model-reuse-receipt", {"workspace": str(previous), "deployment": "e" * 64})
 
 
 def owned_workspace(root, deployment, receipt):

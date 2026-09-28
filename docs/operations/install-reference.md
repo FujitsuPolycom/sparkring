@@ -177,6 +177,10 @@ starts:
   a storage check, a download error or Ctrl-C: the same choices restart
   preparation, re-verify what the earlier attempt left and continue an
   unfinished checkpoint download.
+- **A file missing from, or changed in, SparkRing's own checkpoint
+  directory:** the run copies it from another Spark or downloads it again.
+  A copy you named with `--model-path` and that SparkRing serves in place is
+  never repaired; restore its files, or install without naming it.
 
 For any other operation, inspect an execution receipt that says `running` or
 `uncertain`, and the host state, before recovery; do not delete receipts to
