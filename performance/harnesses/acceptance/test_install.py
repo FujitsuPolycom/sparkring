@@ -65,6 +65,13 @@ def test_complete_result_yields_revision_readiness_and_only_document():
     assert summary["api_ready_seconds"] == 545.3
     assert summary["nodes"] == 2 and summary["problems"] == []
     assert "api_url" not in summary
+    assert summary["image_release"] is None
+
+
+def test_summary_names_the_verified_image_release():
+    stdout = document(state="complete", profile="p-tp2", image_id="img", nodes=2,
+                      transaction={"verification": {"image_release": "dev-20260928-example"}})
+    assert install.summarize(stdout, STDERR, 0, profile="p-tp2")["image_release"] == "dev-20260928-example"
 
 
 def test_failed_result_reports_stage_and_message():

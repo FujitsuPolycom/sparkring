@@ -230,6 +230,21 @@ class Acceptance:
         print(record.readme_line(self.profile, summary), flush=True)
         return summary
 
+    def _installed_release(self, installed):
+        """The image release from the saved installation, reading its result document if the summary predates the field."""
+        if not installed:
+            return None
+        if "image_release" in installed:
+            return installed["image_release"]
+        stdout = self.out / "install/stdout.json"
+        if not stdout.is_file():
+            return None
+        try:
+            document, _ = install.result_document(stdout.read_text(encoding="utf-8"))
+        except install.InstallError:
+            return None
+        return install.image_release(document)
+
     @staticmethod
     def _readable(path):
         try:
@@ -239,6 +254,11 @@ class Acceptance:
 
     def step_record(self):
         args, profile = self.args, self.profile
+        installed = self.saved("install")
+        release = self._installed_release(installed)
+        if release and release != profile.image:
+            # Installed with --image-lock: the record names the image that served.
+            profile = replace(profile, image=release, release=f"runtime/releases/{release}/release.json")
         date = args.date or self.env.now().strftime("%Y%m%d")
         name = record.record_name(profile.image, args.topic or profile.id, date)
         record_root = Path(args.record_root)
@@ -252,7 +272,7 @@ class Acceptance:
 
         def text(value):
             return record.sanitize_text(value, replace=replace_map, names=names, users=users)
-        installed, launch = self.saved("install"), None
+        launch = None
         if installed and not installed.get("ok"):
             raise ValueError("The saved installation did not complete; a record needs a complete installation "
                              "(--redo install) or a run without one in a separate --out directory")

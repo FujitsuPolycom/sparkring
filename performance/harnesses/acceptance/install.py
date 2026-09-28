@@ -177,6 +177,16 @@ def result_document(stdout):
     return document, only
 
 
+def image_release(document):
+    """The installer image release the installation verified, or None.
+
+    `sparkring install --image-lock` can install an image other than the one
+    the profile's release selects, so the record names this one.
+    """
+    verification = (document.get("transaction") or {}).get("verification") or {}
+    return verification.get("image_release")
+
+
 def summarize(stdout, stderr, exit_code, *, profile):
     """Condense the installer's outputs into the fields the record uses.
 
@@ -190,7 +200,8 @@ def summarize(stdout, stderr, exit_code, *, profile):
     summary = {
         "state": state, "exit_code": exit_code, "only_document": only,
         "message": document.get("message"), "stage": document.get("stage"), "field": document.get("field"),
-        "profile": document.get("profile"), "image_id": document.get("image_id"), "nodes": document.get("nodes"),
+        "profile": document.get("profile"), "image_id": document.get("image_id"),
+        "image_release": image_release(document), "nodes": document.get("nodes"),
         "source_revision": revision[-1] if revision else None,
         "api_ready_seconds": float(readiness[-1]) if readiness else None,
     }

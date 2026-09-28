@@ -164,6 +164,20 @@ def test_skip_install_never_opens_ssh(tmp_path):
     assert "This run installed nothing" in markdown and "- Throughput was not measured." in markdown
 
 
+def test_record_names_the_image_the_installer_verified(tmp_path):
+    """An install with --image-lock serves another image than the profile's release; the record names that one."""
+    require_repository_drive(tmp_path)
+    release = "dev-20260928-example-cuda1342-nccl2323-status033"
+    result = {**json.loads(COMPLETE), "transaction": {"verification": {"image_release": release}}}
+    h = Harness(tmp_path, node=FakeNodeA(json.dumps(result) + "\n", STDERR))
+    assert h.main("--install-arg=--image-lock", "--install-arg=/var/tmp/lock.json") == 0
+    assert json.loads((h.out / "install.json").read_text())["image_release"] == release
+    name = record.image_short(release) + "-" + PROFILE + "-20260927"
+    markdown = (h.records / f"{name}.md").read_text()
+    assert f"on installer image `{release}`" in markdown
+    assert f"runtime/releases/{release}/release.json" in markdown
+
+
 def test_private_leftover_refuses_the_whole_record(tmp_path):
     h = Harness(tmp_path, bench=FakeBench(f"http://{LAN}", note="measured from client-box"))
     assert h.main() == 2
