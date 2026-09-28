@@ -266,6 +266,24 @@ def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
     assert flow.summary_lines({"api_url": connection["api_url"]}) == []
 
 
+def test_events_file_holds_the_run_and_its_result_while_stdout_keeps_one_document(machine, capsys, tmp_path):
+    path = tmp_path / "events.jsonl"
+    assert command("--events", str(path)) == 0
+    result = json.loads(capsys.readouterr().out)
+    events = [json.loads(line) for line in path.read_text().splitlines()]
+    assert all(event["schema"] == "sparkring-install-event/v1" for event in events)
+    assert (events[0]["state"], events[0]["phase"]) == ("start", "install")
+    assert events[-1] == {**events[-1], "state": "complete", "phase": "install", "api_url": result["api_url"]}
+    # The simulated Sparks report no steps of their own; progress.step's events are tested beside it.
+    assert [event["state"] for event in events] == ["start", "complete"]
+    assert command("--download-limit", "fast", "--events", str(path)) == 3
+    assert json.loads(capsys.readouterr().out)["field"] == "download_limit"
+    last = json.loads(path.read_text().splitlines()[-1])
+    assert (last["state"], last["field"]) == ("needs_input", "download_limit") and "850Mbit" in last["message"]
+    with pytest.raises(SystemExit):
+        command("--events", str(tmp_path / "missing" / "events.jsonl"))
+
+
 def test_download_limit_comes_from_the_flag_or_the_settings_file(tmp_path):
     settings_file = tmp_path / "settings.env"
     settings_file.write_text("SPARKRING_DOWNLOAD_LIMIT=2Gbit\n")

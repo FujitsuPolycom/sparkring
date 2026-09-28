@@ -234,6 +234,37 @@ sudo sparkring status --refresh --json
   when the image has no dashboard), `example_request` (a `curl` command for
   `/v1/chat/completions` with the served model name) and `commands` with
   `switch_back` (null when no other model ran before), `stop` and `remove`.
+- `--events FILE` adds a line-by-line progress stream
+  ([Event stream](#event-stream)); the result on stdout stays the same.
+
+### Event stream
+
+`sudo sparkring install ... --events FILE` writes one JSON object per line to
+`FILE` as the installation runs, replacing what `FILE` held. Stdout keeps its
+single result and stderr its human progress, so the stream goes to its own
+file. A reader follows it with `tail -f FILE`, or reads a named pipe made with
+`mkfifo FILE`; the installation then waits until the reader opens the pipe.
+The first event starts the run (`phase` `install`); the last carries its
+result.
+
+| Field | Present | Meaning |
+|---|---|---|
+| `schema` | always | `sparkring-install-event/v1` |
+| `time` | always | ISO 8601 time with UTC offset |
+| `state` | always | `start`, `working` (every 30 s while a step runs), `done`, `failed` or `error` (a failure's message); in the last event, the result's `complete`, `planned`, `needs_input` or `failed` |
+| `label` | always | The progress text, such as `Node 0: Wait for API readiness` |
+| `node` | always | The Spark's node number, or null for work that is not one Spark's |
+| `phase` | always | A step key, such as `install`, `ready`, `start` or `model-fetch`, or null |
+| `elapsed_s` | steps | Seconds since the step started |
+| `detail` | `working` | The text appended to the "Still working" line |
+| `bytes_done`, `bytes_total`, `percent` | download | Bytes of the Hugging Face download in place so far and in total |
+| `rate_bps`, `eta_s` | download | Recent rate in bits per second and seconds left, once bytes move |
+| `log_quiet_s` | readiness | Seconds since the model's log last changed |
+| `message` | `error`, result | The failure or question text |
+| `field` | `needs_input` result | The input the installation needs |
+| `api_url` | `complete` result | The model's API address |
+
+Fields may be added; readers ignore keys they do not know.
 
 ### Logs
 

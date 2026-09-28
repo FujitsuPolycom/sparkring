@@ -814,10 +814,14 @@ def main(argv=None):
     parser.add_argument("--download-limit", metavar="RATE",
                         help="cap checkpoint downloads from huggingface.co, in bits per second: 850Mbit, 2Gbit or none; "
                              "default: SPARKRING_DOWNLOAD_LIMIT of the --env file, else none")
+    parser.add_argument("--events", type=Path, metavar="FILE",
+                        help="write one JSON progress event per line to FILE, replacing it; stdout is unchanged")
     args = parser.parse_args(argv)
+    if args.events is not None and not args.events.parent.is_dir():
+        parser.error(f"--events: the directory {args.events.parent} does not exist")
     output = sys.stdout
     code = 0
-    with contextlib.redirect_stdout(sys.stderr), progress.run("install"):
+    with contextlib.redirect_stdout(sys.stderr), progress.run("install", events=args.events):
         transaction = controller.STATE / "transaction.json"
         try:
             previous_transaction = transaction.read_bytes()
@@ -848,6 +852,8 @@ def main(argv=None):
         elif result["state"] == "planned":
             command = (result.get("checkpoint") or {}).get("command") or checkpoint_plan.COMMAND
             print(f"Plan saved. Install it with {command} --yes.")
+        progress.emit(result["state"], "SparkRing install", phase="install", message=result.get("message"),
+                      field=result.get("field"), api_url=result.get("api_url") if result["state"] == "complete" else None)
     if args.json:
         print(json.dumps(result, indent=2), file=output)
     return code

@@ -117,6 +117,9 @@ text with `curl http://NODE_A:PORT/v1/sparkring/status.txt`, or watch live
 throughput with [vllm-top](https://github.com/mratsim/vllm-top). Installer logs
 are in `/var/log/sparkring/`.
 
+Scripts and agents can add `--events FILE` to get progress as one JSON object
+per line ([fields](install-reference.md#event-stream)).
+
 ## Security
 
 The model API has no key and listens on every interface of Node A: keep Node A
