@@ -22,6 +22,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 
+from runtime.common import profiles
 from runtime.common.container_spec import Bind
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,7 +44,10 @@ QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 # features and HC modes, which admission requires and ``adapt`` configures.
 QWEN4_EXP = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 SUPPORTED = (*QWEN4_EXP, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
-             "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4")
+             "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
+# A v2 lock may also list IDs in profiles.REPLACED, so that the locks of other
+# releases in runtime/releases keep validating; ``for_profile`` refuses those IDs
+# and names the catalog profile that replaces each.
 PLUGINS = ("b12x_loader", "sparkring_status")
 # The variable that selects the tool-result policy: with 1, a named or required
 # tool_choice request without a complete call fails instead of returning an
@@ -77,7 +81,7 @@ def validate(value, profile):
     else:
         listed = value["profiles"]
         if (not isinstance(listed, list) or not listed or listed != sorted(set(listed))
-                or not set(listed) <= set(SUPPORTED)):
+                or not set(listed) <= set(SUPPORTED) | set(profiles.REPLACED)):
             raise ValueError("A v2 image lock lists sorted, distinct, supported installer profiles")
         if profile not in listed:
             raise ValueError(f"{profile} is not admitted on image lock {value['name']}")
@@ -111,6 +115,9 @@ def for_profile(profile, explicit=None):
     default release lock uses that shared image. Unlisted profiles are refused
     because the installer runs one image family only.
     """
+    replaced = profiles.replacement_message(profile)
+    if replaced:
+        raise ValueError(replaced)
     value = explicit if explicit is not None else default_lock()
     return validate(value, profile)
 
@@ -148,7 +155,6 @@ def qwen_recipe(environment):
 
 
 def profile_environment(profile):
-    from runtime.common import profiles
     metadata, _ = profiles.load(profile)
     return profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))["environment"]
 

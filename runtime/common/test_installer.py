@@ -215,7 +215,7 @@ def test_profile_refusals_state_the_condition_for_every_model():
     with pytest.raises(ValueError, match="This four-Spark profile needs the prepared mesh fabric reference"):
         installer.make_lock("deepseek-v41-flash-tp4", site(4), "1" * 40, "2" * 64)
     with pytest.raises(ValueError, match="native-mesh plan requires a four-Spark Compose profile"):
-        installer.make_lock("mimo-v26-flash-rl-tp2", {**site(2), "native_mesh": {}}, "1" * 40, "2" * 64)
+        installer.make_lock("mimo-v26-flash-mopd-tp2", {**site(2), "native_mesh": {}}, "1" * 40, "2" * 64)
 
 
 def test_cli_offline_init_never_discovers_hosts(tmp_path, monkeypatch, capsys):
@@ -296,7 +296,7 @@ def test_a_listed_checkpoint_selects_its_revision_and_pins():
     with pytest.raises(ValueError, match="lists"):
         installer.setup.selection(QWEN, "main")
     with pytest.raises(ValueError, match="does not accept"):
-        installer.setup.selection("mimo-v26-flash-rl-tp2", "qad-step-4000")
+        installer.setup.selection("mimo-v26-flash-mopd-tp2", "qad-step-4000")
 
 
 QWEN_PINS = ("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"

@@ -31,9 +31,9 @@ def document(**fields):
 
 
 def test_published_command_matches_the_documented_one_line_installer():
-    command = install.install_command(install.parse_source("published"), "mimo-v26-flash-rl-tp2")
+    command = install.install_command(install.parse_source("published"), "mimo-v26-flash-mopd-tp2")
     assert command == ("curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh"
-                       " | bash -s -- --profile mimo-v26-flash-rl-tp2 --yes --json")
+                       " | bash -s -- --profile mimo-v26-flash-mopd-tp2 --yes --json")
 
 
 def test_published_ref_fetches_the_script_and_source_at_that_ref():

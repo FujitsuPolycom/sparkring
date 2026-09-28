@@ -539,12 +539,12 @@ def test_smoke_request_settings_come_from_the_serving_profile():
 
 def test_pinned_differences_name_stale_or_missing_files():
     from scripts import installer_host
-    manifest = installer_host.checksum_manifest("mimo-v26-flash-rl-tp4")
+    manifest = installer_host.checksum_manifest("mimo-v26-flash-mopd-tp4")
     pins = dict(reversed(line.split(maxsplit=1)) for line in manifest.read_text().splitlines())
-    assert installer_host.pinned_differences("mimo-v26-flash-rl-tp4", pins) == []
+    assert installer_host.pinned_differences("mimo-v26-flash-mopd-tp4", pins) == []
     stale = {**pins, "dflash/config.json": "0" * 64}
     stale.pop("tokenizer.json")
-    assert installer_host.pinned_differences("mimo-v26-flash-rl-tp4", stale) == ["dflash/config.json", "tokenizer.json"]
+    assert installer_host.pinned_differences("mimo-v26-flash-mopd-tp4", stale) == ["dflash/config.json", "tokenizer.json"]
     assert installer_host.checksum_manifest("qwen38-flash-next-qad-tp4").name == "SHA256SUMS"
     # The profile's own file lists its default checkpoint; another checkpoint of
     # its table is checked against its pin manifest instead.

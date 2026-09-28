@@ -22,8 +22,8 @@ ROOT = profiles.ROOT
 DEFAULTS = {
     ("glm53", 2): "glm53-flash-nvfp4-spark-tp2",
     ("glm53", 4): "glm53-flash-nvfp4-spark-tp4",
-    ("mimo26", 2): "mimo-v26-flash-rl-tp2",
-    ("mimo26", 4): "mimo-v26-flash-rl-tp4",
+    ("mimo26", 2): "mimo-v26-flash-mopd-tp2",
+    ("mimo26", 4): "mimo-v26-flash-mopd-tp4",
     ("qwen38", 2): "qwen38-flash-next-tp2",
     ("qwen38", 4): "qwen38-flash-next-qad-tp4",
 }

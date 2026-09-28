@@ -521,12 +521,12 @@ def test_adapter_configuration_input_requires_a_known_contract(repository, value
 
 
 def test_identity_view_drops_only_descriptive_fields():
-    definition = profiles.read_json(profiles.ROOT / "profiles/mimo-v26-flash-rl-tp2/profile.json")
+    definition = profiles.read_json(profiles.ROOT / "profiles/mimo-v26-flash-mopd-tp2/profile.json")
     view = profiles.identity_view(definition)
     assert set(view) == set(definition) - profiles.DESCRIPTIVE_FIELDS["sparkring-deployment/v1"]
     assert {"schema", "id", "configuration", "release", "overrides", "launcher"} <= set(view)
     assert "evidence_scope" in definition and "evidence_scope" not in view
-    configuration = profiles.read_json(profiles.ROOT / "profiles/mimo-v26-flash-rl-tp2/config.json")
+    configuration = profiles.read_json(profiles.ROOT / "profiles/mimo-v26-flash-mopd-tp2/config.json")
     view = profiles.identity_view(configuration)
     assert set(view) == set(configuration) - {"status", "qualification"}
     assert view["vllm_args"] == configuration["vllm_args"] and view["model"] == configuration["model"]

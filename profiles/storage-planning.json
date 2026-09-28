@@ -5,7 +5,7 @@
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": 200,
     "local-inference-lab/GLM-5.3-Flash-NVFP4": 200,
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": 120,
-    "XiaomiMiMo/MiMo-V2.6-Flash-RL": 190,
+    "XiaomiMiMo/MiMo-V2.6-Flash-MOPD": 190,
     "deepseek-ai/DeepSeek-V4.1-Flash": 500,
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": 200
   },

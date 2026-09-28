@@ -9,9 +9,9 @@ import zipfile
 
 import pytest
 
-from runtime.common import installer, installer_image, setup
+from runtime.common import installer, installer_image, profiles, setup
 from runtime.common.test_installer import site
-from runtime.host import controller
+from runtime.host import controller, models
 
 PROFILE = "qwen38-flash-next-qad-tp4"
 
@@ -233,7 +233,7 @@ def test_controller_allows_preview_while_another_deployment_is_running(tmp_path,
 
 
 SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
-          "mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2",
+          "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2",
           "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 SWIFT = ("swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 
@@ -251,6 +251,23 @@ def test_release_lock_lists_every_installer_profile_on_one_image():
             assert card["image_id"] == lock["image_id"] and card["image_reference"] == lock["image_reference"]
     with pytest.raises(ValueError, match="not admitted"):
         installer_image.for_profile("glm53-flash-spark-tp4-dcp1-sparkcache")
+
+
+def test_replaced_profile_ids_keep_release_locks_valid_and_name_their_replacement():
+    locks = sorted((installer_image.ROOT / "runtime/releases").glob("*/installer-image.json"))
+    listed = set()
+    for path in locks:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        for profile in installer_image.profiles_of(value):
+            installer_image.validate(value, profile)
+            listed.add(profile)
+    assert set(profiles.REPLACED) <= listed
+    assert not set(profiles.REPLACED) & set(installer_image.default_lock()["profiles"])
+    for old, replacement in profiles.REPLACED.items():
+        assert replacement in installer_image.SUPPORTED and old not in profiles.catalog()
+        for call in (installer_image.for_profile, profiles.load, lambda value: models.select(value, 2)):
+            with pytest.raises(ValueError, match="use " + replacement):
+                call(old)
 
 
 @pytest.mark.parametrize("change", ["unsorted", "unknown", "empty"])

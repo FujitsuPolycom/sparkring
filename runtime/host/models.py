@@ -22,6 +22,9 @@ def select(value, nodes):
         raise ValueError(f"'{value}' names a model family. Run 'sparkring models' and select the exact profile.")
     matches = [row for row in catalog() if row["profile"] == value]
     if not matches:
+        replaced = profiles.replacement_message(value)
+        if replaced:
+            raise ValueError(replaced + ". Run 'sparkring models' for exact model/version/topology choices.")
         raise ValueError("Unknown profile. Run 'sparkring models' for exact model/version/topology choices.")
     row = matches[0]
     if not row["automated"]:

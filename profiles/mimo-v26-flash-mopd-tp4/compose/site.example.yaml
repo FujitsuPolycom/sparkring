@@ -13,8 +13,8 @@ ranks:
   - roceP2p1s0f0
   - roceP2p1s0f1
   gid: 3
-  model: /srv/models/MiMo-V2.6-Flash-RL/5711b2681699
-  cache: /srv/cache/mimo-v26-flash-rl-tp4
+  model: /srv/models/MiMo-V2.6-Flash-MOPD/2479e2d0029e
+  cache: /srv/cache/mimo-v26-flash-mopd-tp4
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:
@@ -31,8 +31,8 @@ ranks:
   - roceP2p1s0f0
   - roceP2p1s0f1
   gid: 3
-  model: /srv/models/MiMo-V2.6-Flash-RL/5711b2681699
-  cache: /srv/cache/mimo-v26-flash-rl-tp4
+  model: /srv/models/MiMo-V2.6-Flash-MOPD/2479e2d0029e
+  cache: /srv/cache/mimo-v26-flash-mopd-tp4
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:
@@ -49,8 +49,8 @@ ranks:
   - roceP2p1s0f0
   - roceP2p1s0f1
   gid: 3
-  model: /srv/models/MiMo-V2.6-Flash-RL/5711b2681699
-  cache: /srv/cache/mimo-v26-flash-rl-tp4
+  model: /srv/models/MiMo-V2.6-Flash-MOPD/2479e2d0029e
+  cache: /srv/cache/mimo-v26-flash-mopd-tp4
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:
@@ -67,8 +67,8 @@ ranks:
   - roceP2p1s0f0
   - roceP2p1s0f1
   gid: 3
-  model: /srv/models/MiMo-V2.6-Flash-RL/5711b2681699
-  cache: /srv/cache/mimo-v26-flash-rl-tp4
+  model: /srv/models/MiMo-V2.6-Flash-MOPD/2479e2d0029e
+  cache: /srv/cache/mimo-v26-flash-mopd-tp4
   repository: /opt/sparkring
   deployment_root: /srv/sparkring-deployments
   fabric:

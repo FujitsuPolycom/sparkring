@@ -337,7 +337,7 @@ SERVING_CHANGES = {
 
 @pytest.mark.parametrize("change", sorted(SERVING_CHANGES))
 def test_serving_settings_change_deployment_identity(monkeypatch, change):
-    profile = "mimo-v26-flash-rl-tp2"
+    profile = "mimo-v26-flash-mopd-tp2"
     site = example_site(profile)
     manifest, _ = compose.build(profile, site)
     name, edit = SERVING_CHANGES[change]
@@ -347,7 +347,7 @@ def test_serving_settings_change_deployment_identity(monkeypatch, change):
 
 def test_image_changes_deployment_identity():
     from runtime.common import installer_image
-    profile = "mimo-v26-flash-rl-tp2"
+    profile = "mimo-v26-flash-mopd-tp2"
     site = example_site(profile)
     lock = installer_image.default_lock()
     manifest, _ = compose.build(profile, site, image_runtime=lock)

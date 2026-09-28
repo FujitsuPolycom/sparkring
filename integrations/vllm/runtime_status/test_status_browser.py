@@ -18,7 +18,7 @@ def demo_snapshot():
     doc = observed_fixture()
     values = {"tensor_parallel_size": 4, "decode_context_parallel_size": 1,
               "pipeline_parallel_size": 1, "model_type": "mimo_v2", "max_model_len": 262144,
-              "served_model_name": "MiMo-V2.6-Flash-RL-TP4",
+              "served_model_name": "MiMo-V2.6-Flash-MOPD-TP4",
               "quantization": "fp8", "model_dtype": "torch.bfloat16", "max_num_seqs": 16,
               "attention_backend": "B12X", "decoder_attention_modules": ["B12xPagedAttentionImpl"],
               "sampled_qk_head_dims": [192], "sampled_value_head_dims": [128], "fuse_act_quant": True,
@@ -94,7 +94,7 @@ def test_browser_refresh_pause_failure_recovery_and_mobile_layout():
             page.goto(url)
             assert "SparkRing shared-2026.09.4-rc.4" in page.title()
             header = page.locator("header .subtitle")
-            assert header.nth(0).inner_text().startswith("MiMo-V2.6-Flash-RL-TP4")
+            assert header.nth(0).inner_text().startswith("MiMo-V2.6-Flash-MOPD-TP4")
             assert header.nth(1).inner_text() == "Model architecture: mimo_v2"
             assert page.locator(".card").first.inner_text().startswith("Workers reporting\n4/4")
             assert page.locator("#report").evaluate("el => el.scrollWidth <= el.clientWidth")

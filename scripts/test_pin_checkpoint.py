@@ -21,8 +21,8 @@ COMMITTED = {
         ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2"],
     ("local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "a608241037e4c2565356bff7ca293f2133888f88"):
         ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4"],
-    ("XiaomiMiMo/MiMo-V2.6-Flash-RL", "5711b268169967567844e1e560e8a3966da959b1"):
-        ["mimo-v26-flash-rl-tp2", "mimo-v26-flash-rl-tp4"],
+    ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):
+        ["mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
         ["deepseek-v41-flash-tp4"],
     ("ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4", "3ff0520224f264a2d0ac4ab56ece8f2f13aadb38"):

@@ -112,7 +112,7 @@ def parent(tmp_path):
         "parent_receipt_sha256": sha(base_raw), "toolchain_receipt_sha256": sha(toolchain_raw),
         "composition_sha256": "c" * 64, "transport_profile": "tp2-rocenante-adaptive-prepared",
         "transport_manifest_sha256": "3" * 64, "status_version": "0.3.1",
-        "profiles": ["glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-rl-tp4"],
+        "profiles": ["glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp4"],
         "image_bytes": 1000, "download_bytes": 500,
     }
     lock_path = repository / "runtime/releases/dev-parent/installer-image.json"
@@ -564,13 +564,13 @@ def test_build_tags_the_parent_and_records_the_image(tmp_path, monkeypatch):
                         lambda value, *, run, profile: admitted.append((value["name"], profile)))
     output = tmp_path / "lock.json"
     summary = layer.build(tmp_path / "context", "sparkring:derived", "dev-derived", output, run=run,
-                          profiles=["mimo-v26-flash-rl-tp4", "glm53-flash-nvfp4-spark-tp2"])
+                          profiles=["mimo-v26-flash-mopd-tp4", "glm53-flash-nvfp4-spark-tp2"])
     tag = "sparkring-dev/parent:" + "a" * 12
     assert commands[0] == ["docker", "tag", CODE_PARENT, tag]
     assert commands[1][:2] == ["docker", "build"] and "PARENT_IMAGE=" + tag in commands[1]
-    assert admitted == [("dev-derived", "glm53-flash-nvfp4-spark-tp2"), ("dev-derived", "mimo-v26-flash-rl-tp4")]
+    assert admitted == [("dev-derived", "glm53-flash-nvfp4-spark-tp2"), ("dev-derived", "mimo-v26-flash-mopd-tp4")]
     written = json.loads(output.read_text())
-    assert written["profiles"] == ["glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-rl-tp4"]
+    assert written["profiles"] == ["glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp4"]
     assert written["image_id"] == summary["image_id"] == built and written["image_bytes"] == 123
     assert written["parent_receipt_sha256"] == result["receipts"][layer.BASE_RECEIPT]
 

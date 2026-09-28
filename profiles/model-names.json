@@ -10,7 +10,7 @@
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "Qwen3.8-27B",
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "Qwen3.8-Flash-Next",
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": "Swift-1.5-Qwen3.8-Flash-Next",
-    "XiaomiMiMo/MiMo-V2.6-Flash-RL": "MiMo-V2.6-Flash-RL"
+    "XiaomiMiMo/MiMo-V2.6-Flash-MOPD": "MiMo-V2.6-Flash-MOPD"
   },
   "quant_labels": {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": "NVFP4-Spark",
@@ -22,7 +22,7 @@
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "EXL3 K5/K6",
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "NVFP4",
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": "NVFP4 experts/BF16",
-    "XiaomiMiMo/MiMo-V2.6-Flash-RL": "MXFP8/BF16"
+    "XiaomiMiMo/MiMo-V2.6-Flash-MOPD": "MXFP8/BF16"
   },
   "quant_variants": {
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc3218833a38b475b719f34aa571666f4a03e": "NVFP4 QAD",

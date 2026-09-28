@@ -1,12 +1,12 @@
 {
   "schema": "sparkring-deployment/v1",
-  "id": "mimo-v26-flash-rl-tp2",
-  "title": "MiMo-V2.6-Flash-RL on two Sparks",
+  "id": "mimo-v26-flash-mopd-tp2",
+  "title": "MiMo-V2.6-Flash-MOPD on two Sparks",
   "recommendation": "recommended",
   "status": "implemented",
   "configuration": {
     "format": "serving-profile",
-    "path": "profiles/mimo-v26-flash-rl-tp2/config.json"
+    "path": "profiles/mimo-v26-flash-mopd-tp2/config.json"
   },
   "release": "runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/release.json",
   "guide": "docs/operations/install.md",
@@ -20,7 +20,7 @@
     ],
     "fixed_args": [
       "--profile",
-      "profiles/mimo-v26-flash-rl-tp2/config.json"
+      "profiles/mimo-v26-flash-mopd-tp2/config.json"
     ]
   }
 }

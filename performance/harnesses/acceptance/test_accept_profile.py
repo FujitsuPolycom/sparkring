@@ -12,8 +12,8 @@ from performance.harnesses.acceptance import accept_profile, install, profile_in
 from performance.harnesses.acceptance.fakes import FakeBench, FakeModel, FakeNodeA
 
 LAN = ".".join(("192", "168", "0", "200"))
-PROFILE = "mimo-v26-flash-rl-tp2"
-SERVED = "MiMo-V2.6-Flash-RL-TP2"
+PROFILE = "mimo-v26-flash-mopd-tp2"
+SERVED = "MiMo-V2.6-Flash-MOPD-TP2"
 REVISION = "c17cf23cec72" + "0" * 28
 STDERR = (f"Source revision: {REVISION}\nSparkRing install. Progress: /var/log/sparkring/install.log\n"
           "Done: Node 0: Wait for API readiness (550.2s)\nModel ready: http://" + LAN + ":8020/v1\n")
@@ -77,7 +77,7 @@ def test_full_run_installs_checks_measures_and_writes_a_private_data_free_record
     h = Harness(tmp_path)
     assert h.main() == 0
     assert h.targets == [f"code@{LAN}"] and len(h.node.launched) == 1
-    assert "--profile mimo-v26-flash-rl-tp2 --yes --json" in h.node.launched[0]
+    assert "--profile mimo-v26-flash-mopd-tp2 --yes --json" in h.node.launched[0]
     install_result = json.loads((h.out / "install.json").read_text())
     assert install_result["ok"] and install_result["source_revision"] == REVISION
     assert install_result["api_ready_seconds"] == 550.2
@@ -87,7 +87,7 @@ def test_full_run_installs_checks_measures_and_writes_a_private_data_free_record
     assert json.loads((h.out / "stress.json").read_text())["n"] == 32
     command = h.bench.calls[0]
     assert command[command.index("--port") + 1] == "8020" and command[command.index("--model") + 1] == SERVED
-    readme = "README values for `mimo-v26-flash-rl-tp2` (port 8020): decode 27.1 / 139 / 206; prefill 64K 2,749"
+    readme = "README values for `mimo-v26-flash-mopd-tp2` (port 8020): decode 27.1 / 139 / 206; prefill 64K 2,749"
     assert capsys.readouterr().out.splitlines() == [readme, readme]
 
     markdown = (h.records / f"{NAME}.md").read_text()
@@ -134,7 +134,7 @@ def test_interrupted_install_is_followed_not_restarted(tmp_path):
     assert any("may still be running" in line for line in h.lines)
     assert h.main() == 0
     assert len(h.node.launched) == 1
-    assert any("following run mimo-v26-flash-rl-tp2-20260927T120000Z" in line for line in h.lines)
+    assert any("following run mimo-v26-flash-mopd-tp2-20260927T120000Z" in line for line in h.lines)
 
 
 @pytest.mark.parametrize("stdout, code, reason", [

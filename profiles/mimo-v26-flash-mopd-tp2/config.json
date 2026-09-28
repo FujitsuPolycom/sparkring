@@ -2,13 +2,13 @@
   "schema": "sparkring-serving-profile/v1",
   "status": "implemented",
   "model": {
-    "repository": "XiaomiMiMo/MiMo-V2.6-Flash-RL",
-    "revision": "5711b268169967567844e1e560e8a3966da959b1",
+    "repository": "XiaomiMiMo/MiMo-V2.6-Flash-MOPD",
+    "revision": "2479e2d0029eca9a34cc7e7f55a121925f81908e",
     "config_sha256": "61bea4a0f7a0dd8969f8cae528761e26b697dd12ff63e98804c3f0945492e621",
-    "index_sha256": "09d9b96a77ed9765fa4e02a6a45f92797702eef432da426efc6b45c1131b1812"
+    "index_sha256": "e16ec5b736c59c8032af31004f3b99e31560eee70bd24c368c843a4d63f93b67"
   },
-  "topology": "direct-cycle-4",
-  "served_model_name": "MiMo-V2.6-Flash-RL-TP4",
+  "topology": "direct-pair-2",
+  "served_model_name": "MiMo-V2.6-Flash-MOPD-TP2",
   "cache_namespace": "mimo-v26-flash-rl",
   "image_extension": "toolchain",
   "smoke": {
@@ -38,23 +38,9 @@
     "NCCL_IB_MERGE_NICS": "0",
     "NCCL_CROSS_NIC": "1",
     "NCCL_DEBUG": "WARN",
-    "NCCL_IB_HCA": "=rocep1s0f0:1,rocep1s0f1:1,roceP2p1s0f0:1,roceP2p1s0f1:1",
-    "B12X_ROCE_HCA": "rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1",
-    "NCCL_ALGO": "Ring",
-    "NCCL_CUMEM_ENABLE": "0",
-    "NCCL_DEBUG_SUBSYS": "NET,INIT,GRAPH",
-    "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
-    "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
-    "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
-    "NCCL_IB_SUBNET_AWARE_ROUTING": "1",
-    "NCCL_IGNORE_CPU_AFFINITY": "1",
-    "NCCL_MAX_NCHANNELS": "4",
-    "NCCL_MIN_NCHANNELS": "4",
-    "NCCL_P2P_LEVEL": "SYS",
-    "NCCL_PROTO": "LL,LL128,Simple",
-    "NCCL_SWITCHLESS_RING_ONLY": "1",
-    "B12X_ROCE_OPPOSITE_PATHS": "2",
-    "B12X_ROCE_GID_INDEX": "3",
+    "NCCL_IB_HCA": "=rocep1s0f0,roceP2p1s0f0",
+    "B12X_ROCE_HCA": "rocep1s0f0,roceP2p1s0f0",
+    "B12X_ROCE_PAIR_PATHS": "2",
     "SPARKRING_FEATURES": "",
     "VLLM_KV_CACHE_LAYOUT": "BLHNC",
     "VLLM_MXFP8_LM_HEAD": "0",
@@ -64,9 +50,9 @@
   "vllm_args": [
     "--trust-remote-code",
     "--tensor-parallel-size",
-    "4",
+    "2",
     "--nnodes",
-    "4",
+    "2",
     "--pipeline-parallel-size",
     "1",
     "--decode-context-parallel-size",
@@ -98,7 +84,7 @@
     "--gpu-memory-utilization",
     "0.85",
     "--kv-cache-memory-bytes",
-    "21474836480",
+    "12884901888",
     "--attention-backend",
     "B12X",
     "--linear-backend",
@@ -127,25 +113,11 @@
     "--hf-overrides",
     "{\"architectures\":[\"MiMoV2OmniForCausalLM\"],\"processor_config\":{\"audio_avg_pooler\":2,\"audio_channels\":20,\"audio_end_token_id\":151674,\"audio_fmax\":null,\"audio_fmin\":0,\"audio_group_size\":4,\"audio_hop_length\":240,\"audio_input_id_per_second\":25.0,\"audio_kernel_size\":3,\"audio_n_mels\":128,\"audio_nfft\":960,\"audio_sampling_rate\":24000,\"audio_segment_size\":6000,\"audio_start_token_id\":151673,\"audio_stride_size\":2,\"audio_token_id\":151669,\"audio_window_size\":960,\"audio_zeroemb_idx\":[1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024,1024],\"fps\":1.0,\"image_max_pixels\":1048576,\"image_min_pixels\":8192,\"image_token_id\":151655,\"max_frames\":8,\"merge_size\":2,\"min_frames\":null,\"num_frames\":null,\"pad_token_id\":151643,\"patch_size\":16,\"rope_type\":\"rope\",\"temporal_compression_ratio\":1,\"temporal_patch_size\":2,\"use_per_grid_t_timestamps\":false,\"use_video_timestamps\":true,\"video_audio_interleave_length\":0.0,\"video_end_token_id\":151671,\"video_max_pixels\":262144,\"video_min_pixels\":8192,\"video_process_num_threads\":16,\"video_start_token_id\":151670,\"video_token_id\":151656,\"video_tokens_per_second\":2,\"video_total_max_pixels\":268435456,\"vision_end_token_id\":151653,\"vision_start_token_id\":151652}}",
     "--speculative-config",
-    "{\"model\":\"/models/target/dflash\",\"method\":\"dflash\",\"num_speculative_tokens\":5,\"draft_tensor_parallel_size\":4,\"kv_cache_dtype\":\"bfloat16\",\"attention_backend\":\"B12X\",\"draft_load_config\":{\"load_format\":\"safetensors\",\"model_loader_extra_config\":{}}}",
+    "{\"model\":\"/models/target/dflash\",\"method\":\"dflash\",\"num_speculative_tokens\":5,\"draft_tensor_parallel_size\":2,\"kv_cache_dtype\":\"bfloat16\",\"attention_backend\":\"B12X\",\"draft_load_config\":{\"load_format\":\"safetensors\",\"model_loader_extra_config\":{}}}",
     "--compilation-config",
     "{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":96,\"cudagraph_capture_sizes\":[1,2,4,6,12,18,24,30,36,42,48,54,60,66,72,78,84,90,96]}"
   ],
   "qualification": {
     "scope": "See the profile evidence scope."
-  },
-  "transport": {
-    "peer_hca_maps": [
-      "1=0/2,2=0/3,3=1/3",
-      "0=1/3,2=0/2,3=0/3",
-      "0=1/2,1=1/3,3=0/2",
-      "0=0/2,1=1/2,2=1/3"
-    ],
-    "hca_order": [
-      "primary-clockwise",
-      "primary-counterclockwise",
-      "secondary-clockwise",
-      "secondary-counterclockwise"
-    ]
   }
 }

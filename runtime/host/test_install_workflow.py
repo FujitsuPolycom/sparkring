@@ -481,7 +481,7 @@ def test_early_error_does_not_report_a_previous_transaction(machine, monkeypatch
     assert result['message'] == 'Current discovery failed' and 'transaction' not in result
 
 
-@pytest.mark.parametrize("profile", ["qwen38-flash-next-qad-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-rl-tp4",
+@pytest.mark.parametrize("profile", ["qwen38-flash-next-qad-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp4",
                                      "deepseek-v41-flash-tp4", "swift15-qwen38-flash-next-tp4"])
 def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine, sparks, monkeypatch, capsys, profile):
     value = cluster(4)

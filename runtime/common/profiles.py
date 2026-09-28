@@ -28,6 +28,23 @@ DESCRIPTIVE_FIELDS = {
                                           "guide", "evidence_scope"}),
     "sparkring-serving-profile/v1": frozenset({"status", "qualification"}),
 }
+# Installer profile IDs outside the catalog that image locks in runtime/releases
+# still list, each mapped to the catalog profile with the same serving settings.
+# The mapped profile serves another checkpoint under another served model name,
+# so a request for a listed ID is refused with the replacement named, never
+# redirected.
+REPLACED = {
+    "mimo-v26-flash-rl-tp2": "mimo-v26-flash-mopd-tp2",
+    "mimo-v26-flash-rl-tp4": "mimo-v26-flash-mopd-tp4",
+}
+
+
+def replacement_message(profile_id):
+    """The refusal for a profile ID in REPLACED, or None for any other ID."""
+    if profile_id not in REPLACED:
+        return None
+    return (f"Profile {profile_id} is not in the catalog; use {REPLACED[profile_id]}, which has the same "
+            "serving settings on another checkpoint and serves it under another model name")
 
 
 def read_json(path):
@@ -78,7 +95,7 @@ def catalog(root=ROOT):
 def load(profile_id, root=ROOT):
     entries = catalog(root)
     if profile_id not in entries:
-        raise ValueError(f"Unknown profile: {profile_id}; use list to discover IDs")
+        raise ValueError(replacement_message(profile_id) or f"Unknown profile: {profile_id}; use list to discover IDs")
     p = read_json(entries[profile_id])
     if not PROFILE_FIELDS <= set(p) <= PROFILE_FIELDS | {"quickstart_status"} or p["schema"] != "sparkring-deployment/v1":
         raise ValueError(f"{profile_id}: expected exact sparkring-deployment/v1 fields")

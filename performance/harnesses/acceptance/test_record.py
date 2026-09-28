@@ -13,9 +13,9 @@ FABRIC = ".".join(("10", "0", "1", "2"))
 ROOT = Path(__file__).resolve().parents[3]
 IMAGE = "dev-20260927-b12xcache-cuda1342-nccl2323-status032"
 PROFILE = ProfileInfo(
-    id="mimo-v26-flash-rl-tp2", title="MiMo-V2.6-Flash-RL on two Sparks", status="implemented",
-    served_model_name="MiMo-V2.6-Flash-RL-TP2", port=8020, nodes=2, topology="direct-pair-2",
-    repository="XiaomiMiMo/MiMo-V2.6-Flash-RL", revision="0123456789abcdef" * 2 + "01234567", image=IMAGE,
+    id="mimo-v26-flash-mopd-tp2", title="MiMo-V2.6-Flash-MOPD on two Sparks", status="implemented",
+    served_model_name="MiMo-V2.6-Flash-MOPD-TP2", port=8020, nodes=2, topology="direct-pair-2",
+    repository="XiaomiMiMo/MiMo-V2.6-Flash-MOPD", revision="0123456789abcdef" * 2 + "01234567", image=IMAGE,
     release=f"runtime/releases/{IMAGE}/release.json", features=frozenset({"tools", "image", "reasoning"}),
     thinking_off={"chat_template_kwargs": {"enable_thinking": False}})
 
@@ -51,7 +51,7 @@ def test_readme_values_round_half_up_like_the_readme(rates, prefill, expected):
 
 def test_readme_line_names_profile_and_port():
     assert record.readme_line(PROFILE, summary()) == \
-        "README values for `mimo-v26-flash-rl-tp2` (port 8020): decode 27.1 / 139 / 206; prefill 64K 2,749"
+        "README values for `mimo-v26-flash-mopd-tp2` (port 8020): decode 27.1 / 139 / 206; prefill 64K 2,749"
 
 
 def test_throughput_row_matches_the_record_table_format():
@@ -86,7 +86,7 @@ INSTALL = {"state": "complete", "ok": True, "only_document": True, "api_ready_se
 
 
 def render(**changes):
-    arguments = dict(profile=PROFILE, name="dev-20260927-b12xcache-mimo-v26-flash-rl-tp2-20260927",
+    arguments = dict(profile=PROFILE, name="dev-20260927-b12xcache-mimo-v26-flash-mopd-tp2-20260927",
                      record_dir=ROOT / "performance/records/images", repo_root=ROOT,
                      files={"functional": "functional.txt", "stress": "stress.json", "matrices": ["tp2-matrix.json"],
                             "install_phases": "install-phases.txt"},
@@ -99,14 +99,14 @@ def render(**changes):
 
 def test_record_has_the_evidence_sections_and_values():
     text = render()
-    assert text.splitlines()[1] == "# MiMo-V2.6-Flash-RL on two Sparks with the installer image"
+    assert text.splitlines()[1] == "# MiMo-V2.6-Flash-MOPD on two Sparks with the installer image"
     assert ("Status: **implemented; all 7 functional checks passed; a 256-request correctness screen returned no "
             "degenerate or failed response; measured on one pair; single-run timing; not serving-qualified**.") in text
     for heading in ("## Conditions", "## Measurement", "## Result", "## Conclusion", "## Limitations"):
         assert f"\n{heading}\n" in text
     assert "installed source commit `c17cf23cec72`" in text
     assert f"[`release.json`](../../../runtime/releases/{IMAGE}/release.json)" in text
-    assert "[installer phases](dev-20260927-b12xcache-mimo-v26-flash-rl-tp2-20260927/install-phases.txt)" in text
+    assert "[installer phases](dev-20260927-b12xcache-mimo-v26-flash-mopd-tp2-20260927/install-phases.txt)" in text
     assert "Node 0's API readiness step took 545.3 s" in text
     assert "| 27.1 / 139.0 / 205.6 | 12.6 / 42.9 / 64.2 | 2.14 / 3.24 / 3.20 | 2,675 / 2,749 / 2,040 |" in text
     assert "decode 1 / 8 / 16 users 27.1 / 139 / 206 tok/s, prefill 64K 2,749 tok/s" in text
