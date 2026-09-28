@@ -16,7 +16,7 @@ import zipfile
 import pytest
 
 from runtime.common import installer_image
-from runtime.images import derive_staging_fix, derive_tp2_hc, derive_transport_window
+from runtime.images import derive_mimo_vision, derive_staging_fix, derive_tp2_hc, derive_transport_window
 from runtime.images import derived_layer as layer
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -663,6 +663,21 @@ def test_staging_fix_refuses_an_unpinned_parent_file(tmp_path):
     root, lock = code_parent(tmp_path, {derive_staging_fix.UTILS: derive_staging_fix.COPY.encode()})
     with pytest.raises(ValueError, match="pinned"):
         layer.prepare_layer(derive_staging_fix.LAYER, lock, layer.root_reader(root), tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+
+
+def test_mimo_vision_moves_the_sinks_to_the_denominator():
+    source = "            sinks=sinks,\n" + derive_mimo_vision.KEY_ZERO + "        )\n"
+    result = derive_mimo_vision.replace(lambda path: source.encode(), {})[derive_mimo_vision.MODEL].decode()
+    assert result == "            sinks=sinks,\n" + derive_mimo_vision.DENOMINATOR + "        )\n"
+    assert derive_mimo_vision.LAYER.pins == {derive_mimo_vision.MODEL: (derive_mimo_vision.INHERITED,
+                                                                        derive_mimo_vision.RESULT)}
+
+
+def test_mimo_vision_refuses_an_unpinned_parent_file(tmp_path):
+    root, lock = code_parent(tmp_path, {derive_mimo_vision.MODEL: derive_mimo_vision.KEY_ZERO.encode()})
+    with pytest.raises(ValueError, match="pinned"):
+        layer.prepare_layer(derive_mimo_vision.LAYER, lock, layer.root_reader(root), tmp_path / "context")
     assert not (tmp_path / "context").exists()
 
 
