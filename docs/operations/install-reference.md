@@ -614,7 +614,9 @@ Internet through Node A's sharing unless they have their own connection.
 
 The installer checks free space before each download or copy and before the
 model switch. It does not delete anything to make room, and a failed check
-leaves the running model in place:
+leaves the running model in place; its message names `sudo sparkring storage`,
+which shows what SparkRing keeps on each Spark (see
+[Finding and freeing space](#finding-and-freeing-space)):
 
 - Image: each Spark without the image needs the unpacked size plus the
   download size plus 8 GiB (51.7 GiB) free in Docker's data root. Node A needs
@@ -639,6 +641,32 @@ Docker's data root for the relay's layer cache. Checkpoints are kept in
 `/srv/sparkring/<cluster>/checkpoints/<owner>--<name>/<revision>` and caches in
 `/srv/sparkring/<cluster>/cache`; `--cache-path` chooses another cache
 location.
+
+### Finding and freeing space
+
+`sudo sparkring storage` reports each Spark's filesystem use and everything
+SparkRing keeps there, with sizes that count hard-linked files once:
+
+- checkpoint directories;
+- compile caches, one directory per model family, image and checkpoint
+  revision (`/srv/sparkring/<cluster>/cache/<family>-<image>-<revision>`, and
+  `<family>-cuda<version>-<revision>` for kernels that the installer images
+  share). A cache of an image or checkpoint that no installer profile selects
+  stays until it is released;
+- deployment workspaces, one per installation request
+  (`/srv/sparkring/<cluster>/<profile>-i<identity>`); only the installed
+  deployment's is in use;
+- Docker images, and every other entry of `/srv/sparkring`, such as
+  directories you created there.
+
+Each item is `installed`, `profile`, `unreferenced` or `unmanaged`
+([classes](commands.md#storage)), and the report ends with the release commands
+for the unreferenced ones. `sudo sparkring storage --release PATH` removes one
+unreferenced cache directory or workspace from every Spark that holds it after
+asking (`--yes` in scripts); each Spark first checks again that no installed
+deployment or running container uses it. Checkpoint directories are released
+with `sudo sparkring checkpoints --release PATH`; Docker images and directories
+that SparkRing's installer did not create are never removed.
 
 ## If a worker has no SSH
 

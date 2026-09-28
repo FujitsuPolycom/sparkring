@@ -755,9 +755,9 @@ def forbidden_calls(path):
 def test_model_code_never_changes_file_metadata(env, docker, audited, monkeypatch, tmp_path):
     root = Path(__file__).resolve().parents[1]
     # The rank operations, the placement primitives, the fabric receiver and sender, the code that builds the
-    # rsync argv, and the release of checkpoint directories.
+    # rsync argv, the release of checkpoint directories and the release of unreferenced caches and workspaces.
     for module in ("scripts/installer_host.py", "runtime/host/checkpoint_place.py", "runtime/host/fabric_stream.py",
-                   "runtime/host/install_assets.py", "runtime/host/checkpoints.py"):
+                   "runtime/host/install_assets.py", "runtime/host/checkpoints.py", "runtime/host/storage.py"):
         assert forbidden_calls(root / module) == [], module
     roots, files = layouts(env)
     before = {kind: tree_state(path) for kind, path in roots.items()}

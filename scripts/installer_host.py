@@ -1509,7 +1509,8 @@ def perform(operation, lock, number):
                                         docker_path=docker_path,
                                         reuse_model=row["reuse_verified_model"] or model_receipt.exists())
             if not budget["passed"]:
-                raise ValueError("Insufficient space for image/checkpoint/cache: " + json.dumps(budget["filesystems"]))
+                raise ValueError("Insufficient space for image/checkpoint/cache: " + json.dumps(budget["filesystems"])
+                                 + ". sudo sparkring storage on Node A lists SparkRing data that no deployment uses")
             run(["docker", "pull", "--platform", "linux/arm64", card["image_reference"]])
         receipt = admit_image(lock)
         deploy_engine.save_receipt(image_receipt, receipt)

@@ -915,7 +915,8 @@ def _storage_message(pins, node, context):
                  f"its weight files, so it would need {_gib1(linked)}.")
     else:
         text += f" {shortfall}."
-    text += f" Then repeat {command} --plan."
+    text += (f" sudo sparkring storage lists the SparkRing data on each Spark that no deployment uses. Then repeat "
+             f"{command} --plan.")
     for path in node["exact_elsewhere"][:1]:
         text += (f" An exact copy was found on another filesystem at {path}; to serve it in place instead, review "
                  f"{_variant(context, add={'rank': rank, 'path': path})} --plan.")

@@ -173,6 +173,8 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("logs", help="follow concise installation progress")
     subcommands.add_parser("install", help="install across the ring and deploy a model in one workflow")
     subcommands.add_parser("checkpoints", help="list SparkRing's checkpoint directories on every Spark, or release one")
+    subcommands.add_parser("storage", help="report SparkRing's disk use on every Spark, or release an unreferenced "
+                                           "cache directory or deployment workspace")
     subcommands.add_parser("hairpin", help="apply the ConnectX hairpin setting that four-Spark rings need (Node A)")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
     for operation in ("init", "up", "status", "down", "export"):
@@ -204,6 +206,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "checkpoints":
         from runtime.host.checkpoints import main as checkpoints_main
         return checkpoints_main(raw[1:])
+    if raw and raw[0] == "storage":
+        from runtime.host.storage import main as storage_main
+        return storage_main(raw[1:])
     if raw and raw[0] == "hairpin":
         from runtime.host.hairpin_ring import main as hairpin_main
         return hairpin_main(raw[1:])

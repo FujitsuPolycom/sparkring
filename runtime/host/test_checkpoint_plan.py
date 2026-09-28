@@ -707,7 +707,8 @@ def test_storage_messages_match_the_documented_text():
         "Node 0 spark-edfd needs 134.9 GiB free on / to receive the checkpoint (98.6 GiB of checkpoint files, "
         "4.2 GiB to stage the largest file, 32 GiB for the compile cache); 44.0 GiB is free. Free another 90.9 GiB "
         "there, or put a copy of the pinned checkpoint on that filesystem: SparkRing hard-links its weight files, so "
-        "it would need 32.1 GiB. Then repeat sudo sparkring install --plan. An exact copy was found on another "
+        "it would need 32.1 GiB. sudo sparkring storage lists the SparkRing data on each Spark that no deployment "
+        "uses. Then repeat sudo sparkring install --plan. An exact copy was found on another "
         "filesystem at /mnt/usb/qwen; to serve it in place instead, review sudo sparkring install --model-path "
         "0=/mnt/usb/qwen --plan. The running model has not been stopped.")}]
     # The figure a linked copy needs counts the other files, the cache and, without the image, the image.
@@ -717,7 +718,8 @@ def test_storage_messages_match_the_documented_text():
     message = bare["problems"][0]["message"]
     assert "(98.6 GiB of checkpoint files, 4.2 GiB to stage the largest file, 32 GiB for the compile cache, " \
            "68 GiB for the image); 44.0 GiB is free. Free another 158.9 GiB there" in message
-    assert "so it would need 100.1 GiB. Then repeat sudo sparkring install --profile qwen38-flash-next-qad-tp4 " \
+    assert "so it would need 100.1 GiB. sudo sparkring storage lists the SparkRing data on each Spark that no " \
+           "deployment uses. Then repeat sudo sparkring install --profile qwen38-flash-next-qad-tp4 " \
            "--plan. The running model has not been stopped." in message
     main_copy = candidate("/mnt/usb/qwen", device=2049, mount_id=51, commit=MAIN, branches=["main"],
                           overrides={"config.json": {"state": "differs"}})

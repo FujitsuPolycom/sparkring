@@ -176,7 +176,7 @@ class Assets:
         for rank in sorted({0, *missing}):
             required = (pull if rank in missing else 0) + (cache if rank == 0 else 0)
             if observations[rank]["free_bytes"] < required:
-                raise NeedsInput(f"Node {rank} needs more Docker storage before the pinned image can be downloaded. Free space, then repeat sudo sparkring install. A running model has not been stopped.",
+                raise NeedsInput(f"Node {rank} needs more Docker storage before the pinned image can be downloaded. Free space (sudo sparkring storage lists SparkRing data that no deployment uses), then repeat sudo sparkring install. A running model has not been stopped.",
                                  field="storage", details={"rank": rank, "required_bytes": required,
                                                            "free_bytes": observations[rank]["free_bytes"]})
         relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
@@ -287,7 +287,7 @@ class Assets:
             else:
                 reserve = (policy["image_allowance_gib"] + policy["cache_and_jit_allowance_gib"]) * 1024**3
             if self.remote(0, storage_probe) < reserve:
-                raise NeedsInput("Node A needs more Docker storage before the pinned image can be downloaded. Free space, then repeat sudo sparkring install. A running model has not been stopped.",
+                raise NeedsInput("Node A needs more Docker storage before the pinned image can be downloaded. Free space (sudo sparkring storage lists SparkRing data that no deployment uses), then repeat sudo sparkring install. A running model has not been stopped.",
                                  field="storage", details={"rank": 0, "required_bytes": reserve})
             with progress.step("Node 0: Download pinned image once for the cluster"):
                 progress.command(["docker", "--context", "default", "pull", "--platform", "linux/arm64", card["image_reference"]],
@@ -304,7 +304,7 @@ class Assets:
             if observations[rank]["free_bytes"] < required:
                 free = self.remote(rank, storage_probe)
                 if free < required:
-                    raise NeedsInput(f"Node {rank}: insufficient image-import space. Free space or choose a larger Docker data volume, then repeat sudo sparkring install. A running model has not been stopped.",
+                    raise NeedsInput(f"Node {rank}: insufficient image-import space. Free space (sudo sparkring storage lists SparkRing data that no deployment uses) or choose a larger Docker data volume, then repeat sudo sparkring install. A running model has not been stopped.",
                                      field="storage", details={"rank": rank, "required_bytes": required, "free_bytes": free})
         def transfer(rank):
             code = inspect.getsource(receive_image) + "\nimport json\nprint(json.dumps(receive_image(" + repr(card["image_id"]) + "," + str(required) + ")))\n"

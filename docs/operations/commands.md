@@ -26,6 +26,7 @@ sudo sparkring logs --follow                                  # follow progress
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that four-Spark rings need |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
+| [`storage`](#storage) | Node A | yes | Report disk use on every Spark; release caches and workspaces no deployment uses |
 | [`up`, `down`](#up-and-down) | Node A | yes | Start or stop a model deployment |
 | [`node`](#node) | each Spark | yes, except the status reports | Per-Spark services; Node A calls most of them |
 | [`init`, `export`](#init-and-export) | any | no | Save a deployment from hosts or a site file; export it as files |
@@ -34,7 +35,7 @@ sudo sparkring logs --follow                                  # follow progress
 | [`deploy`](#deploy) | a checkout | no | Standalone discovery, network plans and staged model operations |
 | [`cluster`, `doctor`, `host`](#cluster-doctor-and-host) | rank 0 or one Spark | no | Manual ring bootstrap and diagnosis |
 
-`install`, `hairpin` and `checkpoints` print one JSON document with `--json`
+`install`, `hairpin`, `checkpoints` and `storage` print one JSON document with `--json`
 and exit with 0 on success or plan, 3 when input is needed and 2 on failure.
 
 ## install
@@ -156,6 +157,39 @@ every Spark, which deployments use them and what a release frees.
 | `--release PATH` | Remove that directory from every Spark; copies it links to are never touched |
 | `--yes` | Approve the release without asking |
 | `--json` | Print one JSON result |
+
+## storage
+
+`sudo sparkring storage [flags]` reports, for every Spark, the filesystems that
+hold `/srv/sparkring` and Docker's data root (size, free space and use), every
+item in `/srv/sparkring` and every Docker image with its size and class, and
+the releases it proposes. Items are checkpoint directories, compile caches
+(`/srv/sparkring/<cluster>/cache/<family>-<image>-<revision>`), deployment
+workspaces (`/srv/sparkring/<cluster>/<profile>-i<identity>`), the remainder of
+an interrupted release, and other entries. Sizes count hard-linked files once;
+a size ending in `+` was still being measured when the Spark's 60-second limit
+ran out.
+
+| Class | Meaning |
+|---|---|
+| `installed` | The active deployment, the rollback target or an unfinished model switch uses it |
+| `profile` | An installer profile of the installed package references it: a checkpoint the profile lists, the image the installer selects for it, or the compile cache they produce. Kept for that profile's next installation |
+| `unreferenced` | Neither; proposed for release unless a running container uses it or it holds model files. Other retained deployments that use it are named, and need `sudo sparkring install` again after a release |
+| `unmanaged` | Not created by SparkRing's installer, such as a directory you made in `/srv/sparkring`; never removed |
+
+| Flag | Meaning |
+|---|---|
+| `--release PATH` | Remove this unreferenced cache directory or deployment workspace from every Spark that holds it |
+| `--yes` | Approve the release without asking |
+| `--json` | Print one JSON result |
+
+A release asks first, then each Spark checks again that no installed deployment
+and no running container uses the path. It never removes a checkpoint directory
+(`sudo sparkring checkpoints --release PATH` does), a workspace that holds
+model files, a Docker image (listed only; `docker image rm ID` on that Spark
+removes one by hand) or an `unmanaged` item. `sparkring setup storage PROFILE`
+is a separate, local check of one profile's space allowances before an
+installation.
 
 ## up and down
 
