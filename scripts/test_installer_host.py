@@ -154,7 +154,9 @@ def test_a_model_starts_from_cleared_host_memory(running, tmp_path, monkeypatch)
     info, image = inspection(spec)
     info["State"]["Running"] = running
     events = []
-    monkeypatch.setattr(host, "run", lambda argv, **kwargs: events.append(argv) or SimpleNamespace(returncode=0, stdout=""))
+    replies = {("systemctl", "is-enabled"): "enabled\n", ("nvidia-ctk", "cdi"): "nvidia.com/gpu=0\nnvidia.com/gpu=all\n"}
+    monkeypatch.setattr(host, "run", lambda argv, **kwargs: events.append(argv) or SimpleNamespace(
+        returncode=0, stdout=replies.get(tuple(argv[:2]), "")))
     monkeypatch.setattr(installer, "validate", lambda value: value)
     monkeypatch.setattr(host, "image_info", lambda lock: image)
     monkeypatch.setattr(host, "container", lambda spec: info)
@@ -169,9 +171,40 @@ def test_a_model_starts_from_cleared_host_memory(running, tmp_path, monkeypatch)
     if running:
         assert events == []
         return
-    assert events == [["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], ["sync"],
-                      ["sysctl", "-q", "-w", "vm.drop_caches=3", "vm.compact_memory=1"],
+    assert events == [["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
+                      ["systemctl", "is-enabled", "nvidia-cdi-refresh.service"], ["nvidia-ctk", "cdi", "list"],
+                      ["sync"], ["sysctl", "-q", "-w", "vm.drop_caches=3", "vm.compact_memory=1"],
                       ["docker", "start", info["Id"]]]
+
+
+@pytest.mark.parametrize("state", ["ready", "disabled", "missing", "refresh-fails"])
+def test_gpu_cdi_specification_survives_reboots_and_systemd_reloads(state, monkeypatch):
+    """The GPU reaches model containers through CDI, which a systemd reload keeps."""
+    listing = {"ready": ["nvidia.com/gpu=all"], "disabled": ["nvidia.com/gpu=all"],
+               "missing": ["", "nvidia.com/gpu=0\nnvidia.com/gpu=all"], "refresh-fails": ["", ""]}[state]
+    enabled = "disabled\n" if state == "disabled" else "enabled\n"
+    events = []
+
+    def run(argv, **kwargs):
+        events.append(argv)
+        if argv[:2] == ["nvidia-ctk", "cdi"]:
+            return SimpleNamespace(returncode=0, stdout=listing.pop(0))
+        return SimpleNamespace(returncode=0, stdout=enabled if argv[1] == "is-enabled" else "")
+
+    monkeypatch.setattr(host, "run", run)
+    if state == "refresh-fails":
+        with pytest.raises(ValueError, match="nvidia-ctk cdi generate"):
+            host.ensure_gpu_cdi_spec()
+    else:
+        host.ensure_gpu_cdi_spec()
+    unit = "nvidia-cdi-refresh.service"
+    expected = [["systemctl", "is-enabled", unit]]
+    if state == "disabled":
+        expected.append(["systemctl", "enable", unit])
+    expected.append(["nvidia-ctk", "cdi", "list"])
+    if state in ("missing", "refresh-fails"):
+        expected += [["systemctl", "start", unit], ["nvidia-ctk", "cdi", "list"]]
+    assert events == expected
 
 
 @pytest.mark.parametrize("selinux", [False, True])

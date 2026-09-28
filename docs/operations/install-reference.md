@@ -153,8 +153,16 @@ assets before stopping the previous managed model. Immediately before a
 Spark's model container starts, that Spark writes back dirty pages, drops its
 clean page cache and reclaimable kernel caches, and compacts free memory: a
 GB10's GPU allocates from the same memory, so the model starts from cleared
-memory whatever the Spark read before, and it reads its weights from disk. A
-failed switch attempts recovery from the retained deployment and records the
+memory whatever the Spark read before, and it reads its weights from disk.
+Before that, the Spark makes sure Docker gives the container its GPU through
+the NVIDIA CDI specification: it enables NVIDIA's
+`nvidia-cdi-refresh.service`, which DGX OS ships disabled, so that the
+specification in `/var/run/cdi/nvidia.yaml` is written at every boot, and
+starts the service when the specification is missing. Without the
+specification Docker falls back to the NVIDIA runtime hook, and the next
+systemd reload on the host (snapd performs them on its own) removes the
+container's GPU access; a model that is starting then stops with NVML
+`Unknown Error`. A failed switch attempts recovery from the retained deployment and records the
 outcome. A successful installation ends with `Model ready:` and the model's API
 URL on Node A.
 

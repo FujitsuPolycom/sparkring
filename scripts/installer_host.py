@@ -1323,6 +1323,37 @@ def release_host_memory():
     run(["sysctl", "-q", "-w", "vm.drop_caches=3", "vm.compact_memory=1"], timeout=600)
 
 
+CDI_GPU_DEVICE = "nvidia.com/gpu=all"
+CDI_REFRESH_UNIT = "nvidia-cdi-refresh.service"
+
+
+def ensure_gpu_cdi_spec():
+    """Make Docker hand model containers their GPU through CDI.
+
+    Without an NVIDIA CDI specification, Docker's GPU request falls back to the
+    NVIDIA runtime hook, which allows the GPU device nodes outside the
+    container's systemd scope. The next `systemctl daemon-reload` (snapd issues
+    them on its own) rewrites the scope's device policy and removes that
+    access, so every later GPU open in the container, a starting model's worker
+    processes among them, fails with NVML "Unknown Error". A CDI device is part
+    of the container's specification, so systemd keeps it.
+
+    NVIDIA's nvidia-cdi-refresh.service writes the specification to
+    /var/run/cdi/nvidia.yaml. /var/run is emptied at boot and DGX OS leaves the
+    service disabled, so it is enabled here to run at every boot and started
+    when the device is missing. Enabling reloads systemd, which is harmless
+    here because this host's model container is not running yet.
+    """
+    if run(["systemctl", "is-enabled", CDI_REFRESH_UNIT], check=False).stdout.strip() != "enabled":
+        run(["systemctl", "enable", CDI_REFRESH_UNIT], timeout=120)
+    if CDI_GPU_DEVICE in run(["nvidia-ctk", "cdi", "list"], timeout=120).stdout.split():
+        return
+    run(["systemctl", "start", CDI_REFRESH_UNIT], timeout=300)
+    if CDI_GPU_DEVICE not in run(["nvidia-ctk", "cdi", "list"], timeout=120).stdout.split():
+        raise ValueError(f"{CDI_REFRESH_UNIT} wrote no CDI device {CDI_GPU_DEVICE}; run "
+                         "sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml, then retry")
+
+
 def smoke_request(card):
     """Chat-template settings for the smoke request, owned by the serving profile.
 
@@ -1617,6 +1648,7 @@ def perform(operation, lock, number):
                 if "image_runtime" in lock:
                     check_runtime_binding(lock, row, info)
                 if not info["State"].get("Running"):
+                    ensure_gpu_cdi_spec()
                     release_host_memory()
                     run(["docker", "start", info["Id"]])
             return {"ok": True}

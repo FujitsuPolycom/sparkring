@@ -133,6 +133,7 @@ shares Node A's Internet connection with the workers.
 | `The checkpoint plan differs from the plan reviewed with --plan` | Run with `--plan` again, then `--yes` |
 | `in use. No ConnectX driver was restarted` | Stop what the message lists, then repeat |
 | The model stops answering after a Spark restarts | Run the install command again |
+| A model log shows `NVMLError_Unknown` or `Can't initialize NVML` | Run the install command again; it gives the model its GPU in a way that survives system updates. [Details](install-reference.md#install-a-model) |
 | Deleting a copy freed no space | `sudo sparkring checkpoints --release PATH` |
 
 ## Uninstall
