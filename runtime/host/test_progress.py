@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 import io
@@ -140,3 +141,76 @@ def test_follower_colors_timestamped_events_and_can_be_plain(tmp_path, monkeypat
     output.truncate()
     assert progress.main(["--plain"]) == 0
     assert output.getvalue() == line
+
+
+def test_transfer_amounts_rates_and_time_left_read_plainly():
+    gib = 1024 ** 3
+    assert progress.size_text(121 * gib, 166 * gib) == "121 of 166 GiB"
+    assert progress.size_text(gib // 2, 3 * gib) == "0.5 of 3.0 GiB"
+    assert progress.size_text(5 * 1024 ** 2, 400 * 1024 ** 2) == "5 of 400 MiB"
+    assert progress.rate_text(106_250_000) == "850 Mb/s"
+    assert progress.rate_text(250_000_000) == "2.0 Gb/s"
+    assert progress.time_left(30) == "less than a minute left"
+    assert progress.time_left(414) == "about 7 min left"
+    assert progress.time_left(2 * 3600 + 5 * 60) == "about 2 h 5 min left"
+
+
+def test_meter_reports_the_recent_rate_and_the_time_left():
+    gib = 1024 ** 3
+    now, done = [0.0], [125 * gib - 30 * 106_250_000]
+    meter = progress.Meter(166 * gib, lambda: done[0], clock=lambda: now[0])
+    now[0], done[0] = 30.0, 125 * gib
+    fields = meter()
+    assert fields["detail"] == "125 of 166 GiB, 850 Mb/s, about 7 min left"
+    assert fields["bytes_done"] == 125 * gib and fields["bytes_total"] == 166 * gib
+    assert fields["rate_bps"] == 850_000_000 and fields["eta_s"] == 414 and fields["percent"] == 75.3
+    # Without progress since the last report, only the amount is shown.
+    now[0] = 60.0
+    assert meter()["detail"] == "125 of 166 GiB" and "eta_s" not in meter()
+
+
+def test_event_stream_records_each_step_with_stable_fields(tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(progress, "HEARTBEAT", 0.05)
+    reported = threading.Event()
+
+    def report(elapsed):
+        reported.set()
+        return {"detail": "loading weights (shard 3/9)", "log_quiet_s": 4}
+    path = tmp_path / "events.jsonl"
+    with progress.run("install", events=path):
+        with progress.step("Node 0: Wait for API readiness", phase="ready", report=report):
+            assert reported.wait(5)
+            threading.Event().wait(0.1)
+        with pytest.raises(RuntimeError):
+            with progress.step("Node 1: Start model", phase="start"):
+                raise RuntimeError("boom")
+        progress.failure("trace\nNode 1: container exited")
+    events = [json.loads(line) for line in path.read_text().splitlines()]
+    assert all(event["schema"] == "sparkring-install-event/v1" and "time" in event for event in events)
+    assert [(event["state"], event["node"], event["phase"]) for event in events if event["state"] != "working"] == [
+        ("start", None, "install"), ("start", 0, "ready"), ("done", 0, "ready"), ("start", 1, "start"),
+        ("failed", 1, "start"), ("error", None, None)]
+    working = next(event for event in events if event["state"] == "working")
+    assert working["label"] == "Node 0: Wait for API readiness" and working["elapsed_s"] >= 0
+    assert working["detail"] == "loading weights (shard 3/9)" and working["log_quiet_s"] == 4
+    assert events[-1]["message"] == "Node 1: container exited"
+    log = (tmp_path / "logs/install.log").read_text()
+    assert "Still working: Node 0: Wait for API readiness (0s) - loading weights (shard 3/9)" in log
+
+
+def test_a_failing_report_leaves_the_plain_heartbeat(tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path))
+    monkeypatch.setattr(progress, "HEARTBEAT", 0.05)
+    calls = threading.Event()
+
+    def report(elapsed):
+        calls.set()
+        raise OSError("ssh: connection refused")
+    with progress.run("install"):
+        with progress.step("Node 0: Wait for API readiness", report=report):
+            assert calls.wait(5)
+            threading.Event().wait(0.1)
+    log = (tmp_path / "install.log").read_text()
+    assert any(line.endswith("Still working: Node 0: Wait for API readiness (0s)") for line in log.splitlines())
+    assert "Done: Node 0: Wait for API readiness" in log

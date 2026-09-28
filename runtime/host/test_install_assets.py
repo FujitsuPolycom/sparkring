@@ -400,7 +400,7 @@ def steps(monkeypatch):
     labels = []
 
     @contextlib.contextmanager
-    def step(message):
+    def step(message, **kwargs):
         labels.append(message)
         yield {"failed": False}
     monkeypatch.setattr(assets.progress, "step", step)
