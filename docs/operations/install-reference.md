@@ -268,10 +268,13 @@ Installer containers set `SPARKRING_TOOL_CHOICE_CONTRACT=1` unless the
 profile's environment sets it to `0`. On an image built by the
 [tool-choice layer](../../runtime/images/derive_tool_choice_contract.py), a Chat
 Completions request whose `tool_choice` is `required` or names a function then
-fails with HTTP 500 `ToolChoiceContractError` (an SSE error event when
-streaming) if generation ends without a complete call, for example because
-reasoning used up `max_tokens`. The shared image above lacks that layer and
-answers such a request with HTTP 200, `finish_reason: "length"` and an empty
+fails if generation ends without a complete call: with HTTP 400
+`BadRequestError` for `max_tokens`, asking for a larger budget, when the token
+limit ended generation, for example because reasoning used it up, and with
+HTTP 500 `ToolChoiceContractError` when the model stopped without one.
+Streamed responses carry the same error in an SSE event. The shared image
+above lacks that layer and answers a request cut off by the token limit with
+HTTP 200, `finish_reason: "length"` and an empty
 `tool_calls` list ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)).
 
 Both Qwen profiles use one prefill recipe on TP2 and TP4: each rank owns a

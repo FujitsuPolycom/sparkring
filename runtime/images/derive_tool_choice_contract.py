@@ -15,14 +15,16 @@ runs them on import, so every Python API server process reads the same
 setting. The installer sets the variable to 1 for every installer profile
 unless the profile's environment sets it (runtime/common/installer_image.py).
 A named or required request without a complete call to a declared (and, when
-named, the selected) function then returns HTTP 500 `ToolChoiceContractError`
-whose message names the engine's finish reason, or, when streaming, an SSE
-error event followed by `[DONE]`. Responses with complete calls, and requests
+named, the selected) function then fails with a message that names the
+engine's finish reason: HTTP 400 `BadRequestError` for `max_tokens` when the
+token limit ended generation before a call or before complete arguments, and
+HTTP 500 `ToolChoiceContractError` otherwise. Streamed, the same error is an
+SSE event followed by `[DONE]`. Responses with complete calls, and requests
 with `auto`, `none` or no tool_choice, are unchanged. With the variable unset
 or 0 the image serves as its parent does.
 
 The parent's serving.py must have SHA-256 ea1f7607...; the result has SHA-256
-5f29e4eb..., and the added module has SHA-256 f5939ac5... (all pinned below).
+3f48398a..., and the added module has SHA-256 667f88db... (all pinned below).
 /opt/sparkring/receipts/derived-tool-choice-contract.json records both files.
 """
 from __future__ import annotations
@@ -39,15 +41,15 @@ SERVING = CHAT + "serving.py"
 MODULE = CHAT + "sparkring_tool_choice_contract.py"
 SOURCE = Path(__file__).resolve().parents[2] / "integrations/vllm/tool_choice_contract/contract.py"
 INHERITED = "ea1f76074a9587c8054f54d30a6ba748b6a5fc4d90dd82c801504505c1da1f92"
-RESULT = "5f29e4ebd6744816c316ccc5be76a360da3fcfc10fe824a44faf985d18fea2f2"
-MODULE_SHA256 = "f5939ac5cb7579106c40cc41e964a2ce65f737011e83bd7c5b10fdd26c1cdb97"
+RESULT = "3f48398a5a750e4955efdf8b654f646a2d70e64d3404cd189d0f0802d05339a9"
+MODULE_SHA256 = "667f88dbe6e25857474544084eb9967e56ab85a2ecaec7c43177629215fb094e"
 # The serving module's last statement; the install statements follow it.
 END = "        return ChatCompletionLogProbs(content=logprobs_content)\n"
 INSTALL = END + """
 
 # SparkRing: with SPARKRING_TOOL_CHOICE_CONTRACT=1, a named or required
-# tool_choice without a complete declared call fails with
-# ToolChoiceContractError instead of returning an empty tool_calls list.
+# tool_choice without a complete declared call returns an error (HTTP 400 when
+# max_tokens ended generation, otherwise 500) instead of empty tool_calls.
 from vllm.entrypoints.openai.chat_completion import (  # noqa: E402
     sparkring_tool_choice_contract,
 )
@@ -64,7 +66,7 @@ def replace(read, receipt, source=SOURCE):
 LAYER = Layer(
     name="tool-choice-contract",
     purpose=("A named or required Chat Completions tool_choice without a complete call to a declared "
-             "function fails with ToolChoiceContractError instead of HTTP 200 with empty tool_calls "
+             "function fails with HTTP 400 (token limit) or 500 instead of HTTP 200 with empty tool_calls "
              "when SPARKRING_TOOL_CHOICE_CONTRACT=1 (FujitsuPolycom/sparkring#217)"),
     replace=replace,
     provenance="/opt/sparkring/receipts/derived-tool-choice-contract.json",

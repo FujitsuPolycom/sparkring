@@ -21,7 +21,7 @@ The `installer-tool-choice-contract` builder,
 [derive_tool_choice_contract.py](derive_tool_choice_contract.py), derives a
 layer from `dev-20260927-mimovision-cuda1342-nccl2323-status032` in which named
 and required Chat Completions `tool_choice` requests without a complete call
-fail with `ToolChoiceContractError`
+fail with HTTP 400 when the token limit ended generation and HTTP 500 otherwise
 ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)).
 No release records an image built by it.
 

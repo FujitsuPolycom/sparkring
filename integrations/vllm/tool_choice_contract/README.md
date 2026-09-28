@@ -34,13 +34,19 @@ repairs an incomplete call into valid JSON can still conceal missing semantic
 information; this policy cannot recover parser data it never receives.
 `auto`, `none`, existing engine errors, and unconstrained text are unchanged.
 
-Nonstreaming violations return HTTP 500 with `ToolChoiceContractError`,
-`param: "tool_choice"` and a message that names the engine's finish reason, for
-example `Named or required tool_choice produced no tool calls; finish_reason:
-length.` A `length` finish means the token budget ended before a complete call;
-raise `max_tokens` or reduce reasoning. Streaming violations emit an SSE error
-with that type, followed by `[DONE]`. Streaming HTTP headers may already say
-200, and deltas already sent cannot be retracted. Clients must wait for
+Every violation message names the engine's finish reason. The status depends
+on the cause:
+
+| Cause | Nonstreamed response |
+|---|---|
+| `finish_reason: "length"`: the request's `max_tokens` ended generation before any call, or before a call's arguments formed a complete JSON object | HTTP 400, `BadRequestError`, `param: "max_tokens"`, for example `Named or required tool_choice produced no tool calls; finish_reason: length. Increase max_tokens so generation can complete the tool call.` |
+| Any other violation, such as the model stopping without a call, a wrong or undeclared function name, or malformed arguments without a token-limit finish | HTTP 500, `ToolChoiceContractError`, `param: "tool_choice"` |
+
+The 400 is the invalid-request error vLLM returns for other bad requests: the
+client can retry with a larger `max_tokens` or less reasoning. Streaming
+violations emit an SSE error event whose payload carries the same `type`,
+`code` and `param`, followed by `[DONE]`. Streaming HTTP headers may already
+say 200, and deltas already sent cannot be retracted. Clients must wait for
 successful completion before executing tool calls and must handle SSE errors
 even on HTTP 200 responses.
 
@@ -123,7 +129,9 @@ unwrapped empty and truncated cases returned no error with
 The [API probe](api_probe.py) sends eight sequential requests to an explicitly
 chosen `/v1` endpoint: named and required tools, streamed and nonstreamed, with
 a positive and a truncated `max_tokens` budget (defaults 128 and 1). It verifies
-the positive function name and arguments, and records raw bodies privately.
+the positive function name and arguments and, with `--policy enabled`, that
+each truncated request receives the token-limit `BadRequestError` (code 400),
+and records raw bodies privately.
 `--thinking off`, the default, sends `enable_thinking: false`; `--thinking
 default` leaves the served chat template's reasoning setting. Supply
 `VLLM_API_KEY` through the environment if the endpoint requires authentication.
@@ -172,7 +180,7 @@ python integrations/vllm/tool_choice_contract/api_probe.py \
   --output /path/to/new-private-evidence-directory
 ```
 
-Every truncated request must return `ToolChoiceContractError` (HTTP 500
+Every truncated request must return `BadRequestError` with code 400 (HTTP 400
 nonstreamed; an SSE error and `[DONE]` streamed) and every positive request one
 `lookup` call with arguments `{"key": "cedar"}`. The same command with
 `--policy disabled` against a profile installed on the default lock, whose
@@ -181,9 +189,13 @@ the truncated requests.
 
 ## Evidence
 
-The recorded Qwen test reproduced HTTP 200 with empty calls in all four
-one-token baseline requests. The wrapper returned two HTTP 500 full-response
-errors and two explicit SSE errors under HTTP 200. All four positive tool
+The recorded Qwen test ran the wrapper from source commit `7325492b`, which
+reported every violation as HTTP 500 `ToolChoiceContractError` (file hashes in
+[serving-evidence.json](serving-evidence.json)). It reproduced HTTP 200 with
+empty calls in all four one-token baseline requests. The wrapper returned two
+HTTP 500 full-response errors and two explicit SSE errors under HTTP 200; the
+contract in this directory reports those token-limit cases as HTTP 400
+`BadRequestError`, which no hardware run has measured. All four positive tool
 requests and an ordinary arithmetic request passed. Existing model, image,
 transport and cache settings were retained; this result does not qualify a
 different image or external-cache restoration.

@@ -37,6 +37,16 @@ def decoded_response(body, stream):
         for index, state in choices.items()], done
 
 
+def token_limit_rejected(status, error, done, stream):
+    """Whether a truncated request received the policy's token-limit error.
+
+    Nonstreamed, that is HTTP 400; streamed, an SSE error with code 400 after
+    HTTP 200 headers, followed by ``[DONE]``.
+    """
+    return bool(error and error.get("type") == "BadRequestError" and error.get("code") == 400
+                and status == (200 if stream else 400) and done)
+
+
 def payload(model, mode, stream, max_tokens, thinking="off"):
     """One request; ``thinking="default"`` leaves the chat template's reasoning setting unchanged."""
     query = {"model": model, "messages": [{"role": "user", "content":
@@ -74,8 +84,7 @@ def run(base_url, model, output, policy, *, truncated_tokens=1, positive_tokens=
                 (output / (case + ".txt")).write_text(body, encoding="utf-8")
                 error, choices, done = decoded_response(body, stream and status == 200)
                 if negative and policy == "enabled":
-                    passed = bool(error and error.get("type") == "ToolChoiceContractError"
-                                  and status == (200 if stream else 500) and done)
+                    passed = token_limit_rejected(status, error, done, stream)
                 elif negative:
                     passed = status == 200 and not error and any(
                         not c.get("message", {}).get("tool_calls") for c in choices)

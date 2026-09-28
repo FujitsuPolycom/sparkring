@@ -37,6 +37,14 @@ def assert_error(result):
     assert result["error"]["param"] == "tool_choice"
 
 
+def assert_token_limit(result):
+    assert result["error"]["type"] == "BadRequestError"
+    assert result["error"]["code"] == 400
+    assert result["error"]["param"] == "max_tokens"
+    assert result["error"]["message"].endswith(
+        "finish_reason: length. Increase max_tokens so generation can complete the tool call.")
+
+
 @pytest.mark.parametrize("mode", ["required", "named"])
 @pytest.mark.parametrize("calls", [[], None, [call(arguments='{"key":')],
                                    [call(arguments='[]')], [call(arguments='NaN')],
@@ -68,9 +76,22 @@ def test_unconstrained_requests_unchanged(choice):
 
 @pytest.mark.parametrize("mode", ["required", "named"])
 def test_diagnostic_names_the_engine_finish_reason(mode):
-    message = contract.violation(request(mode), [], "length")
-    assert message == "Named or required tool_choice produced no tool calls; finish_reason: length."
-    assert contract.violation(request(mode), [call()], None).endswith("finish_reason: None.")
+    assert contract.violation(request(mode), [], "length") == contract.Violation(
+        "Named or required tool_choice produced no tool calls; finish_reason: length. "
+        "Increase max_tokens so generation can complete the tool call.", token_limit=True)
+    assert contract.violation(request(mode), [], "stop") == contract.Violation(
+        "Named or required tool_choice produced no tool calls; finish_reason: stop.")
+    assert contract.violation(request(mode), [call()], None).message.endswith("finish_reason: None.")
+
+
+@pytest.mark.parametrize("mode", ["required", "named"])
+@pytest.mark.parametrize("calls, finish, token_limit", [
+    ([], "length", True), ([call(arguments='{"key":')], "length", True),
+    ([], "stop", False), ([], "tool_calls", False), ([call(arguments='{"key":')], "stop", False),
+    ([call("undeclared")], "length", False), ([call()], "abort", False),
+])
+def test_only_output_cut_off_by_the_token_limit_is_a_client_error(mode, calls, finish, token_limit):
+    assert contract.violation(request(mode), calls, finish).token_limit is token_limit
 
 
 def full_probe(calls, *, choice="required", finish="stop", generator=None, **req_kwargs):
@@ -100,6 +121,8 @@ def full_probe(calls, *, choice="required", finish="stop", generator=None, **req
 @pytest.mark.parametrize("calls", [[], [call(arguments='{"incomplete":')], [call("invalid")]])
 def test_full_generator_rejects_parser_contract_violations(calls):
     assert_error(full_probe(calls))
+    if calls[:1] != [call("invalid")]:
+        assert_token_limit(full_probe(calls, finish="length"))
 
 
 def test_full_named_and_required_success_and_legacy_auto():
@@ -133,9 +156,11 @@ def test_forced_tool_choice_without_a_call_fails_closed_after_install(choice):
     cls = serving_class()
     contract.install(cls)
     Serving.result = {"choices": [{"index": 0, "finish_reason": "length", "message": {"tool_calls": []}}]}
-    result = full_probe(None, choice=choice, finish="length", generator=cls.chat_completion_full_generator)
+    assert_token_limit(full_probe(None, choice=choice, finish="length", generator=cls.chat_completion_full_generator))
+    Serving.result = {"choices": [{"index": 0, "finish_reason": "stop", "message": {"tool_calls": []}}]}
+    result = full_probe(None, choice=choice, finish="stop", generator=cls.chat_completion_full_generator)
     assert_error(result)
-    assert result["error"]["message"].endswith("finish_reason: length.")
+    assert result["error"]["message"] == "Named or required tool_choice produced no tool calls; finish_reason: stop."
     Serving.result = {"choices": [{"index": 0, "finish_reason": "stop", "message": {"tool_calls": [call()]}}]}
     assert full_probe(None, choice=choice, generator=cls.chat_completion_full_generator) is Serving.result
 
@@ -206,12 +231,18 @@ def stream_probe(frames, *, choice="required", finish="stop", **req_kwargs):
     return result
 
 
-@pytest.mark.parametrize("delta", [{}, tool_delta("lookup", '{"a":'), tool_delta("wrong", '{}')])
-def test_stream_errors_replace_invalid_terminal_chunk_and_close_generators(delta):
+@pytest.mark.parametrize("finish", ["length", "stop"])
+@pytest.mark.parametrize("delta, cut_off", [({}, True), (tool_delta("lookup", '{"a":'), True),
+                                            (tool_delta("wrong", '{}'), False)])
+def test_stream_errors_replace_invalid_terminal_chunk_and_close_generators(delta, cut_off, finish):
     result = stream_probe([frame(delta), frame(finish="tool_calls"), "data: [DONE]\n\n"],
-                          finish="length")
-    assert result[0] == frame(delta)  # Prior deltas cannot be retracted.
-    assert_error(json.loads(result[-2][6:]))
+                          finish=finish)
+    assert result[0] == frame(delta)  # Deltas already sent cannot be retracted.
+    error = json.loads(result[-2][6:])
+    if cut_off and finish == "length":
+        assert_token_limit(error)
+    else:
+        assert_error(error)
     assert result[-1] == "data: [DONE]\n\n"
     assert len(result) == 3
 
@@ -289,6 +320,18 @@ def test_api_probe_reassembles_stream_fragments_and_preserves_error():
     error_frame = 'data: {"error":{"type":"ToolChoiceContractError"}}\n\n'
     error, choices, done = api_probe.decoded_response(error_frame + "data: [DONE]\n\n", True)
     assert error["type"] == "ToolChoiceContractError" and done and not choices
+
+
+@pytest.mark.parametrize("stream, status, error, done, passed", [
+    (False, 400, {"type": "BadRequestError", "code": 400}, True, True),
+    (True, 200, {"type": "BadRequestError", "code": 400}, True, True),
+    (True, 200, {"type": "BadRequestError", "code": 400}, False, False),
+    (False, 500, {"type": "ToolChoiceContractError", "code": 500}, True, False),
+    (True, 200, {"type": "ToolChoiceContractError", "code": 500}, True, False),
+    (False, 200, None, True, False),
+])
+def test_api_probe_expects_the_token_limit_error_for_truncated_requests(stream, status, error, done, passed):
+    assert api_probe.token_limit_rejected(status, error, done, stream) is passed
 
 
 def test_api_probe_budget_thinking_and_named_contract():

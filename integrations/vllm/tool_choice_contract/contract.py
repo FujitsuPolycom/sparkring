@@ -35,26 +35,45 @@ def _reject_constant(text):
     raise ValueError("Non-JSON numeric constant")
 
 
-def violation(request, calls, finish_reason):
-    """Return a bounded diagnostic that names the engine's finish reason, or None.
+@dataclass(frozen=True)
+class Violation:
+    """A contract violation and whether the request's token limit caused it.
 
-    The diagnostic never includes generated arguments or text.
+    ``token_limit`` is true when generation reached ``max_tokens``
+    (``finish_reason: "length"``) before any call or before complete
+    arguments: the request needs a larger budget, so the response is a client
+    error. Every other violation is a server-side contract failure.
+    """
+    message: str
+    token_limit: bool = False
+
+
+def violation(request, calls, finish_reason):
+    """Return the violation, with a message that names the engine's finish reason, or None.
+
+    The message never includes generated arguments or text.
     """
     contract = scope(request)
     if contract is None:
         return None
     problem = _problem(request, contract, calls, finish_reason)
-    return None if problem is None else f"{problem}; finish_reason: {finish_reason}."
+    if problem is None:
+        return None
+    text, truncated = problem
+    token_limit = truncated and finish_reason == "length"
+    advice = " Increase max_tokens so generation can complete the tool call." if token_limit else ""
+    return Violation(f"{text}; finish_reason: {finish_reason}.{advice}", token_limit)
 
 
 def _problem(request, contract, calls, finish_reason):
+    """Return (text, truncated); truncated marks output that a token limit can cut off."""
     if finish_reason not in ("stop", "tool_calls", "length"):
-        return "Generation did not finish normally; required tool output is incomplete"
+        return "Generation did not finish normally; required tool output is incomplete", False
     if not calls:
-        return "Named or required tool_choice produced no tool calls"
+        return "Named or required tool_choice produced no tool calls", True
     mode, name = contract
     if value(request, "parallel_tool_calls") is False and len(calls) != 1:
-        return "Tool response contains parallel calls when parallel_tool_calls is false"
+        return "Tool response contains parallel calls when parallel_tool_calls is false", False
     declared = {value(value(tool, "function"), "name")
                 for tool in value(request, "tools", []) or []
                 if value(tool, "type") == "function"}
@@ -62,9 +81,9 @@ def _problem(request, contract, calls, finish_reason):
         function = value(call, "function")
         call_name = value(function, "name")
         if not call_name or call_name not in declared:
-            return "Tool output names a function absent from the request's tool definitions"
+            return "Tool output names a function absent from the request's tool definitions", False
         if mode == "named" and call_name != name:
-            return "Tool output does not match the function selected by tool_choice"
+            return "Tool output does not match the function selected by tool_choice", False
         arguments = value(function, "arguments")
         try:
             if not isinstance(arguments, str):
@@ -73,13 +92,24 @@ def _problem(request, contract, calls, finish_reason):
             if not isinstance(parsed, dict):
                 raise ValueError("Expected a JSON object")
         except (ValueError, RecursionError):
-            return "Tool arguments are not a complete JSON object"
+            return "Tool arguments are not a complete JSON object", True
     return None
 
 
-def _error(service, message, *, streaming=False):
+def _error(service, problem, *, streaming=False):
+    """Build vLLM's error response for a Violation or a message.
+
+    A token-limit violation is vLLM's HTTP 400 ``BadRequestError`` for
+    ``max_tokens``; every other violation is HTTP 500
+    ``ToolChoiceContractError`` for ``tool_choice``. A streamed error carries
+    the same type, code and param in its SSE payload.
+    """
     factory = (service.create_streaming_error_response if streaming
                else service.create_error_response)
+    if isinstance(problem, Violation) and problem.token_limit:
+        return factory(problem.message, err_type="BadRequestError",
+                       status_code=HTTPStatus.BAD_REQUEST, param="max_tokens")
+    message = problem.message if isinstance(problem, Violation) else problem
     return factory(message, err_type="ToolChoiceContractError",
                    status_code=HTTPStatus.INTERNAL_SERVER_ERROR, param="tool_choice")
 
@@ -109,10 +139,10 @@ def wrap_full(original):
         if {value(choice, "index") for choice in choices} != set(range(value(request, "n") or 1)):
             return _error(self, "Tool response contains invalid completion choice indices.")
         for choice in choices:
-            message = violation(request, value(value(choice, "message"), "tool_calls"),
+            problem = violation(request, value(value(choice, "message"), "tool_calls"),
                                 reasons.get(value(choice, "index")))
-            if message:
-                return _error(self, message)
+            if problem:
+                return _error(self, problem)
         return result
     return checked
 

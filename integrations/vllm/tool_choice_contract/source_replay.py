@@ -128,7 +128,9 @@ async def run_case(methods, *, mode, kind, checked, stream):
     expected_error = checked and (kind in ("empty", "truncated") or (mode == "named" and kind == "wrong-name"))
     assert bool(errors) == expected_error, (mode, kind, checked, stream, errors)
     if errors:
-        assert errors[0]["type"] == "ToolChoiceContractError", errors
+        # Empty and truncated outputs finish at the token limit: a 400 for max_tokens.
+        expected = ("BadRequestError", 400) if kind in ("empty", "truncated") else ("ToolChoiceContractError", 500)
+        assert (errors[0]["type"], errors[0]["code"]) == expected, errors
     elif checked and kind == "complete-length":
         assert terminal[0]["finish_reason"] == "length", terminal
     return {"mode": mode, "case": kind, "checked": checked, "stream": stream,
