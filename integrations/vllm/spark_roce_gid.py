@@ -75,9 +75,14 @@ class GidEntry:
 
 
 def ipv4_mapped_gid(address: str | ipaddress.IPv4Address) -> str:
-    """The sysfs text of the IPv4-mapped GID of ``address``."""
-    raw = ipaddress.IPv6Address("::ffff:" + str(ipaddress.IPv4Address(address))).exploded
-    return raw.lower()
+    """The sysfs text of the IPv4-mapped GID of ``address``.
+
+    Built from the address bytes: ``IPv6Address.exploded`` writes an
+    IPv4-mapped address with a dotted-quad tail on newer Python releases, while
+    the kernel always writes eight groups of four hexadecimal digits.
+    """
+    packed = bytes(10) + bytes((0xFF, 0xFF)) + ipaddress.IPv4Address(address).packed
+    return ":".join(packed[i:i + 2].hex() for i in range(0, 16, 2))
 
 
 def _root(root: Path | str | None) -> Path:
