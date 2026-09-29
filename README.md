@@ -19,10 +19,9 @@ profiles support vLLM and SGLang.
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
 ```
 
-The installer asks before it changes anything (`--yes` skips the questions,
-`--plan` only shows what it would do). It sets up every Spark, downloads the
-image and model if needed, and prints the API address when the model is ready.
-Run the same command again to upgrade. Each model has a
+The installer requires approval for several operations. Use the `--yes` flag to auto-accept all prompts. Use `--plan` to display what the installer would do, without actually executing the install. The installer sets up every gb10 device, downloads the
+image/models and distributes them if needed, and prints the API address when ready.
+Run the same command again to update a profile or swap to another. Each model has a
 [status dashboard](docs/operations/dashboard.md); on four Sparks the installer
 also applies a [ConnectX driver setting](docs/operations/install.md#four-spark-rings)
 at every boot.
