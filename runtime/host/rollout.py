@@ -22,7 +22,12 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
     if journal.exists():
         retained = installer.read(journal)
         pending = retained["state"] in ("stopping-previous", "starting", "verifying", "recovering-previous", "needs-attention")
-        if pending and retained["state"] in ("recovering-previous", "needs-attention") and supersede:
+        # The caller holds install.lock, so a journal left mid-switch belongs
+        # to an install that stopped, for example because a Spark restarted.
+        # Installing the same candidate resumes it; another candidate may
+        # replace it, like a switch whose recovery failed.
+        abandoned = retained["state"] in ("recovering-previous", "needs-attention") or retained["candidate"] != str(directory)
+        if pending and abandoned and supersede:
             # The caller has confirmed no unexpected GPU workload is running.
             # Stop the abandoned candidate through its own deployment, then
             # replace it; the active pointer still names the last good model.
@@ -35,8 +40,10 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
             record["superseded"] = retained
             pending = False
         if pending:
-            if retained["candidate"] != str(directory) or retained["state"] in ("recovering-previous", "needs-attention"):
-                raise ValueError("A previous model switch needs attention; inspect " + str(journal))
+            if abandoned:
+                raise ValueError(f"An unfinished switch to {Path(retained['candidate']).name} stopped while "
+                                 f"{retained['state']}; install that model again to resume it, or confirm that no "
+                                 f"other GPU workload is running to replace it ({journal})")
             record = retained
             previous = Path(record["previous"]) if record["previous"] else None
             resume = True
