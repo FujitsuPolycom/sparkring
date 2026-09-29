@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from performance.harnesses.acceptance import accept_profile, install, profile_info, record
+from performance.harnesses.acceptance import accept_profile, install, profile_info, record, throughput
 from performance.harnesses.acceptance.fakes import FakeBench, FakeModel, FakeNodeA
 
 LAN = ".".join(("192", "168", "0", "200"))
@@ -87,7 +87,7 @@ def test_full_run_installs_checks_measures_and_writes_a_private_data_free_record
     assert json.loads((h.out / "stress.json").read_text())["n"] == 32
     command = h.bench.calls[0]
     assert command[command.index("--port") + 1] == "8020" and command[command.index("--model") + 1] == SERVED
-    readme = "README values for `mimo-v26-flash-mopd-tp2` (port 8020): decode 27.1 / 139 / 206; prefill 64K 2,749"
+    readme = "README values for `mimo-v26-flash-mopd-tp2` (port 8020): decode 27.1 / 98 / 139 / 206; prefill 64K 2,749"
     assert capsys.readouterr().out.splitlines() == [readme, readme]
 
     markdown = (h.records / f"{NAME}.md").read_text()
@@ -103,6 +103,34 @@ def test_full_run_installs_checks_measures_and_writes_a_private_data_free_record
     assert "installed source commit `c17cf23cec72`" in markdown
     assert "at commit `abcdef123456`" in markdown
     assert json.loads((h.out / "record.json").read_text())["readme"] == readme
+    # Without --full-matrix the full matrix is never measured or recorded.
+    assert len(h.bench.calls) == 1 and "--skip-prefill" not in h.bench.calls[0]
+    assert not (h.out / "matrix.json").exists() and "**Full matrix**" not in markdown
+
+
+def test_full_matrix_is_measured_before_the_record_and_included_in_it(tmp_path):
+    require_repository_drive(tmp_path)
+    h = Harness(tmp_path)
+    assert h.main("--full-matrix", install_source=None) == 0
+    assert len(h.bench.calls) == 2
+    standard, full = h.bench.calls
+    assert "--skip-prefill" not in standard and full[-1] == "--skip-prefill"
+    assert full[full.index("--contexts") + 1] == "8192,32768,65536,131072"
+    saved = json.loads((h.out / "matrix.json").read_text())
+    assert saved["ok"] and saved["file"] == "tp2-full-matrix.json" and saved["kv_budget"] == 2_000_000
+    assert saved["decode"]["131072"]["16"]["not_applicable"] == throughput.NOT_FITTING
+    assert (h.out / "matrix/tp2-full-matrix.json").is_file()
+
+    markdown = (h.records / f"{NAME}.md").read_text()
+    directory = h.records / NAME
+    assert "**Full matrix**" in markdown and f"({NAME}/tp2-full-matrix.json)" in markdown
+    assert "A dash: exceeds the KV cache (2,000,000 tokens)." in markdown
+    matrix = json.loads((directory / "tp2-full-matrix.json").read_text())
+    assert matrix["metadata"]["server"] == "http://NODE_A" and "startup_diagnostics" not in matrix
+    assert LAN not in (directory / "tp2-full-matrix.json").read_text()
+    # A later invocation reuses the saved full matrix.
+    assert h.main("--full-matrix", "--steps", "matrix", install_source=None) == 0
+    assert len(h.bench.calls) == 2
 
 
 def test_second_invocation_reuses_every_saved_result(tmp_path):

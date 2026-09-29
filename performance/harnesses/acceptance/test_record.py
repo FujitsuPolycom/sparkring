@@ -20,10 +20,11 @@ PROFILE = ProfileInfo(
     thinking_off={"chat_template_kwargs": {"enable_thinking": False}})
 
 
-def summary(rates=(27.0853, 139.0267, 205.5873), prefill=(2675.0, 2749.0, 2040.0), runs=1):
+def summary(rates=(27.0853, 98.4, 139.0267, 205.5873), prefill=(2675.0, 2749.0, 2040.0), runs=1):
     decode = {str(c): {"aggregate_tps": r, "server_steps_per_s": s, "server_spec_accept_length": a, "num_errors": 0,
                        "missing_runs": 0}
-              for c, r, s, a in zip(throughput.CONCURRENCY, rates, (12.64, 42.9008, 64.199), (2.1429, 3.2407, 3.2023))}
+              for c, r, s, a in zip(throughput.CONCURRENCY, rates, (12.64, 30.1, 42.9008, 64.199),
+                                    (2.1429, 3.0, 3.2407, 3.2023))}
     return {"runs": runs, "versions": ["0.6.2"], "decode": decode,
             "prefill": dict(zip(map(str, throughput.PREFILL), prefill)), "invalid": [], "ok": True,
             "files": ["tp2-matrix.json"] if runs == 1 else [f"tp2-matrix-run{i}.json" for i in range(1, runs + 1)]}
@@ -39,10 +40,10 @@ def test_record_name_uses_the_image_prefix():
 
 
 @pytest.mark.parametrize("rates, prefill, expected", [
-    ((56.2, 196.6, 283.3), 3666.0, ("56.2 / 197 / 283", "3,666")),
-    ((63.75, 196.5, 279.5), 4284.4, ("63.8 / 197 / 280", "4,284")),
-    ((27.0853, 139.0267, 205.5873), 2749.0, ("27.1 / 139 / 206", "2,749")),
-    ((40.2, 104.0, None), None, ("40.2 / 104 / —", "—")),
+    ((56.2, 150.5, 196.6, 283.3), 3666.0, ("56.2 / 151 / 197 / 283", "3,666")),
+    ((63.75, 149.49, 196.5, 279.5), 4284.4, ("63.8 / 149 / 197 / 280", "4,284")),
+    ((27.0853, 98.4, 139.0267, 205.5873), 2749.0, ("27.1 / 98 / 139 / 206", "2,749")),
+    ((40.2, 80.0, 104.0, None), None, ("40.2 / 80 / 104 / —", "—")),
 ])
 def test_readme_values_round_half_up_like_the_readme(rates, prefill, expected):
     data = summary(rates=rates, prefill=(1.0, prefill, 1.0))
@@ -51,12 +52,12 @@ def test_readme_values_round_half_up_like_the_readme(rates, prefill, expected):
 
 def test_readme_line_names_profile_and_port():
     assert record.readme_line(PROFILE, summary()) == \
-        "README values for `mimo-v26-flash-mopd-tp2` (port 8020): decode 27.1 / 139 / 206; prefill 64K 2,749"
+        "README values for `mimo-v26-flash-mopd-tp2` (port 8020): decode 27.1 / 98 / 139 / 206; prefill 64K 2,749"
 
 
 def test_throughput_row_matches_the_record_table_format():
     assert record.throughput_row(summary()) == \
-        "| 27.1 / 139.0 / 205.6 | 12.6 / 42.9 / 64.2 | 2.14 / 3.24 / 3.20 | 2,675 / 2,749 / 2,040 |"
+        "| 27.1 / 98.4 / 139.0 / 205.6 | 12.6 / 30.1 / 42.9 / 64.2 | 2.14 / 3.00 / 3.24 / 3.20 | 2,675 / 2,749 / 2,040 |"
 
 
 def test_text_sanitization_replaces_known_hosts_and_numbers_other_addresses():
@@ -108,8 +109,10 @@ def test_record_has_the_evidence_sections_and_values():
     assert f"[`release.json`](../../../runtime/releases/{IMAGE}/release.json)" in text
     assert "[installer phases](dev-20260927-b12xcache-mimo-v26-flash-mopd-tp2-20260927/install-phases.txt)" in text
     assert "Node 0's API readiness step took 545.3 s" in text
-    assert "| 27.1 / 139.0 / 205.6 | 12.6 / 42.9 / 64.2 | 2.14 / 3.24 / 3.20 | 2,675 / 2,749 / 2,040 |" in text
-    assert "decode 1 / 8 / 16 users 27.1 / 139 / 206 tok/s, prefill 64K 2,749 tok/s" in text
+    assert "| 27.1 / 98.4 / 139.0 / 205.6 | 12.6 / 30.1 / 42.9 / 64.2 | 2.14 / 3.00 / 3.24 / 3.20 | 2,675 / 2,749 / 2,040 |" in text
+    assert "| Decode 1 / 4 / 8 / 16 streams at 16K (tok/s) | Steps/s |" in text
+    assert "decode 1 / 4 / 8 / 16 users at 16K context 27.1 / 98 / 139 / 206 tok/s, prefill 64K 2,749 tok/s" in text
+    assert "**Full matrix**" not in text
     assert "0 degenerate, 0 failed and 2 wrong, to questions `a7`" in text
     assert "`{\"chat_template_kwargs\": {\"enable_thinking\": false}}`" in text
     assert "Each cell ran once." in text
@@ -143,3 +146,36 @@ def test_repeated_runs_report_medians():
 def test_invalid_status_is_refused():
     with pytest.raises(ValueError):
         render(status="validated")
+
+
+def full(kv_budget=2_000_000):
+    decode = {str(context): {str(level): {"aggregate_tps": 1000.0 * level / (context // 1024)}
+                             for level in throughput.FULL_CONCURRENCY}
+              for context in throughput.FULL_CONTEXTS}
+    decode["131072"]["16"] = {"aggregate_tps": None, "not_applicable": throughput.NOT_FITTING}
+    return {"version": "0.6.2", "kv_budget": kv_budget, "decode": decode, "file": "tp2-full-matrix.json"}
+
+
+def test_full_matrix_lines_print_a_table_and_explain_each_dash():
+    lines = record.full_matrix_lines(full(), "[matrix](x/tp2-full-matrix.json)")
+    assert lines[0] == "**Full matrix** ([matrix](x/tp2-full-matrix.json)), decode tok/s by added context and streams:"
+    assert lines[2:4] == ["| Context | 1 | 2 | 4 | 8 | 16 |", "|---|---|---|---|---|---|"]
+    assert lines[4] == "| 8K | 125.0 | 250.0 | 500.0 | 1000.0 | 2000.0 |"
+    assert lines[7] == "| 128K | 7.8 | 15.6 | 31.3 | 62.5 | — |"
+    assert lines[-1] == "A dash: exceeds the KV cache (2,000,000 tokens)."
+    data = full(kv_budget=None)
+    data["decode"]["65536"]["16"] = {"aggregate_tps": None, "not_applicable": throughput.QUEUED}
+    assert record.full_matrix_lines(data, "m")[-1] ==         f"A dash: exceeds the KV cache; {throughput.QUEUED}."
+    complete = full()
+    complete["decode"]["131072"]["16"] = {"aggregate_tps": 100.0}
+    assert not any(line.startswith("A dash") for line in record.full_matrix_lines(complete, "m"))
+
+
+def test_record_with_the_full_matrix_adds_its_table():
+    text = render(full=full(), files={"functional": "functional.txt", "stress": "stress.json",
+                                      "matrices": ["tp2-matrix.json"], "full_matrix": "tp2-full-matrix.json",
+                                      "install_phases": "install-phases.txt"})
+    assert "- **Full matrix:** the same benchmark settings at 1, 2, 4, 8 and 16 streams" in text
+    assert ("**Full matrix** ([matrix](dev-20260927-b12xcache-mimo-v26-flash-mopd-tp2-20260927/"
+            "tp2-full-matrix.json)), decode tok/s") in text
+    assert "A dash: exceeds the KV cache (2,000,000 tokens)." in text

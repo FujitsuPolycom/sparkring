@@ -48,19 +48,44 @@ def whole(value):
 
 
 def readme_values(summary):
-    """Decode 1 / 8 / 16 and 64K prefill as the README profile table prints them.
+    """Decode 1 / 4 / 8 / 16 at 16K context and 64K prefill as the README profile table prints them.
 
-    One stream keeps one decimal; 8 and 16 streams and prefill are whole
-    numbers; missing values print as a dash.
+    One stream keeps one decimal; more streams and prefill are whole numbers;
+    missing and not-applicable values print as a dash.
     """
     decode = summary["decode"]
     rate = [decode.get(str(level), {}).get("aggregate_tps") for level in throughput.CONCURRENCY]
-    return f"{decimal(rate[0], 1)} / {whole(rate[1])} / {whole(rate[2])}", whole(summary["prefill"].get("65536"))
+    return (" / ".join([decimal(rate[0], 1), *(whole(value) for value in rate[1:])]),
+            whole(summary["prefill"].get("65536")))
 
 
 def readme_line(profile, summary):
     decode, prefill = readme_values(summary)
     return f"README values for `{profile.id}` (port {profile.port}): decode {decode}; prefill 64K {prefill}"
+
+
+def full_matrix_lines(full, link):
+    """The full matrix as a context x streams table, with a note for each kind of dash."""
+    levels = throughput.FULL_CONCURRENCY
+    lines = [f"**Full matrix** ({link}), decode tok/s by added context and streams:", "",
+             "| Context | " + " | ".join(f"{level}" for level in levels) + " |",
+             "|---|" + "---|" * len(levels)]
+    reasons = set()
+    for context in throughput.FULL_CONTEXTS:
+        cells = []
+        for level in levels:
+            cell = full["decode"][str(context)][str(level)]
+            reason = cell.get("failure") or cell.get("not_applicable")
+            if reason:
+                reasons.add(reason)
+            cells.append(DASH if cell.get("aggregate_tps") is None else decimal(cell["aggregate_tps"], 1))
+        lines.append(f"| {context // 1024}K | " + " | ".join(cells) + " |")
+    if reasons:
+        budget = f" ({full['kv_budget']:,} tokens)" if full.get("kv_budget") else ""
+        notes = [f"{throughput.NOT_FITTING}{budget}" if reason == throughput.NOT_FITTING else reason
+                 for reason in sorted(reasons)]
+        lines += ["", "A dash: " + "; ".join(notes) + "."]
+    return lines
 
 
 def throughput_row(summary):
@@ -132,7 +157,7 @@ def _link(directory, name, label):
 
 
 def render(*, profile, name, record_dir, repo_root, files, install=None, source=None,
-           functional=None, stress=None, summary=None, status=None, client, harness_revision):
+           functional=None, stress=None, summary=None, full=None, status=None, client, harness_revision):
     """Return the record's Markdown. `files` maps roles to file names in the record directory."""
     status = status or profile.status
     if status not in STATUSES:
@@ -204,11 +229,15 @@ def render(*, profile, name, record_dir, repo_root, files, install=None, source=
         repeat = "Each cell ran once." if runs == 1 else \
             f"The benchmark ran {runs} times; the tables give each value's median and the sum of request errors."
         lines.append(f"- **Throughput:** [llm-inference-bench]({BENCH_URL}) `llm_decode_bench.py` {version} at "
-                     "temperature 1.0 with exact token targeting, 1, 8 and 16 concurrent streams, no added context, "
-                     "20 s per cell after a 5 s warm-up, up to 2,048 output tokens with end of sequence ignored. "
-                     "Decode is the aggregate output rate from stream usage. Prefill is a cold scout-only prompt's "
-                     "length divided by its time to first token. Steps per second and tokens per step come from "
-                     f"vLLM's speculative-decoding counters. {repeat}")
+                     "temperature 1.0 with exact token targeting, 1, 4, 8 and 16 concurrent streams, each with 16K "
+                     "tokens of added context, 20 s per cell after a 5 s warm-up, up to 2,048 output tokens with end "
+                     "of sequence ignored. Decode is the aggregate output rate from stream usage. Prefill is a cold "
+                     "scout-only prompt's length divided by its time to first token. Steps per second and tokens per "
+                     f"step come from vLLM's speculative-decoding counters. {repeat}")
+    if full:
+        lines.append("- **Full matrix:** the same benchmark settings at 1, 2, 4, 8 and 16 streams with 8K, 32K, "
+                     "64K and 128K tokens of added context, without prefill prompts. The benchmark skips a cell "
+                     "whose streams need more KV cache than the deployment has.")
     if not (functional or stress or summary):
         lines.append("- No functional, correctness or throughput step ran.")
     lines += ["", "## Result", ""]
@@ -235,12 +264,19 @@ def render(*, profile, name, record_dir, repo_root, files, install=None, source=
         errors = sum(cell["num_errors"] for cell in summary["decode"].values())
         decode, prefill = readme_values(summary)
         lines += ["", f"**Throughput** ({links}):", "",
-                  "| Decode 1 / 8 / 16 streams (tok/s) | Steps/s | Tokens/step | Prefill 8K / 64K / 128K (tok/s) |",
+                  "| Decode 1 / 4 / 8 / 16 streams at 16K (tok/s) | Steps/s | Tokens/step | "
+                  "Prefill 8K / 64K / 128K (tok/s) |",
                   "|---|---|---|---|", throughput_row(summary), "",
                   f"Benchmark request errors: {errors}."]
         for item in summary["invalid"]:
             lines[-1] += f" Run {item['run']}, {item['concurrency']} streams: {item['reason']}."
-        lines += ["", f"README profile table values: decode 1 / 8 / 16 users {decode} tok/s, prefill 64K {prefill} tok/s."]
+        for level, cell in summary["decode"].items():
+            if cell.get("not_applicable"):
+                lines[-1] += f" {level} streams: {cell['not_applicable']}."
+        lines += ["", f"README profile table values: decode 1 / 4 / 8 / 16 users at 16K context {decode} tok/s, "
+                      f"prefill 64K {prefill} tok/s."]
+    if full:
+        lines += [""] + full_matrix_lines(full, _link(name, files["full_matrix"], "matrix"))
     lines += ["", "## Conclusion", ""]
     claims = [p for p in (_functional_phrase(functional), _stress_phrase(stress)) if p]
     subject = f"`install.sh` installed `{profile.id}`, which" if installed else f"the `{profile.id}` deployment"
@@ -252,6 +288,8 @@ def render(*, profile, name, record_dir, repo_root, files, install=None, source=
                      "temperature 1.0 the tokens accepted per speculative step follow the sampled text, so decode "
                      "rates vary between runs.")
         lines.append("- Prefill is one cold prompt per length and run.")
+    elif full:
+        lines.append("- Only the full matrix was measured; the README profile table's 16K cells were not.")
     else:
         lines.append("- Throughput was not measured.")
     if functional or stress:

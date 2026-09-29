@@ -2,7 +2,8 @@
 
 FakeModel answers the functional checks and the correctness-screen
 questions correctly and records every request. FakeNodeA plays the
-installer's run directory. FakeBench writes an llm-inference-bench matrix.
+installer's run directory. FakeBench writes an llm-inference-bench matrix:
+the standard measurement, or the full matrix when invoked with --skip-prefill.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from pathlib import Path
 import re
 import threading
 
+from performance.harnesses.acceptance import throughput
 from performance.harnesses.acceptance.checks import QUESTIONS
 from performance.harnesses.acceptance.runners import HttpError, Result
 
@@ -100,21 +102,43 @@ class FakeNodeA:
         raise AssertionError(f"unexpected script: {script}")
 
 
-def bench_matrix(server, *, model="Model-TP2", note=None):
-    """A reduced llm-inference-bench 0.6.2 matrix, including sections a record drops."""
-    def cell(concurrency, rate, steps, accept):
-        return {"concurrency": concurrency, "context_tokens": 0, "aggregate_tps": rate, "server_steps_per_s": steps,
-                "server_spec_accept_length": accept, "num_errors": 0, "failure_reason": ""}
+# Standard-matrix decode cells at 16K context: (streams, tok/s, steps/s, tokens/step).
+STANDARD_CELLS = ((1, 27.0853, 12.64, 2.1429), (4, 98.4, 30.1, 3.0), (8, 139.0267, 42.90, 3.2407),
+                  (16, 205.5873, 64.20, 3.2023))
+# The full matrix's KV cache budget: 16 streams at 128K need 16 x (131072 + 2048)
+# tokens, more than this, so that cell is absent as the benchmark skips it.
+FULL_KV_BUDGET = 2_000_000
+
+
+def bench_matrix(server, *, model="Model-TP2", note=None, full=False):
+    """A reduced llm-inference-bench 0.6.2 matrix, including sections a record drops.
+
+    The standard measurement by default; with ``full`` the full matrix, which
+    runs without prefill prompts and names its KV cache budget.
+    """
+    def cell(concurrency, rate, steps, accept, context):
+        return {"concurrency": concurrency, "context_tokens": context, "aggregate_tps": rate,
+                "server_steps_per_s": steps, "server_spec_accept_length": accept, "num_errors": 0,
+                "failure_reason": ""}
     metadata = {"version": "0.6.2", "model": model, "server": server, "temperature": 1.0}
     if note:
         metadata["note"] = note
+    if full:
+        metadata["kv_budget"] = FULL_KV_BUDGET
+        results = [cell(level, round(30.0 * level / (1 + context / 65536), 4), 12.0, 3.0, context)
+                   for context in throughput.FULL_CONTEXTS for level in throughput.FULL_CONCURRENCY
+                   if level * (context + 2048) <= FULL_KV_BUDGET]
+        prefill = {}
+    else:
+        results = [cell(*values, throughput.CONTEXT) for values in STANDARD_CELLS]
+        prefill = {"8192": {"tok_per_sec": 2675.0}, "65536": {"tok_per_sec": 2749.0},
+                   "131072": {"tok_per_sec": 2040.0}}
+    summary = {}
+    for row in results:
+        summary.setdefault(str(row["context_tokens"]), {})[str(row["concurrency"])] = row["aggregate_tps"]
     return {"metadata": metadata,
             "startup_diagnostics": {"hostname": "client-box", "server_url": server},
-            "prefill": {"8192": {"tok_per_sec": 2675.0}, "65536": {"tok_per_sec": 2749.0},
-                        "131072": {"tok_per_sec": 2040.0}},
-            "results": [cell(1, 27.0853, 12.64, 2.1429), cell(8, 139.0267, 42.90, 3.2407),
-                        cell(16, 205.5873, 64.20, 3.2023)],
-            "summary_table": {"0": {"1": 27.0853, "8": 139.0267, "16": 205.5873}},
+            "prefill": prefill, "results": results, "summary_table": summary,
             "burst_results": [], "burst_summary_table": {}, "methodology": {}}
 
 
@@ -131,5 +155,6 @@ class FakeBench:
         if self.exit_code == 0:
             output = Path(argv[argv.index("--output") + 1])
             model = argv[argv.index("--model") + 1]
-            output.write_text(json.dumps(bench_matrix(self.server, model=model, note=self.note)), encoding="utf-8")
+            matrix = bench_matrix(self.server, model=model, note=self.note, full="--skip-prefill" in argv)
+            output.write_text(json.dumps(matrix), encoding="utf-8")
         return self.exit_code

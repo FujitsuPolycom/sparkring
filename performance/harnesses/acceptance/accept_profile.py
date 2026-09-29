@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Install (optionally), check and measure one installer profile on one cluster, then draft its record.
 
-Steps, in order: install, readiness, functional, stress, throughput, record.
+Steps, in order: install, readiness, functional, stress, throughput, record;
+--full-matrix adds the matrix step before record.
 Each step saves its result in --out; a later invocation with the same --out
 reuses every complete saved result and runs only what is missing, so an
 interrupted run resumes where it stopped. --redo STEP sets a step's saved
@@ -27,11 +28,15 @@ if str(ROOT) not in sys.path:
 from performance.harnesses.acceptance import checks, install, profile_info, record, runners, throughput  # noqa: E402
 
 STEPS = ("readiness", "functional", "stress", "throughput", "record")
+# Runs only when requested (--full-matrix, or named in --steps): it takes much
+# longer than the standard measurement.
+OPTIONAL = ("matrix",)
 RESULTS = {"install": "install.json", "readiness": "readiness.json", "functional": "functional.json",
-           "stress": "stress.json", "throughput": "throughput.json", "record": "record.json"}
+           "stress": "stress.json", "throughput": "throughput.json", "matrix": "matrix.json", "record": "record.json"}
 OUTPUTS = {"install": ("install-launch.json", "install", "install.json"), "readiness": ("readiness.json",),
            "functional": ("functional.json", "functional.txt"), "stress": ("stress.json", "stress-responses.json"),
-           "throughput": ("throughput", "throughput.json"), "record": ("record.json",)}
+           "throughput": ("throughput", "throughput.json"), "matrix": ("matrix", "matrix.json"),
+           "record": ("record.json",)}
 DEFAULT_CLIENT = "a separate machine on Node A's network"
 
 
@@ -123,6 +128,8 @@ class Acceptance:
         for step in self.args.redo:
             self.set_aside(step)
         steps = (["install"] if self.source else []) + list(self.args.steps)
+        if self.args.full_matrix and "matrix" not in steps:
+            steps.insert(steps.index("record") if "record" in steps else len(steps), "matrix")
         ok = True
         for step in steps:
             result = self.saved(step)
@@ -230,6 +237,31 @@ class Acceptance:
         print(record.readme_line(self.profile, summary), flush=True)
         return summary
 
+    def step_matrix(self):
+        if not self.args.bench_dir or not (Path(self.args.bench_dir) / throughput.BENCH_PROGRAM).is_file():
+            raise ValueError(f"--bench-dir must name the directory holding {throughput.BENCH_PROGRAM}")
+        directory = self.out / "matrix"
+        directory.mkdir(exist_ok=True)
+        stem = f"tp{self.profile.nodes}-full-matrix"
+        matrix_path = directory / f"{stem}.json"
+        if not self._readable(matrix_path):
+            if matrix_path.exists():
+                matrix_path.rename(matrix_path.with_name(f"{matrix_path.name}.{self.stamp()}"))
+            command = throughput.bench_command(self.args.bench_python, self.args.bench_dir,
+                                               host=self.args.api_host, port=self.profile.port,
+                                               model=self.profile.served_model_name, output=matrix_path.resolve(),
+                                               full=True)
+            self.env.log(f"matrix: full matrix; log {directory / (stem + '.log')}")
+            code = self.env.run_process(command, log_path=directory / f"{stem}.log", cwd=self.args.bench_dir,
+                                        timeout=self.args.bench_timeout * 4)
+            if code != 0 or not self._readable(matrix_path):
+                return {"ok": False, "complete": False,
+                        "error": f"the full matrix exited {code} without a matrix; see {stem}.log"}
+        full = throughput.extract_full(read_json(matrix_path))
+        failed = [f"{context} tokens, {level} streams: {cell['failure']}"
+                  for context, row in full["decode"].items() for level, cell in row.items() if cell.get("failure")]
+        return {**full, "file": matrix_path.name, "problems": failed, "ok": not failed, "complete": True}
+
     def _installed_release(self, installed):
         """The image release from the saved installation, reading its result document if the summary predates the field."""
         if not installed:
@@ -279,6 +311,7 @@ class Acceptance:
         if installed and (self.out / "install-launch.json").is_file():
             launch = read_json(self.out / "install-launch.json")
         functional, stress, summary = self.saved("functional"), self.saved("stress"), self.saved("throughput")
+        full = self.saved("matrix")
         contents, files = {}, {}
         if installed and (self.out / "install/stderr.log").is_file():
             files["install_phases"] = "install-phases.txt"
@@ -296,9 +329,13 @@ class Acceptance:
                 matrix = throughput.sanitize_matrix(read_json(self.out / "throughput" / file_name),
                                                     names=names, accounts=users)
                 contents[file_name] = json.dumps(matrix, indent=2, ensure_ascii=False) + "\n"
+        if full:
+            files["full_matrix"] = full["file"]
+            matrix = throughput.sanitize_matrix(read_json(self.out / "matrix" / full["file"]), names=names, accounts=users)
+            contents[full["file"]] = json.dumps(matrix, indent=2, ensure_ascii=False) + "\n"
         source = install.Source(**launch["source"]) if launch else None
         markdown = record.render(profile=profile, name=name, record_dir=record_root, repo_root=ROOT, files=files,
-                                 install=installed, source=source, functional=functional, stress=stress, summary=summary, status=args.status,
+                                 install=installed, source=source, functional=functional, stress=stress, summary=summary, full=full, status=args.status,
                                  client=args.client, harness_revision=self.env.revision())
         markdown = text(markdown)
         # Every file passed its private-data check before anything is written.
@@ -316,9 +353,9 @@ class Acceptance:
 
 def step_list(value):
     items = [item.strip() for item in value.split(",") if item.strip()]
-    unknown = [item for item in items if item not in (*STEPS, "install")]
+    unknown = [item for item in items if item not in (*STEPS, *OPTIONAL, "install")]
     if unknown:
-        raise argparse.ArgumentTypeError(f"unknown step {', '.join(unknown)}; steps are install, {', '.join(STEPS)}")
+        raise argparse.ArgumentTypeError(f"unknown step {', '.join(unknown)}; steps are install, {', '.join((*STEPS, *OPTIONAL))}")
     return items
 
 
@@ -353,6 +390,8 @@ def parser():
                    help=f"comma-separated steps after installation (default {','.join(STEPS)})")
     p.add_argument("--redo", type=step_list, default=[], help="set these steps' saved outputs aside and run them again")
     p.add_argument("--out", required=True, help="directory for raw outputs and saved step results; keep it outside Git")
+    p.add_argument("--full-matrix", action="store_true",
+                   help="also measure the full matrix: 1, 2, 4, 8 and 16 streams at 8K, 32K, 64K and 128K context")
     p.add_argument("--stress-rounds", type=positive, default=8, help="correctness-screen rounds of 32 requests (default 8)")
     p.add_argument("--repeats", type=positive, default=1, help="benchmark runs; the record reports medians (default 1)")
     p.add_argument("--bench-dir", help="llm-inference-bench checkout holding llm_decode_bench.py")
