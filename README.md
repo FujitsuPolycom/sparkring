@@ -11,7 +11,7 @@ profiles support vLLM and SGLang.
 
 1. Check the [requirements](docs/operations/install.md#requirements) and cable
    your Sparks as shown there.
-2. Pick a `--profile` value from the [table below](#profiles) for your model and
+2. Pick a `--profile` value from the [table below](#profiles) for your preferred model and
    number of Sparks.
 3. On the Spark connected to your network, run:
 
