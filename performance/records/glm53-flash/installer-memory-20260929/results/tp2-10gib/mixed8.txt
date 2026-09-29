@@ -1,0 +1,4 @@
+round 1: 0/1 ok, 0 prompt tokens per request, 14.3 s; first error: HTTP Error 500: Internal Server Error {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"InternalServerError","param":null,"code":500}}
+round 1: 0/2 ok, 0 prompt tokens per request, 14.3 s; first error: HTTP Error 500: Internal Server Error {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"InternalServerE
+exit codes: {'text': 1, 'images': 0, 'video': 0}
+load exit 1; lowest MemAvailable on NODE_A: 1.91 GiB; guard fired: False

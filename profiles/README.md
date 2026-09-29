@@ -30,7 +30,7 @@ To contribute a profile that `sparkring install` sets up, see
 | Model | Quant | DCP | Context / KV* | SparkCache | Status |
 |---|---|---|---|---|---|
 | **[DeepSeek-V4.1-Flash](../docs/operations/install.md)**<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)<br>by DeepSeek | 1 | 1M / — | No | Development |
-| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / — | No | Development |
+| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [6.1M](../performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md) | No | Development |
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [2.3M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated |
 | **[MiMo-V2.6-Flash-MOPD](../docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD)<br>by Xiaomi MiMo | 1 | 262K / — | No | Development |
 | **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-qad-tp4/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [3.1M](../runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
@@ -44,7 +44,7 @@ To contribute a profile that `sparkring install` sets up, see
 
 | Model | Quant | DCP | Context / KV* | SparkCache | Status |
 |---|---|---|---|---|---|
-| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 262K / — | No | Development |
+| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [1.5M](../performance/records/images/dev-20260928-plainstatus-glm53-flash-tp2-20260929.md) | No | Development |
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [1.1M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated |
 | **[MiMo-V2.6-Flash-MOPD](../docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD)<br>by Xiaomi MiMo | 1 | 262K / — | No | Development |
 | **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [2.9M](../runtime/releases/shared-2026.09.3/correctness.json) | No | Development |

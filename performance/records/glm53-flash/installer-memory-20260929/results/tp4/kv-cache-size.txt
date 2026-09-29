@@ -1,0 +1,17 @@
+A  2026-09-29T14:43:29.973166553 GPU KV cache size: 2,173,412 tokens, Maximum concurrency for 1,048,576 tokens per request: 2.07x
+B  2026-09-29T14:55:18.553621507 GPU KV cache size: 3,676,901 tokens, Maximum concurrency for 1,048,576 tokens per request: 3.51x
+C  2026-09-29T15:09:39.800036092 GPU KV cache size: 3,656,321 tokens, Maximum concurrency for 1,048,576 tokens per request: 3.49x
+D  2026-09-29T15:26:24.383591068 GPU KV cache size: 3,676,901 tokens, Maximum concurrency for 1,048,576 tokens per request: 3.51x
+E  2026-09-29T15:40:46.743871260 GPU KV cache size: 4,902,535 tokens, Maximum concurrency for 1,048,576 tokens per request: 4.68x
+F  2026-09-29T16:01:12.642849609 GPU KV cache size: 4,902,535 tokens, Maximum concurrency for 1,048,576 tokens per request: 4.68x
+G  2026-09-29T16:26:26.275171619 GPU KV cache size: 6,128,169 tokens, Maximum concurrency for 1,048,576 tokens per request: 5.84x
+H  2026-09-29T16:45:33.667735572 GPU KV cache size: 6,740,986 tokens, Maximum concurrency for 1,048,576 tokens per request: 6.43x
+I  2026-09-29T17:05:45.408852138 GPU KV cache size: 6,128,169 tokens, Maximum concurrency for 1,048,576 tokens per request: 5.84x
+J  2026-09-29T17:39:18.410134343 GPU KV cache size: 6,128,169 tokens, Maximum concurrency for 1,048,576 tokens per request: 5.84x
+K  2026-09-29T18:11:54.054535266 GPU KV cache size: 7,046,902 tokens, Maximum concurrency for 1,048,576 tokens per request: 6.72x
+L  2026-09-29T18:43:04.979782124 GPU KV cache size: 4,902,535 tokens, Maximum concurrency for 1,048,576 tokens per request: 4.68x
+M  2026-09-29T19:12:13.896457658 GPU KV cache size: 5,821,269 tokens, Maximum concurrency for 1,048,576 tokens per request: 5.55x
+N  2026-09-29T20:08:17.332873814 GPU KV cache size: 6,740,986 tokens, Maximum concurrency for 1,048,576 tokens per request: 6.43x
+O  2026-09-29T20:39:29.270479538 GPU KV cache size: 5,515,352 tokens, Maximum concurrency for 1,048,576 tokens per request: 5.26x
+P  2026-09-29T20:58:00.463680816 GPU KV cache size: 6,128,169 tokens, Maximum concurrency for 1,048,576 tokens per request: 5.84x
+Q  2026-09-29T21:22:16.076948640 GPU KV cache size: 5,668,802 tokens, Maximum concurrency for 1,048,576 tokens per request: 5.41x

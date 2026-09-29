@@ -1,0 +1,4 @@
+round 1: 1/1 ok, 8,140 prompt tokens per request, 12.6 s
+round 1: 2/2 ok, 10,700 prompt tokens per request, 21.1 s
+exit codes: {'text': 0, 'images': 0, 'video': 0}
+load exit 0; lowest MemAvailable on NODE_A: 2.11 GiB; guard fired: False
