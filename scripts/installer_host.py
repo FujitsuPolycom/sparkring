@@ -1605,6 +1605,8 @@ def perform(operation, lock, number):
             return {"ok": True}
         if operation == "mesh-install-local":
             return native_mesh.install_local(lock, number, json.load(sys.stdin))
+        if operation == "mesh-install-check-local":
+            return native_mesh.install_check_local(lock, number, json.load(sys.stdin))
         return native_mesh.operate_local(lock, number, operation)
 
     if operation == "image":
