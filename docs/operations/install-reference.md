@@ -177,6 +177,11 @@ starts:
   a storage check, a download error or Ctrl-C: the same choices restart
   preparation, re-verify what the earlier attempt left and continue an
   unfinished checkpoint download.
+- **Switch interrupted** while it stopped the running model or started the
+  selected one, for example because a Spark restarted: the same command
+  resumes the switch. Another profile or checkpoint replaces it instead: after
+  the GPU check, the installer stops the unfinished model through its own
+  deployment and switches from the last model that served.
 - **A file missing from, or changed in, SparkRing's own checkpoint
   directory:** the run copies it from another Spark or downloads it again.
   A copy you named with `--model-path` and that SparkRing serves in place is
