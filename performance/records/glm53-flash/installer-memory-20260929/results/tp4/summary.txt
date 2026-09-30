@@ -1,0 +1,204 @@
+Per-Spark MemAvailable lows in GiB (r0 = Node A). Windows: startup = new rank-0 container start to API ready;
+idle = API ready to text load; load = text load (prefill 16K/64K/128K, decode 4/8/16 users x 64K/128K);
+img/img16 = 16 concurrent image requests (3 images each unless noted), burst6 = 6 back-to-back rounds of them,
+mixed/mixedfresh = 8 text streams at 64K + 16 image requests + 4 video requests at once;
+mm = mm_stress.py (4 images of 2560x2560 or one 16-frame video per request, 4 and 8 concurrent);
+'after X' = highest reading in the gap after step X (settled level).
+
+A: ch 4 page 512 workers 8 KV 24 GiB mmcache default; KV tokens 2,173,412; container start to API ready 170 s (KV sizing to API ready 38 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '0c/0:04'}
+   startup  r0 32.03  r1 34.82  r2 35.13  r3 35.21
+   idle     r0 32.19  r1 34.89  r2 35.25  r3 35.37
+   load     r0 31.08  r1 33.55  r2 33.88  r3 33.94
+   after install r0 32.66  r1 34.99  r2 35.33  r3 35.43
+B: ch 4 page 1024 workers 8 KV 24 GiB mmcache default; KV tokens 3,676,901; container start to API ready 197 s (KV sizing to API ready 69 s); compilations {'weights': '0c/0:08', 'state': '116c/0:28', 'bind': '4c/0:10'}
+   startup  r0 28.61  r1 30.55  r2 31.07  r3 31.05
+   idle     r0 32.04  r1 34.73  r2 35.10  r3 34.84
+   load     r0 31.22  r1 33.63  r2 34.02  r3 33.75
+C: ch 4 page 2048 workers 8 KV 24 GiB mmcache default; KV tokens 3,656,321; container start to API ready 198 s (KV sizing to API ready 66 s); compilations {'weights': '0c/0:08', 'state': '116c/0:25', 'bind': '4c/0:10'}
+   startup  r0 28.37  r1 30.92  r2 30.72  r3 31.26
+   idle     r0 32.07  r1 35.08  r2 34.94  r3 35.22
+   load     r0 30.98  r1 33.89  r2 33.70  r3 34.07
+   after install r0 32.69  r1 35.25  r2 35.05  r3 35.42
+D: ch 4 page 1024 workers 2 KV 24 GiB mmcache default; KV tokens 3,676,901; container start to API ready 270 s (KV sizing to API ready 71 s); compilations {'weights': '416c/1:13', 'state': '224c/0:34', 'bind': '4c/0:10'}
+   startup  r0 31.59  r1 33.76  r2 33.94  r3 34.06
+   idle     r0 32.23  r1 34.95  r2 34.83  r3 35.10
+   load     r0 31.37  r1 33.85  r2 33.88  r3 34.04
+   after install r0 32.61  r1 35.02  r2 35.02  r3 35.18
+E: ch 4 page 1024 workers 8/bind 2 KV 32 GiB mmcache default; KV tokens 4,902,535; container start to API ready 280 s (KV sizing to API ready 77 s); compilations {'weights': '416c/1:22', 'state': '224c/0:38', 'bind': '4c/0:10'}
+   startup  r0 23.74  r1 25.96  r2 26.13  r3 25.96
+   idle     r0 24.31  r1 27.03  r2 27.09  r3 26.96
+   load     r0 23.25  r1 25.78  r2 25.83  r3 25.77
+   mm       r0 14.74  r1 24.54  r2 24.56  r3 24.67
+   after install r0 24.80  r1 27.13  r2 27.17  r3 27.02
+   after bench r0 24.27  r1 26.85  r2 26.92  r3 27.00
+   after mm r0 20.17  r1 25.90  r2 25.99  r3 26.08
+F: ch 4 page 1024 workers 8/bind 2 KV 32 GiB mmcache 0; KV tokens 4,902,535; container start to API ready 167 s (KV sizing to API ready 38 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '0c/0:04'}
+   startup  r0 24.61  r1 26.90  r2 26.85  r3 27.05
+   idle     r0 24.69  r1 26.96  r2 27.01  r3 27.15
+   load     r0 23.88  r1 25.92  r2 25.98  r3 26.07
+   mm       r0 14.52  r1 24.55  r2 24.61  r3 24.77
+   img      r0 14.72  r1 23.96  r2 24.09  r3 24.21
+   img16    r0 14.72  r1 23.96  r2 24.09  r3 24.21
+   after install r0 25.24  r1 27.06  r2 27.12  r3 27.26
+   after mm16 r0 21.54  r1 25.86  r2 25.91  r3 26.04
+G: ch 4 page 1024 workers 2 KV 40 GiB mmcache 0; KV tokens 6,128,169; container start to API ready 172 s (KV sizing to API ready 44 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '4c/0:10'}
+   startup  r0 15.97  r1 17.50  r2 17.65  r3 17.61
+   idle     r0 16.47  r1 18.75  r2 18.87  r3 18.72
+   load     r0 15.56  r1 17.69  r2 17.76  r3 17.67
+   img      r0  6.65  r1 15.60  r2 15.68  r3 15.73
+   img16    r0  6.65  r1 15.60  r2 15.68  r3 15.73
+   after install r0 17.03  r1 18.86  r2 18.96  r3 18.84
+H: ch 4 page 1024 workers 2 KV 44 GiB mmcache 0; KV tokens 6,740,986; container start to API ready 172 s (KV sizing to API ready 45 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '4c/0:10'}
+   startup  r0 11.56  r1 13.24  r2 13.50  r3 13.70
+   idle     r0 11.70  r1 14.46  r2 14.74  r3 14.68
+   load     r0 10.97  r1 13.40  r2 13.70  r3 13.53
+   img      r0  2.25  r1 11.02  r2 11.03  r3 11.69
+   img16    r0  2.25  r1 11.02  r2 11.03  r3 11.69
+   after install r0 12.55  r1 14.53  r2 14.84  r3 14.75
+I: ch 4 page 1024 workers 2 KV 40 GiB mmcache 0; KV tokens 6,128,169; container start to API ready 174 s (KV sizing to API ready 39 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '0c/0:04'}
+   startup  r0 16.66  r1 18.64  r2 18.81  r3 18.60
+   idle     r0 16.84  r1 18.75  r2 18.86  r3 18.74
+   load     r0 15.96  r1 17.74  r2 17.78  r3 17.68
+   img      r0  7.53  r1 16.64  r2 16.74  r3 16.86
+   img16    r0  7.53  r1 16.64  r2 16.74  r3 16.86
+   bench2   r0 16.70  r1 18.57  r2 18.63  r3 18.74
+   after install r0 17.31  r1 18.85  r2 18.95  r3 18.82
+J: ch 4 page 1024 workers 2 KV 40 GiB mmcache 0; KV tokens 6,128,169; container start to API ready 169 s (KV sizing to API ready 37 s); compilations {'weights': '0c/0:07', 'state': '0c/0:04', 'bind': '0c/0:04'}
+   startup  r0 18.21  r1 20.42  r2 20.52  r3 20.79
+   idle     r0 18.37  r1 20.54  r2 20.59  r3 20.78
+   load     r0 17.19  r1 18.96  r2 19.11  r3 19.31
+   img      r0 11.00  r1 17.13  r2 17.29  r3 17.26
+   img16    r0 11.00  r1 17.13  r2 17.29  r3 17.26
+   burst6   r0  9.82  r1 16.79  r2 16.87  r3 16.96
+   mixed    r0  9.25  r1 17.46  r2 17.51  r3 17.59
+   mixedfresh r0  8.93  r1 16.55  r2 16.67  r3 16.82
+   after install r0 18.94  r1 20.70  r2 20.79  r3 20.91
+   after img16 r0 15.68  r1 18.67  r2 18.74  r3 18.87
+   after burst6 r0 15.34  r1 18.42  r2 18.50  r3 18.60
+   after mixed r0 15.17  r1 18.42  r2 18.49  r3 18.59
+K: ch 4 page 1024 workers 2 KV 46 GiB mmcache 0; KV tokens 7,046,902; container start to API ready 173 s (KV sizing to API ready 43 s); compilations {'weights': '0c/0:07', 'state': '0c/0:05', 'bind': '4c/0:10'}
+   startup  r0 11.91  r1 13.62  r2 13.68  r3 13.96
+   idle     r0 11.87  r1 14.44  r2 14.49  r3 14.66
+   load     r0 10.71  r1 12.78  r2 12.99  r3 13.18
+   img      r0  4.71  r1 10.23  r2  9.96  r3 11.13
+   img16    r0  4.71  r1 10.23  r2  9.96  r3 11.13
+   burst6   r0  4.66  r1 10.29  r2 10.22  r3 11.10
+   mixed    r0  3.46  r1 10.71  r2 10.28  r3 11.04
+   after install r0 13.21  r1 14.55  r2 14.63  r3 14.76
+   after img16 r0  9.72  r1 12.14  r2 12.18  r3 12.78
+   after burst6 r0 10.38  r1 12.56  r2 12.42  r3 12.77
+M: ch 4 page 1024 workers 2 KV 38 GiB mmcache 0; KV tokens 5,821,269; container start to API ready 175 s (KV sizing to API ready 43 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '4c/0:10'}
+   startup  r0 20.07  r1 21.82  r2 21.56  r3 22.01
+   idle     r0 20.18  r1 22.69  r2 22.26  r3 22.75
+   load     r0 18.96  r1 21.13  r2 20.82  r3 21.43
+   img      r0  5.63  r1 18.85  r2 18.39  r3 18.95
+   img16    r0  5.63  r1 18.85  r2 18.39  r3 18.95
+   burst6   r0  4.48  r1 18.59  r2 18.24  r3 18.78
+   mixed    r0  9.76  r1 19.06  r2 18.71  r3 19.21
+   after install r0 20.81  r1 22.75  r2 22.37  r3 22.93
+   after img16 r0 16.07  r1 20.69  r2 20.34  r3 20.95
+   after burst6 r0 15.76  r1 20.77  r2 20.40  r3 20.93
+N: ch 4 page 1024 workers 2 KV 44 GiB mmcache 0; KV tokens 6,740,986; container start to API ready 165 s (KV sizing to API ready 37 s); compilations {'weights': '0c/0:07', 'state': '0c/0:04', 'bind': '0c/0:04'}
+   startup  r0 13.89  r1 16.41  r2 16.11  r3 16.62
+   idle     r0 14.06  r1 16.51  r2 16.14  r3 16.72
+   load     r0 13.13  r1 15.33  r2 15.00  r3 15.52
+   img      r0  6.78  r1 13.19  r2 12.86  r3 13.44
+   img16    r0  6.78  r1 13.19  r2 12.86  r3 13.44
+   burst6   r0  6.29  r1 13.04  r2 12.69  r3 13.23
+   mixed    r0  4.81  r1 12.97  r2 12.58  r3 13.03
+   after install r0 14.68  r1 16.62  r2 16.27  r3 16.80
+   after img16 r0 11.39  r1 14.59  r2 14.26  r3 14.78
+   after burst6 r0 11.32  r1 14.58  r2 14.23  r3 14.77
+O: ch 4 page 1024 workers 2 KV 36 GiB mmcache 0; KV tokens 5,515,352; container start to API ready 177 s (KV sizing to API ready 43 s); compilations {'weights': '0c/0:07', 'state': '0c/0:04', 'bind': '4c/0:10'}
+   startup  r0 22.19  r1 23.93  r2 23.61  r3 24.05
+   idle     r0 22.35  r1 24.72  r2 24.26  r3 24.83
+   load     r0 21.35  r1 23.30  r2 22.93  r3 23.46
+   img      r0  8.47  r1 20.71  r2 20.43  r3 20.90
+   img16    r0  8.47  r1 20.71  r2 20.43  r3 20.90
+   after install r0 23.04  r1 24.78  r2 24.42  r3 24.97
+
+32-image-limit runs, steps under the fast guard (0.2 s readings on every Spark, 2.0 GiB floor):
+P: ch 4 page 1024 workers 2 KV 40 GiB mmcache 0; KV tokens 6,128,169; container start to API ready 167 s (KV sizing to API ready 38 s); compilations {'weights': '0c/0:07', 'state': '0c/0:05', 'bind': '0c/0:04'}
+   startup  r0 18.13  r1 20.57  r2 20.29  r3 20.79
+   idle     r0 18.24  r1 20.62  r2 20.27  r3 20.81
+   load     r0   nan  r1   nan  r2   nan  r3   nan
+  P s1run1: round 1: 1/1 ok, 131,160 prompt tokens per request, 87.4 s 
+     r0 11.72 at +  9.0 s  r1 17.92 at + 89.0 s  r2 17.56 at + 89.0 s  r3 18.11 at + 88.2 s; Node A first reading 18.73 GiB
+  P s1run2: round 1: 1/1 ok, 131,160 prompt tokens per request, 87.5 s 
+     r0  8.98 at +  7.1 s  r1 18.01 at + 88.4 s  r2 17.63 at + 88.7 s  r3 18.21 at + 89.0 s; Node A first reading 14.60 GiB
+  P s1run3: round 1: 1/1 ok, 131,160 prompt tokens per request, 88.1 s 
+     r0  8.90 at +  8.1 s  r1 17.98 at + 50.7 s  r2 17.60 at + 50.1 s  r3 18.16 at + 58.5 s; Node A first reading 14.44 GiB
+  P s2: round 1: 2/2 ok, 131,161 prompt tokens per request, 168.3 s 
+     r0  6.38 at + 11.2 s  r1 16.61 at +120.3 s  r2 16.29 at +120.7 s  r3 16.88 at +120.6 s; Node A first reading 14.31 GiB
+  P mixed: round 1: 4/4 ok, 8,285 prompt tokens per request, 82.6 s round 2: 4/4 ok, 8,285 prompt tokens per request, 23.5 s round 1: 16/16 ok, 10,700 prompt tokens per request, 106.2 s round 2: 16/16 ok, 10,700 prompt tokens per request, 90.0 s exit codes: {'text': 0, 'images': 0, 'video': 0} 
+     r0  9.10 at + 14.6 s  r1 17.06 at +195.0 s  r2 16.75 at +195.6 s  r3 17.28 at +195.7 s; Node A first reading 14.19 GiB
+Q: ch 4 page 1024 workers 2 KV 37 GiB mmcache 0; KV tokens 5,668,802; container start to API ready 169 s (KV sizing to API ready 44 s); compilations {'weights': '0c/0:07', 'state': '0c/0:05', 'bind': '4c/0:10'}
+   startup  r0 20.95  r1 23.01  r2 22.47  r3 23.09
+   idle     r0 21.17  r1 23.63  r2 23.27  r3 23.83
+   load     r0 20.05  r1 22.31  r2 21.90  r3 22.41
+  Q s1run1: round 1: 1/1 ok, 131,160 prompt tokens per request, 86.8 s 
+     r0 13.02 at +  8.5 s  r1 20.98 at + 86.6 s  r2 20.63 at + 86.8 s  r3 21.17 at + 88.1 s; Node A first reading 20.32 GiB
+  Q s1run2: round 1: 1/1 ok, 131,160 prompt tokens per request, 87.2 s 
+     r0 12.42 at +  8.5 s  r1 20.94 at + 54.6 s  r2 20.58 at + 52.0 s  r3 21.14 at + 47.2 s; Node A first reading 17.43 GiB
+  Q s2: round 1: 2/2 ok, 131,161 prompt tokens per request, 169.9 s 
+     r0  8.96 at + 11.0 s  r1 19.67 at +122.0 s  r2 19.30 at +123.2 s  r3 19.90 at +127.9 s; Node A first reading 17.58 GiB
+  Q s3: round 1: 3/3 ok, 131,161 prompt tokens per request, 253.3 s 
+     r0  6.84 at +200.9 s  r1 18.51 at +207.2 s  r2 18.17 at +209.1 s  r3 18.73 at +202.2 s; Node A first reading 17.22 GiB
+  Q img16: round 1: 16/16 ok, 28,561 prompt tokens per request, 259.3 s round 2: 16/16 ok, 28,461 prompt tokens per request, 253.4 s 
+     r0  5.40 at +275.9 s  r1 19.69 at +247.7 s  r2 19.35 at +248.7 s  r3 19.95 at +247.5 s; Node A first reading 16.83 GiB
+  Q burst6: round 1: 16/16 ok, 28,461 prompt tokens per request, 257.0 s round 2: 16/16 ok, 28,462 prompt tokens per request, 252.1 s round 3: 16/16 ok, 28,561 prompt tokens per request, 255.9 s round 4: 16/16 ok, 28,461 prompt tokens per request, 253.1 s round 5: 16/16 ok, 28,462 prompt tokens per request, 255.0 s round 6: 16/16 ok, 28,561 prompt tokens per request, 253.3 s 
+     r0  4.78 at +1039.2 s  r1 19.69 at +990.2 s  r2 19.32 at +897.0 s  r3 19.87 at +194.7 s; Node A first reading 17.42 GiB
+  Q mixed: round 1: 4/4 ok, 8,285 prompt tokens per request, 78.7 s round 1: 16/16 ok, 10,700 prompt tokens per request, 100.2 s round 2: 4/4 ok, 8,285 prompt tokens per request, 21.6 s round 2: 16/16 ok, 10,700 prompt tokens per request, 89.7 s exit codes: {'text': 0, 'images': 0, 'video': 0} 
+     r0 11.01 at + 82.2 s  r1 20.19 at + 93.5 s  r2 19.81 at + 79.8 s  r3 20.39 at + 93.5 s; Node A first reading 16.31 GiB
+
+Node A memory kept after the first image step of each run:
+E: first image step mm: Node A before 24.25 GiB, after 20.09 GiB, kept 4.15 GiB
+F: first image step mm4: Node A before 24.93 GiB, after 21.81 GiB, kept 3.13 GiB
+G: first image step img4: Node A before 16.74 GiB, after 14.71 GiB, kept 2.03 GiB
+H: first image step img4: Node A before 12.25 GiB, after 10.37 GiB, kept 1.88 GiB
+I: first image step img16: Node A before 17.40 GiB, after 13.71 GiB, kept 3.69 GiB
+J: first image step img16: Node A before 17.57 GiB, after 15.68 GiB, kept 1.89 GiB
+K: first image step img16: Node A before 11.36 GiB, after  9.72 GiB, kept 1.64 GiB
+L: first image step i8c4: Node A before 26.86 GiB, after 23.48 GiB, kept 3.38 GiB
+M: first image step img16: Node A before 19.35 GiB, after 16.07 GiB, kept 3.29 GiB
+N: first image step img16: Node A before 13.26 GiB, after 11.39 GiB, kept 1.86 GiB
+P: first image step s1run1: Node A before 18.76 GiB, after 14.69 GiB, kept 4.07 GiB
+Q: first image step s1run1: Node A before 20.34 GiB, after 17.50 GiB, kept 2.84 GiB
+
+Image-limit calibration on L (32 GiB KV, limit 16 images): iNcC = N images per request, C concurrent requests
+window                         r0                     r1                     r2                     r3
+i8c4        20.11 GiB @13:45:15 n=  84  25.74 GiB @13:45:20 n=  83  25.37 GiB @13:45:22 n=  83  25.94 GiB @13:45:19 n=  84
+i16c4       16.09 GiB @13:58:24 n= 159  24.69 GiB @14:00:10 n= 159  24.23 GiB @14:00:10 n= 158  24.80 GiB @14:00:10 n= 159
+i8c8        16.63 GiB @13:47:41 n= 147  24.66 GiB @13:48:03 n= 147  24.31 GiB @13:48:02 n= 147  24.88 GiB @13:48:03 n= 147
+i16c8        9.24 GiB @14:03:05 n= 294  24.14 GiB @14:04:27 n= 295  23.73 GiB @14:04:26 n= 295  24.32 GiB @14:04:27 n= 294
+i8c16       10.64 GiB @13:49:14 n= 525  24.34 GiB @13:53:00 n= 525  23.95 GiB @13:53:01 n= 525  24.51 GiB @13:53:00 n= 525
+
+Load-cell performance (base = three earlier matrix runs of the profile at main commit 59b253fd)
+Prefill tok/s (mean of runs)
+     ctx           base              I              A              B              C              D              E              F              G              H              J              K              M              N              O              Q
+   16384      3745 (n=3)      3732 (n=2)      3745 (n=1)      3731 (n=1)      3759 (n=1)      3705 (n=1)      3731 (n=1)      3745 (n=1)      3758 (n=1)      3772 (n=1)      3732 (n=1)      3705 (n=1)      3731 (n=1)      3745 (n=1)      3719 (n=1)      3773 (n=1)
+   65536      3610 (n=3)      3632 (n=2)      3650 (n=1)      3625 (n=1)      3644 (n=1)      3631 (n=1)      3628 (n=1)      3634 (n=1)      3616 (n=1)      3647 (n=1)      3616 (n=1)      3631 (n=1)      3644 (n=1)      3632 (n=1)      3616 (n=1)      3628 (n=1)
+  131072      3512 (n=3)      3514 (n=2)      3459 (n=1)      3498 (n=1)      3525 (n=1)      3516 (n=1)      3517 (n=1)      3505 (n=1)      3516 (n=1)      3519 (n=1)      3417 (n=1)      3430 (n=1)      3510 (n=1)      3510 (n=1)      3489 (n=1)      3514 (n=1)
+
+Decode aggregate tok/s | engine steps/s (mean of runs)
+    conc,ctx                   base                      I                      A                      B                      C                      D                      E                      F                      G                      H                      J                      K                      M                      N                      O                      Q
+  (4, 65536)   134.9 |  52.6 (n=3)   136.0 |  51.9 (n=2)   137.4 |  52.0 (n=1)   131.9 |  52.3 (n=1)   137.7 |  51.5 (n=1)   135.9 |  52.5 (n=1)   131.4 |  51.8 (n=1)   133.6 |  53.3 (n=1)   130.4 |  52.6 (n=1)   130.3 |  50.2 (n=1)   135.1 |  52.5 (n=1)   130.8 |  50.5 (n=1)   127.7 |  52.2 (n=1)   131.9 |  51.8 (n=1)   129.2 |  51.7 (n=1)   135.7 |  51.9 (n=1)
+ (4, 131072)   131.0 |  51.0 (n=3)   131.1 |  51.3 (n=2)   129.9 |  52.6 (n=1)   132.9 |  51.4 (n=1)   130.7 |  52.0 (n=1)   133.4 |  51.8 (n=1)   135.8 |  51.7 (n=1)   126.4 |  51.2 (n=1)   122.5 |  50.8 (n=1)   130.1 |  52.5 (n=1)   131.7 |  50.8 (n=1)   129.5 |  49.8 (n=1)   131.8 |  52.1 (n=1)   131.2 |  52.2 (n=1)   138.1 |  52.3 (n=1)   126.6 |  50.8 (n=1)
+  (8, 65536)   194.8 |  74.8 (n=3)   193.2 |  74.1 (n=2)   187.2 |  72.2 (n=1)   192.0 |  73.8 (n=1)   185.9 |  71.8 (n=1)   194.5 |  73.1 (n=1)   195.4 |  74.6 (n=1)   202.5 |  76.4 (n=1)   193.6 |  74.5 (n=1)   192.7 |  74.2 (n=1)   183.8 |  73.1 (n=1)   184.2 |  72.3 (n=1)   198.8 |  72.4 (n=1)   184.6 |  71.9 (n=1)   189.6 |  73.7 (n=1)   189.9 |  71.4 (n=1)
+ (8, 131072)   190.4 |  74.0 (n=3)   194.3 |  74.5 (n=2)   189.1 |  73.3 (n=1)   185.5 |  71.4 (n=1)   188.7 |  73.0 (n=1)   189.2 |  71.0 (n=1)   190.2 |  73.1 (n=1)   197.1 |  76.2 (n=1)   192.8 |  74.1 (n=1)   186.4 |  72.2 (n=1)   182.9 |  71.5 (n=1)   189.1 |  71.1 (n=1)   189.0 |  71.3 (n=1)   190.1 |  72.3 (n=1)   189.7 |  71.1 (n=1)   185.5 |  72.2 (n=1)
+ (16, 16384)   260.8 |  99.6 (n=3)                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -
+ (16, 32768)   266.9 | 101.0 (n=3)                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -                      -
+ (16, 65536)   264.3 |  99.3 (n=3)   260.8 |  99.1 (n=2)   268.7 | 103.4 (n=1)   252.5 |  97.8 (n=1)   261.1 |  99.4 (n=1)   256.0 |  97.7 (n=1)   261.4 |  99.9 (n=1)   258.3 |  98.9 (n=1)   262.3 | 101.4 (n=1)   266.2 | 100.2 (n=1)   266.2 | 103.7 (n=1)   262.7 | 100.2 (n=1)   266.3 | 100.7 (n=1)   253.1 |  98.6 (n=1)   257.0 |  99.7 (n=1)   270.3 | 100.8 (n=1)
+(16, 131072)   255.2 |  98.1 (n=3)   251.2 |  96.1 (n=2)   250.8 |  95.8 (n=1)   251.2 |  97.1 (n=1)   262.0 |  99.6 (n=1)   268.3 | 100.6 (n=1)   249.9 |  96.3 (n=1)   259.6 |  97.8 (n=1)   257.1 |  96.4 (n=1)   248.9 |  96.9 (n=1)   248.4 |  95.4 (n=1)   265.1 | 101.0 (n=1)   250.9 |  97.8 (n=1)   264.7 | 100.2 (n=1)   256.8 |  99.0 (n=1)   253.1 |  98.1 (n=1)
+
+Prefix-cache reuse of a repeated prompt (prompt tokens: cached tokens)
+1024-token pages:
+prompt   2458 tokens: cached   1024 (41.7%)
+prompt   9457 tokens: cached   8192 (86.6%)
+prompt  23731 tokens: cached  22528 (94.9%)
+prompt  38703 tokens: cached  36864 (95.2%)
+2048-token pages:
+prompt   2458 tokens: cached      0 (0.0%)
+prompt   9457 tokens: cached   6144 (65.0%)
+prompt  23731 tokens: cached  20480 (86.3%)
+prompt  38703 tokens: cached  34816 (90.0%)

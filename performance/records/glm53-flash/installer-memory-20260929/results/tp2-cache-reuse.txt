@@ -1,0 +1,10 @@
+GLM-5.3-Flash NVFP4-Spark on two Sparks: prefix-cache reuse with 2,048-token pages.
+Deployment: glm53-flash-nvfp4-spark-tp2 with 2,048-token pages, 10.5 GiB of KV cache per Spark and a
+262,144-token context window; page size alone sets the reuse. Program: cache_probe.py, each prompt sent
+twice with identical text; the line reports the second send's usage.prompt_tokens_details.cached_tokens.
+The probe's run label made each prompt one token longer than the four-Spark probe's prompts.
+
+prompt   2459 tokens: cached      0 (0.0%)
+prompt   9458 tokens: cached   6144 (65.0%)
+prompt  23732 tokens: cached  20480 (86.3%)
+prompt  38704 tokens: cached  34816 (90.0%)

@@ -373,6 +373,36 @@ projection sharding. Before creating any serving container, admission reads
 the image's external software receipt and refuses a profile whose HC mode is
 not listed for its node count or whose features the image does not provide.
 
+### GLM-5.3-Flash profiles
+
+| Setting | Two Sparks | Four Sparks |
+|---|---|---|
+| Context window per request | 1,048,576 tokens | 1,048,576 tokens |
+| KV cache per Spark | 10 GiB | 40 GiB |
+| KV capacity reported at startup | 1,530,566 tokens | 6,128,169 tokens |
+| KV cache page | 2,048 tokens | 1,024 tokens |
+| Requests running at once | 8 | 16 |
+| Images per request | 8 | 32 |
+| Videos per request | 1 | 1 |
+
+- Each image is resized to at most 4,096 tokens. Each video is sampled at 16
+  frames and resized to at most 8,192 tokens. The model's vision processor
+  accepts one video per request; a request with more fails with
+  `At most 1 video(s) may be provided in one prompt.`
+- The prefix cache reuses whole pages. With pages of B tokens, a repeated
+  prompt of P tokens reuses (⌊(P − 1) / B⌋ − 1) × B tokens: nothing of a
+  2,458-token prompt with 2,048-token pages, and about 90% of a 38,703-token
+  prompt. On two Sparks, 2,048-token pages hold 60% more tokens per GiB than
+  1,024-token pages; on four Sparks both sizes hold the same, so the ring
+  uses the smaller page.
+- Node A decodes and preprocesses every image and keeps its pixel data until
+  the request finishes, including while the request waits for a free slot.
+  Node A's free memory therefore falls with the number of images in flight
+  across all requests. Exhausting it stops the Spark until it is
+  power-cycled. The
+  [GLM memory record](../../performance/records/glm53-flash/installer-memory-20260929.md)
+  gives the measured lows for each profile.
+
 ### Checkpoint loader and runtime binding
 
 The external image's B12X checkpoint loader requires `io_uring`, so its
