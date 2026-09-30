@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.host import control, node
+from runtime.host import bootstrap, control, node
 
 
 def write(path, text, *, root="/", mode=0o600):
@@ -118,9 +118,21 @@ def refresh_endpoint(netdev, *, root="/", run=subprocess.run):
     return dict(peers[0])
 
 
+def identities(root="/"):
+    """The identities a control configuration may name for this machine.
+
+    Discovery names a Spark by bootstrap.fabric_identity() of its RDMA node
+    GUIDs; configurations that name the machine ID stay valid.
+    """
+    machine = node.location(root, "/etc/machine-id").read_text().strip()
+    devices = node.location(root, "/sys/class/infiniband")
+    guids = [path.read_text() for path in sorted(devices.glob("*/node_guid"))] if devices.is_dir() else []
+    return {machine, bootstrap.fabric_identity(guids, machine)}
+
+
 def configure(document, *, root="/", run=subprocess.run):
     config = document["control"]
-    if config.get("schema") != "sparkring-control/v1" or config["id"] != node.location(root, "/etc/machine-id").read_text().strip():
+    if config.get("schema") != "sparkring-control/v1" or config["id"] not in identities(root):
         raise ValueError("Control configuration belongs to another machine")
     pubkey = document["ssh_key"]
     if not re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]*)?", pubkey):

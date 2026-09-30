@@ -132,8 +132,128 @@ def test_bootstrap_discovery_uses_authenticated_identity_and_rejects_wrong_neigh
     result = bootstrap.discover(FakeSSH())
     assert result["head"] == "a" and len(result["edges"]) == 1
     b["functions"][0]["mac"] = "02:00:00:00:00:ff"
-    with pytest.raises(ValueError, match="matched"):
+    with pytest.raises(ValueError, match="none of its fabric functions has that address"):
         bootstrap.discover(FakeSSH())
+
+
+def pair(**head):
+    """Inventories of a Spark pair joined by one cable, with head fields overridden."""
+    a = {"id": "hw-a", "machine_id": "m-a", "hostname": "a", "architecture": "aarch64", "functions": [
+        {"netdev": "port0", "mac": "02:00:00:00:00:01", "addresses": ["fe80::1"]}],
+        "neighbors": [{"dev": "port0", "dst": "fe80::2", "lladdr": "02:00:00:00:00:02", "answered": True}]}
+    b = {"id": "hw-b", "machine_id": "m-b", "hostname": "b", "architecture": "aarch64", "functions": [
+        {"netdev": "port0", "mac": "02:00:00:00:00:02", "addresses": ["fe80::2"]}], "neighbors": []}
+    a.update(head)
+    return a, b
+
+
+class PairSSH:
+    """Signs in to every route and records each route's last address."""
+
+    def __init__(self, a, b):
+        self.a, self.b, self.logins = a, b, []
+
+    def login(self, route):
+        self.logins.append(route[-1]["address"])
+
+    def inventory(self, route):
+        if route and route[-1]["address"] != "fe80::2":
+            raise AssertionError("signed in to " + route[-1]["address"])
+        return self.b if route else self.a
+
+
+def test_fabric_identity_hashes_node_guids_and_keeps_machine_id_without_rdma():
+    one = bootstrap.fabric_identity(["4cbb:4703:00e8:aa43\n", "4cbb:4703:00e8:aa47\n"], "m")
+    assert one == bootstrap.fabric_identity(["4CBB:4703:00E8:AA47", "4cbb:4703:00e8:aa43"], "other")
+    assert one != bootstrap.fabric_identity(["4cbb:4703:002c:931f"], "m") and len(one) == 32
+    assert bootstrap.fabric_identity([], "m") == "m"
+
+
+def test_discovery_tells_apart_sparks_that_share_a_machine_id():
+    a, b = pair(machine_id="same")
+    b["machine_id"] = "same"
+    result = bootstrap.discover(PairSSH(a, b))
+    assert {n["id"] for n in result["nodes"]} == {"hw-a", "hw-b"}
+    assert len(result["warnings"]) == 1 and result["warnings"][0].startswith("a and b share /etc/machine-id")
+    b["machine_id"] = "m-b"
+    assert bootstrap.discover(PairSSH(a, b))["warnings"] == []
+
+
+def test_discovery_refuses_a_neighbor_that_is_the_same_spark():
+    a, b = pair()
+    b["id"] = "hw-a"
+    with pytest.raises(ValueError, match="reached itself"):
+        bootstrap.discover(PairSSH(a, b))
+
+
+def test_discovery_skips_cached_addresses_that_did_not_answer():
+    phantom = {"dev": "port0", "dst": "fe80::6531:4cc1:4038:6c3d", "lladdr": "02:00:00:00:00:77", "answered": False}
+    a, b = pair()
+    a["neighbors"].insert(0, phantom)
+    transport = PairSSH(a, b)
+    assert len(bootstrap.discover(transport)["nodes"]) == 2 and transport.logins == ["fe80::2"]
+    # An address that the authenticated Spark no longer holds is skipped even
+    # when its entry carries that Spark's MAC.
+    a["neighbors"].insert(0, dict(phantom, lladdr="02:00:00:00:00:02", answered=None))
+    transport = PairSSH(a, b)
+    assert len(bootstrap.discover(transport)["nodes"]) == 2 and transport.logins == ["fe80::2"]
+
+
+def test_discovery_tries_neighbors_that_ignore_echo_when_none_answered():
+    a, b = pair()
+    a["neighbors"][0]["answered"] = False
+    transport = PairSSH(a, b)
+    assert len(bootstrap.discover(transport)["nodes"]) == 2 and transport.logins == ["fe80::2"]
+
+
+def test_discovery_names_skipped_addresses_when_no_pair_is_found():
+    a, b = pair()
+    a["neighbors"] = [{"dev": "port0", "dst": "fe80::1:2", "lladdr": "02:00:00:00:00:05", "answered": True},
+                      {"dev": "port0", "dst": "fe80::6531:4cc1:4038:6c3d", "lladdr": "02:00:00:00:00:77", "answered": False}]
+
+    class Refused(PairSSH):
+        def login(self, route):
+            raise ValueError(bootstrap.login_failure(route[-1], "ssh: connect to host port 22: Connection refused\n"))
+
+    with pytest.raises(ValueError, match="refused SSH on port 22"):
+        bootstrap.discover(Refused(a, b))
+    with pytest.raises(ValueError, match=r"Found 1 Spark \(a\); setup needs two or four\. Skipped cached neighbor "
+                                         r"addresses that did not answer: fe80::6531:4cc1:4038:6c3d on a's port0\."):
+        bootstrap.discover(PairSSH(a, b), select=lambda peer: False)
+
+
+@pytest.mark.parametrize("errors, cause", [
+    ("code@fe80::2%port0: Permission denied (publickey,password).\n", "did not accept the password or account code"),
+    ("ssh: connect to host fe80::2%port0 port 22: Connection refused\n", "--worker-bundle"),
+    ("ssh: connect to host fe80::2%port0 port 22: Connection timed out\n", "did not answer SSH"),
+    ("Connection closed by fe80::2%port0 port 22\n", "about 2 minutes"),
+    ("Host key verification failed.\n", "differs from the one recorded"),
+    ("kex_exchange_identification: read: Connection reset by peer\n", "closed the SSH connection"),
+    ("something unexpected\n", "SSH sign-in to code@fe80::2 on port0 failed"),
+])
+def test_login_failure_names_the_cause_and_keeps_the_ssh_message(tmp_path, errors, cause):
+    def run(argv, **kwargs):
+        kwargs["stderr"].write("Warning: Permanently added 'fe80::2%port0' (ED25519) to the list of known hosts.\n" + errors)
+        return subprocess.CompletedProcess(argv, 255)
+
+    route = [{"user": "code", "address": "fe80::2", "interface": "port0", "port": 22}]
+    with pytest.raises(ValueError) as failure:
+        bootstrap.SSH(tmp_path, run=run).login(route)
+    assert cause in str(failure.value) and "ssh: " + errors.strip() in str(failure.value)
+    assert "Permanently added" not in str(failure.value) and "worker-bundle" not in str(failure.value).replace(cause, "")
+    bootstrap.SSH(tmp_path, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0)).login(route)
+
+
+def test_control_configuration_names_this_spark_by_hardware_or_machine_id(tmp_path):
+    (tmp_path / "etc").mkdir()
+    (tmp_path / "etc/machine-id").write_text("factory\n")
+    for device, guid in (("rocep1s0f0", "4cbb:4703:00e8:aa43"), ("rocep1s0f1", "4cbb:4703:00e8:aa44")):
+        (tmp_path / "sys/class/infiniband" / device).mkdir(parents=True)
+        (tmp_path / "sys/class/infiniband" / device / "node_guid").write_text(guid + "\n")
+    hardware = bootstrap.fabric_identity(["4cbb:4703:00e8:aa43", "4cbb:4703:00e8:aa44"], "factory")
+    assert control_node.identities(tmp_path) == {"factory", hardware}
+    with pytest.raises(ValueError, match="belongs to another machine"):
+        control_node.configure({"control": {"schema": "sparkring-control/v1", "id": "another"}}, root=tmp_path)
 
 
 CONTROL_PRIVATE = base64.b64encode(b"k" * 32).decode()

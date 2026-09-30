@@ -246,11 +246,13 @@ def main(argv=None, *, follow=None):
         try:
             found = bootstrap.discover(transport, user=args.ssh_user, port=args.ssh_port,
                                        select=lambda peer: print(f"Neighbor on {peer['via']}/{peer['interface']}: {peer['address']}") is None)
-        except (ValueError, RuntimeError) as error:
-            raise ValueError(str(error) + "\nIf SSH is unavailable: sudo sparkring setup --worker-bundle") from error
+        except RuntimeError as error:
+            raise ValueError(str(error)) from error
         print(f"Found {len(found['nodes'])} authenticated Sparks. Node A: " + found["nodes"][0]["hostname"])
         for n in found["nodes"]:
             print("  " + n["hostname"] + "  " + n["id"][:12])
+        for warning in found.get("warnings", []):
+            print("Note: " + warning)
         for line in transport.trusted():
             print("  SSH host key trusted on first contact: " + line)
         print("Workers will receive SparkRing and a private administration network over the fabric.")
