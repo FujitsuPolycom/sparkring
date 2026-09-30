@@ -240,7 +240,7 @@ ran out.
 
 | Class | Meaning |
 |---|---|
-| `installed` | Used by the active deployment, the rollback target or an unfinished model switch |
+| `installed` | Used by the active deployment, the rollback target, an unfinished model switch or a mesh installed on that Spark, such as the workspace holding the host marker of a four-Spark ring's mesh. The report names the mesh |
 | `profile` | An installer profile of the installed package references it: a checkpoint the profile lists, the image the installer selects for it, or their compile cache. Kept for that profile's next installation |
 | `unreferenced` | Neither. Proposed for release unless a running container uses it or it holds model files. Other retained deployments that use it are named; they need `sudo sparkring install` again after a release |
 | `unmanaged` | Not created by SparkRing's installer, such as a directory you made in `/srv/sparkring`; never removed |
@@ -251,8 +251,12 @@ ran out.
 | `--yes` | Approve the release without asking |
 | `--json` | Print one JSON result |
 
-A release asks first. Each Spark then checks again that no installed deployment
-or running container uses the path. A release never removes:
+A release asks first. Each Spark then checks again that no installed deployment,
+no mesh installed on it and no running container uses the path. A mesh counts
+while its configuration is in `/etc/sparkring/managed-mesh` or
+`/etc/sparkring/deployments/<name>`, running or not
+([Finding and freeing space](install-reference.md#finding-and-freeing-space)).
+A release never removes:
 
 - a checkpoint directory; `sudo sparkring checkpoints --release PATH` does;
 - a workspace that holds model files;

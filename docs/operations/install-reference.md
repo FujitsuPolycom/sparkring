@@ -1030,7 +1030,11 @@ deployment's package or settings means creating another deployment:
 its own workspace, containers and mesh, and `sparkring status --json` lists
 its containers and their labels. A deployment created under an earlier
 deployment's instance needs that deployment's workspace released and its model
-containers removed; it installs its mesh where the earlier mesh is. With
+containers removed; it installs its mesh where the earlier mesh is. While a
+mesh that the earlier deployment created is installed on the Sparks, its host
+marker keeps that workspace in use and `sudo sparkring storage` does not
+release it ([Finding and freeing space](#finding-and-freeing-space)); create
+the deployment under an unused instance name instead. With
 `--fresh-mesh`, the installation takes over that earlier mesh on each Spark
 when the reviewed plan listed its service, its site file is
 unchanged since that review, and its model container on that Spark is stopped
@@ -1260,8 +1264,10 @@ SparkRing keeps there, counting hard-linked files once:
   share). A cache of an image or checkpoint that no installer profile selects
   stays until it is released;
 - deployment workspaces, one per installation request
-  (`/srv/sparkring/<cluster>/<profile>-i<identity>`); only the installed
-  deployment's is in use;
+  (`/srv/sparkring/<cluster>/<profile>-i<identity>`). The installed
+  deployment's is in use. On a four-Spark ring, so is the workspace of the
+  deployment that created the ring's mesh: it holds the mesh's host marker,
+  and later deployments reuse that mesh;
 - Docker images, and every other entry of `/srv/sparkring`, such as
   directories you created there.
 
@@ -1272,7 +1278,12 @@ commands for the unreferenced ones.
 - `sudo sparkring storage --release PATH` removes one unreferenced cache
   directory or workspace from every Spark that holds it, after asking
   (`--yes` in scripts). Each Spark first checks again that no installed
-  deployment or running container uses it.
+  deployment, no mesh installed on it and no running container uses it.
+- A mesh counts while its configuration is in `/etc/sparkring/managed-mesh`
+  or `/etc/sparkring/deployments/<name>`, running or not: SparkRing starts a
+  stopped or disabled mesh again for a deployment that uses it. A mesh whose
+  site file cannot be read keeps every cache directory and workspace on its
+  Spark.
 - `sudo sparkring checkpoints --release PATH` releases checkpoint directories
   ([Checkpoints](#checkpoints)).
 - Docker images and directories that SparkRing's installer did not create are

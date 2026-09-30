@@ -11,9 +11,10 @@ Two commands use this module:
   it, after the operator approves (``--yes`` in scripts). Node A lists and
   classifies every Spark again while it holds the installation lock, and
   refuses while a Spark cannot be listed or the Sparks run different package
-  revisions. Each Spark then checks again that no installed deployment and no
-  running container uses the path and that it holds no checkpoint directory,
-  model files or mount point (``release_local``). It never removes a
+  revisions. Each Spark then checks again that no installed deployment, no
+  SparkRing mesh installed on that Spark and no running container uses the
+  path and that it holds no checkpoint directory, model files or mount point
+  (``release_local``). It never removes a
   checkpoint directory, which only ``sudo sparkring checkpoints --release
   PATH`` releases, a Docker image, or anything SparkRing's installer did not
   create.
@@ -59,7 +60,14 @@ Items
   path that an environment value or argument names through a bind. An item is
   used when one of those paths is the item or lies inside it. A deployment
   whose container specifications cannot be read uses every entry of its
-  cache root.
+  cache root. A cache directory or workspace is also ``installed`` while a
+  SparkRing mesh installed on that Spark uses it (``installed_meshes``): when
+  a path that the mesh's ``site.json`` names is the item or lies inside it, or
+  when that site cannot be read. On a four-Spark ring, the deployment that
+  creates the mesh places the mesh's host marker binary and bundle root in its
+  own workspace, and later deployments reuse that mesh, so the workspace stays
+  in use after its deployment is neither active nor the rollback target. The
+  item's ``meshes`` name each such mesh by its unit and site file.
 - ``profile``: an installer profile of the installed package references it:
   a checkpoint revision the profile lists, the image of the image lock that the
   installer selects for it (``installer_image.for_profile``), or a cache name
@@ -102,6 +110,7 @@ import subprocess
 import sys
 import time
 
+from runtime.common import managed_deployment
 from runtime.host import checkpoint_place, checkpoints
 from runtime.host.install_errors import NeedsInput
 
@@ -116,6 +125,12 @@ CLUSTER_NAME = re.compile(r"[a-z][a-z0-9-]{0,39}")
 # Seconds that one Spark spends walking its items; Node A waits longer for its answer.
 BUDGET_SECONDS = 60
 RELEASED = frozenset({"cache", "workspace", "releasing"})
+# Items that an installed mesh can keep in use (``installed_meshes``).
+MESH_KINDS = frozenset({"cache", "workspace"})
+# Parent of every named managed mesh layout's configuration directory (``managed_deployment.layout(name)``).
+MESH_NAMED_ROOT = "/etc/sparkring/deployments"
+# Largest mesh site or service file that ``installed_meshes`` reads; a larger one counts as unreadable.
+MESH_FILE_LIMIT = 1024 * 1024
 TIB = 1024 ** 4
 # Absolute paths inside an environment value, argument or JSON option.
 _PATH = re.compile(r"/[^\s\"'=:,;{}\[\]()]*")
@@ -490,6 +505,127 @@ def _users(containers, path):
     return sorted(names)
 
 
+def _read_mesh_file(path):
+    """The JSON object in mesh configuration file ``path``, or ``None`` when it cannot be read as one."""
+    try:
+        with open(path, "rb") as stream:
+            data = stream.read(MESH_FILE_LIMIT + 1)
+        value = json.loads(data) if len(data) <= MESH_FILE_LIMIT else None
+    except (OSError, ValueError, RecursionError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _site_paths(value):
+    """Every absolute path among the string values of a site document, at any depth, normalized."""
+    if isinstance(value, dict):
+        return {path for item in value.values() for path in _site_paths(item)}
+    if isinstance(value, list):
+        return {path for item in value for path in _site_paths(item)}
+    if isinstance(value, str) and value.startswith("/"):
+        path = _valid(posixpath.normpath(value))
+        return {path} if path else set()
+    return set()
+
+
+def installed_meshes(root="/"):
+    """The SparkRing meshes installed on this host, with the host paths that their sites name.
+
+    A mesh is installed while its configuration directory holds its
+    ``service.json`` or ``site.json``: the default layout's
+    ``/etc/sparkring/managed-mesh`` or a named layout's
+    ``/etc/sparkring/deployments/<name>`` (``managed_deployment.layout``), the
+    directories that ``native_mesh.inspect_local`` reads. The state of its
+    systemd unit does not matter. A stopped or disabled mesh keeps its units
+    and site, ``native_mesh.serve_ring`` enables and starts the mesh that a
+    deployment's fabric reference names whatever state its unit is in, and the
+    started mesh checks and runs the marker binary that its site names. A mesh
+    whose files ``native_mesh.set_aside`` moved to
+    ``/var/lib/sparkring/replaced-meshes`` is not installed.
+
+    A mesh's sites are the ``site_path`` that its ``service.json`` names and
+    the ``site.json`` in its configuration directory. Returns ``[{"unit",
+    "config", "site", "paths", "readable"}]``: the mesh unit (``None`` for a
+    directory whose name is no layout name), the configuration directory, the
+    site file, every absolute path among the sites' values (``_site_paths``),
+    and whether ``service.json`` and every site could be read. ``root``
+    relocates ``/etc``.
+    """
+    def local(path):
+        return posixpath.join(root, path.lstrip("/"))
+
+    default = managed_deployment.layout()
+    configs = [(default["config_dir"], default["mesh_unit"])]
+    for name, info in _entries(local(MESH_NAMED_ROOT)):
+        if not (stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)):
+            continue
+        try:
+            unit = managed_deployment.layout(name)["mesh_unit"]
+        except ValueError:
+            unit = None
+        configs.append((posixpath.join(MESH_NAMED_ROOT, name), unit))
+    meshes = []
+    for config, unit in configs:
+        service, site = posixpath.join(config, "service.json"), posixpath.join(config, "site.json")
+        present = [path for path in (service, site) if os.path.lexists(local(path))]
+        if not present:
+            continue
+        sites, readable = [], True
+        if service in present:
+            document = _read_mesh_file(local(service))
+            named = _valid(document.get("site_path")) if document else None
+            if named is None:
+                readable = False
+            else:
+                sites.append(named)
+        if site in present and site not in sites:
+            sites.append(site)
+        paths = set()
+        for path in sites:
+            document = _read_mesh_file(local(path))
+            if document is None:
+                readable = False
+            else:
+                paths |= _site_paths(document)
+        meshes.append({"unit": unit, "config": config, "site": sites[0] if sites else site,
+                       "paths": sorted(paths), "readable": readable})
+    return meshes
+
+
+def _mesh_users(meshes, path):
+    """The ``installed_meshes`` that use ``path``, as ``[{"unit", "site", "paths"}]``.
+
+    A mesh uses ``path`` when a path that its site names is ``path`` or lies
+    inside it (``paths`` lists those), and when its site cannot be read
+    (``readable`` false). A site path above ``path``, such as the cluster
+    cache that ``cache_roots`` names, does not make the mesh use ``path``: the
+    deployments' container specifications name the cache directories that
+    their containers use.
+    """
+    found = []
+    for mesh in meshes:
+        named = [value for value in mesh["paths"] if _inside(value, path)]
+        if named or not mesh["readable"]:
+            found.append({"unit": mesh["unit"], "site": mesh["site"], "paths": named,
+                          **({} if mesh["readable"] else {"readable": False})})
+    return found
+
+
+def _mesh_phrase(mesh):
+    """``the installed mesh UNIT, whose site SITE names PATHS`` for one entry of an item's ``meshes``."""
+    named = ("cannot be read" if mesh.get("readable") is False
+             else "names " + ", ".join(mesh["paths"][:3]) + (", ..." if len(mesh["paths"]) > 3 else ""))
+    return f"the installed mesh{' ' + mesh['unit'] if mesh.get('unit') else ''}, whose site {mesh['site']} {named}"
+
+
+def _mesh_refusal(meshes, path):
+    """The clause saying that ``meshes`` (an item's ``meshes``) keep ``path``."""
+    several = len(meshes) > 1
+    return (" and ".join(_mesh_phrase(mesh) for mesh in meshes) + (", use " if several else ", uses ") + path
+            + "; SparkRing does not release it while " + ("those meshes are" if several else "that mesh is")
+            + " installed")
+
+
 def list_local(request=None, *, root="/", run=None):
     """This host's storage report (``sparkring-storage-local/v1``).
 
@@ -499,8 +635,12 @@ def list_local(request=None, *, root="/", run=None):
     this host), ``budget_seconds`` and ``measure``, a list of item paths that
     limits the walks to those items. Every item except ``other`` and
     ``releasing`` also carries ``containers``, the running containers that
-    reach it (``_users``). ``root`` relocates the search of ``/srv/sparkring``;
-    ``run`` replaces ``subprocess.run`` for Docker.
+    reach it (``_users``), and every cache directory and workspace carries
+    ``meshes``, the meshes installed on this host that use it
+    (``_mesh_users``); ``meshes`` of the report lists every installed mesh
+    (``installed_meshes``). ``root`` relocates the search of
+    ``/srv/sparkring`` and of the mesh configurations in ``/etc``; ``run``
+    replaces ``subprocess.run`` for Docker.
     """
     request = request if isinstance(request, dict) else {}
     started = time.monotonic()
@@ -514,14 +654,17 @@ def list_local(request=None, *, root="/", run=None):
         items, held = _items(root, request)
         _measure(items, held, started + budget, measured)
         docker, containers = docker.result()
+    meshes = installed_meshes(root)
     for item in items:
         if item["kind"] not in ("other", "releasing"):
             item["containers"] = _users(containers, item["path"])
+        if item["kind"] in MESH_KINDS:
+            item["meshes"] = _mesh_users(meshes, item["path"])
     srv = posixpath.join(root, "srv", "sparkring")
     return {"schema": LOCAL_SCHEMA, "hostname": socket.gethostname(),
             "package_revision": checkpoints.package_revision(),
             "filesystems": filesystems([("sparkring", srv), ("docker", (docker or {}).get("root")), ("root", "/")]),
-            "items": items, "docker": docker,
+            "items": items, "meshes": meshes, "docker": docker,
             "measurement": {"budget_seconds": budget, "seconds": round(time.monotonic() - started, 1),
                             "complete": all(item.get("complete") is not False for item in items)}}
 
@@ -611,8 +754,11 @@ def _unmounted(path, table):
                          "Nothing was released.")
 
 
-def _check(item, items, request, run, table):
-    """Refuse, before anything changes, a release of ``item`` that this Spark does not allow."""
+def _check(item, items, request, run, table, meshes):
+    """Refuse, before anything changes, a release of ``item`` that this Spark does not allow.
+
+    ``meshes`` are the meshes installed on this Spark (``installed_meshes``).
+    """
     path = item["path"]
     if item["kind"] == "checkpoint":
         raise ValueError(f"{path} is a SparkRing checkpoint directory; sudo sparkring checkpoints --release {path} "
@@ -625,6 +771,10 @@ def _check(item, items, request, run, table):
     if used:
         raise ValueError(f"The installed deployment uses {path} ({', '.join(used[:3])}); SparkRing does not release "
                          "it. Nothing was released.")
+    users = _mesh_users(meshes, path)
+    if users:
+        reason = _mesh_refusal(users, path)
+        raise ValueError(reason[0].upper() + reason[1:] + ". Nothing was released.")
     inner = [other["path"] for other in items if other["kind"] == "checkpoint" and _inside(other["path"], path)]
     if inner or item.get("holds_models"):
         shown = inner[0] if inner else posixpath.join(path, "models")
@@ -645,10 +795,12 @@ def release_local(path, request=None, *, root="/", run=None, table=None):
     roots whose entries they may all use. The item is found as the listing
     finds it. Before anything changes, the release refuses a path that is no
     ``cache``, ``workspace`` or ``releasing`` item, that is or holds a path in
-    ``in_use`` or lies in an ``opaque`` root, that holds a SparkRing checkpoint
-    directory or a non-empty ``models`` directory, that holds a mount point
-    (``table`` replaces the mount table), or that a running container on this
-    host uses (``containers_using``). It then renames ``path`` to its
+    ``in_use`` or lies in an ``opaque`` root, that a mesh installed on this
+    host uses (``_mesh_users`` of ``installed_meshes``, read below ``root``
+    whatever the request says), that holds a SparkRing checkpoint directory or
+    a non-empty ``models`` directory, that holds a mount point (``table``
+    replaces the mount table), or that a running container on this host uses
+    (``containers_using``). It then renames ``path`` to its
     ``releasing`` name and removes that directory; a remainder of an earlier
     interrupted release of ``path`` is removed as well.
 
@@ -667,7 +819,7 @@ def release_local(path, request=None, *, root="/", run=None, table=None):
                          "SparkRing does not remove it. Nothing was released.")
     table = checkpoint_place.mounts() if table is None else table
     if current is not None:
-        _check(current, items, request, run, table)
+        _check(current, items, request, run, table, installed_meshes(root))
     for item in remainders:
         _unmounted(item["location"], table)
     freed = sum(_remove(item["location"]) for item in remainders)
@@ -873,7 +1025,7 @@ def classify(nodes, retained, role, references):
             item["profiles"] = []
             if item["kind"] == "other":
                 item["class"] = "unmanaged"
-            elif any(deployment["directory"] in role for deployment in users):
+            elif item.get("meshes") or any(deployment["directory"] in role for deployment in users):
                 item["class"] = "installed"
             else:
                 if item["kind"] == "cache":
@@ -946,6 +1098,8 @@ def _refusal(item, node_entry):
     if item["class"] == "installed":
         users = ", ".join(entry["name"] + (f" ({entry['role']})" if entry.get("role") else "")
                           for entry in item["deployments"] if entry.get("role"))
+        if not users:
+            return f"{where}: {_mesh_refusal(item['meshes'], path)}"
         return f"{where}: the installed deployment {users} uses {path}; SparkRing does not release it"
     if item["class"] == "profile":
         return (f"{path} is referenced by the installer profiles {', '.join(item['profiles'])} of the installed "
@@ -1036,10 +1190,10 @@ def release_cluster(path, state_root, invoke, *, yes, interactive, write=print):
 _KIND = {"checkpoint": "checkpoint directory", "cache": "cache directory", "workspace": "deployment workspace",
          "releasing": "remainder of an interrupted release", "other": "directory"}
 LEGEND = ("Classes: installed = used by the installed deployment (active, rollback target or unfinished model "
-          "switch); profile = referenced by an installer profile of the installed package, kept for its next "
-          "installation; unreferenced = neither, proposed for release unless a running container uses it or it "
-          "holds model files; unmanaged = not created by SparkRing's installer, never removed. A size ending in + "
-          "was still being measured at the time limit.")
+          "switch) or by a mesh installed on that Spark; profile = referenced by an installer profile of the "
+          "installed package, kept for its next installation; unreferenced = neither, proposed for release unless a "
+          "running container uses it or it holds model files; unmanaged = not created by SparkRing's installer, "
+          "never removed. A size ending in + was still being measured at the time limit.")
 
 
 def _size(value):
@@ -1072,6 +1226,7 @@ def _details(item):
     if item.get("deployments"):
         lines.append("used by " + ", ".join(f"{entry['name']} ({entry.get('role') or 'retained'})"
                                             for entry in item["deployments"]))
+    lines.extend("used by " + _mesh_phrase(mesh) for mesh in item.get("meshes") or ())
     if item.get("containers"):
         lines.append("used by running containers " + ", ".join(item["containers"]))
     if item.get("profiles"):

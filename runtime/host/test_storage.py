@@ -2,7 +2,8 @@
 
 Tests marked ``linux`` build a ``/srv/sparkring`` tree below ``tmp_path`` with
 real hard links and SparkRing checkpoint directories placed by
-``runtime/host/checkpoint_place.py`` under a synthetic ext4 mount table, and
+``runtime/host/checkpoint_place.py`` under a synthetic ext4 mount table, with
+installed meshes' configurations in ``etc/sparkring`` below ``tmp_path``, and
 answer Node A's per-Spark calls with this module's own node functions and a
 canned Docker. The others drive Node A's command with canned per-Spark answers.
 """
@@ -11,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import posixpath
+import re
 import socket
 import sys
 import time
@@ -42,6 +44,15 @@ INSTALLED = "qwen38-flash-next-tp2-iaaaaaaaaaaaa"
 STALE = "qwen38-flash-next-tp2-ibbbbbbbbbbbb"
 WITH_MODELS = "qwen38-flash-next-tp2-idddddddddddd"
 QWEN = ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2"]
+# Deployments of a four-Spark ring in installation order: the first created the ring's mesh and the others reused it.
+FIRST = "qwen38-flash-next-qad-tp4-i111111111111"
+SECOND = "qwen38-flash-next-qad-tp4-i222222222222"
+THIRD = "qwen38-flash-next-qad-tp4-i333333333333"
+# The site name of FIRST's mesh, which controller.model_site derives from the cluster, profile and instance.
+MESH = "tp4-qwen38-flash-next--1a2b3c"
+# The mesh's host marker binary and bundle root in the workspace of the deployment that created the mesh.
+MARKER = "mesh/artifacts/mlx5-rdma-tx-marker"
+BUNDLE = "mesh/artifacts"
 linux = pytest.mark.skipif(not sys.platform.startswith("linux"),
                            reason="the fake Spark uses Linux hard links, /proc/self/fd, O_NOFOLLOW and flock")
 
@@ -575,6 +586,189 @@ def test_a_deployment_without_container_specifications_uses_its_whole_cache_root
     assert {items[str(spark.cache / name)]["class"] for name in (STALE_CACHE, PROFILE_CACHE, INSTALLED_CACHE)} == {
         "installed"}
     assert items[str(spark.cluster / STALE)]["class"] == "unreferenced"
+
+
+def install_mesh(root, name, workspace_path, *, model, cache, config=None):
+    """A mesh installed on the Spark below ``root``, with the files that ``native_mesh.install_local`` writes.
+
+    ``config`` is the configuration directory, by default the named layout's
+    of ``name``. Its site names ``workspace_path``'s marker binary and bundle
+    root, as ``native_mesh.definitions`` places them. Returns the site's path.
+    """
+    config = config or f"/etc/sparkring/deployments/{name}"
+    local = Path(root) / config.lstrip("/")
+    site = {"schema": "sparkring-glm53-mtp3-mesh-site/v1", "topology_file": "fabric.json",
+            "management_addresses": [f"192.0.2.{10 + rank}" for rank in range(4)],
+            "model_roots": [model] * 4, "cache_roots": [cache] * 4,
+            "bundle_root": f"{workspace_path}/{BUNDLE}", "container_prefix": "sr-" + name,
+            "marker_binary": f"{workspace_path}/{MARKER}", "marker_binary_sha256": "5" * 64,
+            "state_root": "/run/sparkring-" + name}
+    write_json(local / "site.json", site)
+    write_json(local / "fabric.json", {"ranks": []})
+    write_json(local / "service.json", {
+        "schema": "sparkring-managed-mesh/v1", "site_path": config + "/site.json", "rank": 0,
+        "key_file": config + "/health.key", "epoch": "a" * 32, "health_port": 9976, "state_dir": "/run/sparkring-" + name,
+        "container_id": "c" * 64, "container_image": DEV_IMAGE,
+        **({"deployment_name": name} if config.startswith("/etc/sparkring/deployments/") else {})})
+    return config + "/site.json"
+
+
+def ring_controller(tmp_path, spark):
+    """Node A's state after two model switches on a four-Spark ring, with the mesh files on the fake Spark.
+
+    FIRST created the ring's mesh MESH, whose marker binary and bundle lie in
+    FIRST's workspace; SECOND and THIRD reused that mesh, so every rank row
+    names its site as the fabric. THIRD is active and SECOND is the rollback
+    target. The fake Spark stands for each rank, which holds the same
+    workspaces and mesh configuration.
+    """
+    state = tmp_path / "controller"
+    write_json(state / "cluster.json", {"name": CLUSTER, "plan": {"spec": {"hosts": [{"host": HOSTS[0]}]}}})
+    first = spark.cluster / FIRST
+    site = install_mesh(spark.root, MESH, str(first), model=spark.owned, cache=str(spark.cache))
+    for name in (FIRST, SECOND, THIRD):
+        path = str(workspace(spark.cluster / name, "id-" + name))
+        row = {"rank": 0, "host": HOSTS[0], "model": spark.owned, "cache": str(spark.cache),
+               "repository": path + "/source-111111111111", "deployment_root": path + "/containers",
+               "reuse_verified_model": False,
+               "fabric": {"site_path": site, "site_sha256": "6" * 64, "plan_sha256": "7" * 64}}
+        write_json(state / "deployments" / name / "deployment.lock.json",
+                   {"id": "id-" + name, "selection": {"image_id": DEV_IMAGE}, "site": {"workspace": path, "ranks": [row]}})
+        write_json(state / "deployments" / name / "rank0" / "container.json",
+                   spec(path, spark.owned, str(spark.cache), [INSTALLED_CACHE, COMPILE_CACHE]))
+    put(first / MARKER, 4096)
+    put(first / BUNDLE / "manifest.json", 200)
+    write_json(state / "active.json", {"path": str(state / "deployments" / THIRD)})
+    write_json(state / "transaction.json", {"previous": str(state / "deployments" / SECOND),
+                                            "candidate": str(state / "deployments" / THIRD), "state": "complete"})
+    return state, site
+
+
+@linux
+def test_the_workspace_holding_the_ring_mesh_files_stays_installed_after_two_model_switches(tmp_path, spark, capsys):
+    state, site = ring_controller(tmp_path, spark)
+    invoke = Invoke(spark)
+    first = str(spark.cluster / FIRST)
+    unit = f"sparkring-{MESH}-mesh.service"
+    named = [f"{first}/{BUNDLE}", f"{first}/{MARKER}"]
+    assert storage.main(["--json"], state_root=state, invoke=invoke) == 0
+    [node] = json.loads(capsys.readouterr().out)["nodes"]
+    items = {item["path"]: item for item in node["items"]}
+    # FIRST is neither active nor the rollback target, but the mesh that SECOND and THIRD run needs its files.
+    assert items[first]["deployments"] == [{"name": FIRST}]
+    assert (items[first]["class"], items[first]["release"]) == ("installed", None)
+    assert items[first]["meshes"] == [{"unit": unit, "site": site, "paths": named}]
+    assert {items[str(spark.cluster / name)]["class"] for name in (SECOND, THIRD)} == {"installed"}
+    assert all(first not in command for command in node["proposed"]["commands"])
+    assert node["meshes"] == [{"unit": unit, "config": f"/etc/sparkring/deployments/{MESH}", "site": site,
+                               "paths": sorted({*named, spark.owned, str(spark.cache), "/run/sparkring-" + MESH}),
+                               "readable": True}]
+    # The mesh's cache roots name the cluster cache; its entries stay classified by the deployments that use them.
+    assert (items[str(spark.cache / STALE_CACHE)]["class"], items[str(spark.cache / STALE_CACHE)]["meshes"]) == (
+        "unreferenced", [])
+    assert items[str(spark.cluster / STALE)]["class"] == "unreferenced"
+
+    assert storage.main([], state_root=state, invoke=invoke) == 0
+    printed = capsys.readouterr().out.splitlines()
+    start = next(index for index, line in enumerate(printed) if line.endswith(f"installed     workspace   {first}"))
+    assert [line.strip() for line in printed[start + 1:start + 3]] == [
+        f"used by {FIRST} (retained)",
+        f"used by the installed mesh {unit}, whose site {site} names {named[0]}, {named[1]}"]
+
+    before = tree_state(spark.srv)
+    assert storage.main(["--release", first, "--yes"], state_root=state, invoke=invoke) == 2
+    assert (f"Node 0 {socket.gethostname()}: the installed mesh {unit}, whose site {site} names {named[0]}, "
+            f"{named[1]}, uses {first}; SparkRing does not release it while that mesh is installed. Nothing was "
+            "released.") in capsys.readouterr().err
+    assert invoke.releases() == [] and tree_state(spark.srv) == before
+
+    # Without the mesh's configuration in /etc/sparkring, as native_mesh.set_aside leaves a replaced mesh, the
+    # workspace is unreferenced and released.
+    replaced = Path(spark.root) / "var/lib/sparkring/replaced-meshes" / f"{MESH}-1"
+    replaced.parent.mkdir(parents=True)
+    os.rename(Path(spark.root) / "etc/sparkring/deployments" / MESH, replaced)
+    assert storage.main(["--json"], state_root=state, invoke=invoke) == 0
+    items = {item["path"]: item for item in json.loads(capsys.readouterr().out)["nodes"][0]["items"]}
+    assert (items[first]["class"], items[first]["release"]) == ("unreferenced", "sudo sparkring storage --release " + first)
+    assert storage.main(["--release", first, "--yes"], state_root=state, invoke=invoke) == 0
+    assert not os.path.lexists(first)
+
+
+@linux
+def test_each_spark_refuses_to_release_what_an_installed_mesh_uses(tmp_path, spark):
+    stale, cache = str(spark.cluster / STALE), str(spark.cache / STALE_CACHE)
+    # Node A's request names nothing in use; each Spark reads its own installed meshes.
+    request = {"cluster": CLUSTER}
+    default = install_mesh(spark.root, "glm", stale, model=spark.owned, cache=str(spark.cache),
+                           config="/etc/sparkring/managed-mesh")
+    before = tree_state(spark.srv)
+    with pytest.raises(ValueError, match="^" + re.escape(
+            f"The installed mesh sparkring-mesh.service, whose site {default} names {stale}/{BUNDLE}, "
+            f"{stale}/{MARKER}, uses {stale}; SparkRing does not release it while that mesh is installed. "
+            "Nothing was released.") + "$"):
+        storage.release_local(stale, request, root=spark.root, run=Docker(), table=[])
+    # A mesh whose site cannot be read may name any path, so it keeps every cache directory and workspace.
+    site = install_mesh(spark.root, MESH, str(spark.cluster / FIRST), model=spark.owned, cache=str(spark.cache))
+    (Path(spark.root) / site.lstrip("/")).write_text("{", encoding="utf-8")
+    with pytest.raises(ValueError, match="^" + re.escape(
+            f"The installed mesh sparkring-{MESH}-mesh.service, whose site {site} cannot be read, uses {cache}; "
+            "SparkRing does not release it while that mesh is installed. Nothing was released.") + "$"):
+        storage.release_local(cache, request, root=spark.root, run=Docker(), table=[])
+    assert tree_state(spark.srv) == before
+    # With both meshes readable, a cache entry that no site path lies in is released.
+    install_mesh(spark.root, MESH, str(spark.cluster / FIRST), model=spark.owned, cache=str(spark.cache))
+    assert storage.release_local(cache, request, root=spark.root, run=Docker(), table=[])["state"] == "released"
+
+
+def test_installed_meshes_are_read_from_every_managed_mesh_layout(tmp_path):
+    root = str(tmp_path)
+    workspace_path = f"/srv/sparkring/{CLUSTER}/{FIRST}"
+    named = install_mesh(root, MESH, workspace_path, model="/srv/models/a", cache=f"/srv/sparkring/{CLUSTER}/cache")
+    default = install_mesh(root, "glm", "/srv/sparkring/glm-managed", model="/srv/models/b",
+                           cache="/srv/sparkring/glm-managed/cache", config="/etc/sparkring/managed-mesh")
+    # A configuration directory holding only its service file whose site cannot be read, and one without any.
+    write_json(tmp_path / "etc/sparkring/deployments/partial/service.json",
+               {"site_path": "/etc/sparkring/deployments/partial/site.json", "deployment_name": "partial"})
+    (tmp_path / "etc/sparkring/deployments/empty").mkdir()
+    meshes = {mesh["config"]: mesh for mesh in storage.installed_meshes(root)}
+    assert set(meshes) == {"/etc/sparkring/managed-mesh", f"/etc/sparkring/deployments/{MESH}",
+                           "/etc/sparkring/deployments/partial"}
+    assert (meshes["/etc/sparkring/managed-mesh"]["unit"], meshes["/etc/sparkring/managed-mesh"]["site"]) == (
+        "sparkring-mesh.service", default)
+    mesh = meshes[f"/etc/sparkring/deployments/{MESH}"]
+    assert (mesh["unit"], mesh["site"], mesh["readable"]) == (f"sparkring-{MESH}-mesh.service", named, True)
+    assert mesh["paths"] == sorted({"/srv/models/a", f"/srv/sparkring/{CLUSTER}/cache", f"{workspace_path}/{BUNDLE}",
+                                    f"{workspace_path}/{MARKER}", "/run/sparkring-" + MESH})
+    assert meshes["/etc/sparkring/deployments/partial"]["readable"] is False
+    assert storage._mesh_users([mesh], workspace_path) == [
+        {"unit": mesh["unit"], "site": named, "paths": [f"{workspace_path}/{BUNDLE}", f"{workspace_path}/{MARKER}"]}]
+    assert storage._mesh_users([mesh], f"/srv/sparkring/{CLUSTER}/cache/{STALE_CACHE}") == []
+    assert storage._mesh_users([meshes["/etc/sparkring/deployments/partial"]], workspace_path) == [
+        {"unit": "sparkring-partial-mesh.service", "site": "/etc/sparkring/deployments/partial/site.json",
+         "paths": [], "readable": False}]
+
+
+def test_the_report_and_a_release_name_the_mesh_that_uses_a_workspace(tmp_path, capsys):
+    path = f"/srv/sparkring/{CLUSTER}/{FIRST}"
+    site = f"/etc/sparkring/deployments/{MESH}/site.json"
+    unit = f"sparkring-{MESH}-mesh.service"
+    entry = {"path": path, "kind": "workspace", "deployment": "id-" + FIRST, "holds_models": False,
+             "bytes": 3 * 1024 ** 2, "frees_bytes": 3 * 1024 ** 2, "files": 9, "complete": True, "mounts": [],
+             "checkpoints": [], "containers": [], "meshes": [{"unit": unit, "site": site, "paths": [path + "/" + MARKER]}]}
+    spark = Spark({HOSTS[0]: local([entry]), HOSTS[1]: local([{**entry, "meshes": []}], hostname="spark-931e")})
+    state = canned_controller(tmp_path)
+    assert storage.main(["--json"], state_root=state, invoke=spark) == 0
+    nodes = json.loads(capsys.readouterr().out)["nodes"]
+    assert [(node["items"][0]["class"], node["items"][0]["release"]) for node in nodes] == [
+        ("installed", None), ("unreferenced", "sudo sparkring storage --release " + path)]
+    assert storage.main([], state_root=state, invoke=spark) == 0
+    printed = capsys.readouterr().out.splitlines()
+    start = next(index for index, line in enumerate(printed) if line.endswith(f"installed     workspace   {path}"))
+    assert printed[start + 1].strip() == f"used by the installed mesh {unit}, whose site {site} names {path}/{MARKER}"
+    assert storage.main(["--release", path, "--yes"], state_root=state, invoke=spark) == 2
+    assert (f"Node 0 spark-aa42: the installed mesh {unit}, whose site {site} names {path}/{MARKER}, uses {path}; "
+            "SparkRing does not release it while that mesh is installed. Nothing was released.") in capsys.readouterr().err
+    assert all(argv == LIST for _, argv in spark.calls)
 
 
 def test_commands_route_to_the_storage_module(monkeypatch, capsys):
