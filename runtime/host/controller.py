@@ -535,6 +535,11 @@ def lifecycle(argv):
     recorded = installer.read(directory / "deployment.lock.json").get("serving")
     if recorded:
         print("Serving settings: " + ", ".join(f"{serving.option(name)} {value}" for name, value in sorted(recorded.items())))
+        if settings:
+            # Settings named on this command line are compared with the installed profile's values.
+            base = installer.specifications(dict(installer.read(directory / "deployment.lock.json"), serving={}), only_rank=0)[0].command
+            for line in serving.warnings(recorded, base):
+                print("Warning: " + line)
     if "native_mesh" in result:
         print("Prepare native ASIC fabric and install its supervised service.")
         for old in result["native_mesh"]["replaces"]:

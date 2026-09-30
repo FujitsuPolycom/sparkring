@@ -665,6 +665,8 @@ def execute(args):
         if lock is not None and lock.get("serving"):
             base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
             print("Serving settings: " + "; ".join(serving_settings.describe(lock["serving"], base)))
+            for line in serving_settings.warnings(lock["serving"], base):
+                print("Warning: " + line)
         if lock is not None and "native_mesh" in lock["site_input"]:
             if previous:
                 raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "

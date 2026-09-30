@@ -78,8 +78,15 @@ def test_init_refuses_a_setting_that_does_not_apply_before_creating_the_deployme
     assert not (tmp_path / "deployment").exists()
 
 
-def test_a_kv_cache_above_the_profiles_is_refused():
+def test_a_kv_cache_up_to_a_tenth_above_the_profiles_is_accepted_with_a_warning():
     args = profile_args(QWEN)
-    assert serving.apply(args, {"kv_cache_gib": 24}) == tuple(args)
-    with pytest.raises(ValueError, match="--kv-cache-gib 25 exceeds the profile's 24. A larger value can exhaust a Spark's memory"):
-        serving.apply(args, {"kv_cache_gib": 25})
+    assert serving.apply(args, {"kv_cache_gib": 24}) == tuple(args) and serving.warnings({"kv_cache_gib": 24}, tuple(args)) == []
+    raised = serving.apply(args, {"kv_cache_gib": 26})
+    assert raised[raised.index("--kv-cache-memory-bytes") + 1] == str(26 * 2**30)
+    assert serving.warnings({"kv_cache_gib": 26, "max_images": 9}, tuple(args)) == [
+        "--kv-cache-gib 26 is above the profile's 24: each Spark keeps that much less memory for images and long "
+        "requests, and the profile's measurements do not cover it."]
+    with pytest.raises(ValueError, match="--kv-cache-gib 27 is more than 26, a tenth above the profile's 24"):
+        serving.apply(args, {"kv_cache_gib": 27})
+    # A small profile value still admits one more GiB.
+    assert [serving.ceiling(value) for value in (4, 10, 24, 40)] == [5, 11, 26, 44]

@@ -15,14 +15,23 @@ SETTINGS = {
     "max_videos": ("--limit-mm-per-prompt", "video", 1, 0, "videos per request (0 accepts none)"),
     "context_length": ("--max-model-len", None, 1, 1024, "context window in tokens"),
     "max_concurrency": ("--max-num-seqs", None, 1, 1, "requests served at the same time"),
-    "kv_cache_gib": ("--kv-cache-memory-bytes", None, 2**30, 1, "KV cache per Spark in GiB, at most the profile's"),
+    "kv_cache_gib": ("--kv-cache-memory-bytes", None, 2**30, 1, "KV cache per Spark in GiB, at most a tenth above the profile's"),
 }
 # vLLM allocates the KV cache when the model starts. On a Spark, whose GPU and
-# CPU share one memory, a KV cache larger than the profile's measured value
-# can exhaust that memory: the kernel then stops processes and the Spark stops
-# answering SSH until it recovers, which also defeats the installer's
-# restoration of the previous model. Such values are refused.
-AT_MOST_PROFILE = frozenset({"kv_cache_gib"})
+# CPU share one memory, a KV cache far above the profile's value exhausts that
+# memory: the kernel then stops processes and the Spark stops answering SSH
+# until it recovers, which also defeats the installer's restoration of the
+# previous model (observed with 200 GiB on a profile of 24 GiB). The GLM
+# profiles started with a tenth more than their values (11 GiB for 10, 44 GiB
+# for 40; performance/records/glm53-flash/installer-memory-20260929.md), so a
+# value up to a tenth above the profile's, and at least one unit above it, is
+# accepted with a warning, and a larger one is refused.
+ABOVE_PROFILE = frozenset({"kv_cache_gib"})
+
+
+def ceiling(profile):
+    """The largest accepted value of an ABOVE_PROFILE setting whose profile value is ``profile``."""
+    return profile + max(1, profile // 10)
 
 
 def option(name):
@@ -82,9 +91,10 @@ def apply(command, settings):
         if position is None:
             raise ValueError(f"{option(name)} does not apply to this profile: it sets no {flag}")
         if key is None:
-            if name in AT_MOST_PROFILE and settings[name] * scale > int(command[position]):
-                raise ValueError(f"{option(name)} {settings[name]} exceeds the profile's {int(command[position]) // scale}. "
-                                 "A larger value can exhaust a Spark's memory while the model starts; lower values are accepted.")
+            profile = int(command[position]) // scale
+            if name in ABOVE_PROFILE and settings[name] > ceiling(profile):
+                raise ValueError(f"{option(name)} {settings[name]} is more than {ceiling(profile)}, a tenth above the profile's "
+                                 f"{profile}. A larger value can exhaust a Spark's memory while the model starts.")
             command[position] = str(settings[name] * scale)
             continue
         limits = json.loads(command[position])
@@ -98,3 +108,14 @@ def apply(command, settings):
 def describe(settings, command):
     """One line per named setting: its value and the profile's."""
     return [f"{option(name)} {value} (profile: {profile_value(command, name)})" for name, value in sorted(settings.items())]
+
+
+def warnings(settings, command):
+    """One line per ABOVE_PROFILE setting whose value exceeds the profile's in ``command``."""
+    lines = []
+    for name in sorted(ABOVE_PROFILE & set(settings)):
+        profile = profile_value(command, name)
+        if profile is not None and settings[name] > profile:
+            lines.append(f"{option(name)} {settings[name]} is above the profile's {profile}: each Spark keeps that much less "
+                         "memory for images and long requests, and the profile's measurements do not cover it.")
+    return lines

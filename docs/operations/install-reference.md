@@ -360,7 +360,7 @@ for that deployment. Without a flag, the profile's value applies.
 | `--max-videos N` | the video count in `--limit-mm-per-prompt` | videos per request; 0 accepts none |
 | `--context-length N` | `--max-model-len` | tokens, at least 1,024 |
 | `--max-concurrency N` | `--max-num-seqs` | requests served at the same time |
-| `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark, at most the profile's value |
+| `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark, at most a tenth above the profile's value |
 
 - A setting for a value the profile does not set is refused.
   `deepseek-v41-flash-tp4` accepts no videos and sizes its KV cache as a
@@ -379,12 +379,16 @@ for that deployment. Without a flag, the profile's value applies.
   use more memory on each Spark while a request runs, and a longer context or
   more concurrent requests share the same KV cache. vLLM refuses to start with
   a context length that its KV cache cannot hold.
-- `--kv-cache-gib` above the profile's value is refused. vLLM allocates the
-  KV cache when the model starts, and a Spark's GPU and CPU share one memory:
-  a larger cache can exhaust it, the kernel then stops processes, and the
-  Spark stops answering until it recovers, too late for the installation to
-  restore the previous model. `sudo sparkring install --profile PROFILE`
-  restores a deployment after such a failure.
+- `--kv-cache-gib` accepts up to a tenth above the profile's value, and at
+  least 1 GiB above it (11 for a profile of 10, 26 for 24, 44 for 40), and
+  prints a warning for a value above the profile's: each Spark keeps that much
+  less memory for images and long requests. A larger value is refused. vLLM
+  allocates the KV cache when the model starts, and a Spark's GPU and CPU
+  share one memory: a cache far above the profile's can exhaust it, the kernel
+  then stops processes, and the Spark stops answering until it recovers, too
+  late for the installation to restore the previous model.
+  `sudo sparkring install --profile PROFILE` restores a deployment after such
+  a failure.
 
 ### Tool-result contract
 

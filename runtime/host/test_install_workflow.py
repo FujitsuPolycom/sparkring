@@ -682,7 +682,10 @@ def test_serving_settings_install_another_deployment_and_are_listed(machine, spa
     # Refused before any Spark is surveyed.
     surveys = len(sparks.surveys)
     assert command("--plan", "--kv-cache-gib", "200") == 2
-    assert "exceeds the profile's 24" in json.loads(capsys.readouterr().out)["message"] and len(sparks.surveys) == surveys
+    assert "a tenth above the profile's 24" in json.loads(capsys.readouterr().out)["message"] and len(sparks.surveys) == surveys
+    # A value within a tenth above the profile's is planned with a warning.
+    assert command("--plan", "--kv-cache-gib", "26") == 0
+    assert "Warning: --kv-cache-gib 26 is above the profile's 24" in capsys.readouterr().err
 
 
 def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, sparks, capsys):
