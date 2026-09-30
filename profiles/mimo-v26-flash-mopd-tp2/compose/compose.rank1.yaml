@@ -3,7 +3,7 @@ name: sr-mimo-example-r1
 services:
   model:
     container_name: sr-mimo-example-r1
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -98,8 +98,8 @@ services:
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
       CUDA_VERSION: 13.4.2
-      CUTE_DSL_CACHE_DIR: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e/cute
-      FLASHINFER_WORKSPACE_BASE: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e/flashinfer
+      CUTE_DSL_CACHE_DIR: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e/cute
+      FLASHINFER_WORKSPACE_BASE: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e/flashinfer
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       NCCL_CROSS_NIC: '1'
@@ -125,13 +125,13 @@ services:
       SPARKRING_TOOL_CHOICE_CONTRACT: '1'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 9f2c0ae62e1e045b0c90dab99313de2f627f2a2f8bc68143c50eafa0531cf27c
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TILELANG_CACHE_DIR: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e/tilelang
-      TORCHINDUCTOR_CACHE_DIR: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e/inductor
+      TILELANG_CACHE_DIR: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e/tilelang
+      TORCHINDUCTOR_CACHE_DIR: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e/triton
-      TVM_FFI_CACHE_DIR: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e/tvm-ffi
+      TRITON_CACHE_DIR: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e/triton
+      TVM_FFI_CACHE_DIR: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e/tvm-ffi
       VLLM_B12X_MOE_FP4_FORCE_A16: '0'
-      VLLM_CACHE_ROOT: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e/vllm
+      VLLM_CACHE_ROOT: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_HOST_IP: 192.0.2.11
@@ -147,9 +147,9 @@ services:
       VLLM_SPARK_TP4_VOCAB_MODE: ''
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/mimo-v26-flash-rl-4b7049d1e00f-2479e2d0029e
+      XDG_CACHE_HOME: /cache/mimo-v26-flash-rl-fcb20b0ce839-2479e2d0029e
     labels:
-      io.sparkring.deployment: 1a026104438d583cb0c46b057373e74e6d50457e7d96e5c35f7fc431c6fbc743
+      io.sparkring.deployment: 326dc5a66814c75e0a33473ab0d8e3104cd6ab372690be72d2842c32e77833b3
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

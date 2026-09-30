@@ -377,7 +377,8 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     settings = lock.get("serving") or {}
     return [replace(spec, name=container_name(lock, only_rank if only_rank is not None else number),
                     labels={**spec.labels, **container_labels(lock, only_rank if only_rank is not None else number)},
-                    command=serving.apply(spec.command, settings) if settings else spec.command)
+                    command=serving.apply(spec.command, settings) if settings else spec.command,
+                    environment={**spec.environment, **serving.environment(settings)})
             for number, spec in enumerate(specs)]
 
 

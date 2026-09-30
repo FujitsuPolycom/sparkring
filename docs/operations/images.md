@@ -7,7 +7,7 @@ runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582` | `sha256:4b7049d1e00f263c65713b62247a4497eba72fb38977087941830cec38609a8c` |
+| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac` | `sha256:fcb20b0ce83987844ccc2b7abb167bcf4e4fcf144c49f55465978eec3b46a234` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Each profile's `profile.json` names its image release; other profiles use
@@ -15,12 +15,12 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20260928-plainstatus-cuda1342-nccl2323-status033`.
+Development image, tag `dev-20260930-spinwait-cuda1342-nccl2323-status033`.
 The download is 14.2 GiB and the unpacked image 29.5 GiB.
 
-- The [installer image lock](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/installer-image.json)
+- The [installer image lock](../../runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/installer-image.json)
   lists the nine profiles and pins the image's identity.
-- The [publication record](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/publication.json)
+- The [publication record](../../runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/publication.json)
   names the parent image and the added layer.
 - The [installer image builders](../../runtime/images/installer-images.md) list
   the builder of each layer in the chain.
@@ -36,6 +36,7 @@ The download is 14.2 GiB and the unpacked image 29.5 GiB.
 | B12X selection-cache correction | When the ranks of a two- or four-Spark deployment share kernel tuning, B12X reads its tuning cache after they reconcile it, so a restart reuses earlier tuning instead of measuring every kernel again ([selection cache](../../integrations/b12x/selection_cache/README.md)). A DeepSeek-V4.1-Flash four-Spark restart was healthy after 200-225 s with it, 652-741 s without |
 | MiMo vision attention sinks | The MiMo-V2.6 vision encoder applies its per-head attention sinks in the softmax denominator, as the model was trained ([derive_mimo_vision.py](../../runtime/images/derive_mimo_vision.py)). With the sinks on each image's first key instead, MiMo read a red-and-blue test image as black and white |
 | Tool-result contract | A Chat Completions request whose `tool_choice` is `required` or names a function, and whose output lacks a complete call, gets HTTP 400 if the token limit ended generation and HTTP 500 otherwise, not HTTP 200 without a tool call ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md), [#217](https://github.com/FujitsuPolycom/sparkring/issues/217)). `SPARKRING_TOOL_CHOICE_CONTRACT=0` in a profile's environment turns it off |
+| Shared-memory reader window | vLLM's shared-memory readers poll for `SPARKRING_SHM_BUSY_LOOP_S` seconds after a read when that variable is set, and for one second otherwise ([derive_spin_wait.py](../../runtime/images/derive_spin_wait.py)). `sparkring install --save-cpu` sets it to 2 ms ([serving settings](install-reference.md#serving-settings), [#189](https://github.com/FujitsuPolycom/sparkring/issues/189)) |
 
 `sparkring install` starts the image with its entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that

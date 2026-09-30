@@ -7,7 +7,7 @@ The profile identity `tp2-rocenante-adaptive-prepared` bridges SparkRing's
 adaptive peer-path transport to B12X's prepared execution API. It is separate
 from the immutable `tp2-rocenante-adaptive` source bundle.
 
-The installer image `dev-20260928-plainstatus-cuda1342-nccl2323-status033` pins
+The installer image `dev-20260930-spinwait-cuda1342-nccl2323-status033` pins
 transport manifest `9f2c0ae62e1e`, which carries the
 [supervised peer wait](#peer-wait); the image layer builder
 [derive_transport_peer_wait.py](../../../runtime/images/derive_transport_peer_wait.py)

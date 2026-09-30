@@ -311,22 +311,23 @@ sudo sparkring logs --follow
 ## Serving image and profiles
 
 Every installer profile runs on one shared ARM64 serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/installer-image.json)
 (`sparkring-installer-image/v2`):
 
 | Item | Identifier |
 |---|---|
-| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582` |
-| Tag | `dev-20260928-plainstatus-cuda1342-nccl2323-status033` |
-| Configuration | `sha256:4b7049d1e00f263c65713b62247a4497eba72fb38977087941830cec38609a8c` |
+| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac` |
+| Tag | `dev-20260930-spinwait-cuda1342-nccl2323-status033` |
+| Configuration | `sha256:fcb20b0ce83987844ccc2b7abb167bcf4e4fcf144c49f55465978eec3b46a234` |
 | Base image | `eugr/spark-vllm-b12x:nightly-20260924` |
-| Parent image | `dev-20260928-toolchoice-cuda1342-nccl2323-status032` |
+| Parent image | `dev-20260928-plainstatus-cuda1342-nccl2323-status033` |
 
 The image stacks SparkRing's layers on that base, from the CUDA 13.4.2 and
-NCCL 2.32.3 toolchain up to the runtime-status dashboard 0.3.3. The
+NCCL 2.32.3 toolchain up to the shared-memory reader window that
+`--save-cpu` sets. The
 [installer image builders](../../runtime/images/installer-images.md) list each
 layer, what it adds and what the lock pins; the image's
-[publication record](../../runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/publication.json)
+[publication record](../../runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/publication.json)
 describes the layer it adds to its parent.
 
 `sparkring models` lists exact model/version/quantization/topology profiles,
@@ -361,6 +362,7 @@ for that deployment. Without a flag, the profile's value applies.
 | `--context-length N` | `--max-model-len` | tokens, at least 1,024 |
 | `--max-concurrency N` | `--max-num-seqs` | requests served at the same time |
 | `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark, at most a tenth above the profile's value |
+| `--save-cpu` | vLLM's shared-memory reader window (container variable `SPARKRING_SHM_BUSY_LOOP_S`) | a switch: readers poll 2 ms after a read instead of one second |
 
 - A setting for a value the profile does not set is refused.
   `deepseek-v41-flash-tp4` accepts no videos and sizes its KV cache as a
@@ -379,6 +381,12 @@ for that deployment. Without a flag, the profile's value applies.
   use more memory on each Spark while a request runs, and a longer context or
   more concurrent requests share the same KV cache. vLLM refuses to start with
   a context length that its KV cache cannot hold.
+- `--save-cpu` lets vLLM's waiting processes sleep between decode steps
+  instead of polling for one second after each step. On two Sparks it freed
+  about 1.7 CPU cores on Node A while a model decoded and cost about 1% of
+  decode speed with one request and 2% with eight
+  ([record](../../performance/records/qwen38-flash-next/shm-spin-window-20260930.md)).
+  Without requests, the processes sleep either way.
 - `--kv-cache-gib` accepts up to a tenth above the profile's value, and at
   least 1 GiB above it (11 for a profile of 10, 26 for 24, 44 for 40), and
   prints a warning for a value above the profile's: each Spark keeps that much
@@ -897,7 +905,7 @@ reserves the full checkpoint allowance of
 [storage planning](../../profiles/storage-planning.json) unless the Spark
 holds a verified checkpoint.
 
-The serving image `dev-20260928-plainstatus-cuda1342-nccl2323-status033` is a
+The serving image `dev-20260930-spinwait-cuda1342-nccl2323-status033` is a
 14.2 GiB download, 29.5 GiB unpacked. The last column below is the plan's
 total for a Spark holding neither the image nor any checkpoint file, with the
 checkpoint, Docker and the cache on one filesystem.

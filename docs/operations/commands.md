@@ -62,7 +62,7 @@ image and checkpoint, then starts or switches the model.
 | `--env FILE` | Preferences file: setup keys on first installation, the download limit on every run ([keys](install-reference.md#optional-preferences)) |
 | `--stop-workloads` | Stop (never remove) GPU containers that are not SparkRing's |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
-| `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
+| `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |
 
 ## install.sh

@@ -471,7 +471,7 @@ def lifecycle(argv):
                 print("Checkpoint: " + (f"{saved['checkpoint']} ({source})" if saved["checkpoint"] else source)
                       + f" | Image: {saved['image_release']}")
                 if saved.get("serving"):
-                    print("Serving settings: " + ", ".join(f"{serving.option(name)} {value}"
+                    print("Serving settings: " + ", ".join(serving.label(name, value)
                                                            for name, value in sorted(saved["serving"].items())))
                 print(saved["api_url"])
                 if saved.get("observations"):
@@ -534,7 +534,7 @@ def lifecycle(argv):
     print(" -> ".join(result["phases"]))
     recorded = installer.read(directory / "deployment.lock.json").get("serving")
     if recorded:
-        print("Serving settings: " + ", ".join(f"{serving.option(name)} {value}" for name, value in sorted(recorded.items())))
+        print("Serving settings: " + ", ".join(serving.label(name, value) for name, value in sorted(recorded.items())))
         if settings:
             # Settings named on this command line are compared with the installed profile's values.
             base = installer.specifications(dict(installer.read(directory / "deployment.lock.json"), serving={}), only_rank=0)[0].command

@@ -90,3 +90,22 @@ def test_a_kv_cache_up_to_a_tenth_above_the_profiles_is_accepted_with_a_warning(
         serving.apply(args, {"kv_cache_gib": 27})
     # A small profile value still admits one more GiB.
     assert [serving.ceiling(value) for value in (4, 10, 24, 40)] == [5, 11, 26, 44]
+
+
+def test_save_cpu_is_a_switch_that_sets_the_reader_window_on_every_rank():
+    assert serving.normalized({"save_cpu": True, "max_images": None}) == {"save_cpu": True}
+    assert serving.normalized({"save_cpu": None}) == {}
+    with pytest.raises(ValueError, match="--save-cpu is a switch without a value"):
+        serving.normalized({"save_cpu": 1})
+    assert serving.environment({"save_cpu": True, "max_images": 2}) == {"SPARKRING_SHM_BUSY_LOOP_S": "0.002"}
+    args = profile_args(QWEN)
+    assert serving.apply(args, {"save_cpu": True}) == tuple(args)
+    assert serving.describe({"save_cpu": True, "max_images": 2}, tuple(args)) == [
+        "--max-images 2 (profile: 3)", "--save-cpu (profile: off)"]
+    plain = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"save_cpu": True})
+    assert lock["id"] != plain["id"]
+    for spec, default in zip(installer.specifications(lock), installer.specifications(plain), strict=True):
+        assert spec.environment == {**default.environment, "SPARKRING_SHM_BUSY_LOOP_S": "0.002"}
+        assert spec.command == default.command
+    assert all("SPARKRING_SHM_BUSY_LOOP_S" not in spec.environment for spec in installer.specifications(plain))

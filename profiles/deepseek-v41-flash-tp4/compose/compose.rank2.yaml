@@ -3,7 +3,7 @@ name: sr-deepseek-tp4-example-r2
 services:
   model:
     container_name: sr-deepseek-tp4-example-r2
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:c977a2d2efb7ecf9ea856cd0379fdd93a8913f0770f4627a3ae00a084cfaf582
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -80,8 +80,8 @@ services:
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
       CUDA_VERSION: 13.4.2
-      CUTE_DSL_CACHE_DIR: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa/cute
-      FLASHINFER_WORKSPACE_BASE: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa/flashinfer
+      CUTE_DSL_CACHE_DIR: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa/cute
+      FLASHINFER_WORKSPACE_BASE: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa/flashinfer
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       NCCL_ALGO: Ring
@@ -120,15 +120,15 @@ services:
       SPARKRING_TOOL_CHOICE_CONTRACT: '1'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: 9f2c0ae62e1e045b0c90dab99313de2f627f2a2f8bc68143c50eafa0531cf27c
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TILELANG_CACHE_DIR: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa/tilelang
-      TORCHINDUCTOR_CACHE_DIR: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa/inductor
+      TILELANG_CACHE_DIR: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa/tilelang
+      TORCHINDUCTOR_CACHE_DIR: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa/triton
-      TVM_FFI_CACHE_DIR: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa/tvm-ffi
+      TRITON_CACHE_DIR: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa/triton
+      TVM_FFI_CACHE_DIR: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa/tvm-ffi
       VLLM_ALLREDUCE_USE_FLASHINFER: '0'
       VLLM_ALLREDUCE_USE_SYMM_MEM: '0'
       VLLM_B12X_MOE_FP4_FORCE_A16: '0'
-      VLLM_CACHE_ROOT: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa/vllm
+      VLLM_CACHE_ROOT: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa/vllm
       VLLM_DS41_DRAFT_NVFP4_HEAD: '1'
       VLLM_DS41_ENGRAM_OVERLAP: '0'
       VLLM_DS41_MARKOV_NVFP4: '1'
@@ -147,9 +147,9 @@ services:
       VLLM_USE_RUST_FRONTEND: '0'
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/deepseek-v41-flash-4b7049d1e00f-dba1be0a40aa
+      XDG_CACHE_HOME: /cache/deepseek-v41-flash-fcb20b0ce839-dba1be0a40aa
     labels:
-      io.sparkring.deployment: 51eb191772e57b314e51b070f807c0660e69d77d1f704c0dd7799c87b3e494f9
+      io.sparkring.deployment: 22f5045defb27fd1b1f02239e337bb57749cb3b14288e8b4eaa21a5cafe9729f
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

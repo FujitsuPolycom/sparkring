@@ -5,7 +5,8 @@ describes (qwen_flash_next.canonical). A deployment may name other values for
 a few settings; the deployment lock records them, so a deployment with other
 settings is another deployment, and installer.specifications writes them into
 every rank's container command. A setting that is not named keeps the
-profile's value.
+profile's value. SWITCHES are settings without a value that set a container
+environment variable instead of a vLLM argument.
 """
 import json
 
@@ -27,6 +28,17 @@ SETTINGS = {
 # value up to a tenth above the profile's, and at least one unit above it, is
 # accepted with a warning, and a larger one is refused.
 ABOVE_PROFILE = frozenset({"kv_cache_gib"})
+# name: (container environment variable, value, help). save_cpu shortens the
+# time vLLM's shared-memory readers poll after a read from one second to 2 ms,
+# so between decode steps they sleep until notified instead of keeping CPU
+# cores busy; each step then waits for a reader to wake, which cost about 1%
+# of decode steps per second with one request and 2% with eight
+# (FujitsuPolycom/sparkring#189). Only an image derived with
+# runtime/images/derive_spin_wait.py reads the variable.
+SWITCHES = {
+    "save_cpu": ("SPARKRING_SHM_BUSY_LOOP_S", "0.002",
+                 "let vLLM's waiting processes sleep between decode steps: less CPU use, about 1-2% slower decode"),
+}
 
 
 def ceiling(profile):
@@ -42,10 +54,12 @@ def add_arguments(parser):
     group = parser.add_argument_group("serving settings", "replace the profile's value; without a flag the profile's value applies")
     for name, (_, _, _, _, text) in SETTINGS.items():
         group.add_argument(option(name), dest="serving_" + name, type=int, metavar="N", help=text)
+    for name, (_, _, text) in SWITCHES.items():
+        group.add_argument(option(name), dest="serving_" + name, action="store_true", default=None, help=text)
 
 
 def from_arguments(args):
-    return normalized({name: getattr(args, "serving_" + name, None) for name in SETTINGS})
+    return normalized({name: getattr(args, "serving_" + name, None) for name in (*SETTINGS, *SWITCHES)})
 
 
 def normalized(values):
@@ -53,6 +67,11 @@ def normalized(values):
     result = {}
     for name, value in sorted((values or {}).items()):
         if value is None:
+            continue
+        if name in SWITCHES:
+            if value is not True:
+                raise ValueError(f"{option(name)} is a switch without a value")
+            result[name] = True
             continue
         if name not in SETTINGS:
             raise ValueError("Unknown serving setting: " + str(name))
@@ -85,7 +104,7 @@ def profile_value(command, name):
 def apply(command, settings):
     """``command`` with each setting's value in place of the profile's value for its vLLM flag."""
     command = list(command)
-    for name in sorted(settings):
+    for name in sorted(set(settings) - set(SWITCHES)):
         flag, key, scale, _, _ = SETTINGS[name]
         position = _position(command, flag)
         if position is None:
@@ -105,9 +124,20 @@ def apply(command, settings):
     return tuple(command)
 
 
+def environment(settings):
+    """Container environment variables that the named switches set."""
+    return {SWITCHES[name][0]: SWITCHES[name][1] for name in sorted(set(settings) & set(SWITCHES))}
+
+
+def label(name, value):
+    """A setting as its command-line form: ``--max-images 8``, or ``--save-cpu`` for a switch."""
+    return option(name) if name in SWITCHES else f"{option(name)} {value}"
+
+
 def describe(settings, command):
     """One line per named setting: its value and the profile's."""
-    return [f"{option(name)} {value} (profile: {profile_value(command, name)})" for name, value in sorted(settings.items())]
+    return [label(name, value) + (" (profile: off)" if name in SWITCHES else f" (profile: {profile_value(command, name)})")
+            for name, value in sorted(settings.items())]
 
 
 def warnings(settings, command):
