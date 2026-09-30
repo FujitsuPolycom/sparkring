@@ -159,6 +159,13 @@ class NetworkManager:
         return self.site["management_addresses"][self.rank] in {
                 x.get("local") for link in management for x in link.get("addr_info", [])}
 
+    def management_address_present(self):
+        """True when this rank's management address is on its netdev; False while that netdev is absent."""
+        try:
+            return self._management_address_present()
+        except RuntimeError:
+            return False
+
     def _links(self, *, verify_rdma_mtu=True, management_loss=None):
         """Verify the management address and the RoCE port fabric.
 
