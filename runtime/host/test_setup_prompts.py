@@ -247,7 +247,7 @@ def test_fresh_setup_plan_lists_the_hairpin_step_when_it_finds_four_sparks(tmp_p
 
 
 def test_setup_installs_node_a_revision_on_other_workers_before_planning(tmp_path, monkeypatch, capsys):
-    targets = ["root@10.253.255.1", "root@10.253.255.2"]
+    targets = ["root@192.0.2.1", "root@192.0.2.2"]
     current, older = "a" * 40, "b" * 40
     monkeypatch.setattr(single_uplink.distribution, "identity", lambda root: current)
     calls = []
@@ -273,7 +273,7 @@ def test_setup_installs_node_a_revision_on_other_workers_before_planning(tmp_pat
 
     # A worker still on another revision afterwards stops setup before planning.
     monkeypatch.setattr(single_uplink.controller, "collect", lambda targets: [{"revision": current}, {"revision": older}])
-    with pytest.raises(ValueError, match="root@10.253.255.2 still runs a SparkRing revision other than Node A's aaaaaaaaaaaa"):
+    with pytest.raises(ValueError, match="root@192.0.2.2 still runs a SparkRing revision other than Node A's aaaaaaaaaaaa"):
         single_uplink.match_revisions(targets, [{"revision": current}, {"revision": older}], tmp_path / "again")
 
 
