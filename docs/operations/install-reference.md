@@ -537,6 +537,14 @@ not restart themselves (`restart: 'no'`). To recover:
    `sudo sparkring install --profile PROFILE`; it stops the model on every
    Spark and starts it again.
 
+   `sudo sparkring up --execute` also starts the deployment again when its
+   container runs on no Spark, for example after every Spark restarted: it
+   repeats every step, including restoring the RoCE GID index and the NVIDIA
+   CDI specification, and starts the containers. While the container still
+   runs on some Sparks, it holds the RoCE GID entries that step repairs, so
+   `up` refuses; stop the model on every Spark with
+   `sudo sparkring down --execute` first.
+
 Saved-log lines beginning `RoCEnante rank` tell which rank was late and why.
 `sudo sparkring status --refresh --json` shows rank 0's container with
 `running: false` while the others still run.

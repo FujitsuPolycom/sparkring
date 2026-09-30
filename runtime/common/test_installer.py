@@ -129,6 +129,44 @@ def test_repeat_up_rechecks_completed_actions_without_creating_again(deployment)
     assert not any(event[0] in ("create", "start", "image", "model", "source") for event in second.events)
 
 
+class Stopped(Hosts):
+    """Ranks whose model containers stopped, as after the Sparks restarted; starting a rank runs it again."""
+
+    def __init__(self, stopped):
+        super().__init__()
+        self.stopped = set(stopped)
+
+    def __call__(self, host, argv, timeout):
+        event = (argv[1], int(argv[2]))
+        if event[0] == "start":
+            self.stopped.discard(event[1])
+        if event[0] == "running" and event[1] in self.stopped:
+            self.events.append(event)
+            return {"returncode": 1, "stdout": "", "stderr": "not running", "uncertain": False}
+        return super().__call__(host, argv, timeout)
+
+
+def test_repeat_up_after_every_container_stopped_runs_every_phase_again(deployment):
+    directory, _ = deployment
+    installer.apply(directory, "up", runner=Hosts(), execute=True)
+    restarted = Stopped({0, 1})
+    result = installer.apply(directory, "up", runner=restarted, execute=True)
+    assert result["complete"] and result["generation"] == 2
+    phases = [event[0] for event in restarted.events]
+    assert "gid-serve" in phases and phases.index("gid-serve") < phases.index("start")
+    assert ("start", 1) in restarted.events and ("start", 0) in restarted.events and not restarted.stopped
+
+
+def test_repeat_up_refuses_while_the_model_runs_on_some_sparks_only(deployment):
+    directory, _ = deployment
+    installer.apply(directory, "up", runner=Hosts(), execute=True)
+    partial = Stopped({1})
+    with pytest.raises(ValueError, match="runs on some Sparks but not on others"):
+        installer.apply(directory, "up", runner=partial, execute=True)
+    assert {event[0] for event in partial.events} == {"running"}
+    assert installer.status(directory)["state"]["complete"]
+
+
 def test_concurrent_up_and_down_are_excluded(deployment):
     directory, _ = deployment
     with process_lock.hold(directory / "operation.lock"):

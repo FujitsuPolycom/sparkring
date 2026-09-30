@@ -256,7 +256,10 @@ A deployment keeps the SparkRing source that created it. `up`, `down` and
 `status` plan and run each deployment with that source, so a deployment made by
 an earlier package still starts and stops after the package changes. `up`
 makes the deployment it starts the active one; stopping another deployment
-leaves the active one unchanged. `sparkring install` names its deployments
+leaves the active one unchanged. Repeating `up` re-checks a running deployment
+and starts one whose containers stopped on every Spark, for example after a
+restart ([when a model stops serving](install-reference.md#when-a-model-stops-serving)).
+`sparkring install` names its deployments
 with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under
 `/var/lib/sparkring/controller/deployments/`.

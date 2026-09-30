@@ -492,7 +492,24 @@ def apply(directory, action, *, runner, execute=False):
         # as a new generation; resuming its receipt would refuse the actions
         # that a failure or interruption left uncertain or running.
         retry = action == "prepare" and state["operation"] == action and not state["complete"]
-        if state["operation"] != action or retry:
+        restart = False
+        if action == "up" and state["operation"] == action and state["complete"]:
+            # A repeated up resumes its completed receipt, which only
+            # re-verifies each action. When no rank runs the model any more,
+            # for example after the Sparks restarted, a new generation runs
+            # every phase instead: it restores the RoCE GIDs and the CDI spec
+            # and starts the containers. A rank that still runs the model holds
+            # the GID entries those phases repair (roce_gid.serve), so the model
+            # must stop everywhere first.
+            running = [deploy_engine.verified(runner(item["host"], item["verify"]["argv"], item["verify"]["timeout"]), item["verify"])
+                       for step in plan["phases"] if step["id"] in ("start-workers", "start-api", "managed-start")
+                       for item in step["actions"]]
+            if running and not all(running):
+                if any(running):
+                    raise ValueError("The model runs on some Sparks but not on others. Stop it everywhere with "
+                                     "sparkring down --execute, then start it with sparkring up --execute.")
+                restart = True
+        if state["operation"] != action or retry or restart:
             # Stopping is always permitted after an incomplete operation: it
             # verifies ownership labels, stops only this deployment's running
             # containers and ignores ranks whose container was never created.
