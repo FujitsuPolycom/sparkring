@@ -118,3 +118,16 @@ def test_node_identity_bindings_cannot_alias_or_be_partial(change):
         raw["hosts"][0]["node_id"] = None
     with pytest.raises(ValueError):
         installer.make_lock(QWEN, raw, "1" * 40, "2" * 64)
+
+
+def test_stopped_container_reports_its_exit_code_and_time(tmp_path):
+    identity_files(tmp_path)
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    row = lock["site"]["ranks"][1]
+    info = {"Id": "worker", "Image": lock["selection"]["image_id"], "Name": "/model",
+            "State": {"Running": False, "ExitCode": 255, "FinishedAt": "2026-09-30T17:02:11Z",
+                      "StartedAt": "2026-09-30T15:00:00Z"}}
+    result = installer_host.model_observation(lock, row, info, root=tmp_path)
+    assert (result["running"], result["exit_code"], result["finished_at"]) == (False, 255, "2026-09-30T17:02:11Z")
+    info["State"]["Running"] = True
+    assert "exit_code" not in installer_host.model_observation(lock, row, info, root=tmp_path)

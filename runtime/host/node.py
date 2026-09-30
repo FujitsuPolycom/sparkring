@@ -14,6 +14,7 @@ import time
 import uuid
 
 from runtime.common import distribution
+from runtime.host import control
 from runtime.host.discovery import target
 from scripts import hairpin_setting
 from scripts.deploy_inventory import _collect_local, _request, validate_inventory
@@ -23,6 +24,12 @@ ROOT = Path(__file__).resolve().parents[2]
 MESH_START_CHECK = "10-sparkring-hairpin.conf"
 MESH_UNIT_PATTERNS = ("sparkring-mesh.service", "sparkring-*-mesh.service")
 HAIRPIN_REMEDY = "on Node A: sudo sparkring hairpin"
+# Seconds after which WireGuard discards a session that no handshake renewed
+# (its REJECT_AFTER_TIME). With PersistentKeepalive a reachable peer renews the
+# session about every two minutes, so an older handshake means no path.
+HANDSHAKE_STALE = 180
+# The characters of an error line that a status document carries.
+ERROR_TEXT = 300
 
 
 class HairpinNotInEffect(ValueError):
@@ -337,8 +344,207 @@ def check_hairpin(config, facts, warnings, *, root="/", run=subprocess.run):
     require_hairpin(rows)
 
 
+def link_state(netdev, *, root="/"):
+    """``(carrier, operstate)`` of a network interface from sysfs.
+
+    ``carrier`` is True or False, or None when the kernel does not report it
+    (for example on an interface that is administratively down); ``operstate``
+    is the kernel's text, such as ``up``, ``down`` or ``lowerlayerdown``, or None.
+    """
+    values = []
+    for name in ("carrier", "operstate"):
+        try:
+            values.append((Path(root) / "sys/class/net" / netdev / name).read_text().strip())
+        except OSError:
+            values.append(None)
+    return {"1": True, "0": False}.get(values[0]), values[1]
+
+
+def link_text(carrier, operstate):
+    """``no link``, ``link up`` or the kernel's operational state of an interface."""
+    if carrier is False:
+        return "no link"
+    if carrier is True:
+        return "link up"
+    return f"state {operstate}" if operstate else "state unknown"
+
+
+def control_report(*, root="/", run=subprocess.run, now=time.time):
+    """This Spark's administration tunnel peers, or None without a recorded control network.
+
+    Returns ``{"interface_up", "peers"}``. Each peer row names the fabric link
+    that carries it (``netdev``, with ``carrier`` and ``operstate`` from
+    sysfs), the ``endpoint`` WireGuard uses and ``handshake_age_s``, the
+    seconds since its latest handshake (None when there was none since the
+    interface was created). ``address`` is the peer's own control address for
+    a peer below this Spark in the administration tree; the peer above a
+    worker may route every address, so its address is None and ``upstream``
+    is true. Each peer has exactly one recorded link, so a peer whose link
+    lost its carrier has no administration path until the link returns.
+    """
+    if not location(root, "/etc/sparkring/control.json").exists():
+        return None
+    config = read(root, "/etc/sparkring/control.json")
+    dump = call(["wg", "show", control.INTERFACE, "dump"], run=run, accepted=(0, 1))
+    lines = dump.stdout.splitlines() if dump.returncode == 0 else []
+    seen = {}
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if len(fields) >= 5:
+            seen[fields[0]] = {"endpoint": None if fields[2] == "(none)" else fields[2],
+                               "handshake": int(fields[4]) if fields[4].isdigit() else 0}
+    peers = []
+    for peer in config.get("peers") or []:
+        allowed = peer.get("allowed_ips") or []
+        # A worker's upstream peer routes Node A's address, which is never below the worker.
+        upstream = bool(allowed) and (allowed == ["0.0.0.0/0"] or not config.get("head")
+                                      and f"{config.get('head_address')}/32" in allowed)
+        carrier, operstate = link_state(peer["netdev"], root=root)
+        observed = seen.get(peer.get("key"), {})
+        handshake = observed.get("handshake") or 0
+        peers.append({"id": peer.get("id"), "address": None if upstream or not allowed else allowed[0].split("/")[0],
+                      "upstream": upstream, "netdev": peer["netdev"], "carrier": carrier, "operstate": operstate,
+                      "endpoint": observed.get("endpoint"),
+                      "handshake_age_s": max(0, int(now() - handshake)) if handshake else None})
+    return {"interface_up": bool(lines), "peers": peers}
+
+
+def age_text(seconds):
+    """``never``, ``40 s ago``, ``46 min ago`` or ``3 h ago``."""
+    if seconds is None:
+        return "never"
+    if seconds < 120:
+        return f"{int(seconds)} s ago"
+    if seconds < 7200:
+        return f"{int(seconds // 60)} min ago"
+    return f"{int(seconds // 3600)} h ago"
+
+
+def tunnel_problems(report):
+    """One line per administration tunnel peer without a handshake in the last HANDSHAKE_STALE seconds.
+
+    Each line names the peer (its control address, or ``Node A side`` for the
+    peer above a worker), the latest handshake and the state of the link
+    that carries it.
+    """
+    if not report:
+        return []
+    if not report.get("interface_up"):
+        return [f"admin tunnel {control.INTERFACE} is not up"]
+    lines = []
+    for peer in report.get("peers") or []:
+        age = peer.get("handshake_age_s")
+        if age is not None and age <= HANDSHAKE_STALE:
+            continue
+        name = peer.get("address") or ("the Spark above this one" if peer.get("upstream") else peer.get("id"))
+        lines.append(f"admin tunnel to {name} has no recent handshake (last {age_text(age)}); "
+                     f"{peer['netdev']}: {link_text(peer.get('carrier'), peer.get('operstate'))}")
+    return lines
+
+
+def marker_processes(*, root="/"):
+    """PIDs of the mesh supervisor's marker processes running on this Spark.
+
+    A managed marker runs as ``BINARY --device DEV --source-port 65535 ...
+    --attach --managed``; the supervisor starts two per rank. Its unit uses
+    ``KillMode=process``, so markers keep forwarding when the supervisor
+    process itself is lost, and only the mesh's own cleanup reaps them.
+    """
+    found = []
+    try:
+        entries = list((Path(root) / "proc").iterdir())
+    except OSError:
+        return found
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = (entry / "cmdline").read_bytes().decode(errors="replace").rstrip("\0").split("\0")
+        except OSError:
+            continue
+        if "--attach" in argv and "--managed" in argv and "--source-port" in argv:
+            found.append(int(entry.name))
+    return sorted(found)
+
+
+def last_error(unit, *, run=subprocess.run):
+    """The newest error line that ``unit``'s own processes logged in this boot, or None.
+
+    The mesh supervisor reports its failure as a JSON ``mesh_failure`` event
+    whose ``error`` is the cause, followed by JSON events of its cleanup. A
+    start that fails before the supervisor runs, such as a start check that
+    refuses it, ends with a plain text line. systemd's own messages about the
+    unit are not the unit's processes and are not read.
+    """
+    output = call(["journalctl", "_SYSTEMD_UNIT=" + unit, "-b", "--no-pager", "-o", "cat", "-n", "200"],
+                  run=run, accepted=(0, 1)).stdout
+    text = error = None
+    for line in reversed(output.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line) if line.startswith("{") else None
+        except ValueError:
+            event = None
+        if isinstance(event, dict):
+            if event.get("event") == "mesh_failure" and event.get("error"):
+                # A plain line newer than the failure belongs to a later start.
+                return (text or str(event["error"]))[:ERROR_TEXT]
+            error = error or (str(event["error"]) if event.get("error") else None)
+        else:
+            text = text or line
+    value = text or error
+    return value[:ERROR_TEXT] if value else None
+
+
+def mesh_report(*, root="/", run=subprocess.run):
+    """The SparkRing mesh units of this four-Spark ring member and its marker processes.
+
+    Returns ``{"active", "failed", "markers"}``: the names of active mesh
+    units; each failed unit with systemd's ``result`` (``exit-code`` after the
+    supervisor's own orderly stop or a failed start; ``watchdog``, ``signal``
+    or ``core-dump`` when the supervisor process was lost) and ``error``, its
+    last logged error line (``last_error``); and the PIDs of running marker
+    processes. Markers while no mesh unit is active were left by a supervisor
+    that ended without stopping them.
+    """
+    listing = call(["systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain",
+                    *MESH_UNIT_PATTERNS], run=run).stdout
+    active, failed = [], []
+    for line in listing.splitlines():
+        fields = line.split()
+        if fields and fields[0] in ("●", "*", "x"):
+            fields = fields[1:]
+        if len(fields) < 3:
+            continue
+        unit, state = fields[0], fields[2]
+        if state == "active":
+            active.append(unit)
+        elif state == "failed":
+            result = call(["systemctl", "show", "-p", "Result", "--value", unit], run=run).stdout.strip()
+            failed.append({"unit": unit, "result": result or None, "error": last_error(unit, run=run)})
+    return {"active": active, "failed": failed, "markers": marker_processes(root=root)}
+
+
+def mesh_failure_text(row):
+    """``UNIT failed: ERROR`` for one failed unit of ``mesh_report``."""
+    return f"{row['unit']} failed: " + (row.get("error") or f"systemd result {row.get('result') or 'unknown'}")
+
+
+def orphaned_markers(report):
+    """Whether marker processes run on a Spark of ``mesh_report`` while none of its mesh units is active."""
+    return bool(report) and bool(report.get("markers")) and not report.get("active")
+
+
 def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.time):
     """The ``sparkring-node-status/v1`` document of this Spark, as the agent records it every 30 seconds.
+
+    A Spark with a recorded administration network adds ``control``
+    (``control_report``) and a warning per tunnel peer without a recent
+    handshake. A four-Spark ring member adds ``mesh`` (``mesh_report``); when
+    the fabric check fails while a mesh unit has failed, the error names that
+    unit and its last log line, and the ring check's finding becomes a warning.
 
     On a four-Spark ring, a ConnectX function whose restart failed in this
     boot and that carries the administration tunnel to other Sparks cuts
@@ -353,6 +559,16 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
         return result
     warnings = []
     advice = None
+    reads = (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError)
+    # Read on its own, so a failing fabric check still reports the tunnel.
+    try:
+        tunnel = control_report(root=root, run=run, now=now)
+    except reads as error:
+        tunnel = {"error": str(error)}
+    if tunnel is not None:
+        result["control"] = tunnel
+        warnings += tunnel_problems(tunnel) if "error" not in tunnel else [
+            "admin tunnel state unavailable: " + tunnel["error"]]
     try:
         config = read(root, "/etc/sparkring/fabric.json")
         result.update(rank=config["rank"], size=config["size"], cluster_id=config["cluster_id"])
@@ -361,6 +577,14 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
             from runtime.host import hairpin
             advice = hairpin.reboot_advice(root=root)
         if four:
+            # Read before the fabric check, which a failed mesh can fail.
+            try:
+                result["mesh"] = mesh_report(root=root, run=run)
+            except reads as error:
+                result["mesh"] = {"error": str(error)}
+            if orphaned_markers(result["mesh"]):
+                warnings.append("mesh marker processes run while no mesh unit is active; the mesh's own cleanup "
+                                "must stop them before the mesh starts again")
             warnings += mesh_units_without_start_check(root=root, run=run)
         elif location(root, "/etc/sparkring/hairpin.json").exists():
             warnings.append("hairpin approval on a Spark that is not in a four-Spark ring: "
@@ -383,8 +607,14 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
         if config.get("ownership") == "observed":
             result["state"] = "existing-network-verified"
     except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as error:
-        result.update(state="needs-attention", error=str(error),
-                      next_action=advice or getattr(error, "next_action", None) or "sparkring status --refresh")
+        text, action = str(error), advice or getattr(error, "next_action", None)
+        failed = (result.get("mesh") or {}).get("failed") or []
+        if failed and action is None:
+            # A failed mesh unit is the cause of the ring check's missing
+            # objects; its own log line says why it failed.
+            warnings.append(text)
+            text, action = mesh_failure_text(failed[0]), "journalctl -u " + failed[0]["unit"] + " -b"
+        result.update(state="needs-attention", error=text, next_action=action or "sparkring status --refresh")
     if warnings:
         result["warnings"] = warnings
     return result
