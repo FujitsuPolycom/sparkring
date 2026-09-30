@@ -519,3 +519,23 @@ def test_status_of_a_ring_whose_mesh_failed_at_boot(tmp_path, monkeypatch, capsy
             "identify this rank") in lines
     assert ("    mesh: sparkring-test-mesh.service failed: ValueError: Management address does not identify this "
             "rank") in lines
+
+
+def test_package_ships_the_timer_that_runs_one_check_after_another():
+    from pathlib import Path
+    from runtime.host.test_persistence import PACKAGING, unit_settings
+    timer = unit_settings((PACKAGING / recovery.TIMER).read_text())
+    assert timer[("Timer", "Unit")] == ["sparkring-recover.service"]
+    # Measured from the end of the previous run, so a long restart is never checked again while it runs.
+    assert timer[("Timer", "OnUnitInactiveSec")] == ["60"]
+    assert timer[("Install", "WantedBy")] == ["timers.target"]
+    service = unit_settings((PACKAGING / "sparkring-recover.service").read_text())
+    assert service[("Service", "Type")] == ["oneshot"]
+    assert service[("Service", "ExecStart")] == ["/usr/bin/sparkring", "recover", "--auto"]
+    assert service[("Service", "TimeoutStartSec")] == ["infinity"]
+    assert ("Service", "Restart") not in service and ("Install", "WantedBy") not in service
+    # Removal records an enabled timer and reinstalling restores it, like the other enabled units.
+    units = next(line for line in (PACKAGING / "prerm").read_text().splitlines() if line.startswith("UNITS="))
+    assert recovery.TIMER in units.split("=", 1)[1].strip('"').split()
+    assert "sparkring-recover" not in (PACKAGING / "postinst").read_text()
+    assert recovery.TIMER_FILE == Path("/usr/lib/systemd/system/sparkring-recover.timer")
