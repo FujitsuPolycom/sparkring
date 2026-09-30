@@ -95,29 +95,47 @@ def probe():
             "routes": routes, "uplink": uplink, "api_address": api_address}
 
 
+UNANSWERED = ("timed out", "No route to host", "Network is unreachable")
+
+
+class Unanswered(ValueError):
+    """An SSH sign-in that got no answer from the neighbor address.
+
+    The two PCIe functions of a ConnectX port share one cable, so a neighbor
+    address can appear in the cache of both while only one reaches it.
+    Discovery records such an address and tries the next one.
+    """
+
+
 def login_failure(hop, errors):
-    """Why an interactive SSH sign-in to hop failed, from OpenSSH's error output."""
+    """One line saying why an interactive SSH sign-in to hop failed, from OpenSSH's error output.
+
+    The installer shows only the last line of an error, so the cause comes
+    first and OpenSSH's own message follows in parentheses.
+    """
     lines = [line.strip() for line in errors.splitlines()
-             if line.strip() and not line.startswith("Warning: Permanently added")]
+             if line.strip() and not line.startswith("Warning: Permanently added") and not set(line.strip()) <= {"@"}]
     where = f"{hop['address']} on {hop['interface']}"
+    offending = next((line for line in lines if line.startswith("Offending")), None)
     if any(text in errors for text in ("Permission denied", "Too many authentication failures")):
-        message = (f"{where} did not accept the password or account {hop['user']}. Test the sign-in with: "
-                   f"ssh -p {hop['port']} {hop['user']}@{hop['address']}%{hop['interface']} true. "
-                   "If that Spark's account has another name, add --ssh-user NAME")
+        message = (f"{where} did not accept the password or account {hop['user']}; test it with "
+                   f"ssh -p {hop['port']} {hop['user']}@{hop['address']}%{hop['interface']} true, and add "
+                   "--ssh-user NAME if that Spark's account has another name")
     elif "Connection refused" in errors:
-        message = (f"{where} refused SSH on port {hop['port']}. Start SSH on that Spark "
-                   "(sudo systemctl enable --now ssh), or prepare it offline: sudo sparkring setup --worker-bundle")
-    elif any(text in errors for text in ("timed out", "No route to host", "Network is unreachable")):
-        message = f"{where} did not answer SSH. Check the fabric cable to that Spark"
+        message = (f"{where} refused SSH on port {hop['port']}; start SSH on that Spark "
+                   "(sudo systemctl enable --now ssh) or prepare it offline with sudo sparkring setup --worker-bundle")
+    elif any(text in errors for text in UNANSWERED):
+        message = f"{where} did not answer SSH; check the fabric cable to that Spark"
     elif "Host key verification failed" in errors:
-        message = (f"{where} presented an SSH host key that differs from the one recorded for it. If that Spark "
-                   "was reinstalled, remove the offending known_hosts line that SSH names below")
+        message = (f"{where} presented an SSH host key that differs from the one recorded for it; if that Spark "
+                   "was reinstalled, remove its known_hosts line")
     elif any(text in errors for text in ("Connection closed", "Connection reset")):
-        message = (f"{where} closed the SSH connection before sign-in finished. SSH closes a password prompt "
-                   "left unanswered for about 2 minutes; run the command again and answer it")
+        message = (f"{where} closed the SSH connection before sign-in finished; SSH closes a password prompt "
+                   "left unanswered for about 2 minutes, so run the command again and answer it")
     else:
         message = f"SSH sign-in to {hop['user']}@{where} failed"
-    return message + ("\nssh: " + "\nssh: ".join(lines[-3:]) if lines else "")
+    detail = offending or (lines[-1] if lines else "")
+    return message + (f" (ssh: {detail.removeprefix('ssh: ')})" if detail else "")
 
 
 def validate_hop(hop):
@@ -191,7 +209,8 @@ class SSH:
             errors.seek(0)
             text = errors.read()
         if result.returncode:
-            raise ValueError(login_failure(route[-1], text))
+            unanswered = any(marker in text for marker in UNANSWERED)
+            raise (Unanswered if unanswered else ValueError)(login_failure(route[-1], text))
 
     def command(self, route, argv, *, data=None, tty=False):
         command = argv if not route else [*self.argv(route), *( ["-tt"] if tty else []), shlex.join(argv)]
@@ -263,14 +282,18 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
                 # The MAC belongs to an authenticated Spark that does not hold this address: a stale cache entry.
                 continue
             if neighbor.get("answered") is False and neighbor.get("dev") in answering:
-                skipped.append(f"{address} on {current['hostname']}'s {interface['netdev']}")
+                skipped.append(f"{address} on {current['hostname']}'s {interface['netdev']} (no echo reply)")
                 continue
             # An unrecognized function can still lead to an already enrolled
             # machine; authenticate before assigning either identity or rank.
             route = [*routes[ident], {"user": user, "address": str(address), "interface": interface["netdev"], "port": port}]
             if len(route) > 3 or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
                 continue
-            transport.login(route)
+            try:
+                transport.login(route)
+            except Unanswered:
+                skipped.append(f"{address} on {current['hostname']}'s {interface['netdev']} (no SSH answer)")
+                continue
             peer = transport.inventory(route)
             if peer["id"] == ident:
                 raise ValueError(f"{current['hostname']} reached itself at {address} through {interface['netdev']}; "
@@ -289,7 +312,7 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
                 queue.append(peer["id"])
     if len(nodes) not in (2, 4):
         found = ", ".join(n["hostname"] for n in nodes.values())
-        detail = f" Skipped cached neighbor addresses that did not answer: {', '.join(skipped)}." if skipped else ""
+        detail = f" Skipped neighbor addresses that did not answer: {', '.join(skipped)}." if skipped else ""
         raise ValueError(f"Found {len(nodes)} Spark{'s' if len(nodes) != 1 else ''} ({found}); setup needs two or four."
                          + detail + " Check the fabric cables and that each Spark accepts SSH.")
     by_machine = {}

@@ -206,6 +206,23 @@ def test_discovery_tries_neighbors_that_ignore_echo_when_none_answered():
     assert len(bootstrap.discover(transport)["nodes"]) == 2 and transport.logins == ["fe80::2"]
 
 
+def test_discovery_tries_the_next_address_after_one_gives_no_ssh_answer():
+    a, b = pair()
+    a["neighbors"].insert(0, {"dev": "port1", "dst": "fe80::2", "lladdr": "02:00:00:00:00:02", "answered": True})
+    a["functions"].append({"netdev": "port1", "mac": "02:00:00:00:00:03", "addresses": ["fe80::3"]})
+
+    class SharedCable(PairSSH):
+        def login(self, route):
+            super().login(route)
+            if route[-1]["interface"] == "port1":
+                raise bootstrap.Unanswered("fe80::2 on port1 did not answer SSH")
+
+    transport = SharedCable(a, b)
+    result = bootstrap.discover(transport)
+    assert len(result["nodes"]) == 2 and transport.logins == ["fe80::2", "fe80::2"]
+    assert result["routes"]["hw-b"][-1]["interface"] == "port0"
+
+
 def test_discovery_names_skipped_addresses_when_no_pair_is_found():
     a, b = pair()
     a["neighbors"] = [{"dev": "port0", "dst": "fe80::1:2", "lladdr": "02:00:00:00:00:05", "answered": True},
@@ -217,8 +234,8 @@ def test_discovery_names_skipped_addresses_when_no_pair_is_found():
 
     with pytest.raises(ValueError, match="refused SSH on port 22"):
         bootstrap.discover(Refused(a, b))
-    with pytest.raises(ValueError, match=r"Found 1 Spark \(a\); setup needs two or four\. Skipped cached neighbor "
-                                         r"addresses that did not answer: fe80::6531:4cc1:4038:6c3d on a's port0\."):
+    with pytest.raises(ValueError, match=r"Found 1 Spark \(a\); setup needs two or four\. Skipped neighbor addresses "
+                                         r"that did not answer: fe80::6531:4cc1:4038:6c3d on a's port0 \(no echo reply\)\."):
         bootstrap.discover(PairSSH(a, b), select=lambda peer: False)
 
 
@@ -239,8 +256,11 @@ def test_login_failure_names_the_cause_and_keeps_the_ssh_message(tmp_path, error
     route = [{"user": "code", "address": "fe80::2", "interface": "port0", "port": 22}]
     with pytest.raises(ValueError) as failure:
         bootstrap.SSH(tmp_path, run=run).login(route)
-    assert cause in str(failure.value) and "ssh: " + errors.strip() in str(failure.value)
-    assert "Permanently added" not in str(failure.value) and "worker-bundle" not in str(failure.value).replace(cause, "")
+    message = str(failure.value)
+    assert cause in message and message.endswith("(ssh: " + errors.strip().removeprefix("ssh: ") + ")")
+    assert len(message.splitlines()) == 1
+    assert isinstance(failure.value, bootstrap.Unanswered) == ("timed out" in errors)
+    assert "Permanently added" not in message and "worker-bundle" not in message.replace(cause, "")
     bootstrap.SSH(tmp_path, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0)).login(route)
 
 
