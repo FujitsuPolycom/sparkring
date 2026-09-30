@@ -12,6 +12,13 @@ weight index, file manifest and cache fingerprint. It uses `modelopt`
 quantization and the `safetensors` loader. The launcher preserves the verified
 checkpoint's quantization settings and excludes its BF16 MTP predictor layers.
 
+The four-Spark installer profile `glm53-flash-nvfp4-spark-tp4` serves the same
+weights on the installer image with `--checkpoint nvidia-nvfp4`. It pins
+revision `da920bb0b9f4a06727223a349e55468e38352348`, whose weights and weight
+index equal this revision's and whose `config.json` itself excludes the BF16
+MTP layer from quantization, so that selection needs no override
+([installer checkpoints](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
+
 ## R37 deployment
 
 Follow the [GLM TP4 quickstart](glm53-flash-spark-tp4-dcp1-sparkcache/README.md)

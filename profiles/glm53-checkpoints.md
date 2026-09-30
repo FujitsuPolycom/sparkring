@@ -8,6 +8,16 @@ and separate model directories; never overwrite files mounted by a live model.
 | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88) | `a608241037e4c2565356bff7ca293f2133888f88` | Qualified for bounded TP2/TP4 DCP1 SparkCache checks on SparkRing 2026.09.3. |
 | [NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) | `175ae8ce3b5af842b0d0140dbeb43e9cfc557c49` | Qualified for bounded TP2/TP4 DCP1 SparkCache checks on SparkRing 2026.09.3; not covered by retained plain-NVFP4 recipes. |
 
+The [NVIDIA NVFP4 target](glm53-nvidia-nvfp4.md) is a Development option of the
+R37 TP4 procedure.
+
+The four-Spark installer profile `glm53-flash-nvfp4-spark-tp4` installs the
+QAD revision above (`--checkpoint nvfp4-qad`) and NVIDIA revision
+`da920bb0b9f4` (`--checkpoint nvidia-nvfp4`) on the installer image, each with
+its own pin manifest in [`checkpoints/`](checkpoints). Both selections are
+research-only: no hardware run covers them
+([names, settings and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
+
 The [Spark target record](glm53-target-variants.json) owns its runtime revision,
 metadata hashes and checkpoint identity. R35/R37 host launchers incorporate the
 revision into SparkCache namespaces. Existing snapshots must not be relabeled

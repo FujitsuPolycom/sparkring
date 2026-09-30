@@ -34,6 +34,15 @@ RETAINED = {
     ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "629bc3218833a38b475b719f34aa571666f4a03e"):
         ["qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-tp2-sparkcache"],
 }
+# Checkpoints an installer profile lists besides its default, as (profile, name).
+LISTED = {
+    ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "629bc3218833a38b475b719f34aa571666f4a03e"):
+        [("qwen38-flash-next-qad-tp4", "qad-step-4000"), ("qwen38-flash-next-tp2", "qad-step-4000")],
+    ("local-inference-lab/GLM-5.3-Flash-NVFP4", "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49"):
+        [("glm53-flash-nvfp4-spark-tp4", "nvfp4-qad")],
+    ("nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348"):
+        [("glm53-flash-nvfp4-spark-tp4", "nvidia-nvfp4")],
+}
 
 
 class FakeHub:
@@ -160,7 +169,7 @@ def test_optional_files_are_only_documentation_and_repository_metadata():
     pins = pin_checkpoint.manifest(FakeHub(small, lfs), REPOSITORY, REVISION)
     assert pins["optional"] == [".gitattributes", "README.md"]
 
-    for (repository, revision), _ in COMMITTED.items():
+    for repository, revision in {**COMMITTED, **LISTED}:
         card = {"model_repository": repository, "model_revision": revision}
         pins = json.loads(pin_checkpoint.manifest_path(pin_checkpoint.ROOT, repository, revision).read_text(encoding="utf-8"))
         assert pins["optional"] == sorted(name for name in pins["files"] if pin_checkpoint.optional(name)), card
@@ -170,7 +179,7 @@ def test_optional_files_are_only_documentation_and_repository_metadata():
 
 
 def test_committed_manifests_and_sums_are_generator_output(tmp_path):
-    for (repository, revision), profile_ids in {**COMMITTED, **RETAINED}.items():
+    for (repository, revision), profile_ids in {**{key: [] for key in LISTED}, **COMMITTED, **RETAINED}.items():
         path = pin_checkpoint.manifest_path(pin_checkpoint.ROOT, repository, revision)
         text = path.read_bytes().decode("utf-8")
         pins = json.loads(text)
@@ -181,6 +190,9 @@ def test_committed_manifests_and_sums_are_generator_output(tmp_path):
             sums = (pin_checkpoint.ROOT / "profiles" / profile_id / "SHA256SUMS").read_bytes().decode("utf-8")
             assert sums.replace("\r\n", "\n") == pin_checkpoint.checksums(pins)
             assert installer.checkpoint_pins(setup.selection(profile_id)) == pins
+        # A listed checkpoint keeps no SHA256SUMS; its selection loads the same manifest.
+        for profile_id, name in LISTED.get((repository, revision), []):
+            assert installer.checkpoint_pins(setup.selection(profile_id, name)) == pins
 
     pins = json.loads(pin_checkpoint.manifest_path(pin_checkpoint.ROOT, *next(iter(COMMITTED))).read_text(encoding="utf-8"))
     written = pin_checkpoint.write(tmp_path, pins, ["example-profile"])
@@ -238,4 +250,11 @@ def test_every_installer_profile_revision_has_a_committed_manifest():
     assert pinned == set(COMMITTED)
     assert sorted(profile for ids in COMMITTED.values() for profile in ids) == sorted(installer.INSTALLABLE)
     assert all(profiles.local_path(pin_checkpoint.manifest_path(pin_checkpoint.ROOT, *key).relative_to(pin_checkpoint.ROOT).as_posix())
-               for key in COMMITTED)
+               for key in {**COMMITTED, **LISTED})
+    listed = {}
+    for profile in installer.INSTALLABLE:
+        configuration = profiles.read_json(profiles.local_path(installer.setup.selection(profile)["configuration"]))
+        for name, entry in configuration.get("checkpoints", {}).items():
+            if name != configuration["checkpoint"]:
+                listed.setdefault((entry["model"]["repository"], entry["model"]["revision"]), []).append((profile, name))
+    assert {key: sorted(value) for key, value in listed.items()} == LISTED

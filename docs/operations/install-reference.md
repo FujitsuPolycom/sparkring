@@ -382,6 +382,9 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
 
+- The table names each profile's default checkpoint. The Qwen profiles and
+  `glm53-flash-nvfp4-spark-tp4` also install other checkpoints
+  ([Another checkpoint of a profile](#another-checkpoint-of-a-profile)).
 - All installer profiles run with SparkCache off and vLLM's native prefix
   cache on.
 - Profiles that select other images, such as the `shared-2026.09.3` release,
@@ -1100,6 +1103,8 @@ checkpoint, Docker and the cache on one filesystem.
 | Qwen, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB | 120 GiB | 206.6 GiB |
 | MiMo, `XiaomiMiMo/MiMo-V2.6-Flash-MOPD` @ `2479e2d0029e` | 165.6 GiB | 190 GiB | 276.9 GiB |
 | GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 200 GiB | 279.5 GiB |
+| GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 200 GiB | 290.7 GiB |
+| GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 210 GiB | 298.8 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 500 GiB | 669.8 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 200 GiB | 281.7 GiB |
 
@@ -1262,16 +1267,47 @@ for Qwen); the profile's `SHA256SUMS` lists the same files.
 
 ### Another checkpoint of a profile
 
-The Qwen profiles list two checkpoints by Hugging Face branch:
-`qad-step5500-ple1000`, the default, also named `qad-step-5500`, and
-`qad-step-4000`. `--checkpoint NAME` installs a listed one with the settings
-it needs, as its own deployment with its own pinned revision and checkpoint
-directory; an unlisted name changes nothing. Installing again without
-`--checkpoint` switches back to the default.
+Some profiles list more than one checkpoint. `--checkpoint NAME` installs a
+listed one with the settings it needs, as its own deployment with its own
+pinned revision and checkpoint directory; an unlisted name changes nothing.
+Installing again without `--checkpoint` switches back to the default.
 
 ```bash
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia-nvfp4
 ```
+
+| Profiles | `--checkpoint` | Checkpoint | Settings that differ from the default |
+|---|---|---|---|
+| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-ple1000`, also `qad-step-5500` (default) | Branch `qad-step5500-ple1000` of Local Inference Lab's Qwen3.8-Flash-Next NVFP4, revision `60215d26cf5e` | — |
+| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step-4000` | Branch `qad-step-4000` of the same repository, revision `629bc3218833` | MXFP8 target LM head; the draft's NVFP4 experts on B12X |
+| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
+| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
+| `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
+
+- The GLM `nvfp4-qad` and `nvidia-nvfp4` checkpoints are **research-only**
+  on the installer image: CPU checks cover their pins, selection and
+  rendered containers, and no installation of either has been measured. The
+  four-Spark GLM profile's evidence and the
+  [GLM memory record](../../performance/records/glm53-flash/installer-memory-20260929.md)
+  cover NVFP4-Spark only.
+- By their pin manifests, the QAD and NVIDIA weights take 2.4 and 3.9 GiB more
+  than NVFP4-Spark's on each Spark of a ring. Their KV caches are smaller than
+  the profile's 40 GiB by that much, rounded up to whole GiB, so each Spark
+  keeps the free memory that the memory record measured for images, videos and
+  long requests. The ring's KV cache held 5,668,802 tokens at 37 GiB with
+  NVFP4-Spark.
+- The two-Spark GLM profile lists only NVFP4-Spark. On a pair, the QAD and
+  NVIDIA weights take 4.9 and 7.8 GiB more on each Spark, and a KV cache that
+  much below the pair's 10 GiB would hold less than one request of its
+  1,048,576-token context window, which needs about 6.8 GiB at the pair's
+  measured 153,000 tokens per GiB.
+- NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
+  revision `423acf37583782c51c142d145aef733d72943d93`, which the
+  [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its
+  `config.json` and `hf_quant_config.json` also exclude the BF16 MTP layer
+  from quantization, the entries that the manual target adds with
+  `--hf-overrides`.
 
 ### Where the installer looks
 
@@ -1302,8 +1338,10 @@ search is faster. Otherwise name the copy with `--model-path N=PATH`.
 
 Files are identified by SHA-256 against the pin manifest, not by name: a copy
 of the repository's `main` branch supplies every file of Qwen checkpoint step
-4000 (`--checkpoint qad-step-4000`) except `config.json`. SparkRing hashes
-each file before using it.
+4000 (`--checkpoint qad-step-4000`) except `config.json`, and a copy of NVIDIA
+GLM revision `423acf37` every file of `--checkpoint nvidia-nvfp4` except
+`config.json` and `hf_quant_config.json`. SparkRing hashes each file before
+using it.
 
 - Weight files on the same filesystem as SparkRing's directory are hard-linked
   into it and take no extra space. That changes only the link count and change

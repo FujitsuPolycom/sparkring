@@ -178,6 +178,23 @@ def test_record_names_the_image_the_installer_verified(tmp_path):
     assert f"runtime/releases/{release}/release.json" in markdown
 
 
+def test_a_checkpoint_choice_reaches_the_installer_and_names_the_served_model(tmp_path):
+    ring = "glm53-flash-nvfp4-spark-tp4"
+    chosen = profile_info.load(ring, checkpoint="nvidia-nvfp4")
+    assert (chosen.served_model_name, chosen.repository, chosen.checkpoint, chosen.port) == (
+        "GLM-5.3-Flash-NVFP4-NVIDIA-TP4", "nvidia/GLM-5.3-Flash-NVFP4", "nvidia-nvfp4", 8015)
+    assert chosen.revision == "da920bb0b9f4a06727223a349e55468e38352348"
+    assert profile_info.load(ring, checkpoint="nvfp4-spark") == profile_info.load(ring)
+    with pytest.raises(ValueError, match="lists"):
+        profile_info.load(ring, checkpoint="main")
+    h = Harness(tmp_path, model=FakeModel(chosen.served_model_name))
+    argv = h.args("--checkpoint", "nvidia-nvfp4")
+    argv[argv.index(PROFILE)] = ring
+    accept_profile.main(argv, env=h.env())
+    command = json.loads((h.out / "install-launch.json").read_text())["command"]
+    assert f"--profile {ring} --yes --json --checkpoint nvidia-nvfp4" in command
+
+
 def test_private_leftover_refuses_the_whole_record(tmp_path):
     h = Harness(tmp_path, bench=FakeBench(f"http://{LAN}", note="measured from client-box"))
     assert h.main() == 2

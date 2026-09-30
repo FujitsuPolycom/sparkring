@@ -10,7 +10,10 @@ checkpoint repository selected by the profile; exact revisions remain pinned
 in its configuration. “Stock” identifies the publisher’s original checkpoint.
 
 The [NVIDIA GLM NVFP4 target](glm53-nvidia-nvfp4.md) is an optional Development
-variant of the GLM TP4 settings below; NVFP4-Spark remains their default.
+variant of the GLM TP4 settings below; NVFP4-Spark remains their default. The
+four-Spark GLM installer profile, `glm53-flash-nvfp4-spark-tp4`, installs the
+NVIDIA and Local Inference Lab NVFP4 QAD checkpoints with `--checkpoint`
+([names and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
 The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
 runs on image `dev-20261001-statusrows-cuda1342-nccl2323-status034`

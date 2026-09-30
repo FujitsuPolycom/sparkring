@@ -438,7 +438,52 @@ def test_a_listed_checkpoint_selects_its_revision_and_pins():
         installer.setup.selection("mimo-v26-flash-mopd-tp2", "qad-step-4000")
 
 
-QWEN_PINS = ("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
+GLM_RING = "glm53-flash-nvfp4-spark-tp4"
+
+
+def test_a_listed_checkpoint_of_another_repository_selects_its_own_pins_and_directory():
+    default = installer.setup.selection(GLM_RING)
+    assert (default["target_variant"], default["model_repository"]) == (
+        "nvfp4-spark", "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark")
+    directories = {installer.checkpoint_directory("ring", default)}
+    for name, repository, revision in (
+            ("nvfp4-qad", "local-inference-lab/GLM-5.3-Flash-NVFP4", "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49"),
+            ("nvidia-nvfp4", "nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348")):
+        card = installer.setup.selection(GLM_RING, name)
+        assert (card["target_variant"], card["model_repository"], card["model_revision"]) == (name, repository, revision)
+        assert card["image_id"] == default["image_id"] and card["nodes"] == 4
+        pins = installer.checkpoint_pins(card)
+        contract = installer.checkpoint_contract(card)
+        assert (pins["repository"], pins["revision"]) == (repository, revision)
+        assert pins["files"]["config.json"]["sha256"] == contract["config_sha256"]
+        assert pins["files"][pins["index"]]["sha256"] == contract["index_sha256"]
+        directory = installer.checkpoint_directory("ring", card)
+        assert directory == f"/srv/sparkring/ring/checkpoints/{repository.replace('/', '--')}/{revision}"
+        directories.add(directory)
+    assert len(directories) == 3
+    # The pair profile lists no other checkpoint.
+    with pytest.raises(ValueError, match="does not accept"):
+        installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "nvidia-nvfp4")
+    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark, nvidia-nvfp4"):
+        installer.setup.selection(GLM_RING, "qad-step-4000")
+
+
+def test_a_listed_checkpoint_changes_the_deployment_lock_and_served_model():
+    from runtime.common.test_compose_installer import install_site
+    image = installer.installer_image.for_profile(GLM_RING)
+    locks = {name: installer.make_lock(GLM_RING, install_site(4), "1" * 40, "2" * 64, name, image_runtime=image)
+             for name in (None, "nvfp4-spark", "nvfp4-qad", "nvidia-nvfp4")}
+    # Naming the default selects the same deployment as no name.
+    assert locks[None] == locks["nvfp4-spark"]
+    assert len({lock["id"] for lock in locks.values()}) == 3
+    for name, served in (("nvfp4-spark", "GLM-5.3-Flash-NVFP4-Spark-TP4"), ("nvfp4-qad", "GLM-5.3-Flash-NVFP4-QAD-TP4"),
+                         ("nvidia-nvfp4", "GLM-5.3-Flash-NVFP4-NVIDIA-TP4")):
+        assert installer.validate(locks[name]) == locks[name]
+        assert installer.connection(locks[name])["model"] == served
+        assert installer.identity(locks[name])["checkpoint"] == name
+
+
+QWEN_PINS =("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
              "60215d26cf5e42c2db6128774032d57fc62678da.json")
 
 
@@ -453,6 +498,13 @@ def test_checkpoint_pins_agree_with_every_installer_profile():
         required = sorted(set(files) - set(pins["optional"]))
         sums = (installer.ROOT / "profiles" / profile / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
         assert sums == [f"{files[name]['sha256']}  {name}" for name in required]
+        # Every other checkpoint the profile lists has a pin manifest that agrees with its entry.
+        configuration = installer.read(installer.ROOT / card["configuration"])
+        for name in sorted(set(configuration.get("checkpoints", {})) - {card["target_variant"]}):
+            other = installer.setup.selection(profile, name)
+            pins = installer.checkpoint_pins(other)
+            assert pins["files"]["config.json"]["sha256"] == configuration["checkpoints"][name]["model"]["config_sha256"]
+            assert pins["files"][pins["index"]]["sha256"] == configuration["checkpoints"][name]["model"]["index_sha256"]
     # The Qwen revision: 56 files, of which 53 are served (41 weight files).
     qwen = installer.checkpoint_pins(installer.setup.selection(QWEN))
     required = set(qwen["files"]) - set(qwen["optional"])
