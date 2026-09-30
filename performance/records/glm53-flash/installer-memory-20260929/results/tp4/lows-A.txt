@@ -1,0 +1,5 @@
+A: ch 4 page 512 workers 8 KV 24 GiB mmcache default; KV tokens 2,173,412; container start to API ready 170 s (KV sizing to API ready 38 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '0c/0:04'}
+   startup  r0 32.03  r1 34.82  r2 35.13  r3 35.21
+   idle     r0 32.19  r1 34.89  r2 35.25  r3 35.37
+   load     r0 31.08  r1 33.55  r2 33.88  r3 33.94
+   after install r0 32.66  r1 34.99  r2 35.33  r3 35.43

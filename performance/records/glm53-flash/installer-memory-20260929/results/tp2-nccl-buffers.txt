@@ -1,0 +1,12 @@
+NCCL host staging buffers per vLLM process on the two-Spark GLM deployment, read from /proc/PID/maps by
+nccl_maps.py: anonymous /dev/zero mappings of 9,633,792 bytes (NCCL's Simple + LL128 + LL buffers for one
+connection, kept in host memory because GB10 has no GPUDirect RDMA).
+
+Profile at main commit 59b253fd (no NCCL channel limit), Node A worker, mapping sizes in bytes, count, MiB:
+9633792 256 2352.0
+8192 256 2.0
+
+Profile in this record's commit (NCCL_MIN_NCHANNELS=4, NCCL_MAX_NCHANNELS=4), Node A then Node 1:
+pid - VLLM::EngineCore                         rss   1.49 GiB  nccl_conn_buffers    0 (0.00 GiB)  other_devzero []
+pid - VLLM::Worker_TP0                         rss   4.67 GiB  nccl_conn_buffers   16 (0.14 GiB)  other_devzero [(8192, 16), (65536, 3), (1048576, 4), (2097152, 9), (2363392, 1), (4194304, 8), (33550336, 1), (33554432, 1)]
+pid - VLLM::Worker_TP1                         rss   4.59 GiB  nccl_conn_buffers   16 (0.14 GiB)  other_devzero [(8192, 16), (65536, 3), (1048576, 4), (2097152, 9), (2363392, 1), (4194304, 8), (33550336, 1), (33554432, 1)]

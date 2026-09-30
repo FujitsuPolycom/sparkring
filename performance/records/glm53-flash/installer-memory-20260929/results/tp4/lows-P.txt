@@ -1,0 +1,20 @@
+P: ch 4 page 1024 workers 2 KV 40 GiB mmcache 0; KV tokens 6,128,169; container start to API ready 167 s (KV sizing to API ready 38 s); compilations {'weights': '0c/0:07', 'state': '0c/0:05', 'bind': '0c/0:04'}
+   startup  r0 18.13  r1 20.57  r2 20.29  r3 20.79
+   idle     r0 18.24  r1 20.62  r2 20.27  r3 20.81
+
+Steps under the fast guard (0.2 s readings; 2.0 GiB floor on every Spark):
+s1run1: round 1: 1/1 ok, 131,160 prompt tokens per request, 87.4 s 
+fast-s1run1.log              r0 11.72 at +  9.0 s  r1 17.92 at + 89.0 s  r2 17.56 at + 89.0 s  r3 18.11 at + 88.2 s
+   Node A first reading 18.73 GiB
+s1run2: round 1: 1/1 ok, 131,160 prompt tokens per request, 87.5 s 
+fast-s1run2.log              r0  8.98 at +  7.1 s  r1 18.01 at + 88.4 s  r2 17.63 at + 88.7 s  r3 18.21 at + 89.0 s
+   Node A first reading 14.60 GiB
+s1run3: round 1: 1/1 ok, 131,160 prompt tokens per request, 88.1 s 
+fast-s1run3.log              r0  8.90 at +  8.1 s  r1 17.98 at + 50.7 s  r2 17.60 at + 50.1 s  r3 18.16 at + 58.5 s
+   Node A first reading 14.44 GiB
+s2: round 1: 2/2 ok, 131,161 prompt tokens per request, 168.3 s 
+fast-s2.log                  r0  6.38 at + 11.2 s  r1 16.61 at +120.3 s  r2 16.29 at +120.7 s  r3 16.88 at +120.6 s
+   Node A first reading 14.31 GiB
+mixed: round 1: 4/4 ok, 8,285 prompt tokens per request, 82.6 s round 2: 4/4 ok, 8,285 prompt tokens per request, 23.5 s round 1: 16/16 ok, 10,700 prompt tokens per request, 106.2 s round 2: 16/16 ok, 10,700 prompt tokens per request, 90.0 s exit codes: {'text': 0, 'images': 0, 'video': 0} 
+fast-mixed.log               r0  9.10 at + 14.6 s  r1 17.06 at +195.0 s  r2 16.75 at +195.6 s  r3 17.28 at +195.7 s
+   Node A first reading 14.19 GiB

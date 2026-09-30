@@ -1,0 +1,21 @@
+GLM-5.3-Flash NVFP4-Spark on two Sparks: 16-image requests.
+Settings: the profile in this record's commit, except --limit-mm-per-prompt {"image":16,"video":1}.
+Load: image_load.py --images 16 --concurrency C --rounds 1 under guarded.py (Node A, floor 1.2 GiB),
+C = 1, 2, 4 in that order, right after installation. Images: 2048x2048, 3840x2160 and 1600x1200 noise
+JPEGs, each resized by the processor to at most 4,096 tokens. "lowest MemAvailable" is Node A's
+minimum one-second reading during the step. Node A's MemAvailable before the first step: 6,410,828 kB
+(6.11 GiB); 10 s after the last step: 5,413,612 kB (5.16 GiB).
+
+The first step is the first image request after the restart. This program version started every step
+at request index 0, so in the 2- and 4-request steps, request 0 repeated the first step's prompt and
+images and was served from the prefix cache; only the first step is a clean single-request measurement.
+
+== 1 x 16-image requests
+round 1: 1/1 ok, 57,501 prompt tokens per request, 43.0 s
+load exit 0; lowest MemAvailable on Node A: 1.40 GiB; guard fired: False
+== 2 x 16-image requests
+round 1: 2/2 ok, 57,493 prompt tokens per request, 39.5 s
+load exit 0; lowest MemAvailable on Node A: 1.62 GiB; guard fired: False
+== 4 x 16-image requests
+round 1: 4/4 ok, 57,096 prompt tokens per request, 82.9 s
+load exit 0; lowest MemAvailable on Node A: 1.43 GiB; guard fired: False

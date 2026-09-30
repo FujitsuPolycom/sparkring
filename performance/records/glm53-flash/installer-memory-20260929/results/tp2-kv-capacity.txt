@@ -1,0 +1,22 @@
+GLM-5.3-Flash NVFP4-Spark on two Sparks: KV capacity reported by the rank-0 engine at startup.
+Each row is one installation of glm53-flash-nvfp4-spark-tp2 on installer image
+dev-20260928-plainstatus-cuda1342-nccl2323-status033 whose profile differed from the profile at
+main commit 59b253fd only in the settings named. KV bytes: --kv-cache-memory-bytes per Spark.
+Page: --block-size, --mamba-block-size, VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE and
+VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE together. Context: --max-model-len. Rows 2-8 also set
+NCCL_MIN_NCHANNELS=4 and NCCL_MAX_NCHANNELS=4; rows 5-8 also set B12X_COMPILE_WORKERS=2; rows 6-8
+also set the image and video token caps and the glibc settings. None of those three changes the
+KV capacity, which follows the KV bytes, the page size and the context window.
+
+row  KV bytes (GiB)  page   context    engine log line
+1    8.75            1024   262144     GPU KV cache size: 747,630 tokens, Maximum concurrency for 262,144 tokens per request: 2.85x
+2    10.5            1024   262144     GPU KV cache size: 897,157 tokens, Maximum concurrency for 262,144 tokens per request: 3.42x
+3    10.5            2048   262144     GPU KV cache size: 1,437,393 tokens, Maximum concurrency for 262,144 tokens per request: 5.48x
+4    9               2048   262144     GPU KV cache size: 1,231,548 tokens, Maximum concurrency for 262,144 tokens per request: 4.70x
+5    11              2048   262144     GPU KV cache size: 1,506,008 tokens, Maximum concurrency for 262,144 tokens per request: 5.74x
+6    8.5             2048   262144     GPU KV cache size: 1,162,934 tokens, Maximum concurrency for 262,144 tokens per request: 4.44x
+7    8.5             2048   1048576    GPU KV cache size: 1,300,391 tokens, Maximum concurrency for 1,048,576 tokens per request: 1.24x
+8    10              2048   1048576    GPU KV cache size: 1,530,566 tokens, Maximum concurrency for 1,048,576 tokens per request: 1.46x
+
+Row 1 is the profile at main commit 59b253fd, which sets no NCCL channel limit.
+Row 8 is the profile in this record's commit.
