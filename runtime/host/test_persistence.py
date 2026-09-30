@@ -279,6 +279,7 @@ def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, m
     plan = ring_plan()
     installer.write(tmp_path / "cluster.json", {"plan": plan})
     installer.write(tmp_path / "active.json", {"path": str(tmp_path / "model")})
+    installer.write(tmp_path / "model" / "deployment.lock.json", {"id": "d" * 64})
     monkeypatch.setattr(retained_source, "review", lambda *a, **kw: {"profile": "fixture", "hosts": ["a"], "phases": ["read"]})
     monkeypatch.setattr(retained_source, "apply", lambda *a, **k: pytest.fail("a model action ran"))
     statuses = {host["host"]: document(plan, rank) for rank, host in enumerate(plan["spec"]["hosts"])}
@@ -603,3 +604,17 @@ def test_retained_review_plans_with_the_deployments_source_and_without_progress(
     assert retained_source.review(directory, "down", cache=tmp_path / "cache", run=run) == {"phases": ["up"]}
     code = replayed[0][4]
     assert replayed[0][-1] == "review-down" and "if sys.argv[3].startswith('review-')" in code
+
+
+def test_up_records_serving_settings_and_keeps_them_for_that_deployment(plain_up, capsys):
+    from runtime.common import installer
+    assert controller.lifecycle(["up", UP_PROFILE, "--max-images", "2", "--context-length", "131072", "--execute"]) == 0
+    lock = installer.load(controller.STATE / "deployments" / UP_PROFILE)
+    assert lock["serving"] == {"context_length": 131072, "max_images": 2}
+    assert "Serving settings: --context-length 131072, --max-images 2" in capsys.readouterr().out
+    # The deployment keeps its settings; other ones need another instance.
+    assert controller.lifecycle(["up", UP_PROFILE, "--plan"]) == 0
+    with pytest.raises(ValueError, match="other serving settings; choose a distinct --instance"):
+        controller.lifecycle(["up", UP_PROFILE, "--max-images", "3", "--plan"])
+    with pytest.raises(ValueError, match="Serving settings apply to up with an exact profile"):
+        controller.lifecycle(["down", "--max-images", "2", "--plan"])

@@ -666,6 +666,21 @@ def test_naming_the_default_checkpoint_installs_the_same_deployment(machine, cap
         assert second["checkpoint"]["command"] == REPEAT
 
 
+def test_serving_settings_install_another_deployment_and_are_listed(machine, capsys):
+    assert command("--plan") == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert plain["serving"] == {}
+    assert command("--plan", "--max-images", "2", "--kv-cache-gib", "20") == 0
+    out = capsys.readouterr()
+    tuned = json.loads(out.out)
+    assert tuned["deployment"] != plain["deployment"] and tuned["serving"] == {"kv_cache_gib": 20, "max_images": 2}
+    assert "Serving settings: --kv-cache-gib 20 (profile: 24); --max-images 2 (profile: 3)" in out.err
+    assert command("--plan", "--max-images", "2", "--kv-cache-gib", "20") == 0
+    assert json.loads(capsys.readouterr().out)["deployment"] == tuned["deployment"]
+    assert command("--plan", "--context-length", "512") == 2
+    assert "--context-length takes a whole number of at least 1024" in json.loads(capsys.readouterr().out)["message"]
+
+
 def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, sparks, capsys):
     assert command("--plan") == 0
     first = json.loads(capsys.readouterr().out)

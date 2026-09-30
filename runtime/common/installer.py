@@ -13,7 +13,7 @@ import re
 import uuid
 import zipfile
 
-from runtime.common import compose, distribution, installer_image, process_lock, profiles, setup, tp2
+from runtime.common import compose, distribution, installer_image, process_lock, profiles, serving, setup, tp2
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
@@ -266,7 +266,7 @@ def backend(card):
     return "glm-managed" if card["profile"] in (GLM_LEGACY[4], GLM_NO_CACHE[4]) else "compose"
 
 
-def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None):
+def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None, settings=None):
     if profile not in SUPPORTED:
         raise ValueError(f"The installer does not deploy {profile}; 'sparkring models' marks the profiles it installs, "
                          "and other profiles use their own guides")
@@ -280,18 +280,24 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
     selected_backend = backend(card)
     if selected_backend == "glm-managed" and all("fabric" in row for row in site["ranks"]):
         selected_backend = "glm-existing-mesh"
+    settings = serving.normalized(settings)
+    if settings and selected_backend != "compose":
+        raise ValueError("Serving settings apply to Compose deployments; this profile's backend is " + selected_backend)
     value = {"schema": "sparkring-install-lock/v1", "selection": card, "site": site,
              "site_input": raw_site, "source_revision": revision, "bundle_sha256": bundle_sha256,
              "backend": selected_backend}
     if image_runtime is not None:
         value["image_runtime"] = image_runtime
+    if settings:
+        value["serving"] = settings
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
 
 def validate(lock):
     expected = make_lock(lock["selection"]["profile"], lock["site_input"], lock["source_revision"],
-                         lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=lock.get("image_runtime"))
+                         lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=lock.get("image_runtime"),
+                         settings=lock.get("serving"))
     if expected != lock:
         raise ValueError("Deployment lock or its profile/release inputs changed; initialize a new deployment")
     return lock
@@ -305,19 +311,23 @@ def load(directory):
     return lock
 
 
-def init(directory, profile, raw_site, *, variant=None, image_runtime=None):
+def init(directory, profile, raw_site, *, variant=None, image_runtime=None, settings=None):
     directory = Path(directory).resolve()
     if directory.exists():
         raise ValueError("Deployment directory already exists; use up/status or choose a new directory")
     # Validate user inputs before creating artifacts.
     revision = distribution.identity(ROOT)
-    make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime)
+    provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings)
+    if settings:
+        # Refuses a setting whose vLLM flag the profile does not set.
+        specifications(provisional)
     if directory.is_relative_to(ROOT) and not directory.is_relative_to(ROOT / ".sparkring"):
         raise ValueError("Private deployments inside the checkout belong under .sparkring/")
     directory.mkdir(parents=True, mode=0o700)
     bundle = directory / "source.bundle"
     distribution.bundle(ROOT, bundle)
-    lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant, image_runtime=image_runtime)
+    lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant,
+                     image_runtime=image_runtime, settings=settings)
     write(directory / "site.json", raw_site)
     write(directory / "deployment.lock.json", lock)
     if lock["backend"] == "compose":
@@ -364,8 +374,10 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
             specs.append(tp2.container_spec(plan))
     if only_rank is not None and card["profile"] in compose.SUPPORTED:
         specs = [specs[only_rank]]
+    settings = lock.get("serving") or {}
     return [replace(spec, name=container_name(lock, only_rank if only_rank is not None else number),
-                    labels={**spec.labels, **container_labels(lock, only_rank if only_rank is not None else number)})
+                    labels={**spec.labels, **container_labels(lock, only_rank if only_rank is not None else number)},
+                    command=serving.apply(spec.command, settings) if settings else spec.command)
             for number, spec in enumerate(specs)]
 
 

@@ -343,6 +343,38 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 - `--image-lock FILE` replaces the shared lock for a development rehearsal and
   must list the selected profile.
 
+### Serving settings
+
+`sudo sparkring install` and `sudo sparkring up PROFILE` accept optional
+settings, each of which replaces one value of the profile's vLLM configuration
+for that deployment. Without a flag, the profile's value applies.
+
+| Flag | vLLM value it replaces | Unit |
+|---|---|---|
+| `--max-images N` | the image count in `--limit-mm-per-prompt` | images per request; 0 accepts none |
+| `--max-videos N` | the video count in `--limit-mm-per-prompt` | videos per request; 0 accepts none |
+| `--context-length N` | `--max-model-len` | tokens, at least 1,024 |
+| `--max-concurrency N` | `--max-num-seqs` | requests served at the same time |
+| `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark |
+
+- A setting for a value the profile does not set is refused.
+  `deepseek-v41-flash-tp4` accepts no videos and sizes its KV cache as a
+  fraction of GPU memory, so `--max-videos` and `--kv-cache-gib` do not apply
+  to it.
+- A deployment records its settings, so other settings make another
+  deployment. `sparkring install` with other values installs that deployment
+  and replaces the running model, restarting it once; the same values select
+  the same deployment again. `sparkring up PROFILE` refuses settings that
+  differ from an existing deployment's; `--instance NAME` names a separate
+  one.
+- `sparkring install --plan` lists each setting beside the profile's value,
+  and `sparkring status` shows the settings of a deployment.
+- A profile's evidence (its records and memory measurements) covers the
+  profile's own values. Other values are not measured: more images, videos,
+  context, concurrency or KV cache use more memory on each Spark and can make
+  the model fail to start or fail under load. vLLM refuses to start with a
+  context length that its KV cache cannot hold.
+
 ### Tool-result contract
 
 Installer containers set `SPARKRING_TOOL_CHOICE_CONTRACT=1`, and the installer

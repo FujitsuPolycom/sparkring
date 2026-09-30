@@ -396,7 +396,12 @@ def lifecycle(argv):
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--json", action="store_true")
+    from runtime.common import serving
+    serving.add_arguments(parser)
     args = parser.parse_args(argv)
+    settings = serving.from_arguments(args)
+    if settings and (args.operation != "up" or not args.profile):
+        raise ValueError("Serving settings apply to up with an exact profile")
     image_runtime = None
     if args.image_lock and (args.operation != "up" or not args.profile):
         raise ValueError("--image-lock requires up with an exact profile")
@@ -424,7 +429,8 @@ def lifecycle(argv):
             # Read here rather than by the retained source, whose revision may
             # predate these fields.
             lock = installer.read(Path(path) / "deployment.lock.json")
-            result["deployment"].update(installer.identity(lock), containers=installer.containers(lock))
+            result["deployment"].update(installer.identity(lock), containers=installer.containers(lock),
+                                        serving=lock.get("serving") or {})
         if args.json:
             print(json.dumps(result, indent=2))
         else:
@@ -454,6 +460,9 @@ def lifecycle(argv):
                 source = f"{saved['model_repository']} @ {saved['model_revision'][:12]}"
                 print("Checkpoint: " + (f"{saved['checkpoint']} ({source})" if saved["checkpoint"] else source)
                       + f" | Image: {saved['image_release']}")
+                if saved.get("serving"):
+                    print("Serving settings: " + ", ".join(f"{serving.option(name)} {value}"
+                                                           for name, value in sorted(saved["serving"].items())))
                 print(saved["api_url"])
                 if saved.get("observations"):
                     print(json.dumps(saved["observations"], indent=2))
@@ -485,7 +494,7 @@ def lifecycle(argv):
             if profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
-            installer.init(directory, profile, site, image_runtime=image_runtime)
+            installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings)
         else:
             # The deployment's own source validates its lock (retained_source);
             # the installed package may carry other profile inputs or images.
@@ -499,6 +508,8 @@ def lifecycle(argv):
                 raise ValueError("Deployment uses another model path; choose a distinct --instance")
             if args.fresh_mesh and "native_mesh" not in existing["site_input"]:
                 raise ValueError("Deployment reuses an existing mesh; use --instance fresh --fresh-mesh for a separate rehearsal")
+            if settings and (existing.get("serving") or {}) != settings:
+                raise ValueError("Deployment uses other serving settings; choose a distinct --instance")
     elif args.profile:
         directory = existing_deployment(args.profile, args.instance)
     elif active is not None:
@@ -511,6 +522,9 @@ def lifecycle(argv):
     if image_runtime is not None:
         print("Development image: " + image_runtime["name"] + " | " + image_runtime["image_id"])
     print(" -> ".join(result["phases"]))
+    recorded = installer.read(directory / "deployment.lock.json").get("serving")
+    if recorded:
+        print("Serving settings: " + ", ".join(f"{serving.option(name)} {value}" for name, value in sorted(recorded.items())))
     if "native_mesh" in result:
         print("Prepare native ASIC fabric and install its supervised service.")
         for old in result["native_mesh"]["replaces"]:

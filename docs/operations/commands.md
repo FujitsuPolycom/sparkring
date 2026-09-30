@@ -62,6 +62,7 @@ image and checkpoint, then starts or switches the model.
 | `--env FILE` | Preferences file: setup keys on first installation, the download limit on every run ([keys](install-reference.md#optional-preferences)) |
 | `--stop-workloads` | Stop (never remove) GPU containers that are not SparkRing's |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
+| `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |
 
 ## install.sh
@@ -272,6 +273,7 @@ one of them. The deployment directories are under
 | `--model-path PATH` | `up PROFILE` only: serve this complete copy read-only on every Spark |
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
+| `--max-images N` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values for a new deployment; an existing deployment keeps its own |
 | `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal. An existing deployment keeps the image it recorded, and naming another lock for it is refused |
 | `--deployment DIR` | Use a deployment saved by `sparkring init` instead ([lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing)) |
 

@@ -30,6 +30,7 @@ import sys
 import time
 
 from runtime.common import distribution, installer, installer_image, process_lock, profiles
+from runtime.common import serving as serving_settings
 from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
                           install_assets, models, native_mesh, node, progress, retained_source, rollout, settings,
                           topology)
@@ -298,6 +299,14 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
                "nodes": cluster["plan"]["spec"]["hosts"], "api_address": cluster.get("api_address")}
     if checkpoint is not None:
         request["checkpoint"] = checkpoint
+    # Serving settings are part of the request, so other settings install
+    # another deployment; without any, the request is unchanged.
+    requested = serving_settings.from_arguments(args)
+    if requested:
+        # A setting whose vLLM flag the profile does not set is refused
+        # before any Spark is surveyed.
+        serving_settings.apply(profiles.read_json(installer.ROOT / card["configuration"]).get("vllm_args", []), requested)
+        request["serving"] = requested
     instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
     directory = state_root / "deployments" / (profile + "-" + instance)
     pins = installer.checkpoint_pins(card)
@@ -340,7 +349,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
             site = _select_mesh(site, cluster, profile, mesh_hint)
         elif installer.backend({"profile": profile}) == "glm-managed":
             site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
-        lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=image)
+        lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=image, settings=requested)
     return directory, lock, plan
 
 
@@ -653,6 +662,9 @@ def execute(args):
         replaces = str(previous) if previous and previous != directory else None
         print(f"Install {checkpoint['profile']} on {len(checkpoint['nodes'])} Sparks.")
         print("Update workers and prepare assets; then " + ("replace the current model." if replaces else "start the selected model."))
+        if lock is not None and lock.get("serving"):
+            base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
+            print("Serving settings: " + "; ".join(serving_settings.describe(lock["serving"], base)))
         if lock is not None and "native_mesh" in lock["site_input"]:
             if previous:
                 raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "
@@ -685,7 +697,8 @@ def execute(args):
             steps.insert(steps.index("update-workers") + 1, "apply-hairpin-setting")
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
-                "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps, **installer.connection(lock)}
+                "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
+                "serving": lock.get("serving") or {}, **installer.connection(lock)}
         if hairpin:
             plan["hairpin"] = {"required": needs_hairpin, "ranks": hairpin_ring.rank_rows(hairpin, cluster["plan"])}
         if limit:
@@ -824,6 +837,7 @@ def main(argv=None):
                              "default: SPARKRING_DOWNLOAD_LIMIT of the --env file, else none")
     parser.add_argument("--events", type=Path, metavar="FILE",
                         help="write one JSON progress event per line to FILE, replacing it; stdout is unchanged")
+    serving_settings.add_arguments(parser)
     args = parser.parse_args(argv)
     if args.events is not None and not args.events.parent.is_dir():
         parser.error(f"--events: the directory {args.events.parent} does not exist")
