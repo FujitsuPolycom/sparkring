@@ -372,10 +372,15 @@ def _connection(owner, host, port, interface, connections, owned):
     previous = nm.get("connection_uuid")
     if previous:
         previous = _uuid(previous, f"{ssh} previous connection")
+        mtu = nm.get('ethernet_mtu')
         if (not isinstance(nm.get('ipv4_addresses'), list)
-                or type(nm.get('ethernet_mtu')) is not int):
+                or not (type(mtu) is int or (mtu is None and not nm.get('error')))):
             raise NetworkPlanError(
                 f"{ssh}: saved addresses or MTU are unavailable on {port['netdev']}; rediscover before planning")
+        if mtu is None:
+            # An inventory that reads NetworkManager's "auto" MTU without an
+            # error reports None; the saved value is 0, which restores "auto".
+            nm = dict(nm, ethernet_mtu=0)
     record = {
         "netdev": port["netdev"],
         "address": port["address"],

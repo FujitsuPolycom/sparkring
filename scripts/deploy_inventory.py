@@ -375,7 +375,8 @@ def _collect_local(
                     output = None
                     faults.append('nmcli returned invalid saved IPv4 addresses')
             elif key == "ethernet_mtu":
-                output = int(output) if output is not None and output.isdecimal() else None
+                # "auto" leaves the MTU to the device; NetworkManager stores it as 0.
+                output = 0 if output == "auto" else int(output) if output is not None and output.isdecimal() else None
             result[key] = output
         result["name"] = result["connection_name"]
         result["error"] = "; ".join(dict.fromkeys(faults)) or None
