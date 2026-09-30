@@ -34,27 +34,31 @@ More: [all commands](docs/operations/commands.md) ·
 
 `sparkring install --profile` accepts these profiles:
 
-| Model | Checkpoint | Sparks | `--profile` value | API port | Decode, 1 / 8 / 16 users (tok/s) | Prefill 64K (tok/s) |
+| Model | Checkpoint | Sparks | `--profile` value | API port | Decode at 16K context, 1 / 4 / 8 / 16 users (tok/s) | Prefill 64K (tok/s) |
 |---|---|---|---|---|---|---|
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 54.9 / 197 / 300 | 3,686 |
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 79.6 / 276 / 394 | 4,515 |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | 57.6 / 181 / 258 | 3,628 |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 45.1 / 120 / 169 / 243 | 3,649 |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 64.9 / 167 / 235 / 341 | 4,524 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | — | 2,507 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | — | 3,625 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | 37.5 / 78 / 115 / 184 | 2,754 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | 47.7 / 119 / 167 / 295 | 3,959 |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 62.2 / 135 / 206 / 278 | 4,302 |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | — | — |
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 38.0 / 108 / — | 2,419 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 64.0 / 206 / 284 | 3,644 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | 41.0 / 123 / 204 | 2,806 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | 52.0 / 216 / 334 | 4,025 |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 63.5 / 195 / 277 | 4,271 |
 
-Decode is the total output rate at 1, 8 and 16 concurrent users, from
+Decode is the total output rate with 1, 4, 8 and 16 users at once, each with
+16K tokens of context, averaged over three runs of
 [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
-0.6.2 at temperature 1.0, 20 s per cell. Prefill, from the same benchmark, is
-one cold 64K-token prompt divided by its time to first token. Details per row:
-Qwen [two](performance/records/images/dev-20260928-toolchoice-qwen38-flash-next-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next-qad-tp4-20260928.md) Sparks,
-Swift [two](performance/records/images/dev-20260928-toolchoice-swift15-qwen38-flash-next-tp2-20260928.md),
-GLM [two](performance/records/images/dev-20260928-toolchoice-glm53-flash-nvfp4-spark-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-20260928.md),
-MiMo [two](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp2-20260928.md) and [four](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp4-20260928.md),
-DeepSeek [four](performance/records/images/dev-20260928-toolchoice-deepseek-v41-flash-tp4-20260928.md).
+0.6.2 at temperature 1.0. Prefill, from the same runs, is one cold 64K-token
+prompt divided by its time to first token. GLM and Swift haven't been measured
+this way yet. GLM's prefill comes from one run with its current KV cache, which
+also measured decode at 1, 8 and 16 users with no added context: GLM
+[two](performance/records/images/dev-20260928-plainstatus-glm53-flash-tp2-20260929.md) and
+[four](performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md) Sparks.
+Full results for each measured profile, from 8K to 128K context:
+Qwen [two](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next-tp2-context-20260929.md) and [four](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next-qad-tp4-context-20260929.md) Sparks,
+MiMo [two](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp2-context-20260929.md) and [four](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp4-context-20260929.md),
+DeepSeek [four](performance/records/images/dev-20260928-plainstatus-deepseek-v41-flash-tp4-context-20260929.md).
 
 Other setups, including SparkCache variants and models the installer doesn't
 cover, each have their own guide in the [profile catalog](profiles/README.md).
