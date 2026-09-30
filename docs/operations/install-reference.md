@@ -574,6 +574,17 @@ file, its `SPARKRING_SSH_USER` applies and defaults to `root`. Installer
 operations on a Spark run as root, through `sudo -n` when its SSH account is
 not `root`.
 
+**Finding the other Sparks.** Setup pings each fabric link and signs in only
+to neighbors that answer there; it skips cached neighbor addresses that do
+not answer. It names each Spark by its ConnectX hardware, not by
+`/etc/machine-id`, which Sparks flashed from one factory image share. When
+two Sparks share it, setup prints a note, because other software on them,
+such as DHCP, may still confuse them. To give a Spark its own ID:
+`sudo rm -f /etc/machine-id && sudo systemd-machine-id-setup && sudo reboot`.
+A failed sign-in names its cause: a password or account the other Spark did
+not accept, no SSH answer over the cable, SSH refused on its port, or a
+changed host key.
+
 **Access check.** Before changing anything, `sparkring install` confirms
 noninteractive SSH and `sudo` on every enrolled Spark. A missing grant
 returns `needs_input` with field `access` and, per Spark, a one-time command a

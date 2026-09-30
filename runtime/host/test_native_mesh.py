@@ -446,6 +446,50 @@ def test_existing_fabric_connection_gets_link_local_only_with_approval(monkeypat
         assert not any(argv[:3] == ["nmcli", "connection", "modify"] for argv in state["calls"])
 
 
+@pytest.mark.parametrize("approved", [False, True])
+def test_factory_dhcp_connection_turns_link_local_only_with_approval(monkeypatch, approved):
+    from runtime.host import seed
+    state = {"dhcp": True, "calls": []}
+
+    def run(argv, **kw):
+        state["calls"].append(argv)
+        if argv[:3] == ["nmcli", "-g", "GENERAL.CON-UUID"]:
+            return SimpleNamespace(returncode=0, stdout="uuid-" + argv[-1], stderr="")
+        if argv[:3] == ["nmcli", "-g", "connection.id"]:
+            return SimpleNamespace(returncode=0, stdout="Wired connection 1", stderr="")
+        if argv[:3] == ["nmcli", "-g", "ipv4.method"]:
+            return SimpleNamespace(returncode=0, stdout="auto" if state["dhcp"] and argv[-1] == "uuid-p0" else "disabled", stderr="")
+        if argv[:3] == ["nmcli", "connection", "modify"]:
+            state["dhcp"] = False
+        if argv[:3] == ["ip", "-j", "-6"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"addr_info": [{"scope": "link", "local": "fe80::1"}]}]), stderr="")
+        if argv[:3] == ["ip", "-j", "-4"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([{"addr_info": []}]), stderr="")
+        if argv[:2] == ["docker", "ps"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[0] == "rdma":
+            return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(seed.control_node, "write", lambda *a, **k: None)
+    monkeypatch.setattr(seed.control, "netdev", lambda name: name)
+    monkeypatch.setattr(seed.Path, "read_text", lambda self: "1", raising=False)
+    algorithm = b"ssh-ed25519"
+    encoded = len(algorithm).to_bytes(4, "big") + algorithm + (32).to_bytes(4, "big") + bytes(range(32))
+    public = algorithm.decode() + " " + base64.b64encode(encoded).decode() + " fixture"
+    approvals = []
+    if approved:
+        assert seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run, dhcp=approvals.append)["prepared"]
+        assert approvals == ["Wired connection 1 (p0)"]
+        assert ["nmcli", "connection", "modify", "uuid-p0", "ipv4.method", "disabled", "ipv6.method", "link-local",
+                "ipv6.addr-gen-mode", "eui64"] in state["calls"]
+        assert ["nmcli", "connection", "up", "uuid-p0", "ifname", "p0"] in state["calls"]
+    else:
+        with pytest.raises(ValueError, match="asks for DHCP"):
+            seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run)
+        assert not any(argv[:3] == ["nmcli", "connection", "modify"] for argv in state["calls"])
+
+
 def test_port_preparation_names_a_foreign_service_on_the_ssh_port(monkeypatch):
     from runtime.host import seed
 
