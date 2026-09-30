@@ -1,0 +1,18 @@
+L: 1024-token pages, 2 B12X compile workers, vision caps, glibc settings, no multimodal processor cache, image limit 16, KV 32 GiB.
+L: ch 4 page 1024 workers 2 KV 32 GiB mmcache 0; KV tokens 4,902,535; container start to API ready 174 s (KV sizing to API ready 43 s); compilations {'weights': '0c/0:08', 'state': '0c/0:05', 'bind': '4c/0:10'}
+   startup  r0 25.90  r1 27.83  r2 27.47  r3 28.29
+   idle     r0 26.30  r1 28.71  r2 28.35  r3 28.96
+   load     r0   nan  r1   nan  r2   nan  r3   nan
+
+Image calibration steps (1-second samplers; iNcC = C concurrent requests with N unique images each, image sizes cycling 2048x2048, 3840x2160, 1600x1200):
+window                         r0                     r1                     r2                     r3
+i8c4        20.11 GiB @13:45:15 n=  84  25.74 GiB @13:45:20 n=  83  25.37 GiB @13:45:22 n=  83  25.94 GiB @13:45:19 n=  84
+i16c4       16.09 GiB @13:58:24 n= 159  24.69 GiB @14:00:10 n= 159  24.23 GiB @14:00:10 n= 158  24.80 GiB @14:00:10 n= 159
+i8c8        16.63 GiB @13:47:41 n= 147  24.66 GiB @13:48:03 n= 147  24.31 GiB @13:48:02 n= 147  24.88 GiB @13:48:03 n= 147
+i16c8        9.24 GiB @14:03:05 n= 294  24.14 GiB @14:04:27 n= 295  23.73 GiB @14:04:26 n= 295  24.32 GiB @14:04:27 n= 294
+i8c16       10.64 GiB @13:49:14 n= 525  24.34 GiB @13:53:00 n= 525  23.95 GiB @13:53:01 n= 525  24.51 GiB @13:53:00 n= 525
+i8c4: round 1: 4/4 ok, 28,358 prompt tokens per request, 67.6 s 
+i8c8: round 1: 8/8 ok, 28,561 prompt tokens per request, 131.1 s 
+i8c16: round 1: 16/16 ok, 28,560 prompt tokens per request, 258.9 s round 2: 16/16 ok, 28,460 prompt tokens per request, 253.2 s 
+i16c4: round 1: 4/4 ok, 57,094 prompt tokens per request, 143.1 s 
+i16c8: round 1: 8/8 ok, 56,897 prompt tokens per request, 280.0 s 

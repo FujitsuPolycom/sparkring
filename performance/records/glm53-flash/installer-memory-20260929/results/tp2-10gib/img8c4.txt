@@ -1,0 +1,2 @@
+GUARD: NODE_A MemAvailable 1.01 GiB < 1.2 GiB; load stopped
+load exit 1; lowest MemAvailable on NODE_A: 1.01 GiB; guard fired: True

@@ -52,7 +52,24 @@ def install(directory, *, apply=False):
     # apt reuses satisfying dependencies instead of reinstalling Node A's OS.
     subprocess.run(["apt-get", *options, "update"], check=True, env=environment)
     command = ["apt-get", *options, "--no-install-recommends", "--no-remove", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"]
+    # Node A selected and verified this SparkRing revision, which may be older
+    # than the worker's (package versions follow commit time). A simulation
+    # lists every change first; only the SparkRing package may move to an
+    # earlier version, so no dependency is ever downgraded.
+    plan = subprocess.run([*command, "--simulate", "--allow-downgrades", "install", applications[0]],
+                          check=True, env=environment, capture_output=True, text=True).stdout
+    downgraded = []
+    for line in plan.splitlines():
+        words = line.split()
+        if len(words) >= 4 and words[0] == "Inst" and words[2].startswith("[") and words[3].startswith("("):
+            name, before, after = words[1], words[2].strip("[]"), words[3].lstrip("(")
+            if subprocess.run(["dpkg", "--compare-versions", after, "lt", before]).returncode == 0:
+                downgraded.append(name)
+    if set(downgraded) - {"sparkring"}:
+        raise ValueError("Installing SparkRing would downgrade " + ", ".join(sorted(set(downgraded) - {"sparkring"})))
     command += ["--yes"] if apply else ["--simulate"]
+    if downgraded:
+        command.append("--allow-downgrades")
     subprocess.run([*command, "install", applications[0]], check=True, env=environment)
 
 

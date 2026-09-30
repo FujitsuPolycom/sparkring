@@ -19,6 +19,18 @@
       "witness": "\"reported_kv_pool_tokens\": 1081922",
       "conditions": "GLM Spark TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 7.5 GiB KV per rank and 1048576 configured context. Engine-reported capacity; not full-context qualification."
     },
+    "glm53-flash-nvfp4-spark-tp2": {
+      "tokens": 1530566,
+      "source": "performance/records/images/dev-20260928-plainstatus-glm53-flash-tp2-20260929.md",
+      "witness": "GPU KV cache size: 1,530,566 tokens",
+      "conditions": "GLM-5.3-Flash NVFP4-Spark TP2/DCP1 installer profile on image dev-20260928-plainstatus-cuda1342-nccl2323-status033, 10 GiB KV per rank in 2,048-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification."
+    },
+    "glm53-flash-nvfp4-spark-tp4": {
+      "tokens": 6128169,
+      "source": "performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md",
+      "witness": "GPU KV cache size: 6,128,169 tokens",
+      "conditions": "GLM-5.3-Flash NVFP4-Spark TP4/DCP1 installer profile on image dev-20260928-plainstatus-cuda1342-nccl2323-status033, 40 GiB KV per rank in 1,024-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification."
+    },
     "glm52-exl3-r7-3.5bpw": {
       "tokens": 1156864,
       "source": "profiles/glm52-exl3-r7-3.5bpw/recipe.json",
