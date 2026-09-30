@@ -713,10 +713,16 @@ plan, and `sparkring up PROFILE --instance fresh --fresh-mesh` rehearses the
 replacement beside an existing deployment. A replaced deployment's container,
 source and weight directories are retained.
 
-A mesh takes its name from the cluster, profile and instance, so a new
-deployment of the same profile and instance installs its mesh where an earlier
-one did. With `--fresh-mesh`, the installation takes over that earlier mesh on
-each Spark when the reviewed plan listed its service, its site file is
+A mesh takes its name from the cluster, profile and instance. Changing a
+deployment's package or settings means creating another deployment:
+`sparkring install` names each deployment by its request, and
+`sparkring up PROFILE --instance NAME` takes an unused name. Each instance has
+its own workspace, containers and mesh, and `sparkring status --json` lists
+its containers and their labels. A deployment created under an earlier
+deployment's instance needs that deployment's workspace released and its model
+containers removed; it installs its mesh where the earlier mesh is. With
+`--fresh-mesh`, the installation takes over that earlier mesh on each Spark
+when the reviewed plan listed its service, its site file is
 unchanged since that review, and its model container on that Spark is stopped
 (by `sparkring down`) or removed. It stops the earlier mesh, model and
 liveness services and moves their configuration, code and unit files to
