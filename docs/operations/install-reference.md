@@ -515,6 +515,13 @@ contacts the enrolled nodes and observes the model containers.
 - the saved deployment and image IDs, the deployment's checkpoint
   (`checkpoint`, `model_repository`, `model_revision`) and image release
   (`image_release`);
+- `containers`: each rank's host and model container name
+  (`sr-<site>-r<rank>`) and its labels: `io.sparkring.deployment` holds the
+  deployment ID and `io.sparkring.rank` the rank. A deployment keeps its names;
+  a new deployment of the same profile, such as one `sparkring install` makes
+  for another package, gets another site name, so a controller that follows
+  deployments across installations selects containers by the deployment ID
+  label, for example `docker ps --filter label=io.sparkring.deployment=ID`;
 - host observations: persistent node ID, boot ID and their own `observed_at`;
   cached ones keep their original time and go stale after 90 seconds;
 - container observations: the inspected container ID, start time and actual
@@ -541,6 +548,14 @@ not restart themselves (`restart: 'no'`). To recover:
 2. Run the command that installed the model again,
    `sudo sparkring install --profile PROFILE`; it stops the model on every
    Spark and starts it again.
+
+   `sudo sparkring up --execute` also starts the deployment again when its
+   container runs on no Spark, for example after every Spark restarted: it
+   repeats every step, including restoring the RoCE GID index and the NVIDIA
+   CDI specification, and starts the containers. While the container still
+   runs on some Sparks, it holds the RoCE GID entries that step repairs, so
+   `up` refuses; stop the model on every Spark with
+   `sudo sparkring down --execute` first.
 
 Saved-log lines beginning `RoCEnante rank` tell which rank was late and why.
 `sudo sparkring status --refresh --json` shows rank 0's container with
@@ -573,6 +588,17 @@ file passed to `sparkring install --env`, selects another. With a settings
 file, its `SPARKRING_SSH_USER` applies and defaults to `root`. Installer
 operations on a Spark run as root, through `sudo -n` when its SSH account is
 not `root`.
+
+**Finding the other Sparks.** Setup pings each fabric link and signs in only
+to neighbors that answer there; it skips cached neighbor addresses that do
+not answer. It names each Spark by its ConnectX hardware, not by
+`/etc/machine-id`, which Sparks flashed from one factory image share. When
+two Sparks share it, setup prints a note, because other software on them,
+such as DHCP, may still confuse them. To give a Spark its own ID:
+`sudo rm -f /etc/machine-id && sudo systemd-machine-id-setup && sudo reboot`.
+A failed sign-in names its cause: a password or account the other Spark did
+not accept, no SSH answer over the cable, SSH refused on its port, or a
+changed host key.
 
 **Access check.** Before changing anything, `sparkring install` confirms
 noninteractive SSH and `sudo` on every enrolled Spark. A missing grant

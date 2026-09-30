@@ -364,9 +364,26 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
             specs.append(tp2.container_spec(plan))
     if only_rank is not None and card["profile"] in compose.SUPPORTED:
         specs = [specs[only_rank]]
-    return [replace(spec, name=f"sr-{site['name']}-r{only_rank if only_rank is not None else number}",
-                    labels={**spec.labels, compose.LABEL: lock["id"], "io.sparkring.rank": str(only_rank if only_rank is not None else number)})
+    return [replace(spec, name=container_name(lock, only_rank if only_rank is not None else number),
+                    labels={**spec.labels, **container_labels(lock, only_rank if only_rank is not None else number)})
             for number, spec in enumerate(specs)]
+
+
+def container_name(lock, rank):
+    """A rank's model container name: ``sr-<site>-r<rank>``, or ``<site>-r<rank>`` for managed GLM."""
+    return ("sr-" if lock["backend"] == "compose" else "") + f"{lock['site']['name']}-r{rank}"
+
+
+def container_labels(lock, rank):
+    """Labels on a Compose deployment's containers: its lock ID and the rank."""
+    return {compose.LABEL: lock["id"], "io.sparkring.rank": str(rank)}
+
+
+def containers(lock):
+    """Each rank's host, model container name and, for Compose deployments, container labels."""
+    return [{"rank": row["rank"], "host": row["host"], "name": container_name(lock, row["rank"]),
+             **({"labels": container_labels(lock, row["rank"])} if lock["backend"] == "compose" else {})}
+            for row in lock["site"]["ranks"]]
 
 
 def rendered(lock):
@@ -492,7 +509,34 @@ def apply(directory, action, *, runner, execute=False):
         # as a new generation; resuming its receipt would refuse the actions
         # that a failure or interruption left uncertain or running.
         retry = action == "prepare" and state["operation"] == action and not state["complete"]
-        if state["operation"] != action or retry:
+        restart = False
+        if action == "up" and state["operation"] == action and state["complete"] and lock["backend"] == "compose":
+            # A repeated up resumes its completed receipt, which only
+            # re-verifies each action. When no rank runs the model any more,
+            # for example after the Sparks restarted, a new generation runs
+            # every phase instead: it restores the RoCE GIDs and the CDI spec
+            # and starts the containers. A rank that still runs the model holds
+            # the GID entries those phases repair (roce_gid.serve), so the model
+            # must stop everywhere first. Only the host's own "not running"
+            # answer counts as stopped; a Spark that does not answer stops up.
+            stopped, total = [], 0
+            for step in plan["phases"]:
+                if step["id"] not in ("start-workers", "start-api"):
+                    continue
+                for item in step["actions"]:
+                    total += 1
+                    result = runner(item["host"], item["verify"]["argv"], item["verify"]["timeout"])
+                    if deploy_engine.verified(result, item["verify"]):
+                        continue
+                    if "Rank is not running" not in result["stderr"]:
+                        detail = (result["stderr"].strip().splitlines() or ["no answer"])[-1]
+                        raise ValueError(f"{item['host']} did not report whether its model container runs: {detail}")
+                    stopped.append(item["host"])
+            if stopped and len(stopped) < total:
+                raise ValueError("The model runs on some Sparks but not on " + ", ".join(stopped) + ". Stop it everywhere "
+                                 "with sparkring down --execute, then start it with sparkring up --execute.")
+            restart = bool(stopped)
+        if state["operation"] != action or retry or restart:
             # Stopping is always permitted after an incomplete operation: it
             # verifies ownership labels, stops only this deployment's running
             # containers and ignores ranks whose container was never created.
