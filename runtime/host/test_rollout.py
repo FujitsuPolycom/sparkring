@@ -111,8 +111,49 @@ def test_unfinished_switch_still_blocks_without_approval(tmp_path):
     node.save(tmp_path, "transaction.json", {"schema": "sparkring-install-transaction/v1", "candidate": str(stuck),
                                              "previous": str(before), "state": "needs-attention", "complete": False})
     cluster = Cluster(before, after)
-    with pytest.raises(ValueError, match="needs attention"):
+    with pytest.raises(ValueError, match="unfinished switch to stuck stopped while needs-attention"):
         rollout.execute(after, before, state_root=tmp_path, prepare=cluster.prepare, apply=cluster.apply, verify=cluster.verify)
+
+
+def interrupted(tmp_path, state):
+    """A switch from ``old`` to ``stuck`` whose install stopped in ``state``, as after a Spark restart."""
+    before, stuck = tmp_path / "old", tmp_path / "stuck"
+    node.save(tmp_path, "active.json", {"path": str(before)})
+    node.save(tmp_path, "transaction.json", {"schema": "sparkring-install-transaction/v1", "candidate": str(stuck),
+                                             "previous": str(before), "state": state, "complete": False})
+    return before, stuck
+
+
+@pytest.mark.parametrize("state", ["stopping-previous", "starting", "verifying"])
+def test_a_switch_interrupted_mid_step_is_replaced_by_another_approved_install(tmp_path, state):
+    before, stuck = interrupted(tmp_path, state)
+    after, events = tmp_path / "candidate", []
+    result = rollout.execute(after, before, state_root=tmp_path, prepare=lambda directory: events.append("prepare"),
+                             apply=lambda directory, action: events.append((directory.name, action)),
+                             verify=lambda directory: events.append((directory.name, "verify")) or {}, supersede=True)
+    # The abandoned candidate stops through its own deployment before
+    # anything else changes; then the switch runs from the last good model.
+    assert events == [("stuck", "down"), "prepare", ("old", "down"), ("candidate", "up"), ("candidate", "verify")]
+    assert result["complete"] and rollout.active(tmp_path) == after
+    assert result["superseded"]["state"] == state
+
+
+def test_installing_the_interrupted_candidate_again_resumes_it(tmp_path):
+    before, stuck = interrupted(tmp_path, "starting")
+    events = []
+    result = rollout.execute(stuck, before, state_root=tmp_path, prepare=lambda directory: events.append("prepare"),
+                             apply=lambda directory, action: events.append((directory.name, action)),
+                             verify=lambda directory: events.append((directory.name, "verify")) or {}, supersede=True)
+    assert "superseded" not in result and "prepare" not in events
+    assert result["complete"] and rollout.active(tmp_path) == stuck
+
+
+def test_an_interrupted_switch_blocks_another_install_without_approval(tmp_path):
+    before, stuck = interrupted(tmp_path, "starting")
+    with pytest.raises(ValueError, match="install that model again to resume it"):
+        rollout.execute(tmp_path / "candidate", before, state_root=tmp_path, prepare=lambda directory: None,
+                        apply=lambda directory, action: None, verify=lambda directory: {})
+    assert installer.read(tmp_path / "transaction.json")["candidate"] == str(stuck)
 
 
 @pytest.mark.parametrize("serves", [True, False])
