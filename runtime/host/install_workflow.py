@@ -800,8 +800,12 @@ def execute(args):
 
         # check_workloads has confirmed that only the active or candidate
         # deployment uses the GPUs, so an abandoned failed switch can be replaced.
+        # A candidate whose own start did not complete, for example a first
+        # installation that failed its readiness check, stops before it is
+        # prepared again.
         result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
-                                 verify=lambda path: apply(path, "verify"), supersede=True, serving=serving)
+                                 verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
+                                 unfinished=installer.unfinished)
         try:
             plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
         except (OSError, ValueError):

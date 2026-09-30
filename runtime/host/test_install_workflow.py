@@ -436,6 +436,8 @@ def test_failed_or_interrupted_preparation_is_repeated_by_the_same_command(machi
     result = json.loads(capsys.readouterr().out)
     assert result["state"] == "complete" and Path(result["deployment"]) == candidate
     assert rollout.active(controller.STATE) == candidate
+    # Preparation never starts a model, so nothing stops before it repeats.
+    assert "candidate:down" not in events and "unfinished" not in result["transaction"]
     state = installer.read(candidate / "state.json")
     assert state == {**state, "generation": incomplete["generation"] + 1, "operation": "prepare", "complete": True}
     # The incomplete receipt stays for inspection; the repeat used its own.
@@ -467,6 +469,122 @@ def test_failed_start_recovers_previous_using_the_same_public_command(machine, m
     assert result["transaction"]["state"] == "failed-recovered"
     assert events[-4:] == ["candidate:down", "previous:down", "previous:up", "previous:verify"]
     assert rollout.active(controller.STATE) == previous
+
+
+# Rank 0's API failed its health check; a rank action that timed out, whose outcome is unknown.
+UNHEALTHY = {"returncode": 1, "stdout": "", "stderr": "API health check failed; inspect this rank's logs", "uncertain": False}
+TIMED_OUT = {"returncode": 124, "stdout": "", "stderr": "Remote operation timed out; inspect host state before recovery",
+             "uncertain": True}
+UNFINISHED_START = "This model's last start did not complete; it stops on every Spark first."
+
+
+class Ranks:
+    """The Sparks' answers to the candidate's start and stop actions; ``failing`` maps (operation, rank) to a result."""
+
+    def __init__(self):
+        self.failing, self.events = {}, []
+
+    def __call__(self, host, argv, timeout):
+        event = (argv[1], int(argv[2]))
+        self.events.append(event)
+        return dict(self.failing.get(event, OK))
+
+
+@pytest.fixture
+def ranks(machine, monkeypatch):
+    """The candidate starts and stops through the installer and its receipts, on simulated Sparks."""
+    events, previous, _, operation = machine
+    value = Ranks()
+
+    def apply(path, action, **kwargs):
+        if path != previous and action in ("up", "down"):
+            events.append("candidate:" + action)
+            return installer.apply(path, action, runner=value, execute=True)
+        return operation(path, action)
+    monkeypatch.setattr(flow.retained_source, "apply", apply)
+    return value
+
+
+def receipts(directory):
+    return sorted(path.name for path in (directory / "operations").glob("*.json"))
+
+
+@pytest.mark.parametrize("failure", ["readiness", "uncertain-start"])
+def test_a_first_start_that_failed_stops_before_the_same_command_prepares_it_again(machine, ranks, capsys, failure):
+    events, _, _, _ = machine
+    (controller.STATE / "active.json").unlink()
+    ranks.failing = {("ready", 0): UNHEALTHY} if failure == "readiness" else {("start", 0): TIMED_OUT}
+    assert command() == 2
+    first = json.loads(capsys.readouterr().out)
+    assert first["transaction"]["state"] == "failed" and rollout.active(controller.STATE) is None
+    candidate = Path(first["transaction"]["candidate"])
+    assert installer.unfinished(candidate) == "up"
+
+    # The cause is gone; the documented repeat stops the model on every
+    # Spark, then prepares and starts it again.
+    ranks.failing = {}
+    del events[:], ranks.events[:]
+    assert command() == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["state"] == "complete" and Path(result["deployment"]).resolve() == candidate
+    assert result["transaction"]["unfinished"] == "up" and UNFINISHED_START in out.err
+    assert events.index("candidate:down") < events.index("prepare:prepare-prerequisites") < events.index("candidate:up")
+    assert events.count("candidate:down") == 1 and {("stop", 0), ("stop", 1)} <= set(ranks.events)
+    assert rollout.active(controller.STATE) == candidate
+    # The failed start keeps its receipt; the stop and the repeat have their own.
+    assert receipts(candidate) == ["0001-prepare.json", "0002-up.json", "0003-down.json", "0004-prepare.json",
+                                   "0005-up.json"]
+
+
+def test_a_restart_of_the_installed_model_that_failed_stops_before_it_is_prepared_again(machine, ranks, monkeypatch,
+                                                                                        capsys):
+    events, _, _, _ = machine
+    assert command() == 0
+    candidate = Path(json.loads(capsys.readouterr().out)["deployment"]).resolve()
+    # One Spark restarted, so the installed model does not serve; its restart fails at readiness.
+    monkeypatch.setattr(flow, "serving", lambda directory: events.append("serving") or False)
+    ranks.failing = {("ready", 0): UNHEALTHY}
+    assert command() == 2
+    assert json.loads(capsys.readouterr().out)["transaction"]["state"] == "failed"
+    assert rollout.active(controller.STATE) == candidate and installer.unfinished(candidate) == "up"
+
+    ranks.failing = {}
+    del events[:]
+    assert command() == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["state"] == "complete" and UNFINISHED_START in out.err
+    # The model stopped before preparation, so it is not checked or stopped again before its start.
+    assert events.index("candidate:down") < events.index("prepare:prepare-prerequisites") < events.index("candidate:up")
+    assert "serving" not in events and events.count("candidate:down") == 1
+    assert not any(event.startswith("previous:") for event in events)
+    assert rollout.active(controller.STATE) == candidate
+
+
+def test_a_stop_with_an_uncertain_outcome_stops_the_repeat_before_any_preparation(machine, ranks, capsys):
+    events, _, _, _ = machine
+    (controller.STATE / "active.json").unlink()
+    ranks.failing = {("ready", 0): UNHEALTHY}
+    assert command() == 2
+    candidate = Path(json.loads(capsys.readouterr().out)["transaction"]["candidate"])
+    # The stop that the repeat runs first times out on rank 1.
+    ranks.failing = {("stop", 1): TIMED_OUT}
+    assert command() == 2
+    assert json.loads(capsys.readouterr().out)["transaction"]["state"] == "preparation-failed"
+    assert installer.unfinished(candidate) == "down"
+
+    # Repeating the command never repeats that stop action: its receipt and
+    # the Spark need inspection first.
+    ranks.failing = {}
+    del events[:], ranks.events[:]
+    assert command() == 2
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert "prior outcome is uncertain" in result["message"] and result["transaction"]["state"] == "preparation-failed"
+    assert "This model's last stop did not complete; it finishes stopping on every Spark first." in out.err
+    assert not any(event.startswith("prepare:") for event in events)
+    assert not any(operation == "stop" for operation, _ in ranks.events)
+    assert installer.unfinished(candidate) == "down"
 
 
 def test_plan_never_updates_workers_or_stops_model(machine, capsys):
