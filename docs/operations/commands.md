@@ -151,8 +151,9 @@ quantization and topology) and marks those `sparkring install` supports.
 
 ## status
 
-`sudo sparkring status [flags]` prints Node A's state, one line per Spark with
-the next action for any Spark that needs attention, and the saved model:
+`sudo sparkring status [PROFILE [--instance NAME]] [flags]` prints Node A's
+state, one line per Spark with the next action for any Spark that needs
+attention, and the saved model: the active deployment, or the one named:
 
 ```text
 Saved model operation: PROFILE | up complete
@@ -246,9 +247,19 @@ space allowances before an installation.
 ## up and down
 
 `sudo sparkring up [PROFILE] [flags]` starts the named profile's deployment, or
-the active one. `sudo sparkring down [flags]` stops the active deployment. Both
-print their steps and ask; `--execute` skips the question. `sparkring install`
-is the usual way to start or switch a model.
+the active one. `sudo sparkring down [PROFILE] [flags]` stops the named
+deployment, or the active one, and `sparkring status [PROFILE]` reports it. Both
+`up` and `down` print their steps and ask; `--execute` skips the question.
+`sparkring install` is the usual way to start or switch a model.
+
+A deployment keeps the SparkRing source that created it. `up`, `down` and
+`status` plan and run each deployment with that source, so a deployment made by
+an earlier package still starts and stops after the package changes. `up`
+makes the deployment it starts the active one; stopping another deployment
+leaves the active one unchanged. `sparkring install` names its deployments
+with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
+one of them. The deployment directories are under
+`/var/lib/sparkring/controller/deployments/`.
 
 | Flag | Meaning |
 |---|---|
@@ -256,9 +267,9 @@ is the usual way to start or switch a model.
 | `--execute` | Apply the printed steps without asking |
 | `--json` | Print the result as JSON |
 | `--model-path PATH` | `up PROFILE` only: serve this complete copy read-only on every Spark |
-| `--instance NAME` | `up PROFILE` only: a separate deployment beside the main one, for a rehearsal |
+| `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
-| `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal |
+| `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal. An existing deployment keeps the image it recorded, and naming another lock for it is refused |
 | `--deployment DIR` | Use a deployment saved by `sparkring init` instead ([lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing)) |
 
 ## node

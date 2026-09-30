@@ -129,10 +129,12 @@ def test_administrative_services_do_not_start_models_or_rewrite_ssh_policy():
 
 
 def test_plan_only_named_model_does_not_construct_runner(tmp_path, monkeypatch, capsys):
-    from runtime.common import installer
+    from runtime.common import distribution, installer
     from scripts import installer_runner
     monkeypatch.setattr(controller, "STATE", tmp_path)
     (tmp_path / "active.json").write_text(json.dumps({"path": str(tmp_path / "model")}))
+    installer.write(tmp_path / "model" / "deployment.lock.json", {"source_revision": "a" * 40})
+    monkeypatch.setattr(distribution, "identity", lambda _: "a" * 40)
     monkeypatch.setattr(installer, "apply", lambda *a, **kw: {"profile": "fixture", "hosts": ["a", "b"], "phases": ["read"]})
     monkeypatch.setattr(installer_runner, "Runner", lambda *a: pytest.fail("Plan attempted SSH runner"))
     assert controller.lifecycle(["up", "--plan"]) == 0
@@ -276,7 +278,7 @@ def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, m
     plan = ring_plan()
     installer.write(tmp_path / "cluster.json", {"plan": plan})
     installer.write(tmp_path / "active.json", {"path": str(tmp_path / "model")})
-    monkeypatch.setattr(installer, "apply", lambda *a, **kw: {"profile": "fixture", "hosts": ["a"], "phases": ["read"]})
+    monkeypatch.setattr(retained_source, "review", lambda *a, **kw: {"profile": "fixture", "hosts": ["a"], "phases": ["read"]})
     monkeypatch.setattr(retained_source, "apply", lambda *a, **k: pytest.fail("a model action ran"))
     statuses = {host["host"]: document(plan, rank) for rank, host in enumerate(plan["spec"]["hosts"])}
     statuses["root@192.0.2.12"] = document(plan, 2, [hairpin_setting.DEFAULT] * 2 + [hairpin_setting.IN_EFFECT] * 2)
@@ -488,3 +490,108 @@ def test_hairpin_service_passes_systemd_verification(tmp_path):
     result = subprocess.run(["systemd-analyze", "verify", "--man=no", "--recursive-errors=no", str(unit)],
                             capture_output=True, text=True, timeout=60)
     assert result.returncode == 0 and not result.stderr.strip() and not result.stdout.strip(), result.stderr
+
+
+def _deployment(root, name, *, image="shared-image"):
+    """A saved deployment lock with the fields that up, down and status read without validating it."""
+    from runtime.common import installer
+    selection = {"profile": UP_PROFILE, "target_variant": None, "model_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+                 "model_revision": "60215d26cf5e42c2db6128774032d57fc62678da", "release": "dev-image"}
+    installer.write(root / "deployments" / name / "deployment.lock.json",
+                    {"selection": selection, "site": {"ranks": []}, "site_input": {}, "image_runtime": {"name": image}})
+    return root / "deployments" / name
+
+
+@pytest.fixture
+def lifecycle_calls(tmp_path, monkeypatch):
+    """Retained-source reviews and operations, recorded as (directory name, operation)."""
+    from runtime.host import retained_source
+    monkeypatch.setattr(controller, "STATE", tmp_path)
+    monkeypatch.setattr(controller.node, "status", lambda: {"state": "network-configured"})
+    calls = []
+
+    def review(directory, operation, **options):
+        calls.append((Path(directory).name, "review-" + operation))
+        return {"profile": UP_PROFILE, "hosts": ["root@192.0.2.1"], "phases": ["owned", operation]}
+
+    def apply(directory, operation, **options):
+        calls.append((Path(directory).name, operation))
+        return {"profile": UP_PROFILE, "state": {"operation": "down", "complete": True}, "api_url": "http://192.0.2.1:8000/v1"}
+    monkeypatch.setattr(retained_source, "review", review)
+    monkeypatch.setattr(retained_source, "apply", apply)
+    return calls
+
+
+def test_down_and_status_act_on_the_named_deployment_and_keep_the_active_one(tmp_path, lifecycle_calls, capsys):
+    from runtime.common import installer
+    active = _deployment(tmp_path, UP_PROFILE)
+    _deployment(tmp_path, UP_PROFILE + "-candidate")
+    installer.write(tmp_path / "active.json", {"path": str(active)})
+    assert controller.lifecycle(["down", UP_PROFILE, "--instance", "candidate", "--execute"]) == 0
+    assert lifecycle_calls == [(UP_PROFILE + "-candidate", "review-down"), (UP_PROFILE + "-candidate", "down")]
+    assert installer.read(tmp_path / "active.json")["path"] == str(active)
+    lifecycle_calls.clear()
+    capsys.readouterr()
+    assert controller.lifecycle(["status", UP_PROFILE, "--instance", "candidate", "--json"]) == 0
+    assert lifecycle_calls == [(UP_PROFILE + "-candidate", "saved-status")]
+    assert json.loads(capsys.readouterr().out)["deployment"]["image_release"] == "dev-image"
+    with pytest.raises(ValueError, match=f"No deployment of {UP_PROFILE} with instance other exists"):
+        controller.lifecycle(["down", UP_PROFILE, "--instance", "other", "--execute"])
+    with pytest.raises(ValueError, match="give the profile as well"):
+        controller.lifecycle(["down", "--instance", "candidate", "--execute"])
+
+
+def test_down_of_a_named_deployment_works_when_none_is_active(tmp_path, lifecycle_calls):
+    from runtime.common import installer
+    candidate = _deployment(tmp_path, UP_PROFILE + "-candidate")
+    # A first up that failed records no active deployment.
+    with pytest.raises(ValueError, match="No model deployment is active. To down one, name its profile"):
+        controller.lifecycle(["down", "--execute"])
+    assert controller.lifecycle(["down", UP_PROFILE, "--instance", "candidate", "--execute"]) == 0
+    assert lifecycle_calls[-1] == (UP_PROFILE + "-candidate", "down")
+    assert installer.read(tmp_path / "active.json")["path"] == str(candidate)
+
+
+def test_a_deployment_from_an_earlier_package_is_planned_and_run_by_its_own_source(tmp_path, lifecycle_calls, monkeypatch):
+    from runtime.common import installer, installer_image
+    # The installed package no longer validates the deployment's lock, and its
+    # default image differs from the one the deployment recorded.
+    changed = ValueError("Deployment lock or its profile/release inputs changed; initialize a new deployment")
+    for name in ("load", "apply", "status"):
+        monkeypatch.setattr(installer, name, lambda *a, **k: (_ for _ in ()).throw(changed))
+    monkeypatch.setattr(installer_image, "for_profile", lambda profile, explicit=None: explicit or {"name": "newer-image"})
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    active = _deployment(tmp_path, UP_PROFILE, image="older-image")
+    installer.write(tmp_path / "active.json", {"path": str(active)})
+    assert controller.lifecycle(["down", "--execute"]) == 0
+    assert controller.lifecycle(["up", UP_PROFILE, "--execute"]) == 0
+    assert lifecycle_calls == [(UP_PROFILE, "review-down"), (UP_PROFILE, "down"), (UP_PROFILE, "review-up"), (UP_PROFILE, "up")]
+    # An explicitly named image lock must still match the deployment's.
+    installer.write(tmp_path / "other-image.json", {"name": "other-image"})
+    with pytest.raises(ValueError, match="another image lock"):
+        controller.lifecycle(["up", UP_PROFILE, "--image-lock", str(tmp_path / "other-image.json"), "--plan"])
+
+
+def test_retained_review_plans_with_the_deployments_source_and_without_progress(tmp_path, monkeypatch):
+    from runtime.common import distribution, installer
+    from runtime.host import retained_source
+    directory = tmp_path / "deployment"
+    installer.write(directory / "deployment.lock.json", {"source_revision": "a" * 40})
+    seen = []
+    monkeypatch.setattr(distribution, "identity", lambda _: "a" * 40)
+    monkeypatch.setattr(installer, "apply", lambda path, operation, **k: seen.append((operation, k)) or {"phases": []})
+    assert retained_source.review(directory, "up", cache=tmp_path / "cache") == {"phases": []}
+    assert seen == [("up", {"runner": None, "execute": False})]
+    with pytest.raises(ValueError, match="Unsupported"):
+        retained_source.apply(directory, "review-prepare", cache=tmp_path / "cache")
+    # Another revision replays the review in its retained checkout, outside a progress session.
+    monkeypatch.setattr(distribution, "identity", lambda _: "b" * 40)
+    monkeypatch.setattr(retained_source, "checkout", lambda *a, **k: tmp_path / "source")
+    replayed = []
+
+    def run(argv, **options):
+        replayed.append(argv)
+        return subprocess.CompletedProcess(argv, 0, '{"phases": ["up"]}', "")
+    assert retained_source.review(directory, "down", cache=tmp_path / "cache", run=run) == {"phases": ["up"]}
+    code = replayed[0][4]
+    assert replayed[0][-1] == "review-down" and "if sys.argv[3].startswith('review-')" in code
