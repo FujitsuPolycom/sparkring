@@ -18,7 +18,7 @@ import pytest
 
 from runtime.common import installer_image
 from runtime.images import derive_mimo_vision, derive_spin_wait, derive_staging_fix, derive_tool_choice_contract, derive_tp2_hc
-from runtime.images import derive_transport_peer_wait, derive_transport_window
+from runtime.images import derive_transport_peer_wait, derive_transport_port_gid, derive_transport_window
 from runtime.images import derived_layer as layer
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -635,14 +635,17 @@ def test_repository_transport_bundle_matches_its_manifest():
         assert sha((derive_transport_window.SOURCE / name).read_bytes()) == expected, name
 
 
-def peer_wait_fixture(tmp_path, *, also_changed=(), unchanged=()):
-    """A repository bundle and a parent whose installed bundle differs in the pinned files."""
+# Code layers that install pinned files of the repository transport bundle.
+PINNED_TRANSPORT_LAYERS = {"peer-wait": derive_transport_peer_wait, "port-gid": derive_transport_port_gid}
+
+
+def pinned_bundle_fixture(tmp_path, module, *, also_changed=(), unchanged=()):
+    """A repository bundle and a parent whose installed bundle differs in ``module``'s pinned files."""
     source = tmp_path / "bundle"
-    names = sorted(derive_transport_peer_wait.FILES) + ["roce/api.py", "LICENSE"]
-    files = {name: f"supervised {name}\n".encode() for name in names}
+    names = sorted(module.FILES) + ["roce/api.py", "LICENSE"]
+    files = {name: f"repository {name}\n".encode() for name in names}
     installed_files = {
-        name: (data if name in unchanged or (name not in derive_transport_peer_wait.FILES
-                                              and name not in also_changed)
+        name: (data if name in unchanged or (name not in module.FILES and name not in also_changed)
                else f"parent {name}\n".encode())
         for name, data in files.items()
     }
@@ -659,44 +662,66 @@ def peer_wait_fixture(tmp_path, *, also_changed=(), unchanged=()):
     return (source, *code_parent(tmp_path, parent, capabilities))
 
 
-def test_transport_peer_wait_replaces_exactly_its_pinned_files(tmp_path):
-    source, root, lock = peer_wait_fixture(tmp_path)
+@pytest.mark.parametrize("name", sorted(PINNED_TRANSPORT_LAYERS))
+def test_transport_layer_replaces_exactly_its_pinned_files(tmp_path, name):
+    module = PINNED_TRANSPORT_LAYERS[name]
+    source, root, lock = pinned_bundle_fixture(tmp_path, module)
     # Fixture bytes cannot match the real pins; the pinned set is still enforced.
-    code = dataclasses.replace(derive_transport_peer_wait.LAYER, pins={},
-                               replace=functools.partial(derive_transport_peer_wait.replace, source=source))
+    code = dataclasses.replace(module.LAYER, pins={}, replace=functools.partial(module.replace, source=source))
     layer.prepare_layer(code, lock, layer.root_reader(root), tmp_path / "context")
     context = tmp_path / "context"
     plan = json.loads((context / "plan.json").read_text())
     bundle = derive_transport_window.BUNDLE
-    assert plan["replaced"] == sorted([bundle + "/manifest.json"]
-                                      + [f"{bundle}/{name}" for name in derive_transport_peer_wait.FILES])
+    assert plan["replaced"] == sorted([bundle + "/manifest.json"] + [f"{bundle}/{file}" for file in module.FILES])
     manifest_bytes = context_file(context, bundle + "/manifest.json")
     assert json.loads(manifest_bytes)["dependencies"] == {"b12x": "pinned"}
     assert plan["lock_fields"] == {"transport_manifest_sha256": sha(manifest_bytes)}
-    provenance = json.loads(context_file(context, derive_transport_peer_wait.LAYER.provenance))
-    assert provenance["purpose"] == derive_transport_peer_wait.LAYER.purpose
+    provenance = json.loads(context_file(context, module.LAYER.provenance))
+    assert provenance["purpose"] == module.LAYER.purpose
     assert set(provenance["files"]) == set(plan["replaced"])
 
 
+@pytest.mark.parametrize("name", sorted(PINNED_TRANSPORT_LAYERS))
 @pytest.mark.parametrize("change", ["also_changed", "unchanged"])
-def test_transport_peer_wait_refuses_a_different_file_set(tmp_path, change):
+def test_transport_layer_refuses_a_different_file_set(tmp_path, name, change):
+    module = PINNED_TRANSPORT_LAYERS[name]
     extra = {"also_changed": {"also_changed": ("roce/api.py",)},
-             "unchanged": {"unchanged": (sorted(derive_transport_peer_wait.FILES)[0],)}}[change]
-    source, root, _ = peer_wait_fixture(tmp_path, **extra)
+             "unchanged": {"unchanged": (sorted(module.FILES)[0],)}}[change]
+    source, root, _ = pinned_bundle_fixture(tmp_path, module, **extra)
     read = layer.root_reader(root)
     receipt = json.loads(read(layer.BASE_RECEIPT))
     with pytest.raises(ValueError, match="other files than this layer pins"):
-        derive_transport_peer_wait.replace(read, receipt, source=source)
+        module.replace(read, receipt, source=source)
 
 
-def test_transport_peer_wait_pins_the_repository_bundle():
+def test_transport_port_gid_pins_the_repository_bundle():
+    manifest = json.loads((derive_transport_window.SOURCE / "manifest.json").read_text())
+    pins = derive_transport_port_gid.LAYER.pins
+    assert set(pins) == {f"{derive_transport_window.BUNDLE}/{name}" for name in derive_transport_port_gid.FILES}
+    for name, (inherited, resulting) in derive_transport_port_gid.FILES.items():
+        assert resulting == manifest["files"][name], name
+        assert inherited != resulting, name
+    assert derive_transport_port_gid.LAYER.update_receipt is derive_transport_window.update_receipt
+
+
+def test_transport_layer_pins_form_one_chain():
+    """The port-gid parent holds the peer-wait layer's files; the peer-wait layer's other files are the bundle's."""
     manifest = json.loads((derive_transport_window.SOURCE / "manifest.json").read_text())
     pins = derive_transport_peer_wait.LAYER.pins
     assert set(pins) == {f"{derive_transport_window.BUNDLE}/{name}" for name in derive_transport_peer_wait.FILES}
     for name, (inherited, resulting) in derive_transport_peer_wait.FILES.items():
-        assert resulting == manifest["files"][name], name
         assert inherited != resulting, name
+        later = derive_transport_port_gid.FILES.get(name)
+        assert resulting == (later[0] if later else manifest["files"][name]), name
     assert derive_transport_peer_wait.LAYER.update_receipt is derive_transport_window.update_receipt
+    # Neither the tool-choice nor the runtime-status 0.3.3 layer changed the
+    # transport, so the port-gid parent carries the peer-wait manifest.
+    releases = ROOT / "runtime/releases"
+    parent = json.loads((releases / derive_transport_port_gid.PARENT_RELEASE / "installer-image.json").read_text())
+    peer_wait = json.loads(
+        (releases / "dev-20260928-peerwait-cuda1342-nccl2323-status032/installer-image.json").read_text())
+    assert parent["transport_profile"] == derive_transport_window.PROFILE
+    assert parent["transport_manifest_sha256"] == peer_wait["transport_manifest_sha256"]
 
 
 def tp2_fixture(tmp_path):

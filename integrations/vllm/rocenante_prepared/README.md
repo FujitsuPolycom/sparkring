@@ -12,10 +12,15 @@ transport manifest `9f2c0ae62e1e`, which carries the
 [supervised peer wait](#peer-wait); the image layer builder
 [derive_transport_peer_wait.py](../../../runtime/images/derive_transport_peer_wait.py)
 installs it over `dev-20260927-mimovision-cuda1342-nccl2323-status032`, whose
-manifest `2eef276d5403` ends a peer wait after a fixed number of polls. The
-manifest that `package.py` writes here, `31481e43b9a5`, holds the same six
-transport files and records this directory's adaptation, B12X file paths and
-qualification fields.
+manifest `2eef276d5403` ends a peer wait after a fixed number of polls. This
+directory's bundle also gives each HCA its own
+[RoCE GID index](#gid-index-per-port); no built image carries it, and the image
+layer builder
+[derive_transport_port_gid.py](../../../runtime/images/derive_transport_port_gid.py)
+installs its four changed files over
+`dev-20260928-plainstatus-cuda1342-nccl2323-status033`. The manifest that
+`package.py` writes here, `34c77aa7d43e`, records this directory's files,
+adaptation, B12X file paths and qualification fields.
 
 The supervised peer wait is **implemented**. On one four-Spark ring, with one
 rank's collective held back on purpose: a 60 s delay was logged at 5 s by the
@@ -88,7 +93,7 @@ pair. Two bounds end a wait whose flags do not arrive:
 A stopped wait records its sequence, the missing peer and a sticky stopped
 flag, poisons the runtime (later launches do nothing) and stores no output
 derived from missing data, also when the sequence has wrapped to 0. Ranks must
-agree on both settings. The proxy ABI is version 5; a rank refuses a peer with
+agree on both settings. The proxy ABI is version 6; a rank refuses a peer with
 another version. `stats()` adds `peer_wait_stalls`,
 `peer_wait_stalls_resolved`, `longest_resolved_stall_ms`,
 `peer_notices_posted`, `peer_notices_received`, `longest_proxy_loop_gap_ms` and
@@ -104,6 +109,47 @@ Each rank's worker writes these lines to standard error, prefixed with
 | `the proxy loop made no progress for T s` | This rank's proxy thread was not scheduled, or one post waited that long for completions. |
 | `waited T s at sequence S although every peer flag for it is in host memory; the kernel has not observed them` | Rank P delivered S; the waiting GPU does not see host memory. |
 | `the wait at sequence S ended within T s; serving continues` | The stall resolved. |
+
+## GID index per port
+
+Status: **implemented**; not run on GB10 hardware.
+
+Each HCA uses its own RoCE GID index. At construction the runtime reads each
+device's GID table under `/sys/class/infiniband/DEVICE/ports/1` and selects
+the RoCE v2 GID of the device's fabric IPv4 address: the single RoCE v2
+IPv4-mapped entry owned by the interface that `DEVICE/device/net` names.
+SparkRing's host resolver [`spark_roce_gid.py`](../spark_roce_gid.py) applies
+the same rules, and the checks below compare the two. A device whose table
+holds no such entry, or several, uses the configured index:
+`B12X_ROCE_GID_INDEX`, else `NCCL_IB_GID_INDEX`, else 3. A caller's explicit
+`gid_index` applies one index to every device without reading the tables.
+
+The proxy publishes each HCA's GID at that HCA's index and uses the index as
+the source GID of the HCA's queue pairs. Peers address a GID by value, so
+ranks and ports may use different indices. A selected index whose GID is
+empty fails setup with `RDMA device DEVICE port 1 has no GID at index I`.
+
+A cabled neighbor that restarts while a model holds the address's GID entry
+makes the address return at another index (for example 4) on the ports facing
+that neighbor. This runtime starts on that index; the address does not have to
+be re-added. `sparkring install` still returns each pair's addresses to index 3
+before a model starts ([RoCE GID index 3](../../../docs/operations/install-reference.md#roce-gid-index-3)):
+images with one index for every HCA need it, and so does NCCL while the
+profiles set `NCCL_IB_GID_INDEX=3`.
+
+Every rank writes one line per device to standard error, prefixed with
+`RoCEnante rank N:`:
+
+| Line | Meaning |
+|---|---|
+| `DEVICE uses RoCE GID index I, the RoCE v2 GID of ADDRESS on INTERFACE` | Read from the device's GID table. |
+| `DEVICE uses the configured RoCE GID index I: REASON` | The table did not identify the address's GID; REASON lists the RoCE v2 IPv4 entries present. |
+| `DEVICE uses RoCE GID index I, the caller's gid_index` | The caller fixed the index. |
+
+`stats()` reports `gid_indices` in HCA order. The runtime's `gid_index` is the
+index that every HCA shares, or None when they differ, and the prepared query
+binds the per-HCA tuple. `roce_create` takes one index per HCA, which makes
+the proxy ABI version 6.
 
 ## Package and select
 
@@ -126,19 +172,25 @@ manifest hash for the legacy bundle's identity.
 ```bash
 python -m pytest integrations/vllm/rocenante_prepared/test_prepared_transport.py \
   integrations/vllm/rocenante_prepared/test_probe.py \
-  integrations/vllm/rocenante_prepared/test_peer_wait.py -q
+  integrations/vllm/rocenante_prepared/test_peer_wait.py \
+  integrations/vllm/rocenante_prepared/test_port_gid.py -q
 ```
 
-One hundred sixteen CPU checks pass. They cover retained wire/kernel source,
-prepared API and program identities, peer-path compile arguments,
-staging/output ownership, selector compatibility, packaging and counter
-interpretation. For the peer wait they interpret the wait loop's PTX, run both
-kernels' control flow on CPU memory, and compile the proxy with GCC against a
-stand-in `infiniband/verbs.h` to run its supervision through a late peer, an
+141 CPU checks pass on Linux with GCC; the 15 that compile the proxy are
+skipped elsewhere. They cover retained wire/kernel source, prepared API and
+program identities, peer-path compile arguments, staging/output ownership,
+selector compatibility, packaging and counter interpretation. For the peer
+wait they interpret the wait loop's PTX, run both kernels' control flow on CPU
+memory, and compile the proxy with GCC against a stand-in
+`infiniband/verbs.h` to run its supervision through a late peer, an
 unreachable peer, contradictory flags, the timeout, peer notices and the device
-bound. They do not establish network connectivity, GPU numerical results,
-memory ordering, graph replay, performance or compatibility of the separate TP4
-weighted-mesh bundle.
+bound. For the GID index they run the runtime's table reader and
+`spark_roce_gid.py` on the same fake sysfs trees, including an address that
+returned at index 4, and run the compiled proxy's device setup and queue-pair
+connection to check each HCA's queried, published and source GID index and
+the refusal of an empty GID. They do not establish network connectivity, GPU
+numerical results, memory ordering, graph replay, performance or
+compatibility of the separate TP4 weighted-mesh bundle.
 
 Before serving, run the [two/four-rank probe](INSTALLATION.md#bounded-real-hardware-probe)
 with the selected HCAs:

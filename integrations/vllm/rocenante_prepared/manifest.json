@@ -27,7 +27,8 @@
     "Add caller-owned prepared RoCE declarations and execution handles without runtime kernel resolution.",
     "Keep stream waits before shared staging writes and completion events after output copies.",
     "Bind immutable peer-path and capacity settings in prepared query identity; opposite_paths is distinct from HCA inventory count.",
-    "Supervise every peer wait from the proxy thread: kernels poll a host abort word, the proxy stops waits only for an unreachable, stopped or inconsistent peer or after B12X_ROCE_PEER_TIMEOUT_S, notifies peers when it stops, and logs each stall."
+    "Supervise every peer wait from the proxy thread: kernels poll a host abort word, the proxy stops waits only for an unreachable, stopped or inconsistent peer or after B12X_ROCE_PEER_TIMEOUT_S, notifies peers when it stops, and logs each stall.",
+    "Give each HCA its own RoCE GID index: the runtime reads each device's GID table at construction and selects the RoCE v2 GID of the device's fabric IPv4 address, uses the configured index (B12X_ROCE_GID_INDEX, else NCCL_IB_GID_INDEX, else 3) for a device whose table does not identify that GID, and logs each device's index; the proxy publishes and routes from each HCA's own index and refuses an empty GID."
   ],
   "files": {
     "roce/__init__.py": "0126b2176991804142336b31395e4d5ca1567a4c0a7a6683264f7d0f4965512e",
@@ -35,12 +36,12 @@
     "roce/_cute_intrinsics.py": "a65f247336a7056e8f161096021e4e9954c3142ba9e76452ccb6d6460756cf6d",
     "roce/_oneshot_cute.py": "98591c7432cf1ad1af8ec0ad7f3d24741cc9086f42f7763409126e5786b305b0",
     "roce/_path_config.py": "d0ac6f1de1934e74202118a94b4f911001869e3da514bf599ca5ea696e82f0c9",
-    "roce/_preparation.py": "905c3cf8311f14d7cafba6808443163297a18a1800fa95c698d06444b2e6b59d",
-    "roce/_proxy.py": "8ece853f5d05e2bd3b7a8c9a0f41138843a4521cda68ca317c1fba14877e4a71",
+    "roce/_preparation.py": "5de39406923a353f13d808242dc9aee776f552c49a0e1d520bb735bb7f54dd71",
+    "roce/_proxy.py": "240a92e2d0b4c5421f3046d16ddee6609e33da51824553cbaddf8c61160399a6",
     "roce/_tuning.py": "60298918980d092ec09fe59e65cfae0bb9090af3855fb2ffc42c67d853e28c4a",
     "roce/api.py": "f8cadfa227d9ce3e115353ef5b5e61004ab27e83799270c210d41c32712f0d38",
-    "roce/roce_oneshot.py": "3aff7e4a78bcb90ddac8aa99985025b301b376aebf8775bc394209d74d315e42",
-    "roce/_roce_proxy.c": "dae4d94f98650c55a4a2042836324203042b7e4fb279eb2aa6eded976e8b0456",
+    "roce/roce_oneshot.py": "11bd06f9826810de3bfd62a76ee3d012657c3a50e3c4b947e2102044ef39444f",
+    "roce/_roce_proxy.c": "95a206775904232bd6bbff98bd408ae89cc06b324149b0d2923d791f703f60f8",
     "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
   },
   "image_source_preimages": {

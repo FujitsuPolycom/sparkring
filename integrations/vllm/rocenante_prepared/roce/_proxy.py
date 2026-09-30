@@ -22,10 +22,10 @@ _LOCK = threading.Lock()
 _LIB: ctypes.CDLL | None = None
 
 BLOB_STRUCT_ERR = "roce proxy blob size mismatch"
-# ABI version 5 includes the supervised peer wait: the control record's abort,
-# completion, stopped-wait and peer-notice words. Ranks refuse to connect to
-# a peer with another version.
-ABI_VERSION = 5
+# ABI version 6 includes the supervised peer wait (the control record's abort,
+# completion, stopped-wait and peer-notice words) and one RoCE GID index per
+# HCA in roce_create. Ranks refuse to connect to a peer with another version.
+ABI_VERSION = 6
 
 
 def _peer_path_count(world_size: int, rank: int, peer: int, opposite_paths: int) -> int:
@@ -143,7 +143,7 @@ def load() -> ctypes.CDLL:
             ctypes.c_int,
             ctypes.POINTER(ctypes.c_char_p),
             ctypes.c_int,
-            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
             p,
             u64,
             u64,
@@ -228,16 +228,26 @@ class Proxy:
         world_size: int,
         rank: int,
         hca_names: tuple[str, ...],
-        gid_index: int,
+        gid_indices: tuple[int, ...],
         region_ptr: int,
         region_bytes: int,
         slot_bytes: int,
         peer_hca_map: tuple[tuple[int, ...], ...],
         opposite_paths: int = 2,
     ) -> None:
-        """Create the proxy context: open the HCAs, register the pinned region, create the queue pairs."""
+        """Create the proxy context: open the HCAs, register the pinned region, create the queue pairs.
+
+        ``gid_indices`` holds the RoCE GID index of each HCA of ``hca_names``;
+        the HCA's GID at that index is published to peers and is the source
+        GID of its queue pairs.
+        """
+        if len(gid_indices) != len(hca_names):
+            raise ValueError("gid_indices must hold one RoCE GID index per HCA")
+        if any(not 0 <= int(index) <= 255 for index in gid_indices):
+            raise ValueError("RoCE GID indices must be between 0 and 255")
         self._lib = load()
         names = (ctypes.c_char_p * len(hca_names))(*[n.encode() for n in hca_names])
+        gids = (ctypes.c_int * len(gid_indices))(*[int(index) for index in gid_indices])
         flattened = _flatten_peer_hca_map(
             peer_hca_map,
             world_size=int(world_size),
@@ -251,7 +261,7 @@ class Proxy:
             int(rank),
             names,
             len(hca_names),
-            int(gid_index),
+            gids,
             ctypes.c_void_p(int(region_ptr)),
             int(region_bytes),
             int(slot_bytes),
@@ -266,6 +276,7 @@ class Proxy:
         self.world_size = int(world_size)
         self.rank = int(rank)
         self.hca_names = tuple(hca_names)
+        self.gid_indices = tuple(int(index) for index in gid_indices)
         self.opposite_paths = int(opposite_paths)
 
     def local_blob(self) -> bytes:

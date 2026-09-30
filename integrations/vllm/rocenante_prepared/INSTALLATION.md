@@ -75,7 +75,17 @@ and proxy health. All ranks must report `passed` in `rank-N.json`. The controlle
 must enforce an outer timeout and retain logs/image identity with those records.
 Run TP4 first when qualifying the Qwen TP4 launch, then repeat on TP2.
 
-Two opt-in cases check the supervised peer wait (proxy ABI 5) after the others.
+With a bundle that selects a [GID index per port](README.md#gid-index-per-port)
+(proxy ABI 6), the stats in `rank-N.json` list each selected HCA's
+`gid_indices`, and each rank's standard error names every index and its
+source. Running the probe after a cabled neighbor restarted, before anything
+returns the addresses to index 3, checks that selection on the ports whose
+address moved. The probe's reference sums come from NCCL, which uses a set
+`NCCL_IB_GID_INDEX` for every HCA; leave it unset for that run so that NCCL
+also selects each port's IPv4 RoCE v2 GID.
+
+Two opt-in cases check the supervised peer wait (proxy ABI 5 and 6) after the
+others.
 `--peer-delay-seconds SECONDS` adds `delayed-peer`: the last rank sleeps before
 one all-reduce, and every other rank must wait for it, return exact sums and
 stay healthy; with a delay of at least 10 s each of them must log and resolve

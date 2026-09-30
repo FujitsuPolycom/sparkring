@@ -243,6 +243,13 @@ pair's model starts, each Spark therefore re-adds a fabric address whose RoCE
 GID has left index 3, as the [ring step](#the-rings-mesh) does on four
 Sparks; that keeps one index valid for every HCA.
 
+The RoCEnante transport in the repository instead reads each HCA's index at
+startup and starts on an address that moved
+([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)).
+No installer image lock selects an image that carries it, and NCCL uses
+`NCCL_IB_GID_INDEX=3` either way, so the installer keeps returning addresses to
+index 3.
+
 The pair's GID check and the ring step locate each address's RoCE v2 GID with
 the resolver in
 [`spark_roce_gid.py`](../../integrations/vllm/spark_roce_gid.py), which reads

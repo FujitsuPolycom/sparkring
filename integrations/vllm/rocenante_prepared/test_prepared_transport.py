@@ -116,23 +116,30 @@ def test_legacy_wire_path_and_kernel_math_are_preserved():
     assert set(prepared_ops) - set(legacy_ops) == {"spin_until_eq_or_abort_sys"}
     for name in set(legacy_ops) & set(prepared_ops):
         assert prepared_ops[name] == legacy_ops[name], name
-    # The prepared proxy paces hardware-forwarded stripes and supervises peer
-    # waits; peers still exchange the same connection blob, region layout,
-    # queue-pair attributes and data/flag placement as the preserved adaptive
-    # proxy. The ABI version differs, so a prepared rank refuses a legacy peer.
+    # The prepared proxy paces hardware-forwarded stripes, supervises peer
+    # waits and takes one RoCE GID index per HCA; peers still exchange the
+    # same connection blob, region layout, queue-pair attributes and data/flag
+    # placement as the preserved adaptive proxy. The ABI version differs, so a
+    # prepared rank refuses a legacy peer.
     prepared = (ROOT / "roce/_roce_proxy.c").read_text()
     legacy = (LEGACY / "_roce_proxy.c").read_text()
-    assert "#define ROCE_ABI_VERSION 5" in prepared.splitlines()
+    assert "#define ROCE_ABI_VERSION 6" in prepared.splitlines()
     assert "#define ROCE_ABI_VERSION 4" in legacy.splitlines()
     for signature, terminator in (
         ("typedef struct {\n    uint32_t abi_version;", "} roce_blob_t;"),
         ("int roce_layout(", "\n}\n"),
-        ("static int connect_qp(", "\n}\n"),
         ("static void split_stripes(", "\n}\n"),
     ):
         assert c_definition(prepared, signature, terminator) == c_definition(
             legacy, signature, terminator
         )
+    # Queue-pair connection differs only in the source GID index, which is
+    # the local HCA's own index instead of one index for every HCA.
+    legacy_connect = c_definition(legacy, "static int connect_qp(")
+    assert legacy_connect.count("(uint8_t)c->gid_index;") == 1
+    assert c_definition(prepared, "static int connect_qp(") == legacy_connect.replace(
+        "(uint8_t)c->gid_index;", "(uint8_t)hca->gid_index;"
+    )
     # Kernel math and launch entry points are unchanged; the kernel bodies
     # differ only in the supervised wait, the sticky stopped flag and the
     # completed-sequence store.
@@ -345,7 +352,8 @@ def test_query_binds_exact_peer_map_and_capacity():
         _blocks=64,
         max_size=2**20,
         max_gather_bytes=2**22,
-        gid_index=3,
+        gid_index=None,
+        gid_indices=[3, 4, 3, 3],
         spin_limit=1000,
     )
     query = env["query_from_runtime"](
@@ -358,6 +366,8 @@ def test_query_binds_exact_peer_map_and_capacity():
     assert query.setup["peer_hca_map"] == ((-1, -1), (0, 2))
     assert query.setup["hca_count"] == 4 and query.setup["opposite_paths"] == 2
     assert query.setup["max_size"] == 2**20 and query.setup["max_blocks"] == 64
+    # Each HCA's RoCE GID index, as an immutable tuple in HCA order.
+    assert query.setup["gid_index"] == (3, 4, 3, 3)
 
 
 def test_native_callables_publish_program_identities():

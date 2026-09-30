@@ -15,6 +15,10 @@ Runtime constraints:
   ``B12X_ROCE_OPPOSITE_PATHS=4`` keeps two neighbor paths and uses four paths
   to the opposite rank;
 * every rank of the exchange group must construct the runtime collectively;
+* each RDMA device uses the RoCE GID index that holds its fabric address's
+  RoCE v2 GID, read from its GID table at construction; the configured index
+  (``default_gid_index``) serves a device whose table does not identify that
+  GID;
 * a collective waits for a late peer as long as the peer's queue pairs
   acknowledge the proxy's checks, up to ``B12X_ROCE_PEER_TIMEOUT_S`` seconds
   (300 by default). An unreachable peer, a peer that stopped its runtime,
@@ -27,9 +31,11 @@ Runtime constraints:
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import logging
 import math
 import os
+import sys
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -62,6 +68,10 @@ DEFAULT_MAX_GATHER_BYTES = 16 * 1024 * 1024
 DEFAULT_THREADS = 512
 DEFAULT_BLOCKS = 8
 DEFAULT_GID_INDEX = 3
+# The kernel's RDMA device class: each device's port 1 lists its GID table
+# under ports/1/gids with the entry types and owning interfaces under
+# ports/1/gid_attrs, and device/net names the device's own interface.
+INFINIBAND_SYSFS = Path("/sys/class/infiniband")
 # Polls of one peer flag after which a waiting kernel stops without a host
 # verdict. The proxy thread decides how long a live peer may take; this bound
 # only ends a wait whose host can no longer write the abort word, so the
@@ -134,30 +144,146 @@ def wait_settings() -> tuple[int, float]:
 
 
 def default_gid_index() -> int:
-    """``B12X_ROCE_GID_INDEX``, else NCCL's ``NCCL_IB_GID_INDEX``, else 3."""
+    """The configured RoCE GID index.
+
+    ``B12X_ROCE_GID_INDEX``, else NCCL's ``NCCL_IB_GID_INDEX``, else 3. A
+    runtime constructed without an explicit ``gid_index`` uses it only for a
+    device whose GID table does not identify its address's RoCE v2 GID
+    (``port_gid_indices``).
+    """
 
     return _env_int("B12X_ROCE_GID_INDEX", "NCCL_IB_GID_INDEX", default=DEFAULT_GID_INDEX)
+
+
+def _sysfs_text(path: Path) -> Optional[str]:
+    """Stripped text of a sysfs attribute, None when it is unreadable or empty."""
+    try:
+        value = path.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return value or None
+
+
+def port_gid(device: str, *, root: Path = INFINIBAND_SYSFS) -> tuple[int, str, Optional[str]]:
+    """Locate the RoCE v2 GID of ``device``'s fabric IPv4 address on port 1.
+
+    Returns ``(index, address, interface)``, where ``interface`` owns the
+    entry. The address is the device's own interface's IPv4 address, which
+    the kernel lists as an IPv4-mapped GID (``::ffff:a.b.c.d``) once per RoCE
+    version. Its RoCE v2 index depends on the table's other entries, and an
+    address registered again while a process still holds its previous entry
+    (as when a cabled neighbor restarts under a running model) returns at
+    another index, so the index is read, not assumed. The single RoCE v2
+    IPv4-mapped entry owned by the interface named in ``device/net`` is
+    selected; without exactly one such interface every RoCE v2 IPv4-mapped
+    entry of the port is considered. Empty entries, IPv6 GIDs and RoCE v1
+    entries are ignored. Raises ValueError naming the entries present when
+    none or several match.
+
+    SparkRing's host resolver ``integrations/vllm/spark_roce_gid.py``
+    (``resolve_device_gid_index``) applies the same rules; this copy keeps the
+    transport bundle self-contained, and the bundle's tests check that both
+    select the same entry.
+    """
+
+    base = Path(root) / device
+    try:
+        interfaces = sorted(item.name for item in (base / "device" / "net").iterdir())
+    except OSError:
+        interfaces = []
+    interface = interfaces[0] if len(interfaces) == 1 else None
+    port = base / "ports" / "1"
+    try:
+        names = sorted((item.name for item in (port / "gids").iterdir() if item.name.isdigit()), key=int)
+    except OSError as error:
+        raise ValueError(f"{device} port 1 has no readable GID table: {error.strerror or error}") from None
+    usable = []
+    for name in names:
+        try:
+            mapped = ipaddress.IPv6Address((_sysfs_text(port / "gids" / name) or "").lower()).ipv4_mapped
+        except ValueError:
+            continue
+        if mapped is None or int(mapped) == 0:
+            continue
+        kind = _sysfs_text(port / "gid_attrs" / "types" / name)
+        if kind is None or " ".join(kind.split()).lower() != "roce v2":
+            continue
+        usable.append((int(name), str(mapped), _sysfs_text(port / "gid_attrs" / "ndevs" / name)))
+    matches = [entry for entry in usable if interface is None or entry[2] == interface]
+    if len(matches) == 1:
+        return matches[0]
+    owner = f" owned by {interface}" if interface is not None else ""
+    listed = "; ".join(f"index {index} ({address}, {netdev or 'interface unknown'})"
+                       for index, address, netdev in (matches or usable)) or "none"
+    if not matches:
+        raise ValueError(f"{device} port 1 has no RoCE v2 IPv4 GID{owner} (RoCE v2 IPv4 GIDs present: {listed})")
+    raise ValueError(f"{device} port 1 has several RoCE v2 IPv4 GIDs{owner}: {listed}")
+
+
+def port_gid_indices(
+    hca_names: Sequence[str], gid_index: Optional[int] = None, *, root: Path = INFINIBAND_SYSFS
+) -> tuple[tuple[int, ...], tuple[str, ...]]:
+    """One RoCE GID index per device of ``hca_names`` and a line stating its source.
+
+    With ``gid_index`` every device uses it. Otherwise each device uses the
+    index of its fabric address's RoCE v2 GID (``port_gid``), and a device
+    whose GID table does not identify that GID uses the configured index
+    (``default_gid_index``); its line gives the reason.
+    """
+
+    if gid_index is not None:
+        index = int(gid_index)
+        return (index,) * len(hca_names), tuple(
+            f"{name} uses RoCE GID index {index}, the caller's gid_index" for name in hca_names
+        )
+    configured = default_gid_index()
+    indices, lines = [], []
+    for name in hca_names:
+        try:
+            index, address, interface = port_gid(name, root=root)
+        except ValueError as error:
+            indices.append(configured)
+            lines.append(f"{name} uses the configured RoCE GID index {configured}: {error}")
+        else:
+            indices.append(index)
+            owner = f" on {interface}" if interface is not None else ""
+            lines.append(f"{name} uses RoCE GID index {index}, the RoCE v2 GID of {address}{owner}")
+    return tuple(indices), tuple(lines)
 
 
 def discover_hcas(gid_index: Optional[int] = None) -> tuple[str, ...]:
     """Return the RDMA devices to use, at most four.
 
-    ``B12X_ROCE_HCA`` (or NCCL's ``NCCL_IB_HCA``) selects explicitly; otherwise
-    every active device with a populated GID at ``gid_index`` is used.
+    ``B12X_ROCE_HCA`` (or NCCL's ``NCCL_IB_HCA``) selects explicitly;
+    otherwise every device whose port 1 is active is used when it has a
+    populated GID at ``gid_index`` or, without ``gid_index``, when its
+    fabric address's RoCE v2 GID is found (``port_gid``) or the configured
+    index is populated.
     """
 
     explicit = _env_list("B12X_ROCE_HCA", "NCCL_IB_HCA")
     if explicit:
         return explicit[:4]
-    gid_index = default_gid_index() if gid_index is None else int(gid_index)
+    configured = default_gid_index() if gid_index is None else int(gid_index)
     found = []
-    root = Path("/sys/class/infiniband")
+    root = INFINIBAND_SYSFS
     for dev in sorted(root.glob("*")):
         state = dev / "ports" / "1" / "state"
-        gid = dev / "ports" / "1" / "gids" / str(gid_index)
+        gid = dev / "ports" / "1" / "gids" / str(configured)
         try:
             if "ACTIVE" not in state.read_text():
                 continue
+        except OSError:
+            continue
+        if gid_index is None:
+            try:
+                port_gid(dev.name, root=root)
+            except ValueError:
+                pass
+            else:
+                found.append(dev.name)
+                continue
+        try:
             if gid.read_text().strip().replace(":", "").strip("0") == "":
                 continue
         except OSError:
@@ -249,7 +375,16 @@ class RoceOneshotAllReduce:
         threads: int = DEFAULT_THREADS,
         blocks: int = DEFAULT_BLOCKS,
     ) -> None:
-        """Allocate the pinned region, build and connect the proxy, and start it."""
+        """Allocate the pinned region, build and connect the proxy, and start it.
+
+        Without ``gid_index`` each device uses the RoCE GID index of its
+        fabric address's RoCE v2 GID, and the configured index
+        (``default_gid_index``) when its GID table does not identify that GID;
+        ``gid_index`` applies one index to every device. ``gid_indices``
+        holds the index of each device of ``hca_names``, ``gid_index`` the
+        index they share or None when they differ, and every rank writes each
+        device's index and its source to standard error.
+        """
         self.device = _normalize_device(device)
         self.rank = dist.get_rank(group=exchange_group)
         self.world_size = dist.get_world_size(group=exchange_group)
@@ -282,7 +417,6 @@ class RoceOneshotAllReduce:
         self._threads = int(threads)
         self._blocks = int(blocks)
         self._counter_classes = self._blocks.bit_length()
-        self.gid_index = default_gid_index() if gid_index is None else int(gid_index)
         self.spin_limit, self.peer_timeout_s = wait_settings()
         if self.spin_limit < DEFAULT_SPIN_LIMIT and self.rank == 0:
             logger.warning(
@@ -292,10 +426,16 @@ class RoceOneshotAllReduce:
                 self.spin_limit,
                 self.peer_timeout_s,
             )
-        names = tuple(hca_names) if hca_names else discover_hcas(self.gid_index)
+        names = tuple(hca_names) if hca_names else discover_hcas(gid_index)
         if not names:
             raise RuntimeError("no active RDMA device found for the RoCE all-reduce")
         self.hca_names = names[:4]
+        self.gid_indices, gid_lines = port_gid_indices(self.hca_names, gid_index)
+        self.gid_index: Optional[int] = (
+            self.gid_indices[0] if len(set(self.gid_indices)) == 1 else None
+        )
+        for line in gid_lines:
+            print(f"RoCEnante rank {self.rank}: {line}", file=sys.stderr, flush=True)
         path_error: Optional[str] = None
         self._opposite_paths = PATH_COUNT
         self._peer_hca_map: tuple[tuple[int, ...], ...] = tuple()
@@ -384,7 +524,7 @@ class RoceOneshotAllReduce:
                 world_size=self.world_size,
                 rank=self.rank,
                 hca_names=self.hca_names,
-                gid_index=self.gid_index,
+                gid_indices=self.gid_indices,
                 region_ptr=host_ptr,
                 region_bytes=self._layout.total_bytes,
                 slot_bytes=slot_bytes,
@@ -451,10 +591,10 @@ class RoceOneshotAllReduce:
             raise RuntimeError("RoCE all-reduce connect failed: " + "; ".join(failures))
         if self.rank == 0:
             logger.info(
-                "RoCEnante ready: world=%d hcas=%s gid_index=%d max_size=%d",
+                "RoCEnante ready: world=%d hcas=%s gid_indices=%s max_size=%d",
                 self.world_size,
                 ",".join(self.hca_names),
-                self.gid_index,
+                ",".join(str(index) for index in self.gid_indices),
                 self.max_size,
             )
 
@@ -995,6 +1135,7 @@ class RoceOneshotAllReduce:
             "world_size": self.world_size,
             "rank": self.rank,
             "hcas": list(self.hca_names),
+            "gid_indices": list(self.gid_indices),
             "max_size": self.max_size,
             "max_gather_bytes": self.max_gather_bytes,
             "slot_bytes": self._slot_bytes,
@@ -1071,5 +1212,7 @@ __all__ = [
     "default_gid_index",
     "discover_hcas",
     "is_supported",
+    "port_gid",
+    "port_gid_indices",
     "wait_settings",
 ]

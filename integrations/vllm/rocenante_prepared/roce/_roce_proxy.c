@@ -36,6 +36,11 @@
 // host sees, and the waiting rank writes a notice into the late peer's
 // control record so that the peer logs its own doorbell and posting state.
 //
+// Each HCA has its own RoCE GID index, chosen by the caller for that port.
+// The GID at that index is published to peers and is the source GID of the
+// HCA's queue pairs; peers address it by value, so ranks and ports may use
+// different indices. An index whose GID is empty fails setup.
+//
 // This file is compiled by b12x.comm.roce._proxy at first use with the host
 // gcc and libibverbs; it must stay plain C with no CUDA dependency.
 
@@ -60,7 +65,7 @@
 #define ROCE_FLAG_STRIDE 128
 #define ROCE_PORT 1
 #define ROCE_SEND_DEPTH 256
-#define ROCE_ABI_VERSION 5
+#define ROCE_ABI_VERSION 6
 // Control-record word indices; the kernels use the same byte offsets.
 #define ROCE_CTRL_STOPPED_SEQ 2
 #define ROCE_CTRL_MISSING_PEER 3
@@ -127,6 +132,7 @@ typedef struct {
     struct ibv_qp *qp[ROCE_MAX_PEERS];
     uint32_t outstanding[ROCE_MAX_PEERS];
     union ibv_gid gid;
+    int gid_index;
     uint16_t lid;
     enum ibv_mtu mtu;
 } roce_hca_t;
@@ -135,7 +141,6 @@ typedef struct {
     int world;
     int rank;
     int n_hca;
-    int gid_index;
     roce_hca_t hca[ROCE_MAX_HCAS];
     uint8_t *region;
     size_t region_bytes;
@@ -351,8 +356,14 @@ static int open_hca(roce_ctx_t *c, int h, const char *name) {
     }
     hca->lid = port.lid;
     hca->mtu = port.active_mtu;
-    if (ibv_query_gid(hca->ctx, ROCE_PORT, c->gid_index, &hca->gid) != 0) {
+    if (ibv_query_gid(hca->ctx, ROCE_PORT, hca->gid_index, &hca->gid) != 0) {
         set_err(c, "ibv_query_gid", errno);
+        return -1;
+    }
+    static const uint8_t empty_gid[16];
+    if (memcmp(hca->gid.raw, empty_gid, sizeof(empty_gid)) == 0) {
+        snprintf(c->err, sizeof(c->err), "RDMA device %s port %d has no GID at index %d",
+                 name, ROCE_PORT, hca->gid_index);
         return -1;
     }
     hca->pd = ibv_alloc_pd(hca->ctx);
@@ -407,7 +418,7 @@ static int open_hca(roce_ctx_t *c, int h, const char *name) {
 }
 
 roce_ctx_t *roce_create(int world, int rank, const char *const *hca_names, int n_hca,
-                        int gid_index, void *region, uint64_t region_bytes,
+                        const int *gid_indices, void *region, uint64_t region_bytes,
                         uint64_t slot_bytes, int opposite_paths,
                         const uint8_t *peer_hca_map,
                         uint64_t peer_hca_count, char *err, uint64_t err_len) {
@@ -418,10 +429,18 @@ roce_ctx_t *roce_create(int world, int rank, const char *const *hca_names, int n
         (opposite_paths != ROCE_LAYOUT_PATHS && opposite_paths != ROCE_MAX_PATHS) ||
         (opposite_paths == ROCE_MAX_PATHS &&
          ((world != 2 && world != 4) || n_hca != 4)) ||
-        peer_hca_map == NULL ||
+        peer_hca_map == NULL || gid_indices == NULL ||
         peer_hca_count != (uint64_t)world * ROCE_MAX_PATHS) {
         snprintf(err, err_len, "invalid roce runtime geometry");
         return NULL;
+    }
+    // A queue pair's source GID index is an 8-bit address-vector field.
+    for (int h = 0; h < n_hca; h++) {
+        if (gid_indices[h] < 0 || gid_indices[h] > UINT8_MAX) {
+            snprintf(err, err_len, "RoCE GID index %d of %s is outside 0-%d",
+                     gid_indices[h], hca_names[h], UINT8_MAX);
+            return NULL;
+        }
     }
     roce_ctx_t *c = calloc(1, sizeof(*c));
     if (c == NULL) {
@@ -431,7 +450,9 @@ roce_ctx_t *roce_create(int world, int rank, const char *const *hca_names, int n
     c->world = world;
     c->rank = rank;
     c->n_hca = n_hca;
-    c->gid_index = gid_index;
+    for (int h = 0; h < n_hca; h++) {
+        c->hca[h].gid_index = gid_indices[h];
+    }
     c->region = region;
     c->region_bytes = region_bytes;
     c->slot_bytes = slot_bytes;
@@ -710,7 +731,7 @@ static int connect_qp(roce_ctx_t *c, int local_h, int remote_h, int p,
     rtr.ah_attr.src_path_bits = 0;
     rtr.ah_attr.port_num = ROCE_PORT;
     memcpy(rtr.ah_attr.grh.dgid.raw, peer->gid[remote_h], 16);
-    rtr.ah_attr.grh.sgid_index = (uint8_t)c->gid_index;
+    rtr.ah_attr.grh.sgid_index = (uint8_t)hca->gid_index;
     rtr.ah_attr.grh.hop_limit = 64;
     rtr.ah_attr.grh.traffic_class = 0;
     // A four-rank cycle has no physical link between opposite ranks.

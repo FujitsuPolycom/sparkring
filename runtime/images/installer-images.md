@@ -78,6 +78,10 @@ and records the new transport manifest in the receipt and the derived lock;
 same bundle's supervised peer wait over
 `dev-20260927-mimovision-cuda1342-nccl2323-status032`, replacing exactly six
 bundle files pinned to their parent and resulting SHA-256;
+[derive_transport_port_gid.py](derive_transport_port_gid.py) installs the
+bundle's RoCE GID index per HCA over
+`dev-20260928-plainstatus-cuda1342-nccl2323-status033` the same way, with four
+pinned files;
 [derive_tp2_hc.py](derive_tp2_hc.py) lists the TP2 row-sharding HC mode;
 [derive_staging_fix.py](derive_staging_fix.py) pins `vllm/v1/utils.py`. Every
 replaced path must already be recorded by the parent receipt, and its bytes in
@@ -100,7 +104,34 @@ python3 runtime/images/derive_transport_peer_wait.py prepare \
 installed manifest, `9f2c0ae62e1e` for the published layer; installer
 containers export it as `SPARKRING_TRANSPORT_MANIFEST_SHA256`. Ranks of this image and of its parent refuse to
 connect to each other (proxy ABI 5 and 4), so every Spark of a deployment must
-run the same image.
+run the same image. A transport layer reads its replacement files from the
+repository bundle, so it prepares only from a revision whose bundle differs
+from its parent in exactly its pinned files: the peer-wait layer from
+`ce396adef06d5ff17a621465ba75d1c83830d7b0`, the port-GID layer from a revision
+that holds its four resulting files.
+
+No image has been built from the port-GID layer. In that image each HCA of a
+RoCEnante runtime uses the RoCE GID index of its fabric address's RoCE v2 GID,
+read at startup, and the configured index only when its GID table does not
+identify that GID
+([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)).
+Its build takes the parent lock:
+
+```bash
+python3 runtime/images/derive_transport_port_gid.py prepare \
+  --parent-lock runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/installer-image.json \
+  --output CONTEXT
+python3 runtime/images/derive_transport_port_gid.py build --context CONTEXT \
+  --tag sparkring:portgid --name dev-20260930-portgid-cuda1342-nccl2323-status033 --output LOCK
+```
+
+`prepare` computes the installed manifest from the parent's, and `record`
+writes its SHA-256 as the lock's `transport_manifest_sha256`. Ranks of this
+image and of its parent refuse to connect to each other (proxy ABI 6 and 5).
+The `installer-transport-port-gid` entry of [builders.json](builders.json) can
+list the release in its `releases` field once
+`runtime/releases/dev-20260930-portgid-cuda1342-nccl2323-status033/release.json`
+exists; the layout check requires that file for every listed release.
 
 ### Replacing the runtime-status package
 
