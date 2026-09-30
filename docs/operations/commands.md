@@ -31,6 +31,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
 | [`storage`](#storage) | Node A | yes | Report disk use; release caches and workspaces no deployment uses |
 | [`up`, `down`](#up-and-down) | Node A | yes | Start or stop a model deployment |
+| [`recover`](#recover) | Node A | yes | Show, or turn on or off, the automatic restart of the model |
 | [`node`](#node) | each Spark | yes, except status reports | Per-Spark services; Node A calls most of them |
 | [`init`, `export`](#init-and-export) | any | no | Save a deployment from hosts or a site file; export it as files |
 | [`compose`](#compose-and-validate-compose) | a checkout | no | Render, check, start or stop profile Compose deployments |
@@ -61,6 +62,7 @@ image and checkpoint, then starts or switches the model.
 | `--events FILE` | Also write progress to FILE, one JSON object per line ([fields](install-reference.md#event-stream)) |
 | `--env FILE` | Preferences file: setup keys on first installation, the download limit on every run ([keys](install-reference.md#optional-preferences)) |
 | `--stop-workloads` | Stop (never remove) GPU containers that are not SparkRing's |
+| `--no-auto-recover` | Do not restart this model by itself when a Spark stops serving ([automatic recovery](install-reference.md#automatic-recovery)) |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |
@@ -154,18 +156,30 @@ quantization and topology) and marks those `sparkring install` supports.
 
 `sudo sparkring status [PROFILE [--instance NAME]] [flags]` prints Node A's
 state, one line per Spark with the next action for any Spark that needs
-attention, and the saved model: the active deployment, or the one named:
+attention, the saved model (the active deployment, or the one named) and
+automatic recovery:
 
 ```text
 Saved model operation: PROFILE | up complete
 Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
+Automatic recovery: on
 ```
 
-A profile with one checkpoint shows only `REPOSITORY @ REVISION`.
+A profile with one checkpoint shows only `REPOSITORY @ REVISION`. The
+recovery lines add the Spark it waits for, its last attempt and the next.
+
+With `--refresh`, a line per model container follows the saved model. When
+the model does not serve, the first line says why and gives the command that
+fixes it ([every case](install-reference.md#when-a-model-stops-serving)):
+
+```text
+The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo sparkring down --execute, then sudo sparkring up --execute
+  rank 1 (spark-b): stopped, exit code 255 at 2026-09-30 17:02:11 UTC
+```
 
 | Flag | Meaning |
 |---|---|
-| `--refresh` | Contact every Spark and inspect the model containers |
+| `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
 | `--json` | Print the full observation as JSON |
 
 ## logs
@@ -263,6 +277,8 @@ deployment that was active when they printed their steps; when a
 and ask for a new review. Repeating `up` re-checks a running deployment
 and starts one whose containers stopped on every Spark, for example after a
 restart ([when a model stops serving](install-reference.md#when-a-model-stops-serving)).
+A completed `up` also turns [automatic recovery](#recover) back on after
+failed attempts; after `down` the model stays stopped.
 `sparkring install` names its deployments
 with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under
@@ -279,6 +295,24 @@ one of them. The deployment directories are under
 | `--max-images N` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values for a new deployment; an existing deployment keeps its own |
 | `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal. An existing deployment keeps the image it recorded, and naming another lock for it is refused |
 | `--deployment DIR` | Use a deployment saved by `sparkring init` instead ([lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing)) |
+
+## recover
+
+`sudo sparkring recover [status|on|off]` shows or sets the automatic restart
+of the active model when a Spark stops serving
+([how it works](install-reference.md#automatic-recovery)).
+
+| Command | Does |
+|---|---|
+| `sudo sparkring recover` | Show whether it is on, the Spark it waits for, the last attempt and the next |
+| `sudo sparkring recover off` | Stop restarting the active model by itself |
+| `sudo sparkring recover on` | Restart it by itself again; clears failed attempts |
+| `--json` | Print one JSON document |
+
+`sparkring install` and `sparkring up` turn it on for the model they start,
+unless `install` had `--no-auto-recover`. To stop the model and keep it
+stopped, use `sudo sparkring down --execute`. `sparkring-recover.timer` runs
+`sparkring recover --auto` once a minute; you do not run it by hand.
 
 ## node
 
