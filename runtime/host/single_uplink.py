@@ -50,6 +50,55 @@ def root_command(transport, route, argv, *, data=None):
     return transport.command(route, ["sudo", "--", *argv], tty=True)
 
 
+class ControlSSH:
+    """Root SSH to administration-network addresses.
+
+    Root's SSH configuration (control_node.ssh_config) supplies each
+    address's port, key and authenticated host key.
+    """
+
+    @staticmethod
+    def argv(target):
+        return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target]
+
+
+def other_revisions(targets, nodes):
+    """Targets whose node record names a SparkRing revision other than Node A's."""
+    current = distribution.identity(installer.ROOT)
+    return [target for target, record in zip(targets, nodes, strict=True) if record.get("revision") != current]
+
+
+def match_revisions(targets, nodes, directory):
+    """Node records after every worker runs Node A's SparkRing revision.
+
+    Planning uses each node's own inspection, while the network change checks
+    every host again with the inspection code that Node A ships in the plan.
+    A worker on another revision can report unchanged state in another form,
+    and the change then stops before it starts. Such workers install Node A's
+    package over the administration network; a package upgrade restarts no
+    administration-network unit.
+    """
+    outdated = other_revisions(targets, nodes)
+    if not outdated:
+        return nodes
+    current = distribution.identity(installer.ROOT)
+    # Enrolled access is kept; this bundle does not run worker preparation.
+    archive = packages.build(Path(directory) / "worker-update", "")
+    for target in outdated:
+        print(f"Update SparkRing on {target} to Node A's revision {current[:12]}")
+        destination = "/var/tmp/sparkring-enroll-update-" + str(time.time_ns())
+        try:
+            packages.transfer(ControlSSH, target, archive, destination)
+            discovery.ssh(target, ["python3", "-I", destination + "/install.py", "--apply"], timeout=1800)
+        except RuntimeError as error:
+            raise ValueError(f"Updating SparkRing on {target} failed: {error}") from error
+    nodes = controller.collect(targets)
+    if other_revisions(targets, nodes):
+        raise ValueError("After the update, " + ", ".join(other_revisions(targets, nodes))
+                         + f" still runs a SparkRing revision other than Node A's {current[:12]}")
+    return nodes
+
+
 def provision(discovered, transport, archive, *, private_key, public_key, control_cidr, share_uplink, directory):
     journal = Path(directory) / "provision.json"
     if journal.exists():
@@ -126,6 +175,8 @@ def scope_lines(args, *, fresh, follow=None, four=None):
         lines += [
                   "  - install SparkRing and its packaged dependencies, then a private WireGuard administration network",
                   "  - " + ("do not share" if args.no_share_internet else "share") + " Node A's Internet connection with workers"]
+    else:
+        lines.append("  - install Node A's SparkRing revision on workers that run another one")
     lines.append("  - keep compatible fabric IPv4 addresses and replace incompatible ones, saving connection backups")
     if fresh if four is None else four:
         lines += HAIRPIN_SCOPE
@@ -300,6 +351,11 @@ def main(argv=None, *, follow=None):
                             control_cidr=args.control_cidr, share_uplink=not args.no_share_internet, directory=directory)
         node.save(base, "enrolled.json", {"targets": targets, "api_address": api_address}, mode=0o600)
     nodes = controller.collect(targets)
+    if args.plan:
+        for target in other_revisions(targets, nodes):
+            print(f"Note: {target} runs another SparkRing revision; setup updates it to Node A's before changing networking.")
+    else:
+        nodes = match_revisions(targets, nodes, directory)
     head = node.read("/", "/etc/sparkring/node.json")["node_id"]
     try:
         plan = topology.build_spec(nodes, head, name=args.name, fabric_cidr=args.fabric_cidr,

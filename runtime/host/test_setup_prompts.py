@@ -244,3 +244,41 @@ def test_fresh_setup_plan_lists_the_hairpin_step_when_it_finds_four_sparks(tmp_p
         out = capsys.readouterr().out
         listed = "Setup of these Sparks also includes this step:\n" + "\n".join(single_uplink.HAIRPIN_SCOPE) in out
         assert listed is (count == 4)
+
+
+def test_setup_installs_node_a_revision_on_other_workers_before_planning(tmp_path, monkeypatch, capsys):
+    targets = ["root@10.253.255.1", "root@10.253.255.2"]
+    current, older = "a" * 40, "b" * 40
+    monkeypatch.setattr(single_uplink.distribution, "identity", lambda root: current)
+    calls = []
+    monkeypatch.setattr(single_uplink.packages, "build", lambda directory, key: calls.append(("build", directory.name, key)) or "bundle")
+    monkeypatch.setattr(single_uplink.packages, "transfer",
+                        lambda transport, target, archive, destination: calls.append(("transfer", transport.argv(target)[-1], archive)))
+    installed = {targets[0]: current, targets[1]: older}
+
+    def ssh(target, argv, **options):
+        calls.append(("ssh", target, argv[-1], options["timeout"]))
+        installed[target] = current
+    monkeypatch.setattr(single_uplink.discovery, "ssh", ssh)
+    monkeypatch.setattr(single_uplink.controller, "collect", lambda targets: [{"revision": installed[t]} for t in targets])
+
+    nodes = [{"revision": installed[t]} for t in targets]
+    assert single_uplink.other_revisions(targets, nodes) == [targets[1]]
+    assert single_uplink.match_revisions(targets, nodes, tmp_path) == [{"revision": current}] * 2
+    assert calls == [("build", "worker-update", ""), ("transfer", targets[1], "bundle"),
+                     ("ssh", targets[1], "--apply", 1800)]
+    assert f"Update SparkRing on {targets[1]} to Node A's revision {current[:12]}" in capsys.readouterr().out
+    calls.clear()
+    assert single_uplink.match_revisions(targets, nodes[:1] * 2, tmp_path) == nodes[:1] * 2 and calls == []
+
+    # A worker still on another revision afterwards stops setup before planning.
+    monkeypatch.setattr(single_uplink.controller, "collect", lambda targets: [{"revision": current}, {"revision": older}])
+    with pytest.raises(ValueError, match="root@10.253.255.2 still runs a SparkRing revision other than Node A's aaaaaaaaaaaa"):
+        single_uplink.match_revisions(targets, [{"revision": current}, {"revision": older}], tmp_path / "again")
+
+
+def test_repeated_setup_lists_the_worker_update():
+    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    line = "  - install Node A's SparkRing revision on workers that run another one"
+    assert line in single_uplink.scope_lines(args, fresh=False)
+    assert line not in single_uplink.scope_lines(args, fresh=True)
