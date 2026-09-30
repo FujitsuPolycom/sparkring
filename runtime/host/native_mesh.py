@@ -229,7 +229,7 @@ def _container_running(container_id):
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
-def takeover_problem(value, selected, rank, receipt):
+def takeover_problem(value, selected, rank, receipt, deployment):
     """Why this Spark's installed mesh of the same name may not be replaced, or None.
 
     A new deployment with an earlier one's site name (the same cluster,
@@ -238,15 +238,27 @@ def takeover_problem(value, selected, rank, receipt):
     unit (``--fresh-mesh`` records every observed mesh unit in ``replaces``),
     the earlier site is unchanged since that review, and the earlier model
     container on this Spark is stopped (by down) or removed.
+
+    ``deployment`` is this deployment's lock ID. An installation it owns whose
+    receipt names other containers, which were created again for example
+    after docker container prune, is installed again when its site is this
+    deployment's planned site and the named container on this Spark is
+    stopped or removed.
     """
-    reviewed = [prior for prior in value["replaces"] if prior["rank"] == rank and prior["unit"] == selected["mesh_unit"]]
-    if not reviewed or reviewed[0]["reference"]["site_path"] != selected["config_dir"] + "/site.json":
-        return ("Native mesh directory belongs to another installation. Plan its replacement with "
-                "sparkring up PROFILE --fresh-mesh and review it; a replacement takes over an installation "
-                "whose model container is stopped or removed.")
-    site = Path(reviewed[0]["reference"]["site_path"])
-    if site.is_symlink() or not site.is_file() or compose.digest(site.read_bytes()) != reviewed[0]["reference"]["site_sha256"]:
-        return "Previous mesh site changed since replacement review"
+    if isinstance(receipt, dict) and receipt.get("deployment") == deployment:
+        reference = value["reference"]
+        changed = "The installed mesh site differs from this deployment's plan"
+    else:
+        reviewed = [prior for prior in value["replaces"] if prior["rank"] == rank and prior["unit"] == selected["mesh_unit"]]
+        if not reviewed or reviewed[0]["reference"]["site_path"] != selected["config_dir"] + "/site.json":
+            return ("Native mesh directory belongs to another installation. Plan its replacement with "
+                    "sparkring up PROFILE --fresh-mesh and review it; a replacement takes over an installation "
+                    "whose model container is stopped or removed.")
+        reference = reviewed[0]["reference"]
+        changed = "Previous mesh site changed since replacement review"
+    site = Path(reference["site_path"])
+    if site.is_symlink() or not site.is_file() or compose.digest(site.read_bytes()) != reference["site_sha256"]:
+        return changed
     containers = receipt.get("containers") if isinstance(receipt, dict) else None
     if not isinstance(containers, list) or len(containers) != 4 or not all(isinstance(c, str) for c in containers):
         return "The installed mesh's receipt is incomplete; inspect it before replacing the installation"
@@ -298,7 +310,7 @@ def install_check_local(lock, rank, payload):
     receipt = profiles.read_json(receipt_path)
     if receipt == expected:
         return {"ok": True, "takeover": False}
-    problem = takeover_problem(value, selected, rank, receipt)
+    problem = takeover_problem(value, selected, rank, receipt, expected["deployment"])
     if problem:
         raise ValueError(problem)
     return {"ok": True, "takeover": True}
@@ -315,7 +327,7 @@ def install_local(lock, rank, payload):
         receipt = profiles.read_json(receipt_path)
         if receipt == expected:
             return {"ok": True}
-        problem = takeover_problem(value, selected, rank, receipt)
+        problem = takeover_problem(value, selected, rank, receipt, expected["deployment"])
         if problem:
             raise ValueError(problem)
         set_aside(selected, value["name"])

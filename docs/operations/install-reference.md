@@ -725,6 +725,12 @@ checked before any changes, so a refusal on one Spark leaves all four as they
 were. A mesh service that is installed but neither enabled nor running is not
 listed by the plan and is not taken over.
 
+The mesh services start and check the exact model containers that the
+deployment created. When those containers are created again, for example
+after `docker container prune` removed them while the model was stopped, the
+deployment's next `up` installs its mesh services again for the new
+containers, in the same way.
+
 ## Security and host exposure
 
 Review this list before approving `Proceed? [Y/n]`; it is how the installer

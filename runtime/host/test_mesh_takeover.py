@@ -160,3 +160,45 @@ def test_the_installer_checks_every_rank_before_it_installs_on_any(tmp_path, mon
         installer_runner.Runner.native_mesh(runner, "mesh-install")
     assert [number for operation, number in calls if operation == "mesh-install-check-local"] == [0, 1, 2]
     assert not any(operation == "mesh-install-local" for operation, _ in calls)
+
+
+def test_an_installation_whose_containers_were_created_again_is_installed_for_the_new_ones(mesh):
+    # This deployment's own installation; docker container prune removed the
+    # containers its units name, and create made new ones.
+    planned = mesh.lock["site_input"]["native_mesh"]["site"]
+    (mesh.config / "site.json").write_text(compose.encoded(planned))
+    (mesh.config / "installer-owner.json").write_text(json.dumps({"deployment": mesh.lock["id"], "containers": ["old0", "old1", "old2", "old3"]}))
+    # No reviewed replacement is needed for the deployment's own installation.
+    own = dict(mesh.lock, site_input=dict(mesh.lock["site_input"], native_mesh=dict(mesh.lock["site_input"]["native_mesh"], replaces=[])))
+    assert native_mesh.install_check_local(own, 0, mesh.payload) == {"ok": True, "takeover": True}
+    assert native_mesh.install_local(own, 0, mesh.payload) == {"ok": True}
+    assert json.loads((mesh.config / "installer-owner.json").read_text())["containers"] == ["new0", "new1", "new2", "new3"]
+    # A site that differs from the deployment's plan is not installed over.
+    (mesh.config / "installer-owner.json").write_text(json.dumps({"deployment": mesh.lock["id"], "containers": ["x0", "x1", "x2", "x3"]}))
+    (mesh.config / "site.json").write_text('{"edited": true}')
+    with pytest.raises(ValueError, match="differs from this deployment's plan"):
+        native_mesh.install_check_local(own, 0, mesh.payload)
+
+
+@pytest.mark.parametrize("recorded,reinstalled", [(["new0", "new1", "new2", "new3"], False), (["old0", "old1", "old2", "old3"], True)])
+def test_the_installer_reinstalls_units_only_for_containers_created_again(tmp_path, monkeypatch, recorded, reinstalled):
+    from scripts import deploy_stage, installer_runner
+    calls = []
+
+    def remote(number, operation, *, data=None):
+        calls.append(operation)
+        return {"Id": f"new{number}"} if operation == "container-record" else {"ok": True}
+
+    def secrets(directory):
+        (directory / "health.key").write_bytes(b"k" * 32)
+        return "0" * 32
+    monkeypatch.setattr(deploy_stage, "prepare_secrets", secrets)
+    record = tmp_path / "native-mesh" / "installation.json"
+    installer.write(record, {"deployment": "d" * 64, "container_ids": recorded})
+    runner = SimpleNamespace(lock={"id": "d" * 64}, directory=tmp_path, remote=remote)
+    runner.native_mesh = lambda operation: installer_runner.Runner.native_mesh(runner, operation)
+    assert runner.native_mesh("mesh-install") == {"ok": True}
+    assert ("mesh-install-local" in calls) is reinstalled
+    assert ("mesh-installed-local" in calls) is not reinstalled
+    assert json.loads(record.read_text())["container_ids"] == ["new0", "new1", "new2", "new3"]
+    assert len(list(record.parent.glob("installation-*.json"))) == int(reinstalled)
