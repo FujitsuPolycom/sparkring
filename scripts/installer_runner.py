@@ -366,6 +366,9 @@ class Runner:
         containers = [self.remote(rank, "container-record") for rank in range(4)]
         payload = json.dumps({"epoch": epoch, "key": base64.b64encode((directory / "health.key").read_bytes()).decode(),
                               "containers": containers}).encode()
+        # Every rank checks first, so a refused takeover changes no rank.
+        for rank in range(4):
+            self.remote(rank, "mesh-install-check-local", data=payload)
         for rank in range(4):
             self.remote(rank, "mesh-install-local", data=payload)
         installer.write(record, {"deployment": self.lock["id"], "container_ids": [c["Id"] for c in containers]})

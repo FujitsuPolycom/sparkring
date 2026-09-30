@@ -11,6 +11,7 @@ import ipaddress
 import json
 from pathlib import Path
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -21,6 +22,8 @@ from runtime.host import discovery, node, roce_gid
 ROOT = profiles.ROOT
 COMPONENT = ROOT / "runtime/glm53-spark-mtp3-mesh"
 MESH_UNITS = ("sparkring-mesh.service", "sparkring-*-mesh.service")
+# Files of mesh installations that a replacement of the same name took over.
+REPLACED_ROOT = Path("/var/lib/sparkring/replaced-meshes")
 # A started mesh needs all four ranks up before its markers attach.
 RING_READY_SECONDS = 240
 # A ring check fails with ValueError on a fabric difference and with
@@ -202,11 +205,10 @@ def prepare_local(lock, rank):
     return {"ok": True}
 
 
-def install_local(lock, rank, payload):
-    """Install canonical units around exact stopped, admitted profile containers."""
+def _install_context(lock, rank, payload):
+    """The validated plan, layout, key and expected receipt of this Spark's mesh installation."""
     from scripts import installer_host
     from runtime.common import installer
-    owner, units = modules()
     value = validate(lock["site_input"]["native_mesh"], lock["site_input"])
     selected = managed_deployment.layout(value["name"])
     spec = installer.specifications(lock, only_rank=rank)[0]
@@ -217,13 +219,106 @@ def install_local(lock, rank, payload):
     key = base64.b64decode(payload["key"], validate=True)
     if len(key) != 32 or not re.fullmatch(r"[0-9a-f]{32}", payload["epoch"]):
         raise ValueError("Invalid native mesh authentication material")
+    expected = {"deployment": lock["id"], "containers": [c["Id"] for c in containers]}
+    return value, selected, key, expected
+
+
+def _container_running(container_id):
+    """Whether a container with this ID exists on this Spark and runs."""
+    result = node.call(["docker", "inspect", "--format", "{{.State.Running}}", container_id], accepted=(0, 1))
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def takeover_problem(value, selected, rank, receipt):
+    """Why this Spark's installed mesh of the same name may not be replaced, or None.
+
+    A new deployment with an earlier one's site name (the same cluster,
+    profile and instance) installs its mesh under the same name. It takes over
+    the earlier installation only when its reviewed plan lists this Spark's
+    unit (``--fresh-mesh`` records every observed mesh unit in ``replaces``),
+    the earlier site is unchanged since that review, and the earlier model
+    container on this Spark is stopped (by down) or removed.
+    """
+    reviewed = [prior for prior in value["replaces"] if prior["rank"] == rank and prior["unit"] == selected["mesh_unit"]]
+    if not reviewed or reviewed[0]["reference"]["site_path"] != selected["config_dir"] + "/site.json":
+        return ("Native mesh directory belongs to another installation. Plan its replacement with "
+                "sparkring up PROFILE --fresh-mesh and review it; a replacement takes over an installation "
+                "whose model container is stopped or removed.")
+    site = Path(reviewed[0]["reference"]["site_path"])
+    if site.is_symlink() or not site.is_file() or compose.digest(site.read_bytes()) != reviewed[0]["reference"]["site_sha256"]:
+        return "Previous mesh site changed since replacement review"
+    containers = receipt.get("containers") if isinstance(receipt, dict) else None
+    if not isinstance(containers, list) or len(containers) != 4 or not all(isinstance(c, str) for c in containers):
+        return "The installed mesh's receipt is incomplete; inspect it before replacing the installation"
+    if _container_running(containers[rank]):
+        return ("The model container of the installation being replaced still runs on this Spark. "
+                "Stop that deployment with sparkring down first.")
+    return None
+
+
+def set_aside(selected, name):
+    """Stop a replaced installation's units and move its files out of the installed tree.
+
+    The files are moved, not deleted, to a directory under REPLACED_ROOT.
+    They leave /etc/sparkring/deployments because inspect_local reads every
+    configuration there, and the unit directory because the new installation
+    writes units with the same names.
+    """
+    units = [selected[key] for key in ("model_unit", "liveness_unit", "mesh_unit")]
+    paths = [Path(selected["unit_dir"]) / unit for unit in units]
+    present = [unit for unit, path in zip(units, paths) if path.exists()]
+    if present:
+        node.call(["systemctl", "disable", "--now", *present])
+    target = REPLACED_ROOT / f"{name}-{time.time_ns()}"
+    if any(p.is_symlink() for p in (target, *target.parents)):
+        raise ValueError("The holding path for replaced meshes contains a symlink")
+    (target / "units").mkdir(parents=True, mode=0o700)
+    for source, destination in ((Path(selected["config_dir"]), target / "config"), (Path(selected["code_dir"]), target / "code")):
+        if source.is_symlink():
+            raise ValueError("Native installation path is a symlink: " + str(source))
+        if source.exists():
+            shutil.move(str(source), str(destination))
+    for path in paths:
+        if path.exists() or path.is_symlink():
+            shutil.move(str(path), str(target / "units" / path.name))
+    node.call(["systemctl", "daemon-reload"])
+    return target
+
+
+def install_check_local(lock, rank, payload):
+    """Whether install_local takes over an installation on this Spark; raises when it may not.
+
+    The installer runs this on every rank before installing on any, so a
+    refusal changes nothing.
+    """
+    value, selected, _, expected = _install_context(lock, rank, payload)
+    receipt_path = Path(selected["config_dir"]) / "installer-owner.json"
+    if not receipt_path.exists():
+        return {"ok": True, "takeover": False}
+    receipt = profiles.read_json(receipt_path)
+    if receipt == expected:
+        return {"ok": True, "takeover": False}
+    problem = takeover_problem(value, selected, rank, receipt)
+    if problem:
+        raise ValueError(problem)
+    return {"ok": True, "takeover": True}
+
+
+def install_local(lock, rank, payload):
+    """Install canonical units around exact stopped, admitted profile containers."""
+    owner, units = modules()
+    value, selected, key, expected = _install_context(lock, rank, payload)
+    containers = payload["containers"]
     config_root, code_root = Path(selected["config_dir"]), Path(selected["code_dir"])
     receipt_path = config_root / "installer-owner.json"
-    expected = {"deployment": lock["id"], "containers": [c["Id"] for c in containers]}
     if receipt_path.exists():
-        if profiles.read_json(receipt_path) != expected:
-            raise ValueError("Native mesh directory belongs to another installation")
-        return {"ok": True}
+        receipt = profiles.read_json(receipt_path)
+        if receipt == expected:
+            return {"ok": True}
+        problem = takeover_problem(value, selected, rank, receipt)
+        if problem:
+            raise ValueError(problem)
+        set_aside(selected, value["name"])
     if config_root.exists() or code_root.exists() or any(p.is_symlink() for p in (config_root, *config_root.parents, code_root, *code_root.parents)):
         raise ValueError("Native installation path exists; inspect incomplete installation before recovery")
     prepare_local(lock, rank)
@@ -339,7 +434,8 @@ def operate_local(lock, rank, operation):
         node.call(["systemctl", "is-active", selected["mesh_unit"]])
     elif operation == "mesh-replaced":
         for prior in value["replaces"]:
-            if prior["rank"] == rank and node.call(["systemctl", "is-active", prior["unit"]], accepted=(0, 3, 4)).returncode == 0:
+            if (prior["rank"] == rank and prior["unit"] != selected["mesh_unit"]
+                    and node.call(["systemctl", "is-active", prior["unit"]], accepted=(0, 3, 4)).returncode == 0):
                 raise ValueError("Previous mesh remains active")
     elif operation == "mesh-up":
         # A mesh that this deployment created is served like a reused one:
@@ -352,7 +448,8 @@ def operate_local(lock, rank, operation):
         node.call(["python3", runner, "gate", "--config", str(config), "--timeout", "60"])
     elif operation == "mesh-replace":
         for prior in value["replaces"]:
-            if prior["rank"] == rank:
+            # A unit with this deployment's own name was taken over by mesh-install.
+            if prior["rank"] == rank and prior["unit"] != selected["mesh_unit"]:
                 if compose.digest(Path(prior["reference"]["site_path"]).read_bytes()) != prior["reference"]["site_sha256"]:
                     raise ValueError("Previous mesh site changed since replacement review")
                 node.call(["systemctl", "disable", "--now", prior["unit"]])
