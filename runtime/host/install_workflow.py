@@ -32,8 +32,8 @@ import time
 from runtime.common import distribution, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
 from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
-                          install_assets, models, native_mesh, node, progress, retained_source, rollout, settings,
-                          topology)
+                          install_assets, models, native_mesh, node, progress, recovery, retained_source, rollout,
+                          settings, topology)
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
 
@@ -608,6 +608,9 @@ def summary_lines(result):
     rows = [("Model", result.get("model")), ("API", result.get("api_url")), ("Dashboard", result.get("dashboard_url")),
             ("Try it", result["example_request"]), ("Switch back", commands.get("switch_back")),
             ("Stop", commands.get("stop")),
+            ("Recovery", None if "auto_recover" not in result else
+             "restarts the model if a Spark stops serving; turn off: sudo sparkring recover off"
+             if result["auto_recover"] else "off; turn on: sudo sparkring recover on"),
             ("Uninstall", f"stop the model, then {commands['remove']} on each Spark" if commands.get("remove") else None)]
     return [f"  {name + ':':<13}{value}" for name, value in rows if value]
 
@@ -700,7 +703,8 @@ def execute(args):
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
                 "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
-                "serving": lock.get("serving") or {}, **installer.connection(lock)}
+                "serving": lock.get("serving") or {}, "auto_recover": not args.no_auto_recover,
+                **installer.connection(lock)}
         if hairpin:
             plan["hairpin"] = {"required": needs_hairpin, "ranks": hairpin_ring.rank_rows(hairpin, cluster["plan"])}
         if limit:
@@ -800,12 +804,19 @@ def execute(args):
 
         # check_workloads has confirmed that only the active or candidate
         # deployment uses the GPUs, so an abandoned failed switch can be replaced.
+        # A state that recovery's own unfinished attempt left is not recovery's
+        # once this installation changes it.
+        for path in {previous, directory} - {None}:
+            recovery.forget_attempt(path)
         # A candidate whose own start did not complete, for example a first
         # installation that failed its readiness check, stops before it is
         # prepared again.
         result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
                                  verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
                                  unfinished=installer.unfinished)
+        # Resets recovery's failures, records the generation's boots and the
+        # deployment's choice, and enables the timer.
+        recovery.started(directory, enabled=not args.no_auto_recover)
         try:
             plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
         except (OSError, ValueError):
@@ -843,6 +854,9 @@ def main(argv=None):
                              "default: SPARKRING_DOWNLOAD_LIMIT of the --env file, else none")
     parser.add_argument("--events", type=Path, metavar="FILE",
                         help="write one JSON progress event per line to FILE, replacing it; stdout is unchanged")
+    parser.add_argument("--no-auto-recover", action="store_true",
+                        help="do not restart this model automatically when a Spark stops serving; "
+                             "sudo sparkring recover on turns it on later")
     serving_settings.add_arguments(parser)
     args = parser.parse_args(argv)
     if args.events is not None and not args.events.parent.is_dir():

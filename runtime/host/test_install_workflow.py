@@ -2366,3 +2366,20 @@ def test_install_yes_help_names_the_connectx_restarts(capsys):
     help_text = " ".join(capsys.readouterr().out.split())
     assert ("--yes approve the displayed setup, checkpoint plan, the listed ConnectX driver restarts on an idle "
             "ring, and model replacement; SSH trust is still required") in help_text
+
+
+def test_installation_turns_automatic_recovery_on_unless_asked_not_to(machine, capsys):
+    from runtime.host import recovery
+    assert command() == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    directory = rollout.active(controller.STATE)
+    assert result["auto_recover"] is True and recovery.record_of(recovery.load(), directory)["enabled"] is True
+    assert "  Recovery:    restarts the model if a Spark stops serving; turn off: sudo sparkring recover off" in out.err
+    recovery.update(directory, failures=2)
+    assert command("--no-auto-recover") == 0
+    out = capsys.readouterr()
+    value = recovery.record_of(recovery.load(), directory)
+    assert json.loads(out.out)["auto_recover"] is False
+    assert (value["enabled"], value["failures"]) == (False, 0)
+    assert "  Recovery:    off; turn on: sudo sparkring recover on" in out.err
