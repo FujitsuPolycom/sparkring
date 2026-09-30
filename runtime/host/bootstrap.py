@@ -50,7 +50,11 @@ def probe():
             guids.append((directory / "node_guid").read_text())
         for nic in (directory / "device/net").iterdir():
             link = next(row for row in links if row["ifname"] == nic.name)
-            functions.append({"device": directory.name, "netdev": nic.name, "mac": link.get("address"),
+            try:
+                carrier = (Path("/sys/class/net") / nic.name / "carrier").read_text().strip() == "1"
+            except OSError:
+                carrier = False
+            functions.append({"device": directory.name, "netdev": nic.name, "mac": link.get("address"), "carrier": carrier,
                               "addresses": [a["local"] for a in link.get("addr_info", []) if a["family"] == "inet6" and a["scope"] == "link"]})
     # Every host on a fabric link answers the all-nodes multicast echo; the
     # replies name the addresses in use now.

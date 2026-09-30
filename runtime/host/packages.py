@@ -104,13 +104,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--prepare", action="store_true")
+    parser.add_argument("--yes", action="store_true")
     args = parser.parse_args()
     directory = Path(__file__).resolve().parent
     install(directory, apply=args.apply)
     if args.prepare:
         if not args.apply:
             raise SystemExit("Worker preparation requires --apply")
-        subprocess.run(["/usr/bin/sparkring", "node", "seed", "--key-file", str(directory / "controller.pub")], check=True)
+        subprocess.run(["/usr/bin/sparkring", "node", "seed", "--key-file", str(directory / "controller.pub"),
+                        *(["--yes"] if args.yes else [])], check=True)
 '''
     (directory / "install.py").write_text(source, encoding="utf-8")
     release = dict(line.split("=", 1) for line in Path("/etc/os-release").read_text().splitlines() if "=" in line)

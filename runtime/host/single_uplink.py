@@ -9,7 +9,7 @@ import sys
 import time
 
 from runtime.common import distribution, installer
-from runtime.host import bootstrap, control, control_node, controller, discovery, node, packages, seed, settings, topology
+from runtime.host import bootstrap, control, control_node, controller, discovery, lan_peers, node, packages, seed, settings, topology
 from scripts import hairpin_setting
 
 # The approval line for the ConnectX hairpin setting on four-Spark rings. The
@@ -116,9 +116,14 @@ def scope_lines(args, *, fresh, follow=None, four=None):
     lines = []
     if fresh:
         lines += ["  - find cabled Sparks over IPv6 link-local fabric addresses, adding link-local"
-                  " addressing to fabric connections without it (their IPv4 addresses and MTU are kept)",
+                  " addressing to fabric connections without it and turning off DHCP on fabric connections"
+                  " that have no lease (their IPv4 addresses and MTU are kept)",
                   f"  - sign in as {args.ssh_user} on SSH port {args.ssh_port} (SSH asks for passwords; change with"
-                  " --ssh-user) and trust each cabled Spark's SSH host key on first contact; fingerprints are printed",
+                  " --ssh-user) and trust each cabled Spark's SSH host key on first contact; fingerprints are printed"]
+        if args.ssh_port == 22:
+            lines.append("  - sign in to a cabled Spark on this LAN, when it is there, to install SparkRing and turn off"
+                         " DHCP on its fabric connections; later sign-ins use Node A's key")
+        lines += [
                   "  - install SparkRing and its packaged dependencies, then a private WireGuard administration network",
                   "  - " + ("do not share" if args.no_share_internet else "share") + " Node A's Internet connection with workers"]
     lines.append("  - keep compatible fabric IPv4 addresses and replace incompatible ones, saving connection backups")
@@ -228,8 +233,19 @@ def main(argv=None, *, follow=None):
     else:
         for prior in (base / "setups").glob("*/provision.json"):
             if not installer.read(prior).get("complete"):
-                raise ValueError("A provisioning attempt is incomplete; inspect " + str(prior) + " and worker state before recovery")
+                # Every provisioning step repeats safely: packages reinstall,
+                # node keys persist, and a control configuration that differs
+                # from the installed one is refused on the node itself.
+                prior.rename(prior.with_name("provision-incomplete.json"))
+                print("A previous setup stopped during provisioning; starting it again (its record: "
+                      + str(prior.with_name("provision-incomplete.json")) + ")")
         transport = bootstrap.SSH(base / "ssh", identity=private, trust_new=trust_new)
+        bundle = {}
+
+        def worker_archive():
+            if "path" not in bundle:
+                bundle["path"] = packages.build(directory / "worker-bundle", public)
+            return bundle["path"]
         if not args.plan:
             controller.confirm("Prepare unused local fabric ports for discovery? Existing configured links will be kept.", args.yes)
             # --yes approves setup scope only; stopping running GPU work needs
@@ -239,7 +255,19 @@ def main(argv=None, *, follow=None):
                 + ", ".join(names) + ".", args.stop_workloads),
                 link_local=lambda name: controller.confirm(
                     "Add IPv6 link-local addressing to fabric connection " + name
-                    + " for discovery? Its IPv4 addresses and MTU are kept.", args.yes))
+                    + " for discovery? Its IPv4 addresses and MTU are kept.", args.yes),
+                dhcp=lambda name: controller.confirm(
+                    "Turn off DHCP on fabric connection " + name + ", which a direct cable does not answer, "
+                    "and keep IPv6 link-local addressing?", args.yes))
+            if args.ssh_port == 22:
+                head, _ = lan_peers.wait_for_peers(lambda: transport.inventory([]))
+                if lan_peers.prepare(transport, root_command, head=head, user=args.ssh_user, archive=worker_archive):
+                    # Prepared Sparks run the preparation service, which admits
+                    # root with Node A's key; the LAN sign-in verified each
+                    # Spark's fabric hardware, so their fabric host keys are
+                    # recorded on first contact.
+                    args.ssh_port = 2222
+                    transport.trust_new = True
         if args.ssh_port == 2222:
             # The worker preparation service admits only root with Node A's key.
             args.ssh_user = "root"
@@ -266,7 +294,7 @@ def main(argv=None, *, follow=None):
             print("Discovery saved: " + str(directory / "discovery.json"))
             return 0
         controller.confirm("Install on these Sparks and establish the private administration network?", args.yes)
-        archive = packages.build(directory / "worker-bundle", public)
+        archive = worker_archive()
         api_address = next(n["api_address"] for n in found["nodes"] if n["id"] == found["head"])
         targets = provision(found, transport, archive, private_key=private, public_key=public,
                             control_cidr=args.control_cidr, share_uplink=not args.no_share_internet, directory=directory)
