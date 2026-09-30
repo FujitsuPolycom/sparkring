@@ -360,12 +360,20 @@ class Runner:
             for number in range(4):
                 self.remote(number, "mesh-installed-local")
             return {"ok": True}
-        if record.exists():
-            return self.native_mesh("mesh-installed")
-        epoch = prepare_secrets(directory)
         containers = [self.remote(rank, "container-record") for rank in range(4)]
+        if record.exists():
+            if [c["Id"] for c in containers] == installer.read(record).get("container_ids"):
+                return self.native_mesh("mesh-installed")
+            # The containers were created again, for example after docker
+            # container prune. The installed units start and gate container
+            # IDs, so they are installed again for the new containers.
+            record.rename(record.with_name(f"installation-{time.time_ns()}.json"))
+        epoch = prepare_secrets(directory)
         payload = json.dumps({"epoch": epoch, "key": base64.b64encode((directory / "health.key").read_bytes()).decode(),
                               "containers": containers}).encode()
+        # Every rank checks first, so a refused takeover changes no rank.
+        for rank in range(4):
+            self.remote(rank, "mesh-install-check-local", data=payload)
         for rank in range(4):
             self.remote(rank, "mesh-install-local", data=payload)
         installer.write(record, {"deployment": self.lock["id"], "container_ids": [c["Id"] for c in containers]})

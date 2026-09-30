@@ -36,6 +36,8 @@ def _operation(directory, operation):
     from runtime.common import installer
     if operation == "saved-status":
         return installer.status(directory)
+    if operation.startswith("review-"):
+        return installer.apply(directory, operation[len("review-"):], runner=None, execute=False)
     from scripts.installer_runner import Runner
     runner = Runner(directory)
     if operation in ("verify", "status"):
@@ -60,8 +62,17 @@ def _operation(directory, operation):
     return installer.apply(directory, operation, runner=runner, execute=True)
 
 
+def review(directory, operation, *, cache, run=subprocess.run):
+    """The plan that up or down would execute on a deployment, computed by the deployment's own source.
+
+    A later package can change a profile's recorded inputs; only the source
+    that created the deployment validates its lock.
+    """
+    return apply(directory, "review-" + operation, cache=cache, run=run)
+
+
 def apply(directory, operation, *, cache, run=subprocess.run):
-    if operation not in ("prepare", "up", "down", "verify", "status", "saved-status"):
+    if operation not in ("prepare", "up", "down", "verify", "status", "saved-status", "review-up", "review-down"):
         raise ValueError("Unsupported retained deployment operation")
     directory = Path(directory).resolve()
     lock = installer.read(directory / "deployment.lock.json")
@@ -72,8 +83,11 @@ def apply(directory, operation, *, cache, run=subprocess.run):
 sys.path.insert(0,sys.argv[1])
 from runtime.host import progress
 with contextlib.redirect_stdout(sys.stderr):
- with progress.run('retained deployment '+sys.argv[3]):
+ if sys.argv[3].startswith('review-'):
   result=_operation(sys.argv[2],sys.argv[3])
+ else:
+  with progress.run('retained deployment '+sys.argv[3]):
+   result=_operation(sys.argv[2],sys.argv[3])
 print(json.dumps(result))
 """
     result = run([sys.executable, "-I", "-B", "-c", code, str(source), str(directory), operation],

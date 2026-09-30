@@ -1,0 +1,29 @@
+Q: ch 4 page 1024 workers 2 KV 37 GiB mmcache 0; KV tokens 5,668,802; container start to API ready 169 s (KV sizing to API ready 44 s); compilations {'weights': '0c/0:07', 'state': '0c/0:05', 'bind': '4c/0:10'}
+   startup  r0 20.95  r1 23.01  r2 22.47  r3 23.09
+   idle     r0 21.17  r1 23.63  r2 23.27  r3 23.83
+   load     r0 20.05  r1 22.31  r2 21.90  r3 22.41
+
+Steps under the fast guard (0.2 s readings; 2.0 GiB floor on every Spark):
+s1run1: round 1: 1/1 ok, 131,160 prompt tokens per request, 86.8 s 
+fast-s1run1.log              r0 13.02 at +  8.5 s  r1 20.98 at + 86.6 s  r2 20.63 at + 86.8 s  r3 21.17 at + 88.1 s
+   Node A first reading 20.32 GiB
+s1run2: round 1: 1/1 ok, 131,160 prompt tokens per request, 87.2 s 
+fast-s1run2.log              r0 12.42 at +  8.5 s  r1 20.94 at + 54.6 s  r2 20.58 at + 52.0 s  r3 21.14 at + 47.2 s
+   Node A first reading 17.43 GiB
+s2: round 1: 2/2 ok, 131,161 prompt tokens per request, 169.9 s 
+fast-s2.log                  r0  8.96 at + 11.0 s  r1 19.67 at +122.0 s  r2 19.30 at +123.2 s  r3 19.90 at +127.9 s
+   Node A first reading 17.58 GiB
+s3: round 1: 3/3 ok, 131,161 prompt tokens per request, 253.3 s 
+fast-s3.log                  r0  6.84 at +200.9 s  r1 18.51 at +207.2 s  r2 18.17 at +209.1 s  r3 18.73 at +202.2 s
+   Node A first reading 17.22 GiB
+img16: round 1: 16/16 ok, 28,561 prompt tokens per request, 259.3 s round 2: 16/16 ok, 28,461 prompt tokens per request, 253.4 s 
+fast-img16.log               r0  5.40 at +275.9 s  r1 19.69 at +247.7 s  r2 19.35 at +248.7 s  r3 19.95 at +247.5 s
+   Node A first reading 16.83 GiB
+burst6: round 1: 16/16 ok, 28,461 prompt tokens per request, 257.0 s round 2: 16/16 ok, 28,462 prompt tokens per request, 252.1 s round 3: 16/16 ok, 28,561 prompt tokens per request, 255.9 s round 4: 16/16 ok, 28,461 prompt tokens per request, 253.1 s round 5: 16/16 ok, 28,462 prompt tokens per request, 255.0 s round 6: 16/16 ok, 28,561 prompt tokens per request, 253.3 s 
+fast-burst6.log              r0  4.78 at +1039.2 s  r1 19.69 at +990.2 s  r2 19.32 at +897.0 s  r3 19.87 at +194.7 s
+   Node A first reading 17.42 GiB
+mixed: round 1: 4/4 ok, 8,285 prompt tokens per request, 78.7 s round 1: 16/16 ok, 10,700 prompt tokens per request, 100.2 s round 2: 4/4 ok, 8,285 prompt tokens per request, 21.6 s round 2: 16/16 ok, 10,700 prompt tokens per request, 89.7 s exit codes: {'text': 0, 'images': 0, 'video': 0} 
+fast-mixed.log               r0 11.01 at + 82.2 s  r1 20.19 at + 93.5 s  r2 19.81 at + 79.8 s  r3 20.39 at + 93.5 s
+   Node A first reading 16.31 GiB
+
+Acceptance: 7 of 7 functional checks passed; stress: 

@@ -218,14 +218,16 @@ def test_share_export_preserves_image_lock_without_private_registry(tmp_path):
 
 
 def test_controller_allows_preview_while_another_deployment_is_running(tmp_path, monkeypatch):
+    from runtime.host import retained_source
     monkeypatch.setattr(controller, "STATE", tmp_path)
     installer.write(tmp_path / "cluster.json", {"plan": {"nodes": [0, 1, 2, 3]}})
     installer.write(tmp_path / "active.json", {"path": str(tmp_path / "baseline")})
-    (tmp_path / "deployments" / (PROFILE + "-candidate")).mkdir(parents=True)
-    # Every installer profile runs on the shared image, so saved deployments carry its lock.
-    monkeypatch.setattr(controller.installer, "load", lambda _: {"site": {"ranks": []}, "image_runtime": installer_image.default_lock()})
-    monkeypatch.setattr(controller.installer, "apply", lambda *a, **k: {"profile": PROFILE, "hosts": [], "phases": []})
-    monkeypatch.setattr(controller.installer, "status", lambda _: {"state": {"operation": "up", "complete": True}})
+    installer.write(tmp_path / "baseline" / "deployment.lock.json", {"id": "d" * 64})
+    installer.write(tmp_path / "deployments" / (PROFILE + "-candidate") / "deployment.lock.json",
+                    {"site": {"ranks": []}, "site_input": {}, "image_runtime": installer_image.default_lock()})
+    monkeypatch.setattr(retained_source, "review", lambda *a, **k: {"profile": PROFILE, "hosts": [], "phases": []})
+    monkeypatch.setattr(retained_source, "apply", lambda directory, operation, **k: {"state": {"operation": "up", "complete": True}}
+                        if operation == "saved-status" else pytest.fail("a model action ran"))
     assert controller.lifecycle(["up", PROFILE, "--instance", "candidate", "--plan"]) == 0
     with pytest.raises(ValueError, match="sparkring down"):
         controller.lifecycle(["up", PROFILE, "--instance", "candidate", "--execute"])

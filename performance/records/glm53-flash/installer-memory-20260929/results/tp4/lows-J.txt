@@ -1,0 +1,13 @@
+J: ch 4 page 1024 workers 2 KV 40 GiB mmcache 0; KV tokens 6,128,169; container start to API ready 169 s (KV sizing to API ready 37 s); compilations {'weights': '0c/0:07', 'state': '0c/0:04', 'bind': '0c/0:04'}
+   startup  r0 18.21  r1 20.42  r2 20.52  r3 20.79
+   idle     r0 18.37  r1 20.54  r2 20.59  r3 20.78
+   load     r0 17.19  r1 18.96  r2 19.11  r3 19.31
+   img      r0 11.00  r1 17.13  r2 17.29  r3 17.26
+   img16    r0 11.00  r1 17.13  r2 17.29  r3 17.26
+   burst6   r0  9.82  r1 16.79  r2 16.87  r3 16.96
+   mixed    r0  9.25  r1 17.46  r2 17.51  r3 17.59
+   mixedfresh r0  8.93  r1 16.55  r2 16.67  r3 16.82
+   after install r0 18.94  r1 20.70  r2 20.79  r3 20.91
+   after img16 r0 15.68  r1 18.67  r2 18.74  r3 18.87
+   after burst6 r0 15.34  r1 18.42  r2 18.50  r3 18.60
+   after mixed r0 15.17  r1 18.42  r2 18.49  r3 18.59

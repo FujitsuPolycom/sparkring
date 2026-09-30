@@ -177,6 +177,11 @@ starts:
   a storage check, a download error or Ctrl-C: the same choices restart
   preparation, re-verify what the earlier attempt left and continue an
   unfinished checkpoint download.
+- **Switch interrupted** while it stopped the running model or started the
+  selected one, for example because a Spark restarted: the same command
+  resumes the switch. Another profile or checkpoint replaces it instead: after
+  the GPU check, the installer stops the unfinished model through its own
+  deployment and switches from the last model that served.
 - **A file missing from, or changed in, SparkRing's own checkpoint
   directory:** the run copies it from another Spark or downloads it again.
   A copy you named with `--model-path` and that SparkRing serves in place is
@@ -373,6 +378,36 @@ projection sharding. Before creating any serving container, admission reads
 the image's external software receipt and refuses a profile whose HC mode is
 not listed for its node count or whose features the image does not provide.
 
+### GLM-5.3-Flash profiles
+
+| Setting | Two Sparks | Four Sparks |
+|---|---|---|
+| Context window per request | 1,048,576 tokens | 1,048,576 tokens |
+| KV cache per Spark | 10 GiB | 40 GiB |
+| KV capacity reported at startup | 1,530,566 tokens | 6,128,169 tokens |
+| KV cache page | 2,048 tokens | 1,024 tokens |
+| Requests running at once | 8 | 16 |
+| Images per request | 8 | 32 |
+| Videos per request | 1 | 1 |
+
+- Each image is resized to at most 4,096 tokens. Each video is sampled at 16
+  frames and resized to at most 8,192 tokens. The model's vision processor
+  accepts one video per request; a request with more fails with
+  `At most 1 video(s) may be provided in one prompt.`
+- The prefix cache reuses whole pages. With pages of B tokens, a repeated
+  prompt of P tokens reuses (⌊(P − 1) / B⌋ − 1) × B tokens: nothing of a
+  2,458-token prompt with 2,048-token pages, and about 90% of a 38,703-token
+  prompt. On two Sparks, 2,048-token pages hold 60% more tokens per GiB than
+  1,024-token pages; on four Sparks both sizes hold the same, so the ring
+  uses the smaller page.
+- Node A decodes and preprocesses every image and keeps its pixel data until
+  the request finishes, including while the request waits for a free slot.
+  Node A's free memory therefore falls with the number of images in flight
+  across all requests. Exhausting it stops the Spark until it is
+  power-cycled. The
+  [GLM memory record](../../performance/records/glm53-flash/installer-memory-20260929.md)
+  gives the measured lows for each profile.
+
 ### Checkpoint loader and runtime binding
 
 The external image's B12X checkpoint loader requires `io_uring`, so its
@@ -480,6 +515,13 @@ contacts the enrolled nodes and observes the model containers.
 - the saved deployment and image IDs, the deployment's checkpoint
   (`checkpoint`, `model_repository`, `model_revision`) and image release
   (`image_release`);
+- `containers`: each rank's host and model container name
+  (`sr-<site>-r<rank>`) and its labels: `io.sparkring.deployment` holds the
+  deployment ID and `io.sparkring.rank` the rank. A deployment keeps its names;
+  a new deployment of the same profile, such as one `sparkring install` makes
+  for another package, gets another site name, so a controller that follows
+  deployments across installations selects containers by the deployment ID
+  label, for example `docker ps --filter label=io.sparkring.deployment=ID`;
 - host observations: persistent node ID, boot ID and their own `observed_at`;
   cached ones keep their original time and go stale after 90 seconds;
 - container observations: the inspected container ID, start time and actual
@@ -506,6 +548,14 @@ not restart themselves (`restart: 'no'`). To recover:
 2. Run the command that installed the model again,
    `sudo sparkring install --profile PROFILE`; it stops the model on every
    Spark and starts it again.
+
+   `sudo sparkring up --execute` also starts the deployment again when its
+   container runs on no Spark, for example after every Spark restarted: it
+   repeats every step, including restoring the RoCE GID index and the NVIDIA
+   CDI specification, and starts the containers. While the container still
+   runs on some Sparks, it holds the RoCE GID entries that step repairs, so
+   `up` refuses; stop the model on every Spark with
+   `sudo sparkring down --execute` first.
 
 Saved-log lines beginning `RoCEnante rank` tell which rank was late and why.
 `sudo sparkring status --refresh --json` shows rank 0's container with
@@ -538,6 +588,17 @@ file passed to `sparkring install --env`, selects another. With a settings
 file, its `SPARKRING_SSH_USER` applies and defaults to `root`. Installer
 operations on a Spark run as root, through `sudo -n` when its SSH account is
 not `root`.
+
+**Finding the other Sparks.** Setup pings each fabric link and signs in only
+to neighbors that answer there; it skips cached neighbor addresses that do
+not answer. It names each Spark by its ConnectX hardware, not by
+`/etc/machine-id`, which Sparks flashed from one factory image share. When
+two Sparks share it, setup prints a note, because other software on them,
+such as DHCP, may still confuse them. To give a Spark its own ID:
+`sudo rm -f /etc/machine-id && sudo systemd-machine-id-setup && sudo reboot`.
+A failed sign-in names its cause: a password or account the other Spark did
+not accept, no SSH answer over the cable, SSH refused on its port, or a
+changed host key.
 
 **Access check.** Before changing anything, `sparkring install` confirms
 noninteractive SSH and `sudo` on every enrolled Spark. A missing grant
@@ -677,6 +738,30 @@ four minutes for the ring check on every Spark.
 plan, and `sparkring up PROFILE --instance fresh --fresh-mesh` rehearses the
 replacement beside an existing deployment. A replaced deployment's container,
 source and weight directories are retained.
+
+A mesh takes its name from the cluster, profile and instance. Changing a
+deployment's package or settings means creating another deployment:
+`sparkring install` names each deployment by its request, and
+`sparkring up PROFILE --instance NAME` takes an unused name. Each instance has
+its own workspace, containers and mesh, and `sparkring status --json` lists
+its containers and their labels. A deployment created under an earlier
+deployment's instance needs that deployment's workspace released and its model
+containers removed; it installs its mesh where the earlier mesh is. With
+`--fresh-mesh`, the installation takes over that earlier mesh on each Spark
+when the reviewed plan listed its service, its site file is
+unchanged since that review, and its model container on that Spark is stopped
+(by `sparkring down`) or removed. It stops the earlier mesh, model and
+liveness services and moves their configuration, code and unit files to
+`/var/lib/sparkring/replaced-meshes/`; nothing is deleted. Every Spark is
+checked before any changes, so a refusal on one Spark leaves all four as they
+were. A mesh service that is installed but neither enabled nor running is not
+listed by the plan and is not taken over.
+
+The mesh services start and check the exact model containers that the
+deployment created. When those containers are created again, for example
+after `docker container prune` removed them while the model was stopped, the
+deployment's next `up` installs its mesh services again for the new
+containers, in the same way.
 
 ## Security and host exposure
 
