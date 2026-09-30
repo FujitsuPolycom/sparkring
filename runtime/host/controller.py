@@ -333,8 +333,18 @@ def deployment_directory(profile, instance="main"):
 
 
 def active_deployment():
-    """The deployment that up last started, or that down last stopped when none was active; None if neither."""
-    return Path(installer.read(STATE / "active.json")["path"]) if (STATE / "active.json").exists() else None
+    """The deployment that up last started, or that down last stopped when none was active; None if neither.
+
+    A recorded directory that no longer holds a deployment, for example one
+    moved by hand, is reported on stderr and counts as none.
+    """
+    if not (STATE / "active.json").exists():
+        return None
+    path = Path(installer.read(STATE / "active.json")["path"])
+    if (path / "deployment.lock.json").exists():
+        return path
+    print(f"Note: the recorded active deployment {path} does not exist; no deployment is active.", file=sys.stderr)
+    return None
 
 
 def existing_deployment(profile, instance="main"):
@@ -536,21 +546,24 @@ def lifecycle(argv):
                 print("Warning: " + problem)
         print("Review, then repeat with --execute.")
         return 0
-    if args.operation == "up" and active is not None and active != directory:
-        previous = retained_source.apply(active, "saved-status", cache=cache)["state"]
-        if previous.get("operation") != "down" or not previous.get("complete"):
-            raise ValueError("Run sparkring down before selecting another model")
-    if args.operation == "up":
-        # A mesh refused by its hairpin start check would otherwise surface
-        # only as a failed systemd job, so nothing starts without the setting.
-        problem = _hairpin_problem()
-        if problem:
-            raise ValueError(problem)
-    confirm("Apply these model/image actions?", args.execute)
-    result = retained_source.apply(directory, args.operation, cache=cache)
-    # Stopping another deployment leaves the active one in place.
-    if args.operation == "up" or active is None:
-        node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
+    # The installation lock keeps sparkring install, setup and the hairpin
+    # procedure from changing deployments or networking meanwhile.
+    with process_lock.hold(STATE / "install.lock"):
+        if args.operation == "up" and active is not None and active != directory:
+            previous = retained_source.apply(active, "saved-status", cache=cache)["state"]
+            if previous.get("operation") != "down" or not previous.get("complete"):
+                raise ValueError("Run sparkring down before selecting another model")
+        if args.operation == "up":
+            # A mesh refused by its hairpin start check would otherwise surface
+            # only as a failed systemd job, so nothing starts without the setting.
+            problem = _hairpin_problem()
+            if problem:
+                raise ValueError(problem)
+        confirm("Apply these model/image actions?", args.execute)
+        result = retained_source.apply(directory, args.operation, cache=cache)
+        # Stopping another deployment leaves the active one in place.
+        if args.operation == "up" or active is None:
+            node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
 

@@ -618,3 +618,32 @@ def test_up_records_serving_settings_and_keeps_them_for_that_deployment(plain_up
         controller.lifecycle(["up", UP_PROFILE, "--max-images", "3", "--plan"])
     with pytest.raises(ValueError, match="Serving settings apply to up with an exact profile"):
         controller.lifecycle(["down", "--max-images", "2", "--plan"])
+
+
+def test_a_moved_active_deployment_counts_as_none(tmp_path, lifecycle_calls, capsys):
+    from runtime.common import installer
+    candidate = _deployment(tmp_path, UP_PROFILE + "-candidate")
+    installer.write(tmp_path / "active.json", {"path": str(tmp_path / "deployments" / "moved-away")})
+    assert controller.lifecycle(["status", "--json"]) == 0
+    captured = capsys.readouterr()
+    assert "deployment" not in json.loads(captured.out)
+    assert "the recorded active deployment" in captured.err and "does not exist" in captured.err
+    with pytest.raises(ValueError, match="No model deployment is active"):
+        controller.lifecycle(["down", "--execute"])
+    # Another deployment starts without first stopping the one that is gone.
+    assert controller.lifecycle(["up", UP_PROFILE, "--instance", "candidate", "--execute"]) == 0
+    assert lifecycle_calls[-1] == (UP_PROFILE + "-candidate", "up")
+    assert installer.read(tmp_path / "active.json")["path"] == str(candidate)
+
+
+def test_up_and_down_wait_for_no_installation(tmp_path, lifecycle_calls):
+    from runtime.common import installer, process_lock
+    active = _deployment(tmp_path, UP_PROFILE)
+    installer.write(tmp_path / "active.json", {"path": str(active)})
+    with process_lock.hold(tmp_path / "install.lock"):
+        with pytest.raises(ValueError, match="Another operation is active"):
+            controller.lifecycle(["down", "--execute"])
+        # Plans change nothing and need no lock.
+        assert controller.lifecycle(["down", "--plan"]) == 0
+    assert (UP_PROFILE, "down") not in lifecycle_calls
+    assert controller.lifecycle(["down", "--execute"]) == 0
