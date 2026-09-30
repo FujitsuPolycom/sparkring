@@ -319,6 +319,42 @@ def setup(argv=None):
     return 0
 
 
+def deployment_directory(profile, instance="main"):
+    """The controller's directory for one deployment of a profile; instance ``main`` adds no suffix.
+
+    ``sparkring install`` names its deployments with instances ``i<hash>``.
+    """
+    import re
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,79}", profile):
+        raise ValueError("Unknown profile. Run 'sparkring models' for exact model/version/topology choices.")
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,19}", instance):
+        raise ValueError("Instance must be a short lowercase name")
+    return STATE / "deployments" / (profile if instance == "main" else profile + "-" + instance)
+
+
+def active_deployment():
+    """The deployment that up last started, or that down last stopped when none was active; None if neither.
+
+    A recorded directory that no longer holds a deployment, for example one
+    moved by hand, is reported on stderr and counts as none.
+    """
+    if not (STATE / "active.json").exists():
+        return None
+    path = Path(installer.read(STATE / "active.json")["path"])
+    if (path / "deployment.lock.json").exists():
+        return path
+    print(f"Note: the recorded active deployment {path} does not exist; no deployment is active.", file=sys.stderr)
+    return None
+
+
+def existing_deployment(profile, instance="main"):
+    directory = deployment_directory(profile, instance)
+    if not (directory / "deployment.lock.json").exists():
+        raise ValueError(f"No deployment of {profile}" + ("" if instance == "main" else f" with instance {instance}")
+                         + " exists on this controller")
+    return directory
+
+
 def model_site(cluster, profile, instance="main"):
     plan = cluster["plan"]
     rows = []
@@ -374,9 +410,10 @@ def lifecycle(argv):
     image_runtime = None
     if args.image_lock and (args.operation != "up" or not args.profile):
         raise ValueError("--image-lock requires up with an exact profile")
-    if args.operation == "up" and args.profile:
-        from runtime.common import installer_image
-        image_runtime = installer_image.for_profile(args.profile, installer.read(args.image_lock) if args.image_lock else None)
+    if args.instance != "main" and not args.profile:
+        raise ValueError("--instance names one deployment of a profile; give the profile as well")
+    from runtime.host import retained_source
+    cache = STATE / "retained-sources"
     if args.operation == "status":
         result = node.snapshot() if args.refresh else node.status()
         if (STATE / "cluster.json").exists():
@@ -391,13 +428,13 @@ def lifecycle(argv):
                 except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                     observation = {"state": "unreachable", "error": str(error)}
                 result["nodes"].append({"host": host["host"], **observation})
-        if (STATE / "active.json").exists():
-            path = installer.read(STATE / "active.json")["path"]
-            from runtime.host import retained_source
-            result["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=STATE / "retained-sources")
+        path = existing_deployment(args.profile, args.instance) if args.profile else active_deployment()
+        if path is not None:
+            result["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=cache)
             # Read here rather than by the retained source, whose revision may
             # predate these fields.
-            result["deployment"].update(installer.identity(installer.read(Path(path) / "deployment.lock.json")))
+            lock = installer.read(Path(path) / "deployment.lock.json")
+            result["deployment"].update(installer.identity(lock), containers=installer.containers(lock))
         if args.json:
             print(json.dumps(result, indent=2))
         else:
@@ -436,14 +473,15 @@ def lifecycle(argv):
         return 0
     if args.plan and args.execute:
         raise ValueError("Choose --plan or --execute")
+    active = active_deployment()
     if args.operation == "up" and args.profile:
-        from runtime.host import models
-        cluster = installer.read(STATE / "cluster.json")
-        profile = models.select(args.profile, len(cluster["plan"]["nodes"]))
-        directory = STATE / "deployments" / profile
-        if args.instance != "main":
-            directory = directory.with_name(profile + "-" + args.instance)
+        directory = deployment_directory(args.profile, args.instance)
         if not directory.exists():
+            from runtime.common import installer_image
+            from runtime.host import models
+            cluster = installer.read(STATE / "cluster.json")
+            profile = models.select(args.profile, len(cluster["plan"]["nodes"]))
+            image_runtime = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
             site = model_site(cluster, profile, args.instance)
             # Every rank uses the cluster's SparkRing checkpoint directory for the
             # profile's revision, whose model operation adopts what that
@@ -459,16 +497,26 @@ def lifecycle(argv):
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
             installer.init(directory, profile, site, image_runtime=image_runtime)
         else:
-            existing = installer.load(directory)
-            if image_runtime is not None and existing.get("image_runtime") != image_runtime:
-                raise ValueError("Deployment uses another image lock; choose a distinct --instance")
+            # The deployment's own source validates its lock (retained_source);
+            # the installed package may carry other profile inputs or images.
+            existing = installer.read(directory / "deployment.lock.json")
+            if args.image_lock:
+                from runtime.common import installer_image
+                image_runtime = installer_image.for_profile(args.profile, installer.read(args.image_lock))
+                if existing.get("image_runtime") != image_runtime:
+                    raise ValueError("Deployment uses another image lock; choose a distinct --instance")
             if args.model_path and any(row["model"] != args.model_path or not row["reuse_verified_model"] for row in existing["site"]["ranks"]):
                 raise ValueError("Deployment uses another model path; choose a distinct --instance")
             if args.fresh_mesh and "native_mesh" not in existing["site_input"]:
                 raise ValueError("Deployment reuses an existing mesh; use --instance fresh --fresh-mesh for a separate rehearsal")
+    elif args.profile:
+        directory = existing_deployment(args.profile, args.instance)
+    elif active is not None:
+        directory = active
     else:
-        directory = Path(installer.read(STATE / "active.json")["path"])
-    result = installer.apply(directory, args.operation, runner=None, execute=False)
+        raise ValueError(f"No model deployment is active. To {args.operation} one, name its profile"
+                         " and, for a deployment other than main, its --instance.")
+    result = retained_source.review(directory, args.operation, cache=cache)
     print(f"{args.operation}: {result['profile']} on " + ", ".join(result["hosts"]))
     if image_runtime is not None:
         print("Development image: " + image_runtime["name"] + " | " + image_runtime["image_id"])
@@ -484,22 +532,24 @@ def lifecycle(argv):
                 print("Warning: " + problem)
         print("Review, then repeat with --execute.")
         return 0
-    if args.operation == "up" and (STATE / "active.json").exists():
-        active = Path(installer.read(STATE / "active.json")["path"])
-        if active != directory:
-            previous = installer.status(active)["state"]
+    # The installation lock keeps sparkring install, setup and the hairpin
+    # procedure from changing deployments or networking meanwhile.
+    with process_lock.hold(STATE / "install.lock"):
+        if args.operation == "up" and active is not None and active != directory:
+            previous = retained_source.apply(active, "saved-status", cache=cache)["state"]
             if previous.get("operation") != "down" or not previous.get("complete"):
                 raise ValueError("Run sparkring down before selecting another model")
-    if args.operation == "up":
-        # A mesh refused by its hairpin start check would otherwise surface
-        # only as a failed systemd job, so nothing starts without the setting.
-        problem = _hairpin_problem()
-        if problem:
-            raise ValueError(problem)
-    confirm("Apply these model/image actions?", args.execute)
-    from runtime.host import retained_source
-    result = retained_source.apply(directory, args.operation, cache=STATE / "retained-sources")
-    node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
+        if args.operation == "up":
+            # A mesh refused by its hairpin start check would otherwise surface
+            # only as a failed systemd job, so nothing starts without the setting.
+            problem = _hairpin_problem()
+            if problem:
+                raise ValueError(problem)
+        confirm("Apply these model/image actions?", args.execute)
+        result = retained_source.apply(directory, args.operation, cache=cache)
+        # Stopping another deployment leaves the active one in place.
+        if args.operation == "up" or active is None:
+            node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
 
