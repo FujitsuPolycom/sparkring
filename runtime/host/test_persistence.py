@@ -1,8 +1,10 @@
 """Lifecycle boundary regressions for root services and control-preserving setup."""
+import contextlib
 import copy
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -647,3 +649,69 @@ def test_up_and_down_wait_for_no_installation(tmp_path, lifecycle_calls):
         assert controller.lifecycle(["down", "--plan"]) == 0
     assert (UP_PROFILE, "down") not in lifecycle_calls
     assert controller.lifecycle(["down", "--execute"]) == 0
+
+
+def _installation_completes_before_the_lock(monkeypatch, installed):
+    """An installation lock that ``sparkring install`` held first: it records ``installed`` active on entry.
+
+    The command under test resolved its target before an installation that
+    held the lock finished and recorded its own deployment active.
+    """
+    from runtime.common import process_lock
+    hold = process_lock.hold
+
+    @contextlib.contextmanager
+    def after_installation(path):
+        # As rollout.execute records a verified installation.
+        controller.node.save(controller.STATE, "active.json", {"path": str(installed)}, mode=0o600)
+        with hold(path):
+            yield
+    monkeypatch.setattr(controller.process_lock, "hold", after_installation)
+
+
+def test_down_of_a_named_deployment_keeps_an_installation_that_completed_meanwhile(tmp_path, lifecycle_calls, monkeypatch):
+    from runtime.common import installer
+    candidate = _deployment(tmp_path, UP_PROFILE + "-candidate")
+    installed = _deployment(tmp_path, UP_PROFILE + "-i1234")
+    # No deployment is active when the command starts.
+    _installation_completes_before_the_lock(monkeypatch, installed)
+    assert controller.lifecycle(["down", UP_PROFILE, "--instance", "candidate", "--execute"]) == 0
+    assert lifecycle_calls[-1] == (UP_PROFILE + "-candidate", "down")
+    assert installer.read(tmp_path / "active.json")["path"] == str(installed)
+    assert candidate.exists()
+
+
+@pytest.mark.parametrize("operation", ["up", "down"])
+def test_up_or_down_of_the_active_deployment_refuses_when_an_installation_replaced_it(
+        operation, tmp_path, lifecycle_calls, monkeypatch):
+    from runtime.common import installer
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    active = _deployment(tmp_path, UP_PROFILE)
+    installed = _deployment(tmp_path, UP_PROFILE + "-i1234")
+    installer.write(tmp_path / "active.json", {"path": str(active)})
+    _installation_completes_before_the_lock(monkeypatch, installed)
+    with pytest.raises(ValueError, match=re.escape(f"The active deployment changed from {active} to {installed}")
+                       + ".*" + re.escape(f"sparkring {operation} --plan")):
+        controller.lifecycle([operation, "--execute"])
+    assert lifecycle_calls == [(UP_PROFILE, "review-" + operation)]
+    assert installer.read(tmp_path / "active.json")["path"] == str(installed)
+
+
+def test_up_of_a_named_deployment_refuses_while_an_installation_that_completed_meanwhile_runs(
+        tmp_path, lifecycle_calls, monkeypatch):
+    from runtime.common import installer
+    from runtime.host import retained_source
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    _deployment(tmp_path, UP_PROFILE + "-candidate")
+    installed = _deployment(tmp_path, UP_PROFILE + "-i1234")
+
+    def running(directory, operation, **options):
+        lifecycle_calls.append((Path(directory).name, operation))
+        return {"state": {"operation": "up", "complete": True}}
+    monkeypatch.setattr(retained_source, "apply", running)
+    # No deployment is active when the command starts.
+    _installation_completes_before_the_lock(monkeypatch, installed)
+    with pytest.raises(ValueError, match="Run sparkring down before selecting another model"):
+        controller.lifecycle(["up", UP_PROFILE, "--instance", "candidate", "--execute"])
+    assert (UP_PROFILE + "-candidate", "up") not in lifecycle_calls
+    assert installer.read(tmp_path / "active.json")["path"] == str(installed)

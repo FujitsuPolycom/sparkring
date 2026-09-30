@@ -257,7 +257,10 @@ A deployment keeps the SparkRing source that created it. `up`, `down` and
 `status` plan and run each deployment with that source, so a deployment made by
 an earlier package still starts and stops after the package changes. `up`
 makes the deployment it starts the active one; stopping another deployment
-leaves the active one unchanged. Repeating `up` re-checks a running deployment
+leaves the active one unchanged. Without PROFILE, `up` and `down` act on the
+deployment that was active when they printed their steps; when a
+`sparkring install` makes another one active before the steps start, they stop
+and ask for a new review. Repeating `up` re-checks a running deployment
 and starts one whose containers stopped on every Spark, for example after a
 restart ([when a model stops serving](install-reference.md#when-a-model-stops-serving)).
 `sparkring install` names its deployments

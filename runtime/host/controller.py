@@ -332,18 +332,19 @@ def deployment_directory(profile, instance="main"):
     return STATE / "deployments" / (profile if instance == "main" else profile + "-" + instance)
 
 
-def active_deployment():
+def active_deployment(*, report=True):
     """The deployment that up last started, or that down last stopped when none was active; None if neither.
 
     A recorded directory that no longer holds a deployment, for example one
-    moved by hand, is reported on stderr and counts as none.
+    moved by hand, counts as none and, with ``report``, is noted on stderr.
     """
     if not (STATE / "active.json").exists():
         return None
     path = Path(installer.read(STATE / "active.json")["path"])
     if (path / "deployment.lock.json").exists():
         return path
-    print(f"Note: the recorded active deployment {path} does not exist; no deployment is active.", file=sys.stderr)
+    if report:
+        print(f"Note: the recorded active deployment {path} does not exist; no deployment is active.", file=sys.stderr)
     return None
 
 
@@ -554,8 +555,16 @@ def lifecycle(argv):
     # The installation lock keeps sparkring install, setup and the hairpin
     # procedure from changing deployments or networking meanwhile.
     with process_lock.hold(STATE / "install.lock"):
-        if args.operation == "up" and active is not None and active != directory:
-            previous = retained_source.apply(active, "saved-status", cache=cache)["state"]
+        # sparkring install records its deployment active while it holds this
+        # lock, so the record read before the lock may be stale. Every decision
+        # below uses the record read under the lock; a command without a
+        # profile, whose target is the earlier record, stops when they differ.
+        held_active = active_deployment(report=False)
+        if not args.profile and held_active != active:
+            raise ValueError(f"The active deployment changed from {active} to {held_active or 'none'} after this "
+                             f"command printed its steps. Review with 'sparkring {args.operation} --plan', then repeat.")
+        if args.operation == "up" and held_active is not None and held_active != directory:
+            previous = retained_source.apply(held_active, "saved-status", cache=cache)["state"]
             if previous.get("operation") != "down" or not previous.get("complete"):
                 raise ValueError("Run sparkring down before selecting another model")
         if args.operation == "up":
@@ -567,7 +576,7 @@ def lifecycle(argv):
         confirm("Apply these model/image actions?", args.execute)
         result = retained_source.apply(directory, args.operation, cache=cache)
         # Stopping another deployment leaves the active one in place.
-        if args.operation == "up" or active is None:
+        if args.operation == "up" or held_active is None:
             node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
