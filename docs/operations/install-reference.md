@@ -355,7 +355,7 @@ for that deployment. Without a flag, the profile's value applies.
 | `--max-videos N` | the video count in `--limit-mm-per-prompt` | videos per request; 0 accepts none |
 | `--context-length N` | `--max-model-len` | tokens, at least 1,024 |
 | `--max-concurrency N` | `--max-num-seqs` | requests served at the same time |
-| `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark |
+| `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark, at most the profile's value |
 
 - A setting for a value the profile does not set is refused.
   `deepseek-v41-flash-tp4` accepts no videos and sizes its KV cache as a
@@ -370,10 +370,16 @@ for that deployment. Without a flag, the profile's value applies.
 - `sparkring install --plan` lists each setting beside the profile's value,
   and `sparkring status` shows the settings of a deployment.
 - A profile's evidence (its records and memory measurements) covers the
-  profile's own values. Other values are not measured: more images, videos,
-  context, concurrency or KV cache use more memory on each Spark and can make
-  the model fail to start or fail under load. vLLM refuses to start with a
-  context length that its KV cache cannot hold.
+  profile's own values. Other values are not measured: more images or videos
+  use more memory on each Spark while a request runs, and a longer context or
+  more concurrent requests share the same KV cache. vLLM refuses to start with
+  a context length that its KV cache cannot hold.
+- `--kv-cache-gib` above the profile's value is refused. vLLM allocates the
+  KV cache when the model starts, and a Spark's GPU and CPU share one memory:
+  a larger cache can exhaust it, the kernel then stops processes, and the
+  Spark stops answering until it recovers, too late for the installation to
+  restore the previous model. `sudo sparkring install --profile PROFILE`
+  restores a deployment after such a failure.
 
 ### Tool-result contract
 

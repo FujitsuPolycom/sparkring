@@ -15,8 +15,14 @@ SETTINGS = {
     "max_videos": ("--limit-mm-per-prompt", "video", 1, 0, "videos per request (0 accepts none)"),
     "context_length": ("--max-model-len", None, 1, 1024, "context window in tokens"),
     "max_concurrency": ("--max-num-seqs", None, 1, 1, "requests served at the same time"),
-    "kv_cache_gib": ("--kv-cache-memory-bytes", None, 2**30, 1, "KV cache per Spark, in GiB"),
+    "kv_cache_gib": ("--kv-cache-memory-bytes", None, 2**30, 1, "KV cache per Spark in GiB, at most the profile's"),
 }
+# vLLM allocates the KV cache when the model starts. On a Spark, whose GPU and
+# CPU share one memory, a KV cache larger than the profile's measured value
+# can exhaust that memory: the kernel then stops processes and the Spark stops
+# answering SSH until it recovers, which also defeats the installer's
+# restoration of the previous model. Such values are refused.
+AT_MOST_PROFILE = frozenset({"kv_cache_gib"})
 
 
 def option(name):
@@ -76,6 +82,9 @@ def apply(command, settings):
         if position is None:
             raise ValueError(f"{option(name)} does not apply to this profile: it sets no {flag}")
         if key is None:
+            if name in AT_MOST_PROFILE and settings[name] * scale > int(command[position]):
+                raise ValueError(f"{option(name)} {settings[name]} exceeds the profile's {int(command[position]) // scale}. "
+                                 "A larger value can exhaust a Spark's memory while the model starts; lower values are accepted.")
             command[position] = str(settings[name] * scale)
             continue
         limits = json.loads(command[position])

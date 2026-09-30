@@ -18,17 +18,17 @@ def profile_args(profile):
 
 def test_settings_replace_only_the_named_values():
     args = profile_args(QWEN)
-    changed = serving.apply(args, {"max_images": 8, "context_length": 131072, "kv_cache_gib": 32, "max_concurrency": 4})
+    changed = serving.apply(args, {"max_images": 8, "context_length": 131072, "kv_cache_gib": 16, "max_concurrency": 4})
 
     def value(flag):
         return changed[changed.index(flag) + 1]
     assert json.loads(value("--limit-mm-per-prompt")) == {"image": 8, "video": 1}
     assert (value("--max-model-len"), value("--max-num-seqs")) == ("131072", "4")
-    assert value("--kv-cache-memory-bytes") == str(32 * 2**30)
+    assert value("--kv-cache-memory-bytes") == str(16 * 2**30)
     replaced = {changed.index(flag) + 1 for flag in FLAGS}
     assert len(changed) == len(args) and all(a == b for i, (a, b) in enumerate(zip(args, changed)) if i not in replaced)
-    assert serving.describe({"max_images": 8, "kv_cache_gib": 32}, tuple(args)) == [
-        "--kv-cache-gib 32 (profile: 24)", "--max-images 8 (profile: 3)"]
+    assert serving.describe({"max_images": 8, "kv_cache_gib": 16}, tuple(args)) == [
+        "--kv-cache-gib 16 (profile: 24)", "--max-images 8 (profile: 3)"]
 
 
 def test_a_setting_the_profile_does_not_set_is_refused():
@@ -76,3 +76,10 @@ def test_init_refuses_a_setting_that_does_not_apply_before_creating_the_deployme
         installer.init(tmp_path / "deployment", DEEPSEEK, planned, image_runtime=installer_image.for_profile(DEEPSEEK),
                        settings={"kv_cache_gib": 20})
     assert not (tmp_path / "deployment").exists()
+
+
+def test_a_kv_cache_above_the_profiles_is_refused():
+    args = profile_args(QWEN)
+    assert serving.apply(args, {"kv_cache_gib": 24}) == tuple(args)
+    with pytest.raises(ValueError, match="--kv-cache-gib 25 exceeds the profile's 24. A larger value can exhaust a Spark's memory"):
+        serving.apply(args, {"kv_cache_gib": 25})
