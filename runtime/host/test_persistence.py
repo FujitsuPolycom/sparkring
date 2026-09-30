@@ -279,6 +279,7 @@ def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, m
     plan = ring_plan()
     installer.write(tmp_path / "cluster.json", {"plan": plan})
     installer.write(tmp_path / "active.json", {"path": str(tmp_path / "model")})
+    installer.write(tmp_path / "model" / "deployment.lock.json", {"id": "d" * 64})
     monkeypatch.setattr(retained_source, "review", lambda *a, **kw: {"profile": "fixture", "hosts": ["a"], "phases": ["read"]})
     monkeypatch.setattr(retained_source, "apply", lambda *a, **k: pytest.fail("a model action ran"))
     statuses = {host["host"]: document(plan, rank) for rank, host in enumerate(plan["spec"]["hosts"])}
@@ -603,3 +604,32 @@ def test_retained_review_plans_with_the_deployments_source_and_without_progress(
     assert retained_source.review(directory, "down", cache=tmp_path / "cache", run=run) == {"phases": ["up"]}
     code = replayed[0][4]
     assert replayed[0][-1] == "review-down" and "if sys.argv[3].startswith('review-')" in code
+
+
+def test_a_moved_active_deployment_counts_as_none(tmp_path, lifecycle_calls, capsys):
+    from runtime.common import installer
+    candidate = _deployment(tmp_path, UP_PROFILE + "-candidate")
+    installer.write(tmp_path / "active.json", {"path": str(tmp_path / "deployments" / "moved-away")})
+    assert controller.lifecycle(["status", "--json"]) == 0
+    captured = capsys.readouterr()
+    assert "deployment" not in json.loads(captured.out)
+    assert "the recorded active deployment" in captured.err and "does not exist" in captured.err
+    with pytest.raises(ValueError, match="No model deployment is active"):
+        controller.lifecycle(["down", "--execute"])
+    # Another deployment starts without first stopping the one that is gone.
+    assert controller.lifecycle(["up", UP_PROFILE, "--instance", "candidate", "--execute"]) == 0
+    assert lifecycle_calls[-1] == (UP_PROFILE + "-candidate", "up")
+    assert installer.read(tmp_path / "active.json")["path"] == str(candidate)
+
+
+def test_up_and_down_wait_for_no_installation(tmp_path, lifecycle_calls):
+    from runtime.common import installer, process_lock
+    active = _deployment(tmp_path, UP_PROFILE)
+    installer.write(tmp_path / "active.json", {"path": str(active)})
+    with process_lock.hold(tmp_path / "install.lock"):
+        with pytest.raises(ValueError, match="Another operation is active"):
+            controller.lifecycle(["down", "--execute"])
+        # Plans change nothing and need no lock.
+        assert controller.lifecycle(["down", "--plan"]) == 0
+    assert (UP_PROFILE, "down") not in lifecycle_calls
+    assert controller.lifecycle(["down", "--execute"]) == 0
