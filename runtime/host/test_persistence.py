@@ -244,9 +244,10 @@ def test_status_names_the_saved_deployment_checkpoint_and_image(tmp_path, monkey
     monkeypatch.setattr(controller, "STATE", tmp_path)
     monkeypatch.setattr(controller.node, "status", lambda: {"state": "network-configured"})
     installer.write(tmp_path / "active.json", {"path": str(tmp_path / "model")})
-    installer.write(tmp_path / "model" / "deployment.lock.json", {"selection": {
+    installer.write(tmp_path / "model" / "deployment.lock.json", {"id": "d" * 64, "backend": "compose", "selection": {
         "target_variant": "qad-step4000", "model_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
-        "model_revision": "60215d26cf5e42c2db6128774032d57fc62678da", "release": "dev-image"}})
+        "model_revision": "60215d26cf5e42c2db6128774032d57fc62678da", "release": "dev-image"},
+        "site": {"name": "sparkring-qwen38-flash-next-5c9a1e", "ranks": [{"rank": 0, "host": "root@192.0.2.10"}]}})
     # A retained source from before these fields reports none of them.
     saved = {"profile": "qwen38-flash-next-tp2", "state": {"operation": "up", "complete": True},
              "api_url": "http://192.0.2.10:8000/v1"}
@@ -497,8 +498,10 @@ def _deployment(root, name, *, image="shared-image"):
     from runtime.common import installer
     selection = {"profile": UP_PROFILE, "target_variant": None, "model_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
                  "model_revision": "60215d26cf5e42c2db6128774032d57fc62678da", "release": "dev-image"}
+    ranks = [{"rank": rank, "host": f"root@192.0.2.{rank + 1}"} for rank in range(2)]
     installer.write(root / "deployments" / name / "deployment.lock.json",
-                    {"selection": selection, "site": {"ranks": []}, "site_input": {}, "image_runtime": {"name": image}})
+                    {"id": "d" * 64, "backend": "compose", "selection": selection, "site_input": {},
+                     "site": {"name": "sparkring-qwen38-flash-next-5c9a1e", "ranks": ranks}, "image_runtime": {"name": image}})
     return root / "deployments" / name
 
 
@@ -534,7 +537,12 @@ def test_down_and_status_act_on_the_named_deployment_and_keep_the_active_one(tmp
     capsys.readouterr()
     assert controller.lifecycle(["status", UP_PROFILE, "--instance", "candidate", "--json"]) == 0
     assert lifecycle_calls == [(UP_PROFILE + "-candidate", "saved-status")]
-    assert json.loads(capsys.readouterr().out)["deployment"]["image_release"] == "dev-image"
+    deployment = json.loads(capsys.readouterr().out)["deployment"]
+    assert deployment["image_release"] == "dev-image"
+    # A controller finds each rank's container by name or by the deployment's labels.
+    assert deployment["containers"] == [
+        {"rank": rank, "host": f"root@192.0.2.{rank + 1}", "name": f"sr-sparkring-qwen38-flash-next-5c9a1e-r{rank}",
+         "labels": {"io.sparkring.deployment": "d" * 64, "io.sparkring.rank": str(rank)}} for rank in range(2)]
     with pytest.raises(ValueError, match=f"No deployment of {UP_PROFILE} with instance other exists"):
         controller.lifecycle(["down", UP_PROFILE, "--instance", "other", "--execute"])
     with pytest.raises(ValueError, match="give the profile as well"):

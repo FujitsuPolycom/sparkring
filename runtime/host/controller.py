@@ -423,7 +423,8 @@ def lifecycle(argv):
             result["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=cache)
             # Read here rather than by the retained source, whose revision may
             # predate these fields.
-            result["deployment"].update(installer.identity(installer.read(Path(path) / "deployment.lock.json")))
+            lock = installer.read(Path(path) / "deployment.lock.json")
+            result["deployment"].update(installer.identity(lock), containers=installer.containers(lock))
         if args.json:
             print(json.dumps(result, indent=2))
         else:

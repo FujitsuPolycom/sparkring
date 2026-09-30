@@ -510,6 +510,13 @@ contacts the enrolled nodes and observes the model containers.
 - the saved deployment and image IDs, the deployment's checkpoint
   (`checkpoint`, `model_repository`, `model_revision`) and image release
   (`image_release`);
+- `containers`: each rank's host and model container name
+  (`sr-<site>-r<rank>`) and its labels: `io.sparkring.deployment` holds the
+  deployment ID and `io.sparkring.rank` the rank. A deployment keeps its names;
+  a new deployment of the same profile, such as one `sparkring install` makes
+  for another package, gets another site name, so a controller that follows
+  deployments across installations selects containers by the deployment ID
+  label, for example `docker ps --filter label=io.sparkring.deployment=ID`;
 - host observations: persistent node ID, boot ID and their own `observed_at`;
   cached ones keep their original time and go stale after 90 seconds;
 - container observations: the inspected container ID, start time and actual

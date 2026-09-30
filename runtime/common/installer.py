@@ -364,9 +364,26 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
             specs.append(tp2.container_spec(plan))
     if only_rank is not None and card["profile"] in compose.SUPPORTED:
         specs = [specs[only_rank]]
-    return [replace(spec, name=f"sr-{site['name']}-r{only_rank if only_rank is not None else number}",
-                    labels={**spec.labels, compose.LABEL: lock["id"], "io.sparkring.rank": str(only_rank if only_rank is not None else number)})
+    return [replace(spec, name=container_name(lock, only_rank if only_rank is not None else number),
+                    labels={**spec.labels, **container_labels(lock, only_rank if only_rank is not None else number)})
             for number, spec in enumerate(specs)]
+
+
+def container_name(lock, rank):
+    """A rank's model container name: ``sr-<site>-r<rank>``, or ``<site>-r<rank>`` for managed GLM."""
+    return ("sr-" if lock["backend"] == "compose" else "") + f"{lock['site']['name']}-r{rank}"
+
+
+def container_labels(lock, rank):
+    """Labels on a Compose deployment's containers: its lock ID and the rank."""
+    return {compose.LABEL: lock["id"], "io.sparkring.rank": str(rank)}
+
+
+def containers(lock):
+    """Each rank's host, model container name and, for Compose deployments, container labels."""
+    return [{"rank": row["rank"], "host": row["host"], "name": container_name(lock, row["rank"]),
+             **({"labels": container_labels(lock, row["rank"])} if lock["backend"] == "compose" else {})}
+            for row in lock["site"]["ranks"]]
 
 
 def rendered(lock):
