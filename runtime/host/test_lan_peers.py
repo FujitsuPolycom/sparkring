@@ -19,21 +19,37 @@ def test_peer_macs_are_other_hosts_on_fabric_links_only():
 
 
 def test_match_pairs_a_fabric_mac_with_the_lan_mac_just_below_it():
-    hosts = {"4c:bb:47:e9:0a:0f": "fe80::6c9c:52a:557b:fbbd", "4c:bb:47:e6:ed:fd": "fe80::2", "f0:68:e3:b3:13:ce": "fe80::3",
-             "4c:bb:47:e9:0a:05": "fe80::4"}
+    hosts = {"4c:bb:47:e9:0a:0f": "192.168.0.232", "4c:bb:47:e6:ed:fd": "192.168.0.193", "f0:68:e3:b3:13:ce": "192.168.0.239",
+             "4c:bb:47:e9:0a:05": "192.168.0.9"}
     assert lan_peers.match(["4c:bb:47:e9:0a:10", "4c:bb:47:e9:0a:14"], hosts) == {
-        "4c:bb:47:e9:0a:0f": ("fe80::6c9c:52a:557b:fbbd", "4c:bb:47:e9:0a:10")}
-    assert lan_peers.match(["4c:bb:47:e9:0a:10"], {"4c:bb:47:e9:0a:10": "fe80::5"}) == {}
+        "4c:bb:47:e9:0a:0f": ("192.168.0.232", "4c:bb:47:e9:0a:10")}
+    assert lan_peers.match(["4c:bb:47:e9:0a:10"], {"4c:bb:47:e9:0a:10": "192.168.0.5"}) == {}
 
 
-def test_lan_hosts_keeps_only_addresses_that_answered():
+def test_lan_hosts_sweeps_the_subnet_only_when_no_cabled_spark_is_in_the_arp_table():
+    table = {"rows": [{"dst": "192.168.0.254", "lladdr": "00:11:22:33:44:55", "state": ["REACHABLE"]}]}
+    pinged = []
+
     def run(argv, **kwargs):
-        if argv[0] == "ping":
-            return subprocess.CompletedProcess(argv, 0, "64 bytes from fe80::1%enP7s7: icmp_seq=1\n", "")
-        rows = [{"dst": "fe80::1", "lladdr": "4C:BB:47:E9:0A:0F"}, {"dst": "fe80::7", "lladdr": "00:11:22:33:44:55"}]
+        if argv[:4] == ["ip", "-j", "-4", "neigh"]:
+            return subprocess.CompletedProcess(argv, 0, json.dumps(table["rows"]), "")
+        rows = [{"addr_info": [{"family": "inet", "local": "192.168.0.242", "prefixlen": 29}]}]
         return subprocess.CompletedProcess(argv, 0, json.dumps(rows), "")
 
-    assert lan_peers.lan_hosts("enP7s7", run=run) == {"4c:bb:47:e9:0a:0f": "fe80::1"}
+    class Ping:
+        def __init__(self, argv, **kwargs):
+            pinged.append(argv[-1])
+            if argv[-1] == "192.168.0.244":
+                table["rows"].append({"dst": "192.168.0.244", "lladdr": "4C:BB:47:E9:0A:0F", "state": ["STALE"]})
+
+        def wait(self):
+            return 0
+
+    hosts = lan_peers.lan_hosts("enP7s7", ["4c:bb:47:e9:0a:10"], run=run, popen=Ping)
+    assert hosts["4c:bb:47:e9:0a:0f"] == "192.168.0.244"
+    assert pinged == ["192.168.0.241", "192.168.0.243", "192.168.0.244", "192.168.0.245", "192.168.0.246"]
+    pinged.clear()
+    assert lan_peers.lan_hosts("enP7s7", ["4c:bb:47:e9:0a:10"], run=run, popen=Ping) == hosts and pinged == []
 
 
 def test_waiting_polls_until_the_cabled_spark_answers():
@@ -71,7 +87,7 @@ def test_prepare_signs_in_over_the_lan_and_runs_worker_preparation(monkeypatch):
         def inventory(self, route):
             return peer
 
-    monkeypatch.setattr(lan_peers, "lan_hosts", lambda interface, run: {"4c:bb:47:e9:0a:0f": "fe80::6c9c:52a:557b:fbbd"})
+    monkeypatch.setattr(lan_peers, "lan_hosts", lambda interface, macs, run: {"4c:bb:47:e9:0a:0f": "192.168.0.232"})
     monkeypatch.setattr(lan_peers.packages, "transfer", lambda transport, route, archive, target: calls.append(("transfer", archive)))
 
     def root_command(transport, route, argv):
@@ -79,9 +95,19 @@ def test_prepare_signs_in_over_the_lan_and_runs_worker_preparation(monkeypatch):
 
     prepared = lan_peers.prepare(Transport(), root_command, head=HEAD, user="code", archive=lambda: "bundle.tar", say=lambda _: None)
     assert prepared == [peer]
-    assert calls == [("login", "fe80::6c9c:52a:557b:fbbd", "enP7s7", "code"), ("transfer", "bundle.tar"),
-                     ("root", "fe80::6c9c:52a:557b:fbbd", ["--apply", "--prepare", "--yes"])]
+    assert calls == [("login", "192.168.0.232", None, "code"), ("transfer", "bundle.tar"),
+                     ("root", "192.168.0.232", ["--apply", "--prepare", "--yes"])]
     peer["functions"][0]["mac"] = "4c:bb:47:e9:77:77"
     with pytest.raises(ValueError, match="not the Spark on the cable"):
         lan_peers.prepare(Transport(), root_command, head=HEAD, user="code", archive=lambda: "bundle.tar", say=lambda _: None)
     assert lan_peers.prepare(Transport(), root_command, head=dict(HEAD, neighbors=[]), user="code", archive=pytest.fail) == []
+
+
+def test_a_lan_hop_is_a_private_ipv4_address_without_a_zone(tmp_path):
+    from runtime.host import bootstrap
+    hop = {"user": "code", "address": "192.168.0.232", "interface": None, "port": 22}
+    assert bootstrap.ssh_argv([hop], tmp_path)[-1] == "code@192.168.0.232"
+    for bad in (dict(hop, address="8.8.8.8"), dict(hop, port=2222)):
+        with pytest.raises(ValueError, match="private IPv4"):
+            bootstrap.validate_hop(bad)
+    assert "192.168.0.232 on the LAN did not accept" in bootstrap.login_failure(hop, "Permission denied (password).")

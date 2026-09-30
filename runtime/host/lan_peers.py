@@ -8,8 +8,8 @@ Node A's worker bundle and runs the worker preparation: it turns DHCP off on
 the Spark's fabric connections and opens the preparation SSH service (port
 2222) to Node A's key. Fabric discovery then signs in there with that key.
 """
+import ipaddress
 import json
-import re
 import subprocess
 import time
 
@@ -37,19 +37,45 @@ def peer_macs(inventory):
                    if n.get("dev") in fabric and n.get("lladdr") and n["lladdr"].lower() not in own})
 
 
-def lan_hosts(interface, *, run=subprocess.run):
-    """{MAC: link-local address} of the hosts that answer the all-nodes echo on the LAN interface."""
-    output = run(["ping", "-6", "-n", "-w", "2", "-I", interface, "ff02::1"],
-                 capture_output=True, text=True, timeout=10).stdout
-    replied = set(re.findall(r"from (fe80:[0-9a-f:]+)", output))
-    rows = json.loads(run(["ip", "-j", "-6", "neigh", "show", "dev", interface],
+def arp_table(interface, *, run=subprocess.run):
+    """{MAC: IPv4 address} of the LAN interface's reachable or recently seen neighbors."""
+    rows = json.loads(run(["ip", "-j", "-4", "neigh", "show", "dev", interface],
                           capture_output=True, text=True, check=True, timeout=10).stdout)
-    return {row["lladdr"].lower(): row["dst"].split("%")[0] for row in rows
-            if row.get("lladdr") and row.get("dst", "").split("%")[0] in replied}
+    return {row["lladdr"].lower(): row["dst"] for row in rows
+            if row.get("lladdr") and not {"FAILED", "INCOMPLETE"} & set(row.get("state", []))}
+
+
+def sweep(interface, *, run=subprocess.run, popen=subprocess.Popen):
+    """Send one echo to every address of the LAN interface's IPv4 subnet (/22 or smaller), filling its ARP table.
+
+    Many LANs drop IPv6 multicast, so the ARP table after one IPv4 echo per
+    address is what names the hosts there.
+    """
+    rows = json.loads(run(["ip", "-j", "-4", "addr", "show", "dev", interface],
+                          capture_output=True, text=True, check=True, timeout=10).stdout)
+    for info in (a for row in rows for a in row.get("addr_info", []) if a.get("family") == "inet"):
+        network = ipaddress.IPv4Network(f"{info['local']}/{info['prefixlen']}", strict=False)
+        if network.prefixlen < 22:
+            continue
+        hosts = [str(h) for h in network.hosts() if str(h) != info["local"]]
+        for start in range(0, len(hosts), 128):
+            batch = [popen(["ping", "-n", "-c", "1", "-W", "1", "-I", interface, host],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for host in hosts[start:start + 128]]
+            for process in batch:
+                process.wait()
+
+
+def lan_hosts(interface, fabric_macs, *, run=subprocess.run, popen=subprocess.Popen):
+    """{MAC: IPv4 address} of the LAN interface's neighbors, swept when no cabled Spark is among them yet."""
+    table = arp_table(interface, run=run)
+    if not match(fabric_macs, table):
+        sweep(interface, run=run, popen=popen)
+        table = arp_table(interface, run=run)
+    return table
 
 
 def match(fabric_macs, hosts):
-    """{LAN MAC: (link-local address, fabric MAC)} for LAN hosts that are cabled Sparks.
+    """{LAN MAC: (LAN address, fabric MAC)} for LAN hosts that are cabled Sparks.
 
     A Spark's LAN port and ConnectX functions take consecutive MAC addresses,
     the LAN port first, so a cabled Spark's fabric MAC exceeds its LAN MAC by
@@ -94,11 +120,11 @@ def prepare(transport, root_command, *, head, user, archive, run=subprocess.run,
     macs = peer_macs(head)
     if not interface or not macs:
         return []
-    found = match(macs, lan_hosts(interface, run=run))
+    found = match(macs, lan_hosts(interface, macs, run=run))
     prepared = []
     for mac, (address, fabric) in found.items():
-        route = [{"user": user, "address": address, "interface": interface, "port": 22}]
-        say(f"Cabled Spark on the LAN at {address} on {interface} (fabric MAC {fabric}); signing in there as {user}")
+        route = [{"user": user, "address": address, "interface": None, "port": 22}]
+        say(f"Cabled Spark on the LAN at {address} (LAN MAC {mac}, fabric MAC {fabric}); signing in there as {user}")
         transport.login(route)
         peer = transport.inventory(route)
         if fabric not in {str(f["mac"]).lower() for f in peer["functions"]}:

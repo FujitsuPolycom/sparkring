@@ -119,11 +119,12 @@ def login_failure(hop, errors):
     """
     lines = [line.strip() for line in errors.splitlines()
              if line.strip() and not line.startswith("Warning: Permanently added") and not set(line.strip()) <= {"@"}]
-    where = f"{hop['address']} on {hop['interface']}"
+    where = f"{hop['address']} on {hop['interface']}" if hop["interface"] else f"{hop['address']} on the LAN"
+    target = hop["address"] + (f"%{hop['interface']}" if hop["interface"] else "")
     offending = next((line for line in lines if line.startswith("Offending")), None)
     if any(text in errors for text in ("Permission denied", "Too many authentication failures")):
         message = (f"{where} did not accept the password or account {hop['user']}; test it with "
-                   f"ssh -p {hop['port']} {hop['user']}@{hop['address']}%{hop['interface']} true, and add "
+                   f"ssh -p {hop['port']} {hop['user']}@{target} true, and add "
                    "--ssh-user NAME if that Spark's account has another name")
     elif "Connection refused" in errors:
         message = (f"{where} refused SSH on port {hop['port']}; start SSH on that Spark "
@@ -143,8 +144,14 @@ def login_failure(hop, errors):
 
 
 def validate_hop(hop):
+    """A fabric hop is a link-local IPv6 address on a named interface; a LAN hop
+    (interface None) is a private IPv4 address that setup found on Node A's LAN."""
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", hop["user"]):
         raise ValueError("Invalid SSH login name")
+    if hop["interface"] is None:
+        if not ipaddress.IPv4Address(hop["address"]).is_private or hop["port"] != 22:
+            raise ValueError("A LAN bootstrap hop requires a private IPv4 address on port 22")
+        return hop
     if not ipaddress.IPv6Address(hop["address"]).is_link_local:
         raise ValueError("Bootstrap requires link-local IPv6 peers")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,15}", hop["interface"]) or hop["port"] not in (22, 2222):
@@ -180,7 +187,7 @@ def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=Fa
         command += ["-o", "ProxyCommand=" + shlex.join(jump).replace("%", "%%")]
     if identity is not None:
         command += ["-i", str(identity)]
-    command.append(hop["user"] + "@" + hop["address"] + "%" + hop["interface"])
+    command.append(hop["user"] + "@" + hop["address"] + ("" if hop["interface"] is None else "%" + hop["interface"]))
     return command
 
 
