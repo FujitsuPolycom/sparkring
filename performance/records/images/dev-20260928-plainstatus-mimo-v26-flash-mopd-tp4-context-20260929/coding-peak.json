@@ -1,0 +1,61 @@
+{
+  "prompt": "Write a Python script that implements the Sieve of Eratosthenes.",
+  "runs_requested": 5,
+  "runs_ok": 5,
+  "max_tokens": 2000,
+  "temperature": 1.0,
+  "summary": {
+    "mean_generation_tok_s": 98.27103461834466,
+    "median_generation_tok_s": 101.78429531175783,
+    "max_generation_tok_s": 105.20336287223779,
+    "min_generation_tok_s": 89.35829183103431,
+    "cjk_runs": 0
+  },
+  "samples": [
+    {
+      "run": 1,
+      "ok": true,
+      "finish_reason": "stop",
+      "completion_tokens": 1133,
+      "ttft": 0.125,
+      "gen_elapsed": 11.10999999998603,
+      "generation_tok_s": 101.98019801993021
+    },
+    {
+      "run": 2,
+      "ok": true,
+      "finish_reason": "stop",
+      "completion_tokens": 1389,
+      "ttft": 0.15600000007543713,
+      "gen_elapsed": 13.202999999979511,
+      "generation_tok_s": 105.20336287223779
+    },
+    {
+      "run": 3,
+      "ok": true,
+      "finish_reason": "stop",
+      "completion_tokens": 1561,
+      "ttft": 0.1559999999590218,
+      "gen_elapsed": 17.469000000040978,
+      "generation_tok_s": 89.35829183103431
+    },
+    {
+      "run": 4,
+      "ok": true,
+      "finish_reason": "stop",
+      "completion_tokens": 750,
+      "ttft": 0.15600000007543713,
+      "gen_elapsed": 8.061999999918044,
+      "generation_tok_s": 93.02902505676313
+    },
+    {
+      "run": 5,
+      "ok": true,
+      "finish_reason": "stop",
+      "completion_tokens": 1409,
+      "ttft": 0.15700000000651926,
+      "gen_elapsed": 13.84299999999348,
+      "generation_tok_s": 101.78429531175783
+    }
+  ]
+}
