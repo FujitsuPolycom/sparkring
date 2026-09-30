@@ -303,6 +303,19 @@ def test_known_replacement_retains_and_reactivates_exact_previous_uuid():
     assert all("modify" not in c["argv"] for c in host["apply"])
 
 
+def test_a_connection_that_leaves_the_mtu_to_the_device_plans_like_a_saved_mtu():
+    spec, inventory = network_fixture()
+    interface = inventory["spark-r0"]["interfaces"][0]
+    previous = interface["network_manager"]["connection_uuid"]
+    interface["mtu"] = 1500
+    interface["network_manager"].update(ethernet_mtu=None, error=None)
+    spec["hosts"][0]["data_interfaces"][0]["replace_connection_uuid"] = previous
+    assert plan_network(spec, inventory)["hosts"][0]["interfaces"][0]["previous_connection_uuid"] == previous
+    interface["network_manager"]["error"] = "nmcli failed"
+    with pytest.raises(NetworkPlanError):
+        plan_network(spec, inventory)
+
+
 def test_wrong_replacement_uuid_cannot_displace_connection():
     spec, inventory = network_fixture()
     inventory["spark-r0"]["interfaces"][0]["mtu"] = 1500

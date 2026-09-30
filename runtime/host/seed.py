@@ -17,7 +17,31 @@ def gpu_containers(run=subprocess.run):
     return [(row["Id"], row["Name"].lstrip("/")) for row in rows if row["HostConfig"].get("DeviceRequests")]
 
 
-def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_local=None):
+def dhcp_without_lease(connection, interface, *, run=subprocess.run):
+    """Whether ``connection`` on ``interface`` asks for DHCP and holds no IPv4 address.
+
+    Factory Spark images give each fabric port a DHCP connection. A direct
+    cable has no DHCP server, so NetworkManager fails such a connection when
+    its DHCP timeout expires, removes the port's addresses and retries later:
+    the port's link-local address exists only while an attempt lasts.
+    """
+    method = node.call(["nmcli", "-g", "ipv4.method", "connection", "show", connection], run=run).stdout.strip()
+    if method != "auto":
+        return False
+    rows = json.loads(node.call(["ip", "-j", "-4", "addr", "show", "dev", interface], run=run).stdout)
+    return not any(row.get("addr_info") for row in rows)
+
+
+def _wait_link_local(interface, run):
+    for _ in range(20):
+        addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
+        if any(a["scope"] == "link" and not a.get("tentative") for row in addresses for a in row.get("addr_info", [])):
+            return
+        time.sleep(0.5)
+    raise ValueError(f"{interface}: IPv6 link-local address did not become ready")
+
+
+def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_local=None, dhcp=None):
     """Prepare fabric ports for discovery.
 
     Bringing up an unconfigured RDMA port requires that no GPU job or RDMA user is
@@ -28,7 +52,10 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_
     Discovery uses IPv6 link-local addresses. An existing fabric connection
     without one (for example manual IPv4 with IPv6 disabled) gets IPv6
     link-local added to that same connection after ``link_local(name)``
-    approves; its IPv4 addresses and MTU are kept.
+    approves; its IPv4 addresses and MTU are kept. A connection that asks for
+    DHCP and has no lease (see dhcp_without_lease) switches to IPv6
+    link-local only after ``dhcp(name)`` approves, so the port keeps its
+    address.
     """
     if not re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]*)?", public_key.strip()):
         raise ValueError("Use Node A's Ed25519 public key")
@@ -61,7 +88,8 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_
         control.netdev(interface)
         current = node.call(["nmcli", "-g", "GENERAL.CON-UUID", "device", "show", interface], run=run).stdout.strip()
         addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
-        if current and current != "--" and any(a["scope"] == "link" for row in addresses for a in row.get("addr_info", [])):
+        if (current and current != "--" and any(a["scope"] == "link" for row in addresses for a in row.get("addr_info", []))
+                and not dhcp_without_lease(current, interface, run=run)):
             # Discovering an already configured link does not require detaching
             # the existing native mesh's RDMA marker processes.
             continue
@@ -74,8 +102,18 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_
             # Keep existing IPv4 and IPv6 configuration if a link-local address
             # already works. Replacing a nonempty profile belongs to setup review.
             addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
-            if not any(a["scope"] == "link" for row in addresses for a in row.get("addr_info", [])):
-                name = node.call(["nmcli", "-g", "connection.id", "connection", "show", current], run=run).stdout.strip()
+            name = node.call(["nmcli", "-g", "connection.id", "connection", "show", current], run=run).stdout.strip()
+            if dhcp_without_lease(current, interface, run=run):
+                if dhcp is None:
+                    raise ValueError(f"Fabric connection '{name}' on {interface} asks for DHCP, which a direct cable "
+                                     "does not answer; repeat setup and approve turning DHCP off on it")
+                dhcp(f"{name} ({interface})")
+                # EUI-64: see the link-local branch below.
+                node.call(["nmcli", "connection", "modify", current, "ipv4.method", "disabled", "ipv6.method", "link-local",
+                           "ipv6.addr-gen-mode", "eui64"], run=run)
+                node.call(["nmcli", "connection", "up", current, "ifname", interface], run=run)
+                _wait_link_local(interface, run)
+            elif not any(a["scope"] == "link" for row in addresses for a in row.get("addr_info", [])):
                 if link_local is None:
                     raise ValueError(f"Fabric connection '{name}' on {interface} has no IPv6 link-local address; "
                                      "repeat setup and approve adding it (IPv4 settings are kept)")
@@ -85,20 +123,16 @@ def prepare(public_key, *, run=subprocess.run, interfaces=None, stop=None, link_
                 node.call(["nmcli", "connection", "modify", current, "ipv6.method", "link-local",
                            "ipv6.addr-gen-mode", "eui64"], run=run)
                 node.call(["nmcli", "device", "reapply", interface], run=run)
-                for _ in range(20):
-                    addresses = json.loads(node.call(["ip", "-j", "-6", "addr", "show", "dev", interface], run=run).stdout)
-                    if any(a["scope"] == "link" and not a.get("tentative") for row in addresses for a in row.get("addr_info", [])):
-                        break
-                    time.sleep(0.5)
-                else:
-                    raise ValueError(f"{interface}: IPv6 link-local address did not become ready")
+                _wait_link_local(interface, run)
         else:
             observed = json.loads(node.call(["ip", "-j", "-4", "addr", "show", "dev", interface], run=run).stdout)
             if any(row.get("addr_info") for row in observed):
                 raise ValueError("Unmanaged existing IPv4 configuration on " + interface + "; inspect before preparing")
+            # The priority keeps a factory DHCP connection that retries on this
+            # port from taking it back at the next boot.
             node.call(["nmcli", "connection", "add", "type", "ethernet", "ifname", interface, "con-name", "sparkring-bootstrap-" + interface,
                        "ipv4.method", "disabled", "ipv6.method", "link-local", "ipv6.addr-gen-mode", "eui64",
-                       "connection.autoconnect", "yes"], run=run)
+                       "connection.autoconnect", "yes", "connection.autoconnect-priority", "10"], run=run)
             node.call(["nmcli", "connection", "up", "sparkring-bootstrap-" + interface], run=run)
     # Preparation and the permanent administration SSH both use TCP 2222. Only
     # SparkRing's own active preparation service may already hold it.

@@ -9,7 +9,7 @@ import sys
 import time
 
 from runtime.common import distribution, installer
-from runtime.host import bootstrap, control, control_node, controller, discovery, node, packages, seed, settings, topology
+from runtime.host import bootstrap, control, control_node, controller, discovery, lan_peers, node, packages, seed, settings, topology
 from scripts import hairpin_setting
 
 # The approval line for the ConnectX hairpin setting on four-Spark rings. The
@@ -48,6 +48,55 @@ def root_command(transport, route, argv, *, data=None):
         wrapper = ("import base64,subprocess;subprocess.run(" + repr(argv) + ",input=base64.b64decode(" + repr(encoded) + "),check=True)")
         argv = ["python3", "-I", "-c", wrapper]
     return transport.command(route, ["sudo", "--", *argv], tty=True)
+
+
+class ControlSSH:
+    """Root SSH to administration-network addresses.
+
+    Root's SSH configuration (control_node.ssh_config) supplies each
+    address's port, key and authenticated host key.
+    """
+
+    @staticmethod
+    def argv(target):
+        return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target]
+
+
+def other_revisions(targets, nodes):
+    """Targets whose node record names a SparkRing revision other than Node A's."""
+    current = distribution.identity(installer.ROOT)
+    return [target for target, record in zip(targets, nodes, strict=True) if record.get("revision") != current]
+
+
+def match_revisions(targets, nodes, directory):
+    """Node records after every worker runs Node A's SparkRing revision.
+
+    Planning uses each node's own inspection, while the network change checks
+    every host again with the inspection code that Node A ships in the plan.
+    A worker on another revision can report unchanged state in another form,
+    and the change then stops before it starts. Such workers install Node A's
+    package over the administration network; a package upgrade restarts no
+    administration-network unit.
+    """
+    outdated = other_revisions(targets, nodes)
+    if not outdated:
+        return nodes
+    current = distribution.identity(installer.ROOT)
+    # Enrolled access is kept; this bundle does not run worker preparation.
+    archive = packages.build(Path(directory) / "worker-update", "")
+    for target in outdated:
+        print(f"Update SparkRing on {target} to Node A's revision {current[:12]}")
+        destination = "/var/tmp/sparkring-enroll-update-" + str(time.time_ns())
+        try:
+            packages.transfer(ControlSSH, target, archive, destination)
+            discovery.ssh(target, ["python3", "-I", destination + "/install.py", "--apply"], timeout=1800)
+        except RuntimeError as error:
+            raise ValueError(f"Updating SparkRing on {target} failed: {error}") from error
+    nodes = controller.collect(targets)
+    if other_revisions(targets, nodes):
+        raise ValueError("After the update, " + ", ".join(other_revisions(targets, nodes))
+                         + f" still runs a SparkRing revision other than Node A's {current[:12]}")
+    return nodes
 
 
 def provision(discovered, transport, archive, *, private_key, public_key, control_cidr, share_uplink, directory):
@@ -116,11 +165,18 @@ def scope_lines(args, *, fresh, follow=None, four=None):
     lines = []
     if fresh:
         lines += ["  - find cabled Sparks over IPv6 link-local fabric addresses, adding link-local"
-                  " addressing to fabric connections without it (their IPv4 addresses and MTU are kept)",
+                  " addressing to fabric connections without it and turning off DHCP on fabric connections"
+                  " that have no lease (their IPv4 addresses and MTU are kept)",
                   f"  - sign in as {args.ssh_user} on SSH port {args.ssh_port} (SSH asks for passwords; change with"
-                  " --ssh-user) and trust each cabled Spark's SSH host key on first contact; fingerprints are printed",
+                  " --ssh-user) and trust each cabled Spark's SSH host key on first contact; fingerprints are printed"]
+        if args.ssh_port == 22:
+            lines.append("  - sign in to a cabled Spark on this LAN, when it is there, to install SparkRing and turn off"
+                         " DHCP on its fabric connections; later sign-ins use Node A's key")
+        lines += [
                   "  - install SparkRing and its packaged dependencies, then a private WireGuard administration network",
                   "  - " + ("do not share" if args.no_share_internet else "share") + " Node A's Internet connection with workers"]
+    else:
+        lines.append("  - install Node A's SparkRing revision on workers that run another one")
     lines.append("  - keep compatible fabric IPv4 addresses and replace incompatible ones, saving connection backups")
     if fresh if four is None else four:
         lines += HAIRPIN_SCOPE
@@ -228,8 +284,19 @@ def main(argv=None, *, follow=None):
     else:
         for prior in (base / "setups").glob("*/provision.json"):
             if not installer.read(prior).get("complete"):
-                raise ValueError("A provisioning attempt is incomplete; inspect " + str(prior) + " and worker state before recovery")
+                # Every provisioning step repeats safely: packages reinstall,
+                # node keys persist, and a control configuration that differs
+                # from the installed one is refused on the node itself.
+                prior.rename(prior.with_name("provision-incomplete.json"))
+                print("A previous setup stopped during provisioning; starting it again (its record: "
+                      + str(prior.with_name("provision-incomplete.json")) + ")")
         transport = bootstrap.SSH(base / "ssh", identity=private, trust_new=trust_new)
+        bundle = {}
+
+        def worker_archive():
+            if "path" not in bundle:
+                bundle["path"] = packages.build(directory / "worker-bundle", public)
+            return bundle["path"]
         if not args.plan:
             controller.confirm("Prepare unused local fabric ports for discovery? Existing configured links will be kept.", args.yes)
             # --yes approves setup scope only; stopping running GPU work needs
@@ -239,18 +306,32 @@ def main(argv=None, *, follow=None):
                 + ", ".join(names) + ".", args.stop_workloads),
                 link_local=lambda name: controller.confirm(
                     "Add IPv6 link-local addressing to fabric connection " + name
-                    + " for discovery? Its IPv4 addresses and MTU are kept.", args.yes))
+                    + " for discovery? Its IPv4 addresses and MTU are kept.", args.yes),
+                dhcp=lambda name: controller.confirm(
+                    "Turn off DHCP on fabric connection " + name + ", which a direct cable does not answer, "
+                    "and keep IPv6 link-local addressing?", args.yes))
+            if args.ssh_port == 22:
+                head, _ = lan_peers.wait_for_peers(lambda: transport.inventory([]))
+                if lan_peers.prepare(transport, root_command, head=head, user=args.ssh_user, archive=worker_archive):
+                    # Prepared Sparks run the preparation service, which admits
+                    # root with Node A's key; the LAN sign-in verified each
+                    # Spark's fabric hardware, so their fabric host keys are
+                    # recorded on first contact.
+                    args.ssh_port = 2222
+                    transport.trust_new = True
         if args.ssh_port == 2222:
             # The worker preparation service admits only root with Node A's key.
             args.ssh_user = "root"
         try:
             found = bootstrap.discover(transport, user=args.ssh_user, port=args.ssh_port,
                                        select=lambda peer: print(f"Neighbor on {peer['via']}/{peer['interface']}: {peer['address']}") is None)
-        except (ValueError, RuntimeError) as error:
-            raise ValueError(str(error) + "\nIf SSH is unavailable: sudo sparkring setup --worker-bundle") from error
+        except RuntimeError as error:
+            raise ValueError(str(error)) from error
         print(f"Found {len(found['nodes'])} authenticated Sparks. Node A: " + found["nodes"][0]["hostname"])
         for n in found["nodes"]:
             print("  " + n["hostname"] + "  " + n["id"][:12])
+        for warning in found.get("warnings", []):
+            print("Note: " + warning)
         for line in transport.trusted():
             print("  SSH host key trusted on first contact: " + line)
         print("Workers will receive SparkRing and a private administration network over the fabric.")
@@ -264,12 +345,17 @@ def main(argv=None, *, follow=None):
             print("Discovery saved: " + str(directory / "discovery.json"))
             return 0
         controller.confirm("Install on these Sparks and establish the private administration network?", args.yes)
-        archive = packages.build(directory / "worker-bundle", public)
+        archive = worker_archive()
         api_address = next(n["api_address"] for n in found["nodes"] if n["id"] == found["head"])
         targets = provision(found, transport, archive, private_key=private, public_key=public,
                             control_cidr=args.control_cidr, share_uplink=not args.no_share_internet, directory=directory)
         node.save(base, "enrolled.json", {"targets": targets, "api_address": api_address}, mode=0o600)
     nodes = controller.collect(targets)
+    if args.plan:
+        for target in other_revisions(targets, nodes):
+            print(f"Note: {target} runs another SparkRing revision; setup updates it to Node A's before changing networking.")
+    else:
+        nodes = match_revisions(targets, nodes, directory)
     head = node.read("/", "/etc/sparkring/node.json")["node_id"]
     try:
         plan = topology.build_spec(nodes, head, name=args.name, fabric_cidr=args.fabric_cidr,

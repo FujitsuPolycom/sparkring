@@ -16,6 +16,8 @@ def main(argv=None):
         commands.add_parser(name)
     seed = commands.add_parser("seed")
     seed.add_argument("--key-file", required=True)
+    seed.add_argument("--yes", action="store_true",
+                      help="approve preparing fabric connections without questions; Node A's setup approval covers them")
     inspect = commands.add_parser("inspect")
     inspect.add_argument("--rank", type=int, required=True)
     inspect.add_argument("--target", required=True)
@@ -78,14 +80,16 @@ def main(argv=None):
             from pathlib import Path
             from runtime.host.seed import prepare
             print("Prepare unused fabric interfaces and enable Node A's SSH key on the preparation service.", file=sys.stderr)
-            if input("Continue? [y/N]: ").strip().lower() not in ("y", "yes"):
+            if not args.yes and input("Continue? [y/N]: ").strip().lower() not in ("y", "yes"):
                 raise ValueError("Worker preparation cancelled")
             from runtime.host.controller import confirm
             result = prepare(Path(args.key_file).read_text(),
                              stop=lambda names: confirm("Stop these running GPU containers? They are stopped, not removed: "
                                                         + ", ".join(names) + "."),
                              link_local=lambda name: confirm("Add IPv6 link-local addressing to fabric connection " + name
-                                                             + "? Its IPv4 addresses and MTU are kept."))
+                                                             + "? Its IPv4 addresses and MTU are kept.", args.yes),
+                             dhcp=lambda name: confirm("Turn off DHCP on fabric connection " + name + ", which a direct "
+                                                       "cable does not answer, and keep IPv6 link-local addressing?", args.yes))
         elif args.action == "inspect":
             result = node.inspect(args.rank, args.target, args.management, args.witness)
         elif args.action == "native-mesh":
