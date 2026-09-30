@@ -299,15 +299,18 @@ most actions. Useful by hand:
 - from SSH discovery (`--host`, repeated in rank order) or a site file
   (`--site`);
 - for `--model glm53|mimo26|qwen38` or `--profile`;
-- with optional `--variant`, `--image-lock`, `--name`, `--workspace` and
-  `--output`.
+- with optional `--variant`, `--image-lock`, `--name`, `--workspace`,
+  `--output` and [serving settings](install-reference.md#serving-settings).
 
 `sparkring export --output FILE` writes the deployment as a zip;
-`--deployment DIR` selects another.
+`--deployment DIR` selects another. Its Compose files carry the deployment's
+serving settings.
 
 - `--share` writes a portable template without private inputs.
 - `--format compose` writes one standalone Compose file for the deployment's
-  profile, or for the one that `--profile` and `--variant` name.
+  profile, or for the one that `--profile` and `--variant` name. It refuses a
+  deployment with an image lock or serving settings, which the file would
+  discard.
 
 Both accept `--json`. See
 [lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing).

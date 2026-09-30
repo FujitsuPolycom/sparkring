@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.common import installer  # noqa: E402
+from runtime.common import installer, serving  # noqa: E402
 from scripts.installer_runner import Runner, discover  # noqa: E402
 
 
@@ -28,6 +28,7 @@ def main(argv=None):
     initialize.add_argument("--name")
     initialize.add_argument("--workspace")
     initialize.add_argument("--output", type=Path)
+    serving.add_arguments(initialize)
     for operation in ("up", "down", "status", "export"):
         command = commands.add_parser(operation)
         command.add_argument("--deployment", type=Path, default=Path(".sparkring/deployment"))
@@ -75,8 +76,12 @@ def main(argv=None):
             output = args.output or Path(".sparkring/deployment")
             from runtime.common import installer_image
             image_runtime = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
-            installer.init(output, profile, raw, variant=args.variant, image_runtime=image_runtime)
+            settings = serving.from_arguments(args)
+            installer.init(output, profile, raw, variant=args.variant, image_runtime=image_runtime, settings=settings)
             print(f"Saved {profile} for {len(raw['hosts'])} ranks in {output}")
+            if settings:
+                print("Serving settings: " + ", ".join(f"{serving.option(name)} {value}"
+                                                       for name, value in sorted(settings.items())))
             print("No hosts changed. Next: sparkring up --deployment " + str(output))
             return 0
         if args.action == "export":
@@ -88,6 +93,8 @@ def main(argv=None):
                     lock = installer.load(args.deployment)
                     if "image_runtime" in lock:
                         raise ValueError("Use ZIP export for an image-lock deployment; standalone profile export would discard its image selection")
+                    if lock.get("serving"):
+                        raise ValueError("Use ZIP export for a deployment with serving settings; standalone profile export would discard them")
                     card = lock["selection"]
                     profile, variant = card["profile"], card["target_variant"]
                     if args.variant is not None and args.variant != variant:

@@ -612,15 +612,22 @@ def export(directory, output, *, share=False):
         if runtime is not None:
             runtime = {**runtime, "image_reference": runtime["image_id"]}
             files["image-lock.json"] = compose.encoded(runtime)
+        # Serving settings are part of the deployment, not of its site, so the
+        # template renders them and its init command names them.
+        settings = lock.get("serving") or {}
         portable = make_lock(lock["selection"]["profile"], example, lock["source_revision"],
-                             lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=runtime)
+                             lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=runtime,
+                             settings=settings)
+        flags = "".join(f" {serving.option(name)} {value}" for name, value in sorted(settings.items()))
         files["site.example.json"] = compose.encoded(example)
         files["profile.json"] = compose.encoded(lock["selection"])
         files["README.txt"] = ("Portable profile template, not a configured deployment. Fill site.example.json, then run "
                                "sparkring init --profile " + lock["selection"]["profile"] + " --site site.example.json"
-                               + (" --image-lock image-lock.json" if runtime else "") + ".\n"
+                               + (" --image-lock image-lock.json" if runtime else "") + flags + ".\n"
                                "Compose files below contain example hosts/paths. Re-render for your site. A separate "
                                "Compose project runs on each rank; Compose alone does not configure RDMA or coordinate hosts.\n")
+        if settings:
+            files["README.txt"] += "Serving settings, applied in the Compose files in place of the profile's values:" + flags + ".\n"
         if runtime:
             files["profile.json"] = compose.encoded(portable["selection"])
             files["README.txt"] += "Preload the pinned candidate image on every rank; its private registry location is excluded.\n"

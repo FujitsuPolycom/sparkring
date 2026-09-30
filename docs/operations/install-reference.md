@@ -351,9 +351,10 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 
 ### Serving settings
 
-`sudo sparkring install` and `sudo sparkring up PROFILE` accept optional
-settings, each of which replaces one value of the profile's vLLM configuration
-for that deployment. Without a flag, the profile's value applies.
+`sudo sparkring install`, `sudo sparkring up PROFILE` and `sparkring init`
+accept optional settings, each of which replaces one value of the profile's
+vLLM configuration for that deployment. Without a flag, the profile's value
+applies.
 
 | Flag | vLLM value it replaces | Unit |
 |---|---|---|
@@ -376,6 +377,9 @@ for that deployment. Without a flag, the profile's value applies.
   one.
 - `sparkring install --plan` lists each setting beside the profile's value,
   and `sparkring status` shows the settings of a deployment.
+- `sparkring export` and `sparkring export --share` write a deployment's
+  settings into every rank's Compose file. The shared template's README names
+  them in its `sparkring init` command.
 - A profile's evidence (its records and memory measurements) covers the
   profile's own values. Other values are not measured: more images or videos
   use more memory on each Spark while a request runs, and a longer context or
@@ -1284,8 +1288,9 @@ account that owns a directory above it could still rename what is inside.
 
 `sparkring export --share --output profile-template.zip` writes a portable
 template: the pinned profile, the image lock, an example site and per-rank
-Compose files. It excludes private addresses, paths, receipts and source
-bundles. `sparkring export --output private-deployment.zip` keeps the actual
+Compose files with the deployment's [serving settings](#serving-settings). It
+excludes private addresses, paths, receipts and source bundles.
+`sparkring export --output private-deployment.zip` keeps the actual
 configuration. Compose is the container format, not a multi-host scheduler:
 each host runs its own rank, and Compose alone does not configure RDMA.
 
