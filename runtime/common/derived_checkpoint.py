@@ -134,6 +134,39 @@ def directory(base, model):
     return posixpath.join(root, slug(model["repository"]), model["revision"])
 
 
+def listed(profiles_ids=None, *, root=None):
+    """The derived checkpoints that installer profiles list, by ``(repository, revision)``.
+
+    Each value holds the checkpoint ``name``, the ``profiles`` that list it and
+    the ``base`` and ``donor`` models' ``repository`` and ``revision``, read
+    from the profiles' checkpoint tables. ``profiles_ids`` defaults to the
+    profiles ``sparkring install`` offers.
+    """
+    if profiles_ids is None:
+        from runtime.common import installer_image
+        profiles_ids = installer_image.SUPPORTED
+    found = {}
+    for profile_id in sorted(profiles_ids):
+        try:
+            metadata, _ = profiles.load(profile_id, Path(root if root is not None else profiles.ROOT))
+            configuration = profiles.read_json(profiles.local_path(metadata["configuration"]["path"],
+                                                                   Path(root if root is not None else profiles.ROOT)))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        table = configuration.get("checkpoints") or {}
+        for name, value in table.items():
+            derived = value.get("derived") if isinstance(value, dict) else None
+            if not isinstance(derived, dict) or derived.get("base") not in table or derived.get("donor") not in table:
+                continue
+            model = value["model"]
+            item = found.setdefault((model["repository"], model["revision"]), {
+                "name": name, "profiles": [],
+                "base": {key: table[derived["base"]]["model"][key] for key in ("repository", "revision")},
+                "donor": {key: table[derived["donor"]]["model"][key] for key in ("repository", "revision")}})
+            item["profiles"].append(profile_id)
+    return found
+
+
 def view(card, manifest):
     """The selection card of the derived checkpoint itself: its repository and revision instead of the base's."""
     return {**card, "model_repository": manifest["repository"], "model_revision": manifest["revision"]}

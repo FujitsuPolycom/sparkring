@@ -791,3 +791,39 @@ def test_commands_route_to_the_storage_module(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     assert sparkring_node.main(["storage"]) == 0
     assert json.loads(capsys.readouterr().out) == {"request": {}}
+
+
+def test_a_derived_checkpoint_is_installed_while_its_deployment_is_and_otherwise_kept_for_its_profile(tmp_path, capsys):
+    from runtime.common import derived_checkpoint
+    from runtime.common.test_derived_checkpoint import lock as derived_lock
+    value = derived_lock("qwen38-flash-next-tp2")
+    manifest = derived_checkpoint.load(value["selection"])
+    base = value["site"]["ranks"][0]["model"]
+    served = derived_checkpoint.directory(base, manifest)
+    state = canned_controller(tmp_path)
+    directory = state / "deployments" / "qwen-derived"
+    write_json(directory / "deployment.lock.json", {**value, "site": {**value["site"], "ranks": [
+        {**row, "host": host} for row, host in zip(value["site"]["ranks"], HOSTS)]}})
+    for rank, specification in enumerate(installer.specifications(value)):
+        write_json(directory / f"rank{rank}" / "container.json", specification.document())
+    item = {"path": served, "kind": "checkpoint", "repository": manifest["repository"], "revision": manifest["revision"],
+            "state": "ok", "bytes": 100 * 1024 ** 3, "frees_bytes": 6 * 1024 ** 3, "complete": True, "containers": []}
+    spark = Spark({HOSTS[0]: local([item]), HOSTS[1]: local(hostname="spark-931e")})
+    write_json(state / "active.json", {"path": str(directory)})
+    assert storage.main(["--json"], state_root=state, invoke=spark) == 0
+    [entry] = json.loads(capsys.readouterr().out)["nodes"][0]["items"]
+    assert (entry["class"], entry["release"]) == ("installed", None)
+    assert entry["deployments"] == [{"name": "qwen-derived", "role": "active"}]
+    assert entry["derived"] == {"name": "qad-step5500-mxfp8-attention", "base": manifest["base"],
+                                "donor": {key: manifest["donor"][key] for key in ("repository", "revision")}}
+    # Retained but not active, it stays for the profiles that list it; its details say what releasing frees.
+    (state / "active.json").unlink()
+    assert storage.main([], state_root=state, invoke=spark) == 0
+    printed = capsys.readouterr().out.splitlines()
+    row = next(index for index, line in enumerate(printed) if line.endswith(served))
+    assert " profile " in printed[row] and "checkpoint" in printed[row]
+    assert printed[row + 2].strip() == (
+        f"derived checkpoint qad-step5500-mxfp8-attention of {manifest['base']['repository']} at "
+        f"{manifest['base']['revision'][:12]} with files of {manifest['donor']['revision'][:12]}; its unchanged files "
+        "are hard links to the base's, so releasing it frees only the files its recipe wrote")
+    assert "referenced by installer profiles qwen38-flash-next-qad-tp4, qwen38-flash-next-tp2" in "\n".join(printed)

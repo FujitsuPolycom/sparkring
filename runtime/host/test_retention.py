@@ -595,3 +595,20 @@ def test_a_remainder_is_released_without_the_directory_now_at_its_path(spark):
     assert not hidden.exists() and (path / "vllm/graph.bin").is_file()
     assert storage.release_batch_local({"cluster": CLUSTER, "remainders": [str(path)]}, root=spark.root,
                                        run=Docker(), table=[])["paths"][0]["state"] == "absent"
+
+
+def test_the_policy_never_releases_a_derived_checkpoint_or_its_base_even_after_its_deployment_is_released():
+    """A released deployment's workspace and caches go; the derived and base directories stay for a later install."""
+    old = record("old-444444444444", age=100)
+    derived = f"/srv/sparkring/{CLUSTER}/checkpoints/sparkring-derived--Fixture/{'f' * 40}"
+    base = f"/srv/sparkring/{CLUSTER}/checkpoints/x/{REVISION}"
+    old["references"][HOSTS[0]]["paths"] += [derived, base]
+    records = [record("active-aaaaaaaaaaaa", age=10), record("recent-bbbbbbbbbbbb", age=20),
+               record("older-555555555555", age=30), old]
+    extra = [{"path": path, "kind": "checkpoint", "class": "unreferenced", "meshes": [], "frees_bytes": 6 * 10 ** 9,
+              "complete": True, "release": "sudo sparkring checkpoints --release " + path,
+              **({"derived": {"name": "fixture-mxfp8"}} if path == derived else {})} for path in (derived, base)]
+    decided = retention.plan(records, roles(active="active-aaaaaaaaaaaa"), [listing(records, extra=extra)], 2)
+    assert "old-444444444444" in decided["released"]
+    paths = {entry["path"] for entry in decided["nodes"][0]["paths"]}
+    assert old["workspace"] in paths and not {derived, base} & paths

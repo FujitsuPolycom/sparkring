@@ -10,6 +10,14 @@ path it was linked or copied from); ``runtime/host/checkpoint_place.py``
 describes both. Weight files are usually hard links to a copy the operator
 already had, so deleting that copy frees no space while ``D`` exists.
 
+A derived checkpoint (``runtime/common/derived_checkpoint.py``) has its own
+directory beside its base's, which its deployments' containers mount; it
+hard-links the files it keeps from the base. A deployment uses both: the
+base's directory as its row's ``model`` and the derived directory as the
+model it serves (``deployments``' ``served``). Releasing the base's directory
+leaves the derived directory's links, and so the base's data in them, on
+disk.
+
 Two commands use this module:
 
 - ``sudo sparkring checkpoints`` on Node A (``main``) lists, for every Spark,
@@ -691,12 +699,22 @@ def _read(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _served(lock, row):
+    """The checkpoint directory a row's container mounts: a derived checkpoint's, or the row's ``model``."""
+    try:
+        from runtime.common import installer
+        return installer.served_model(lock, row)
+    except (OSError, ValueError, KeyError, TypeError):
+        return row["model"]
+
+
 def deployments(state_root):
     """Retained deployments of the controller: ``[{"name", "directory", "id", "workspace", "rows"}]``.
 
-    ``rows`` holds each rank's ``host``, ``model`` and whether that model is a
-    named copy served in place (``reuse``). A deployment whose lock cannot be
-    read is skipped.
+    ``rows`` holds each rank's ``host``, ``model``, the directory its container
+    mounts (``served``: a derived checkpoint's directory, else ``model``) and
+    whether that model is a named copy served in place (``reuse``). A
+    deployment whose lock cannot be read is skipped.
     """
     found = []
     base = Path(state_root) / "deployments"
@@ -708,8 +726,8 @@ def deployments(state_root):
         try:
             lock = _read(directory / "deployment.lock.json")
             site = lock["site"]
-            rows = [{"host": row["host"], "model": row["model"], "reuse": bool(row.get("reuse_verified_model"))}
-                    for row in site["ranks"]]
+            rows = [{"host": row["host"], "model": row["model"], "served": _served(lock, row),
+                     "reuse": bool(row.get("reuse_verified_model"))} for row in site["ranks"]]
             found.append({"name": directory.name, "directory": os.path.realpath(directory), "id": lock["id"],
                           "workspace": site["workspace"], "rows": rows})
         except (OSError, ValueError, KeyError, TypeError):
@@ -742,17 +760,23 @@ def roles(state_root):
     return result
 
 
+def _uses(row, path):
+    """Whether a deployment row uses checkpoint directory ``path``: as its model, or as the derived one it serves."""
+    return path in (row["model"], row.get("served"))
+
+
 def _users(retained, host, path):
-    """Retained deployments whose row for ``host`` names ``path``, as SparkRing's directory or served in place."""
-    return [item for item in retained if any(row["host"] == host and row["model"] == path for row in item["rows"])]
+    """Retained deployments whose row for ``host`` uses ``path``, as SparkRing's directory or served in place."""
+    return [item for item in retained if any(row["host"] == host and _uses(row, path) for row in item["rows"])]
 
 
 def _survey(hosts, retained, invoke):
     """This package's listing of every Spark, in rank order; an unreachable Spark carries ``error``."""
     def one(rank):
         host = hosts[rank]
-        paths = sorted({row["model"] for item in retained for row in item["rows"]
-                        if row["host"] == host and not row["reuse"]})
+        paths = sorted({value for item in retained for row in item["rows"] if row["host"] == host
+                        for value in (row["model"], row.get("served"))
+                        if value and not (row["reuse"] and value == row["model"])})
         try:
             listing = json.loads(invoke(host, ["sudo", "-n", "/usr/bin/sparkring", "node", "checkpoints"],
                                         data=json.dumps({"paths": paths}), timeout=120))
@@ -766,13 +790,26 @@ def _survey(hosts, retained, invoke):
         return list(pool.map(one, range(len(hosts))))
 
 
-def _annotate(nodes, retained, role):
+def _annotate(nodes, retained, role, derived=None):
+    """Name each directory's deployments and, for a derived checkpoint's directory, what it is derived from."""
     for node_entry in nodes:
         for entry in node_entry.get("directories", ()):
             entry["deployments"] = [{"name": item["name"], **({"role": role[item["directory"]]}
                                                               if item["directory"] in role else {})}
                                     for item in _users(retained, node_entry["host"], entry["path"])]
+            item = (derived or {}).get((entry.get("repository"), entry.get("revision")))
+            if item:
+                entry["derived"] = {key: item[key] for key in ("name", "base", "donor")}
     return nodes
+
+
+def _derived():
+    """The derived checkpoints installer profiles list, or none when the profiles cannot be read."""
+    try:
+        from runtime.common import derived_checkpoint
+        return derived_checkpoint.listed()
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
 
 
 def _cluster(state_root):
@@ -791,11 +828,13 @@ def list_cluster(state_root, invoke):
     retained, role = deployments(state_root), roles(state_root)
     cluster = _cluster(state_root)
     if cluster is None:
-        nodes = [{"rank": None, "host": None, **list_local([row["model"] for item in retained for row in item["rows"]
-                                                              if not row["reuse"]])}]
+        nodes = [{"rank": None, "host": None, **list_local([value for item in retained for row in item["rows"]
+                                                              for value in (row["model"], row.get("served"))
+                                                              if value and not (row["reuse"]
+                                                                                and value == row["model"])])}]
     else:
         nodes = _survey(_hosts(cluster), retained, invoke)
-    return {"schema": SCHEMA, "state": "listed", "nodes": _annotate(nodes, retained, role)}
+    return {"schema": SCHEMA, "state": "listed", "nodes": _annotate(nodes, retained, role, _derived())}
 
 
 def release_cluster(path, state_root, invoke, *, yes, interactive, write=print):
@@ -811,12 +850,12 @@ def release_cluster(path, state_root, invoke, *, yes, interactive, write=print):
         retained, role = deployments(state_root), roles(state_root)
         # A deployment that serves the directory in place (sparkring up --model-path, or a site row with
         # reuse_verified_model) uses it as much as one whose lock names it as SparkRing's directory.
-        users = [item for item in retained if any(row["model"] == path for row in item["rows"])]
+        users = [item for item in retained if any(_uses(row, path) for row in item["rows"])]
         reasons = {"active": "the active deployment", "rollback": "the rollback target recorded in transaction.json",
                    "switching": "the deployment of an unfinished model switch"}
         for item in users:
             if item["directory"] in role:
-                in_place = all(row["reuse"] for row in item["rows"] if row["model"] == path)
+                in_place = all(row["reuse"] for row in item["rows"] if _uses(row, path))
                 use = "the copy served in place by" if in_place else "the checkpoint directory of"
                 raise ValueError(f"{path} is {use} {reasons[role[item['directory']]]} {item['name']}; SparkRing does "
                                  "not release it. Nothing was released.")
@@ -935,6 +974,10 @@ def describe(result):
                 continue
             lines.append(f"        {entry['repository']} at {entry['revision'][:12]}: "
                          f"{_plural(entry['files'], 'file')}, {_size(entry['bytes'])}")
+            if entry.get("derived"):
+                derived = entry["derived"]
+                lines.append(f"        derived checkpoint {derived['name']} of {derived['base']['repository']} at "
+                             f"{derived['base']['revision'][:12]}; its unchanged files are hard links to the base's")
             users = [deployment["name"] + (f" ({deployment['role']})" if deployment.get("role") else "")
                      for deployment in entry.get("deployments", ())]
             lines.append("        used by " + (", ".join(users) if users else "no retained deployment"))
