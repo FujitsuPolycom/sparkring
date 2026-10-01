@@ -39,7 +39,10 @@ STATUS_ENTRY_POINTS = {
     "vllm.general_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"},
 }
 HC_SUPPORTED_MODES = {
-    "2": [{"projection_tp": "1", "prefill_row_ownership": "off"}],
+    "2": [
+        {"projection_tp": "1", "prefill_row_ownership": "off"},
+        {"projection_tp": "0", "prefill_row_ownership": "shard"},
+    ],
     "4": [
         {"projection_tp": "1", "prefill_row_ownership": "off"},
         {"projection_tp": "0", "prefill_row_ownership": "shard"},
@@ -469,7 +472,8 @@ class Composition:
         feature["manifest_sha256"] = prefill_digest
         feature["files"] = {"qwen4-prefill/" + path.name: file_sha(path)
                             for path in prefill.iterdir()}
-        feature["scope"] = "TP4 sharded HC prefill fusion; native KK decode path retained. GPU qualification pending."
+        feature["scope"] = ("TP2 and TP4 HC prefill fusion with token-row ownership; the native decode path "
+                            "is unchanged. GPU qualification pending.")
         capabilities["transport_profiles"][TRANSPORT]["manifest_sha256"] = transport_digest
         capabilities["qualification"] = "Development composition. Source and GPU qualification are separate receipts."
         capabilities["inherited_capabilities"] = [
