@@ -170,8 +170,40 @@ def test_relay_storage_shortfall_asks_for_input_before_downloading(tmp_path, rel
     current.remote = probe({1, 2, 3}, free=40 * 1024**3)
     with pytest.raises(NeedsInput) as error:
         current.images(REGISTRY_CARD)
-    assert error.value.field == "storage" and error.value.details["rank"] == 0
-    assert not relay.instances
+    # Without a layer list, Node 0 pulls the whole image and keeps the relay's copy of every layer.
+    assert error.value.field == "storage" and error.value.details == {
+        "rank": 0, "required_bytes": (30 + 15 + 8 + 15) * 1024**3, "free_bytes": 40 * 1024**3}
+    assert "Node 0 needs 68.0 GiB free in Docker's data root" in str(error.value)
+    assert relay.instances[0].closed and relay.instances[0].fetched == []
+
+
+def test_relay_space_check_counts_only_the_layers_each_node_lacks(tmp_path, relay):
+    # Node 0 holds the image; the others hold an earlier image's leading layers and load only the rest.
+    relay.layout = (CONFIG, LAYERS)
+    held = {1: 2, 2: 2, 3: 1}
+    free = {0: 1024**3, 1: 5 * 1024**3, 2: 5 * 1024**3, 3: 5 * 1024**3}
+    loads = []
+
+    def remote(rank, fn, *args, **kwargs):
+        if fn == assets.layer_prefix:
+            return held[rank]
+        assert fn == assets.image_probe
+        return {"present": rank == 0 or rank in loads, "image_id": "sha256:a", "size_bytes": 30 * 1024**3,
+                "free_bytes": free[rank]}
+    current = assets.Assets(Transport(), tmp_path, run=lambda *a, **k: pytest.fail("Unexpected pull"))
+    current.remote = remote
+    current.load_layers = lambda rank, relay_, card, layout, present: loads.append(rank)
+    result = current.images(REGISTRY_CARD)
+    assert sorted(result["relayed_ranks"]) == [1, 2, 3] and sorted(loads) == [1, 2, 3]
+    # A pull of the whole image would need 53 GiB on each; the layer loads need their own check's figure, and
+    # Node 0 the relay's copy of the layers after the shortest held chain.
+    required = assets.install_space.relay_check(REGISTRY_CARD, [1, 2, 3], held, LAYERS, 68 * 1024**3)
+    assert required == {0: 200, 1: 4 * 100 + 4 * 1024**3, 2: 4 * 100 + 4 * 1024**3, 3: 4 * 200 + 4 * 1024**3}
+    free[3], loads[:] = 4 * 1024**3, []
+    with pytest.raises(NeedsInput) as error:
+        current.images(REGISTRY_CARD)
+    assert error.value.details == {"rank": 3, "required_bytes": 4 * 200 + 4 * 1024**3, "free_bytes": 4 * 1024**3}
+    assert loads == [] and relay.instances[-1].closed
 
 
 def test_unreachable_registry_falls_back_to_copying_between_nodes(tmp_path, relay):

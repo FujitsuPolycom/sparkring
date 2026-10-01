@@ -7,10 +7,12 @@ Hub tree at that revision. Hashes are stand-ins; the plan never reads them.
 import datetime
 import hashlib
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from runtime.host import checkpoint_plan as cp
+from runtime.host import checkpoint_plan as cp, install_space
 
 GIB = 1024 ** 3
 REPO = "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
@@ -39,7 +41,16 @@ SMALL = sorted(name for name in REQUIRED if name not in WEIGHTS)
 WEIGHT_BYTES = sum(SIZES[name] for name in WEIGHTS)
 SMALL_BYTES = sum(SIZES[name] for name in SMALL)
 TOTAL_BYTES = WEIGHT_BYTES + SMALL_BYTES
-POLICY = {"cache_bytes": 32 * GIB, "image_bytes": 68 * GIB}
+POLICY = {"cache_bytes": 4 * GIB, "image_bytes": 68 * GIB}
+# A serving image derived from a parent image by one layer, as install_space.lineage lists them.
+TARGET = {"name": "dev-20261001-statusrows-cuda1342-nccl2323-status034", "image_id": "sha256:" + "4" * 64,
+          "image_bytes": 31657876762, "download_bytes": 15233879635}
+PARENT = {"name": "dev-20260930-spinwait-cuda1342-nccl2323-status033", "image_id": "sha256:" + "f" * 64,
+          "image_bytes": 31654261946, "download_bytes": 15232947091}
+LINEAGE = [TARGET, PARENT]
+WHOLE = install_space.image_need(LINEAGE, {"images": [], "containerd": False, "caches": {}}, POLICY["image_bytes"])
+LAYERS = install_space.image_need(LINEAGE, {"images": [PARENT["image_id"]], "containerd": False, "caches": {}},
+                                  POLICY["image_bytes"])
 NOW = datetime.datetime(2026, 9, 26, 2, 0, tzinfo=datetime.timezone.utc)
 DEV, MOUNT = 66306, 29
 HOSTNAMES = {2: ["spark-aa42", "spark-931e"], 4: ["spark-edfd", "spark-ebb8", "spark-ebee", "spark-4a87"]}
@@ -139,7 +150,7 @@ def test_every_rank_links_its_own_copy_and_nothing_is_downloaded(count):
         assert node["bytes"] == {"present": 0, "link": WEIGHT_BYTES, "copy": SMALL_BYTES, "pool": 0, "receive": 0,
                                  "hub": 0}
         assert node["write_bytes"] == SMALL_BYTES
-        assert node["required_bytes"] == SMALL_BYTES + SIZES["model.safetensors.index.json"] + 32 * GIB
+        assert node["required_bytes"] == SMALL_BYTES + SIZES["model.safetensors.index.json"] + 4 * GIB
     assert cp.describe(result)[-1] == "Nothing is downloaded."
     assert cp.attention(result) == []
     assert result["problems"] == []
@@ -168,7 +179,7 @@ def test_main_copies_download_config_once_on_node_a_and_stream_it(count):
         "sources": [{"path": MAIN_CACHE, "layout": "hf-cache", "commit": MAIN, "branches": ["main"],
                      "home": OPERATOR, "files": 47}],
         "bytes": {"present": 0, "link": 105839492200, "copy": 56388023, "pool": 0, "receive": 0, "hub": 109897},
-        "free_bytes": 312403148800, "required_bytes": 34449531758,
+        "free_bytes": 312403148800, "required_bytes": 4384760686,
         "search": {"complete": True, "seconds": 1.2, "not_searched": ["/mnt/synologytwo"], "unvisited": {}},
         "not_used": []}
     assert cp.summary(result)["refreshed_receipts"] == 0
@@ -503,21 +514,98 @@ def test_storage_formula_is_the_same_at_plan_and_run_time():
     written = [entry["size"] for entry in node["files"].values() if entry["action"] in cp.WRITE_ACTIONS]
     # model-transfer-prepare checks the needed names' sizes with the same function
     # and no image term, because the image is present by then.
-    assert node["required_bytes"] == cp.required_space(written, cache_bytes=POLICY["cache_bytes"]) == 144804004456
-    assert f"{node['required_bytes'] / GIB:.1f}" == "134.9"
+    assert node["required_bytes"] == cp.required_space(written, cache_bytes=POLICY["cache_bytes"]) == 114739233384
+    assert f"{node['required_bytes'] / GIB:.1f}" == "106.9"
     linked = result["nodes"][1]
     assert linked["required_bytes"] == cp.required_space(
-        [SIZES[n] for n in SMALL], cache_bytes=POLICY["cache_bytes"]) == 34449531758
-    absent = make(surveys, images_present=[False, True, True, True])
-    assert absent["nodes"][0]["required_bytes"] == node["required_bytes"] + 68 * GIB
+        [SIZES[n] for n in SMALL], cache_bytes=POLICY["cache_bytes"]) == 4384760686
+    # Node 0 lacks the image: the whole image, and the relay's copy of its layers for the Sparks that lack them.
+    absent = make(surveys, images=[WHOLE, None, None, None])
+    assert absent["nodes"][0]["required_bytes"] == node["required_bytes"] + install_space.whole_bytes(TARGET) \
+        + TARGET["download_bytes"]
     assert absent["nodes"][1]["required_bytes"] == linked["required_bytes"]
+    # Node 1 lacks it: Node 0 still counts the relay's copy, which a relay directory elsewhere does not.
+    worker = make(surveys, images=[None, WHOLE, None, None])
+    assert worker["nodes"][0]["required_bytes"] == node["required_bytes"] + TARGET["download_bytes"]
+    assert make(surveys, images=[None, WHOLE, None, None], relay_device=2049)["nodes"][0]["required_bytes"] == \
+        node["required_bytes"]
     elsewhere = [dict(s, docker={"userns": False, "driver": "overlay2", "device": 2049}) for s in surveys]
-    assert make(elsewhere, images_present=[False] * 4)["nodes"][0]["required_bytes"] == node["required_bytes"]
-    # A compile cache on another filesystem (--cache-path) needs no allowance on the checkpoint's filesystem.
+    assert make(elsewhere, images=[WHOLE] * 4, relay_device=2049)["nodes"][0]["required_bytes"] == \
+        node["required_bytes"]
+    # A compile cache on another filesystem (--cache-path) needs no allowance on the checkpoint's filesystem,
+    # and a compile cache that the deployment's containers filled needs none on any.
     fast = [dict(s, owned={**s["owned"], "cache_path": "/mnt/fast/cache", "cache_device": 2065}) for s in surveys]
     moved = make(fast)["nodes"][0]
-    assert moved["storage"]["cache_bytes"] == 0 and moved["required_bytes"] == node["required_bytes"] - 32 * GIB
+    assert moved["storage"]["cache_bytes"] == 0 and moved["required_bytes"] == node["required_bytes"] - 4 * GIB
+    built = install_space.cache_need({"/srv/sparkring/tp4/cache/qwen-flash-next-444444444444-629bc3218833":
+                                      {"files": 812, "bytes": 412 * 10 ** 6, "complete": True}}, POLICY["cache_bytes"])
+    filled = make(surveys, caches=[built, None, None, None])["nodes"][0]
+    assert filled["storage"]["cache_bytes"] == 0 and filled["required_bytes"] == moved["required_bytes"]
     assert cp.required_space([]) == 0 and cp.required_space([5, 7], cache_bytes=1, image_bytes=2) == 22
+
+
+# The pinned DeepSeek-V4.1-Flash revision, whose two largest files are 94.6 GiB each.
+DEEPSEEK = json.loads((Path(cp.__file__).resolve().parents[2] / "profiles/checkpoints/deepseek-ai--DeepSeek-V4.1-Flash"
+                       / "dba1be0a40aa45a94ad051997016db3960a90277.json").read_text(encoding="utf-8"))
+
+
+def test_headroom_is_the_largest_written_file_up_to_16_gib(tmp_path, monkeypatch):
+    sizes = list(cp.required_files(DEEPSEEK).values())
+    assert f"{max(sizes) / GIB:.1f}" == "94.6" and cp.HEADROOM_CAP_BYTES == 16 * GIB
+    assert cp.headroom(sizes) == 16 * GIB and cp.required_space(sizes) == sum(sizes) + 16 * GIB
+    assert f"{cp.required_space(sizes) / GIB:.1f}" == "491.3"
+    # Qwen's largest file, 4.2 GiB, stays below the cap.
+    assert cp.headroom(SIZES.values()) == max(SIZES.values()) == 4548275968
+    assert cp.headroom([]) == 0
+    # A Spark that downloads the whole checkpoint: the plan names the cap.
+    plan = cp.plan(DEEPSEEK, [survey("spark-aa42", free_gib=44), survey("spark-931e")], rows(2), policy=POLICY, now=NOW)
+    node = plan["nodes"][0]
+    assert node["storage"]["largest_bytes"] == max(sizes) and node["storage"]["headroom_bytes"] == 16 * GIB
+    assert node["required_bytes"] == sum(sizes) + 16 * GIB + 4 * GIB
+    text = "16.0 GiB of headroom (the largest file, 94.6 GiB, capped)"
+    assert f": 475.3 GiB of checkpoint files, {text}, 4 GiB for the compile cache; 44.0 GiB is free." \
+        in plan["problems"][0]["message"]
+    assert "491.3 GiB for checkpoint files" in " ".join(cp.describe(plan))
+    # The rank operation's check refuses with the same figure and the same words.
+    from scripts import installer_host
+    model, cache = tmp_path / "checkpoint", tmp_path / "cache"
+    model.mkdir()
+    monkeypatch.setattr(installer_host.shutil, "disk_usage", lambda path: SimpleNamespace(free=44 * GIB))
+    with pytest.raises(ValueError) as refused:
+        installer_host._require_space(str(model), {"cache": str(cache)}, sizes, number=0,
+                                      card={"image_id": "sha256:" + "4" * 64})
+    assert f"needs {node['required_bytes'] / GIB:.1f} GiB free" in str(refused.value)
+    assert f"(475.3 GiB, {text}, 4 GiB for the compile cache)" in str(refused.value)
+    assert cp.headroom_text(max(SIZES.values())) == "4.2 GiB of headroom (the largest file)"
+
+
+def test_each_reserved_part_says_why_it_is_reserved():
+    present = [survey(name, candidates=[candidate(owned_path(2), sparkring=True)]) for name in HOSTNAMES[2]]
+
+    def needs_line(image, cache=None):
+        result = make(present, images=[None, image], caches=[None, cache], relay_device=2049)
+        return [line.strip() for line in cp.describe(result) if line.strip().startswith("needs")][-1]
+    assert needs_line(LAYERS) == (f"needs 8.0 GiB free on /: 4.0 GiB for the image's missing layers ({PARENT['name']} "
+                                  "present), 4 GiB for the compile cache; 291 GiB free")
+    assert needs_line(WHOLE).startswith("needs 55.7 GiB free on /: 51.7 GiB for the whole image (no image it derives "
+                                        "from is present), 4 GiB for the compile cache")
+    containerd = install_space.image_need(LINEAGE, {"images": [PARENT["image_id"]], "containerd": True},
+                                          POLICY["image_bytes"])
+    assert f"51.7 GiB for the whole image ({PARENT['name']} is present, but SparkRing loads single layers only " \
+           "into Docker's graph-driver image store)" in needs_line(containerd)
+    failed = install_space.image_need(LINEAGE, {"error": "ssh: connect to host timed out"}, POLICY["image_bytes"])
+    assert "51.7 GiB for the whole image (this Spark's images could not be listed)" in needs_line(failed)
+    unsized = install_space.image_need([{**TARGET, "image_bytes": None, "download_bytes": None}], {"images": []},
+                                       POLICY["image_bytes"])
+    assert "68 GiB for the image (its lock records no sizes)" in needs_line(unsized)
+    # A built compile cache and a present image leave only the checkpoint files, here none.
+    built = install_space.cache_need({"/c": {"files": 3, "bytes": 1, "complete": True}}, POLICY["cache_bytes"])
+    assert needs_line(None, built) == "needs no free space on / (291 GiB free)"
+    # Node 0 keeps the relay's copy of the layers Node 1 lacks.
+    relayed = make(present, images=[None, LAYERS])["nodes"][0]
+    assert relayed["storage"]["relay_bytes"] == LAYERS["relay_bytes"] == 3614816
+    assert "3.61 MB for the relay's copy of the layers the Sparks lack" in " ".join(cp.describe(make(
+        present, images=[None, LAYERS])))
 
 
 def test_describe_matches_the_documented_lines():
@@ -539,7 +627,7 @@ def test_describe_matches_the_documented_lines():
         "        Hugging Face download folder, commit 629bc3218833 (the pinned revision), files owned by code",
         "        48 of 48 files identified by SparkRing's earlier checksums",
         "    hard-link 36 weight files (no copy, no extra space); copy 12 other files (56.5 MB)",
-        "    needs 32.1 GiB free on / (89.8 MB for checkpoint files, 32 GiB for the compile cache; 291 GiB free)",
+        "    needs 4.1 GiB free on /: 89.8 MB for checkpoint files, 4 GiB for the compile cache; 291 GiB free",
         f"    not used: {NEAR_MISS} (another checkpoint: its index differs)",
         "Node 1 spark-931e: as Node 0 (308 GiB free)",
         "",
@@ -586,8 +674,8 @@ def test_describe_matches_the_documented_lines():
                 operator="dooner")
     lines = stripped(ring)
     for line in ("Node 2 spark-ebee: no copy found (searched 81,402 folder entries in 2.4 s)",
-                 "receives 48 files (98.6 GiB) from Node 1 over the fabric; needs 134.9 GiB free on / (102.9 GiB for "
-                 "checkpoint files, 32 GiB for the compile cache; 623 GiB free)",
+                 "receives 48 files (98.6 GiB) from Node 1 over the fabric; needs 106.9 GiB free on /: 102.9 GiB for "
+                 "checkpoint files, 4 GiB for the compile cache; 623 GiB free",
                  f"not used: {CODY_CACHE} (in cody's home, another account); use it with --model-path 2={CODY_CACHE}"):
         assert line in lines
 
@@ -704,21 +792,22 @@ def test_storage_messages_match_the_documented_text():
                 + [survey(hosts[rank], 4, candidates=[candidate(FOLDER)]) for rank in (1, 2, 3)])
     assert actions(ring["nodes"][0], "receive") == REQUIRED
     assert ring["problems"] == [{"field": "storage", "rank": 0, "message": (
-        "Node 0 spark-edfd needs 134.9 GiB free on / to receive the checkpoint (98.6 GiB of checkpoint files, "
-        "4.2 GiB to stage the largest file, 32 GiB for the compile cache); 44.0 GiB is free. Free another 90.9 GiB "
+        "Node 0 spark-edfd needs 106.9 GiB free on / to receive the checkpoint: 98.6 GiB of checkpoint files, "
+        "4.2 GiB of headroom (the largest file), 4 GiB for the compile cache; 44.0 GiB is free. Free another 62.9 GiB "
         "there, or put a copy of the pinned checkpoint on that filesystem: SparkRing hard-links its weight files, so "
-        "it would need 32.1 GiB. sudo sparkring storage lists the SparkRing data on each Spark that no deployment "
+        "it would need 4.1 GiB. sudo sparkring storage lists the SparkRing data on each Spark that no deployment "
         "uses. Then repeat sudo sparkring install --plan. An exact copy was found on another "
         "filesystem at /mnt/usb/qwen; to serve it in place instead, review sudo sparkring install --model-path "
         "0=/mnt/usb/qwen --plan. The running model has not been stopped.")}]
     # The figure a linked copy needs counts the other files, the cache and, without the image, the image.
     bare = make([survey(hosts[0], 4, free_gib=44)] + [survey(hosts[rank], 4, candidates=[candidate(FOLDER)])
                                                       for rank in (1, 2, 3)],
-                images_present=[False, True, True, True], request={"profile": "qwen38-flash-next-qad-tp4"})
+                images=[WHOLE, None, None, None], request={"profile": "qwen38-flash-next-qad-tp4"})
     message = bare["problems"][0]["message"]
-    assert "(98.6 GiB of checkpoint files, 4.2 GiB to stage the largest file, 32 GiB for the compile cache, " \
-           "68 GiB for the image); 44.0 GiB is free. Free another 158.9 GiB there" in message
-    assert "so it would need 100.1 GiB. sudo sparkring storage lists the SparkRing data on each Spark that no " \
+    assert ": 98.6 GiB of checkpoint files, 4.2 GiB of headroom (the largest file), 51.7 GiB for the whole image (no " \
+           "image it derives from is present), 14.2 GiB for the relay's copy of the layers the Sparks lack, 4 GiB for " \
+           "the compile cache; 44.0 GiB is free. Free another 128.7 GiB there" in message
+    assert "so it would need 69.9 GiB. sudo sparkring storage lists the SparkRing data on each Spark that no " \
            "deployment uses. Then repeat sudo sparkring install --profile qwen38-flash-next-qad-tp4 " \
            "--plan. The running model has not been stopped." in message
     main_copy = candidate("/mnt/usb/qwen", device=2049, mount_id=51, commit=MAIN, branches=["main"],
@@ -727,7 +816,7 @@ def test_storage_messages_match_the_documented_text():
                  survey("spark-931e", candidates=[main_copy], free_gib=44)], named=["1=/mnt/usb/qwen"])
     assert pair["problems"] == [{"field": "storage", "rank": 1, "message": (
         "Node 1 spark-931e: /mnt/usb/qwen is on another filesystem and holds the main branch's config.json, so "
-        "SparkRing cannot serve it in place, and copying it needs 134.9 GiB free on / (44.0 GiB free). To make that "
+        "SparkRing cannot serve it in place, and copying it needs 106.9 GiB free on / (44.0 GiB free). To make that "
         "folder an exact copy yourself: hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 config.json "
         "--revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir /mnt/usb/qwen (this changes your folder; "
         "if config.json there is a hard link to another copy, remove it first). Then repeat sudo sparkring install "

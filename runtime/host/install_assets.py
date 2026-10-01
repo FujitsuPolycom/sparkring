@@ -16,7 +16,7 @@ import threading
 import time
 
 from runtime.common import distribution, installer
-from runtime.host import checkpoint_plan, fabric_stream, node, packages, progress, registry_relay
+from runtime.host import checkpoint_plan, fabric_stream, install_space, node, packages, progress, registry_relay
 from runtime.host.install_errors import NeedsInput
 
 DOCKER = ["docker", "--context", "default"]
@@ -172,35 +172,45 @@ class Assets:
         return {"updated": outdated, "revision": current}
 
     def relay(self, card, missing, observations):
-        """Pull on every node that lacks the image, through one upstream download on Node A."""
-        from runtime.common import profiles
-        policy = profiles.read_json(node.ROOT / "profiles/storage-planning.json")
-        if "image_bytes" in card:
-            # Compressed layers and the unpacked image coexist during a pull.
-            pull = card["image_bytes"] + card["download_bytes"] + 8 * 1024**3
-            cache = card["download_bytes"]
-        else:
-            pull = (policy["image_allowance_gib"] + policy["cache_and_jit_allowance_gib"]) * 1024**3
-            cache = policy["image_allowance_gib"] * 1024**3
-        for rank in sorted({0, *missing}):
-            required = (pull if rank in missing else 0) + (cache if rank == 0 else 0)
-            if observations[rank]["free_bytes"] < required:
-                raise NeedsInput(f"Node {rank} needs more Docker storage before the pinned image can be downloaded. Free space (sudo sparkring storage lists SparkRing data that no deployment uses), then repeat sudo sparkring install. A running model has not been stopped.",
-                                 field="storage", details={"rank": rank, "required_bytes": required,
-                                                           "free_bytes": observations[rank]["free_bytes"]})
+        """Pull on every node that lacks the image, through one upstream download on Node A.
+
+        The relay first reads the pinned layer list, and each node that lacks
+        the image counts the leading layers it holds (``layer_prefix``). Before
+        any layer is downloaded, each node needs the free space in Docker's
+        data root that ``install_space.relay_check`` gives: a node holding
+        leading layers loads only the others, any other node pulls the whole
+        image, and Node A also keeps the relay's copy of every layer that some
+        node lacks.
+        """
         relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
         try:
-            layout = relay.image(card["image_id"])
-        except (OSError, ValueError, KeyError) as error:
-            # Every node then pulls; a pull reports its own registry failure.
-            progress.say(f"Pinned layer list unavailable ({error}); nodes pull the whole image.")
-            layout = None
+            try:
+                layout = relay.image(card["image_id"])
+            except (OSError, ValueError, KeyError) as error:
+                # Every node then pulls; a pull reports its own registry failure.
+                progress.say(f"Pinned layer list unavailable ({error}); nodes pull the whole image.")
+                layout = None
+            diffs = [diff for diff, _, _ in layout[1]] if layout else []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(missing)) as pool:
+                held = dict(zip(missing, pool.map(
+                    lambda rank: self.remote(rank, layer_prefix, diffs) if layout else 0, missing)))
+            allowance = checkpoint_plan.storage_policy(node.ROOT)["image_bytes"]
+            required = install_space.relay_check(card, missing, held, layout[1] if layout else None, allowance)
+            for rank in sorted(required):
+                free = observations[rank]["free_bytes"]
+                if free < required[rank]:
+                    raise NeedsInput(f"Node {rank} needs {required[rank] / 1024**3:.1f} GiB free in Docker's data root "
+                                     f"before the pinned image can be distributed; {free / 1024**3:.1f} GiB is free. "
+                                     "Free space (sudo sparkring storage lists SparkRing data that no deployment "
+                                     "uses), then repeat sudo sparkring install. A running model has not been stopped.",
+                                     field="storage", details={"rank": rank, "required_bytes": required[rank],
+                                                               "free_bytes": free})
         except BaseException:
             relay.close()
             raise
 
         def pull_on(rank):
-            present = self.remote(rank, layer_prefix, [diff for diff, _, _ in layout[1]]) if layout else 0
+            present = held[rank]
             if present:
                 # Docker's pull re-downloads a held layer unless it recorded that
                 # layer's registry digest, which layers imported by `docker load`
@@ -242,7 +252,7 @@ class Assets:
         """Stream the image configuration and the layers after ``present`` into one node's ``docker load``."""
         config, layers = layout
         # Loaded blobs, their unpacked layers and the loader's extracted copy coexist.
-        reserve = 4 * sum(size for _, _, size in layers[present:]) + 4 * 1024**3
+        reserve = install_space.load_bytes(sum(size for _, _, size in layers[present:]))
         release = card.get("release", "")
         tag = (f"127.0.0.1:{registry_relay.PORT}/{relay.repository}:{release}"
                if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", release) else None)
@@ -288,13 +298,8 @@ class Assets:
             if card["image_reference"] == card["image_id"]:
                 raise NeedsInput("The selected private image is not cached on any enrolled node. Supply a registry-backed image lock or load its archive on Node A.",
                                  field="image_lock", details={"image_id": card["image_id"]})
-            from runtime.common import profiles
-            policy = profiles.read_json(node.ROOT / "profiles/storage-planning.json")
-            if "image_bytes" in card:
-                # Compressed layers and the unpacked image coexist during a pull.
-                reserve = card["image_bytes"] + card["download_bytes"] + 8 * 1024**3
-            else:
-                reserve = (policy["image_allowance_gib"] + policy["cache_and_jit_allowance_gib"]) * 1024**3
+            # Compressed layers and the unpacked image coexist during a pull.
+            reserve = install_space.pull_bytes(card, checkpoint_plan.storage_policy(node.ROOT)["image_bytes"])
             if self.remote(0, storage_probe) < reserve:
                 raise NeedsInput("Node A needs more Docker storage before the pinned image can be downloaded. Free space (sudo sparkring storage lists SparkRing data that no deployment uses), then repeat sudo sparkring install. A running model has not been stopped.",
                                  field="storage", details={"rank": 0, "required_bytes": reserve})

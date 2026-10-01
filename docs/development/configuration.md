@@ -37,8 +37,12 @@ assignments for reviewed local use; it does not create an installed-image receip
 GLM's `--variant nvfp4-qad` reads its declared target variant rather than changing
 the profile's image. Unsupported selections fail with a pointer to their own guide.
 
-`setup storage` applies [planning allowances](../../profiles/storage-planning.json)
-to local model, Docker and cache destination filesystems. It sums allocations
+`setup storage` reserves the checkpoint's pinned file sizes with its largest
+file again as headroom (at most 16 GiB), the image lock's unpacked and
+download sizes, and the compile cache allowance on local model, Docker and
+cache destination filesystems; a revision without a pin manifest and a selection without image
+sizes get the [planning allowances](../../profiles/storage-planning.json)
+instead. It sums allocations
 sharing a filesystem, probes existing ancestors without creating directories,
 and returns failure when space is insufficient. Reuse flags are explicit planning
 assumptions and never replace asset verification. These helpers do not configure

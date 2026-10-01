@@ -1127,38 +1127,105 @@ through Node A's sharing unless they have their own connection.
 The installer checks free space before each download or copy and before the
 model switch. It deletes nothing to make room, and a failed check leaves the
 running model in place; the message names `sudo sparkring storage`
-([Finding and freeing space](#finding-and-freeing-space)). It requires:
+([Finding and freeing space](#finding-and-freeing-space)).
 
-- **Image:** on each Spark without the image, the unpacked size plus the
-  download size plus 8 GiB (51.7 GiB) free in Docker's data root. Node A needs
-  a further 14.2 GiB there for the relay's layer cache.
-- **Checkpoint:** the bytes a Spark copies, receives or downloads, plus the
-  largest of those files again for its staging copy. Hard-linked files need
-  no space.
-- **Caches:** 32 GiB for the compile cache, and 68 GiB in Docker's data root
-  while the image is absent.
+The printed plan states, for each Spark, the free space it needs on the
+checkpoint directory's filesystem, and each part of that figure with the
+reason it is reserved:
 
-The printed plan shows each Spark's total, which also counts the 32 GiB
-compile cache when it shares the checkpoint's filesystem and, on a Spark
-without the image, 68 GiB for the image. `sparkring up`, whose image step pulls the image itself,
-reserves the full checkpoint allowance of
-[storage planning](../../profiles/storage-planning.json) unless the Spark
-holds a verified checkpoint.
+```text
+needs 8.0 GiB free on /: 4.0 GiB for the image's missing layers (dev-20260930-spinwait-cuda1342-nccl2323-status033 present), 4 GiB for the compile cache; 62 GiB free
+```
+
+The parts are:
+
+- **Checkpoint files:** the bytes a Spark copies, receives or downloads, plus
+  the largest of those files again as headroom, at most 16 GiB. Hard-linked
+  files need no space. Each file is written once: staging shares the
+  filesystem and SparkRing hard-links the verified file into place, so the
+  headroom need not grow with the file. It is for writes the plan does not
+  itemize while a transfer that can take hours runs, among them up to 1 GiB
+  of unplanned writes per Spark, which an approved plan tolerates. Only
+  DeepSeek's two 94.6 GiB files exceed the cap; the plan then reads
+  `16.0 GiB of headroom (the largest file, 94.6 GiB, capped)`.
+- **Image**, when Docker's data root shares the filesystem. Each installer
+  release's `publication.json` names the release it derives from, and a
+  derived image keeps its parent's layers
+  ([installer images](../../runtime/images/installer-images.md)). On a Spark
+  that holds:
+  - the image: nothing;
+  - an image it derives from, in Docker's graph-driver image store: the
+    missing layers. SparkRing loads them with `docker load`, whose own check
+    needs four times their download size plus 4 GiB; the plan bounds that
+    download by the larger of the two releases' unpacked-size and
+    download-size differences. Any earlier release of the
+    `dev-20261001-statusrows-cuda1342-nccl2323-status034` chain needs 4.0 to
+    4.1 GiB;
+  - no image it derives from: the unpacked size plus the download size plus
+    8 GiB for Docker's metadata and allocation, 51.7 GiB for that image. The
+    same applies on Docker's containerd image store, into which SparkRing
+    loads no single layers, and on a Spark whose images could not be listed.
+
+  An image lock that records no sizes needs the 68 GiB image allowance of
+  [storage planning](../../profiles/storage-planning.json).
+- **Relay copy**, on Node A: the registry relay keeps one compressed copy of
+  every layer that some Spark lacks until the image is distributed, up to the
+  image's 14.2 GiB download.
+- **Compile cache**, when it shares the filesystem: 4 GiB, and nothing when
+  every cache directory of this image and checkpoint already holds files.
+
+Before downloading the image, the relay's check repeats the image and relay
+figures in each Spark's Docker data root, from the registry's layer list and
+the leading layers each Spark holds. Before writing checkpoint files, each
+Spark repeats the checkpoint and compile cache figures.
+
+**Compile cache allowance.** Installer containers write Triton,
+TorchInductor, vLLM torch.compile, FlashInfer, CuTe DSL, TileLang and TVM FFI
+output into one directory per model family, image and checkpoint revision,
+and B12X kernels into one per family, CUDA version and checkpoint revision
+([Finding and freeing space](#finding-and-freeing-space)). Measurement: the
+disk use of these directories on three clusters. Result:
+
+| Cluster | Directories | Total |
+|---|---:|---:|
+| Spark pair | 5 | 720 MB |
+| Another Spark pair | 30 | 4.2 GB |
+| Four-Spark ring | 33 | 4.7 GB |
+
+A directory held 0.15 to 0.5 GB, and none exceeded about 0.5 GB. Caches of
+GLM containers started by hand, outside the installer, reached 2.6 GiB. The
+measurements do not separate profiles, so one allowance applies to every
+profile. Conclusion: 4 GiB covers the largest cache seen with 1.4 GiB to
+spare, and the largest installer directory eight times over. The margin
+remains because a cache grows with the CUDA graph sizes, tuned kernel shapes
+and serving settings of each image and profile, and is written during the
+first start after the model switch, where running out of space fails that
+start.
+
+`sparkring up`, whose image step pulls the whole image itself, reserves the
+image's whole pull, the compile cache allowance and, unless the Spark holds a
+verified checkpoint, the checkpoint's files and headroom from its pin manifest
+(the third column below). `sparkring setup storage` reserves the same
+checkpoint figure, the 68 GiB image allowance, because a profile selection
+records no image sizes, and the compile cache allowance. The per-repository
+checkpoint allowances of storage planning apply only to a revision without a
+pin manifest.
 
 The serving image `dev-20261001-statusrows-cuda1342-nccl2323-status034` is a
 14.2 GiB download, 29.5 GiB unpacked. The last column below is the plan's
-total for a Spark holding neither the image nor any checkpoint file, with the
-checkpoint, Docker and the cache on one filesystem.
+total for a Spark holding no image of its chain and no checkpoint file, with
+the checkpoint, Docker and the cache on one filesystem; Node A needs 14.2 GiB
+more for the relay copy.
 
-| Checkpoint | Size | `sparkring up` allowance | Plan total, empty Spark |
+| Checkpoint | Size | Files and headroom | Plan total, empty Spark |
 |---|---:|---:|---:|
-| Qwen, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB | 120 GiB | 206.6 GiB |
-| MiMo, `XiaomiMiMo/MiMo-V2.6-Flash-MOPD` @ `2479e2d0029e` | 165.6 GiB | 190 GiB | 276.9 GiB |
-| GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 200 GiB | 279.5 GiB |
-| GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 200 GiB | 290.7 GiB |
-| GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 210 GiB | 298.8 GiB |
-| DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 500 GiB | 669.8 GiB |
-| Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 200 GiB | 281.7 GiB |
+| Qwen, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB | 106.6 GiB | 162.3 GiB |
+| MiMo, `XiaomiMiMo/MiMo-V2.6-Flash-MOPD` @ `2479e2d0029e` | 165.6 GiB | 176.9 GiB | 232.5 GiB |
+| GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 179.5 GiB | 235.2 GiB |
+| GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 190.7 GiB | 246.4 GiB |
+| GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.4 GiB |
+| DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 546.9 GiB |
+| Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.4 GiB |
 
 ### Limit the download rate
 

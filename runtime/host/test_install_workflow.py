@@ -2,8 +2,9 @@
 
 Node A's SSH to the Sparks is simulated by ``Sparks``: checkpoint surveys
 answer with survey documents built from the pins and options that each probe
-carries, image checks find the serving image, and native-mesh inspection
-reports no mesh unless a test sets one. The checkpoint end-to-end tests instead
+carries, image and compile cache inspections find the serving image and no
+cache unless a test sets them, and native-mesh inspection reports no mesh
+unless a test sets one. The checkpoint end-to-end tests instead
 run the real survey probe, plan, rank operations and fabric copy on two
 simulated Sparks (``SimulatedSparks``); the ConnectX hairpin end-to-end tests
 run the real node code on a simulated four-Spark ring (``SimulatedRing``).
@@ -26,10 +27,11 @@ import uuid
 
 import pytest
 
-from runtime.common import distribution, installer
+from runtime.common import distribution, installer, installer_image
 from runtime.host import checkpoint_place as place
 from runtime.host import (checkpoint_plan, control, controller, hairpin, hairpin_ring, install_assets,
-                          install_workflow as flow, node, rollout, single_uplink, test_hairpin, topology)
+                          install_space, install_workflow as flow, node, rollout, single_uplink, test_hairpin,
+                          topology)
 from runtime.host.install_errors import NeedsInput
 from runtime.host.test_appliance import nodes
 from runtime.host.test_fabric_ssh import cluster as fabric_cluster
@@ -66,6 +68,13 @@ OK = {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
 
 def probe_inputs(source):
     """The pins and options a survey probe carries, read from its final call line."""
+    printed = ast.parse(source.rstrip().splitlines()[-1]).body[0].value
+    call = printed.args[0].args[0]
+    return tuple(json.loads(argument.args[0].value) for argument in call.args)
+
+
+def inspection_inputs(source):
+    """The image IDs and cache paths an image and cache inspection carries, read from its final call line."""
     printed = ast.parse(source.rstrip().splitlines()[-1]).body[0].value
     call = printed.args[0].args[0]
     return tuple(json.loads(argument.args[0].value) for argument in call.args)
@@ -112,16 +121,23 @@ class Sparks:
     ``survey(host, pins, options)`` answers a checkpoint survey; it returns a
     document, text, or an exception to raise. By default every Spark holds the
     owner's complete copy on the checkpoint directory's filesystem.
-    ``surveys`` records ``(host, options)`` of every survey.
+    ``surveys`` records ``(host, options)`` of every survey. ``images(host,
+    ids)`` names the image IDs of the serving image's lineage that a Spark
+    holds (by default the image itself), and ``caches(host, paths)`` the use of
+    each compile cache directory (by default none exists); ``inspections``
+    records ``(host, ids, paths)`` of every inspection.
     """
 
     def __init__(self):
         self.surveys = []
+        self.inspections = []
         self.guard = threading.Lock()
         self.barrier = None
         self.mesh = lambda rank: None
         self.survey = lambda host, pins, options: survey_document(pins, options, host,
                                                                   candidates=[copy_candidate(pins)])
+        self.images = lambda host, ids: ids[:1]
+        self.caches = lambda host, paths: {path: None for path in paths}
 
     def __call__(self, host, argv, *, data=None, timeout=None):
         if argv == flow.SURVEY_COMMAND:
@@ -135,8 +151,14 @@ class Sparks:
             if isinstance(answer, BaseException):
                 raise answer
             return answer if isinstance(answer, str) else json.dumps(answer)
-        if argv[:3] == ["sudo", "-n", "docker"] and "inspect" in argv:
-            return argv[-1] + "\n"
+        if argv == install_space.PROBE_COMMAND:
+            assert timeout == install_space.PROBE_TIMEOUT
+            ids, paths = inspection_inputs(data)
+            with self.guard:
+                self.inspections.append((host, ids, paths))
+            held = self.images(host, ids)
+            return json.dumps({"images": [image for image in ids if image in held][:1], "containerd": False,
+                               "caches": self.caches(host, paths)})
         if "native-mesh" in argv:
             return json.dumps({"mesh": self.mesh(int(argv[-1]))})
         return ""
@@ -819,7 +841,7 @@ def test_install_surveys_every_node_in_parallel_and_prints_the_plan_after_the_he
     assert lines[line_index(lines, "Plan saved.")] == f"Plan saved. Install it with {REPEAT} --yes."
     assert result["checkpoint"]["command"] == REPEAT and result["checkpoint"]["reviewed"] is True
     node0 = result["checkpoint"]["nodes"][0]
-    assert node0["mode"] == "owned" and node0["path"] == DIRECTORY and node0["required_bytes"] == 34448927703
+    assert node0["mode"] == "owned" and node0["path"] == DIRECTORY and node0["required_bytes"] == 4384156631
     assert node0["bytes"]["link"] == 110131860580 and node0["bytes"]["copy"] == 56080100
 
 
@@ -1182,6 +1204,102 @@ def test_tp4_mesh_model_roots_name_a_copy_served_in_place(machine, sparks, monke
     assert [row["reuse_verified_model"] for row in lock["site"]["ranks"]] == [False, False, True, False]
 
 
+# Two observed installations, each on Sparks that held the parent of the image to install and the checkpoint.
+RELEASES = installer.ROOT / "runtime/releases"
+PLAINSTATUS = "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
+SPINWAIT = "dev-20260930-spinwait-cuda1342-nccl2323-status033"
+STATUSROWS = "dev-20261001-statusrows-cuda1342-nccl2323-status034"
+
+
+def release_lock(name):
+    return installer.read(RELEASES / name / "installer-image.json")
+
+
+def holding_checkpoint(free):
+    """Surveys of Sparks whose checkpoint directory holds every pinned file; ``free(host)`` bytes are free."""
+    return lambda host, pins, options: survey_document(pins, options, host, free=free(host),
+                                                       candidates=[copy_candidate(pins, path=options["owned"])])
+
+
+def test_a_pair_holding_the_parent_image_reserves_only_the_missing_layers(machine, sparks, capsys):
+    # Both Sparks hold the plainstatus image and have 66.5 GiB free. The spinwait image adds one layer to it;
+    # the whole-image (68 GiB) and compile cache (32 GiB) allowances needed 100 GiB on each.
+    parent, target = release_lock(PLAINSTATUS), release_lock(SPINWAIT)
+    sparks.images = lambda host, ids: [parent["image_id"]]
+    sparks.survey = holding_checkpoint(lambda host: round(66.5 * GIB))
+    lock = RELEASES / SPINWAIT / "installer-image.json"
+    assert sparkring.main(["install", "--profile", PROFILE, "--image-lock", str(lock), "--plan", "--json"]) == 0
+    out = capsys.readouterr()
+    plan = saved(json.loads(out.out))
+    unpacked = target["image_bytes"] - parent["image_bytes"]
+    assert unpacked == 1700475 and target["download_bytes"] < parent["download_bytes"]
+    for entry in plan["nodes"]:
+        storage = entry["storage"]
+        assert storage["image"]["basis"] == "layers" and storage["image"]["ancestor"] == PLAINSTATUS
+        assert storage["image_bytes"] == 4 * unpacked + 4 * GIB and storage["cache_bytes"] == 4 * GIB
+        assert entry["write_bytes"] == 0 and entry["required_bytes"] < entry["free_bytes"]
+    lines = output_lines(out.err)
+    assert (f"    needs 8.0 GiB free on /: 4.0 GiB for the image's missing layers ({PLAINSTATUS} present), "
+            "4 GiB for the compile cache; 66 GiB free") in lines
+    assert "Node 1 spark-11: as Node 0 (66 GiB free)" in lines
+    # Each Spark was asked for the image, the images it derives from, and the deployment's compile caches.
+    host, ids, paths = sparks.inspections[0]
+    assert ids == [entry["image_id"] for entry in install_space.lineage(target)]
+    assert ids[:2] == [target["image_id"], parent["image_id"]]
+    assert paths == ["/srv/sparkring/test/cache/qwen-flash-next-fcb20b0ce839-60215d26cf5e",
+                     "/srv/sparkring/test/cache/qwen-flash-next-cuda13.4.2-60215d26cf5e"]
+
+
+def test_a_ring_rank_holding_the_parent_image_reserves_only_the_missing_layers(machine, sparks, monkeypatch, capsys):
+    # Ranks 0-2 hold the statusrows image; rank 3 holds spinwait and has 61.8 GiB free. Statusrows adds two layers
+    # to spinwait; the whole-image and compile cache allowances needed 100 GiB on rank 3.
+    value = cluster(4)
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
+    (controller.STATE / "active.json").unlink()
+    parent, target = release_lock(SPINWAIT), release_lock(STATUSROWS)
+    assert installer_image.default_lock()["image_id"] == target["image_id"]
+    sparks.images = lambda host, ids: [parent["image_id"]] if host.endswith(".13") else [target["image_id"]]
+    sparks.survey = holding_checkpoint(lambda host: round(61.8 * GIB) if host.endswith(".13") else 300 * GIB)
+    assert sparkring.main(["install", "--profile", TP4, "--plan", "--json"]) == 0
+    out = capsys.readouterr()
+    plan = saved(json.loads(out.out))
+    unpacked = target["image_bytes"] - parent["image_bytes"]
+    assert (unpacked, target["download_bytes"] - parent["download_bytes"]) == (3614816, 932544)
+    rank = plan["nodes"][3]["storage"]
+    assert rank["image"] == {"basis": "layers", "bytes": 4 * unpacked + 4 * GIB, "relay_bytes": unpacked,
+                             "ancestor": SPINWAIT, "unpacked_bytes": unpacked, "download_bytes": unpacked,
+                             "shared": True}
+    assert plan["nodes"][3]["required_bytes"] == 4 * unpacked + 8 * GIB < plan["nodes"][3]["free_bytes"]
+    assert all(plan["nodes"][number]["storage"]["image"]["basis"] == "present" for number in range(3))
+    lines = output_lines(out.err)
+    assert (f"    needs 8.0 GiB free on /: 4.0 GiB for the image's missing layers ({SPINWAIT} present), "
+            "4 GiB for the compile cache; 62 GiB free") in lines
+
+
+def test_a_built_compile_cache_and_a_spark_without_any_earlier_image(machine, sparks, capsys):
+    # Node 0 already built the compile cache of this image and checkpoint and holds the image; Node 1 holds
+    # neither the image nor any image it derives from.
+    target = installer_image.default_lock()
+    sparks.images = lambda host, ids: ids[:1] if host.endswith(".10") else []
+    sparks.caches = lambda host, paths: {path: {"files": 640, "bytes": 380 * 10 ** 6, "complete": True}
+                                         if host.endswith(".10") else None for path in paths}
+    sparks.survey = holding_checkpoint(lambda host: 300 * GIB)
+    assert sparkring.main(["install", "--profile", PROFILE, "--plan", "--json"]) == 0
+    out = capsys.readouterr()
+    first, second = saved(json.loads(out.out))["nodes"]
+    assert first["storage"]["cache"]["basis"] == "built" and first["storage"]["cache_bytes"] == 0
+    whole = target["image_bytes"] + target["download_bytes"] + 8 * GIB
+    assert second["storage"]["image"]["basis"] == "whole" and second["storage"]["image_bytes"] == whole
+    assert second["required_bytes"] == whole + 4 * GIB
+    lines = output_lines(out.err)
+    # Node 0 keeps the relay's copy of the layers Node 1 lacks, unless its deployment directory is elsewhere.
+    relay = first["storage"]["relay_bytes"]
+    assert relay in (0, target["download_bytes"]) and first["required_bytes"] == relay
+    assert ("    needs 55.7 GiB free on /: 51.7 GiB for the whole image (no image it derives from is present), "
+            "4 GiB for the compile cache; 300 GiB free") in lines
+
+
 def test_replanning_after_a_linked_file_changed(machine, sparks, capsys):
     events, previous, assets, _ = machine
     assert command("--plan") == 0
@@ -1372,7 +1490,7 @@ if args[:2] == ["container", "inspect"]:
     sys.exit(1)
 if args[:2] == ["image", "inspect"]:
     if args[-1] in present:
-        print(json.dumps([{"Id": args[-1]}]))
+        print(args[-1] if "--format" in args else json.dumps([{"Id": args[-1]}]))
         sys.exit(0)
     print("Error: No such image: " + args[-1], file=sys.stderr)
     sys.exit(1)
@@ -1541,7 +1659,7 @@ class SimulatedSparks:
         return code
 
     def administration(self, host, argv, *, data=None, timeout=None):
-        """``discovery.ssh`` from Node A: access checks, surveys and image checks."""
+        """``discovery.ssh`` from Node A: access checks, surveys and image and compile cache inspections."""
         rank = self.rank(host)
         if argv == ["sudo", "-n", "true"]:
             return ""
@@ -1557,10 +1675,12 @@ class SimulatedSparks:
             document = json.loads(done.stdout)
             document["host"] = self.NAMES[rank]
             return json.dumps(document)
-        if argv[:7] == ["sudo", "-n", "docker", "--context", "default", "image", "inspect"]:
-            if argv[-1] in self.images(rank):
-                return argv[-1] + "\n"
-            raise RuntimeError(f"{host}: Error: No such image: {argv[-1]}")
+        if argv == install_space.PROBE_COMMAND:
+            done = subprocess.run([sys.executable, "-I", "-B", "-"], input=data, capture_output=True, text=True,
+                                  timeout=timeout, env={**os.environ, "FAKE_DOCKER": str(self.docker(rank))})
+            if done.returncode:
+                raise RuntimeError(f"{host}: {done.stderr.strip()}")
+            return done.stdout
         raise AssertionError(f"unexpected SSH command on {host}: {argv}")
 
     def operation(self, target, argv, *, data=None, timeout=7200):
@@ -1658,8 +1778,12 @@ def simulated(machine, monkeypatch, tmp_path):
     # Rank operations validate the lock they receive; a Spark's view of the validated lock is accepted.
     monkeypatch.setattr(installer, "validate",
                         lambda lock: lock if id(lock) in simulation.translated else validate(lock))
+    # The simulated Sparks' filesystems are this machine's: the plan reserves small allowances, and the
+    # image, which the Sparks load only after approval, counts as a lock without sizes.
     monkeypatch.setattr(checkpoint_plan, "storage_policy",
                         lambda root=None: {"cache_bytes": 1 << 20, "image_bytes": 1 << 20})
+    monkeypatch.setattr(install_space, "lineage", lambda value, root=None: [
+        {"name": value["name"], "image_id": value["image_id"], "image_bytes": None, "download_bytes": None}])
     monkeypatch.setenv("PATH", str(simulation.bin) + os.pathsep + os.environ["PATH"])
     monkeypatch.setattr(flow.discovery, "ssh", simulation.administration)
     monkeypatch.setattr(installer_runner, "ssh", simulation.operation)

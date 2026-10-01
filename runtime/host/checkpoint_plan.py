@@ -56,7 +56,7 @@ import json
 from pathlib import Path, PurePosixPath
 import shlex
 
-from runtime.host import fabric_stream
+from runtime.host import fabric_stream, install_space
 
 SCHEMA = "sparkring-checkpoint-plan/v1"
 SURVEY_SCHEMA = "sparkring-checkpoint-survey/v1"
@@ -64,6 +64,13 @@ GIB = 1024 ** 3
 # Per-Spark growth accepted without another approval: unplanned writes during
 # adoption, and a fresh plan compared with a plan reviewed with --plan.
 TOLERANCE_BYTES = GIB
+# The most headroom counted beside the checkpoint files a Spark writes: the
+# largest written file, up to this size. It covers writes the plan does not
+# itemize during a transfer that can take hours, among them the unplanned
+# writes an approved plan tolerates (TOLERANCE_BYTES per Spark). Placement
+# hard-links each verified file from staging on the same filesystem, so no file
+# is ever stored twice and the headroom need not grow with the file size.
+HEADROOM_CAP_BYTES = 16 * GIB
 # A download from huggingface.co larger than this needs its own approval when
 # only setup approved a first installation.
 ATTENTION_DOWNLOAD_BYTES = GIB
@@ -214,13 +221,30 @@ def _variant(plan, *, add=None, remove=None, ignore_local=None):
 
 
 def storage_policy(root=None):
-    """Allowances of ``profiles/storage-planning.json`` in bytes."""
+    """Allowances of ``profiles/storage-planning.json`` in bytes.
+
+    ``cache_bytes`` is reserved for a compile cache that the deployment's
+    containers have not filled, and ``image_bytes`` for a serving image whose
+    lock records no sizes (``runtime.host.install_space``).
+    """
     root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
     value = json.loads((root / "profiles/storage-planning.json").read_text(encoding="utf-8"))
-    if value.get("schema") != "sparkring-storage-planning/v1":
+    if value.get("schema") != "sparkring-storage-planning/v2":
         raise ValueError("Unsupported storage planning policy")
-    return {"cache_bytes": int(value["cache_and_jit_allowance_gib"]) * GIB,
+    return {"cache_bytes": int(value["compile_cache_allowance_gib"]) * GIB,
             "image_bytes": int(value["image_allowance_gib"]) * GIB}
+
+
+def headroom(written):
+    """Headroom bytes beside the files of ``written``: the largest, at most ``HEADROOM_CAP_BYTES``."""
+    return min(max((int(size) for size in written), default=0), HEADROOM_CAP_BYTES)
+
+
+def headroom_text(largest):
+    """The headroom part of a free-space figure whose largest written file has ``largest`` bytes."""
+    if largest > HEADROOM_CAP_BYTES:
+        return f"{_human(HEADROOM_CAP_BYTES)} of headroom (the largest file, {_human(largest)}, capped)"
+    return f"{_human(largest)} of headroom (the largest file)"
 
 
 def required_space(written, *, cache_bytes=0, image_bytes=0):
@@ -228,15 +252,18 @@ def required_space(written, *, cache_bytes=0, image_bytes=0):
 
     ``written`` holds the size of every file copied, pooled, received or
     downloaded into checkpoint directories on that filesystem; linked and present
-    files are not written and count zero. The largest such file is counted twice,
-    for its staging copy. ``cache_bytes`` is the cluster cache allowance when the
-    cluster cache is on this filesystem. ``image_bytes`` is the image allowance
-    when the serving image is absent and Docker's root is on this filesystem; it
-    applies only at plan time, because rank operations run after the image is in
-    place. The plan and the rank operations call this one function.
+    files are not written and count zero. Each file is written once: staging
+    shares the filesystem and placement hard-links the verified file. The
+    largest written file, capped at ``HEADROOM_CAP_BYTES``, is counted once
+    more as headroom (``headroom``). ``cache_bytes`` is the compile cache need
+    when the cache is on this filesystem. ``image_bytes`` is the serving image
+    need when Docker's data root is on this filesystem, with Node A's relay
+    copy; it applies only at plan time, because rank operations run after the
+    image is in place (``runtime.host.install_space``). The plan, the rank
+    operations and ``setup.pinned_checkpoint_bytes`` call this one function.
     """
     sizes = [int(size) for size in written]
-    return sum(sizes) + max(sizes, default=0) + int(cache_bytes) + int(image_bytes)
+    return sum(sizes) + headroom(sizes) + int(cache_bytes) + int(image_bytes)
 
 
 def announce(pins, count, seconds=SEARCH_SECONDS, docker=DOCKER_SECONDS):
@@ -670,16 +697,6 @@ def _writes(count, distribution, sizes):
     return result
 
 
-def _images(value, count):
-    if value is None:
-        return [True] * count
-    if isinstance(value, dict):
-        return [bool(value.get(rank, value.get(str(rank), True))) for rank in range(count)]
-    if isinstance(value, (set, frozenset)):
-        return [rank in value for rank in range(count)]
-    return [bool(item) for item in value]
-
-
 def _retained(value):
     """Normalize retained deployments to ``[(name, [model path of each rank])]``."""
     if not value:
@@ -689,14 +706,21 @@ def _retained(value):
     return [(item["name"], list(item.get("paths") or item.get("models") or [])) for item in value]
 
 
-def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", images_present=None,
-         retained=None, locked=False, policy=None, now=None, request=None):
+def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", images=None, caches=None,
+         relay_device=None, retained=None, locked=False, policy=None, now=None, request=None):
     """Plan the checkpoint for every Spark of one deployment.
 
     ``surveys`` holds one survey document per rank, or the failure (an exception,
     a string, or ``{"error": ...}``) for a rank whose survey did not return; that
-    rank is planned as holding no copy. ``images_present`` tells, per rank, whether
-    the serving image is already there (default: everywhere). ``retained`` maps
+    rank is planned as holding no copy. ``images`` holds, per rank, the serving
+    image need (``install_space.image_need``; default: the image is present
+    everywhere), and ``caches`` the compile cache need (``install_space.cache_need``;
+    default: the cache allowance). An image need counts where Docker's data root
+    shares the checkpoint directory's filesystem, and a cache need where the
+    compile cache does. Node A also counts the relay's copy of the layers the
+    Sparks lack (``install_space.relay_need``) unless ``relay_device``, the
+    device of Node A's deployment directory, differs from its checkpoint
+    directory's. ``retained`` maps
     each retained deployment's name to the model path of each rank, to name the
     deployments whose receipts adoption refreshes. ``locked`` keeps every row's
     mode, for a deployment that already exists. ``request`` holds the
@@ -713,7 +737,13 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     context = {"request": request, "named": entries, "ignore_local_copies": bool(ignore_local)}
     command = install_command(request, entries, ignore_local=ignore_local)
     policy = policy or storage_policy()
-    images = _images(images_present, count)
+    present = {"basis": "present", "bytes": 0, "relay_bytes": 0}
+    images = [dict(need or present) for need in images] if images is not None else [dict(present)] * count
+    allowance = {"basis": "allowance", "bytes": policy["cache_bytes"], "present_bytes": 0}
+    caches = [dict(need or allowance) for need in caches] if caches is not None else [dict(allowance)] * count
+    if len(images) != count or len(caches) != count:
+        raise ValueError("The checkpoint plan needs one image and one cache need per Spark")
+    relay = install_space.relay_need(images)
     failures = [_failure(survey) for survey in surveys]
     rows = [{**row, "rank": row.get("rank", rank)} for rank, row in enumerate(rows)]
 
@@ -778,16 +808,22 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
             node["bytes"][entry["action"].replace("-", "_")] += entry["size"]
         written = [entry["size"] for entry in node["files"].values() if entry["action"] in WRITE_ACTIONS]
         node["write_bytes"] = sum(written)
-        # Unknown placement of the cluster cache or Docker's root counts as
-        # sharing the checkpoint directory's filesystem.
+        # Unknown placement of the compile cache, Docker's root or Node A's
+        # relay counts as sharing the checkpoint directory's filesystem.
         cache_on = owned.get("cache_device") in (None, owned.get("device"))
         docker = survey.get("docker") or {}
         docker_on = docker.get("device") in (None, owned.get("device"))
+        relay_on = rank == 0 and relay_device in (None, owned.get("device"))
         node["storage"] = {"written_bytes": sum(written), "largest_bytes": max(written, default=0),
-                           "cache_bytes": policy["cache_bytes"] if cache_on else 0,
-                           "image_bytes": policy["image_bytes"] if not images[rank] and docker_on else 0}
+                           "headroom_bytes": headroom(written),
+                           "cache_bytes": caches[rank]["bytes"] if cache_on else 0,
+                           "image_bytes": images[rank]["bytes"] if docker_on else 0,
+                           "relay_bytes": relay if relay_on else 0,
+                           "image": {**images[rank], "shared": docker_on},
+                           "cache": {**caches[rank], "shared": cache_on}}
         node["required_bytes"] = required_space(written, cache_bytes=node["storage"]["cache_bytes"],
-                                                image_bytes=node["storage"]["image_bytes"])
+                                                image_bytes=node["storage"]["image_bytes"]
+                                                + node["storage"]["relay_bytes"])
         node["free_bytes"] = owned.get("free_bytes")
         node["mount_point"] = owned.get("mount_point") or owned.get("probe_path")
         node["probe_path"] = owned.get("probe_path")
@@ -898,19 +934,17 @@ def _storage_message(pins, node, context):
     terms = []
     if storage["written_bytes"]:
         terms += [f"{_human(storage['written_bytes'])} of checkpoint files",
-                  f"{_human(storage['largest_bytes'])} to stage the largest file"]
-    if storage["cache_bytes"]:
-        terms.append(f"{storage['cache_bytes'] // GIB} GiB for the compile cache")
-    if storage["image_bytes"]:
-        terms.append(f"{storage['image_bytes'] // GIB} GiB for the image")
+                  headroom_text(storage["largest_bytes"])]
+    terms += _reserved(storage)
     purpose = f" to {verb} the checkpoint" if storage["written_bytes"] else ""
-    text = (f"Node {rank} {host} needs {_gib1(node['required_bytes'])} free on {where}{purpose} "
-            f"({', '.join(terms)}); {_gib1(node['free_bytes'])} is free.")
+    text = (f"Node {rank} {host} needs {_gib1(node['required_bytes'])} free on {where}{purpose}: "
+            f"{', '.join(terms)}; {_gib1(node['free_bytes'])} is free.")
     shortfall = f"Free another {_gib1(node['required_bytes'] - node['free_bytes'])} there"
     if any(weight(name) and entry["action"] in WRITE_ACTIONS for name, entry in node["files"].items()):
         # With a copy on this filesystem every weight file is linked and only the other files are written.
         linked = required_space([size for name, size in required_files(pins).items() if not weight(name)],
-                                cache_bytes=storage["cache_bytes"], image_bytes=storage["image_bytes"])
+                                cache_bytes=storage["cache_bytes"],
+                                image_bytes=storage["image_bytes"] + storage.get("relay_bytes", 0))
         text += (f" {shortfall}, or put a copy of the pinned checkpoint on that filesystem: SparkRing hard-links "
                  f"its weight files, so it would need {_gib1(linked)}.")
     else:
@@ -1277,11 +1311,14 @@ def _node_lines(plan, node, generic=False):
     local = [entry for entry in files.values() if entry["action"] in ("link", "copy")]
     present = [entry for entry in files.values() if entry["action"] == "present"]
     transfers = _transfer_texts(plan, node)
-    needs = f"needs {_gib1(node['required_bytes'])} free" + (f" on {node['mount_point']}" if node["mount_point"] else "")
+    needs = f"needs {_gib1(node['required_bytes'])} free" if node["required_bytes"] else "needs no free space"
+    needs += f" on {node['mount_point']}" if node["mount_point"] else ""
     parts = _allowances(node)
     free = f"{_free(node['free_bytes'])} free" if not generic and node["free_bytes"] is not None else None
-    if parts or free:
-        needs += " (" + ", ".join(parts) + ("; " if parts and free else "") + (free or "") + ")"
+    if parts:
+        needs += ": " + ", ".join(parts) + (f"; {free}" if free else "")
+    elif free:
+        needs += f" ({free})"
     lines = []
     if local or present:
         lines.append(f"{name} -> {node['path']}")
@@ -1317,18 +1354,43 @@ def _node_lines(plan, node, generic=False):
 
 
 def _allowances(node):
-    """The parts of a Spark's free-space figure when it includes an allowance, else an empty list."""
+    """The parts of a Spark's free-space figure when it reserves more than checkpoint files, else an empty list."""
     storage = node.get("storage") or {}
-    if not storage.get("cache_bytes") and not storage.get("image_bytes"):
+    reserved = _reserved(storage)
+    if not reserved:
         return []
+    files = storage.get("written_bytes", 0) + storage.get(
+        "headroom_bytes", min(storage.get("largest_bytes", 0), HEADROOM_CAP_BYTES))
+    return ([f"{_human(files)} for checkpoint files"] if files else []) + reserved
+
+
+# Why a Spark reserves the whole image, by the need's ``reason``.
+WHOLE_REASONS = {
+    "none": "no image it derives from is present",
+    "containerd": "{ancestor} is present, but SparkRing loads single layers only into Docker's graph-driver image store",
+    "unchecked": "this Spark's images could not be listed",
+}
+
+
+def _reserved(storage):
+    """Each part of a Spark's free-space figure besides checkpoint files, with the reason it is reserved."""
     parts = []
-    files = storage.get("written_bytes", 0) + storage.get("largest_bytes", 0)
-    if files:
-        parts.append(f"{_human(files)} for checkpoint files")
-    if storage.get("cache_bytes"):
-        parts.append(f"{storage['cache_bytes'] // GIB} GiB for the compile cache")
+    image = storage.get("image") or {}
     if storage.get("image_bytes"):
-        parts.append(f"{storage['image_bytes'] // GIB} GiB for the image")
+        amount = _part(storage["image_bytes"])
+        if image.get("basis") == "layers":
+            parts.append(f"{amount} for the image's missing layers ({image['ancestor']} present)")
+        elif image.get("basis") == "whole":
+            reason = WHOLE_REASONS.get(image.get("reason"), WHOLE_REASONS["none"])
+            parts.append(f"{amount} for the whole image ({reason.format(ancestor=image.get('ancestor'))})")
+        elif image.get("basis") == "unsized":
+            parts.append(f"{amount} for the image (its lock records no sizes)")
+        else:
+            parts.append(f"{amount} for the image")
+    if storage.get("relay_bytes"):
+        parts.append(f"{_part(storage['relay_bytes'])} for the relay's copy of the layers the Sparks lack")
+    if storage.get("cache_bytes"):
+        parts.append(f"{_part(storage['cache_bytes'])} for the compile cache")
     return parts
 
 
@@ -1483,6 +1545,11 @@ def _closing(plan):
 
 def _gib1(value):
     return f"{value / GIB:.1f} GiB"
+
+
+def _part(value):
+    """A reserved amount: whole GiB as an integer, other amounts as ``_human`` prints them."""
+    return f"{value // GIB} GiB" if value and not value % GIB else _human(value)
 
 
 def _free(value):

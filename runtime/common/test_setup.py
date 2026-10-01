@@ -13,6 +13,10 @@ from scripts import sparkring
 
 GLM = "glm53-flash-spark-tp2-dcp1-sparkcache"
 QWEN = "qwen38-flash-next-tp2"
+# GiB of every pinned file of each checkpoint revision once and its largest file again
+# (profiles/checkpoints/<owner>--<name>/<revision>.json): 174.80 + 4.72 and 102.62 + 4.01.
+GLM_PINNED = 179.52
+QWEN_PINNED = 106.63
 
 
 @pytest.mark.parametrize("profile", [
@@ -110,7 +114,14 @@ def test_shared_filesystem_sums_requirements_instead_of_passing_each_separately(
     report = plan(tmp_path)
     assert not report["passed"]
     assert len(report["filesystems"]) == 1
-    assert report["filesystems"][0]["required_bytes"] == 300 * setup.GIB
+    # The pinned checkpoint, the image allowance (setup's selection records no image sizes) and the cache allowance.
+    checkpoint = setup.pinned_checkpoint_bytes(setup.selection(GLM))
+    assert round(checkpoint / setup.GIB, 2) == GLM_PINNED
+    assert report["filesystems"][0]["required_bytes"] == checkpoint + (68 + 4) * setup.GIB
+    assert [(item["role"], item["basis"]) for item in report["filesystems"][0]["destinations"]] == [
+        ("checkpoint", "pinned file sizes, the largest file again as headroom, at most 16 GiB"),
+        ("image", "image allowance; the image lock records no sizes"),
+        ("compile-cache", "compile cache allowance")]
     assert list(tmp_path.iterdir()) == []
 
 
@@ -119,7 +130,7 @@ def test_split_filesystems_are_checked_independently(tmp_path):
         (tmp_path / name).mkdir()
     report = plan(tmp_path, device_id=lambda path: path.name)
     assert report["passed"]
-    assert sorted(group["required_bytes"] // setup.GIB for group in report["filesystems"]) == [32, 68, 200]
+    assert sorted(group["required_bytes"] // setup.GIB for group in report["filesystems"]) == [4, 68, 179]
     failure = plan(tmp_path, device_id=lambda path: path.name,
                    disk_usage=lambda path: SimpleNamespace(free=(67 if path.name == "docker" else 250) * setup.GIB))
     assert not failure["passed"]
@@ -134,7 +145,7 @@ def test_reuse_keeps_cache_headroom_and_requires_a_model_directory(tmp_path):
     (model / "config.json").write_text("{}")
     report = plan(tmp_path, reuse_model=True, reuse_image=True)
     assert report["passed"]
-    assert report["filesystems"][0]["required_bytes"] == 32 * setup.GIB
+    assert report["filesystems"][0]["required_bytes"] == 4 * setup.GIB
     assert "not a measured minimum or asset verification" in report["scope"]
 
 
@@ -153,12 +164,47 @@ def test_storage_rejects_relative_paths_and_file_ancestors(tmp_path):
         plan(tmp_path, model_path=path / "child")
 
 
+def test_installer_card_reserves_its_image_lock_sizes_and_unpinned_revisions_their_allowance(tmp_path):
+    from runtime.common import installer_image
+    lock = installer_image.default_lock()
+    card = installer_image.selection(setup.selection(QWEN), lock)
+    checkpoint = setup.pinned_checkpoint_bytes(card)
+    assert round(checkpoint / setup.GIB, 2) == QWEN_PINNED
+    report = setup.storage_plan(card, model_path=tmp_path / "model", cache_path=tmp_path / "cache",
+                                docker_path=tmp_path / "docker", device_id=lambda path: 1,
+                                disk_usage=lambda path: SimpleNamespace(free=250 * setup.GIB))
+    # The image step pulls the whole image: its unpacked and download sizes and the pull margin.
+    image = lock["image_bytes"] + lock["download_bytes"] + 8 * setup.GIB
+    assert report["filesystems"][0]["required_bytes"] == checkpoint + image + 4 * setup.GIB
+    assert f"{image / setup.GIB:.1f}" == "51.7"
+    # A revision without a pin manifest falls back to the repository's allowance.
+    unpinned = {**card, "model_revision": "0" * 40}
+    assert setup.pinned_checkpoint_bytes(unpinned) is None
+    fallback = setup.storage_plan(unpinned, model_path=tmp_path / "model", cache_path=tmp_path / "cache",
+                                  docker_path=tmp_path / "docker", device_id=lambda path: 1,
+                                  disk_usage=lambda path: SimpleNamespace(free=250 * setup.GIB))
+    assert fallback["filesystems"][0]["required_bytes"] == 120 * setup.GIB + image + 4 * setup.GIB
+    assert fallback["filesystems"][0]["destinations"][0]["basis"] == \
+        "checkpoint allowance; the revision has no pin manifest"
+    with pytest.raises(ValueError, match="No storage allowance"):
+        setup.storage_plan({**unpinned, "model_repository": "someone/else"}, model_path=tmp_path / "model",
+                           cache_path=tmp_path / "cache", docker_path=tmp_path / "docker")
+
+
+def test_pinned_checkpoint_headroom_is_capped_as_the_install_plan_caps_it():
+    # DeepSeek's largest files are 94.6 GiB; the headroom beside its 475.3 GiB is 16 GiB, as in the plan.
+    card = setup.selection("deepseek-v41-flash-tp4")
+    assert f"{setup.pinned_checkpoint_bytes(card) / setup.GIB:.1f}" == "491.3"
+    assert round(setup.pinned_checkpoint_bytes(setup.selection(QWEN)) / setup.GIB, 2) == QWEN_PINNED
+
+
 def test_qwen_budget_and_cli_exit_on_insufficient_space(tmp_path, monkeypatch, capsys):
     card = setup.selection(QWEN)
     report = setup.storage_plan(card, model_path=tmp_path / "model", cache_path=tmp_path / "cache",
                                 docker_path=tmp_path / "docker", device_id=lambda path: 1,
-                                disk_usage=lambda path: SimpleNamespace(free=219 * setup.GIB))
-    assert report["filesystems"][0]["required_bytes"] == 220 * setup.GIB
+                                disk_usage=lambda path: SimpleNamespace(free=178 * setup.GIB))
+    assert report["filesystems"][0]["required_bytes"] == setup.pinned_checkpoint_bytes(card) + 72 * setup.GIB
+    assert not report["passed"]
     monkeypatch.setattr(setup, "storage_plan", lambda *args, **kwargs: report)
     result = setup.main(["storage", QWEN, "--model-path", str(tmp_path / "model"),
                          "--cache-path", str(tmp_path / "cache"), "--docker-path", str(tmp_path / "docker"), "--json"])
