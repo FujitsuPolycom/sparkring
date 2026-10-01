@@ -10,6 +10,7 @@ import re
 import shlex
 import subprocess
 import sys
+import threading
 import time
 
 from runtime.common import distribution, installer
@@ -251,13 +252,72 @@ class ModelLog:
         return {"detail": ", ".join(parts) or None, "log_quiet_s": int(quiet)}
 
 
-def ssh(target, argv, *, data=None, timeout=7200):
+# While rank 0 waits for API readiness, Node A checks each worker rank's model
+# container this often (seconds). A worker whose container stops leaves rank
+# 0's model waiting in its collectives until they time out (about 11 minutes,
+# measured on two Sparks); the check ends the start within about one interval.
+WORKER_CHECK_INTERVAL = 5
+# Seconds one worker check may take; a slower check counts as no answer.
+WORKER_CHECK_TIMEOUT = 60
+# Lines of a stopped worker's model log that the failure message carries.
+WORKER_LOG_LINES = 5
+# The host's definite answer that a rank's model container does not run
+# (installer_host, operation "running"): Docker reports the container stopped,
+# with its exit code, or has no such container. Any other failure of the check,
+# such as an SSH error, a timeout or a Docker error, is no answer.
+NOT_RUNNING = re.compile(r"Rank is not running \((?:exit code (?P<code>-?\d+)|no container)\)")
+# Seconds between checks of a cancellable SSH operation's cancel event.
+CANCEL_POLL = 0.5
+
+
+class Cancelled(RuntimeError):
+    """An SSH operation ended because its caller stopped waiting for the result."""
+
+
+def ssh(target, argv, *, data=None, timeout=7200, cancel=None):
+    """Run ``argv`` on ``target`` over SSH and return its stdout; a failure raises RuntimeError.
+
+    ``cancel``, a ``threading.Event``, ends the wait once set: the local SSH
+    client is killed and ``Cancelled`` raised. A remote command without a
+    terminal receives no signal when its client goes away and runs to its own
+    end, so cancel only read-only waits.
+    """
     installer.host(target)
-    result = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target,
-                             shlex.join(argv)], input=data, capture_output=True, timeout=timeout)
+    command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target, shlex.join(argv)]
+    if cancel is None:
+        result = subprocess.run(command, input=data, capture_output=True, timeout=timeout)
+    else:
+        result = cancellable(command, data=data, timeout=timeout, cancel=cancel)
     if result.returncode:
         raise RuntimeError(result.stderr.decode(errors="replace")[-4000:] or "Remote operation failed")
     return result.stdout.decode()
+
+
+def cancellable(command, *, data=None, timeout, cancel):
+    """``subprocess.run(command, input=data, capture_output=True, timeout=timeout)`` that ``cancel`` ends early.
+
+    Once ``cancel`` is set the process is killed and ``Cancelled`` raised; it
+    is checked every ``CANCEL_POLL`` seconds. Any exception, Ctrl-C included,
+    kills the process as ``subprocess.run`` does.
+    """
+    deadline = time.monotonic() + timeout
+    with subprocess.Popen(command, stdin=subprocess.PIPE if data is not None else None,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+        try:
+            while not cancel.is_set() and time.monotonic() < deadline:
+                try:
+                    stdout, stderr = process.communicate(data, timeout=CANCEL_POLL)
+                    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+                except subprocess.TimeoutExpired:
+                    data = None  # communicate() accepts input only on its first call.
+        except BaseException:
+            process.kill()
+            raise
+        process.kill()
+    # Leaving the block waited for the killed process.
+    if cancel.is_set():
+        raise Cancelled("The caller stopped waiting for the remote operation")
+    raise subprocess.TimeoutExpired(command, timeout)
 
 
 def discover(target):
@@ -337,18 +397,90 @@ class Runner:
         if revision != self.lock["source_revision"]:
             raise ValueError("Use the clean controller checkout recorded in deployment.lock.json; the source bundle preserves it")
 
-    def remote(self, number, operation, *, data=None):
+    def remote(self, number, operation, *, data=None, **options):
+        """Run rank ``number``'s host operation and return its JSON result; ``options`` go to ``ssh``."""
         row = self.lock["site"]["ranks"][number]
         payload = base64.b64encode(json.dumps(self.lock).encode()).decode()
         return json.loads(ssh(row["host"], elevation(row, operation) + ["python3", "-I", "-B", "-c", HOST,
-                          row["repository"], payload, operation, str(number)], data=data))
+                          row["repository"], payload, operation, str(number)], data=data, **options))
 
-    def model_log(self, number):
-        """The newest ``LOG_TAIL`` lines of rank ``number``'s model container log, with Docker's timestamps."""
+    def model_log(self, number, lines=LOG_TAIL):
+        """The newest ``lines`` lines of rank ``number``'s model container log, with Docker's timestamps."""
         row = self.lock["site"]["ranks"][number]
         name = installer.specifications(self.lock, only_rank=number)[0].name
-        return ssh(row["host"], elevation(row, "logs") + ["sh", "-c", LOG_COMMAND, "sh", str(LOG_TAIL), name],
+        return ssh(row["host"], elevation(row, "logs") + ["sh", "-c", LOG_COMMAND, "sh", str(lines), name],
                    timeout=20)
+
+    def worker_stopped(self, number):
+        """The ``NOT_RUNNING`` match when rank ``number``'s model container has stopped, else None.
+
+        Uses the ``running`` operation that verifies a started worker. None
+        means the container runs or the check gave no definite answer.
+        """
+        try:
+            self.remote(number, "running", timeout=WORKER_CHECK_TIMEOUT)
+        except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
+            return NOT_RUNNING.search(str(error))
+        return None
+
+    def stopped_worker_message(self, number, code):
+        """The failure text for worker rank ``number`` whose container stopped with exit ``code`` (None: removed).
+
+        The last ``WORKER_LOG_LINES`` lines of the container's log precede the
+        sentence when they can be read. Progress prints only the last line, so
+        the sentence comes last; the full text goes to the details log and the
+        operation receipt.
+        """
+        host = self.lock["site"]["ranks"][number]["host"]
+        event = (f"stopped while rank 0 was loading (exit code {code})" if code is not None
+                 else "was removed while rank 0 was loading")
+        try:
+            log = self.model_log(number, WORKER_LOG_LINES)
+        except (RuntimeError, ValueError, OSError, subprocess.SubprocessError):
+            log = ""
+        # Docker's timestamp precedes each line; a progress bar's last redraw counts.
+        tail = [line.split(" ", 1)[-1].rstrip("\r").rsplit("\r", 1)[-1][:500]
+                for line in log.split("\n") if line.strip()]
+        lines = [f"Last lines of rank {number}'s model log:", *("  " + line for line in tail)] if tail else []
+        return "\n".join([*lines, f"Rank {number}'s model container on {host} {event}"])
+
+    def await_api(self):
+        """Rank 0's readiness wait, which fails as soon as a worker rank's model container stops.
+
+        Rank 0's own wait (installer_host, operation ``ready``) sees only rank
+        0's container. Meanwhile each worker's container is checked every
+        ``WORKER_CHECK_INTERVAL`` seconds, each worker in its own thread so a
+        slow check delays no other. Only ``NOT_RUNNING`` counts as stopped; a
+        check without a definite answer is repeated at the next interval. A
+        stopped worker cancels rank 0's wait, whose read-only remote loop then
+        ends on its own when rank 0's container stops or becomes healthy. Rank
+        0's container keeps running until the deployment is stopped or its
+        model gives up on the missing worker.
+        """
+        cancel = threading.Event()
+        stopped = []
+        guard = threading.Lock()
+
+        def watch(number):
+            while not cancel.wait(WORKER_CHECK_INTERVAL):
+                found = self.worker_stopped(number)
+                if found is not None:
+                    with guard:
+                        if not cancel.is_set():
+                            stopped.append((number, found["code"]))
+                            cancel.set()
+                    return
+
+        for row in self.lock["site"]["ranks"][1:]:
+            threading.Thread(target=watch, args=(row["rank"],), daemon=True).start()
+        try:
+            return self.remote(0, "ready", cancel=cancel)
+        except Cancelled:
+            [(number, code)] = stopped
+            raise ValueError(self.stopped_worker_message(number, code)) from None
+        finally:
+            with guard:
+                cancel.set()
 
     def native_mesh(self, operation):
         from scripts.deploy_stage import prepare_secrets
@@ -505,6 +637,8 @@ class Runner:
                 value = "glm-tp4/v1" if managed else self.lock["id"]
                 result = json.loads(ssh(target, ["python3", "-I", "-B", "-c", STATUS, name,
                                                 self.lock["selection"]["image_id"], key, value, str(number)], timeout=120))
+            elif operation == "ready" and number == 0 and self.lock["backend"] == "compose":
+                result = self.await_api()
             else:
                 result = self.remote(number, operation)
             return {"returncode": 0, "stdout": "ok" if result.get("ok") is True else json.dumps(result),
