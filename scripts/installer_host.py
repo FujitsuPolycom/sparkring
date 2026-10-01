@@ -659,25 +659,33 @@ def _existing(path):
     return path
 
 
-def _require_space(model, row, sizes, *, number):
+def _require_space(model, row, sizes, *, number, card):
     """Refuse to write files of ``sizes`` bytes into ``model`` unless its filesystem has room.
 
     The formula is the plan's (``checkpoint_plan.required_space``): the bytes written, the largest
-    file once more for its staging copy, and the cache allowance when the cluster cache shares the
-    filesystem. Linked and present files write nothing.
+    file once more as headroom, and the compile cache need when the cluster cache shares the
+    filesystem (``install_space.cache_need``: nothing once every cache directory of ``card``'s
+    containers holds files). Linked and present files write nothing.
     """
     sizes = list(sizes)
     if not sizes:
         return
-    from runtime.host import checkpoint_plan
+    from runtime.host import checkpoint_plan, install_space
     policy = checkpoint_plan.storage_policy(installer.ROOT)
     target = _existing(model)
     shared = os.stat(_existing(row["cache"])).st_dev == os.stat(target).st_dev
-    cache = policy["cache_bytes"] if shared else 0
+    cache = 0
+    if shared:
+        try:
+            names = install_space.cache_names(card, card["image_id"])
+        except (OSError, ValueError, KeyError, TypeError):
+            names = []
+        states = {name: install_space.directory_use(str(Path(row["cache"]) / name)) for name in names}
+        cache = install_space.cache_need(states, policy["cache_bytes"])["bytes"]
     need = checkpoint_plan.required_space(sizes, cache_bytes=cache)
     free = shutil.disk_usage(target).free
     if free < need:
-        parts = [f"{sum(sizes) / GIB:.1f} GiB", f"{max(sizes) / GIB:.1f} GiB for the largest file"]
+        parts = [f"{sum(sizes) / GIB:.1f} GiB", f"{max(sizes) / GIB:.1f} GiB of headroom (the largest file)"]
         if cache:
             parts.append(f"{cache / GIB:.0f} GiB for the compile cache")
         raise ValueError(f"Node {number} needs {need / GIB:.1f} GiB free on the filesystem of {model} to write "
@@ -867,7 +875,7 @@ def adopt_model(lock, row, state, document, *, number):
                         if unplanned + pin["size"] > tolerance:
                             result["link_failures"].append({"name": name, "reason": reason, "source": source})
                             continue
-                        _require_space(model, row, [pin["size"], *planned.values()], number=number)
+                        _require_space(model, row, [pin["size"], *planned.values()], number=number, card=card)
                         copied, placed = _copy_into(claimed, journal, receive, fd, name, pin, source)
                         if placed is None:
                             # The source changed after it was hashed; its current content is recorded.
@@ -887,7 +895,7 @@ def adopt_model(lock, row, state, document, *, number):
             finally:
                 for fd, _, _ in opened.values():
                     os.close(fd)
-            _require_space(model, row, planned.values(), number=number)
+            _require_space(model, row, planned.values(), number=number, card=card)
             for name in copies:
                 pin, source = required[name], files[name]["source"]
                 try:
@@ -1037,7 +1045,7 @@ def fetch_model(lock, row, state, names, *, number, limit=None):
                     os.close(fetch)
                     fetch = place.staging(claimed, "fetch", empty=True)
                 if pending:
-                    _require_space(model, row, [required[name]["size"] for name in pending], number=number)
+                    _require_space(model, row, [required[name]["size"] for name in pending], number=number, card=card)
                     _require_image(card)
                     where = f"{claimed.state}/fetch"
                     what = _names(pending) if len(pending) <= 3 else f"{len(pending)} files"
@@ -1315,7 +1323,7 @@ def transfer_model(operation, lock, row, state):
                 _settle(claimed, journal, required)
                 placed = _placed(claimed, journal, required)
                 needed = sorted(name for name in manifest["files"] if name not in placed)
-                _require_space(model, row, [required[name]["size"] for name in needed], number=number)
+                _require_space(model, row, [required[name]["size"] for name in needed], number=number, card=card)
                 os.mkdir("rsync", 0o700, dir_fd=receive)
                 staged = os.open("rsync", place.DIRECTORY_FLAGS, dir_fd=receive)
                 try:

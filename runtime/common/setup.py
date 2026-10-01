@@ -97,24 +97,73 @@ def existing_directory(value):
     return path, ancestor
 
 
+def pinned_checkpoint_bytes(card, root=profiles.ROOT):
+    """Bytes that writing the card's checkpoint on an empty filesystem needs, from its pin manifest, or None.
+
+    The figure is the checkpoint plan's (``checkpoint_plan.required_space``):
+    every required file once, and the largest once more as headroom. None when
+    ``profiles/checkpoints/<owner>--<name>/<revision>.json`` is absent or does
+    not pin the card's repository and revision with positive sizes.
+    """
+    repository, revision = card["model_repository"], card["model_revision"]
+    if (not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", repository)
+            or ".." in repository or not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision)):
+        return None
+    try:
+        pins = profiles.read_json(Path(root) / "profiles/checkpoints" / repository.replace("/", "--") / f"{revision}.json")
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(pins, dict) or pins.get("schema") != "sparkring-checkpoint-pins/v1"
+            or (pins.get("repository"), pins.get("revision")) != (repository, revision)
+            or not isinstance(pins.get("files"), dict)):
+        return None
+    optional = set(pins.get("optional") or ())
+    sizes = [entry.get("size") if isinstance(entry, dict) else None
+             for name, entry in pins["files"].items() if name not in optional]
+    if not sizes or not all(type(size) is int and size > 0 for size in sizes):
+        return None
+    return sum(sizes) + max(sizes)
+
+
 def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False,
                  reuse_image=False, root=profiles.ROOT, disk_usage=shutil.disk_usage,
                  device_id=lambda path: path.stat().st_dev):
     """Sum additional allocations on shared filesystems, without writing files.
 
-    Nonexistent destinations use their nearest existing ancestor. Operators must
-    mount intended volumes first. Reuse flags are planning assumptions, not proof
-    of existing asset identity. Cache/JIT headroom remains reserved during reuse.
+    The checkpoint needs its pinned file sizes with the largest file again as
+    headroom (``pinned_checkpoint_bytes``), or the checkpoint allowance of
+    ``profiles/storage-planning.json`` for a revision without a pin manifest.
+    The image needs its unpacked size, its download size and the pull margin
+    when the card records its image lock's sizes (``install_space.pull_bytes``),
+    else the image allowance. The compile cache needs the compile cache
+    allowance, also during reuse. Nonexistent destinations use their nearest
+    existing ancestor. Operators must mount intended volumes first. Reuse flags
+    are planning assumptions, not proof of existing asset identity.
     """
+    from runtime.host import install_space
     policy = profiles.read_json(root / "profiles/storage-planning.json")
-    if policy.get("schema") != "sparkring-storage-planning/v1":
+    if policy.get("schema") != "sparkring-storage-planning/v2":
         raise ValueError("Unsupported storage planning policy")
     model_gib = policy["checkpoint_allowance_gib"].get(card["model_repository"])
-    if model_gib is None:
-        raise ValueError("No storage allowance for this checkpoint; follow its guide")
-    image_gib, cache_gib = policy["image_allowance_gib"], policy["cache_and_jit_allowance_gib"]
-    if any(type(value) is not int or value <= 0 for value in (model_gib, image_gib, cache_gib)):
+    image_gib, cache_gib = policy["image_allowance_gib"], policy["compile_cache_allowance_gib"]
+    if (any(type(value) is not int or value <= 0 for value in (image_gib, cache_gib))
+            or not (model_gib is None or (type(model_gib) is int and model_gib > 0))):
         raise ValueError("Storage allowances must be positive integer GiB")
+    pinned = pinned_checkpoint_bytes(card, root)
+    if pinned is None and model_gib is None:
+        raise ValueError("No storage allowance for this checkpoint; follow its guide")
+    if reuse_model:
+        checkpoint = (0, "reused")
+    elif pinned is not None:
+        checkpoint = (pinned, "pinned file sizes, the largest file again as headroom")
+    else:
+        checkpoint = (model_gib * GIB, "checkpoint allowance; the revision has no pin manifest")
+    if reuse_image:
+        image = (0, "reused")
+    elif install_space.sized(card):
+        image = (install_space.pull_bytes(card, image_gib * GIB), "unpacked and download sizes of the image lock")
+    else:
+        image = (image_gib * GIB, "image allowance; the image lock records no sizes")
     model, model_parent = existing_directory(model_path)
     cache, cache_parent = existing_directory(cache_path)
     docker, docker_parent = existing_directory(docker_path)
@@ -123,18 +172,19 @@ def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False
     if reuse_model and (not model.is_dir() or not any(model.iterdir())):
         raise ValueError("--reuse-model requires an existing nonempty model directory")
     groups = {}
-    for role, path, ancestor, amount in (
-        ("checkpoint", model, model_parent, 0 if reuse_model else model_gib),
-        ("image", docker, docker_parent, 0 if reuse_image else image_gib),
-        ("cache-and-jit", cache, cache_parent, cache_gib),
+    for role, path, ancestor, (amount, basis) in (
+        ("checkpoint", model, model_parent, checkpoint),
+        ("image", docker, docker_parent, image),
+        ("compile-cache", cache, cache_parent, (cache_gib * GIB, "compile cache allowance")),
     ):
         key = device_id(ancestor)
         observed = disk_usage(ancestor).free
         group = groups.setdefault(key, {"probe_path": str(ancestor), "free_bytes": observed,
                                        "required_bytes": 0, "destinations": []})
         group["free_bytes"] = min(group["free_bytes"], observed)
-        group["required_bytes"] += amount * GIB
-        group["destinations"].append({"role": role, "path": str(path), "additional_gib": amount})
+        group["required_bytes"] += amount
+        group["destinations"].append({"role": role, "path": str(path), "additional_bytes": amount,
+                                      "additional_gib": round(amount / GIB, 1), "basis": basis})
     for group in groups.values():
         group["passed"] = group["free_bytes"] >= group["required_bytes"]
     return {
@@ -142,9 +192,10 @@ def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False
         "passed": all(group["passed"] for group in groups.values()),
         "filesystems": list(groups.values()),
         "reuse_model": reuse_model, "reuse_image": reuse_image,
-        "scope": "Conservative additional-space planning, not a measured minimum or asset verification. "
-                 "Mount destination volumes first; account separately for image archives, other Docker "
-                 "content stores, quotas and concurrent writes. No files were created.",
+        "scope": "Additional-space planning from pinned and recorded sizes where they exist, else allowances; "
+                 "not a measured minimum or asset verification. Mount destination volumes first; account "
+                 "separately for image archives, other Docker content stores, quotas and concurrent writes. "
+                 "No files were created.",
     }
 
 
@@ -187,7 +238,7 @@ def main(argv=None):
                       f"{group['required_bytes'] / GIB:.1f} GiB additional allowance")
                 for destination in group["destinations"]:
                     print(f"  {destination['role']}: {destination['path']} "
-                          f"({destination['additional_gib']} GiB)")
+                          f"({destination['additional_gib']} GiB: {destination['basis']})")
             print(report["scope"])
         return 0 if report["passed"] else 1
     except (ValueError, KeyError, TypeError, OSError) as error:

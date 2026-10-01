@@ -1,6 +1,6 @@
 {
-  "schema": "sparkring-storage-planning/v1",
-  "scope": "Conservative additional free-space allowances per rank for operator planning. These are not checkpoint sizes, hardware-qualified minima or download metadata. Keep model copies, Docker storage and writable cache/JIT paths separate in the storage check.",
+  "schema": "sparkring-storage-planning/v2",
+  "scope": "Free-space allowances per rank that apply when SparkRing lacks exact sizes. A checkpoint revision with a pin manifest is planned from its pinned file sizes, and an image lock that records image_bytes and download_bytes from those sizes. checkpoint_allowance_gib applies to a revision without a pin manifest, image_allowance_gib to an image lock without recorded sizes, and compile_cache_allowance_gib to a compile cache that the deployment's containers have not yet filled. docs/operations/install-reference.md states the evidence for each figure.",
   "checkpoint_allowance_gib": {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": 200,
     "local-inference-lab/GLM-5.3-Flash-NVFP4": 200,
@@ -11,5 +11,5 @@
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": 200
   },
   "image_allowance_gib": 68,
-  "cache_and_jit_allowance_gib": 32
+  "compile_cache_allowance_gib": 4
 }

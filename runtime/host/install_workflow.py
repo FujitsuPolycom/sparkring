@@ -32,7 +32,7 @@ import time
 from runtime.common import distribution, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
 from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
-                          install_assets, models, native_mesh, node, progress, recovery, retained_source, rollout,
+                          install_assets, install_space, models, native_mesh, node, progress, recovery, retained_source, rollout,
                           settings, topology)
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
@@ -189,25 +189,64 @@ def survey_cluster(rows, pins, *, named, ignore_local, operator, owned=None, inv
         return list(pool.map(one, range(len(rows))))
 
 
-def images_present(rows, image, *, invoke=None):
-    """Whether each Spark already holds the serving image ``image``, a Docker image ID.
+def inspect_sparks(rows, image_ids, caches, *, invoke=None):
+    """Each Spark's nearest present serving image and its compile cache directories, all ranks at once.
 
-    The plan reserves the image allowance on a Spark that lacks the image when
-    Docker's root shares the checkpoint directory's filesystem. A Spark whose
-    check fails counts as lacking the image.
+    ``image_ids`` lists the lock's image and the images it derives from,
+    nearest first (``install_space.lineage``); ``caches`` holds, per rank,
+    the paths of the deployment's compile cache directories on that Spark.
+    Returns one ``install_space.inspect_spark`` result per rank, or ``{"error":
+    text}`` when SSH failed or returned anything else; the plan then reserves
+    the whole image and the cache allowance on that Spark
+    (``install_space.image_need`` and ``cache_need``).
     """
     invoke = invoke or discovery.ssh
 
-    def one(row):
+    def one(rank):
+        source = install_space.probe_source(image_ids, caches[rank])
         try:
-            found = invoke(row["host"], ["sudo", "-n", "docker", "--context", "default", "image", "inspect",
-                                         "--format", "{{.Id}}", image], timeout=60)
-        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError):
-            return False
-        return found.strip() == image
+            document = json.loads(invoke(rows[rank]["host"], list(install_space.PROBE_COMMAND), data=source,
+                                         timeout=install_space.PROBE_TIMEOUT))
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+            return {"error": _error_text(error)}
+        if not isinstance(document, dict) or not isinstance(document.get("caches", {}), dict):
+            return {"error": "invalid inspection output"}
+        return document
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(rows)) as pool:
-        return list(pool.map(one, rows))
+        return list(pool.map(one, range(len(rows))))
+
+
+def install_needs(lineage, found, policy):
+    """``(images, caches)``: each rank's image and compile cache needs for ``checkpoint_plan.plan``.
+
+    ``lineage`` is ``install_space.lineage`` of the image lock, ``found`` the
+    ``inspect_sparks`` results and ``policy`` ``checkpoint_plan.storage_policy()``.
+    """
+    images = [install_space.image_need(lineage, item, policy["image_bytes"]) for item in found]
+    caches = [install_space.cache_need({} if item.get("error") else item.get("caches") or {}, policy["cache_bytes"])
+              for item in found]
+    return images, caches
+
+
+def cache_paths(rows, card, image_id):
+    """The deployment's compile cache directories on each rank; empty where they cannot be named."""
+    try:
+        names = install_space.cache_names(card, image_id)
+    except (OSError, ValueError, KeyError, TypeError):
+        names = []
+    return [[str(PurePosixPath(row["cache"]) / name) for name in names] if row.get("cache") else [] for row in rows]
+
+
+def _device(path):
+    """``st_dev`` of the filesystem that holds ``path`` or its nearest existing ancestor, or None."""
+    path = Path(path)
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    try:
+        return os.stat(path).st_dev
+    except OSError:
+        return None
 
 
 def retained_deployments(state_root, candidate, rows):
@@ -319,7 +358,9 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
     if locked:
         lock = installer.load(directory)
         rows = lock["site"]["ranks"]
-        image_id = lock["selection"]["image_id"]
+        selection = lock["selection"]
+        image_id = selection["image_id"]
+        image_lock = lock.get("image_runtime") or {"name": selection["release"], "image_id": image_id}
     else:
         site = controller.model_site(cluster, profile, instance)
         for row in site["hosts"]:
@@ -330,17 +371,21 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
             row["cache"] = args.cache_path or "/srv/sparkring/" + cluster["name"] + "/cache"
         rows = [{"rank": rank, "host": row["host"], "model": owned, "cache": row["cache"],
                  "reuse_verified_model": False} for rank, row in enumerate(site["hosts"])]
-        image_id = image["image_id"]
+        selection, image_lock, image_id = card, image, image["image_id"]
     operator = os.environ.get("SUDO_USER") or "root"
     print(checkpoint_plan.announce(pins, len(rows)))
+    lineage = install_space.lineage(image_lock)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        present = pool.submit(images_present, rows, image_id)
+        found = pool.submit(inspect_sparks, rows, [entry["image_id"] for entry in lineage],
+                            cache_paths(rows, selection, image_id))
         surveys = survey_cluster(rows, pins, named=named, ignore_local=args.ignore_local_copies,
                                  operator=operator, owned=owned)
-        present = present.result()
+        found = found.result()
+    images, caches = install_needs(lineage, found, checkpoint_plan.storage_policy())
     retained, _ = retained_deployments(state_root, directory, rows)
     plan = checkpoint_plan.plan(pins, surveys, rows, named=named, ignore_local=args.ignore_local_copies,
-                                operator=operator, images_present=present, retained=retained, locked=locked,
+                                operator=operator, images=images, caches=caches, relay_device=_device(directory),
+                                retained=retained, locked=locked,
                                 request={"profile": profile, "checkpoint": checkpoint, "cache_path": args.cache_path,
                                          "image_lock": str(args.image_lock) if args.image_lock else None})
     if not locked:
