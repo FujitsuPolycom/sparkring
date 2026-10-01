@@ -427,20 +427,20 @@ def test_admin_tunnel_without_a_recent_handshake_names_the_link_state(tmp_path):
 
 FALLBACKS = [{"via": "cable", "netdev": "enp1s0f0np0", "mac": "02:00:00:00:00:03", "address": "fe80::3",
               "peer": "fe80::4"},
-             {"via": "lan", "netdev": "enP7s7", "peer": "192.168.0.137"}]
+             {"via": "lan", "netdev": "enP7s7", "peer": "198.51.100.137"}]
 
 
 def test_admin_tunnel_over_a_fallback_path_names_the_path_and_the_primary_cable(tmp_path):
     """The primary cable lost its carrier; the tunnel answers over the worker's LAN address."""
     _, facts = ring(tmp_path, size=2)
-    host = tunnel(tmp_path, carrier=False, handshake=30, now=10_000, endpoint="192.168.0.137:51871",
+    host = tunnel(tmp_path, carrier=False, handshake=30, now=10_000, endpoint="198.51.100.137:51871",
                   alternates=FALLBACKS)
     result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host, now=lambda: 10_000)
     assert result["state"] == "network-configured"
-    assert result["warnings"] == ["admin tunnel to 10.253.255.2 runs over LAN 192.168.0.137 "
+    assert result["warnings"] == ["admin tunnel to 10.253.255.2 runs over LAN 198.51.100.137 "
                                   "(primary cable enp1s0f1np1: no link)"]
     peer = result["control"]["peers"][0]
-    assert peer["path"] == {"via": "lan", "netdev": "enP7s7", "address": "192.168.0.137", "primary": False}
+    assert peer["path"] == {"via": "lan", "netdev": "enP7s7", "address": "198.51.100.137", "primary": False}
     assert peer["fallbacks"] == 2
     # Without a recent handshake on the fallback, the line says which path the tunnel tries.
     host = tunnel(tmp_path, carrier=False, handshake=46 * 60, now=10_000, endpoint="[fe80::4%enp1s0f0np0]:51871",

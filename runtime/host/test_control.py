@@ -455,7 +455,7 @@ def neighbor(netdev, letter, index, answered=True):
 
 
 def pair_inventories():
-    a, b = spark("a", "192.168.0.200"), spark("b", "192.168.0.137")
+    a, b = spark("a", "198.51.100.200"), spark("b", "198.51.100.137")
     # Node A sees each worker function on its own cable; Socket Direct also
     # shows it a crossed function, and one cache entry did not answer.
     a["neighbors"] = [neighbor(netdev, "b", index) for index, (netdev, _) in enumerate(FUNCTIONS)]
@@ -485,10 +485,10 @@ def test_plan_lists_the_other_cables_then_the_lan_as_fallbacks_in_the_same_order
     # primary cable's other function; then the LAN.
     assert to_worker["alternates"] == [cable("a", "b", "enP2p1s0f0np0", 1), cable("a", "b", "enp1s0f0np0", 0),
                                        cable("a", "b", "enP2p1s0f1np1", 3),
-                                       {"via": "lan", "netdev": LAN_NETDEV, "peer": "192.168.0.137"}]
+                                       {"via": "lan", "netdev": LAN_NETDEV, "peer": "198.51.100.137"}]
     assert to_head["alternates"] == [cable("b", "a", "enP2p1s0f0np0", 1), cable("b", "a", "enp1s0f0np0", 0),
                                      cable("b", "a", "enP2p1s0f1np1", 3),
-                                     {"via": "lan", "netdev": LAN_NETDEV, "peer": "192.168.0.200"}]
+                                     {"via": "lan", "netdev": LAN_NETDEV, "peer": "198.51.100.200"}]
     assert (to_worker["address"], to_head["address"]) == ("10.253.255.2", "10.253.255.1")
     for config in (head, worker):
         control.validate(config)
@@ -507,14 +507,14 @@ def test_plan_without_a_lan_address_or_second_cable_lists_what_exists():
 def test_ring_tree_links_get_lan_fallbacks_between_their_two_sparks():
     nodes, edges = fixture(4)
     for rank, n in enumerate(nodes):
-        n.update(api_address=f"192.168.0.{130 + rank}")
+        n.update(api_address=f"198.51.100.{130 + rank}")
     plans = {p["id"]: p for p in control.plan(nodes, edges, "0")}
     for config in plans.values():
         for peer in config["peers"]:
-            assert peer["alternates"] == [{"via": "lan", "netdev": "eth0", "peer": f"192.168.0.{130 + int(peer['id'])}"}]
+            assert peer["alternates"] == [{"via": "lan", "netdev": "eth0", "peer": f"198.51.100.{130 + int(peer['id'])}"}]
     head_rules = control.firewall(plans["0"])
     for peer in plans["0"]["peers"]:
-        assert ("iptables", ["INPUT", "-i", "eth0", "-s", f"192.168.0.{130 + int(peer['id'])}/32", "-p", "udp",
+        assert ("iptables", ["INPUT", "-i", "eth0", "-s", f"198.51.100.{130 + int(peer['id'])}/32", "-p", "udp",
                              "--dport", "51871", "-j", "ACCEPT"]) in head_rules
 
 
@@ -526,7 +526,7 @@ def test_firewall_opens_the_tunnel_port_on_fallbacks_only_to_that_peer():
         ("ip6tables", ["INPUT", "-i", "enP2p1s0f0np0", "-s", "fe80::b1/128", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"]),
         ("ip6tables", ["INPUT", "-i", "enp1s0f0np0", "-s", "fe80::b0/128", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"]),
         ("ip6tables", ["INPUT", "-i", "enP2p1s0f1np1", "-s", "fe80::b3/128", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"]),
-        ("iptables", ["INPUT", "-i", LAN_NETDEV, "-s", "192.168.0.137/32", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"])]
+        ("iptables", ["INPUT", "-i", LAN_NETDEV, "-s", "198.51.100.137/32", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"])]
 
 
 @pytest.mark.parametrize("change, message", [
@@ -658,7 +658,7 @@ def test_a_fallback_that_does_not_answer_is_skipped_for_the_next(tmp_path):
                              "(no answer over cable enP2p1s0f0np0)")
     host.up(T + 40)
     # The primary cable's other function has no carrier either; the LAN is next.
-    assert host.endpoint == "192.168.0.137:51871" and host.contacted == ["10.253.255.2"] * 3
+    assert host.endpoint == "198.51.100.137:51871" and host.contacted == ["10.253.255.2"] * 3
     host.handshake = T + 50
     host.up(T + 60)
     assert host.refreshed() == []
@@ -757,11 +757,11 @@ def test_configure_adds_fallbacks_to_an_installed_configuration_and_refuses_othe
     assert calls == [["systemctl", "start", "--no-block", "sparkring-control-refresh.service"]]
     # Replacing the fallbacks removes the firewall rules of paths no longer listed.
     replaced = copy.deepcopy(head)
-    replaced["peers"][0]["alternates"][-1]["peer"] = "192.168.0.140"
+    replaced["peers"][0]["alternates"][-1]["peer"] = "198.51.100.140"
     calls.clear()
     control_node.configure({**document, "control": replaced}, root=tmp_path, run=run)
     assert [call for call in calls if "-D" in call] == [
-        ["iptables", "-w", "-D", "INPUT", "-i", LAN_NETDEV, "-s", "192.168.0.137/32", "-p", "udp", "--dport", "51871",
+        ["iptables", "-w", "-D", "INPUT", "-i", LAN_NETDEV, "-s", "198.51.100.137/32", "-p", "udp", "--dport", "51871",
          "-m", "comment", "--comment", "sparkring-control", "-j", "ACCEPT"]]
     for change in (lambda c: c.update(address="10.253.255.3"), lambda c: c["peers"][0].update(key=CONTROL_PUBLIC),
                    lambda c: c["peers"][0].update(endpoint="[fe80::b9%enp1s0f1np1]:51871")):
@@ -776,7 +776,7 @@ def test_setup_admin_fallback_extends_every_installed_spark(tmp_path, monkeypatc
     from runtime.common import installer
     from runtime.host import single_uplink
     (head, worker), inventories = pair_plan()
-    targets = ["root@10.253.255.1", "root@10.253.255.2"]
+    targets = ["root@" + config["address"] for config in (head, worker)]
     installer.write(tmp_path / "enrolled.json", {"targets": targets})
     installed = {targets[0]: control.base(head), targets[1]: control.base(worker)}
     probes = {targets[0]: inventories["hw-a"], targets[1]: inventories["hw-b"]}
@@ -797,12 +797,15 @@ def test_setup_admin_fallback_extends_every_installed_spark(tmp_path, monkeypatc
     def run(*flags):
         args = single_uplink._arguments(["--admin-fallback", *flags])[0]
         return single_uplink.admin_fallback(args, tmp_path, "ssh-ed25519 KEY", tmp_path / "setup", invoke=invoke,
-                                            collect=lambda t: [])
+                                            collect=lambda t: [], root=tmp_path)
 
+    with pytest.raises(ValueError, match="no SparkRing administration network"):
+        run("--plan")
+    node.save(tmp_path, "/etc/sparkring/control.json", installed[targets[0]], mode=0o600)
     assert run("--plan") == 0
     out = capsys.readouterr().out
     assert ("  spark-a to 10.253.255.2: cable enP2p1s0f0np0, cable enp1s0f0np0, cable enP2p1s0f1np1, "
-            "LAN 192.168.0.137") in out
+            "LAN 198.51.100.137") in out
     assert configured == {} and updated == []
     assert run("--yes") == 0
     assert configured == {targets[0]: {"control": head, "ssh_key": "ssh-ed25519 KEY"},

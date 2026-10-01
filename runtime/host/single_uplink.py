@@ -178,7 +178,7 @@ def fallback_lines(configs, hostnames):
     return lines
 
 
-def admin_fallback(args, base, public, directory, *, invoke=discovery.ssh, collect=None):
+def admin_fallback(args, base, public, directory, *, invoke=discovery.ssh, collect=None, root="/"):
     """Add fallback paths to the installed administration network of every Spark; change nothing else.
 
     Each Spark reports its installed control configuration and a fresh
@@ -194,6 +194,9 @@ def admin_fallback(args, base, public, directory, *, invoke=discovery.ssh, colle
     if not targets:
         raise ValueError("No installed cluster here; sudo sparkring setup installs the administration network "
                          "with its fallback paths")
+    if not node.location(root, "/etc/sparkring/control.json").exists():
+        raise ValueError("This cluster has no SparkRing administration network; its Sparks are reached over "
+                         "the addresses that setup was given")
     code = (inspect.getsource(bootstrap.fabric_identity) + "\n" + inspect.getsource(bootstrap.probe)
             + "\nimport json\nprint(json.dumps(probe()))\n")
     configs, inventories, hostnames = [], {}, {}

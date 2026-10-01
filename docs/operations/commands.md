@@ -124,6 +124,7 @@ without a model. `sparkring install` runs it on first use.
 | `--reset-links` | Replace incompatible fabric IPv4 settings, also without a terminal |
 | `--stop-workloads` | Stop (never remove) GPU containers that block fabric preparation |
 | `--worker-bundle` | Build a USB bundle for [workers without SSH](install-reference.md#if-a-worker-has-no-ssh) |
+| `--admin-fallback` | On a set-up cluster, add [fallback paths](install-reference.md#admin-tunnel) (the other cables, the LAN) to the admin tunnel and change nothing else; with `--plan`, list them |
 | `--allow-driver-reload` | Accepted and not needed |
 
 With `--node` or `--inventory`, setup uses listed targets instead of discovery

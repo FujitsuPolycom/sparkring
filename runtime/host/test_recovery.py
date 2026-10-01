@@ -536,13 +536,13 @@ def test_status_names_the_fallback_path_of_a_worker_reached_without_its_primary_
     snapshot = {"state": "network-configured", "next_action": "sparkring models", "control": {
         "interface_up": True, "peers": [{"id": "b", "address": "192.0.2.11", "upstream": False,
                                          "netdev": "enp1s0f1np1", "carrier": False, "operstate": "down",
-                                         "endpoint": "192.168.0.137:51871", "handshake_age_s": 12, "fallbacks": 2,
-                                         "path": {"via": "lan", "netdev": "enP7s7", "address": "192.168.0.137",
+                                         "endpoint": "198.51.100.137:51871", "handshake_age_s": 12, "fallbacks": 2,
+                                         "path": {"via": "lan", "netdev": "enP7s7", "address": "198.51.100.137",
                                                   "primary": False}}]}}
     lines = status(monkeypatch, capsys, snapshot=snapshot)
     assert "Model: The model runs on every Spark and its API answers" in lines
     row = next(index for index, line in enumerate(lines) if line.startswith("  rank 1 ("))
-    assert lines[row + 1] == "    admin tunnel: over LAN 192.168.0.137 (primary cable enp1s0f1np1: no link)"
+    assert lines[row + 1] == "    admin tunnel: over LAN 198.51.100.137 (primary cable enp1s0f1np1: no link)"
     assert recovery.tunnel_reason(snapshot["control"], pair.hosts[1]) is None
 
 
