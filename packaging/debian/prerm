@@ -13,5 +13,8 @@ if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
         fi
     done
     mv /var/lib/sparkring/package-enabled-units.tmp /var/lib/sparkring/package-enabled-units
+    # A recovery run may be restarting a model over the administration
+    # network; it stops before the units below are torn down.
+    systemctl stop sparkring-recover.timer sparkring-recover.service
     systemctl disable --now $UNITS
 fi
