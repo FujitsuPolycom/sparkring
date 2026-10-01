@@ -469,18 +469,25 @@ def operation_plan(lock, action):
         else:
             if lock["backend"] == "glm-existing-mesh":
                 phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared")]
+            # On a four-Spark ring, ring-stop first stops, on every rank, each
+            # mesh that the mesh start (mesh-up or ring-serve) starts again.
+            # Every rank's mesh start then sees the same running meshes when it
+            # decides whether to install this deployment's mesh code
+            # (native_mesh.update_code).
             if "native_mesh" in lock["site_input"]:
                 phases += [phase("mesh-prepare", ranks, "mutates-host", "mesh-prepared"),
                            phase("create", ranks, "starts-model", "created"),
                            phase("mesh-install", ranks[:1], "mutates-host", "mesh-installed"),
                            phase("mesh-replace", ranks, "mutates-host", "mesh-replaced"),
+                           phase("ring-stop", ranks, "mutates-host", "ring-stopped"),
                            phase("mesh-up", ranks, "mutates-host", "mesh-up-check"),
                            phase("mesh-gate", ranks), phase("preflight", ranks)]
             else:
                 if len(ranks) == 4 and lock["backend"] != "glm-existing-mesh":
                     # A reused mesh is started, repaired and awaited on all
                     # four ranks before the read-only ring check.
-                    phases += [phase("ring-serve", ranks, "mutates-host", "ring-check")]
+                    phases += [phase("ring-stop", ranks, "mutates-host", "ring-stopped"),
+                               phase("ring-serve", ranks, "mutates-host", "ring-check")]
                 elif len(ranks) == 2:
                     # A pair's fabric addresses return to RoCE GID index 3,
                     # which they leave when the cabled Spark restarts while

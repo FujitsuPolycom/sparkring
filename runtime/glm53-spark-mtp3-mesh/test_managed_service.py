@@ -160,6 +160,31 @@ def test_peer_response_nonce_is_checked(monkeypatch):
         service.fetch_peer('127.0.0.1', 9975, key, 0, 'test', 'epoch')
 
 
+def test_peer_body_reports_another_identity_that_fetch_peer_rejects(monkeypatch):
+    """A supervisor of other source files answers with its own identity, which update_code compares."""
+    key = b'a' * 32
+
+    class Connection:
+        def request(self, method, path, headers):
+            assert headers['X-Mesh-Auth'] == service.sign(key, {'protocol': service.PROTOCOL, 'nonce': path[-32:]})
+            self.nonce = path[-32:]
+
+        def getresponse(self):
+            body = {'protocol': service.PROTOCOL, 'nonce': self.nonce, 'rank': 2, 'identity': 'other',
+                    'epoch': 'epoch', 'generation': 'b' * 32, 'local_ready': False}
+            raw = service.canonical({'body': body, 'signature': service.sign(key, body)})
+            return SimpleNamespace(status=200, read=lambda limit: raw)
+
+        def close(self):
+            pass
+    monkeypatch.setattr(service.http.client, 'HTTPConnection', lambda *args, **kwargs: Connection())
+    assert service.peer_body('192.0.2.12', 9975, key, 2, 'epoch')['identity'] == 'other'
+    with pytest.raises(ValueError, match='identity'):
+        service.fetch_peer('192.0.2.12', 9975, key, 2, 'this', 'epoch')
+    with pytest.raises(ValueError, match='freshness'):
+        service.peer_body('192.0.2.12', 9975, key, 2, 'another-epoch')
+
+
 def test_model_stop_checks_state_after_kill(monkeypatch):
     states = iter([True, False])
     monkeypatch.setattr(service, 'docker_running', lambda name: next(states))

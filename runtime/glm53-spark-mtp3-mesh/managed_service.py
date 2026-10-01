@@ -94,7 +94,13 @@ def load_config(path):
     return document, site, topology, plan, identity
 
 
-def fetch_peer(address, port, key, rank, identity, epoch):
+def peer_body(address, port, key, rank, epoch):
+    """The authenticated, fresh health body that the supervisor of ``rank`` serves at ``address``.
+
+    The body names the supervisor's mesh identity, which covers its source
+    files; fetch_peer additionally requires this rank's identity and local
+    readiness.
+    """
     nonce = secrets.token_hex(16)
     challenge = {'protocol': PROTOCOL, 'nonce': nonce}
     # Direct HTTP avoids proxy/redirect behavior and unused TLS context creation.
@@ -114,8 +120,14 @@ def fetch_peer(address, port, key, rank, identity, epoch):
     if not hmac.compare_digest(sign(key, body), str(envelope['signature'])):
         raise ValueError('Mesh health authentication failed')
     if (body.get('protocol') != PROTOCOL or body.get('nonce') != nonce or body.get('rank') != rank
-            or body.get('identity') != identity or body.get('epoch') != epoch
-            or not re.fullmatch('[0-9a-f]{32}', str(body.get('generation', '')))):
+            or body.get('epoch') != epoch or not re.fullmatch('[0-9a-f]{32}', str(body.get('generation', '')))):
+        raise ValueError('Mesh peer identity or freshness differs')
+    return body
+
+
+def fetch_peer(address, port, key, rank, identity, epoch):
+    body = peer_body(address, port, key, rank, epoch)
+    if body.get('identity') != identity:
         raise ValueError('Mesh peer identity or freshness differs')
     if body.get('local_ready') is not True:
         raise RuntimeError(f'Mesh rank {rank} is not locally ready')
