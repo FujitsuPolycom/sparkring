@@ -1464,7 +1464,9 @@ def describe(result):
     lines.append("sudo sparkring storage --release PATH removes one unreferenced cache directory or deployment "
                  "workspace from every Spark that holds it; checkpoint directories are released with sudo sparkring "
                  "checkpoints --release PATH. SparkRing does not remove Docker images: docker image rm ID on that "
-                 "Spark removes one that no container uses.")
+                 "Spark removes one that no container uses. An image's size counts the layers it shares with other "
+                 "images, and removing it frees only the layers no other image uses; each installer image adds a "
+                 "few megabytes to the one it was built on.")
     return lines
 
 

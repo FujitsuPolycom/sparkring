@@ -266,7 +266,10 @@ A release never removes:
 - a checkpoint directory; `sudo sparkring checkpoints --release PATH` does;
 - a workspace that holds model files;
 - a Docker image; images are only listed, and `docker image rm ID` on that
-  Spark removes one by hand;
+  Spark removes one by hand. An image's size counts the layers it shares with
+  other images, so removing it frees only the layers no other image uses.
+  Each installer image adds a few megabytes to the one it was built on
+  ([builders](../../runtime/images/installer-images.md));
 - an `unmanaged` item.
 
 `sparkring setup storage PROFILE` is a separate, local check of one profile's
