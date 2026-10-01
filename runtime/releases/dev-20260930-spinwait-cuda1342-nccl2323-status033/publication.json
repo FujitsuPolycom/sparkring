@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20260930-spinwait-cuda1342-nccl2323-status033",
+  "image_id": "sha256:fcb20b0ce83987844ccc2b7abb167bcf4e4fcf144c49f55465978eec3b46a234",
+  "image_config_id": "sha256:fcb20b0ce83987844ccc2b7abb167bcf4e4fcf144c49f55465978eec3b46a234",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20260930-spinwait-cuda1342-nccl2323-status033",
+  "registry_manifest_digest": "sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.3",
+  "derivation": {
+    "parent_release": "dev-20260928-plainstatus-cuda1342-nccl2323-status033",
+    "parent_image_id": "sha256:4b7049d1e00f263c65713b62247a4497eba72fb38977087941830cec38609a8c",
+    "layers": [
+      "vLLM's shared-memory readers (vllm/distributed/device_communicators/shm_broadcast.py SpinCondition) poll for SPARKRING_SHM_BUSY_LOOP_S seconds after a read when that variable is set, and for the constructor's one-second default otherwise (runtime/images/derive_spin_wait.py). /opt/sparkring/receipts/derived-spin-wait.json records the replaced file"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

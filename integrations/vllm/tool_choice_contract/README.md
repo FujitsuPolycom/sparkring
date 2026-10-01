@@ -78,8 +78,8 @@ The installer container of every installer profile sets
 variable (`installer_image.adapt`); a profile opts out with `0`. Only an image
 built by this layer, or derived from one, reads the variable. The default
 installer image lock selects
-`dev-20260928-plainstatus-cuda1342-nccl2323-status033`, whose parent is the
-published layer, so installer deployments apply the policy. On that layer,
+`dev-20260930-spinwait-cuda1342-nccl2323-status033`, which derives from
+the published layer, so installer deployments apply the policy. On that layer,
 `api_probe.py` passed all eight cases (named and required, streaming and not,
 `max_tokens` 400 and 16) on MiMo-V2.6-Flash-RL (four Sparks),
 Qwen3.8-Flash-Next (two Sparks) and DeepSeek-V4.1-Flash (four Sparks); each

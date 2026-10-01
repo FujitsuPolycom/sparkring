@@ -1,0 +1,25 @@
+{
+  "composition_sha256": "46ecfc99659799934e7429fb0f8c80310b93aee485337114139bb5fe1df096d4",
+  "download_bytes": 15232947091,
+  "image_bytes": 31654261946,
+  "image_id": "sha256:fcb20b0ce83987844ccc2b7abb167bcf4e4fcf144c49f55465978eec3b46a234",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac",
+  "name": "dev-20260930-spinwait-cuda1342-nccl2323-status033",
+  "parent_receipt_sha256": "0bebc83492ea90046c779e5846e664f3efea61fc5d487accea46dc1b9f64ac2d",
+  "profiles": [
+    "deepseek-v41-flash-tp4",
+    "glm53-flash-nvfp4-spark-tp2",
+    "glm53-flash-nvfp4-spark-tp4",
+    "mimo-v26-flash-mopd-tp2",
+    "mimo-v26-flash-mopd-tp4",
+    "qwen38-flash-next-qad-tp4",
+    "qwen38-flash-next-tp2",
+    "swift15-qwen38-flash-next-tp2",
+    "swift15-qwen38-flash-next-tp4"
+  ],
+  "schema": "sparkring-installer-image/v2",
+  "status_version": "0.3.3",
+  "toolchain_receipt_sha256": "16f5237e27acf01bbfdb1b4911b548742d82c1bd94aaba7420f7f4f235886e88",
+  "transport_manifest_sha256": "9f2c0ae62e1e045b0c90dab99313de2f627f2a2f8bc68143c50eafa0531cf27c",
+  "transport_profile": "tp2-rocenante-adaptive-prepared"
+}

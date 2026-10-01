@@ -17,7 +17,7 @@ import zipfile
 import pytest
 
 from runtime.common import installer_image
-from runtime.images import derive_mimo_vision, derive_staging_fix, derive_tool_choice_contract, derive_tp2_hc
+from runtime.images import derive_mimo_vision, derive_spin_wait, derive_staging_fix, derive_tool_choice_contract, derive_tp2_hc
 from runtime.images import derive_transport_peer_wait, derive_transport_window
 from runtime.images import derived_layer as layer
 
@@ -864,3 +864,43 @@ def test_tool_choice_layer_refuses_a_parent_other_than_the_pinned_serving_module
 def test_tool_choice_layer_refuses_a_parent_without_the_serving_modules_last_statement():
     with pytest.raises(ValueError, match="Expected one occurrence"):
         TOOL.replace(lambda path: b"class OpenAIServingChat:\n    pass\n", {})
+
+
+# The spin-wait layer: how long vLLM's shared-memory readers poll before sleeping.
+
+SPIN = derive_spin_wait
+SPIN_FIXTURE = """import os
+
+
+class SpinCondition:
+    def __init__(self, is_reader, busy_loop_s: float = 1):
+        if is_reader:
+""" + SPIN.READER_WINDOW + """        else:
+            self.busy_loop_s = 0
+"""
+
+
+@pytest.mark.parametrize("setting, window", [(None, 1.0), ("0.002", 0.002)])
+def test_spin_wait_layer_reads_the_reader_window_from_the_environment(monkeypatch, setting, window):
+    replaced = SPIN.replace(lambda path: SPIN_FIXTURE.encode(), {})
+    assert set(replaced) == {SPIN.SHM} and SPIN.SHM.startswith(layer.SITE + "vllm/")
+    if setting is None:
+        monkeypatch.delenv(SPIN.ENVIRONMENT, raising=False)
+    else:
+        monkeypatch.setenv(SPIN.ENVIRONMENT, setting)
+    namespace = {}
+    exec(compile(replaced[SPIN.SHM], SPIN.SHM, "exec"), namespace)
+    assert namespace["SpinCondition"](True).busy_loop_s == window
+    # Writers do not poll, whatever the setting.
+    assert namespace["SpinCondition"](False).busy_loop_s == 0
+    assert SPIN.LAYER.pins == {SPIN.SHM: (SPIN.INHERITED, SPIN.RESULT)}
+    assert SPIN.LAYER.provenance.startswith(layer.RECEIPTS)
+
+
+def test_spin_wait_layer_refuses_a_parent_other_than_the_pinned_module(tmp_path):
+    root, lock = code_parent(tmp_path, {SPIN.SHM: SPIN_FIXTURE.encode()})
+    with pytest.raises(ValueError, match="pinned"):
+        layer.prepare_layer(SPIN.LAYER, lock, layer.root_reader(root), tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+    with pytest.raises(ValueError, match="Expected one occurrence"):
+        SPIN.replace(lambda path: b"class SpinCondition:\n    pass\n", {})

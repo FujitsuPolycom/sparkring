@@ -24,7 +24,7 @@ logs and recovery. To run the same containers with Docker Compose, see
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
-| Image | `dev-20260928-plainstatus-cuda1342-nccl2323-status033` | `shared-2026.09.3` |
+| Image | `dev-20260930-spinwait-cuda1342-nccl2323-status033` | `shared-2026.09.3` |
 | Checkpoint | Step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
 | Parallelism | TP2/DCP1; one p0-to-p0 cable, both PCIe functions of p0 | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |

@@ -16,7 +16,7 @@ LEGACY_BUILD = adapter.ROOT / "runtime/images/compositions/lil-r37-shared/local-
 PUBLICATION = adapter.ROOT / "runtime/releases/shared-2026.09.3/publication.json"
 BUILD = PUBLICATION
 # The installer profile runs on the installer image; its SparkCache profile on shared-2026.09.3.
-INSTALLER = adapter.ROOT / "runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/publication.json"
+INSTALLER = adapter.ROOT / "runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/publication.json"
 MAPS = ["1=0/2,2=0/3,3=1/3", "0=1/3,2=0/2,3=0/3",
         "0=1/2,1=1/3,3=0/2", "0=0/2,1=1/2,2=1/3"]
 
