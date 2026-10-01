@@ -1336,6 +1336,12 @@ For every other deployment that has run, each Spark removes:
   the installed package references (class `unreferenced`);
 - remainders of interrupted `sudo sparkring storage --release` runs.
 
+Node A removes its checkout of a SparkRing source revision
+(`/var/lib/sparkring/controller/retained-sources/<revision>`, about 80 MB
+with the current source tree) once every deployment of that revision is
+released. An operation on such a deployment clones it again from the
+deployment's source bundle.
+
 Each Spark checks again before it removes anything. A container must be
 stopped, carry the deployment's label and not be the one that an installed
 mesh starts. Each workspace and cache passes the same checks as

@@ -29,6 +29,8 @@ from runtime.host.test_storage import (CLUSTER, COMPILE_CACHE, DEV_IMAGE, HOSTS,
 spark, host_records, administrator = fake.spark, fake.host_records, fake.administrator
 PROFILE = "qwen38-flash-next-tp2"
 OTHER = "mimo-v26-flash-mopd-tp2"
+# The package revision of the older deployments that ring() releases; the others use "1" * 40.
+OLD_REVISION = "2" * 40
 DOWN = {"generation": 3, "operation": "down", "complete": True}
 
 
@@ -196,6 +198,8 @@ def test_the_summary_names_what_was_released():
         "Released 1 older deployment's containers, workspaces and caches: 1.5 GiB"]
     assert retention.summary({**base, "caches": 2, "freed_bytes": 4 * gib}) == [
         "Released 2 unused compile caches: 4.0 GiB"]
+    assert retention.summary({**base, "sources": ["2" * 40], "freed_bytes": 80 * 10 ** 6}) == [
+        "Released Node A's checkouts of 1 older SparkRing source: 80.0 MB"]
     assert retention.summary(base) == []
     errors = [f"Node 1 spark-931e: refusal {n}" for n in range(7)]
     assert retention.summary({**base, "released": ["d"], "freed_bytes": gib, "errors": errors}) == [
@@ -243,7 +247,7 @@ def model_container(name, deployment, *, running=False, size=400 * 10 ** 6):
 
 
 def deployment(state, spark, name, *, profile=PROFILE, operation="down", complete=True, age=0, caches=None,
-               models=False):
+               models=False, revision="1" * 40):
     """A deployment on Node A and its workspace on the fake Spark; returns ``(lock ID, container name)``."""
     identifier = identity(name)
     path = spark.cluster / name
@@ -257,7 +261,7 @@ def deployment(state, spark, name, *, profile=PROFILE, operation="down", complet
     directory = state / "deployments" / name
     write_json(directory / "deployment.lock.json",
                {"id": identifier, "backend": "compose", "selection": {"image_id": DEV_IMAGE, "profile": profile},
-                "site": {"name": site, "workspace": str(path), "ranks": rows}})
+                "source_revision": revision, "site": {"name": site, "workspace": str(path), "ranks": rows}})
     write_json(directory / "rank0" / "container.json",
                fake.spec(str(path), spark.owned, str(spark.cache), caches or [INSTALLED_CACHE, COMPILE_CACHE]))
     if operation is not None:
@@ -298,8 +302,9 @@ def ring(tmp_path, spark):
         "active": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa1", operation="up", age=10),
         "recent": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa2", age=20),
         "rollback": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa3", age=30),
-        "old": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa4", age=40, caches=[STALE_CACHE, COMPILE_CACHE]),
-        "older": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa5", age=50, models=True),
+        "old": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa4", age=40, caches=[STALE_CACHE, COMPILE_CACHE],
+                          revision=OLD_REVISION),
+        "older": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa5", age=50, models=True, revision=OLD_REVISION),
         "unfinished": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa6", operation="up", complete=False, age=60),
         "planned": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa7", operation=None),
         "other": deployment(state, spark, OTHER + "-iaaaaaaaaaaa8", profile=OTHER, age=5000)}
@@ -322,6 +327,11 @@ def test_release_removes_older_deployments_containers_workspaces_and_caches_and_
     _, frees_old = fake.du(old)
     _, frees_stale = fake.du(spark.cache / STALE_CACHE, outside=[spark.srv / "image020/graph-copy.bin"])
     _, frees_leftover = fake.du(spark.cache / f".{LEFTOVER_CACHE}.sparkring-releasing")
+    # Node A's checkouts of deployment sources: only OLD and OLDER use OLD_REVISION's.
+    sources = state / retention.SOURCES
+    for name in (OLD_REVISION, "1" * 40, "notes"):
+        fake.put(sources / name / "README.md", 5000)
+    _, frees_source = fake.du(sources / OLD_REVISION)
     checkpoint_before = tree_state(Path(spark.owned).parent)
     lines = []
     result = retention.release(state, invoke, 2, write=lines.append)
@@ -343,7 +353,8 @@ def test_release_removes_older_deployments_containers_workspaces_and_caches_and_
     assert (spark.srv / "image020").is_dir() and (spark.cache / "jit").is_dir()
 
     assert result["state"] == "released" and result["released"] == sorted([names["old"], names["older"]])
-    assert result["freed_bytes"] == frees_old + frees_stale + frees_leftover + 2 * 400 * 10 ** 6
+    assert result["sources"] == [OLD_REVISION] and sorted(path.name for path in sources.iterdir()) == ["1" * 40, "notes"]
+    assert result["freed_bytes"] == frees_old + frees_stale + frees_leftover + frees_source + 2 * 400 * 10 ** 6
     assert lines == [f"Released 2 older deployments' containers, workspaces and caches: "
                      f"{storage._size(result['freed_bytes'])}"]
     # Each Spark was told what every kept deployment uses, to check each path again before removing it.

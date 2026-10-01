@@ -50,6 +50,11 @@ For every other deployment that ran an operation, on each Spark:
   storage``); the next start that uses it compiles and tunes again;
 - each remainder of an interrupted ``sudo sparkring storage --release``.
 
+On Node A it removes the checkout of a source revision in
+``retained-sources`` once every deployment of that revision is completely
+released (``_discard_sources``); ``retained_source.checkout`` clones it again
+from the deployment's ``source.bundle`` when an operation needs it.
+
 Each Spark checks again before it removes anything
 (``storage.release_batch_local``): a container must be stopped, carry the
 deployment's label and not be the container that an installed mesh starts, and
@@ -77,7 +82,10 @@ preference of ``sudo sparkring install --env FILE`` save it.
 import concurrent.futures
 import json
 from pathlib import Path
+import re
+import shutil
 import subprocess
+import time
 
 from runtime.common import installer
 from runtime.host import checkpoints, node, progress, settings, storage
@@ -89,6 +97,9 @@ RELEASED_FILE = "released.json"
 RELEASED_SCHEMA = "sparkring-deployment-release/v1"
 RESULT_SCHEMA = "sparkring-retention-result/v1"
 BATCH = ["sudo", "-n", "/usr/bin/sparkring", "node", "storage", "--release-batch"]
+# Node A's checkouts of deployment sources (retained_source.checkout), one directory per source revision.
+SOURCES = "retained-sources"
+REVISION = re.compile(r"[0-9a-f]{40}")
 # Seconds that one Spark may take for its removals.
 BATCH_TIMEOUT = 3600
 # Why a deployment is kept, in the order the report lists them; ``recent`` names the setting's number.
@@ -150,7 +161,7 @@ def _state(directory):
     """
     path = Path(directory) / "state.json"
     try:
-        time = path.stat().st_mtime
+        moment = path.stat().st_mtime
     except FileNotFoundError:
         return None, None
     except OSError:
@@ -158,11 +169,11 @@ def _state(directory):
     try:
         state = installer.read(path)
     except (OSError, ValueError):
-        return {"unreadable": True}, time
+        return {"unreadable": True}, moment
     if (not isinstance(state, dict) or type(state.get("generation")) is not int
             or not isinstance(state.get("complete"), bool)):
-        return {"unreadable": True}, time
-    return state, time
+        return {"unreadable": True}, moment
+    return state, moment
 
 
 def release_record(directory, state=None):
@@ -188,9 +199,9 @@ def deployments(state_root):
     """Node A's deployments as ``storage.deployments`` reads them, with the fields the policy reads.
 
     Adds ``profile`` (the deployment's name when the lock names none),
-    ``backend``, ``state`` and ``time`` (``_state``), ``containers`` (each
-    rank's host and model container name, ``installer.container_name``) and
-    ``released`` (``release_record``).
+    ``backend``, ``source_revision``, ``state`` and ``time`` (``_state``),
+    ``containers`` (each rank's host and model container name,
+    ``installer.container_name``) and ``released`` (``release_record``).
     """
     found = []
     for record in storage.deployments(state_root):
@@ -207,9 +218,10 @@ def deployments(state_root):
                      for row in lock["site"]["ranks"]]
         except (KeyError, TypeError):
             names = []
-        state, time = _state(directory)
+        state, moment = _state(directory)
         found.append({**record, "profile": selection.get("profile") or record["name"], "backend": backend,
-                      "state": state, "time": time, "containers": names, "released": release_record(directory, state)})
+                      "source_revision": lock.get("source_revision"), "state": state, "time": moment,
+                      "containers": names, "released": release_record(directory, state)})
     return found
 
 
@@ -385,25 +397,42 @@ def _pending(records, role, retain):
 
 
 def release(state_root, invoke, retain, *, write=print):
-    """Release on every Spark what the policy does not keep; the caller holds ``install.lock``.
+    """Release what the policy does not keep; the caller holds ``install.lock``.
 
-    Nothing is listed or removed when Node A's records alone release no
-    deployment that still holds data. A Spark that cannot be listed, or Sparks
-    running different package revisions, stop the release before anything is
-    removed. Each Spark then removes its share (``storage.release_batch_local``);
-    refusals are reported per entry. Writes ``released.json`` for every
-    released deployment and prints ``summary`` lines. Returns the result
-    document (``RESULT_SCHEMA``).
+    The Sparks are listed only when Node A's records alone release a
+    deployment that still holds data (``_release_on_sparks``). Node A then
+    removes its checkouts of deployment sources that only released
+    deployments use (``_discard_sources``) and prints ``summary`` lines.
+    Returns the result document (``RESULT_SCHEMA``).
     """
     state_root = Path(state_root)
     result = {"schema": RESULT_SCHEMA, "state": "nothing", "retain": retain, "released": [], "freed_bytes": 0,
-              "nodes": [], "errors": []}
+              "caches": 0, "remainders": 0, "sources": [], "nodes": [], "errors": []}
     cluster = checkpoints._cluster(state_root)
     if cluster is None:
         return result
     records, role = deployments(state_root), checkpoints.roles(state_root)
-    if not _pending(records, role, retain):
-        return result
+    if _pending(records, role, retain):
+        _release_on_sparks(state_root, cluster, records, role, retain, invoke, result)
+        records = deployments(state_root)
+    result["sources"], freed = _discard_sources(state_root, records)
+    result["freed_bytes"] += freed
+    if result["released"] or result["caches"] or result["remainders"] or result["sources"]:
+        result["state"] = "released"
+    for line in summary(result):
+        write(line)
+    return result
+
+
+def _release_on_sparks(state_root, cluster, records, role, retain, invoke, result):
+    """List every Spark, have each remove its share, and record each released deployment's release.
+
+    A Spark that cannot be listed, or Sparks running different package
+    revisions, stop the release before anything is removed. Each Spark then
+    removes its share (``storage.release_batch_local``), and refusals are
+    added to ``result`` per entry. Writes ``released.json`` for every
+    deployment the policy releases.
+    """
     nodes = storage._survey(checkpoints._hosts(cluster), cluster["name"], records, invoke, measure=[])
     failed = [entry for entry in nodes if "error" in entry]
     if failed:
@@ -486,11 +515,34 @@ def release(state_root, invoke, retain, *, write=print):
                    "removed": record["id"] in removed or bool(record["released"] and record["released"].get("removed"))},
                   mode=0o600)
     result["released"] = sorted(by_id[value]["name"] for value in removed if value in by_id)
-    result.update(caches=len(caches), remainders=len(remainders),
-                  state="released" if removed or caches or remainders else "nothing")
-    for line in summary(result):
-        write(line)
-    return result
+    result.update(caches=len(caches), remainders=len(remainders))
+
+
+def _discard_sources(state_root, records):
+    """Remove Node A's checkouts of deployment sources that only completely released deployments use.
+
+    ``retained_source.checkout`` clones a deployment's ``source.bundle`` into
+    ``retained-sources/<revision>`` to run a deployment of another package
+    revision, and clones it again when it is missing. A checkout stays while
+    any deployment of its revision is not completely released (``released``).
+    Returns ``(revisions, freed_bytes)``.
+    """
+    cache = Path(state_root) / SOURCES
+    used = {record["source_revision"] for record in records
+            if not (record["released"] and record["released"].get("complete"))}
+    removed, freed = [], 0
+    try:
+        entries = sorted(cache.iterdir())
+    except OSError:
+        return removed, freed
+    for entry in entries:
+        if not REVISION.fullmatch(entry.name) or entry.name in used or entry.is_symlink() or not entry.is_dir():
+            continue
+        size = storage.disk_use(str(entry), deadline=time.monotonic() + 30)["frees_bytes"]
+        shutil.rmtree(entry)
+        removed.append(entry.name)
+        freed += size
+    return removed, freed
 
 
 def summary(result):
@@ -504,6 +556,9 @@ def summary(result):
         lines.append(f"Released {result['caches']} unused compile cache{'' if result['caches'] == 1 else 's'}: {size}")
     elif result.get("remainders"):
         lines.append(f"Released the remainders of interrupted storage releases: {size}")
+    elif result.get("sources"):
+        count = len(result["sources"])
+        lines.append(f"Released Node A's checkouts of {count} older SparkRing source{'' if count == 1 else 's'}: {size}")
     errors = result["errors"]
     if errors:
         lines.append(("Some data stays on the Sparks" if lines else "Older deployments were not released")
