@@ -202,11 +202,18 @@ def select(config, failed, *, root="/", run=subprocess.run, now=time.time, conta
                   for index, path in enumerate(options)]
         seen = observed.get(peer["key"], {})
         current = control.match(options, seen.get("endpoint"))
-        target, check, reason, states[peer["key"]] = control.choose(
+        target, check, reason, state = control.choose(
             states.get(peer["key"]), usable, current, seen.get("handshake", 0), seen.get("received", 0), now(),
             has_endpoint=bool(seen.get("endpoint")))
         if target is not None and not control.same_endpoint(seen.get("endpoint"), options[target]):
-            _set_endpoint(peer, run=run, endpoint=control.endpoint(options[target]))
+            try:
+                _set_endpoint(peer, run=run, endpoint=control.endpoint(options[target]))
+            except RuntimeError as error:
+                # An interface can disappear between its check and wg set, as
+                # during a driver restart; the peer keeps its earlier state and
+                # the next refresh chooses again.
+                say(f"{control.INTERFACE}: peer {peer.get('address') or peer['id']}: {error}")
+                continue
             if target != current:
                 before = control.path_text(options[current]) if current is not None else "no known path"
                 why = {"link": f"{before}: link down", "answer": f"no answer over {before}",
@@ -217,6 +224,7 @@ def select(config, failed, *, root="/", run=subprocess.run, now=time.time, conta
                     f"{control.path_text(options[target])} ({why})")
             if check and peer.get("address"):
                 contact(peer["address"])
+        states[peer["key"]] = state
         chosen = current if target is None else target
         if chosen is not None and chosen != 0 and usable[chosen]:
             carried.add(peer["netdev"])

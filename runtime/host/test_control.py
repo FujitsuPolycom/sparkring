@@ -680,6 +680,26 @@ def test_a_peer_moved_by_the_other_sparks_packets_stays_where_they_arrive(tmp_pa
     assert host.refreshed() == []
 
 
+def test_a_failed_endpoint_change_is_logged_and_chosen_again_at_the_next_refresh(tmp_path):
+    (head, _), _ = pair_plan()
+    host = TunnelHost(tmp_path, head, now=T)
+    unplug(host, 1)
+    real = host.__call__
+
+    def vanished(argv, **kwargs):
+        if argv[:3] == ["wg", "set", control.INTERFACE]:
+            host.calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 1, "", "Name or service not known")
+        return real(argv, **kwargs)
+
+    assert control_node.up(root=tmp_path, run=vanished, now=lambda: T, contact=host.contacted.append,
+                           say=host.said.append) == {"control_up": True}
+    assert host.endpoint == head["peers"][0]["endpoint"] and host.contacted == []
+    assert host.said == ["sr-control: peer 10.253.255.2: wg set sr-control peer: Name or service not known"]
+    host.up(T + 20)
+    assert host.endpoint == "[fe80::b1%enP2p1s0f0np0]:51871" and host.contacted == ["10.253.255.2"]
+
+
 def test_a_stale_interface_index_is_set_again_without_moving_the_peer(tmp_path):
     (head, _), _ = pair_plan()
     host = TunnelHost(tmp_path, head, now=T)
