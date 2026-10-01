@@ -24,10 +24,9 @@ ROOT = Path(__file__).resolve().parents[2]
 MESH_START_CHECK = "10-sparkring-hairpin.conf"
 MESH_UNIT_PATTERNS = ("sparkring-mesh.service", "sparkring-*-mesh.service")
 HAIRPIN_REMEDY = "on Node A: sudo sparkring hairpin"
-# Seconds after which WireGuard discards a session that no handshake renewed
-# (its REJECT_AFTER_TIME). With PersistentKeepalive a reachable peer renews the
-# session about every two minutes, so an older handshake means no path.
-HANDSHAKE_STALE = 180
+# Seconds after which a tunnel peer's latest handshake means it has no working
+# path; control.HANDSHAKE_STALE explains the value.
+HANDSHAKE_STALE = control.HANDSHAKE_STALE
 # The characters of an error line that a status document carries.
 ERROR_TEXT = 300
 
@@ -372,15 +371,19 @@ def link_text(carrier, operstate):
 def control_report(*, root="/", run=subprocess.run, now=time.time):
     """This Spark's administration tunnel peers, or None without a recorded control network.
 
-    Returns ``{"interface_up", "peers"}``. Each peer row names the fabric link
-    that carries it (``netdev``, with ``carrier`` and ``operstate`` from
-    sysfs), the ``endpoint`` WireGuard uses and ``handshake_age_s``, the
-    seconds since its latest handshake (None when there was none since the
-    interface was created). ``address`` is the peer's own control address for
-    a peer below this Spark in the administration tree; the peer above a
-    worker may route every address, so its address is None and ``upstream``
-    is true. Each peer has exactly one recorded link, so a peer whose link
-    lost its carrier has no administration path until the link returns.
+    Returns ``{"interface_up", "peers"}``. Each peer row names its recorded
+    fabric link (``netdev``, with ``carrier`` and ``operstate`` from sysfs),
+    the ``endpoint`` WireGuard uses and ``handshake_age_s``, the seconds since
+    its latest handshake (None when there was none since the interface was
+    created). ``path`` is the path that endpoint names: ``via`` (``cable`` or
+    ``lan``), the local ``netdev``, the peer's ``address`` on it and whether
+    it is the ``primary`` path, the recorded link; it is None when the
+    endpoint names no known path. ``fallbacks`` counts the peer's fallback
+    paths; a peer without any has no administration path while its recorded
+    link is down. ``address``
+    is the peer's own control address for a peer below this Spark in the
+    administration tree; the peer above a worker may route every address, so
+    its address is None and ``upstream`` is true.
     """
     if not location(root, "/etc/sparkring/control.json").exists():
         return None
@@ -402,11 +405,32 @@ def control_report(*, root="/", run=subprocess.run, now=time.time):
         carrier, operstate = link_state(peer["netdev"], root=root)
         observed = seen.get(peer.get("key"), {})
         handshake = observed.get("handshake") or 0
+        options = control.paths(config, peer)
+        index = control.match(options, observed.get("endpoint"))
+        path = None if index is None else {"via": options[index]["via"], "netdev": options[index]["netdev"],
+                                           "address": options[index]["peer"], "primary": index == 0}
         peers.append({"id": peer.get("id"), "address": None if upstream or not allowed else allowed[0].split("/")[0],
                       "upstream": upstream, "netdev": peer["netdev"], "carrier": carrier, "operstate": operstate,
                       "endpoint": observed.get("endpoint"),
-                      "handshake_age_s": max(0, int(now() - handshake)) if handshake else None})
+                      "handshake_age_s": max(0, int(now() - handshake)) if handshake else None,
+                      "path": path, "fallbacks": len(options) - 1})
     return {"interface_up": bool(lines), "peers": peers}
+
+
+def fallback_path(peer):
+    """``LAN 192.0.2.12`` or ``cable enp1s0f0np0``: the fallback path a peer row of control_report uses; else None."""
+    path = peer.get("path")
+    if not path or path.get("primary"):
+        return None
+    return control.path_text({"via": path["via"], "netdev": path["netdev"], "peer": path["address"]})
+
+
+def fallback_text(peer):
+    """``over LAN 192.0.2.12 (primary cable enp1s0f1np1: no link)`` for a peer row on a fallback path; else None."""
+    used = fallback_path(peer)
+    if used is None:
+        return None
+    return f"over {used} (primary cable {peer['netdev']}: {link_text(peer.get('carrier'), peer.get('operstate'))})"
 
 
 def age_text(seconds):
@@ -421,11 +445,14 @@ def age_text(seconds):
 
 
 def tunnel_problems(report):
-    """One line per administration tunnel peer without a handshake in the last HANDSHAKE_STALE seconds.
+    """One line per administration tunnel peer that lacks a recent handshake or runs over a fallback path.
 
-    Each line names the peer (its control address, or ``Node A side`` for the
-    peer above a worker), the latest handshake and the state of the link
-    that carries it.
+    A peer without a handshake in the last HANDSHAKE_STALE seconds gets a line
+    naming the peer (its control address, or ``the Spark above this one`` for
+    the peer above a worker), the latest handshake, the fallback path in use
+    if any and the state of its recorded link. A peer that answers over a
+    fallback path gets a line naming that path and its recorded link's state
+    (``fallback_text``).
     """
     if not report:
         return []
@@ -434,10 +461,14 @@ def tunnel_problems(report):
     lines = []
     for peer in report.get("peers") or []:
         age = peer.get("handshake_age_s")
-        if age is not None and age <= HANDSHAKE_STALE:
-            continue
         name = peer.get("address") or ("the Spark above this one" if peer.get("upstream") else peer.get("id"))
-        lines.append(f"admin tunnel to {name} has no recent handshake (last {age_text(age)}); "
+        fallback = fallback_text(peer)
+        if age is not None and age <= HANDSHAKE_STALE:
+            if fallback:
+                lines.append(f"admin tunnel to {name} runs {fallback}")
+            continue
+        trying = f" over {fallback_path(peer)}" if fallback else ""
+        lines.append(f"admin tunnel to {name} has no recent handshake (last {age_text(age)}){trying}; "
                      f"{peer['netdev']}: {link_text(peer.get('carrier'), peer.get('operstate'))}")
     return lines
 

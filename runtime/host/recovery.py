@@ -399,18 +399,35 @@ def _serving(row):
     return bool(row.get("running")) and row.get("owned") is not False and row.get("present") is not False
 
 
-def tunnel_reason(report, host):
-    """Why Node A's administration tunnel does not reach ``host``, from Node A's ``control`` report; or None."""
+def _tunnel_peer(report, host):
     address = str(host).rsplit("@", 1)[-1]
     for peer in (report or {}).get("peers") or []:
-        if f"{address}/32" not in (peer.get("allowed_ips") or []) and peer.get("address") != address:
-            continue
-        age = peer.get("handshake_age_s")
-        if age is not None and age <= node.HANDSHAKE_STALE:
-            return None
-        return (f"the admin tunnel has no recent handshake (last {node.age_text(age)}); Node A's {peer['netdev']}: "
-                + node.link_text(peer.get("carrier"), peer.get("operstate")))
+        if f"{address}/32" in (peer.get("allowed_ips") or []) or peer.get("address") == address:
+            return peer
     return None
+
+
+def tunnel_reason(report, host):
+    """Why Node A's administration tunnel does not reach ``host``, from Node A's ``control`` report; or None."""
+    peer = _tunnel_peer(report, host)
+    if peer is None:
+        return None
+    age = peer.get("handshake_age_s")
+    if age is not None and age <= node.HANDSHAKE_STALE:
+        return None
+    trying = node.fallback_path(peer)
+    return (f"the admin tunnel has no recent handshake (last {node.age_text(age)})"
+            + (f" over {trying}" if trying else "") + f"; Node A's {peer['netdev']}: "
+            + node.link_text(peer.get("carrier"), peer.get("operstate")))
+
+
+def tunnel_fallback(report, host):
+    """``over LAN 192.0.2.12 (primary cable enp1s0f1np1: no link)`` when Node A reaches ``host`` over a fallback path; else None."""
+    peer = _tunnel_peer(report, host)
+    if peer is None:
+        return None
+    age = peer.get("handshake_age_s")
+    return node.fallback_text(peer) if age is not None and age <= node.HANDSHAKE_STALE else None
 
 
 def _mesh_problem(document):

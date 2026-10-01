@@ -426,3 +426,389 @@ def test_underlay_lists_every_failing_link_and_require_raises(tmp_path):
     assert control_node.underlay("port1", root=tmp_path, run=host) == problems[1:]
     with pytest.raises(ValueError, match="port0: interface is not present; port1: link-local"):
         control_node.require_underlay(root=tmp_path, run=host)
+
+
+# Fallback paths of the administration tunnel. A pair's Sparks have four
+# ConnectX functions on two ports, both ports cabled; the primary path is the
+# port 1 cable, as on a pair whose discovery found that cable first.
+FUNCTIONS = (("enp1s0f0np0", "rocep1s0f0"), ("enP2p1s0f0np0", "roceP2p1s0f0"),
+             ("enp1s0f1np1", "rocep1s0f1"), ("enP2p1s0f1np1", "roceP2p1s0f1"))
+LAN_NETDEV = "enP7s7"
+
+
+def mac(letter, index):
+    return f"02:00:00:00:0{'ab'.index(letter) + 1}:0{index}"
+
+
+def spark(letter, lan_address):
+    """The inventory of Spark ``hw-LETTER`` (bootstrap.probe); its functions' link-local addresses are fe80::LETTERn."""
+    return {"id": "hw-" + letter, "machine_id": "m-" + letter, "hostname": "spark-" + letter, "architecture": "aarch64",
+            "public_key": base64.b64encode(letter.encode() * 32).decode(), "routes": [],
+            "uplink": LAN_NETDEV, "api_address": lan_address,
+            "functions": [{"device": device, "netdev": netdev, "mac": mac(letter, index), "carrier": True,
+                           "addresses": [f"fe80::{letter}{index}"]} for index, (netdev, device) in enumerate(FUNCTIONS)],
+            "neighbors": []}
+
+
+def neighbor(netdev, letter, index, answered=True):
+    return {"dev": netdev, "dst": f"fe80::{letter}{index}", "lladdr": mac(letter, index), "answered": answered}
+
+
+def pair_inventories():
+    a, b = spark("a", "192.168.0.200"), spark("b", "192.168.0.137")
+    # Node A sees each worker function on its own cable; Socket Direct also
+    # shows it a crossed function, and one cache entry did not answer.
+    a["neighbors"] = [neighbor(netdev, "b", index) for index, (netdev, _) in enumerate(FUNCTIONS)]
+    a["neighbors"] += [neighbor("enp1s0f0np0", "b", 1), neighbor("enP2p1s0f1np1", "b", 0, answered=False)]
+    b["neighbors"] = [neighbor("enp1s0f1np1", "a", 2)]
+    return a, b
+
+
+def pair_plan(**changes):
+    a, b = pair_inventories()
+    a.update(changes)
+    edge = [{"id": "hw-a", "netdev": "enp1s0f1np1", "address": "fe80::a2", "mac": mac("a", 2)},
+            {"id": "hw-b", "netdev": "enp1s0f1np1", "address": "fe80::b2", "mac": mac("b", 2)}]
+    return control.plan([a, b], [edge], "hw-a"), {"hw-a": a, "hw-b": b}
+
+
+def cable(local, peer, netdev, index):
+    return {"via": "cable", "netdev": netdev, "mac": mac(local, index), "address": f"fe80::{local}{index}",
+            "peer": f"fe80::{peer}{index}"}
+
+
+def test_plan_lists_the_other_cables_then_the_lan_as_fallbacks_in_the_same_order_on_both_ends():
+    (head, worker), inventories = pair_plan()
+    [to_worker], [to_head] = head["peers"], worker["peers"]
+    assert to_worker["endpoint"] == "[fe80::b2%enp1s0f1np1]:51871"
+    # The port 0 cable first, parallel functions before crossed ones; then the
+    # primary cable's other function; then the LAN.
+    assert to_worker["alternates"] == [cable("a", "b", "enP2p1s0f0np0", 1), cable("a", "b", "enp1s0f0np0", 0),
+                                       cable("a", "b", "enP2p1s0f1np1", 3),
+                                       {"via": "lan", "netdev": LAN_NETDEV, "peer": "192.168.0.137"}]
+    assert to_head["alternates"] == [cable("b", "a", "enP2p1s0f0np0", 1), cable("b", "a", "enp1s0f0np0", 0),
+                                     cable("b", "a", "enP2p1s0f1np1", 3),
+                                     {"via": "lan", "netdev": LAN_NETDEV, "peer": "192.168.0.200"}]
+    assert (to_worker["address"], to_head["address"]) == ("10.253.255.2", "10.253.255.1")
+    for config in (head, worker):
+        control.validate(config)
+    # An installed configuration without fallbacks gains exactly these.
+    assert control.extend([control.base(c) for c in (head, worker)], inventories) == [head, worker]
+    assert control.render(head, CONTROL_PRIVATE) == control.render(control.base(head), CONTROL_PRIVATE)
+
+
+def test_plan_without_a_lan_address_or_second_cable_lists_what_exists():
+    (head, worker), _ = pair_plan(api_address=None)
+    assert [p["via"] for p in head["peers"][0]["alternates"]] == ["cable"] * 3
+    nodes, edges = fixture(2)
+    assert all(p["alternates"] == [] for config in control.plan(nodes, edges, "0") for p in config["peers"])
+
+
+def test_ring_tree_links_get_lan_fallbacks_between_their_two_sparks():
+    nodes, edges = fixture(4)
+    for rank, n in enumerate(nodes):
+        n.update(api_address=f"192.168.0.{130 + rank}")
+    plans = {p["id"]: p for p in control.plan(nodes, edges, "0")}
+    for config in plans.values():
+        for peer in config["peers"]:
+            assert peer["alternates"] == [{"via": "lan", "netdev": "eth0", "peer": f"192.168.0.{130 + int(peer['id'])}"}]
+    head_rules = control.firewall(plans["0"])
+    for peer in plans["0"]["peers"]:
+        assert ("iptables", ["INPUT", "-i", "eth0", "-s", f"192.168.0.{130 + int(peer['id'])}/32", "-p", "udp",
+                             "--dport", "51871", "-j", "ACCEPT"]) in head_rules
+
+
+def test_firewall_opens_the_tunnel_port_on_fallbacks_only_to_that_peer():
+    (head, _), _ = pair_plan()
+    tunnel = [rule for rule in control.firewall(head) if "51871" in rule[1]]
+    assert tunnel == [
+        ("ip6tables", ["INPUT", "-i", "enp1s0f1np1", "-s", "fe80::/10", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"]),
+        ("ip6tables", ["INPUT", "-i", "enP2p1s0f0np0", "-s", "fe80::b1/128", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"]),
+        ("ip6tables", ["INPUT", "-i", "enp1s0f0np0", "-s", "fe80::b0/128", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"]),
+        ("ip6tables", ["INPUT", "-i", "enP2p1s0f1np1", "-s", "fe80::b3/128", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"]),
+        ("iptables", ["INPUT", "-i", LAN_NETDEV, "-s", "192.168.0.137/32", "-p", "udp", "--dport", "51871", "-j", "ACCEPT"])]
+
+
+@pytest.mark.parametrize("change, message", [
+    (lambda path: path.update(via="wifi"), "cable or the LAN"),
+    (lambda path: path.update(address="2001:db8::1"), "link-local"),
+    (lambda path: path.update(extra=1), "unexpected fields"),
+    (lambda path: path.update(netdev="bad name"), "Invalid fabric interface"),
+])
+def test_fallback_paths_are_validated(change, message):
+    (head, _), _ = pair_plan()
+    change(head["peers"][0]["alternates"][0])
+    with pytest.raises(ValueError, match=message):
+        control.validate(head)
+
+
+def test_a_fallback_lan_address_inside_the_administration_subnet_is_refused():
+    (head, _), _ = pair_plan()
+    head["peers"][0]["alternates"][-1]["peer"] = "10.253.255.3"
+    with pytest.raises(ValueError, match="outside the administration subnet"):
+        control.validate(head)
+
+
+class TunnelHost(ControlHost):
+    """One Spark of the pair: carrier files, fallback functions, and a WireGuard peer that ``wg set`` moves."""
+
+    def __init__(self, root, config, *, now):
+        super().__init__(root, config)
+        self.peer = config["peers"][0]
+        for path in self.peer["alternates"]:
+            if path["via"] == "cable":
+                self.set_mac(path["netdev"], path["mac"])
+                self.link_local[path["netdev"]] = [path["address"]]
+        for name, _ in FUNCTIONS:
+            self.carrier(name, True)
+        self.carrier(LAN_NETDEV, True)
+        self.endpoint, self.handshake, self.received = self.peer["endpoint"], now - 30, 1000
+        self.contacted, self.said = [], []
+
+    def carrier(self, netdev, up):
+        directory = self.root / "sys/class/net" / netdev
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "carrier").write_text("1\n" if up else "0\n")
+        (directory / "operstate").write_text("up\n" if up else "down\n")
+
+    def __call__(self, argv, **kwargs):
+        if argv == ["wg", "show", control.INTERFACE, "dump"]:
+            self.calls.append(list(argv))
+            dump = (f"PRIVATE\tPUBLIC\t51871\toff\n{self.peer['key']}\t(none)\t{self.endpoint}\t10.253.255.0/29\t"
+                    f"{self.handshake}\t{self.received}\t2000\t15\n")
+            return subprocess.CompletedProcess(argv, 0, dump, "")
+        if argv[:3] == ["wg", "set", control.INTERFACE]:
+            self.endpoint = argv[-1]
+        return super().__call__(argv, **kwargs)
+
+    def up(self, now):
+        self.calls.clear()
+        return control_node.up(root=self.root, run=self, now=lambda: now, contact=self.contacted.append,
+                               say=self.said.append)
+
+
+def unplug(host, cable_port, up=False):
+    """Set the carrier of both functions of one ConnectX port, as a cable change does."""
+    for name, device in FUNCTIONS:
+        if device.endswith(f"f{cable_port}"):
+            host.carrier(name, up)
+
+
+T = 1_000_000
+
+
+def test_an_unplugged_primary_cable_moves_the_peer_to_the_other_cable_and_back(tmp_path):
+    (head, _), _ = pair_plan()
+    host = TunnelHost(tmp_path, head, now=T)
+    assert host.up(T) == {"control_up": True}
+    assert host.refreshed() == [] and host.contacted == []
+    # The primary cable loses carrier on both of its functions.
+    unplug(host, 1)
+    assert host.up(T + 20) == {"control_up": True}
+    assert host.endpoint == "[fe80::b1%enP2p1s0f0np0]:51871" and host.contacted == ["10.253.255.2"]
+    assert host.said == ["sr-control: peer 10.253.255.2 now uses cable enP2p1s0f0np0 (cable enp1s0f1np1: link down)"]
+    # The worker answered over the new path; the peer stays there.
+    host.received += 60
+    host.up(T + 40)
+    assert host.refreshed() == [] and host.contacted == ["10.253.255.2"]
+    report = node.control_report(root=tmp_path, run=host, now=lambda: T + 40)
+    assert report["peers"][0]["path"] == {"via": "cable", "netdev": "enP2p1s0f0np0", "address": "fe80::b1",
+                                          "primary": False}
+    assert node.tunnel_problems(report) == ["admin tunnel to 10.253.255.2 runs over cable enP2p1s0f0np0 "
+                                            "(primary cable enp1s0f1np1: no link)"]
+    # The cable returns: once its link has passed on two refreshes, the peer returns to it.
+    unplug(host, 1, up=True)
+    host.up(T + 60)
+    assert host.refreshed() == []
+    host.up(T + 80)
+    assert host.endpoint == "[fe80::b2%enp1s0f1np1]:51871" and host.contacted == ["10.253.255.2"] * 2
+    assert host.said[-1] == ("sr-control: peer 10.253.255.2 now uses cable enp1s0f1np1 "
+                             "(cable enp1s0f1np1 passes its link check again)")
+    host.handshake = T + 90
+    host.up(T + 100)
+    assert host.refreshed() == []
+    assert node.tunnel_problems(node.control_report(root=tmp_path, run=host, now=lambda: T + 100)) == []
+
+
+def test_a_missing_primary_function_is_carried_by_a_fallback_without_failing_the_refresh(tmp_path):
+    (head, _), _ = pair_plan()
+    host = TunnelHost(tmp_path, head, now=T)
+    break_link(host, head, "enp1s0f1np1", "absent")
+    assert host.up(T) == {"control_up": True}
+    assert host.endpoint == "[fe80::b1%enP2p1s0f0np0]:51871"
+    assert host.said[-1] == "sr-control: enp1s0f1np1: interface is not present; a fallback path carries its peer"
+    # Without any usable path, the failed link is named as before.
+    for name, _ in FUNCTIONS:
+        host.carrier(name, False)
+    host.carrier(LAN_NETDEV, False)
+    with pytest.raises(ValueError, match="enp1s0f1np1: interface is not present"):
+        host.up(T + 20)
+
+
+def test_a_fallback_that_does_not_answer_is_skipped_for_the_next(tmp_path):
+    (head, _), _ = pair_plan()
+    host = TunnelHost(tmp_path, head, now=T)
+    unplug(host, 1)
+    host.up(T)
+    assert host.endpoint == "[fe80::b1%enP2p1s0f0np0]:51871"
+    # No handshake and no byte arrived over that cable by the next refresh.
+    host.up(T + 20)
+    assert host.endpoint == "[fe80::b0%enp1s0f0np0]:51871"
+    assert host.said[-1] == ("sr-control: peer 10.253.255.2 now uses cable enp1s0f0np0 "
+                             "(no answer over cable enP2p1s0f0np0)")
+    host.up(T + 40)
+    # The primary cable's other function has no carrier either; the LAN is next.
+    assert host.endpoint == "192.168.0.137:51871" and host.contacted == ["10.253.255.2"] * 3
+    host.handshake = T + 50
+    host.up(T + 60)
+    assert host.refreshed() == []
+
+
+def test_a_peer_moved_by_the_other_sparks_packets_stays_where_they_arrive(tmp_path):
+    """The worker's own links pass; Node A moved the tunnel to the port 0 cable, and WireGuard followed."""
+    (_, worker), _ = pair_plan()
+    host = TunnelHost(tmp_path, worker, now=T)
+    host.up(T)
+    host.endpoint = "[fe80::a1%enP2p1s0f0np0]:51871"
+    for step in range(1, 6):
+        host.handshake = T + 20 * step - 5
+        host.up(T + 20 * step)
+        assert host.refreshed() == [] and host.contacted == []
+    # Node A returns to the primary cable; WireGuard follows again.
+    host.endpoint = "[fe80::a2%enp1s0f1np1]:51871"
+    host.up(T + 120)
+    assert host.refreshed() == []
+
+
+def test_a_stale_interface_index_is_set_again_without_moving_the_peer(tmp_path):
+    (head, _), _ = pair_plan()
+    host = TunnelHost(tmp_path, head, now=T)
+    host.endpoint = "[fe80::b2%17]:51871"
+    host.up(T)
+    assert host.endpoint == "[fe80::b2%enp1s0f1np1]:51871" and host.contacted == [] and host.said == []
+
+
+def test_a_failed_return_to_the_primary_holds_it_back_with_a_doubling_delay():
+    handshake, state, current, outcomes = T - 10, None, 0, []
+    # (time, links usable, bytes received): the primary is down, comes back at
+    # T + 40, and gives no answer after the return at T + 60.
+    for at, links, received in [(T, [False, True], 0), (T + 20, [False, True], 5), (T + 40, [True, True], 5),
+                                (T + 60, [True, True], 5), (T + 80, [True, True], 5), (T + 100, [True, True], 6)]:
+        target, check, reason, state = control.choose(state, links, current, handshake, received, at, has_endpoint=True)
+        outcomes.append((target, check, reason))
+        current = target if target is not None else current
+    assert outcomes == [(1, True, "link"),
+                        (1, False, None),       # bytes arrived over the fallback: confirmed
+                        (1, False, None),       # the primary passes, not yet for PRIMARY_SETTLE
+                        (0, True, "primary"),
+                        (1, True, "answer"),    # no answer on the primary: back to the fallback
+                        (1, False, None)]
+    assert state["held"] == T + 80 + control.PRIMARY_RETRY and state["returns"] == 1
+    # The fallback keeps its handshakes; the primary is tried again when the hold ends.
+    later = T + 80 + control.PRIMARY_RETRY
+    target, _, reason, state = control.choose(state, [True, True], 1, later - 10, 6, later, has_endpoint=True)
+    assert (target, reason) == (0, "primary")
+    target, _, _, state = control.choose(state, [True, True], 0, later - 10, 6, later + 20, has_endpoint=True)
+    assert target == 1 and state["returns"] == 2 and state["held"] == later + 20 + 2 * control.PRIMARY_RETRY
+    # A primary link that goes down and up again is tried at once.
+    _, _, _, state = control.choose(state, [False, True], 1, later + 30, 7, later + 40, has_endpoint=True)
+    assert state["held"] is None and state["returns"] == 0
+
+
+def test_when_every_path_fails_the_peer_settles_on_the_most_preferred_usable_one():
+    handshake, state, current, seen = T - 1000, None, 0, []
+    for at in range(T, T + 200, 20):
+        target, _, _, state = control.choose(state, [False, True, True], current, handshake, 0, at, has_endpoint=True)
+        seen.append(target)
+        current = target if target is not None else current
+    # Each fallback gets one refresh to answer; then the first usable one stays.
+    assert seen[:3] == [1, 2, 1] and set(seen[3:]) == {1}
+    assert state["verify"] is None and set(state["failed"]) == {"1", "2"}
+    # A handshake after the failures clears them.
+    _, _, _, state = control.choose(state, [False, True, True], 1, T + 300, 0, T + 310, has_endpoint=True)
+    assert state["failed"] == {}
+
+
+def test_a_path_without_a_handshake_for_the_stale_limit_is_left():
+    target, _, _, state = control.choose(None, [True, True], 0, T, 0, T, has_endpoint=True)
+    assert target == 0
+    target, _, _, state = control.choose(state, [True, True], 0, T, 0, T + control.HANDSHAKE_STALE, has_endpoint=True)
+    assert target == 0
+    target, check, reason, state = control.choose(state, [True, True], 0, T, 0, T + control.HANDSHAKE_STALE + 1,
+                                                  has_endpoint=True)
+    assert (target, check, reason) == (1, True, "handshake") and state["held"] is not None
+
+
+def test_configure_adds_fallbacks_to_an_installed_configuration_and_refuses_other_changes(tmp_path):
+    (head, _), _ = pair_plan()
+    (tmp_path / "etc").mkdir()
+    (tmp_path / "etc/machine-id").write_text("hw-a\n")
+    node.save(tmp_path, "/etc/sparkring/control.json", control.base(head), mode=0o600)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    document = {"control": head, "ssh_key": "ssh-ed25519 " + CONTROL_PUBLIC + " controller"}
+    assert control_node.configure(document, root=tmp_path, run=run) == {
+        "configured": True, "address": "10.253.255.1", "fallback_paths": 4}
+    assert node.read(tmp_path, "/etc/sparkring/control.json") == head
+    assert calls == [["systemctl", "start", "--no-block", "sparkring-control-refresh.service"]]
+    # Replacing the fallbacks removes the firewall rules of paths no longer listed.
+    replaced = copy.deepcopy(head)
+    replaced["peers"][0]["alternates"][-1]["peer"] = "192.168.0.140"
+    calls.clear()
+    control_node.configure({**document, "control": replaced}, root=tmp_path, run=run)
+    assert [call for call in calls if "-D" in call] == [
+        ["iptables", "-w", "-D", "INPUT", "-i", LAN_NETDEV, "-s", "192.168.0.137/32", "-p", "udp", "--dport", "51871",
+         "-m", "comment", "--comment", "sparkring-control", "-j", "ACCEPT"]]
+    for change in (lambda c: c.update(address="10.253.255.3"), lambda c: c["peers"][0].update(key=CONTROL_PUBLIC),
+                   lambda c: c["peers"][0].update(endpoint="[fe80::b9%enp1s0f1np1]:51871")):
+        other = copy.deepcopy(replaced)
+        change(other)
+        with pytest.raises(ValueError, match="different control network"):
+            control_node.configure({**document, "control": other}, root=tmp_path, run=run)
+    assert node.read(tmp_path, "/etc/sparkring/control.json") == replaced
+
+
+def test_setup_admin_fallback_extends_every_installed_spark(tmp_path, monkeypatch, capsys):
+    from runtime.common import installer
+    from runtime.host import single_uplink
+    (head, worker), inventories = pair_plan()
+    targets = ["root@10.253.255.1", "root@10.253.255.2"]
+    installer.write(tmp_path / "enrolled.json", {"targets": targets})
+    installed = {targets[0]: control.base(head), targets[1]: control.base(worker)}
+    probes = {targets[0]: inventories["hw-a"], targets[1]: inventories["hw-b"]}
+    configured = {}
+
+    def invoke(target, argv, data=None):
+        if argv[:3] == ["sudo", "-n", "cat"]:
+            return json.dumps(installed[target])
+        if argv[:4] == ["sudo", "-n", "python3", "-I"]:
+            return json.dumps(probes[target])
+        assert argv == ["sudo", "-n", "/usr/bin/sparkring", "node", "control-configure"]
+        configured[target] = json.loads(data)
+        return "{}"
+
+    updated = []
+    monkeypatch.setattr(single_uplink, "match_revisions", lambda t, nodes, directory: updated.append(t) or nodes)
+
+    def run(*flags):
+        args = single_uplink._arguments(["--admin-fallback", *flags])[0]
+        return single_uplink.admin_fallback(args, tmp_path, "ssh-ed25519 KEY", tmp_path / "setup", invoke=invoke,
+                                            collect=lambda t: [])
+
+    assert run("--plan") == 0
+    out = capsys.readouterr().out
+    assert ("  spark-a to 10.253.255.2: cable enP2p1s0f0np0, cable enp1s0f0np0, cable enP2p1s0f1np1, "
+            "LAN 192.168.0.137") in out
+    assert configured == {} and updated == []
+    assert run("--yes") == 0
+    assert configured == {targets[0]: {"control": head, "ssh_key": "ssh-ed25519 KEY"},
+                          targets[1]: {"control": worker, "ssh_key": "ssh-ed25519 KEY"}}
+    assert updated == [targets]
+    installed.update({target: document["control"] for target, document in configured.items()})
+    configured.clear()
+    assert run("--yes") == 0
+    assert configured == {} and "Every Spark already has these fallback paths." in capsys.readouterr().out

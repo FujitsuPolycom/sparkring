@@ -4,9 +4,18 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
+import sys
+import time
 
 from runtime.host import bootstrap, control, node
+
+# Where up() keeps each fallback-capable peer's path state between refreshes
+# (control.choose). Under /run, so a boot starts on the primary paths.
+PATH_STATE = "/run/sparkring-control/paths.json"
+# Seconds a confirmation contact waits for the peer's SSH port to answer.
+PROBE_TIMEOUT = 3
 
 
 def write(path, text, *, root="/", mode=0o600):
@@ -96,10 +105,123 @@ def require_underlay(netdev=None, *, root="/", run=subprocess.run):
         raise _failure(problems)
 
 
-def _set_endpoint(peer, *, run):
+def _set_endpoint(peer, *, run, endpoint=None):
     # wg resolves the endpoint's interface name again, which updates the scope
     # (ifindex) that a driver restart of that function made stale.
-    node.call(["wg", "set", control.INTERFACE, "peer", peer["key"], "endpoint", peer["endpoint"]], run=run)
+    node.call(["wg", "set", control.INTERFACE, "peer", peer["key"], "endpoint", endpoint or peer["endpoint"]], run=run)
+
+
+def probe(address, *, timeout=PROBE_TIMEOUT):
+    """Open and close a TCP connection to a peer's administration SSH port over the tunnel.
+
+    Any answer, an accepted connection or a refusal, crosses the tunnel back,
+    so WireGuard counts received bytes when the peer's path works. The
+    firewall rules of control.firewall accept this port from the
+    administration subnet on every Spark. Returns whether the peer answered.
+    """
+    try:
+        with socket.create_connection((str(ipaddress.IPv4Address(address)), control.SSH_PORT), timeout=timeout):
+            return True
+    except ConnectionRefusedError:
+        return True
+    except OSError:
+        return False
+
+
+def _observed(run):
+    """{peer key: {"endpoint", "handshake", "received"}} from ``wg show sr-control dump``."""
+    result = node.call(["wg", "show", control.INTERFACE, "dump"], run=run, accepted=(0, 1))
+    rows = {}
+    # The first line describes the interface itself, including its private key.
+    for line in result.stdout.splitlines()[1:] if result.returncode == 0 else []:
+        fields = line.split("\t")
+        if len(fields) >= 6:
+            rows[fields[0]] = {"endpoint": None if fields[2] == "(none)" else fields[2],
+                               "handshake": int(fields[4]) if fields[4].isdigit() else 0,
+                               "received": int(fields[5]) if fields[5].isdigit() else 0}
+    return rows
+
+
+def _usable(path, *, primary, root, run, failed):
+    """Whether a path's local link can carry the tunnel now.
+
+    Every path needs carrier on its interface. A cable path also needs its
+    function to pass the link check of _link_problem (MAC and link-local
+    address); for the primary path, the recorded link, underlay() has run
+    that check and ``failed`` holds the result.
+    """
+    carrier, _ = node.link_state(path["netdev"], root=root)
+    if carrier is not True:
+        return False
+    if primary:
+        return path["netdev"] not in failed
+    return path["via"] == "lan" or _link_problem(path, root=root, run=run) is None
+
+
+def _journal(line):
+    """Write one line to stderr, which systemd records in the refresh service's journal."""
+    print(line, file=sys.stderr, flush=True)
+
+
+def _read_states(root):
+    try:
+        value = json.loads(node.location(root, PATH_STATE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def select(config, failed, *, root="/", run=subprocess.run, now=time.time, contact=probe, say=None):
+    """Set each peer's endpoint to the path it should use; return the recorded links that fallbacks carry.
+
+    ``failed`` names the recorded links that fail their check (underlay).
+    A peer without fallback paths gets its recorded endpoint set again when
+    its link passes. A peer with fallback paths gets the path control.choose
+    picks from its links, WireGuard's endpoint, latest handshake and received
+    bytes; its endpoint is set only when it differs from that path's,
+    interface name included, so WireGuard's own move to the source of the
+    peer's packets stands. After a move this contacts the peer's control
+    address (``contact``), whose answer the next refresh looks for.
+
+    Returns the set of recorded links whose peer uses a usable fallback path.
+    """
+    say = say or _journal
+    plain = [peer for peer in config["peers"] if not peer.get("alternates")]
+    for peer in plain:
+        if peer["netdev"] not in failed:
+            _set_endpoint(peer, run=run)
+    capable = [peer for peer in config["peers"] if peer.get("alternates")]
+    if not capable:
+        return set()
+    observed = _observed(run)
+    states = _read_states(root)
+    carried = set()
+    for peer in capable:
+        options = control.paths(config, peer)
+        usable = [_usable(path, primary=index == 0, root=root, run=run, failed=failed)
+                  for index, path in enumerate(options)]
+        seen = observed.get(peer["key"], {})
+        current = control.match(options, seen.get("endpoint"))
+        target, check, reason, states[peer["key"]] = control.choose(
+            states.get(peer["key"]), usable, current, seen.get("handshake", 0), seen.get("received", 0), now(),
+            has_endpoint=bool(seen.get("endpoint")))
+        if target is not None and not control.same_endpoint(seen.get("endpoint"), options[target]):
+            _set_endpoint(peer, run=run, endpoint=control.endpoint(options[target]))
+            if target != current:
+                before = control.path_text(options[current]) if current is not None else "no known path"
+                why = {"link": f"{before}: link down", "answer": f"no answer over {before}",
+                       "handshake": f"no handshake over {before} for {control.HANDSHAKE_STALE} s",
+                       "endpoint": "no known path in use",
+                       "primary": f"{control.path_text(options[0])} passes its link check again"}.get(reason, before)
+                say(f"{control.INTERFACE}: peer {peer.get('address') or peer['id']} now uses "
+                    f"{control.path_text(options[target])} ({why})")
+            if check and peer.get("address"):
+                contact(peer["address"])
+        chosen = current if target is None else target
+        if chosen is not None and chosen != 0 and usable[chosen]:
+            carried.add(peer["netdev"])
+    _write_private(PATH_STATE, json.dumps(states, indent=2, sort_keys=True) + "\n", root=root)
+    return carried
 
 
 def refresh_endpoint(netdev, *, root="/", run=subprocess.run):
@@ -130,16 +252,54 @@ def identities(root="/"):
     return {machine, bootstrap.fabric_identity(guids, machine)}
 
 
+def _rule_command(binary, rule, action):
+    """The iptables command that checks (-C), inserts (-I) or deletes (-D) one rule of control.firewall."""
+    table = rule[:2] if rule[0] == "-t" else []
+    body = rule[2:] if table else rule
+    # The comment makes ownership visible without flushing another tool's rules.
+    body = [*body[:-2], "-m", "comment", "--comment", "sparkring-control", *body[-2:]]
+    return [binary, "-w", *table, action, *body]
+
+
+def extend(config, *, root="/", run=subprocess.run):
+    """Replace the fallback paths of the installed configuration; change nothing else.
+
+    ``config`` must equal the installed /etc/sparkring/control.json except
+    for the peer fields of control.EXTENSION. The firewall rules of fallback
+    paths that ``config`` no longer lists are removed; the refresh service
+    then adds the new ones and selects each peer's path.
+    """
+    installed = node.read(root, "/etc/sparkring/control.json")
+    if control.base(installed) != control.base(config):
+        raise ValueError("A different control network is installed; inspect before replacing it")
+    control.validate(config)
+    kept = control.firewall(config)
+    node.save(root, "/etc/sparkring/control.json", config, mode=0o600)
+    for binary, rule in control.firewall(installed):
+        if (binary, rule) not in kept:
+            node.call(_rule_command(binary, rule, "-D"), run=run, accepted=(0, 1))
+    node.call(["systemctl", "start", "--no-block", "sparkring-control-refresh.service"], run=run)
+    return {"configured": True, "address": str(ipaddress.IPv4Address(config["address"])),
+            "fallback_paths": sum(len(peer.get("alternates") or []) for peer in config["peers"])}
+
+
 def configure(document, *, root="/", run=subprocess.run):
+    """Install this Spark's administration network configuration, or extend the installed one.
+
+    A configuration that differs from the installed one only in its peers'
+    fallback paths (control.EXTENSION) replaces those through extend(); any
+    other difference is refused.
+    """
     config = document["control"]
     if config.get("schema") != "sparkring-control/v1" or config["id"] not in identities(root):
         raise ValueError("Control configuration belongs to another machine")
     pubkey = document["ssh_key"]
     if not re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]*)?", pubkey):
         raise ValueError("Use the controller's Ed25519 public key")
+    control.validate(config)
     existing = node.location(root, "/etc/sparkring/control.json")
     if existing.exists() and node.read(root, "/etc/sparkring/control.json") != config:
-        raise ValueError("A different control network is installed; inspect before replacing it")
+        return extend(config, root=root, run=run)
     private = node.location(root, "/etc/sparkring/control.key").read_text().strip()
     rendered = control.render(config, private)
     control.firewall(config)
@@ -201,7 +361,7 @@ def _write_private(name, text, *, root):
     return destination
 
 
-def up(*, root="/", run=subprocess.run):
+def up(*, root="/", run=subprocess.run, now=time.time, contact=probe, say=None):
     """Bring sr-control up over every healthy administration link; raise naming the failed links.
 
     A link fails its check when its interface is missing, its MAC differs from
@@ -216,13 +376,18 @@ def up(*, root="/", run=subprocess.run):
       that peer's first authenticated packet. A Spark whose child-facing
       function failed to restart at boot therefore stays reachable over its
       parent-facing link.
-    - Every peer whose link passes gets its endpoint set again, which updates
-      the interface index that a driver restart of that function made stale.
-      A link whose MAC differs from the record is never refreshed.
+    - The forwarding sysctls and firewall rules are applied, including the
+      rules of every fallback path, before any endpoint moves.
+    - Each peer gets its endpoint from select(): a peer without fallback paths
+      gets its recorded endpoint set again when its link passes, which updates
+      the interface index that a driver restart of that function made stale;
+      a link whose MAC differs from the record is never refreshed. A peer with
+      fallback paths moves between its paths by control.choose.
 
-    The forwarding sysctls, firewall rules and DNS settings are applied in each
-    case. The call then raises when a link failed; the refresh timer runs it
-    again every 20 seconds and sets each missing endpoint once its link passes.
+    DNS settings follow. The call then raises naming each failed link whose
+    peer no usable fallback path carries; a failed link that a fallback
+    carries is only logged. The refresh timer runs this every 20 seconds, so
+    each missing endpoint is set once its link passes.
     """
     config = node.read(root, "/etc/sparkring/control.json")
     problems = underlay(root=root, run=run)
@@ -239,22 +404,16 @@ def up(*, root="/", run=subprocess.run):
         node.call(["wg-quick", "up", str(path)], run=run)
     else:
         node.call(["wg-quick", "up", control.INTERFACE], run=run)
-    for peer in config["peers"]:
-        if peer["netdev"] not in failed:
-            _set_endpoint(peer, run=run)
     devices = [control.INTERFACE]
     if config["head"] and config["share_uplink"]:
         devices.append(control.netdev(config["uplink"]))
     for device in devices:
         node.call(["sysctl", "-w", f"net.ipv4.conf.{device}.forwarding=1"], run=run)
     for binary, rule in control.firewall(config):
-        table = rule[:2] if rule[0] == "-t" else []
-        body = rule[2:] if table else rule
-        # The comment makes ownership visible without flushing another tool's rules.
-        body = [*body[:-2], "-m", "comment", "--comment", "sparkring-control", *body[-2:]]
-        found = node.call([binary, "-w", *table, "-C", *body], run=run, accepted=(0, 1)).returncode == 0
+        found = node.call(_rule_command(binary, rule, "-C"), run=run, accepted=(0, 1)).returncode == 0
         if not found:
-            node.call([binary, "-w", *table, "-I", *body], run=run)
+            node.call(_rule_command(binary, rule, "-I"), run=run)
+    carried = select(config, failed, root=root, run=run, now=now, contact=contact, say=say)
     if config["share_uplink"]:
         if config["head"]:
             node.call(["systemctl", "enable", "sparkring-dns.service"], run=run)
@@ -263,8 +422,13 @@ def up(*, root="/", run=subprocess.run):
             node.call(["resolvectl", "dns", control.INTERFACE, config["head_address"]], run=run)
             node.call(["resolvectl", "domain", control.INTERFACE, "~."], run=run)
             node.call(["resolvectl", "default-route", control.INTERFACE, "yes"], run=run)
-    if problems:
-        raise _failure(problems)
+    unreached = [problem for problem in problems if problem["netdev"] not in carried]
+    for problem in problems:
+        if problem["netdev"] in carried:
+            (say or _journal)(f"{control.INTERFACE}: {problem['netdev']}: {problem['error']}; "
+                              "a fallback path carries its peer")
+    if unreached:
+        raise _failure(unreached)
     return {"control_up": True}
 
 

@@ -489,8 +489,11 @@ def lifecycle(argv):
                     if name not in attention:
                         attention.append(name)
                 reason = recovery.tunnel_reason(result.get("control"), row["host"]) if rank else None
+                fallback = recovery.tunnel_fallback(result.get("control"), row["host"]) if rank else None
                 if reason:
                     print("    admin tunnel: " + reason.removeprefix("the admin tunnel has "))
+                elif fallback:
+                    print("    admin tunnel: " + fallback)
             if attention:
                 print("Sparks that need attention: " + ", ".join(attention))
             if result.get("deployment"):
