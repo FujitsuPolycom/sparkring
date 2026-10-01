@@ -20,6 +20,8 @@ builder for every release that has an `installer-image.json` lock.
 | `dev-20260928-toolchoice-cuda1342-nccl2323-status032` | `dev-20260928-peerwait-cuda1342-nccl2323-status032` | Named and required Chat Completions `tool_choice` requests without a complete call fail with HTTP 400 when the token limit ended generation and HTTP 500 otherwise ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)) | `installer-tool-choice-contract`, [derive_tool_choice_contract.py](derive_tool_choice_contract.py) |
 | `dev-20260928-plainstatus-cuda1342-nccl2323-status033` | `dev-20260928-toolchoice-cuda1342-nccl2323-status032` | Runtime-status 0.3.3 | `installer-derived-layer`, [derived_layer.py](derived_layer.py) with descriptor [installer-plainstatus-status033](compositions/installer-plainstatus-status033/descriptor.json) |
 | `dev-20260930-spinwait-cuda1342-nccl2323-status033` | `dev-20260928-plainstatus-cuda1342-nccl2323-status033` | vLLM's shared-memory readers poll for `SPARKRING_SHM_BUSY_LOOP_S` seconds after a read when it is set, one second otherwise | `installer-spin-wait`, [derive_spin_wait.py](derive_spin_wait.py) |
+| `dev-20261001-portgid-cuda1342-nccl2323-status033` | `dev-20260930-spinwait-cuda1342-nccl2323-status033` | Each HCA of a RoCEnante runtime uses the RoCE GID index of its fabric address's RoCE v2 GID, read at startup ([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)); proxy ABI 6, transport manifest `d5e790c5173c` | `installer-transport-port-gid`, [derive_transport_port_gid.py](derive_transport_port_gid.py) |
+| `dev-20261001-statusrows-cuda1342-nccl2323-status034` | `dev-20261001-portgid-cuda1342-nccl2323-status033` | Runtime-status 0.3.4, whose settings tables add the reasoning parser, tool-call parser, default chat template arguments and shared-memory reader window | `installer-derived-layer`, [derived_layer.py](derived_layer.py) with descriptor [installer-statusrows-status034](compositions/installer-statusrows-status034/descriptor.json) |
 
 Each release's `publication.json` names its parent and describes its layer.
 [cuda134-nccl232.md](cuda134-nccl232.md) documents the toolchain layer and the
@@ -78,6 +80,10 @@ and records the new transport manifest in the receipt and the derived lock;
 same bundle's supervised peer wait over
 `dev-20260927-mimovision-cuda1342-nccl2323-status032`, replacing exactly six
 bundle files pinned to their parent and resulting SHA-256;
+[derive_transport_port_gid.py](derive_transport_port_gid.py) installs the
+bundle's RoCE GID index per HCA over
+`dev-20260930-spinwait-cuda1342-nccl2323-status033` the same way, with four
+pinned files;
 [derive_tp2_hc.py](derive_tp2_hc.py) lists the TP2 row-sharding HC mode;
 [derive_staging_fix.py](derive_staging_fix.py) pins `vllm/v1/utils.py`. Every
 replaced path must already be recorded by the parent receipt, and its bytes in
@@ -100,7 +106,34 @@ python3 runtime/images/derive_transport_peer_wait.py prepare \
 installed manifest, `9f2c0ae62e1e` for the published layer; installer
 containers export it as `SPARKRING_TRANSPORT_MANIFEST_SHA256`. Ranks of this image and of its parent refuse to
 connect to each other (proxy ABI 5 and 4), so every Spark of a deployment must
-run the same image.
+run the same image. A transport layer reads its replacement files from the
+repository bundle, so it prepares only from a revision whose bundle differs
+from its parent in exactly its pinned files: the peer-wait layer from
+`ce396adef06d5ff17a621465ba75d1c83830d7b0`, the port-GID layer from a revision
+that holds its four resulting files.
+
+The port-GID layer produces
+`dev-20261001-portgid-cuda1342-nccl2323-status033`, in which each HCA of a
+RoCEnante runtime uses the RoCE GID index of its fabric address's RoCE v2 GID,
+read at startup, and the configured index only when its GID table does not
+identify that GID
+([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)).
+Its build takes the parent lock:
+
+```bash
+python3 runtime/images/derive_transport_port_gid.py prepare \
+  --parent-lock runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/installer-image.json \
+  --output CONTEXT
+python3 runtime/images/derive_transport_port_gid.py build --context CONTEXT \
+  --tag sparkring:portgid --name dev-20261001-portgid-cuda1342-nccl2323-status033 --output LOCK
+```
+
+`prepare` computes the installed manifest from the parent's, and `record`
+writes its SHA-256 as the lock's `transport_manifest_sha256`, `d5e790c5173c`
+for the published layer. Ranks of this image and of its parent refuse to
+connect to each other (proxy ABI 6 and 5), so every Spark of a deployment must
+run the same image. The `installer-transport-port-gid` entry of
+[builders.json](builders.json) lists the release.
 
 ### Replacing the runtime-status package
 
@@ -129,7 +162,15 @@ the version 0.3.2 wheel and source archive, built from Git tree
 [integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md#building-the-image-artifacts),
 whose README gives the build commands. The `installer-plainstatus-status033`
 descriptor pins the version 0.3.3 wheel and source archive, built the same way
-from Git tree `b82d56e0a8a5a04470fc679be9c7a665a7ab7fef`.
+from Git tree `b82d56e0a8a5a04470fc679be9c7a665a7ab7fef`. The
+[installer-statusrows-status034](compositions/installer-statusrows-status034/descriptor.json)
+descriptor pins the version 0.3.4 wheel and source archive, built from Git tree
+`899362a503a4ac2a85addf3aa9abc68d2e3f89bd` with archive time `1790816225`, over
+`dev-20261001-portgid-cuda1342-nccl2323-status033`; the image built from it is
+`dev-20261001-statusrows-cuda1342-nccl2323-status034`, which the
+`installer-derived-layer` entry of [builders.json](builders.json) lists. Its
+build follows the descriptor commands below, with `--status-artifacts` naming a
+directory that holds both files.
 
 ### Commands
 

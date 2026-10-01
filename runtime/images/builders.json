@@ -53,7 +53,8 @@
       "reason": "Derive an installer image in one layer from a descriptor that adds or replaces site-packages Python files or replaces the runtime-status package, re-recording its external-base and toolchain receipts; prepare does not invoke Docker, and record admits the built image for every profile of its lock. The derive_*.py builders use the same module.",
       "releases": [
         "dev-20260927-b12xcache-cuda1342-nccl2323-status032",
-        "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
+        "dev-20260928-plainstatus-cuda1342-nccl2323-status033",
+        "dev-20261001-statusrows-cuda1342-nccl2323-status034"
       ]
     },
     {
@@ -69,6 +70,15 @@
       "reason": "Derive an image whose prepared RoCEnante transport waits for a late peer while its queue pairs acknowledge checks and poisons the runtime only for an unreachable, stopped or inconsistent peer or after B12X_ROCE_PEER_TIMEOUT_S; its six replaced bundle files are pinned to the dev-20260927-mimovision-cuda1342-nccl2323-status032 parent.",
       "releases": [
         "dev-20260928-peerwait-cuda1342-nccl2323-status032"
+      ]
+    },
+    {
+      "id": "installer-transport-port-gid",
+      "path": "runtime/images/derive_transport_port_gid.py",
+      "kind": "python",
+      "reason": "Derive an image whose prepared RoCEnante transport gives each HCA the RoCE GID index of its fabric address's RoCE v2 GID, read at startup, with the configured index for a device whose GID table does not identify it; its four replaced bundle files are pinned to the dev-20260930-spinwait-cuda1342-nccl2323-status033 parent.",
+      "releases": [
+        "dev-20261001-portgid-cuda1342-nccl2323-status033"
       ]
     },
     {

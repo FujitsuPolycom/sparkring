@@ -7,10 +7,14 @@ and the pinned index stays empty until nothing holds the old entry. Once the
 holders have stopped, deleting and adding the address again puts it back.
 
 The installer's serving containers pin one index for every HCA of a rank: the
-image's prepared B12X RoCE transport takes one index for all of its HCAs
-(``B12X_ROCE_GID_INDEX``, else ``NCCL_IB_GID_INDEX``), and the profiles set
-``NCCL_IB_GID_INDEX`` to the pinned index. Restoring that index before a model
-starts is therefore what keeps those settings valid. The shared resolver in
+profiles set ``NCCL_IB_GID_INDEX`` to the pinned index, which NCCL uses for
+every HCA, and the prepared B12X RoCE transport of the installer images takes
+one index for all of its HCAs (``B12X_ROCE_GID_INDEX``, else
+``NCCL_IB_GID_INDEX``). A transport built from
+``integrations/vllm/rocenante_prepared`` reads each HCA's index at startup and
+uses the pinned index only as a fallback, but NCCL keeps the pinned one.
+Restoring that index before a model starts is therefore what keeps those
+settings valid. The shared resolver in
 ``integrations/vllm/spark_roce_gid.py`` locates each address's RoCE v2 GID; a
 failed check names the index it found or the resolver's error.
 """

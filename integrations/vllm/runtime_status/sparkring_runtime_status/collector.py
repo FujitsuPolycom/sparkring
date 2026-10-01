@@ -67,6 +67,8 @@ CONFIG_FIELDS = {
     "draft_sample_method": "speculative_config.draft_sample_method",
     "rejection_sample_method": "speculative_config.rejection_sample_method",
     "adaptive_verification": "speculative_config.enable_adaptive_verification",
+    # --reasoning-parser; vLLM stores "" when no parser is selected.
+    "reasoning_parser": "structured_outputs_config.reasoning_parser",
 }
 ARG_FIELDS = {
     "tensor_parallel_size": "tensor_parallel_size",
@@ -103,7 +105,15 @@ ARG_FIELDS = {
     "fuse_act_quant": "compilation_config.pass_config.fuse_act_quant",
     "loader_read_mode": "model_loader_extra_config.read_mode",
     "loader_io_threads": "model_loader_extra_config.io_threads",
+    "reasoning_parser": "reasoning_parser",
+    # The API server passes the next two launch arguments to its chat renderer
+    # unchanged; VllmConfig has no copy of them, so workers cannot report them.
+    "tool_call_parser": "tool_call_parser",
+    # Summarized by template_arguments(), because the value is a JSON object.
+    "default_chat_template_kwargs": "default_chat_template_kwargs",
 }
+MAX_TEMPLATE_ARGUMENTS = 16
+MAX_TEMPLATE_TEXT = 512
 BOOL_ENV = (
     "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "VLLM_QWEN3_8_PREFILL_COALESCE",
     "VLLM_B12X_KDA_PREFILL_COALESCING", "QWEN_HC_FUSION", "QWEN_MTP_GEMM",
@@ -134,6 +144,10 @@ TEXT_ENV = {
     "NCCL_IB_HCA": r"[A-Za-z0-9_.:,/\^=-]{1,512}",
     "NCCL_SOCKET_IFNAME": r"[A-Za-z0-9_.:,/\^=-]{1,512}",
 }
+# Durations in seconds, read as vLLM reads them: float(value).
+# SPARKRING_SHM_BUSY_LOOP_S is how long vLLM's shared-memory readers poll after
+# a read in images derived with runtime/images/derive_spin_wait.py.
+SECONDS_ENV = ("SPARKRING_SHM_BUSY_LOOP_S",)
 CHOICE_FIELDS = (
     "backend", "tile_m", "tile_n", "tile_k", "load_path", "swap_ab",
     "split_k_slices", "large_m_unroll", "target_occupancy", "num_warps",
@@ -199,11 +213,37 @@ def fact(value=MISSING, *, source, state="known", phase=None, reason=None):
     return result
 
 
+def template_arguments(value, source):
+    """Summarize --default-chat-template-kwargs as JSON text.
+
+    The argument is a JSON object, which the scalar allowlist cannot carry. Its
+    JSON text keeps strings and booleans apart ("false" is not false), is
+    printable ASCII because json.dumps escapes every other character, and is
+    bounded. None and an empty object both mean the server adds no defaults.
+    """
+    if value is MISSING:
+        return fact(source=source, reason="not_supplied")
+    if value is None or type(value) is dict and not value:
+        return fact(None, source=source)
+    try:
+        # Only JSON types serialize; any other object raises TypeError.
+        text = json.dumps(value, allow_nan=False) if (
+            type(value) is dict and len(value) <= MAX_TEMPLATE_ARGUMENTS) else None
+    except (TypeError, ValueError, RecursionError):
+        text = None
+    if text is None or len(text) > MAX_TEMPLATE_TEXT:
+        return fact(source=source, reason="unsupported_value")
+    return {"state": "known", "source": source, "value": text}
+
+
 def configuration(config, fields=CONFIG_FIELDS):
     result = {key: fact(path(config, route), source="resolved_vllm_config",
                         reason=("not_supplied" if fields is ARG_FIELDS else "not_collected")
                         if path(config, route) is MISSING else None)
               for key, route in fields.items()}
+    if fields is ARG_FIELDS:
+        result["default_chat_template_kwargs"] = template_arguments(
+            path(config, ARG_FIELDS["default_chat_template_kwargs"]), "resolved_vllm_config")
     if fields is CONFIG_FIELDS:
         for key, attr in (("speculative_enabled", "speculative_config"),
                            ("kv_transfer_enabled", "kv_transfer_config")):
@@ -243,6 +283,16 @@ def environment(environ):
         value = raw if type(raw) is str and re.fullmatch(pattern, raw) else MISSING
         result[name] = fact(value, source="process_environment",
                             reason="not_set_in_environment" if raw is None else "invalid_value" if value is MISSING else None)
+    for name in SECONDS_ENV:
+        raw = environ.get(name)
+        try:
+            value = float(raw) if type(raw) is str and len(raw) <= 32 else MISSING
+        except ValueError:
+            value = MISSING
+        # fact() withholds inf and nan, which float() accepts.
+        result[name] = fact(value, source="process_environment",
+                            reason="not_set_in_environment" if raw is None else "invalid_value"
+                            if value is MISSING or not math.isfinite(value) else None)
     return result
 
 

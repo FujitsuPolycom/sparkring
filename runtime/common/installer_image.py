@@ -36,7 +36,7 @@ SCHEMA_V1 = "sparkring-installer-image/v1"
 SCHEMA = "sparkring-installer-image/v2"
 # The release whose image every installer profile uses unless an operator
 # supplies an explicit development lock.
-DEFAULT_LOCK = ROOT / "runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/installer-image.json"
+DEFAULT_LOCK = ROOT / "runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/installer-image.json"
 # The Qwen3.8-Flash-Next profiles, the only profiles a v1 lock can name.
 QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 # Profiles whose checkpoints use the Qwen3.8-Flash-Next (Qwen4Exp) architecture,

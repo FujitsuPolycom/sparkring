@@ -66,7 +66,7 @@ config, for example `qwen4_exp`) appears on its own `Model architecture` line.
 When the served name is unknown, the model line says so instead of showing the
 architecture. The Model and topology settings list both with per-rank values.
 
-The package version is 0.3.3. It provides passive transport, resource, library
+The package version is 0.3.4. It provides passive transport, resource, library
 and acceptance views, and the settings tables described below. Deploy its wheel
 through a new source-recorded image composition and restart the server when a
 deployment window is available. Published image receipts and running
@@ -99,6 +99,38 @@ Two differences that vLLM makes by design are neutral:
   as CUDA graph modes `FULL` and `FULL_AND_PIECEWISE`, remain differences.
 - A KV cache block size that vLLM changed from the configured value. The
   runtime value carries a `*` marker and a footnote under its table.
+
+### Chat and serving rows
+
+The `Chat and tools` table shows how the API server handles chat requests:
+
+| Setting | Configured | Runtime value | Workers |
+| --- | --- | --- | --- |
+| Reasoning parser | `--reasoning-parser`; vLLM's empty name shows as `None` | `structured_outputs_config.reasoning_parser` | Compared |
+| Tool-call parser | `--tool-call-parser` | `Not checked at runtime` | `API server only` |
+| Default chat template arguments | `--default-chat-template-kwargs` as JSON text, such as `{"enable_thinking": false}`; `Not set (the chat template decides)` when absent or `{}` | `Not checked at runtime` | `API server only` |
+
+vLLM's API server passes the tool-call parser and the default chat template
+arguments from its launch arguments to its chat renderer unchanged. `VllmConfig`
+holds no copy, so workers cannot report them and their rows have no per-worker
+comparison. The default arguments are shown as given; they do not include the
+`cohere_format` default that vLLM adds for Cohere templates. JSON text longer
+than 512 characters, with more than 16 keys, or with values JSON cannot express
+reads `Value not shown`. Thinking itself is chosen per request with
+`chat_template_kwargs` or `reasoning_effort`, which take precedence over these
+defaults; a note under the table says so. Whether a chat template accepts such
+arguments is not shown: vLLM determines it while rendering a request and stores
+no setting for it.
+
+The `Decode and speculation` table ends with `Shared-memory reader window`,
+the `SPARKRING_SHM_BUSY_LOOP_S` container variable: how long vLLM's
+shared-memory readers poll after a read before they sleep until notified. Images
+derived with
+[derive_spin_wait.py](../../../runtime/images/derive_spin_wait.py) read it. It
+shows `2 ms (sparkring install --save-cpu)` for `0.002`, the value of
+`sparkring install --save-cpu`; `1 s (vLLM default)` when unset; and the value in
+seconds, such as `0.05 s`, otherwise. The JSON document records the value as a
+number of seconds.
 
 Configured and runtime values, worker agreement and kernel preparation describe
 configuration; they do not show which kernel or transport served a request. An
@@ -160,8 +192,8 @@ has no execution evidence, even when the corresponding optimization is enabled.
 
 | Field | Meaning |
 | --- | --- |
-| `configured` | Parsed server arguments and a strict allowlist of explicitly set process environment controls, captured during plugin initialization. Parsed arguments may include defaults. |
-| `effective` | Stored resolved `VllmConfig` fields in the API process, captured at initialization. Includes parallelism, MTP depth, cache/checkpoint policy, batch capacity, capture capacity, loader and backend choices. `served_model_name` is the primary name clients request (`model_config.served_model_name`); `model_type` is the checkpoint architecture (`model_config.hf_config.model_type`). Both have source `resolved_vllm_config`. |
+| `configured` | Parsed server arguments and a strict allowlist of explicitly set process environment controls, captured during plugin initialization. Parsed arguments may include defaults. `arguments.default_chat_template_kwargs` is the JSON text of `--default-chat-template-kwargs`, or null when it is absent or `{}`; `environment.SPARKRING_SHM_BUSY_LOOP_S` is a number of seconds. |
+| `effective` | Stored resolved `VllmConfig` fields in the API process, captured at initialization. Includes parallelism, MTP depth, cache/checkpoint policy, batch capacity, capture capacity, loader and backend choices. `served_model_name` is the primary name clients request (`model_config.served_model_name`); `model_type` is the checkpoint architecture (`model_config.hf_config.model_type`). Both have source `resolved_vllm_config`. `reasoning_parser` is `structured_outputs_config.reasoning_parser`, an empty string when none is selected. |
 | `observed` | Request execution evidence. Uninstrumented paths remain `not_observed`; configuration or preparation is not proof that a request used a kernel. |
 | `workers.ranks` | Per-worker identity, rank-local configured environment, resolved config and passive resident state at the worker's `collected_at_unix_ns`. These can differ from the API process. |
 | `workers.state` | `complete`, `partial`, `pending`, `error`, or `unavailable`. Complete means the expected count and unique rank identities were returned; it is not a health or correctness certification. |
@@ -366,26 +398,38 @@ An installer image replaces its runtime-status package from a pure wheel and a
 source archive pinned by file name and SHA-256
 ([Replacing the runtime-status package](../../../runtime/images/installer-images.md#replacing-the-runtime-status-package)).
 Both are built from a commit of this directory into a directory outside the
-repository. Run the commands from the repository root with Python 3.12,
-setuptools 78.1.0 and pip 24.0:
+repository. Run the commands from the repository root with Git 2.43 or later,
+Python 3.12, setuptools 78.1.0 and pip 24.0:
 
 ```bash
 COMMIT=$(git rev-parse HEAD)
-VERSION=0.3.3
+EPOCH=$(git log -1 --format=%ct "$COMMIT")
+VERSION=0.3.4
 OUT=~/status-$VERSION
 mkdir -p "$OUT" ~/status-$VERSION-stage
-git archive --format=tar.gz -9 --prefix=runtime_status/ \
+git -c core.autocrlf=false archive --format=tar.gz -9 --prefix=runtime_status/ --mtime="@$EPOCH" \
   "$COMMIT:integrations/vllm/runtime_status" > "$OUT/sparkring-runtime-status-$VERSION-source.tar.gz"
 tar -xzf "$OUT/sparkring-runtime-status-$VERSION-source.tar.gz" -C ~/status-$VERSION-stage
-EPOCH=$(stat -c %Y ~/status-$VERSION-stage/runtime_status/pyproject.toml)
 cd ~/status-$VERSION-stage/runtime_status
 SOURCE_DATE_EPOCH=$EPOCH python -m pip wheel --no-deps --no-build-isolation --no-index --wheel-dir "$OUT" .
 sha256sum "$OUT"/*
 ```
 
-`git archive` of a tree stamps every member with the time it runs; the wheel
-takes that time from `SOURCE_DATE_EPOCH`, so its bytes follow from the archive.
-For Git tree `74407675db01502e57ad6131103a8bbdb3db3bd8` of this directory, the
-archive differs from the pinned 0.3.2 source archive only in that time stamp
-(1790540628 in the pinned archive), and the wheel built from the pinned archive
-equals the pinned 0.3.2 wheel byte for byte.
+`--mtime` stamps every archive member with the commit's time, and the wheel
+takes the same time from `SOURCE_DATE_EPOCH`, so both files follow from the Git
+tree of this directory and that time. Without `--mtime`, `git archive` stamps
+the time it runs. `core.autocrlf=false` keeps Git for Windows from converting
+line ends, because the archived tree carries no `.gitattributes`. To rebuild a
+pinned pair, archive its tree with its archive time in place of
+`$COMMIT:integrations/vllm/runtime_status` and `$EPOCH`:
+
+| Version | Git tree of this directory | Archive time |
+| --- | --- | --- |
+| 0.3.2 | `74407675db01502e57ad6131103a8bbdb3db3bd8` | `1790540628` |
+| 0.3.3 | `b82d56e0a8a5a04470fc679be9c7a665a7ab7fef` | `1790578668` |
+
+[installer-images.md](../../../runtime/images/installer-images.md#replacing-the-runtime-status-package)
+records the tree and time of each later pinned pair. Rebuilding 0.3.2 and 0.3.3
+this way, the archive with Git 2.52 for Windows and the wheel with Python
+3.12.3, setuptools 78.1.0 and pip 24.0 on Linux, reproduced both pinned files
+of each version byte for byte.

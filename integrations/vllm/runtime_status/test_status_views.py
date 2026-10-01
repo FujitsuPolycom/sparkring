@@ -13,8 +13,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from sparkring_runtime_status import plugin, presentation
-from test_runtime_status import Engine, service
+from sparkring_runtime_status import collector, plugin, presentation
+from test_runtime_status import Engine, NS, config, service, worker
 
 
 def fixture():
@@ -348,3 +348,87 @@ def test_identity_and_qwen_specific_fields():
     assert "Hyper-connection prefill row ownership" not in text
     doc["effective"]["model_type"]["value"] = "qwen4_exp"
     assert "Hyper-connection prefill row ownership" in presentation.render_text(doc)
+
+
+def serving_doc(tp, reasoning, tool, template=None, environ=None):
+    """A snapshot collected from parsed arguments, config and environment as a profile sets them."""
+    environ = environ or {}
+    cfg = config(tp)
+    cfg.structured_outputs_config = NS(reasoning_parser=reasoning)
+    ranks = []
+    for rank in range(tp):
+        obj = worker(rank)
+        obj.vllm_config = cfg
+        ranks.append(collector.worker_snapshot(obj, environ=environ, modules={}))
+    args = NS(reasoning_parser=reasoning, tool_call_parser=tool, default_chat_template_kwargs=template)
+    return asyncio.run(plugin.StatusService(cfg, args, Engine(result=ranks), receipt={"state": "unknown"},
+                                            environ=environ).snapshot())
+
+
+def rendered(doc, labels):
+    rows = {row["label"]: row for _, group in presentation.summarize(doc)["groups"] for row in group}
+    return {label: (rows[label]["configured"], rows[label]["resolved"], rows[label]["evidence"],
+                    rows[label]["agreement"], rows[label]["severity"]) for label in labels}
+
+
+SERVING_LABELS = ("Reasoning parser", "Tool-call parser", "Default chat template arguments",
+                  "Shared-memory reader window")
+
+
+def test_qwen_pair_serving_rows_with_save_cpu():
+    # qwen38-flash-next-tp2: --reasoning-parser qwen3 --tool-call-parser qwen3_xml, installed with --save-cpu.
+    doc = serving_doc(2, "qwen3", "qwen3_xml", environ={"SPARKRING_SHM_BUSY_LOOP_S": "0.002"})
+    assert rendered(doc, SERVING_LABELS) == {
+        "Reasoning parser": ("qwen3", "qwen3", "vLLM config", "Same on both workers", "neutral"),
+        "Tool-call parser": ("qwen3_xml", "Not checked at runtime", "Launch setting only", "API server only",
+                             "neutral"),
+        "Default chat template arguments": ("Not set (the chat template decides)", "Not checked at runtime",
+                                            "Launch setting only", "API server only", "neutral"),
+        "Shared-memory reader window": ("2 ms (sparkring install --save-cpu)", "Not checked at runtime",
+                                        "Launch setting only", "Same on both workers", "neutral"),
+    }
+    assert presentation.summarize(doc)["issue_count"] == presentation.summarize(serving_doc(2, "", None))["issue_count"]
+
+
+def test_glm_ring_serving_rows_with_vllm_defaults():
+    # glm53-flash-nvfp4-spark-tp4: --reasoning-parser glm45 --tool-call-parser glm47, no --save-cpu.
+    doc = serving_doc(4, "glm45", "glm47", template={"enable_thinking": False})
+    assert rendered(doc, SERVING_LABELS) == {
+        "Reasoning parser": ("glm45", "glm45", "vLLM config", "Same on all 4 workers", "neutral"),
+        "Tool-call parser": ("glm47", "Not checked at runtime", "Launch setting only", "API server only",
+                             "neutral"),
+        "Default chat template arguments": ('{"enable_thinking": false}', "Not checked at runtime",
+                                            "Launch setting only", "API server only", "neutral"),
+        "Shared-memory reader window": ("1 s (vLLM default)", "Not checked at runtime", "Launch setting only",
+                                        "Not set on all 4 workers", "neutral"),
+    }
+    text = presentation.render_text(doc)
+    html = presentation.render_report(doc)[1]
+    note = presentation.GROUP_NOTES["Chat and tools"]
+    assert "\nCHAT AND TOOLS\n" in text and "\n" + note + "\n" in text
+    assert f'<p class="footnote">{note}</p>' in html
+    assert '{&quot;enable_thinking&quot;: false}' in html
+    # API-server-only rows have no per-worker list.
+    assert '<span class="agreement neutral">API server only</span>' in html
+
+
+def test_unselected_parsers_and_other_reader_windows_read_plainly():
+    doc = serving_doc(2, "", None, environ={"SPARKRING_SHM_BUSY_LOOP_S": "0.05"})
+    rows = rendered(doc, SERVING_LABELS)
+    assert rows["Reasoning parser"][:2] == ("None", "None")
+    assert rows["Tool-call parser"][0] == "None"
+    assert rows["Shared-memory reader window"][0] == "0.05 s"
+    doc = serving_doc(2, "qwen3", "qwen3_xml", environ={"SPARKRING_SHM_BUSY_LOOP_S": "2 ms"})
+    assert rendered(doc, SERVING_LABELS)["Shared-memory reader window"][0] == "Invalid value"
+    # Workers with different windows are a real difference.
+    doc = serving_doc(2, "qwen3", "qwen3_xml", environ={"SPARKRING_SHM_BUSY_LOOP_S": "0.002"})
+    environment = doc["workers"]["ranks"][1]["configured"]["environment"]
+    environment["SPARKRING_SHM_BUSY_LOOP_S"] = dict(environment["SPARKRING_SHM_BUSY_LOOP_S"], value=0.05)
+    row = settings_row(doc, "Shared-memory reader window")
+    assert (row["agreement"], row["severity"]) == ("Workers report different values", "bad")
+    assert row["rank_values"] == [("0", "2 ms (sparkring install --save-cpu)"), ("1", "0.05 s")]
+    # A worker without the variable is flagged and listed with the default window.
+    environment["SPARKRING_SHM_BUSY_LOOP_S"] = {
+        "state": "unknown", "source": "process_environment", "reason": "not_set_in_environment"}
+    row = settings_row(doc, "Shared-memory reader window")
+    assert row["severity"] == "warn" and row["rank_values"][1] == ("1", "1 s (vLLM default)")

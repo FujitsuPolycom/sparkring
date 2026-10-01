@@ -333,6 +333,98 @@ def test_served_model_name_is_always_reported_beside_model_type_and_schema_valid
     jsonschema.Draft202012Validator(schema).validate(result)
 
 
+def serving_args(**overrides):
+    """Parsed `vllm serve` arguments as the GLM ring profiles set them."""
+    values = dict(reasoning_parser="glm45", tool_call_parser="glm47", default_chat_template_kwargs=None)
+    values.update(overrides)
+    return NS(**values)
+
+
+def test_parsers_and_template_defaults_are_read_from_arguments_and_config():
+    cfg = config()
+    cfg.structured_outputs_config = NS(reasoning_parser="glm45", reasoning_parser_plugin="")
+    arguments = c.configuration(serving_args(), c.ARG_FIELDS)
+    assert arguments["reasoning_parser"]["value"] == "glm45"
+    assert arguments["tool_call_parser"]["value"] == "glm47"
+    assert arguments["default_chat_template_kwargs"] == {"state": "known", "source": "resolved_vllm_config",
+                                                         "value": None}
+    assert c.configuration(cfg)["reasoning_parser"]["value"] == "glm45"
+    # vLLM stores "" when no reasoning parser is selected; older configs lack the field.
+    cfg.structured_outputs_config.reasoning_parser = ""
+    assert c.configuration(cfg)["reasoning_parser"]["value"] == ""
+    assert c.configuration(config())["reasoning_parser"]["reason"] == "not_collected"
+    # Neither tool parser nor template defaults exist in VllmConfig.
+    assert "tool_call_parser" not in c.configuration(cfg)
+    assert c.configuration(NS(), c.ARG_FIELDS)["default_chat_template_kwargs"]["reason"] == "not_supplied"
+
+
+@pytest.mark.parametrize("value,expected", [
+    ({"enable_thinking": False}, '{"enable_thinking": false}'),
+    # A string is not a boolean to a chat template; the JSON text keeps them apart.
+    ({"enable_thinking": "false"}, '{"enable_thinking": "false"}'),
+    ({"reasoning_effort": "high", "thinking": {"budget": 4096}}, '{"reasoning_effort": "high", "thinking": {"budget": 4096}}'),
+    ({"note": "café <b>\n"}, '{"note": "caf\\u00e9 <b>\\n"}'),
+    ({}, None),
+])
+def test_template_defaults_keep_their_json_meaning(value, expected):
+    fact = c.configuration(serving_args(default_chat_template_kwargs=value), c.ARG_FIELDS)
+    assert fact["default_chat_template_kwargs"]["value"] == expected
+
+
+@pytest.mark.parametrize("value", [
+    {"key%d" % index: index for index in range(c.MAX_TEMPLATE_ARGUMENTS + 1)},
+    {"text": "x" * c.MAX_TEMPLATE_TEXT},
+    {"budget": float("nan")},
+    {"callback": object()},
+    ["enable_thinking"],
+])
+def test_template_defaults_outside_the_bounds_are_withheld(value):
+    fact = c.configuration(serving_args(default_chat_template_kwargs=value), c.ARG_FIELDS)
+    assert fact["default_chat_template_kwargs"] == {"state": "unknown", "source": "resolved_vllm_config",
+                                                    "reason": "unsupported_value"}
+
+
+@pytest.mark.parametrize("raw,state,value,reason", [
+    ("0.002", "known", 0.002, None),
+    ("0.05", "known", 0.05, None),
+    (None, "unknown", None, "not_set_in_environment"),
+    ("2 ms", "unknown", None, "invalid_value"),
+    ("inf", "unknown", None, "invalid_value"),
+    ("0." + "0" * 40, "unknown", None, "invalid_value"),
+])
+def test_shared_memory_reader_window_is_read_as_vllm_reads_it(raw, state, value, reason):
+    environ = {} if raw is None else {"SPARKRING_SHM_BUSY_LOOP_S": raw}
+    fact = c.environment(environ)["SPARKRING_SHM_BUSY_LOOP_S"]
+    assert (fact["state"], fact.get("value"), fact.get("reason")) == (state, value, reason)
+
+
+def test_serving_rows_reach_api_and_worker_reports_and_stay_schema_valid():
+    jsonschema = pytest.importorskip("jsonschema")
+    cfg = config()
+    cfg.structured_outputs_config = NS(reasoning_parser="qwen3")
+    environ = {"SPARKRING_SHM_BUSY_LOOP_S": "0.002"}
+    ranks = []
+    for rank in range(2):
+        obj = worker(rank)
+        obj.vllm_config = cfg
+        ranks.append(c.worker_snapshot(obj, environ=environ, modules={}))
+    args = serving_args(reasoning_parser="qwen3", tool_call_parser="qwen3_xml",
+                        default_chat_template_kwargs={"enable_thinking": False})
+    result = asyncio.run(p.StatusService(cfg, args, Engine(result=ranks), receipt={"state": "unknown"},
+                                         environ=environ).snapshot())
+    arguments = result["configured"]["arguments"]
+    assert arguments["tool_call_parser"] == {"state": "known", "source": "parsed_server_arguments",
+                                             "value": "qwen3_xml"}
+    assert arguments["default_chat_template_kwargs"]["value"] == '{"enable_thinking": false}'
+    assert result["effective"]["reasoning_parser"]["value"] == "qwen3"
+    assert result["configured"]["environment"]["SPARKRING_SHM_BUSY_LOOP_S"]["value"] == 0.002
+    for row in result["workers"]["ranks"]:
+        assert row["effective"]["reasoning_parser"]["value"] == "qwen3"
+        assert row["configured"]["environment"]["SPARKRING_SHM_BUSY_LOOP_S"]["value"] == 0.002
+    schema = json.loads(Path(__file__).with_name("schema-v1.json").read_text())
+    jsonschema.Draft202012Validator(schema).validate(result)
+
+
 def test_no_speculation_is_known_disabled_missing_config_remains_unknown():
     cfg = config()
     cfg.speculative_config = None

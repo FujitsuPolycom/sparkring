@@ -17,6 +17,12 @@ hashes, and the receipt's `transport_manifest_sha256` and the derived lock
 name it. Each replaced file is pinned to its SHA-256 in the parent
 `dev-20260927-mimovision-cuda1342-nccl2323-status032` and in the repository
 bundle; /opt/sparkring/receipts/derived-transport-peer-wait.json records them.
+
+The replacement bytes come from the repository bundle, so the layer prepares
+only from a revision whose bundle holds the six resulting files and otherwise
+equals the parent's, such as ce396adef06d5ff17a621465ba75d1c83830d7b0. Three
+of those files are the parent files of derive_transport_port_gid.py, which
+changes them and roce/_preparation.py for a RoCE GID index per HCA.
 """
 from __future__ import annotations
 

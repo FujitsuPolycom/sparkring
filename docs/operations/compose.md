@@ -65,7 +65,7 @@ other workloads. Before you render:
   fabric and matching HCA/GID selection. TP4 also needs the prepared mesh
   fabric and its site reference.
 - Each fabric address's RoCE v2 GID at the rank's `gid` index when the
-  container starts; the container uses that one index for every HCA.
+  container starts; NCCL uses that one index for every HCA.
   [`spark_roce_gid.py`](../../integrations/vllm/spark_roce_gid.py) prints the
   index on a host. `sparkring install` restores index 3 before it starts a
   model; a host started only from these files does not.

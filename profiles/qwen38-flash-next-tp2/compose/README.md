@@ -25,9 +25,9 @@ which Docker's default seccomp policy blocks.
 ## Requirements on each Spark
 
 1. **Docker** with the NVIDIA Container Toolkit and `docker compose`.
-2. **The image** (31.6 GB):
+2. **The image** (31.7 GB):
    ```bash
-   docker pull ghcr.io/fujitsupolycom/sparkring@sha256:6459a148c95ef9de3730eaaa242016e3493a095005c3bc78c0b93d35ebc492e7
+   docker pull ghcr.io/fujitsupolycom/sparkring@sha256:4305bde349cade7c8cc0e74a498c8dcbf90025d99bceaf528f40b6faf767bbc8
    ```
 3. **The fabric**: port p0 cabled to port p0, and both of its functions
    addressed, one subnet each, MTU 9000:

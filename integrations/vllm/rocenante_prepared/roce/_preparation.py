@@ -133,7 +133,10 @@ def plan(
 
 
 def _runtime_setup(runtime):
-    """Bind the established communicator's immutable path and capacity settings."""
+    """Bind the established communicator's immutable path and capacity settings.
+
+    ``gid_index`` holds the RoCE GID index of each HCA, in ``hca_names`` order.
+    """
     return FrozenMapping({
         "threads": runtime._threads,
         "slots": runtime._layout.slots,
@@ -144,7 +147,7 @@ def _runtime_setup(runtime):
         "max_blocks": runtime._blocks,
         "max_size": runtime.max_size,
         "max_gather_bytes": runtime.max_gather_bytes,
-        "gid_index": runtime.gid_index,
+        "gid_index": tuple(runtime.gid_indices),
         "spin_limit": runtime.spin_limit,
     })
 
