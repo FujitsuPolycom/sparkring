@@ -200,6 +200,35 @@ For any other operation, inspect an execution receipt that says `running` or
 `uncertain`, and the host state, before recovery; do not delete receipts to
 force a blind retry.
 
+### A start that does not become ready
+
+Once every Spark's model container runs, Node A waits for the API on Node 0
+(`Node 0: Wait for API readiness`). Node N is rank N. The start fails, and
+the console prints the error after `Error:`, when:
+
+| Error | Cause |
+|---|---|
+| `API rank exited during startup` | Node 0's model container exited. |
+| `API health check failed; inspect this rank's logs` | Node 0's container health check reported `unhealthy`. |
+| `Readiness exceeded 30 minutes; inspect logs before restarting` | The API was not ready after 30 minutes. |
+| `Rank N's model container on HOST stopped while rank 0 was loading (exit code CODE)` | Docker on Node N reports its model container stopped. |
+| `Rank N's model container on HOST was removed while rank 0 was loading` | Docker on Node N has no model container. |
+
+During the wait, Node A asks every other Spark every 5 seconds whether its
+model container runs, with the check that confirmed the container started.
+Only Docker's answer counts: a check that cannot reach the Spark, takes
+longer than 60 seconds or fails in any other way is repeated 5 seconds later,
+and a Spark still loading the model answers that its container runs. A
+stopped container on another Spark therefore fails the start within about 10
+seconds; Node 0's model itself notices a missing rank only when its
+collective operations time out, about 11 minutes on two Sparks.
+
+- `install-details.log` (`sudo sparkring logs --details`) holds the last 5
+  lines of the stopped container's log, above the error.
+- Node 0's model container keeps running until the model is stopped or it
+  gives up on the missing rank.
+- The start is recorded as incomplete, as for every error in the table.
+
 ### RoCE GID index 3
 
 Installer containers use RoCE GID index 3 for every fabric function: profiles
@@ -304,7 +333,8 @@ sudo sparkring logs --follow
   `setting up the KV cache`, `capturing CUDA graphs`, `warming up` or
   `starting the API server`. Without a recognized line it names none. After 5
   minutes without a new log line it adds, for example,
-  `no new model log output for 6 min`. The wait ends after 30 minutes.
+  `no new model log output for 6 min`. The wait ends after 30 minutes, or
+  sooner when a rank stops ([errors](#a-start-that-does-not-become-ready)).
 - Verbose command output goes to `install-details.log`;
   `sparkring logs --details --follow` shows it when investigating an error.
 - Credentials entered through SSH are not recorded.
