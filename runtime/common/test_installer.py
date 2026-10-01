@@ -284,6 +284,32 @@ def test_the_shared_templates_init_command_saves_the_deployments_serving_setting
     assert calls[0][0][1] == QWEN and calls[0][1]["settings"] == SETTINGS
 
 
+def test_a_shared_export_carries_the_save_cpu_switch_as_a_flag_and_a_container_variable(tmp_path, monkeypatch):
+    data = b"offline source bundle fixture"
+    settings = {"max_images": 1, "save_cpu": True}
+    lock = installer.make_lock(QWEN, site(), "1" * 40, hashlib.sha256(data).hexdigest(),
+                               image_runtime=installer.installer_image.default_lock(), settings=settings)
+    (tmp_path / "deployment").mkdir()
+    installer.write(tmp_path / "deployment" / "deployment.lock.json", lock)
+    (tmp_path / "deployment" / "source.bundle").write_bytes(data)
+    installer.export(tmp_path / "deployment", tmp_path / "export.zip", share=True)
+    with zipfile.ZipFile(tmp_path / "export.zip") as archive:
+        files = {name: archive.read(name).decode() for name in archive.namelist() if name != "source.bundle"}
+    for rank in (0, 1):
+        environment = yaml.safe_load(files[f"rank{rank}/compose.yaml"])["services"]["model"]["environment"]
+        assert environment["SPARKRING_SHM_BUSY_LOOP_S"] == "0.002"
+    line = next(line for line in files["README.txt"].splitlines() if "then run sparkring init" in line)
+    argv = line.split("then run sparkring ", 1)[1].rstrip(".").split()
+    assert argv[-3:] == ["--max-images", "1", "--save-cpu"]
+    for name in ("site.example.json", "image-lock.json"):
+        (tmp_path / name).write_text(files[name])
+    calls = []
+    monkeypatch.setattr(installer, "init", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.chdir(tmp_path)
+    assert sparkring.main(argv) == 0
+    assert calls[0][1]["settings"] == settings
+
+
 def test_standalone_compose_export_refuses_a_deployment_with_serving_settings(tmp_path):
     data = b"offline source bundle fixture"
     lock = installer.make_lock(QWEN, site(), "1" * 40, hashlib.sha256(data).hexdigest(), settings={"max_images": 1})

@@ -80,7 +80,7 @@ def main(argv=None):
             installer.init(output, profile, raw, variant=args.variant, image_runtime=image_runtime, settings=settings)
             print(f"Saved {profile} for {len(raw['hosts'])} ranks in {output}")
             if settings:
-                print("Serving settings: " + ", ".join(f"{serving.option(name)} {value}"
+                print("Serving settings: " + ", ".join(serving.label(name, value)
                                                        for name, value in sorted(settings.items())))
             print("No hosts changed. Next: sparkring up --deployment " + str(output))
             return 0
