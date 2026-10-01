@@ -1,15 +1,20 @@
 """Discover shared native fabrics or prepare a model-bound managed TP4 fabric.
 
 The existing ASIC planner, marker attestation and managed supervisor remain the
-implementation owners. This module connects them to the profile installer.
+implementation owners. This module connects them to the profile installer, and
+installs a deployment's mesh code over a stopped mesh whose installed code
+differs (update_code).
 """
 import base64
+import concurrent.futures
 import copy
 import hashlib
+import http.client
 import importlib
 import ipaddress
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import sys
@@ -29,6 +34,17 @@ RING_READY_SECONDS = 240
 # A ring check fails with ValueError on a fabric difference and with
 # RuntimeError or OSError when a command or a /proc or /sys read fails.
 CHECK_FAILURES = (ValueError, RuntimeError, OSError)
+# Written to a mesh's configuration directory each time a deployment serves
+# that mesh: the digests of the mesh code and unit files that the deployment's
+# SparkRing source provides (code_warnings compares them with the installed ones).
+DEPLOYMENT_SOURCE = "deployment-source.json"
+DEPLOYMENT_SOURCE_SCHEMA = "sparkring-mesh-deployment-source/v1"
+# Receipts of installed mesh code: installed_source_sha256 of installation.json
+# (written by managed_install.py) and source-hashes.json (written by install_local).
+INSTALLATION_RECEIPT = "installation.json"
+SOURCE_HASHES = "source-hashes.json"
+# systemctl is-active states of a unit with no process.
+STOPPED_STATES = ("inactive", "failed")
 
 
 def modules():
@@ -360,16 +376,21 @@ def install_local(lock, rank, payload):
     return {"ok": True}
 
 
-def mesh_unit(site_path):
-    """The systemd unit of the managed mesh whose configuration directory holds site_path."""
+def mesh_layout(site_path):
+    """The managed layout (managed_deployment.layout) whose configuration directory holds site_path."""
     default = managed_deployment.layout()
     directory = site_path.rsplit("/", 1)[0]
     if directory == default["config_dir"]:
-        return default["mesh_unit"]
+        return default
     prefix = "/etc/sparkring/deployments/"
     if directory.startswith(prefix):
-        return managed_deployment.layout(directory[len(prefix):])["mesh_unit"]
+        return managed_deployment.layout(directory[len(prefix):])
     raise ValueError(f"{site_path} is not the site of a SparkRing managed mesh")
+
+
+def mesh_unit(site_path):
+    """The systemd unit of the managed mesh whose configuration directory holds site_path."""
+    return mesh_layout(site_path)["mesh_unit"]
 
 
 def _active_mesh_units(call):
@@ -378,41 +399,345 @@ def _active_mesh_units(call):
     return {line.split()[0] for line in listing.splitlines() if line.split()}
 
 
-def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check,
-               stale=qwen_mesh.stale_gid_ports, sleep=time.sleep, clock=time.monotonic):
-    """Serve the pinned four-Spark mesh on this Spark and wait until its ring check passes.
+def _digest(content):
+    return hashlib.sha256(content).hexdigest()
 
-    Every rank runs this at the same time before the ring check of an
-    installation that reuses an existing mesh. The mesh unit is enabled, so it
-    returns at each boot. An inactive unit starts. A running unit whose ring
-    check fails restarts, which rebuilds routes and rules lost when a cabled
-    neighbor restarted. When a port's pinned RoCE GID slot lacks its IPv4
-    address, as on the neighbors of a restarted Spark, the mesh stops, the
-    address is deleted and added again, and the mesh starts. A Spark on which
-    another SparkRing mesh unit is active is left unchanged; the ring check
-    then reports it.
+
+def _file_digest(path):
+    """The SHA-256 of a regular file that is not a symlink, else None."""
+    return _digest(path.read_bytes()) if path.is_file() and not path.is_symlink() else None
+
+
+def _deployment_files(selected):
+    """This SparkRing source's mesh files for the mesh installed at layout ``selected``.
+
+    Returns (owner, service, code, units): ``owner`` and ``service`` are this
+    source's managed_install and managed_service modules, ``code`` maps each
+    path of the source allowlist (managed_install.SOURCE_FILES) to the bytes
+    installed under the code directory, and ``units`` maps each unit file name
+    to the text this source renders for the installed configuration: the same
+    container, and a liveness unit only where one is installed.
     """
-    unit = mesh_unit(qwen_mesh.validate_site_reference(reference)["site_path"])
+    config = json.loads((Path(selected["config_dir"]) / "service.json").read_text())
+    owner, units = modules()
+    liveness = (Path(selected["unit_dir"]) / selected["liveness_unit"]).is_file()
+    rendered = units.unit_text(selected["code_dir"], selected["config_dir"], config["container_id"],
+                               host_liveness=liveness, deployment_name=config.get("deployment_name"))
+    return owner, units.service, owner.source_payloads(), {name: text.encode() for name, text in rendered.items()}
+
+
+def _relative(name):
+    """Whether a receipt entry names a path inside the code directory."""
+    if not isinstance(name, str) or "\\" in name:
+        return False
+    path = PurePosixPath(name)
+    return bool(path.parts) and not path.is_absolute() and ".." not in path.parts
+
+
+def _differences(selected, code, units):
+    """(changed code paths, obsolete code paths, changed unit names) of the mesh at ``selected``.
+
+    A code path is obsolete when an installation receipt lists it and this
+    source's allowlist does not. Other files under the code directory are not
+    SparkRing's and are not compared.
+    """
+    root, config, unit_dir = Path(selected["code_dir"]), Path(selected["config_dir"]), Path(selected["unit_dir"])
+    listed = set()
+    if (config / SOURCE_HASHES).is_file():
+        listed |= set(json.loads((config / SOURCE_HASHES).read_text()))
+    if (config / INSTALLATION_RECEIPT).is_file():
+        listed |= set(json.loads((config / INSTALLATION_RECEIPT).read_text()).get("installed_source_sha256") or {})
+    changed = [name for name, content in code.items() if _file_digest(root / name) != _digest(content)]
+    obsolete = sorted(name for name in listed - set(code) if _relative(name) and (root / name).is_file())
+    unit_names = [name for name, content in units.items() if _file_digest(unit_dir / name) != _digest(content)]
+    return changed, obsolete, unit_names
+
+
+def _record_source(selected, owner, code, units):
+    """Save DEPLOYMENT_SOURCE for the mesh at ``selected`` unless it already holds these digests."""
+    record = {"schema": DEPLOYMENT_SOURCE_SCHEMA, "source_root": str(owner.ROOT),
+              "code_sha256": owner.source_hashes(code),
+              "unit_sha256": {name: _digest(content) for name, content in units.items()}}
+    path = Path(selected["config_dir"]) / DEPLOYMENT_SOURCE
+    try:
+        if json.loads(path.read_text()) == record:
+            return
+    except (OSError, ValueError):
+        pass
+    node.save(selected["config_dir"], DEPLOYMENT_SOURCE, record, mode=0o600)
+
+
+def _stopped(selected, call):
+    """Whether the installed mesh, model and liveness units of ``selected`` all have no process.
+
+    The mesh unit is always asked about; the model and liveness units only
+    where their unit files are installed (a liveness unit runs on rank 0 only).
+    """
+    names = [selected["mesh_unit"]] + [selected[key] for key in ("model_unit", "liveness_unit")
+                                       if (Path(selected["unit_dir"]) / selected[key]).exists()]
+    states = call(["systemctl", "is-active", *names], accepted=(0, 3, 4)).stdout.split()
+    return len(states) == len(names) and all(state in STOPPED_STATES for state in states)
+
+
+def peer_states(service, config, site, rank):
+    """The mesh identity that each other rank's running supervisor reports, by rank.
+
+    The value is None where nothing listens on the rank's health port (the
+    connection is refused), and "unknown" where the rank does not answer or
+    its answer is not an authenticated health body of this installation.
+    """
+    key = service.read_key(config["key_file"])
+
+    def observe(peer):
+        try:
+            return service.peer_body(site["management_addresses"][peer], config["health_port"], key, peer,
+                                     config["epoch"])["identity"]
+        except ConnectionRefusedError:
+            return None
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError, AttributeError, http.client.HTTPException):
+            return "unknown"
+    peers = [peer for peer in range(4) if peer != rank]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(peers)) as pool:
+        return dict(zip(peers, pool.map(observe, peers)))
+
+
+def _install_files(selected, owner, code, units, changed, obsolete, unit_names, call):
+    """Replace the differing code and unit files of a stopped mesh and update its receipts.
+
+    Each replacement file is first written beside its target and renamed over it,
+    so an error while writing leaves every installed file unchanged.
+    """
+    code_root, config_root, unit_dir = (Path(selected[key]) for key in ("code_dir", "config_dir", "unit_dir"))
+    targets = ([(code_root / name, code[name]) for name in changed]
+               + [(unit_dir / name, units[name]) for name in unit_names])
+    for path in [target for target, _ in targets] + [code_root / name for name in obsolete]:
+        if any(p.is_symlink() for p in (path, *path.parents)):
+            raise ValueError("Mesh file path contains a symlink: " + str(path))
+    staged = []
+    try:
+        for target, content in targets:
+            created = [directory for directory in reversed(target.parents) if not directory.exists()]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            for directory in created:
+                directory.chmod(0o755)
+            temporary = target.with_name("." + target.name + ".sparkring-new")
+            temporary.unlink(missing_ok=True)
+            with temporary.open("xb") as stream:
+                staged.append((temporary, target))
+                stream.write(content)
+            temporary.chmod(0o644)
+    except BaseException:
+        for temporary, _ in staged:
+            temporary.unlink(missing_ok=True)
+        raise
+    for temporary, target in staged:
+        os.replace(temporary, target)
+    for name in obsolete:
+        (code_root / name).unlink()
+    hashes = owner.source_hashes(code)
+    if (config_root / SOURCE_HASHES).is_file():
+        node.save(selected["config_dir"], SOURCE_HASHES, hashes, mode=0o600)
+    if (config_root / INSTALLATION_RECEIPT).is_file():
+        receipt = json.loads((config_root / INSTALLATION_RECEIPT).read_text())
+        receipt.update(source_files=list(code), source_hashes=hashes, installed_source_sha256=hashes,
+                       source_root=str(owner.ROOT), units={name: content.decode() for name, content in units.items()},
+                       unit_hashes={name: _digest(content) for name, content in units.items()})
+        node.save(selected["config_dir"], INSTALLATION_RECEIPT, receipt, mode=0o600)
+    if unit_names:
+        call(["systemctl", "daemon-reload"])
+        # reenable recreates the mesh unit's [Install] links from the file just written.
+        call(["systemctl", "reenable", selected["mesh_unit"]])
+    remaining = [name for part in _differences(selected, code, units) for name in part]
+    if remaining:
+        raise ValueError("Mesh files still differ after their update: " + ", ".join(remaining))
+
+
+def update_code(selected, rank, *, call=node.call, peers=peer_states):
+    """Record this deployment's mesh files and install them over a stopped mesh whose files differ.
+
+    ``selected`` is the mesh's managed layout; this SparkRing source is the
+    deployment's own. The digests of this source's mesh code and unit files
+    are saved as DEPLOYMENT_SOURCE in the mesh's configuration directory,
+    where node status compares them with the installed files. Differing files
+    are installed only when all of these hold:
+
+    - systemctl reports the installed mesh, model and liveness units inactive
+      or failed, so no supervisor, gate or liveness process runs the installed
+      code;
+    - this source's managed_service accepts the installed configuration;
+    - every other rank's supervisor that runs reports the mesh identity that
+      this source gives this configuration. The identity covers the
+      supervisor's source files, and ranks with different identities never
+      form the four-rank group, so a Spark keeps its installed code while
+      another Spark runs other code.
+
+    The code files are the source allowlist; installed files that the
+    receipts list but the allowlist does not are removed, and other files in
+    the code directory are left alone. Unit files are rendered by this
+    source's managed_units for the installed container, then systemd reloads
+    them. The receipts that record installed code (source-hashes.json, which
+    the mesh-installed-local check verifies, and installation.json) are
+    updated with the digests of the installed files.
+    """
+    try:
+        owner, service, code, units = _deployment_files(selected)
+        _record_source(selected, owner, code, units)
+        changed, obsolete, unit_names = _differences(selected, code, units)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return {"refreshed": False, "reason": "mesh files not compared: " + str(error)}
+    if not (changed or obsolete or unit_names):
+        return {"refreshed": False, "reason": "unchanged"}
+    if not _stopped(selected, call):
+        return {"refreshed": False, "reason": "running"}
+    try:
+        config, site, _, _, identity = service.load_config(Path(selected["config_dir"]) / "service.json")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return {"refreshed": False, "reason": "this source does not accept the installed configuration: " + str(error)}
+    try:
+        others = sorted(peer for peer, state in peers(service, config, site, rank).items()
+                        if state is not None and state != identity)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return {"refreshed": False, "reason": "other ranks' mesh code not observed: " + str(error)}
+    if others:
+        return {"refreshed": False, "reason": "other ranks run other mesh code", "ranks": others}
+    # Checked again just before writing: the peer probe can take seconds.
+    if not _stopped(selected, call):
+        return {"refreshed": False, "reason": "running"}
+    _install_files(selected, owner, code, units, changed, obsolete, unit_names, call)
+    return {"refreshed": True, "files": changed, "removed": obsolete, "units": unit_names}
+
+
+def code_warnings(*, root="/"):
+    """Status warnings for the managed meshes on this Spark whose files differ from their deployment's.
+
+    update_code saves, in each mesh's configuration directory, the digests of
+    the mesh code and unit files that the SparkRing source of the deployment
+    serving it provides (DEPLOYMENT_SOURCE). A mesh without that record, such
+    as one that no deployment has served since its installation, is not
+    compared. The date is that of the installed supervisor file.
+    """
+    base = Path(root)
+    layouts = [managed_deployment.layout()]
+    named = base / "etc/sparkring/deployments"
+    if named.is_dir():
+        for directory in sorted(named.iterdir()):
+            try:
+                layouts.append(managed_deployment.layout(directory.name))
+            except ValueError:
+                continue
+    warnings = []
+    for selected in layouts:
+        code_root, config_root, unit_dir = (base / selected[key].lstrip("/")
+                                            for key in ("code_dir", "config_dir", "unit_dir"))
+        record = config_root / DEPLOYMENT_SOURCE
+        if not record.is_file():
+            continue
+        unit = selected["mesh_unit"]
+        try:
+            expected = json.loads(record.read_text())
+            if (any(_file_digest(code_root / name) != digest for name, digest in expected["code_sha256"].items())
+                    or any(_file_digest(unit_dir / name) != digest for name, digest in expected["unit_sha256"].items())):
+                supervisor = code_root / "runtime/glm53-spark-mtp3-mesh/managed_service.py"
+                installed = time.strftime("%Y-%m-%d", time.localtime(
+                    (supervisor if supervisor.is_file() else code_root).stat().st_mtime))
+                warnings.append(f"mesh code of {unit} installed {installed} differs from this deployment's; "
+                                "it refreshes when sparkring up next starts the mesh on all four Sparks")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            warnings.append(f"mesh code of {unit} not compared with its deployment's: {error}")
+    return warnings
+
+
+def _settle(selected, reference, rank, hcas, gid, host_ip, call, check, stale):
+    """Stop this Spark's mesh where it must start again; returns (state, repaired ports, other active units).
+
+    The state is "other" when another SparkRing mesh unit is active (nothing
+    changes), "repaired" after the mesh stopped and stale RoCE GID addresses
+    were added again, "stopped" when a running mesh failed its ring check and
+    stopped, "running" when it passed, and "inactive" when it was not running.
+    """
+    unit = selected["mesh_unit"]
     active = _active_mesh_units(call)
     others = sorted(active - {unit})
     if others:
-        return {"ok": True, "unit": unit, "action": "none", "active": others}
+        return "other", [], others
     repaired = stale(reference, rank)
     if repaired:
         call(["systemctl", "stop", unit])
         for netdev, ipv4 in repaired:
             roce_gid.readd_address(netdev, ipv4, call)
-        action = "repaired"
-    elif unit in active:
-        try:
-            check(reference, rank, hcas, gid, host_ip)
-            call(["systemctl", "enable", unit])
-            return {"ok": True, "unit": unit, "action": "checked", "repaired": []}
-        except CHECK_FAILURES:
-            call(["systemctl", "restart", unit])
-            action = "restarted"
-    else:
-        action = "started"
+        return "repaired", repaired, []
+    if unit not in active:
+        return "inactive", [], []
+    try:
+        check(reference, rank, hcas, gid, host_ip)
+    except CHECK_FAILURES:
+        # The supervisor stops in order: it stops its markers and removes its
+        # network state. update_code confirms the stop before changing files.
+        call(["systemctl", "stop", unit])
+        return "stopped", [], []
+    return "running", [], []
+
+
+def stop_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check,
+              stale=qwen_mesh.stale_gid_ports):
+    """Stop this Spark's mesh where serve_ring starts it again.
+
+    Every rank runs this, and completes it, before any rank runs serve_ring.
+    The meshes that still run during serve_ring are then those that passed
+    their ring check here, so every rank's update_code sees the same running
+    supervisors when it decides whether to install mesh code. A mesh with a
+    stale RoCE GID slot stops and the port's address is added again; a running
+    mesh whose ring check fails stops. A Spark on which another SparkRing mesh
+    unit is active is left unchanged.
+    """
+    selected = mesh_layout(qwen_mesh.validate_site_reference(reference)["site_path"])
+    state, repaired, others = _settle(selected, reference, rank, hcas, gid, host_ip, call, check, stale)
+    result = {"ok": True, "unit": selected["mesh_unit"], "action": state,
+              "repaired": [netdev for netdev, _ in repaired]}
+    if others:
+        result["active"] = others
+    return result
+
+
+def ring_stopped(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check):
+    """Verify stop_ring without changing anything: this Spark's mesh is stopped or passes its ring check.
+
+    Another active SparkRing mesh unit also passes: stop_ring leaves it, and
+    the ring check reports it.
+    """
+    unit = mesh_unit(qwen_mesh.validate_site_reference(reference)["site_path"])
+    if unit in _active_mesh_units(call):
+        check(reference, rank, hcas, gid, host_ip)
+    return {"ok": True}
+
+
+def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check,
+               stale=qwen_mesh.stale_gid_ports, sleep=time.sleep, clock=time.monotonic, code=update_code):
+    """Serve the pinned four-Spark mesh on this Spark and wait until its ring check passes.
+
+    Every rank runs this at the same time, after stop_ring, before the ring
+    check of an installation. The mesh unit is enabled, so it returns at each
+    boot. An inactive unit starts. A running unit whose ring check fails
+    stops and starts again, which rebuilds routes and rules lost when a cabled
+    neighbor restarted. When a port's pinned RoCE GID slot lacks its IPv4
+    address, as on the neighbors of a restarted Spark, the mesh stops, the
+    address is deleted and added again, and the mesh starts. Before a mesh
+    starts, ``code`` (update_code) installs this deployment's mesh code where
+    the installed code differs; a running mesh keeps the code it started with.
+    A Spark on which another SparkRing mesh unit is active is left unchanged;
+    the ring check then reports it.
+    """
+    selected = mesh_layout(qwen_mesh.validate_site_reference(reference)["site_path"])
+    unit = selected["mesh_unit"]
+    state, repaired, others = _settle(selected, reference, rank, hcas, gid, host_ip, call, check, stale)
+    if state == "other":
+        return {"ok": True, "unit": unit, "action": "none", "active": others}
+    if state == "running":
+        refreshed = code(selected, rank, call=call)
+        call(["systemctl", "enable", unit])
+        return {"ok": True, "unit": unit, "action": "checked", "repaired": [], "code": refreshed}
+    action = {"repaired": "repaired", "stopped": "restarted", "inactive": "started"}[state]
+    refreshed = code(selected, rank, call=call)
     call(["systemctl", "enable", "--now", unit])
     deadline = clock() + RING_READY_SECONDS
     while True:
@@ -424,7 +749,8 @@ def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwe
                 raise ValueError(f"{unit} is running, but the ring check still fails after "
                                  f"{RING_READY_SECONDS} s: {error}") from None
             sleep(3)
-    return {"ok": True, "unit": unit, "action": action, "repaired": [netdev for netdev, _ in repaired]}
+    return {"ok": True, "unit": unit, "action": action, "repaired": [netdev for netdev, _ in repaired],
+            "code": refreshed}
 
 
 def operate_local(lock, rank, operation):

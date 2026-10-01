@@ -586,6 +586,9 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
                 warnings.append("mesh marker processes run while no mesh unit is active; the mesh's own cleanup "
                                 "must stop them before the mesh starts again")
             warnings += mesh_units_without_start_check(root=root, run=run)
+            # native_mesh imports this module.
+            from runtime.host import native_mesh
+            warnings += native_mesh.code_warnings(root=root)
         elif location(root, "/etc/sparkring/hairpin.json").exists():
             warnings.append("hairpin approval on a Spark that is not in a four-Spark ring: "
                             "sudo sparkring node hairpin revoke")

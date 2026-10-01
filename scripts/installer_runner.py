@@ -383,7 +383,8 @@ def elevation(row, operation):
     user, separator, _ = row["host"].partition("@")
     if not separator or user != "root":
         return ["sudo", "-n"]
-    if "fabric" in row and (operation in ("preflight", "create", "start", "ring-serve", "ring-check")
+    if "fabric" in row and (operation in ("preflight", "create", "start", "ring-stop", "ring-stopped", "ring-serve",
+                                          "ring-check")
                             or operation.startswith("mesh-")):
         return ["sudo", "-n"]
     return []
@@ -579,6 +580,8 @@ class Runner:
                   "smoke": "Test a short model response", "model-settled": "Confirm checkpoint unchanged during loading",
                   "mesh-prepare": "Prepare native fabric helper",
                   "mesh-install": "Install supervised native fabric", "mesh-up": "Start native fabric",
+                  "ring-stop": "Stop the ring mesh where it must restart",
+                  "ring-stopped": "Check that only a healthy ring mesh runs",
                   "ring-serve": "Start and check the ring mesh", "ring-check": "Check the ring mesh",
                   "gid-serve": "Restore fabric addresses in RoCE GID index 3", "gid-check": "Check RoCE GID index 3",
                   "mesh-gate": "Verify all four fabric ranks", "stop": "Stop model", "stopped": "Confirm model stopped"}

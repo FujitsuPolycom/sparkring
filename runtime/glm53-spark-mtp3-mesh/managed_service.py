@@ -32,6 +32,10 @@ POLL_SECONDS = 1.0
 PEER_TIMEOUT = 2.0
 PEER_OUTAGE_GRACE = 300.0
 NETWORK_POLL_SECONDS = 5.0
+# Longest wait at startup for this rank's management address. The unit starts
+# after network-online.target, which does not wait for every interface's
+# address, such as a DHCP lease or an overlay address.
+MANAGEMENT_ADDRESS_WAIT = 120.0
 HEALTH_MAX_AGE = 10.0
 MARKERS_PER_RANK = 2  # One managed source marker for each cycle-facing device.
 
@@ -90,7 +94,13 @@ def load_config(path):
     return document, site, topology, plan, identity
 
 
-def fetch_peer(address, port, key, rank, identity, epoch):
+def peer_body(address, port, key, rank, epoch):
+    """The authenticated, fresh health body that the supervisor of ``rank`` serves at ``address``.
+
+    The body names the supervisor's mesh identity, which covers its source
+    files; fetch_peer additionally requires this rank's identity and local
+    readiness.
+    """
     nonce = secrets.token_hex(16)
     challenge = {'protocol': PROTOCOL, 'nonce': nonce}
     # Direct HTTP avoids proxy/redirect behavior and unused TLS context creation.
@@ -110,8 +120,14 @@ def fetch_peer(address, port, key, rank, identity, epoch):
     if not hmac.compare_digest(sign(key, body), str(envelope['signature'])):
         raise ValueError('Mesh health authentication failed')
     if (body.get('protocol') != PROTOCOL or body.get('nonce') != nonce or body.get('rank') != rank
-            or body.get('identity') != identity or body.get('epoch') != epoch
-            or not re.fullmatch('[0-9a-f]{32}', str(body.get('generation', '')))):
+            or body.get('epoch') != epoch or not re.fullmatch('[0-9a-f]{32}', str(body.get('generation', '')))):
+        raise ValueError('Mesh peer identity or freshness differs')
+    return body
+
+
+def fetch_peer(address, port, key, rank, identity, epoch):
+    body = peer_body(address, port, key, rank, epoch)
+    if body.get('identity') != identity:
         raise ValueError('Mesh peer identity or freshness differs')
     if body.get('local_ready') is not True:
         raise RuntimeError(f'Mesh rank {rank} is not locally ready')
@@ -485,6 +501,32 @@ class MeshService:
             self.marker_records = []
         return not unconfirmed
 
+    def await_management_address(self):
+        """Wait, before changing any network state, for this rank's management address.
+
+        A boot can reach this unit before the management interface has its
+        address, and the unit does not restart on failure. Only presence is
+        awaited: NetworkManager.up() verifies the address and every fabric port
+        again. While waiting, the start timeout is extended in 10 s steps; once
+        the address appears, the rest of startup gets a fresh 90 s.
+        """
+        deadline = time.monotonic() + MANAGEMENT_ADDRESS_WAIT
+        waited = False
+        while not self.network.management_address_present():
+            if self.stop.is_set():
+                raise RuntimeError('Stopped while waiting for the management address')
+            if time.monotonic() >= deadline:
+                address = self.site['management_addresses'][self.rank]
+                raise RuntimeError(f'Management address {address} did not appear on this rank '
+                                   f'within {MANAGEMENT_ADDRESS_WAIT:.0f} s')
+            if not waited:
+                print(json.dumps({'event': 'management_address_wait', 'rank': self.rank}), flush=True)
+                waited = True
+            notify("EXTEND_TIMEOUT_USEC=10000000\nSTATUS=Waiting for this rank's management address")
+            self.stop.wait(1.0)
+        if waited:
+            notify('EXTEND_TIMEOUT_USEC=90000000\nSTATUS=Management address present; preparing the local fabric')
+
     def run(self):
         if os.geteuid() != 0:
             raise PermissionError('Managed mesh service requires root')
@@ -506,6 +548,7 @@ class MeshService:
             self.owns_guard = True
             from managed_network import NetworkManager, ManagementAddressLoss
             self.network = NetworkManager(Path(self.config['site_path']), self.rank, self.state_dir / 'network')
+            self.await_management_address()
             self.network.up()
             self.start_markers()
             self.start_server()

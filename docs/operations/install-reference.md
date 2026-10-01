@@ -642,7 +642,9 @@ the Spark `needs-attention`, with an error naming the function and its value
 and the next action `on Node A: sudo sparkring hairpin`. `warnings` report a
 setting in effect but not applied at boot, boot restarts suspended after a
 failed restart (naming the function and time), a boot started with
-`sparkring.hairpin=off`, and a mesh unit without the hairpin start check.
+`sparkring.hairpin=off`, a mesh unit without the hairpin start check, and
+mesh code that differs from the deployment's
+([when mesh code changes take effect](#the-rings-mesh)).
 
 ## When a model stops serving
 
@@ -922,11 +924,49 @@ specification.
   plan for inspection.
 
 SparkRing enables the mesh service, so it starts at each boot after the
-hairpin setting. Before an installation starts the model, each Spark starts
-its mesh service if stopped, restarts it if its routes or forwarding rules are
-missing, and re-adds a port's IPv4 address whose RoCE v2 GID is not at the
-pinned [GID index 3](#roce-gid-index-3). The installation then waits up to
-four minutes for the ring check on every Spark.
+hairpin setting. Before an installation starts the model, every Spark first
+stops its mesh service where it must start again: where the mesh's routes or
+forwarding rules are missing, and where a port's IPv4 address must be re-added
+because its RoCE v2 GID is not at the pinned
+[GID index 3](#roce-gid-index-3). Then each Spark starts its mesh service if
+it is stopped, and the installation waits up to four minutes for the ring
+check on every Spark.
+
+**When mesh code changes take effect.** Each Spark runs its mesh from the
+supervisor code and systemd units installed for that mesh:
+`/opt/sparkring/managed-mesh` and the `sparkring-mesh*` units for the default
+mesh, `/opt/sparkring/deployments/NAME` and the `sparkring-NAME-*` units for a
+named one. Installing a package, `sparkring install` and `sparkring up` never
+change the code of a running mesh service, and a boot starts the installed
+code. When `sparkring install` or `sparkring up` starts a mesh service, each
+Spark first compares the installed files with the deployment's own SparkRing
+source. Where they differ, it installs the deployment's files, updates the
+mesh's installation receipt (`source-hashes.json` or `installation.json` in
+`/etc/sparkring/managed-mesh` or `/etc/sparkring/deployments/NAME`), reloads
+systemd if a unit file changed, and then starts the mesh. It does so only when
+all of these hold:
+
+- the mesh, model and liveness services on that Spark have stopped;
+- the deployment's code accepts the mesh's installed configuration;
+- every mesh supervisor running on another Spark runs the deployment's code.
+  The four supervisors form a mesh only when they run the same code, so the
+  four Sparks change code together.
+
+A fix to the mesh supervisor therefore reaches a ring at the first
+`sparkring install` or `sparkring up` of a deployment that includes it, once
+the mesh service has stopped on all four Sparks: for example after the mesh
+failed on every Spark, or after `sudo sparkring down --execute` and
+`sudo systemctl stop sparkring-mesh.service` on each Spark (a named mesh's
+unit is `sparkring-NAME-mesh.service`). The `up` of a deployment created from
+other SparkRing source installs that source's mesh code in the same way.
+Files that the receipt lists but the deployment's code does not include are
+removed; other files in the code directory stay.
+
+Until the files match, `sparkring status` reports on each such Spark, for
+example, `mesh code of sparkring-mesh.service installed 2026-09-21 differs
+from this deployment's; it refreshes when sparkring up next starts the mesh on
+all four Sparks`. The deployment it compares with is the last one whose
+`install` or `up` started or checked that mesh.
 
 `sparkring install` does not replace an existing mesh:
 `sparkring up PROFILE --fresh-mesh --plan` prints an explicit replacement

@@ -1,13 +1,15 @@
-"""Node status of the ConnectX hairpin setting, with fake facts, systemd and root; no host access."""
+"""Node status of the ConnectX hairpin setting and the mesh units, with fake facts, systemd and root; no host access."""
 import copy
 import json
+import os
 import subprocess
+import time
 from types import SimpleNamespace
 
 import pytest
 
 from runtime.common import qwen_mesh
-from runtime.host import hairpin, node, topology
+from runtime.host import hairpin, native_mesh, node, topology
 from runtime.host.test_appliance import nodes
 from scripts import hairpin_setting
 
@@ -425,3 +427,23 @@ def test_admin_tunnel_that_is_not_up_is_reported(tmp_path):
     tunnel(tmp_path, carrier=True, handshake=40, now=10_000)
     result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Answers({("wg", "show"): ""}))
     assert result["warnings"] == ["admin tunnel sr-control is not up"]
+
+
+def test_mesh_code_that_differs_from_its_deployments_warns(tmp_path, report):
+    """A deployment's ring-serve kept a running mesh's code; the Spark's status names its installation date."""
+    _, facts = ring(tmp_path)
+    mesh_unit(tmp_path, "sparkring-mesh.service")
+    supervisor = tmp_path / "opt/sparkring/managed-mesh/runtime/glm53-spark-mtp3-mesh/managed_service.py"
+    supervisor.parent.mkdir(parents=True)
+    supervisor.write_bytes(b"supervisor without the management address wait\n")
+    stamp = time.mktime((2026, 9, 21, 9, 30, 0, 0, 0, -1))
+    os.utime(supervisor, (stamp, stamp))
+    record = {"schema": native_mesh.DEPLOYMENT_SOURCE_SCHEMA, "source_root": "/srv/sparkring/home/source",
+              "code_sha256": {"runtime/glm53-spark-mtp3-mesh/managed_service.py": "0" * 64}, "unit_sha256": {}}
+    node.save(tmp_path, "/etc/sparkring/managed-mesh/" + native_mesh.DEPLOYMENT_SOURCE, record)
+    host = Host({"sparkring-mesh.service": [DROP_IN.format("sparkring-mesh.service")]})
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host)
+    assert result["state"] == "network-configured"
+    assert result["warnings"] == [
+        "mesh code of sparkring-mesh.service installed 2026-09-21 differs from this deployment's; "
+        "it refreshes when sparkring up next starts the mesh on all four Sparks"]

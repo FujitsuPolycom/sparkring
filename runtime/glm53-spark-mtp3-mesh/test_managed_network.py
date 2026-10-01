@@ -477,3 +477,18 @@ def test_unvalidated_management_identity_never_receives_grace(rig):
     assert loss == []
 
 
+def test_management_address_presence_reads_the_management_netdev(rig):
+    manager, _ = rig
+    assert manager.management_address_present() is True
+
+
+def test_an_absent_management_netdev_counts_as_no_address(rig):
+    manager, host = rig
+
+    def runner(argv):
+        if "addr" in argv and argv[-1] == manager.local.management_netdev:
+            raise RuntimeError(f"Network command failed: {argv!r}: Device does not exist.")
+        return host(argv)
+
+    manager.runner = runner
+    assert manager.management_address_present() is False

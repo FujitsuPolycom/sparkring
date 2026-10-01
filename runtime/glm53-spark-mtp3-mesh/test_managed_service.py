@@ -160,6 +160,31 @@ def test_peer_response_nonce_is_checked(monkeypatch):
         service.fetch_peer('127.0.0.1', 9975, key, 0, 'test', 'epoch')
 
 
+def test_peer_body_reports_another_identity_that_fetch_peer_rejects(monkeypatch):
+    """A supervisor of other source files answers with its own identity, which update_code compares."""
+    key = b'a' * 32
+
+    class Connection:
+        def request(self, method, path, headers):
+            assert headers['X-Mesh-Auth'] == service.sign(key, {'protocol': service.PROTOCOL, 'nonce': path[-32:]})
+            self.nonce = path[-32:]
+
+        def getresponse(self):
+            body = {'protocol': service.PROTOCOL, 'nonce': self.nonce, 'rank': 2, 'identity': 'other',
+                    'epoch': 'epoch', 'generation': 'b' * 32, 'local_ready': False}
+            raw = service.canonical({'body': body, 'signature': service.sign(key, body)})
+            return SimpleNamespace(status=200, read=lambda limit: raw)
+
+        def close(self):
+            pass
+    monkeypatch.setattr(service.http.client, 'HTTPConnection', lambda *args, **kwargs: Connection())
+    assert service.peer_body('192.0.2.12', 9975, key, 2, 'epoch')['identity'] == 'other'
+    with pytest.raises(ValueError, match='identity'):
+        service.fetch_peer('192.0.2.12', 9975, key, 2, 'this', 'epoch')
+    with pytest.raises(ValueError, match='freshness'):
+        service.peer_body('192.0.2.12', 9975, key, 2, 'another-epoch')
+
+
 def test_model_stop_checks_state_after_kill(monkeypatch):
     states = iter([True, False])
     monkeypatch.setattr(service, 'docker_running', lambda name: next(states))
@@ -346,6 +371,7 @@ def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monke
     monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
         ManagementAddressLoss=type('ManagementAddressLoss', (RuntimeError,), {}),
         NetworkManager=lambda *args: SimpleNamespace(
+            management_address_present=lambda: True,
             up=lambda: None,
             check=lambda **kw: events.append('network-check'),
             down=lambda: events.append('network-down') or {'clean': True},
@@ -541,6 +567,7 @@ def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch, recover
     monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
         ManagementAddressLoss=loss,
         NetworkManager=lambda *args: SimpleNamespace(
+            management_address_present=lambda: True,
             up=lambda: None,
             check=network_check,
             down=lambda: {'clean': True},
@@ -641,6 +668,7 @@ def test_mgmt_loss_never_masks_roce_fault(tmp_path, monkeypatch):
     monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
         ManagementAddressLoss=type('ManagementAddressLoss', (RuntimeError,), {}),
         NetworkManager=lambda *args: SimpleNamespace(
+            management_address_present=lambda: True,
             up=lambda: None,
             check=lambda **kw: (_ for _ in ()).throw(fault),
             down=lambda: {'clean': True},
@@ -686,3 +714,105 @@ def test_mgmt_loss_never_masks_roce_fault(tmp_path, monkeypatch):
     # publish, no grace, and the recorded error is the fabric one.
     assert result.state['management_degraded'] is not True
     assert 'Link address or MTU differs' in result.state['error']
+
+
+class ClockStop:
+    """A stop event whose wait advances a fake monotonic clock."""
+
+    def __init__(self, clock, stop_after=None):
+        self.clock, self.waits, self.stop_after = clock, 0, stop_after
+
+    def is_set(self):
+        return self.stop_after is not None and self.waits >= self.stop_after
+
+    def wait(self, seconds):
+        self.waits += 1
+        self.clock[0] += seconds
+
+
+def waiting_owner(monkeypatch, presence, stop_after=None):
+    result = owner()
+    result.rank = 1
+    result.site = {'management_addresses': ['192.0.2.1', '192.0.2.2']}
+    answers = iter(presence)
+    result.network = SimpleNamespace(management_address_present=lambda: next(answers))
+    clock = [100.0]
+    result.stop = ClockStop(clock, stop_after)
+    messages = []
+    monkeypatch.setattr(service.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(service, 'notify', messages.append)
+    return result, messages, clock
+
+
+def test_startup_waits_for_the_management_address_and_extends_the_start_timeout(monkeypatch):
+    result, messages, clock = waiting_owner(monkeypatch, [False, False, True])
+    result.await_management_address()
+    assert result.stop.waits == 2 and clock[0] == 102.0
+    assert [m.split('\n')[0] for m in messages] == [
+        'EXTEND_TIMEOUT_USEC=10000000', 'EXTEND_TIMEOUT_USEC=10000000', 'EXTEND_TIMEOUT_USEC=90000000']
+
+
+def test_startup_with_the_management_address_present_neither_waits_nor_notifies(monkeypatch):
+    result, messages, _ = waiting_owner(monkeypatch, [True])
+    result.await_management_address()
+    assert result.stop.waits == 0 and messages == []
+
+
+def test_startup_fails_naming_the_address_when_it_does_not_appear(monkeypatch):
+    result, _, clock = waiting_owner(monkeypatch, iter(lambda: False, True))
+    with pytest.raises(RuntimeError, match=r'192\.0\.2\.2 did not appear on this rank within 120 s'):
+        result.await_management_address()
+    assert clock[0] - 100.0 == service.MANAGEMENT_ADDRESS_WAIT
+
+
+def test_a_stop_request_ends_the_management_address_wait(monkeypatch):
+    result, _, _ = waiting_owner(monkeypatch, iter(lambda: False, True), stop_after=3)
+    with pytest.raises(RuntimeError, match='Stopped while waiting'):
+        result.await_management_address()
+    assert result.stop.waits == 3
+
+
+def test_run_awaits_the_management_address_before_changing_the_network(tmp_path, monkeypatch):
+    """A boot that starts the unit before its overlay assigns the address still brings up the mesh."""
+    result = owner()
+    result.rank, result.generation, result.model = 0, 'g', 'a' * 64
+    result.config = {'site_path': '/unused'}
+    result.site, result.identity, result.key = {'management_addresses': ['192.0.2.1']}, 'identity', b'k' * 32
+    result.state_dir, result.server = tmp_path, None
+    result.marker_records, result.logfiles = [], []
+    result.failed, result.owns_guard, result.model_seen = False, False, False
+    order = []
+    presence = iter([False, False, True])
+
+    def present():
+        value = next(presence)
+        order.append('present' if value else 'absent')
+        return value
+
+    monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
+        ManagementAddressLoss=type('ManagementAddressLoss', (RuntimeError,), {}),
+        NetworkManager=lambda *args: SimpleNamespace(
+            management_address_present=present,
+            up=lambda: order.append('up'),
+            check=lambda **kw: None,
+            down=lambda: {'clean': True},
+        ),
+    ))
+    result.start_markers = lambda: order.append('markers')
+    result.start_server = lambda: None
+    result.children = [SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda **kw: None)
+                       for _ in range(2)]
+    clock = [100.0]
+    result.stop = ClockStop(clock, stop_after=2)
+    result.publish = lambda **changes: result.state.update(changes)
+    monkeypatch.setattr(service.os, 'geteuid', lambda: 0, raising=False)
+    monkeypatch.setattr(type(tmp_path), 'lstat', lambda self, path=None: SimpleNamespace(st_mode=0o040700, st_uid=0))
+    monkeypatch.setattr(service.signal, 'signal', lambda *args: None)
+    monkeypatch.setitem(service.sys.modules, 'fcntl', SimpleNamespace(flock=lambda *args: None, LOCK_EX=1, LOCK_NB=2))
+    monkeypatch.setattr(service.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(service, 'notify', lambda message: None)
+    monkeypatch.setattr(service, 'docker_running', lambda name: False)
+    monkeypatch.setattr(service, 'DockerStatePoll', lambda name: SimpleNamespace(
+        poll=lambda: False, error=None, close=lambda: None))
+    result.run()
+    assert order[:5] == ['absent', 'absent', 'present', 'up', 'markers']
