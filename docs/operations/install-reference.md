@@ -1322,9 +1322,12 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   keeps the pair's other settings, which do not size the KV cache: at most 8
   requests at a time, which share the smaller cache, 8,192 tokens per batch
   and 8 images per request.
-- The pair's `nvfp4-qad` entry is **research-only**: CPU checks cover its pins,
-  selection and rendered containers, and no installation of it on a pair has
-  been measured.
+- The pair's `nvfp4-qad` entry is **implemented**: on one pair it passed all 7
+  functional checks and a 256-request correctness screen with no degenerate or
+  wrong response, decoded 30.7 / 94 tok/s at 1 / 8 streams in one run, and one
+  request with 8 images left Node A 2.19 GiB of memory, as NVFP4-Spark's pair
+  profile does
+  ([record](../../performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md)).
 - NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
   revision `423acf37583782c51c142d145aef733d72943d93`, which the
   [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its
