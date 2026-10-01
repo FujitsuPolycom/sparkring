@@ -23,6 +23,11 @@ GROUPS = {
         ("Max sequences per batch", "max_num_seqs", "max_num_seqs"),
         ("Quantization", None, "quantization"), ("Model dtype", None, "model_dtype"),
     ],
+    "Chat and tools": [
+        ("Reasoning parser", "reasoning_parser", "reasoning_parser"),
+        ("Tool-call parser", "tool_call_parser", None),
+        ("Default chat template arguments", "default_chat_template_kwargs", None),
+    ],
     "Prefill and attention": [
         ("Chunked prefill", "chunked_prefill_enabled", "chunked_prefill_enabled"),
         ("Max tokens per batch", "max_num_batched_tokens", "max_num_batched_tokens"),
@@ -108,7 +113,8 @@ SOURCE_NAMES = {'resolved_vllm_config': 'vLLM configuration in the API process',
                 'worker_instance': 'Worker process'}
 REASON_NAMES = {'not_set_in_environment': 'Not set in environment', 'invalid_value': 'Invalid value',
                 'not_supplied': 'Not in launch arguments', 'per_collective_or_not_exposed': 'Not exposed by NCCL',
-                'not_collected': 'Not collected', 'not_applicable': 'Not applicable'}
+                'not_collected': 'Not collected', 'not_applicable': 'Not applicable',
+                'unsupported_value': 'Value not shown'}
 # Plain names for the JSON workers.state values.
 STATE_NAMES = {'complete': 'Complete', 'partial': 'Incomplete', 'pending': 'Refreshing',
                'error': 'Worker request failed', 'unavailable': 'Workers unavailable',
@@ -142,7 +148,38 @@ GROUPS['Decode and speculation'] += [
     ('Target head precision', None, 'target_head_quantization'),
     ('Draft head precision', None, 'draft_head_quantization'),
     ('Draft shares target head', None, 'draft_head_shared'),
+    ('Shared-memory reader window', 'SPARKRING_SHM_BUSY_LOOP_S', None),
 ]
+# Launch arguments that only the API server reads. Workers have no copy, so
+# their rows show no per-worker comparison.
+API_SERVER_ONLY = {'tool_call_parser', 'default_chat_template_kwargs'}
+GROUP_NOTES = {
+    'Chat and tools': 'Each request can set thinking with chat_template_kwargs or reasoning_effort. '
+                      'Request values take precedence over these defaults.',
+}
+SAVE_CPU_WINDOW_S = 0.002  # runtime/common/serving.py SWITCHES["save_cpu"]
+
+
+def shm_window(record):
+    """The shared-memory reader window, named by where its value comes from."""
+    if record.get('reason') == 'not_set_in_environment':
+        return '1 s (vLLM default)'
+    if known(record) and record['value'] == SAVE_CPU_WINDOW_S:
+        return '2 ms (sparkring install --save-cpu)'
+    if known(record) and type(record['value']) in (int, float):
+        return f"{record['value']} s"
+    return None
+
+
+def template_defaults(record):
+    """Unset defaults leave thinking and similar options to the model's chat template."""
+    if known(record) and record['value'] is None:
+        return 'Not set (the chat template decides)'
+    return None
+
+
+# Settings whose values read better with a fixed phrase; None falls back to display().
+PHRASES = {'SPARKRING_SHM_BUSY_LOOP_S': shm_window, 'default_chat_template_kwargs': template_defaults}
 
 
 def clean(value):
@@ -159,6 +196,9 @@ def fact_value(record):
 
 
 def display(record, key=""):
+    phrase = PHRASES[key](record) if key in PHRASES else None
+    if phrase is not None:
+        return phrase
     if not known(record):
         return REASON_NAMES.get(record.get('reason'), 'Unknown')
     value = record["value"]
@@ -166,6 +206,9 @@ def display(record, key=""):
         if record.get('reason') == 'not_applicable':
             return 'Not applicable'
         return 'Automatic' if key in AUTO_FIELDS else 'None'
+    if value == '':
+        # vLLM stores an empty name for an unselected option, such as the reasoning parser.
+        return 'None'
     if isinstance(value, bool):
         return "ON" if value else "OFF"
     if key.endswith(("_BYTES", "_MAX_SIZE", "_bytes")) and isinstance(value, (int, float)):
@@ -279,13 +322,14 @@ def summarize(doc):
             key = actual_key or config_key or ''
             requested = configured(doc, config_key)
             actual = effective(doc, actual_key)
-            reports = [(r.get("identity", {}).get("rank", {}),
-                        effective(r, actual_key) if actual_key else configured(r, config_key))
-                       for r in ranks]
+            api_only = config_key in API_SERVER_ONLY and not actual_key
+            reports = [] if api_only else [
+                (r.get("identity", {}).get("rank", {}),
+                 effective(r, actual_key) if actual_key else configured(r, config_key)) for r in ranks]
             available = [value for _, value in reports if known(value)]
             distinct = {signature(value) for value in available}
-            agreement, agreement_severity = agreement_of(ranks, reports, available, distinct, expected,
-                                                         unique_ranks, actual_key in LOCAL_FIELDS)
+            agreement, agreement_severity = ('API server only', 'neutral') if api_only else agreement_of(
+                ranks, reports, available, distinct, expected, unique_ranks, actual_key in LOCAL_FIELDS)
             if not known(actual) and len(distinct) == 1:
                 actual = available[0] if actual_key else actual
             resolved_label = display(actual, key) if actual_key else 'Not checked at runtime'
@@ -313,8 +357,10 @@ def summarize(doc):
                 resolved_label += ' ' + marker
                 footnote = marker + ' ' + footnote
             source = actual.get('source', '')
+            # An unset variable whose phrase names the resulting default is still a launch setting.
+            defaulted = config_key in PHRASES and requested.get('reason') == 'not_set_in_environment'
             evidence = (('Running worker' if source.startswith('resident_') else 'vLLM config') if known(actual)
-                        else 'Launch setting only' if known(requested) or available else 'Not reported')
+                        else 'Launch setting only' if known(requested) or available or defaulted else 'Not reported')
             reason = actual.get('reason') or requested.get('reason')
             if actual_key in LOCAL_FIELDS and len(distinct) > 1:
                 resolved_label = 'Differs by node'
@@ -350,6 +396,11 @@ def footnotes(rows):
     return list(dict.fromkeys(row["footnote"] for row in rows if row["footnote"]))
 
 
+def group_notes(group, rows):
+    """Row footnotes, then the group's own note."""
+    return footnotes(rows) + ([GROUP_NOTES[group]] if group in GROUP_NOTES else [])
+
+
 def render_text(doc):
     view = summarize(doc)
     lines = [view["title"], f"Model: {view['model']} | {view['topology']}",
@@ -369,7 +420,7 @@ def render_text(doc):
         for row in rows:
             if row["severity"] == "bad":
                 lines.append("  " + row["label"] + ": " + "; ".join(f"rank {rank}={value}" for rank, value in row["rank_values"]))
-        lines += footnotes(rows)
+        lines += group_notes(group, rows)
     lines += ["", "WORKERS", "Rank | Draft tokens | KV transfer | Kernel setup"]
     lines += [" | ".join(row) for row in rank_rows(view)] or ["No worker reports"]
     lines += ["", "BUILD INFORMATION"]
@@ -609,7 +660,7 @@ def render_report(doc):
             title = f' title="{e(row["origin"])}"' if row["origin"] else ''
             parts.append(f'<tr class="{row["severity"]}"><th scope="row">{e(row["label"])}</th><td>{e(row["configured"])}</td><td>{e(row["resolved"])}</td><td><span class="evidence"{title}>{e(row["evidence"])}</span></td><td>{check}<small class="comparison {row["comparison_severity"]}">{e(row["comparison"])}</small></td></tr>')
         parts.append('</tbody></table></div>')
-        parts += [f'<p class="footnote">{e(note)}</p>' for note in footnotes(rows)]
+        parts += [f'<p class="footnote">{e(note)}</p>' for note in group_notes(group, rows)]
         parts.append('</details>')
     parts.append('<details id="workers" class="group" open><summary>Workers<span>Draft tokens, KV transfer and kernel setup on each worker</span></summary><div class="table-scroll"><table><thead><tr><th>Rank</th><th>Draft tokens</th><th>KV transfer</th><th>Kernel setup</th></tr></thead><tbody>')
     parts += ['<tr>' + ''.join(f'<td>{e(value)}</td>' for value in row) + '</tr>' for row in rank_rows(view)]
