@@ -39,7 +39,7 @@ LISTED = {
     ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "629bc3218833a38b475b719f34aa571666f4a03e"):
         [("qwen38-flash-next-qad-tp4", "qad-step-4000"), ("qwen38-flash-next-tp2", "qad-step-4000")],
     ("local-inference-lab/GLM-5.3-Flash-NVFP4", "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49"):
-        [("glm53-flash-nvfp4-spark-tp4", "nvfp4-qad")],
+        [("glm53-flash-nvfp4-spark-tp2", "nvfp4-qad"), ("glm53-flash-nvfp4-spark-tp4", "nvfp4-qad")],
     ("nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348"):
         [("glm53-flash-nvfp4-spark-tp4", "nvidia-nvfp4")],
 }

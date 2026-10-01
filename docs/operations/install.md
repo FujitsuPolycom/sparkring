@@ -51,9 +51,10 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
 - `--plan` shows what it would change and changes nothing. On a Spark without
   SparkRing, run with `--package-only` first; it installs only the package.
 - Qwen profiles install checkpoint step 5500; add `--checkpoint qad-step-4000`
-  for step 4000. The four-Spark GLM profile installs NVFP4-Spark; add
-  `--checkpoint nvfp4-qad` or `--checkpoint nvidia-nvfp4` for Local Inference
-  Lab's QAD or NVIDIA's NVFP4 checkpoint; neither has been tested on Sparks
+  for step 4000. GLM profiles install NVFP4-Spark; add `--checkpoint nvfp4-qad`
+  for Local Inference Lab's QAD checkpoint, or on four Sparks
+  `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On two Sparks, QAD
+  runs with a shorter context window
   ([checkpoints](install-reference.md#another-checkpoint-of-a-profile)).
 - `--download-limit 850Mbit` caps the model download from Hugging Face
   ([details](install-reference.md#limit-the-download-rate)).

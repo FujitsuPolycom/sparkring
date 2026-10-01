@@ -1275,6 +1275,7 @@ Installing again without `--checkpoint` switches back to the default.
 ```bash
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia-nvfp4
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad
 ```
 
 | Profiles | `--checkpoint` | Checkpoint | Settings that differ from the default |
@@ -1283,12 +1284,14 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step-4000` | Branch `qad-step-4000` of the same repository, revision `629bc3218833` | MXFP8 target LM head; the draft's NVFP4 experts on B12X |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
+| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default) | GLM-5.3-Flash NVFP4-Spark, as above | — |
+| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
-- The GLM `nvfp4-qad` checkpoint is **implemented** on the installer image:
-  on one four-Spark ring it passed all 7 functional checks and a 256-request
-  correctness screen with no degenerate or wrong response, and decoded
-  57.7 / 184 / 258 tok/s at 1 / 8 / 16 streams in one run
+- The four-Spark `nvfp4-qad` entry is **implemented** on the installer
+  image: on one four-Spark ring it passed all 7 functional checks and a
+  256-request correctness screen with no degenerate or wrong response, and
+  decoded 57.7 / 184 / 258 tok/s at 1 / 8 / 16 streams in one run
   ([record](../../performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvfp4-qad-20261001.md)).
   Its host memory headroom was not measured.
 - The GLM `nvidia-nvfp4` checkpoint is **implemented** on the installer
@@ -1306,11 +1309,22 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia
   keeps the free memory that the memory record measured for images, videos and
   long requests. The ring's KV cache held 5,668,802 tokens at 37 GiB with
   NVFP4-Spark.
-- The two-Spark GLM profile lists only NVFP4-Spark. On a pair, the QAD and
-  NVIDIA weights take 4.9 and 7.8 GiB more on each Spark, and a KV cache that
-  much below the pair's 10 GiB would hold less than one request of its
-  1,048,576-token context window, which needs about 6.8 GiB at the pair's
-  measured 153,000 tokens per GiB.
+- The two-Spark GLM profile offers the QAD checkpoint with 5 GiB of KV cache
+  per Spark and a 524,288-token context window, and does not list NVIDIA's.
+  On a pair, the QAD and NVIDIA weights take 4.9 and 7.8 GiB more on each
+  Spark than NVFP4-Spark's. The QAD entry's KV cache is the pair's 10 GiB less
+  that 4.9 GiB, rounded down to whole GiB, so each Spark keeps the free memory
+  the memory record measured. The pair's KV cache held about 137,000 tokens per
+  GiB with a 262,144-token context window and 153,000 with a 1,048,576-token
+  window, so 5 GiB holds 0.68 to 0.77 million tokens: one request of 524,288
+  tokens needs 3.4 to 3.8 GiB. A 1,048,576-token request needs about 6.8 GiB,
+  more than 5 GiB, and NVIDIA's weights would leave about 2 GiB. The entry
+  keeps the pair's other settings, which do not size the KV cache: at most 8
+  requests at a time, which share the smaller cache, 8,192 tokens per batch
+  and 8 images per request.
+- The pair's `nvfp4-qad` entry is **research-only**: CPU checks cover its pins,
+  selection and rendered containers, and no installation of it on a pair has
+  been measured.
 - NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
   revision `423acf37583782c51c142d145aef733d72943d93`, which the
   [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its

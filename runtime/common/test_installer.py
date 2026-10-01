@@ -461,8 +461,13 @@ def test_a_listed_checkpoint_of_another_repository_selects_its_own_pins_and_dire
         assert directory == f"/srv/sparkring/ring/checkpoints/{repository.replace('/', '--')}/{revision}"
         directories.add(directory)
     assert len(directories) == 3
-    # The pair profile lists no other checkpoint.
-    with pytest.raises(ValueError, match="does not accept"):
+    # The pair lists the QAD checkpoint, in the same directory as the ring's, and not NVIDIA's.
+    pair = installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "nvfp4-qad")
+    assert (pair["model_repository"], pair["nodes"]) == ("local-inference-lab/GLM-5.3-Flash-NVFP4", 2)
+    assert installer.checkpoint_directory("ring", pair) == installer.checkpoint_directory(
+        "ring", installer.setup.selection(GLM_RING, "nvfp4-qad"))
+    assert installer.checkpoint_pins(pair) == installer.checkpoint_pins(installer.setup.selection(GLM_RING, "nvfp4-qad"))
+    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark$"):
         installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "nvidia-nvfp4")
     with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark, nvidia-nvfp4"):
         installer.setup.selection(GLM_RING, "qad-step-4000")
@@ -483,7 +488,7 @@ def test_a_listed_checkpoint_changes_the_deployment_lock_and_served_model():
         assert installer.identity(locks[name])["checkpoint"] == name
 
 
-QWEN_PINS =("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
+QWEN_PINS = ("profiles/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
              "60215d26cf5e42c2db6128774032d57fc62678da.json")
 
 

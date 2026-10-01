@@ -125,10 +125,11 @@ def test_the_step_4000_checkpoint_runs_its_pinned_settings():
 
 
 GLM_TP4 = ROOT / "profiles/glm53-flash-nvfp4-spark-tp4/config.json"
+GLM_TP2 = ROOT / "profiles/glm53-flash-nvfp4-spark-tp2/config.json"
 
 
-def glm_command(checkpoint=None, rank=0):
-    spec = adapter.container_spec(adapter.read(GLM_TP4), rank=rank, master="192.0.2.1", host_ip=f"192.0.2.{rank + 1}",
+def glm_command(checkpoint=None, rank=0, path=GLM_TP4):
+    spec = adapter.container_spec(adapter.read(path), rank=rank, master="192.0.2.1", host_ip=f"192.0.2.{rank + 1}",
                                   interface="test0", image=installer_image_id(), model=str(ROOT / "fixture-model"),
                                   cache=str(ROOT / "fixture-cache"), checkpoint=checkpoint)
     return spec, list(spec.command)
@@ -142,12 +143,6 @@ def test_the_glm_ring_lists_three_checkpoints_of_three_repositories():
     assert repositories == {"nvfp4-spark": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
                             "nvfp4-qad": "local-inference-lab/GLM-5.3-Flash-NVFP4",
                             "nvidia-nvfp4": "nvidia/GLM-5.3-Flash-NVFP4"}
-    # The pair lists only NVFP4-Spark. By their pin manifests, the QAD and
-    # NVIDIA weights take 4.9 and 7.8 GiB more on each Spark of a pair. A KV
-    # cache that much below the pair's 10 GiB holds fewer tokens than one
-    # 1,048,576-token request, about 6.8 GiB at the pair's measured 153,000
-    # tokens per GiB (performance/records/glm53-flash/installer-memory-20260929.md).
-    assert "checkpoints" not in adapter.read(ROOT / "profiles/glm53-flash-nvfp4-spark-tp2/config.json")
     # The QAD checkpoint is the target record's; NVIDIA's revision da920bb0
     # holds the weights and index of the record's 423acf37 and a config that
     # excludes the BF16 MTP layer from quantization.
@@ -168,22 +163,56 @@ def test_a_glm_checkpoint_with_larger_weights_reserves_that_much_less_kv_cache()
     measured Node A's memory with the default checkpoint).
     """
     from runtime.common import installer, setup
-    profile = adapter.read(GLM_TP4)
-    nodes, gib = adapter.node_count(profile), 2**30
+    gib = 2**30
 
-    def weights(name):
-        pins = installer.checkpoint_pins(setup.selection("glm53-flash-nvfp4-spark-tp4", name))
+    def weights(profile_id, name):
+        pins = installer.checkpoint_pins(setup.selection(profile_id, name))
         return sum(pins["files"][file]["size"] for file in pins["weights"])
 
     def kv(configuration):
         return int(configuration["vllm_args"][configuration["vllm_args"].index("--kv-cache-memory-bytes") + 1])
 
     extra = {}
-    for name in ("nvfp4-qad", "nvidia-nvfp4"):
-        extra[name] = (weights(name) - weights("nvfp4-spark")) / nodes
+    for path, name in ((GLM_TP4, "nvfp4-qad"), (GLM_TP4, "nvidia-nvfp4"), (GLM_TP2, "nvfp4-qad")):
+        profile, profile_id = adapter.read(path), path.parent.name
+        per_spark = (weights(profile_id, name) - weights(profile_id, "nvfp4-spark")) / adapter.node_count(profile)
         reserved = kv(profile) - kv(adapter.checkpoint_settings(profile, name))
-        assert reserved % gib == 0 and 0 <= reserved - extra[name] < gib, name
-    assert (round(extra["nvfp4-qad"] / gib, 1), round(extra["nvidia-nvfp4"] / gib, 1)) == (2.4, 3.9)
+        assert reserved % gib == 0 and 0 <= reserved - per_spark < gib, (profile_id, name)
+        extra[profile_id, name] = round(per_spark / gib, 1)
+    assert extra == {("glm53-flash-nvfp4-spark-tp4", "nvfp4-qad"): 2.4,
+                     ("glm53-flash-nvfp4-spark-tp4", "nvidia-nvfp4"): 3.9,
+                     ("glm53-flash-nvfp4-spark-tp2", "nvfp4-qad"): 4.9}
+
+
+def test_the_glm_pair_serves_the_qad_checkpoint_with_a_smaller_kv_cache_and_context():
+    profile = adapter.read(GLM_TP2)
+    assert adapter.checkpoint_names(profile) == ("nvfp4-spark", ("nvfp4-qad", "nvfp4-spark"))
+    assert profile["checkpoints"]["nvfp4-qad"]["model"] == adapter.read(GLM_TP4)["checkpoints"]["nvfp4-qad"]["model"]
+    # NVIDIA's weights take 7.8 GiB more on each Spark of a pair, which the
+    # pair's 10 GiB of KV cache cannot give up; the pair does not list it.
+    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark"):
+        adapter.checkpoint_settings(profile, "nvidia-nvfp4")
+    for rank in (0, 1):
+        _, default = glm_command(rank=rank, path=GLM_TP2)
+        spec, command = glm_command("nvfp4-qad", rank=rank, path=GLM_TP2)
+        assert command[command.index("--served-model-name") + 1] == "GLM-5.3-Flash-NVFP4-QAD-TP2"
+        # 5 GiB, the pair's 10 GiB less the 4.9 GiB the QAD weights add on each
+        # Spark. With the pair's measured 137,000 to 153,000 tokens per GiB in
+        # 2,048-token pages, it holds 0.68 to 0.77 million tokens, more than
+        # one request of the 524,288-token context window.
+        assert command[command.index("--kv-cache-memory-bytes") + 1] == str(5 * 2**30)
+        assert command[command.index("--max-model-len") + 1] == "524288"
+        # The pair's draft already runs its MTP experts on Humming, which the QAD experts' MXFP8 needs.
+        assert json.loads(command[command.index("--speculative-config") + 1])["moe_backend"] == "humming"
+        assert (command[command.index("--quantization") + 1], command[command.index("--load-format") + 1]) == (
+            "modelopt_mixed", "b12x")
+        assert [index for index, (a, b) in enumerate(zip(command, default)) if a != b] == [
+            command.index(flag) + 1 for flag in ("--served-model-name", "--max-model-len", "--kv-cache-memory-bytes")]
+        assert len(command) == len(default) and command[-1] == default[-1]
+        assert (command[-1] == "--headless") == (rank == 1)
+        assert spec.name == f"glm53-flash-nvfp4-spark-tp2-r{rank}"
+        assert spec.environment["XDG_CACHE_HOME"] == (
+            f"/cache/glm53-flash-nvfp4-spark-{installer_image_id()[7:19]}-175ae8ce3b5a")
 
 
 def test_the_glm_qad_checkpoint_runs_its_mxfp8_draft_experts_on_humming():

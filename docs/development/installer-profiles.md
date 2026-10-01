@@ -113,14 +113,16 @@ them in `config.json` instead of repeating the profile; `sudo sparkring install
 --checkpoint NAME` selects one. `checkpoint` names the default and
 `checkpoints` maps each name to an entry; `runtime/common/qwen_flash_next.py`
 (`checkpoint_names`, `checkpoint_settings`) validates and applies it. Examples:
-the Qwen profiles (two branches of one repository) and
-`glm53-flash-nvfp4-spark-tp4` (three repositories).
+the Qwen profiles (two branches of one repository),
+`glm53-flash-nvfp4-spark-tp4` (three repositories) and
+`glm53-flash-nvfp4-spark-tp2` (two repositories; the second with a smaller KV
+cache and context window).
 
 | Entry key | Value |
 |---|---|
 | `model` | Required: `repository`, 40-hex `revision`, `config_sha256`, `index_sha256`, as for the profile's `model`; each entry pins another revision. The default entry is exactly the profile's `model` and has no other key |
 | `served_model_name` | Optional; keeps the `-TP<nodes>` suffix |
-| `arguments` | Optional: new values for vLLM options that `vllm_args` already sets, such as `--quantization` and `--load-format`; no option is added |
+| `arguments` | Optional: new values for vLLM options that `vllm_args` already sets, such as `--quantization`, `--load-format`, `--kv-cache-memory-bytes` and `--max-model-len`; no option is added |
 | `environment` | Optional: new values for variables that `environment` already sets |
 | `speculative` | Optional: keys to change or add in `--speculative-config` |
 

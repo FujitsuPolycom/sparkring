@@ -15,7 +15,11 @@ The four-Spark installer profile `glm53-flash-nvfp4-spark-tp4` installs the
 QAD revision above (`--checkpoint nvfp4-qad`) and NVIDIA revision
 `da920bb0b9f4` (`--checkpoint nvidia-nvfp4`) on the installer image, each with
 its own pin manifest in [`checkpoints/`](checkpoints). Both selections are
-implemented, each measured on one four-Spark ring
+implemented, each measured on one four-Spark ring. The two-Spark installer
+profile `glm53-flash-nvfp4-spark-tp2` installs the same QAD revision with
+`--checkpoint nvfp4-qad`, with 5 GiB of KV cache per Spark and a
+524,288-token context window to make room for its larger weights; that entry
+is research-only, and the pair does not offer the NVIDIA checkpoint
 ([names, settings and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
 The [Spark target record](glm53-target-variants.json) owns its runtime revision,
