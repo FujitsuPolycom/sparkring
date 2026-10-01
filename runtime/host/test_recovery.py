@@ -539,3 +539,14 @@ def test_package_ships_the_timer_that_runs_one_check_after_another():
     assert recovery.TIMER in units.split("=", 1)[1].strip('"').split()
     assert "sparkring-recover" not in (PACKAGING / "postinst").read_text()
     assert recovery.TIMER_FILE == Path("/usr/lib/systemd/system/sparkring-recover.timer")
+
+
+def test_a_manual_down_after_an_interrupted_attempt_is_not_taken_for_recoverys_own(pair):
+    clock = Clock()
+    recovery.update(pair.directory, attempt={"started_at": clock.value, "action": "restart", "reason": "test",
+                                             "generation": state(pair)["generation"]})
+    assert controller.lifecycle(["down", "--execute"]) == 0
+    assert record(pair)["attempt"] is None
+    pair.operations.clear()
+    clock.advance(600)
+    assert run(clock)["state"] == "inactive" and pair.operations == []
