@@ -398,26 +398,38 @@ An installer image replaces its runtime-status package from a pure wheel and a
 source archive pinned by file name and SHA-256
 ([Replacing the runtime-status package](../../../runtime/images/installer-images.md#replacing-the-runtime-status-package)).
 Both are built from a commit of this directory into a directory outside the
-repository. Run the commands from the repository root with Python 3.12,
-setuptools 78.1.0 and pip 24.0:
+repository. Run the commands from the repository root with Git 2.43 or later,
+Python 3.12, setuptools 78.1.0 and pip 24.0:
 
 ```bash
 COMMIT=$(git rev-parse HEAD)
+EPOCH=$(git log -1 --format=%ct "$COMMIT")
 VERSION=0.3.4
 OUT=~/status-$VERSION
 mkdir -p "$OUT" ~/status-$VERSION-stage
-git archive --format=tar.gz -9 --prefix=runtime_status/ \
+git -c core.autocrlf=false archive --format=tar.gz -9 --prefix=runtime_status/ --mtime="@$EPOCH" \
   "$COMMIT:integrations/vllm/runtime_status" > "$OUT/sparkring-runtime-status-$VERSION-source.tar.gz"
 tar -xzf "$OUT/sparkring-runtime-status-$VERSION-source.tar.gz" -C ~/status-$VERSION-stage
-EPOCH=$(stat -c %Y ~/status-$VERSION-stage/runtime_status/pyproject.toml)
 cd ~/status-$VERSION-stage/runtime_status
 SOURCE_DATE_EPOCH=$EPOCH python -m pip wheel --no-deps --no-build-isolation --no-index --wheel-dir "$OUT" .
 sha256sum "$OUT"/*
 ```
 
-`git archive` of a tree stamps every member with the time it runs; the wheel
-takes that time from `SOURCE_DATE_EPOCH`, so its bytes follow from the archive.
-For Git tree `74407675db01502e57ad6131103a8bbdb3db3bd8` of this directory, the
-archive differs from the pinned 0.3.2 source archive only in that time stamp
-(1790540628 in the pinned archive), and the wheel built from the pinned archive
-equals the pinned 0.3.2 wheel byte for byte.
+`--mtime` stamps every archive member with the commit's time, and the wheel
+takes the same time from `SOURCE_DATE_EPOCH`, so both files follow from the Git
+tree of this directory and that time. Without `--mtime`, `git archive` stamps
+the time it runs. `core.autocrlf=false` keeps Git for Windows from converting
+line ends, because the archived tree carries no `.gitattributes`. To rebuild a
+pinned pair, archive its tree with its archive time in place of
+`$COMMIT:integrations/vllm/runtime_status` and `$EPOCH`:
+
+| Version | Git tree of this directory | Archive time |
+| --- | --- | --- |
+| 0.3.2 | `74407675db01502e57ad6131103a8bbdb3db3bd8` | `1790540628` |
+| 0.3.3 | `b82d56e0a8a5a04470fc679be9c7a665a7ab7fef` | `1790578668` |
+
+[installer-images.md](../../../runtime/images/installer-images.md#replacing-the-runtime-status-package)
+records the tree and time of each later pinned pair. Rebuilding 0.3.2 and 0.3.3
+this way, the archive with Git 2.52 for Windows and the wheel with Python
+3.12.3, setuptools 78.1.0 and pip 24.0 on Linux, reproduced both pinned files
+of each version byte for byte.
