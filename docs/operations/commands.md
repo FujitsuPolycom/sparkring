@@ -257,7 +257,10 @@ A deployment keeps the SparkRing source that created it. `up`, `down` and
 `status` plan and run each deployment with that source, so a deployment made by
 an earlier package still starts and stops after the package changes. `up`
 makes the deployment it starts the active one; stopping another deployment
-leaves the active one unchanged. Repeating `up` re-checks a running deployment
+leaves the active one unchanged. Without PROFILE, `up` and `down` act on the
+deployment that was active when they printed their steps; when a
+`sparkring install` makes another one active before the steps start, they stop
+and ask for a new review. Repeating `up` re-checks a running deployment
 and starts one whose containers stopped on every Spark, for example after a
 restart ([when a model stops serving](install-reference.md#when-a-model-stops-serving)).
 `sparkring install` names its deployments
@@ -296,15 +299,18 @@ most actions. Useful by hand:
 - from SSH discovery (`--host`, repeated in rank order) or a site file
   (`--site`);
 - for `--model glm53|mimo26|qwen38` or `--profile`;
-- with optional `--variant`, `--image-lock`, `--name`, `--workspace` and
-  `--output`.
+- with optional `--variant`, `--image-lock`, `--name`, `--workspace`,
+  `--output` and [serving settings](install-reference.md#serving-settings).
 
 `sparkring export --output FILE` writes the deployment as a zip;
-`--deployment DIR` selects another.
+`--deployment DIR` selects another. Its Compose files carry the deployment's
+serving settings.
 
 - `--share` writes a portable template without private inputs.
 - `--format compose` writes one standalone Compose file for the deployment's
-  profile, or for the one that `--profile` and `--variant` name.
+  profile, or for the one that `--profile` and `--variant` name. It refuses a
+  deployment with an image lock or serving settings, which the file would
+  discard.
 
 Both accept `--json`. See
 [lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing).

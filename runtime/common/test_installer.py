@@ -7,6 +7,7 @@ import subprocess
 import zipfile
 
 import pytest
+import yaml
 
 from runtime.common import compose, glm_native_candidate, installer, process_lock, tp2
 from scripts import sparkring, sparkring_installer
@@ -230,6 +231,93 @@ def test_shared_export_regenerates_examples_instead_of_redacting_private_files(d
             assert "rank0/compose.yaml" in archive.namelist()
             assert "rank1/compose.yaml" in archive.namelist()
             assert ("deployment.lock.json" in archive.namelist()) is private
+
+
+SETTINGS = {"context_length": 65536, "kv_cache_gib": 16, "max_concurrency": 4, "max_images": 1}
+
+
+def tuned_deployment(root):
+    """A saved Qwen pair deployment on the shared installer image with serving settings SETTINGS."""
+    data = b"offline source bundle fixture"
+    lock = installer.make_lock(QWEN, site(), "1" * 40, hashlib.sha256(data).hexdigest(),
+                               image_runtime=installer.installer_image.default_lock(), settings=SETTINGS)
+    installer.write(root / "deployment.lock.json", lock)
+    (root / "source.bundle").write_bytes(data)
+    return root
+
+
+def exported(root, *, share):
+    """The files of an export of tuned_deployment, except its source bundle, by archive name."""
+    output = root / "export.zip"
+    installer.export(tuned_deployment(root / "deployment"), output, share=share)
+    with zipfile.ZipFile(output) as archive:
+        return {name: archive.read(name).decode() for name in archive.namelist() if name != "source.bundle"}
+
+
+@pytest.mark.parametrize("share", [False, True])
+def test_exports_render_the_deployments_serving_settings(tmp_path, share):
+    from runtime.common import serving
+    files = exported(tmp_path, share=share)
+    for rank in (0, 1):
+        container = json.loads(files[f"rank{rank}/container.json"])["command"]
+        composed = yaml.safe_load(files[f"rank{rank}/compose.yaml"])["services"]["model"]["command"]
+        for command in (container, composed):
+            assert {name: serving.profile_value(command, name) for name in SETTINGS} == SETTINGS
+    text = "\n".join(files.values())
+    assert ("private-spark0" in text) is not share and ("/srv/private-weights" in text) is not share
+    if not share:
+        assert json.loads(files["deployment.lock.json"])["serving"] == SETTINGS
+
+
+def test_the_shared_templates_init_command_saves_the_deployments_serving_settings(tmp_path, monkeypatch):
+    files = exported(tmp_path, share=True)
+    line = next(line for line in files["README.txt"].splitlines() if "then run sparkring init" in line)
+    argv = line.split("then run sparkring ", 1)[1].rstrip(".").split()
+    assert argv[-8:] == ["--context-length", "65536", "--kv-cache-gib", "16", "--max-concurrency", "4",
+                         "--max-images", "1"]
+    for name in ("site.example.json", "image-lock.json"):
+        (tmp_path / name).write_text(files[name])
+    calls = []
+    monkeypatch.setattr(installer, "init", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.chdir(tmp_path)
+    assert sparkring.main(argv) == 0
+    assert calls[0][0][1] == QWEN and calls[0][1]["settings"] == SETTINGS
+
+
+def test_a_shared_export_carries_the_save_cpu_switch_as_a_flag_and_a_container_variable(tmp_path, monkeypatch):
+    data = b"offline source bundle fixture"
+    settings = {"max_images": 1, "save_cpu": True}
+    lock = installer.make_lock(QWEN, site(), "1" * 40, hashlib.sha256(data).hexdigest(),
+                               image_runtime=installer.installer_image.default_lock(), settings=settings)
+    (tmp_path / "deployment").mkdir()
+    installer.write(tmp_path / "deployment" / "deployment.lock.json", lock)
+    (tmp_path / "deployment" / "source.bundle").write_bytes(data)
+    installer.export(tmp_path / "deployment", tmp_path / "export.zip", share=True)
+    with zipfile.ZipFile(tmp_path / "export.zip") as archive:
+        files = {name: archive.read(name).decode() for name in archive.namelist() if name != "source.bundle"}
+    for rank in (0, 1):
+        environment = yaml.safe_load(files[f"rank{rank}/compose.yaml"])["services"]["model"]["environment"]
+        assert environment["SPARKRING_SHM_BUSY_LOOP_S"] == "0.002"
+    line = next(line for line in files["README.txt"].splitlines() if "then run sparkring init" in line)
+    argv = line.split("then run sparkring ", 1)[1].rstrip(".").split()
+    assert argv[-3:] == ["--max-images", "1", "--save-cpu"]
+    for name in ("site.example.json", "image-lock.json"):
+        (tmp_path / name).write_text(files[name])
+    calls = []
+    monkeypatch.setattr(installer, "init", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.chdir(tmp_path)
+    assert sparkring.main(argv) == 0
+    assert calls[0][1]["settings"] == settings
+
+
+def test_standalone_compose_export_refuses_a_deployment_with_serving_settings(tmp_path):
+    data = b"offline source bundle fixture"
+    lock = installer.make_lock(QWEN, site(), "1" * 40, hashlib.sha256(data).hexdigest(), settings={"max_images": 1})
+    installer.write(tmp_path / "deployment" / "deployment.lock.json", lock)
+    (tmp_path / "deployment" / "source.bundle").write_bytes(data)
+    assert sparkring_installer.main(["export", "--format", "compose", "--deployment", str(tmp_path / "deployment"),
+                                     "--output", str(tmp_path / "compose.yaml")]) == 2
+    assert not (tmp_path / "compose.yaml").exists()
 
 
 def test_managed_glm_uses_managed_native_checks_and_lifecycle():
