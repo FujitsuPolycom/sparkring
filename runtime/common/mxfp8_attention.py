@@ -66,7 +66,7 @@ read-only::
 
 Only the requantization check imports torch and vLLM (``vllm_quantizer``); the
 rest uses the standard library. The checkpoint manifest pins this file's
-SHA-256, so any change to it gives the derived checkpoint a new identity.
+SHA-256, so any change to it gives the derived checkpoint another identity.
 """
 from __future__ import annotations
 

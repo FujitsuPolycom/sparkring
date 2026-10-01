@@ -48,7 +48,7 @@ LISTED = {
 # Derived checkpoints: their manifests (runtime/common/derived_checkpoint.py, checked by
 # runtime/common/test_derived_checkpoint.py) follow the same path rule but are not Hub pin manifests.
 DERIVED = {
-    ("sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention", "7ff045aa3cc58ead4f87cc1b1fa60a19da416be4"):
+    ("sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention", "648b194a96e5f130ab62702113242d8e1ddd6e76"):
         [("qwen38-flash-next-qad-tp4", "qad-step5500-mxfp8-attention"),
          ("qwen38-flash-next-tp2", "qad-step5500-mxfp8-attention")],
 }

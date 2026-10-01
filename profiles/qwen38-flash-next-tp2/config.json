@@ -33,7 +33,7 @@
     },
     "qad-step5500-mxfp8-attention": {
       "model": {
-        "revision": "7ff045aa3cc58ead4f87cc1b1fa60a19da416be4",
+        "revision": "648b194a96e5f130ab62702113242d8e1ddd6e76",
         "config_sha256": "cea126321b72fd8a54d942e60a3922bdeaa105ce2211df6aa2da38104c5f5043",
         "index_sha256": "29240d1afce0c936839f82cdc9679586fe061de2649526e068ecf6aee0f92f4c",
         "repository": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention"

@@ -1531,11 +1531,12 @@ def _donor_files(views):
     """``{name: stats}`` of the recipe's donor files, each placed in the donor directory with its pinned SHA-256."""
     card = views.donor_lock["selection"]
     required, _ = _pinned(card)
-    needed = {name: required[name] for name in views.manifest["donor"]["files"]}
+    needed = views.manifest["donor"]["files"]
+    # The donor directory may hold the whole donor checkpoint; every pinned name of it is SparkRing's own.
     with _claim(card, plain(views.donor_row["model"])) as claimed:
         journal = place.journal_load(claimed)
-        _settle(claimed, journal, needed)
-        placed = _placed(claimed, journal, needed)
+        _settle(claimed, journal, required)
+        placed = {name: stats for name, stats in _placed(claimed, journal, required).items() if name in needed}
     absent = sorted(set(needed) - set(placed))
     if absent:
         raise ValueError(f"{views.donor_row['model']} lacks the donor files {_names(absent)}; repeat sudo sparkring "

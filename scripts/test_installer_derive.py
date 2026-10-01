@@ -208,7 +208,8 @@ def environment(tmp_path, monkeypatch, *, tamper_donor=False, wrong=None):
     return SimpleNamespace(call=call, manifest=manifest, base=base_path, outputs=outputs, runs=runs,
                            derived=root / "sparkring-derived--fixture-model" / manifest["revision"],
                            donor=root / REPOSITORY.replace("/", "--") / DONOR, state=workspace / "installer",
-                           donor_files={name: donor_files[name] for name in needed}, recipe=recipe_path)
+                           donor_files={name: donor_files[name] for name in needed}, recipe=recipe_path,
+                           views=lambda: host._derived(lock, lock["site"]["ranks"][0], workspace / "installer"))
 
 
 def journal(directory):
@@ -331,3 +332,17 @@ def test_transfers_of_the_derived_checkpoint_use_its_own_directory(tmp_path, mon
     done = env.call("model-transfer-complete", document)
     assert done["complete"] and (env.state / "derived/model.json").is_file()
     assert {journal(env.derived)[name]["origin"] for name in recipe_files} == {"rsync"}
+
+
+def test_a_complete_donor_checkpoint_directory_supplies_the_donor_files(tmp_path, monkeypatch):
+    env = environment(tmp_path, monkeypatch)
+    env.call("derive-link", {"receipts": []})
+    # A deployment of the donor checkpoint already holds every donor file, the config.json the recipe never reads too.
+    donor = env.views()
+    donor.donor_state.mkdir()
+    host.fetch_model(donor.donor_lock, donor.donor_row, donor.donor_state, ["config.json", *sorted(env.donor_files)],
+                     number=0)
+    assert (env.state / "donor/model.json").is_file()
+    runs = len(env.runs())
+    assert env.call("derive-donor", {"names": []})["fetched"] == []
+    assert env.call("derive-run")["complete"] and len(env.runs()) == runs + 1

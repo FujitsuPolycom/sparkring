@@ -1627,7 +1627,7 @@ projections stored as MXFP8 block 32 instead of BF16. Its recipe,
 tensors from step 4000, which stores the same frozen weights in MXFP8, only
 after vLLM's MXFP8 quantization of each step-5500 BF16 weight reproduces step
 4000's weight and scale bytes exactly. Its
-[manifest](../../profiles/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/7ff045aa3cc58ead4f87cc1b1fa60a19da416be4.json)
+[manifest](../../profiles/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76.json)
 pins the size and SHA-256 of all 54 files: 48 that are step 5500's, unchanged,
 and 6 that the recipe writes (both shards that hold projections,
 `config.json`, `hf_quant_config.json`, the weight index and
