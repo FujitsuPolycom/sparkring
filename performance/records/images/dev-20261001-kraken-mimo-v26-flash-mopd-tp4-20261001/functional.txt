@@ -1,0 +1,8 @@
+PASS count: '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20'
+PASS arithmetic: '391'
+PASS code: '```python\ndef is_prime(n):\n    if n <= 1:\n        return False\n    if n <= 3:\n        return True\n    if n % 2 == 0 or n'
+PASS tool call: [{'id': 'chatcmpl-tool-82dab159b529ab21', 'type': 'function', 'function': {'name': 'get_weather', 'arguments': '{"city": "Paris"}'}}]
+PASS forced tool call: [{'id': 'chatcmpl-tool-bda0bbd6ba57ffa1', 'type': 'function', 'function': {'name': 'get_weather', 'arguments': '{"city": "Rome"}'}}]
+PASS image: 'Based on the image provided:\n\n*   **Left half:** Red\n*   **Right half:** Blue'
+PASS thinking on: {'reasoning_chars': 11, 'content': '391'}
+0 failed

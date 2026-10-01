@@ -13,8 +13,15 @@
       "kind": "python",
       "reason": "Bind the recorded prebuilt CUDA 13.4.2 toolkit stage and NCCL 2.32.3 library to a software-layer parent and seal the toolchain receipt; preparation does not invoke Docker.",
       "releases": [
-        "dev-20260924-cuda1342-nccl2323-status031"
+        "dev-20260924-cuda1342-nccl2323-status031",
+        "dev-20261001-kraken-cuda1342-nccl2323-status034"
       ]
+    },
+    {
+      "id": "external-arm64",
+      "path": "runtime/images/external_context.py",
+      "kind": "python",
+      "reason": "Prepare the software layer of an installer image: a digest-pinned external vLLM/B12X ARM64 image plus SparkRing source archives and integration assets, preserving the external image's framework binaries; preparation does not invoke Docker."
     },
     {
       "id": "sglang-deepseek-bounded-prefill",

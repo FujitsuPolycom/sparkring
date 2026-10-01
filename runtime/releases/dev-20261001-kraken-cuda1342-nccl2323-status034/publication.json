@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20261001-kraken-cuda1342-nccl2323-status034",
+  "image_id": "sha256:9f02bcbfee89fa092f6edf85d5915bfd73f226bd0faf7d171fe32d7f7b8f1e84",
+  "image_config_id": "sha256:9f02bcbfee89fa092f6edf85d5915bfd73f226bd0faf7d171fe32d7f7b8f1e84",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:b01442df4e1496bea2f1339feb629eb61dc8175700c82b0e26abbcebd5b49567",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20261001-kraken-cuda1342-nccl2323-status034",
+  "registry_manifest_digest": "sha256:b01442df4e1496bea2f1339feb629eb61dc8175700c82b0e26abbcebd5b49567",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x@sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.4",
+  "composition": {
+    "record": "runtime/images/compositions/external-kraken-20261001/README.md",
+    "layers": [
+      "Software layer sha256:4bf6cd655635a53eebe3685d2488b3cb91acf29b786e1365f2576379229ea77d over eugr/spark-vllm-b12x nightly-20261001 (image ID sha256:b094a6744a9b11da9366575745245c9c81d31c565030d1acd226c0018d1a774f): vLLM fe0a30fcb9afee42f4a3c23ca658657c6de5009e and B12X 6ca214e76877095d5c8c6d50c709a366cf35899f, SparkRing's merges of Local Inference Lab integration/karmic-kraken-beta (vLLM 4a379ed42881ee022aaf5d9ada554f9096e5acf3, B12X b557d87850cc836268fd327ccd46eaa6a033cdbf), with integration assets exported from dev-20261001-statusrows-cuda1342-nccl2323-status034 (runtime/images/external_context.py, composition sha256:dfc4bae5c4facec45e60b37a19ee82795de741ebec77a3cf9f81b6f6818eda8c)",
+      "CUDA 13.4.2 and NCCL 2.32.3 over the software layer (runtime/images/toolchain_assembly.py with runtime/images/compositions/external-kraken-20261001/toolchain-lock.json)"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

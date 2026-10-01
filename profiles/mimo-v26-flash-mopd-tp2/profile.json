@@ -8,7 +8,7 @@
     "format": "serving-profile",
     "path": "profiles/mimo-v26-flash-mopd-tp2/config.json"
   },
-  "release": "runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/release.json",
+  "release": "runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/release.json",
   "guide": "docs/operations/install.md",
   "evidence_scope": "DFlash5 draft, MXFP8 MoE and safetensors draft loader, with two-node settings derived from the TP4 profile, on installer image dev-20260928-plainstatus-cuda1342-nccl2323-status033: an installation through install.sh on one pair, from a test commit that gave these settings the profile ID mimo-v26-flash-rl-tp2, passed 7 of 7 functional checks (counting, arithmetic, code, tool calls, image, thinking) and a 256-request correctness screen with no degenerate response, and decoded 41.0 / 123 / 204 tokens/s at 1 / 8 / 16 streams at temperature 1.0 with 64K-token prefill at 2,806 tokens/s (performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp2-20260928.md); single-run timing; not serving-qualified.",
   "overrides": [],

@@ -361,23 +361,24 @@ sudo sparkring logs --follow
 ## Serving image and profiles
 
 Every installer profile runs on one shared ARM64 serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/installer-image.json)
 (`sparkring-installer-image/v2`):
 
 | Item | Identifier |
 |---|---|
-| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:4305bde349cade7c8cc0e74a498c8dcbf90025d99bceaf528f40b6faf767bbc8` |
-| Tag | `dev-20261001-statusrows-cuda1342-nccl2323-status034` |
-| Configuration | `sha256:490a668978e1b93886c13b63553594c9a2ded5514b01d737b57b1e12d3e83b5a` |
-| Base image | `eugr/spark-vllm-b12x:nightly-20260924` |
-| Parent image | `dev-20261001-portgid-cuda1342-nccl2323-status033` |
+| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:b01442df4e1496bea2f1339feb629eb61dc8175700c82b0e26abbcebd5b49567` |
+| Tag | `dev-20261001-kraken-cuda1342-nccl2323-status034` |
+| Configuration | `sha256:9f02bcbfee89fa092f6edf85d5915bfd73f226bd0faf7d171fe32d7f7b8f1e84` |
+| Base image | `eugr/spark-vllm-b12x` nightly-20261001, `sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052` |
+| vLLM and B12X | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261001` |
 
-The image stacks SparkRing's layers on that base, from the CUDA 13.4.2 and
-NCCL 2.32.3 toolchain up to the runtime-status dashboard 0.3.4. The
-[installer image builders](../../runtime/images/installer-images.md) list each
-layer, what it adds and what the lock pins; the image's
-[publication record](../../runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/publication.json)
-describes the layer it adds to its parent.
+The image adds two layers to that base: SparkRing's vLLM and B12X sources
+with its transports, features, SparkCache assets and runtime-status dashboard
+0.3.4, then the CUDA 13.4.2 and NCCL 2.32.3 toolchain. The
+[composition record](../../runtime/images/compositions/external-kraken-20261001/README.md)
+lists the source commits and pinned inputs; the image's
+[publication record](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/publication.json)
+describes both layers.
 
 `sparkring models` lists exact model/version/quantization/topology profiles,
 including guide-only ones with their guides, and marks only these as
@@ -1147,7 +1148,7 @@ checkpoint directory's filesystem, and each part of that figure with the
 reason it is reserved:
 
 ```text
-needs 8.0 GiB free on /: 4.0 GiB for the image's missing layers (dev-20260930-spinwait-cuda1342-nccl2323-status033 present), 4 GiB for the compile cache; 62 GiB free
+needs 55.9 GiB free on /: 51.9 GiB for the whole image (no image it derives from is present), 4 GiB for the compile cache; 62 GiB free
 ```
 
 The parts are:
@@ -1171,11 +1172,10 @@ The parts are:
     missing layers. SparkRing loads them with `docker load`, whose own check
     needs four times their download size plus 4 GiB; the plan bounds that
     download by the larger of the two releases' unpacked-size and
-    download-size differences. Any earlier release of the
-    `dev-20261001-statusrows-cuda1342-nccl2323-status034` chain needs 4.0 to
-    4.1 GiB;
+    download-size differences. The default image, `dev-20261001-kraken-cuda1342-nccl2323-status034`,
+    names no release it derives from, so this case does not arise for it;
   - no image it derives from: the unpacked size plus the download size plus
-    8 GiB for Docker's metadata and allocation, 51.7 GiB for that image. The
+    8 GiB for Docker's metadata and allocation, 51.9 GiB for the default image. The
     same applies on Docker's containerd image store, into which SparkRing
     loads no single layers, and on a Spark whose images could not be listed.
 
@@ -1224,21 +1224,22 @@ records no image sizes, and the compile cache allowance. The per-repository
 checkpoint allowances of storage planning apply only to a revision without a
 pin manifest.
 
-The serving image `dev-20261001-statusrows-cuda1342-nccl2323-status034` is a
-14.2 GiB download, 29.5 GiB unpacked. The last column below is the plan's
-total for a Spark holding no image of its chain and no checkpoint file, with
-the checkpoint, Docker and the cache on one filesystem; Node A needs 14.2 GiB
-more for the relay copy.
+The serving image `dev-20261001-kraken-cuda1342-nccl2323-status034` is a
+14.2 GiB download, 29.7 GiB unpacked. The last column below adds the whole
+image, 51.9 GiB, and the 4 GiB compile cache allowance to the checkpoint
+figure: the need of a Spark holding neither the image nor a checkpoint file,
+with the checkpoint, Docker and the cache on one filesystem. Node A needs
+14.2 GiB more for the relay copy.
 
 | Checkpoint | Size | Files and headroom | Plan total, empty Spark |
 |---|---:|---:|---:|
-| Qwen, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB | 106.6 GiB | 162.3 GiB |
-| MiMo, `XiaomiMiMo/MiMo-V2.6-Flash-MOPD` @ `2479e2d0029e` | 165.6 GiB | 176.9 GiB | 232.5 GiB |
-| GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 179.5 GiB | 235.2 GiB |
-| GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 190.7 GiB | 246.4 GiB |
-| GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.4 GiB |
-| DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 546.9 GiB |
-| Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.4 GiB |
+| Qwen, `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` @ `60215d26cf5e` | 102.6 GiB | 106.6 GiB | 162.5 GiB |
+| MiMo, `XiaomiMiMo/MiMo-V2.6-Flash-MOPD` @ `2479e2d0029e` | 165.6 GiB | 176.9 GiB | 232.8 GiB |
+| GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 179.5 GiB | 235.4 GiB |
+| GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 190.7 GiB | 246.6 GiB |
+| GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.7 GiB |
+| DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
+| Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.6 GiB |
 
 ### Limit the download rate
 

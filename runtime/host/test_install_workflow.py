@@ -1289,10 +1289,10 @@ def test_a_ring_rank_holding_the_parent_image_reserves_only_the_missing_layers(m
     monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
     (controller.STATE / "active.json").unlink()
     parent, target = release_lock(SPINWAIT), release_lock(STATUSROWS)
-    assert installer_image.default_lock()["image_id"] == target["image_id"]
     sparks.images = lambda host, ids: [parent["image_id"]] if host.endswith(".13") else [target["image_id"]]
     sparks.survey = holding_checkpoint(lambda host: round(61.8 * GIB) if host.endswith(".13") else 300 * GIB)
-    assert sparkring.main(["install", "--profile", TP4, "--plan", "--json"]) == 0
+    lock = RELEASES / STATUSROWS / "installer-image.json"
+    assert sparkring.main(["install", "--profile", TP4, "--image-lock", str(lock), "--plan", "--json"]) == 0
     out = capsys.readouterr()
     plan = saved(json.loads(out.out))
     unpacked = target["image_bytes"] - parent["image_bytes"]
@@ -1327,7 +1327,7 @@ def test_a_built_compile_cache_and_a_spark_without_any_earlier_image(machine, sp
     # Node 0 keeps the relay's copy of the layers Node 1 lacks, unless its deployment directory is elsewhere.
     relay = first["storage"]["relay_bytes"]
     assert relay in (0, target["download_bytes"]) and first["required_bytes"] == relay
-    assert ("    needs 55.7 GiB free on /: 51.7 GiB for the whole image (no image it derives from is present), "
+    assert ("    needs 55.9 GiB free on /: 51.9 GiB for the whole image (no image it derives from is present), "
             "4 GiB for the compile cache; 300 GiB free") in lines
 
 

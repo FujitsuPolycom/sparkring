@@ -8,7 +8,7 @@
     "format": "serving-profile",
     "path": "profiles/mimo-v26-flash-mopd-tp4/config.json"
   },
-  "release": "runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/release.json",
+  "release": "runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/release.json",
   "guide": "docs/operations/install.md",
   "evidence_scope": "DFlash5 draft, MXFP8 MoE and safetensors draft loader, on installer image dev-20260928-plainstatus-cuda1342-nccl2323-status033: an installation through install.sh on one four-Spark ring, from a test commit that gave these settings the profile ID mimo-v26-flash-rl-tp4, passed 7 of 7 functional checks (counting, arithmetic, code, tool calls, image, thinking), all eight tool-result contract probes and a 256-request correctness screen with no degenerate response, and decoded 52.0 / 216 / 334 tokens/s at 1 / 8 / 16 streams at temperature 1.0 with 64K-token prefill at 4,025 tokens/s (performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp4-20260928.md); single-run timing; not serving-qualified. On the MiMo-V2.6-Flash-RL checkpoint, NCCL extended IPv4 GIDs, which the profile sets, prefilled 8K to 128K-token prompts 11-17% faster than with them off at an unchanged decode step rate (performance/records/images/dev-20260927-b12xcache-mimo-v26-20260927.md).",
   "overrides": [],

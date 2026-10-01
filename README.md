@@ -57,6 +57,14 @@ Qwen [two](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next
 GLM [two](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp2-context-20260929.md) and [four](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-context-20260929.md),
 MiMo [two](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp2-context-20260929.md) and [four](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp4-context-20260929.md),
 DeepSeek [four](performance/records/images/dev-20260928-plainstatus-deepseek-v41-flash-tp4-context-20260929.md).
+These were measured on installer image `dev-20260928-plainstatus-cuda1342-nccl2323-status033`.
+The default image, `dev-20261001-kraken-cuda1342-nccl2323-status034`, passed
+the same functional and correctness checks with single-run throughput at no
+added context:
+Qwen [two](performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-20261001.md) and [four](performance/records/images/dev-20261001-kraken-qwen38-flash-next-qad-tp4-20261001.md) Sparks,
+GLM [two](performance/records/images/dev-20261001-kraken-glm53-flash-nvfp4-spark-tp2-20261001.md) and [four](performance/records/images/dev-20261001-kraken-glm53-flash-nvfp4-spark-tp4-20261001.md),
+MiMo [two](performance/records/images/dev-20261001-kraken-mimo-v26-flash-mopd-tp2-20261001.md) and [four](performance/records/images/dev-20261001-kraken-mimo-v26-flash-mopd-tp4-20261001.md),
+DeepSeek [four](performance/records/images/dev-20261001-kraken-deepseek-v41-flash-tp4-20261001.md).
 
 Other setups, including SparkCache variants and models the installer doesn't
 cover, each have their own guide in the [profile catalog](profiles/README.md).

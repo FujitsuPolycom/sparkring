@@ -1,0 +1,374 @@
+{
+  "base_commit": "91f94783190ce716e2238f899b25d44e84e2a525",
+  "cache_namespace_impact": "Use a fresh candidate namespace. This source contract does not assert on-disk compatibility with the parent image.",
+  "connector_api": "jj-block-state-read-leases/v1",
+  "files": [
+    {
+      "path": "b12x/attention/qsa/_contract.py",
+      "required_symbols": [],
+      "sha256": "1e05b0649be173d5afe07b1a5d98728e822e269fff748359fc84603658ac318e"
+    },
+    {
+      "path": "b12x/attention/qsa/_draft_selection.py",
+      "required_symbols": [],
+      "sha256": "712848c8dea626f5c8650e30941364b031dfa4bef7b7d09380c88fcac5da20d8"
+    },
+    {
+      "path": "b12x/attention/qsa/_kernels.py",
+      "required_symbols": [],
+      "sha256": "a1ff0b817c857cfabaf5c6f7166ec0db14fdc44af4b7eeb96b3cbc7c18ea68db"
+    },
+    {
+      "path": "b12x/attention/qsa/_score_cute.py",
+      "required_symbols": [],
+      "sha256": "4f14f825f37e25a53500aad6f0eda869e9bc8169b715a9f9b2726191fc998103"
+    },
+    {
+      "path": "b12x/attention/qsa/_score_pair_cute.py",
+      "required_symbols": [],
+      "sha256": "de6dc2c5f19e15261c383619a02179552e37d2b8723bf9df2e3c08761fc66451"
+    },
+    {
+      "path": "b12x/attention/qsa/_stable_select_cute.py",
+      "required_symbols": [],
+      "sha256": "b1c449c6fc578934350cdae2bb48520b3e48cabedccd0fe926927718a6ef7c89"
+    },
+    {
+      "path": "b12x/preparation/session.py",
+      "required_symbols": [
+        "PreparationJob._lookup",
+        "PreparationSession.__init__",
+        "PreparationSession.configure_tuning_shard",
+        "PreparationSession.prepare",
+        "PreparationJob._progress",
+        "PreparationJob.advance",
+        "PreparationJob._advance",
+        "PreparationJob._run"
+      ],
+      "sha256": "c013b71e524cdbb7f1eb6bb41365063e4ecbf0b88547686ac0f74d27f737eb84"
+    },
+    {
+      "path": "b12x/sequence/_shared/delta_prefill/_cute_kernels.py",
+      "required_symbols": [],
+      "sha256": "5cf6011418d1cad4f49092a3c2ccd84b4476713269aaa29f1b7445e2ebc0e1ad"
+    },
+    {
+      "path": "b12x/sequence/_shared/delta_prefill/contract.py",
+      "required_symbols": [],
+      "sha256": "1131ed3107e9e8ae9fc0dbd3040ea280d3ff955b2565fbb559fe718773c237b1"
+    },
+    {
+      "path": "b12x/sequence/_shared/delta_prefill/preparation.py",
+      "required_symbols": [],
+      "sha256": "955b9bde22644137eeb95301c14bb33222b330ad9306395582242925a120e78e"
+    },
+    {
+      "path": "b12x/sequence/gdn_prefill/_parallel_kernels.py",
+      "required_symbols": [
+        "_BoundaryKernel.__init__"
+      ],
+      "sha256": "d008d9e619dd632e0d85b2ae02155500a6cd1a213bff6848ea259bd4a82ec514"
+    },
+    {
+      "path": "b12x/sequence/kda_prefill/_impl.py",
+      "required_symbols": [],
+      "sha256": "177287b06fd9d3c558897063d7293316fd9d11d147f95e3076fe7b1b7170bfb3"
+    },
+    {
+      "path": "b12x/sequence/kda_prefill/_tuning.py",
+      "required_symbols": [],
+      "sha256": "07188185ac3a0f19ea2711c9a8cbf3df313ba62b8c1cd0ee860be3cc57b7ee1a"
+    },
+    {
+      "path": "b12x/sequence/kda_prefill/metadata.py",
+      "required_symbols": [],
+      "sha256": "50c808e98b5e98748b92ee4a6a30c17cf9effb3ddd3e180344c49f2c84787af2"
+    },
+    {
+      "path": "b12x/sequence/ple/__init__.py",
+      "required_symbols": [],
+      "sha256": "d30eb241a48a00e65d49b4f9c1c0d2fa85620d2c7875de016be3a12827406e35"
+    },
+    {
+      "path": "b12x/sequence/ple/_checkpoint.py",
+      "required_symbols": [],
+      "sha256": "292a6cb1dd605fb27476f9225bfcdaae60bbda21961cf95fbc7d2ea077f428ae"
+    },
+    {
+      "path": "b12x/sequence/ple/_contracts.py",
+      "required_symbols": [],
+      "sha256": "fb7911d312907c311cd0882607e2a2cac66c68e5af21a7e68ffb9760bad7398c"
+    },
+    {
+      "path": "b12x/sequence/ple/_kernels.py",
+      "required_symbols": [],
+      "sha256": "0aa1bbe772af19c2b74928b07dac96f0cf847c2d2bcba87f8d675a7f94347be0"
+    },
+    {
+      "path": "b12x/sequence/ple/_preparation.py",
+      "required_symbols": [],
+      "sha256": "12e9541bc43c59569bef14295cb07ced4e0a3c5a803fa6171b1b0591cb60a8a1"
+    },
+    {
+      "path": "b12x/sequence/ple/_tuning.py",
+      "required_symbols": [],
+      "sha256": "92668afed61755f717ee16978399588bcf10876eba11a18a930d1c49661012ff"
+    },
+    {
+      "path": "b12x/sequence/ple/api.py",
+      "required_symbols": [],
+      "sha256": "37631a46196a53522ef424ecce4a9ee3f87ea5019012048126b581661bd08fee"
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ],
+      "sha256": "7258518b24b12b2f1adc08c3916f386b502139040554653c8d4e2c8299f341ae"
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "required_symbols": [
+        "KVConnectorBase_V1.bind_gpu_block_pool",
+        "KVConnectorBase_V1.build_connector_worker_meta",
+        "KVConnectorBase_V1.has_pending_push_work",
+        "KVConnectorWorkerMetadata.aggregate"
+      ],
+      "sha256": "88a8ace982832f2c0ab0492e01a6d719807edc6c2711fb6f4ffb570dd32a193b"
+    },
+    {
+      "path": "vllm/envs.py",
+      "required_symbols": [],
+      "sha256": "c8091f5df5777d6d5449c8b8480c8018f1a9d6c111f0f97053fbad76d6516cd2"
+    },
+    {
+      "path": "vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py",
+      "required_symbols": [],
+      "sha256": "b3b7288c868a6ab240717924d86ed50554256ce3748f4900cb1088c2110c8e3e"
+    },
+    {
+      "path": "vllm/model_executor/models/qwen3_next.py",
+      "required_symbols": [],
+      "sha256": "c8f3594314372a30afae551466feddb652cf784745c6bf823b9325d3eee049d1"
+    },
+    {
+      "path": "vllm/models/glm5next/model_state.py",
+      "required_symbols": [],
+      "sha256": "9dfbdcdf9aecd7c9dca425ccfe3eac2914f1da4acaef855dc2ea5fa4563a1ab3"
+    },
+    {
+      "path": "vllm/models/glm5next/nvidia/kda.py",
+      "required_symbols": [
+        "Glm5NextLinearAttention.forward",
+        "Glm5NextLinearAttention._projection_workspaces",
+        "Glm5NextLinearAttention._forward_gate_overlap"
+      ],
+      "sha256": "caa179c5ac813c9708bf8a9ab6d596de15d54b652f01050676e96c1187036bde"
+    },
+    {
+      "path": "vllm/models/qwen4_exp/nvidia/b12x_qsa.py",
+      "required_symbols": [
+        "Qwen4ExpQSAMetadataBuilder.build"
+      ],
+      "sha256": "0c6ecf8462d297715380b8fc2738867e08f21477363082261bd39f6eeda87a78"
+    },
+    {
+      "path": "vllm/models/qwen4_exp/nvidia/hc_prefill.py",
+      "required_symbols": [],
+      "sha256": "50db6c8f2e4f8b93a1593a175d4391adbde1f53cff8b733b00fc11a561c6e877"
+    },
+    {
+      "path": "vllm/models/qwen4_exp/nvidia/model.py",
+      "required_symbols": [],
+      "sha256": "0f7a7f79a3f2c83c16c51adb11c05fa393a97854c2000717a9494c411743f6fa"
+    },
+    {
+      "path": "vllm/models/qwen4_exp/nvidia/model_state.py",
+      "required_symbols": [],
+      "sha256": "f238b9f6852c4b69720342df8a34e4f4f199ad0b1018f768fea3348dec2338aa"
+    },
+    {
+      "path": "vllm/models/qwen4_exp/nvidia/ple_attn.py",
+      "required_symbols": [],
+      "sha256": "39399f64583fb52163582e24c30314c77a90a0eb1161bf06789554306d4df117"
+    },
+    {
+      "path": "vllm/models/qwen4_exp/nvidia/ple_layer.py",
+      "required_symbols": [],
+      "sha256": "b1c75267a4e7deb22b41a5ada80a8c68c3ed640b8976b6d2a5d7358ec2213a63"
+    },
+    {
+      "path": "vllm/v1/attention/backends/b12x_gdn_metadata.py",
+      "required_symbols": [],
+      "sha256": "fe0dd66b5ebca5450c0440548d2884ed0a3d9bb60c8e5591358a16b41aad1028"
+    },
+    {
+      "path": "vllm/v1/attention/backends/gdn_attn.py",
+      "required_symbols": [],
+      "sha256": "a5255c42f21bb6a7b697d43e116fb98b3cd418626a873575cdf4cbfb74b4e0a1"
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ],
+      "sha256": "d81f6b05e170f33d892acced7825e29608c7f8a25a5c147d08a9287cbf213648"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_coordinator.py",
+      "required_symbols": [],
+      "sha256": "408d4d4116d58a2d1b8e4f30ea2b82082e497b5822d2a9d901abff5fcf0f0e97"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "required_symbols": [
+        "KVCacheManager.take_boundary_state_offloads",
+        "KVCacheManager.free"
+      ],
+      "sha256": "49249845baf0ee08e96e81dd70c472db2c894dae68637cfb9829d4cd5cc566a0"
+    },
+    {
+      "path": "vllm/v1/core/recurrent_prefill_checkpoint.py",
+      "required_symbols": [],
+      "sha256": "5499b213d0dd83ff8be89917ffce878eb9574c3262bc900e6a86b09b2e0bcc1a"
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "required_symbols": [
+        "KVConnectorBlockState.block_ids",
+        "KVConnectorBlockState.boundary_state_offloads",
+        "SchedulerOutput.kv_connector_block_state"
+      ],
+      "sha256": "8ddc08c43e9e6d1814bbb00e5243286a209067a6c72f12d168cc62ae3ffce6aa"
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "required_symbols": [
+        "Scheduler.__init__",
+        "Scheduler.schedule",
+        "Scheduler.has_requests",
+        "Scheduler.update_from_output",
+        "Scheduler._free_request_blocks",
+        "Scheduler._handle_invalid_blocks",
+        "Scheduler._update_requests_with_invalid_blocks",
+        "Scheduler._update_waiting_for_remote_kv",
+        "Scheduler._preempt_request"
+      ],
+      "sha256": "25d6b0a06aa39b50cce6e774779494dc34e61c47210874a818e0ef2a15cbe2f3"
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "required_symbols": [
+        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
+        "MambaManager.cache_blocks",
+        "MambaManager.allocate_new_blocks",
+        "MambaManager.pop_blocks_for_free",
+        "MambaManager._needs_internal_checkpoint"
+      ],
+      "sha256": "d6252df87ab27b13165f6bbc35c4a250a4b703a4c6c064171ffa47ff7be03db8"
+    },
+    {
+      "path": "vllm/v1/kv_cache_interface.py",
+      "required_symbols": [],
+      "sha256": "09eeff69e469b2794dbd53bcd916e6f2c89affb94eea9507a1813ac3cd36b429"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/kv_connector.py",
+      "required_symbols": [
+        "ActiveKVConnector.pre_forward",
+        "ActiveKVConnector.post_forward",
+        "ActiveKVConnector.no_forward"
+      ],
+      "sha256": "26c75bbbb75806f4f18fd4356f6174d398a36be14f2b338ca2f64e186b210fb6"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "required_symbols": [
+        "GPUModelRunner.update_requests",
+        "GPUModelRunner.sample_tokens"
+      ],
+      "sha256": "f6e85285c28baf66e027cb7e5f3c5829060e47a71a4a2c174d4720a82c35d88f"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/mamba_hybrid.py",
+      "required_symbols": [],
+      "sha256": "83c428f79a3a15ea72207eca1b6b937ea3f04d1718f5ed9efafd0f5729c24c9f"
+    },
+    {
+      "path": "vllm/v1/worker/mamba_utils.py",
+      "required_symbols": [],
+      "sha256": "0d2c58d5affc980f67f49ea41077bbed9b2c804170172c8b95a266b830000713"
+    },
+    {
+      "path": "b12x/preparation/types.py",
+      "required_symbols": [
+        "TuningCacheRequirement.__post_init__",
+        "TuningCacheRequirement.ranks",
+        "TuningCacheRequirement.identity",
+        "TuningCacheRequirement.records",
+        "PreparationProgress.ready_cache",
+        "PreparedCall.benchmark_producers"
+      ],
+      "sha256": "bd1b78d202b82fedece11c4e7686b9f30d4048e4d3712670078cd0c472328abd"
+    },
+    {
+      "path": "b12x/preparation/_cache.py",
+      "required_symbols": [
+        "SelectionCache.__init__",
+        "SelectionCache._validate",
+        "SelectionCache.get",
+        "SelectionCache.reconcile",
+        "SelectionCache.save"
+      ],
+      "sha256": "45449a3fb5d7702a625f207d2c0b80ccf70dc7a94886f113f9bb483ae8b30f07"
+    },
+    {
+      "path": "b12x/preparation/__init__.py",
+      "required_symbols": [],
+      "sha256": "316ec94cce78b4776e2534f1ce74d358e9a35480bcf70806221c95b9a28c11a7"
+    },
+    {
+      "path": "vllm/v1/worker/b12x_startup.py",
+      "required_symbols": [
+        "B12xPreparationCoordinator.__init__",
+        "B12xPreparationCoordinator._advance",
+        "B12xPreparationCoordinator._decision",
+        "B12xPreparationCoordinator._advance_local",
+        "B12xPreparationCoordinator._payload",
+        "B12xPreparationCoordinator._ready_cache",
+        "B12xPreparationCoordinator._validate_domain"
+      ],
+      "sha256": "c2659c44f433a6795eb25633d6ea0fdf40d116379a509b03fb3a6e50b1c66e66"
+    },
+    {
+      "path": "vllm/v1/worker/workspace.py",
+      "required_symbols": [
+        "WorkspaceManager.get_simultaneous",
+        "WorkspaceManager._ensure_workspace_size",
+        "WorkspaceManager.lock"
+      ],
+      "sha256": "ccd2a01610ce1fbcd743c0a4f62b1a082571db72ccf3bff76ba32bbe32668983"
+    }
+  ],
+  "qualification": "Development source binding. Protected CPU source and GPU restore qualification remain required.",
+  "required_semantics": [
+    "scheduler-binds-owning-block-pool",
+    "block-state-and-boundary-offers-describe-one-scheduled-step",
+    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
+    "full-attention-prefix-pages-remain-immutable-while-referenced",
+    "connector-metadata-is-built-before-scheduler-dispatch",
+    "worker-post-forward-follows-target-and-mtp-state-writes",
+    "worker-metadata-aggregates-distinct-physical-ranks",
+    "pending-connector-work-keeps-idle-engine-stepping",
+    "no-forward-steps-do-not-call-wait-for-save",
+    "hybrid-load-failure-discards-unproven-prefixes",
+    "failed-load-blocks-retire-after-receive-or-write-fences",
+    "distributed-tuning-cache-agreement-precedes-selection",
+    "qsa-invalid-raw-ring-boundaries-do-not-dereference-live-rows",
+    "kda-overlapping-projections-use-disjoint-reserved-scratch",
+    "qsa-shared-pool-validators-are-prepared"
+  ],
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1"
+}

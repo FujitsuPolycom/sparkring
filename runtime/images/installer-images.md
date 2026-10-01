@@ -1,11 +1,24 @@
 # Installer image builders
 
-The `sparkring install` profiles run on development images that are built as a
-chain. Each image adds one layer to its parent, and each installer image release
-under [`runtime/releases/`](../releases/README.md) is produced by a builder in
-[builders.json](builders.json); the entry's `releases` field names it. The
-[repository layout check](../../scripts/check_repository_layout.py) requires a
-builder for every release that has an `installer-image.json` lock.
+The `sparkring install` profiles run on development images. Each installer
+image release under [`runtime/releases/`](../releases/README.md) is produced by
+a builder in [builders.json](builders.json); the entry's `releases` field names
+it. The [repository layout check](../../scripts/check_repository_layout.py)
+requires a builder for every release that has an `installer-image.json` lock.
+
+The default image, `dev-20261001-kraken-cuda1342-nccl2323-status034`, is built
+in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
+that [external_context.py](external_context.py) prepares from SparkRing's merges
+of Local Inference Lab's Karmic Kraken beta vLLM and B12X branches and from the
+integration assets of `dev-20261001-statusrows-cuda1342-nccl2323-status034`,
+then the CUDA 13.4.2 and NCCL 2.32.3 layer of
+[toolchain_assembly.py](toolchain_assembly.py). Its
+[composition record](compositions/external-kraken-20261001/README.md) lists the
+pinned inputs and the rebuild steps. Its `publication.json` has no
+`derivation`, so the install plan counts its whole download.
+
+The images of the chain below build on one another; each adds one layer to its
+parent.
 
 | Image | Parent | Layer | Builder |
 |---|---|---|---|
@@ -42,8 +55,9 @@ base with pinned vLLM and B12X source archives, SparkRing integration assets
 exported from the `shared-2026.09.4-rc.4` image, deployment add-ons and a
 runtime-status 0.3.1 wheel built from
 [integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md).
-Its external-image composition preparer and the Qwen prefill controller version
-it packages are not in this repository. The layer's installed receipt has
+It was prepared by an earlier revision of
+[external_context.py](external_context.py), and the Qwen prefill controller
+version it packages is not in this repository. The layer's installed receipt has
 SHA-256 `1354e3d0270b297dafafd39e5341210f4d0e7bd908b15b0026531c4e0350da62`
 and composition SHA-256
 `46ecfc99659799934e7429fb0f8c80310b93aee485337114139bb5fe1df096d4`, as the

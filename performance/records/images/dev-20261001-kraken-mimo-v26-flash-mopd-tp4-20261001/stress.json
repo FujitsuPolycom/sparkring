@@ -1,0 +1,48 @@
+{
+  "rounds": 8,
+  "n": 256,
+  "degenerate": 0,
+  "wrong": 8,
+  "errors": 0,
+  "seconds": 74.1,
+  "degenerate_items": [],
+  "wrong_ids": [
+    "a4"
+  ],
+  "wrong_samples": [
+    [
+      "a4",
+      "16"
+    ],
+    [
+      "a4",
+      "16"
+    ],
+    [
+      "a4",
+      "16"
+    ],
+    [
+      "a4",
+      "16"
+    ],
+    [
+      "a4",
+      "16"
+    ],
+    [
+      "a4",
+      "16"
+    ],
+    [
+      "a4",
+      "16"
+    ],
+    [
+      "a4",
+      "16"
+    ]
+  ],
+  "error_samples": [],
+  "ok": true
+}
