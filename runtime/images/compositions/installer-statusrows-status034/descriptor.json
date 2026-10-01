@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-derived-layer-descriptor/v1",
   "id": "statusrows-status034",
-  "parent_lock": "runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/installer-image.json",
+  "parent_lock": "runtime/releases/dev-20261001-portgid-cuda1342-nccl2323-status033/installer-image.json",
   "provenance": "/opt/sparkring/receipts/derived-statusrows-status034.json",
   "purpose": "runtime-status 0.3.4, whose settings tables add the reasoning parser, tool-call parser, default chat template arguments and shared-memory reader window (SPARKRING_SHM_BUSY_LOOP_S), replaces 0.3.3 (source commit 42376728535e61e170114cca55c9bae2f207b68a, component tree 899362a503a4ac2a85addf3aa9abc68d2e3f89bd, archive time 1790816225)",
   "files": {},

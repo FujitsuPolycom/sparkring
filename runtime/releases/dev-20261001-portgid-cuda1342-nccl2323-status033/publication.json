@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20261001-portgid-cuda1342-nccl2323-status033",
+  "image_id": "sha256:2b9f0a5db869a671ecd586a0aa7071545297e2128bb2389ff8c577cb5e559496",
+  "image_config_id": "sha256:2b9f0a5db869a671ecd586a0aa7071545297e2128bb2389ff8c577cb5e559496",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:556baf1cd9793e46942cca4633ae8f8a08448b2232af99c90d8d120af0e8b307",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20261001-portgid-cuda1342-nccl2323-status033",
+  "registry_manifest_digest": "sha256:556baf1cd9793e46942cca4633ae8f8a08448b2232af99c90d8d120af0e8b307",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.3",
+  "derivation": {
+    "parent_release": "dev-20260930-spinwait-cuda1342-nccl2323-status033",
+    "parent_image_id": "sha256:fcb20b0ce83987844ccc2b7abb167bcf4e4fcf144c49f55465978eec3b46a234",
+    "layers": [
+      "The prepared RoCEnante transport gives each HCA the RoCE GID index of its fabric address's RoCE v2 GID, read at startup, with the configured index for a device whose GID table does not identify that GID; proxy ABI 6 (runtime/images/derive_transport_port_gid.py). Transport manifest d5e790c5173c. /opt/sparkring/receipts/derived-transport-port-gid.json records the four replaced bundle files"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

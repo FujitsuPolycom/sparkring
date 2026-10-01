@@ -1,0 +1,16 @@
+{
+ "schema": "sparkring-release-selection/v1",
+ "id": "dev-20261001-portgid-cuda1342-nccl2323-status033",
+ "selection": "published-immutable-reference",
+ "image": "ghcr.io/fujitsupolycom/sparkring@sha256:556baf1cd9793e46942cca4633ae8f8a08448b2232af99c90d8d120af0e8b307",
+ "inputs": [
+  {
+   "path": "runtime/releases/dev-20261001-portgid-cuda1342-nccl2323-status033/publication.json",
+   "sha256": "f89bad7fd9a604549af883cec3df3835ba27cdea9aa5154c4172e49e242ef4b8"
+  },
+  {
+   "path": "runtime/releases/dev-20261001-portgid-cuda1342-nccl2323-status033/installer-image.json",
+   "sha256": "69f83056e06212680af172eb979595db1825d64f912a7a2c3004c23544e61bf0"
+  }
+ ]
+}

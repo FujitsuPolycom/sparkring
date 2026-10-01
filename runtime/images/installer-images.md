@@ -164,7 +164,7 @@ from Git tree `b82d56e0a8a5a04470fc679be9c7a665a7ab7fef`. The
 [installer-statusrows-status034](compositions/installer-statusrows-status034/descriptor.json)
 descriptor pins the version 0.3.4 wheel and source archive, built from Git tree
 `899362a503a4ac2a85addf3aa9abc68d2e3f89bd` with archive time `1790816225`, over
-`dev-20260930-spinwait-cuda1342-nccl2323-status033`. No image has been built
+`dev-20261001-portgid-cuda1342-nccl2323-status033`. No image has been built
 from it, so it has no release record and the `installer-derived-layer` entry of
 [builders.json](builders.json) lists no release for it. Its build follows the
 descriptor commands below, with `--status-artifacts` naming a directory that
