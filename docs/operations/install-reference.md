@@ -754,11 +754,13 @@ sudo python3 /opt/sparkring/deployments/NAME/runtime/glm53-spark-mtp3-mesh/manag
 
 Node A reaches each worker through the WireGuard administration tunnel
 `sr-control`. Each link of the tunnel has a primary path, the fabric cable
-that setup recorded for it, and fallback paths in this order: the other
-fabric cables between the same two Sparks, then the two Sparks' LAN
-addresses. A fallback changes only where the tunnel's packets go; the
-tunnel's addresses, keys and routes stay the same. Every 20 seconds each
-Spark checks its paths (`sparkring-control-refresh.timer`):
+and ConnectX function that setup recorded for it, and fallback paths in this
+order: each other fabric cable between the same two Sparks, once per ConnectX
+function of its port; the primary cable's other function; the two Sparks'
+LAN addresses. On a pair the other cable is the model's port, which then
+also carries the tunnel. A fallback changes only where the tunnel's packets
+go; the tunnel's addresses, keys and routes stay the same. Every 20 seconds
+each Spark checks its paths (`sparkring-control-refresh.timer`):
 
 - When the primary cable has no link, the tunnel moves to the first fallback
   whose link is up, within about 20 seconds. A fallback that does not answer
@@ -780,8 +782,9 @@ and `install`, `up` and `down` keep working. Checkpoint and package copies
 between Sparks still need every primary cable and stop naming the failed
 link. When no path answers, `status` shows
 `admin tunnel: no recent handshake (last 46 min ago); Node A's enp1s0f1np1: no link`,
-with the fallback it tries after the time, and `install`, `up` and `down`
-fail on that worker. Each Spark's journal names every move:
+naming the fallback it tries before the semicolon (`... ago) over LAN
+198.51.100.137; ...`), and `install`, `up` and `down` fail on that worker.
+Each Spark's journal names every move:
 `journalctl -u sparkring-control-refresh.service`.
 
 A cluster whose tunnel lists no fallback paths (`fallbacks: 0` in
