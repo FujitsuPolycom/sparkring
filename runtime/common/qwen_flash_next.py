@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.common import candidate  # noqa: E402
 from runtime.common import cache_candidate  # noqa: E402
+from runtime.common import derived_checkpoint  # noqa: E402
 from runtime.common.container_spec import Bind, ContainerSpec, docker_create  # noqa: E402
 
 CONFIG_ROOT = ROOT / "profiles/qwen38-flash-next-tp2"
@@ -68,7 +69,7 @@ def node_count(profile):
     return int(profile["vllm_args"][profile["vllm_args"].index("--nnodes") + 1])
 
 
-CHECKPOINT_KEYS = {"model", "served_model_name", "arguments", "environment", "speculative"}
+CHECKPOINT_KEYS = {"model", "served_model_name", "arguments", "environment", "speculative", "derived"}
 MODEL_KEYS = {"repository", "revision", "config_sha256", "index_sha256"}
 
 
@@ -84,6 +85,13 @@ def checkpoint_names(profile):
     default entry, whose model is the profile's top-level `model` and which
     changes no setting. The optional `checkpoint_aliases` maps further names,
     such as a spelling that matches the other branches, to listed checkpoints.
+
+    An entry with `derived`, `{"base": NAME, "donor": NAME}`, is a checkpoint
+    that the installer writes on the Sparks from two other entries of the
+    table, neither of them derived (runtime/common/derived_checkpoint.py). Its
+    `model` names that derived checkpoint: a `sparkring-derived/<name>`
+    repository and the derivation's identity as revision. It is never the
+    default.
     """
     table = profile.get("checkpoints")
     if table is None:
@@ -107,6 +115,17 @@ def checkpoint_names(profile):
         raise ValueError("Each checkpoint pins another revision; give one revision another name with checkpoint_aliases")
     if table[default] != {"model": profile["model"]}:
         raise ValueError("The default checkpoint must be the profile's model without other settings")
+    for name, entry in table.items():
+        if "derived" not in entry:
+            if entry["model"]["repository"].startswith(derived_checkpoint.OWNER + "/"):
+                raise ValueError(f"Checkpoint {name} names a derived repository without a derived object")
+            continue
+        derived = entry["derived"]
+        if (not isinstance(derived, dict) or set(derived) != {"base", "donor"} or derived["base"] == derived["donor"]
+                or any(derived[key] not in table or "derived" in table[derived[key]] for key in ("base", "donor"))
+                or name == default or not entry["model"]["repository"].startswith(derived_checkpoint.OWNER + "/")):
+            raise ValueError(f"Derived checkpoint {name} must name two other, published checkpoints of the table "
+                             f"as base and donor, serve a {derived_checkpoint.OWNER}/<name> repository and not be the default")
     aliases = profile.get("checkpoint_aliases", {})
     if not isinstance(aliases, dict) or any(not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,62}", alias) or alias in table
                                             or target not in table for alias, target in aliases.items()):

@@ -13,7 +13,7 @@ import shlex
 import shutil
 import sys
 
-from runtime.common import profiles
+from runtime.common import derived_checkpoint, profiles
 
 GIB = 1024 ** 3
 
@@ -36,11 +36,14 @@ def selection(profile_id, variant=None, root=profiles.ROOT):
     if checkpoints:
         # A serving profile's checkpoints table pins each checkpoint's
         # repository and revision; runtime/common/qwen_flash_next.py applies
-        # the checkpoint's settings.
+        # the checkpoint's settings. A derived checkpoint's selection names its
+        # base, whose files the installer acquires before it derives the rest
+        # (runtime/common/derived_checkpoint.py).
         variant = (source.get("checkpoint_aliases") or {}).get(variant, variant) or source["checkpoint"]
         if variant not in checkpoints:
             raise ValueError("Select a checkpoint the profile lists: " + ", ".join(sorted(checkpoints)))
-        model = checkpoints[variant]["model"]
+        derived = checkpoints[variant].get("derived")
+        model = checkpoints[derived["base"] if derived else variant]["model"]
     elif variants:
         variant = variant or "nvfp4-spark"
         if variant not in variants:
@@ -102,11 +105,30 @@ def pinned_checkpoint_bytes(card, root=profiles.ROOT):
 
     The figure is the checkpoint plan's (``checkpoint_plan.required_space``):
     every required file once, and the largest once more as headroom, at most
-    ``checkpoint_plan.HEADROOM_CAP_BYTES``. None when
+    ``checkpoint_plan.HEADROOM_CAP_BYTES``. A derived checkpoint
+    (``runtime/common/derived_checkpoint.py``) adds the files its recipe writes
+    and the donor files the recipe reads, as Node A holds them. None when
     ``profiles/checkpoints/<owner>--<name>/<revision>.json`` is absent or does
     not pin the card's repository and revision with positive sizes.
     """
-    repository, revision = card["model_repository"], card["model_revision"]
+    sizes = _pinned_sizes(card["model_repository"], card["model_revision"], root)
+    if sizes is None:
+        return None
+    try:
+        derived = derived_checkpoint.model_of(card, root=root)
+        if derived is not None:
+            manifest = profiles.read_json(derived_checkpoint.manifest_path(derived, root))
+            donor = _pinned_sizes(manifest["donor"]["repository"], manifest["donor"]["revision"], root, by_name=True)
+            sizes += list(derived_checkpoint.files_of(manifest, "recipe").values())
+            sizes += [donor[name] for name in manifest["donor"]["files"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    from runtime.host import checkpoint_plan
+    return checkpoint_plan.required_space(sizes)
+
+
+def _pinned_sizes(repository, revision, root, *, by_name=False):
+    """Sizes of the required files of a pin manifest (a list, or a mapping from name), or None."""
     if (not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", repository)
             or ".." in repository or not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision)):
         return None
@@ -119,12 +141,11 @@ def pinned_checkpoint_bytes(card, root=profiles.ROOT):
             or not isinstance(pins.get("files"), dict)):
         return None
     optional = set(pins.get("optional") or ())
-    sizes = [entry.get("size") if isinstance(entry, dict) else None
-             for name, entry in pins["files"].items() if name not in optional]
-    if not sizes or not all(type(size) is int and size > 0 for size in sizes):
+    sizes = {name: entry.get("size") if isinstance(entry, dict) else None
+             for name, entry in pins["files"].items() if name not in optional}
+    if not sizes or not all(type(size) is int and size > 0 for size in sizes.values()):
         return None
-    from runtime.host import checkpoint_plan
-    return checkpoint_plan.required_space(sizes)
+    return sizes if by_name else list(sizes.values())
 
 
 def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False,

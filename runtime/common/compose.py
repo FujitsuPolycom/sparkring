@@ -172,6 +172,7 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "runtime/common/ports.py",
         "runtime/common/process_lock.py",
         "runtime/common/qwen_flash_next.py",
+        "runtime/common/derived_checkpoint.py",
         "runtime/common/profiles.py",
         "runtime/common/candidate.py",
         "runtime/common/cache_candidate.py",

@@ -30,6 +30,31 @@
       "speculative": {
         "moe_backend": "b12x"
       }
+    },
+    "qad-step5500-mxfp8-attention": {
+      "model": {
+        "revision": "7ff045aa3cc58ead4f87cc1b1fa60a19da416be4",
+        "config_sha256": "cea126321b72fd8a54d942e60a3922bdeaa105ce2211df6aa2da38104c5f5043",
+        "index_sha256": "29240d1afce0c936839f82cdc9679586fe061de2649526e068ecf6aee0f92f4c",
+        "repository": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention"
+      },
+      "derived": {
+        "base": "qad-step5500-ple1000",
+        "donor": "qad-step-4000"
+      },
+      "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2"
+    },
+    "jmni-qad5500-hybrid": {
+      "model": {
+        "revision": "87c8f2fb738b597de99bf9a885130f4a18a94f3d",
+        "config_sha256": "2cb54e1f854b60eb62268cef738252957a2af4c457e55966fa442e1406b66418",
+        "index_sha256": "e65210a65667dae8d83edde5ee7f833f68a79110f54264445e421f6c26ad7ccb",
+        "repository": "JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid"
+      },
+      "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2",
+      "speculative": {
+        "moe_backend": "b12x"
+      }
     }
   },
   "checkpoint_aliases": {

@@ -13,7 +13,8 @@ import re
 import uuid
 import zipfile
 
-from runtime.common import compose, distribution, installer_image, process_lock, profiles, serving, setup, tp2
+from runtime.common import (compose, derived_checkpoint, distribution, installer_image, process_lock, profiles, serving,
+                            setup, tp2)
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
@@ -61,13 +62,24 @@ def address(value):
 
 
 def checkpoint_contract(card):
+    """The pinned model (repository, revision, config.json and index SHA-256) of the card's checkpoint.
+
+    A derived checkpoint's entry (runtime/common/derived_checkpoint.py) has two:
+    a selection naming the base's repository and revision, which the installer
+    acquires first, gets the base entry's model, and the derived checkpoint's
+    own card (derived_checkpoint.view) the entry's model.
+    """
     source, _ = profiles.load(card["profile"])
     model = profiles.resolve(card["profile"])["model"]
     configuration = profiles.read_json(profiles.local_path(source["configuration"]["path"]))
     if source["configuration"]["format"] == "release-profile":
         model = configuration["target_variants"][card["target_variant"]]
     elif card.get("target_variant") and "checkpoints" in configuration:
-        model = configuration["checkpoints"][card["target_variant"]]["model"]
+        entry = configuration["checkpoints"][card["target_variant"]]
+        model = entry["model"]
+        if "derived" in entry and (card["model_repository"], card["model_revision"]) != (
+                model["repository"], model["revision"]):
+            model = configuration["checkpoints"][entry["derived"]["base"]]["model"]
     return model
 
 
@@ -336,9 +348,22 @@ def init(directory, profile, raw_site, *, variant=None, image_runtime=None, sett
     return lock
 
 
+def served_model(lock, row):
+    """The checkpoint directory that rank ``row``'s container mounts.
+
+    It is the row's ``model``, except for a derived checkpoint, whose row names
+    the base's SparkRing checkpoint directory; the container then mounts the
+    derived checkpoint's directory beside it (derived_checkpoint.directory).
+    """
+    derived = derived_checkpoint.model_of(lock["selection"])
+    return row["model"] if derived is None else derived_checkpoint.directory(row["model"], derived)
+
+
 def compose_site(lock):
     ranks = [{k: v for k, v in row.items() if k not in ("management_ip", "reuse_verified_model", "node_id")}
              for row in lock["site"]["ranks"]]
+    for rank, row in zip(ranks, lock["site"]["ranks"], strict=True):
+        rank["model"] = served_model(lock, row)
     return {"schema": "sparkring-compose-site/v1", "name": lock["site"]["name"],
             "master": ranks[0]["host_ip"], "ranks": ranks}
 
@@ -589,10 +614,18 @@ def unfinished(directory):
 
 
 def identity(lock):
-    """The checkpoint and image release that a deployment lock selects."""
+    """The checkpoint and image release that a deployment lock selects.
+
+    For a derived checkpoint, ``model_repository`` and ``model_revision`` name
+    its base and ``derived`` the derived checkpoint's own repository and revision.
+    """
     card = lock["selection"]
-    return {"checkpoint": card["target_variant"], "model_repository": card["model_repository"],
-            "model_revision": card["model_revision"], "image_release": card["release"]}
+    result = {"checkpoint": card["target_variant"], "model_repository": card["model_repository"],
+              "model_revision": card["model_revision"], "image_release": card["release"]}
+    derived = derived_checkpoint.model_of(card)
+    if derived is not None:
+        result["derived"] = {"repository": derived["repository"], "revision": derived["revision"]}
+    return result
 
 
 def status(directory):
