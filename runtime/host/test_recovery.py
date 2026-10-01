@@ -531,6 +531,21 @@ def test_status_names_the_down_admin_link_of_an_unreachable_worker(pair, monkeyp
     assert lines[row + 1] == "    admin tunnel: no recent handshake (last 46 min ago); Node A's enp1s0f1np1: no link"
 
 
+def test_status_names_the_fallback_path_of_a_worker_reached_without_its_primary_cable(pair, monkeypatch, capsys):
+    """The primary cable lost carrier; Node A reaches the worker over its LAN address, and status says so."""
+    snapshot = {"state": "network-configured", "next_action": "sparkring models", "control": {
+        "interface_up": True, "peers": [{"id": "b", "address": "192.0.2.11", "upstream": False,
+                                         "netdev": "enp1s0f1np1", "carrier": False, "operstate": "down",
+                                         "endpoint": "198.51.100.137:51871", "handshake_age_s": 12, "fallbacks": 2,
+                                         "path": {"via": "lan", "netdev": "enP7s7", "address": "198.51.100.137",
+                                                  "primary": False}}]}}
+    lines = status(monkeypatch, capsys, snapshot=snapshot)
+    assert "Model: The model runs on every Spark and its API answers" in lines
+    row = next(index for index, line in enumerate(lines) if line.startswith("  rank 1 ("))
+    assert lines[row + 1] == "    admin tunnel: over LAN 198.51.100.137 (primary cable enp1s0f1np1: no link)"
+    assert recovery.tunnel_reason(snapshot["control"], pair.hosts[1]) is None
+
+
 def test_status_of_a_ring_whose_mesh_failed_at_boot(tmp_path, monkeypatch, capsys):
     """Mesh units that failed at boot are named with their log line; the next step is up, not status."""
     from runtime.host import retained_source

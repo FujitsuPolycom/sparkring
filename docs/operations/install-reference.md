@@ -630,9 +630,12 @@ contacts the enrolled nodes and observes the model containers.
 - `recovery`: the active deployment's
   [automatic recovery](#automatic-recovery) record and whether its timer is
   enabled;
-- per Spark, `control`: each administration tunnel peer's link, carrier,
-  endpoint and seconds since its latest handshake, with a warning when that is
-  over 180 seconds; on a four-Spark ring, `mesh`: active and failed mesh
+- per Spark, `control`: each administration tunnel peer's primary link,
+  carrier, endpoint, the [path](#admin-tunnel) that endpoint names (`path`:
+  `via` `cable` or `lan`, `netdev`, `address`, `primary`), its number of
+  fallback paths (`fallbacks`) and seconds since its latest handshake, with a
+  warning when that is over 200 seconds or the peer runs over a fallback
+  path; on a four-Spark ring, `mesh`: active and failed mesh
   services, each failure's systemd result and last log line, and running mesh
   marker processes.
 
@@ -750,14 +753,56 @@ sudo python3 /opt/sparkring/deployments/NAME/runtime/glm53-spark-mtp3-mesh/manag
 ### Admin tunnel
 
 Node A reaches each worker through the WireGuard administration tunnel
-`sr-control`, over one recorded fabric link per worker. When that link loses
-its cable or carrier, the worker cannot be reached even while the model keeps
-serving over the other port. `status` shows
-`admin tunnel: no recent handshake (last 46 min ago); Node A's enp1s0f1np1: no link`
-under that worker, and `install`, `up` and `down` fail on it. Reconnect that
-cable; the tunnel returns once the link is back, because SparkRing sets its path
-again every 20 seconds. The
-tunnel has no second path over another port or the LAN.
+`sr-control`. Each link of the tunnel has a primary path, the fabric cable
+and ConnectX function that setup recorded for it, and fallback paths in this
+order: each other fabric cable between the same two Sparks, once per ConnectX
+function of its port; the primary cable's other function; the two Sparks'
+LAN addresses. On a pair the other cable is the model's port, which then
+also carries the tunnel. A fallback changes only where the tunnel's packets
+go; the tunnel's addresses, keys and routes stay the same. Every 20 seconds
+each Spark checks its paths (`sparkring-control-refresh.timer`):
+
+- When the primary cable has no link, the tunnel moves to the first fallback
+  whose link is up, within about 20 seconds. A fallback that does not answer
+  within one check gives way to the fallback after it in the order.
+- A path without a WireGuard handshake for 200 seconds is left the same way.
+  A reachable Spark renews its session within 180 seconds, because every
+  peer sends a keepalive every 15 seconds.
+- The other Spark follows without a check of its own: WireGuard sends to
+  wherever the peer's last authenticated packet came from.
+- The Spark that moved the tunnel returns it to the primary cable once that
+  cable's link has been up for two checks. If the other Spark does not answer
+  there, the tunnel stays on the fallback for 10 minutes, then 20, 40 and at
+  most 60 minutes between tries; unplugging and reconnecting the cable
+  retries at once.
+
+While a fallback carries the tunnel, `status` shows under that worker, for
+example, `admin tunnel: over LAN 198.51.100.137 (primary cable enp1s0f1np1: no link)`,
+and `install`, `up` and `down` keep working. Checkpoint and package copies
+between Sparks still need every primary cable and stop naming the failed
+link. When no path answers, `status` shows
+`admin tunnel: no recent handshake (last 46 min ago); Node A's enp1s0f1np1: no link`,
+naming the fallback it tries before the semicolon (`... ago) over LAN
+198.51.100.137; ...`), and `install`, `up` and `down` fail on that worker.
+Each Spark's journal names every move:
+`journalctl -u sparkring-control-refresh.service`.
+
+A cluster whose tunnel lists no fallback paths (`fallbacks: 0` in
+`sudo sparkring status --json`) gains them on Node A with
+`sudo sparkring setup --admin-fallback`; add `--plan` to list each Spark's
+fallback paths without changing anything. It asks for one approval, updates
+workers that run another SparkRing revision to Node A's, and changes nothing
+else: each Spark accepts a configuration that differs from its own only in
+its fallback paths. Run it again after a Spark's LAN address changes.
+
+On a four-Spark ring the tunnel is a tree through the cables, so Node A
+reaches one worker through another. Each tree link gets the other ConnectX
+function of its cable and the two Sparks' LAN addresses as fallbacks: the
+cable's other function carries the tunnel past a failed function, and the
+LAN past a failed cable when both Sparks have a LAN address. The ring's
+fourth cable is not in the tree, and moving the Sparks behind a powered-off
+worker onto it, under another worker, is unsupported: they stay unreachable
+until that worker runs again.
 
 ### Why a rank stops the others
 
@@ -898,7 +943,8 @@ starts the mesh its installation uses ([The ring's mesh](#the-rings-mesh)).
 - A Spark unreachable after a failed restart becomes reachable after a power
   cycle, without the setting.
 - A failed restart of a function carrying the administration network to
-  other Sparks cuts them off from Node A, while the Spark itself stays
+  other Sparks cuts them off from Node A unless a
+  [fallback path](#admin-tunnel) carries them, while the Spark itself stays
   reachable over its other links; `sparkring status` then names the Spark to
   reboot. Its next boot restarts no function, and `sudo sparkring hairpin`
   then retries it.
@@ -1025,7 +1071,13 @@ Spark. Review it before running it.
 
 **Administration network.** Setup creates a WireGuard network over the fabric
 links' IPv6 link-local addresses: interface `sr-control`, UDP port 51871,
-addresses in `10.253.255.0/29` by default. A separate SSH service
+addresses in `10.253.255.0/29` by default. The firewall accepts that UDP port
+from link-local addresses on each primary cable's interface, and on each
+[fallback path](#admin-tunnel)'s interface only from that peer's address: its
+link-local address on another cable, or its LAN IPv4 address on the LAN
+interface. A Spark's fallback paths therefore expose UDP port 51871 on its
+LAN interface to its tunnel peers' LAN addresses; WireGuard accepts
+sessions only from the configured peer keys. A separate SSH service
 (`sparkring-access.service`) listens on TCP port 2222 of each Spark's
 administration address and admits only root with Node A's controller key,
 `/var/lib/sparkring/controller/controller_ed25519`.
@@ -1225,8 +1277,9 @@ software, and profile adapters own image admission and model startup. The
 
 **At boot**, after the [hairpin setting](#four-spark-rings) on four-Spark
 rings, SparkRing's enabled host services start the administration network and
-its SSH service, also over the remaining links if one administration link
-fails, and `sparkring-fabric.service` restores the approved fabric routes,
+its SSH service, also over the remaining links and the
+[fallback paths](#admin-tunnel) if one administration link fails, and
+`sparkring-fabric.service` restores the approved fabric routes,
 per-interface IPv4 forwarding and forwarding rules; NetworkManager keeps the
 fabric addresses. Models start only when requested, or when
 [automatic recovery](#automatic-recovery) restarts the active model after its

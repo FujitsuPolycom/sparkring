@@ -1,5 +1,6 @@
 """Install workers through fabric SSH, then hand off to the existing setup engine."""
 import argparse
+import inspect
 import json
 import os
 from pathlib import Path
@@ -156,6 +157,76 @@ def provision(discovered, transport, archive, *, private_key, public_key, contro
     return targets
 
 
+def installed_targets(base):
+    """The SSH targets of the installed cluster, Node A first, or None before the first setup."""
+    base = Path(base)
+    if (base / "cluster.json").exists():
+        return [h["host"] for h in installer.read(base / "cluster.json")["plan"]["spec"]["hosts"]]
+    if (base / "enrolled.json").exists():
+        return installer.read(base / "enrolled.json")["targets"]
+    return None
+
+
+def fallback_lines(configs, hostnames):
+    """One line per tunnel link end: the Spark, its peer and the peer's fallback paths in preference order."""
+    lines = []
+    for config in configs:
+        for peer in config["peers"]:
+            options = control.paths(config, peer)[1:]
+            text = ", ".join(control.path_text(path) for path in options) or "none found"
+            lines.append(f"  {hostnames[config['id']]} to {peer['address']}: {text}")
+    return lines
+
+
+def admin_fallback(args, base, public, directory, *, invoke=discovery.ssh, collect=None, root="/"):
+    """Add fallback paths to the installed administration network of every Spark; change nothing else.
+
+    Each Spark reports its installed control configuration and a fresh
+    inventory (bootstrap.probe) over the administration network. The
+    configurations gain the fallback paths that control.extend finds; their
+    addresses, keys, recorded endpoints and routes stay the same, which each
+    Spark's ``control-configure`` checks again before it accepts them. With
+    ``--plan`` the paths are printed only. Workers that run another SparkRing
+    revision get Node A's first, as setup does, because older revisions refuse
+    the extended configuration.
+    """
+    targets = installed_targets(base)
+    if not targets:
+        raise ValueError("No installed cluster here; sudo sparkring setup installs the administration network "
+                         "with its fallback paths")
+    if not node.location(root, "/etc/sparkring/control.json").exists():
+        raise ValueError("This cluster has no SparkRing administration network; its Sparks are reached over "
+                         "the addresses that setup was given")
+    code = (inspect.getsource(bootstrap.fabric_identity) + "\n" + inspect.getsource(bootstrap.probe)
+            + "\nimport json\nprint(json.dumps(probe()))\n")
+    configs, inventories, hostnames = [], {}, {}
+    for target in targets:
+        config = json.loads(invoke(target, ["sudo", "-n", "cat", "/etc/sparkring/control.json"]))
+        inventory = json.loads(invoke(target, ["sudo", "-n", "python3", "-I", "-c", code]))
+        if config["id"] not in (inventory.get("id"), inventory.get("machine_id")):
+            raise ValueError(f"{target} reports another Spark than its administration network configuration names")
+        configs.append(config)
+        inventories[config["id"]] = inventory
+        hostnames[config["id"]] = inventory.get("hostname") or target
+    extended = control.extend([control.base(config) for config in configs], inventories)
+    print("Fallback paths of the administration network, in the order each Spark tries them:")
+    for line in fallback_lines(extended, hostnames):
+        print(line)
+    if extended == configs:
+        print("Every Spark already has these fallback paths.")
+        return 0
+    if args.plan:
+        return 0
+    controller.confirm("Add these fallback paths? Addresses, keys and the primary cables stay the same.", args.yes)
+    match_revisions(targets, (collect or controller.collect)(targets), directory)
+    for target, config in zip(targets, extended, strict=True):
+        invoke(target, ["sudo", "-n", "/usr/bin/sparkring", "node", "control-configure"],
+               data=json.dumps({"control": config, "ssh_key": public}))
+    print("Fallback paths added. Each Spark checks its tunnel paths every 20 seconds; "
+          "sudo sparkring status names a worker reached over a fallback path.")
+    return 0
+
+
 def scope_lines(args, *, fresh, follow=None, four=None):
     """The automated setup scope that the one approval covers.
 
@@ -173,7 +244,8 @@ def scope_lines(args, *, fresh, follow=None, four=None):
             lines.append("  - sign in to a cabled Spark on this LAN, when it is there, to install SparkRing and turn off"
                          " DHCP on its fabric connections; later sign-ins use Node A's key")
         lines += [
-                  "  - install SparkRing and its packaged dependencies, then a private WireGuard administration network",
+                  "  - install SparkRing and its packaged dependencies, then a private WireGuard administration network"
+                  " that can also use the other fabric cables and the LAN",
                   "  - " + ("do not share" if args.no_share_internet else "share") + " Node A's Internet connection with workers"]
     else:
         lines.append("  - install Node A's SparkRing revision on workers that run another one")
@@ -231,6 +303,9 @@ def _arguments(argv):
     parser.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that block fabric preparation")
     parser.add_argument("--worker-bundle", action="store_true", help="build a USB/offline preparation bundle for workers without SSH")
+    parser.add_argument("--admin-fallback", action="store_true",
+                        help="on an installed cluster, add fallback paths (the other fabric cables, the LAN) to the "
+                             "administration network; changes nothing else")
     return parser.parse_args(argv), env.env
 
 
@@ -266,6 +341,8 @@ def main(argv=None, *, follow=None):
         print("Copy/extract " + str(archive) + " on a worker, then run: sudo python3 install.py --apply --prepare")
         return 0
     directory = base / "setups" / str(time.time_ns())
+    if args.admin_fallback:
+        return admin_fallback(args, base, public, directory)
     fresh, four = ring_state(base)
     _default_user(args, argv, env, fresh)
     trust_new = False

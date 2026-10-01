@@ -391,18 +391,20 @@ def test_markers_without_an_active_mesh_unit_are_reported(tmp_path, report):
 PEER_KEY = "A" * 43 + "="
 
 
-def tunnel(root, *, carrier, handshake, now):
+def tunnel(root, *, carrier, handshake, now, endpoint="[fe80::2%enp1s0f1np1]:51871", alternates=None):
+    peer = {"id": "b", "key": PEER_KEY, "allowed_ips": ["10.253.255.2/32"], "netdev": "enp1s0f1np1",
+            "endpoint": "[fe80::2%enp1s0f1np1]:51871"}
+    if alternates is not None:
+        peer.update(address="10.253.255.2", alternates=alternates)
     node.save(root, "/etc/sparkring/control.json", {
         "schema": "sparkring-control/v1", "id": "a", "address": "10.253.255.1", "head": True,
-        "head_address": "10.253.255.1", "share_uplink": True,
-        "peers": [{"id": "b", "key": PEER_KEY, "allowed_ips": ["10.253.255.2/32"], "netdev": "enp1s0f1np1",
-                   "endpoint": "[fe80::2%enp1s0f1np1]:51871"}]})
+        "head_address": "10.253.255.1", "share_uplink": True, "peers": [peer]})
     link = root / "sys/class/net/enp1s0f1np1"
     link.mkdir(parents=True, exist_ok=True)
     (link / "carrier").write_text("1\n" if carrier else "0\n")
     (link / "operstate").write_text("up\n" if carrier else "down\n")
     dump = (f"PRIVATE\tPUBLIC\t51871\toff\n"
-            f"{PEER_KEY}\t(none)\t[fe80::2%enp1s0f1np1]:51871\t10.253.255.2/32\t{now - handshake}\t10\t20\t15\n")
+            f"{PEER_KEY}\t(none)\t{endpoint}\t10.253.255.2/32\t{now - handshake}\t10\t20\t15\n")
     return Answers({("wg", "show"): dump})
 
 
@@ -416,10 +418,40 @@ def test_admin_tunnel_without_a_recent_handshake_names_the_link_state(tmp_path):
                                   "enp1s0f1np1: no link"]
     assert result["control"]["peers"] == [{
         "id": "b", "address": "10.253.255.2", "upstream": False, "netdev": "enp1s0f1np1", "carrier": False,
-        "operstate": "down", "endpoint": "[fe80::2%enp1s0f1np1]:51871", "handshake_age_s": 2760}]
+        "operstate": "down", "endpoint": "[fe80::2%enp1s0f1np1]:51871", "handshake_age_s": 2760,
+        "path": {"via": "cable", "netdev": "enp1s0f1np1", "address": "fe80::2", "primary": True}, "fallbacks": 0}]
     host = tunnel(tmp_path, carrier=True, handshake=40, now=10_000)
     result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host, now=lambda: 10_000)
     assert "warnings" not in result and result["control"]["peers"][0]["handshake_age_s"] == 40
+
+
+FALLBACKS = [{"via": "cable", "netdev": "enp1s0f0np0", "mac": "02:00:00:00:00:03", "address": "fe80::3",
+              "peer": "fe80::4"},
+             {"via": "lan", "netdev": "enP7s7", "peer": "198.51.100.137"}]
+
+
+def test_admin_tunnel_over_a_fallback_path_names_the_path_and_the_primary_cable(tmp_path):
+    """The primary cable lost its carrier; the tunnel answers over the worker's LAN address."""
+    _, facts = ring(tmp_path, size=2)
+    host = tunnel(tmp_path, carrier=False, handshake=30, now=10_000, endpoint="198.51.100.137:51871",
+                  alternates=FALLBACKS)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host, now=lambda: 10_000)
+    assert result["state"] == "network-configured"
+    assert result["warnings"] == ["admin tunnel to 10.253.255.2 runs over LAN 198.51.100.137 "
+                                  "(primary cable enp1s0f1np1: no link)"]
+    peer = result["control"]["peers"][0]
+    assert peer["path"] == {"via": "lan", "netdev": "enP7s7", "address": "198.51.100.137", "primary": False}
+    assert peer["fallbacks"] == 2
+    # Without a recent handshake on the fallback, the line says which path the tunnel tries.
+    host = tunnel(tmp_path, carrier=False, handshake=46 * 60, now=10_000, endpoint="[fe80::4%enp1s0f0np0]:51871",
+                  alternates=FALLBACKS)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host, now=lambda: 10_000)
+    assert result["warnings"] == ["admin tunnel to 10.253.255.2 has no recent handshake (last 46 min ago) over "
+                                  "cable enp1s0f0np0; enp1s0f1np1: no link"]
+    # Back on the primary cable, nothing is reported.
+    host = tunnel(tmp_path, carrier=True, handshake=30, now=10_000, alternates=FALLBACKS)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host, now=lambda: 10_000)
+    assert "warnings" not in result and result["control"]["peers"][0]["path"]["primary"] is True
 
 
 def test_admin_tunnel_that_is_not_up_is_reported(tmp_path):
