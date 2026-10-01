@@ -274,7 +274,7 @@ def extend(config, *, root="/", run=subprocess.run):
 
     ``config`` must equal the installed /etc/sparkring/control.json except
     for the peer fields of control.EXTENSION. The firewall rules of fallback
-    paths that ``config`` no longer lists are removed; the refresh service
+    paths that ``config`` does not list are removed; the refresh service
     then adds the new ones and selects each peer's path.
     """
     installed = node.read(root, "/etc/sparkring/control.json")

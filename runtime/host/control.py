@@ -141,7 +141,7 @@ def extend(configs, inventories):
     LAN addresses when both have one. Both ends of a link list the same paths
     in the same order. A pair never uses a function that the primary path or
     an earlier pair uses. Each peer's ``address`` is its control address,
-    which the refresh contacts to check a new path.
+    which the refresh contacts to confirm a path it moves a peer to.
     """
     result = copy.deepcopy(configs)
     by_id = {config["id"]: config for config in result}
@@ -310,16 +310,16 @@ def choose(state, usable, current, handshake, received, now, *, has_endpoint=Fal
     Rules, in order:
 
     - A move is confirmed when, by the next refresh (VERIFY_AFTER), a handshake
-      followed it or WireGuard received bytes over the new path. Otherwise, or
+      followed it or WireGuard received bytes over the path moved to. Otherwise, or
       when the peer's packets moved the endpoint elsewhere first, that path
       failed. A failed path is skipped until a later handshake succeeds or its
       link fails its check; a failed primary path is also held back
       (PRIMARY_RETRY, doubling).
     - Without a known path in use (and no working endpoint), the first
       usable path is chosen.
-    - When the current path's link fails, the first usable path that has not
+    - When the link of the path in use fails, the first usable path that has not
       failed is chosen, the primary path first unless it is held back.
-    - When the current path has had no handshake for HANDSHAKE_STALE seconds,
+    - When the path in use has had no handshake for HANDSHAKE_STALE seconds,
       it failed and the next usable path is chosen.
     - After this refresh moved the peer off its primary path, it returns once
       that path's link has passed for PRIMARY_SETTLE seconds. A peer whose

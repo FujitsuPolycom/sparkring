@@ -607,7 +607,7 @@ def test_an_unplugged_primary_cable_moves_the_peer_to_the_other_cable_and_back(t
     assert host.up(T + 20) == {"control_up": True}
     assert host.endpoint == "[fe80::b1%enP2p1s0f0np0]:51871" and host.contacted == ["10.253.255.2"]
     assert host.said == ["sr-control: peer 10.253.255.2 now uses cable enP2p1s0f0np0 (cable enp1s0f1np1: link down)"]
-    # The worker answered over the new path; the peer stays there.
+    # The worker answered over the port 0 cable; the peer stays there.
     host.received += 60
     host.up(T + 40)
     assert host.refreshed() == [] and host.contacted == ["10.253.255.2"]
@@ -775,7 +775,7 @@ def test_configure_adds_fallbacks_to_an_installed_configuration_and_refuses_othe
         "configured": True, "address": "10.253.255.1", "fallback_paths": 4}
     assert node.read(tmp_path, "/etc/sparkring/control.json") == head
     assert calls == [["systemctl", "start", "--no-block", "sparkring-control-refresh.service"]]
-    # Replacing the fallbacks removes the firewall rules of paths no longer listed.
+    # Replacing the fallbacks removes the firewall rules of paths it does not list.
     replaced = copy.deepcopy(head)
     replaced["peers"][0]["alternates"][-1]["peer"] = "198.51.100.140"
     calls.clear()
