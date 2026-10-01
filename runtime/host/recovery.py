@@ -18,7 +18,8 @@ lifecycle code (``retained_source.apply``), as the operator's commands do:
 A run acts only when every guard holds:
 
 - recovery is on for the active deployment (``recovery.json``) and has not
-  stopped after FAILURE_LIMIT consecutive failed attempts;
+  stopped (FAILURE_LIMIT consecutive failed attempts, or RESTART_LIMIT
+  restarts within RESTART_WINDOW);
 - the install lock (``install.lock``, ``process_lock.hold``) is free, so no
   install, setup, hairpin procedure, up or down runs;
 - the deployment's last operation is a completed ``up``, or the state that
@@ -26,15 +27,21 @@ A run acts only when every guard holds:
 - the deployment is a Compose deployment;
 - every Spark answers over SSH; otherwise the run only records which Sparks
   it waits for;
-- on a four-Spark ring, every Spark reports its mesh units, no mesh marker
-  process runs without an active mesh unit, and the ConnectX hairpin setting
-  is in effect;
-- CONFIRMATIONS consecutive runs found the model not serving, and the backoff
-  after a failed attempt (BACKOFF) has passed.
+- on a four-Spark ring, every Spark's status report is current and reports
+  its mesh units, no mesh marker process runs without an active mesh unit,
+  and the ConnectX hairpin setting is in effect;
+- consecutive runs found the model not serving: CONFIRMATIONS runs, or for an
+  API that gives no answer at all, API_SILENCE seconds; and the backoff after
+  a failed attempt (BACKOFF) has passed.
+
+Before it acts, the run takes the install lock, reads its record and the
+active deployment again, and observes the deployment again; it acts on that
+second observation only.
 
 State is kept in ``/var/lib/sparkring/recovery.json`` (``sparkring-recovery/v1``),
 one record per deployment directory. A manual ``up`` or ``install`` resets a
-record's failures (``started``); ``sparkring recover on|off`` sets its choice.
+record's failures and restarts (``started``); ``sparkring recover on|off``
+sets its choice.
 """
 import argparse
 import concurrent.futures
@@ -57,15 +64,24 @@ SCHEMA = "sparkring-recovery/v1"
 TIMER = "sparkring-recover.timer"
 # The timer unit the package installs; the timer is enabled only where it exists.
 TIMER_FILE = Path("/usr/lib/systemd/system") / TIMER
-# Seconds before the next attempt after one, two, three, and four or more
-# consecutive failed attempts.
-BACKOFF = (120, 300, 900, 1800)
+# Seconds before the next attempt after one, two and three consecutive failed attempts.
+BACKOFF = (120, 300, 900)
 # Consecutive failed attempts after which recovery stops until a manual up,
-# install or ``sparkring recover on``.
-FAILURE_LIMIT = 3
+# install or ``sparkring recover on``: with BACKOFF, about 25 minutes of trying.
+FAILURE_LIMIT = 4
+# Successful restarts within RESTART_WINDOW seconds after which recovery stops
+# instead of restarting again. Each restart reloads the model (10 to 30
+# minutes); a model that stops again this often has a cause a restart does
+# not remove, such as a failing cable or Spark, and restarting would hide it.
+RESTART_LIMIT = 3
+RESTART_WINDOW = 6 * 3600
 # Consecutive runs that must find the model not serving before one acts.
 CONFIRMATIONS = 2
-# Seconds for rank 0's /health answer.
+# Seconds rank 0's API may give no answer at all (timeouts, refused
+# connections) before that alone counts as not serving. A 503 from /health,
+# vLLM's answer for a stopped engine, counts after CONFIRMATIONS runs.
+API_SILENCE = 300
+# Seconds for each answer of rank 0's API.
 API_TIMEOUT = 10
 UP = "sudo sparkring up --execute"
 DOWN_UP = "sudo sparkring down --execute, then sudo sparkring up --execute"
@@ -100,15 +116,61 @@ def path():
     return controller.STATE.parent / "recovery.json"
 
 
-def load():
-    """The recovery document; an empty one when none was written."""
+def _empty():
+    return {"schema": SCHEMA, "deployments": {}}
+
+
+def load(*, repair=False):
+    """The recovery document; an empty one when none was written.
+
+    A file that is not a ``sparkring-recovery/v1`` document raises
+    ValueError, or with ``repair`` is moved aside to
+    ``recovery.json.unreadable-<ns>`` with a warning, so recovery starts
+    from empty records rather than staying disabled.
+    """
     file = path()
     if not file.exists():
-        return {"schema": SCHEMA, "deployments": {}}
-    document = installer.read(file)
-    if not isinstance(document, dict) or document.get("schema") != SCHEMA or not isinstance(document.get("deployments"), dict):
+        return _empty()
+    try:
+        document = installer.read(file)
+        valid = (isinstance(document, dict) and document.get("schema") == SCHEMA
+                 and isinstance(document.get("deployments"), dict))
+    except ValueError:
+        document, valid = None, False
+    if valid:
+        return document
+    if not repair:
         raise ValueError(f"{file} is not a {SCHEMA} document")
-    return document
+    aside = file.with_name(f"{file.name}.unreadable-{time.time_ns()}")
+    os.replace(file, aside)
+    print(f"Warning: {file} was unreadable; it was moved to {aside} and automatic recovery starts from empty records",
+          file=sys.stderr)
+    return _empty()
+
+
+def _write(document):
+    """Replace the recovery file atomically; its content and the rename reach the disk before this returns."""
+    file = path()
+    if any(item.is_symlink() for item in (file, *file.parents)):
+        raise ValueError("Recovery state path contains a symlink: " + str(file))
+    file.parent.mkdir(parents=True, exist_ok=True)
+    temporary = file.with_name(file.name + ".writing")
+    with open(temporary, "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(json.dumps(document, indent=2) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, file)
+    try:
+        descriptor = os.open(file.parent, os.O_RDONLY)
+    except OSError:
+        return  # A platform that cannot open a directory (Windows) cannot sync it either.
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
 
 
 def record_of(document, directory):
@@ -128,13 +190,13 @@ def update(directory, **changes):
     for _ in range(50):
         try:
             with process_lock.hold(file.with_name("recovery.lock")):
-                document = load()
+                document = load(repair=True)
                 key = str(Path(directory).resolve())
                 record = {**record_of(document, key), **changes}
                 document["deployments"][key] = record
                 document["deployments"] = {name: value for name, value in document["deployments"].items()
                                            if (Path(name) / "deployment.lock.json").exists()}
-                node.save(file.parent, file.name, document, mode=0o644)
+                _write(document)
                 return record
         except ValueError as error:
             if "Another operation is active" not in str(error):
@@ -149,6 +211,11 @@ def is_active(directory):
     return file.exists() and Path(installer.read(file)["path"]).resolve() == Path(directory).resolve()
 
 
+def supported(lock):
+    """Whether recovery restarts the deployment of ``lock``: Compose deployments only."""
+    return lock.get("backend") == "compose"
+
+
 def saved_state(directory):
     """The deployment's ``state.json`` (generation, operation, complete), or {} before its first operation."""
     file = Path(directory) / "state.json"
@@ -159,9 +226,20 @@ def _state_key(state):
     return {key: state.get(key) for key in ("generation", "operation", "complete")}
 
 
+def may_act(state, record):
+    """Whether the saved ``state`` lets recovery act: a completed up, or exactly what its own attempt left."""
+    left = record.get("left")
+    return bool(state.get("operation") == "up" and state.get("complete")) or bool(left and _state_key(state) == left)
+
+
 def backoff(failures):
     """Seconds to wait after ``failures`` consecutive failed attempts."""
     return BACKOFF[min(max(failures, 1), len(BACKOFF)) - 1]
+
+
+def recent_restarts(record, now):
+    """Times of the successful restarts within RESTART_WINDOW seconds before ``now``."""
+    return [moment for moment in record.get("restarts") or [] if now - moment < RESTART_WINDOW]
 
 
 def enable_timer(*, run=subprocess.run):
@@ -183,10 +261,16 @@ def _parallel(function, items):
         return list(pool.map(function, items))
 
 
+def _last_line(error):
+    return (str(error).strip().splitlines() or ["no answer"])[-1][:node.ERROR_TEXT]
+
+
 def node_documents(hosts, *, invoke=None):
     """Each Spark's cached ``sparkring node status`` document by SSH target.
 
     A Spark that cannot be read gets ``{"state": "unreachable", "error": ...}``.
+    The node command marks a document older than 90 seconds ``stale`` and
+    reports ``agent-unavailable`` before its agent wrote one.
     """
     invoke = invoke or discovery.ssh
 
@@ -194,7 +278,7 @@ def node_documents(hosts, *, invoke=None):
         try:
             return json.loads(invoke(host, ["/usr/bin/sparkring", "node", "status"]))
         except READ_ERRORS as error:
-            return {"state": "unreachable", "error": (str(error).strip().splitlines() or ["no answer"])[-1]}
+            return {"state": "unreachable", "error": _last_line(error)}
     return dict(zip(hosts, _parallel(one, hosts), strict=True))
 
 
@@ -222,7 +306,7 @@ def probe_containers(lock, *, invoke=None):
             return {"rank": row["rank"], "host": row["host"], **value}
         except READ_ERRORS as error:
             return {"rank": row["rank"], "host": row["host"], "name": row["name"], "running": None,
-                    "error": (str(error).strip().splitlines() or ["no answer"])[-1]}
+                    "error": _last_line(error)}
     return _parallel(one, installer.containers(lock))
 
 
@@ -233,7 +317,7 @@ def ranks_from_observations(observations):
         value = item.get("result") or {}
         if "error" in value or "running" not in value:
             rows.append({"rank": rank, "host": item.get("host"), "running": None,
-                         "error": (str(value.get("error", "no observation")).strip().splitlines() or ["?"])[-1]})
+                         "error": _last_line(value.get("error", "no observation"))})
             continue
         row = {"rank": value.get("rank", rank), "host": item.get("host"), "name": value.get("container_name") or value.get("name"),
                "present": value.get("present", True), "running": bool(value.get("running")),
@@ -250,24 +334,42 @@ def _opener():
     return urllib.request.build_opener(urllib.request.ProxyHandler({})).open
 
 
-def api_health(api_url, *, timeout=API_TIMEOUT, opener=None):
-    """Rank 0's ``/health`` answer: ``{"ok", "status", "error"}``.
-
-    vLLM answers 200 while its engine runs and 503 once the engine client has
-    failed (``EngineDeadError``), the condition in which chat requests fail
-    with HTTP 500 "EngineCore encountered an issue". A connection error or a
-    timeout is a failed answer too.
-    """
-    url = api_url.removesuffix("/").removesuffix("/v1") + "/health"
+def _ask(url, timeout, opener):
+    """``(status, error)`` of one GET: the HTTP status, or None and why there was no answer."""
     try:
-        with (opener or _opener())(url, timeout=timeout) as response:
-            return {"ok": response.status == 200, "status": response.status, "error": None}
+        with opener(url, timeout=timeout) as response:
+            return response.status, None
     except urllib.error.HTTPError as error:
-        reason = "the model engine has stopped" if error.code == 503 else error.reason
-        return {"ok": False, "status": error.code, "error": f"HTTP {error.code} from /health: {reason}"}
+        return error.code, error.reason
     except (OSError, ValueError) as error:
-        reason = getattr(error, "reason", None) or error
-        return {"ok": False, "status": None, "error": f"no answer from {url}: {reason}"}
+        return None, str(getattr(error, "reason", None) or error)
+
+
+def api_health(api_url, *, timeout=API_TIMEOUT, opener=None):
+    """Rank 0's API answer: ``{"ok", "status", "dead", "error"}``.
+
+    vLLM's ``/health`` answers 200 while its engine runs and 503 once the
+    engine client has failed (``EngineDeadError``), the condition in which
+    chat requests fail with HTTP 500 "EngineCore encountered an issue"; that
+    503 sets ``dead``. Any other failure (a timeout, a refused connection,
+    another status) asks ``/v1/models`` as a second probe: an answer there
+    counts as serving, and without one the API is failing but not ``dead``,
+    which recovery treats as a fault only once it lasts API_SILENCE seconds.
+    """
+    base = api_url.removesuffix("/").removesuffix("/v1")
+    opener = opener or _opener()
+    status, reason = _ask(base + "/health", timeout, opener)
+    if status == 200:
+        return {"ok": True, "status": 200, "dead": False, "error": None}
+    if status == 503:
+        return {"ok": False, "status": 503, "dead": True,
+                "error": "HTTP 503 from /health: the model engine has stopped"}
+    first = f"HTTP {status} from /health" if status else f"no answer from {base}/health: {reason}"
+    second, other = _ask(base + "/v1/models", timeout, opener)
+    if second == 200:
+        return {"ok": True, "status": 200, "dead": False, "error": None, "note": first + "; /v1/models answered"}
+    more = f"HTTP {second}" if second else f"no answer: {other}"
+    return {"ok": False, "status": status, "dead": False, "error": f"{first}; /v1/models: {more}"}
 
 
 def _docker_time(value):
@@ -311,6 +413,21 @@ def tunnel_reason(report, host):
     return None
 
 
+def _mesh_problem(document):
+    """Why a four-Spark member's status document cannot vouch for its mesh, or None."""
+    state = (document or {}).get("state")
+    if state == "stale":
+        return f"its status report is stale ({int(document.get('age_seconds') or 0)} s old)"
+    if state == "agent-unavailable":
+        return "its status service has not reported yet"
+    mesh = (document or {}).get("mesh")
+    if not isinstance(mesh, dict):
+        return "its mesh units are not reported; update SparkRing on it"
+    if "error" in mesh:
+        return "its mesh units could not be read: " + str(mesh["error"])
+    return None
+
+
 def assess(ranks, *, api=None, rebooted=(), nodes=None, tunnel=None, require_mesh=False):
     """What is wrong with a deployment whose last operation is a completed up, and the next step.
 
@@ -318,14 +435,16 @@ def assess(ranks, *, api=None, rebooted=(), nodes=None, tunnel=None, require_mes
     ``api_health`` or None; ``rebooted`` lists SSH targets whose boot ID
     differs from the generation's; ``nodes`` maps SSH targets to node status
     documents; ``tunnel`` is Node A's ``control`` report; ``require_mesh``
-    makes a four-Spark member without a mesh report unknown.
+    makes a four-Spark member whose status report is stale, missing or
+    without a mesh report unknown.
 
-    Returns ``state``, ``summary``, ``next_action``, ``details`` (lines) and
-    ``action``: ``up``, ``restart`` (down, then up) or None when only the
-    operator can act. States in order of precedence: ``unreachable``,
-    ``unknown``, ``mesh-cleanup`` (marker processes without an active mesh
-    unit), ``stopped``, ``partial``, ``rebooted``, ``api-failing``,
-    ``mesh-failed`` and ``serving``.
+    Returns ``state``, ``summary``, ``next_action``, ``details`` (lines),
+    ``ranks`` (the ranks it names), ``api_dead`` (the API answered that its
+    engine stopped) and ``action``: ``up``, ``restart`` (down, then up) or
+    None when only the operator can act. States in order of precedence:
+    ``unreachable``, ``unknown``, ``mesh-cleanup`` (marker processes without
+    an active mesh unit), ``stopped``, ``partial``, ``rebooted``,
+    ``api-failing``, ``mesh-failed`` and ``serving``.
     """
     nodes = nodes or {}
 
@@ -335,7 +454,8 @@ def assess(ranks, *, api=None, rebooted=(), nodes=None, tunnel=None, require_mes
 
     def result(state, summary, next_action, details, affected=()):
         return {"state": state, "summary": summary, "next_action": next_action, "details": details,
-                "action": ACTIONS.get(state), "ranks": [name(row) for row in affected]}
+                "action": ACTIONS.get(state), "ranks": [name(row) for row in affected],
+                "api_dead": bool(api and api.get("dead"))}
 
     api_line = [f"API: {api['error']}"] if api and not api.get("ok") else []
     missing = [row for row in ranks if (nodes.get(row["host"]) or {}).get("state") == "unreachable"]
@@ -355,9 +475,10 @@ def assess(ranks, *, api=None, rebooted=(), nodes=None, tunnel=None, require_mes
     unknown = [row for row in ranks if row.get("running") is None]
     mesh = {row["host"]: (nodes.get(row["host"]) or {}).get("mesh") for row in ranks}
     if require_mesh:
-        unknown += [{**row, "error": "its mesh units are not reported; update SparkRing on it"}
-                    for row in ranks if row not in unknown and (not isinstance(mesh[row["host"]], dict)
-                                                                or "error" in mesh[row["host"]])]
+        for row in ranks:
+            problem = _mesh_problem(nodes.get(row["host"]))
+            if problem and row not in unknown:
+                unknown.append({**row, "error": problem})
     if unknown:
         return result("unknown", "The model state on " + ", ".join(name(row) for row in unknown) + " is unknown",
                       "check " + "; ".join(f"{name(row)}: {row.get('error')}" for row in unknown),
@@ -423,18 +544,22 @@ def status_assessment(deployment, nodes, record, *, tunnel=None, api=None):
 def started(directory, *, enabled=None, invoke=None):
     """Record that a manual ``up`` or ``install`` started ``directory``; return the record, or None.
 
-    Resets the failure count and backoff, forgets any unfinished attempt,
-    records the generation and each Spark's boot ID for the restart signal,
-    keeps the deployment's recorded choice unless ``enabled`` names one, and
-    enables the timer. Never raises: the model operation itself succeeded.
+    Resets the failure count, the restart history and the backoff, forgets
+    any unfinished attempt, records the generation and each Spark's boot ID
+    for the restart signal, keeps the deployment's recorded choice unless
+    ``enabled`` names one, and enables the timer. The record of a deployment
+    recovery does not restart (``supported``) carries ``supported`` false
+    and enables no timer. Never raises: the model operation itself succeeded.
     """
     try:
         directory = Path(directory).resolve()
         lock = installer.read(directory / "deployment.lock.json")
+        if not supported(lock):
+            return update(directory, supported=False)
         boots = boot_ids(node_documents([row["host"] for row in lock["site"]["ranks"]], invoke=invoke))
-        changes = {"failures": 0, "stopped": False, "next_attempt_at": None, "pending": None, "attempt": None,
-                   "left": None, "waiting": None, "generation": saved_state(directory).get("generation"),
-                   "boots": boots}
+        changes = {"supported": True, "failures": 0, "stopped": False, "stop_reason": None, "restarts": [],
+                   "next_attempt_at": None, "pending": None, "attempt": None, "left": None, "waiting": None,
+                   "generation": saved_state(directory).get("generation"), "boots": boots}
         if enabled is not None:
             changes["enabled"] = bool(enabled)
         record = update(directory, **changes)
@@ -460,13 +585,15 @@ def forget_attempt(directory):
 
 
 def set_enabled(enabled, *, directory=None):
-    """``sparkring recover on|off`` for the active deployment; ``on`` also clears failures and backoff."""
+    """``sparkring recover on|off`` for the active deployment; ``on`` also clears failures, restarts and backoff."""
     directory = directory or controller.active_deployment()
     if directory is None:
         raise ValueError("No model deployment is active. Start one with sudo sparkring install.")
+    if not supported(installer.read(Path(directory) / "deployment.lock.json")):
+        raise ValueError("Automatic recovery does not restart this deployment's backend; restart it by hand")
     changes = {"enabled": bool(enabled)}
     if enabled:
-        changes.update(failures=0, stopped=False, next_attempt_at=None, pending=None)
+        changes.update(failures=0, stopped=False, stop_reason=None, restarts=[], next_attempt_at=None, pending=None)
     record = update(directory, **changes)
     if enabled:
         enable_timer()
@@ -492,13 +619,24 @@ def _local_tunnel():
         return None
 
 
+def _stopped_text(record):
+    return "Stopped: " + str(record.get("stop_reason") or f"{record.get('failures')} failed attempts in a row")
+
+
+def _confirmed(finding, pending, t):
+    """Whether the runs recorded in ``pending`` are enough to act on ``finding``."""
+    if finding["state"] == "api-failing" and not finding.get("api_dead"):
+        return t - pending["since"] >= API_SILENCE
+    return pending["count"] >= CONFIRMATIONS
+
+
 def check(*, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
     """One run of ``sparkring recover --auto``; returns ``{"state", "summary", "deployment", ...}``.
 
     ``state`` is one of ``idle``, ``off``, ``stopped``, ``busy``, ``inactive``,
     ``unsupported``, ``waiting``, ``serving``, ``report`` (not serving, and
     only the operator can act), ``confirming``, ``backoff``, ``changed``,
-    ``recovered`` or ``failed``. ``invoke`` replaces SSH, ``api`` the /health
+    ``recovered`` or ``failed``. ``invoke`` replaces SSH, ``api`` the API
     probe, ``apply`` the lifecycle call ``apply(operation)`` and ``tunnel``
     Node A's ``control`` report.
     """
@@ -507,29 +645,28 @@ def check(*, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
     if directory is None:
         return _outcome("idle", "No model deployment is active")
     directory = Path(directory).resolve()
-    record = record_of(load(), directory)
+    record = record_of(load(repair=True), directory)
     if not record["enabled"]:
         return _outcome("off", "Automatic recovery is off for this deployment", directory)
     if record["stopped"]:
-        return _outcome("stopped", f"Stopped after {record['failures']} failed attempts; {UP} turns it back on", directory)
+        return _outcome("stopped", f"{_stopped_text(record)}; {UP} turns it back on", directory)
+    lock = installer.read(directory / "deployment.lock.json")
+    if not supported(lock):
+        return _outcome("unsupported", f"Automatic recovery covers Compose deployments; this one uses {lock.get('backend')}",
+                        directory)
     if _busy():
         return _outcome("busy", "Another SparkRing operation is running", directory)
     state = saved_state(directory)
     if record.get("attempt"):
         record = _interrupted(directory, record, state, now())
         if record["stopped"]:
-            return _outcome("stopped", f"Stopped after {record['failures']} failed attempts", directory)
-    left = record.get("left")
-    if not (state.get("operation") == "up" and state.get("complete")) and not (left and _state_key(state) == left):
+            return _outcome("stopped", _stopped_text(record), directory)
+    if not may_act(state, record):
         if record.get("pending") or record.get("waiting"):
             update(directory, pending=None, waiting=None)
         return _outcome("inactive", "The last model operation is not a completed up; recovery waits for one", directory)
-    lock = installer.read(directory / "deployment.lock.json")
-    if lock.get("backend") != "compose":
-        return _outcome("unsupported", f"Automatic recovery covers Compose deployments; this one uses {lock.get('backend')}",
-                        directory)
-    finding = observe(directory, lock, record, state, invoke=invoke, api=api,
-                      tunnel=tunnel if tunnel is not None else _local_tunnel())
+    tunnel = tunnel if tunnel is not None else _local_tunnel()
+    finding = observe(directory, lock, record, state, invoke=invoke, api=api, tunnel=tunnel)
     t = now()
     shown = {key: finding[key] for key in ("state", "summary", "next_action", "details")}
     if finding["state"] == "unreachable":
@@ -548,17 +685,23 @@ def check(*, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
         update(directory, **changes, pending=None)
         return _outcome("report", finding["summary"], directory, finding=shown)
     pending = record.get("pending") or {}
-    count = pending.get("count", 0) + 1
-    changes["pending"] = {"count": count, "since": pending.get("since") or t, "state": finding["state"]}
+    changes["pending"] = pending = {"count": pending.get("count", 0) + 1, "since": pending.get("since") or t,
+                                    "state": finding["state"]}
     if record.get("next_attempt_at") and t < record["next_attempt_at"]:
         update(directory, **changes)
         return _outcome("backoff", finding["summary"] + "; the next attempt waits for its backoff", directory,
                         finding=shown)
-    if count < CONFIRMATIONS:
+    if not _confirmed(finding, pending, t):
         update(directory, **changes)
-        return _outcome("confirming", finding["summary"] + "; the next check confirms it", directory, finding=shown)
+        return _outcome("confirming", finding["summary"] + "; a later check confirms it", directory, finding=shown)
+    restarts = recent_restarts(record, t)
+    if len(restarts) >= RESTART_LIMIT:
+        reason = (f"the model stopped again after {len(restarts)} restarts within {RESTART_WINDOW // 3600} hours; "
+                  "find the cause before restarting it")
+        update(directory, **{**changes, "pending": None}, stopped=True, stop_reason=reason)
+        return _outcome("stopped", "Stopped: " + reason, directory, finding=shown)
     update(directory, **changes)
-    return attempt(directory, lock, state, record, finding, now=now, apply=apply, invoke=invoke)
+    return attempt(directory, lock, state, finding, now=now, apply=apply, invoke=invoke, api=api, tunnel=tunnel)
 
 
 def _interrupted(directory, record, state, t):
@@ -570,6 +713,7 @@ def _interrupted(directory, record, state, t):
     ours = state.get("operation") in ("up", "down") and first <= (state.get("generation") or 0) <= first + 2
     failures = record.get("failures", 0) + 1
     return update(directory, attempt=None, failures=failures, stopped=failures >= FAILURE_LIMIT,
+                  stop_reason=f"{failures} failed attempts in a row" if failures >= FAILURE_LIMIT else None,
                   next_attempt_at=t + backoff(failures), left=_state_key(state) if ours else None,
                   last={**prior, "finished_at": None, "result": "interrupted",
                         "error": "the recovery run stopped before it finished"})
@@ -600,8 +744,26 @@ def observe(directory, lock, record, state, *, invoke, api=None, tunnel=None):
     return finding
 
 
-def attempt(directory, lock, state, record, finding, *, now=time.time, apply=None, invoke=None):
-    """Start the model again under the install lock; record the result and the backoff after a failure."""
+def error_text(failure):
+    """One line, at most ERROR_TEXT characters, that says why a lifecycle call failed.
+
+    The command of a retained source's subprocess holds that source's code,
+    so a failed subprocess is named by its exit status; its own output is in
+    the installation log.
+    """
+    if isinstance(failure, subprocess.CalledProcessError):
+        return (f"the deployment's own source exited with status {failure.returncode}; "
+                "sudo sparkring logs --details shows its output")
+    return (str(failure).strip().splitlines() or [type(failure).__name__])[-1][:node.ERROR_TEXT]
+
+
+def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invoke=None, api=None, tunnel=None):
+    """Start the model again under the install lock; record the result and the backoff after a failure.
+
+    Under the lock it reads the record, the active deployment and the saved
+    state again and observes the deployment again: a run that ``recover off``,
+    another operation or a recovered model overtook does nothing.
+    """
     cache = controller.STATE / "retained-sources"
     apply = apply or (lambda operation: retained_source.apply(directory, operation, cache=cache))
     with contextlib.ExitStack() as stack:
@@ -609,10 +771,25 @@ def attempt(directory, lock, state, record, finding, *, now=time.time, apply=Non
             stack.enter_context(process_lock.hold(controller.STATE / "install.lock"))
         except ValueError:
             return _outcome("busy", "Another SparkRing operation started", directory)
+        record = record_of(load(repair=True), directory)
+        if not record["enabled"]:
+            return _outcome("off", "Automatic recovery was turned off during the check", directory)
+        if record["stopped"]:
+            return _outcome("stopped", _stopped_text(record), directory)
+        active = controller.active_deployment()
+        if active is None or Path(active).resolve() != directory:
+            update(directory, pending=None)
+            return _outcome("changed", "Another deployment became active during the check", directory)
         if _state_key(saved_state(directory)) != _state_key(state):
             update(directory, pending=None)
             return _outcome("changed", "The deployment changed during the check; the next check observes it again",
                             directory)
+        # Observed again under the lock: the mesh guard and the model state must still hold.
+        finding = observe(directory, lock, record, state, invoke=invoke or discovery.ssh, api=api, tunnel=tunnel)
+        shown = {key: finding[key] for key in ("state", "summary", "next_action", "details")}
+        if finding["action"] is None:
+            update(directory, finding=shown, pending=None)
+            return _outcome("changed", "Observed again before acting: " + finding["summary"], directory, finding=shown)
         if len(lock["site"]["ranks"]) == 4:
             # retained_source.apply does not check the hairpin setting; up does.
             problem = controller._hairpin_problem()
@@ -636,7 +813,7 @@ def attempt(directory, lock, state, record, finding, *, now=time.time, apply=Non
                 for operation in operations:
                     apply(operation)
             except Exception as failure:  # noqa: BLE001 - every failure is recorded and backs off
-                error = (str(failure).strip().splitlines() or [type(failure).__name__])[-1]
+                error = error_text(failure)
                 progress.failure(traceback.format_exc())
             after = saved_state(directory)
             succeeded = error is None and after.get("operation") == "up" and after.get("complete")
@@ -647,10 +824,12 @@ def attempt(directory, lock, state, record, finding, *, now=time.time, apply=Non
     if succeeded:
         documents = node_documents([row["host"] for row in lock["site"]["ranks"]], invoke=invoke)
         update(directory, attempt=None, last=last, failures=0, next_attempt_at=None, left=None,
-               generation=after.get("generation"), boots=boot_ids(documents))
+               generation=after.get("generation"), boots=boot_ids(documents),
+               restarts=[*recent_restarts(record, finished), finished])
         return _outcome("recovered", "The model started again", directory)
     failures = record.get("failures", 0) + 1
     update(directory, attempt=None, last=last, failures=failures, stopped=failures >= FAILURE_LIMIT,
+           stop_reason=f"{failures} failed attempts in a row" if failures >= FAILURE_LIMIT else None,
            next_attempt_at=finished + backoff(failures), left=_state_key(after))
     return _outcome("failed", "Automatic recovery failed: " + (error or "the model operation did not complete"), directory)
 
@@ -678,19 +857,26 @@ def timer_enabled(*, run=subprocess.run):
     return answer == "enabled"
 
 
-def status_lines(record, *, now=time.time, timer=None):
+def status_lines(record, *, now=time.time, timer=None, state=None, backend="compose"):
     """The lines ``sparkring status`` prints about automatic recovery of one deployment.
 
     ``timer`` is ``timer_enabled()``: False adds that the timer does not run.
+    ``state`` is the deployment's saved state: when it is not a completed up,
+    recovery is idle until the next one. ``backend`` other than ``compose``
+    says recovery does not restart the deployment.
     """
+    if backend != "compose":
+        return [f"Automatic recovery: not available for this deployment ({backend}); restart it by hand"]
     if record is None:
         return ["Automatic recovery: state unreadable; use sudo sparkring status"]
     if not record.get("enabled", True):
         return ["Automatic recovery: off | turn on: sudo sparkring recover on"]
     if record.get("stopped"):
-        lines = [f"Automatic recovery: stopped after {record.get('failures')} failed attempts | {UP} turns it back on"]
+        lines = [f"Automatic recovery: {_stopped_text(record).lower()} | {UP} turns it back on"]
     elif timer is False:
         lines = [f"Automatic recovery: on, but {TIMER} is not enabled | sudo sparkring recover on enables it"]
+    elif state is not None and not may_act(state, record):
+        lines = ["Automatic recovery: on; idle until the next sudo sparkring up --execute or sudo sparkring install"]
     else:
         lines = ["Automatic recovery: on"]
     waiting = record.get("waiting")
@@ -700,13 +886,13 @@ def status_lines(record, *, now=time.time, timer=None):
     if last:
         verb = "start" if last.get("action") == "start" else "restart"
         lines.append(f"  last attempt: {verb} at {clock(last['started_at'])}, {RESULTS.get(last.get('result'), last.get('result'))}"
-                     + (f": {last['error']}" if last.get("error") else ""))
+                     + (f": {str(last['error'])[:node.ERROR_TEXT]}" if last.get("error") else ""))
     upcoming = record.get("next_attempt_at")
     if not record.get("stopped"):
         if upcoming and upcoming > now():
             lines.append(f"  next attempt: not before {clock(upcoming)}")
         elif record.get("pending"):
-            lines.append("  next attempt: at the next check, about a minute from the last one, if the model still "
+            lines.append("  next attempt: at a later check, a minute or more from the last one, if the model still "
                          "does not serve")
     return lines
 
@@ -718,7 +904,9 @@ def describe():
         return {"deployment": None, "record": None, "lines": ["No model deployment is active."]}
     directory = Path(directory).resolve()
     record = record_of(load(), directory)
-    lines = ["Deployment: " + str(directory), *status_lines(record)]
+    backend = installer.read(directory / "deployment.lock.json").get("backend")
+    lines = ["Deployment: " + str(directory),
+             *status_lines(record, state=saved_state(directory), timer=timer_enabled(), backend=backend)]
     finding = record.get("finding")
     if finding and record.get("checked_at"):
         lines.append(f"Last check at {clock(record['checked_at'])}: {finding['summary']}"
@@ -745,8 +933,9 @@ def main(argv=None):
             return 1 if result["state"] == "failed" else 0
         if args.action in ("on", "off"):
             record = set_enabled(args.action == "on")
-            result = {"deployment": str(Path(controller.active_deployment()).resolve()), "record": record,
-                      "lines": status_lines(record)}
+            directory = Path(controller.active_deployment()).resolve()
+            result = {"deployment": str(directory), "record": record,
+                      "lines": status_lines(record, state=saved_state(directory))}
         else:
             result = describe()
         print(json.dumps({key: value for key, value in result.items() if key != "lines"}, indent=2)

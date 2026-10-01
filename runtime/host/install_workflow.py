@@ -556,6 +556,11 @@ def download_limit(args):
 
 
 DASHBOARD = "/v1/sparkring/status/view"
+# The summary card's Recovery line for each value of the result's "recovery".
+RECOVERY_TEXT = {"on": "restarts the model if a Spark stops serving; turn off: sudo sparkring recover off",
+                 "off": "off; turn on: sudo sparkring recover on",
+                 "unsupported": "not available for this model's backend; restart it by hand",
+                 "unrecorded": "not set up (see the warning above); sudo sparkring recover on retries"}
 STOP_COMMAND = "sudo sparkring down --execute"
 REMOVE_COMMAND = "sudo apt remove sparkring"
 
@@ -608,9 +613,7 @@ def summary_lines(result):
     rows = [("Model", result.get("model")), ("API", result.get("api_url")), ("Dashboard", result.get("dashboard_url")),
             ("Try it", result["example_request"]), ("Switch back", commands.get("switch_back")),
             ("Stop", commands.get("stop")),
-            ("Recovery", None if "auto_recover" not in result else
-             "restarts the model if a Spark stops serving; turn off: sudo sparkring recover off"
-             if result["auto_recover"] else "off; turn on: sudo sparkring recover on"),
+            ("Recovery", RECOVERY_TEXT.get(result.get("recovery"))),
             ("Uninstall", f"stop the model, then {commands['remove']} on each Spark" if commands.get("remove") else None)]
     return [f"  {name + ':':<13}{value}" for name, value in rows if value]
 
@@ -703,8 +706,7 @@ def execute(args):
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
                 "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
-                "serving": lock.get("serving") or {}, "auto_recover": not args.no_auto_recover,
-                **installer.connection(lock)}
+                "serving": lock.get("serving") or {}, **installer.connection(lock)}
         if hairpin:
             plan["hairpin"] = {"required": needs_hairpin, "ranks": hairpin_ring.rank_rows(hairpin, cluster["plan"])}
         if limit:
@@ -814,9 +816,13 @@ def execute(args):
         result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
                                  verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
                                  unfinished=installer.unfinished)
-        # Resets recovery's failures, records the generation's boots and the
-        # deployment's choice, and enables the timer.
-        recovery.started(directory, enabled=not args.no_auto_recover)
+        # Records the deployment's choice (on unless --no-auto-recover, also
+        # after sparkring recover off), resets failures and restarts, records
+        # the generation's boots and enables the timer.
+        record = recovery.started(directory, enabled=not args.no_auto_recover)
+        plan["recovery"] = ("unrecorded" if record is None else "unsupported" if not record.get("supported", True)
+                            else "on" if record["enabled"] else "off")
+        plan["auto_recover"] = plan["recovery"] == "on"
         try:
             plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
         except (OSError, ValueError):

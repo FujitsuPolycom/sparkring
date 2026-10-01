@@ -1,5 +1,7 @@
 """Automatic model recovery on a simulated pair and ring: guards, actions, backoff and status; no host access."""
+import contextlib
 import json
+import subprocess
 import urllib.error
 
 import pytest
@@ -12,8 +14,10 @@ from scripts import installer_runner, sparkring
 PROFILE = "qwen38-flash-next-tp2"
 BOOT = "11111111-1111-4111-8111-111111111111"
 REBOOTED = "22222222-2222-4222-8222-222222222222"
-SERVING = {"ok": True, "status": 200, "error": None}
-DEAD = {"ok": False, "status": 503, "error": "HTTP 503 from /health: the model engine has stopped"}
+SERVING = {"ok": True, "status": 200, "dead": False, "error": None}
+DEAD = {"ok": False, "status": 503, "dead": True, "error": "HTTP 503 from /health: the model engine has stopped"}
+SILENT = {"ok": False, "status": None, "dead": False,
+          "error": "no answer from http://192.0.2.10:8000/health: timed out; /v1/models: no answer: timed out"}
 
 
 class Sparks:
@@ -21,8 +25,9 @@ class Sparks:
 
     ``running`` holds each rank's container state; the rank operations of
     the plain installer runner change it as the real ones would. SSH answers
-    ``sparkring node status`` and the recovery container probe; any other
-    command fails the test.
+    ``sparkring node status`` (``documents`` replaces a Spark's document) and
+    the recovery container probe (it fails on the ranks in ``probe_fails``);
+    any other command fails the test.
     """
 
     def __init__(self, hosts):
@@ -34,6 +39,8 @@ class Sparks:
         self.fail = set()
         self.operations = []
         self.mesh = {host: {"active": ["sparkring-test-mesh.service"], "failed": [], "markers": []} for host in hosts}
+        self.documents = {}
+        self.probe_fails = set()
 
     def rank_operation(self, runner, target, argv, timeout):
         operation, rank = argv[1], int(argv[2])
@@ -73,8 +80,10 @@ class Sparks:
             document = {"state": "network-configured", "hostname": f"spark{rank}", "boot_id": self.boots[host]}
             if len(self.hosts) == 4:
                 document["mesh"] = self.mesh[host]
-            return json.dumps(document)
+            return json.dumps(self.documents.get(host, document))
         if recovery.CONTAINER in argv:
+            if rank in self.probe_fails:
+                raise RuntimeError(f"{host}: Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
             return json.dumps({**self.observation(rank), "name": argv[-3], "owned": True})
         pytest.fail(f"unexpected SSH command on {host}: {argv}")
 
@@ -140,7 +149,7 @@ def test_serving_model_is_left_alone(pair):
 
 
 def test_model_stopped_everywhere_starts_through_up_with_the_pairs_gid_repair(pair):
-    """Failure 2: every container stopped; one confirmed finding runs the up code path."""
+    """Every container stopped: the second check that finds it runs the up code path."""
     clock = Clock()
     pair.running.update({0: False, 1: False})
     pair.exit_codes.update({0: 0, 1: 255})
@@ -162,7 +171,7 @@ def test_model_stopped_everywhere_starts_through_up_with_the_pairs_gid_repair(pa
 
 
 def test_partial_model_stops_everywhere_then_starts(pair):
-    """Failure 3: the worker's container died while rank 0's still runs."""
+    """The worker's container stopped while rank 0's still runs: down, then up."""
     clock = Clock()
     pair.running[1] = False
     pair.exit_codes[1] = 255
@@ -213,7 +222,7 @@ def test_an_unreachable_spark_is_only_waited_for(pair):
 
 
 def test_an_unreachable_worker_behind_a_down_admin_link_names_the_link(pair):
-    """Failure 4: the admin tunnel's link lost carrier while the model still serves."""
+    """The admin tunnel's only link lost carrier while the model serves over the other port."""
     clock = Clock()
     pair.unreachable.add(pair.hosts[1])
     tunnel = {"interface_up": True, "peers": [{
@@ -262,7 +271,8 @@ def test_off_does_nothing_and_on_resets_failures(pair, capsys):
     assert (record(pair)["enabled"], record(pair)["failures"], record(pair)["stopped"]) == (True, 0, False)
 
 
-def test_failed_attempts_back_off_and_stop_after_the_limit(pair):
+def test_failed_attempts_back_off_and_stop_after_the_limit(pair, monkeypatch, capsys):
+    assert (recovery.BACKOFF, recovery.FAILURE_LIMIT) == ((120, 300, 900), 4)
     clock = Clock()
     pair.running.update({0: False, 1: False})
     pair.fail.add("start")
@@ -279,12 +289,18 @@ def test_failed_attempts_back_off_and_stop_after_the_limit(pair):
     assert run(clock)["state"] == "backoff" and pair.operations == []
     clock.advance(recovery.BACKOFF[0])
     assert run(clock)["state"] == "failed" and ("stop", 1) in pair.operations
-    assert record(pair)["next_attempt_at"] == clock.value + recovery.BACKOFF[1]
-    clock.advance(60)
-    assert run(clock)["state"] == "backoff"
-    clock.advance(recovery.BACKOFF[1])
-    assert run(clock)["state"] == "failed"
-    assert record(pair)["stopped"] is True and record(pair)["failures"] == recovery.FAILURE_LIMIT
+    for wait in recovery.BACKOFF[1:]:
+        assert record(pair)["next_attempt_at"] == clock.value + wait
+        clock.advance(60)
+        assert run(clock)["state"] == "backoff"
+        clock.advance(wait)
+        assert run(clock)["state"] == "failed"
+    value = record(pair)
+    assert value["stopped"] is True and value["failures"] == recovery.FAILURE_LIMIT
+    assert value["stop_reason"] == "4 failed attempts in a row"
+    lines = status(monkeypatch, capsys)
+    assert ("Automatic recovery: stopped: 4 failed attempts in a row | sudo sparkring up --execute turns it back on"
+            in lines)
     pair.operations.clear()
     clock.advance(3600)
     assert run(clock)["state"] == "stopped" and pair.operations == []
@@ -354,7 +370,7 @@ def test_ring_mesh_processes_left_without_a_supervisor_are_left_to_the_operator(
 
 
 def test_ring_with_a_failed_mesh_unit_starts_through_up(tmp_path, monkeypatch):
-    """Failure 1: every Spark restarted and the mesh unit failed at boot; no model runs."""
+    """Every Spark restarted and each mesh unit failed at boot, so no model runs: up starts it."""
     sparks = four_spark_ring(tmp_path, monkeypatch)
     for host in sparks.hosts:
         sparks.mesh[host] = {"active": [], "markers": [], "failed": [
@@ -422,7 +438,17 @@ def test_api_health_reads_vllm_health_without_a_proxy():
     def refused(url, timeout):
         raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
     answer = recovery.api_health("http://192.0.2.10:8000/v1", opener=refused)
-    assert answer["ok"] is False and "Connection refused" in answer["error"]
+    assert (answer["ok"], answer["dead"]) == (False, False) and "Connection refused" in answer["error"]
+    # /health without an answer asks /v1/models; an answer there counts as serving.
+    asked = []
+
+    def slow_health(url, timeout):
+        asked.append(url)
+        if url.endswith("/health"):
+            raise TimeoutError("timed out")
+        return Answer()
+    answer = recovery.api_health("http://192.0.2.10:8000/v1", opener=slow_health)
+    assert answer["ok"] is True and asked == ["http://192.0.2.10:8000/health", "http://192.0.2.10:8000/v1/models"]
 
 
 def test_status_lines_name_the_choice_the_wait_and_the_attempts():
@@ -437,9 +463,13 @@ def test_status_lines_name_the_choice_the_wait_and_the_attempts():
     assert lines[1].startswith("  waiting for rank 1 (spark1) since ")
     assert lines[2].startswith("  last attempt: restart at ") and lines[2].endswith(", failed: ready: phase failed")
     assert lines[3].startswith("  next attempt: not before ")
-    stopped = recovery.status_lines({**base, "failures": 3, "stopped": True})
-    assert stopped == ["Automatic recovery: stopped after 3 failed attempts | sudo sparkring up --execute turns it "
-                       "back on"]
+    stopped = recovery.status_lines({**base, "failures": 4, "stopped": True})
+    assert stopped == ["Automatic recovery: stopped: 4 failed attempts in a row | sudo sparkring up --execute turns "
+                       "it back on"]
+    assert recovery.status_lines(base, backend="glm-managed") == [
+        "Automatic recovery: not available for this deployment (glm-managed); restart it by hand"]
+    assert recovery.status_lines(base, state={"generation": 2, "operation": "down", "complete": True}) == [
+        "Automatic recovery: on; idle until the next sudo sparkring up --execute or sudo sparkring install"]
 
 
 def status(monkeypatch, capsys, *, snapshot=None, api=SERVING):
@@ -454,7 +484,7 @@ def status(monkeypatch, capsys, *, snapshot=None, api=SERVING):
 
 
 def test_status_says_the_model_stopped_everywhere_and_how_to_start_it(pair, monkeypatch, capsys):
-    """Failure 2: status said "up complete" and printed raw JSON observations."""
+    """Every container stopped: the first line says so and names up; containers are text lines, not JSON."""
     pair.running.update({0: False, 1: False})
     pair.exit_codes.update({0: 0, 1: 255})
     lines = status(monkeypatch, capsys)
@@ -469,7 +499,7 @@ def test_status_says_the_model_stopped_everywhere_and_how_to_start_it(pair, monk
 
 
 def test_status_says_the_model_runs_on_one_spark_only(pair, monkeypatch, capsys):
-    """Failure 3: rank 0's container stayed up and reported healthy while every request failed."""
+    """Rank 0's container runs and its engine stopped while the worker's container stopped."""
     pair.running[1] = False
     pair.exit_codes[1] = 255
     lines = status(monkeypatch, capsys, api=DEAD)
@@ -487,7 +517,7 @@ def test_status_of_a_serving_model_keeps_node_a_first(pair, monkeypatch, capsys)
 
 
 def test_status_names_the_down_admin_link_of_an_unreachable_worker(pair, monkeypatch, capsys):
-    """Failure 4: the admin tunnel lost its link while the model kept serving over the other port."""
+    """A worker unreachable because the admin tunnel's only link lost carrier: the line names that link."""
     pair.unreachable.add(pair.hosts[1])
     snapshot = {"state": "network-configured", "next_action": "sparkring models", "control": {
         "interface_up": True, "peers": [{"id": "b", "address": "192.0.2.11", "allowed_ips": ["192.0.2.11/32"],
@@ -502,7 +532,7 @@ def test_status_names_the_down_admin_link_of_an_unreachable_worker(pair, monkeyp
 
 
 def test_status_of_a_ring_whose_mesh_failed_at_boot(tmp_path, monkeypatch, capsys):
-    """Failure 1: every rank said "Missing mesh network objects" and next "sparkring status --refresh"."""
+    """Mesh units that failed at boot are named with their log line; the next step is up, not status."""
     from runtime.host import retained_source
     sparks = four_spark_ring(tmp_path, monkeypatch)
     for host in sparks.hosts:
@@ -559,3 +589,210 @@ def test_status_of_another_deployment_shows_no_recovery_state(pair, monkeypatch,
     capsys.readouterr()
     assert controller.lifecycle(["status", PROFILE]) == 0
     assert not any(line.startswith("Automatic recovery") for line in capsys.readouterr().out.splitlines())
+
+
+def test_api_without_any_answer_must_stay_silent_before_a_restart(pair):
+    """Timeouts and refused connections, unlike vLLM's 503, act only after API_SILENCE seconds."""
+    clock = Clock()
+    for _ in range(recovery.API_SILENCE // 60):
+        result = run(clock, api=SILENT)
+        assert result["state"] == "confirming" and result["finding"]["state"] == "api-failing"
+        clock.advance(60)
+    assert pair.operations == []
+    # An answer in between starts the window again.
+    assert run(clock)["state"] == "serving"
+    clock.advance(60)
+    assert run(clock, api=SILENT)["state"] == "confirming"
+    for _ in range(recovery.API_SILENCE // 60):
+        clock.advance(60)
+        result = run(clock, api=SILENT)
+    assert result["state"] == "recovered" and ("stop", 0) in pair.operations
+
+
+def test_restarts_that_keep_failing_stop_after_the_restart_limit(pair, monkeypatch, capsys):
+    """A model that stops again after every successful restart is restarted RESTART_LIMIT times, then left."""
+    clock = Clock()
+    for _ in range(recovery.RESTART_LIMIT):
+        pair.running[1] = False
+        run(clock)
+        clock.advance(60)
+        assert run(clock)["state"] == "recovered"
+        clock.advance(1800)
+    pair.running[1] = False
+    pair.operations.clear()
+    run(clock)
+    clock.advance(60)
+    result = run(clock)
+    assert result["state"] == "stopped" and pair.operations == []
+    reason = record(pair)["stop_reason"]
+    assert reason.startswith("the model stopped again after 3 restarts within 6 hours")
+    assert any(line.startswith("Automatic recovery: stopped: " + reason) for line in status(monkeypatch, capsys))
+    # Restarts older than the window do not count.
+    assert recovery.recent_restarts({"restarts": [0, clock.value - 60]}, clock.value) == [clock.value - 60]
+
+
+@pytest.mark.parametrize("change", ["off", "other-deployment", "lock", "recovered"])
+def test_an_attempt_rechecks_its_record_deployment_lock_and_model_before_acting(pair, monkeypatch, change):
+    clock = Clock()
+    pair.running.update({0: False, 1: False})
+    run(clock)
+    clock.advance(60)
+    observed, held = recovery.observe, contextlib.ExitStack()
+
+    def observe(*args, **kwargs):
+        finding = observed(*args, **kwargs)
+        if change == "off":
+            recovery.update(pair.directory, enabled=False)
+        elif change == "other-deployment":
+            node.save(controller.STATE, "active.json", {"path": str(controller.STATE / "deployments" / "other")})
+            (controller.STATE / "deployments" / "other").mkdir()
+            installer.write(controller.STATE / "deployments" / "other" / "deployment.lock.json", {})
+        elif change == "lock":
+            held.enter_context(process_lock.hold(controller.STATE / "install.lock"))
+        else:
+            pair.running.update({0: True, 1: True})
+        monkeypatch.setattr(recovery, "observe", observed)
+        return finding
+
+    monkeypatch.setattr(recovery, "observe", observe)
+    with held:
+        result = run(clock)
+    expected = {"off": "off", "other-deployment": "changed", "lock": "busy", "recovered": "changed"}[change]
+    assert result["state"] == expected and pair.operations == []
+    assert record(pair).get("attempt") is None
+
+
+def test_ring_member_with_a_stale_or_missing_status_report_is_unknown(tmp_path, monkeypatch):
+    sparks = four_spark_ring(tmp_path, monkeypatch)
+    sparks.running.update({1: False})
+    # A stale document keeps the mesh block it had when its agent last wrote it.
+    sparks.documents[sparks.hosts[2]] = {"state": "stale", "age_seconds": 412.0, "hostname": "spark2",
+                                         "mesh": {"active": ["sparkring-test-mesh.service"], "failed": [], "markers": []}}
+    sparks.documents[sparks.hosts[3]] = {"state": "agent-unavailable"}
+    clock = Clock()
+    applied = []
+    for _ in range(3):
+        result = run(clock, apply=applied.append)
+        clock.advance(60)
+    assert result["finding"]["state"] == "unknown" and applied == []
+    assert "rank 2 (spark2): its status report is stale (412 s old)" in result["finding"]["details"]
+    assert "rank 3 (root@192.0.2.13): its status service has not reported yet" in result["finding"]["details"]
+
+
+def test_ring_guard_is_checked_again_under_the_lock(tmp_path, monkeypatch):
+    """Marker processes left without a mesh unit between the check and the attempt stop the attempt."""
+    sparks = four_spark_ring(tmp_path, monkeypatch)
+    sparks.running.update({0: False, 1: False, 2: False, 3: False})
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    clock = Clock()
+    applied = []
+    run(clock, apply=applied.append)
+    clock.advance(60)
+    observed = recovery.observe
+
+    def observe(*args, **kwargs):
+        finding = observed(*args, **kwargs)
+        sparks.mesh[sparks.hosts[2]] = {"active": [], "markers": [4242], "failed": []}
+        return finding
+
+    monkeypatch.setattr(recovery, "observe", observe)
+    result = run(clock, apply=applied.append)
+    assert result["state"] == "changed" and applied == []
+    assert result["finding"]["state"] == "mesh-cleanup"
+
+
+def test_an_ssh_failure_while_probing_one_container_is_unknown(pair):
+    clock = Clock()
+    pair.running[1] = False
+    pair.probe_fails.add(1)
+    for _ in range(3):
+        result = run(clock)
+        clock.advance(60)
+    assert result["state"] == "report" and result["finding"]["state"] == "unknown" and pair.operations == []
+    assert result["finding"]["details"] == [
+        "rank 1 (spark1): root@192.0.2.11: Cannot connect to the Docker daemon at unix:///var/run/docker.sock"]
+
+
+def test_an_unreadable_recovery_file_is_moved_aside_and_recovery_continues(pair, monkeypatch, capsys):
+    recovery.path().write_text("{not json")
+    lines = status(monkeypatch, capsys)
+    assert "Automatic recovery: state unreadable; use sudo sparkring status" in lines
+    clock = Clock()
+    assert run(clock)["state"] == "serving"
+    assert "was unreadable; it was moved to" in capsys.readouterr().err
+    aside = list(recovery.path().parent.glob("recovery.json.unreadable-*"))
+    assert len(aside) == 1 and aside[0].read_text() == "{not json"
+    assert recovery.load()["schema"] == recovery.SCHEMA and record(pair)["enabled"] is True
+
+
+def test_a_failed_retained_source_is_named_by_its_exit_status(pair):
+    clock = Clock()
+    pair.running.update({0: False, 1: False})
+
+    def retained(operation):
+        raise subprocess.CalledProcessError(1, ["python3", "-c", "x = 1\n" * 4000])
+
+    run(clock)
+    clock.advance(60)
+    assert run(clock, apply=retained)["state"] == "failed"
+    error = record(pair)["last"]["error"]
+    assert error == ("the deployment's own source exited with status 1; sudo sparkring logs --details shows its "
+                     "output")
+    assert len(recovery.error_text(RuntimeError("y" * 5000))) == node.ERROR_TEXT
+
+
+def test_up_keeps_off_and_install_style_choice_is_explicit(pair):
+    recovery.set_enabled(False, directory=pair.directory)
+    assert controller.lifecycle(["up", "--execute"]) == 0
+    assert record(pair)["enabled"] is False
+    recovery.started(pair.directory, enabled=True)
+    assert record(pair)["enabled"] is True
+
+
+def test_a_failing_recovery_record_never_stops_up_or_down(pair, monkeypatch, capsys):
+    def broken(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(recovery, "update", broken)
+    assert controller.lifecycle(["down", "--execute"]) == 0
+    assert controller.lifecycle(["up", "--execute"]) == 0
+    err = capsys.readouterr().err
+    assert "automatic recovery state was not updated" in err and "was not recorded" in err
+
+
+def test_status_after_a_deliberate_down_says_recovery_is_idle(pair, monkeypatch, capsys):
+    assert controller.lifecycle(["down", "--execute"]) == 0
+    lines = status(monkeypatch, capsys)
+    assert ("Automatic recovery: on; idle until the next sudo sparkring up --execute or sudo sparkring install"
+            in lines)
+
+
+def test_up_of_another_deployment_forgets_the_active_ones_unfinished_attempt(pair):
+    assert controller.lifecycle(["down", "--execute"]) == 0
+    recovery.update(pair.directory, attempt={"started_at": 1.0, "action": "restart", "reason": "test",
+                                             "generation": state(pair)["generation"]})
+    assert controller.lifecycle(["up", PROFILE, "--instance", "other", "--execute"]) == 0
+    assert record(pair)["attempt"] is None
+
+
+def test_unsupported_backends_are_recorded_and_reported_as_such(tmp_path, monkeypatch):
+    sparks = four_spark_ring(tmp_path, monkeypatch)
+    lock = installer.read(sparks.directory / "deployment.lock.json")
+    (sparks.directory / "deployment.lock.json").unlink()
+    installer.write(sparks.directory / "deployment.lock.json", {**lock, "backend": "glm-existing-mesh"})
+    value = recovery.started(sparks.directory)
+    assert value["supported"] is False
+    assert run(Clock())["state"] == "unsupported"
+    with pytest.raises(ValueError, match="does not restart this deployment"):
+        recovery.set_enabled(True)
+
+
+def test_prerm_stops_a_running_recovery_before_tearing_units_down():
+    from runtime.host.test_persistence import PACKAGING
+    text = (PACKAGING / "prerm").read_text()
+    stop = text.index("systemctl stop sparkring-recover.timer sparkring-recover.service")
+    assert stop < text.index("systemctl disable --now $UNITS")
+
+
+def test_host_tests_never_call_systemd_for_the_timer():
+    assert recovery.enable_timer() is False and recovery.timer_enabled() is None

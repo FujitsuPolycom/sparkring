@@ -2383,3 +2383,18 @@ def test_installation_turns_automatic_recovery_on_unless_asked_not_to(machine, c
     assert json.loads(out.out)["auto_recover"] is False
     assert (value["enabled"], value["failures"]) == (False, 0)
     assert "  Recovery:    off; turn on: sudo sparkring recover on" in out.err
+
+
+@pytest.mark.parametrize("outcome, expected, line", [
+    (None, "unrecorded", "not set up (see the warning above); sudo sparkring recover on retries"),
+    ({"supported": False, "enabled": True}, "unsupported", "not available for this model's backend; restart it by hand"),
+])
+def test_installation_reports_recovery_only_when_it_was_recorded_for_a_supported_backend(machine, capsys, monkeypatch,
+                                                                                         outcome, expected, line):
+    from runtime.host import recovery
+    monkeypatch.setattr(recovery, "started", lambda directory, enabled=None: outcome)
+    assert command() == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert (result["recovery"], result["auto_recover"]) == (expected, False)
+    assert "  Recovery:    " + line in out.err

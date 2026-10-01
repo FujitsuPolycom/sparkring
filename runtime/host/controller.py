@@ -448,7 +448,8 @@ def lifecycle(argv):
                 record = recovery.record_of(recovery.load(), path)
                 # Automatic recovery acts on the active deployment only.
                 if not args.profile or recovery.is_active(path):
-                    result["recovery"] = {**record, "timer_enabled": recovery.timer_enabled()}
+                    result["recovery"] = {**record, "supported": recovery.supported(lock),
+                                          "timer_enabled": recovery.timer_enabled()}
             except (OSError, ValueError) as error:
                 result["recovery"] = {"error": str(error)}
             if args.refresh:
@@ -514,7 +515,8 @@ def lifecycle(argv):
                 recorded = result.get("recovery")
                 if recorded is not None:
                     for line in recovery.status_lines(None if "error" in recorded else record,
-                                                      timer=recorded.get("timer_enabled")):
+                                                      timer=recorded.get("timer_enabled"), state=saved["state"],
+                                                      backend=lock.get("backend")):
                         print(line)
             print("Network observations do not qualify GPU/RDMA serving.")
         return 0
@@ -612,8 +614,10 @@ def lifecycle(argv):
                 raise ValueError(problem)
         confirm("Apply these model/image actions?", args.execute)
         from runtime.host import recovery
-        # Automatic recovery never takes a state this operation leaves for its own.
-        recovery.forget_attempt(directory)
+        # Automatic recovery never takes a state this operation leaves for its
+        # own, neither in this deployment nor in the active one it replaces.
+        for path in {directory, active} - {None}:
+            recovery.forget_attempt(path)
         result = retained_source.apply(directory, args.operation, cache=cache)
         # Stopping another deployment leaves the active one in place.
         if args.operation == "up" or held_active is None:
