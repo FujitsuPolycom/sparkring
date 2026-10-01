@@ -1285,10 +1285,16 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
-- The GLM `nvfp4-qad` and `nvidia-nvfp4` checkpoints are **research-only**
-  on the installer image: CPU checks cover their pins, selection and
-  rendered containers, and no installation of either has been measured. The
-  four-Spark GLM profile's evidence and the
+- The GLM `nvfp4-qad` checkpoint is **implemented** on the installer image:
+  on one four-Spark ring it passed all 7 functional checks and a 256-request
+  correctness screen with no degenerate or wrong response, and decoded
+  57.7 / 184 / 258 tok/s at 1 / 8 / 16 streams in one run
+  ([record](../../performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvfp4-qad-20261001.md)).
+  Its host memory headroom was not measured.
+- The GLM `nvidia-nvfp4` checkpoint is **research-only**: CPU checks cover its
+  pins, selection and rendered containers, and no installation of it has been
+  measured.
+- The four-Spark GLM profile's evidence and the
   [GLM memory record](../../performance/records/glm53-flash/installer-memory-20260929.md)
   cover NVFP4-Spark only.
 - By their pin manifests, the QAD and NVIDIA weights take 2.4 and 3.9 GiB more
