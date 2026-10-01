@@ -446,7 +446,9 @@ def lifecycle(argv):
                                         serving=lock.get("serving") or {})
             try:
                 record = recovery.record_of(recovery.load(), path)
-                result["recovery"] = {**record, "timer_enabled": recovery.timer_enabled()}
+                # Automatic recovery acts on the active deployment only.
+                if not args.profile or recovery.is_active(path):
+                    result["recovery"] = {**record, "timer_enabled": recovery.timer_enabled()}
             except (OSError, ValueError) as error:
                 result["recovery"] = {"error": str(error)}
             if args.refresh:
@@ -509,10 +511,11 @@ def lifecycle(argv):
                         print("Model: " + model["summary"])
                 else:
                     print("Use --refresh for current model container state.")
-                recorded = result.get("recovery") or {}
-                for line in recovery.status_lines(None if "error" in recorded else record,
-                                                  timer=recorded.get("timer_enabled")):
-                    print(line)
+                recorded = result.get("recovery")
+                if recorded is not None:
+                    for line in recovery.status_lines(None if "error" in recorded else record,
+                                                      timer=recorded.get("timer_enabled")):
+                        print(line)
             print("Network observations do not qualify GPU/RDMA serving.")
         return 0
     if args.plan and args.execute:

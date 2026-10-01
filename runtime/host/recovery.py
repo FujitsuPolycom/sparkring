@@ -143,6 +143,12 @@ def update(directory, **changes):
     raise ValueError(f"{file} stayed locked by another SparkRing process")
 
 
+def is_active(directory):
+    """Whether ``directory`` is the deployment that ``active.json`` names."""
+    file = controller.STATE / "active.json"
+    return file.exists() and Path(installer.read(file)["path"]).resolve() == Path(directory).resolve()
+
+
 def saved_state(directory):
     """The deployment's ``state.json`` (generation, operation, complete), or {} before its first operation."""
     file = Path(directory) / "state.json"

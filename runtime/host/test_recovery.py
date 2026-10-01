@@ -550,3 +550,12 @@ def test_a_manual_down_after_an_interrupted_attempt_is_not_taken_for_recoverys_o
     pair.operations.clear()
     clock.advance(600)
     assert run(clock)["state"] == "inactive" and pair.operations == []
+
+
+def test_status_of_another_deployment_shows_no_recovery_state(pair, monkeypatch, capsys):
+    lines = status(monkeypatch, capsys)
+    assert "Automatic recovery: on" in lines
+    node.save(controller.STATE, "active.json", {"path": str(controller.STATE / "deployments" / "other")})
+    capsys.readouterr()
+    assert controller.lifecycle(["status", PROFILE]) == 0
+    assert not any(line.startswith("Automatic recovery") for line in capsys.readouterr().out.splitlines())
