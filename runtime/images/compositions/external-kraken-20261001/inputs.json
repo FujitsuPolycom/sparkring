@@ -1,0 +1,99 @@
+{
+  "schema": "sparkring-external-inputs/v1",
+  "platform": "linux/arm64",
+  "base": {
+    "reference": "eugr/spark-vllm-b12x@sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052",
+    "config_id": "sha256:b094a6744a9b11da9366575745245c9c81d31c565030d1acd226c0018d1a774f"
+  },
+  "base_inventory": {
+    "path": "base-inventory.json",
+    "sha256": "57a75b755aa4ca83419d9c65e3fe96e13bdcce884b0e061e105bd6c00b583f6b"
+  },
+  "installer": {
+    "path": "controller/external_base.py",
+    "sha256": "3dfbfc3e44c005d4d408e423465e8251aacb108d7ebd1a6ecac7fdf1718da6af"
+  },
+  "parent_cache_contract": {
+    "path": "parent-cache-contract.json",
+    "sha256": "968592c1886271844ea16f00200e000d2583abe63522865a359f1f6047a48889"
+  },
+  "sources": {
+    "vllm": {
+      "commit": "fe0a30fcb9afee42f4a3c23ca658657c6de5009e",
+      "upstream": "4a379ed42881ee022aaf5d9ada554f9096e5acf3",
+      "baseline_commit": "ab86b70734009c34e91db456bb96340c3faf3d4e",
+      "archive": {
+        "path": "vllm-kraken-fe0a30fc.tar",
+        "sha256": "592e61b15d160c28b51d4d79f72029636d7a4b34a4ec80e37c691fc3f5f5c46e"
+      },
+      "baseline_archive": {
+        "path": "vllm-base-ab86b707.tar",
+        "sha256": "9a58c1769b680e799140c01be0a409cc0f2d38d0aa7d300383faaf8067876a5a"
+      }
+    },
+    "b12x": {
+      "commit": "6ca214e76877095d5c8c6d50c709a366cf35899f",
+      "upstream": "b557d87850cc836268fd327ccd46eaa6a033cdbf",
+      "baseline_commit": "e4084d2eef4932e0fa06db3f7a94deb83ad132d7",
+      "archive": {
+        "path": "b12x-kraken-6ca214e7.tar",
+        "sha256": "d13d1379c45f66644da496ba3f7478324e83263d6f434322eda08d0f13a598fe"
+      },
+      "baseline_archive": {
+        "path": "b12x-base-e4084d2e.tar",
+        "sha256": "483c4a929e2339fa526a3436f3318681024df91ef09ac519993933ed06824bf3"
+      }
+    }
+  },
+  "integration_sources": {
+    "vllm": {
+      "path": "integration/vllm-source-m3.tar",
+      "sha256": "6cc134c1cac357a7f9ef282c7a94c6fe2a40db18a0979b9bec90949521b46412"
+    },
+    "b12x": {
+      "path": "integration/b12x-source-m3.tar",
+      "sha256": "30c7384bf72c4a02baa8624e1a37769586bf7ae16d433b6fa17ff35db91470fe"
+    }
+  },
+  "assets": {
+    "root": "assets",
+    "export_manifest": {
+      "path": "assets/export.json",
+      "sha256": "6b5fad5d2ebe6f5e2c104bb1e0ea5439a6c1482f57812c707ffaa4a8d176a5e1"
+    },
+    "parent_receipt": {
+      "path": "assets/parent-receipt.json",
+      "sha256": "9e2086910544ab96bcace992178175b564b0b3385d1ad95a1893faa318c58b5f"
+    }
+  },
+  "prefill_controller": {
+    "root": "controller/qwen4_prefill",
+    "files": {
+      "package_prefill.py": "0f72f352487dc0963fd1b9fdc28cff17d929ff8a38b146cc3fff34e9406d0664",
+      "qwen4_prefill_bootstrap.py": "382b0e450b9e9df6dc9c61ef30988785da7538a19f98f0fc1f412c39931f3d32",
+      "qwen4_hc_fusion.py": "776c98da8408f889f015595a8eb10b45363b07681032101ffacdc9ba739c83d4",
+      "qwen4_mtp_gemm.py": "2137986a80d591907d745b48bc74b54228082c9acc60d83e7691d228e437c096",
+      "qwen4_fused_gate_kernel.py": "f4f40e472ab6b3d278121278dd64f25e0ab993b3aacdb8d7c0b47e68275e7edf"
+    }
+  },
+  "runtime_status": {
+    "wheel": {
+      "path": "status/sparkring_runtime_status-0.3.4-py3-none-any.whl",
+      "sha256": "841cb76036dedd98b3846e0b9041b2791064471b7b61c9b357d96c1e5c801e66"
+    },
+    "source_archive": {
+      "path": "status/sparkring-runtime-status-0.3.4-source.tar.gz",
+      "sha256": "fdbadfe5928a7eeff48da5c849246ed858e5bac4fa7f1fc25e084d3809221578"
+    }
+  },
+  "deployment_addons": {
+    "manifest": {
+      "path": "addons/manifest.json",
+      "sha256": "dc1e8b2b0082042e688f7b8ac7d5f621cc1fefbfc62192f5742c38144a3cd55f"
+    },
+    "archive": {
+      "path": "addons/addons.tar",
+      "sha256": "0694ce2ef093fb5f76ed60691b9fe24459937c43f9f9409b064c92305d1632c9"
+    }
+  }
+}

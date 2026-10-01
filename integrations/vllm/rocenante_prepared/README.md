@@ -8,8 +8,14 @@ adaptive peer-path transport to B12X's prepared execution API. It is separate
 from the immutable `tp2-rocenante-adaptive` source bundle.
 
 The default installer image,
-`dev-20261001-statusrows-cuda1342-nccl2323-status034`, pins transport manifest
-`d5e790c5173c`, which adds a [RoCE GID index per HCA](#gid-index-per-port) to
+`dev-20261001-kraken-cuda1342-nccl2323-status034`, carries the same transport
+files as `dev-20261001-portgid-cuda1342-nccl2323-status033` and pins transport
+manifest `34c5575f006f`. Its preparer,
+[external_context.py](../../../runtime/images/external_context.py), re-records
+the manifest's `image_source_preimages` for the image's B12X sources and
+changes no transport file. The installer runs one image on every Spark of a
+deployment. On the portgid chain, transport manifest
+`d5e790c5173c` adds a [RoCE GID index per HCA](#gid-index-per-port) to
 the [supervised peer wait](#peer-wait). The image layer builder
 [derive_transport_port_gid.py](../../../runtime/images/derive_transport_port_gid.py)
 installs this directory's four changed files over
