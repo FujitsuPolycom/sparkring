@@ -478,6 +478,12 @@ def operation_plan(lock, action):
         phases = [phase("prepare-prerequisites" if action == "prepare" else "prerequisites", ranks), phase("source", ranks, "mutates-host", "source-check"),
                   phase("model", ranks, "mutates-host", "model-check"),
                   phase("image", ranks, "mutates-host", "image-check")]
+        if derived_checkpoint.model_of(lock["selection"]) is not None:
+            # A derived checkpoint is written from the verified base inside the
+            # serving image, so its phase follows both; sparkring install runs
+            # the derivation (install_assets.Assets.derive) when the first rank
+            # reaches it, and every rank then verifies its own directory.
+            phases.append(phase("derive", ranks, "mutates-host", "derive-check"))
         if action == "prepare":
             if lock["backend"] in ("glm-managed", "glm-existing-mesh"):
                 phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared")]

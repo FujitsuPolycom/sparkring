@@ -10,8 +10,8 @@ pinned checkpoint revision. Its sibling state directory ``.<name of D>.sparkring
   inode, its SHA-256 and its stats, and every directory SparkRing created in
   ``D`` for nested names;
 - ``lock``: the ``flock`` target held by every operation that changes ``D``;
-- ``fetch/`` and ``receive/``: staging directories, each marked with
-  ``.sparkring-staging.json``.
+- ``fetch/``, ``receive/`` and ``derive/``: staging directories, each marked
+  with ``.sparkring-staging.json``.
 
 Invariants enforced here:
 
@@ -59,8 +59,10 @@ LOCAL_TYPES = frozenset({"ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "zfs"})
 OWNER_SCHEMA = "sparkring-checkpoint-owner/v1"
 JOURNAL_SCHEMA = "sparkring-checkpoint-journal/v1"
 STAGING_MARKER = ".sparkring-staging.json"
-STAGING_PURPOSES = ("fetch", "receive")
-ORIGINS = ("link", "copy", "fabric", "rsync", "hub")
+STAGING_PURPOSES = ("fetch", "receive", "derive")
+# How a placed name arrived: hard-linked or copied from a local source, received over the fabric or with rsync,
+# downloaded from huggingface.co, or written by a derived checkpoint's recipe (runtime/common/derived_checkpoint.py).
+ORIGINS = ("link", "copy", "fabric", "rsync", "hub", "derive")
 BLOCK = 16 << 20
 JSON_LIMIT = 16 << 20
 
@@ -1032,7 +1034,7 @@ def place_link(dir_fd, fd, name, journal, *, sha256, before, source=None):
 def place_staged(dir_fd, staging_fd, part, name, journal, *, fd, sha256, origin, source=None, before=None):
     """Place staging file ``part``, open and verified at ``fd``, as ``name`` in ``D``.
 
-    ``origin`` is ``copy``, ``fabric``, ``rsync`` or ``hub``. The part must be a
+    ``origin`` is ``copy``, ``fabric``, ``rsync``, ``hub`` or ``derive``. The part must be a
     regular file owned by this account, not writable by group or others, whose
     only other link, if any, is ``name`` itself from an interrupted placement.
     The journal records ``placing``, the inode at ``fd`` is linked to ``name``
@@ -1040,7 +1042,7 @@ def place_staged(dir_fd, staging_fd, part, name, journal, *, fd, sha256, origin,
     ``before`` defaults to the current ``fstat`` of ``fd``. Returns the placed
     stats.
     """
-    if origin not in ("copy", "fabric", "rsync", "hub"):
+    if origin not in ("copy", "fabric", "rsync", "hub", "derive"):
         raise ValueError("Unknown staged origin: " + repr(origin)[:100])
     current = os.fstat(fd)
     before = current if before is None else before

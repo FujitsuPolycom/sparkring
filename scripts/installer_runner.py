@@ -575,6 +575,7 @@ class Runner:
         labels = {"prerequisites": "Check host and GPU availability", "prepare-prerequisites": "Check host before preparing assets", "source": "Copy installer source",
                   "source-check": "Verify installer source", "image": "Prepare pinned image", "image-check": "Verify image",
                   "model": "Prepare checkpoint and verify all shards", "model-check": "Verify checkpoint receipt",
+                  "derive": "Derive checkpoint and verify all files", "derive-check": "Verify derived checkpoint receipt",
                   "preflight": "Check model and fabric", "create": "Create stopped model container", "created": "Verify model container",
                   "start": "Start model", "running": "Check model process", "ready": "Wait for API readiness",
                   "smoke": "Test a short model response", "model-settled": "Confirm checkpoint unchanged during loading",

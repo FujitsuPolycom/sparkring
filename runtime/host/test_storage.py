@@ -450,7 +450,11 @@ def test_profile_cache_names_are_the_caches_installer_containers_use(profile):
     _, names = qwen_flash_next.checkpoint_names(configuration)
     used = set()
     for variant in names or [None]:
-        lock = installer.make_lock(profile, install_site(4 if profile.endswith("-tp4") else 2), "1" * 40, "2" * 64,
+        # Every rank uses the cluster's checkpoint directory, as installations do; a derived checkpoint needs it.
+        site = install_site(4 if profile.endswith("-tp4") else 2)
+        for row in site["hosts"]:
+            row["model"] = installer.checkpoint_directory("parity", installer.setup.selection(profile, variant))
+        lock = installer.make_lock(profile, site, "1" * 40, "2" * 64,
                                    variant, image_runtime=installer_image.for_profile(profile))
         root = lock["site"]["ranks"][0]["cache"]
         for specification in installer.specifications(lock):

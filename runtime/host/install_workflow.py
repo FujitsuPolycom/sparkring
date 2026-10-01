@@ -15,6 +15,11 @@ has problems is not recorded, so repeating the command plans it again.
 On an installed four-Spark ring the installation also applies the ConnectX
 hairpin setting (``runtime/host/hairpin_ring.py``) where a Spark lacks it or its
 boot record, after the one approval and before the model transaction.
+
+For a derived checkpoint (``runtime/common/derived_checkpoint.py``) the plan is
+its base's, with the derivation's section (``runtime.host.derivation``): every
+Spark's derived directory and Node A's donor directory are read first, and the
+approved section bounds the donor downloads and the derived writes.
 """
 import argparse
 import concurrent.futures
@@ -31,8 +36,8 @@ import time
 
 from runtime.common import distribution, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
-from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
-                          install_assets, install_space, models, native_mesh, node, progress, recovery,
+from runtime.host import (checkpoint_plan, checkpoint_search, controller, derivation, discovery, fabric_ssh,
+                          hairpin_ring, install_assets, install_space, models, native_mesh, node, progress, recovery,
                           retained_source, retention, rollout, settings, topology)
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
@@ -299,6 +304,22 @@ def _select_mesh(site, cluster, profile, hint, **options):
         raise
 
 
+def derivation_section(card, rows, surveys, *, invoke=None):
+    """The plan's derivation section when the card's checkpoint is derived, else None.
+
+    Reads every Spark's derived directory and Node A's donor directory
+    (``derivation.survey``); ``surveys`` give the Sparks' host names.
+    """
+    manifest = installer.derived_checkpoint.load(card)
+    if manifest is None:
+        return None
+    donor = installer.checkpoint_pins(installer.derived_checkpoint.donor_card(card, manifest))
+    probes = derivation.survey(manifest, rows, invoke=invoke or discovery.ssh)
+    hostnames = {rank: survey["host"] for rank, survey in enumerate(surveys)
+                 if isinstance(survey, dict) and survey.get("host")}
+    return derivation.section(card["target_variant"], manifest, donor, rows, probes, hostnames)
+
+
 def select_deployment(args, cluster, state_root, *, mesh_hint=""):
     """Choose the deployment for this request, survey every Spark and plan its checkpoint.
 
@@ -387,7 +408,8 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
                                 operator=operator, images=images, caches=caches, relay_device=_device(directory),
                                 retained=retained, locked=locked,
                                 request={"profile": profile, "checkpoint": checkpoint, "cache_path": args.cache_path,
-                                         "image_lock": str(args.image_lock) if args.image_lock else None})
+                                         "image_lock": str(args.image_lock) if args.image_lock else None},
+                                derivation=derivation_section(selection, rows, surveys))
     if not locked:
         if plan["problems"]:
             return directory, None, plan
@@ -440,6 +462,8 @@ def bounded(fresh, reviewed):
     result.update(hub_files=list(reviewed["hub_files"]), hub_bytes=reviewed["hub_bytes"])
     for mine, theirs in zip(result["nodes"], reviewed["nodes"], strict=True):
         mine["write_bytes"] = theirs["write_bytes"]
+    if fresh.get("derivation") and reviewed.get("derivation"):
+        result["derivation"] = derivation.bounded(fresh["derivation"], reviewed["derivation"])
     return result
 
 
@@ -894,6 +918,10 @@ def execute(args):
         plan["retention"] = retention.after_operation(state_root, discovery.ssh, preference=retain)
         try:
             plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
+        except (OSError, ValueError):
+            pass
+        try:
+            plan["checkpoint"]["derivation_result"] = installer.read(directory / "assets/derivation-result.json")
         except (OSError, ValueError):
             pass
         return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),

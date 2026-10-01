@@ -139,9 +139,9 @@ def view(card, manifest):
     return {**card, "model_repository": manifest["repository"], "model_revision": manifest["revision"]}
 
 
-def donor_card(card, configuration, manifest):
+def donor_card(card, manifest, *, root=None):
     """The selection card of the donor checkpoint, whose pin manifest and settings its entry names."""
-    name = entry(configuration, card["target_variant"])["donor"]
+    name = entry(_configuration(card, root), card["target_variant"])["donor"]
     return {**card, "model_repository": manifest["donor"]["repository"],
             "model_revision": manifest["donor"]["revision"], "target_variant": name}
 

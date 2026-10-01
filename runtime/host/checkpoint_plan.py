@@ -37,7 +37,10 @@ Plan document keys: ``repository``, ``revision``, ``pins_sha256``,
 ``sudo sparkring install`` command that repeats this request, which messages
 suggest), ``required`` (``files``, ``bytes``, ``sizes``), ``hub_files``,
 ``hub_bytes``, ``distribution`` (``donor``, ``pool``, ``hub``, ``receive``),
-``nodes``, ``retained``, ``refreshed_receipts`` and ``problems``.
+``nodes``, ``retained``, ``refreshed_receipts`` and ``problems``. The plan of a
+derived checkpoint (``runtime/common/derived_checkpoint.py``) is its base's,
+with a ``derivation`` section (``runtime.host.derivation.section``) whose
+writes each Spark's free-space need includes.
 Each node holds ``rank``, ``host``, ``hostname``, ``mode`` (``owned`` or
 ``in-place``), ``path``, ``files`` (name to action entry with ``action``,
 ``size`` and, by action, ``source``, ``identity``, ``evidence``, ``candidate``,
@@ -707,7 +710,7 @@ def _retained(value):
 
 
 def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", images=None, caches=None,
-         relay_device=None, retained=None, locked=False, policy=None, now=None, request=None):
+         relay_device=None, retained=None, locked=False, policy=None, now=None, request=None, derivation=None):
     """Plan the checkpoint for every Spark of one deployment.
 
     ``surveys`` holds one survey document per rank, or the failure (an exception,
@@ -726,7 +729,9 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     mode, for a deployment that already exists. ``request`` holds the
     ``profile``, ``checkpoint``, ``cache_path`` and ``image_lock`` of the deployment request;
     with ``named`` and ``ignore_local`` it gives the command that the plan's
-    messages suggest (``install_command``).
+    messages suggest (``install_command``). ``derivation`` is the
+    ``derivation.section`` of a derived checkpoint, whose files each Spark
+    writes on the base directory's filesystem.
     """
     sizes = required_files(pins)
     count = len(rows)
@@ -808,6 +813,10 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
             node["bytes"][entry["action"].replace("-", "_")] += entry["size"]
         written = [entry["size"] for entry in node["files"].values() if entry["action"] in WRITE_ACTIONS]
         node["write_bytes"] = sum(written)
+        # A derived checkpoint's files are written beside the base directory, on its filesystem.
+        derived = list(derivation["nodes"][rank]["written"]) if derivation is not None else []
+        written = written + derived
+        node["device"] = owned.get("device")
         # Unknown placement of the compile cache, Docker's root or Node A's
         # relay counts as sharing the checkpoint directory's filesystem.
         cache_on = owned.get("cache_device") in (None, owned.get("device"))
@@ -815,7 +824,7 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
         docker_on = docker.get("device") in (None, owned.get("device"))
         relay_on = rank == 0 and relay_device in (None, owned.get("device"))
         node["storage"] = {"written_bytes": sum(written), "largest_bytes": max(written, default=0),
-                           "headroom_bytes": headroom(written),
+                           "headroom_bytes": headroom(written), "derived_bytes": sum(derived),
                            "cache_bytes": caches[rank]["bytes"] if cache_on else 0,
                            "image_bytes": images[rank]["bytes"] if docker_on else 0,
                            "relay_bytes": relay if relay_on else 0,
@@ -853,6 +862,9 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
         elif node["storage"]["passed"] is False:
             problems.append({"field": "storage", "rank": node["rank"],
                              "message": _storage_message(pins, node, context)})
+    if derivation is not None:
+        from runtime.host import derivation as derived_plan
+        problems.extend(derived_plan.problems(derivation, nodes))
 
     refreshed = []
     for name, paths in _retained(retained):
@@ -862,7 +874,8 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
                 refreshed.append(name)
                 break
     created = now or datetime.datetime.now(datetime.timezone.utc)
-    return {"schema": SCHEMA, "repository": pins["repository"], "revision": pins["revision"],
+    extra = {"derivation": derivation} if derivation is not None else {}
+    return {**extra, "schema": SCHEMA, "repository": pins["repository"], "revision": pins["revision"],
             "pins_sha256": pins_digest(pins), "created_at": created.isoformat(timespec="seconds"),
             "reviewed": False, "approval": None, "operator": operator, "named": entries,
             "ignore_local_copies": bool(ignore_local), "request": request, "profile": request["profile"],
@@ -931,6 +944,8 @@ def _storage_message(pins, node, context):
         return text + " The running model has not been stopped."
     categories = {action: node["bytes"][action] for action in WRITE_ACTIONS}
     verb = {"copy": "copy", "pool": "receive", "receive": "receive", "hub": "download"}[max(categories, key=categories.get)]
+    if storage.get("derived_bytes", 0) > sum(categories.values()):
+        verb = "derive"
     terms = []
     if storage["written_bytes"]:
         terms += [f"{_human(storage['written_bytes'])} of checkpoint files",
@@ -959,6 +974,11 @@ def _storage_message(pins, node, context):
 
 # Approval
 
+def download_bytes(plan):
+    """Bytes Node A downloads from huggingface.co: checkpoint files and a derived checkpoint's donor files."""
+    return plan["hub_bytes"] + ((plan.get("derivation") or {}).get("donor") or {}).get("download_bytes", 0)
+
+
 def attention(plan):
     """Plan items that setup's approval of a first installation does not cover.
 
@@ -967,10 +987,11 @@ def attention(plan):
     a terminal confirmation or a ``--yes`` typed on the command line.
     """
     items = []
-    if plan["hub_bytes"] > ATTENTION_DOWNLOAD_BYTES:
+    downloads = download_bytes(plan)
+    if downloads > ATTENTION_DOWNLOAD_BYTES:
         node = plan["nodes"][0]
-        items.append({"kind": "download", "rank": 0, "bytes": plan["hub_bytes"],
-                      "text": f"downloads {_human(plan['hub_bytes'])} from huggingface.co on Node 0 {node['hostname']}"})
+        items.append({"kind": "download", "rank": 0, "bytes": downloads,
+                      "text": f"downloads {_human(downloads)} from huggingface.co on Node 0 {node['hostname']}"})
     for node in plan["nodes"]:
         search, name = node["search"], f"Node {node['rank']} {node['hostname']}"
         if search.get("failed"):
@@ -1055,6 +1076,9 @@ def envelope(reviewed, fresh):
         if added:
             items.append({"kind": "sources", "rank": rank, "paths": added,
                           "text": f"{name} would read {_and(added)}, which the reviewed plan did not use"})
+    if reviewed.get("derivation") or fresh.get("derivation"):
+        from runtime.host import derivation
+        items.extend(derivation.envelope(reviewed.get("derivation"), fresh.get("derivation")))
     return items
 
 
@@ -1233,10 +1257,14 @@ def summary(plan):
             item["bytes"]["in_place"] = node["bytes"]["in_place"]
             item["in_place"] = (node.get("in_place") or {}).get("state")
         nodes.append(item)
-    return {"repository": plan["repository"], "revision": plan["revision"], "hub_files": plan["hub_files"],
-            "hub_bytes": plan["hub_bytes"], "approval": plan.get("approval"), "reviewed": bool(plan.get("reviewed")),
-            "command": plan.get("command") or COMMAND, "nodes": nodes,
-            "refreshed_receipts": plan["refreshed_receipts"]}
+    result = {"repository": plan["repository"], "revision": plan["revision"], "hub_files": plan["hub_files"],
+              "hub_bytes": plan["hub_bytes"], "approval": plan.get("approval"), "reviewed": bool(plan.get("reviewed")),
+              "command": plan.get("command") or COMMAND, "nodes": nodes,
+              "refreshed_receipts": plan["refreshed_receipts"]}
+    if plan.get("derivation"):
+        from runtime.host import derivation
+        result["derivation"] = derivation.summary(plan["derivation"])
+    return result
 
 
 def describe(plan):
@@ -1262,6 +1290,10 @@ def describe(plan):
             continue
         shown[signature] = node["rank"]
         lines.extend(_node_lines(plan, node))
+    if plan.get("derivation"):
+        from runtime.host import derivation
+        lines.append("")
+        lines.extend(derivation.describe(plan["derivation"]))
     lines.append("")
     lines.extend(_closing(plan))
     return lines
@@ -1536,7 +1568,8 @@ def _closing(plan):
                      "(see sudo sparkring checkpoints).")
     elif user or any(node["mode"] == "in-place" for node in nodes):
         lines.append("SparkRing only reads your copies; it never writes, moves or deletes them.")
-    lines.append(f"Downloads {_human(plan['hub_bytes'])} from huggingface.co on Node 0." if plan["hub_files"]
+    downloads = download_bytes(plan)
+    lines.append(f"Downloads {_human(downloads)} from huggingface.co on Node 0." if downloads
                  else "Nothing is downloaded.")
     return lines
 

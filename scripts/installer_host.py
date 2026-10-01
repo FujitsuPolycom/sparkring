@@ -11,6 +11,14 @@ Checkpoint rows have two modes:
   create. It is served in place only while it holds exactly the pinned files;
   SparkRing reads it and never creates, links, downloads or writes anything
   under it.
+
+A derived checkpoint (``runtime/common/derived_checkpoint.py``) adds two
+SparkRing checkpoint directories beside the row's owned base directory: the
+derived checkpoint's, which the container mounts, and the donor's, which holds
+the donor files its recipe reads. Each has its own view of the lock, row and
+receipt directory (``_derived``), so the placement, verification and transfer
+operations above apply to them unchanged; ``derive-link``, ``derive-donor``,
+``derive-run`` and ``derive`` complete and verify them.
 """
 from __future__ import annotations
 
@@ -28,9 +36,11 @@ import stat
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 import urllib.request
 
-from runtime.common import compose, glm_native_candidate, installer, native_candidate, profiles, qwen_flash_next, setup
+from runtime.common import (compose, derived_checkpoint, glm_native_candidate, installer, native_candidate, profiles,
+                            qwen_flash_next, setup)
 from runtime.common.container_spec import expected_inspection
 from runtime.host import checkpoint_place as place
 from scripts import deploy_engine
@@ -42,7 +52,10 @@ GIB = 1024 ** 3
 IN_PLACE_IGNORED = frozenset({".cache/huggingface", ".huggingface", ".git"})
 MODEL_OPERATIONS = frozenset({"model", "model-check", "model-adopt", "model-fetch", "model-settled",
                               "model-reuse-receipt", "model-transfer-manifest", "model-transfer-prepare",
-                              "model-transfer-complete"})
+                              "model-transfer-complete", "derive", "derive-check", "derive-link", "derive-donor",
+                              "derive-run"})
+# How long the recipe container of a derived checkpoint may run.
+DERIVE_SECONDS = 3600
 # Files SparkRing did not create are read without following a final symlink,
 # without blocking on a FIFO or device, and without changing access times.
 _READ = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
@@ -217,7 +230,13 @@ def checkpoint_files(card):
     ``optional``) to ``{"size", "sha256"}``. ``optional`` lists documentation and
     repository metadata that no serving component reads; a copy served in place
     may hold them. A manifest that exists but fails validation is an error.
+
+    The card of a derived checkpoint itself (``derived_checkpoint.view``) gets
+    every file its manifest pins and no optional file.
     """
+    manifest = _derived_manifest(card)
+    if manifest is not None:
+        return derived_checkpoint.required(manifest), []
     try:
         pins = installer.checkpoint_pins(card)
     except ValueError:
@@ -230,6 +249,14 @@ def checkpoint_files(card):
     required = {name: {"size": entry["size"], "sha256": entry["sha256"]}
                 for name, entry in sorted(pins["files"].items()) if name not in optional}
     return required, sorted(optional)
+
+
+def _derived_manifest(card):
+    """The validated manifest when ``card`` names a derived checkpoint itself, not its base; else None."""
+    model = derived_checkpoint.model_of(card)
+    if model is None or (card["model_repository"], card["model_revision"]) != (model["repository"], model["revision"]):
+        return None
+    return derived_checkpoint.load(card)
 
 
 def _pinned(card):
@@ -703,7 +730,9 @@ def _finish(lock, row, state, claimed, journal, required):
     entries = {name: journal.files[name] for name in sorted(required)}
     origins = {entry["origin"] for entry in entries.values()}
     origin = ("pinned-hub-download" if origins == {"hub"} else
-              "verified-fabric-copy" if origins <= {"fabric", "rsync"} else "adopted-local-copy")
+              "verified-fabric-copy" if origins <= {"fabric", "rsync"} else
+              "derived-checkpoint" if "derive" in origins or _derived_manifest(card) is not None else
+              "adopted-local-copy")
     files = {name: entry["sha256"] for name, entry in entries.items()}
     folders = {}
     for entry in entries.values():
@@ -1008,6 +1037,8 @@ def fetch_model(lock, row, state, names, *, number, limit=None):
     reported with the client's last error line.
     """
     card = lock["selection"]
+    if _derived_manifest(card) is not None:
+        raise ValueError(f"{card['model_repository']} is derived on the Sparks and never downloaded")
     required, _ = _pinned(card)
     if (not isinstance(names, list) or not all(isinstance(name, str) for name in names)
             or len(set(names)) != len(names)):
@@ -1255,8 +1286,11 @@ def _place_rsync(claimed, journal, receive, manifest, required):
     return wrong
 
 
-def transfer_model(operation, lock, row, state):
+def transfer_model(operation, lock, row, state, document=None):
     """Checkpoint operations between Sparks and between deployments on one Spark.
+
+    ``document`` is the transfer manifest of ``model-transfer-prepare`` and
+    ``model-transfer-complete`` when the caller already read it from stdin.
 
     - ``model-transfer-manifest`` (donor): the verified hashes and sizes of the
       required names only, also for a copy served in place.
@@ -1315,7 +1349,7 @@ def transfer_model(operation, lock, row, state):
         raise ValueError("Unknown checkpoint transfer operation: " + operation)
     model = _owned(row, number)
     required, _ = _pinned(card)
-    manifest = _transfer_manifest(json.load(sys.stdin), card, required)
+    manifest = _transfer_manifest(json.load(sys.stdin) if document is None else document, card, required)
     with _claim(card, model) as claimed:
         journal = place.journal_load(claimed)
         if operation == "model-transfer-prepare":
@@ -1351,6 +1385,306 @@ def transfer_model(operation, lock, row, state):
                              f"{detail}); repeat sudo sparkring install to resume")
         complete = _finish(lock, row, state, claimed, journal, required) is not None
         return {"ok": True, "complete": complete, "missing": sorted(set(required) - set(placed))}
+
+
+# Derived checkpoints ---------------------------------------------------------------------
+
+def _derived(lock, row, state):
+    """The derived checkpoint of the lock's selection on this Spark, or None for any other checkpoint.
+
+    Returns a namespace with the validated ``manifest`` and two views, each a
+    lock whose selection names that checkpoint, a row whose ``model`` is its
+    SparkRing checkpoint directory and a receipt directory below the
+    deployment's ``installer`` directory: ``lock``, ``row`` and ``state`` of
+    the derived checkpoint (``installer/derived``) and ``donor_lock``,
+    ``donor_row`` and ``donor_state`` of the donor (``installer/donor``). Both
+    directories lie beside the row's base directory; a base served in place is
+    refused.
+    """
+    card = lock["selection"]
+    if derived_checkpoint.model_of(card) is None:
+        return None
+    manifest = derived_checkpoint.load(card)
+    if row.get("reuse_verified_model"):
+        raise ValueError(f"{row['model']} is served in place; a derived checkpoint is written beside the base's "
+                         "SparkRing checkpoint directory, so install it without naming a copy of the base")
+    view = {**row, "model": derived_checkpoint.directory(row["model"], manifest), "reuse_verified_model": False}
+    donor = {**row, "model": derived_checkpoint.directory(row["model"], manifest["donor"]),
+             "reuse_verified_model": False}
+    return SimpleNamespace(
+        manifest=manifest, lock={**lock, "selection": derived_checkpoint.view(card, manifest)}, row=view,
+        state=state / "derived",
+        donor_lock={**lock, "selection": derived_checkpoint.donor_card(card, manifest)},
+        donor_row=donor, donor_state=state / "donor")
+
+
+def _base_receipt(lock, row, state):
+    """The base's verified receipt (``installer/model.json``), refreshed when files were hashed again."""
+    return verify_model(lock, row, state / "model.json", refresh=True)
+
+
+def derive_link(lock, row, state, document, *, number):
+    """``derive-link``: settle this Spark's derived checkpoint directory and hard-link the base files it keeps.
+
+    ``document`` is ``{"receipts": [...]}``, the other deployments' receipts on
+    this Spark (as ``model-adopt`` takes them). A base file is linked from the
+    descriptor it was opened with, after its SHA-256 is known to equal the
+    manifest's: from the base receipt, which the ``model`` phase verified,
+    when the opened file still has the five stats the receipt records, and
+    otherwise by hashing it through that descriptor. A link that fails because
+    the directories lie on different filesystems (EXDEV) or the file is
+    immutable (EPERM) stops the operation; nothing is copied. Linking changes
+    the base inodes' change time, so the base receipt, the other deployments'
+    receipts and the path records that record them are refreshed. When the
+    directory holds every pinned file, the derived receipt is written.
+
+    Returns ``{"complete", "verified" ({name: stats}), "sizes", "missing",
+    "linked", "refreshed"}``.
+    """
+    views = _derived(lock, row, state)
+    if not isinstance(document, dict) or set(document) - {"receipts"}:
+        raise ValueError("derive-link expects {receipts}")
+    receipts = document.get("receipts") or []
+    manifest = views.manifest
+    required = derived_checkpoint.required(manifest)
+    base = _base_receipt(lock, row, state)
+    source = plain(row["model"])
+    model = plain(views.row["model"])
+    views.state.mkdir(mode=0o700, exist_ok=True)
+    result = {"complete": False, "verified": {}, "sizes": {}, "missing": [], "linked": [], "refreshed": []}
+    with _claim(views.lock["selection"], model) as claimed:
+        journal = place.journal_load(claimed)
+        _settle(claimed, journal, required)
+        present = set(_placed(claimed, journal, required))
+        linked = []
+        for name in sorted(set(derived_checkpoint.files_of(manifest, "base")) - present):
+            pin, path = required[name], str(source / name)
+            fd, before = place.open_source(path, None, pin["size"])
+            try:
+                known = (POSIX_STATS and base.get("file_stats", {}).get(name) == place.stats(before)
+                         and base.get("files", {}).get(name) == pin["sha256"])
+                digest = pin["sha256"] if known else place.hash_descriptor(fd, pin["size"])
+                if digest != pin["sha256"]:
+                    raise ValueError(f"{path} differs from the base's pinned file; repeat sudo sparkring install, "
+                                     "which acquires the base again")
+                try:
+                    after = place.place_link(claimed.dir_fd, fd, name, journal, sha256=digest, before=before,
+                                             source=path)
+                except OSError as error:
+                    if error.errno not in (errno.EXDEV, errno.EPERM):
+                        raise
+                    raise ValueError(f"Node {number}: {path} cannot be hard-linked into {model} "
+                                     f"({errno.errorcode[error.errno]}). The derived checkpoint keeps the base's files "
+                                     "as hard links, so both directories must lie on one filesystem and the base's "
+                                     "files must not be immutable; nothing was copied.") from None
+            finally:
+                os.close(fd)
+            linked.append({"identity": place.identity(before), "sha256": digest, "before": place.stats(before),
+                           "after": after})
+            result["linked"].append(name)
+        own = [views.state / "model.json", _checkpoint_record(model)]
+        result["refreshed"] = refresh_receipts(
+            linked, [*receipts, {"path": str(state / "model.json"), "deployment": lock["id"]}], exclude=own)
+        result["complete"] = _finish(views.lock, views.row, views.state, claimed, journal, required) is not None
+        result["verified"] = _placed(claimed, journal, required)
+    result["sizes"] = {name: value[2] for name, value in result["verified"].items()}
+    result["missing"] = sorted(set(required) - set(result["verified"]))
+    return result
+
+
+def derive_donor(lock, row, state, document, *, number):
+    """``derive-donor``: download the donor files the recipe reads that this Spark's donor directory lacks.
+
+    ``document`` is ``{"names": [...], "limit": N}``: the donor files the
+    approved plan downloads and an optional rate in bytes per second. A missing
+    donor file outside ``names`` refuses the operation before any download.
+    The donor directory is the donor checkpoint's own SparkRing checkpoint
+    directory, so a complete copy of the donor checkpoint there supplies every
+    file, and ``model-fetch`` places each download only after its SHA-256
+    equals the donor's pin manifest.
+    """
+    views = _derived(lock, row, state)
+    if (not isinstance(document, dict) or set(document) - {"names", "limit"} or not isinstance(document.get("names"), list)
+            or (document.get("limit") is not None and (type(document["limit"]) is not int or document["limit"] <= 0))):
+        raise ValueError("derive-donor expects {names} and an optional limit")
+    needed = views.manifest["donor"]["files"]
+    card = views.donor_lock["selection"]
+    required, _ = _pinned(card)
+    model = plain(views.donor_row["model"])
+    with _claim(card, model) as claimed:
+        journal = place.journal_load(claimed)
+        _settle(claimed, journal, required)
+        present = set(_placed(claimed, journal, required))
+    missing = sorted(set(needed) - present)
+    unplanned = sorted(set(missing) - set(document["names"]))
+    if unplanned:
+        raise ValueError(f"Node {number} lacks the donor files {_names(unplanned)}, which the approved plan does not "
+                         "download; review the plan again with sudo sparkring install --plan")
+    if missing:
+        views.donor_state.mkdir(mode=0o700, exist_ok=True)
+        fetch_model(views.donor_lock, views.donor_row, views.donor_state, missing, number=number,
+                    limit=document.get("limit"))
+    return {"ok": True, "fetched": missing, "present": sorted(present & set(needed))}
+
+
+def _donor_files(views):
+    """``{name: stats}`` of the recipe's donor files, each placed in the donor directory with its pinned SHA-256."""
+    card = views.donor_lock["selection"]
+    required, _ = _pinned(card)
+    needed = {name: required[name] for name in views.manifest["donor"]["files"]}
+    with _claim(card, plain(views.donor_row["model"])) as claimed:
+        journal = place.journal_load(claimed)
+        _settle(claimed, journal, needed)
+        placed = _placed(claimed, journal, needed)
+    absent = sorted(set(needed) - set(placed))
+    if absent:
+        raise ValueError(f"{views.donor_row['model']} lacks the donor files {_names(absent)}; repeat sudo sparkring "
+                         "install, which downloads them")
+    return placed
+
+
+def derive_container(model):
+    """Name of the container that runs a derived checkpoint's recipe for directory ``model``."""
+    return "sparkring-derive-" + hashlib.sha256(str(model).encode()).hexdigest()[:16]
+
+
+def derive_run(lock, row, state, *, number):
+    """``derive-run``: write the recipe's files into this Spark's derived checkpoint directory.
+
+    The base must match its receipt, the donor files their pins, and the
+    recipe module (``recipe.path`` of the manifest, in this deployment's
+    source) the manifest's SHA-256; the module is then run as program text
+    with ``python3 -c`` in the deployment's installer image, CPU only
+    (``--runtime runc``, no GPU request, an empty ``CUDA_VISIBLE_DEVICES``),
+    without network (``--network none``) and as root, with the base and donor
+    directories mounted read-only and an empty ``out`` directory inside the
+    marked ``derive`` staging directory as its only writable mount. The recipe
+    refuses inputs whose donor tensors
+    are not the base's weights in MXFP8. Each file it wrote is placed only when
+    its SHA-256 equals the manifest's; a file that differs refuses the
+    operation, naming the file and the recipe, and nothing is placed for it.
+    The base and donor files must keep their stats while the recipe runs.
+    """
+    views = _derived(lock, row, state)
+    manifest, card = views.manifest, lock["selection"]
+    required = derived_checkpoint.required(manifest)
+    written = derived_checkpoint.files_of(manifest, "recipe")
+    recipe = manifest["recipe"]["path"]
+    source = profiles.local_path(recipe, installer.ROOT).read_bytes()
+    if hashlib.sha256(source).hexdigest() != manifest["recipe"]["sha256"]:
+        raise ValueError(f"{recipe} in this deployment's source differs from the recipe the derived checkpoint's "
+                         "manifest pins; nothing was derived")
+    base = _base_receipt(lock, row, state)
+    donor = _donor_files(views)
+    model = plain(views.row["model"])
+    views.state.mkdir(mode=0o700, exist_ok=True)
+    result = {"complete": False, "placed": [], "missing": []}
+    with _claim(views.lock["selection"], model) as claimed:
+        journal = place.journal_load(claimed)
+        _settle(claimed, journal, required)
+        pending = sorted(set(written) - set(_placed(claimed, journal, required)))
+        if pending:
+            container = derive_container(model)
+            if run(["docker", "container", "inspect", container], check=False).returncode == 0:
+                raise ValueError(f"The recipe for {model} still runs in container {container}. Wait until sudo docker "
+                                 f"ps no longer lists it, or stop it with sudo docker rm --force {container}, then "
+                                 "repeat sudo sparkring install.")
+            staging = place.staging(claimed, "derive", empty=True)
+            out = None
+            try:
+                _require_space(model, views.row, [written[name] for name in pending], number=number, card=card)
+                _require_image(card)
+                # The recipe writes only into an empty directory; the staging marker stays beside it.
+                os.mkdir("out", 0o755, dir_fd=staging)
+                out = os.open("out", place.DIRECTORY_FLAGS, dir_fd=staging)
+                where = f"{claimed.state}/derive/out"
+                claimed.check()
+                if not _same_directory(where, out):
+                    raise ValueError(f"{where} is no longer SparkRing's staging directory; nothing was derived. "
+                                     f"Check who can change the directories above {model}")
+                record = json.dumps(derived_checkpoint.record(manifest), sort_keys=True)
+                try:
+                    run(["docker", "run", "--rm", "--name", container, "--pull", "never", "--runtime", "runc",
+                         "--network", "none", "--user", "0:0", "--env", "CUDA_VISIBLE_DEVICES=",
+                         "--env", "HF_HUB_OFFLINE=1",
+                         "--mount", f"type=bind,src={row['model']},dst=/base,readonly",
+                         "--mount", f"type=bind,src={views.donor_row['model']},dst=/donor,readonly",
+                         "--mount", f"type=bind,src={where},dst=/out",
+                         "--entrypoint", "python3" if "image_runtime" in lock else "/opt/venv/bin/python",
+                         card["image_id"], "-c", source.decode("utf-8"), "--base", "/base", "--donor", "/donor",
+                         "--out", "/out", "--record", record], timeout=DERIVE_SECONDS)
+                except CommandError as error:
+                    cause = (error.lines(1) or [f"docker run exited with status {error.returncode}"])[0]
+                    raise ValueError(f"The recipe {recipe} did not derive the checkpoint on Node {number}: "
+                                     f"{cause[:400]}. Nothing was placed.") from None
+                except subprocess.TimeoutExpired:
+                    raise ValueError(f"The recipe {recipe} did not finish within {DERIVE_SECONDS // 60} minutes on "
+                                     f"Node {number}; nothing was placed. Wait until sudo docker ps no longer lists "
+                                     f"{container}, then repeat sudo sparkring install.") from None
+                if not _same_directory(where, out):
+                    raise ValueError(f"{where} was replaced while the recipe ran; nothing was placed. Check who can "
+                                     f"change the directories above {model}")
+                if _base_receipt(lock, row, state)["file_stats"] != base["file_stats"] or _donor_files(views) != donor:
+                    raise ValueError(f"The base or donor files changed while the recipe ran on Node {number}; "
+                                     "nothing was placed. Repeat sudo sparkring install.")
+                wrong = []
+                for name in pending:
+                    if _place_derived(claimed, journal, out, name, required[name]):
+                        result["placed"].append(name)
+                    else:
+                        wrong.append(name)
+                if wrong:
+                    raise ValueError(f"The recipe {recipe} wrote {_names(wrong)} with other contents than the derived "
+                                     f"checkpoint's manifest pins on Node {number}; nothing was placed for them")
+            finally:
+                if out is not None:
+                    os.close(out)
+                os.close(staging)
+                place.remove_staging(claimed, "derive")
+        result["complete"] = _finish(views.lock, views.row, views.state, claimed, journal, required) is not None
+        result["missing"] = sorted(set(required) - set(_placed(claimed, journal, required)))
+    return result
+
+
+def _place_derived(claimed, journal, staging, name, pin):
+    """Place staged file ``name`` when it is a regular file with the pinned size and SHA-256; returns whether it was."""
+    try:
+        fd, before = place.open_source(name, None, pin["size"], dir_fd=staging)
+    except (OSError, ValueError):
+        return False
+    try:
+        if place.hash_descriptor(fd, pin["size"]) != pin["sha256"]:
+            return False
+        place.place_staged(claimed.dir_fd, staging, name, name, journal, fd=fd, sha256=pin["sha256"],
+                           origin="derive", before=before)
+        return True
+    finally:
+        os.close(fd)
+
+
+def derived_ready(lock, row, state, *, number, check=False):
+    """``derive`` and ``derive-check``: the derived checkpoint matches its manifest on this Spark.
+
+    With its receipt, the directory is verified as ``model-check`` verifies the
+    base. Without one, as after automatic release removed the workspace,
+    ``derive`` settles the directory from its journal and writes the receipt
+    when every pinned file is placed; it never writes a file into the
+    directory, so an incomplete directory needs ``sudo sparkring install``.
+    """
+    views = _derived(lock, row, state)
+    receipt = views.state / "model.json"
+    if check or receipt.exists():
+        verify_model(views.lock, views.row, receipt, refresh=True)
+        return {"ok": True}
+    required = derived_checkpoint.required(views.manifest)
+    views.state.mkdir(mode=0o700, exist_ok=True)
+    with _claim(views.lock["selection"], plain(views.row["model"])) as claimed:
+        journal = place.journal_load(claimed)
+        _settle(claimed, journal, required)
+        if _finish(views.lock, views.row, views.state, claimed, journal, required) is None:
+            raise ValueError(f"The derived checkpoint at {views.row['model']} is incomplete on Node {number}; "
+                             "sudo sparkring install derives it")
+    return {"ok": True}
 
 
 def container(spec):
@@ -1561,8 +1895,25 @@ def model_operation(operation, lock, number, row, state):
     download what it lacks; rows served in place are verified only.
     """
     receipt = state / "model.json"
+    if operation in ("model-transfer-prepare", "model-transfer-complete"):
+        # A transfer manifest names the checkpoint it moves: the base, or the derived checkpoint's own files.
+        document = json.load(sys.stdin)
+        views = _derived(lock, row, state)
+        if views is not None and isinstance(document, dict) and (document.get("repository"), document.get(
+                "revision")) == (views.manifest["repository"], views.manifest["revision"]):
+            views.state.mkdir(mode=0o700, exist_ok=True)
+            return transfer_model(operation, views.lock, views.row, views.state, document=document)
+        return transfer_model(operation, lock, row, state, document=document)
     if operation == "model-reuse-receipt" or operation.startswith("model-transfer-"):
         return transfer_model(operation, lock, row, state)
+    if operation == "derive-link":
+        return derive_link(lock, row, state, json.load(sys.stdin), number=number)
+    if operation == "derive-donor":
+        return derive_donor(lock, row, state, json.load(sys.stdin), number=number)
+    if operation == "derive-run":
+        return derive_run(lock, row, state, number=number)
+    if operation in ("derive", "derive-check"):
+        return derived_ready(lock, row, state, number=number, check=operation == "derive-check")
     if operation == "model-adopt":
         return adopt_model(lock, row, state, json.load(sys.stdin), number=number)
     if operation == "model-fetch":
@@ -1574,7 +1925,12 @@ def model_operation(operation, lock, number, row, state):
             raise ValueError("model-fetch expects a limit in whole bytes per second")
         return fetch_model(lock, row, state, document["names"], number=number, limit=limit)
     if operation == "model-settled":
-        return model_settled(lock, row, receipt, number=number)
+        result = model_settled(lock, row, receipt, number=number)
+        views = _derived(lock, row, state)
+        if views is not None:
+            # The container loaded the derived checkpoint's files, which must also be unchanged.
+            model_settled(views.lock, views.row, views.state / "model.json", number=number)
+        return result
     if operation == "model-check" or receipt.exists():
         verify_model(lock, row, receipt, refresh=True)
     elif row.get("reuse_verified_model"):
@@ -1708,6 +2064,12 @@ def perform(operation, lock, number):
         if operation in ("preflight", "create", "start"):
             receipt = admit_image(lock)
             verify_model(lock, row, model_receipt, refresh=True)
+            served = row["model"]
+            views = _derived(lock, row, state)
+            if views is not None:
+                # The container mounts the derived checkpoint, verified against its manifest.
+                verify_model(views.lock, views.row, views.state / "model.json", refresh=True)
+                served = views.row["model"]
             if card["profile"].startswith("glm53-"):
                 actual = installer.specifications(lock, receipt=receipt, local=True, only_rank=number)[0]
                 if actual != spec:
@@ -1716,7 +2078,7 @@ def perform(operation, lock, number):
                 metadata, _ = profiles.load(card["profile"])
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
                 profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
-                qwen_flash_next.verify_model_paths(profile, Path(row["model"]), Path(row["cache"]))
+                qwen_flash_next.verify_model_paths(profile, Path(served), Path(row["cache"]))
             if card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
                 from runtime.common import qwen_mesh
                 qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])

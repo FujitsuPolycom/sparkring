@@ -120,7 +120,7 @@ def test_each_view_of_a_derived_selection_has_its_own_contract():
     derived = derived_checkpoint.view(card, manifest)
     assert installer.checkpoint_contract(card) == configuration["checkpoints"]["qad-step5500-ple1000"]["model"]
     assert installer.checkpoint_contract(derived) == configuration["checkpoints"][NAME]["model"]
-    other = derived_checkpoint.donor_card(card, configuration, manifest)
+    other = derived_checkpoint.donor_card(card, manifest)
     assert (other["target_variant"], other["model_revision"]) == ("qad-step-4000", DONOR)
     assert installer.checkpoint_pins(other) == donor
     assert derived_checkpoint.model_of(card) == configuration["checkpoints"][NAME]["model"]
@@ -218,3 +218,14 @@ def test_the_manifest_file_is_the_one_the_entry_names():
     assert path.relative_to(installer.ROOT).as_posix() == (
         f"profiles/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/"
         f"{manifest['revision']}.json")
+
+
+def test_the_derive_phase_follows_the_checkpoint_and_image_phases():
+    derived, default = lock(PROFILES[0]), lock(PROFILES[0], None)
+    for action in ("prepare", "up"):
+        phases = [phase["id"] for phase in installer.operation_plan(derived, action)["phases"]]
+        assert phases[:5] == ["prerequisites" if action == "up" else "prepare-prerequisites", "source", "model", "image",
+                              "derive"]
+        assert "derive" not in [phase["id"] for phase in installer.operation_plan(default, action)["phases"]]
+    phase = next(item for item in installer.operation_plan(derived, "prepare")["phases"] if item["id"] == "derive")
+    assert [action["verify"]["argv"][1] for action in phase["actions"]] == ["derive-check", "derive-check"]
