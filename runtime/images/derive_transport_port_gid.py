@@ -1,6 +1,6 @@
 """Install the prepared RoCEnante transport with one RoCE GID index per HCA into a serving image.
 
-The parent `dev-20260928-plainstatus-cuda1342-nccl2323-status033` carries the
+The parent `dev-20260930-spinwait-cuda1342-nccl2323-status033` carries the
 prepared transport under
 /opt/sparkring/transports/tp2-rocenante-adaptive-prepared with the files of
 transport manifest 9f2c0ae62e1e, whose runtime uses one RoCE GID index for
@@ -33,7 +33,7 @@ from runtime.images.derive_transport_window import BUNDLE, SOURCE, update_receip
 from runtime.images.derive_transport_window import replace as replace_bundle  # noqa: E402
 from runtime.images.derived_layer import Layer, main  # noqa: E402
 
-PARENT_RELEASE = "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
+PARENT_RELEASE = "dev-20260930-spinwait-cuda1342-nccl2323-status033"
 # Bundle-relative file: (SHA-256 in the parent, SHA-256 in this layer).
 FILES = {
     "roce/_preparation.py": (

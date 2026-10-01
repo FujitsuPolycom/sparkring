@@ -119,10 +119,10 @@ Its build takes the parent lock:
 
 ```bash
 python3 runtime/images/derive_transport_port_gid.py prepare \
-  --parent-lock runtime/releases/dev-20260928-plainstatus-cuda1342-nccl2323-status033/installer-image.json \
+  --parent-lock runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/installer-image.json \
   --output CONTEXT
 python3 runtime/images/derive_transport_port_gid.py build --context CONTEXT \
-  --tag sparkring:portgid --name dev-20260930-portgid-cuda1342-nccl2323-status033 --output LOCK
+  --tag sparkring:portgid --name dev-20261001-portgid-cuda1342-nccl2323-status033 --output LOCK
 ```
 
 `prepare` computes the installed manifest from the parent's, and `record`
@@ -130,7 +130,7 @@ writes its SHA-256 as the lock's `transport_manifest_sha256`. Ranks of this
 image and of its parent refuse to connect to each other (proxy ABI 6 and 5).
 The `installer-transport-port-gid` entry of [builders.json](builders.json) can
 list the release in its `releases` field once
-`runtime/releases/dev-20260930-portgid-cuda1342-nccl2323-status033/release.json`
+`runtime/releases/dev-20261001-portgid-cuda1342-nccl2323-status033/release.json`
 exists; the layout check requires that file for every listed release.
 
 ### Replacing the runtime-status package
