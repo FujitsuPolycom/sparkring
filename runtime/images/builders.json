@@ -53,7 +53,8 @@
       "reason": "Derive an installer image in one layer from a descriptor that adds or replaces site-packages Python files or replaces the runtime-status package, re-recording its external-base and toolchain receipts; prepare does not invoke Docker, and record admits the built image for every profile of its lock. The derive_*.py builders use the same module.",
       "releases": [
         "dev-20260927-b12xcache-cuda1342-nccl2323-status032",
-        "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
+        "dev-20260928-plainstatus-cuda1342-nccl2323-status033",
+        "dev-20261001-statusrows-cuda1342-nccl2323-status034"
       ]
     },
     {

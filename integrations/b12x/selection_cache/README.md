@@ -1,7 +1,7 @@
 # Reconciled B12X tuning selections on multi-rank starts
 
 Status: **implemented**. Installer image
-`dev-20260930-spinwait-cuda1342-nccl2323-status033`, which every installer
+`dev-20261001-statusrows-cuda1342-nccl2323-status034`, which every installer
 profile runs, carries it from its ancestor `dev-20260927-b12xcache-cuda1342-nccl2323-status032`.
 
 ## Condition

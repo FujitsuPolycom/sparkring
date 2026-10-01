@@ -7,28 +7,28 @@ The profile identity `tp2-rocenante-adaptive-prepared` bridges SparkRing's
 adaptive peer-path transport to B12X's prepared execution API. It is separate
 from the immutable `tp2-rocenante-adaptive` source bundle.
 
-The installer image `dev-20260930-spinwait-cuda1342-nccl2323-status033` pins
-transport manifest `9f2c0ae62e1e`, which carries the
-[supervised peer wait](#peer-wait); the image layer builder
-[derive_transport_peer_wait.py](../../../runtime/images/derive_transport_peer_wait.py)
-installs it over `dev-20260927-mimovision-cuda1342-nccl2323-status032`, whose
-manifest `2eef276d5403` ends a peer wait after a fixed number of polls. This
-directory's bundle also gives each HCA its own
-[RoCE GID index](#gid-index-per-port); no built image carries it, and the image
-layer builder
+The default installer image,
+`dev-20261001-statusrows-cuda1342-nccl2323-status034`, pins transport manifest
+`d5e790c5173c`, which adds a [RoCE GID index per HCA](#gid-index-per-port) to
+the [supervised peer wait](#peer-wait). The image layer builder
 [derive_transport_port_gid.py](../../../runtime/images/derive_transport_port_gid.py)
-installs its four changed files over
-`dev-20260928-plainstatus-cuda1342-nccl2323-status033`. The manifest that
-`package.py` writes here, `34c77aa7d43e`, records this directory's files,
-adaptation, B12X file paths and qualification fields.
+installs this directory's four changed files over
+`dev-20260930-spinwait-cuda1342-nccl2323-status033`, whose manifest
+`9f2c0ae62e1e` carries the peer wait with one GID index for every HCA (proxy
+ABI 5), as
+[derive_transport_peer_wait.py](../../../runtime/images/derive_transport_peer_wait.py)
+installs it. An installed manifest keeps its parent image's composition
+fields, so it differs from the manifest that `package.py` writes here,
+`34c77aa7d43e`, which records this directory's files, adaptation, B12X file
+paths and qualification fields.
 
 The supervised peer wait is **implemented**. On one four-Spark ring, with one
 rank's collective held back on purpose: a 60 s delay was logged at 5 s by the
 waiting ranks and by the late rank, ended with exact sums and left every
 runtime healthy; a late rank that exited stopped the other ranks within 3.5 s;
 a 20 s `B12X_ROCE_PEER_TIMEOUT_S` stopped all four ranks at 20 s with the cause
-in every log. The previous fixed budget of 20,000,000 polls lasted 9.2-9.3 s on
-that ring.
+in every log. On that ring, the fixed budget of 20,000,000 polls with which
+manifest `2eef276d5403` ends a peer wait lasted 9.2-9.3 s.
 
 The native proxy paces each stripe on a hardware-forwarded (two-hop) path: it
 posts signaled 32 KiB chunks and keeps at most 128 KiB of unacknowledged bytes
@@ -134,8 +134,8 @@ makes the address return at another index (for example 4) on the ports facing
 that neighbor. This runtime starts on that index; the address does not have to
 be re-added. `sparkring install` still returns each pair's addresses to index 3
 before a model starts ([RoCE GID index 3](../../../docs/operations/install-reference.md#roce-gid-index-3)):
-images with one index for every HCA need it, and so does NCCL while the
-profiles set `NCCL_IB_GID_INDEX=3`.
+NCCL needs it while the profiles set `NCCL_IB_GID_INDEX=3`, and so does a
+transport with one index for every HCA (proxy ABI 5 and earlier).
 
 Every rank writes one line per device to standard error, prefixed with
 `RoCEnante rank N:`:

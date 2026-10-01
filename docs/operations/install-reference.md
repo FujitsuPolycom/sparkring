@@ -231,9 +231,11 @@ collective operations time out, about 11 minutes on two Sparks.
 
 ### RoCE GID index 3
 
-Installer containers use RoCE GID index 3 for every fabric function: profiles
-set `NCCL_IB_GID_INDEX=3`, and the image's B12X RoCE transport reads one
-`B12X_ROCE_GID_INDEX` (or `NCCL_IB_GID_INDEX`) for all of a rank's HCAs.
+Installer containers run NCCL on RoCE GID index 3 for every fabric function:
+profiles set `NCCL_IB_GID_INDEX=3`. The installer image's RoCEnante transport
+instead reads each HCA's index at startup and uses index 3 only for a device
+whose GID table does not identify its fabric address
+([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)).
 
 The index is not a fixed property of an address. When a link drops while a
 model holds the address's GID entry, as on the Sparks cabled to one that
@@ -241,14 +243,7 @@ restarts, the address's RoCE v2 GID returns at another index, and a Spark's
 ports facing the restarted Spark can differ from its other ports. Before a
 pair's model starts, each Spark therefore re-adds a fabric address whose RoCE
 GID has left index 3, as the [ring step](#the-rings-mesh) does on four
-Sparks; that keeps one index valid for every HCA.
-
-The RoCEnante transport in the repository instead reads each HCA's index at
-startup and starts on an address that moved
-([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)).
-No installer image lock selects an image that carries it, and NCCL uses
-`NCCL_IB_GID_INDEX=3` either way, so the installer keeps returning addresses to
-index 3.
+Sparks, because NCCL needs index 3 to hold the address's GID on every HCA.
 
 The pair's GID check and the ring step locate each address's RoCE v2 GID with
 the resolver in
@@ -357,23 +352,22 @@ sudo sparkring logs --follow
 ## Serving image and profiles
 
 Every installer profile runs on one shared ARM64 serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/installer-image.json)
 (`sparkring-installer-image/v2`):
 
 | Item | Identifier |
 |---|---|
-| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:e0fd56ba61212357f6178fd37c4d822852cd6710dcd5c97905cbb2a968598fac` |
-| Tag | `dev-20260930-spinwait-cuda1342-nccl2323-status033` |
-| Configuration | `sha256:fcb20b0ce83987844ccc2b7abb167bcf4e4fcf144c49f55465978eec3b46a234` |
+| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:4305bde349cade7c8cc0e74a498c8dcbf90025d99bceaf528f40b6faf767bbc8` |
+| Tag | `dev-20261001-statusrows-cuda1342-nccl2323-status034` |
+| Configuration | `sha256:490a668978e1b93886c13b63553594c9a2ded5514b01d737b57b1e12d3e83b5a` |
 | Base image | `eugr/spark-vllm-b12x:nightly-20260924` |
-| Parent image | `dev-20260928-plainstatus-cuda1342-nccl2323-status033` |
+| Parent image | `dev-20261001-portgid-cuda1342-nccl2323-status033` |
 
 The image stacks SparkRing's layers on that base, from the CUDA 13.4.2 and
-NCCL 2.32.3 toolchain up to the shared-memory reader window that
-`--save-cpu` sets. The
+NCCL 2.32.3 toolchain up to the runtime-status dashboard 0.3.4. The
 [installer image builders](../../runtime/images/installer-images.md) list each
 layer, what it adds and what the lock pins; the image's
-[publication record](../../runtime/releases/dev-20260930-spinwait-cuda1342-nccl2323-status033/publication.json)
+[publication record](../../runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/publication.json)
 describes the layer it adds to its parent.
 
 `sparkring models` lists exact model/version/quantization/topology profiles,
@@ -1056,7 +1050,7 @@ reserves the full checkpoint allowance of
 [storage planning](../../profiles/storage-planning.json) unless the Spark
 holds a verified checkpoint.
 
-The serving image `dev-20260930-spinwait-cuda1342-nccl2323-status033` is a
+The serving image `dev-20261001-statusrows-cuda1342-nccl2323-status034` is a
 14.2 GiB download, 29.5 GiB unpacked. The last column below is the plan's
 total for a Spark holding neither the image nor any checkpoint file, with the
 checkpoint, Docker and the cache on one filesystem.

@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20261001-statusrows-cuda1342-nccl2323-status034",
+  "image_id": "sha256:490a668978e1b93886c13b63553594c9a2ded5514b01d737b57b1e12d3e83b5a",
+  "image_config_id": "sha256:490a668978e1b93886c13b63553594c9a2ded5514b01d737b57b1e12d3e83b5a",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4305bde349cade7c8cc0e74a498c8dcbf90025d99bceaf528f40b6faf767bbc8",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20261001-statusrows-cuda1342-nccl2323-status034",
+  "registry_manifest_digest": "sha256:4305bde349cade7c8cc0e74a498c8dcbf90025d99bceaf528f40b6faf767bbc8",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x:nightly-20260924",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.4",
+  "derivation": {
+    "parent_release": "dev-20261001-portgid-cuda1342-nccl2323-status033",
+    "parent_image_id": "sha256:2b9f0a5db869a671ecd586a0aa7071545297e2128bb2389ff8c577cb5e559496",
+    "layers": [
+      "runtime-status 0.3.4 replaces 0.3.3: the status page's settings tables add the reasoning parser, tool-call parser, default chat template arguments and the shared-memory reader window (SPARKRING_SHM_BUSY_LOOP_S), from descriptor runtime/images/compositions/installer-statusrows-status034 (runtime/images/derived_layer.py). /opt/sparkring/receipts/derived-statusrows-status034.json records the replaced package"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

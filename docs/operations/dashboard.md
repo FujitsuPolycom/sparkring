@@ -29,6 +29,26 @@ seconds. It only reads status: it runs no benchmark and changes no setting.
 Links under the summary jump to each section. Add `#nodes` to the address to
 open the page at memory and disk.
 
+The `Chat and tools` settings table shows how the model API handles chat
+requests:
+
+| Row | What you see |
+|---|---|
+| Reasoning parser | The parser that separates the model's reasoning from its answer, or `None` |
+| Tool-call parser | The parser that reads tool calls from the model's output |
+| Default chat template arguments | Defaults passed to the chat template, such as `{"enable_thinking": false}`, or `Not set (the chat template decides)` |
+
+The last two rows read `API server only`, because only Node A's API server holds
+them. Thinking is set per request: a request's `chat_template_kwargs` or
+`reasoning_effort` take precedence over these defaults, as the note under the
+table says.
+
+The `Decode and speculation` table ends with `Shared-memory reader window`: how
+long vLLM's waiting processes poll after each step before they sleep. It reads
+`2 ms (sparkring install --save-cpu)` with
+[`--save-cpu`](install-reference.md#serving-settings) and `1 s (vLLM default)`
+without.
+
 ![Memory and disk space on each Spark](assets/dashboard-memory.png)
 
 ![Transport groups and NIC link rates](assets/dashboard-transport.png)
