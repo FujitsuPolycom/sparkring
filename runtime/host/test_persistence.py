@@ -276,6 +276,16 @@ def test_status_names_the_saved_deployment_checkpoint_and_image(tmp_path, monkey
     assert controller.lifecycle(["status"]) == 0
     assert ("Checkpoint: local-inference-lab/GLM-5.3-Flash-NVFP4-Spark @ 60215d26cf5e | Image: dev-image"
             in capsys.readouterr().out.splitlines())
+    # A derived checkpoint names itself and the base it is derived from.
+    card = installer.setup.selection("qwen38-flash-next-tp2", "qad-step5500-mxfp8-attention")
+    lock["selection"] = {**card, "release": "dev-image"}
+    (tmp_path / "model" / "deployment.lock.json").unlink()
+    installer.write(tmp_path / "model" / "deployment.lock.json", lock)
+    assert controller.lifecycle(["status"]) == 0
+    derived = installer.derived_checkpoint.model_of(card)
+    assert (f"Checkpoint: qad-step5500-mxfp8-attention ({derived['repository']} @ {derived['revision'][:12]}, derived "
+            f"from local-inference-lab/Qwen3.8-Flash-Next-NVFP4 @ 60215d26cf5e) | Image: dev-image"
+            in capsys.readouterr().out.splitlines())
 
 
 def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, monkeypatch, capsys):

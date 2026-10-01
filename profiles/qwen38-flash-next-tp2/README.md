@@ -15,6 +15,11 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
 Add `--checkpoint qad-step-4000` to install checkpoint step 4000 (revision
 `629bc3218833`) instead; the installer then uses the MXFP8 target LM head and
 runs the draft's NVFP4 experts on B12X, as that checkpoint needs.
+Two research-only checkpoints decode faster at a small quality cost:
+`--checkpoint qad-step5500-mxfp8-attention`, step 5500 with MXFP8 attention,
+which the installer builds on the Sparks, and `--checkpoint
+jmni-qad5500-hybrid`, a third-party build of the same idea
+([checkpoints](../../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
 [Install SparkRing](../../docs/operations/install.md) covers requirements,
 logs and recovery. To run the same containers with Docker Compose, see
