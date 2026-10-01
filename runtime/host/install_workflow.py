@@ -32,8 +32,8 @@ import time
 from runtime.common import distribution, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
 from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
-                          install_assets, install_space, models, native_mesh, node, progress, recovery, retained_source, rollout,
-                          settings, topology)
+                          install_assets, install_space, models, native_mesh, node, progress, recovery,
+                          retained_source, rollout, settings, topology)
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
 

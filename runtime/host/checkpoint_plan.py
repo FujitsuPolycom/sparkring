@@ -1293,7 +1293,8 @@ def _node_lines(plan, node, generic=False):
     local = [entry for entry in files.values() if entry["action"] in ("link", "copy")]
     present = [entry for entry in files.values() if entry["action"] == "present"]
     transfers = _transfer_texts(plan, node)
-    needs = (f"needs {_gib1(node['required_bytes'])} free" if node["required_bytes"] else "needs no free space")         + (f" on {node['mount_point']}" if node["mount_point"] else "")
+    needs = f"needs {_gib1(node['required_bytes'])} free" if node["required_bytes"] else "needs no free space"
+    needs += f" on {node['mount_point']}" if node["mount_point"] else ""
     parts = _allowances(node)
     free = f"{_free(node['free_bytes'])} free" if not generic and node["free_bytes"] is not None else None
     if parts:

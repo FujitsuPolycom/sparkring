@@ -6,22 +6,23 @@ on the checkpoint directory's filesystem. Before the image is downloaded, the
 image distribution (``runtime.host.install_assets``) checks the image needs
 again with the registry's layer list; before checkpoint files are written, the
 rank operations (``scripts/installer_host.py``) check the compile cache need
-again. Every figure here comes from recorded sizes or from the Spark itself;
-where either is missing, the allowance of ``profiles/storage-planning.json``
-applies.
+again. The figures come from the image locks' recorded sizes and from each
+Spark's inspection; a lock without sizes and a compile cache not yet filled
+get the allowances of ``profiles/storage-planning.json``.
 
 Serving image
 -------------
 ``lineage`` lists the lock's image and the images it derives from. A derived
-image extends its parent's layers, so a Spark that holds an
-ancestor holds those layers and lacks only the layers added after it. Docker
+image extends its parent's layers, so a Spark that holds an ancestor holds
+those layers and lacks only the layers added after it. Docker
 reports an image's unpacked size as the sum of its layers' sizes, so the
 missing layers unpack to the target's ``image_bytes`` minus the ancestor's.
 A lock's ``download_bytes`` is the registry's figure or, for a lock that
 publication did not update, an upper bound, so the difference of two locks'
 download sizes can even be negative. The missing layers' download is bounded
-by the larger of that difference and their unpacked size: a gzip stream exceeds
-its content only by a few bytes per block.
+by the larger of that difference and their unpacked size: gzip adds only a few
+bytes per block to a layer's tar stream, and the tar header of each file falls
+within the load margin below.
 
 ``image_need`` gives each Spark one ``basis``:
 
@@ -77,7 +78,6 @@ UNSIZED_DOWNLOAD_BYTES = 32 * GIB
 # The inspection runs as root and reads its source on stdin, as the checkpoint survey does.
 PROBE_COMMAND = ["sudo", "-n", "python3", "-I", "-B", "-"]
 PROBE_TIMEOUT = 120
-BASES = ("present", "layers", "whole", "unsized")
 
 
 # Serving image
