@@ -1669,8 +1669,12 @@ def perform(operation, lock, number):
                 raise ValueError("Container is still running")
             return {"ok": True}
         if operation == "running":
-            if not info or not info["State"].get("Running"):
-                raise ValueError("Rank is not running")
+            # "Rank is not running" is Docker's definite answer, which callers
+            # tell apart from a check that failed (installer_runner.NOT_RUNNING).
+            if not info:
+                raise ValueError("Rank is not running (no container)")
+            if not info["State"].get("Running"):
+                raise ValueError(f"Rank is not running (exit code {info['State'].get('ExitCode')})")
             return {"ok": True}
         if operation == "created":
             owned(spec, info, image)

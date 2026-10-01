@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from types import SimpleNamespace
 
@@ -869,6 +870,211 @@ def test_readiness_wait_prints_the_loading_note_and_reads_rank_zero_log(monkeypa
     current._call = lambda target, argv, timeout: {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
     current(rows[1]["host"], ["installer", "ready", "1"], 30)
     assert runner.READINESS_INTRO not in capsys.readouterr().err and calls == []
+
+
+@pytest.mark.parametrize(("state", "answer"), [
+    ({"Running": True, "ExitCode": 0}, None),
+    ({"Running": False, "ExitCode": 137}, "Rank is not running (exit code 137)"),
+    (None, "Rank is not running (no container)"),
+])
+def test_running_check_answers_with_the_exit_code_or_a_missing_container(state, answer, tmp_path, monkeypatch):
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    lock["site"]["workspace"] = str(tmp_path)
+    (tmp_path / ".installer-owner.json").write_text(json.dumps({"deployment": lock["id"]}))
+    info, image = inspection(installer.specifications(lock, only_rank=1)[0])
+    info["State"] = state
+    monkeypatch.setattr(installer, "validate", lambda value: value)
+    monkeypatch.setattr(host, "image_info", lambda lock: image)
+    monkeypatch.setattr(host, "container", lambda spec: info if state else None)
+    monkeypatch.setattr(host, "owned", lambda spec, value, image: value)
+    if answer is None:
+        assert host.perform("running", lock, 1) == {"ok": True}
+        return
+    with pytest.raises(ValueError) as error:
+        host.perform("running", lock, 1)
+    # The controller reads this answer, and only this answer, as a stopped container.
+    assert str(error.value) == answer
+    found = runner.NOT_RUNNING.search("Traceback (most recent call last):\nValueError: " + answer)
+    assert found and found["code"] == ("137" if state else None)
+
+
+def ring_lock(nodes, bundle="2" * 64):
+    raw, profile = site(nodes), installer.DEFAULTS["qwen38", nodes]
+    if profile in compose.TP4_PROFILES:
+        for row in raw["hosts"]:
+            row["fabric"] = {"site_path": "/srv/sparkring/mesh-site.json", "site_sha256": "0" * 64,
+                             "plan_sha256": "0" * 64}
+    return installer.make_lock(profile, raw, "1" * 40, bundle)
+
+
+STOPPED = "Traceback (most recent call last):\nValueError: Rank is not running (exit code 137)"
+REMOVED = "Traceback (most recent call last):\nValueError: Rank is not running (no container)"
+WORKER_LOG = ("2026-09-30T10:00:00.000000000Z (Worker_TP1 pid=393) INFO 09-30 10:00:00 [gpu_model_runner.py:2602] "
+              "Starting to load model /model...\n"
+              "2026-09-30T10:00:09.000000000Z (Worker_TP1 pid=393) INFO 09-30 10:00:09 [launcher.py:80] "
+              "Shutting down on SIGTERM\n")
+
+
+class StartingRanks:
+    """``installer_runner.ssh`` of Sparks that start a model.
+
+    Every operation succeeds, except during rank 0's readiness wait. That wait
+    behaves like a model whose collectives wait for its workers: it returns
+    ready once every worker was checked ``ready_after`` times (never when
+    None), and otherwise fails after ``hold`` seconds with the error rank 0
+    reports once its collectives time out. A cancelled wait raises
+    ``Cancelled``, as ``ssh`` does. ``answers[rank]`` lists the answers of that
+    worker's checks during the wait, in order, with the last one repeated:
+    ``"running"``, ``STOPPED``, ``REMOVED`` or an exception to raise.
+    """
+
+    def __init__(self, lock, answers, *, ready_after=None, hold=3.0):
+        self.lock, self.answers, self.ready_after, self.hold = lock, answers, ready_after, hold
+        self.waiting = threading.Event()
+        self.checks = {rank: 0 for rank in answers}
+        self.logs = []
+        self.guard = threading.Lock()
+
+    def __call__(self, target, argv, *, data=None, timeout=7200, cancel=None):
+        rank = next(row["rank"] for row in self.lock["site"]["ranks"] if row["host"] == target)
+        if runner.PROBE in argv:
+            return "{}"
+        if runner.LOG_COMMAND in argv:
+            self.logs.append((rank, argv[-2]))
+            return WORKER_LOG
+        operation = argv[-2]
+        if operation == "ready" and rank == 0:
+            return self.ready(cancel)
+        if operation == "running" and rank in self.answers and self.waiting.is_set():
+            with self.guard:
+                answer = self.answers[rank][min(self.checks[rank], len(self.answers[rank]) - 1)]
+                self.checks[rank] += 1
+            if isinstance(answer, BaseException):
+                raise answer
+            if answer != "running":
+                raise RuntimeError(answer)
+        return '{"ok": true}'
+
+    def ready(self, cancel):
+        self.waiting.set()
+        deadline = time.monotonic() + self.hold
+        while time.monotonic() < deadline:
+            if cancel is not None and cancel.is_set():
+                raise runner.Cancelled("cancelled")
+            with self.guard:
+                if self.ready_after is not None and all(count >= self.ready_after for count in self.checks.values()):
+                    return '{"ok": true}'
+            time.sleep(0.002)
+        raise RuntimeError("Traceback (most recent call last):\nValueError: API rank exited during startup")
+
+
+def starting_deployment(tmp_path, nodes, monkeypatch, ranks_answers, **options):
+    data = b"source bundle fixture"
+    lock = ring_lock(nodes, hashlib.sha256(data).hexdigest())
+    installer.write(tmp_path / "deployment.lock.json", lock)
+    (tmp_path / "source.bundle").write_bytes(data)
+    current = object.__new__(runner.Runner)
+    current.lock, current.directory = lock, tmp_path
+    ranks = StartingRanks(lock, ranks_answers, **options)
+    monkeypatch.setattr(runner, "ssh", ranks)
+    monkeypatch.setattr(runner, "check_facts", lambda facts, row: None)
+    monkeypatch.setattr(runner, "check_workloads", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "WORKER_CHECK_INTERVAL", 0.01)
+    return current, ranks
+
+
+def receipt_of(directory):
+    state = json.loads((directory / "state.json").read_text())
+    return state, json.loads((directory / state["receipt"]).read_text())
+
+
+@pytest.mark.parametrize(("nodes", "answer", "event"), [
+    (2, STOPPED, "stopped while rank 0 was loading (exit code 137)"),
+    (4, STOPPED, "stopped while rank 0 was loading (exit code 137)"),
+    (2, REMOVED, "was removed while rank 0 was loading"),
+])
+def test_a_worker_container_that_stops_during_readiness_fails_the_start_within_one_check(
+        nodes, answer, event, tmp_path, monkeypatch, capsys):
+    dead = nodes - 1
+    # The last worker loads for three checks, then its container stops; the others keep loading.
+    answers = {rank: ["running"] * 3 + [answer] if rank == dead else ["running"] for rank in range(1, nodes)}
+    current, ranks = starting_deployment(tmp_path, nodes, monkeypatch, answers, hold=10.0)
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="ready: phase failed; later phases were not started"):
+        installer.apply(tmp_path, "up", runner=current, execute=True)
+    # Rank 0's wait ended at the first definite answer, long before its own failure.
+    assert time.monotonic() - started < 5
+    assert ranks.checks[dead] == 4
+    host_name = current.lock["site"]["ranks"][dead]["host"]
+    message = f"Rank {dead}'s model container on {host_name} {event}"
+    err = capsys.readouterr().err
+    assert "Error: " + message in err and "Stopped: Node 0: Wait for API readiness" in err
+    # The receipt records rank 0's readiness as failed, as for any failed start, and nothing after it ran.
+    state, receipt = receipt_of(tmp_path)
+    assert state["operation"] == "up" and not state["complete"] and not receipt["complete"]
+    rows = current.lock["site"]["ranks"]
+    ready = receipt["actions"]["ready:" + rows[0]["host"]]
+    assert ready["state"] == "failed" and not ready["result"]["uncertain"]
+    assert ready["result"]["stderr"].endswith(message)
+    assert f"Last lines of rank {dead}'s model log:" in ready["result"]["stderr"]
+    assert "Shutting down on SIGTERM" in ready["result"]["stderr"]
+    assert ranks.logs == [(dead, str(runner.WORKER_LOG_LINES))]
+    assert all(receipt["actions"]["ready:" + row["host"]]["state"] == "succeeded" for row in rows[1:])
+    assert not any(key.startswith(("smoke:", "model-settled:")) for key in receipt["actions"])
+
+
+@pytest.mark.parametrize("nodes", [2, 4])
+def test_failed_worker_checks_and_loading_workers_do_not_fail_the_start(nodes, tmp_path, monkeypatch):
+    hiccups = [RuntimeError("ssh: connect to host private-spark1 port 22: Connection timed out"),
+               subprocess.TimeoutExpired(["ssh"], runner.WORKER_CHECK_TIMEOUT),
+               RuntimeError("Traceback (most recent call last):\nhost.CommandError: docker exited with status 1: "
+                            "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"),
+               RuntimeError("Traceback (most recent call last):\nValueError: Existing container differs from this "
+                            "locked deployment; refusing adoption"),
+               ValueError("Expecting value: line 1 column 1 (char 0)"),
+               OSError("No such file or directory: 'ssh'"),
+               "running"]
+    answers = {rank: hiccups if rank == 1 else ["running"] for rank in range(1, nodes)}
+    current, ranks = starting_deployment(tmp_path, nodes, monkeypatch, answers, ready_after=len(hiccups) + 2)
+    result = installer.apply(tmp_path, "up", runner=current, execute=True)
+    assert result["complete"]
+    assert ranks.checks[1] >= len(hiccups) + 2 and ranks.logs == []
+    _, receipt = receipt_of(tmp_path)
+    assert receipt["actions"]["ready:" + current.lock["site"]["ranks"][0]["host"]]["state"] == "succeeded"
+
+
+def test_cancelled_command_is_killed_and_an_uncancelled_one_returns_its_output():
+    cancel = threading.Event()
+    timer = threading.Timer(0.2, cancel.set)
+    timer.start()
+    started = time.monotonic()
+    with pytest.raises(runner.Cancelled):
+        runner.cancellable([sys.executable, "-c", "import time; time.sleep(60)"], timeout=120, cancel=cancel)
+    assert time.monotonic() - started < 10
+    echo = [sys.executable, "-c", "import sys; sys.stdout.write(sys.stdin.read())"]
+    result = runner.cancellable(echo, data=b"rank answer", timeout=120, cancel=threading.Event())
+    assert (result.returncode, result.stdout) == (0, b"rank answer")
+    with pytest.raises(subprocess.TimeoutExpired):
+        runner.cancellable([sys.executable, "-c", "import time; time.sleep(60)"], timeout=0.2, cancel=threading.Event())
+
+
+def test_ssh_waits_through_the_cancellable_runner_only_when_given_a_cancel_event(monkeypatch):
+    calls = []
+
+    def cancellable(command, *, data=None, timeout, cancel):
+        calls.append(("cancellable", command, cancel))
+        return subprocess.CompletedProcess(command, 0, b"ok\n", b"")
+
+    def run(command, **kwargs):
+        calls.append(("run", command, None))
+        return subprocess.CompletedProcess(command, 0, b"ok\n", b"")
+    monkeypatch.setattr(runner, "cancellable", cancellable)
+    monkeypatch.setattr(runner.subprocess, "run", run)
+    cancel = threading.Event()
+    assert runner.ssh("spark1", ["true"], cancel=cancel) == "ok\n"
+    assert runner.ssh("spark1", ["true"]) == "ok\n"
+    command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "spark1", "true"]
+    assert calls == [("cancellable", command, cancel), ("run", command, None)]
 
 
 def test_download_limit_paces_reads_to_the_rate(monkeypatch):
