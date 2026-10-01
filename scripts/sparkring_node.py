@@ -31,9 +31,14 @@ def main(argv=None):
     checkpoints = commands.add_parser("checkpoints", help="list this Spark's SparkRing checkpoint directories, "
                                       "or release one; Node A sends the request on stdin")
     checkpoints.add_argument("--release", metavar="PATH")
-    storage = commands.add_parser("storage", help="report this Spark's SparkRing disk use, or release one cache "
-                                  "directory or deployment workspace; Node A sends the request on stdin")
+    storage = commands.add_parser("storage", help="report this Spark's SparkRing disk use, or release cache "
+                                  "directories, deployment workspaces and stopped model containers; Node A sends "
+                                  "the request on stdin")
     storage.add_argument("--release", metavar="PATH")
+    storage.add_argument("--release-batch", action="store_true",
+                         help="remove the stopped model containers, workspaces and cache directories that Node A's "
+                              "automatic release names on stdin; each workspace and cache is checked as --release "
+                              "checks it")
     workspace = commands.add_parser("workspace")
     workspace.add_argument("--operator", required=True)
     workspace.add_argument("--name", required=True)
@@ -103,7 +108,7 @@ def main(argv=None):
             result = checkpoints.node(args.release)
         elif args.action == "storage":
             from runtime.host import storage
-            result = storage.node(args.release)
+            result = storage.node(args.release, batch=args.release_batch)
         elif args.action == "workspace":
             result = node.workspace(args.operator, args.name)
         elif args.action == "restore":

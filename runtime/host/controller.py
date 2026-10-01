@@ -570,6 +570,16 @@ def lifecycle(argv):
     else:
         raise ValueError(f"No model deployment is active. To {args.operation} one, name its profile"
                          " and, for a deployment other than main, its --instance.")
+    from runtime.host import retention
+    if args.operation == "down" and retention.release_record(directory):
+        # Its stop would verify the containers through the workspace's source
+        # checkout, which automatic release removed with the containers.
+        message = (f"{directory.name} is stopped, and automatic release removed its containers and workspaces from "
+                   "the Sparks; there is nothing to stop. sudo sparkring up " + _up_arguments(directory)
+                   + " starts it again.")
+        print(json.dumps({"operation": "down", "complete": True, "released": True, "message": message}, indent=2)
+              if args.json else message)
+        return 0
     result = retained_source.review(directory, args.operation, cache=cache)
     print(f"{args.operation}: {result['profile']} on " + ", ".join(result["hosts"]))
     if image_runtime is not None:
@@ -628,8 +638,18 @@ def lifecycle(argv):
         if args.operation == "up" and result.get("complete"):
             # Resets automatic recovery's failures and records the generation's boots.
             recovery.started(directory)
+            # With --json, stdout carries only the result document.
+            result["retention"] = retention.after_operation(
+                STATE, discovery.ssh, write=(lambda line: print(line, file=sys.stderr)) if args.json else print)
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
+
+
+def _up_arguments(directory):
+    """``PROFILE [--instance NAME]`` of the deployment in ``directory``, as ``sparkring up`` names it."""
+    profile = installer.read(Path(directory) / "deployment.lock.json")["selection"]["profile"]
+    instance = Path(directory).name.removeprefix(profile).removeprefix("-")
+    return profile + (f" --instance {instance}" if instance else "")
 
 
 def _setup_lock(argv):

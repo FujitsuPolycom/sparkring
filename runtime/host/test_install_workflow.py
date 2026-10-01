@@ -330,6 +330,37 @@ def test_download_limit_comes_from_the_flag_or_the_settings_file(tmp_path):
     assert error.value.field == "download_limit"
 
 
+def test_an_installation_releases_older_deployments_with_the_settings_file_preference(machine, tmp_path, monkeypatch,
+                                                                                     capsys):
+    from runtime.host import retention
+    events, _, _, _ = machine
+    calls = []
+    real = retention.after_operation
+
+    def after_operation(state_root, invoke, **options):
+        # The release runs after the switch, under the installation lock, with the file's preference.
+        calls.append((events[-1], options.get("preference")))
+        return real(state_root, invoke, **options)
+    monkeypatch.setattr(retention, "after_operation", after_operation)
+    assert command() == 0
+    result = json.loads(capsys.readouterr().out)
+    # Without a settings file the default applies; no deployment is older than the two most recent of its profile.
+    assert calls == [("candidate:verify", None)] and result["retention"]["state"] == "nothing"
+    settings_file = tmp_path / "settings.env"
+    settings_file.write_text("SPARKRING_RETAIN_DEPLOYMENTS=off\n")
+    assert command("--env", str(settings_file)) == 0
+    assert json.loads(capsys.readouterr().out)["retention"] == {"schema": retention.RESULT_SCHEMA, "state": "off"}
+    assert calls[-1] == ("candidate:verify", "off") and retention.setting(controller.STATE) == (None, "off")
+    # A later installation without the file keeps the saved setting.
+    assert command() == 0
+    assert json.loads(capsys.readouterr().out)["retention"]["state"] == "off"
+    settings_file.write_text("SPARKRING_RETAIN_DEPLOYMENTS=all\n")
+    del events[:]
+    assert command("--env", str(settings_file)) == 3
+    result = json.loads(capsys.readouterr().out)
+    assert result["field"] == "retain_deployments" and "use off, or the number" in result["message"] and not events
+
+
 def test_installing_the_active_model_again_restarts_it_when_it_does_not_serve(machine, monkeypatch, capsys):
     events, _, _, _ = machine
     assert command() == 0

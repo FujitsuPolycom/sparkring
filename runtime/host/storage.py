@@ -1,11 +1,15 @@
 """Report SparkRing's disk use on every Spark and release data that no deployment uses.
 
-Two commands use this module:
+These commands use this module:
 
 - ``sudo sparkring storage`` on Node A (``main``) reports, for every Spark of
   the cluster, the filesystems that hold ``/srv/sparkring``, Docker's data root
   and ``/`` (size, used and free bytes), every item in ``/srv/sparkring`` and
   every Docker image with its size and class, and the releases it proposes.
+  On a configured cluster it also lists the deployments that automatic release
+  keeps, why, and what it would release (``runtime/host/retention.py``).
+- ``sudo sparkring storage --retain-deployments N|off`` saves how many recent
+  deployments of each profile automatic release keeps, or turns it off.
 - ``sudo sparkring storage --release PATH`` removes one cache directory or
   deployment workspace of class ``unreferenced`` from every Spark that holds
   it, after the operator approves (``--yes`` in scripts). Node A lists and
@@ -20,8 +24,13 @@ Two commands use this module:
   create.
 
 Each Spark runs its own part as ``sudo sparkring node storage [--release
-PATH]`` (``node``), reading a JSON request on stdin: ``list_local`` and
-``release_local``.
+PATH | --release-batch]`` (``node``), reading a JSON request on stdin:
+``list_local``, ``release_local`` and ``release_batch_local``. The batch is
+automatic release's share of one Spark: the stopped model containers of the
+deployments it releases (``remove_container``), then each workspace and cache
+directory through ``release_local``. The listing names every installer
+deployment's model container with its state and writable-layer size
+(``model_containers``).
 
 Items
 -----
@@ -134,6 +143,16 @@ MESH_FILE_LIMIT = 1024 * 1024
 TIB = 1024 ** 4
 # Absolute paths inside an environment value, argument or JSON option.
 _PATH = re.compile(r"/[^\s\"'=:,;{}\[\]()]*")
+# Docker's full container IDs, and the lock IDs (SHA-256) that label a Compose deployment's model containers.
+CONTAINER_ID = re.compile(r"[0-9a-f]{64}")
+DEPLOYMENT_ID = re.compile(r"[0-9a-f]{64}")
+# Labels of an installer deployment's model containers (installer.container_labels).
+DEPLOYMENT_LABEL = "io.sparkring.deployment"
+RANK_LABEL = "io.sparkring.rank"
+# Names of the model containers that automatic release may remove (installer.container_name).
+MODEL_CONTAINER = re.compile(r"sr-[a-z][a-z0-9-]{0,39}-r[0-9]")
+# Docker states in which a container runs no process and ``docker container rm`` removes it without --force.
+STOPPED_STATES = frozenset({"created", "exited"})
 
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _DIRECTORY = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | _NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
@@ -450,6 +469,39 @@ def _docker_state(run):
     return state, containers
 
 
+def model_containers(containers, *, run, sizes):
+    """The model containers of installer deployments among ``containers`` (``docker container inspect`` documents).
+
+    A model container carries the ``io.sparkring.deployment`` label with its
+    deployment's lock ID. Returns ``[{"id", "name", "deployment", "rank",
+    "running", "status", "bytes"}]`` sorted by name; ``bytes`` is the size of
+    the container's writable layer (Docker's ``SizeRw``), which removing it
+    frees, measured for stopped containers when ``sizes`` is true and ``None``
+    otherwise or when Docker does not report it.
+    """
+    found = []
+    for item in containers:
+        labels = (item.get("Config") or {}).get("Labels") or {}
+        deployment = labels.get(DEPLOYMENT_LABEL)
+        if not isinstance(deployment, str) or not isinstance(item.get("Id"), str):
+            continue
+        state = item.get("State") or {}
+        found.append({"id": item["Id"], "name": _name(item), "deployment": deployment,
+                      "rank": labels.get(RANK_LABEL), "running": bool(state.get("Running")),
+                      "status": state.get("Status"), "bytes": None})
+    stopped = [entry for entry in found if not entry["running"]]
+    if sizes and stopped:
+        try:
+            measured = json.loads(_docker(["container", "inspect", "--size", *(entry["id"] for entry in stopped)], run))
+            by_id = {item.get("Id"): item.get("SizeRw") for item in measured if isinstance(item, dict)}
+        except (OSError, ValueError, subprocess.SubprocessError):
+            by_id = {}
+        for entry in stopped:
+            value = by_id.get(entry["id"])
+            entry["bytes"] = value if type(value) is int and value >= 0 else None
+    return sorted(found, key=lambda entry: entry["name"])
+
+
 def docker_state(*, run=None):
     """This host's Docker data root and images with the containers that use them; ``None`` without Docker.
 
@@ -545,11 +597,13 @@ def installed_meshes(root="/"):
 
     A mesh's sites are the ``site_path`` that its ``service.json`` names and
     the ``site.json`` in its configuration directory. Returns ``[{"unit",
-    "config", "site", "paths", "readable"}]``: the mesh unit (``None`` for a
-    directory whose name is no layout name), the configuration directory, the
-    site file, every absolute path among the sites' values (``_site_paths``),
-    and whether ``service.json`` and every site could be read. ``root``
-    relocates ``/etc``.
+    "config", "site", "paths", "readable", "container"}]``: the mesh unit
+    (``None`` for a directory whose name is no layout name), the configuration
+    directory, the site file, every absolute path among the sites' values
+    (``_site_paths``), whether ``service.json`` and every site could be read,
+    and the ID of the model container that ``service.json`` names (``None``
+    without one). The mesh's model unit starts that container, which the
+    deployment that created the mesh created. ``root`` relocates ``/etc``.
     """
     def local(path):
         return posixpath.join(root, path.lstrip("/"))
@@ -570,7 +624,7 @@ def installed_meshes(root="/"):
         present = [path for path in (service, site) if os.path.lexists(local(path))]
         if not present:
             continue
-        sites, readable = [], True
+        sites, readable, container = [], True, None
         if service in present:
             document = _read_mesh_file(local(service))
             named = _valid(document.get("site_path")) if document else None
@@ -578,6 +632,8 @@ def installed_meshes(root="/"):
                 readable = False
             else:
                 sites.append(named)
+            value = document.get("container_id") if document else None
+            container = value if isinstance(value, str) and CONTAINER_ID.fullmatch(value) else None
         if site in present and site not in sites:
             sites.append(site)
         paths = set()
@@ -588,7 +644,7 @@ def installed_meshes(root="/"):
             else:
                 paths |= _site_paths(document)
         meshes.append({"unit": unit, "config": config, "site": sites[0] if sites else site,
-                       "paths": sorted(paths), "readable": readable})
+                       "paths": sorted(paths), "readable": readable, "container": container})
     return meshes
 
 
@@ -638,9 +694,12 @@ def list_local(request=None, *, root="/", run=None):
     reach it (``_users``), and every cache directory and workspace carries
     ``meshes``, the meshes installed on this host that use it
     (``_mesh_users``); ``meshes`` of the report lists every installed mesh
-    (``installed_meshes``). ``root`` relocates the search of
-    ``/srv/sparkring`` and of the mesh configurations in ``/etc``; ``run``
-    replaces ``subprocess.run`` for Docker.
+    (``installed_meshes``), and ``model_containers`` every installer
+    deployment's model container on this host, running or stopped
+    (``model_containers``), with writable-layer sizes unless ``measure``
+    limits the walks. ``root`` relocates the search of ``/srv/sparkring`` and
+    of the mesh configurations in ``/etc``; ``run`` replaces
+    ``subprocess.run`` for Docker.
     """
     request = request if isinstance(request, dict) else {}
     started = time.monotonic()
@@ -665,6 +724,7 @@ def list_local(request=None, *, root="/", run=None):
             "package_revision": checkpoints.package_revision(),
             "filesystems": filesystems([("sparkring", srv), ("docker", (docker or {}).get("root")), ("root", "/")]),
             "items": items, "meshes": meshes, "docker": docker,
+            "model_containers": model_containers(containers, run=run or subprocess.run, sizes=measured is None),
             "measurement": {"budget_seconds": budget, "seconds": round(time.monotonic() - started, 1),
                             "complete": all(item.get("complete") is not False for item in items)}}
 
@@ -828,8 +888,100 @@ def release_local(path, request=None, *, root="/", run=None, table=None):
     return {"path": path, "state": "released", "kind": (current or remainders[0])["kind"], "freed_bytes": freed}
 
 
-def node(release=None, stream=None):
-    """``sudo sparkring node storage [--release PATH]``: this host's part, request read as JSON from ``stream``.
+def remove_container(entry, *, run, meshes):
+    """Remove one stopped model container that Node A's automatic release names; refuse any other.
+
+    ``entry`` is ``{"deployment", "name"}``: the deployment's lock ID and the
+    container's name (``sr-<site>-r<rank>``). The container is removed only
+    when it carries that deployment's ``io.sparkring.deployment`` label, runs
+    no process (Docker state ``created`` or ``exited``) and is not the model
+    container that a mesh installed on this host starts (``meshes``, from
+    ``installed_meshes``). ``docker container rm`` without ``--force`` also
+    refuses a container that started meanwhile; ``--volumes`` removes its
+    anonymous volumes, never named ones.
+
+    Returns ``{"deployment", "name", "id", "state": "removed" | "absent",
+    "freed_bytes"}``; ``freed_bytes`` is the writable layer's size.
+    """
+    deployment, name = entry.get("deployment"), entry.get("name")
+    if not (isinstance(deployment, str) and DEPLOYMENT_ID.fullmatch(deployment) and isinstance(name, str)
+            and MODEL_CONTAINER.fullmatch(name)):
+        raise ValueError(f"{str(name)[:80]} is not a SparkRing model container; nothing was removed")
+    result = {"deployment": deployment, "name": name, "id": None, "state": "absent", "freed_bytes": 0}
+    try:
+        found = json.loads(_docker(["container", "inspect", "--size", name], run))
+    except ValueError as error:
+        if re.search(r"No such (?:container|object)", str(error), re.IGNORECASE):
+            return result
+        raise
+    info = found[0] if isinstance(found, list) and len(found) == 1 and isinstance(found[0], dict) else {}
+    labels = (info.get("Config") or {}).get("Labels") or {}
+    state = info.get("State") or {}
+    if _name(info) != name or not CONTAINER_ID.fullmatch(str(info.get("Id"))):
+        raise ValueError(f"Docker answered for another container than {name}; nothing was removed")
+    if labels.get(DEPLOYMENT_LABEL) != deployment:
+        raise ValueError(f"{name} does not carry deployment {deployment[:12]}'s label; SparkRing does not remove it")
+    if state.get("Running") or state.get("Paused") or state.get("Restarting") or state.get("Status") not in STOPPED_STATES:
+        raise ValueError(f"{name} is {state.get('Status') or 'not stopped'}; SparkRing removes only stopped model "
+                         "containers")
+    users = [mesh for mesh in meshes if mesh.get("container") == info["Id"]]
+    if users:
+        unit = users[0].get("unit") or users[0]["config"]
+        raise ValueError(f"The installed mesh {unit} starts {name}; SparkRing does not remove it while that mesh is "
+                         "installed")
+    _docker(["container", "rm", "--volumes", info["Id"]], run)
+    size = info.get("SizeRw")
+    return {**result, "id": info["Id"], "state": "removed", "freed_bytes": size if type(size) is int and size > 0 else 0}
+
+
+def release_batch_local(request=None, *, root="/", run=None, table=None):
+    """Remove the stopped model containers, workspaces and cache directories that Node A's automatic release names.
+
+    ``request`` is the release request of ``release_local`` (the listing
+    request plus ``in_use`` and ``opaque``, here the paths that the
+    deployments the policy keeps name on this host) with ``containers``, a
+    list of ``{"deployment", "name"}``, and ``paths``, the workspaces, cache
+    directories and remainders of interrupted releases to remove. Containers
+    go first (``remove_container``), because they bind-mount files of their
+    workspace. A workspace whose deployment's container on this host was not
+    removed stays. Every path then goes through ``release_local``, which lists
+    and checks it again as ``sudo sparkring storage --release`` does. A
+    refusal or failure of one entry is reported with it and does not stop the
+    others.
+
+    Returns ``{"containers": [...], "paths": [...]}``: each entry the result
+    of ``remove_container`` or ``release_local``, or the entry with ``error``.
+    """
+    request = request if isinstance(request, dict) else {}
+    run = run or subprocess.run
+    meshes = installed_meshes(root)
+    containers, kept = [], set()
+    for entry in request.get("containers") or ():
+        entry = entry if isinstance(entry, dict) else {}
+        try:
+            containers.append(remove_container(entry, run=run, meshes=meshes))
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            kept.add(entry.get("deployment"))
+            containers.append({"deployment": entry.get("deployment"), "name": entry.get("name"),
+                               "error": str(error)[:500]})
+    items, _ = _items(root, request)
+    owners = {item["path"]: item["deployment"] for item in items if item["kind"] == "workspace"}
+    table = checkpoint_place.mounts() if table is None else table
+    released = []
+    for path in request.get("paths") or ():
+        if isinstance(path, str) and path in owners and owners[path] in kept:
+            released.append({"path": path, "error": f"{path} stays because its deployment's model container on this "
+                                                    "Spark was not removed"})
+            continue
+        try:
+            released.append(release_local(path, request, root=root, run=run, table=table))
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            released.append({"path": path, "error": str(error)[:500]})
+    return {"containers": containers, "paths": released}
+
+
+def node(release=None, stream=None, *, batch=False):
+    """``sudo sparkring node storage [--release PATH | --release-batch]``: this host's part, request read as JSON from ``stream``.
 
     An empty or interactive ``stream`` is an empty request.
     """
@@ -838,6 +990,10 @@ def node(release=None, stream=None):
     request = json.loads(text) if text.strip() else {}
     if not isinstance(request, dict):
         raise ValueError("The storage request must be a JSON object")
+    if batch:
+        if release is not None:
+            raise ValueError("Give --release PATH or --release-batch, not both")
+        return release_batch_local(request)
     if release is not None:
         return release_local(release, request)
     return list_local(request)
@@ -1077,14 +1233,23 @@ def _survey(hosts, cluster, retained, invoke, **values):
 
 
 def list_cluster(state_root, invoke):
-    """``sparkring storage``: every Spark's report with each item's and image's class."""
-    retained, role = deployments(state_root), checkpoints.roles(state_root)
+    """``sparkring storage``: every Spark's report with each item's and image's class.
+
+    On Node A of a configured cluster the result also carries ``retention``:
+    the deployments that automatic release keeps and why, and what it would
+    release (``retention.view``).
+    """
+    from runtime.host import retention
+    retained, role = retention.deployments(state_root), checkpoints.roles(state_root)
     cluster = checkpoints._cluster(state_root)
     if cluster is None:
         nodes = [{"rank": None, "host": None, **list_local(_request(None, None, retained))}]
     else:
         nodes = _survey(checkpoints._hosts(cluster), cluster["name"], retained, invoke)
-    return {"schema": SCHEMA, "state": "listed", "nodes": classify(nodes, retained, role, profile_references())}
+    result = {"schema": SCHEMA, "state": "listed", "nodes": classify(nodes, retained, role, profile_references())}
+    if cluster is not None:
+        result["retention"] = retention.view(state_root, retained, role, nodes)
+    return result
 
 
 def _refusal(item, node_entry):
@@ -1292,6 +1457,9 @@ def describe(result):
             lines.extend("        " + command for command in proposed["commands"])
         else:
             lines.append("    No release is proposed on this Spark.")
+    if result.get("retention"):
+        from runtime.host import retention
+        lines.extend(retention.describe(result["retention"]))
     lines.append(LEGEND)
     lines.append("sudo sparkring storage --release PATH removes one unreferenced cache directory or deployment "
                  "workspace from every Spark that holds it; checkpoint directories are released with sudo sparkring "
@@ -1307,14 +1475,20 @@ def _administrator():
 def main(argv=None, *, state_root=None, invoke=None):
     parser = argparse.ArgumentParser(
         prog="sparkring storage",
-        description="Report SparkRing's disk use on every Spark with the data no deployment uses, or release one "
-                    "unreferenced cache directory or deployment workspace.")
+        description="Report SparkRing's disk use on every Spark with the data no deployment uses, release one "
+                    "unreferenced cache directory or deployment workspace, or set how many deployments automatic "
+                    "release keeps.")
     parser.add_argument("--release", metavar="PATH",
                         help="remove this unreferenced cache directory or deployment workspace from every Spark that "
                              "holds it")
     parser.add_argument("--yes", action="store_true", help="approve the release without a prompt")
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout")
+    parser.add_argument("--retain-deployments", metavar="N|off",
+                        help="after each install and up, keep the N most recent deployments of each profile and "
+                             "release what older ones hold on the Sparks (default 2); off turns this off")
     args = parser.parse_args(argv)
+    if args.retain_deployments is not None and args.release:
+        parser.error("--retain-deployments and --release are separate commands")
     if state_root is None or invoke is None:
         from runtime.host import controller, discovery
         state_root = controller.STATE if state_root is None else state_root
@@ -1329,7 +1503,14 @@ def main(argv=None, *, state_root=None, invoke=None):
     try:
         if not _administrator():
             raise ValueError("Run sudo sparkring storage")
-        if args.release:
+        if args.retain_deployments is not None:
+            from runtime.common import process_lock
+            from runtime.host import retention
+            with process_lock.hold(Path(state_root) / "install.lock"):
+                retain = retention.save_setting(state_root, args.retain_deployments)
+            result = {"schema": SCHEMA, "state": "saved", "retain_deployments": "off" if retain is None else retain}
+            write(retention.setting_text(retain))
+        elif args.release:
             result = release_cluster(args.release, state_root, invoke, yes=args.yes,
                                      interactive=not args.json and sys.stdin.isatty(), write=write)
         else:

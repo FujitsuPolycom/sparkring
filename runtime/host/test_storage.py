@@ -662,7 +662,7 @@ def test_the_workspace_holding_the_ring_mesh_files_stays_installed_after_two_mod
     assert all(first not in command for command in node["proposed"]["commands"])
     assert node["meshes"] == [{"unit": unit, "config": f"/etc/sparkring/deployments/{MESH}", "site": site,
                                "paths": sorted({*named, spark.owned, str(spark.cache), "/run/sparkring-" + MESH}),
-                               "readable": True}]
+                               "readable": True, "container": "c" * 64}]
     # The mesh's cache roots name the cluster cache; its entries stay classified by the deployments that use them.
     assert (items[str(spark.cache / STALE_CACHE)]["class"], items[str(spark.cache / STALE_CACHE)]["meshes"]) == (
         "unreferenced", [])

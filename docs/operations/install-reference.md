@@ -159,6 +159,9 @@ starts:
   from cleared memory whatever the Spark read before, and reads its weights
   from disk.
 
+Once the model serves, the run releases what older deployments hold on the
+Sparks ([automatic release](#automatic-release)).
+
 ### Running the command again
 
 - **Same package, model serving:** it keeps running. Serving means its
@@ -283,6 +286,10 @@ sudo sparkring status --refresh --json
   when the image has no dashboard), `example_request` (a `curl` command for
   `/v1/chat/completions` with the served model name) and `commands` with
   `switch_back` (null when no other model ran before), `stop` and `remove`.
+- `retention` reports [automatic release](#automatic-release): `state` is
+  `released`, `nothing`, `off` or `failed` (with `message`); a release lists
+  the `released` deployments, `freed_bytes` and each Spark's results, with
+  refusals in `errors`.
 - `--events FILE` adds a line-by-line progress stream
   ([Event stream](#event-stream)); the result on stdout stays the same.
 
@@ -1288,6 +1295,81 @@ commands for the unreferenced ones.
   ([Checkpoints](#checkpoints)).
 - Docker images and directories that SparkRing's installer did not create are
   never removed.
+- [Automatic release](#automatic-release) removes what older deployments hold
+  after each installation and `up`.
+
+### Automatic release
+
+Each installation request with another package revision, image, checkpoint or
+serving setting is a separate deployment, with its own directory in
+`/var/lib/sparkring/controller/deployments`. Once it has run, it holds on
+every Spark its workspace (the source checkout, its Compose and runtime-binding
+files and its checkpoint receipt, about 100 MB), its stopped model container,
+whose writable layer Docker counts as reclaimable, and compile caches for its
+image and checkpoint revision. After every `sudo sparkring install` and
+`sudo sparkring up` that completes, Node A keeps a deployment when:
+
+- it is the active deployment, the rollback target or the candidate of an
+  unfinished model switch;
+- its model container runs on a Spark;
+- a mesh installed on a Spark uses its workspace. On a four-Spark ring, the
+  deployment that created the mesh holds the mesh's host marker, and the mesh
+  starts that deployment's container;
+- its last operation did not complete, or its state cannot be read, since it
+  may need recovery from its own receipts;
+- its last operation is a completed `up`: it was started and not stopped since;
+- it has a managed GLM backend, whose services own its containers;
+- it is one of the 2 most recent deployments of its profile, by the time of
+  its last operation. For each model these are the deployment that runs or ran
+  last and the one before it, usually the previous package revision or another
+  checkpoint or serving setting, which then start without preparing a
+  workspace, container or compile cache.
+
+For every other deployment that has run, each Spark removes:
+
+- its stopped model containers (`sr-<site>-r<rank>`, labelled with the
+  deployment's ID);
+- its workspace;
+- each compile cache that no kept deployment uses and no installer profile of
+  the installed package references (class `unreferenced`);
+- remainders of interrupted `sudo sparkring storage --release` runs.
+
+Each Spark checks again before it removes anything. A container must be
+stopped, carry the deployment's label and not be the one that an installed
+mesh starts. Each workspace and cache passes the same checks as
+`sudo sparkring storage --release`, with the paths that the kept deployments
+name: no installed mesh, model files, mount point or running container. A
+refusal is listed under the summary line, and the rest continues. Checkpoint
+directories, Docker images, the deployment directories on Node A (lock, source
+bundle and receipts) and anything SparkRing's installer did not create are
+never removed. The release prints one line, for example:
+
+```text
+Released 7 older deployments' containers, workspaces and caches: 9.8 GiB
+```
+
+A released deployment starts again: `sudo sparkring up PROFILE --instance
+i<hash>`, or an installation with the same choices. Its `source` step copies
+the deployment's source bundle from Node A into a new workspace. Its `model`
+step writes the checkpoint receipt again from the checkpoint directory's
+journal and SparkRing's path records, hashing only files whose size or times
+changed. Its `create` step creates the container. A first start without its
+compile cache compiles and tunes kernels again. `sudo sparkring down` of a
+released deployment reports that it is stopped and changes nothing, because
+its stop would read the removed workspace.
+
+`sudo sparkring storage` lists the kept deployments with their reasons and
+what the next release frees. `sudo sparkring storage --retain-deployments N`
+keeps the N most recent deployments of each profile; `0` keeps only the
+deployments that the other rules keep, and `off` turns automatic release off.
+The preference `SPARKRING_RETAIN_DEPLOYMENTS` of
+`sudo sparkring install --env FILE` sets the same value
+([Optional preferences](#optional-preferences)). Both are saved on Node A
+and apply to every later installation and `up`.
+
+The first release on a cluster with many earlier deployments removes all of
+them at once. Afterwards a release contacts the Sparks only when a deployment
+leaves the kept set.
 
 ## If a worker has no SSH
 
@@ -1316,8 +1398,10 @@ SPARKRING_LINK_POLICY=keep
 
 `sudo sparkring install --env /path/to/settings.env` reads the setup keys
 only for first-use setup, before the cluster is configured, and
-`SPARKRING_DOWNLOAD_LIMIT` on every run;
+`SPARKRING_DOWNLOAD_LIMIT` and `SPARKRING_RETAIN_DEPLOYMENTS` on every run;
 `sudo sparkring setup --env /path/to/settings.env` reads it on every run.
+An installation that completes saves `SPARKRING_RETAIN_DEPLOYMENTS` on
+Node A, where later installations and `sparkring up` read it.
 Values are parsed as literal settings, never sourced as shell code, and SSH
 handles credential prompts.
 
@@ -1331,6 +1415,7 @@ handles credential prompts.
 | `SPARKRING_FABRIC_CIDR` | `198.18.0.0/21` | An IPv4 `/16` through `/21` network that does not overlap the control network | `--fabric-cidr` |
 | `SPARKRING_LINK_POLICY` | `keep` | `keep`, or `reset` to request reviewed replacement of fabric IPv4 settings | `--reset-links` |
 | `SPARKRING_DOWNLOAD_LIMIT` | `none` | `none`, or a rate such as `850Mbit` or `2Gbit` ([details](#limit-the-download-rate)) | `sparkring install --download-limit`, which takes precedence |
+| `SPARKRING_RETAIN_DEPLOYMENTS` | the value saved on Node A, else `2` | `off`, or the number of recent deployments of each profile to keep, `0` to `99` ([details](#automatic-release)) | `sparkring storage --retain-deployments` |
 
 `sparkring install` passes only `--env`, `--yes` and `--stop-workloads` to
 setup. `sparkring setup --plan` discovers and reviews through existing access
