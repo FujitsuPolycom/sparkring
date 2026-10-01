@@ -171,6 +171,66 @@ def test_the_active_model_restarts_only_when_it_does_not_serve(tmp_path, capsys,
     assert ("does not serve on every Spark" in capsys.readouterr().out) is not serves
 
 
+def recorded(events):
+    """Adapters that record ``(directory name, action)`` for apply and verify and ``prepare`` for prepare."""
+    return {"prepare": lambda directory: events.append("prepare"),
+            "apply": lambda directory, action: events.append((directory.name, action)),
+            "verify": lambda directory: events.append((directory.name, "verify")) or {}}
+
+
+@pytest.mark.parametrize("active", [None, "old", "candidate"])
+def test_a_candidate_whose_start_did_not_complete_stops_before_it_is_prepared_again(tmp_path, capsys, active):
+    candidate = tmp_path / "candidate"
+    previous = tmp_path / active if active else None
+    if previous:
+        node.save(tmp_path, "active.json", {"path": str(previous)})
+    events = []
+    result = rollout.execute(candidate, previous, state_root=tmp_path, **recorded(events),
+                             serving=lambda directory: events.append("serving") or False,
+                             unfinished=lambda directory: "up" if directory.name == "candidate" else None)
+    # Another active model keeps serving until the switch; the candidate
+    # itself, when active, just stopped and needs no serving check.
+    switch = [("old", "down")] if active == "old" else []
+    assert events == [("candidate", "down"), "prepare", *switch, ("candidate", "up"), ("candidate", "verify")]
+    assert result["complete"] and result["unfinished"] == "up" and rollout.active(tmp_path) == candidate
+    assert "This model's last start did not complete; it stops on every Spark first." in capsys.readouterr().out
+
+
+def test_an_unfinished_stop_finishes_before_preparation(tmp_path, capsys):
+    events = []
+    result = rollout.execute(tmp_path / "candidate", None, state_root=tmp_path, **recorded(events),
+                             unfinished=lambda directory: "down")
+    assert events == [("candidate", "down"), "prepare", ("candidate", "up"), ("candidate", "verify")]
+    assert result["complete"] and result["unfinished"] == "down"
+    assert "This model's last stop did not complete; it finishes stopping on every Spark first." in capsys.readouterr().out
+
+
+def test_an_unfinished_preparation_repeats_without_a_stop(tmp_path, capsys):
+    events = []
+    result = rollout.execute(tmp_path / "candidate", None, state_root=tmp_path, **recorded(events),
+                             unfinished=lambda directory: "prepare")
+    assert events == ["prepare", ("candidate", "up"), ("candidate", "verify")]
+    assert result["complete"] and "unfinished" not in result
+    assert "did not complete" not in capsys.readouterr().out
+
+
+def test_a_refused_stop_of_the_unfinished_candidate_prepares_nothing_and_keeps_the_active_model(tmp_path):
+    before, candidate = tmp_path / "old", tmp_path / "candidate"
+    node.save(tmp_path, "active.json", {"path": str(before)})
+    events = []
+
+    def apply(directory, action):
+        events.append((directory.name, action))
+        raise ValueError("stop:spark1: prior outcome is uncertain; inspect host state before creating a recovery plan")
+    with pytest.raises(ValueError, match="prior outcome is uncertain"):
+        rollout.execute(candidate, before, state_root=tmp_path, prepare=lambda directory: events.append("prepare"),
+                        apply=apply, verify=lambda directory: {}, unfinished=lambda directory: "down")
+    assert events == [("candidate", "down")]
+    journal = installer.read(tmp_path / "transaction.json")
+    assert journal["state"] == "preparation-failed" and journal["unfinished"] == "down"
+    assert rollout.active(tmp_path) == before
+
+
 def test_a_restart_that_fails_leaves_no_other_model_to_recover(tmp_path):
     current = tmp_path / "current"
     node.save(tmp_path, "active.json", {"path": str(current)})

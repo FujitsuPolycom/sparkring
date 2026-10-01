@@ -182,6 +182,15 @@ starts:
   resumes the switch. Another profile or checkpoint replaces it instead: after
   the GPU check, the installer stops the unfinished model through its own
   deployment and switches from the last model that served.
+- **Selected model's last start did not complete**, for example when a first
+  installation failed its readiness check or a restart of the installed model
+  failed: the same command first stops that model on every Spark, then
+  prepares and starts it again. The stop checks ownership labels and stops
+  only that model's containers, so another model that serves keeps serving
+  until the switch. A stop of the selected model that did not complete
+  finishes first; a stop action whose outcome is uncertain, for example one
+  that timed out, stops the command before any preparation until its receipt
+  and the Spark are inspected.
 - **A file missing from, or changed in, SparkRing's own checkpoint
   directory:** the run copies it from another Spark or downloads it again.
   A copy you named with `--model-path` and that SparkRing serves in place is

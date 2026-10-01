@@ -4,13 +4,26 @@ from pathlib import Path
 from runtime.common import installer
 from runtime.host import node
 
+# What the candidate's stop before preparation tells the operator, by the unfinished operation it clears.
+UNFINISHED = {"up": "This model's last start did not complete; it stops on every Spark first.",
+              "down": "This model's last stop did not complete; it finishes stopping on every Spark first."}
 
-def execute(directory, previous, *, state_root, prepare, apply, verify, supersede=False, serving=None):
+
+def execute(directory, previous, *, state_root, prepare, apply, verify, supersede=False, serving=None,
+            unfinished=None):
     """All mutations pass through deployment adapters; the active pointer commits last.
 
     When the candidate is the active deployment, ``serving(directory)`` tells
     whether it serves on every rank; one that does not stops before it starts
     again.
+
+    ``unfinished(directory)`` names the candidate's own last operation when it
+    did not complete (``installer.unfinished``). A deployment whose start or
+    stop did not complete accepts no preparation until it stops, so such a
+    candidate stops through its own deployment before preparation: the stop
+    checks ownership labels, stops only that deployment's containers and
+    refuses to repeat a stop action whose outcome is uncertain. The
+    transaction records the operation as ``unfinished``.
     """
     directory = Path(directory).resolve()
     previous = Path(previous).resolve() if previous else None
@@ -50,11 +63,20 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
     def save(state):
         record["state"] = state
         node.save(state_root, "transaction.json", record, mode=0o600)
-    # No prior deployment is stopped if prerequisites, transfer, space or asset
+    # No other deployment is stopped if prerequisites, transfer, space or asset
     # verification fail. The existing active pointer remains authoritative.
+    # Only a candidate whose own start or stop did not complete stops before
+    # preparation, also when it is the active deployment.
+    stopped = False
     if not resume:
         save("preparing")
         try:
+            left = unfinished(directory) if unfinished is not None else None
+            if left in UNFINISHED:
+                print(UNFINISHED[left])
+                record["unfinished"] = left
+                apply(directory, "down")
+                stopped = True
             prepare(directory)
         except Exception as error:
             record["error"] = str(error)
@@ -66,7 +88,7 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
             save("stopping-previous")
             switched = True
             apply(previous, "down")
-        elif previous == directory and serving is not None and not serving(directory):
+        elif previous == directory and not stopped and serving is not None and not serving(directory):
             print("The installed model does not serve on every Spark; it stops on every Spark and starts again.")
             save("stopping-previous")
             apply(directory, "down")

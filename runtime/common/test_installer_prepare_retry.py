@@ -1,4 +1,4 @@
-"""Repeating an incomplete asset preparation, without hosts."""
+"""Repeating an incomplete asset preparation, and preparing after an incomplete start, without hosts."""
 import hashlib
 
 import pytest
@@ -39,7 +39,27 @@ def test_complete_preparation_is_rechecked_in_its_own_generation(directory):
 def test_incomplete_preparation_still_blocks_a_start(directory):
     with pytest.raises(RuntimeError):
         installer.apply(directory, "prepare", runner=Hosts(("image", 0)), execute=True)
+    assert installer.unfinished(directory) == "prepare"
     start = Hosts()
     with pytest.raises(ValueError, match="incomplete or uncertain"):
         installer.apply(directory, "up", runner=start, execute=True)
     assert start.events == []
+
+
+def test_an_incomplete_start_blocks_preparation_until_a_stop_completes(directory):
+    assert installer.unfinished(directory) is None
+    with pytest.raises(RuntimeError):
+        installer.apply(directory, "up", runner=Hosts(("ready", 0)), execute=True)
+    assert installer.unfinished(directory) == "up"
+    prepare = Hosts()
+    with pytest.raises(ValueError, match="incomplete or uncertain"):
+        installer.apply(directory, "prepare", runner=prepare, execute=True)
+    assert prepare.events == []
+    # A stop whose ownership check failed on one Spark resumes and completes.
+    with pytest.raises(RuntimeError):
+        installer.apply(directory, "down", runner=Hosts(("owned", 1)), execute=True)
+    assert installer.unfinished(directory) == "down"
+    assert installer.apply(directory, "down", runner=Hosts(), execute=True)["complete"]
+    assert installer.unfinished(directory) is None
+    assert installer.apply(directory, "prepare", runner=Hosts(), execute=True)["complete"]
+    assert installer.apply(directory, "up", runner=Hosts(), execute=True)["complete"]

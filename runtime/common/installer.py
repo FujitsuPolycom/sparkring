@@ -567,6 +567,20 @@ def apply(directory, action, *, runner, execute=False):
         return {"executed": True, **state, **connection(lock)}
 
 
+def unfinished(directory):
+    """The deployment's last operation (``prepare``, ``up`` or ``down``) when it did not complete, else None.
+
+    After such an operation ``apply`` accepts ``down`` and the same operation
+    again: a preparation repeats as a new generation, and a start or stop
+    resumes its receipt, whose uncertain actions it refuses.
+    """
+    path = Path(directory) / "state.json"
+    if not path.exists():
+        return None
+    state = read(path)
+    return None if state["complete"] else state["operation"]
+
+
 def identity(lock):
     """The checkpoint and image release that a deployment lock selects."""
     card = lock["selection"]
