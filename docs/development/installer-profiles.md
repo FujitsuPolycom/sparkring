@@ -125,6 +125,7 @@ cache and context window).
 | `arguments` | Optional: new values for vLLM options that `vllm_args` already sets, such as `--quantization`, `--load-format`, `--kv-cache-memory-bytes` and `--max-model-len`; no option is added |
 | `environment` | Optional: new values for variables that `environment` already sets |
 | `speculative` | Optional: keys to change or add in `--speculative-config` |
+| `derived` | Optional: `{"base": NAME, "donor": NAME}` naming two other entries, for a checkpoint that the installer derives on the Sparks (below); its `model` then names the derived checkpoint |
 
 `checkpoint_aliases` optionally maps more names to listed ones. A checkpoint
 entry needs its pin manifest (steps 1–2 below), from which storage planning
@@ -136,6 +137,24 @@ in `scripts/test_pin_checkpoint.py`, add render assertions for its settings to
 with its size in the Downloads table. Without `--checkpoint`, the profile
 installs its default checkpoint with unchanged settings; each other name is a
 separate deployment.
+
+A derived entry describes a checkpoint that no repository publishes: the
+installer acquires its base like any checkpoint, then writes the derived
+files on the Sparks with a recipe module below `runtime/` and serves them from
+their own checkpoint directory ([derived checkpoints](../operations/install-reference.md#derived-checkpoints)).
+Its `model` names a `sparkring-derived/<name>` repository, a revision that is
+`runtime.common.derived_checkpoint.identity` of the base, the donor's files
+and the recipe's SHA-256, and the derived `config.json` and index. Its
+manifest, `profiles/checkpoints/sparkring-derived--<name>/<revision>.json`
+(`sparkring-derived-checkpoint/v1`), pins the size and SHA-256 of every
+derived file; files kept from the base must equal the base's pins, and
+`derivation.json` must equal the record the manifest implies
+(`derived_checkpoint.check` names every difference, with the expected
+revision and record). Any change to the recipe file therefore gives the entry
+another revision, manifest name and `model`. Register a derived entry in
+`DERIVED` in `scripts/test_pin_checkpoint.py`, cover it in
+`runtime/common/test_derived_checkpoint.py`, and list it with its storage
+figures in the install reference.
 
 ## Invariants the tests enforce
 
