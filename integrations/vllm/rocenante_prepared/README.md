@@ -112,7 +112,10 @@ Each rank's worker writes these lines to standard error, prefixed with
 
 ## GID index per port
 
-Status: **implemented**; not run on GB10 hardware.
+Status: **implemented**. On two Sparks after a neighbor restart moved one
+Spark's addresses to index 4, the transport probe passed every case on indices
+4 and 3 without the installer's index-3 repair
+([record](../../../performance/records/transport/rocenante-port-gid-neighbor-restart-20261001.md)).
 
 Each HCA uses its own RoCE GID index. At construction the runtime reads each
 device's GID table under `/sys/class/infiniband/DEVICE/ports/1` and selects
