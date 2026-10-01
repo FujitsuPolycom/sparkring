@@ -1,0 +1,65 @@
+{
+  "checks": [
+    {
+      "name": "count",
+      "status": "PASS",
+      "detail": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
+    },
+    {
+      "name": "arithmetic",
+      "status": "PASS",
+      "detail": "391"
+    },
+    {
+      "name": "code",
+      "status": "PASS",
+      "detail": "```python\ndef is_prime(n):\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n    "
+    },
+    {
+      "name": "tool call",
+      "status": "PASS",
+      "detail": [
+        {
+          "id": "chatcmpl-tool-8552000cc94a0bca",
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "arguments": "{\"city\": \"Paris\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "forced tool call",
+      "status": "PASS",
+      "detail": [
+        {
+          "id": "chatcmpl-tool-8cee1aedc4c1ce52",
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "arguments": "{\"city\": \"Rome\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "image",
+      "status": "PASS",
+      "detail": "Left half: Red  \nRight half: Blue"
+    },
+    {
+      "name": "thinking on",
+      "status": "PASS",
+      "detail": {
+        "reasoning_chars": 121,
+        "content": "\n\n391"
+      }
+    }
+  ],
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "ok": true,
+  "complete": true
+}
