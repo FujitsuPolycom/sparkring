@@ -24,6 +24,15 @@ builder for every release that has an `installer-image.json` lock.
 | `dev-20261001-statusrows-cuda1342-nccl2323-status034` | `dev-20261001-portgid-cuda1342-nccl2323-status033` | Runtime-status 0.3.4, whose settings tables add the reasoning parser, tool-call parser, default chat template arguments and shared-memory reader window | `installer-derived-layer`, [derived_layer.py](derived_layer.py) with descriptor [installer-statusrows-status034](compositions/installer-statusrows-status034/descriptor.json) |
 
 Each release's `publication.json` names its parent and describes its layer.
+The install plan follows `derivation.parent_release` and
+`derivation.parent_image_id` from the selected lock (`lineage` in
+[install_space.py](../host/install_space.py)): a Spark holding any image of
+that chain lacks only the layers added after it, and the plan counts them from
+the difference of the two locks' `image_bytes` and `download_bytes`
+([storage](../../docs/operations/install-reference.md#downloads-storage-and-outbound-hosts)).
+The plan relies on each derived image keeping its parent's layers unchanged
+and adding its own on top, as `docker build` on the parent image produces
+them.
 [cuda134-nccl232.md](cuda134-nccl232.md) documents the toolchain layer and the
 inputs recorded for `dev-20260924`.
 

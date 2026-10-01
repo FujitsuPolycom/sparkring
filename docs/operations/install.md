@@ -18,8 +18,9 @@ Run it on Node A, the Spark connected to your network.
   `raw.githubusercontent.com`, `ghcr.io`, `huggingface.co` and your Ubuntu
   mirror. Workers need no network cable.
 - Free disk on each Spark that has neither the image nor the model: about
-  207 GiB for Qwen, 278 GiB for MiMo, 280 GiB for GLM, 282 GiB for Swift or
-  670 GiB for DeepSeek, plus 14.2 GiB on Node A.
+  163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift or
+  626 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
+  of an earlier `sparkring install` needs about 47 GiB less.
 
 ![Back of a DGX Spark: p0 is the QSFP port next to the 10GbE port](assets/spark-rear-ports.svg)
 

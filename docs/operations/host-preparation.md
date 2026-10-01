@@ -147,17 +147,23 @@ For GLM QAD, add `--variant nvfp4-qad`. **Pass:** every listed filesystem
 prints `PASS`. The check adds up allocations that share a filesystem and uses
 the nearest existing directory for paths not yet created. It writes nothing.
 
-| Allowance per rank | GLM | Qwen |
-|---|---:|---:|
-| Checkpoint | 200 GiB | 120 GiB |
-| Image | 68 GiB | 68 GiB |
-| Cache and JIT | 32 GiB | 32 GiB |
-| All on one filesystem | 300 GiB | 220 GiB |
+| Free space per rank | GLM | GLM QAD | Qwen |
+|---|---:|---:|---:|
+| Checkpoint | 179.5 GiB | 190.7 GiB | 106.6 GiB |
+| Image | 68 GiB | 68 GiB | 68 GiB |
+| Compile cache | 4 GiB | 4 GiB | 4 GiB |
+| All on one filesystem | 251.5 GiB | 262.7 GiB | 178.6 GiB |
 
-These are conservative planning budgets from
-[storage-planning.json](../../profiles/storage-planning.json), not measured
-minimums. `--reuse-model` (an existing, nonempty model directory) and
-`--reuse-image` drop those allowances; they do not verify the assets. Also allow
+The checkpoint figure is every pinned file of the revision plus its largest
+file again as headroom, from the pin manifest in `profiles/checkpoints/`; a
+revision without one gets the checkpoint allowance of
+[storage-planning.json](../../profiles/storage-planning.json). The image figure
+is that file's image allowance, because these selections record no image
+sizes, and the compile cache figure its compile cache allowance, whose
+evidence the [install reference](install-reference.md#downloads-storage-and-outbound-hosts)
+states.
+`--reuse-model` (an existing, nonempty model directory) and `--reuse-image`
+drop the checkpoint and image figures; they do not verify the assets. Also allow
 for a separate containerd content store, quotas, image archives and concurrent
 downloads.
 
