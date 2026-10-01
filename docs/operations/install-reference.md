@@ -654,7 +654,7 @@ below it name each Spark's container, exit code and time:
 |---|---|---|
 | `The model is not running on any Spark` | Every rank's container stopped, for example after the Sparks restarted | `sudo sparkring up --execute` |
 | `The model runs on rank 0 (…) but stopped on rank 1 (…)` | The Sparks that stayed up keep a model that waits for the others | `sudo sparkring down --execute`, then `sudo sparkring up --execute` |
-| `The model's containers run, but its API fails` | Rank 0's `/health` does not answer 200 | the same |
+| `The model's containers run, but its API fails` | Rank 0's `/health` answers 503 (the engine stopped), or neither `/health` nor `/v1/models` answers | the same |
 | `rank N (…) restarted after the model started` | The Spark's boot ID changed since the model started | the same |
 | `The mesh service failed on …` | A four-Spark mesh service failed; its last log line follows | `sudo sparkring up --execute` |
 | `SparkRing cannot reach rank N (…)` | The Spark does not answer | Power it on, or reconnect the [admin tunnel](#admin-tunnel) cable that the line names |
@@ -682,26 +682,44 @@ table names. It acts only when all of these hold:
 - No `install`, `setup`, `up`, `down` or `hairpin` is running.
 - Every Spark answers. While one does not, it only waits, and `status` names
   the Spark it waits for.
-- Two checks in a row found the model not serving.
+- Two checks in a row found the model not serving. An API that gives no
+  answer at all, rather than a 503, must stay silent for 5 minutes.
 - On four Sparks: every Spark reports its mesh services, the
   [hairpin setting](#four-spark-rings) is in effect, and no mesh forwarding
   process runs without its service ([below](#mesh-forwarding-without-its-service)).
 
-After a failed attempt it waits 2 minutes, then 5 minutes. After 3 failed
-attempts in a row it stops until `sudo sparkring up --execute`,
-`sudo sparkring install` or `sudo sparkring recover on`. Attempts are logged
-to `/var/log/sparkring/install.log` (`sudo sparkring logs`), and `status`
-shows the last attempt and the next.
+Before it acts it takes the install lock and checks everything again, so a
+`recover off`, another command or a model that came back in the meantime
+stops it.
+
+After a failed attempt it waits 2 minutes, then 5, then 15. After 4 failed
+attempts in a row, about 25 minutes of trying, it stops. It also stops,
+instead of restarting a fourth time, when it has already restarted the model
+3 times within 6 hours: a model that keeps stopping has a cause a restart
+does not fix. Either way `status` says why, and it resumes after
+`sudo sparkring up --execute`, `sudo sparkring install` or
+`sudo sparkring recover on`. Attempts are logged to
+`/var/log/sparkring/install.log` (`sudo sparkring logs`), and `status` shows
+the last attempt and the next.
 
 - Turn it off for the active model: `sudo sparkring recover off`; on again:
-  `sudo sparkring recover on`.
+  `sudo sparkring recover on`. `sparkring up` keeps that choice.
 - Install a model without it:
-  `sudo sparkring install --profile PROFILE --no-auto-recover`.
+  `sudo sparkring install --profile PROFILE --no-auto-recover`. Each
+  `install` sets the choice again: on unless you pass the flag.
 - Stop the model and keep it stopped: `sudo sparkring down --execute`.
 
+After a package upgrade, a model started by an earlier package is checked
+once its timer runs: the next `sudo sparkring up --execute`,
+`sudo sparkring install` or `sudo sparkring recover on` enables it. Until
+then `status` says `sparkring-recover.timer is not enabled`. Installing the
+package never enables the timer, so it never restarts a model by itself.
+
 It covers deployments that `sparkring install` and `sparkring up` start with
-Compose. Managed GLM deployments are reported but not restarted. Its record
-is `/var/lib/sparkring/recovery.json`.
+Compose. For managed GLM deployments `status` says recovery is not
+available. Its record is `/var/lib/sparkring/recovery.json`; an unreadable
+record is moved aside to `recovery.json.unreadable-*` and recovery starts
+again from empty records.
 
 ### Mesh forwarding without its service
 

@@ -167,6 +167,9 @@ Automatic recovery: on
 
 A profile with one checkpoint shows only `REPOSITORY @ REVISION`. The
 recovery lines add the Spark it waits for, its last attempt and the next.
+After `sparkring down` they read `on; idle until the next sudo sparkring up
+--execute or sudo sparkring install`, and a deployment that recovery does not
+restart, such as managed GLM, reads `not available`.
 
 With `--refresh`, a line per model container follows the saved model. When
 the model does not serve, the first line says why and gives the command that
@@ -277,8 +280,8 @@ deployment that was active when they printed their steps; when a
 and ask for a new review. Repeating `up` re-checks a running deployment
 and starts one whose containers stopped on every Spark, for example after a
 restart ([when a model stops serving](install-reference.md#when-a-model-stops-serving)).
-A completed `up` also turns [automatic recovery](#recover) back on after
-failed attempts; after `down` the model stays stopped.
+A completed `up` clears [automatic recovery's](#recover) failed attempts and
+keeps its on or off choice; after `down` the model stays stopped.
 `sparkring install` names its deployments
 with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under
@@ -306,13 +309,15 @@ of the active model when a Spark stops serving
 |---|---|
 | `sudo sparkring recover` | Show whether it is on, the Spark it waits for, the last attempt and the next |
 | `sudo sparkring recover off` | Stop restarting the active model by itself |
-| `sudo sparkring recover on` | Restart it by itself again; clears failed attempts |
+| `sudo sparkring recover on` | Restart it by itself again; clears failed attempts and the restart count |
 | `--json` | Print one JSON document |
 
-`sparkring install` and `sparkring up` turn it on for the model they start,
-unless `install` had `--no-auto-recover`. To stop the model and keep it
-stopped, use `sudo sparkring down --execute`. `sparkring-recover.timer` runs
-`sparkring recover --auto` once a minute; you do not run it by hand.
+Each `sparkring install` sets the choice for the model it installs: on, or
+off with `--no-auto-recover`, also after `recover off`. `sparkring up` keeps
+the deployment's choice; a deployment without one starts with recovery on.
+To stop the model and keep it stopped, use `sudo sparkring down --execute`.
+`sparkring-recover.timer` runs `sparkring recover --auto` once a minute; you
+do not run it by hand.
 
 ## node
 
