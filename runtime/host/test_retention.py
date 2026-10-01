@@ -12,6 +12,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 import time
 from types import SimpleNamespace
@@ -19,7 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 from runtime.common import installer
-from runtime.host import controller, retention, settings, storage
+from runtime.host import checkpoints, controller, retention, settings, storage
 from runtime.host import test_storage as fake
 from runtime.host.test_checkpoints import REVISION, adopt, tree_state, write_json
 from runtime.host.test_storage import (CLUSTER, COMPILE_CACHE, DEV_IMAGE, HOSTS, INSTALLED_CACHE, LEFTOVER_CACHE, LIST,
@@ -29,7 +30,7 @@ from runtime.host.test_storage import (CLUSTER, COMPILE_CACHE, DEV_IMAGE, HOSTS,
 spark, host_records, administrator = fake.spark, fake.host_records, fake.administrator
 PROFILE = "qwen38-flash-next-tp2"
 OTHER = "mimo-v26-flash-mopd-tp2"
-# The package revision of the older deployments that ring() releases; the others use "1" * 40.
+# The package revision of OLD, which ring() releases completely; the other deployments use "1" * 40.
 OLD_REVISION = "2" * 40
 DOWN = {"generation": 3, "operation": "down", "complete": True}
 
@@ -106,7 +107,8 @@ def test_the_policy_keeps_each_protected_deployment_and_releases_the_others():
     decided = retention.plan(records, role, nodes, 2)
     assert kept(decided) == {
         "active-aaaaaaaaaaaa": ["active", "started", "recent"], "rollback-bbbbbbbbbbbb": ["rollback", "recent"],
-        "switching-cccccccccccc": ["switching"], "running-dddddddddddd": ["running"], "mesh-eeeeeeeeeeee": ["mesh"],
+        "switching-cccccccccccc": ["switching", "prepared"], "running-dddddddddddd": ["running"],
+        "mesh-eeeeeeeeeeee": ["mesh"],
         "unfinished-ffffffffffff": ["unfinished"], "unreadable-111111111111": ["unfinished"],
         "started-222222222222": ["started"], "managed-333333333333": ["backend"],
         "other-777777777777": ["recent"], "other-888888888888": ["recent"]}
@@ -201,6 +203,8 @@ def test_the_summary_names_what_was_released():
     assert retention.summary({**base, "sources": ["2" * 40], "freed_bytes": 80 * 10 ** 6}) == [
         "Released Node A's checkouts of 1 older SparkRing source: 80.0 MB"]
     assert retention.summary(base) == []
+    assert [retention.reason_text("recent", retain) for retain in (1, 3)] == [
+        "most recent of its profile", "3 most recent of its profile"]
     errors = [f"Node 1 spark-931e: refusal {n}" for n in range(7)]
     assert retention.summary({**base, "released": ["d"], "freed_bytes": gib, "errors": errors}) == [
         "Released 1 older deployment's containers, workspaces and caches: 1.0 GiB",
@@ -304,7 +308,7 @@ def ring(tmp_path, spark):
         "rollback": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa3", age=30),
         "old": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa4", age=40, caches=[STALE_CACHE, COMPILE_CACHE],
                           revision=OLD_REVISION),
-        "older": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa5", age=50, models=True, revision=OLD_REVISION),
+        "older": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa5", age=50, models=True),
         "unfinished": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa6", operation="up", complete=False, age=60),
         "planned": deployment(state, spark, PROFILE + "-iaaaaaaaaaaa7", operation=None),
         "other": deployment(state, spark, OTHER + "-iaaaaaaaaaaa8", profile=OTHER, age=5000)}
@@ -327,12 +331,21 @@ def test_release_removes_older_deployments_containers_workspaces_and_caches_and_
     _, frees_old = fake.du(old)
     _, frees_stale = fake.du(spark.cache / STALE_CACHE, outside=[spark.srv / "image020/graph-copy.bin"])
     _, frees_leftover = fake.du(spark.cache / f".{LEFTOVER_CACHE}.sparkring-releasing")
-    # Node A's checkouts of deployment sources: only OLD and OLDER use OLD_REVISION's.
+    # Node A's checkouts of deployment sources: only OLD uses OLD_REVISION's, and a removal of another stopped
+    # after its rename.
     sources = state / retention.SOURCES
-    for name in (OLD_REVISION, "1" * 40, "notes"):
+    leftover = "." + "3" * 40 + ".removing"
+    for name in (OLD_REVISION, "1" * 40, "notes", leftover):
         fake.put(sources / name / "README.md", 5000)
-    _, frees_source = fake.du(sources / OLD_REVISION)
+    frees_source = fake.du(sources / OLD_REVISION)[1] + fake.du(sources / leftover)[1]
     checkpoint_before = tree_state(Path(spark.owned).parent)
+    # sparkring storage names what the next release removes.
+    view = storage.list_cluster(state, invoke)["retention"]
+    assert [entry["containers"] for entry in view["nodes"]] == [
+        [{"deployment": made[key][0], "name": made[key][1], "bytes": 400 * 10 ** 6} for key in ("old", "older")]]
+    assert [line for line in retention.describe(view) if "next install" in line] == [
+        "    The next install or up releases the containers, workspaces and caches of 2 older deployments: "
+        + storage._measured(view["frees_bytes"], view["complete"])]
     lines = []
     result = retention.release(state, invoke, 2, write=lines.append)
 
@@ -362,13 +375,21 @@ def test_release_removes_older_deployments_containers_workspaces_and_caches_and_
     assert {str(spark.cluster / names[key]) for key in ("active", "recent", "rollback", "unfinished")} <= set(
         request["in_use"])
     assert request["containers"] == [{"deployment": made[key][0], "name": made[key][1]} for key in ("old", "older")]
-    for key in ("old", "older"):
+    # OLDER keeps its workspace, so its release is not complete and the next release lists the Sparks again.
+    for key, complete in (("old", True), ("older", False)):
         record = installer.read(state / "deployments" / names[key] / retention.RELEASED_FILE)
-        assert record == {"schema": retention.RELEASED_SCHEMA, "generation": 3, "complete": True, "removed": True}
-
-    # The next release finds nothing pending and asks no Spark.
+        assert record == {"schema": retention.RELEASED_SCHEMA, "generation": 3, "complete": complete,
+                          "removed": True}
+    invoke.calls.clear()
+    assert retention.release(state, invoke, 2, write=lines.append)["state"] == "nothing"
+    assert [argv for argv, _ in invoke.calls] == [LIST]
+    # Once OLDER's workspace is gone too, the next release asks no Spark.
+    shutil.rmtree(older)
+    retention.release(state, invoke, 2, write=lines.append)
     invoke.calls.clear()
     assert retention.release(state, invoke, 2, write=lines.append)["state"] == "nothing" and invoke.calls == []
+    adopt(older / "models" / REVISION, spark.folder)
+    fake.workspace(older, made["older"][0])
 
     # sparkring storage shows what the policy keeps and why.
     assert storage.main([], state_root=state, invoke=invoke) == 0
@@ -382,7 +403,8 @@ def test_release_removes_older_deployments_containers_workspaces_and_caches_and_
         f"    kept  {names['recent']:<{width}}  2 most recent of its profile",
         f"    kept  {names['rollback']:<{width}}  rollback target",
         f"    kept  {names['unfinished']:<{width}}  last operation incomplete",
-        "    The 2 older deployments hold nothing on the Sparks."]
+        f"    1 older deployment keeps a workspace or container that automatic release leaves on the Sparks; the "
+        f"details above say why: {names['older']}"]
     assert printed[start + 7] == retention.setting_text(2)
 
 
@@ -454,6 +476,23 @@ def test_the_off_switch_and_a_preference_stop_automatic_release(tmp_path, spark,
     assert result["state"] == "failed" and tree_state(spark.srv) == before
     assert capsys.readouterr().out == (f"Older deployments were not released: Node 0 {HOSTS[0]} could not be listed: "
                                        "timed out; nothing was released. sudo sparkring storage lists what they hold.\n")
+    # A Spark whose Docker cannot be read lists no container, so a running one would look stopped.
+    monkeypatch.setattr(storage, "_survey", lambda *a, **k: [{
+        "rank": 0, "host": HOSTS[0], "hostname": "spark-aa42", "package_revision": checkpoints.package_revision(),
+        "items": [],
+        "model_containers": [], "docker": {"root": None, "images": [], "error": "permission denied"}}])
+    assert retention.after_operation(state, invoke, write=print)["state"] == "failed"
+    assert f"Docker on Node 0 {HOSTS[0]} could not be read: permission denied; nothing was released" in \
+        capsys.readouterr().out
+    # A Spark running another package lacks the batch release, and an earlier one lists no model containers.
+    for other in ({"package_revision": "b" * 40}, {"model_containers": None}):
+        monkeypatch.setattr(storage, "_survey", lambda *a, **k: [{
+            "rank": 0, "host": HOSTS[0], "hostname": "spark-aa42", "package_revision": checkpoints.package_revision(),
+            "items": [], "model_containers": [], "docker": {"root": None, "images": [], "error": None}, **other}])
+        assert retention.after_operation(state, invoke, write=print)["state"] == "failed"
+        assert "the Sparks do not all run Node A's SparkRing package revision; nothing was released" in \
+            capsys.readouterr().out
+    assert tree_state(spark.srv) == before
 
 
 def test_down_of_a_released_deployment_reports_it_instead_of_verifying_a_removed_workspace(tmp_path, monkeypatch,
@@ -472,6 +511,14 @@ def test_down_of_a_released_deployment_reports_it_instead_of_verifying_a_removed
     assert calls == [] and capsys.readouterr().out == (
         f"{directory.name} is stopped, and automatic release removed its containers and workspaces from the Sparks; "
         f"there is nothing to stop. sudo sparkring up {PROFILE} --instance iaaaaaaaaaaa4 starts it again.\n")
+    # A release that did not finish on every Spark still removed the workspace that the stop would read somewhere.
+    write_json(directory / retention.RELEASED_FILE, {"generation": 3, "complete": False, "removed": True})
+    assert controller.lifecycle(["down", PROFILE, "--instance", "iaaaaaaaaaaa4", "--execute"]) == 0
+    assert calls == [] and "removed its containers and workspaces from some Sparks, and sudo sparkring storage " \
+        "lists what stays; there is nothing to stop." in capsys.readouterr().out
+    # Only a completed down is released: a completed preparation resumes its receipt when it is repeated.
+    write_json(directory / "state.json", {**DOWN, "operation": "prepare"})
+    assert retention.release_record(directory) is None
     # Once another operation ran, the record no longer applies and down runs the deployment's own stop.
     write_json(directory / "state.json", {**DOWN, "generation": 4})
     monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
@@ -516,3 +563,35 @@ def test_node_routes_a_batch_release(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request)))
     assert sparkring_node.main(["storage", "--release-batch", "--release", "/srv/sparkring/tp4/cache/x"]) == 2
     assert "Give --release PATH or --release-batch, not both" in capsys.readouterr().err
+
+
+def test_model_containers_carry_writable_layer_sizes_when_docker_answers_in_time():
+    import subprocess
+    stopped, running = model_container("sr-tp4-a-r0", "a" * 64), model_container("sr-tp4-b-r0", "b" * 64, running=True)
+    unlabeled = fake.container("scratch", running=False)
+
+    def run(argv, **kwargs):
+        assert argv[-2:] == ["--size", stopped["Id"]] and kwargs["timeout"] == storage.SIZE_SECONDS
+        return SimpleNamespace(returncode=0, stdout=json.dumps([{"Id": stopped["Id"], "SizeRw": 5}]), stderr="")
+    listed = storage.model_containers([running, unlabeled, stopped], run=run, sizes=True)
+    assert [(entry["name"], entry["deployment"], entry["running"], entry["bytes"]) for entry in listed] == [
+        ("sr-tp4-a-r0", "a" * 64, False, 5), ("sr-tp4-b-r0", "b" * 64, True, None)]
+
+    def slow(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+    assert storage.model_containers([stopped], run=slow, sizes=True)[0]["bytes"] is None
+    assert storage.model_containers([stopped], run=lambda *a, **k: pytest.fail("sizes"), sizes=False)[0]["bytes"] is None
+
+
+@linux
+def test_a_remainder_is_released_without_the_directory_now_at_its_path(spark):
+    path = spark.cache / LEFTOVER_CACHE
+    hidden = spark.cache / f".{LEFTOVER_CACHE}.sparkring-releasing"
+    fake.put(path / "vllm/graph.bin", 3000)
+    answer = storage.release_batch_local({"cluster": CLUSTER, "remainders": [str(path)]}, root=spark.root,
+                                         run=Docker(), table=[])
+    assert answer == {"containers": [], "paths": [{"path": str(path), "state": "released", "kind": "releasing",
+                                                   "freed_bytes": answer["paths"][0]["freed_bytes"]}]}
+    assert not hidden.exists() and (path / "vllm/graph.bin").is_file()
+    assert storage.release_batch_local({"cluster": CLUSTER, "remainders": [str(path)]}, root=spark.root,
+                                       run=Docker(), table=[])["paths"][0]["state"] == "absent"

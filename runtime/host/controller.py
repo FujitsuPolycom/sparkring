@@ -571,11 +571,15 @@ def lifecycle(argv):
         raise ValueError(f"No model deployment is active. To {args.operation} one, name its profile"
                          " and, for a deployment other than main, its --instance.")
     from runtime.host import retention
-    if args.operation == "down" and retention.release_record(directory):
+    released = retention.release_record(directory) if args.operation == "down" else None
+    if released:
         # Its stop would verify the containers through the workspace's source
-        # checkout, which automatic release removed with the containers.
-        message = (f"{directory.name} is stopped, and automatic release removed its containers and workspaces from "
-                   "the Sparks; there is nothing to stop. sudo sparkring up " + _up_arguments(directory)
+        # checkout, which automatic release removed with the containers, also
+        # where the release did not finish on every Spark.
+        where = ("from the Sparks" if released.get("complete") else
+                 "from some Sparks, and sudo sparkring storage lists what stays")
+        message = (f"{directory.name} is stopped, and automatic release removed its containers and workspaces "
+                   f"{where}; there is nothing to stop. sudo sparkring up " + _up_arguments(directory)
                    + " starts it again.")
         print(json.dumps({"operation": "down", "complete": True, "released": True, "message": message}, indent=2)
               if args.json else message)

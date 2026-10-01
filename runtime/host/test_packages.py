@@ -126,3 +126,20 @@ def test_a_worker_bundle_and_each_workers_copy_are_removed_after_the_update(tmp_
 def test_only_a_bundle_staging_directory_in_var_tmp_is_discarded(path):
     with pytest.raises(ValueError, match="Invalid bootstrap staging directory"):
         packages.discard_staging(path)
+
+
+def test_a_bundle_whose_build_failed_leaves_nothing_on_node_a(tmp_path, monkeypatch):
+    from runtime.host import install_assets
+    from runtime.host.test_install_assets import Transport
+    monkeypatch.setattr(install_assets.distribution, "identity", lambda root: "a" * 40)
+
+    def build(directory, key):
+        directory.mkdir()
+        (directory / "partial.deb").write_bytes(b"part")
+        raise subprocess.CalledProcessError(100, ["apt-get", "download"])
+    monkeypatch.setattr(packages, "build", build)
+    current = install_assets.Assets(Transport(), tmp_path)
+    monkeypatch.setattr(current, "remote", lambda rank, function, *args: "b" * 40)
+    with pytest.raises(subprocess.CalledProcessError):
+        current.sync_packages()
+    assert not list(tmp_path.glob("worker-*"))

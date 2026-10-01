@@ -160,8 +160,10 @@ class Assets:
         if not outdated:
             return {"updated": [], "revision": current}
         # Existing enrolled access is retained; this bundle does not invoke seed.
-        archive = packages.build(self.directory / ("worker-" + str(time.time_ns())), "")
+        bundle = self.directory / ("worker-" + str(time.time_ns()))
+        archive = bundle.with_suffix(".tar")
         try:
+            packages.build(bundle, "")
             for rank in outdated:
                 target = "/var/tmp/sparkring-enroll-update-" + current[:12] + "-" + str(time.time_ns())
                 with progress.step(f"Node {rank}: Update SparkRing from Node A's package"):

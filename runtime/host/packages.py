@@ -190,10 +190,15 @@ def discard(archive):
     """Remove a bundle that ``build`` made, its directory and its archive, once its installations are done.
 
     Every worker update builds its own bundle, so nothing reads one afterwards.
+    A bundle that cannot be removed stays; the update's outcome does not depend
+    on it.
     """
     import shutil
     archive = Path(archive)
-    archive.unlink(missing_ok=True)
+    try:
+        archive.unlink(missing_ok=True)
+    except OSError:
+        pass
     shutil.rmtree(archive.with_suffix(""), ignore_errors=True)
 
 

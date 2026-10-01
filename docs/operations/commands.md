@@ -286,18 +286,19 @@ stopped model container and its compile caches on every Spark. After each
 - a deployment whose model container runs, or whose workspace a mesh
   installed on a Spark uses;
 - a deployment whose last operation did not complete, or that was started and
-  not stopped;
+  not stopped, or prepared and not started;
 - the 2 most recent deployments of each profile (`--retain-deployments`).
 
-For the other deployments it removes, on each Spark, their stopped model
-containers and workspaces, and compile caches that no kept deployment and no
-installer profile of the installed package uses. It prints one line, for
-example `Released 7 older deployments' containers, workspaces and caches:
-9.8 GiB`. Each Spark checks every container, workspace and cache again as
-`--release` does. Checkpoint directories, images and the deployments' records
-on Node A stay, so `sudo sparkring up PROFILE --instance i<hash>` starts a
-released deployment again: it copies its source and creates its container
-again, and compiles kernels whose cache was removed.
+For the other deployments, which `down` stopped last, it removes on each
+Spark their stopped model containers and workspaces, and compile caches that
+no kept deployment and no installer profile of the installed package uses. It
+prints one line, for example `Released 7 older deployments' containers,
+workspaces and caches: 9.8 GiB`. Each Spark checks every container, workspace
+and cache again as `--release` does. Checkpoint directories, images and the
+deployments' records on Node A stay, so
+`sudo sparkring up PROFILE --instance i<hash>` starts a released deployment
+again once the running model is stopped: it copies its source and creates its
+container again, and compiles kernels whose cache was removed.
 `sudo sparkring down` of a released deployment says that it is stopped.
 
 `sudo sparkring storage --retain-deployments off` turns it off;

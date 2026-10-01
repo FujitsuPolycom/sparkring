@@ -27,6 +27,8 @@ A deployment is kept while any of these holds (``REASONS``):
   state cannot be read; it may need recovery through its own receipts.
 - ``started``: its last operation is a completed ``up``. It was started and not
   stopped since, and a stop or a repeated ``up`` reads its workspace.
+- ``prepared``: its last operation is a completed preparation. A repeated
+  preparation resumes that receipt, which verifies the workspace's source.
 - ``backend``: a managed GLM backend, whose own services own its containers.
 - ``recent``: it is one of the ``retain`` most recent deployments of its
   profile that ran an operation, by the time of their last operation
@@ -37,7 +39,8 @@ A deployment is kept while any of these holds (``REASONS``):
 
 Released
 --------
-For every other deployment that ran an operation, on each Spark:
+For every other deployment whose last operation is a completed ``down``, on
+each Spark:
 
 - its stopped model containers (``sr-<site>-r<rank>``, labelled with its lock
   ID); the ``create`` phase of its next ``up`` creates them again;
@@ -55,8 +58,10 @@ On Node A it removes the checkout of a source revision in
 released (``_discard_sources``); ``retained_source.checkout`` clones it again
 from the deployment's ``source.bundle`` when an operation needs it.
 
-Each Spark checks again before it removes anything
-(``storage.release_batch_local``): a container must be stopped, carry the
+Nothing is removed while a Spark cannot be listed, its Docker cannot be read
+or it runs another package revision than Node A. Each Spark checks again
+before it removes anything (``storage.release_batch_local``): a container
+must be stopped, carry the
 deployment's label and not be the container that an installed mesh starts, and
 each workspace and cache passes ``storage.release_local`` with the paths that
 the kept deployments name there, so the installed-mesh, model-file, mount-point
@@ -66,11 +71,12 @@ Checkpoint directories, Docker images, the deployment directories on Node A
 create are never released.
 
 A released deployment's directory on Node A records the release in
-``released.json`` with the deployment's state generation (``release_record``).
-While that state stands, ``sparkring down`` of the deployment reports that it
-is stopped instead of verifying its containers through a workspace that is
-gone, and later releases skip it. The next operation of the deployment starts
-a new generation, so the record no longer applies.
+``released.json`` with the deployment's state generation and whether nothing
+of it stayed (``release_record``). While that state stands, ``sparkring
+down`` of the deployment reports that it is stopped instead of verifying its
+containers through a workspace that is gone, and later releases skip it once
+nothing of it stays. The next operation of the deployment starts a new
+generation, so the record no longer applies.
 
 Setting
 -------
@@ -100,15 +106,16 @@ BATCH = ["sudo", "-n", "/usr/bin/sparkring", "node", "storage", "--release-batch
 # Node A's checkouts of deployment sources (retained_source.checkout), one directory per source revision.
 SOURCES = "retained-sources"
 REVISION = re.compile(r"[0-9a-f]{40}")
+# A checkout being removed is first renamed to this name, so that no operation finds a partial one.
+REMOVING = re.compile(r"\.([0-9a-f]{40})\.removing")
 # Seconds that one Spark may take for its removals.
 BATCH_TIMEOUT = 3600
 # Why a deployment is kept, in the order the report lists them; ``recent`` names the setting's number.
 REASONS = {"active": "active", "rollback": "rollback target", "switching": "unfinished model switch",
            "running": "model container running", "mesh": "holds an installed mesh's files",
            "unfinished": "last operation incomplete", "started": "started and not stopped",
-           "backend": "managed GLM services", "recent": "{retain} most recent of its profile"}
-# Last operations after which a deployment runs no container: the state a release record applies to.
-STOPPED = ("down", "prepare")
+           "prepared": "prepared and not started", "backend": "managed GLM services",
+           "recent": "{retain} most recent of its profile"}
 # Refusals listed after the summary line; the report names the rest.
 SHOWN_ERRORS = 5
 
@@ -179,9 +186,11 @@ def _state(directory):
 def release_record(directory, state=None):
     """``released.json`` of ``directory`` while it applies to the deployment's state, else ``None``.
 
-    It applies while the state is the completed ``down`` or ``prepare`` of the
-    generation it records, so the deployment runs no container and no later
-    operation created its workspace again.
+    It applies while the state is the completed ``down`` of the generation it
+    records, so the deployment runs no container and no later operation
+    created its workspace again. Only a deployment stopped by ``down`` is
+    released: its next ``up`` or preparation starts a new generation, which
+    runs every phase, the ``source`` phase included.
     """
     state = _state(directory)[0] if state is None else state
     try:
@@ -189,7 +198,7 @@ def release_record(directory, state=None):
     except (OSError, ValueError):
         return None
     if (isinstance(record, dict) and isinstance(state, dict) and state.get("complete") is True
-            and state.get("operation") in STOPPED and type(record.get("generation")) is int
+            and state.get("operation") == "down" and type(record.get("generation")) is int
             and record["generation"] == state.get("generation")):
         return record
     return None
@@ -240,6 +249,9 @@ def _reasons(records, role, nodes, retain):
                 found[record["name"]].add("unfinished")
             elif state.get("operation") == "up":
                 found[record["name"]].add("started")
+            elif state.get("operation") != "down":
+                # A repeated preparation resumes its receipt, which verifies the workspace's source.
+                found[record["name"]].add("prepared")
         if record["backend"] != "compose":
             found[record["name"]].add("backend")
     for node_entry in nodes:
@@ -287,16 +299,20 @@ def plan(records, role, nodes, retain):
     ``nodes`` are the Sparks' listings after ``storage.classify`` (none plans
     from Node A's records alone, without the ``running`` and ``mesh``
     reasons). Returns ``{"deployments": [{"name", "profile", "kept",
-    "reasons", "started"}], "released": [name, ...], "nodes": [{"rank",
-    "host", "hostname", "containers", "paths", "frees_bytes", "complete"} or
-    {"rank", "host", "error"}]}``; ``containers`` are ``{"deployment",
-    "name", "bytes"}`` and ``paths`` ``{"path", "kind", "deployment",
-    "frees_bytes"}``, workspaces first.
+    "reasons", "started", "holds", "leaves"}], "released": [name, ...],
+    "nodes": [{"rank", "host", "hostname", "containers", "paths",
+    "frees_bytes", "complete"} or {"rank", "host", "error"}]}``;
+    ``containers`` are ``{"deployment", "name", "bytes"}`` and ``paths``
+    ``{"path", "kind", "deployment", "frees_bytes"}``, workspaces first.
+    ``holds`` says that a listing names a workspace or model container of the
+    deployment, and ``leaves`` that one of them is not released, for example a
+    workspace holding model files.
     """
     reasons = _reasons(records, role, nodes, retain)
     kept = [record for record in records if reasons[record["name"]]]
     released = {record["id"] for record in records if not reasons[record["name"]] and record["state"] is not None}
     by_id = {record["id"]: record for record in records}
+    holds, leaves = set(), set()
     actions = []
     for node_entry in nodes:
         where = {"rank": node_entry.get("rank"), "host": node_entry.get("host")}
@@ -322,14 +338,24 @@ def plan(records, role, nodes, retain):
                         "paths": [{key: value for key, value in entry.items() if key != "complete"} for entry in paths],
                         "frees_bytes": sum(size for size in sizes if size), "complete":
                         all(size is not None for size in sizes) and all(entry["complete"] is not False for entry in paths)})
+        planned = {entry["name"] for entry in containers} | {entry["path"] for entry in paths}
+        found = [(entry.get("deployment"), entry["name"]) for entry in node_entry.get("model_containers") or ()]
+        found += [(item.get("deployment"), item["path"]) for item in node_entry.get("items") or ()
+                  if item["kind"] == "workspace"]
+        holds.update(identifier for identifier, _ in found)
+        leaves.update(identifier for identifier, value in found if value not in planned)
     listed = [{"name": record["name"], "profile": record["profile"], "kept": bool(reasons[record["name"]]),
-               "reasons": reasons[record["name"]], "started": record["state"] is not None}
+               "reasons": reasons[record["name"]], "started": record["state"] is not None,
+               "holds": record["id"] in holds, "leaves": record["id"] in leaves}
               for record in sorted(records, key=lambda value: (value["profile"], -(value["time"] or 0), value["name"]))]
     return {"deployments": listed, "released": sorted(record["name"] for record in records if record["id"] in released),
             "nodes": actions}
 
 
 def reason_text(code, retain):
+    """The report's words for reason ``code`` under setting ``retain``."""
+    if code == "recent" and retain == 1:
+        return "most recent of its profile"
     return REASONS[code].format(retain=retain)
 
 
@@ -370,16 +396,26 @@ def describe(retention):
     for entry in kept:
         lines.append(f"    kept  {entry['name']:<{width}}  "
                      + ", ".join(reason_text(code, retain) for code in entry["reasons"]))
-    holding = sum(1 for entry in retention["nodes"] for _ in entry.get("containers") or ()) + sum(
-        1 for entry in retention["nodes"] for _ in entry.get("paths") or ())
-    if released and holding:
-        noun = "deployment" if len(released) == 1 else "deployments"
-        lines.append(f"    The next install or up releases the containers, workspaces and caches of {len(released)} "
+    # The released deployments that still hold a container or workspace on some Spark.
+    holders = {entry["deployment"] for node_entry in retention["nodes"] for entry in node_entry.get("containers") or ()}
+    holders |= {entry["deployment"] for node_entry in retention["nodes"] for entry in node_entry.get("paths") or ()
+                if entry["kind"] == "workspace"}
+    holding = any(node_entry.get("containers") or node_entry.get("paths") for node_entry in retention["nodes"])
+    if holders:
+        noun = "deployment" if len(holders) == 1 else "deployments"
+        lines.append(f"    The next install or up releases the containers, workspaces and caches of {len(holders)} "
                      f"older {noun}: {storage._measured(retention['frees_bytes'], retention['complete'])}")
     elif holding:
-        lines.append("    The next install or up releases unused compile caches: "
+        # A release lists the Sparks only when a deployment leaves the kept set.
+        lines.append("    Unused compile caches that the next release of an older deployment removes: "
                      + storage._measured(retention["frees_bytes"], retention["complete"]))
-    elif released:
+    stays = [entry for entry in released if entry["leaves"]]
+    if stays:
+        noun = "deployment keeps" if len(stays) == 1 else "deployments keep"
+        lines.append(f"    {len(stays)} older {noun} a workspace or container that automatic release leaves on the "
+                     "Sparks; the details above say why: " + ", ".join(entry["name"] for entry in stays[:3])
+                     + (", ..." if len(stays) > 3 else ""))
+    elif released and not holding:
         noun = "deployment holds" if len(released) == 1 else "deployments hold"
         lines.append(f"    The {len(released)} older {noun} nothing on the Sparks.")
     lines.append(setting_text(retain))
@@ -438,9 +474,16 @@ def _release_on_sparks(state_root, cluster, records, role, retain, invoke, resul
     if failed:
         raise ValueError("; ".join(f"Node {entry['rank']} {entry['host']} could not be listed: {entry['error']}"
                                    for entry in failed) + "; nothing was released")
-    revisions = {entry.get("package_revision") for entry in nodes}
-    if len(revisions) > 1:
-        raise ValueError("the Sparks run different SparkRing package revisions; nothing was released")
+    # Every Spark must run Node A's package, whose listing names model containers and which has --release-batch.
+    revision = checkpoints.package_revision()
+    if any(entry.get("package_revision") != revision or not isinstance(entry.get("model_containers"), list)
+           for entry in nodes):
+        raise ValueError("the Sparks do not all run Node A's SparkRing package revision; nothing was released")
+    # Without Docker's answer a listing names no container, so a running one would look stopped.
+    blind = [entry for entry in nodes if (entry.get("docker") or {}).get("error")]
+    if blind:
+        raise ValueError("; ".join(f"Docker on Node {entry['rank']} {entry['host']} could not be read: "
+                                   f"{entry['docker']['error']}" for entry in blind) + "; nothing was released")
     storage.classify(nodes, records, role, storage.profile_references())
     decided = plan(records, role, nodes, retain)
     kept = [record for record in records if any(entry["kept"] and entry["name"] == record["name"]
@@ -448,12 +491,17 @@ def _release_on_sparks(state_root, cluster, records, role, retain, invoke, resul
 
     def one(action):
         host = action["host"]
-        in_use = sorted({value for record in kept for value in storage._on(record, host)[0]})
+        # Every deployment's model path counts as in use, also a released one's: no release removes model files.
+        in_use = sorted({value for record in kept for value in storage._on(record, host)[0]}
+                        | {row["model"] for record in records for row in record["rows"]
+                           if row["host"] == host and storage._valid(row["model"])})
         opaque = sorted({value for record in kept for value in storage._on(record, host)[1]})
         request = storage._request(host, cluster["name"], records, in_use=in_use, opaque=opaque,
                                    containers=[{"deployment": entry["deployment"], "name": entry["name"]}
                                                for entry in action["containers"]],
-                                   paths=[entry["path"] for entry in action["paths"]])
+                                   paths=[entry["path"] for entry in action["paths"] if entry["kind"] != "releasing"],
+                                   remainders=[entry["path"] for entry in action["paths"]
+                                               if entry["kind"] == "releasing"])
         try:
             answer = json.loads(invoke(host, list(BATCH), data=json.dumps(request), timeout=BATCH_TIMEOUT))
             if not isinstance(answer, dict):
@@ -473,7 +521,9 @@ def _release_on_sparks(state_root, cluster, records, role, retain, invoke, resul
     removed, incomplete, caches, remainders = set(), set(), set(), set()
     for action in answers:
         name = checkpoints._node_name(action)
-        owners = {entry["path"]: entry for entry in action["paths"]}
+        # The Spark answers for its paths, then for its remainders, in the order of the request.
+        order = ([entry for entry in action["paths"] if entry["kind"] != "releasing"]
+                 + [entry for entry in action["paths"] if entry["kind"] == "releasing"])
         if "error" in action:
             result["errors"].append(f"{name}: {action['error']}")
             incomplete.update(entry["deployment"] for entry in action["containers"])
@@ -488,8 +538,7 @@ def _release_on_sparks(state_root, cluster, records, role, retain, invoke, resul
             elif entry.get("state") == "removed":
                 removed.add(entry["deployment"])
                 result["freed_bytes"] += entry.get("freed_bytes") or 0
-        for entry in answer.get("paths") or ():
-            planned = owners.get(entry.get("path"), {})
+        for planned, entry in zip(order, answer.get("paths") or ()):
             if "error" in entry:
                 result["errors"].append(f"{name}: {entry['error']}")
                 if planned.get("kind") == "workspace":
@@ -506,6 +555,9 @@ def _release_on_sparks(state_root, cluster, records, role, retain, invoke, resul
                 remainders.add(entry["path"])
         result["nodes"].append({"rank": action["rank"], "host": action["host"], "hostname": action["hostname"],
                                 **answer})
+    # A deployment that keeps a workspace or container after this release is listed again by the next one.
+    incomplete.update(record["id"] for record in records for entry in decided["deployments"]
+                      if entry["name"] == record["name"] and entry["leaves"])
     for record in records:
         if record["name"] not in decided["released"]:
             continue
@@ -525,7 +577,10 @@ def _discard_sources(state_root, records):
     ``retained-sources/<revision>`` to run a deployment of another package
     revision, and clones it again when it is missing. A checkout stays while
     any deployment of its revision is not completely released (``released``).
-    Returns ``(revisions, freed_bytes)``.
+    A checkout is renamed to ``.<revision>.removing`` before it is removed,
+    so that an interrupted removal never leaves a partial checkout, which
+    ``retained_source.checkout`` would refuse rather than clone again; such
+    remainders are removed as well. Returns ``(revisions, freed_bytes)``.
     """
     cache = Path(state_root) / SOURCES
     used = {record["source_revision"] for record in records
@@ -536,12 +591,20 @@ def _discard_sources(state_root, records):
     except OSError:
         return removed, freed
     for entry in entries:
-        if not REVISION.fullmatch(entry.name) or entry.name in used or entry.is_symlink() or not entry.is_dir():
+        if entry.is_symlink() or not entry.is_dir():
             continue
-        size = storage.disk_use(str(entry), deadline=time.monotonic() + 30)["frees_bytes"]
-        shutil.rmtree(entry)
-        removed.append(entry.name)
-        freed += size
+        if REVISION.fullmatch(entry.name) and entry.name not in used:
+            hidden = entry.with_name(f".{entry.name}.removing")
+            if hidden.exists():
+                continue
+            entry.rename(hidden)
+            removed.append(entry.name)
+        elif REMOVING.fullmatch(entry.name):
+            hidden = entry
+        else:
+            continue
+        freed += storage.disk_use(str(hidden), deadline=time.monotonic() + 30)["frees_bytes"]
+        shutil.rmtree(hidden)
     return removed, freed
 
 

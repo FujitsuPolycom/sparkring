@@ -153,6 +153,8 @@ RANK_LABEL = "io.sparkring.rank"
 MODEL_CONTAINER = re.compile(r"sr-[a-z][a-z0-9-]{0,39}-r[0-9]")
 # Docker states in which a container runs no process and ``docker container rm`` removes it without --force.
 STOPPED_STATES = frozenset({"created", "exited"})
+# Seconds that the listing waits for the writable-layer sizes of stopped model containers, during its walk.
+SIZE_SECONDS = 60
 
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _DIRECTORY = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | _NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
@@ -492,7 +494,10 @@ def model_containers(containers, *, run, sizes):
     stopped = [entry for entry in found if not entry["running"]]
     if sizes and stopped:
         try:
-            measured = json.loads(_docker(["container", "inspect", "--size", *(entry["id"] for entry in stopped)], run))
+            # Docker walks each writable layer for its size; a slow answer leaves the sizes unknown.
+            done = run(["docker", "--context", "default", "container", "inspect", "--size",
+                        *(entry["id"] for entry in stopped)], capture_output=True, text=True, timeout=SIZE_SECONDS)
+            measured = json.loads(done.stdout) if not done.returncode else []
             by_id = {item.get("Id"): item.get("SizeRw") for item in measured if isinstance(item, dict)}
         except (OSError, ValueError, subprocess.SubprocessError):
             by_id = {}
@@ -708,11 +713,18 @@ def list_local(request=None, *, root="/", run=None):
         budget = BUDGET_SECONDS
     measured = request.get("measure")
     measured = {path for path in measured if isinstance(path, str)} if isinstance(measured, list) else None
+    run = run or subprocess.run
+
+    def inspect_docker():
+        state, found = _docker_state(run)
+        return state, found, model_containers(found, run=run, sizes=measured is None)
+
+    # Docker is read, with the model containers' sizes, while the items are walked.
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        docker = pool.submit(_docker_state, run or subprocess.run)
+        docker = pool.submit(inspect_docker)
         items, held = _items(root, request)
         _measure(items, held, started + budget, measured)
-        docker, containers = docker.result()
+        docker, containers, models = docker.result()
     meshes = installed_meshes(root)
     for item in items:
         if item["kind"] not in ("other", "releasing"):
@@ -723,8 +735,7 @@ def list_local(request=None, *, root="/", run=None):
     return {"schema": LOCAL_SCHEMA, "hostname": socket.gethostname(),
             "package_revision": checkpoints.package_revision(),
             "filesystems": filesystems([("sparkring", srv), ("docker", (docker or {}).get("root")), ("root", "/")]),
-            "items": items, "meshes": meshes, "docker": docker,
-            "model_containers": model_containers(containers, run=run or subprocess.run, sizes=measured is None),
+            "items": items, "meshes": meshes, "docker": docker, "model_containers": models,
             "measurement": {"budget_seconds": budget, "seconds": round(time.monotonic() - started, 1),
                             "complete": all(item.get("complete") is not False for item in items)}}
 
@@ -847,8 +858,11 @@ def _check(item, items, request, run, table, meshes):
                          "release it. Stop them first. Nothing was released.")
 
 
-def release_local(path, request=None, *, root="/", run=None, table=None):
+def release_local(path, request=None, *, root="/", run=None, table=None, remainders_only=False):
     """Remove cache directory or deployment workspace ``path`` from this host.
+
+    With ``remainders_only``, only the remainders of earlier interrupted
+    releases of ``path`` are removed, never an item now at ``path``.
 
     ``request`` is the listing request (``list_local``) plus ``in_use``, the
     paths the installed deployments name on this host, and ``opaque``, the cache
@@ -870,8 +884,10 @@ def release_local(path, request=None, *, root="/", run=None, table=None):
     request = request if isinstance(request, dict) else {}
     items, _ = _items(root, request)
     matches = [item for item in items if item["path"] == path]
-    current = next((item for item in matches if item["kind"] != "releasing"), None)
+    current = None if remainders_only else next((item for item in matches if item["kind"] != "releasing"), None)
     remainders = [item for item in matches if item["kind"] == "releasing"]
+    if remainders_only and not remainders:
+        return {"path": path, "state": "absent", "kind": None, "freed_bytes": 0}
     if current is None and not remainders:
         if _lstat(path) is None:
             return {"path": path, "state": "absent", "kind": None, "freed_bytes": 0}
@@ -940,14 +956,16 @@ def release_batch_local(request=None, *, root="/", run=None, table=None):
     ``request`` is the release request of ``release_local`` (the listing
     request plus ``in_use`` and ``opaque``, here the paths that the
     deployments the policy keeps name on this host) with ``containers``, a
-    list of ``{"deployment", "name"}``, and ``paths``, the workspaces, cache
-    directories and remainders of interrupted releases to remove. Containers
-    go first (``remove_container``), because they bind-mount files of their
+    list of ``{"deployment", "name"}``, ``paths``, the workspaces and cache
+    directories to remove, and ``remainders``, the paths whose remainders of
+    interrupted releases to remove. Containers go first
+    (``remove_container``), because they bind-mount files of their
     workspace. A workspace whose deployment's container on this host was not
     removed stays. Every path then goes through ``release_local``, which lists
-    and checks it again as ``sudo sparkring storage --release`` does. A
-    refusal or failure of one entry is reported with it and does not stop the
-    others.
+    and checks it again as ``sudo sparkring storage --release`` does; a
+    remainder's path is released with ``remainders_only``, so an item that
+    exists again at that path stays. A refusal or failure of one entry is
+    reported with it and does not stop the others.
 
     Returns ``{"containers": [...], "paths": [...]}``: each entry the result
     of ``remove_container`` or ``release_local``, or the entry with ``error``.
@@ -975,6 +993,11 @@ def release_batch_local(request=None, *, root="/", run=None, table=None):
             continue
         try:
             released.append(release_local(path, request, root=root, run=run, table=table))
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            released.append({"path": path, "error": str(error)[:500]})
+    for path in request.get("remainders") or ():
+        try:
+            released.append(release_local(path, request, root=root, run=run, table=table, remainders_only=True))
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             released.append({"path": path, "error": str(error)[:500]})
     return {"containers": containers, "paths": released}

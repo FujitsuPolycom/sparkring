@@ -1319,7 +1319,9 @@ image and checkpoint revision. After every `sudo sparkring install` and
   starts that deployment's container;
 - its last operation did not complete, or its state cannot be read, since it
   may need recovery from its own receipts;
-- its last operation is a completed `up`: it was started and not stopped since;
+- its last operation is a completed `up`: it was started and not stopped
+  since; or a completed preparation, which a repeated preparation verifies
+  through its workspace;
 - it has a managed GLM backend, whose services own its containers;
 - it is one of the 2 most recent deployments of its profile, by the time of
   its last operation. For each model these are the deployment that runs or ran
@@ -1327,7 +1329,8 @@ image and checkpoint revision. After every `sudo sparkring install` and
   checkpoint or serving setting, which then start without preparing a
   workspace, container or compile cache.
 
-For every other deployment that has run, each Spark removes:
+For every other deployment whose last operation is a completed `down`, each
+Spark removes:
 
 - its stopped model containers (`sr-<site>-r<rank>`, labelled with the
   deployment's ID);
@@ -1342,12 +1345,14 @@ with the current source tree) once every deployment of that revision is
 released. An operation on such a deployment clones it again from the
 deployment's source bundle.
 
-Each Spark checks again before it removes anything. A container must be
-stopped, carry the deployment's label and not be the one that an installed
-mesh starts. Each workspace and cache passes the same checks as
-`sudo sparkring storage --release`, with the paths that the kept deployments
-name: no installed mesh, model files, mount point or running container. A
-refusal is listed under the summary line, and the rest continues. Checkpoint
+Nothing is removed while a Spark cannot be listed, its Docker cannot be read,
+or it runs another package revision than Node A. Each Spark checks again before
+it removes anything. A container must be stopped, carry the deployment's label
+and not be the one that an installed mesh starts. Each workspace and cache
+passes the same checks as `sudo sparkring storage --release`, with the paths
+that the kept deployments name: no installed mesh, model files, mount point or
+running container. A refusal is listed under the summary line, and the rest
+continues. Checkpoint
 directories, Docker images, the deployment directories on Node A (lock, source
 bundle and receipts) and anything SparkRing's installer did not create are
 never removed. The release prints one line, for example:
@@ -1356,8 +1361,9 @@ never removed. The release prints one line, for example:
 Released 7 older deployments' containers, workspaces and caches: 9.8 GiB
 ```
 
-A released deployment starts again: `sudo sparkring up PROFILE --instance
-i<hash>`, or an installation with the same choices. Its `source` step copies
+A released deployment starts again with
+`sudo sparkring up PROFILE --instance i<hash>` once the running model is
+stopped, or with an installation of the same choices. Its `source` step copies
 the deployment's source bundle from Node A into a new workspace. Its `model`
 step writes the checkpoint receipt again from the checkpoint directory's
 journal and SparkRing's path records, hashing only files whose size or times
@@ -1377,7 +1383,9 @@ and apply to every later installation and `up`.
 
 The first release on a cluster with many earlier deployments removes all of
 them at once. Afterwards a release contacts the Sparks only when a deployment
-leaves the kept set.
+leaves the kept set, or while a released deployment still keeps a workspace or
+container that a check refused, for example a workspace holding model files;
+`sudo sparkring storage` names such deployments.
 
 ## If a worker has no SSH
 
