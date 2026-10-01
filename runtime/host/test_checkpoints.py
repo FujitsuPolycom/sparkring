@@ -613,3 +613,18 @@ def test_a_derived_checkpoint_directory_counts_as_used_by_the_deployments_that_s
     # The probe of each Spark names both directories.
     paths = [request["paths"] for host, argv, request in spark.calls if argv == LIST][-1]
     assert paths == sorted([base, derived])
+
+
+@linux
+def test_a_release_refreshes_a_derived_checkpoints_receipt_too(tmp_path, monkeypatch):
+    monkeypatch.setattr(checkpoints, "CHECKPOINTS", str(tmp_path / "records"))
+    workspace = tmp_path / "srv/sparkring/tp2/qwen-derived"
+    (workspace / "installer/derived").mkdir(parents=True)
+    write_json(workspace / ".installer-owner.json", {"deployment": "id-derived"})
+    write_json(workspace / "installer/model.json", {"path": DIRECTORY})
+    write_json(workspace / "installer/derived/model.json", {"path": DIRECTORY + "-derived"})
+    found = checkpoints.receipt_paths([{"workspace": str(workspace), "deployment": "id-derived"}])
+    assert found == [str(workspace / "installer/model.json"), str(workspace / "installer/derived/model.json")]
+    (workspace / "installer/derived/model.json").unlink()
+    assert checkpoints.receipt_paths([{"workspace": str(workspace), "deployment": "id-derived"}]) == [
+        str(workspace / "installer/model.json")]

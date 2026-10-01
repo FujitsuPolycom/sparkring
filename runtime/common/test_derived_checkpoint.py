@@ -229,3 +229,23 @@ def test_the_derive_phase_follows_the_checkpoint_and_image_phases():
         assert "derive" not in [phase["id"] for phase in installer.operation_plan(default, action)["phases"]]
     phase = next(item for item in installer.operation_plan(derived, "prepare")["phases"] if item["id"] == "derive")
     assert [action["verify"]["argv"][1] for action in phase["actions"]] == ["derive-check", "derive-check"]
+
+
+def test_a_shared_export_of_a_derived_deployment_renders_its_example_containers(tmp_path):
+    import zipfile
+    value = lock(PROFILES[0])
+    data = b"offline source bundle fixture"
+    value = installer.make_lock(PROFILES[0], value["site_input"], "1" * 40, hashlib.sha256(data).hexdigest(), NAME,
+                                image_runtime=value["image_runtime"])
+    directory = tmp_path / "deployment"
+    installer.write(directory / "deployment.lock.json", value)
+    (directory / "source.bundle").write_bytes(data)
+    result = installer.export(directory, tmp_path / "share.zip", share=True)
+    assert "rank0/compose.yaml" in result["files"]
+    with zipfile.ZipFile(tmp_path / "share.zip") as archive:
+        site = json.loads(archive.read("site.example.json"))
+        compose = archive.read("rank0/compose.yaml").decode()
+    base = f"/srv/sparkring/example/checkpoints/{REPOSITORY.replace('/', '--')}/{BASE}"
+    assert {row["model"] for row in site["hosts"]} == {base}
+    manifest = derived_checkpoint.load(value["selection"])
+    assert derived_checkpoint.directory(base, manifest) in compose

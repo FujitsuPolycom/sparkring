@@ -668,6 +668,10 @@ def export(directory, output, *, share=False):
         if count == 4 and lock["selection"]["profile"] in compose.TP4_PROFILES:
             for row in example["hosts"]:
                 row["fabric"] = {"site_path": "/srv/sparkring/mesh-site.json", "site_sha256": "0" * 64, "plan_sha256": "0" * 64}
+        if derived_checkpoint.model_of(lock["selection"]) is not None:
+            # A derived checkpoint is written beside its base's SparkRing checkpoint directory.
+            for row in example["hosts"]:
+                row["model"] = checkpoint_directory("example", lock["selection"])
         runtime = lock.get("image_runtime")
         if runtime is not None:
             runtime = {**runtime, "image_reference": runtime["image_id"]}

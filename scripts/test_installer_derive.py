@@ -346,3 +346,31 @@ def test_a_complete_donor_checkpoint_directory_supplies_the_donor_files(tmp_path
     runs = len(env.runs())
     assert env.call("derive-donor", {"names": []})["fetched"] == []
     assert env.call("derive-run")["complete"] and len(env.runs()) == runs + 1
+
+
+def test_another_deployments_derived_receipt_is_refreshed_when_a_shared_inode_changes(tmp_path, monkeypatch):
+    env = environment(tmp_path, monkeypatch)
+    env.call("derive-link", {"receipts": []})
+    env.call("derive-donor", {"names": sorted(env.donor_files)})
+    env.call("derive-run")
+    # Another deployment of the same derived checkpoint keeps its own derived receipt.
+    other = tmp_path / "other-workspace"
+    (other / "installer/derived").mkdir(parents=True)
+    (other / ".installer-owner.json").write_text(json.dumps({"deployment": "f" * 64}))
+    receipt = json.loads((env.state / "derived/model.json").read_text())
+    (other / "installer/derived/model.json").write_text(json.dumps(receipt))
+    name = "tokenizer.json"
+    before = place.stats(os.lstat(env.derived / name))
+    os.link(env.base / name, tmp_path / "another-link")
+    after = place.stats(os.lstat(env.derived / name))
+    assert after != before
+    verified = [{"identity": before[:2], "sha256": receipt["files"][name], "before": before, "after": after}]
+    refreshed = host.refresh_receipts(verified, [{"path": str(other / "installer/derived/model.json"),
+                                                  "deployment": "f" * 64}])
+    assert str(other / "installer/derived/model.json") in refreshed
+    assert json.loads((other / "installer/derived/model.json").read_text())["file_stats"][name] == after
+    # A receipt in another subdirectory of installer is not a deployment receipt.
+    (other / "installer/other").mkdir()
+    (other / "installer/other/model.json").write_text(json.dumps(receipt))
+    assert str(other / "installer/other/model.json") not in host.refresh_receipts(
+        verified, [str(other / "installer/other/model.json")])

@@ -262,8 +262,10 @@ def retained_deployments(state_root, candidate, rows):
     where it has no rank on that Spark; the plan names the deployments whose
     receipts linking will refresh. ``receipts`` maps each rank of ``rows`` to
     ``{"path", "deployment"}``: the model receipt
-    ``<workspace>/installer/model.json`` and the ID of every other deployment
-    with a rank on that Spark. Adoption on that Spark refreshes the entries of
+    ``<workspace>/installer/model.json``, and the derived checkpoint's receipt
+    ``<workspace>/installer/derived/model.json``, which records inodes it
+    shares with its base, with the ID of every other deployment with a rank on
+    that Spark. Adoption on that Spark refreshes the entries of
     those receipts that record an inode it links; it accepts only regular files
     inside a workspace whose owner record names that deployment. A lock without
     an ID is skipped, because its receipt cannot be bound to it.
@@ -277,8 +279,9 @@ def retained_deployments(state_root, candidate, rows):
         try:
             lock = installer.read(directory / "deployment.lock.json")
             by_host = {row["host"]: row["model"] for row in lock["site"]["ranks"]}
-            receipt = {"path": str(PurePosixPath(lock["site"]["workspace"]) / "installer" / "model.json"),
-                       "deployment": lock["id"]}
+            installer_directory = PurePosixPath(lock["site"]["workspace"]) / "installer"
+            receipt = {"path": str(installer_directory / "model.json"), "deployment": lock["id"]}
+            derived = {"path": str(installer_directory / "derived" / "model.json"), "deployment": lock["id"]}
         except (OSError, ValueError, KeyError, TypeError):
             continue
         if not isinstance(receipt["deployment"], str):
@@ -288,7 +291,7 @@ def retained_deployments(state_root, candidate, rows):
             models[directory.name] = paths
             for rank, path in enumerate(paths):
                 if path is not None:
-                    receipts[rank].append(receipt)
+                    receipts[rank] += [receipt, derived]
     return models, receipts
 
 

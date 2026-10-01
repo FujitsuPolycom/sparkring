@@ -657,7 +657,7 @@ class Assets:
         derive = bool(after["hub"])
         writes = [0] * count
         if derive:
-            writes[0] += sum(recipe[name] for name in recipe if name not in holdings[0])
+            writes[0] += sum(recipe.values())
             writes[0] += sum(approved["donor"]["files"][name] for name in allowed) if approved else 0
         else:
             writes[0] += sum(recipe[name] for item in after["pool"] for name in item["names"])

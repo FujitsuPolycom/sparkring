@@ -184,9 +184,10 @@ def section(name, manifest, donor_pins, rows, probes, hostnames=None):
     files its derived directory lacks. The recipe's files follow
     ``checkpoint_plan``'s distribution: the lowest-numbered Spark holding all
     of them is the source. Without one, Node A pools them from the other Sparks
-    when together they hold every file, and otherwise derives every file it
-    lacks, downloading the donor files its donor directory lacks. Each node's
-    ``written`` lists the sizes of the files it writes.
+    when together they hold every file, and otherwise derives them, downloading
+    the donor files its donor directory lacks; the recipe writes every file
+    into staging, so all count. Each node's ``written`` lists the sizes of the
+    files it writes.
     """
     required = derived_checkpoint.required(manifest)
     recipe = derived_checkpoint.files_of(manifest, "recipe")
@@ -201,16 +202,16 @@ def section(name, manifest, donor_pins, rows, probes, hostnames=None):
     donor_files = {key: donor_pins["files"][key]["size"] for key in manifest["donor"]["files"]}
     donor_required = {key: {"size": donor_pins["files"][key]["size"], "sha256": donor_pins["files"][key]["sha256"]}
                       for key in donor_files}
-    present = _placed(readings[0].get(donor_path), donor_required, manifest["donor"]["repository"],
-                      manifest["donor"]["revision"])
+    donor_reading = readings[0].get(donor_path) or {}
+    present = _placed(donor_reading, donor_required, manifest["donor"]["repository"], manifest["donor"]["revision"])
     download = sorted(set(donor_files) - present) if derive else []
     nodes = []
     for rank, row in enumerate(rows):
         reading = readings[rank].get(derived[rank]) or {}
         written, receive = [], []
         if rank == 0 and derive:
-            # The recipe writes every file at once, so Node A derives all it lacks instead of pooling some.
-            written += [recipe[key] for key in recipe if key not in held[0]]
+            # The recipe writes every file into staging at once, so Node A derives instead of pooling some.
+            written += list(recipe.values())
             written += [donor_files[key] for key in download]
         elif rank == 0:
             written += [recipe[key] for item in distribution["pool"] for key in item["names"]]
@@ -234,17 +235,33 @@ def section(name, manifest, donor_pins, rows, probes, hostnames=None):
             "files": {"total": len(required), "bytes": sum(item["size"] for item in required.values()),
                       "kept": len(kept), "recipe": len(recipe), "recipe_bytes": sum(recipe.values())},
             "donor": {"repository": manifest["donor"]["repository"], "revision": manifest["donor"]["revision"],
-                      "path": donor_path, "files": donor_files, "present": sorted(present), "download": download,
+                      "path": donor_path, "state": donor_reading.get("state", "unknown"), "files": donor_files,
+                      "present": sorted(present), "download": download,
                       "download_bytes": sum(donor_files[key] for key in download)},
             "derive": derive, "source": distribution["donor"], "nodes": nodes}
 
 
 def problems(section_value, plan_nodes):
-    """Requests for input before approval: a base served in place, or a derived directory on another filesystem."""
+    """Requests for input before approval.
+
+    A derived or donor directory that SparkRing did not create, a base served
+    in place, and a derived directory on another filesystem than the base's
+    each stop the plan.
+    """
     found = []
+    donor = section_value["donor"]
+    if section_value["derive"] and donor.get("state") == "foreign":
+        node = section_value["nodes"][0]
+        found.append({"field": "storage", "rank": 0, "message": (
+            f"Node 0 {node['hostname']}: {donor['path']} holds files that SparkRing did not place, so the donor files "
+            "cannot be downloaded there. Move them away or remove the directory. Nothing has been changed.")})
     for node, base in zip(section_value["nodes"], plan_nodes, strict=True):
         name = f"Node {node['rank']} {node['hostname']}"
-        if base["mode"] == "in-place":
+        if node["state"] == "foreign":
+            found.append({"field": "storage", "rank": node["rank"], "message": (
+                f"{name}: {node['path']} is not empty and was not created by SparkRing; SparkRing does not adopt a "
+                "directory it did not create. Move it away. Nothing has been changed.")})
+        elif base["mode"] == "in-place":
             found.append({"field": "model_path", "rank": node["rank"], "message": (
                 f"{name}: {base['path']} would be served in place, but checkpoint {section_value['checkpoint']} "
                 "hard-links its base's files into a directory beside SparkRing's checkpoint directory of the base. "

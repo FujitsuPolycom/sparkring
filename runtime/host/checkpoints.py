@@ -420,7 +420,8 @@ def _remove_records(path):
 def receipt_paths(receipts):
     """Receipts SparkRing may refresh: owned deployment receipts on this host, then its path records.
 
-    A deployment receipt is ``<workspace>/installer/model.json`` whose workspace
+    A deployment receipt is ``<workspace>/installer/model.json``, or a derived
+    checkpoint's ``<workspace>/installer/derived/model.json``, whose workspace
     holds ``.installer-owner.json`` naming that deployment, reached without a
     symlink component. A path record is a regular ``*.json`` file directly in
     ``CHECKPOINTS``.
@@ -439,6 +440,14 @@ def receipt_paths(receipts):
             installer = os.open("installer", _DIRECTORY, dir_fd=fd)
             try:
                 info = os.lstat("model.json", dir_fd=installer)
+                try:
+                    derived = os.open("derived", _DIRECTORY, dir_fd=installer)
+                    try:
+                        derived_info = os.lstat("model.json", dir_fd=derived)
+                    finally:
+                        os.close(derived)
+                except OSError:
+                    derived_info = None
             finally:
                 os.close(installer)
         except OSError:
@@ -447,6 +456,8 @@ def receipt_paths(receipts):
             os.close(fd)
         if stat.S_ISREG(info.st_mode):
             found.append(posixpath.join(workspace, "installer", "model.json"))
+        if derived_info is not None and stat.S_ISREG(derived_info.st_mode):
+            found.append(posixpath.join(workspace, "installer", "derived", "model.json"))
     try:
         with os.scandir(CHECKPOINTS) as entries:
             found.extend(sorted(entry.path for entry in entries

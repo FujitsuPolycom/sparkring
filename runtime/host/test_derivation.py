@@ -358,3 +358,17 @@ def test_the_derive_phase_runs_the_derivation_once_and_reports_its_failure_on_ev
         "Checkpoint derivation failed: Node 0: The recipe runtime/common/mxfp8_attention.py wrote config.json with "
         "other contents"}
     assert runner.models_error.startswith("Checkpoint derivation failed")
+
+
+def test_a_derived_or_donor_directory_that_sparkring_did_not_create_stops_the_plan():
+    plan_section = section((), ())
+    plan_section["nodes"][1]["state"] = "foreign"
+    plan_section["donor"]["state"] = "foreign"
+    found = derivation.problems(plan_section, base_plan(section((), ()))["nodes"])
+    assert [(item["field"], item["rank"]) for item in found] == [("storage", 0), ("storage", 1)]
+    assert DONOR_DIR in found[0]["message"] and "was not created by SparkRing" in found[1]["message"]
+    # A donor directory matters only when Node A derives.
+    every = sorted(MANIFEST["files"])
+    reused = section(every, every)
+    reused["donor"]["state"] = "foreign"
+    assert derivation.problems(reused, base_plan(reused)["nodes"]) == []

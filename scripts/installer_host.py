@@ -555,9 +555,11 @@ def _receipt_location(path, deployment, kind):
         return None
     if kind == "record":
         return location if location.parent == CHECKPOINTS else None
-    if location.name != "model.json" or location.parent.name != "installer":
+    # A derived checkpoint's receipt lies in installer/derived; its files share the base's inodes.
+    installer_directory = location.parent.parent if location.parent.name == "derived" else location.parent
+    if location.name != "model.json" or installer_directory.name != "installer":
         return None
-    owner = profiles.read_json(location.parent.parent / ".installer-owner.json")
+    owner = profiles.read_json(installer_directory.parent / ".installer-owner.json")
     if (not isinstance(owner, dict) or set(owner) != {"deployment"} or not isinstance(owner["deployment"], str)
             or (deployment is not None and owner["deployment"] != deployment)):
         return None
@@ -572,7 +574,8 @@ def refresh_receipts(verified, paths, *, exclude=()):
     ``verified`` lists ``{"identity", "sha256", "before", "after"}`` per linked
     inode, where ``before`` are the five stats measured before hashing.
     ``paths`` are the other deployments' ``<workspace>/installer/model.json``
-    files on this host (a path, or ``{"path", "deployment"}``); each must be a
+    files on this host, and ``installer/derived/model.json`` for a derived
+    checkpoint, whose files share the base's inodes (a path, or ``{"path", "deployment"}``); each must be a
     regular non-symlink file in a workspace whose ``.installer-owner.json``
     names that deployment, or any deployment for a plain path. The path records
     in ``CHECKPOINTS`` are examined too.
@@ -1593,7 +1596,8 @@ def derive_run(lock, row, state, *, number):
             staging = place.staging(claimed, "derive", empty=True)
             out = None
             try:
-                _require_space(model, views.row, [written[name] for name in pending], number=number, card=card)
+                # The recipe writes every file into staging, also those already placed.
+                _require_space(model, views.row, list(written.values()), number=number, card=card)
                 _require_image(card)
                 # The recipe writes only into an empty directory; the staging marker stays beside it.
                 os.mkdir("out", 0o755, dir_fd=staging)

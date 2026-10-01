@@ -1483,7 +1483,10 @@ def test_retained_deployments_are_named_and_their_receipts_passed_for_refresh(ma
     # Each receipt carries the deployment its workspace's owner record must name.
     receipt = {"path": "/srv/sparkring/test/qwen38-flash-next-tp2-iold/installer/model.json",
                "deployment": "id-old"}
-    assert assets.prepared["receipts"] == {0: [receipt], 1: [receipt]}
+    # A derived checkpoint's receipt records inodes it shares with its base; a Spark skips one that is absent.
+    derived = {"path": "/srv/sparkring/test/qwen38-flash-next-tp2-iold/installer/derived/model.json",
+               "deployment": "id-old"}
+    assert assets.prepared["receipts"] == {0: [receipt, derived], 1: [receipt, derived]}
     assert json.loads(out.out)["checkpoint"]["refreshed_receipts"] == 1
 
 
