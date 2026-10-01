@@ -46,7 +46,9 @@ failure.
 ## install
 
 `sudo sparkring install [flags]` sets up the Sparks on first use, prepares the
-image and checkpoint, then starts or switches the model.
+image and checkpoint, then starts or switches the model. Once the model
+serves, it releases what older deployments hold on the Sparks
+([automatic release](#automatic-release)).
 
 | Flag | Meaning |
 |---|---|
@@ -60,7 +62,7 @@ image and checkpoint, then starts or switches the model.
 | `--cache-path PATH` | Another writable compile cache on each Spark |
 | `--download-limit RATE` | Cap the checkpoint download from Hugging Face: `850Mbit`, `2Gbit` or `none` ([details](install-reference.md#limit-the-download-rate)) |
 | `--events FILE` | Also write progress to FILE, one JSON object per line ([fields](install-reference.md#event-stream)) |
-| `--env FILE` | Preferences file: setup keys on first installation, the download limit on every run ([keys](install-reference.md#optional-preferences)) |
+| `--env FILE` | Preferences file: setup keys on first installation, the download limit and the [retained deployments](#automatic-release) on every run ([keys](install-reference.md#optional-preferences)) |
 | `--stop-workloads` | Stop (never remove) GPU containers that are not SparkRing's |
 | `--no-auto-recover` | Do not restart this model by itself when a Spark stops serving ([automatic recovery](install-reference.md#automatic-recovery)) |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
@@ -229,7 +231,9 @@ every Spark, the deployments that use them and what a release frees.
 - the filesystems that hold `/srv/sparkring`, Docker's data root and `/`:
   size, free space and use;
 - every item in `/srv/sparkring` and every Docker image, with its size and class;
-- the releases it proposes.
+- the releases it proposes;
+- the deployments that [automatic release](#automatic-release) keeps and why,
+  and what it releases after the next `install` or `up`.
 
 Items are checkpoint directories, compile caches
 (`/srv/sparkring/<cluster>/cache/<family>-<image>-<revision>`), deployment
@@ -240,7 +244,7 @@ ran out.
 
 | Class | Meaning |
 |---|---|
-| `installed` | Used by the active deployment, the rollback target or an unfinished model switch |
+| `installed` | Used by the active deployment, the rollback target, an unfinished model switch or a mesh installed on that Spark, such as the workspace holding the host marker of a four-Spark ring's mesh. The report names the mesh |
 | `profile` | An installer profile of the installed package references it: a checkpoint the profile lists, the image the installer selects for it, or their compile cache. Kept for that profile's next installation |
 | `unreferenced` | Neither. Proposed for release unless a running container uses it or it holds model files. Other retained deployments that use it are named; they need `sudo sparkring install` again after a release |
 | `unmanaged` | Not created by SparkRing's installer, such as a directory you made in `/srv/sparkring`; never removed |
@@ -250,18 +254,57 @@ ran out.
 | `--release PATH` | Remove this unreferenced cache directory or deployment workspace from every Spark that holds it |
 | `--yes` | Approve the release without asking |
 | `--json` | Print one JSON result |
+| `--retain-deployments N` or `off` | Keep the N most recent deployments of each profile at each [automatic release](#automatic-release) (default 2), or turn it off |
 
-A release asks first. Each Spark then checks again that no installed deployment
-or running container uses the path. A release never removes:
+A release asks first. Each Spark then checks again that no installed deployment,
+no mesh installed on it and no running container uses the path. A mesh counts
+while its configuration is in `/etc/sparkring/managed-mesh` or
+`/etc/sparkring/deployments/<name>`, running or not
+([Finding and freeing space](install-reference.md#finding-and-freeing-space)).
+A release never removes:
 
 - a checkpoint directory; `sudo sparkring checkpoints --release PATH` does;
 - a workspace that holds model files;
 - a Docker image; images are only listed, and `docker image rm ID` on that
-  Spark removes one by hand;
+  Spark removes one by hand. An image's size counts the layers it shares with
+  other images, so removing it frees only the layers no other image uses.
+  Each installer image adds a few megabytes to the one it was built on
+  ([builders](../../runtime/images/installer-images.md));
 - an `unmanaged` item.
 
 `sparkring setup storage PROFILE` is a separate, local check of one profile's
 space allowances before an installation.
+
+### Automatic release
+
+Every installation request with another package, checkpoint or serving setting
+is a separate deployment, and each one that ran leaves its workspace, its
+stopped model container and its compile caches on every Spark. After each
+`install` and `up` that completes, SparkRing keeps:
+
+- the active deployment, the rollback target and an unfinished model switch;
+- a deployment whose model container runs, or whose workspace a mesh
+  installed on a Spark uses;
+- a deployment whose last operation did not complete, or that was started and
+  not stopped, or prepared and not started;
+- the 2 most recent deployments of each profile (`--retain-deployments`).
+
+For the other deployments, which `down` stopped last, it removes on each
+Spark their stopped model containers and workspaces, and compile caches that
+no kept deployment and no installer profile of the installed package uses. It
+prints one line, for example `Released 7 older deployments' containers,
+workspaces and caches: 9.8 GiB`. Each Spark checks every container, workspace
+and cache again as `--release` does. Checkpoint directories, images and the
+deployments' records on Node A stay, so
+`sudo sparkring up PROFILE --instance i<hash>` starts a released deployment
+again once the running model is stopped: it copies its source and creates its
+container again, and compiles kernels whose cache was removed.
+`sudo sparkring down` of a released deployment says that it is stopped.
+
+`sudo sparkring storage --retain-deployments off` turns it off;
+`sudo sparkring storage` shows the setting. The preference
+[`SPARKRING_RETAIN_DEPLOYMENTS`](install-reference.md#optional-preferences)
+sets it too.
 
 ## up and down
 
@@ -282,7 +325,8 @@ and ask for a new review. Repeating `up` re-checks a running deployment
 and starts one whose containers stopped on every Spark, for example after a
 restart ([when a model stops serving](install-reference.md#when-a-model-stops-serving)).
 A completed `up` clears [automatic recovery's](#recover) failed attempts and
-keeps its on or off choice; after `down` the model stays stopped.
+keeps its on or off choice, then runs [automatic release](#automatic-release);
+after `down` the model stays stopped.
 `sparkring install` names its deployments
 with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under

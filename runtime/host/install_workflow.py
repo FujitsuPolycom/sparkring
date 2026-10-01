@@ -33,7 +33,7 @@ from runtime.common import distribution, installer, installer_image, process_loc
 from runtime.common import serving as serving_settings
 from runtime.host import (checkpoint_plan, checkpoint_search, controller, discovery, fabric_ssh, hairpin_ring,
                           install_assets, install_space, models, native_mesh, node, progress, recovery,
-                          retained_source, rollout, settings, topology)
+                          retained_source, retention, rollout, settings, topology)
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
 
@@ -604,6 +604,23 @@ def download_limit(args):
         raise NeedsInput(f"{error}. Nothing has been changed.", field="download_limit") from None
 
 
+def retain_preference(args):
+    """The ``--env`` file's ``SPARKRING_RETAIN_DEPLOYMENTS``, or None when the run names no file or the file does not set it.
+
+    Automatic release (``runtime/host/retention.py``) saves the value after a
+    successful installation, so later installations and ``sparkring up`` keep it.
+    """
+    if not getattr(args, "env", None):
+        return None
+    try:
+        text = settings.load(args.env)["SPARKRING_RETAIN_DEPLOYMENTS"]
+        if text:
+            settings.retain_deployments(text)
+    except (OSError, ValueError) as error:
+        raise NeedsInput(f"{error}. Nothing has been changed.", field="retain_deployments") from None
+    return text or None
+
+
 DASHBOARD = "/v1/sparkring/status/view"
 # The summary card's Recovery line for each value of the result's "recovery".
 RECOVERY_TEXT = {"on": "restarts the model if a Spark stops serving; turn off: sudo sparkring recover off",
@@ -671,6 +688,7 @@ def execute(args):
     state_root = controller.STATE
     require_head()
     limit = download_limit(args)
+    retain = retain_preference(args)
     interactive = not args.json and sys.stdin.isatty()
     if args.allow_driver_reload:
         print("--allow-driver-reload: " + controller.ALLOW_DRIVER_RELOAD)
@@ -872,6 +890,8 @@ def execute(args):
         plan["recovery"] = ("unrecorded" if record is None else "unsupported" if not record.get("supported", True)
                             else "on" if record["enabled"] else "off")
         plan["auto_recover"] = plan["recovery"] == "on"
+        # Releases what older deployments hold on the Sparks; never fails the installation.
+        plan["retention"] = retention.after_operation(state_root, discovery.ssh, preference=retain)
         try:
             plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
         except (OSError, ValueError):
@@ -893,7 +913,8 @@ def main(argv=None):
     parser.add_argument("--ignore-local-copies", action="store_true",
                         help="use only SparkRing's own checkpoint directories and named copies")
     parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")
-    parser.add_argument("--env", type=Path, help="optional literal setup preferences, read on first installation")
+    parser.add_argument("--env", type=Path, help="optional literal preferences: setup keys on first installation, the "
+                                                 "download limit and retained deployments on every run")
     parser.add_argument("--plan", action="store_true",
                         help="print and save the setup, checkpoint and model plan without changing any Spark; a later "
                              "--yes stays within a saved plan")

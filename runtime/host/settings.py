@@ -3,13 +3,33 @@ import ipaddress
 from pathlib import Path
 import re
 
+# An empty SPARKRING_RETAIN_DEPLOYMENTS means the file does not set it, so the
+# setting saved on Node A applies (runtime/host/retention.py); a file value is never empty.
 DEFAULTS = {"SPARKRING_NAME": "sparkring", "SPARKRING_SSH_USER": "root", "SPARKRING_SSH_PORT": "22",
             "SPARKRING_SHARE_INTERNET": "yes", "SPARKRING_CONTROL_CIDR": "10.253.255.0/29",
             "SPARKRING_FABRIC_CIDR": "198.18.0.0/21", "SPARKRING_LINK_POLICY": "keep",
-            "SPARKRING_DOWNLOAD_LIMIT": "none"}
+            "SPARKRING_DOWNLOAD_LIMIT": "none", "SPARKRING_RETAIN_DEPLOYMENTS": ""}
 # The slowest accepted download limit, in bits per second.
 MIN_DOWNLOAD_BITS = 10 ** 6
 DOWNLOAD_LIMIT_HELP = "use none, or a rate in megabits or gigabits per second such as 850Mbit or 2Gbit"
+# The most recent deployments of each profile that automatic release may be set to keep.
+MAX_RETAINED = 99
+RETAIN_HELP = f"use off, or the number of recent deployments of each profile to keep, 0 to {MAX_RETAINED}"
+
+
+def retain_deployments(text):
+    """The number of recent deployments of each profile that automatic release keeps; None for ``off``.
+
+    ``0`` keeps only the deployments that the policy always keeps (the active
+    one, the rollback target and the others ``runtime/host/retention.py``
+    lists); ``off`` turns automatic release off.
+    """
+    value = text.strip().lower()
+    if value == "off":
+        return None
+    if not re.fullmatch(r"[0-9]{1,2}", value):
+        raise ValueError(f"Retained deployments {text!r}: " + RETAIN_HELP)
+    return int(value)
 
 
 def download_limit(text):
@@ -54,4 +74,6 @@ def load(path=None):
     if control.prefixlen != 29 or fabric.prefixlen not in range(16, 22) or control.overlaps(fabric):
         raise ValueError("Control requires /29; fabric requires a separate /16 through /21")
     download_limit(values["SPARKRING_DOWNLOAD_LIMIT"])
+    # SPARKRING_RETAIN_DEPLOYMENTS is checked where it is used
+    # (install_workflow.retain_preference), so that a refusal names that key.
     return values

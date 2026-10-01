@@ -78,3 +78,68 @@ def test_worker_never_downgrades_a_dependency(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="would downgrade avahi-utils"):
         packages.install(tmp_path, apply=True)
     assert len(apt(calls)) == 2
+
+
+def test_a_worker_bundle_and_each_workers_copy_are_removed_after_the_update(tmp_path, monkeypatch):
+    from runtime.host import install_assets
+    from runtime.host.test_install_assets import Transport
+    revisions = {1: "b" * 40, 2: "a" * 40, 3: "b" * 40}
+    monkeypatch.setattr(install_assets.distribution, "identity", lambda root: "a" * 40)
+
+    def build(directory, key):
+        directory.mkdir()
+        (directory / "manifest.json").write_text("{}")
+        archive = directory.with_suffix(".tar")
+        archive.write_bytes(b"bundle")
+        return archive
+    monkeypatch.setattr(packages, "build", build)
+    sent, discarded = [], []
+    monkeypatch.setattr(packages, "transfer", lambda transport, rank, archive, target: sent.append((rank, target)))
+    # The bundle's install.py brings the worker to Node A's revision; argv starts with the fake transport's node.
+    install = lambda argv, **kwargs: revisions.__setitem__(int(argv[0][4:]), "a" * 40)  # noqa: E731
+    monkeypatch.setattr(install_assets.progress, "command", install)
+    current = install_assets.Assets(Transport(), tmp_path)
+
+    def remote(rank, function, *args):
+        if function is install_assets.worker_revision:
+            return revisions[rank]
+        assert function is packages.discard_staging
+        discarded.append((rank, args[0]))
+        return True
+    monkeypatch.setattr(current, "remote", remote)
+    assert current.sync_packages() == {"updated": [1, 3], "revision": "a" * 40}
+    assert discarded == sent and [rank for rank, _ in sent] == [1, 3]
+    assert all(target.startswith("/var/tmp/sparkring-enroll-update-aaaaaaaaaaaa-") for _, target in sent)
+    assert not list(tmp_path.glob("worker-*"))
+    # A failed update keeps that worker's copy for inspection; Node A's bundle goes either way.
+    revisions[1] = "b" * 40
+    monkeypatch.setattr(install_assets.progress, "command", lambda argv, **kwargs: None)
+    sent.clear()
+    discarded.clear()
+    with pytest.raises(ValueError, match="Node 1: installed package revision differs"):
+        current.sync_packages()
+    assert discarded == [] and len(sent) == 1 and not list(tmp_path.glob("worker-*"))
+
+
+@pytest.mark.parametrize("path", ["/tmp/sparkring-enroll-update-1", "/var/tmp/other", "relative/sparkring-enroll-1",
+                                  "/var/tmp/sparkring-enroll-1/inner", "/var/tmp/sparkring-enroll-1/.."])
+def test_only_a_bundle_staging_directory_in_var_tmp_is_discarded(path):
+    with pytest.raises(ValueError, match="Invalid bootstrap staging directory"):
+        packages.discard_staging(path)
+
+
+def test_a_bundle_whose_build_failed_leaves_nothing_on_node_a(tmp_path, monkeypatch):
+    from runtime.host import install_assets
+    from runtime.host.test_install_assets import Transport
+    monkeypatch.setattr(install_assets.distribution, "identity", lambda root: "a" * 40)
+
+    def build(directory, key):
+        directory.mkdir()
+        (directory / "partial.deb").write_bytes(b"part")
+        raise subprocess.CalledProcessError(100, ["apt-get", "download"])
+    monkeypatch.setattr(packages, "build", build)
+    current = install_assets.Assets(Transport(), tmp_path)
+    monkeypatch.setattr(current, "remote", lambda rank, function, *args: "b" * 40)
+    with pytest.raises(subprocess.CalledProcessError):
+        current.sync_packages()
+    assert not list(tmp_path.glob("worker-*"))
