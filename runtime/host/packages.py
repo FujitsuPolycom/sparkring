@@ -168,6 +168,35 @@ def receive(path, digest):
     print(str(root))
 
 
+def discard_staging(path):
+    """Self-contained: remove a worker's bundle staging directory below /var/tmp after its installation.
+
+    Only a ``sparkring-enroll-*`` directory directly in ``/var/tmp`` that is no
+    symlink is removed; ``shutil.rmtree`` removes symlinks inside it without
+    following them.
+    """
+    import shutil
+    from pathlib import Path
+    root = Path(path)
+    if (not root.is_absolute() or root.parent != Path("/var/tmp") or not root.name.startswith("sparkring-enroll-")
+            or root.is_symlink()):
+        raise ValueError("Invalid bootstrap staging directory")
+    if root.exists():
+        shutil.rmtree(root)
+    return True
+
+
+def discard(archive):
+    """Remove a bundle that ``build`` made, its directory and its archive, once its installations are done.
+
+    Every worker update builds its own bundle, so nothing reads one afterwards.
+    """
+    import shutil
+    archive = Path(archive)
+    archive.unlink(missing_ok=True)
+    shutil.rmtree(archive.with_suffix(""), ignore_errors=True)
+
+
 def transfer(transport, route, archive, target):
     code = inspect.getsource(receive) + "\nreceive(" + repr(target) + ", " + repr(distribution.digest(archive)) + ")\n"
     # Stream bytes; command text contains only the destination and checksum.

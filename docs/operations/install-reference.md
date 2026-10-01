@@ -138,10 +138,12 @@ fabric functions and return paths.
 
 ### What a run does
 
-It updates workers from Node A's package, reuses cached images and weights,
-copies missing assets over verified fabric paths, and prepares assets before
-stopping the running managed model; preparation never creates, starts or
-stops a model container. If the switch fails, it attempts recovery from the
+It updates workers from Node A's package through a bundle of the package and
+its dependencies. Each worker's copy in `/var/tmp` is removed once that
+worker runs Node A's revision, and Node A's copy when the update ends. It
+reuses cached images and weights, copies missing assets over verified fabric
+paths, and prepares assets before stopping the running managed model;
+preparation never creates, starts or stops a model container. If the switch fails, it attempts recovery from the
 retained deployment and records the outcome. Before each model container
 starts:
 

@@ -161,14 +161,24 @@ class Assets:
             return {"updated": [], "revision": current}
         # Existing enrolled access is retained; this bundle does not invoke seed.
         archive = packages.build(self.directory / ("worker-" + str(time.time_ns())), "")
-        for rank in outdated:
-            target = "/var/tmp/sparkring-enroll-update-" + current[:12] + "-" + str(time.time_ns())
-            with progress.step(f"Node {rank}: Update SparkRing from Node A's package"):
-                packages.transfer(self.transport, rank, archive, target)
-                progress.command(self.command(rank, ["python3", "-I", target + "/install.py", "--apply"]),
-                                 title=f"Node {rank}: Install verified package bundle", invoke=self.run, check=True)
-                if self.remote(rank, worker_revision) != current:
-                    raise ValueError(f"Node {rank}: installed package revision differs")
+        try:
+            for rank in outdated:
+                target = "/var/tmp/sparkring-enroll-update-" + current[:12] + "-" + str(time.time_ns())
+                with progress.step(f"Node {rank}: Update SparkRing from Node A's package"):
+                    packages.transfer(self.transport, rank, archive, target)
+                    progress.command(self.command(rank, ["python3", "-I", target + "/install.py", "--apply"]),
+                                     title=f"Node {rank}: Install verified package bundle", invoke=self.run, check=True)
+                    if self.remote(rank, worker_revision) != current:
+                        raise ValueError(f"Node {rank}: installed package revision differs")
+                # The worker's copy carried only this update. A copy that stays
+                # after a failed update is kept for inspection.
+                try:
+                    self.remote(rank, packages.discard_staging, target)
+                except (OSError, ValueError, subprocess.SubprocessError) as error:
+                    progress.record(f"Node {rank}: {target} was not removed: {error}")
+        finally:
+            # Each update builds its own bundle, so a later one never reads this one.
+            packages.discard(archive)
         return {"updated": outdated, "revision": current}
 
     def relay(self, card, missing, observations):
