@@ -1291,9 +1291,12 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia
   57.7 / 184 / 258 tok/s at 1 / 8 / 16 streams in one run
   ([record](../../performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvfp4-qad-20261001.md)).
   Its host memory headroom was not measured.
-- The GLM `nvidia-nvfp4` checkpoint is **research-only**: CPU checks cover its
-  pins, selection and rendered containers, and no installation of it has been
-  measured.
+- The GLM `nvidia-nvfp4` checkpoint is **implemented** on the installer
+  image: on one four-Spark ring it passed all 7 functional checks and a
+  256-request correctness screen with no degenerate or wrong response, and
+  decoded 53.2 / 171 / 244 tok/s at 1 / 8 / 16 streams in one run
+  ([record](../../performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvidia-nvfp4-20261001.md)).
+  Its host memory headroom and multi-turn tool calls were not checked.
 - The four-Spark GLM profile's evidence and the
   [GLM memory record](../../performance/records/glm53-flash/installer-memory-20260929.md)
   cover NVFP4-Spark only.

@@ -14,9 +14,8 @@ R37 TP4 procedure.
 The four-Spark installer profile `glm53-flash-nvfp4-spark-tp4` installs the
 QAD revision above (`--checkpoint nvfp4-qad`) and NVIDIA revision
 `da920bb0b9f4` (`--checkpoint nvidia-nvfp4`) on the installer image, each with
-its own pin manifest in [`checkpoints/`](checkpoints). The QAD selection is
-implemented, measured on one four-Spark ring; the NVIDIA selection is
-research-only: no hardware run covers it
+its own pin manifest in [`checkpoints/`](checkpoints). Both selections are
+implemented, each measured on one four-Spark ring
 ([names, settings and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
 The [Spark target record](glm53-target-variants.json) owns its runtime revision,
