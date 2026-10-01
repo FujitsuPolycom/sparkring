@@ -17,6 +17,12 @@
       ]
     },
     {
+      "id": "external-arm64",
+      "path": "runtime/images/external_context.py",
+      "kind": "python",
+      "reason": "Prepare the software layer of an installer image: a digest-pinned external vLLM/B12X ARM64 image plus SparkRing source archives and integration assets, preserving the external image's framework binaries; preparation does not invoke Docker."
+    },
+    {
       "id": "sglang-deepseek-bounded-prefill",
       "path": "runtime/images/sglang_extension.py",
       "kind": "python",
