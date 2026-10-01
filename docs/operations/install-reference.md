@@ -618,7 +618,19 @@ contacts the enrolled nodes and observes the model containers.
 - host observations: persistent node ID, boot ID and their own `observed_at`;
   cached ones keep their original time and go stale after 90 seconds;
 - container observations: the inspected container ID, start time and actual
-  image ID.
+  image ID, and for a stopped container its `exit_code` and `finished_at`;
+- `model`, when the last operation is a completed `up`: `state` (`serving`,
+  `stopped`, `partial`, `api-failing`, `rebooted`, `mesh-failed`,
+  `mesh-cleanup`, `unreachable` or `unknown`), `summary`, `next_action` and
+  `details`, as the first lines of the text output show them;
+- `recovery`: the active deployment's
+  [automatic recovery](#automatic-recovery) record and whether its timer is
+  enabled;
+- per Spark, `control`: each administration tunnel peer's link, carrier,
+  endpoint and seconds since its latest handshake, with a warning when that is
+  over 180 seconds; on a four-Spark ring, `mesh`: active and failed mesh
+  services, each failure's systemd result and last log line, and running mesh
+  marker processes.
 
 Missing identities are `null` with a reason, never guessed from hostname or
 rank. Network observations do not show whether the model is ready.
@@ -634,25 +646,114 @@ failed restart (naming the function and time), a boot started with
 ## When a model stops serving
 
 A multi-Spark model stops serving when any rank stops, and its containers do
-not restart themselves (`restart: 'no'`). To recover:
+not restart themselves (`restart: 'no'`). `sudo sparkring status --refresh`
+then starts with what is wrong and the command that fixes it; the lines
+below it name each Spark's container, exit code and time:
 
-1. Save each Spark's model container log: `sudo docker ps -a` names the
-   container; keep `sudo docker logs CONTAINER`.
-2. Run the command that installed the model again,
-   `sudo sparkring install --profile PROFILE`; it stops the model on every
-   Spark and starts it again.
+| First line | Cause | Next step |
+|---|---|---|
+| `The model is not running on any Spark` | Every rank's container stopped, for example after the Sparks restarted | `sudo sparkring up --execute` |
+| `The model runs on rank 0 (…) but stopped on rank 1 (…)` | The Sparks that stayed up keep a model that waits for the others | `sudo sparkring down --execute`, then `sudo sparkring up --execute` |
+| `The model's containers run, but its API fails` | Rank 0's `/health` answers 503 (the engine stopped), or neither `/health` nor `/v1/models` answers | the same |
+| `rank N (…) restarted after the model started` | The Spark's boot ID changed since the model started | the same |
+| `The mesh service failed on …` | A four-Spark mesh service failed; its last log line follows | `sudo sparkring up --execute` |
+| `SparkRing cannot reach rank N (…)` | The Spark does not answer | Power it on, or reconnect the [admin tunnel](#admin-tunnel) cable that the line names |
 
-   `sudo sparkring up --execute` also starts the deployment again when its
-   container runs on no Spark, for example after every Spark restarted: it
-   repeats every step, including restoring the RoCE GID index and the NVIDIA
-   CDI specification, and starts the containers. While the container still
-   runs on some Sparks, it holds the RoCE GID entries that step repairs, so
-   `up` refuses; stop the model on every Spark with
-   `sudo sparkring down --execute` first.
+`up` repeats every step when the container runs on no Spark, including
+restoring the RoCE GID index, a ring's mesh step and the NVIDIA CDI
+specification. While the container still runs on some Sparks, it holds the
+RoCE GID entries that step repairs, so `up` refuses until `down` has stopped
+it everywhere. `sudo sparkring install --profile PROFILE` does both.
 
-Saved-log lines beginning `RoCEnante rank` tell which rank was late and why.
-`sudo sparkring status --refresh --json` shows rank 0's container with
-`running: false` while the others still run.
+Before restarting by hand, save each Spark's model container log:
+`sudo docker ps -a` names the container; keep `sudo docker logs CONTAINER`.
+Log lines beginning `RoCEnante rank` tell which rank was late and why.
+
+### Automatic recovery
+
+Node A restarts the model by itself. Once a minute
+(`sparkring-recover.timer`), it checks the active model and, for the first
+four rows of the table, runs the same `up`, or `down` and then `up`, that the
+table names. It acts only when all of these hold:
+
+- The last model operation was a completed `sudo sparkring up` or
+  `sudo sparkring install`. After `sudo sparkring down --execute` it does
+  nothing until the next `up` or `install`.
+- No `install`, `setup`, `up`, `down` or `hairpin` is running.
+- Every Spark answers. While one does not, it only waits, and `status` names
+  the Spark it waits for.
+- Two checks in a row found the model not serving. An API that gives no
+  answer at all, rather than a 503, must stay silent for 5 minutes.
+- On four Sparks: every Spark reports its mesh services, the
+  [hairpin setting](#four-spark-rings) is in effect, and no mesh forwarding
+  process runs without its service ([below](#mesh-forwarding-without-its-service)).
+
+Before it acts it takes the install lock and checks everything again, so a
+`recover off`, another command or a model that came back in the meantime
+stops it.
+
+After a failed attempt it waits 2 minutes, then 5, then 15. After 4 failed
+attempts in a row, about 25 minutes of trying, it stops. It also stops,
+instead of restarting a fourth time, when it has already restarted the model
+3 times within 6 hours: a model that keeps stopping has a cause a restart
+does not fix. Either way `status` says why, and it resumes after
+`sudo sparkring up --execute`, `sudo sparkring install` or
+`sudo sparkring recover on`. Attempts are logged to
+`/var/log/sparkring/install.log` (`sudo sparkring logs`), and `status` shows
+the last attempt and the next.
+
+- Turn it off for the active model: `sudo sparkring recover off`; on again:
+  `sudo sparkring recover on`. `sparkring up` keeps that choice.
+- Install a model without it:
+  `sudo sparkring install --profile PROFILE --no-auto-recover`. Each
+  `install` sets the choice again: on unless you pass the flag.
+- Stop the model and keep it stopped: `sudo sparkring down --execute`.
+
+After a package upgrade, a model started by an earlier package is checked
+once its timer runs: the next `sudo sparkring up --execute`,
+`sudo sparkring install` or `sudo sparkring recover on` enables it. Until
+then `status` says `sparkring-recover.timer is not enabled`. Installing the
+package never enables the timer, so it never restarts a model by itself.
+
+It covers deployments that `sparkring install` and `sparkring up` start with
+Compose. For managed GLM deployments `status` says recovery is not
+available. Its record is `/var/lib/sparkring/recovery.json`; an unreadable
+record is moved aside to `recovery.json.unreadable-*` and recovery starts
+again from empty records.
+
+### Mesh forwarding without its service
+
+On four Sparks, a mesh service whose own process was killed (systemd result
+`watchdog` or `signal`) leaves its forwarding processes running, and a new
+mesh service refuses to start while they run. `status` then says
+`The mesh on rank N (…) stopped without stopping its forwarding processes`,
+and automatic recovery leaves it to you. On that Spark, with its model
+container stopped, run the mesh's own cleanup, which stops only the processes
+the service recorded and refuses when others remain:
+
+```bash
+sudo python3 /opt/sparkring/deployments/NAME/runtime/glm53-spark-mtp3-mesh/managed_service.py \
+  cleanup --config /etc/sparkring/deployments/NAME/service.json
+```
+
+`NAME` is the middle of the unit name `sparkring-NAME-mesh.service`; for
+`sparkring-mesh.service` the directories are `/opt/sparkring/managed-mesh` and
+`/etc/sparkring/managed-mesh`. Then, on Node A,
+`sudo sparkring down --execute` and `sudo sparkring up --execute`.
+
+### Admin tunnel
+
+Node A reaches each worker through the WireGuard administration tunnel
+`sr-control`, over one recorded fabric link per worker. When that link loses
+its cable or carrier, the worker cannot be reached even while the model keeps
+serving over the other port. `status` shows
+`admin tunnel: no recent handshake (last 46 min ago); Node A's enp1s0f1np1: no link`
+under that worker, and `install`, `up` and `down` fail on it. Reconnect that
+cable; the tunnel returns once the link is back, because SparkRing sets its path
+again every 20 seconds. The
+tunnel has no second path over another port or the LAN.
+
+### Why a rank stops the others
 
 Ranks exchange every all-reduce and all-gather over RoCE with the prepared
 RoCEnante transport. Its
@@ -1081,8 +1182,9 @@ rings, SparkRing's enabled host services start the administration network and
 its SSH service, also over the remaining links if one administration link
 fails, and `sparkring-fabric.service` restores the approved fabric routes,
 per-interface IPv4 forwarding and forwarding rules; NetworkManager keeps the
-fabric addresses. Models start only when requested; `sparkring down` stops
-the selected deployment.
+fabric addresses. Models start only when requested, or when
+[automatic recovery](#automatic-recovery) restarts the active model after its
+last `up` completed; `sparkring down` stops the selected deployment.
 
 **Mesh start check.** The package's systemd generator,
 `/usr/lib/systemd/system-generators/sparkring-hairpin-mesh-check`, adds a

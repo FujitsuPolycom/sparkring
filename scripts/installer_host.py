@@ -1523,20 +1523,26 @@ def check_runtime_binding(lock, row, info, *, root="/", finalize=False):
 
 
 def model_observation(lock, row, info, *, root="/", now=time.time):
-    """Allowlisted identities from the inspected container and this host only."""
+    """Allowlisted identities from the inspected container and this host only.
+
+    A stopped container adds Docker's ``exit_code`` and ``finished_at``.
+    """
     from runtime.host import node
     identity = node.observation_identity(root=root)
     expected_node = row.get("node_id")
     state = info.get("State", {}) if info else {}
-    return {"schema": "sparkring-model-observation/v1", "source": "installer-docker-inspect", "observed_at": now(),
-            "deployment_id": lock["id"], "rank": row["rank"], **identity,
-            "expected_node_id": expected_node,
-            "node_identity_matches": identity["node_id"] == expected_node if expected_node and identity["node_id"] else None,
-            "container_id": info["Id"] if info else None, "container_name": info.get("Name", "").lstrip("/") if info else None,
-            "container_started_at": state.get("StartedAt"), "image_id": info["Image"] if info else None,
-            "expected_image_id": lock["selection"]["image_id"],
-            "present": info is not None, "running": bool(state.get("Running")),
-            "health": state.get("Health", {}).get("Status")}
+    result = {"schema": "sparkring-model-observation/v1", "source": "installer-docker-inspect", "observed_at": now(),
+              "deployment_id": lock["id"], "rank": row["rank"], **identity,
+              "expected_node_id": expected_node,
+              "node_identity_matches": identity["node_id"] == expected_node if expected_node and identity["node_id"] else None,
+              "container_id": info["Id"] if info else None, "container_name": info.get("Name", "").lstrip("/") if info else None,
+              "container_started_at": state.get("StartedAt"), "image_id": info["Image"] if info else None,
+              "expected_image_id": lock["selection"]["image_id"],
+              "present": info is not None, "running": bool(state.get("Running")),
+              "health": state.get("Health", {}).get("Status")}
+    if info is not None and not state.get("Running"):
+        result.update(exit_code=state.get("ExitCode"), finished_at=state.get("FinishedAt"))
+    return result
 
 
 def model_operation(operation, lock, number, row, state):

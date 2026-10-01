@@ -1,0 +1,13 @@
+[Unit]
+Description=Restart the active SparkRing model when a Spark stops serving
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Without an active deployment, as on the workers, a run ends at once.
+ExecStart=/usr/bin/sparkring recover --auto
+# SSH to the Sparks uses root's administration keys and host keys.
+Environment=HOME=/root
+# A restart waits for the model to load, which can take 30 minutes.
+TimeoutStartSec=infinity

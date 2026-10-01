@@ -150,8 +150,10 @@ UP_PROFILE = "qwen38-flash-next-tp2"
 def plain_up(tmp_path, monkeypatch):
     """`sparkring up <profile>` on a recorded two-Spark cluster whose rank operations are simulated.
 
-    SSH from the controller fails the test: `sparkring up` neither surveys nor
-    probes the Sparks. Every rank operation runs through the plain
+    `sparkring up` neither surveys the Sparks nor probes their assets: its only
+    SSH from the controller reads each Spark's cached `sparkring node status`
+    after the model starts, for the boot IDs automatic recovery records; any
+    other SSH fails the test. Every rank operation runs through the plain
     installer_runner.Runner, which records it with the row it acted on.
     """
     from runtime.common import distribution
@@ -163,7 +165,11 @@ def plain_up(tmp_path, monkeypatch):
     node.save(controller.STATE, "cluster.json", cluster(2))
     monkeypatch.setattr(distribution, "identity", lambda _: "a" * 40)
     monkeypatch.setattr(distribution, "bundle", lambda root, dest: dest.write_bytes(b"retained source"))
-    monkeypatch.setattr(discovery, "ssh", lambda *a, **k: pytest.fail("sparkring up contacted a Spark: " + repr(a[1])))
+    def ssh(host, argv, **kwargs):
+        if argv == ["/usr/bin/sparkring", "node", "status"]:
+            return json.dumps({"state": "network-configured", "boot_id": "11111111-1111-4111-8111-111111111111"})
+        pytest.fail("sparkring up contacted a Spark: " + repr(argv))
+    monkeypatch.setattr(discovery, "ssh", ssh)
     calls = []
 
     def call(self, target, argv, timeout):

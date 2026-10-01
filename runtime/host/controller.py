@@ -435,6 +435,8 @@ def lifecycle(argv):
                     observation = {"state": "unreachable", "error": str(error)}
                 result["nodes"].append({"host": host["host"], **observation})
         path = existing_deployment(args.profile, args.instance) if args.profile else active_deployment()
+        from runtime.host import recovery
+        record = None
         if path is not None:
             result["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=cache)
             # Read here rather than by the retained source, whose revision may
@@ -442,10 +444,30 @@ def lifecycle(argv):
             lock = installer.read(Path(path) / "deployment.lock.json")
             result["deployment"].update(installer.identity(lock), containers=installer.containers(lock),
                                         serving=lock.get("serving") or {})
+            try:
+                record = recovery.record_of(recovery.load(), path)
+                # Automatic recovery acts on the active deployment only.
+                if not args.profile or recovery.is_active(path):
+                    result["recovery"] = {**record, "supported": recovery.supported(lock),
+                                          "timer_enabled": recovery.timer_enabled()}
+            except (OSError, ValueError) as error:
+                result["recovery"] = {"error": str(error)}
+            if args.refresh:
+                # Node A's own document carries its administration tunnel report.
+                model = recovery.status_assessment(result["deployment"], result.get("nodes"), record,
+                                                   tunnel=result.get("control"))
+                if model is not None:
+                    result["model"] = model
         if args.json:
             print(json.dumps(result, indent=2))
         else:
-            # The top line stays Node A's own state; each Spark's line follows.
+            model = result.get("model")
+            if model and model["state"] != "serving":
+                # What stops the model comes first, with the step that restarts it.
+                print(model["summary"] + " | next: " + model["next_action"])
+                for line in model["details"]:
+                    print("  " + line)
+            # Node A's own state; each Spark's line follows.
             print(result["state"] + " | next: " + result.get("next_action", "sparkring status"))
             if not result.get("nodes"):
                 for warning in result.get("warnings", []):
@@ -462,6 +484,13 @@ def lifecycle(argv):
                         print("    next: " + row["next_action"])
                 for warning in row.get("warnings", []):
                     print("    warning: " + warning)
+                for unit in (row.get("mesh") or {}).get("failed") or []:
+                    print("    mesh: " + node.mesh_failure_text(unit))
+                    if name not in attention:
+                        attention.append(name)
+                reason = recovery.tunnel_reason(result.get("control"), row["host"]) if rank else None
+                if reason:
+                    print("    admin tunnel: " + reason.removeprefix("the admin tunnel has "))
             if attention:
                 print("Sparks that need attention: " + ", ".join(attention))
             if result.get("deployment"):
@@ -476,9 +505,19 @@ def lifecycle(argv):
                                                            for name, value in sorted(saved["serving"].items())))
                 print(saved["api_url"])
                 if saved.get("observations"):
-                    print(json.dumps(saved["observations"], indent=2))
+                    print("Model containers:")
+                    for row in recovery.ranks_from_observations(saved["observations"]):
+                        print(f"  rank {row['rank']} {row['host']}: " + recovery.container_text(row))
+                    if model and model["state"] == "serving":
+                        print("Model: " + model["summary"])
                 else:
                     print("Use --refresh for current model container state.")
+                recorded = result.get("recovery")
+                if recorded is not None:
+                    for line in recovery.status_lines(None if "error" in recorded else record,
+                                                      timer=recorded.get("timer_enabled"), state=saved["state"],
+                                                      backend=lock.get("backend")):
+                        print(line)
             print("Network observations do not qualify GPU/RDMA serving.")
         return 0
     if args.plan and args.execute:
@@ -574,10 +613,18 @@ def lifecycle(argv):
             if problem:
                 raise ValueError(problem)
         confirm("Apply these model/image actions?", args.execute)
+        from runtime.host import recovery
+        # Automatic recovery never takes a state this operation leaves for its
+        # own, neither in this deployment nor in the active one it replaces.
+        for path in {directory, active} - {None}:
+            recovery.forget_attempt(path)
         result = retained_source.apply(directory, args.operation, cache=cache)
         # Stopping another deployment leaves the active one in place.
         if args.operation == "up" or held_active is None:
             node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
+        if args.operation == "up" and result.get("complete"):
+            # Resets automatic recovery's failures and records the generation's boots.
+            recovery.started(directory)
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
 

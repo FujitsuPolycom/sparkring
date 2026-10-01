@@ -1,0 +1,12 @@
+[Unit]
+Description=Check the active SparkRing model every minute
+
+[Timer]
+OnBootSec=2min
+OnActiveSec=1min
+# Counted from the end of the previous run, so runs never overlap.
+OnUnitInactiveSec=60
+Unit=sparkring-recover.service
+
+[Install]
+WantedBy=timers.target

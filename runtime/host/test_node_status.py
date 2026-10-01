@@ -1,5 +1,6 @@
 """Node status of the ConnectX hairpin setting, with fake facts, systemd and root; no host access."""
 import copy
+import json
 import subprocess
 from types import SimpleNamespace
 
@@ -296,3 +297,131 @@ def test_masked_mesh_unit_is_not_checked(tmp_path, report):
     host = Host()
     result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host)
     assert host.drop_in_queries() == [] and "warnings" not in result
+
+
+class Answers(Host):
+    """Host whose systemctl, journalctl and wg queries return recorded output."""
+
+    def __init__(self, answers, **kwargs):
+        super().__init__(**kwargs)
+        self.answers = answers
+
+    def __call__(self, argv, **kwargs):
+        for prefix, stdout in self.answers.items():
+            if tuple(argv[:len(prefix)]) == prefix:
+                self.calls.append(list(argv))
+                return subprocess.CompletedProcess(argv, 0, stdout, "")
+        return super().__call__(argv, **kwargs)
+
+
+FAILED_MESH = {
+    ("systemctl", "list-units"): "sparkring-mesh.service loaded failed failed SparkRing mesh\n",
+    ("systemctl", "show", "-p", "Result"): "exit-code\n",
+    ("journalctl", "_SYSTEMD_UNIT=sparkring-mesh.service"): (
+        "Traceback (most recent call last):\n  File \"managed_service.py\", line 62, in load_config\n"
+        "ValueError: Management address does not identify this rank\n"),
+}
+
+
+def test_failed_mesh_unit_is_the_reported_cause_instead_of_its_missing_objects(tmp_path, report, monkeypatch):
+    config, facts = ring(tmp_path)
+    config.update(ownership="observed", routes=[], forwarding=[],
+                  native_mesh={"reference": "x", "hcas": [], "host_ip": "198.18.1.1"})
+    node.save(tmp_path, "/etc/sparkring/fabric.json", config)
+
+    def missing(*args, **kwargs):
+        raise ValueError("Missing mesh network objects: ['route 198.18.2.0/24']")
+
+    monkeypatch.setattr(qwen_mesh, "check", missing)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Answers(FAILED_MESH))
+    assert result["state"] == "needs-attention"
+    assert result["error"] == "sparkring-mesh.service failed: ValueError: Management address does not identify this rank"
+    # The operator reads why the unit failed; the looping status command is not the next action.
+    assert result["next_action"] == "journalctl -u sparkring-mesh.service -b"
+    assert "Missing mesh network objects: ['route 198.18.2.0/24']" in result["warnings"]
+    assert result["mesh"] == {"active": [], "markers": [], "failed": [
+        {"unit": "sparkring-mesh.service", "result": "exit-code",
+         "error": "ValueError: Management address does not identify this rank"}]}
+
+
+def test_installer_mesh_failure_is_reported_while_the_fabric_stays_configured(tmp_path, report):
+    _, facts = ring(tmp_path)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Answers(FAILED_MESH))
+    assert result["state"] == "network-configured" and "error" not in result
+    assert result["mesh"]["failed"][0]["error"] == "ValueError: Management address does not identify this rank"
+
+
+def test_last_error_prefers_the_supervisors_failure_event_and_a_newer_start_error():
+    events = "\n".join(json.dumps(event) for event in (
+        {"event": "mesh_failure", "rank": 2, "error": "Authenticated peer transport remained unavailable beyond its "
+                                                      "grace interval"},
+        {"event": "network_cleanup_incomplete", "error": "route still present"}))
+    answer = {("journalctl",): events + "\n"}
+    assert node.last_error("sparkring-mesh.service", run=Answers(answer)) == (
+        "Authenticated peer transport remained unavailable beyond its grace interval")
+    answer[("journalctl",)] = events + "\nSparkRing hairpin: the ConnectX hairpin setting is not in effect\n"
+    assert node.last_error("sparkring-mesh.service", run=Answers(answer)) == (
+        "SparkRing hairpin: the ConnectX hairpin setting is not in effect")
+    assert node.last_error("sparkring-mesh.service", run=Answers({("journalctl",): ""})) is None
+
+
+def marker(root, pid, *argv):
+    directory = root / "proc" / str(pid)
+    directory.mkdir(parents=True)
+    (directory / "cmdline").write_bytes(b"\0".join(value.encode() for value in argv) + b"\0")
+
+
+def test_markers_without_an_active_mesh_unit_are_reported(tmp_path, report):
+    _, facts = ring(tmp_path)
+    arguments = ("--device", "rocep1s0f0", "--source-port", "65535", "--replacement-ethertype", "0x88b5",
+                 "--attach", "--managed")
+    marker(tmp_path, 4242, "/srv/sparkring/test/mesh/artifacts/mlx5-rdma-tx-marker", *arguments)
+    marker(tmp_path, 4243, "/usr/bin/python3", "managed_service.py", "run")
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Answers(FAILED_MESH))
+    assert result["mesh"]["markers"] == [4242] and node.orphaned_markers(result["mesh"])
+    assert any("mesh marker processes run while no mesh unit is active" in w for w in result["warnings"])
+    active = {**FAILED_MESH, ("systemctl", "list-units"): "sparkring-mesh.service loaded active running mesh\n"}
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Answers(active))
+    assert result["mesh"]["active"] == ["sparkring-mesh.service"] and not node.orphaned_markers(result["mesh"])
+    assert not any("marker processes" in w for w in result.get("warnings", []))
+
+
+PEER_KEY = "A" * 43 + "="
+
+
+def tunnel(root, *, carrier, handshake, now):
+    node.save(root, "/etc/sparkring/control.json", {
+        "schema": "sparkring-control/v1", "id": "a", "address": "10.253.255.1", "head": True,
+        "head_address": "10.253.255.1", "share_uplink": True,
+        "peers": [{"id": "b", "key": PEER_KEY, "allowed_ips": ["10.253.255.2/32"], "netdev": "enp1s0f1np1",
+                   "endpoint": "[fe80::2%enp1s0f1np1]:51871"}]})
+    link = root / "sys/class/net/enp1s0f1np1"
+    link.mkdir(parents=True, exist_ok=True)
+    (link / "carrier").write_text("1\n" if carrier else "0\n")
+    (link / "operstate").write_text("up\n" if carrier else "down\n")
+    dump = (f"PRIVATE\tPUBLIC\t51871\toff\n"
+            f"{PEER_KEY}\t(none)\t[fe80::2%enp1s0f1np1]:51871\t10.253.255.2/32\t{now - handshake}\t10\t20\t15\n")
+    return Answers({("wg", "show"): dump})
+
+
+def test_admin_tunnel_without_a_recent_handshake_names_the_link_state(tmp_path):
+    _, facts = ring(tmp_path, size=2)
+    host = tunnel(tmp_path, carrier=False, handshake=46 * 60, now=10_000)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host, now=lambda: 10_000)
+    # The model fabric can serve while the administration link is down; the Spark stays configured.
+    assert result["state"] == "network-configured"
+    assert result["warnings"] == ["admin tunnel to 10.253.255.2 has no recent handshake (last 46 min ago); "
+                                  "enp1s0f1np1: no link"]
+    assert result["control"]["peers"] == [{
+        "id": "b", "address": "10.253.255.2", "upstream": False, "netdev": "enp1s0f1np1", "carrier": False,
+        "operstate": "down", "endpoint": "[fe80::2%enp1s0f1np1]:51871", "handshake_age_s": 2760}]
+    host = tunnel(tmp_path, carrier=True, handshake=40, now=10_000)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=host, now=lambda: 10_000)
+    assert "warnings" not in result and result["control"]["peers"][0]["handshake_age_s"] == 40
+
+
+def test_admin_tunnel_that_is_not_up_is_reported(tmp_path):
+    _, facts = ring(tmp_path, size=2)
+    tunnel(tmp_path, carrier=True, handshake=40, now=10_000)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Answers({("wg", "show"): ""}))
+    assert result["warnings"] == ["admin tunnel sr-control is not up"]

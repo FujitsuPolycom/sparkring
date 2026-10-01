@@ -2366,3 +2366,35 @@ def test_install_yes_help_names_the_connectx_restarts(capsys):
     help_text = " ".join(capsys.readouterr().out.split())
     assert ("--yes approve the displayed setup, checkpoint plan, the listed ConnectX driver restarts on an idle "
             "ring, and model replacement; SSH trust is still required") in help_text
+
+
+def test_installation_turns_automatic_recovery_on_unless_asked_not_to(machine, capsys):
+    from runtime.host import recovery
+    assert command() == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    directory = rollout.active(controller.STATE)
+    assert result["auto_recover"] is True and recovery.record_of(recovery.load(), directory)["enabled"] is True
+    assert "  Recovery:    restarts the model if a Spark stops serving; turn off: sudo sparkring recover off" in out.err
+    recovery.update(directory, failures=2)
+    assert command("--no-auto-recover") == 0
+    out = capsys.readouterr()
+    value = recovery.record_of(recovery.load(), directory)
+    assert json.loads(out.out)["auto_recover"] is False
+    assert (value["enabled"], value["failures"]) == (False, 0)
+    assert "  Recovery:    off; turn on: sudo sparkring recover on" in out.err
+
+
+@pytest.mark.parametrize("outcome, expected, line", [
+    (None, "unrecorded", "not set up (see the warning above); sudo sparkring recover on retries"),
+    ({"supported": False, "enabled": True}, "unsupported", "not available for this model's backend; restart it by hand"),
+])
+def test_installation_reports_recovery_only_when_it_was_recorded_for_a_supported_backend(machine, capsys, monkeypatch,
+                                                                                         outcome, expected, line):
+    from runtime.host import recovery
+    monkeypatch.setattr(recovery, "started", lambda directory, enabled=None: outcome)
+    assert command() == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert (result["recovery"], result["auto_recover"]) == (expected, False)
+    assert "  Recovery:    " + line in out.err
