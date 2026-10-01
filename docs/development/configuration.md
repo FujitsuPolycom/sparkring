@@ -38,9 +38,9 @@ GLM's `--variant nvfp4-qad` reads its declared target variant rather than changi
 the profile's image. Unsupported selections fail with a pointer to their own guide.
 
 `setup storage` reserves the checkpoint's pinned file sizes with its largest
-file again as headroom, the image lock's unpacked and download sizes, and the
-compile cache allowance on local model, Docker and cache destination
-filesystems; a revision without a pin manifest and a selection without image
+file again as headroom (at most 16 GiB), the image lock's unpacked and
+download sizes, and the compile cache allowance on local model, Docker and
+cache destination filesystems; a revision without a pin manifest and a selection without image
 sizes get the [planning allowances](../../profiles/storage-planning.json)
 instead. It sums allocations
 sharing a filesystem, probes existing ancestors without creating directories,

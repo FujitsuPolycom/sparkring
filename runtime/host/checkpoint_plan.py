@@ -64,6 +64,13 @@ GIB = 1024 ** 3
 # Per-Spark growth accepted without another approval: unplanned writes during
 # adoption, and a fresh plan compared with a plan reviewed with --plan.
 TOLERANCE_BYTES = GIB
+# The most headroom counted beside the checkpoint files a Spark writes: the
+# largest written file, up to this size. It covers writes the plan does not
+# itemize during a transfer that can take hours, among them the unplanned
+# writes an approved plan tolerates (TOLERANCE_BYTES per Spark). Placement
+# hard-links each verified file from staging on the same filesystem, so no file
+# is ever stored twice and the headroom need not grow with the file size.
+HEADROOM_CAP_BYTES = 16 * GIB
 # A download from huggingface.co larger than this needs its own approval when
 # only setup approved a first installation.
 ATTENTION_DOWNLOAD_BYTES = GIB
@@ -228,6 +235,18 @@ def storage_policy(root=None):
             "image_bytes": int(value["image_allowance_gib"]) * GIB}
 
 
+def headroom(written):
+    """Headroom bytes beside the files of ``written``: the largest, at most ``HEADROOM_CAP_BYTES``."""
+    return min(max((int(size) for size in written), default=0), HEADROOM_CAP_BYTES)
+
+
+def headroom_text(largest):
+    """The headroom part of a free-space figure whose largest written file has ``largest`` bytes."""
+    if largest > HEADROOM_CAP_BYTES:
+        return f"{_human(HEADROOM_CAP_BYTES)} of headroom (the largest file, {_human(largest)}, capped)"
+    return f"{_human(largest)} of headroom (the largest file)"
+
+
 def required_space(written, *, cache_bytes=0, image_bytes=0):
     """Free bytes one filesystem needs before SparkRing writes checkpoint files on it.
 
@@ -235,18 +254,16 @@ def required_space(written, *, cache_bytes=0, image_bytes=0):
     downloaded into checkpoint directories on that filesystem; linked and present
     files are not written and count zero. Each file is written once: staging
     shares the filesystem and placement hard-links the verified file. The
-    largest written file is counted once more as headroom for writes the plan
-    does not itemize while a transfer that can take hours runs: an approved plan
-    tolerates up to ``TOLERANCE_BYTES`` of unplanned writes per Spark, and other
-    processes write beside it. ``cache_bytes`` is the compile cache need when
-    the cache is on this filesystem. ``image_bytes`` is the serving image need
-    when Docker's data root is on this filesystem, with Node A's relay copy; it
-    applies only at plan time, because rank operations run after the image is
-    in place (``runtime.host.install_space``). The plan and the rank operations
-    call this one function.
+    largest written file, capped at ``HEADROOM_CAP_BYTES``, is counted once
+    more as headroom (``headroom``). ``cache_bytes`` is the compile cache need
+    when the cache is on this filesystem. ``image_bytes`` is the serving image
+    need when Docker's data root is on this filesystem, with Node A's relay
+    copy; it applies only at plan time, because rank operations run after the
+    image is in place (``runtime.host.install_space``). The plan, the rank
+    operations and ``setup.pinned_checkpoint_bytes`` call this one function.
     """
     sizes = [int(size) for size in written]
-    return sum(sizes) + max(sizes, default=0) + int(cache_bytes) + int(image_bytes)
+    return sum(sizes) + headroom(sizes) + int(cache_bytes) + int(image_bytes)
 
 
 def announce(pins, count, seconds=SEARCH_SECONDS, docker=DOCKER_SECONDS):
@@ -798,6 +815,7 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
         docker_on = docker.get("device") in (None, owned.get("device"))
         relay_on = rank == 0 and relay_device in (None, owned.get("device"))
         node["storage"] = {"written_bytes": sum(written), "largest_bytes": max(written, default=0),
+                           "headroom_bytes": headroom(written),
                            "cache_bytes": caches[rank]["bytes"] if cache_on else 0,
                            "image_bytes": images[rank]["bytes"] if docker_on else 0,
                            "relay_bytes": relay if relay_on else 0,
@@ -916,7 +934,7 @@ def _storage_message(pins, node, context):
     terms = []
     if storage["written_bytes"]:
         terms += [f"{_human(storage['written_bytes'])} of checkpoint files",
-                  f"{_human(storage['largest_bytes'])} of headroom (the largest file)"]
+                  headroom_text(storage["largest_bytes"])]
     terms += _reserved(storage)
     purpose = f" to {verb} the checkpoint" if storage["written_bytes"] else ""
     text = (f"Node {rank} {host} needs {_gib1(node['required_bytes'])} free on {where}{purpose}: "
@@ -1341,7 +1359,8 @@ def _allowances(node):
     reserved = _reserved(storage)
     if not reserved:
         return []
-    files = storage.get("written_bytes", 0) + storage.get("largest_bytes", 0)
+    files = storage.get("written_bytes", 0) + storage.get(
+        "headroom_bytes", min(storage.get("largest_bytes", 0), HEADROOM_CAP_BYTES))
     return ([f"{_human(files)} for checkpoint files"] if files else []) + reserved
 
 

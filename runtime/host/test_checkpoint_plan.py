@@ -7,6 +7,8 @@ Hub tree at that revision. Hashes are stand-ins; the plan never reads them.
 import datetime
 import hashlib
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -540,6 +542,41 @@ def test_storage_formula_is_the_same_at_plan_and_run_time():
     filled = make(surveys, caches=[built, None, None, None])["nodes"][0]
     assert filled["storage"]["cache_bytes"] == 0 and filled["required_bytes"] == moved["required_bytes"]
     assert cp.required_space([]) == 0 and cp.required_space([5, 7], cache_bytes=1, image_bytes=2) == 22
+
+
+# The pinned DeepSeek-V4.1-Flash revision, whose two largest files are 94.6 GiB each.
+DEEPSEEK = json.loads((Path(cp.__file__).resolve().parents[2] / "profiles/checkpoints/deepseek-ai--DeepSeek-V4.1-Flash"
+                       / "dba1be0a40aa45a94ad051997016db3960a90277.json").read_text(encoding="utf-8"))
+
+
+def test_headroom_is_the_largest_written_file_up_to_16_gib(tmp_path, monkeypatch):
+    sizes = list(cp.required_files(DEEPSEEK).values())
+    assert f"{max(sizes) / GIB:.1f}" == "94.6" and cp.HEADROOM_CAP_BYTES == 16 * GIB
+    assert cp.headroom(sizes) == 16 * GIB and cp.required_space(sizes) == sum(sizes) + 16 * GIB
+    assert f"{cp.required_space(sizes) / GIB:.1f}" == "491.3"
+    # Qwen's largest file, 4.2 GiB, stays below the cap.
+    assert cp.headroom(SIZES.values()) == max(SIZES.values()) == 4548275968
+    assert cp.headroom([]) == 0
+    # A Spark that downloads the whole checkpoint: the plan names the cap.
+    plan = cp.plan(DEEPSEEK, [survey("spark-aa42", free_gib=44), survey("spark-931e")], rows(2), policy=POLICY, now=NOW)
+    node = plan["nodes"][0]
+    assert node["storage"]["largest_bytes"] == max(sizes) and node["storage"]["headroom_bytes"] == 16 * GIB
+    assert node["required_bytes"] == sum(sizes) + 16 * GIB + 4 * GIB
+    text = "16.0 GiB of headroom (the largest file, 94.6 GiB, capped)"
+    assert f": 475.3 GiB of checkpoint files, {text}, 4 GiB for the compile cache; 44.0 GiB is free." \
+        in plan["problems"][0]["message"]
+    assert "491.3 GiB for checkpoint files" in " ".join(cp.describe(plan))
+    # The rank operation's check refuses with the same figure and the same words.
+    from scripts import installer_host
+    model, cache = tmp_path / "checkpoint", tmp_path / "cache"
+    model.mkdir()
+    monkeypatch.setattr(installer_host.shutil, "disk_usage", lambda path: SimpleNamespace(free=44 * GIB))
+    with pytest.raises(ValueError) as refused:
+        installer_host._require_space(str(model), {"cache": str(cache)}, sizes, number=0,
+                                      card={"image_id": "sha256:" + "4" * 64})
+    assert f"needs {node['required_bytes'] / GIB:.1f} GiB free" in str(refused.value)
+    assert f"(475.3 GiB, {text}, 4 GiB for the compile cache)" in str(refused.value)
+    assert cp.headroom_text(max(SIZES.values())) == "4.2 GiB of headroom (the largest file)"
 
 
 def test_each_reserved_part_says_why_it_is_reserved():

@@ -101,7 +101,8 @@ def pinned_checkpoint_bytes(card, root=profiles.ROOT):
     """Bytes that writing the card's checkpoint on an empty filesystem needs, from its pin manifest, or None.
 
     The figure is the checkpoint plan's (``checkpoint_plan.required_space``):
-    every required file once, and the largest once more as headroom. None when
+    every required file once, and the largest once more as headroom, at most
+    ``checkpoint_plan.HEADROOM_CAP_BYTES``. None when
     ``profiles/checkpoints/<owner>--<name>/<revision>.json`` is absent or does
     not pin the card's repository and revision with positive sizes.
     """
@@ -122,7 +123,8 @@ def pinned_checkpoint_bytes(card, root=profiles.ROOT):
              for name, entry in pins["files"].items() if name not in optional]
     if not sizes or not all(type(size) is int and size > 0 for size in sizes):
         return None
-    return sum(sizes) + max(sizes)
+    from runtime.host import checkpoint_plan
+    return checkpoint_plan.required_space(sizes)
 
 
 def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False,
@@ -131,7 +133,8 @@ def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False
     """Sum additional allocations on shared filesystems, without writing files.
 
     The checkpoint needs its pinned file sizes with the largest file again as
-    headroom (``pinned_checkpoint_bytes``), or the checkpoint allowance of
+    headroom, capped as the install plan caps it (``pinned_checkpoint_bytes``),
+    or the checkpoint allowance of
     ``profiles/storage-planning.json`` for a revision without a pin manifest.
     The image needs its unpacked size, its download size and the pull margin
     when the card records its image lock's sizes (``install_space.pull_bytes``),
@@ -140,7 +143,7 @@ def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False
     existing ancestor. Operators must mount intended volumes first. Reuse flags
     are planning assumptions, not proof of existing asset identity.
     """
-    from runtime.host import install_space
+    from runtime.host import checkpoint_plan, install_space
     policy = profiles.read_json(root / "profiles/storage-planning.json")
     if policy.get("schema") != "sparkring-storage-planning/v2":
         raise ValueError("Unsupported storage planning policy")
@@ -155,7 +158,8 @@ def storage_plan(card, *, model_path, cache_path, docker_path, reuse_model=False
     if reuse_model:
         checkpoint = (0, "reused")
     elif pinned is not None:
-        checkpoint = (pinned, "pinned file sizes, the largest file again as headroom")
+        checkpoint = (pinned, "pinned file sizes, the largest file again as headroom, at most "
+                              f"{checkpoint_plan.HEADROOM_CAP_BYTES // GIB} GiB")
     else:
         checkpoint = (model_gib * GIB, "checkpoint allowance; the revision has no pin manifest")
     if reuse_image:

@@ -1140,12 +1140,14 @@ needs 8.0 GiB free on /: 4.0 GiB for the image's missing layers (dev-20260930-sp
 The parts are:
 
 - **Checkpoint files:** the bytes a Spark copies, receives or downloads, plus
-  the largest of those files again as headroom. Hard-linked files need no
-  space. Each file is written once: staging shares the filesystem and
-  SparkRing hard-links the verified file into place. The headroom is for
-  writes the plan does not itemize while a transfer that can take hours runs,
-  among them up to 1 GiB of unplanned writes per Spark, which an approved
-  plan tolerates.
+  the largest of those files again as headroom, at most 16 GiB. Hard-linked
+  files need no space. Each file is written once: staging shares the
+  filesystem and SparkRing hard-links the verified file into place, so the
+  headroom need not grow with the file. It is for writes the plan does not
+  itemize while a transfer that can take hours runs, among them up to 1 GiB
+  of unplanned writes per Spark, which an approved plan tolerates. Only
+  DeepSeek's two 94.6 GiB files exceed the cap; the plan then reads
+  `16.0 GiB of headroom (the largest file, 94.6 GiB, capped)`.
 - **Image**, when Docker's data root shares the filesystem. Each installer
   release's `publication.json` names the release it derives from, and a
   derived image keeps its parent's layers
@@ -1222,7 +1224,7 @@ more for the relay copy.
 | GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 179.5 GiB | 235.2 GiB |
 | GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 190.7 GiB | 246.4 GiB |
 | GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.4 GiB |
-| DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 569.8 GiB | 625.5 GiB |
+| DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 546.9 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.4 GiB |
 
 ### Limit the download rate

@@ -19,7 +19,7 @@ Run it on Node A, the Spark connected to your network.
   mirror. Workers need no network cable.
 - Free disk on each Spark that has neither the image nor the model: about
   163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift or
-  626 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
+  547 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
   of an earlier `sparkring install` needs about 47 GiB less.
 
 ![Back of a DGX Spark: p0 is the QSFP port next to the 10GbE port](assets/spark-rear-ports.svg)

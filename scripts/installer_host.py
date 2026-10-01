@@ -663,9 +663,10 @@ def _require_space(model, row, sizes, *, number, card):
     """Refuse to write files of ``sizes`` bytes into ``model`` unless its filesystem has room.
 
     The formula is the plan's (``checkpoint_plan.required_space``): the bytes written, the largest
-    file once more as headroom, and the compile cache need when the cluster cache shares the
-    filesystem (``install_space.cache_need``: nothing once every cache directory of ``card``'s
-    containers holds files). Linked and present files write nothing.
+    file once more as headroom up to ``checkpoint_plan.HEADROOM_CAP_BYTES``, and the compile cache
+    need when the cluster cache shares the filesystem (``install_space.cache_need``: nothing once
+    every cache directory of ``card``'s containers holds files). Linked and present files write
+    nothing. The message words the headroom as the plan does (``checkpoint_plan.headroom_text``).
     """
     sizes = list(sizes)
     if not sizes:
@@ -685,7 +686,7 @@ def _require_space(model, row, sizes, *, number, card):
     need = checkpoint_plan.required_space(sizes, cache_bytes=cache)
     free = shutil.disk_usage(target).free
     if free < need:
-        parts = [f"{sum(sizes) / GIB:.1f} GiB", f"{max(sizes) / GIB:.1f} GiB of headroom (the largest file)"]
+        parts = [f"{sum(sizes) / GIB:.1f} GiB", checkpoint_plan.headroom_text(max(sizes))]
         if cache:
             parts.append(f"{cache / GIB:.0f} GiB for the compile cache")
         raise ValueError(f"Node {number} needs {need / GIB:.1f} GiB free on the filesystem of {model} to write "

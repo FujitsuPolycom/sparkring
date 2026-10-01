@@ -155,8 +155,8 @@ the nearest existing directory for paths not yet created. It writes nothing.
 | All on one filesystem | 251.5 GiB | 262.7 GiB | 178.6 GiB |
 
 The checkpoint figure is every pinned file of the revision plus its largest
-file again as headroom, from the pin manifest in `profiles/checkpoints/`; a
-revision without one gets the checkpoint allowance of
+file again as headroom, at most 16 GiB, from the pin manifest in
+`profiles/checkpoints/`; a revision without one gets the checkpoint allowance of
 [storage-planning.json](../../profiles/storage-planning.json). The image figure
 is that file's image allowance, because these selections record no image
 sizes, and the compile cache figure its compile cache allowance, whose

@@ -119,7 +119,7 @@ def test_shared_filesystem_sums_requirements_instead_of_passing_each_separately(
     assert round(checkpoint / setup.GIB, 2) == GLM_PINNED
     assert report["filesystems"][0]["required_bytes"] == checkpoint + (68 + 4) * setup.GIB
     assert [(item["role"], item["basis"]) for item in report["filesystems"][0]["destinations"]] == [
-        ("checkpoint", "pinned file sizes, the largest file again as headroom"),
+        ("checkpoint", "pinned file sizes, the largest file again as headroom, at most 16 GiB"),
         ("image", "image allowance; the image lock records no sizes"),
         ("compile-cache", "compile cache allowance")]
     assert list(tmp_path.iterdir()) == []
@@ -189,6 +189,13 @@ def test_installer_card_reserves_its_image_lock_sizes_and_unpinned_revisions_the
     with pytest.raises(ValueError, match="No storage allowance"):
         setup.storage_plan({**unpinned, "model_repository": "someone/else"}, model_path=tmp_path / "model",
                            cache_path=tmp_path / "cache", docker_path=tmp_path / "docker")
+
+
+def test_pinned_checkpoint_headroom_is_capped_as_the_install_plan_caps_it():
+    # DeepSeek's largest files are 94.6 GiB; the headroom beside its 475.3 GiB is 16 GiB, as in the plan.
+    card = setup.selection("deepseek-v41-flash-tp4")
+    assert f"{setup.pinned_checkpoint_bytes(card) / setup.GIB:.1f}" == "491.3"
+    assert round(setup.pinned_checkpoint_bytes(setup.selection(QWEN)) / setup.GIB, 2) == QWEN_PINNED
 
 
 def test_qwen_budget_and_cli_exit_on_insufficient_space(tmp_path, monkeypatch, capsys):
