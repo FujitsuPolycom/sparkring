@@ -7,6 +7,30 @@
     "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
     "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544"
   },
+  "checkpoint": "nvfp4-spark",
+  "checkpoints": {
+    "nvfp4-spark": {
+      "model": {
+        "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+        "revision": "a608241037e4c2565356bff7ca293f2133888f88",
+        "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+        "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544"
+      }
+    },
+    "nvfp4-qad": {
+      "model": {
+        "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+        "revision": "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49",
+        "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+        "index_sha256": "b43d25a280d02bfd2a58c046386e24baad78fcce355ea2d48cc0c4c78671686b"
+      },
+      "served_model_name": "GLM-5.3-Flash-NVFP4-QAD-TP2",
+      "arguments": {
+        "--kv-cache-memory-bytes": "5368709120",
+        "--max-model-len": "524288"
+      }
+    }
+  },
   "topology": "direct-pair-2",
   "served_model_name": "GLM-5.3-Flash-NVFP4-Spark-TP2",
   "cache_namespace": "glm53-flash-nvfp4-spark",

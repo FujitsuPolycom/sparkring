@@ -153,7 +153,8 @@ class Acceptance:
             self.env.log(f"install: following run {launch['run_id']} on Node A, started {launch['started_at']}")
         else:
             run_id = f"{self.profile.id}-{self.stamp()}"
-            command = install.install_command(self.source, self.profile.id, self.args.install_arg)
+            chosen = ["--checkpoint", self.profile.checkpoint] if self.profile.checkpoint else []
+            command = install.install_command(self.source, self.profile.id, chosen + self.args.install_arg)
             launch = {"run_id": run_id, "command": command, "source": asdict(self.source),
                       "started_at": self.env.now().isoformat(timespec="seconds")}
             # Saved before the launch, so a later invocation follows this run
@@ -260,7 +261,8 @@ class Acceptance:
             # Installed with --image-lock: the record names the image that served.
             profile = replace(profile, image=release, release=f"runtime/releases/{release}/release.json")
         date = args.date or self.env.now().strftime("%Y%m%d")
-        name = record.record_name(profile.image, args.topic or profile.id, date)
+        topic = args.topic or "-".join(filter(None, (profile.id, profile.checkpoint)))
+        name = record.record_name(profile.image, topic, date)
         record_root = Path(args.record_root)
         markdown_path, directory = record_root / f"{name}.md", record_root / name
         if markdown_path.exists() or directory.exists():
@@ -358,7 +360,9 @@ def parser():
     p.add_argument("--bench-dir", help="llm-inference-bench checkout holding llm_decode_bench.py")
     p.add_argument("--bench-python", default=sys.executable, help="Python that runs the benchmark (default: this one)")
     p.add_argument("--record-root", default=str(ROOT / "performance/records/images"), help="where the record is written")
-    p.add_argument("--topic", help="record name topic (default: the profile ID)")
+    p.add_argument("--checkpoint", help="a checkpoint the profile lists, passed to sparkring install "
+                                        "(default: the profile's default checkpoint)")
+    p.add_argument("--topic", help="record name topic (default: the profile ID, then a --checkpoint choice)")
     p.add_argument("--date", help="record name date, YYYYMMDD (default: today, UTC)")
     p.add_argument("--status", choices=record.STATUSES, help="record status (default: the profile's status)")
     p.add_argument("--client", default=DEFAULT_CLIENT, help=f"client description in the record (default: {DEFAULT_CLIENT})")
@@ -391,7 +395,7 @@ def main(argv=None, env=None):
         env.log("error: --steps lists the steps after installation; --install selects installation")
         return 2
     try:
-        profile = profile_info.load(args.profile)
+        profile = profile_info.load(args.profile, checkpoint=args.checkpoint)
         if args.thinking_off is not None:
             profile = replace(profile, thinking_off=args.thinking_off)
         if args.thinking_on is not None:

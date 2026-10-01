@@ -43,6 +43,12 @@ def test_qad_selection_changes_weights_not_the_image():
     assert qad["image_id"] == default["image_id"]
     # An alias selects the checkpoint it names.
     assert setup.selection(QWEN, "qad-step-5500") == setup.selection(QWEN)
+    # A checkpoints table may list other repositories; the image stays the profile's.
+    ring = "glm53-flash-nvfp4-spark-tp4"
+    for name in ("nvfp4-qad", "nvidia-nvfp4"):
+        other = setup.selection(ring, name)
+        assert other["model_repository"] != setup.selection(ring)["model_repository"]
+        assert other["image_id"] == setup.selection(ring)["image_id"]
     # The Qwen profile lists its own checkpoints; a profile without a table accepts none.
     with pytest.raises(ValueError, match="lists: qad-step-4000, qad-step5500-ple1000"):
         setup.selection(QWEN, "nvfp4-qad")

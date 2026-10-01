@@ -91,6 +91,11 @@ BRANCH` and `scp sparkring.bundle spark-r0:`, then pass
 deployment already running and never opens SSH. Exactly one of the two is
 required.
 
+`--checkpoint NAME` installs and exercises another checkpoint the profile
+lists: the installer receives `--checkpoint NAME`, requests address that
+checkpoint's served model name, the record states its repository and
+revision, and the record name's topic becomes `<profile>-<NAME>`.
+
 Other options: `--steps` selects the steps after installation (default
 `readiness,functional,stress,throughput,record`); `--topic` and `--date` name
 the record (defaults: the profile ID and today in UTC); `--status` sets the

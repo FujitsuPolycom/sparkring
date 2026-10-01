@@ -303,9 +303,13 @@ def select_deployment(args, cluster, state_root, *, mesh_hint=""):
     # another deployment; without any, the request is unchanged.
     requested = serving_settings.from_arguments(args)
     if requested:
-        # A setting whose vLLM flag the profile does not set is refused
-        # before any Spark is surveyed.
-        serving_settings.apply(profiles.read_json(installer.ROOT / card["configuration"]).get("vllm_args", []), requested)
+        # A setting whose vLLM flag the profile does not set, or a value above
+        # the selected checkpoint's limit, is refused before any Spark is surveyed.
+        from runtime.common import qwen_flash_next
+        configuration = profiles.read_json(installer.ROOT / card["configuration"])
+        if "checkpoints" in configuration:
+            configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
+        serving_settings.apply(configuration.get("vllm_args", []), requested)
         request["serving"] = requested
     instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
     directory = state_root / "deployments" / (profile + "-" + instance)
@@ -840,7 +844,7 @@ def main(argv=None):
                              "SparkRing links or copies its files into its own directory, or serves an exact copy on "
                              "another filesystem read-only, and never writes to it")
     parser.add_argument("--checkpoint", metavar="NAME",
-                        help="another checkpoint the profile lists (a Hugging Face branch); default: the profile's own")
+                        help="another checkpoint the profile lists, with the settings it needs; default: the profile's own")
     parser.add_argument("--ignore-local-copies", action="store_true",
                         help="use only SparkRing's own checkpoint directories and named copies")
     parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")

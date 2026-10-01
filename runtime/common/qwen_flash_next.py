@@ -68,19 +68,22 @@ def node_count(profile):
     return int(profile["vllm_args"][profile["vllm_args"].index("--nnodes") + 1])
 
 
-CHECKPOINT_KEYS = {"model", "environment", "speculative"}
+CHECKPOINT_KEYS = {"model", "served_model_name", "arguments", "environment", "speculative"}
 MODEL_KEYS = {"repository", "revision", "config_sha256", "index_sha256"}
 
 
 def checkpoint_names(profile):
     """(default, names) of a profile's checkpoint table; (None, ()) without one.
 
-    The table, `checkpoints`, maps each name (a Hugging Face branch of the
-    profile's repository) to its pinned `model` and optional `environment` and
-    `speculative` settings. `checkpoint` names the default entry, whose model is
-    the profile's top-level `model` and which changes no setting. The optional
-    `checkpoint_aliases` maps further names, such as a spelling that matches
-    the other branches, to listed checkpoints.
+    The table, `checkpoints`, maps each name to a pinned `model` (a Hugging
+    Face repository, a full commit of it and the SHA-256 of its `config.json`
+    and weight index) and optional settings that checkpoint_settings applies.
+    A name is the checkpoint's Hugging Face branch when the model is a branch
+    of the profile's repository, and otherwise a short name for the other
+    repository. Each entry pins a distinct revision. `checkpoint` names the
+    default entry, whose model is the profile's top-level `model` and which
+    changes no setting. The optional `checkpoint_aliases` maps further names,
+    such as a spelling that matches the other branches, to listed checkpoints.
     """
     table = profile.get("checkpoints")
     if table is None:
@@ -92,9 +95,16 @@ def checkpoint_names(profile):
         raise ValueError("The checkpoints table must include the default checkpoint")
     for name, entry in table.items():
         if (not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,62}", name) or not isinstance(entry, dict)
-                or "model" not in entry or not set(entry) <= CHECKPOINT_KEYS or set(entry["model"]) != MODEL_KEYS
-                or entry["model"]["repository"] != profile["model"]["repository"]):
+                or "model" not in entry or not set(entry) <= CHECKPOINT_KEYS
+                or not isinstance(entry["model"], dict) or set(entry["model"]) != MODEL_KEYS
+                or not isinstance(entry["model"]["repository"], str)
+                or not re.fullmatch(r"[0-9a-f]{40}", str(entry["model"]["revision"]))
+                or not all(re.fullmatch(r"[0-9a-f]{64}", str(entry["model"][key]))
+                           for key in ("config_sha256", "index_sha256"))):
             raise ValueError(f"Invalid checkpoint entry: {name}")
+    models = [(entry["model"]["repository"], entry["model"]["revision"]) for entry in table.values()]
+    if len(set(models)) != len(models):
+        raise ValueError("Each checkpoint pins another revision; give one revision another name with checkpoint_aliases")
     if table[default] != {"model": profile["model"]}:
         raise ValueError("The default checkpoint must be the profile's model without other settings")
     aliases = profile.get("checkpoint_aliases", {})
@@ -112,9 +122,20 @@ def checkpoint_name(profile, name):
 def checkpoint_settings(profile, name):
     """The profile with the named checkpoint's model and settings applied; None keeps the default.
 
-    An entry may change existing environment variables and existing keys of
-    --speculative-config, never add new ones, so every checkpoint runs the
-    profile's validated command with only its pinned differences.
+    Every checkpoint runs the profile's command with only its pinned
+    differences. An entry may:
+
+    - ``served_model_name``: replace the served model name, which keeps the
+      profile's ``-TP<nodes>`` suffix;
+    - ``arguments``: replace the value of vLLM options the profile's command
+      already sets, such as ``--quantization`` or ``--load-format``; it adds
+      no option, and ``--speculative-config`` is changed through
+      ``speculative`` instead;
+    - ``environment``: change environment variables the profile already sets.
+      An added variable is refused: a variable that nothing reads changes
+      nothing and raises no error, so a misspelled name would go unnoticed;
+    - ``speculative``: change or add keys of ``--speculative-config``. vLLM
+      refuses an unknown key when the engine starts.
     """
     default, names = checkpoint_names(profile)
     name = checkpoint_name(profile, name)
@@ -127,17 +148,33 @@ def checkpoint_settings(profile, name):
     entry = profile["checkpoints"][name]
     result = copy.deepcopy(profile)
     result["model"] = dict(entry["model"])
+    args = result["vllm_args"]
+    if "served_model_name" in entry:
+        served = entry["served_model_name"]
+        suffix = f"-TP{node_count(profile)}"
+        if (not isinstance(served, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", served)
+                or not served.endswith(suffix)):
+            raise ValueError(f"Checkpoint {name} must serve a model name ending {suffix}")
+        result["served_model_name"] = served
+    arguments = entry.get("arguments", {})
+    if not isinstance(arguments, dict):
+        raise ValueError(f"Checkpoint {name} arguments must map vLLM options to values")
+    for option, value in arguments.items():
+        at = args.index(option) + 1 if option in args else None
+        if (option == "--speculative-config" or at is None or args.count(option) != 1 or at >= len(args)
+                or args[at].startswith("--") or not isinstance(value, str) or not value or value.startswith("--")):
+            raise ValueError(f"Checkpoint {name} may only change the value of an option the profile sets: {option}")
+        args[at] = value
     environment = entry.get("environment", {})
     if not set(environment) <= set(result["environment"]):
         raise ValueError(f"Checkpoint {name} may only change existing environment settings")
     result["environment"].update(environment)
     speculative = entry.get("speculative", {})
     if speculative:
-        args = result["vllm_args"]
+        if "--speculative-config" not in args:
+            raise ValueError(f"Checkpoint {name} sets speculative settings for a profile without --speculative-config")
         index = args.index("--speculative-config") + 1
         spec = json.loads(args[index])
-        if not set(speculative) <= set(spec):
-            raise ValueError(f"Checkpoint {name} may only change existing speculative settings")
         spec.update(speculative)
         args[index] = json.dumps(spec, separators=(",", ":"))
     return result

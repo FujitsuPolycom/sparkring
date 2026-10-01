@@ -54,7 +54,7 @@ image and checkpoint, then starts or switches the model.
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation |
 | `--json` | One JSON result on stdout; progress on stderr |
-| `--checkpoint NAME` | Another checkpoint the profile lists, by Hugging Face branch ([names](install-reference.md#checkpoints)); default: the profile's own |
+| `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
 | `--ignore-local-copies` | Use only SparkRing's own checkpoint directories and named copies |
 | `--cache-path PATH` | Another writable compile cache on each Spark |

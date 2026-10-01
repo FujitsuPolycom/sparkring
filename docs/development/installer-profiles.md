@@ -70,7 +70,7 @@ or `profiles/glm53-flash-nvfp4-spark-tp2/` (two Sparks) and set:
 Tests that list installer profiles:
 
 - `runtime/common/test_installer_image.py`: `SHARED`. `test_other_models_render_on_the_shared_image` runs for every `SUPPORTED` profile outside `QWEN4_EXP` and forbids Qwen variables; a `QWEN4_EXP` profile needs render assertions of its own.
-- `scripts/test_pin_checkpoint.py`: `COMMITTED[(repository, revision)]`.
+- `scripts/test_pin_checkpoint.py`: `COMMITTED[(repository, revision)]`, and `LISTED` for each checkpoint a profile lists besides its default.
 - `runtime/common/test_installer.py`: the directory count in `test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint`, when no other installer profile pins the revision.
 - `runtime/host/test_install_workflow.py`, four Sparks only: the parameters of `test_tp4_command_adopts_the_discovered_mesh_without_network_changes`.
 - Row counts in `scripts/test_profile_catalog.py` and model-specific tests, when a `recommended` row hides another.
@@ -105,6 +105,37 @@ From the repository root, with `requirements-dev.txt` installed ([testing](testi
    python scripts/check_release_safety.py .
    ```
    [CI](../../.github/workflows/ci.yml) is the source of truth and also runs Ruff and the full CPU suite of its `tests` job; no tracked script replicates it locally.
+
+## Another checkpoint in a profile
+
+A profile that serves more than one checkpoint of the same architecture lists
+them in `config.json` instead of repeating the profile; `sudo sparkring install
+--checkpoint NAME` selects one. `checkpoint` names the default and
+`checkpoints` maps each name to an entry; `runtime/common/qwen_flash_next.py`
+(`checkpoint_names`, `checkpoint_settings`) validates and applies it. Examples:
+the Qwen profiles (two branches of one repository),
+`glm53-flash-nvfp4-spark-tp4` (three repositories) and
+`glm53-flash-nvfp4-spark-tp2` (two repositories; the second with a smaller KV
+cache and context window).
+
+| Entry key | Value |
+|---|---|
+| `model` | Required: `repository`, 40-hex `revision`, `config_sha256`, `index_sha256`, as for the profile's `model`; each entry pins another revision. The default entry is exactly the profile's `model` and has no other key |
+| `served_model_name` | Optional; keeps the `-TP<nodes>` suffix |
+| `arguments` | Optional: new values for vLLM options that `vllm_args` already sets, such as `--quantization`, `--load-format`, `--kv-cache-memory-bytes` and `--max-model-len`; no option is added |
+| `environment` | Optional: new values for variables that `environment` already sets |
+| `speculative` | Optional: keys to change or add in `--speculative-config` |
+
+`checkpoint_aliases` optionally maps more names to listed ones. A checkpoint
+entry needs its pin manifest (steps 1–2 below) and, for another repository, a
+`profiles/storage-planning.json` allowance. It keeps no `SHA256SUMS` file: the
+installer checks its files against the pin manifest. Register it in `LISTED`
+in `scripts/test_pin_checkpoint.py`, add render assertions for its settings to
+`runtime/common/test_qwen_flash_next.py`, and list it in
+[Another checkpoint of a profile](../operations/install-reference.md#another-checkpoint-of-a-profile)
+with its size in the Downloads table. Without `--checkpoint`, the profile
+installs its default checkpoint with unchanged settings; each other name is a
+separate deployment.
 
 ## Invariants the tests enforce
 

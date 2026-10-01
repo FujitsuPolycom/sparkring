@@ -4,6 +4,7 @@
   "checkpoint_allowance_gib": {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": 200,
     "local-inference-lab/GLM-5.3-Flash-NVFP4": 200,
+    "nvidia/GLM-5.3-Flash-NVFP4": 210,
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": 120,
     "XiaomiMiMo/MiMo-V2.6-Flash-MOPD": 190,
     "deepseek-ai/DeepSeek-V4.1-Flash": 500,

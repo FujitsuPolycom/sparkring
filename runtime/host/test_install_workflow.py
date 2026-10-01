@@ -633,6 +633,62 @@ def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine,
     assert result["image_id"] == lock["image_runtime"]["image_id"] and lock["backend"] == "compose"
 
 
+@pytest.mark.parametrize("checkpoint, repository", [("nvfp4-qad", "local-inference-lab/GLM-5.3-Flash-NVFP4"),
+                                                    ("nvidia-nvfp4", "nvidia/GLM-5.3-Flash-NVFP4")])
+def test_a_ring_installs_a_listed_checkpoint_of_another_repository(machine, sparks, monkeypatch, capsys,
+                                                                   checkpoint, repository):
+    value = cluster(4)
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
+    sparks.mesh = lambda rank: {"reference": {"site_path": "/etc/sparkring/managed-mesh/site.json",
+                                              "site_sha256": "c" * 64, "plan_sha256": "d" * 64},
+                              "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0", "unit": "sparkring-mesh.service"}
+    profile = "glm53-flash-nvfp4-spark-tp4"
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", checkpoint, "--yes", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    from runtime.common import installer
+    lock = installer.load(result["deployment"])
+    card = installer.setup.selection(profile, checkpoint)
+    assert (lock["selection"]["target_variant"], lock["selection"]["model_repository"]) == (checkpoint, repository)
+    # The checkpoint has its own directory, named by its repository and revision.
+    directory = installer.checkpoint_directory("test", card)
+    assert directory.startswith("/srv/sparkring/test/checkpoints/" + repository.replace("/", "--") + "/")
+    assert [row["model"] for row in lock["site"]["ranks"]] == [directory] * 4
+    assert result["checkpoint"]["command"].startswith(f"sudo sparkring install --profile {profile} --checkpoint {checkpoint}")
+    assert sparkring.main(["install", "--profile", profile, "--yes", "--json"]) == 0
+    default = json.loads(capsys.readouterr().out)
+    assert default["deployment"] != result["deployment"]
+    # --kv-cache-gib is bounded by the checkpoint's own KV cache (37 or 36 GiB), not the profile's 40 GiB.
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", checkpoint, "--plan", "--json",
+                           "--kv-cache-gib", "41"]) == 2
+    assert "a tenth above the profile's 3" in json.loads(capsys.readouterr().out)["message"]
+
+
+def test_a_pair_installs_the_qad_checkpoint_with_its_own_kv_limit_and_refuses_nvidia(machine, sparks, capsys):
+    from runtime.common import installer
+    profile = "glm53-flash-nvfp4-spark-tp2"
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", "nvfp4-qad", "--yes", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    lock = installer.load(result["deployment"])
+    assert (lock["selection"]["target_variant"], lock["selection"]["model_revision"]) == (
+        "nvfp4-qad", "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49")
+    assert installer.connection(lock)["model"] == "GLM-5.3-Flash-NVFP4-QAD-TP2"
+    directory = installer.checkpoint_directory("test", installer.setup.selection(profile, "nvfp4-qad"))
+    assert [row["model"] for row in lock["site"]["ranks"]] == [directory] * 2
+    # --kv-cache-gib is bounded by the entry's 5 GiB (at most 6), not the profile's 10 GiB.
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", "nvfp4-qad", "--plan", "--json",
+                           "--kv-cache-gib", "7"]) == 2
+    assert "more than 6, a tenth above the profile's 5" in json.loads(capsys.readouterr().out)["message"]
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", "nvfp4-qad", "--plan", "--json",
+                           "--kv-cache-gib", "6"]) == 0
+    capsys.readouterr()
+    surveyed = len(sparks.surveys)
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", "nvidia-nvfp4", "--yes", "--json"]) == 3
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["field"] == "checkpoint_name" and "lists: nvfp4-qad, nvfp4-spark" in refused["message"]
+    assert len(sparks.surveys) == surveyed
+
+
 def test_wrong_node_is_refused_before_transfer(tmp_path, monkeypatch):
     monkeypatch.setattr(flow.sys, "platform", "linux")
     monkeypatch.setattr(flow.os, "geteuid", lambda: 0, raising=False)
