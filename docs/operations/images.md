@@ -7,7 +7,7 @@ runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:4305bde349cade7c8cc0e74a498c8dcbf90025d99bceaf528f40b6faf767bbc8` | `sha256:490a668978e1b93886c13b63553594c9a2ded5514b01d737b57b1e12d3e83b5a` |
+| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:b01442df4e1496bea2f1339feb629eb61dc8175700c82b0e26abbcebd5b49567` | `sha256:9f02bcbfee89fa092f6edf85d5915bfd73f226bd0faf7d171fe32d7f7b8f1e84` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Each profile's `profile.json` names its image release; other profiles use
@@ -15,26 +15,27 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20261001-statusrows-cuda1342-nccl2323-status034`.
-The download is 14.2 GiB and the unpacked image 29.5 GiB.
+Development image, tag `dev-20261001-kraken-cuda1342-nccl2323-status034`.
+The download is 14.2 GiB and the unpacked image 29.7 GiB.
 
-- The [installer image lock](../../runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/installer-image.json)
+- The [installer image lock](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/installer-image.json)
   lists the nine profiles and pins the image's identity.
-- The [publication record](../../runtime/releases/dev-20261001-statusrows-cuda1342-nccl2323-status034/publication.json)
-  names the parent image and the added layer.
-- The [installer image builders](../../runtime/images/installer-images.md) list
-  the builder of each layer in the chain.
+- The [publication record](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/publication.json)
+  names the base image and the two layers.
+- The [composition record](../../runtime/images/compositions/external-kraken-20261001/README.md)
+  lists the source commits and pinned build inputs.
 
 | Component | Purpose |
 |---|---|
-| `eugr/spark-vllm-b12x:nightly-20260924` base | vLLM with [Local Inference Lab's B12X](https://github.com/local-inference-lab/b12x) kernels and loaders for GB10 |
+| `eugr/spark-vllm-b12x` nightly-20261001 base | Torch 2.13.0 for CUDA 13.0, FlashInfer 0.7.1 and vLLM's compiled extensions, built for GB10 (SM121a) |
+| vLLM and [B12X](https://github.com/local-inference-lab/b12x) sources | Local Inference Lab's Karmic Kraken beta branches (`integration/karmic-kraken-beta`) merged with SparkRing's changes: branches `sparkring/kraken-beta-20261001` of [FujitsuPolycom/vllm](https://github.com/FujitsuPolycom/vllm/tree/sparkring/kraken-beta-20261001) and [FujitsuPolycom/b12x](https://github.com/FujitsuPolycom/b12x/tree/sparkring/kraken-beta-20261001) |
 | CUDA 13.4.2 and NCCL 2.32.3 | CUDA runtime and the NCCL library the installer selects |
 | Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives; a send window bounds the traffic a ring node relays. A rank waits up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) for a late peer and logs waits over 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
 | RoCE GID index per port | Each HCA uses the RoCE GID index of its fabric address, read at startup. NCCL still uses index 3, which the installer restores before a model starts ([RoCE GID index 3](install-reference.md#roce-gid-index-3)). Ranks of images with proxy ABI 5 and 6 refuse to connect, so all Sparks must run the same image ([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)) |
 | Runtime-status dashboard 0.3.4 | [Status dashboard](dashboard.md) at `/v1/sparkring/status/view` on the model API port: settings, memory, transport and versions, with only the rows to check colored. The settings include the reasoning and tool-call parsers, the default chat template arguments and the shared-memory reader window |
 | Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10; the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
 | Host-to-device staging fix | vLLM's `CpuGpuBuffer.copy_to_gpu` copies through fresh pinned memory, so a queued copy cannot pick up later writes to its host buffer. Without it, Qwen with MTP, async scheduling and FULL CUDA graphs decoded about 0.2-0.5% of concurrent requests as token 8191 (` Register`) repeated ([#294](https://github.com/FujitsuPolycom/sparkring/issues/294)) |
-| B12X selection-cache correction | When the ranks of a two- or four-Spark deployment share kernel tuning, B12X reads its tuning cache after they reconcile it, so a restart reuses earlier tuning instead of measuring every kernel again ([selection cache](../../integrations/b12x/selection_cache/README.md)). A DeepSeek-V4.1-Flash four-Spark restart was healthy after 200-225 s with it, 652-741 s without |
+| B12X selection-cache reconciliation | When the ranks of a two- or four-Spark deployment share kernel tuning, B12X reads its tuning cache after they reconcile it, so a restart reuses earlier tuning instead of measuring every kernel again; this image's B12X does it in its preparation session ([selection cache](../../integrations/b12x/selection_cache/README.md)). On image `dev-20260927-b12xcache-cuda1342-nccl2323-status032`, a DeepSeek-V4.1-Flash four-Spark restart was healthy after 200-225 s with it, 652-741 s without |
 | MiMo vision attention sinks | The MiMo-V2.6 vision encoder applies its per-head attention sinks in the softmax denominator, as the model was trained ([derive_mimo_vision.py](../../runtime/images/derive_mimo_vision.py)). With the sinks on each image's first key instead, MiMo read a red-and-blue test image as black and white |
 | Tool-result contract | A Chat Completions request whose `tool_choice` is `required` or names a function, and whose output lacks a complete call, gets HTTP 400 if the token limit ended generation and HTTP 500 otherwise, not HTTP 200 without a tool call ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md), [#217](https://github.com/FujitsuPolycom/sparkring/issues/217)). `SPARKRING_TOOL_CHOICE_CONTRACT=0` in a profile's environment turns it off |
 | Shared-memory reader window | vLLM's shared-memory readers poll for `SPARKRING_SHM_BUSY_LOOP_S` seconds after a read when that variable is set, and for one second otherwise ([derive_spin_wait.py](../../runtime/images/derive_spin_wait.py)). `sparkring install --save-cpu` sets it to 2 ms ([serving settings](install-reference.md#serving-settings), [#189](https://github.com/FujitsuPolycom/sparkring/issues/189)) |

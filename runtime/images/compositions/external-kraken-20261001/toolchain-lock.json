@@ -1,0 +1,31 @@
+{
+  "schema": "sparkring-toolchain-candidate/v1",
+  "status": "research-only",
+  "parent": null,
+  "cuda": {
+    "version": "13.4.2",
+    "base": "nvidia/cuda@sha256:d44d6dc249c2c8330d0b380c595a514f0e86137fcc717fe7a4389a25720ade37",
+    "platform": "linux/arm64",
+    "toolkit_package": "13.4.2-1",
+    "compat_package": "615.71.09-2ubuntu1",
+    "cublas_package": "13.8.0.4-1",
+    "nvcc_version": "V13.4.92"
+  },
+  "nccl": {
+    "version": "2.32.3",
+    "repository": "https://github.com/NVIDIA/nccl.git",
+    "revision": "12df1a11afad322be5a204a2db890161cbf8131d",
+    "archive_sha256": "d29f65ec559cf2aaba0a39738e9949227204a73175677d1d53d31e3248503a3e",
+    "patch": "spark_transport/nccl/nccl-2.32.3-dual-pci-domain.patch",
+    "patch_sha256": "a0deca2f21b8cad56bc68a5f5468936b7a6b894db160cfa1d62a6a3d59358836"
+  },
+  "framework_policy": "Retain the cu130-built PyTorch/vLLM/FlashInfer native foundation from eugr nightly-20260924; CUDA runtime/toolkit and NCCL are independently versioned.",
+  "variant": "combined",
+  "prebuilt_artifacts": {
+    "toolkit_image_config": "sha256:0dd26ae86cf63c0d2b68a2ff3d59d34a1d7367f9408044e9e9ade7aa5d9a6115",
+    "toolkit_export_sha256": null,
+    "nccl_archive_sha256": "ec648a3e224bf8a86e55f282d4b3982d0b9647e928572641e4ffe65ee61ad22f",
+    "nccl_library_sha256": "1307657a9c972a43d0c4c0f839ab6eb832b2d1e1382d203068e928636f78a3f2",
+    "toolchain_source_commit": "9ee12d6820b0160fbbcb66776a0a3ca6224679d1"
+  }
+}

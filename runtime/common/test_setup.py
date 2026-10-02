@@ -36,7 +36,7 @@ def test_selection_uses_profile_publication_and_checkpoint(profile, monkeypatch)
     assert card["sparkcache"] == resolved["serving"]["sparkcache"]
     # Installer profiles run on the installer image; the others on shared-2026.09.3.
     installer_profiles = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
-    assert card["image_id"].startswith("sha256:490a668978e1" if profile in installer_profiles else "sha256:bc16a981")
+    assert card["image_id"].startswith("sha256:9f02bcbfee89" if profile in installer_profiles else "sha256:bc16a981")
 
 
 def test_qad_selection_changes_weights_not_the_image():
@@ -176,7 +176,7 @@ def test_installer_card_reserves_its_image_lock_sizes_and_unpinned_revisions_the
     # The image step pulls the whole image: its unpacked and download sizes and the pull margin.
     image = lock["image_bytes"] + lock["download_bytes"] + 8 * setup.GIB
     assert report["filesystems"][0]["required_bytes"] == checkpoint + image + 4 * setup.GIB
-    assert f"{image / setup.GIB:.1f}" == "51.7"
+    assert f"{image / setup.GIB:.1f}" == "51.9"
     # A revision without a pin manifest falls back to the repository's allowance.
     unpinned = {**card, "model_revision": "0" * 40}
     assert setup.pinned_checkpoint_bytes(unpinned) is None
