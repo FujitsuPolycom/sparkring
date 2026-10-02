@@ -119,6 +119,26 @@ jobs:
           python scripts/generate_compose_examples.py --check
           python -m pytest runtime/common/test_compose.py runtime/common/test_compose_envelope.py scripts/test_sparkring_compose.py runtime/common/test_qwen_flash_next.py -q
 
+  compose-builder:
+    name: Compose builder
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install CPU-only test dependencies
+        run: python -m pip install pytest==8.4.2 PyYAML==6.0.3
+      - name: Compare the page's engine with compose.build
+        env:
+          SPARKRING_REQUIRE_NODE: '1'
+          SPARKRING_COMPOSE_BUILDER_CASES: '12'
+        run: python -m pytest scripts/compose_builder -q
+
   docs-links:
     name: docs links
     runs-on: ubuntu-latest

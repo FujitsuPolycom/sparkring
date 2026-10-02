@@ -358,6 +358,53 @@ def test_image_changes_deployment_identity():
     assert compose.build(profile, changed)[0]["id"] != manifest["id"]
 
 
+def test_checkpoint_and_serving_settings_are_deployment_selections(tmp_path):
+    profile = "qwen38-flash-next-tp2"
+    site = example_site(profile)
+    default, default_files = compose.build(profile, site)
+    # The default checkpoint, by name or alias, and empty settings select the profile's own deployment.
+    for name in ("qad-step5500-ple1000", "qad-step-5500"):
+        assert compose.build(profile, site, checkpoint=name, serving={}) == (default, default_files)
+    selection = {"checkpoint": "qad-step-4000", "serving": {"save_cpu": True, "max_concurrency": 8}}
+    manifest, files = compose.build(profile, site, **selection)
+    assert manifest["checkpoint"] == "qad-step-4000"
+    assert manifest["serving"] == {"max_concurrency": 8, "save_cpu": True}
+    assert manifest["id"] != default["id"]
+    text = files["rank0/compose.yaml"]
+    assert "- --max-num-seqs\n    - '8'\n" in text
+    assert "SPARKRING_SHM_BUSY_LOOP_S: '0.002'" in text
+    assert "VLLM_MXFP8_LM_HEAD: '1'" in text
+    target = tmp_path / "deployment"
+    assert compose.render(profile, site, target, **selection) == manifest
+    assert compose.load_deployment(target) == (manifest, files)
+
+
+@pytest.mark.parametrize("options, message", [
+    ({"checkpoint": "unlisted"}, "Select a checkpoint the profile lists"),
+    ({"serving": {"kv_cache_gib": 99}}, "a tenth above"),
+    ({"serving": {"max_concurrency": 0}}, "at least 1"),
+    ({"serving": {"unknown": 1}}, "Unknown serving setting"),
+])
+def test_unlisted_checkpoints_and_invalid_settings_are_refused(options, message):
+    profile = "qwen38-flash-next-tp2"
+    with pytest.raises(ValueError, match=message):
+        compose.build(profile, example_site(profile), **options)
+
+
+def test_profiles_without_checkpoint_choice_refuse_one():
+    profile = "mimo-v26-flash-mopd-tp2"
+    with pytest.raises(ValueError, match="no checkpoint choice"):
+        compose.build(profile, example_site(profile), checkpoint="another")
+
+
+def test_serving_warnings_name_settings_above_the_profile():
+    profile = "qwen38-flash-next-tp2"
+    site = example_site(profile)
+    assert compose.serving_warnings(compose.build(profile, site, serving={"kv_cache_gib": 24})[0]) == []
+    warnings = compose.serving_warnings(compose.build(profile, site, serving={"kv_cache_gib": 26})[0])
+    assert len(warnings) == 1 and warnings[0].startswith("--kv-cache-gib 26 is above the profile's 24")
+
+
 def test_deterministic_private_export_passes_compose(site, tmp_path, compose_cli):
     target = tmp_path / "deployment"
     manifest = compose.render(compose.SUPPORTED[0], site, target)
