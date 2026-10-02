@@ -346,6 +346,9 @@ def _collect_local(
         "ipv4_ignore_auto_dns": "ipv4.ignore-auto-dns",
         "ipv6_method": "ipv6.method",
         "ipv6_never_default": "ipv6.never-default",
+        # eui64 derives the link-local address from the MAC, so it equals the
+        # port's default RoCE GID and the IPv4 RoCE v2 GID stays at index 3.
+        "ipv6_addr_gen_mode": "ipv6.addr-gen-mode",
         "autoconnect": "connection.autoconnect",
     }
 
@@ -755,6 +758,12 @@ print(json.dumps({'exists':True,'type':'directory','nonempty':next(path.iterdir(
         "tools": tools,
         "management": management,
         "interfaces": interfaces,
+        # Kept apart from the interface rows, which the apply step compares.
+        "ipv6_link_local": {
+            row["ifname"]: [item["local"] for item in row.get("addr_info", [])
+                            if item.get("family") == "inet6" and item.get("scope") == "link" and "local" in item]
+            for row in link_rows or [] if isinstance(row.get("ifname"), str)
+        },
         "routes": route_rows,
         "rdma": rdma_rows,
         "network": {
@@ -775,6 +784,34 @@ print(json.dumps({'exists':True,'type':'directory','nonempty':next(path.iterdir(
             else False,
         },
     }
+
+
+def gid_index_hint(facts: Any, netdev: str) -> str:
+    """Why a fabric function's IPv4 RoCE v2 GID may not sit at GID index 3, from inventory facts; "" if unknown.
+
+    The kernel lists a port's IPv6 link-local GIDs before its IPv4 one. With
+    exactly one link-local address that equals the default GID (NetworkManager's
+    ``ipv6.addr-gen-mode eui64``), the IPv4 RoCE v2 GID is at index 3; another
+    link-local address, as ``default`` or ``stable-privacy`` generation adds,
+    moves it to a higher index. The text names the cause and the nmcli fix.
+    """
+    import shlex
+    facts = facts if isinstance(facts, dict) else {}
+    addresses = (facts.get("ipv6_link_local") or {}).get(netdev)
+    interface = next((row for row in facts.get("interfaces") or [] if row.get("name") == netdev), {})
+    connection = interface.get("network_manager") or {}
+    mode = connection.get("ipv6_addr_gen_mode")
+    causes = []
+    if isinstance(addresses, list) and len(addresses) > 1:
+        causes.append(f"{netdev} has {len(addresses)} IPv6 link-local addresses ({', '.join(addresses)})")
+    if mode and mode != "eui64":
+        name = connection.get("connection_name") or connection.get("connection_uuid") or "its connection"
+        causes.append(f"its NetworkManager connection '{name}' uses ipv6.addr-gen-mode {mode}")
+    if not causes:
+        return ""
+    target = shlex.quote(str(connection.get("connection_name") or connection.get("connection_uuid") or "CONNECTION"))
+    return ("; " + " and ".join(causes) + ", which moves the IPv4 RoCE v2 GID past index 3. Fix: nmcli connection "
+            f"modify {target} ipv6.addr-gen-mode eui64, then nmcli connection up {target}")
 
 
 def validate_inventory(document: Any, *, require_ready: bool = False) -> dict[str, Any]:

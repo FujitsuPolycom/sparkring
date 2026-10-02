@@ -131,16 +131,24 @@ def prior_state():
         {"name": fields[0], "deployment": fields[1] or None, "profile": fields[2] or None}
         for fields in (line.split("\t") + ["", ""] for line in listing.splitlines() if line.strip())
         if fields[1] or fields[2]]
-    addresses = {}
+    addresses, link_local = {}, {}
     for path in sorted(glob.glob("/sys/class/infiniband/*/device/net/*")):
         netdev = Path(path).name
         try:
-            rows = json.loads(output(["ip", "-j", "-4", "address", "show", "dev", netdev]) or "[]")
+            rows = json.loads(output(["ip", "-j", "address", "show", "dev", netdev]) or "[]")
         except ValueError:
             rows = []
-        addresses[netdev] = [f"{a['local']}/{a['prefixlen']}" for row in rows for a in row.get("addr_info", [])
-                             if a.get("family") == "inet"]
+        infos = [a for row in rows for a in row.get("addr_info", [])]
+        addresses[netdev] = [f"{a['local']}/{a['prefixlen']}" for a in infos if a.get("family") == "inet"]
+        uuid = output(["nmcli", "-g", "GENERAL.CON-UUID", "device", "show", netdev]) or ""
+        connected = uuid not in ("", "--")
+        link_local[netdev] = {
+            "uuid": uuid if connected else None,
+            "connection": output(["nmcli", "-g", "connection.id", "connection", "show", uuid]) if connected else None,
+            "mode": output(["nmcli", "-g", "ipv6.addr-gen-mode", "connection", "show", uuid]) if connected else None,
+            "addresses": [a["local"] for a in infos if a.get("family") == "inet6" and a.get("scope") == "link"]}
     result["fabric_ipv4"] = addresses
+    result["link_local"] = link_local
     result["unreadable"] = unreadable
     return result
 
@@ -149,8 +157,12 @@ def retire(order, call=None, root="/"):
     """Move this Spark's SparkRing cluster state aside and disable that cluster's services; runs as root.
 
     ``order`` is ``{"stamp", "node_a": bool, "keep": [paths relative to the
-    controller directory that stay on Node A]}``; on another Spark the whole
-    controller directory moves. Moved paths keep their modes below
+    controller directory that stay on Node A], "link_local": bool,
+    "skip_link_local": [netdevs]}``; on another Spark the whole controller
+    directory moves. With ``link_local`` (the default), the last step sets
+    each fabric function's NetworkManager connection to
+    ``ipv6.addr-gen-mode eui64`` and reactivates it, except on the netdevs in
+    ``skip_link_local``. Moved paths keep their modes below
     ``/var/lib/sparkring/retired/STAMP/`` with their original path, and
     ``receipt.json`` there names every change and how to restore it. Each
     step skips what is already gone, so a repeated run is safe. Raises
@@ -205,6 +217,8 @@ def retire(order, call=None, root="/"):
             + [f"sudo mkdir -p {shlex.quote(posixpath.dirname(row['from']))} && sudo mv -T {shlex.quote(row['to'])} "
                f"{shlex.quote(row['from'])}" for row in receipt["moved"]]
             + [f"sudo systemctl enable {unit}" for unit in receipt["disabled"]]
+            + [f"sudo nmcli connection modify {row['uuid']} ipv6.addr-gen-mode {row['mode']} && sudo nmcli connection "
+               f"up {row['uuid']}" for row in receipt.get("link_local") or [] if row.get("changed")]
             + ["Then reboot this Spark, which brings back its admin network, routes and forwarding rules."])
         temporary = receipt_path.with_name("receipt.json.writing")
         temporary.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
@@ -302,6 +316,63 @@ def retire(order, call=None, root="/"):
         elif any(controller.iterdir()):
             move("/var/lib/sparkring/controller")
     save()
+    if not order.get("link_local", True):
+        return receipt
+
+    # One EUI-64 link-local address per fabric function equals the port's default RoCE GID, so the IPv4 RoCE v2
+    # GID sits at index 3. A connection SparkRing did not create may generate another address (default or
+    # stable-privacy generation). Its keyfile, and the netplan file that generates it, are copied aside first.
+    receipt.setdefault("link_local", [])
+    files = {}
+    for line in quiet(["nmcli", "-t", "-f", "UUID,FILENAME", "connection", "show"]).splitlines():
+        uuid, _, filename = line.partition(":")
+        files[uuid] = filename.replace("\\:", ":")
+    skip = set(order.get("skip_link_local") or ())
+    for netdev in ("enp1s0f0np0", "enP2p1s0f0np0", "enp1s0f1np1", "enP2p1s0f1np1"):
+        if not (base / "sys/class/net" / netdev).exists():
+            continue
+        uuid = quiet(["nmcli", "-g", "GENERAL.CON-UUID", "device", "show", netdev]).strip()
+        if uuid in ("", "--"):
+            continue
+        mode = quiet(["nmcli", "-g", "ipv6.addr-gen-mode", "connection", "show", uuid]).strip()
+        if not mode:
+            continue
+        name = quiet(["nmcli", "-g", "connection.id", "connection", "show", uuid]).strip()
+        entry = {"netdev": netdev, "connection": name, "uuid": uuid, "mode": mode, "backup": [], "changed": False}
+        if mode == "eui64":
+            # A run interrupted between modify and up leaves the earlier addresses until the connection is
+            # reactivated; reactivate while the function holds more than one link-local address.
+            try:
+                rows = json.loads(quiet(["ip", "-j", "-6", "address", "show", "dev", netdev]) or "[]")
+            except ValueError:
+                rows = []
+            extra = sum(a.get("scope") == "link" for row in rows for a in row.get("addr_info", [])) > 1
+            if extra and netdev not in skip:
+                run(["nmcli", "connection", "up", uuid])
+                receipt["link_local"].append(dict(entry, reactivated=True))
+                save()
+            continue
+        if netdev in skip:
+            entry["skipped"] = ("setup reaches this Spark through it; afterwards run: sudo nmcli connection modify "
+                                f"{uuid} ipv6.addr-gen-mode eui64 && sudo nmcli connection up {uuid}")
+            receipt["link_local"].append(entry)
+            save()
+            continue
+        sources = [files.get(uuid)] + ["/" + str(path.relative_to(base).as_posix())
+                                       for path in (base / "etc/netplan").glob(f"*{uuid}*.yaml")]
+        for source in filter(None, sources):
+            source = "/" + source.lstrip("/")
+            if (base / source.lstrip("/")).is_file():
+                target = retired / "network" / source.lstrip("/")
+                target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+                shutil.copy2(base / source.lstrip("/"), target)
+                entry["backup"].append("/var/lib/sparkring/retired/" + order["stamp"] + "/network" + source)
+        run(["nmcli", "connection", "modify", uuid, "ipv6.addr-gen-mode", "eui64"])
+        entry["changed"] = True
+        receipt["link_local"].append(entry)
+        save()
+        run(["nmcli", "connection", "up", uuid])
+    save()
     return receipt
 
 
@@ -393,6 +464,10 @@ def items(spark, *, node_a=False):
             lines.append(f"mesh service {mesh['unit']}: stopped and turned off")
     if (state.get("files") or {}).get("/etc/sparkring/hairpin.json"):
         lines.append("ConnectX hairpin approval: moved aside (a ring records it again)")
+    for netdev, row in sorted((state.get("link_local") or {}).items(), key=lambda item: _port_order(item[0])):
+        if row.get("mode") and row["mode"] != "eui64":
+            lines.append(f"IPv6 link-local addresses of {netdev} ({row.get('connection') or row.get('uuid')}): set to "
+                         "the hardware-derived form SparkRing uses, so RoCE GID index 3 holds the port's IPv4 address")
     for netdev, address in foreign_addresses(state):
         lines.append(f"fabric address {address} on {netdev}, not set by SparkRing: replaced after a backup of its "
                      "NetworkManager connection")
@@ -404,10 +479,14 @@ def items(spark, *, node_a=False):
 def foreign_addresses(state):
     """(netdev, address) of fabric IPv4 addresses that this Spark's SparkRing fabric record does not list."""
     recorded = {(p.get("netdev"), p.get("address")) for p in (state.get("fabric") or {}).get("interfaces") or []}
-    def order(item):
-        return cabling.port_of(item[0]) or 0, "P2p" in item[0], item[0]
-    return [(netdev, address) for netdev, addresses in sorted((state.get("fabric_ipv4") or {}).items(), key=order)
+    return [(netdev, address) for netdev, addresses in sorted((state.get("fabric_ipv4") or {}).items(),
+                                                              key=lambda item: _port_order(item[0]))
             for address in addresses if (netdev, address) not in recorded]
+
+
+def _port_order(netdev):
+    """Sort key of a fabric netdev: port 0 before port 1, the first PCI domain before the second."""
+    return cabling.port_of(netdev) or 0, "P2p" in netdev, netdev
 
 
 def blockers(found):
@@ -482,10 +561,18 @@ def plan_lines(value):
 
 
 def worker_script(order, install):
-    """Root program for one worker: ``retire`` with ``order``, then the worker bundle's installer and preparation."""
-    return (inspect.getsource(retire) + "\nimport json\nimport subprocess\n"
-            + f"retire(json.loads({json.dumps(order)!r}))\n"
-            + f"subprocess.run(['python3', '-I', {install!r}, '--apply', '--prepare', '--yes'], check=True)\n")
+    """Root program for one worker: ``retire`` without its link-local step, the worker bundle's installer and
+    preparation, then ``retire`` again, which finds its other steps done and sets the link-local form.
+
+    Reactivating a fabric connection can end an SSH session that runs over
+    that function, so the link-local step comes last and ignores the hangup.
+    """
+    return (inspect.getsource(retire) + "\nimport json\nimport signal\nimport subprocess\n"
+            + f"order = json.loads({json.dumps(order)!r})\n"
+            + "retire(dict(order, link_local=False))\n"
+            + f"subprocess.run(['python3', '-I', {install!r}, '--apply', '--prepare', '--yes'], check=True)\n"
+            + "signal.signal(signal.SIGHUP, signal.SIG_IGN)\n"
+            + "retire(order)\n")
 
 
 def journal(value, receipts, *, complete, root="/"):
@@ -526,7 +613,10 @@ def execute(value, found, transport, *, archive, transfer, root_command, keep=()
         destination = "/var/tmp/sparkring-enroll-" + str(time.time_ns())
         say(f"Re-form {spark['name']}: move its SparkRing cluster state aside, then install and prepare SparkRing")
         transfer(transport, reach.route, archive(), destination)
-        order = {"stamp": value["stamp"], "node_a": False, "keep": []}
+        order = {"stamp": value["stamp"], "node_a": False, "keep": [], "skip_link_local": through(found, spark["key"])}
+        for netdev in order["skip_link_local"]:
+            say(f"Note: {spark['name']} keeps the IPv6 address form of {netdev}, because setup reaches it through "
+                "that function; its receipt names the command that changes it afterwards")
         root_command(transport, reach.route, ["python3", "-I", "-c", worker_script(order, destination + "/install.py")])
         receipts[spark["name"]] = json.loads(transport.command(
             reach.route, ["cat", f"{RETIRED}/{value['stamp']}/receipt.json"]))
@@ -538,6 +628,16 @@ def execute(value, found, transport, *, archive, transfer, root_command, keep=()
     journal(value, receipts, complete=True, root=root)
     say(f"Re-form receipt: {RETIRED}/{value['stamp']}/reform.json")
     return receipts
+
+
+def through(found, key):
+    """The netdevs of a surveyed Spark at whose link-local address its SSH route ends (a fabric hop), if any."""
+    reach = found["sparks"][key]["reach"]
+    hop = reach.route[-1] if reach.kind == "route" and reach.route else {}
+    if not hop.get("interface"):
+        return []
+    functions = found["sparks"][key]["data"]["inventory"].get("functions") or []
+    return [f["netdev"] for f in functions if hop["address"] in (f.get("addresses") or [])]
 
 
 def survey_cabled(transport, *, user, port, say=print, **options):

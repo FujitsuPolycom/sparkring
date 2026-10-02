@@ -41,8 +41,19 @@ def fabric_ipv4(spark):
 
 
 def state(spark, *, cluster=None, nodes=(), address, rank, active=None):
-    """The ``prior_state`` document of one captured Spark of a former pair."""
+    """The ``prior_state`` document of one captured Spark of a former pair.
+
+    Port 0 carries SparkRing's connections (EUI-64 link-local addresses). A
+    port 1 with hand-made /30 addresses carries connections that generate
+    their link-local addresses in NetworkManager's default mode.
+    """
     ipv4 = fabric_ipv4(spark)
+    names = {"enp1s0f1np1": "Wired connection 5", "enP2p1s0f1np1": "Wired connection 2"}
+    link_local = {netdev: {"uuid": f"uuid-{netdev}", "addresses": [],
+                           "connection": names.get(netdev, "sparkring-" + netdev),
+                           "mode": "default" if netdev in names and any(a.endswith("/30") for a in ipv4[netdev])
+                           else "eui64"}
+                  for netdev in ipv4}
     recorded = [{"netdev": n, "address": ipv4[n][0]} for n in ("enp1s0f0np0", "enP2p1s0f0np0")]
     units = {name: {"enabled": "disabled", "active": "inactive"} for name in ("sparkring-recover.timer",)}
     if cluster:
@@ -53,7 +64,7 @@ def state(spark, *, cluster=None, nodes=(), address, rank, active=None):
             "control": {"address": address, "head": bool(cluster), "subnet": "10.253.255.0/29"},
             "fabric": {"cluster_id": "c" * 64, "rank": rank, "size": 2, "interfaces": recorded, "routes": 0,
                        "forwarding": 0},
-            "units": units, "fabric_ipv4": ipv4}
+            "units": units, "fabric_ipv4": ipv4, "link_local": link_local}
 
 
 def surveyed(*, fixed=True, containers=None):
@@ -121,15 +132,21 @@ def test_plan_lists_each_sparks_state_foreign_addresses_and_the_ring():
     assert lines[:2] == ["The cabled Sparks differ from this Spark's cluster record: spark-aa42 is cabled to this Spark.",
                          "Re-form: setup moves aside what these Sparks keep from other SparkRing clusters:"]
     aa42 = lines[lines.index("  spark-aa42:") + 1:]
-    assert aa42[:6] == [
+    assert aa42[:8] == [
         "    - Node A of cluster \"tp2\" (2 Sparks): its records move aside",
         "    - automatic recovery: turned off",
         "    - admin network 10.253.255.1 of its cluster: stopped, turned off and its configuration moved aside",
         "    - fabric record (rank 0 of 2 Sparks): moved aside; its boot service is turned off",
+        "    - IPv6 link-local addresses of enp1s0f1np1 (Wired connection 5): set to the hardware-derived form "
+        "SparkRing uses, so RoCE GID index 3 holds the port's IPv4 address",
+        "    - IPv6 link-local addresses of enP2p1s0f1np1 (Wired connection 2): set to the hardware-derived form "
+        "SparkRing uses, so RoCE GID index 3 holds the port's IPv4 address",
         "    - fabric address 198.18.200.5/30 on enp1s0f1np1, not set by SparkRing: replaced after a backup of its "
         "NetworkManager connection",
         "    - fabric address 198.18.200.13/30 on enP2p1s0f1np1, not set by SparkRing: replaced after a backup of its "
         "NetworkManager connection"]
+    # SparkRing's own connections already use the hardware-derived form.
+    assert not any("link-local" in line for line in lines[lines.index("  spark-0a0f:"):lines.index("  spark-931e:")])
     assert "  spark-3286 (Node A):" in lines
     assert "    - Node A of cluster \"sparkring\" (2 Sparks): its records move aside, except Node A's SSH key" in lines
     assert [a["address"] for s in value["sparks"] for a in s["foreign_addresses"]] == [
@@ -155,10 +172,14 @@ def test_running_model_container_blocks_with_the_stop_command():
 class Host:
     """A Spark's services, containers, firewall and routes as ``retire`` sees them through its command runner."""
 
-    def __init__(self, root, *, units=None, containers="", recovering=False):
+    def __init__(self, root, *, units=None, containers="", recovering=False, connections=None):
         self.root = Path(root)
         self.units = units or {}
         self.containers, self.recovering = containers, recovering
+        # netdev -> {"uuid", "name", "mode", "file", "link_local": [addresses]}
+        self.connections = connections or {}
+        for netdev in self.connections:
+            (self.root / "sys/class/net" / netdev).mkdir(parents=True, exist_ok=True)
         self.rules = {("iptables", "filter"): ["-A INPUT -i sr-control -s 10.253.255.0/29 -p tcp -m tcp --dport 2222 "
                                                "-m comment --comment sparkring-control -j ACCEPT",
                                                "-A INPUT -i eth0 -j ACCEPT"],
@@ -186,6 +207,23 @@ class Host:
             return ""
         if argv[:3] == ["ip", "link", "delete"] or argv[:2] == ["wg-quick", "down"]:
             (self.root / "sys/class/net/sr-control").rmdir()
+        by_uuid = {row["uuid"]: row for row in self.connections.values()}
+        if argv == ["nmcli", "-t", "-f", "UUID,FILENAME", "connection", "show"]:
+            return "\n".join(f"{row['uuid']}:{row['file']}" for row in self.connections.values())
+        if argv[:5] == ["nmcli", "-g", "GENERAL.CON-UUID", "device", "show"]:
+            return self.connections.get(argv[5], {}).get("uuid", "--")
+        fields = {"ipv6.addr-gen-mode": "mode", "connection.id": "name"}
+        if argv[:2] == ["nmcli", "-g"] and argv[2] in fields and argv[3:5] == ["connection", "show"]:
+            return by_uuid[argv[5]][fields[argv[2]]]
+        if argv[:3] == ["nmcli", "connection", "modify"]:
+            by_uuid[argv[3]]["mode"] = argv[5]
+        if argv[:3] == ["nmcli", "connection", "up"]:
+            row = by_uuid[argv[3]]
+            if row["mode"] == "eui64":
+                row["link_local"] = row["link_local"][:1]
+        if argv[:5] == ["ip", "-j", "-6", "address", "show"]:
+            addresses = self.connections[argv[-1]]["link_local"]
+            return json.dumps([{"addr_info": [{"family": "inet6", "local": a, "scope": "link"} for a in addresses]}])
         return ""
 
 
@@ -300,7 +338,8 @@ def test_execute_retires_workers_first_then_node_a_and_writes_the_receipt(tmp_pa
         events.append(("transfer", route[-1]["address"], archive))
 
     def root_command(t, route, argv, *, data=None):
-        events.append(("root", route[-1]["address"], "retire(json.loads(" in argv[-1] and "--prepare" in argv[-1]))
+        events.append(("root", route[-1]["address"], "retire(dict(order, link_local=False))" in argv[-1]
+                       and "--prepare" in argv[-1]))
 
     def command(route, argv, *, data=None, tty=False):
         events.append(("read", route[-1]["address"], argv[-1]))
@@ -327,7 +366,12 @@ def test_execute_retires_workers_first_then_node_a_and_writes_the_receipt(tmp_pa
 def test_worker_script_is_self_contained():
     code = reform.worker_script({"stamp": STAMP, "node_a": False, "keep": []}, "/var/tmp/sparkring-enroll-1/install.py")
     compile(code, "worker", "exec")
-    assert code.rstrip().endswith("'--apply', '--prepare', '--yes'], check=True)")
+    # Retirement, then installation and preparation, then the link-local step, which ignores a lost session.
+    tail = code[code.index("order = json.loads("):].splitlines()
+    assert tail[1:] == ["retire(dict(order, link_local=False))",
+                        "subprocess.run(['python3', '-I', '/var/tmp/sparkring-enroll-1/install.py', '--apply', "
+                        "'--prepare', '--yes'], check=True)",
+                        "signal.signal(signal.SIGHUP, signal.SIG_IGN)", "retire(order)"]
 
 
 def arguments(**values):
@@ -444,3 +488,89 @@ def test_survey_program_with_state_is_self_contained():
     code = survey.program(reform.prior_state)
     compile(code, "observe", "exec")
     assert "def prior_state" in code and code.rstrip().endswith("print(json.dumps(observe(True)))")
+
+
+def foreign_connections():
+    """spark-931e's fabric connections: SparkRing's on port 0, hand-made ones on port 1 in the default mode."""
+    rows = {}
+    for netdev, name, mode in (("enp1s0f0np0", "sparkring-a", "eui64"), ("enP2p1s0f0np0", "sparkring-b", "eui64"),
+                               ("enp1s0f1np1", "Wired connection 5", "default"),
+                               ("enP2p1s0f1np1", "Wired connection 2", "default")):
+        uuid = f"00000000-0000-4000-8000-{len(rows):012d}"
+        rows[netdev] = {"uuid": uuid, "name": name, "mode": mode,
+                        "file": f"/run/NetworkManager/system-connections/netplan-NM-{uuid}.nmconnection",
+                        "link_local": ["fe80::4ebb:47ff:fe2c:9320"] + (["fe80::1037:222a:cf8e:5d35"] if mode != "eui64" else [])}
+    return rows
+
+
+def network_files(root, connections):
+    for row in connections.values():
+        write(root, row["file"], "[connection]\nid=" + row["name"] + "\n")
+        write(root, f"/etc/netplan/90-NM-{row['uuid']}.yaml", "network: {}\n")
+
+
+def test_retire_sets_the_hardware_derived_link_local_form_after_a_backup(tmp_path):
+    connections = foreign_connections()
+    network_files(tmp_path, connections)
+    host = Host(tmp_path, connections=connections)
+    receipt = reform.retire({"stamp": STAMP, "node_a": False}, call=host, root=tmp_path)
+    assert {row["mode"] for row in connections.values()} == {"eui64"}
+    assert all(len(row["link_local"]) == 1 for row in connections.values())
+    changed = [row for row in receipt["link_local"] if row["changed"]]
+    assert [(row["netdev"], row["connection"], row["mode"]) for row in changed] == [
+        ("enp1s0f1np1", "Wired connection 5", "default"), ("enP2p1s0f1np1", "Wired connection 2", "default")]
+    uuid = connections["enp1s0f1np1"]["uuid"]
+    assert changed[0]["backup"] == [
+        f"/var/lib/sparkring/retired/{STAMP}/network/run/NetworkManager/system-connections/netplan-NM-{uuid}.nmconnection",
+        f"/var/lib/sparkring/retired/{STAMP}/network/etc/netplan/90-NM-{uuid}.yaml"]
+    retired = tmp_path / "var/lib/sparkring/retired" / STAMP / "network"
+    assert (retired / f"etc/netplan/90-NM-{uuid}.yaml").is_file()
+    # Copies: NetworkManager's own files stay where they are.
+    assert (tmp_path / f"etc/netplan/90-NM-{uuid}.yaml").is_file()
+    modify = host.calls.index(["nmcli", "connection", "modify", uuid, "ipv6.addr-gen-mode", "eui64"])
+    assert host.calls[modify + 1:].index(["nmcli", "connection", "up", uuid]) >= 0
+    assert (f"sudo nmcli connection modify {uuid} ipv6.addr-gen-mode default && sudo nmcli connection up {uuid}"
+            in receipt["restore"])
+    # SparkRing's own connections are left alone, and a repeated run changes nothing.
+    assert not [argv for argv in host.calls if argv[:4] == ["nmcli", "connection", "modify", connections["enp1s0f0np0"]["uuid"]]]
+    host.calls.clear()
+    reform.retire({"stamp": STAMP, "node_a": False}, call=host, root=tmp_path)
+    assert not [argv for argv in host.calls if argv[1:3] in (["connection", "modify"], ["connection", "up"])]
+
+
+def test_retire_reactivates_a_connection_left_between_modify_and_up(tmp_path):
+    connections = foreign_connections()
+    connections["enp1s0f1np1"]["mode"] = "eui64"
+    host = Host(tmp_path, connections=connections)
+    receipt = reform.retire({"stamp": STAMP, "node_a": False}, call=host, root=tmp_path)
+    uuid = connections["enp1s0f1np1"]["uuid"]
+    assert ["nmcli", "connection", "up", uuid] in host.calls
+    assert not [argv for argv in host.calls if argv[:4] == ["nmcli", "connection", "modify", uuid]]
+    assert any(row.get("reactivated") and row["netdev"] == "enp1s0f1np1" for row in receipt["link_local"])
+    assert connections["enp1s0f1np1"]["link_local"] == ["fe80::4ebb:47ff:fe2c:9320"]
+
+
+def test_retire_keeps_the_link_local_form_of_the_function_setup_reaches_through(tmp_path):
+    connections = foreign_connections()
+    host = Host(tmp_path, connections=connections)
+    receipt = reform.retire({"stamp": STAMP, "node_a": False, "skip_link_local": ["enp1s0f1np1"]}, call=host,
+                            root=tmp_path)
+    assert connections["enp1s0f1np1"]["mode"] == "default" and connections["enP2p1s0f1np1"]["mode"] == "eui64"
+    skipped = next(row for row in receipt["link_local"] if row["netdev"] == "enp1s0f1np1")
+    assert skipped["skipped"].endswith(f"ipv6.addr-gen-mode eui64 && sudo nmcli connection up {skipped['uuid']}")
+    # The first retire of a worker leaves the link-local form for the run after installation.
+    other = tmp_path / "other"
+    host = Host(other, connections=foreign_connections())
+    assert reform.retire({"stamp": STAMP, "link_local": False}, call=host, root=other).get("link_local") is None
+    assert not [argv for argv in host.calls if argv[:3] == ["nmcli", "connection", "modify"]]
+
+
+def test_route_over_a_fabric_hop_names_the_function_it_ends_at():
+    reach = survey.Reach("route", "a cable", route=[{"user": "code", "address": "192.0.2.42", "interface": None, "port": 22},
+                                                   {"user": "code", "address": "fe80::2", "interface": "enp1s0f1np1",
+                                                    "port": 22}])
+    found = {"sparks": {"x": {"reach": reach, "data": {"inventory": {"functions": [
+        {"netdev": "enp1s0f0np0", "addresses": ["fe80::1"]}, {"netdev": "enp1s0f1np1", "addresses": ["fe80::2"]}]}}}}}
+    assert reform.through(found, "x") == ["enp1s0f1np1"]
+    found["sparks"]["x"]["reach"] = survey.Reach("route", "the LAN", route=reach.route[:1])
+    assert reform.through(found, "x") == []

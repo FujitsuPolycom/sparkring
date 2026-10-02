@@ -229,3 +229,46 @@ def test_discovery_ignores_this_hosts_own_sibling_functions():
             raise AssertionError("logged into its own sibling function")
     with pytest.raises(ValueError, match="setup needs two or four"):
         bootstrap.discover(Transport())
+
+
+def stable_privacy(facts, netdev, *, mode="default"):
+    """A function whose connection also generates a stable-privacy link-local address, which moves its IPv4 GID."""
+    interface = next(i for i in facts["interfaces"] if i["name"] == netdev)
+    interface["network_manager"].update(connection_name="Wired connection 5", ipv6_addr_gen_mode=mode)
+    facts["ipv6_link_local"] = {netdev: ["fe80::4ebb:47ff:fe2c:9320", "fe80::1037:222a:cf8e:5d35"]}
+    function = next(r for r in facts["rdma"] if r["netdev"] == netdev)
+    function["gid"] = "fe80::1037:222a:cf8e:5d35"
+
+
+HINT = ("; enp1s0f1np1 has 2 IPv6 link-local addresses (fe80::4ebb:47ff:fe2c:9320, fe80::1037:222a:cf8e:5d35) and "
+        "its NetworkManager connection 'Wired connection 5' uses ipv6.addr-gen-mode default, which moves the IPv4 "
+        "RoCE v2 GID past index 3. Fix: nmcli connection modify 'Wired connection 5' ipv6.addr-gen-mode eui64, then "
+        "nmcli connection up 'Wired connection 5'")
+
+
+def test_gid_index_refusals_name_the_link_local_cause_and_the_nmcli_fix():
+    from scripts.deploy_inventory import gid_index_hint
+    plan = topology.build_spec(nodes(blank=True), nodes(blank=True)[0]["node_id"])
+    found = configured(plan)
+    facts = found[1]["facts"]
+    stable_privacy(facts, "enp1s0f1np1")
+    assert gid_index_hint(facts, "enp1s0f1np1") == HINT
+    after = topology.build_spec(found, found[0]["node_id"])
+    with pytest.raises(deploy_network.NetworkPlanError) as error:
+        deploy_network.verify_network(after["spec"], after["inventory"]["hosts"], hairpin=False)
+    assert str(error.value) == f"{after['spec']['hosts'][1]['host']}: GID index 3 does not match enp1s0f1np1 IPv4 address" + HINT
+    config = topology.persistent_config(after, 1)
+    with pytest.raises(ValueError) as error:
+        node.observe(config, collect=lambda request: facts)
+    assert str(error.value) == "GID3/RoCE link is unavailable: enp1s0f1np1" + HINT
+
+
+def test_gid_index_hint_is_silent_for_the_hardware_derived_form():
+    from scripts.deploy_inventory import gid_index_hint
+    facts = nodes()[0]["facts"]
+    assert gid_index_hint(facts, "enp1s0f1np1") == ""
+    next(i for i in facts["interfaces"] if i["name"] == "enp1s0f1np1")["network_manager"]["ipv6_addr_gen_mode"] = "eui64"
+    facts["ipv6_link_local"] = {"enp1s0f1np1": ["fe80::4ebb:47ff:fe2c:9320"]}
+    assert gid_index_hint(facts, "enp1s0f1np1") == ""
+    stable_privacy(facts, "enp1s0f1np1", mode="eui64")
+    assert gid_index_hint(facts, "enp1s0f1np1").startswith("; enp1s0f1np1 has 2 IPv6 link-local addresses")

@@ -261,6 +261,18 @@ Spark:
 python3 /usr/lib/sparkring/integrations/vllm/spark_roce_gid.py DEVICE ADDRESS
 ```
 
+Index 3 also needs exactly one IPv6 link-local address per fabric function,
+derived from its hardware address. SparkRing's fabric connections use
+NetworkManager's `ipv6.addr-gen-mode eui64`. A connection made by hand often
+uses `default` or `stable-privacy`, which adds another link-local address and
+moves the IPv4 GID to a higher index. Setup then stops, names the connection
+and the fix:
+
+```bash
+nmcli connection modify CONNECTION ipv6.addr-gen-mode eui64
+nmcli connection up CONNECTION
+```
+
 ### Scripts and JSON
 
 For an LLM or a repeatable installation:
@@ -946,7 +958,10 @@ moves aside:
 - the fabric record, its boot service and its routes;
 - automatic recovery, mesh services and the ConnectX hairpin approval;
 - fabric IPv4 addresses that SparkRing did not set. Setup replaces them after
-  backing up their NetworkManager connections.
+  backing up their NetworkManager connections;
+- the IPv6 link-local addresses of fabric connections made by hand: setup
+  copies each connection's file aside and sets the hardware-derived form, so
+  [RoCE GID index 3](#roce-gid-index-3) holds the port's IPv4 address.
 
 After the one `Proceed?` approval, or `--yes`, setup moves that state to
 `/var/lib/sparkring/retired/STAMP/` on each Spark and keeps it there, with a
