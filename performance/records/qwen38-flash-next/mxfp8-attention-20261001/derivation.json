@@ -1,0 +1,18 @@
+{
+  "kind": "mxfp8_attention_transplant",
+  "source": "/srv/sparkring/sparkring/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
+  "source_revision_marker": null,
+  "donor": "/srv/sparkring/research/mxattn/donor-step4000-629bc3218833",
+  "modules": 240,
+  "modules_sha256": "24bac2b336bc7755dd5e055f09289797284ad9a2b548122886d8bc73051a0504",
+  "format": {
+    "quant_algo": "MXFP8",
+    "group_size": 32
+  },
+  "requantization_check": "vLLM _mxfp8_e4m3_quantize_torch(source BF16) == donor bytes, every module",
+  "rewritten_shards": [
+    "model-00017-of-00041.safetensors",
+    "model-00018-of-00041.safetensors"
+  ],
+  "hardlinked_shards": 39
+}

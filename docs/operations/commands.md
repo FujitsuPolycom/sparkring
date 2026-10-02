@@ -180,7 +180,9 @@ Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
 Automatic recovery: on
 ```
 
-A profile with one checkpoint shows only `REPOSITORY @ REVISION`. The
+A profile with one checkpoint shows only `REPOSITORY @ REVISION`; a
+[derived checkpoint](install-reference.md#derived-checkpoints) adds
+`, derived from REPOSITORY @ REVISION` of its base. The
 recovery lines add the Spark it waits for, its last attempt and the next.
 After `sparkring down` they read `on; idle until the next sudo sparkring up
 --execute or sudo sparkring install`, and a deployment that recovery does not
@@ -228,7 +230,9 @@ runs a different SparkRing revision than Node A.
 ## checkpoints
 
 `sudo sparkring checkpoints [flags]` lists SparkRing's checkpoint directories on
-every Spark, the deployments that use them and what a release frees.
+every Spark, the deployments that use them and what a release frees. A
+[derived checkpoint](install-reference.md#derived-checkpoints)'s directory
+names the base it is derived from; a deployment of it uses both directories.
 
 | Flag | Meaning |
 |---|---|
@@ -257,7 +261,7 @@ ran out.
 | Class | Meaning |
 |---|---|
 | `installed` | Used by the active deployment, the rollback target, an unfinished model switch or a mesh installed on that Spark, such as the workspace holding the host marker of a four-Spark ring's mesh. The report names the mesh |
-| `profile` | An installer profile of the installed package references it: a checkpoint the profile lists, the image the installer selects for it, or their compile cache. Kept for that profile's next installation |
+| `profile` | An installer profile of the installed package references it: a checkpoint the profile lists, derived ones included, the image the installer selects for it, or their compile cache. Kept for that profile's next installation |
 | `unreferenced` | Neither. Proposed for release unless a running container uses it or it holds model files. Other retained deployments that use it are named; they need `sudo sparkring install` again after a release |
 | `unmanaged` | Not created by SparkRing's installer, such as a directory you made in `/srv/sparkring`; never removed |
 

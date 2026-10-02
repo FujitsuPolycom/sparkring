@@ -145,6 +145,11 @@ class Acceptance:
                     return 1
         return 0 if ok else 1
 
+    def install_arguments(self):
+        """`sparkring install` arguments after `--profile ID --yes --json`."""
+        chosen = ["--checkpoint", self.profile.checkpoint] if self.profile.checkpoint else []
+        return chosen + self.args.install_arg
+
     def step_install(self):
         ssh = self.env.ssh(self.args.node_a)
         launch_path = self.out / "install-launch.json"
@@ -153,8 +158,7 @@ class Acceptance:
             self.env.log(f"install: following run {launch['run_id']} on Node A, started {launch['started_at']}")
         else:
             run_id = f"{self.profile.id}-{self.stamp()}"
-            chosen = ["--checkpoint", self.profile.checkpoint] if self.profile.checkpoint else []
-            command = install.install_command(self.source, self.profile.id, chosen + self.args.install_arg)
+            command = install.install_command(self.source, self.profile.id, self.install_arguments())
             launch = {"run_id": run_id, "command": command, "source": asdict(self.source),
                       "started_at": self.env.now().isoformat(timespec="seconds")}
             # Saved before the launch, so a later invocation follows this run
@@ -300,7 +304,8 @@ class Acceptance:
                 contents[file_name] = json.dumps(matrix, indent=2, ensure_ascii=False) + "\n"
         source = install.Source(**launch["source"]) if launch else None
         markdown = record.render(profile=profile, name=name, record_dir=record_root, repo_root=ROOT, files=files,
-                                 install=installed, source=source, functional=functional, stress=stress, summary=summary, status=args.status,
+                                 install=installed, source=source, install_arguments=self.install_arguments(),
+                                 functional=functional, stress=stress, summary=summary, status=args.status,
                                  client=args.client, harness_revision=self.env.revision())
         markdown = text(markdown)
         # Every file passed its private-data check before anything is written.

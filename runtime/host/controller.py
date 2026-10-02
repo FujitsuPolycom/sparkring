@@ -504,8 +504,11 @@ def lifecycle(argv):
             if result.get("deployment"):
                 saved = result["deployment"]
                 print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
-                # A profile with one checkpoint has no checkpoint name.
+                # A profile with one checkpoint has no checkpoint name; a derived checkpoint names its base too.
                 source = f"{saved['model_repository']} @ {saved['model_revision'][:12]}"
+                if saved.get("derived"):
+                    source = (f"{saved['derived']['repository']} @ {saved['derived']['revision'][:12]}, "
+                              f"derived from {source}")
                 print("Checkpoint: " + (f"{saved['checkpoint']} ({source})" if saved["checkpoint"] else source)
                       + f" | Image: {saved['image_release']}")
                 if saved.get("serving"):

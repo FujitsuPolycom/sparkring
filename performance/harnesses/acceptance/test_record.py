@@ -115,6 +115,14 @@ def test_record_has_the_evidence_sections_and_values():
     assert "Each cell ran once." in text
 
 
+def test_record_prints_the_installer_arguments_without_a_lock_path():
+    text = render(install_arguments=["--checkpoint", "qad-step-4000", "--image-lock", "/var/tmp/lock one.json"])
+    assert ("`install.sh --profile mimo-v26-flash-mopd-tp2 --yes --json --checkpoint qad-step-4000 "
+            "--image-lock LOCK`") in text
+    assert "/var/tmp" not in text
+    assert "--image-lock=LOCK`" in render(install_arguments=["--image-lock=/var/tmp/lock.json"])
+
+
 def test_record_links_resolve_from_the_record_directory():
     text = render()
     base = ROOT / "performance/records/images"

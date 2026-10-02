@@ -1,0 +1,34 @@
+2026-10-01T14:57:56-05:00  Derived checkpoint qad-step5500-mxfp8-attention (sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention at 648b194a96e5): 54 files, 100.2 GiB; 48 files are hard-linked from the base, 6 (5.6 GiB) are written by runtime/common/mxfp8_attention.py
+2026-10-01T14:57:56-05:00  Node 0 spark-3286 -> /srv/sparkring/sparkring/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+2026-10-01T14:57:56-05:00      hard-links 48 files from the base (no extra space)
+2026-10-01T14:57:56-05:00      downloads 2 files of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 629bc3218833 (2.6 GiB) from huggingface.co into /srv/sparkring/sparkring/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e
+2026-10-01T14:57:56-05:00      derives 6 files (5.6 GiB) in the installer image, CPU only and without network, after checking that the donor's MXFP8 tensors are the base's weights
+2026-10-01T14:57:56-05:00  Node 1 spark-0a0f -> /srv/sparkring/sparkring/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+2026-10-01T14:57:56-05:00      hard-links 48 files from the base (no extra space)
+2026-10-01T14:57:56-05:00      receives 6 files (5.6 GiB) from Node 0 over the fabric
+2026-10-01T14:57:56-05:00  Every file is placed only after its SHA-256 equals the derived checkpoint's manifest.
+2026-10-01T14:57:56-05:00  Downloads 2.6 GiB from huggingface.co on Node 0.
+2026-10-01T14:58:45-05:00  Node 0: Derive checkpoint and verify all files
+2026-10-01T14:58:45-05:00  Node 1: Derive checkpoint and verify all files
+2026-10-01T14:58:45-05:00  Node 0: Link the derived checkpoint's files from the base
+2026-10-01T14:58:45-05:00  Node 1: Link the derived checkpoint's files from the base
+2026-10-01T14:58:47-05:00  Done: Node 0: Link the derived checkpoint's files from the base (1.6s)
+2026-10-01T14:58:47-05:00  Done: Node 1: Link the derived checkpoint's files from the base (1.6s)
+2026-10-01T14:58:47-05:00  Node 0: Download the donor files of the derived checkpoint from huggingface.co
+2026-10-01T14:59:15-05:00  Still working: Node 0: Derive checkpoint and verify all files (30s)
+2026-10-01T14:59:15-05:00  Still working: Node 1: Derive checkpoint and verify all files (30s)
+2026-10-01T14:59:17-05:00  Still working: Node 0: Download the donor files of the derived checkpoint from huggingface.co (30s)
+2026-10-01T14:59:18-05:00  Done: Node 0: Download the donor files of the derived checkpoint from huggingface.co (31.3s)
+2026-10-01T14:59:18-05:00  Node 0: Derive the checkpoint in the installer image
+2026-10-01T14:59:45-05:00  Still working: Node 0: Derive checkpoint and verify all files (60s)
+2026-10-01T14:59:45-05:00  Still working: Node 1: Derive checkpoint and verify all files (60s)
+2026-10-01T14:59:48-05:00  Still working: Node 0: Derive the checkpoint in the installer image (30s)
+2026-10-01T14:59:50-05:00  Done: Node 0: Derive the checkpoint in the installer image (32.1s)
+2026-10-01T14:59:50-05:00  Node 1: Copy checkpoint files from Node 0 over the fabric
+2026-10-01T14:59:56-05:00  Done: Node 1: Copy checkpoint files from Node 0 over the fabric (6.0s)
+2026-10-01T14:59:57-05:00  Done: Node 1: Derive checkpoint and verify all files (71.4s)
+2026-10-01T14:59:57-05:00  Node 1: Verify derived checkpoint receipt
+2026-10-01T14:59:57-05:00  Done: Node 0: Derive checkpoint and verify all files (71.4s)
+2026-10-01T14:59:57-05:00  Node 0: Verify derived checkpoint receipt
+2026-10-01T14:59:57-05:00  Done: Node 1: Verify derived checkpoint receipt (0.4s)
+2026-10-01T14:59:57-05:00  Done: Node 0: Verify derived checkpoint receipt (0.5s)

@@ -880,7 +880,8 @@ def test_an_unlisted_checkpoint_changes_nothing(machine, sparks, capsys):
     assert command("--checkpoint", "main") == 3
     result = json.loads(capsys.readouterr().out)
     assert result["field"] == "checkpoint_name"
-    assert "qad-step-4000, qad-step5500-ple1000" in result["message"] and not sparks.surveys
+    assert ("jmni-qad5500-hybrid, qad-step-4000, qad-step5500-mxfp8-attention, qad-step5500-ple1000" in result["message"]
+            and not sparks.surveys)
 
 
 def test_naming_the_default_checkpoint_installs_the_same_deployment(machine, capsys):
@@ -1497,7 +1498,10 @@ def test_retained_deployments_are_named_and_their_receipts_passed_for_refresh(ma
     # Each receipt carries the deployment its workspace's owner record must name.
     receipt = {"path": "/srv/sparkring/test/qwen38-flash-next-tp2-iold/installer/model.json",
                "deployment": "id-old"}
-    assert assets.prepared["receipts"] == {0: [receipt], 1: [receipt]}
+    # A derived checkpoint's receipt records inodes it shares with its base; a Spark skips one that is absent.
+    derived = {"path": "/srv/sparkring/test/qwen38-flash-next-tp2-iold/installer/derived/model.json",
+               "deployment": "id-old"}
+    assert assets.prepared["receipts"] == {0: [receipt, derived], 1: [receipt, derived]}
     assert json.loads(out.out)["checkpoint"]["refreshed_receipts"] == 1
 
 

@@ -1,0 +1,24 @@
+{
+  "rounds": 8,
+  "n": 256,
+  "degenerate": 0,
+  "wrong": 2,
+  "errors": 0,
+  "seconds": 99.4,
+  "degenerate_items": [],
+  "wrong_ids": [
+    "a7"
+  ],
+  "wrong_samples": [
+    [
+      "a7",
+      "5"
+    ],
+    [
+      "a7",
+      "5"
+    ]
+  ],
+  "error_samples": [],
+  "ok": true
+}

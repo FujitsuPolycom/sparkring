@@ -163,7 +163,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/mimo-v26-flash-rl-9f02bcbfee89-2479e2d0029e
     labels:
-      io.sparkring.deployment: b728e0215ed1c070888ac42afe4c69522dde393fc9f37f7ca4cd7bfc5d907815
+      io.sparkring.deployment: 6dc54ab6c8e13da1d4488c1bf9844d6a005d22820151a90b1986396c754d2063
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

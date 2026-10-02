@@ -1269,8 +1269,16 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 179.5 GiB | 235.4 GiB |
 | GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 190.7 GiB | 246.6 GiB |
 | GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.7 GiB |
+| Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.6 GiB |
+
+The derived Qwen checkpoint, `--checkpoint qad-step5500-mxfp8-attention`,
+adds to the Qwen row the 5.6 GiB of files its recipe writes on every Spark
+and, on Node A, the 2.6 GiB of step-4000 files the recipe reads
+([derived checkpoints](#derived-checkpoints)): 170.5 GiB on an empty Node A
+and 167.9 GiB on the other Sparks. `sparkring up` and `sparkring setup
+storage` reserve the Node A figure.
 
 ### Limit the download rate
 
@@ -1326,7 +1334,10 @@ commands for the unreferenced ones.
   site file cannot be read keeps every cache directory and workspace on its
   Spark.
 - `sudo sparkring checkpoints --release PATH` releases checkpoint directories
-  ([Checkpoints](#checkpoints)).
+  ([Checkpoints](#checkpoints)). A derived checkpoint's directory is
+  `installed` while its deployment is, and otherwise `profile` while an
+  installer profile lists it; releasing it frees only the files its recipe
+  wrote ([derived checkpoints](#derived-checkpoints)).
 - Docker images and directories that SparkRing's installer did not create are
   never removed.
 - [Automatic release](#automatic-release) removes what older deployments hold
@@ -1538,6 +1549,8 @@ Installing again without `--checkpoint` switches back to the default.
 
 ```bash
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
+sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-mxfp8-attention
+sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint jmni-qad5500-hybrid
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia-nvfp4
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad
 ```
@@ -1546,12 +1559,52 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 |---|---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-ple1000`, also `qad-step-5500` (default) | Branch `qad-step5500-ple1000` of Local Inference Lab's Qwen3.8-Flash-Next NVFP4, revision `60215d26cf5e` | — |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step-4000` | Branch `qad-step-4000` of the same repository, revision `629bc3218833` | MXFP8 target LM head; the draft's NVFP4 experts on B12X |
+| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-mxfp8-attention` | Step 5500 with its 240 text attention projections in MXFP8, which the installer derives on the Sparks from step 5500 and step 4000's MXFP8 tensors ([derived checkpoints](#derived-checkpoints)) | Served as `Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2` or `-TP4`; other settings as step 5500 |
+| `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `jmni-qad5500-hybrid` | [Qwen3.8-Flash-Next NVFP4 QAD-5500 Hybrid](https://huggingface.co/JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid/tree/87c8f2fb738b597de99bf9a885130f4a18a94f3d) by JMNI Labs, revision `87c8f2fb738b` | The draft's NVFP4 experts on B12X; served as `Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2` or `-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default) | GLM-5.3-Flash NVFP4-Spark, as above | — |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
+- The Qwen `qad-step5500-mxfp8-attention` entry is **implemented** on the
+  installer image on two and four Sparks. On one pair and one four-Spark
+  ring, `sudo sparkring install` derived it on the Sparks (on the pair,
+  including the 2.6 GiB donor download in 31 s; the recipe took 32 s and
+  39.5 s), every file matching the manifest. Served from it, each passed all
+  7 functional checks and a 256-request correctness screen with no
+  degenerate or failed response. Against stock step 5500 on the same
+  cluster and image, two runs each, it ran more decode steps per second at
+  1, 8 and 16 streams: 17%, 8% and 7% more on the pair (27.3 / 92.2 / 130.8
+  against 23.3 / 85.5 / 122.1) and 8%, 4% and 1% more on the ring (36.8 /
+  124.5 / 178.9 against 34.0 / 119.5 / 176.9), and prefilled 4.2 to 5.3% and
+  1.9 to 2.3% faster ([pair](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md), [ring](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-qad-tp4-qad-step5500-mxfp8-attention-20261002.md)). It
+  costs a little quality: the [research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md)
+  measured, over a 9,708-token log-likelihood check, a mean negative
+  log-likelihood 0.0045 and 0.0063 nats per token above step 5500's, about
+  0.5% in perplexity, against 0.0003 and 0.0015 between two runs of one
+  checkpoint, and 1.19 GiB less weight memory on each Spark of a pair. It is
+  never a profile's default.
+- The Qwen `jmni-qad5500-hybrid` entry is **research-only** and third-party:
+  JMNI Labs built it from Local Inference Lab's published tensors, and Local
+  Inference Lab has not reviewed or qualified it. Its model card reports, on
+  two Sparks with another vLLM build, 26.5 decode steps per second at one
+  stream against 23.0 for step 5500 (with its draft on the Marlin MoE
+  kernel), and 66.9% on 1,000 MMLU-Pro questions with direct answers against
+  67.0% for step 5500. It needs a runtime whose `modelopt_mixed` method
+  serves MXFP8 attention, W4A16 NVFP4 MTP experts and NVFP4 PLE; the installer
+  image serves each of them in step 4000 or step 5500. A tensor-by-tensor
+  comparison with the research checkpoint of the derived entry found its 480
+  attention weight and scale tensors byte-identical (same dtype, shape and
+  bytes); the shard that holds them, `hybrid-main-00002.safetensors`, has the
+  SHA-256 of step 4000's `model-00035-of-00036.safetensors`. It differs from
+  the derived checkpoint in its weights' publisher and in the MTP draft's
+  routed experts, which it stores as W4A16 NVFP4 from Local Inference Lab's
+  `main` revision `7c4f1bc1a2d6`, as step 4000 does, so its draft runs them on
+  B12X; the derived checkpoint keeps step 5500's MXFP8 draft experts on
+  Humming. Draft experts change how fast drafting runs, not the output
+  distribution, so the card's MMLU-Pro result also describes the derived
+  checkpoint's target weights. No installation has run on Sparks.
 - The four-Spark `nvfp4-qad` entry is **implemented** on the installer
   image: on one four-Spark ring it passed all 7 functional checks and a
   256-request correctness screen with no degenerate or wrong response, and
@@ -1598,6 +1651,79 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   `config.json` and `hf_quant_config.json` also exclude the BF16 MTP layer
   from quantization, the entries that the manual target adds with
   `--hf-overrides`.
+
+### Derived checkpoints
+
+A derived checkpoint is one that no repository publishes: the installer writes
+it on the Sparks from pinned published files and a recipe in this repository,
+then serves it from its own checkpoint directory. `--checkpoint
+qad-step5500-mxfp8-attention` is one: step 5500 with its 240 text attention
+projections stored as MXFP8 block 32 instead of BF16. Its recipe,
+[`mxfp8_attention.py`](../../runtime/common/mxfp8_attention.py), takes those
+tensors from step 4000, which stores the same frozen weights in MXFP8, only
+after vLLM's MXFP8 quantization of each step-5500 BF16 weight reproduces step
+4000's weight and scale bytes exactly. Its
+[manifest](../../profiles/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76.json)
+pins the size and SHA-256 of all 54 files: 48 that are step 5500's, unchanged,
+and 6 that the recipe writes (both shards that hold projections,
+`config.json`, `hf_quant_config.json`, the weight index and
+`derivation.json`). Its revision is the identity of the base revision, the
+donor revision and files, and the recipe's SHA-256, so a changed input or
+recipe is another checkpoint.
+
+An installation:
+
+1. acquires step 5500 into its own checkpoint directory on every Spark, as
+   for `--checkpoint qad-step5500-ple1000`: from copies found on the Sparks,
+   from another Spark or, failing those, from Hugging Face;
+2. hard-links on every Spark the 48 unchanged files from step 5500's directory
+   into the derived directory, so they take no space;
+3. downloads on Node A the two step-4000 files the recipe reads, the weight
+   index and `model-00035-of-00036.safetensors` (2.8 GB), unless step 4000's
+   own checkpoint directory already holds them, and checks each against step
+   4000's pin manifest;
+4. runs the recipe on Node A in the deployment's installer image, CPU only
+   and without network, with both checkpoints mounted read-only;
+5. copies the 6 written files (5.6 GiB) to the other Sparks over the fabric.
+
+Every written, downloaded or copied file is placed only after its SHA-256
+equals the manifest's, and both directories are verified again before the
+model starts. The plan lists each step with its sizes, and the download
+counts toward the approval that a download of more than 1 GiB needs. A
+repeated installation finds the derived directory complete and only verifies
+it.
+
+The derived directory is
+`/srv/sparkring/<cluster>/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/<revision>`,
+beside step 5500's; step 4000's files go to its own checkpoint directory. The
+installation stops, naming what failed, when:
+
+- step 5500 would be served in place from a named copy, or the derived
+  directory lies on another filesystem than step 5500's directory, because
+  the unchanged files are hard links;
+- quantizing a step-5500 projection does not reproduce step 4000's bytes; the
+  message names the projection;
+- a written file differs from the manifest, or the recipe in the installed
+  package differs from the one the manifest pins; the message names the file
+  or the recipe.
+
+Every Spark needs 5.6 GiB free beside step 5500 for the written files, and
+Node A 2.6 GiB more for step 4000's files ([space](#downloads-storage-and-outbound-hosts)).
+`sudo sparkring checkpoints` and `sudo sparkring storage` list the derived
+directory with the base it is derived from; releasing it frees only the 5.6
+GiB the recipe wrote, because its other files are hard links to step 5500's.
+Step 5500's directory keeps its data whatever happens to the derived one, and
+neither is released while a protected deployment uses it.
+
+The derived files do not depend on where or when they are written: the recipe
+writes each shard with its own safetensors writer, in the layout of the
+safetensors library, so the manifest can pin every file. From step 5500's
+`config.json`, `hf_quant_config.json`, weight index and shard headers, the
+recipe reproduces the research checkpoint's `config.json`,
+`hf_quant_config.json` and weight index byte for byte, and the index's total
+size fixes the two rewritten shards' sizes; the shards' SHA-256 come from the
+[research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md), and an installation on one pair wrote all
+6 files with the manifest's SHA-256 ([record](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md)).
 
 ### Where the installer looks
 
