@@ -10,7 +10,7 @@
     },
     {
       "path": "runtime/releases/dev-20260928-toolchoice-cuda1342-nccl2323-status032/installer-image.json",
-      "sha256": "a23b634d2025ba25165619586707722aba14f6e4b392bf619d474e820adc8299"
+      "sha256": "21760634a1f7808699c26ac16ab1fe0d896d6cbafdd03e152e07c4baf1dce65c"
     }
   ]
 }

@@ -37,6 +37,11 @@ SCHEMA = "sparkring-installer-image/v2"
 # The release whose image every installer profile uses unless an operator
 # supplies an explicit development lock.
 DEFAULT_LOCK = ROOT / "runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/installer-image.json"
+RELEASES = ROOT / "runtime/releases"
+# GitHub release tag -> the installer image release that release published, so
+# that `--image 2026.10.0` selects the image its release notes name.
+RELEASE_TAGS = RELEASES / "installer-releases.json"
+RELEASE_TAGS_SCHEMA = "sparkring-installer-releases/v1"
 # The Qwen3.8-Flash-Next profiles, the only profiles a v1 lock can name.
 QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 # Profiles whose checkpoints use the Qwen3.8-Flash-Next (Qwen4Exp) architecture,
@@ -119,7 +124,75 @@ def for_profile(profile, explicit=None):
     if replaced:
         raise ValueError(replaced)
     value = explicit if explicit is not None else default_lock()
-    return validate(value, profile)
+    try:
+        return validate(value, profile)
+    except ValueError as error:
+        # A well-formed lock that does not list the profile: name the images that do.
+        if explicit is None or value.get("schema") != SCHEMA or profile in value.get("profiles", ()):
+            raise
+        others = [row["name"] for row in catalog() if profile in profiles_of(row["lock"])]
+        raise ValueError(f"{error}; images that run it: {', '.join(others) or 'none'}") from None
+
+
+def release_tags():
+    """GitHub release tag -> installer image release name, from installer-releases.json."""
+    document = json.loads(RELEASE_TAGS.read_text(encoding="utf-8"))
+    if document.get("schema") != RELEASE_TAGS_SCHEMA or not isinstance(document.get("releases"), dict):
+        raise ValueError(f"{RELEASE_TAGS} is not a {RELEASE_TAGS_SCHEMA} document")
+    return dict(document["releases"])
+
+
+def catalog():
+    """The installer images whose locks this package carries: the default first, then newest name first.
+
+    Each row holds the release ``name`` (its directory under runtime/releases),
+    the lock's ``path``, the ``lock``, the GitHub release ``tags`` that
+    published it and whether it is the ``default``. Only locks that reference
+    a registry digest are listed; a lock naming a local configuration ID runs
+    only where that image was loaded by hand.
+    """
+    published = {}
+    for tag, name in release_tags().items():
+        published.setdefault(name, []).append(tag)
+    rows = []
+    for path in RELEASES.glob("*/installer-image.json"):
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if "@sha256:" not in str(value.get("image_reference", "")):
+            continue
+        name = path.parent.name
+        rows.append({"name": name, "path": path, "lock": value, "tags": sorted(published.get(name, [])),
+                     "default": path == DEFAULT_LOCK})
+    rows.sort(key=lambda row: row["name"], reverse=True)
+    return sorted(rows, key=lambda row: not row["default"])
+
+
+def lock_path(name):
+    """The lock file of the installer image ``name`` selects; None for the default image.
+
+    ``name`` is an image's release name
+    (``dev-20261001-kraken-cuda1342-nccl2323-status034``), the GitHub release
+    tag that published it (``2026.10.0``), or a part of a release name between
+    hyphens that only one image has (``kraken``). Selecting the default image
+    returns None, so the request equals one without a selection.
+    """
+    rows = catalog()
+    by_name = {row["name"]: row for row in rows}
+    tags = release_tags()
+    if name in tags:
+        if tags[name] not in by_name:
+            raise ValueError(f"Release {name} published {tags[name]}, whose lock this package does not carry")
+        row = by_name[tags[name]]
+    elif name in by_name:
+        row = by_name[name]
+    else:
+        matches = [row for row in rows if f"-{name}-" in f"-{row['name']}-"]
+        if len(matches) > 1:
+            raise ValueError(f"Image {name} matches several images: {', '.join(row['name'] for row in matches)}; "
+                             "give one full name")
+        if not matches:
+            raise ValueError(f"No installer image is named {name}; sparkring images lists them")
+        row = matches[0]
+    return None if row["default"] else row["path"]
 
 
 def selection(card, value):
