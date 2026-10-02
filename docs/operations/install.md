@@ -52,11 +52,12 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
 - `--plan` shows what it would change and changes nothing. On a Spark without
   SparkRing, run with `--package-only` first; it installs only the package.
 - Qwen profiles install checkpoint step 5500; add `--checkpoint qad-step-4000`
-  for step 4000. Two research-only Qwen options trade a little quality for
-  faster decoding: `--checkpoint qad-step5500-mxfp8-attention` builds step
-  5500 with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000),
-  and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs' third-party
-  hybrid. GLM profiles install NVFP4-Spark; add `--checkpoint nvfp4-qad`
+  for step 4000. Two Qwen options trade a little quality for faster
+  decoding: `--checkpoint qad-step5500-mxfp8-attention` builds step 5500
+  with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000;
+  implemented on two Sparks, research-only on four), and `--checkpoint
+  jmni-qad5500-hybrid` installs JMNI Labs' third-party hybrid
+  (research-only). GLM profiles install NVFP4-Spark; add `--checkpoint nvfp4-qad`
   for Local Inference Lab's QAD checkpoint, or on four Sparks
   `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On two Sparks, QAD
   runs with a shorter context window

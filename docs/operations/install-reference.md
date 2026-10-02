@@ -1536,19 +1536,24 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
-- The Qwen `qad-step5500-mxfp8-attention` entry is **research-only**. On
-  one pair with the pair profile's settings, a checkpoint with the same weight
-  and configuration files, built by the research program that its recipe
-  ports, ran 14% more decode steps per second than step 5500 at one stream
-  (27.0 against 23.6) and 6% more at eight
-  (90.6 against 85.4), prefilled 3.5 to 5.3% faster, took 1.19 GiB less weight
-  memory on each Spark and kept the same draft acceptance and 7 of 7
-  functional checks. It costs a little quality: over a 9,708-token
-  log-likelihood check its mean negative log-likelihood rose by 0.0045 and
-  0.0063 nats per token, about 0.5% in perplexity, against 0.0003 and 0.0015
-  between two runs of one checkpoint ([record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md)). No installation
-  through `sudo sparkring install` has run on Sparks, and the four-Spark
-  entry was not measured.
+- On two Sparks the Qwen `qad-step5500-mxfp8-attention` entry is
+  **implemented** on the installer image. On one pair, `sudo sparkring
+  install` derived it from scratch: it downloaded the 2 donor files
+  (2.6 GiB) in 31 s, wrote the 6 derived files in 32 s and copied them to the
+  other Spark in 6 s, each matching the manifest. Served from it, the pair
+  passed all 7 functional checks and a 256-request correctness screen with no
+  degenerate or failed response, and against stock step 5500 on the same
+  pair and image, two runs each, ran 17%, 8% and 7% more decode steps per
+  second at 1, 8 and 16 streams (27.3 / 92.2 / 130.8 against 23.3 / 85.5 /
+  122.1) and prefilled 4.2 to 5.3% faster ([record](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md)). It costs a
+  little quality: the [research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md)
+  measured, over a 9,708-token log-likelihood check, a mean negative
+  log-likelihood 0.0045 and 0.0063 nats per token above step 5500's, about
+  0.5% in perplexity, against 0.0003 and 0.0015 between two runs of one
+  checkpoint, and 1.19 GiB less weight memory on each Spark. It is never a
+  profile's default. On four Sparks
+  the entry is **research-only**: no four-Spark installation of it has been
+  measured.
 - The Qwen `jmni-qad5500-hybrid` entry is **research-only** and third-party:
   JMNI Labs built it from Local Inference Lab's published tensors, and Local
   Inference Lab has not reviewed or qualified it. Its model card reports, on
@@ -1686,7 +1691,8 @@ safetensors library, so the manifest can pin every file. From step 5500's
 recipe reproduces the research checkpoint's `config.json`,
 `hf_quant_config.json` and weight index byte for byte, and the index's total
 size fixes the two rewritten shards' sizes; the shards' SHA-256 come from the
-[research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md), and the first derivation on Sparks checks them.
+[research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md), and an installation on one pair wrote all
+6 files with the manifest's SHA-256 ([record](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md)).
 
 ### Where the installer looks
 
