@@ -55,7 +55,8 @@ deployment directories. Four-Spark profiles also take the mesh fabric
 reference. **Paste a site file instead** reads an existing
 `sparkring-compose-site/v1` file.
 
-**Download *name*.zip** saves the deployment named in step 4:
+**Download *name*.zip** saves the deployment named in step 4, by default the
+profile's name, such as `qwen38-flash-next-tp2.zip`:
 
 ```text
 NAME/deployment.json

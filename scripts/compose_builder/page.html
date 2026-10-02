@@ -360,7 +360,8 @@ __ENGINE__
   const DATA = JSON.parse(document.getElementById('data').textContent);
   const CATALOG = DATA.profiles;
   const BY_ID = Object.fromEntries(CATALOG.map(p => [p.id, p]));
-  const META = { repository: DATA.repository, tag: DATA.tag, commit: DATA.commit, ref: DATA.ref };
+  const META = { repository: DATA.repository, tag: DATA.tag, commit: DATA.commit, ref: DATA.ref,
+    since_tag: DATA.since_tag, commits_since: DATA.commits_since };
   // A page framed by a claude.ai viewer saves files through its downloads capability; a
   // hosted page (GitHub Pages) saves them as an ordinary browser download and can carry its
   // choices in a shareable link.
@@ -445,8 +446,10 @@ __ENGINE__
     const root = base[0].split('/').slice(0, -2).join('/');
     return base.map(() => `${root}/${(cp.model_repository || 'model').split('/').pop()}/${rev(cp.model_revision)}`);
   }
+  // The deployment name defaults to the profile's ID, which names the zip, its folder and the
+  // containers; the example site's own name marks documentation values.
   function examplePaths(p) {
-    return { name: p.example_site.name, model: exampleModel(p, checkpointOf(p)), cache: p.example_site.ranks.map(r => r.cache) };
+    return { name: p.id, model: exampleModel(p, checkpointOf(p)), cache: p.example_site.ranks.map(r => r.cache) };
   }
   const cluster = n => (state.clusters[n] ||= exampleCluster(n));
   const paths = p => (state.perProfile[p.id] ||= examplePaths(p));
@@ -513,6 +516,8 @@ __ENGINE__
       const pp = state.perProfile[id], p = BY_ID[id];
       if (!p || !pp || typeof pp.name !== 'string' || !Array.isArray(pp.model) || pp.model.length !== p.nodes
           || !Array.isArray(pp.cache) || pp.cache.length !== p.nodes) delete state.perProfile[id];
+      // A name saved while the default was the example site's name takes the profile default.
+      else if (pp.name === p.example_site.name) pp.name = p.id;
     }
   }
 

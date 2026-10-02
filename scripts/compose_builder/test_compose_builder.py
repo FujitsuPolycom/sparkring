@@ -49,6 +49,25 @@ def test_tagged_data_pins_the_tag(monkeypatch):
     monkeypatch.setattr(export, "profile_ids", lambda: ["mimo-v26-flash-mopd-tp2"])
     data = export.export(tag="2026.10.1", commit=COMMIT)
     assert data["ref"] == "2026.10.1" and data["commit"] == COMMIT
+    assert data["since_tag"] is None and data["commits_since"] is None
+
+
+@pytest.mark.parametrize("description, expected", [
+    ("2026.10.0-24-g66f04d51", ("2026.10.0", 24)),
+    ("shared-2026.09.4-rc.4-0-gabc123", ("shared-2026.09.4-rc.4", 0)),
+    ("66f04d51", (None, None)),
+    (None, (None, None)),
+])
+def test_untagged_checkouts_are_named_by_the_release_before_them(description, expected):
+    assert export.release_distance(description) == expected
+
+
+def test_untagged_git_checkouts_record_the_release_before_them(monkeypatch):
+    monkeypatch.setattr(export, "profile_ids", lambda: ["mimo-v26-flash-mopd-tp2"])
+    monkeypatch.setattr(export, "source_identity", lambda: (None, COMMIT))
+    monkeypatch.setattr(export, "_git", lambda *argv: "2026.10.0-24-g0000000")
+    data = export.export()
+    assert (data["ref"], data["since_tag"], data["commits_since"]) == (COMMIT, "2026.10.0", 24)
 
 
 @pytest.mark.parametrize("line, message", [
