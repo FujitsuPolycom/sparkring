@@ -195,26 +195,44 @@ def profile_data(profile_id):
     }
 
 
+def _git(*argv):
+    result = subprocess.run(["git", "-C", str(ROOT), *argv], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 def source_identity():
     """(tag, commit) of the checkout: its exact release tag or None, and its commit or None outside Git."""
-    def git(*argv):
-        result = subprocess.run(["git", "-C", str(ROOT), *argv], capture_output=True, text=True)
-        return result.stdout.strip() if result.returncode == 0 else None
-    return git("describe", "--tags", "--exact-match", "HEAD"), git("rev-parse", "HEAD")
+    return _git("describe", "--tags", "--exact-match", "HEAD"), _git("rev-parse", "HEAD")
+
+
+def release_distance(description):
+    """(tag, commits) from `git describe --tags --long` output such as ``2026.10.0-24-g66f04d51``.
+
+    The page names a checkout between releases by the release before it and the
+    number of commits since; (None, None) when there is no earlier tag.
+    """
+    match = re.fullmatch(r"(.+)-(\d+)-g[0-9a-f]+", description or "")
+    return (match.group(1), int(match.group(2))) if match else (None, None)
 
 
 def export(*, tag=None, commit=None, repository=REPOSITORY):
     """The page's data: every listed profile, and the source the install command pins.
 
     ``ref`` is the tag when the checkout is a release, else the commit: the
-    install command fetches install.sh from it and passes it as --ref.
+    install command fetches install.sh from it and passes it as --ref. For a
+    checkout between releases, ``since_tag`` and ``commits_since`` name the
+    release before it and how many commits it is ahead.
     """
+    since_tag = commits_since = None
     if commit is None:
         found_tag, commit = source_identity()
         tag = tag or found_tag
+        if tag is None:
+            since_tag, commits_since = release_distance(_git("describe", "--tags", "--long", "HEAD"))
     if not commit:
         raise ValueError("The builder needs the checkout's commit; pass --commit outside Git")
     return {"schema": SCHEMA, "repository": repository, "tag": tag, "commit": commit, "ref": tag or commit,
+            "since_tag": since_tag, "commits_since": commits_since,
             "profiles": [profile_data(profile_id) for profile_id in profile_ids()]}
 
 

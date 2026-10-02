@@ -8,7 +8,8 @@ const Engine = require('./engine.js');
   const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
   const cases = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
   const byId = Object.fromEntries(data.profiles.map(p => [p.id, p]));
-  const meta = { repository: data.repository, tag: data.tag, commit: data.commit, ref: data.ref };
+  const meta = { repository: data.repository, tag: data.tag, commit: data.commit, ref: data.ref,
+    since_tag: data.since_tag, commits_since: data.commits_since };
   const outputs = [];
   for (const c of cases) {
     const profile = byId[c.profile];
