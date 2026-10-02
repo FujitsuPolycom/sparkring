@@ -561,6 +561,10 @@ def diagnose(sparks, head=None, *, strict=False, whole=False, neighbors=True):
 def message(result):
     """One line for an error: the finding, the fix and the ring order afterwards."""
     text = "Fabric cabling: " + result["summary"].rstrip(".") + "."
+    # The first observation problem stays in the line, so a caller can tell missing evidence (MISSING) apart.
+    problems = [p for p in result["problems"] if p.rstrip(".") not in result["summary"]]
+    if problems:
+        text += " Also: " + problems[0].rstrip(".") + "."
     if result["fix"]:
         text += " To fix: " + " ".join(result["fix"])
     if result["order_names"] and result["layout"] == "ring":

@@ -207,13 +207,14 @@ def lan_hops(found, head, *, user, arp=lan_peers.arp_table, sweep=lan_peers.swee
             for lan_mac, (address, mac) in sorted(rows.items()) if address not in taken]
 
 
-def survey(transport, *, recorded=(), user="root", port=22, sign_in=True, state=None, say=print,
+def survey(transport, *, recorded=(), user="root", port=22, sign_in=True, lan=True, state=None, say=print,
            ssh=discovery.ssh, arp=lan_peers.arp_table, sweep=lan_peers.sweep, here=None):
     """Reach and observe the Sparks on this Spark's cables; change nothing.
 
     ``recorded`` are administration-network SSH targets of the recorded
     cluster's other Sparks. Without ``sign_in`` only this Spark and those are
-    read; ``state`` is passed to ``program``. Returns ``{"head", "sparks":
+    read; without ``lan`` no LAN address is signed in to (SSH port 22); ``state``
+    is passed to ``program``. Returns ``{"head", "sparks":
     {id: {"reach", "data"}}, "notes"}``; ``notes`` name each Spark the survey
     could not read and why.
     """
@@ -238,10 +239,18 @@ def survey(transport, *, recorded=(), user="root", port=22, sign_in=True, state=
         except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
             notes.append(f"{target.split('@')[-1]} (recorded cluster) did not answer over the admin network: "
                          + (str(error).strip().splitlines() or ["no answer"])[-1][:200])
-    tried = set()
+    tried, swept = set(), []
+
+    def sweep_once(interface):
+        # One sweep of the LAN per survey; later rounds read the ARP table it filled.
+        if not swept:
+            swept.append(interface)
+            sweep(interface)
+
     for _ in range(ROUNDS if sign_in else 0):
         progress = False
-        hops = lan_hops(found, head, user=user, arp=arp, sweep=sweep) + fabric_hops(found, user=user, port=port)
+        hops = (lan_hops(found, head, user=user, arp=arp, sweep=sweep_once) if lan else []) + fabric_hops(
+            found, user=user, port=port)
         for reach, mac in hops:
             key = json.dumps(reach.route, sort_keys=True)
             if key in tried or mac in known_macs(found) or len(found) >= LIMIT:

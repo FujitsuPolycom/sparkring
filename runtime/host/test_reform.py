@@ -1,4 +1,4 @@
-"""Re-forming Sparks of earlier SparkRing clusters: detection, plan, retirement on a fake file system, setup's step."""
+"""Re-forming Sparks of other SparkRing clusters: detection, plan, retirement on a fake file system, setup's step."""
 import argparse
 import copy
 import json
@@ -96,7 +96,7 @@ def test_record_mismatch_names_the_unrecorded_neighbor():
     assert reform.record_mismatch(record, pair, "spark-3286") is None
     ring = {"name": "ring", "plan": {"nodes": [{"hostname": h} for h in ("spark-3286", "spark-0a0f", "a", "b")]}}
     both = pair + [dict(row, netdev="enp1s0f1np1") for row in pair if row["hostname"] == "spark-0a0f"]
-    assert "no longer a ring" in reform.record_mismatch(ring, both, "spark-3286")
+    assert "not cabled as a ring" in reform.record_mismatch(ring, both, "spark-3286")
     assert reform.record_mismatch({"targets": ["a", "b"]}, rows, "spark-3286") == (
         "3 Sparks are cabled here, but setup enrolled 2")
 
@@ -119,7 +119,7 @@ def test_plan_lists_each_sparks_state_foreign_addresses_and_the_ring():
     assert value["stamp"] == STAMP and value["blockers"] == []
     lines = reform.plan_lines(value)
     assert lines[:2] == ["The cabled Sparks differ from this Spark's cluster record: spark-aa42 is cabled to this Spark.",
-                         "Re-form: setup moves aside what these Sparks keep from earlier SparkRing clusters:"]
+                         "Re-form: setup moves aside what these Sparks keep from other SparkRing clusters:"]
     aa42 = lines[lines.index("  spark-aa42:") + 1:]
     assert aa42[:6] == [
         "    - Node A of cluster \"tp2\" (2 Sparks): its records move aside",
@@ -134,7 +134,8 @@ def test_plan_lists_each_sparks_state_foreign_addresses_and_the_ring():
     assert "    - Node A of cluster \"sparkring\" (2 Sparks): its records move aside, except Node A's SSH key" in lines
     assert [a["address"] for s in value["sparks"] for a in s["foreign_addresses"]] == [
         "198.18.200.6/30", "198.18.200.14/30", "198.18.200.5/30", "198.18.200.13/30"]
-    assert lines[-1] == "Then setup sets up the ring spark-3286 → spark-0a0f → spark-931e → spark-aa42 as new, with new fabric addresses."
+    assert lines[-1] == ("Then setup sets up the ring spark-3286 → spark-0a0f → spark-931e → spark-aa42 like a first setup "
+                         "and renumbers its fabric addresses.")
 
 
 def test_running_model_container_blocks_with_the_stop_command():
@@ -423,7 +424,7 @@ def test_setup_plan_reforms_when_the_record_names_fewer_sparks_than_are_cabled(t
     out = capsys.readouterr().out
     assert ("The cabled Sparks differ from this Spark's cluster record: spark-aa42 is cabled to this Spark but not "
             "part of its cluster \"sparkring\" (2 Sparks).") in out
-    assert "Then setup sets up the ring spark-3286 → spark-0a0f → spark-931e → spark-aa42 as new" in out
+    assert "Then setup sets up the ring spark-3286 → spark-0a0f → spark-931e → spark-aa42 like a first setup" in out
     assert seen["port"] == 22 and (base / "cluster.json").exists()
 
 

@@ -304,7 +304,7 @@ def test_setup_prints_the_cabling_fix_and_the_cables(tmp_path, monkeypatch, caps
                ports["cw_secondary"]["netdev"]: ports["ccw_secondary"]["netdev"]}
     found[1]["lldp"]["lldp"]["interface"] = [{netdevs[k]: v} for entry in found[1]["lldp"]["lldp"]["interface"]
                                              for k, v in entry.items()]
-    # Rank 1's port 0 has no cable now, so no carrier.
+    # Rank 1's port 0 has no cable after the move, so no carrier.
     for interface in found[1]["facts"]["interfaces"]:
         if interface["name"] in netdevs:
             interface["operstate"] = "DOWN"
@@ -316,3 +316,11 @@ def test_setup_prints_the_cabling_fix_and_the_cables(tmp_path, monkeypatch, caps
     assert ("SparkRing: Fabric cabling: Pair: spark0 port 0 ↔ spark1 port 1, but no cable joins the two ports 0. "
             "Pair models use port 0 on both Sparks. To fix: On spark1, move the cable from port 1 to port 0.") in err
     assert "  Cables:\n    spark0 port 0 ↔ spark1 port 1\n" in err
+
+
+def test_error_line_keeps_missing_evidence_after_a_fix():
+    # A loop with one same-port pair and one cable seen from one end only: the fix and the missing evidence both show.
+    sparks = synthetic(4, ring([(0, 0), (1, 1), (0, 1), (0, 1)]))
+    sparks[2]["lldp"] = [row for row in sparks[2]["lldp"] if not row["netdev"].endswith("f0np0")]
+    result = cabling.diagnose(sparks, "spark-a", strict=True, whole=True)
+    assert result["fix"] and cabling.MISSING in cabling.message(result)

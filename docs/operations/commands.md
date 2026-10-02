@@ -183,7 +183,8 @@ Ring order after the fix: spark-a → spark-b → spark-c → spark-d
 
 It reads this Spark, the Sparks of its recorded cluster over the admin
 network, and the other Sparks on the cables. It signs in to those over the
-LAN or the cables as the account that ran `sudo`; SSH asks for passwords.
+LAN or the cables as the account that ran `sudo`, with Node A's setup key
+where they accept it; SSH asks for a password elsewhere.
 
 | Flag | Meaning |
 |---|---|

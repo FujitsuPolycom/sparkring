@@ -319,9 +319,10 @@ def reform_step(args, transport, worker_archive, *, reason, keep=(), say=print, 
     directory, which Node A's re-form keeps.
     """
     try:
-        # The preparation service on port 2222 admits only root.
-        found, diagnosis = reform.survey_cabled(transport, user="root" if args.ssh_port == 2222 else args.ssh_user,
-                                                port=args.ssh_port, say=say)
+        # Workers prepared offline admit only root, on port 2222 over the cables.
+        prepared = args.ssh_port == 2222
+        found, diagnosis = reform.survey_cabled(transport, user="root" if prepared else args.ssh_user,
+                                                port=args.ssh_port, lan=not prepared, say=say)
     except (RuntimeError, ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         if reason:
             raise ValueError(f"Setup could not read the cabled Sparks ({error}); sudo sparkring cabling shows what it "
@@ -352,7 +353,7 @@ def reform_step(args, transport, worker_archive, *, reason, keep=(), say=print, 
         return "planned"
     (run or reform.execute)(value, found, transport, archive=worker_archive, transfer=packages.transfer,
                             root_command=root_command, keep=keep, say=say)
-    # Every worker now runs the preparation SSH service with Node A's key.
+    # After the re-form, every worker runs the preparation SSH service with Node A's key.
     args.ssh_port, args.ssh_user, args.reset_links = 2222, "root", True
     transport.trust_new = True
     return "done"

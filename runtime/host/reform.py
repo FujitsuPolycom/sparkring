@@ -1,4 +1,4 @@
-"""Re-form Sparks that belonged to other SparkRing clusters into the pair or ring now cabled.
+"""Re-form Sparks that belonged to other SparkRing clusters into the pair or ring that is cabled.
 
 A Spark keeps the setup of the cluster it belonged to: Node A's controller
 record (``/var/lib/sparkring/controller``), the admin network (``sr-control``:
@@ -21,7 +21,7 @@ cabled Spark holds such state, setup re-forms them:
    discovery (the worker preparation of ``sparkring setup --worker-bundle``);
    Node A runs ``retire`` last. ``retire`` moves the state into
    ``/var/lib/sparkring/retired/STAMP/`` (kept, never deleted), disables the
-   old cluster's services and writes a receipt with restore steps.
+   cluster's services and writes a receipt with restore steps.
 4. Setup continues as a fresh setup of the cabled Sparks and renumbers their
    fabric addresses (the ``--reset-links`` behavior). Fabric IPv4 addresses
    that SparkRing did not set are listed in step 1; setup backs up each
@@ -29,7 +29,7 @@ cabled Spark holds such state, setup re-forms them:
 
 Node A keeps its SSH identity (``controller_ed25519``), its fabric SSH known
 hosts and the installation lock. Nothing under ``/srv/sparkring``
-(checkpoints, images, caches) is touched. Every step skips what an earlier,
+(checkpoints, images, caches) is touched. Every step skips what an
 interrupted run already did, so setup can run again.
 """
 import inspect
@@ -330,7 +330,7 @@ def record_mismatch(record, rows, hostname):
     that stopped after provisioning, which names its Sparks only by count;
     ``rows`` are Node A's fabric LLDP rows. A neighbor the record does not
     name (or more neighbors than an enrolled record counts) means the cabling
-    changed; so does a four-Spark record whose Node A now has both ports on
+    changed; so does a four-Spark record whose Node A has both ports on
     one Spark. Anything else keeps the record, and setup's cabling check
     names any cable to move.
     """
@@ -351,7 +351,7 @@ def record_mismatch(record, rows, hostname):
     if not recorded and len(neighbors) + 1 > size:
         return f"{len(neighbors) + 1} Sparks are cabled here, but setup enrolled {size}"
     if size == 4 and len(neighbors) == 1 and len(by_port) == 2:
-        return f"both ports of this Spark lead to {next(iter(neighbors))}, so the four Sparks of its {label} are no longer a ring"
+        return f"both ports of this Spark lead to {next(iter(neighbors))}, so the four Sparks of its {label} are not cabled as a ring"
     return None
 
 
@@ -465,7 +465,7 @@ def plan_lines(value):
     lines = []
     if value.get("reason"):
         lines.append("The cabled Sparks differ from this Spark's cluster record: " + value["reason"] + ".")
-    lines.append("Re-form: setup moves aside what these Sparks keep from earlier SparkRing clusters:")
+    lines.append("Re-form: setup moves aside what these Sparks keep from other SparkRing clusters:")
     for spark in value["sparks"]:
         lines.append(f"  {spark['name']}" + (" (Node A)" if spark["node_a"] else "") + ":")
         lines += [f"    - {item}" for item in spark["items"]] or ["    - nothing to move"]
@@ -473,7 +473,8 @@ def plan_lines(value):
                  "that lists how to restore it.")
     lines.append("Checkpoints, images and caches in /srv/sparkring stay where they are.")
     shape = "pair" if value["layout"] == "pair" else "ring"
-    lines.append(f"Then setup sets up the {shape} " + " → ".join(value["order"]) + " as new, with new fabric addresses.")
+    lines.append(f"Then setup sets up the {shape} " + " → ".join(value["order"]) + " like a first setup and renumbers "
+                 "its fabric addresses.")
     if value["blockers"]:
         lines.append("Setup stops until these SparkRing model containers are stopped:")
         lines += [f"  {row['spark']}: {row['container']}; stop it {row['command']}" for row in value["blockers"]]
@@ -523,7 +524,7 @@ def execute(value, found, transport, *, archive, transfer, root_command, keep=()
             raise ValueError(f"{spark['name']} was reached only over {reach.label}; re-forming it needs a LAN or fabric "
                              "route")
         destination = "/var/tmp/sparkring-enroll-" + str(time.time_ns())
-        say(f"Re-form {spark['name']}: move its earlier cluster state aside, then install and prepare SparkRing")
+        say(f"Re-form {spark['name']}: move its SparkRing cluster state aside, then install and prepare SparkRing")
         transfer(transport, reach.route, archive(), destination)
         order = {"stamp": value["stamp"], "node_a": False, "keep": []}
         root_command(transport, reach.route, ["python3", "-I", "-c", worker_script(order, destination + "/install.py")])
@@ -531,7 +532,7 @@ def execute(value, found, transport, *, archive, transfer, root_command, keep=()
             reach.route, ["cat", f"{RETIRED}/{value['stamp']}/receipt.json"]))
         journal(value, receipts, complete=False, root=root)
     node_a = next(s for s in value["sparks"] if s["node_a"])
-    say(f"Re-form {node_a['name']} (Node A): move its earlier cluster state aside")
+    say(f"Re-form {node_a['name']} (Node A): move its SparkRing cluster state aside")
     receipts[node_a["name"]] = (here or retire)({"stamp": value["stamp"], "node_a": True,
                                                  "keep": [*NODE_A_KEEPS, *keep]})
     journal(value, receipts, complete=True, root=root)
@@ -540,7 +541,7 @@ def execute(value, found, transport, *, archive, transfer, root_command, keep=()
 
 
 def survey_cabled(transport, *, user, port, say=print, **options):
-    """Survey the cabled Sparks with their SparkRing state; signs in over the LAN or the cables, never the old admin network."""
+    """Survey the cabled Sparks with their SparkRing state over the LAN or the cables, never the admin network it removes."""
     found = survey.survey(transport, recorded=(), user=user, port=port, state=prior_state, say=say, **options)
     diagnosis = cabling.diagnose(survey.records(found), found["head"])
     return found, diagnosis

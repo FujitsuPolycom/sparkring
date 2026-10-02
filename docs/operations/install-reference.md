@@ -921,11 +921,12 @@ when two choices tie, it leaves Node A's cables alone.
 
 ## Re-form Sparks into another pair or ring
 
-Sparks that belonged to other SparkRing clusters can form a new pair or ring:
+Sparks that belonged to other SparkRing clusters can form another pair or ring:
 
 1. Cable them as a [pair or ring](#cabling); `sudo sparkring cabling` names
    any cable to move.
-2. Stop their models: on each earlier Node A, `sudo sparkring down --execute`.
+2. Stop their models: on each Spark that was a Node A,
+   `sudo sparkring down --execute`.
 3. On the Spark that becomes Node A, review, then set up:
 
    ```bash
@@ -939,8 +940,8 @@ reaches each Spark over the LAN or the cables, as in
 [Setup and access](#setup-and-access), and its plan lists by Spark what it
 moves aside:
 
-- an earlier Node A's records in `/var/lib/sparkring/controller`; Node A keeps
-  its SSH key;
+- the records of a Spark that was a Node A, in
+  `/var/lib/sparkring/controller`; Node A keeps its SSH key;
 - the admin network (`sr-control`) configuration and its services;
 - the fabric record, its boot service and its routes;
 - automatic recovery, mesh services and the ConnectX hairpin approval;
@@ -951,8 +952,8 @@ After the one `Proceed?` approval, or `--yes`, setup moves that state to
 `/var/lib/sparkring/retired/STAMP/` on each Spark and keeps it there, with a
 `receipt.json` that lists how to restore it. Node A's `reform.json` there
 collects every Spark's receipt. Setup installs Node A's SparkRing on each
-worker, which asks for that worker's `sudo` password once, then sets the
-Sparks up as new, with new fabric addresses.
+worker, which asks for that worker's `sudo` password once. Then it sets the
+Sparks up as on a first setup, with renumbered fabric addresses.
 
 - Setup stops while a SparkRing model runs on one of the Sparks and prints
   the command that stops it. It never stops a model itself.
