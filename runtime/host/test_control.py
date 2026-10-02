@@ -244,7 +244,7 @@ def test_discovery_names_skipped_addresses_when_no_pair_is_found():
     ("ssh: connect to host fe80::2%port0 port 22: Connection refused\n", "--worker-bundle"),
     ("ssh: connect to host fe80::2%port0 port 22: Connection timed out\n", "did not answer SSH"),
     ("Connection closed by fe80::2%port0 port 22\n", "about 2 minutes"),
-    ("Host key verification failed.\n", "differs from the one recorded"),
+    ("Host key verification failed.\n", "has no recorded SSH host key yet"),
     ("kex_exchange_identification: read: Connection reset by peer\n", "closed the SSH connection"),
     ("something unexpected\n", "SSH sign-in to code@fe80::2 on port0 failed"),
 ])
@@ -262,6 +262,27 @@ def test_login_failure_names_the_cause_and_keeps_the_ssh_message(tmp_path, error
     assert isinstance(failure.value, bootstrap.Unanswered) == ("timed out" in errors)
     assert "Permanently added" not in message and "worker-bundle" not in message.replace(cause, "")
     bootstrap.SSH(tmp_path, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0)).login(route)
+
+
+def test_a_changed_host_key_is_told_apart_from_an_unknown_one(tmp_path):
+    changed = ("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+               "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"
+               "Offending ED25519 key in /var/lib/sparkring/controller/ssh/known_hosts:2\n"
+               "Host key verification failed.\n")
+    unknown = ("No ED25519 host key is known for fe80::2%port0 and you have requested strict checking.\n"
+               "Host key verification failed.\n")
+    messages = []
+    for errors in (changed, unknown):
+        def run(argv, errors=errors, **kwargs):
+            kwargs["stderr"].write(errors)
+            return subprocess.CompletedProcess(argv, 255)
+
+        route = [{"user": "code", "address": "fe80::2", "interface": "port0", "port": 22}]
+        with pytest.raises(ValueError) as failure:
+            bootstrap.SSH(tmp_path, run=run).login(route)
+        messages.append(str(failure.value))
+    assert "differs from the one recorded" in messages[0] and "known_hosts:2" in messages[0]
+    assert "has no recorded SSH host key yet" in messages[1]
 
 
 def test_control_configuration_names_this_spark_by_hardware_or_machine_id(tmp_path):

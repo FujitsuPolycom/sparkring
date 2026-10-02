@@ -5,30 +5,12 @@ import ipaddress
 import json
 import re
 
+from runtime.host import cabling
+from runtime.host.cabling import lldp_rows  # noqa: F401  (part of this module's interface)
 from scripts import deploy_network
 
 DEVICES = {"cw_primary": "rocep1s0f0", "cw_secondary": "roceP2p1s0f0",
            "ccw_primary": "rocep1s0f1", "ccw_secondary": "roceP2p1s0f1"}
-
-
-def lldp_rows(document):
-    interfaces = document.get("lldp", {}).get("interface", [])
-    if isinstance(interfaces, dict):
-        interfaces = [{name: value} for name, value in interfaces.items()]
-    rows = []
-    for entry in interfaces:
-        for netdev, neighbors in entry.items():
-            for neighbor in neighbors if isinstance(neighbors, list) else [neighbors]:
-                chassis = neighbor.get("chassis", {})
-                entries = [("", chassis)] if "id" in chassis else chassis.items()
-                for name, details in entries:
-                    if not isinstance(details, dict):
-                        continue
-                    port = neighbor.get("port", {}).get("id", {})
-                    rows.append({"netdev": netdev, "hostname": details.get("name", name),
-                                 "chassis": str(details.get("id", {}).get("value") or "").lower(),
-                                 "port": str(port.get("value", "")), "port_type": port.get("type")})
-    return rows
 
 
 def endpoints(node):
@@ -51,61 +33,26 @@ def endpoints(node):
 
 
 def ordered_nodes(nodes, head_id):
+    """The authenticated Sparks in rank order, Node A first, when their cables form the supported layout.
+
+    The cables come from each Spark's LLDP observations (``cabling``): a pair
+    needs a cable between both ports 0; a four-Spark ring needs one loop in
+    which every cable joins port 0 of a Spark to port 1 of the next, and rank
+    r+1 is the Spark on rank r's port 0. Every cable must be confirmed from
+    both ends. Any other cabling raises ``cabling.CablingError``, whose
+    message names the physical change; nothing is renumbered or remapped to
+    accept it.
+    """
     if len(nodes) not in (2, 4) or len({node["node_id"] for node in nodes}) != len(nodes):
         raise ValueError("Select exactly two or four distinct authenticated Sparks")
     by_id = {node["node_id"]: node for node in nodes}
     if head_id not in by_id:
         raise ValueError("The controller/head must be one of the selected Sparks")
-    ports = {node["node_id"]: endpoints(node) for node in nodes}
-    edges = {}
-    for node in nodes:
-        ident = node["node_id"]
-        local_ports = {p["netdev"]: p for p in ports[ident].values()}
-        for observation in lldp_rows(node["lldp"]):
-            local = local_ports.get(observation["netdev"])
-            if local is None or len(nodes) == 2 and local["port"] != 0:
-                continue
-            # Socket Direct delivers the sibling PCI function's LLDP frames
-            # locally on the same physical port. It is not a cable peer. A
-            # self-loop between p0 and p1 still fails peer validation below.
-            if any(observation["port"].lower() == endpoint["mac"] and endpoint["port"] == local["port"]
-                   and endpoint["netdev"] != local["netdev"] for endpoint in ports[ident].values()):
-                continue
-            matches = []
-            for peer in nodes:
-                if peer["node_id"] == ident:
-                    continue
-                chassis_macs = {item["mac"].lower() for item in peer["facts"]["interfaces"] if isinstance(item.get("mac"), str)}
-                named = str(observation["hostname"]).rstrip(".") in {peer["hostname"], peer["hostname"] + ".local"}
-                for endpoint in ports[peer["node_id"]].values():
-                    match_mac = observation["port"].lower() == endpoint["mac"]
-                    match_name = observation["port"] == endpoint["netdev"] and (named or observation["chassis"] in chassis_macs)
-                    if match_mac or match_name:
-                        matches.append((peer["node_id"], endpoint["port"]))
-            matches = set(matches)
-            if len(matches) != 1:
-                raise ValueError("LLDP peer cannot be matched uniquely to authenticated NIC inventory")
-            key, value = (ident, local["port"]), matches.pop()
-            if key in edges and edges[key] != value:
-                raise ValueError("Socket Direct functions disagree about the physical cable peer")
-            edges[key] = value
-    expected_ports = (0,) if len(nodes) == 2 else (0, 1)
-    for ident in by_id:
-        for port in expected_ports:
-            peer = edges.get((ident, port))
-            if peer is None or edges.get(peer) != (ident, port):
-                raise ValueError("Missing reciprocal LLDP cable evidence; wait for LLDP or inspect cabling")
-            if peer[1] != (0 if len(nodes) == 2 else 1 - port):
-                raise ValueError("Supported cabling is p0-p0 for a pair or p0-to-next-p1 for a ring")
-    order = [head_id]
-    while len(order) < len(nodes):
-        next_id = edges[order[-1], 0][0]
-        if next_id in order:
-            raise ValueError("Selected Sparks do not form one complete cable cycle")
-        order.append(next_id)
-    if edges[order[-1], 0][0] != head_id:
-        raise ValueError("The ring does not close back to rank 0")
-    return [by_id[ident] for ident in order]
+    sparks = [cabling.from_inspection(node, endpoints(node)) for node in nodes]
+    result = cabling.diagnose(sparks, head_id, strict=True, whole=True)
+    if not result["ready"] or result["layout"] != ("pair" if len(nodes) == 2 else "ring"):
+        raise cabling.CablingError(result)
+    return [by_id[ident] for ident in result["order"]]
 
 
 def build_spec(nodes, head_id, *, name="sparkring", fabric_cidr="198.18.0.0/21", reset=False, preserve_control=False):

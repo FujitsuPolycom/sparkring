@@ -13,7 +13,8 @@ Run it on Node A, the Spark connected to your network.
 - Root or sudo on every Spark.
 - Cables: a pair connects port p0 to p0; a four-Spark ring connects each
   Spark's p0 to the next Spark's p1. p0 is the QSFP port next to the 10GbE
-  (RJ45) port.
+  (RJ45) port. `sudo sparkring cabling` checks them and names any cable to
+  move.
 - Node A on your network with outbound HTTPS to `github.com`,
   `raw.githubusercontent.com`, `ghcr.io`, `huggingface.co` and your Ubuntu
   mirror. Workers need no network cable.
