@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 from runtime.common import installer
-from runtime.host import controller, install_workflow as flow, node, placement, rollout
+from runtime.host import controller, install_workflow as flow, node, placement, recovery, rollout
+from runtime.host import test_recovery
 from runtime.host.test_install_workflow import cluster, machine, sparks  # noqa: F401 (fixtures)
 from scripts import sparkring
 
@@ -277,6 +278,143 @@ def test_parking_the_ring_runs_on_every_spark():
                              for rank in range(4)]
     assert flow.park_ring(cluster(2), invoke=invoke) == [] and len(calls) == 4
 
+
+# sparkring up, down, status and automatic recovery of two halves, with each
+# deployment's real operation plan run against simulated Sparks.
+
+class RingSparks(test_recovery.Sparks):
+    """The simulated Sparks of test_recovery, with each container state kept per Spark so that two halves do not mix."""
+
+    def __init__(self, hosts):
+        super().__init__(hosts)
+        self.running = {host: False for host in hosts}
+        self.exit_codes = {host: 0 for host in hosts}
+        self.parks = []
+
+    def rank_operation(self, runner, target, argv, timeout):
+        operation, rank = argv[1], int(argv[2])
+        self.operations.append((operation, target))
+        if operation == "status":
+            return {"returncode": 0, "stderr": "", "uncertain": False, "stdout": json.dumps(self.state(target, rank))}
+        if operation == "start":
+            self.running[target] = True
+        elif operation == "stop":
+            self.running[target] = False
+        elif operation == "running" and not self.running[target]:
+            return {"returncode": 1, "stdout": "", "stderr": "Rank is not running", "uncertain": False}
+        return {"returncode": 0, "stdout": "ok", "stderr": "", "uncertain": False}
+
+    def state(self, host, rank):
+        running = self.running[host]
+        value = {"schema": "sparkring-model-observation/v1", "rank": rank, "present": True, "running": running,
+                 "health": "healthy" if running and rank == 0 else None, "container_name": f"sr-test-r{rank}"}
+        if not running:
+            value.update(exit_code=self.exit_codes[host], finished_at="2026-09-30T17:02:11.5Z")
+        return value
+
+    def ssh(self, host, argv, **kwargs):
+        if argv[-1] == "mesh-park":
+            self.parks.append(host)
+            return json.dumps({"ok": True, "parked": []})
+        if recovery.CONTAINER in argv:
+            rank = int(argv[-3].rsplit("-r", 1)[1])
+            return json.dumps({**self.state(host, rank), "name": argv[-3], "owned": True})
+        return super().ssh(host, argv, **kwargs)
+
+
+@pytest.fixture
+def halves(tmp_path, monkeypatch):
+    """Qwen TP2 on Sparks 0 and 1 and GLM TP2 on Sparks 2 and 3, each started by sparkring up --on."""
+    from runtime.common import distribution
+    from runtime.host import discovery
+    from scripts import installer_runner
+    monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(controller, "STATE", tmp_path / "state")
+    value = cluster(4)
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(distribution, "identity", lambda _: "a" * 40)
+    monkeypatch.setattr(distribution, "bundle", lambda root, dest: dest.write_bytes(b"retained source"))
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda: pytest.fail("a half needs no hairpin check"))
+    simulated = RingSparks([host["host"] for host in value["plan"]["spec"]["hosts"]])
+    monkeypatch.setattr(discovery, "ssh", simulated.ssh)
+    monkeypatch.setattr(installer_runner.Runner, "_call", lambda runner, target, argv, timeout:
+                        simulated.rank_operation(runner, target, argv, timeout))
+    assert controller.lifecycle(["up", QWEN, "--on", "0,1", "--execute"]) == 0
+    assert controller.lifecycle(["up", GLM, "--on", "2,3", "--execute"]) == 0
+    simulated.first = (controller.STATE / "deployments" / (QWEN + "-on-0-1")).resolve()
+    simulated.second = (controller.STATE / "deployments" / (GLM + "-on-2-3")).resolve()
+    for directory in (simulated.first, simulated.second):
+        recovery.started(directory)
+    return simulated
+
+
+def test_up_on_a_half_parks_the_ring_and_starts_on_its_own_sparks(halves):
+    hosts = halves.hosts
+    assert sorted(halves.parks) == sorted(hosts * 2)
+    assert all(halves.running.values())
+    for operation in ("ring-park", "gid-serve", "start"):
+        assert sorted(host for name, host in halves.operations if name == operation) == sorted(hosts)
+    assert recorded() == {None: None, (0, 1): QWEN + "@01", (2, 3): GLM + "@23"}
+    lock = installer.read(halves.second / "deployment.lock.json")
+    assert [row["host_ip"] for row in lock["site"]["ranks"]] == ["198.18.3.1", "198.18.3.2"]
+
+
+def test_status_lists_each_half_with_its_own_api(halves, capsys):
+    assert controller.lifecycle(["status"]) == 0
+    out = capsys.readouterr().out
+    first, second = out.index("Sparks 0 and 1:"), out.index("Sparks 2 and 3:")
+    assert first < out.index("http://192.0.2.10:8000/v1") < second < out.index("http://192.0.2.12:8000/v1")
+    assert out.count("Automatic recovery: on") == 2
+    assert controller.lifecycle(["status", "--json"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert [(row["placement"], row["deployment"]["api_url"]) for row in document["slots"]] == [
+        ([0, 1], "http://192.0.2.10:8000/v1"), ([2, 3], "http://192.0.2.12:8000/v1")]
+    assert controller.lifecycle(["status", "--on", "2,3", "--json"]) == 0
+    only = json.loads(capsys.readouterr().out)
+    assert [row["placement"] for row in only["slots"]] == [[2, 3]]
+
+
+def test_down_without_a_half_names_the_choices_and_with_one_stops_only_that_half(halves, capsys):
+    with pytest.raises(ValueError, match="more than one placement") as refused:
+        controller.lifecycle(["down", "--execute"])
+    assert refused.value.details["lines"] == [f"Sparks 0 and 1: {QWEN} (started); name it with --on 0,1",
+                                              f"Sparks 2 and 3: {GLM} (started); name it with --on 2,3"]
+    halves.operations.clear()
+    assert controller.lifecycle(["down", "--on", "2,3", "--execute"]) == 0
+    assert {host for name, host in halves.operations if name == "stop"} == set(halves.hosts[2:])
+    assert [halves.running[host] for host in halves.hosts] == [True, True, False, False]
+    assert recorded()[(2, 3)] == GLM + "@23"
+
+
+def test_a_four_spark_model_does_not_start_while_a_half_serves(halves):
+    with pytest.raises(ValueError, match=f"{QWEN} runs on Sparks 0 and 1. Stop it first: "
+                                         "sudo sparkring down --on 0,1 --execute"):
+        controller.lifecycle(["up", TP4, "--execute"])
+
+
+def test_recovery_restarts_only_the_half_that_stopped(halves):
+    clock = test_recovery.Clock()
+    assert recovery.check(now=clock, api=lambda url: test_recovery.SERVING, tunnel={})["state"] == "serving"
+    halves.running[halves.hosts[3]] = False
+    halves.operations.clear()
+    first = recovery.check(now=clock, api=lambda url: test_recovery.SERVING, tunnel={})
+    assert [(Path(row["deployment"]).name, row["state"]) for row in first["deployments"]] == [
+        (halves.first.name, "serving"), (halves.second.name, "confirming")]
+    clock.advance(60)
+    second = recovery.check(now=clock, api=lambda url: test_recovery.SERVING, tunnel={})
+    assert second["state"] == "recovered"
+    touched = {host for name, host in halves.operations if name in ("stop", "start", "gid-serve", "ring-park")}
+    assert touched == set(halves.hosts[2:]) and all(halves.running.values())
+
+
+def test_recover_status_and_off_cover_each_half(halves, capsys):
+    assert recovery.main([]) == 0
+    out = capsys.readouterr().out
+    assert out.count("Deployment: ") == 2 and str(halves.second) in out
+    assert recovery.main(["off"]) == 0
+    capsys.readouterr()
+    assert not recovery.record_of(recovery.load(), halves.first)["enabled"]
+    assert not recovery.record_of(recovery.load(), halves.second)["enabled"]
 
 
 def test_retention_keeps_each_halfs_active_and_rollback_deployments(ring, capsys):

@@ -16,6 +16,7 @@ sudo sparkring install --profile PROFILE --plan              # print the plan, c
 sudo sparkring install --profile PROFILE --model-path /data/models/my-model  # reuse a copy
 sudo sparkring install --profile PROFILE --checkpoint NAME   # another checkpoint the profile lists
 sudo sparkring install --profile PROFILE --image NAME        # another image from sparkring images
+sudo sparkring install --profile PROFILE --on 2,3            # a two-Spark model on half of a four-Spark ring
 sudo sparkring logs --follow                                 # follow progress
 ```
 
@@ -56,6 +57,7 @@ serves, it releases what older deployments hold on the Sparks
 | Flag | Meaning |
 |---|---|
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
+| `--on 0,1` or `--on 2,3` | Put a two-Spark profile on one half of a four-Spark ring ([two models on one ring](install-reference.md#two-models-on-one-ring)); default: the half that serves no model |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation |
 | `--json` | One JSON result on stdout; progress on stderr |
@@ -215,7 +217,9 @@ part of a name that only one image has selects that image in
 `sudo sparkring status [PROFILE [--instance NAME]] [flags]` prints Node A's
 state, one line per Spark with the next action for any Spark that needs
 attention, the saved model (the active deployment, or the one named) and
-automatic recovery:
+automatic recovery. On a ring that serves
+[two models](install-reference.md#two-models-on-one-ring) it prints each
+half's model under `Sparks 0 and 1:` and `Sparks 2 and 3:`:
 
 ```text
 Saved model operation: PROFILE | up complete
@@ -243,7 +247,8 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 | Flag | Meaning |
 |---|---|
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
-| `--json` | Print the full observation as JSON |
+| `--on 0,1` or `--on 2,3` | Only that half's model |
+| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half |
 
 ## logs
 
@@ -391,6 +396,13 @@ with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under
 `/var/lib/sparkring/controller/deployments/`.
 
+On a ring that serves [two models](install-reference.md#two-models-on-one-ring),
+each half has its own active deployment: `sudo sparkring down --on 2,3
+--execute` stops the model on Sparks 2 and 3. Without a profile or `--on`,
+`up` and `down` act on the one recorded model and ask for `--on` when there
+are several. `up` refuses to start a four-Spark model while a half's model
+runs, or a half's model while the four-Spark model runs.
+
 | Flag | Meaning |
 |---|---|
 | `--plan` | Print the steps; change nothing |
@@ -398,6 +410,7 @@ one of them. The deployment directories are under
 | `--json` | Print the result as JSON |
 | `--model-path PATH` | `up PROFILE` only: serve this complete copy read-only on every Spark |
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
+| `--on 0,1` or `--on 2,3` | Without PROFILE: that half's model. With `up PROFILE`: a two-Spark profile on that half, as instance `on-0-1` or `on-2-3` unless `--instance` names another |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
 | `--max-images N` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values for a new deployment; an existing deployment keeps its own |
 | `--image NAME` | `up PROFILE` only: another installer image from [`sparkring images`](#images) |
@@ -408,7 +421,9 @@ one of them. The deployment directories are under
 
 `sudo sparkring recover [status|on|off]` shows or sets the automatic restart
 of the active model when a Spark stops serving
-([how it works](install-reference.md#automatic-recovery)).
+([how it works](install-reference.md#automatic-recovery)). On a ring that
+serves [two models](install-reference.md#two-models-on-one-ring), each
+command covers both halves' models.
 
 | Command | Does |
 |---|---|
