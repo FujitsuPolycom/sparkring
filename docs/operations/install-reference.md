@@ -903,6 +903,22 @@ connection backups and receipts, and keeps the active NetworkManager
 connection identity and IPv6 address generation while changing fabric
 IPv4/MTU settings, so its administration path survives renumbering.
 
+### Cabling
+
+- **Pair:** a cable between port 0 (p0) of both Sparks. Pair profiles use
+  port 0 on both Sparks. A second cable between the two ports 1 only carries
+  the [admin tunnel's](#admin-tunnel) fallback path.
+- **Four-Spark ring:** one loop in which every cable runs from port 0 of one
+  Spark to port 1 (p1) of the next. Node A is rank 0; the Spark on its port 0
+  is rank 1, and so on.
+
+The serving images rely on these ports, so setup never remaps them. When the
+cables differ, setup stops and names the change: a cable end to move, or a
+Spark whose two cables to swap, and the ring order afterwards.
+`sudo sparkring cabling` prints the same advice without setting anything up
+([command](commands.md#cabling)). For a loop it names the fewest swaps;
+when two choices tie, it leaves Node A's cables alone.
+
 ## Four-Spark rings
 
 Four-Spark rings need the ConnectX hairpin setting on every Spark; pairs do

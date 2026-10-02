@@ -25,6 +25,7 @@ sudo sparkring logs --follow                                 # follow progress
 |---|---|---|---|
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
+| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled and what to move; changes nothing |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
@@ -152,6 +153,44 @@ Two setup actions run offline without sudo and accept `--variant`:
   profile's image and checkpoint.
 - `sparkring setup storage PROFILE --model-path P --cache-path P --docker-path P [--reuse-model] [--reuse-image] [--json]`
   checks free space on those filesystems without writing.
+
+## cabling
+
+`sudo sparkring cabling [flags]` shows how the Sparks on this Spark's fabric
+cables are cabled, and what to move for a pair or a four-Spark ring. It
+changes nothing on any Spark. Setup stops with the same advice when the
+cables do not fit ([cabling rules](install-reference.md#cabling)).
+
+```text
+Sparks read:
+  spark-a: this Spark
+  spark-b: the admin network at 10.253.255.2
+  spark-c: the LAN at 192.0.2.13 as operator (LLDP not readable without sudo)
+  spark-d: the LAN at 192.0.2.14 as operator (LLDP not readable without sudo)
+Cables:
+  spark-a port 0 ↔ spark-b port 1
+  spark-b port 0 ↔ spark-c port 1
+  spark-c port 0 ↔ spark-d port 0
+  spark-d port 1 ↔ spark-a port 1
+The four Sparks form a loop, but 2 cables join the same port number at both ends. In a ring, every cable runs from port 0 of one Spark to port 1 of the next.
+To fix:
+  On spark-d, swap its two cables (port 0 ↔ port 1).
+Ring order after the fix: spark-a → spark-b → spark-c → spark-d
+```
+
+It reads this Spark, the Sparks of its recorded cluster over the admin
+network, and the other Sparks on the cables. It signs in to those over the
+LAN or the cables as the account that ran `sudo`; SSH asks for passwords.
+
+| Flag | Meaning |
+|---|---|
+| `--json` | One `sparkring-cabling/v1` document |
+| `--ssh-user USER` | Account for signing in to the other Sparks (default: the account that ran `sudo`) |
+| `--no-sign-in` | Read only this Spark and its recorded cluster's Sparks |
+
+It exits with 0 when the cables form a pair or ring as SparkRing needs, 1
+when a cable needs to move or not every cable could be seen, and 2 on
+failure.
 
 ## models
 

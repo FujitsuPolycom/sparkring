@@ -235,6 +235,13 @@ class SSH:
                 + "\nimport json\nprint(json.dumps(probe()))\n")
         return json.loads(self.command(route, ["python3", "-I", "-c", code]))
 
+    def close(self):
+        """End the SSH connections this transport keeps open (ControlPersist) through its directory's sockets."""
+        for path in sorted(self.directory.glob("[0-9a-f]" * 20)):
+            if path.is_socket():
+                self.run(["ssh", "-o", "ControlPath=" + str(path), "-O", "exit", "sparkring-control-socket"],
+                         capture_output=True, text=True, timeout=30)
+
 
 def discover(transport, *, user="root", port=22, select=lambda peer: True):
     """Authenticate the Sparks reachable over fabric link-local addresses.
