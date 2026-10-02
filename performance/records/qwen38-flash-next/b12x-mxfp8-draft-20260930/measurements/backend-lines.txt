@@ -1,0 +1,6 @@
+== rank0-b12x-install1.log
+(Worker_TP0 pid=494) INFO 10-01 02:39:25 [nvfp4.py:271] Using 'B12X' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'HUMMING', 'EMULATION'].
+(Worker_TP0 pid=494) INFO 10-01 02:39:59 [mxfp8.py:135] Using 'B12X_MXFP8' MxFp8 MoE backend (user-requested).
+== rank0-humming-install.log
+(Worker_TP0 pid=306) INFO 10-01 03:02:07 [nvfp4.py:271] Using 'B12X' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'HUMMING', 'EMULATION'].
+(Worker_TP0 pid=306) INFO 10-01 03:02:42 [mxfp8.py:135] Using 'HUMMING' MxFp8 MoE backend (user-requested).
