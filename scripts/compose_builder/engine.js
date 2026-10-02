@@ -446,10 +446,13 @@ const SparkRingEngine = (() => {
   }
 
   // ---- Command lines -------------------------------------------------------------------
-  // `meta` is the data's source: {repository, tag, commit, ref}; `ref` is the release tag,
-  // or the commit when the page was built from an untagged checkout.
+  // `meta` is the data's source: {repository, tag, commit, ref, since_tag, commits_since};
+  // `ref` is the release tag, or the commit when the page was built from an untagged
+  // checkout, which is named by the release before it and the commits since.
   function sourceName(meta) {
-    return meta.tag ? 'SparkRing ' + meta.tag : 'SparkRing at ' + meta.commit.slice(0, 12);
+    if (meta.tag) return 'SparkRing ' + meta.tag;
+    if (meta.since_tag) return `SparkRing ${meta.since_tag} + ${meta.commits_since} commit${meta.commits_since === 1 ? '' : 's'}`;
+    return 'SparkRing at ' + meta.commit.slice(0, 12);
   }
   function selectionWords(checkpoint, settings) {
     const words = [];
