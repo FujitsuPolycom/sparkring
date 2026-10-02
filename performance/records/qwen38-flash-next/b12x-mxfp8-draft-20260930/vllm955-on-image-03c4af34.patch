@@ -1,0 +1,299 @@
+diff --git a/vllm/config/kernel.py b/vllm/config/kernel.py
+index cdc9852..9178ff0 100644
+--- a/vllm/config/kernel.py
++++ b/vllm/config/kernel.py
+@@ -273,7 +273,7 @@ class KernelConfig:
+     - "flashinfer_cutedsl": Use FlashInfer with CuteDSL kernels (FP4 only)
+     - "flashinfer_b12x": Use FlashInfer CuteDSL fused MoE for SM12x
+       (RTX Pro 6000 / DGX Spark)
+-    - "b12x": Use b12x FP4 MoE kernels on SM12x
++    - "b12x": Use b12x FP4 and MXFP8 MoE kernels on SM12x
+     - "flashinfer_moe_ep_mega_deep_gemm": Use the FlashInfer moe_ep
+       expert-parallel mega-MoE with the DeepGEMM megakernel, which consumes an
+       MXFP4 checkpoint verbatim (Blackwell, requires expert parallel;
+diff --git a/vllm/model_executor/layers/fused_moe/b12x.py b/vllm/model_executor/layers/fused_moe/b12x.py
+index f44870b..4045ec1 100644
+--- a/vllm/model_executor/layers/fused_moe/b12x.py
++++ b/vllm/model_executor/layers/fused_moe/b12x.py
+@@ -24,6 +24,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
+     QuantKey,
+     kMxfp4Static,
+     kMxfp8Dynamic,
++    kMxfp8Static,
+     kNvfp4Dynamic,
+     kNvfp4Static,
+ )
+@@ -45,6 +46,7 @@ _B12X_MOE_MODES: dict[
+     tuple[str, str, str],
+ ] = {
+     ("mxfp4", "mxfp8"): ("w4a8_mx", "fp4_e8m0_k32", "w31"),
++    ("mxfp8", "mxfp8"): ("w8a8_mx", "mxfp8_e8m0_k32", "w31"),
+     ("mxfp4", None): ("w4a16", "fp4_e8m0_k32", "w31"),
+     ("exl3", None): ("w4a16", "exl3", "w31"),
+     ("nvfp4", "nvfp4"): ("nvfp4", "modelopt_nvfp4", "w31"),
+@@ -245,9 +247,15 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+         moe_config: mk.FusedMoEConfig,
+         quant_config: FusedMoEQuantConfig,
+     ):
++        """Bind the b12x quant mode, packed source format and W13 layout.
++
++        Raises ValueError when no b12x kernel covers the configured weight
++        dtype or the (weight, activation) scheme; no weights are prepared.
++        """
+         super().__init__(moe_config, quant_config)
+         if quant_config.weight_quant_dtype not in (
+             "mxfp4",
++            "mxfp8",
+             "nvfp4",
+             "exl3",
+             "iq2_xs",
+@@ -255,7 +263,7 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+             "q8_0",
+         ):
+             raise ValueError(
+-                "b12x MoE requires MXFP4, NVFP4, EXL3, IQ2_XS, IQ2_XXS "
++                "b12x MoE requires MXFP4, MXFP8, NVFP4, EXL3, IQ2_XS, IQ2_XXS "
+                 "or Q8_0 weights, got "
+                 f"{quant_config.weight_quant_dtype}"
+             )
+@@ -339,6 +347,14 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+         activation: MoEActivation,
+         params_dtype: torch.dtype,
+     ) -> Any:
++        """Build the b12x prepared-experts representation for these weights.
++
++        Block-quantized sources are planned straight from the packed extents
++        with a ``BlockQuantWeights`` binding; every other mode requires the
++        w1/w2 block scales, recovers the logical intermediate size from the
++        packed extent (FP4 holds two values per byte) and binds the weight and
++        activation global scales. Raises RuntimeError under CUDA graph capture.
++        """
+         quant_mode = self._quant_mode
+         if _is_current_stream_capturing():
+             raise RuntimeError(
+@@ -375,7 +391,14 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+ 
+         num_experts = int(w1.shape[0])
+         hidden_size = int(w2.shape[1])
+-        intermediate_size = int(w2.shape[2]) * 2
++        # FP4 weights pack two values per byte, so the loaded w2 last dim is
++        # half the logical channel count; MXFP8 stores one byte per value and
++        # the loaded extent is already logical.
++        w1_scale, w2_scale = self.w1_scale, self.w2_scale
++        if quant_mode in ("w8a8_mx",):
++            intermediate_size = int(w2.shape[2])
++        else:
++            intermediate_size = int(w2.shape[2]) * 2
+         unit_scale = self._unit_scale(w1.device, num_experts)
+         w1_global_scale = self._weight_global_scale(
+             w1.device, num_experts, self.g1_alphas, "w1 global scales"
+@@ -397,6 +420,7 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+         mode = {
+             "w4a16": fused_moe.ActivationMode.A16,
+             "w4a8_mx": fused_moe.ActivationMode.A8,
++            "w8a8_mx": fused_moe.ActivationMode.A8,
+             "w4a8_nvfp4": fused_moe.ActivationMode.A8,
+             "nvfp4": fused_moe.ActivationMode.A4,
+         }[quant_mode]
+@@ -424,8 +448,8 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+             weights=fused_moe.PackedWeights(
+                 w13=w1,
+                 w2=w2,
+-                w13_block_scales=self.w1_scale,
+-                w2_block_scales=self.w2_scale,
++                w13_block_scales=w1_scale,
++                w2_block_scales=w2_scale,
+                 w13_global_scales=w1_global_scale,
+                 w2_global_scales=w2_global_scale,
+                 input_scale=a1_gscale,
+@@ -533,6 +557,11 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+         activation_key: QuantKey | None,
+         activation_format: mk.FusedMoEActivationFormat,
+     ) -> tuple[bool, str | None]:
++        """Report whether b12x can run this MoE config, with the reason if not.
++
++        Applies the kernel-specific bias, dtype, activation and alignment
++        gates, then defers to the base-class checks.
++        """
+         if moe_config.has_bias:
+             return False, "kernel does not support expert biases"
+         if moe_config.in_dtype not in (torch.float16, torch.bfloat16):
+@@ -579,6 +608,17 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+                         "per-rank intermediate size divisible by 32"
+                     ),
+                 )
++        if weight_key == kMxfp8Static:
++            if moe_config.activation != MoEActivation.SILU:
++                return False, "MXFP8 W8A8 supports only SiLU"
++            if moe_config.hidden_dim % 128 != 0 or unpadded_intermediate_size % 32 != 0:
++                return (
++                    False,
++                    (
++                        "MXFP8 W8A8 requires hidden size divisible by 128 and "
++                        "per-rank intermediate size divisible by 32"
++                    ),
++                )
+         return mk.FusedMoEExperts.is_supported_config(
+             cls, moe_config, weight_key, activation_key, activation_format
+         )
+@@ -604,9 +644,11 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+         weight_key: QuantKey | None,
+         activation_key: QuantKey | None,
+     ) -> bool:
++        """Check the (weight, activation) pair against the b12x kernel set."""
+         return (weight_key, activation_key) in (
+             (kMxfp4Static, kMxfp8Dynamic),
+             (kMxfp4Static, None),
++            (kMxfp8Static, kMxfp8Dynamic),
+             (kNvfp4Static, kNvfp4Dynamic),
+             (kNvfp4Static, kMxfp8Dynamic),
+             (kNvfp4Static, None),
+@@ -801,14 +843,27 @@ class B12xExperts(mk.FusedMoEExpertsModular):
+         w2: torch.Tensor,
+         topk_ids: torch.Tensor,
+     ) -> tuple[int, int, int, int, int]:
++        """Return (experts, tokens, N, K, topk) for the current problem.
++
++        Delegates to the base implementation while the weight tensors still
++        hold data; once they are released, the geometry comes from the
++        prepared plan, with N doubled for the packed FP4 sources.
++        """
+         if w1.numel() and w2.numel():
+             return super().moe_problem_size(a1, w1, w2, topk_ids)
+         prepared = self._prepared()
+         tokens = int(a1.shape[0] if a1.ndim == 2 else a1.shape[1])
++        # The prepared intermediate width is already logical for every
++        # supported format; only FP4 sources double their packed FC1 extent.
++        problem_n = (
++            int(prepared.intermediate_size) * 2
++            if self._source_format != "mxfp8_e8m0_k32"
++            else int(prepared.intermediate_size)
++        )
+         return (
+             int(prepared.num_experts),
+             tokens,
+-            int(prepared.intermediate_size) * 2,
++            problem_n,
+             int(a1.shape[-1]),
+             int(topk_ids.shape[1]),
+         )
+diff --git a/vllm/model_executor/layers/fused_moe/oracle/fp8.py b/vllm/model_executor/layers/fused_moe/oracle/fp8.py
+index abe4737..89f29fb 100644
+--- a/vllm/model_executor/layers/fused_moe/oracle/fp8.py
++++ b/vllm/model_executor/layers/fused_moe/oracle/fp8.py
+@@ -65,6 +65,10 @@ class Fp8MoeBackend(Enum):
+     TRITON_MXFP8 = "TRITON_MXFP8"
+     # MXFP8 MoE via AITER (FlyDSL two-stage grouped GEMM) on gfx950.
+     AITER_MXFP8 = "AITER_MXFP8"
++    # MXFP8 MoE through the b12x SM12x planned-expert API (w8a8_mx): raw
++    # E4M3 weights and UE8M0 K/32 scales pass through verbatim; BF16
++    # activations are quantized inside the kernel.
++    B12X_MXFP8 = "B12X_MXFP8"
+ 
+ 
+ def _get_priority_backends(
+@@ -498,6 +502,13 @@ def convert_to_fp8_moe_kernel_format(
+     w13_input_scale: torch.Tensor | None,
+     w2_input_scale: torch.Tensor | None,
+ ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
++    """Convert canonical FP8/MXFP8 expert weights into `fp8_backend`'s layout.
++
++    Returns the (w13, w2, w13_scale, w2_scale) the kernel consumes: backends
++    with no load-time conversion pass the tensors through unchanged, HUMMING
++    rewrites the layer parameters and they are read back from the layer, and a
++    backend without a converter raises ValueError.
++    """
+     block_quant = hasattr(layer, "weight_block_size")
+     if fp8_backend in [Fp8MoeBackend.DEEPGEMM, Fp8MoeBackend.BATCHED_DEEPGEMM]:
+         assert block_quant
+@@ -590,8 +601,11 @@ def convert_to_fp8_moe_kernel_format(
+             Fp8MoeBackend.HPC,
+             # EMULATION dequantizes weights at runtime; NATIVE_MXFP8 consumes
+             # the MXFP8 weights as-is — neither needs a load-time layout change.
++            # B12X_MXFP8 likewise binds the raw E4M3/E8M0 tensors during its
++            # process_weights_after_loading preparation.
+             Fp8MoeBackend.EMULATION,
+             Fp8MoeBackend.TRITON_MXFP8,
++            Fp8MoeBackend.B12X_MXFP8,
+         ]:
+             raise ValueError(f"Unsupported FP8 MoE backend: {fp8_backend.value}")
+ 
+diff --git a/vllm/model_executor/layers/fused_moe/oracle/mxfp8.py b/vllm/model_executor/layers/fused_moe/oracle/mxfp8.py
+index 2a03eac..8928e98 100644
+--- a/vllm/model_executor/layers/fused_moe/oracle/mxfp8.py
++++ b/vllm/model_executor/layers/fused_moe/oracle/mxfp8.py
+@@ -27,6 +27,11 @@ _SUPPORTED_BACKENDS = (
+     Fp8MoeBackend.AITER_MXFP8,
+     Fp8MoeBackend.HUMMING,
+     Fp8MoeBackend.TRITON_MXFP8,
++    # b12x (SM12x) is registered at the most conservative priority: every
++    # deployment an established backend already serves keeps that backend,
++    # and b12x only wins over the dequantize-to-BF16 emulation. Prefer
++    # moe_backend="b12x" to select it explicitly.
++    Fp8MoeBackend.B12X_MXFP8,
+     Fp8MoeBackend.EMULATION,
+ )
+ 
+@@ -36,6 +41,7 @@ _BACKEND_NAME_MAP: dict[str, Fp8MoeBackend] = {
+     "marlin": Fp8MoeBackend.MARLIN,
+     "xpu": Fp8MoeBackend.XPU,
+     "aiter": Fp8MoeBackend.AITER_MXFP8,
++    "b12x": Fp8MoeBackend.B12X_MXFP8,
+     "triton": Fp8MoeBackend.TRITON_MXFP8,
+     "humming": Fp8MoeBackend.HUMMING,
+ }
+@@ -68,6 +74,10 @@ def _mxfp8_backend_to_kernel_cls(
+         )
+ 
+         return [Mxfp8NativeTritonExperts]
++    if backend == Fp8MoeBackend.B12X_MXFP8:
++        from vllm.model_executor.layers.fused_moe.b12x import B12xExperts
++
++        return [B12xExperts]
+     if backend == Fp8MoeBackend.EMULATION:
+         from vllm.model_executor.layers.fused_moe.experts.mxfp8_emulation_moe import (
+             Mxfp8EmulationTritonExperts,
+diff --git a/vllm/model_executor/layers/quantization/modelopt.py b/vllm/model_executor/layers/quantization/modelopt.py
+index 91eaf10..50de8e9 100644
+--- a/vllm/model_executor/layers/quantization/modelopt.py
++++ b/vllm/model_executor/layers/quantization/modelopt.py
+@@ -1225,7 +1225,13 @@ class ModelOptMxFp8Config(ModelOptQuantConfigBase):
+ 
+ 
+ class ModelOptMxFp8FusedMoE(FusedMoEMethodBase):
+-    """FlashInfer TRTLLM MXFP8 block-scale MoE for ModelOpt checkpoints."""
++    """MXFP8 block-scale MoE for ModelOpt checkpoints.
++
++    The oracle (``select_mxfp8_moe_backend``) picks the expert backend:
++    FlashInfer TRTLLM, Triton, Marlin, emulation, or the b12x planned
++    ``w8a8_mx`` path on SM12x, which prepares directly from the serialized
++    E4M3 weights and UE8M0 K/32 scale grids.
++    """
+ 
+     def __init__(
+         self,
+@@ -1387,6 +1393,13 @@ class ModelOptMxFp8FusedMoE(FusedMoEMethodBase):
+         )
+ 
+     def process_weights_after_loading(self, layer: RoutedExperts) -> None:
++        """Convert the loaded MXFP8 weights and build the MoE kernel once.
++
++        Runs the selected backend's weight converter, refreshes the quant
++        config and kernel, lets the experts class prepare its own
++        representation, and dequantizes to BF16 at load time on the emulation
++        backend. A second call for the same layer is a no-op.
++        """
+         # TODO(bnell): why is this required only for mxfp8?
+         if getattr(layer, "_already_called_process_weights_after_loading", False):
+             return
+@@ -1422,6 +1435,10 @@ class ModelOptMxFp8FusedMoE(FusedMoEMethodBase):
+             experts_cls=self.experts_cls,
+             routing_tables=layer._expert_routing_tables(),
+         )
++        # The b12x experts prepare their planned representation here, before
++        # memory profiling and CUDA graph capture; every other MXFP8 expert
++        # class inherits the no-op default.
++        self.moe_kernel.fused_experts.process_weights_after_loading(layer)
+ 
+         # No native MXFP8 MoE kernel on this device (e.g. gfx942): the emulation
+         # experts would dequant MXFP8->BF16 every forward step. Convert the

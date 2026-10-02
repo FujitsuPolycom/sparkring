@@ -1,0 +1,1810 @@
+diff --git a/b12x/_lib/intrinsics.py b/b12x/_lib/intrinsics.py
+index f549fbb..3750af1 100644
+--- a/b12x/_lib/intrinsics.py
++++ b/b12x/_lib/intrinsics.py
+@@ -81,6 +81,58 @@ def swizzle_block_scale(scale: torch.Tensor) -> torch.Tensor:
+     swizzled = swizzled.reshape(batch, rows_padded, cols_padded)
+     return swizzled[0] if squeeze_batch else swizzled
+ 
++# UE8M0 0xFF is the encoding's NaN.  No MX block scale may be NaN, and a
++# clamp would silently change every dequantized weight in the block, so the
++# preparation path rejects it instead of carrying it into the kernel.
++E8M0_NAN_BYTE = 0xFF
++
++
++def validate_e8m0_scale_grid(
++    grid: torch.Tensor,
++    *,
++    name: str,
++    num_experts: int,
++    rows: int,
++    k: int,
++    sf_block: int = 32,
++) -> torch.Tensor:
++    """Validate a checkpoint-native (unswizzled) UE8M0 block-scale grid.
++
++    The grid must hold ``[num_experts, rows, k // sf_block]`` scale bytes in
++    ``uint8`` or ``float8_e8m0fnu`` storage and be contiguous.  Every finite
++    UE8M0 byte (``0x00``..``0xFE``) is preserved verbatim; ``0xFF`` (NaN) is
++    rejected.  Returns a contiguous ``uint8`` view of the same bytes.
++    """
++    if not isinstance(grid, torch.Tensor):
++        raise TypeError(f"{name} must be a torch.Tensor")
++    if grid.dtype not in (torch.uint8, torch.float8_e8m0fnu):
++        raise TypeError(
++            f"{name} must hold UE8M0 bytes (uint8/float8_e8m0fnu), "
++            f"got {grid.dtype}"
++        )
++    if k % sf_block:
++        raise ValueError(
++            f"{name}: k={k} must be a multiple of the {sf_block}-element "
++            "UE8M0 block scale"
++        )
++    expected = (int(num_experts), int(rows), int(k) // sf_block)
++    if grid.dim() != 3 or tuple(grid.shape) != expected:
++        raise ValueError(
++            f"{name} must be an unswizzled per-K/{sf_block} grid with shape "
++            f"{expected}, got {tuple(grid.shape)}"
++        )
++    bytes_ = grid.view(torch.uint8)
++    if not bytes_.is_contiguous():
++        raise ValueError(f"{name} must be contiguous")
++    invalid = int((bytes_ == E8M0_NAN_BYTE).sum().item())
++    if invalid:
++        raise ValueError(
++            f"{name} holds {invalid} UE8M0 NaN scale byte(s) (0xFF); MX block "
++            "scales must be finite (0x00..0xFE) and are never clamped"
++        )
++    return bytes_
++
++
+ 
+ def as_grouped_scale_view(
+     scale_storage: torch.Tensor, rows: int, cols: int
+@@ -265,6 +317,51 @@ def quant_dequant_mxfp8_torch(x: torch.Tensor) -> torch.Tensor:
+     return (payload * rounded).reshape(orig_shape)
+ 
+ 
++def quant_dequant_mxfp8_scaled_torch(
++    x: torch.Tensor,
++    global_scale: torch.Tensor | float,
++) -> torch.Tensor:
++    """Per-32-block MXFP8 quantize-dequantize WITH a global scale (oracle).
++
++    Bit-for-bit replica of the fused-MoE route-pack / FC2-requant container
++    quantizer ``b12x._lib.fp6.quantize_block_fp8_e4m3_containers``, i.e.
++    ``fp6_block_ue8m0_exact`` (IEEE exponent-field + nonzero-mantissa ceil of
++    ``(block_amax * global_scale) / 448``) then ``ue8m0_output_scale_exact``
++    (``global_scale * 2**(127 - byte)``) then E4M3 round-to-nearest-saturating.
++    The dequantized value is ``payload * 2**(byte - 127)``.
++
++    Not interchangeable with ``quantize_mxfp8_rows_torch``: that dense-linear
++    helper derives its byte with ``ceil(log2(...))`` and maps an all-zero
++    block to byte 127, while the MoE container path uses exact bit extraction
++    and byte 0.
++
++    ``global_scale`` is broadcastable against the per-block amax grid: a
++    scalar, or one value per row (the per-expert activation global scale a
++    routed row was quantized with).
++    """
++    orig_shape = x.shape
++    cols = orig_shape[-1]
++    if cols % MX_SF_VEC_SIZE != 0:
++        raise ValueError(f"last dim must be divisible by {MX_SF_VEC_SIZE}, got {cols}")
++    blocked = x.to(torch.float32).reshape(-1, cols // MX_SF_VEC_SIZE, MX_SF_VEC_SIZE)
++    block_max = blocked.abs().amax(dim=-1, keepdim=True)
++    gs = torch.as_tensor(global_scale, dtype=torch.float32, device=x.device)
++    gs = gs.reshape(-1, 1) if gs.ndim else gs.reshape(1, 1)
++    if gs.shape[0] not in (1, blocked.shape[0]):
++        raise ValueError(
++            f"global_scale has {gs.shape[0]} rows, expected 1 or {blocked.shape[0]}"
++        )
++    rounded, byte = pow2_ceil_ue8m0_torch((block_max * gs) / FLOAT8_E4M3_MAX)
++    inv = _ue8m0_output_scale_torch(byte) * gs
++    payload = (
++        (blocked * inv)
++        .clamp(-FLOAT8_E4M3_MAX, FLOAT8_E4M3_MAX)
++        .to(torch.float8_e4m3fn)
++        .to(torch.float32)
++    )
++    return (payload * rounded).reshape(orig_shape)
++
++
+ def quantize_grouped_mxfp8_torch(
+     input_tensor: torch.Tensor,
+     row_counts: torch.Tensor,
+diff --git a/b12x/moe/__init__.py b/b12x/moe/__init__.py
+index ee40edb..6e26843 100644
+--- a/b12x/moe/__init__.py
++++ b/b12x/moe/__init__.py
+@@ -2,8 +2,8 @@
+ 
+ - ``fused_moe``: fused tensor-parallel routed-expert FFN (route -> FC1 ->
+   activation -> FC2 -> scatter); recipes nvfp4/w4a8_mx/w4a8_nvfp4/w6a8_mx/
+-  w4a16, including the canonical TP-independent ``b12x_trellis`` checkpoint
+-  encoding.
++  w8a8_mx/w4a16, including the canonical TP-independent ``b12x_trellis``
++  checkpoint encoding.
+ - ``ep_moe``: expert-parallel MoE (replicated input -> local partial;
+   cross-rank reduction is the caller's job, typically ``comm.pcie``).
+ """
+diff --git a/b12x/moe/_shared/execution.py b/b12x/moe/_shared/execution.py
+index ae2ee8c..7b6794c 100644
+--- a/b12x/moe/_shared/execution.py
++++ b/b12x/moe/_shared/execution.py
+@@ -143,6 +143,7 @@ class WeightPreparationTransform(_StringEnum):
+     W4A8_QMMA = "w4a8_qmma"
+     W4A8_TRELLIS = "w4a8_trellis"
+     W6A8_MXFP6 = "w6a8_mxfp6"
++    W8A8_MXFP8 = "w8a8_mxfp8"
+ 
+ 
+ class WeightStoragePolicy(_StringEnum):
+@@ -169,12 +170,13 @@ class OutputReduction(_StringEnum):
+     SEPARATE_TOPK_SUM = "separate_topk_sum"
+ 
+ 
+-_QUANT_MODES = {"nvfp4", "w4a16", "w4a8_mx", "w4a8_nvfp4", "w6a8_mx"}
++_QUANT_MODES = {"nvfp4", "w4a16", "w4a8_mx", "w4a8_nvfp4", "w6a8_mx", "w8a8_mx"}
+ _SOURCE_FORMATS = {
+     "modelopt_nvfp4",
+     "fp4_e8m0_k32",
+     "compressed_tensors",
+     "mxfp6_e2m3",
++    "mxfp8_e8m0_k32",
+     "b12x_trellis",
+     "iq2_xs",
+     "iq2_xxs",
+@@ -200,6 +202,8 @@ _SOURCES_BY_QUANT_MODE = {
+         }
+     ),
+     "w6a8_mx": frozenset({"mxfp6_e2m3"}),
++    # Raw MXFP8 E4M3 bytes with UE8M0 K/32 scales are exclusive to w8a8_mx.
++    "w8a8_mx": frozenset({"mxfp8_e8m0_k32"}),
+ }
+ 
+ 
+@@ -598,6 +602,10 @@ class MoEWeightPreparationPlan:
+             # Packed MX-FP6 codes are consumed as-is; only scales are
+             # swizzled into a separate MMA_PACKED allocation.
+             return PreparedWeightLayout.SOURCE_NATIVE
++        if quant_mode == "w8a8_mx":
++            # Raw E4M3 weight bytes are consumed as-is; only the UE8M0 K/32
++            # scales are swizzled into a separate MMA_PACKED allocation.
++            return PreparedWeightLayout.SOURCE_NATIVE
+         return None
+ 
+     def supports(
+@@ -720,7 +728,7 @@ def make_moe_spec(
+         # Trellis stores codebook indices without a per-weight scale grid. The
+         # W4A16 ABI still carries a four-byte dummy E4M3 K/32 scale pointer.
+         source_scale = ScaleEncoding.E4M3_K32
+-    elif source_format in ("fp4_e8m0_k32", "mxfp6_e2m3"):
++    elif source_format in ("fp4_e8m0_k32", "mxfp6_e2m3", "mxfp8_e8m0_k32"):
+         source_scale = ScaleEncoding.E8M0_K32
+     else:
+         source_scale = ScaleEncoding.E4M3_K16
+@@ -732,7 +740,7 @@ def make_moe_spec(
+         activation_encoding = OperandEncoding.FP4_E2M1
+         activation_scale = ScaleEncoding.E4M3_K16
+         weight_scale = ScaleEncoding.E4M3_K16
+-    elif quant_mode in ("w4a8_mx", "w6a8_mx"):
++    elif quant_mode in ("w4a8_mx", "w6a8_mx", "w8a8_mx"):
+         activation_encoding = OperandEncoding.MXFP8_E4M3
+         activation_scale = ScaleEncoding.E8M0_K32
+         weight_scale = ScaleEncoding.E8M0_K32
+@@ -752,6 +760,8 @@ def make_moe_spec(
+             OperandEncoding(source_format) if source_format in BLOCK_CODECS else
+             OperandEncoding.FP6_E2M3
+             if quant_mode == "w6a8_mx"
++            else OperandEncoding.MXFP8_E4M3
++            if quant_mode == "w8a8_mx"
+             else OperandEncoding.FP4_E2M1
+         ),
+         source_weight_scale=source_scale,
+@@ -921,6 +931,31 @@ def plan_moe_weight_preparation(
+                 }
+             )
+             continue
++        if spec.quant_mode == "w8a8_mx":
++            if spec.activation != "silu":
++                raise ValueError("W8A8-MXFP8 preparation requires silu")
++            # FC1 streams 128-wide K tiles over hidden (one E4M3 byte per
++            # element), so hidden must be 128-aligned.  The intermediate is
++            # the FC2 K extent and the FC1 N extent: FC2 needs whole UE8M0
++            # K/32 blocks, and non-128 FC1 halves use independent up/gate
++            # TMA descriptors whose tail tile is zero-filled by TMA.
++            if hidden_size % 128 != 0 or intermediate_size % 32 != 0:
++                raise ValueError(
++                    "W8A8-MXFP8 preparation requires hidden_size % 128 == 0 "
++                    "and intermediate_size % 32 == 0"
++                )
++            # Weight bytes are preserved losslessly (no FP4/FP6 requantization);
++            # UE8M0 scales are swizzled into the MMA layout and per-expert
++            # alphas are derived from the checkpoint's *_weight_scale_2 globals.
++            transforms.add(WeightPreparationTransform.W8A8_MXFP8)
++            weight_layouts.add(PreparedWeightLayout.SOURCE_NATIVE)
++            scale_layouts.update(
++                {
++                    PreparedScaleLayout.MMA_PACKED,
++                    PreparedScaleLayout.RUNTIME_ALPHA,
++                }
++            )
++            continue
+         if spec.quant_mode == "w4a16":
+             if source_format in BLOCK_CODECS:
+                 if spec.io_dtype != "bfloat16" or spec.activation not in {"silu", "relu2"}:
+@@ -1009,6 +1044,9 @@ def plan_moe_weight_preparation(
+         # ownership to the prepared representation (swizzled scales replace
+         # the source grids), mirroring the native W4A16 storage policy.
+         or WeightPreparationTransform.W6A8_MXFP6 in transforms
++        # W8A8-MXFP8 keeps the E4M3 weight bytes unchanged and transfers
++        # ownership to the prepared representation, exactly like W6A8-MXFP6.
++        or WeightPreparationTransform.W8A8_MXFP8 in transforms
+     )
+     if len(mutating) > 1:
+         raise ValueError(
+@@ -1055,12 +1093,15 @@ def plan_moe_weight_preparation(
+ 
+ 
+ def _gemm_engine_for_spec(spec: MoESpec) -> GemmEngine:
++    """Select the GEMM engine that executes a MoE spec's operand encodings."""
+     if spec.activation_encoding is OperandEncoding.BF16:
+         return GemmEngine.W4A16_MMA
+     if spec.activation_encoding is OperandEncoding.MXFP8_E4M3:
+         if spec.weight_encoding is OperandEncoding.FP6_E2M3:
+             # W6A8-MX: FP6 weights x FP8 activations on the mxf8f6f4 MMA.
+             return GemmEngine.MXFP6_QMMA
++        # W8A8-MX: E4M3 weights x E4M3 activations on the same
++        # ``.kind::mxf8f6f4`` MMA, emitted natively by ``MmaMXF8Op``.
+         return GemmEngine.MXFP8_QMMA
+     return GemmEngine.NVFP4_MMA
+ 
+@@ -1149,10 +1190,11 @@ def lower_moe_execution(
+             weight_layout = required_weight_layout
+         elif spec.quant_mode == "w4a8_mx":
+             weight_layout = PreparedWeightLayout.QMMA_REPACKED
+-        elif spec.quant_mode == "w6a8_mx":
+-            # Packed MX-FP6 codes are consumed source-native; the reduction
+-            # regimes (atomic scatter, route-buffer top-k sum when
+-            # deterministic) are shared with w4a8_mx above.
++        elif spec.quant_mode in ("w6a8_mx", "w8a8_mx"):
++            # Packed MX-FP6 codes and raw MXFP8 E4M3 codes are both consumed
++            # source-native; the reduction regimes (atomic scatter,
++            # route-buffer top-k sum when deterministic) are shared with
++            # w4a8_mx above.
+             weight_layout = PreparedWeightLayout.SOURCE_NATIVE
+         else:
+             weight_layout = PreparedWeightLayout.MMA_VIEW
+diff --git a/b12x/moe/_shared/kernels/dynamic.py b/b12x/moe/_shared/kernels/dynamic.py
+index 38e18bf..36936e0 100644
+--- a/b12x/moe/_shared/kernels/dynamic.py
++++ b/b12x/moe/_shared/kernels/dynamic.py
+@@ -817,6 +817,9 @@ class MoEDynamicKernelBackend:
+         trellis_intermediate_hadamard: bool = False,
+         trellis_direct_lut: bool = False,
+     ):
++        """Record the dynamic-kernel specialization and reject unsupported recipe
++        combinations.
++        """
+         activation = normalize_moe_activation(activation)
+         if quant_recipe not in {
+             "nvfp4",
+@@ -824,6 +827,7 @@ class MoEDynamicKernelBackend:
+             "w4a8_nvfp4",
+             "w4a8_trellis",
+             "w6a8_mx",
++            "w8a8_mx",
+         }:
+             raise ValueError(f"unsupported quant_recipe {quant_recipe!r}")
+         if work_source not in _WORK_SOURCES:
+@@ -867,6 +871,16 @@ class MoEDynamicKernelBackend:
+         # m16n8k32 MMA. It rides the nvfp4-shaped TMA route/pack/mainloop
+         # machinery (NOT the raw w4a8 path), so is_w4a8 stays False for it.
+         self.is_w6a8 = quant_recipe == "w6a8_mx"
++        # w8a8_mx: same m16n8k32 block-scaled atom geometry as w6a8_mx, but B
++        # carries real E4M3 codes (gmem K extent == logical K), so the MMA is
++        # the native MmaMXF8Op and there is no packed-B staging or expansion.
++        self.is_w8a8 = quant_recipe == "w8a8_mx"
++        # Shared byte-per-element operand geometry (tile_k, tiled MMA, SF
++        # atoms, activation scratch).  Packed-B staging stays is_w6a8-only.
++        self.is_mxf8 = self.is_w6a8 or self.is_w8a8
++        # Both recipes quantize activations and the FC2 intermediate to E4M3
++        # with UE8M0 K/32 scales; mxfp6_fmt_a/b select only the inline FP6 MMA.
++        self._act_container_fmt = "e4m3" if self.is_mxf8 else None
+         if self.is_w6a8:
+             if mxfp6_fmt_a is None:
+                 mxfp6_fmt_a = "e4m3"
+@@ -902,6 +916,34 @@ class MoEDynamicKernelBackend:
+                 raise ValueError(
+                     "w6a8_mx does not support share_input_across_experts yet"
+                 )
++        elif self.is_w8a8:
++            if mxfp6_fmt_a is not None or mxfp6_fmt_b is not None:
++                raise ValueError(
++                    "mxfp6_fmt_a/mxfp6_fmt_b are only valid for w6a8_mx; "
++                    "w8a8_mx consumes E4M3 operands on the native MmaMXF8Op"
++                )
++            if sf_vec_size != 32:
++                raise ValueError(
++                    f"w8a8_mx requires sf_vec_size == 32 (MX K/32 blocks), got {sf_vec_size}"
++                )
++            if mma_tiler_mn != (128, 128):
++                raise ValueError(
++                    "w8a8_mx supports mma_tiler_mn == (128, 128) only"
++                )
++            if swap_ab:
++                raise ValueError("w8a8_mx does not support swap_ab")
++            if w4a8_repacked:
++                raise ValueError("w4a8_repacked does not apply to w8a8_mx")
++            if direct_routing:
++                raise ValueError("w8a8_mx does not support direct_routing yet")
++            if materialize_intermediate:
++                raise ValueError(
++                    "w8a8_mx does not support materialize_intermediate yet"
++                )
++            if share_input_across_experts:
++                raise ValueError(
++                    "w8a8_mx does not support share_input_across_experts yet"
++                )
+         elif mxfp6_fmt_a is not None or mxfp6_fmt_b is not None:
+             raise ValueError("mxfp6_fmt_a/mxfp6_fmt_b are only valid for w6a8_mx")
+         self.mxfp6_fmt_a = mxfp6_fmt_a
+@@ -1223,7 +1265,7 @@ class MoEDynamicKernelBackend:
+         # FP4 packs two elements per byte, so its K-tile is sf_vec_size*8 with
+         # a 64-byte SW atom; the FP6/FP8 byte-container path carries one
+         # element per byte, so the same 128-byte row is sf_vec_size*4 elements.
+-        tile_k = sf_vec_size * 4 if self.is_w6a8 else sf_vec_size * 8
++        tile_k = sf_vec_size * 4 if self.is_mxf8 else sf_vec_size * 8
+         self.tile_shape_mnk = (mma_tiler_mn[0], mma_tiler_mn[1], tile_k)
+         # Scale-factor tiles are 128-row atoms in hardware.  Native NVFP4
+         # consumes only the compact route tile in sA while retaining the
+@@ -1390,13 +1432,15 @@ class MoEDynamicKernelBackend:
+         )
+ 
+     def _setup_attributes(self):
++        """Derive tile, shared-memory, and pipeline geometry for the selected recipe."""
+         import cutlass.utils.blackwell_helpers as sm120_utils
+ 
+-        if cutlass.const_expr(self.is_w6a8):
+-            # FP6 codes live in Float8E4M3FN byte-containers; build tiled_mma
+-            # with the MXFP8 op so smem/SF layouts match m16n8k32 geometry.
+-            # The mainloop emits the inline ``mxf8f6f4`` MMA instead of this
+-            # atom's instruction (see moe_emit_mma_k_block).
++        if cutlass.const_expr(self.is_mxf8):
++            # Both MX recipes take the m16n8k32 block-scaled atom geometry.
++            # w6a8_mx carries FP6 codes in Float8E4M3FN byte-containers and
++            # emits the inline ``mxf8f6f4`` MMA instead of this atom's
++            # instruction (see moe_emit_mma_k_block); w8a8_mx carries real
++            # E4M3 codes and runs the instruction this atom emits.
+             mma_op = cute.nvgpu.warp.MmaMXF8Op(
+                 cutlass.Float8E4M3FN,
+                 self.acc_dtype,
+@@ -2506,6 +2550,9 @@ class MoEDynamicKernelBackend:
+         trellis_lut: cute.Tensor | None = None,  # 4 KiB lut_e4m3 value table (u8)
+         trellis_rotations: cute.Tensor | None = None,  # [E*3I] fp16
+     ):
++        """Build TMA descriptors for the bound tensors and launch the persistent
++        kernel.
++        """
+         self.a_dtype = packed_a.element_type
+         self.b_dtype = b_w13.element_type
+         if cutlass.const_expr(self.is_w6a8):
+@@ -2520,6 +2567,17 @@ class MoEDynamicKernelBackend:
+                 "w6a8_mx requires b_w13/b_down as Float8E4M3FN views of the "
+                 "3:4-packed FP6 bytes"
+             )
++        elif cutlass.const_expr(self.is_w8a8):
++            # w8a8_mx contract: packed_a is the MXFP8-E4M3 activation view
++            # [rows_padded, K, 1]; b_w13/b_down are the checkpoint's own E4M3
++            # bytes with K extent == logical K.
++            assert self.a_dtype == cutlass.Float8E4M3FN, (
++                "w8a8_mx requires packed_a as a Float8E4M3FN activation view"
++            )
++            assert self.b_dtype == cutlass.Float8E4M3FN, (
++                "w8a8_mx requires b_w13/b_down as Float8E4M3FN views of the "
++                "checkpoint E4M3 bytes"
++            )
+         self.sf_dtype = sfa_ptr.dtype
+         self.a_layout = utils.LayoutEnum.from_tensor(packed_a)
+         self.b_layout = utils.LayoutEnum.from_tensor(b_w13)
+@@ -3285,11 +3343,13 @@ class MoEDynamicKernelBackend:
+         sf_blocks_per_row = cols // Int32(16)
+         quant_block_elems = Int32(16)
+         packed_bytes_per_sf_block = Int32(8)
+-        if cutlass.const_expr(self.is_w6a8):
++        if cutlass.const_expr(self.is_mxf8):
+             # MXFP8-E4M3 byte-container scratch: one code per byte (32 bytes
+             # per K/32 block, K bytes/row) so the Float8E4M3FN A TMA/ldmatrix
+             # path consumes it; UE8M0 scales per 32 elements in the swizzled
+             # 128-row SF atoms (one atom spans 4 blocks = 128 elements).
++            # Shared by w6a8_mx (FP6 codes in E4M3 containers) and w8a8_mx
++            # (real E4M3 codes).
+             sf_blocks_per_row = cols // Int32(32)
+             quant_block_elems = Int32(32)
+             packed_bytes_per_sf_block = Int32(32)
+@@ -3297,7 +3357,7 @@ class MoEDynamicKernelBackend:
+             # E4M3 payload: one byte per element; UE8M0 scales per 32 elements.
+             output_bytes_per_row = cols
+             mx_blocks_per_row = cols // Int32(32)
+-        elif cutlass.const_expr(self.is_w6a8):
++        elif cutlass.const_expr(self.is_mxf8):
+             output_bytes_per_row = cols
+             mx_blocks_per_row = sf_blocks_per_row  # unused placeholder
+         else:
+@@ -3311,7 +3371,7 @@ class MoEDynamicKernelBackend:
+         flat_stride = Int32(gdim_z) * Int32(self.threads_per_cta)
+         # SF-atom K-tile count for the swizzled scale layout: one 512-byte
+         # atom spans 4 SF blocks = 64 elements at sf_vec 16, 128 at sf_vec 32.
+-        if cutlass.const_expr(self.is_w6a8):
++        if cutlass.const_expr(self.is_mxf8):
+             num_k_tiles = (cols + Int32(127)) // Int32(128)
+         else:
+             num_k_tiles = (cols + Int32(63)) // Int32(64)
+@@ -4137,14 +4197,13 @@ class MoEDynamicKernelBackend:
+                                             phys_row * mx_blocks_per_row + blk_idx
+                                         ] = Uint8(mx_scale_byte & Uint32(0xFF))
+                                         blk_idx += Int32(32)
+-                                elif cutlass.const_expr(self.is_w6a8):
+-                                    # w6a8_mx: MXFP8-E4M3 K/32 byte-container
+-                                    # payload (same encoding as w4a8's activation
+-                                    # side, but WITH the calibrated per-expert
+-                                    # global scale folded in at quantize time),
+-                                    # stored row-major for the A TMA; scale bytes
+-                                    # go to the swizzled 128-row SF atoms exactly
+-                                    # like nvfp4 (sf_idx now indexes K/32 blocks).
++                                elif cutlass.const_expr(self.is_mxf8):
++                                    # w6a8_mx / w8a8_mx: MXFP8-E4M3 K/32
++                                    # byte-container payload, with the
++                                    # calibrated per-expert global scale folded
++                                    # in at quantize time.  Stored row-major
++                                    # for the A TMA; scale bytes go to the
++                                    # swizzled 128-row SF atoms like nvfp4.
+                                     sf_idx = lane_id
+                                     while sf_idx < sf_blocks_per_row:
+                                         block_start = sf_idx * quant_block_elems
+@@ -4165,7 +4224,7 @@ class MoEDynamicKernelBackend:
+                                                 values,
+                                                 block_max,
+                                                 gs_value,
+-                                                self.mxfp6_fmt_a,
++                                                self._act_container_fmt,
+                                             )
+                                         )
+                                         output_offset = (
+@@ -7405,9 +7464,10 @@ class MoEDynamicKernelBackend:
+                                             )
+                         # Activation + quant into sA
+                         sA_u8 = cute.recast_tensor(sA[None, None, 0], cutlass.Uint8)
+-                        if cutlass.const_expr(self.is_w6a8):
+-                            # Byte-container intermediate: one code per byte,
+-                            # tile_k bytes per row; K/32 UE8M0 blocks.
++                        if cutlass.const_expr(self.is_mxf8):
++                            # Byte-container intermediate (w6a8_mx / w8a8_mx):
++                            # one code per byte, tile_k bytes per row; K/32
++                            # UE8M0 blocks.
+                             packed_cols = Int32(self.tile_shape_mnk[2])
+                             sf_blocks_per_row = Int32(self.tile_shape_mnk[2] // 32)
+                             fc2_quant_block_elems = Int32(32)
+@@ -7472,7 +7532,7 @@ class MoEDynamicKernelBackend:
+                                 epi_rows = Int32(self.epi_tile[0])
+                             if epi_rows < Int32(0):
+                                 epi_rows = Int32(0)
+-                            if cutlass.const_expr(self.is_w6a8):
++                            if cutlass.const_expr(self.is_mxf8):
+                                 # Zero the FP6/FP8 intermediate SFA + A-code
+                                 # smem before the FC2 requant store. The store
+                                 # only covers epi_rows*sf_blocks; any padding-
+@@ -7517,7 +7577,7 @@ class MoEDynamicKernelBackend:
+                                 sf_block = quant_idx - local_row * sf_blocks_per_row
+                                 block_start = sf_block * fc2_quant_block_elems
+ 
+-                                if cutlass.const_expr(self.is_w6a8):
++                                if cutlass.const_expr(self.is_mxf8):
+                                     values = cute.make_rmem_tensor(
+                                         (32,), cutlass.Float32
+                                     )
+@@ -7537,7 +7597,7 @@ class MoEDynamicKernelBackend:
+                                             values,
+                                             block_max,
+                                             quant_gs_value,
+-                                            self.mxfp6_fmt_a,
++                                            self._act_container_fmt,
+                                         )
+                                     )
+                                     # Byte-container swizzled store into the
+diff --git a/b12x/moe/_shared/kernels/mxfp6_moe.py b/b12x/moe/_shared/kernels/mxfp6_moe.py
+index 87521aa..b948358 100644
+--- a/b12x/moe/_shared/kernels/mxfp6_moe.py
++++ b/b12x/moe/_shared/kernels/mxfp6_moe.py
+@@ -1,4 +1,9 @@
+-"""Shared MX-FP6 helpers for the fused MoE dynamic kernels (w6a8_mx recipe)."""
++"""Shared MX byte-container helpers for the fused MoE dynamic kernels.
++
++Used by ``w6a8_mx`` (FP6 codes in E4M3 containers, inline ``mxf8f6f4`` MMA) and
++``w8a8_mx`` (real E4M3 codes on the native ``MmaMXF8Op``); the container
++quantizer and the byte-container stores are common to both.
++"""
+ 
+ from __future__ import annotations
+ 
+diff --git a/b12x/moe/_shared/kernels/reference.py b/b12x/moe/_shared/kernels/reference.py
+index c525527..7499ee7 100644
+--- a/b12x/moe/_shared/kernels/reference.py
++++ b/b12x/moe/_shared/kernels/reference.py
+@@ -6,7 +6,10 @@ import torch
+ 
+ # The flashinfer-TRTLLM cross-kernel oracle helpers live alongside in
+ # reference_flashinfer.py, kept separate so this module stays pure-torch.
+-from b12x._lib.intrinsics import fp4_quantize_values_torch
++from b12x._lib.intrinsics import (
++    fp4_quantize_values_torch,
++    quant_dequant_mxfp8_scaled_torch,
++)
+ from b12x.moe._shared.kernels.activations import (
+     SITU,
+     SITU_DEFAULT_BETA,
+@@ -1304,6 +1307,116 @@ def moe_reference_w4a8_mx(
+     return output
+ 
+ 
++def _dequant_w8a8_weight_e8m0_k32(
++    w_e4m3: torch.Tensor,
++    scale_bytes: torch.Tensor,
++    rows: int,
++    cols: int,
++) -> torch.Tensor:
++    """Effective w8a8 weight values: exact E4M3 payload x UE8M0 K/32 scale.
++
++    The kernel consumes the checkpoint's E4M3 bytes directly, so the payload
++    decode is a dtype widening with no lookup table and no requantization.
++    """
++    raw = w_e4m3.view(torch.float8_e4m3fn)[:rows, :cols].to(torch.float32)
++    n_blocks = cols // 32
++    scale = torch.exp2(scale_bytes[:rows, :n_blocks].to(torch.float32) - 127.0)
++    return (raw.view(rows, n_blocks, 32) * scale.unsqueeze(-1)).reshape(rows, cols)
++
++
++def moe_reference_w8a8_mx(
++    x: torch.Tensor,
++    w1_e4m3: torch.Tensor,
++    w1_mx_scales: torch.Tensor,
++    w1_alphas: torch.Tensor,
++    w2_e4m3: torch.Tensor,
++    w2_mx_scales: torch.Tensor,
++    w2_alphas: torch.Tensor,
++    topk_ids: torch.Tensor,
++    topk_weights: torch.Tensor,
++    E: int,
++    K: int,
++    I_tp: int,
++    *,
++    a1_gscale: torch.Tensor,
++    a2_gscale: torch.Tensor,
++    activation: str = "silu",
++    swiglu_limit: float | None = None,
++    swiglu_alpha: float | None = None,
++    swiglu_beta: float | None = None,
++    w13_layout: str = "w13",
++) -> torch.Tensor:
++    """W8A8-MX MoE oracle: MXFP8 activations x MXFP8 (E4M3/UE8M0-K32) weights.
++
++    Consumes the checkpoint-native tensors only — no prepared/swizzled
++    representation participates.  Both GEMM operand boundaries reproduce the
++    fused kernel's numeric contract: the routed activation row and the FC2
++    intermediate are quantized per 32 elements to E4M3 with a UE8M0 block
++    scale that is the power-of-two ceiling of ``amax * gscale / 448`` (see
++    :func:`b12x._lib.intrinsics.quant_dequant_mxfp8_scaled_torch`), and each
++    projection is scaled by its per-expert runtime alpha
++    (``weight_scale_2 / a_gscale``), which is what cancels the folded
++    activation global scale.
++    """
++    activation, swiglu_limit, swiglu_alpha, swiglu_beta = (
++        _normalize_reference_swiglu_params(
++            activation,
++            swiglu_limit,
++            swiglu_alpha,
++            swiglu_beta,
++        )
++    )
++    if activation != "silu":
++        raise NotImplementedError(
++            "the W8A8-MXFP8 recipe is qualified for silu only"
++        )
++    _validate_reference_inputs(w1_e4m3, I_tp, activation)
++    if K % 128 != 0 or I_tp % 32 != 0:
++        raise ValueError("w8a8_mx requires K % 128 == 0 and I_tp % 32 == 0")
++    w13_layout = _normalize_w13_layout(w13_layout)
++    device = x.device
++    m = x.shape[0]
++
++    output = torch.zeros(m, K, dtype=torch.float32, device=device)
++    for eid in range(E):
++        route_mask = topk_ids == eid
++        token_mask = route_mask.any(dim=1)
++        if not bool(token_mask.any().item()):
++            continue
++        gs_fc1 = float(a1_gscale[eid].item())
++        gs_fc2 = float(a2_gscale[eid].item())
++        alpha_fc1 = float(w1_alphas[eid].item())
++        alpha_fc2 = float(w2_alphas[eid].item())
++        w13_eff = _dequant_w8a8_weight_e8m0_k32(
++            w1_e4m3[eid], w1_mx_scales[eid], 2 * I_tp, K
++        )
++        w2_eff = _dequant_w8a8_weight_e8m0_k32(
++            w2_e4m3[eid], w2_mx_scales[eid], K, I_tp
++        )
++        xs = quant_dequant_mxfp8_scaled_torch(x[token_mask].float(), gs_fc1)
++        gate_rows, up_rows = _gated_row_slices(
++            activation, I_tp, w13_layout=w13_layout
++        )
++        up_out = (xs @ w13_eff[up_rows].T) * alpha_fc1
++        gate_out = (xs @ w13_eff[gate_rows].T) * alpha_fc1
++        intermediate = _apply_gated_activation(
++            gate_out,
++            up_out,
++            activation=activation,
++            swiglu_limit=swiglu_limit,
++            swiglu_alpha=swiglu_alpha,
++            swiglu_beta=swiglu_beta,
++        )
++        int_qd = quant_dequant_mxfp8_scaled_torch(intermediate, gs_fc2)
++        down_out = (int_qd @ w2_eff.T) * alpha_fc2
++        route_weight = (topk_weights.float() * route_mask.float()).sum(dim=1)[
++            token_mask
++        ]
++        output[token_mask] += route_weight.unsqueeze(1) * down_out
++
++    return output
++
++
+ def trace_moe_reference_w4a8_route(
+     x: torch.Tensor,
+     w1_fp4: torch.Tensor,
+diff --git a/b12x/moe/_shared/kernels/w6a8/weights.py b/b12x/moe/_shared/kernels/w6a8/weights.py
+index 8e537fa..8bb222f 100644
+--- a/b12x/moe/_shared/kernels/w6a8/weights.py
++++ b/b12x/moe/_shared/kernels/w6a8/weights.py
+@@ -21,7 +21,11 @@ from dataclasses import dataclass
+ 
+ import torch
+ 
+-from b12x._lib.intrinsics import align_up, swizzle_block_scale
++from b12x._lib.intrinsics import (
++    align_up,
++    swizzle_block_scale,
++    validate_e8m0_scale_grid,
++)
+ 
+ _SF_BLOCK = 32  # K elements per UE8M0 block scale
+ _TILE_K = 128  # kernel K-tile width (packed 3:4 along K)
+@@ -123,20 +127,15 @@ def _validate_e8m0_scale_grid(
+     rows: int,
+     k: int,
+ ) -> torch.Tensor:
+-    if not isinstance(scale, torch.Tensor):
+-        raise TypeError(f"{name} must be a torch.Tensor")
+-    if scale.dtype not in (torch.uint8, torch.float8_e8m0fnu):
+-        raise TypeError(
+-            f"{name} must hold UE8M0 bytes (uint8/float8_e8m0fnu), "
+-            f"got {scale.dtype}"
+-        )
+-    expected = (num_experts, rows, k // _SF_BLOCK)
+-    if scale.dim() != 3 or tuple(scale.shape) != expected:
+-        raise ValueError(
+-            f"{name} must be an unswizzled per-K/{_SF_BLOCK} grid with shape "
+-            f"{expected}, got {tuple(scale.shape)}"
+-        )
+-    return scale.view(torch.uint8).contiguous()
++    """Apply the canonical UE8M0 grid rule (dtype, extent, finite bytes)."""
++    return validate_e8m0_scale_grid(
++        scale,
++        name=name,
++        num_experts=num_experts,
++        rows=rows,
++        k=k,
++        sf_block=_SF_BLOCK,
++    )
+ 
+ 
+ def _validate_expert_scalars(
+diff --git a/b12x/moe/_shared/kernels/w8a8/__init__.py b/b12x/moe/_shared/kernels/w8a8/__init__.py
+new file mode 100644
+index 0000000..54b3511
+--- /dev/null
++++ b/b12x/moe/_shared/kernels/w8a8/__init__.py
+@@ -0,0 +1,13 @@
++"""W8A8 MXFP8-specific prepared-weight utilities for the unified MoE kernel."""
++
++from .weights import (
++    PreparedW8A8MXFP8Weights,
++    prepare_w8a8_mxfp8_weights,
++    w13_split_halves,
++)
++
++__all__ = [
++    "PreparedW8A8MXFP8Weights",
++    "prepare_w8a8_mxfp8_weights",
++    "w13_split_halves",
++]
+diff --git a/b12x/moe/_shared/kernels/w8a8/weights.py b/b12x/moe/_shared/kernels/w8a8/weights.py
+new file mode 100644
+index 0000000..6eea612
+--- /dev/null
++++ b/b12x/moe/_shared/kernels/w8a8/weights.py
+@@ -0,0 +1,325 @@
++"""Prepared weight layout for the W8A8 MXFP8 MoE kernel.
++
++Host-side, one-time preparation for the ``w8a8_mx`` quant recipe
++(``source_format='mxfp8_e8m0_k32'``):
++
++* MXFP8 E4M3 weight codes stay **source-native and byte-exact**:
++  ``[E, N, K]`` with one E4M3 byte per element.  Nothing is requantized to
++  FP4/FP6 and nothing is re-packed; the checkpoint bytes are the runtime
++  operand bytes.
++* Checkpoint UE8M0 K/32 block scales (``[E, N, K//32]`` bytes, unswizzled on
++  disk) are validated by the canonical
++  :func:`b12x._lib.intrinsics.validate_e8m0_scale_grid` rule (every finite
++  UE8M0 byte preserved, ``0xFF`` NaN rejected, never clamped) and then swizzled
++  by the canonical :func:`b12x._lib.intrinsics.swizzle_block_scale` into the
++  MMA block-scale layout the kernel reads — the same two helpers the MX-FP6
++  recipe uses, so there is exactly one scale layout in the tree.
++* Per-expert f32 ``*_weight_scale_2`` globals combine with the reciprocal
++  activation global scales into runtime alphas
++  (``alpha = weight_scale_2 / a_gscale``).
++
++Activations are quantized at runtime to FP8 E4M3 with UE8M0 K/32 block scales,
++so both operands are genuine E4M3 and feed the ``MmaMXF8Op`` block-scaled
++``m16n8k32`` MMA natively (no FP6 byte-container expansion anywhere).
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Any
++
++import torch
++
++from b12x._lib.intrinsics import (
++    swizzle_block_scale,
++    validate_e8m0_scale_grid,
++)
++
++_SF_BLOCK = 32  # K elements per UE8M0 block scale
++_TILE_K = 128  # kernel K-tile width (one E4M3 byte per element along K)
++_VALUE_DTYPES = (torch.uint8, torch.float8_e4m3fn)
++
++
++@dataclass(frozen=True, kw_only=True)
++class PreparedW8A8MXFP8Weights:
++    """Runtime contract for prepared W8A8 MXFP8 MoE expert weights.
++
++    ``w13_values``/``w2_values`` are the byte-exact source E4M3 codes
++    (``[E, N, K]`` uint8, one code per byte, K == logical K); ``*_sf_swizzled``
++    are UE8M0 block scales in the MMA swizzle
++    (``[E, pad128(rows), pad4(K//32)]`` bytes); ``*_alpha`` are per-expert f32
++    runtime dequant scales.  This container is the input contract of the
++    ``quant_recipe="w8a8_mx"`` dynamic kernel.
++
++    When ``intermediate_size`` is not a multiple of 128 the gate half of FC1
++    starts inside a 128-row scale atom, so the kernel streams the up and gate
++    halves through independent TMA descriptors.  ``w13_sf_swizzled`` then
++    holds the two halves swizzled independently, half-major:
++    ``[2, E, pad128(I), pad4(K//32)]`` (index 0 = up, 1 = gate).
++    ``launch_views`` holds the dynamic-launch operand views and pointers that
++    ``b12x.moe.fused_moe`` resolves once when it prepares the experts; the
++    launch path reads them instead of re-deriving geometry per call.
++    """
++
++    w13_values: torch.Tensor
++    w2_values: torch.Tensor
++    w13_sf_swizzled: torch.Tensor
++    w2_sf_swizzled: torch.Tensor
++    w13_alpha: torch.Tensor
++    w2_alpha: torch.Tensor
++    num_experts: int
++    hidden_size: int
++    intermediate_size: int
++    launch_views: Any = field(default=None, compare=False, repr=False)
++
++    def __post_init__(self) -> None:
++        """Coerce the geometry fields to ``int``."""
++        object.__setattr__(self, "num_experts", int(self.num_experts))
++        object.__setattr__(self, "hidden_size", int(self.hidden_size))
++        object.__setattr__(self, "intermediate_size", int(self.intermediate_size))
++
++    # Canonical-storage aliases consumed by the generic prepared-weight
++    # plumbing in b12x.moe.fused_moe._impl (mirrors the w13/w2 attribute
++    # lookups used for the W4A16 native containers).
++    @property
++    def w13(self) -> torch.Tensor:
++        """FC1 E4M3 code bytes (canonical-storage alias)."""
++        return self.w13_values
++
++    @property
++    def w2(self) -> torch.Tensor:
++        """FC2 E4M3 code bytes (canonical-storage alias)."""
++        return self.w2_values
++
++    @property
++    def w13_scale(self) -> torch.Tensor:
++        """FC1 swizzled UE8M0 scales (canonical-storage alias)."""
++        return self.w13_sf_swizzled
++
++    @property
++    def w2_scale(self) -> torch.Tensor:
++        """FC2 swizzled UE8M0 scales (canonical-storage alias)."""
++        return self.w2_sf_swizzled
++
++    @property
++    def w13_global_scale(self) -> torch.Tensor:
++        """FC1 per-expert runtime alphas (canonical-storage alias)."""
++        return self.w13_alpha
++
++    @property
++    def w2_global_scale(self) -> torch.Tensor:
++        """FC2 per-expert runtime alphas (canonical-storage alias)."""
++        return self.w2_alpha
++
++
++def _validate_value_bytes(
++    values: torch.Tensor,
++    *,
++    name: str,
++    num_experts: int,
++    rows: int,
++    k: int,
++) -> torch.Tensor:
++    """Return the contiguous uint8 view of ``values`` without touching bytes."""
++    if not isinstance(values, torch.Tensor):
++        raise TypeError(f"{name} must be a torch.Tensor")
++    if values.dtype not in _VALUE_DTYPES:
++        raise TypeError(
++            f"{name} must hold MXFP8 E4M3 codes (uint8/float8_e4m3fn), "
++            f"got {values.dtype}"
++        )
++    expected = (num_experts, rows, k)
++    if values.dim() != 3 or tuple(values.shape) != expected:
++        raise ValueError(
++            f"{name} must have one E4M3 byte per element with shape "
++            f"{expected} (E, N, K), got {tuple(values.shape)}"
++        )
++    uint8 = values.view(torch.uint8)
++    if not uint8.is_contiguous():
++        raise ValueError(f"{name} must be contiguous")
++    return uint8
++
++
++def _validate_e8m0_scale_grid(
++    scale: torch.Tensor,
++    *,
++    name: str,
++    num_experts: int,
++    rows: int,
++    k: int,
++) -> torch.Tensor:
++    """Apply the canonical UE8M0 grid rule (dtype, extent, finite bytes)."""
++    return validate_e8m0_scale_grid(
++        scale,
++        name=name,
++        num_experts=num_experts,
++        rows=rows,
++        k=k,
++        sf_block=_SF_BLOCK,
++    )
++
++
++def _validate_expert_scalars(
++    scale: torch.Tensor, *, name: str, num_experts: int
++) -> torch.Tensor:
++    """Return a contiguous ``[E]`` f32 view of a scalar or per-expert scale."""
++    if not isinstance(scale, torch.Tensor):
++        raise TypeError(f"{name} must be a torch.Tensor")
++    if scale.numel() == 1:
++        return scale.reshape(()).expand(num_experts).to(torch.float32).contiguous()
++    if scale.numel() != num_experts:
++        raise ValueError(
++            f"{name} must have 1 or {num_experts} elements, got {scale.numel()}"
++        )
++    return scale.reshape(num_experts).to(torch.float32).contiguous()
++
++
++def prepare_w8a8_mxfp8_weights(
++    *,
++    w13_values: torch.Tensor,
++    w13_scale: torch.Tensor,
++    w13_scale_2: torch.Tensor,
++    w2_values: torch.Tensor,
++    w2_scale: torch.Tensor,
++    w2_scale_2: torch.Tensor,
++    a1_gscale: torch.Tensor | None = None,
++    a2_gscale: torch.Tensor | None = None,
++    num_experts: int,
++    hidden_size: int,
++    intermediate_size: int,
++) -> PreparedW8A8MXFP8Weights:
++    """Prepare W8A8 MXFP8 expert weights for the fused MoE kernel.
++
++    Args:
++        w13_values: FC1 (gated up+gate) E4M3 codes,
++            ``[E, 2*intermediate, hidden]`` uint8 or float8_e4m3fn.
++        w13_scale: FC1 UE8M0 K/32 grid, ``[E, 2*intermediate, hidden//32]``.
++        w13_scale_2: per-expert f32 FC1 global weight scales (``[E]`` or scalar).
++        w2_values: FC2 (down) E4M3 codes, ``[E, hidden, intermediate]``.
++        w2_scale: FC2 UE8M0 K/32 grid, ``[E, hidden, intermediate//32]``.
++        w2_scale_2: per-expert f32 FC2 global weight scales.
++        a1_gscale / a2_gscale: reciprocal activation global scales for the
++            FC1/FC2 inputs; default is unit scale.  Runtime alphas follow the
++            established preparation math ``alpha = weight_scale_2 / a_gscale``.
++    """
++    num_experts = int(num_experts)
++    hidden_size = int(hidden_size)
++    intermediate_size = int(intermediate_size)
++    for name, value in (
++        ("num_experts", num_experts),
++        ("hidden_size", hidden_size),
++        ("intermediate_size", intermediate_size),
++    ):
++        if value <= 0:
++            raise ValueError(f"{name} must be positive, got {value}")
++    if hidden_size % _TILE_K != 0:
++        raise ValueError(
++            f"W8A8 MXFP8 requires hidden_size % {_TILE_K} == 0, got "
++            f"hidden_size={hidden_size}"
++        )
++    if intermediate_size % _SF_BLOCK != 0:
++        raise ValueError(
++            f"W8A8 MXFP8 requires intermediate_size % {_SF_BLOCK} == 0 (one "
++            f"UE8M0 scale per FC2 K block), got intermediate_size="
++            f"{intermediate_size}"
++        )
++
++    w13_rows = 2 * intermediate_size  # gated silu FC1: [up; gate] stacked rows
++    w13_values = _validate_value_bytes(
++        w13_values,
++        name="w13_values",
++        num_experts=num_experts,
++        rows=w13_rows,
++        k=hidden_size,
++    )
++    w2_values = _validate_value_bytes(
++        w2_values,
++        name="w2_values",
++        num_experts=num_experts,
++        rows=hidden_size,
++        k=intermediate_size,
++    )
++    w13_grid = _validate_e8m0_scale_grid(
++        w13_scale,
++        name="w13_scale",
++        num_experts=num_experts,
++        rows=w13_rows,
++        k=hidden_size,
++    )
++    w2_grid = _validate_e8m0_scale_grid(
++        w2_scale,
++        name="w2_scale",
++        num_experts=num_experts,
++        rows=hidden_size,
++        k=intermediate_size,
++    )
++
++    w13_scale_2 = _validate_expert_scalars(
++        w13_scale_2, name="w13_scale_2", num_experts=num_experts
++    )
++    w2_scale_2 = _validate_expert_scalars(
++        w2_scale_2, name="w2_scale_2", num_experts=num_experts
++    )
++    if a1_gscale is None:
++        w13_alpha = w13_scale_2.clone()
++    else:
++        a1 = _validate_expert_scalars(
++            a1_gscale, name="a1_gscale", num_experts=num_experts
++        )
++        w13_alpha = torch.empty_like(w13_scale_2)
++        torch.div(w13_scale_2, a1, out=w13_alpha)
++    if a2_gscale is None:
++        w2_alpha = w2_scale_2.clone()
++    else:
++        a2 = _validate_expert_scalars(
++            a2_gscale, name="a2_gscale", num_experts=num_experts
++        )
++        w2_alpha = torch.empty_like(w2_scale_2)
++        torch.div(w2_scale_2, a2, out=w2_alpha)
++    for name, alpha in (("w13", w13_alpha), ("w2", w2_alpha)):
++        if not bool(torch.isfinite(alpha).all().item()):
++            raise ValueError(
++                f"{name}_alpha = {name}_scale_2 / a_gscale is non-finite; a "
++                "zero activation global scale is a preparation error"
++            )
++    # One canonical swizzle: swizzle_block_scale already pads rows to 128 and
++    # scale columns to 4, so no second shape contract is asserted here.
++    if w13_split_halves(intermediate_size):
++        # The gate half begins mid-atom; swizzle each half on its own so both
++        # FC1 TMA descriptors address 128-row atoms from row zero.
++        w13_sf_swizzled = torch.stack(
++            [
++                swizzle_block_scale(half.contiguous().view(torch.float8_e8m0fnu))
++                for half in (
++                    w13_grid[:, :intermediate_size],
++                    w13_grid[:, intermediate_size:],
++                )
++            ]
++        )
++    else:
++        w13_sf_swizzled = swizzle_block_scale(w13_grid.view(torch.float8_e8m0fnu))
++    w2_sf_swizzled = swizzle_block_scale(w2_grid.view(torch.float8_e8m0fnu))
++
++    return PreparedW8A8MXFP8Weights(
++        w13_values=w13_values,
++        w2_values=w2_values,
++        w13_sf_swizzled=w13_sf_swizzled.view(torch.uint8).contiguous(),
++        w2_sf_swizzled=w2_sf_swizzled.view(torch.uint8).contiguous(),
++        w13_alpha=w13_alpha,
++        w2_alpha=w2_alpha,
++        num_experts=num_experts,
++        hidden_size=hidden_size,
++        intermediate_size=intermediate_size,
++    )
++
++
++def w13_split_halves(intermediate_size: int) -> bool:
++    """Whether FC1 up/gate halves use independent descriptors and scale grids."""
++    return int(intermediate_size) % _TILE_K != 0
++
++
++__all__ = [
++    "PreparedW8A8MXFP8Weights",
++    "prepare_w8a8_mxfp8_weights",
++    "w13_split_halves",
++]
+diff --git a/b12x/moe/fused_moe/__init__.py b/b12x/moe/fused_moe/__init__.py
+index 12aa5d0..1b13b2c 100644
+--- a/b12x/moe/fused_moe/__init__.py
++++ b/b12x/moe/fused_moe/__init__.py
+@@ -114,6 +114,7 @@ META = OpMeta(
+         "w4a8_mx",
+         "w4a8_nvfp4",
+         "w6a8_mx",
++        "w8a8_mx",
+         "w4a16",
+         "b12x_trellis",
+     ),
+diff --git a/b12x/moe/fused_moe/_impl.py b/b12x/moe/fused_moe/_impl.py
+index 9ab7d6e..32b8996 100644
+--- a/b12x/moe/fused_moe/_impl.py
++++ b/b12x/moe/fused_moe/_impl.py
+@@ -1465,10 +1465,15 @@ def default_moe_quant_mode() -> str:
+ 
+ 
+ _W4A8_QUANT_MODES = {"w4a8_mx", "w4a8_nvfp4"}
+-# W6A8 MX-FP6 (E2M3 weights x FP8 E4M3 activations on the mxf8f6f4 MMA) is a
+-# distinct recipe family: it must NOT satisfy _is_w4a8_quant_mode, whose
++# W6A8 MX-FP6 (E2M3 weights x FP8 E4M3 activations on the mxf8f6f4 MMA) and
++# W8A8 MXFP8 (E4M3 weights x E4M3 activations on the same m16n8k32 atom) are
++# distinct recipe families: neither may satisfy _is_w4a8_quant_mode, whose
+ # predicates assume FP4 weight packing and the W4A8 repacked layouts.
+ _W6A8_QUANT_MODES = {"w6a8_mx"}
++_W8A8_QUANT_MODES = {"w8a8_mx"}
++# Both share the one-byte-per-element activation scratch and UE8M0 K/32 scale
++# plane (the FP4 recipes pack two codes per byte and use E4M3 K/16 scales).
++_MX_BYTE_CONTAINER_QUANT_MODES = _W6A8_QUANT_MODES | _W8A8_QUANT_MODES
+ 
+ 
+ def _is_w4a8_quant_mode(quant_mode: str) -> bool:
+@@ -1500,10 +1505,15 @@ def _micro_e8m0_scale_layout_for_quant_mode(quant_mode: str) -> str:
+ 
+ 
+ def _normalize_quant_mode_requested(quant_mode: str | None) -> str:
++    """Lower-case a requested quant mode and reject unsupported recipes."""
+     if quant_mode is None:
+         return "nvfp4"
+     normalized = str(quant_mode).lower()
+-    if normalized not in {"nvfp4", "w4a16"} | _W4A8_QUANT_MODES | _W6A8_QUANT_MODES:
++    if (
++        normalized not in {"nvfp4", "w4a16"}
++        | _W4A8_QUANT_MODES
++        | _MX_BYTE_CONTAINER_QUANT_MODES
++    ):
+         raise ValueError(f"unsupported quant_mode {quant_mode!r}")
+     return normalized
+ 
+@@ -1655,8 +1665,9 @@ def _validate_fp4_source_format_for_quant_mode(
+ 
+     source_format = _normalize_fp4_source_format(source_format)
+     quant_mode = _normalize_quant_mode_requested(quant_mode)
+-    # The packed MX-FP6 source and the w6a8_mx recipe are mutually exclusive
+-    # with every FP4 pairing (including w4a16, which keeps its FP4 trio).
++    # The packed MX-FP6 and raw MXFP8 sources are each exclusive to their own
++    # recipe, and both are mutually exclusive with every FP4 pairing (including
++    # w4a16, which keeps its FP4 trio).
+     if source_format == "mxfp6_e2m3" or quant_mode == "w6a8_mx":
+         if source_format == "mxfp6_e2m3" and quant_mode == "w6a8_mx":
+             return
+@@ -1665,6 +1676,14 @@ def _validate_fp4_source_format_for_quant_mode(
+             "is unsupported; quant_mode='w6a8_mx' requires "
+             "source_format='mxfp6_e2m3' and vice versa"
+         )
++    if source_format == "mxfp8_e8m0_k32" or quant_mode == "w8a8_mx":
++        if source_format == "mxfp8_e8m0_k32" and quant_mode == "w8a8_mx":
++            return
++        raise ValueError(
++            f"source_format={source_format!r} with quant_mode={quant_mode!r} "
++            "is unsupported; quant_mode='w8a8_mx' requires "
++            "source_format='mxfp8_e8m0_k32' and vice versa"
++        )
+     if quant_mode == "w4a16":
+         return
+     if source_format == "modelopt_nvfp4":
+@@ -1764,16 +1783,16 @@ def _select_dynamic_tile_mn(
+         planned_tile_m = int(planned_tile_m)
+         if planned_tile_m not in {16, 32, 64, 128}:
+             raise ValueError("planned dynamic tile M must be one of 16, 32, 64, 128")
+-        if quant_mode in _W6A8_QUANT_MODES and planned_tile_m != 128:
+-            raise ValueError("W6A8-MX supports only the M128 dynamic tile")
++        if quant_mode in _MX_BYTE_CONTAINER_QUANT_MODES and planned_tile_m != 128:
++            raise ValueError("MX byte-container recipes support only the M128 dynamic tile")
+         return planned_tile_m, _LEVEL_TILE_N
+     routed_rows = max(1, int(routed_rows))
+     num_experts = max(1, int(num_experts))
+-    if quant_mode in _W6A8_QUANT_MODES:
+-        # The MX-FP6 dynamic kernel builds only the (128, 128) MMA tile (its
+-        # ctor rejects everything else), so the M16-M64 ladder does not exist
+-        # for w6a8_mx.  Every planner/scratch/kernel caller therefore selects
+-        # the same fixed tile.
++    if quant_mode in _MX_BYTE_CONTAINER_QUANT_MODES:
++        # The MX byte-container dynamic kernels build only the (128, 128) MMA
++        # tile (their ctor rejects everything else), so the M16-M64 ladder does
++        # not exist for w6a8_mx or w8a8_mx.  Every planner/scratch/kernel
++        # caller therefore selects the same fixed tile.
+         return (_LEVEL_TILE_M, _LEVEL_TILE_N)
+     if _is_w4a8_quant_mode(quant_mode):
+         if compute_capability is None:
+@@ -2410,12 +2429,19 @@ def _safe_dynamic_max_rows_per_launch(
+ 
+ 
+ def _dynamic_rows_padded_limit(k: int, *, quant_mode: str = "nvfp4") -> int:
++    """Return the largest padded row count whose packed input and scale planes fit
++    the runtime memref limit.
++    """
+     tile_m = _dynamic_tile_m(quant_mode)
+     cols_pad_k = align_up(k // _NVFP4_BLOCK_SIZE, 4)
+     _qm = _normalize_quant_mode(quant_mode)
+     input_cols = (
+         k
+-        if (_qm == "w4a16" or _is_w4a8_quant_mode(_qm) or _qm in _W6A8_QUANT_MODES)
++        if (
++            _qm == "w4a16"
++            or _is_w4a8_quant_mode(_qm)
++            or _qm in _MX_BYTE_CONTAINER_QUANT_MODES
++        )
+         else k // 2
+     )
+     rows_padded_limit = min(
+@@ -2705,6 +2731,9 @@ def _heuristic_moe_decode_config(
+     query: MoeDecodeQuery,
+     device: DeviceIdentity | None,
+ ) -> MoeDecodeConfig:
++    """Choose the backend, tile, and route mode for a decode query without tuning
++    data.
++    """
+     if query.quant_mode == "nvfp4_auto":
+         if (
+             device is not None
+@@ -2728,7 +2757,9 @@ def _heuristic_moe_decode_config(
+             dynamic_route_mode=None,
+             w4a16_route_mode=_heuristic_w4a16_route_mode(query, device),
+         )
+-    if query.quant_mode == "w6a8_mx":
++    if query.quant_mode in _MX_BYTE_CONTAINER_QUANT_MODES:
++        # The MX byte-container recipes exist only in the unified dynamic
++        # kernel; there is no micro specialization for them.
+         backend = "dynamic"
+     elif query.quant_mode == "w4a8_mx":
+         backend = "micro" if _w4a8_mx_micro_preferred(query, device) else "dynamic"
+@@ -3256,6 +3287,9 @@ def _plan_core_workspace(
+     swiglu_alpha: float | None = None,
+     swiglu_beta: float | None = None,
+ ) -> _TPCoreWorkspacePlan:
++    """Size every scratch buffer the selected MoE implementation needs for this
++    geometry.
++    """
+     source_format = _normalize_fp4_source_format(source_format)
+     quant_mode = _normalize_quant_mode_for_source(quant_mode, source_format)
+     activation = normalize_moe_activation(activation)
+@@ -3891,7 +3925,10 @@ def _plan_core_workspace(
+     # packs two FP4 elements per byte.
+     packed_input_cols = (
+         k
+-        if (_is_w4a8_quant_mode(quant_mode) or quant_mode in _W6A8_QUANT_MODES)
++        if (
++            _is_w4a8_quant_mode(quant_mode)
++            or quant_mode in _MX_BYTE_CONTAINER_QUANT_MODES
++        )
+         else k // 2
+     )
+     packed_input_shape = (1, dynamic_rows_padded, packed_input_cols)
+@@ -5731,8 +5768,9 @@ def _ensure_w13_kernel_order_inplace(
+         tmp = sl[:, :n].clone()
+         sl[:, :n] = sl[:, n:]
+         sl[:, n:] = tmp
+-    if quant_mode == "w4a8_mx":
+-        # MXFP4 sources carry plain [E, 2n, K//32] grids — swap rows directly.
++    if quant_mode in ("w4a8_mx", "w8a8_mx"):
++        # MXFP4 and MXFP8 sources carry plain [E, 2n, K//32] grids — swap rows
++        # directly (the byte width of the payload differs, the grid does not).
+         grid = _as_e8m0_k32_grid(w1_blockscale, 2 * n, k, name="w1_blockscale")
+         tmp = grid[:, :n].clone()
+         grid[:, :n] = grid[:, n:]
+@@ -5836,6 +5874,98 @@ def _get_w6a8_weight_views(
+     return views
+ 
+ 
++def _resolve_w8a8_weight_views(
++    w1_fp8: torch.Tensor,
++    w1_blockscale: torch.Tensor,
++    w2_fp8: torch.Tensor,
++    w2_blockscale: torch.Tensor,
++    w1_alphas: torch.Tensor,
++    w2_alphas: torch.Tensor,
++    n: int,
++    k: int,
++    *,
++    activation_spec: _ActivationKernelSpec,
++) -> _WeightViews:
++    """Resolve the dynamic-launch views of prepared w8a8_mx (MXFP8) experts.
++
++    Called once by weight preparation; the result is stored on the prepared
++    container (``PreparedW8A8MXFP8Weights.launch_views``) and the launch path
++    reads it without re-validating geometry.  The operands are the canonical
++    tensors: byte-exact E4M3 codes ``[E, N, K]`` (gmem K extent == logical K,
++    no 3:4 packing) and MMA-swizzled UE8M0 K/32 scale atoms
++    ``[E, pad128(N), pad4(K//32)]``.  The dynamic launch passes the permuted
++    code views through Float8E4M3FN gmem pointers and the swizzled scale bytes
++    through Float8E8M0FNU pointers (sf_vec_size 32), so the native MmaMXF8Op
++    consumes them directly.
++    """
++    w1_n = activation_spec.w1_rows(n)
++    w1_u8 = w1_fp8.view(torch.uint8)
++    w2_u8 = w2_fp8.view(torch.uint8)
++    if w1_u8.dim() != 3 or tuple(w1_u8.shape[1:]) != (w1_n, k):
++        raise ValueError(
++            "w8a8_mx FC1 weights must be [E, w1_n, k] with one E4M3 byte per "
++            f"element; got {tuple(w1_u8.shape)} for w1_n={w1_n}, k={k}"
++        )
++    if w2_u8.dim() != 3 or tuple(w2_u8.shape[1:]) != (k, n):
++        raise ValueError(
++            "w8a8_mx FC2 weights must be [E, k, n] with one E4M3 byte per "
++            f"element; got {tuple(w2_u8.shape)} for k={k}, n={n}"
++        )
++    if not w1_alphas.is_contiguous() or not w2_alphas.is_contiguous():
++        raise ValueError("w1_alphas and w2_alphas must be contiguous")
++
++    # Permute [E, rows, K] -> [rows, K, E] (view, no copy!) to match the
++    # kernel's k-major [N, K, E] weight tensors.
++    w13 = w1_u8.permute(1, 2, 0)
++    down = w2_u8.permute(1, 2, 0)
++    down_sf = w2_blockscale.view(torch.uint8)
++    w13_gate_sf = None
++    if activation_spec.is_gated and n % _LEVEL_TILE_N != 0:
++        # Non-128 intermediate: preparation swizzled the up and gate halves
++        # independently ([2, E, pad128(n), pad4(k//32)]) for the kernel's
++        # separate FC1 half descriptors.
++        split_sf = w1_blockscale.view(torch.uint8)
++        if split_sf.dim() != 4 or split_sf.shape[0] != 2:
++            raise ValueError(
++                "w8a8_mx with intermediate % 128 != 0 requires half-major "
++                f"[2, E, rows, cols] FC1 scales; got {tuple(split_sf.shape)}"
++            )
++        w13_sf = split_sf[0]
++        w13_gate_sf = split_sf[1]
++    else:
++        w13_sf = w1_blockscale.view(torch.uint8)
++    views = _WeightViews(
++        w13=w13,
++        down=down,
++        w13_sf=w13_sf,
++        down_sf=down_sf,
++        w1_alpha=w1_alphas,
++        w2_alpha=w2_alphas,
++        w1_storage=w1_u8,
++        w1_scale_storage=w13_sf,
++        w2_storage=w2_u8,
++        w2_scale_storage=down_sf,
++    )
++    views.w13_gate_sf = w13_gate_sf
++    # One E4M3 byte per element: the Float8E4M3FN element type is conveyed via
++    # _gptr / compile-time fakes, so keep uint8 views here.
++    views.w13_fp4 = w13
++    views.down_fp4 = down
++    views.sfb_w13_ptr = make_ptr(
++        cutlass.Float8E8M0FNU,
++        w13_sf.data_ptr(),
++        cute.AddressSpace.gmem,
++        assumed_align=16,
++    )
++    views.sfb_down_ptr = make_ptr(
++        cutlass.Float8E8M0FNU,
++        down_sf.data_ptr(),
++        cute.AddressSpace.gmem,
++        assumed_align=16,
++    )
++    return views
++
++
+ def _get_weight_views(
+     w1_fp4: torch.Tensor,
+     w1_blockscale: torch.Tensor,
+@@ -6359,6 +6489,89 @@ def _prepare_w6a8_from_mxfp6_source(
+     )
+ 
+ 
++def _prepare_w8a8_from_mxfp8_source(
++    *,
++    w1_fp8: torch.Tensor,
++    w1_blockscale: torch.Tensor,
++    w1_global_scale: torch.Tensor,
++    w2_fp8: torch.Tensor,
++    w2_blockscale: torch.Tensor,
++    w2_global_scale: torch.Tensor,
++    a1_gscale: torch.Tensor,
++    a2_gscale: torch.Tensor,
++    activation: str,
++    source_format: str,
++    w13_layout: str,
++    num_experts: int,
++    hidden_size: int,
++    intermediate_size: int,
++):
++    """Prepare MXFP8 experts and resolve their dynamic-launch views.
++
++    Weight codes stay source-native and byte-exact ([E, N, K] uint8 — no
++    requantization and no re-packing); UE8M0 grids are validated and swizzled
++    to the MMA layout by the canonical helpers, and per-expert alphas come
++    from the ``*_weight_scale_2`` globals divided by the reciprocal activation
++    global scales.  A gate-first ("w31") FC1 is rotated to kernel order here,
++    while the payload and its scale grid are still both unswizzled, so the
++    row flip and the MMA swizzle cannot disagree about which row is which.
++    Returns a
++    :class:`b12x.moe._shared.kernels.w8a8.PreparedW8A8MXFP8Weights` whose
++    ``launch_views`` carry the validated kernel operand views and pointers.
++    """
++    from b12x.moe._shared.kernels.w8a8 import prepare_w8a8_mxfp8_weights
++
++    source_format = _normalize_fp4_source_format(source_format)
++    if source_format != "mxfp8_e8m0_k32":
++        raise ValueError(
++            "W8A8 preparation requires source_format='mxfp8_e8m0_k32', "
++            f"got {source_format!r}"
++        )
++    activation = normalize_moe_activation(activation)
++    if activation != "silu":
++        raise ValueError(
++            f"W8A8 MXFP8 preparation requires silu, got {activation!r}"
++        )
++    w13_layout = _normalize_w13_layout_for_activation(activation, w13_layout)
++    if w13_layout == "w31":
++        _ensure_w13_kernel_order_inplace(
++            w1_fp8,
++            w1_blockscale,
++            n=intermediate_size,
++            k=hidden_size,
++            quant_mode="w8a8_mx",
++        )
++    prepared = prepare_w8a8_mxfp8_weights(
++        w13_values=w1_fp8,
++        w13_scale=w1_blockscale,
++        w13_scale_2=w1_global_scale,
++        w2_values=w2_fp8,
++        w2_scale=w2_blockscale,
++        w2_scale_2=w2_global_scale,
++        a1_gscale=a1_gscale,
++        a2_gscale=a2_gscale,
++        num_experts=num_experts,
++        hidden_size=hidden_size,
++        intermediate_size=intermediate_size,
++    )
++    # Geometry and pointer resolution happen here, once per prepared layer;
++    # the launch path reads launch_views directly.
++    launch_views = _resolve_w8a8_weight_views(
++        prepared.w13_values,
++        prepared.w13_sf_swizzled,
++        prepared.w2_values,
++        prepared.w2_sf_swizzled,
++        prepared.w13_alpha,
++        prepared.w2_alpha,
++        intermediate_size,
++        hidden_size,
++        activation_spec=_get_activation_kernel_spec(
++            activation, quant_mode="w8a8_mx"
++        ),
++    )
++    return replace(prepared, launch_views=launch_views)
++
++
+ def _prepare_modelopt_nvfp4_runtime_alphas(
+     w1_global_scale: torch.Tensor,
+     a1_gscale: torch.Tensor,
+@@ -6733,6 +6946,34 @@ def prepare_b12x_fp4_moe_weights(
+             value=value,
+         )
+ 
++    if WeightPreparationTransform.W8A8_MXFP8 in plan.transforms:
++        if representation is not None:
++            raise AssertionError("weight plan selected multiple prepared layouts")
++        # For the mxfp8_e8m0_k32 source, the w1_fp4/w2_fp4 arguments carry the
++        # raw E4M3 code bytes (one per element) and the blockscales carry
++        # unswizzled UE8M0 K/32 grids.
++        value = _prepare_w8a8_from_mxfp8_source(
++            w1_fp8=w1_fp4,
++            w1_blockscale=w1_blockscale,
++            w1_global_scale=w1_global_scale,
++            w2_fp8=w2_fp4,
++            w2_blockscale=w2_blockscale,
++            w2_global_scale=w2_global_scale,
++            a1_gscale=a1_gscale,
++            a2_gscale=a2_gscale,
++            activation=plan.activation,
++            source_format=plan.source_format,
++            w13_layout=plan.w13_layout,
++            num_experts=plan.num_experts,
++            hidden_size=plan.hidden_size,
++            intermediate_size=plan.intermediate_size,
++        )
++        representation = _PreparedWeightRepresentation(
++            quant_mode="w8a8_mx",
++            layout=PreparedWeightLayout.SOURCE_NATIVE,
++            value=value,
++        )
++
+     canonical_w1 = w1_fp4
+     canonical_s1 = w1_blockscale
+     canonical_a1 = w1_runtime_alphas
+@@ -10255,6 +10496,7 @@ class _DynamicMoELaunch:
+         max_active_clusters: cutlass.Int32,
+         stream: cuda.CUstream,
+     ):
++        """Assemble the kernel's tensor views from flat pointers and invoke it."""
+         a_input = cute.make_tensor(
+             a_ptr, layout=cute.make_layout((num_tokens, self._k), stride=(self._k, 1))
+         )
+@@ -10339,8 +10581,10 @@ class _DynamicMoELaunch:
+                 b_w13.iterator.align(16),
+                 dtype=cutlass.Uint8,
+             )
++            # _half_k is the packed bytes per K row: k // 2 for FP4 codes,
++            # k for the one-byte MXFP8 codes.
+             gate_iterator = cute.recast_ptr(
+-                (b_w13_bytes + self._n * self._k // 2).align(16),
++                (b_w13_bytes + self._n * self._half_k).align(16),
+                 dtype=b_w13.element_type,
+             )
+             b_w13_gate = cute.make_tensor(
+@@ -10394,14 +10638,17 @@ class _DynamicMoELaunch:
+         )
+ 
+ 
+-class _DynamicMoEW6A8Launch(_DynamicMoELaunch):
+-    """w6a8_mx variant of _DynamicMoELaunch (same kernel-call ABI, no repack
+-    or residual operands).  Only the flat scratch extents differ: packed-A
+-    stages one MXFP8-E4M3 byte-container per element (k bytes/row instead of
++class _DynamicMoEByteContainerLaunch(_DynamicMoELaunch):
++    """MX byte-container variant of _DynamicMoELaunch.
++
++    Serves both ``w6a8_mx`` and ``w8a8_mx`` (same kernel-call ABI, no repack or
++    residual operands).  Only the flat scratch extents differ from the FP4
++    recipes: packed-A stages one E4M3 byte per element (k bytes/row instead of
+     the FP4 k//2), and the activation-scale plane holds the swizzled UE8M0
+     K/32 atoms (4 bytes per 128 K elements per row).  ``packed_a`` keeps the
+     [rows_padded, k, 1] shape; its Float8E4M3FN element type comes from the
+-    caller's pointer."""
++    caller's pointer.
++    """
+ 
+     def __init__(self, kernel, k, n, w1_n, num_topk):
+         super().__init__(kernel, k, n, w1_n, num_topk)
+@@ -10792,15 +11039,21 @@ def _get_dynamic_kernel(
+     planned_tile_m: int | None = None,
+     planned_num_tokens: int | None = None,
+ ):
++    """Resolve, compile, and cache the dynamic MoE kernel specialization for this
++    launch geometry.
++    """
+     quant_mode = _normalize_quant_mode(quant_mode)
+-    # w6a8_mx rides the nvfp4-shaped launch ABI (no repack/residual operands)
+-    # with quant_recipe="w6a8_mx": Float8E4M3FN views of the 3:4-packed FP6
+-    # code bytes (gmem K extent 3K/4), MXFP8-E4M3 byte-container activation
+-    # scratch, and UE8M0 K/32 scales (sf_vec_size 32).  The backend ctor
+-    # rejects swap_ab, direct_routing, materialize_intermediate, and
+-    # share_input_across_experts for this recipe; all of those resolve to
+-    # False below via their existing quant-mode predicates.
++    # Both MX byte-container recipes ride the nvfp4-shaped launch ABI (no
++    # repack/residual operands) and the MXFP8 activation scratch with UE8M0
++    # K/32 scales (sf_vec_size 32).  w6a8_mx passes Float8E4M3FN views of the
++    # 3:4-packed FP6 bytes (gmem K extent 3K/4, inline mxf8f6f4 MMA); w8a8_mx
++    # passes views of the raw E4M3 bytes (gmem K extent == logical K, native
++    # MmaMXF8Op).  The ctor rejects swap_ab, direct_routing,
++    # materialize_intermediate and share_input_across_experts for these
++    # recipes; all resolve to False below via the quant-mode predicates.
+     is_w6a8 = quant_mode in _W6A8_QUANT_MODES
++    is_w8a8 = quant_mode in _W8A8_QUANT_MODES
++    is_byte_container = is_w6a8 or is_w8a8
+     share_input_across_experts = bool(
+         share_input_across_experts
+         and (quant_mode == "nvfp4" or (quant_mode == "w4a8_mx" and w4a8_repacked))
+@@ -10812,9 +11065,9 @@ def _get_dynamic_kernel(
+         swiglu_alpha,
+         swiglu_beta,
+     )
+-    # w6a8_mx quantizes per MX K/32 block (the ctor requires sf_vec_size 32);
+-    # the FP4 recipes keep the NVFP4 vec16 scale granularity.
+-    sf_vec_size = 32 if is_w6a8 else 16
++    # The MX recipes quantize per MX K/32 block (the ctor requires sf_vec_size
++    # 32); the FP4 recipes keep the NVFP4 vec16 scale granularity.
++    sf_vec_size = 32 if is_byte_container else 16
+     mac = mac_override if mac_override is not None else _get_impl_mac("dynamic")
+     is_w4a8 = _is_w4a8_quant_mode(quant_mode)
+     # w4a8 is self-ranging; the dynamic per-tile FC2 scale does not apply.
+@@ -10852,8 +11105,15 @@ def _get_dynamic_kernel(
+     if w4a8_n64_repacked:
+         materialize_intermediate = True
+         share_input_across_experts = True
++    # Independent zero-copy up/gate descriptors: NVFP4 at the 16-mod-32
++    # boundary, and MXFP8 whenever the gate half starts inside a 128-row
++    # tile/scale atom (the halves' tail tiles are TMA zero-filled).
+     separate_w13_halves = bool(
+-        quant_mode == "nvfp4" and activation_spec.is_gated and int(n) % 32 == 16
++        activation_spec.is_gated
++        and (
++            (quant_mode == "nvfp4" and int(n) % 32 == 16)
++            or (is_w8a8 and int(n) % _LEVEL_TILE_N != 0)
++        )
+     )
+     # Gated FC1 swap_ab handles 32-aligned, non-128 shards. The 16-mod-32
+     # boundary uses independent zero-copy up/gate descriptors instead.
+@@ -10866,8 +11126,8 @@ def _get_dynamic_kernel(
+     _swap_env = _DYNAMIC_SWAP_AB_OVERRIDE
+     if _swap_env is not None:
+         swap_ab = _swap_env != "0"
+-    if is_w4a8 or is_w6a8:
+-        # Neither recipe builds the swapped FC1 (the w6a8_mx ctor rejects it).
++    if is_w4a8 or is_byte_container:
++        # None of these recipes build the swapped FC1 (their ctors reject it).
+         swap_ab = False
+     if separate_w13_halves:
+         swap_ab = False
+@@ -10918,10 +11178,10 @@ def _get_dynamic_kernel(
+         if cached is not None:
+             return cached, mac
+ 
+-    if is_w6a8:
+-        # Packed FP6 code bytes are consumed as Float8E4M3FN byte views (one
+-        # byte per gmem element, K extent 3K/4); the activation scratch is the
+-        # MXFP8-E4M3 byte-container view and all block scales are UE8M0.
++    if is_byte_container:
++        # Both MX recipes carry one byte per operand element in Float8E4M3FN
++        # views (FP6 codes for w6a8_mx, real E4M3 codes for w8a8_mx) and read
++        # every block scale as UE8M0.
+         weight_dtype = cutlass.Float8E4M3FN
+         a_scratch_dtype = cutlass.Float8E4M3FN
+         sf_dtype = cutlass.Float8E8M0FNU
+@@ -10961,9 +11221,10 @@ def _get_dynamic_kernel(
+         kernel_kwargs["w4a8_repacked"] = bool(w4a8_repacked)
+         kernel_kwargs["w4a8_n64_repacked"] = w4a8_n64_repacked
+         kernel_kwargs["w4a8_n64_tail"] = bool(w4a8_n64_repacked and n % 128)
+-    elif is_w6a8:
+-        # mxfp6_fmt_a/mxfp6_fmt_b stay at the ctor defaults ("e4m3" MXFP8
+-        # activations against "e2m3" FP6 weights).
++    elif is_w6a8 or is_w8a8:
++        # w6a8_mx keeps the ctor defaults ("e4m3" MXFP8 activations against
++        # "e2m3" FP6 weights); w8a8_mx keeps mxfp6_fmt_a/b unset so the kernel
++        # emits the native MmaMXF8Op instead of the inline FP6 MMA.
+         kernel_kwargs["quant_recipe"] = quant_mode
+     kernel = activation_spec.make_dynamic_kernel(**kernel_kwargs)
+     if is_w4a8:
+@@ -10974,8 +11235,8 @@ def _get_dynamic_kernel(
+             w1_n=activation_spec.w1_rows(n),
+             num_topk=num_topk,
+         )
+-    elif is_w6a8:
+-        launch = _DynamicMoEW6A8Launch(
++    elif is_byte_container:
++        launch = _DynamicMoEByteContainerLaunch(
+             kernel,
+             k=k,
+             n=n,
+@@ -11083,9 +11344,9 @@ def _get_dynamic_kernel(
+     if quant_mode == "w4a8_nvfp4":
+         padded_n = align_up(n, _LEVEL_TILE_N)
+         dynamic_w1_n = 2 * padded_n if activation_spec.is_gated else padded_n
+-    # w6a8_mx weight tensors are the 3:4-packed FP6 bytes, so their gmem K
++    # The MX-FP6 weight tensors are the 3:4-packed FP6 bytes, so their gmem K
+     # extent is 3K/4 one-byte elements (the kernel expands to full-K
+-    # byte-containers in smem).
++    # byte-containers in smem).  MXFP8 weights keep gmem K extent == logical K.
+     b_w13_fake = cute.runtime.make_fake_compact_tensor(
+         weight_dtype,
+         (dynamic_w1_n, 3 * k // 4 if is_w6a8 else k, E),
+@@ -11311,6 +11572,7 @@ def _launch_dynamic_flat(
+     planned_direct_routing: bool,
+     planned_num_tokens: int,
+ ) -> None:
++    """Launch the compiled dynamic MoE kernel over bound workspace and weight views."""
+     quant_mode = _normalize_quant_mode(quant_mode)
+     # Output rows follow the reduction contract, never an independent caller
+     # quantity: deterministic kernels write one row per route, others per token.
+@@ -11548,12 +11810,16 @@ def _launch_dynamic_flat(
+ 
+     ids_cutlass_dtype = cutlass.Int32 if topk_ids_are_i32 else cutlass.Int64
+     ids_align = 4 if topk_ids_are_i32 else 8
+-    # w6a8_mx stages MXFP8-E4M3 byte-containers in packed_a and UE8M0 K/32
+-    # block scales (weight SFBs included); the FP4 recipes keep the FP4x2
+-    # packed view and E4M3 vec16 scale pointers.
+-    is_w6a8 = quant_mode in _W6A8_QUANT_MODES
+-    packed_a_cutlass_dtype = cutlass.Float8E4M3FN if is_w6a8 else cutlass.Float4E2M1FN
+-    sf_cutlass_dtype = cutlass.Float8E8M0FNU if is_w6a8 else cutlass.Float8E4M3FN
++    # The MX byte-container recipes stage one E4M3 byte per activation element
++    # in packed_a and UE8M0 K/32 block scales (weight SFBs included); the FP4
++    # recipes keep the FP4x2 packed view and E4M3 vec16 scale pointers.
++    is_byte_container = quant_mode in _MX_BYTE_CONTAINER_QUANT_MODES
++    packed_a_cutlass_dtype = (
++        cutlass.Float8E4M3FN if is_byte_container else cutlass.Float4E2M1FN
++    )
++    sf_cutlass_dtype = (
++        cutlass.Float8E8M0FNU if is_byte_container else cutlass.Float8E4M3FN
++    )
+     compiled(
+         _gptr(cutlass.BFloat16, a),
+         _gptr(ids_cutlass_dtype, flat_ids, ids_align),
+@@ -12931,10 +13197,6 @@ def b12x_moe_fp4(*, binding: TPMoEFP4Binding) -> torch.Tensor:
+         swiglu_beta,
+     )
+     w13_layout = _normalize_w13_layout_for_activation(activation, w13_layout)
+-    _validate_fp4_source_format_for_quant_mode(
+-        source_format=source_format,
+-        quant_mode=quant_mode,
+-    )
+     if activation_amax is not None and quant_mode != "w4a16":
+         raise NotImplementedError(
+             "activation_amax calibration is only supported for W4A16"
+@@ -13188,6 +13450,11 @@ def b12x_moe_fp4(*, binding: TPMoEFP4Binding) -> torch.Tensor:
+                 k,
+                 activation_spec=activation_spec,
+             )
++        elif quant_mode == "w8a8_mx":
++            # Weight preparation validated the MXFP8 geometry and resolved the
++            # launch views once (_prepare_w8a8_from_mxfp8_source); the planner
++            # guarantees the representation exists (representation_for).
++            wv = prepared_payload.launch_views
+         elif prepared_payload is not None and quant_mode == "w4a8_mx":
+             wv = _w4a8_prepared_weight_views(
+                 prepared_payload,
+diff --git a/b12x/moe/fused_moe/_tuning.py b/b12x/moe/fused_moe/_tuning.py
+index 8cb19b3..39aca88 100644
+--- a/b12x/moe/fused_moe/_tuning.py
++++ b/b12x/moe/fused_moe/_tuning.py
+@@ -298,6 +298,7 @@ def validate_moe_decode_config(
+     config: MoeDecodeConfig,
+     _device: DeviceIdentity | None,
+ ) -> None:
++    """Reject a decode config the query's recipe cannot execute."""
+     _validate_block_moe_launch(query, config)
+     if query.source_format in BLOCK_CODECS:
+         if query.quant_mode != "w4a16" or query.io_dtype != "bfloat16":
+@@ -368,8 +369,13 @@ def validate_moe_decode_config(
+             raise ValueError("the W4A16 backend requires quant_mode='w4a16'")
+         if config.w4a16_route_mode is not None:
+             raise ValueError("w4a16_route_mode is only valid for W4A16")
+-    if query.quant_mode == "w6a8_mx" and config.backend != "dynamic":
+-        raise ValueError("W6A8-MX queries require the dynamic backend")
++    if (
++        query.quant_mode in {"w6a8_mx", "w8a8_mx"}
++        and config.backend != "dynamic"
++    ):
++        raise ValueError(
++            "MX byte-container queries require the dynamic backend"
++        )
+     if config.route_planner not in {"internal", "triton"}:
+         raise ValueError(f"unsupported MoE route planner {config.route_planner!r}")
+     if config.route_planner == "triton" and config.backend != "dynamic":
+@@ -419,6 +425,15 @@ def validate_moe_decode_config(
+     if config.backend == "dynamic":
+         if config.dynamic_tile_m not in {16, 32, 64, 128}:
+             raise ValueError("dynamic_tile_m must be one of 16, 32, 64, 128")
++        if (
++            query.quant_mode in {"w6a8_mx", "w8a8_mx"}
++            and config.dynamic_tile_m != 128
++        ):
++            # The MX byte-container dynamic kernels build only the (128, 128)
++            # MMA tile; a smaller declared tile could not be materialized.
++            raise ValueError(
++                "MX byte-container recipes require the production M128 dynamic tile"
++            )
+         if config.dynamic_route_mode not in {"direct", "grouped"}:
+             raise ValueError("dynamic_route_mode must be 'direct' or 'grouped'")
+     elif config.dynamic_tile_m is not None:
+@@ -478,8 +493,13 @@ def _materialize_tuning(query, device, choice):
+     if config.backend == "micro" and not _policy_micro_supported(effective_query):
+         raise ValueError("micro MoE does not support this concrete query")
+     if config.backend == "dynamic":
+-        if effective_query.quant_mode == "w6a8_mx" and config.dynamic_tile_m != 128:
+-            raise ValueError("W6A8-MX requires the production M128 dynamic tile")
++        if (
++            effective_query.quant_mode in {"w6a8_mx", "w8a8_mx"}
++            and config.dynamic_tile_m != 128
++        ):
++            raise ValueError(
++                "MX byte-container recipes require the production M128 dynamic tile"
++            )
+         try:
+             _dynamic_direct_routing_selected(
+                 route_mode=config.dynamic_route_mode,
+diff --git a/b12x/moe/fused_moe/planning.py b/b12x/moe/fused_moe/planning.py
+index a032849..e0402e6 100644
+--- a/b12x/moe/fused_moe/planning.py
++++ b/b12x/moe/fused_moe/planning.py
+@@ -101,10 +101,13 @@ class WeightPlan:
+ 
+ 
+ def _packed_recipe(source: PackedSource, mode: ActivationMode) -> str:
++    """Map a packed source format and activation mode to its quant recipe."""
+     source_format = source.format.value
+     if mode is ActivationMode.A16:
+-        if source_format == "mxfp6_e2m3":
+-            raise ValueError("MXFP6 weights require A8 activations")
++        if source_format in ("mxfp6_e2m3", "mxfp8_e8m0_k32"):
++            raise ValueError(
++                f"{source_format} weights require A8 activations"
++            )
+         return "w4a16"
+     if mode is ActivationMode.A4:
+         if source_format != "modelopt_nvfp4":
+@@ -115,6 +118,7 @@ def _packed_recipe(source: PackedSource, mode: ActivationMode) -> str:
+             "fp4_e8m0_k32": "w4a8_mx",
+             "modelopt_nvfp4": "w4a8_nvfp4",
+             "mxfp6_e2m3": "w6a8_mx",
++            "mxfp8_e8m0_k32": "w8a8_mx",
+         }[source_format]
+     except KeyError as exc:
+         raise ValueError(
+@@ -164,6 +168,7 @@ def _prepared_format(
+     recipe: str,
+     constraints: WeightPlanConstraints,
+ ) -> PreparedWeightFormat:
++    """Resolve the prepared weight format for a recipe from the preparation plan."""
+     available = frozenset(WeightPacking(layout.value) for layout in plan.weight_layouts)
+     required = plan.required_weight_layout(recipe)
+     default_packing = (
+@@ -185,6 +190,8 @@ def _prepared_format(
+             WeightEncoding(source.format.value) if source.format.value in BLOCK_CODECS else
+             WeightEncoding.FP6_E2M3
+             if source.format.value == "mxfp6_e2m3"
++            else WeightEncoding.FP8_E4M3
++            if source.format.value == "mxfp8_e8m0_k32"
+             else WeightEncoding.FP4_E2M1
+         )
+         scales = ScaleEncoding(plan.specs[0].weight_scale.value)
+diff --git a/b12x/moe/fused_moe/source.py b/b12x/moe/fused_moe/source.py
+index 0c32132..a410d9d 100644
+--- a/b12x/moe/fused_moe/source.py
++++ b/b12x/moe/fused_moe/source.py
+@@ -17,6 +17,7 @@ class PackedSourceFormat(str, Enum):
+     MODELOPT_NVFP4 = "modelopt_nvfp4"
+     COMPRESSED_TENSORS_FP4 = "compressed_tensors"
+     MXFP6_E8M0_K32 = "mxfp6_e2m3"
++    MXFP8_E8M0_K32 = "mxfp8_e8m0_k32"
+     IQ2_XS = "iq2_xs"
+     IQ2_XXS = "iq2_xxs"
+     Q8_0 = "q8_0"
+diff --git a/b12x/moe/fused_moe/weights.py b/b12x/moe/fused_moe/weights.py
+index be6951e..888a23a 100644
+--- a/b12x/moe/fused_moe/weights.py
++++ b/b12x/moe/fused_moe/weights.py
+@@ -21,6 +21,7 @@ class WeightEncoding(str, Enum):
+ 
+     FP4_E2M1 = "fp4_e2m1"
+     FP6_E2M3 = "fp6_e2m3"
++    FP8_E4M3 = "fp8_e4m3"
+     TRELLIS = "trellis"
+     IQ2_XS = "iq2_xs"
+     IQ2_XXS = "iq2_xxs"

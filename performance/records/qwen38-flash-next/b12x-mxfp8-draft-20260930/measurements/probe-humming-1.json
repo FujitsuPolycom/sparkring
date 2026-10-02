@@ -1,0 +1,411 @@
+{
+  "label": "humming draft",
+  "requests": 48,
+  "concurrency": 4,
+  "max_tokens": 384,
+  "temperature": 1.0,
+  "elapsed_s": 94.0,
+  "completion_tokens": 12593,
+  "counters": {
+    "drafts": 4698.0,
+    "draft_tokens": 14094.0,
+    "accepted_tokens": 7909.0
+  },
+  "acceptance_rate": 0.5611607776358735,
+  "accept_length": 2.6834823329076203,
+  "per_position_acceptance": {
+    "0": 0.7630906768837803,
+    "1": 0.542571306939123,
+    "2": 0.3778203490847169
+  },
+  "finish_reasons": {
+    "length": 12,
+    "stop": 36
+  },
+  "responses": [
+    {
+      "seed": 1001,
+      "prompt": "Explain how a hash map handles collisions, with a short Python example.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "f313a9b09fbca6c1d8ca7c5a970b5b1e899bacd018a81b3cfa3ac311a18ad208",
+      "chars": 1717
+    },
+    {
+      "seed": 1001,
+      "prompt": "Write a haiku sequence of four poems about autumn rain in a city.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "88de58d5f70b0de382358ce3361a56db1d2fc89c46c108c3b101e52daf4b4734",
+      "chars": 1042
+    },
+    {
+      "seed": 1001,
+      "prompt": "What is 17 * 23 + 144 / 12? Show your steps.",
+      "finish_reason": "stop",
+      "completion_tokens": 154,
+      "text_sha256": "83d8050619ed5c4041c3a0caa5df1179e76d59600d27e9bf8712616634129fd9",
+      "chars": 387
+    },
+    {
+      "seed": 1001,
+      "prompt": "Summarize the causes of the French Revolution in five bullet points.",
+      "finish_reason": "stop",
+      "completion_tokens": 136,
+      "text_sha256": "1b38d0176b64d08a4d24a7001688bc37e376dfd81d4a9dd6c6fcd61f8d4dc837",
+      "chars": 676
+    },
+    {
+      "seed": 1001,
+      "prompt": "Write a Python function that returns the n-th Fibonacci number iteratively, with a docstring.",
+      "finish_reason": "stop",
+      "completion_tokens": 274,
+      "text_sha256": "479b7ea8053d3ff31f0dc9d397985e9a165ebe04dc7beb87b03f2ff8e6bb8084",
+      "chars": 1005
+    },
+    {
+      "seed": 1001,
+      "prompt": "Describe the water cycle to a ten-year-old.",
+      "finish_reason": "stop",
+      "completion_tokens": 213,
+      "text_sha256": "4b11d8af4037c920b0807d21b7ce41080f7cde29232c068c72161dbc1aa5f896",
+      "chars": 951
+    },
+    {
+      "seed": 1001,
+      "prompt": "Translate into French: 'The library opens at nine and closes at six on weekdays.'",
+      "finish_reason": "stop",
+      "completion_tokens": 238,
+      "text_sha256": "08cb4293f4011abaf640acc560f0d53b3f68780818cd6ab65498ea2754489392",
+      "chars": 1009
+    },
+    {
+      "seed": 1001,
+      "prompt": "Give three arguments for and three against remote work.",
+      "finish_reason": "stop",
+      "completion_tokens": 207,
+      "text_sha256": "64cf4f3ea9c518462cdd881d60d915acb509cc45b6855abc461df2cd99b92a26",
+      "chars": 1049
+    },
+    {
+      "seed": 1001,
+      "prompt": "Write a SQL query that finds the five customers with the highest total order value.",
+      "finish_reason": "stop",
+      "completion_tokens": 249,
+      "text_sha256": "86b226b9f9bfcde894e4681da6160526768d094be5252c642a3a94c9fad4468d",
+      "chars": 1010
+    },
+    {
+      "seed": 1001,
+      "prompt": "Tell a short story about a robot that learns to paint.",
+      "finish_reason": "stop",
+      "completion_tokens": 249,
+      "text_sha256": "64753c3fc29b307dec19befa10704c59cee7898a54af911278d2665f553fd639",
+      "chars": 1079
+    },
+    {
+      "seed": 1001,
+      "prompt": "Explain the difference between TCP and UDP.",
+      "finish_reason": "stop",
+      "completion_tokens": 288,
+      "text_sha256": "63bc3081818236ade05c9464a2635c87efcc46295bfbe757bb8dff0f9d29d5fd",
+      "chars": 1236
+    },
+    {
+      "seed": 1001,
+      "prompt": "A train leaves at 14:10 and arrives at 17:45. How long is the journey in minutes?",
+      "finish_reason": "stop",
+      "completion_tokens": 120,
+      "text_sha256": "e29bd802821d16833122e84ed0fc7a31fe09d992448cab4c10e70a2cc2fa7b96",
+      "chars": 280
+    },
+    {
+      "seed": 1001,
+      "prompt": "Write a bash one-liner that counts lines in all .py files under the current directory.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "e05f2072f27509dd2bab2f297d1b31ce2b82491528cc6c8829c96dab4f391647",
+      "chars": 1277
+    },
+    {
+      "seed": 1001,
+      "prompt": "What are the main differences between mitosis and meiosis?",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "0a2dabb1b2a964d981d613a169db103233ff92b8d8e97bb8319228a65e6d9560",
+      "chars": 1608
+    },
+    {
+      "seed": 1001,
+      "prompt": "Draft a polite email asking a colleague to review a pull request by Friday.",
+      "finish_reason": "stop",
+      "completion_tokens": 113,
+      "text_sha256": "69ab14a3259be2b093d44dff159581f5b865a2b71f6a7c35453b4b8b27bcdb97",
+      "chars": 466
+    },
+    {
+      "seed": 1001,
+      "prompt": "Explain what a closure is in JavaScript with an example.",
+      "finish_reason": "stop",
+      "completion_tokens": 321,
+      "text_sha256": "4a9f500fcad686c90f05004c141866769304680a24c6b797251279b9a8ec4465",
+      "chars": 1418
+    },
+    {
+      "seed": 1001,
+      "prompt": "List the planets of the solar system with one fact about each.",
+      "finish_reason": "stop",
+      "completion_tokens": 206,
+      "text_sha256": "4fc75e654c00529700d870959795ef304a719fa97be056a9483b9141b162c48c",
+      "chars": 774
+    },
+    {
+      "seed": 1001,
+      "prompt": "Write a limerick about a cat who loves coffee.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "aa66f84e6baaf6dc30d6dc9f56cccddbcd0758f01c7c4e971c837064a11a8940",
+      "chars": 1261
+    },
+    {
+      "seed": 1001,
+      "prompt": "How does public-key cryptography let two strangers communicate securely?",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "d01dc01a3fed5be98e81d556b8196def8423e13842444d6e86be51783fc83590",
+      "chars": 1919
+    },
+    {
+      "seed": 1001,
+      "prompt": "Write a Rust function that reverses a string slice and returns a String.",
+      "finish_reason": "stop",
+      "completion_tokens": 217,
+      "text_sha256": "f7d6a5876444a91292e18c4df15953bed4d50d81ddc338a591bfe0e40be69b89",
+      "chars": 915
+    },
+    {
+      "seed": 1001,
+      "prompt": "Compare the climates of Norway and Spain in one paragraph.",
+      "finish_reason": "stop",
+      "completion_tokens": 175,
+      "text_sha256": "f86538169a70287937b14a7b185973625c1178690cb15925823f9aef1d93b380",
+      "chars": 878
+    },
+    {
+      "seed": 1001,
+      "prompt": "Solve for x: 3x + 7 = 2x - 5. Explain each step.",
+      "finish_reason": "stop",
+      "completion_tokens": 185,
+      "text_sha256": "b5fab803b5e63417ccbbeade8bdb6c7c143d95f9d64158060f68a77a14b879ab",
+      "chars": 407
+    },
+    {
+      "seed": 1001,
+      "prompt": "Describe a recipe for a simple tomato pasta sauce.",
+      "finish_reason": "stop",
+      "completion_tokens": 337,
+      "text_sha256": "349e25b0b049f64770e8fa6fbe8952bea65c789b7bc7be113e4ac024ea1e7be3",
+      "chars": 1255
+    },
+    {
+      "seed": 1001,
+      "prompt": "Explain gradient descent and the role of the learning rate.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "dd6a23dcba82826567aacf1528745649dbb0508fb1c0757907bf96dfe4bf0825",
+      "chars": 1615
+    },
+    {
+      "seed": 2002,
+      "prompt": "Explain how a hash map handles collisions, with a short Python example.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "53ac0801da4eaf763494b3f5c1e3a680336c0edf72798e45e8b769d6780e1d8a",
+      "chars": 1750
+    },
+    {
+      "seed": 2002,
+      "prompt": "Write a haiku sequence of four poems about autumn rain in a city.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "d7b07dc1d44b542fbbe8838ee709de442adceafa3cf6619e93fce92a8d956bce",
+      "chars": 1040
+    },
+    {
+      "seed": 2002,
+      "prompt": "What is 17 * 23 + 144 / 12? Show your steps.",
+      "finish_reason": "stop",
+      "completion_tokens": 167,
+      "text_sha256": "e243380a859d5d33efa494d5889dbeb459a95b9ff053057b08fe41e5365bbbd9",
+      "chars": 361
+    },
+    {
+      "seed": 2002,
+      "prompt": "Summarize the causes of the French Revolution in five bullet points.",
+      "finish_reason": "stop",
+      "completion_tokens": 158,
+      "text_sha256": "88d4bf2285f085709374d571a1e73df16e6265b459fe48ec471a752830b6ee67",
+      "chars": 798
+    },
+    {
+      "seed": 2002,
+      "prompt": "Write a Python function that returns the n-th Fibonacci number iteratively, with a docstring.",
+      "finish_reason": "stop",
+      "completion_tokens": 278,
+      "text_sha256": "b6a870eec043505eed54782d0218b4f7dfc325981d00bf588e002c8f5fd32aea",
+      "chars": 984
+    },
+    {
+      "seed": 2002,
+      "prompt": "Describe the water cycle to a ten-year-old.",
+      "finish_reason": "stop",
+      "completion_tokens": 199,
+      "text_sha256": "097fb8055f061ae97e493e48b0f85263ef8a35c098b452f6212fcb05090cc6a0",
+      "chars": 848
+    },
+    {
+      "seed": 2002,
+      "prompt": "Translate into French: 'The library opens at nine and closes at six on weekdays.'",
+      "finish_reason": "stop",
+      "completion_tokens": 334,
+      "text_sha256": "6167711a2df6e84fde9dd7e9c5eccc93158d6fb5362a1b4008952f48fcc6b44e",
+      "chars": 1395
+    },
+    {
+      "seed": 2002,
+      "prompt": "Give three arguments for and three against remote work.",
+      "finish_reason": "stop",
+      "completion_tokens": 225,
+      "text_sha256": "71a08ef1777ecfd7fa7869067de956cc16347faf21ddc9a3722b7093dc4ba4c6",
+      "chars": 1087
+    },
+    {
+      "seed": 2002,
+      "prompt": "Write a SQL query that finds the five customers with the highest total order value.",
+      "finish_reason": "stop",
+      "completion_tokens": 185,
+      "text_sha256": "111f1d401bb5cbeabe9915644bfb597f30497182f9855834acfd003c5c60b816",
+      "chars": 717
+    },
+    {
+      "seed": 2002,
+      "prompt": "Tell a short story about a robot that learns to paint.",
+      "finish_reason": "stop",
+      "completion_tokens": 211,
+      "text_sha256": "6a4ae1c4dfe9a0ba7e07f444fc1e1af677e896995e52c4f15e142ef20d4f6611",
+      "chars": 894
+    },
+    {
+      "seed": 2002,
+      "prompt": "Explain the difference between TCP and UDP.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "8acc70310c91f7960cf4222692fed202600ed98152e64b92db06734678bfe2b9",
+      "chars": 1723
+    },
+    {
+      "seed": 2002,
+      "prompt": "A train leaves at 14:10 and arrives at 17:45. How long is the journey in minutes?",
+      "finish_reason": "stop",
+      "completion_tokens": 58,
+      "text_sha256": "47812ea77aa5e4e4318b2ef2cc7a071819f159eefa7a59b7f6f8f3fa87dc8f30",
+      "chars": 160
+    },
+    {
+      "seed": 2002,
+      "prompt": "Write a bash one-liner that counts lines in all .py files under the current directory.",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "f0965e17d1941dba1a4b870b02be3cee1c3e062d079dddb0899ac6a637c1dc48",
+      "chars": 1367
+    },
+    {
+      "seed": 2002,
+      "prompt": "What are the main differences between mitosis and meiosis?",
+      "finish_reason": "stop",
+      "completion_tokens": 307,
+      "text_sha256": "369a71438fe57fcd62a9c3fc34b3f6dc7aac2ea1c6bf62d56b4a4dc6bb506d40",
+      "chars": 1283
+    },
+    {
+      "seed": 2002,
+      "prompt": "Draft a polite email asking a colleague to review a pull request by Friday.",
+      "finish_reason": "stop",
+      "completion_tokens": 157,
+      "text_sha256": "f718a4858dab11ea26dc06697da09ac26e14fc5c527626aca7a45f9c9893184b",
+      "chars": 672
+    },
+    {
+      "seed": 2002,
+      "prompt": "Explain what a closure is in JavaScript with an example.",
+      "finish_reason": "stop",
+      "completion_tokens": 264,
+      "text_sha256": "36249f71c7996b75540457d8497f92756e3ed9258824e31542ea3d5eb5bae430",
+      "chars": 1131
+    },
+    {
+      "seed": 2002,
+      "prompt": "List the planets of the solar system with one fact about each.",
+      "finish_reason": "stop",
+      "completion_tokens": 235,
+      "text_sha256": "f6938d6e9d6038475b1cf41a107e7f16263e9c120c0136f131cf9696dc6a5f37",
+      "chars": 987
+    },
+    {
+      "seed": 2002,
+      "prompt": "Write a limerick about a cat who loves coffee.",
+      "finish_reason": "stop",
+      "completion_tokens": 354,
+      "text_sha256": "26b310d847b4a772a42acd7a20f8922b60efc03273608cc5a04eeb58b68eef46",
+      "chars": 1198
+    },
+    {
+      "seed": 2002,
+      "prompt": "How does public-key cryptography let two strangers communicate securely?",
+      "finish_reason": "length",
+      "completion_tokens": 384,
+      "text_sha256": "0deb495b0ec559a171222e41d9462c2e4d34690346cff0ea6d43dcc4aff45b79",
+      "chars": 1768
+    },
+    {
+      "seed": 2002,
+      "prompt": "Write a Rust function that reverses a string slice and returns a String.",
+      "finish_reason": "stop",
+      "completion_tokens": 240,
+      "text_sha256": "077e5bc76925d5c36c4457a158e60088e589e00e552681264bc91d7623f2039a",
+      "chars": 1044
+    },
+    {
+      "seed": 2002,
+      "prompt": "Compare the climates of Norway and Spain in one paragraph.",
+      "finish_reason": "stop",
+      "completion_tokens": 116,
+      "text_sha256": "f6d67c95414cde5b1aa256e785f4740cf895d1992bd0752d696b031791501c1f",
+      "chars": 569
+    },
+    {
+      "seed": 2002,
+      "prompt": "Solve for x: 3x + 7 = 2x - 5. Explain each step.",
+      "finish_reason": "stop",
+      "completion_tokens": 217,
+      "text_sha256": "2de8817b1a6a0726eb47c04c095f5a8fac9526b812d0c90dfc5ad6fbeffc4292",
+      "chars": 478
+    },
+    {
+      "seed": 2002,
+      "prompt": "Describe a recipe for a simple tomato pasta sauce.",
+      "finish_reason": "stop",
+      "completion_tokens": 304,
+      "text_sha256": "fc9e70ed202519f0de8f6d93906f3297ee24167f67b09a45ff8e3bb082dcb891",
+      "chars": 1165
+    },
+    {
+      "seed": 2002,
+      "prompt": "Explain gradient descent and the role of the learning rate.",
+      "finish_reason": "stop",
+      "completion_tokens": 294,
+      "text_sha256": "a926f69cbb4c7d60d7225b7e292b424f66dec14f1310c5e97ffd2e83a6359f69",
+      "chars": 1349
+    }
+  ]
+}

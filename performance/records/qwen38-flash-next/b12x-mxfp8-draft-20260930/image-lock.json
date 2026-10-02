@@ -1,0 +1,17 @@
+{
+  "composition_sha256": "46ecfc99659799934e7429fb0f8c80310b93aee485337114139bb5fe1df096d4",
+  "download_bytes": 15236308300,
+  "image_bytes": 31657623155,
+  "image_id": "sha256:b17bd097598ef51e8283958241c31d3ec11937c280bff2fd2bfa4a3808db7508",
+  "image_reference": "sha256:b17bd097598ef51e8283958241c31d3ec11937c280bff2fd2bfa4a3808db7508",
+  "name": "research-20260930-b12xmxfp8-cuda1342-nccl2323-status033",
+  "parent_receipt_sha256": "af8938c6d5ee5cbebe3bed24cfaf29845120651fbe9dd98e7a190782113fb63d",
+  "profiles": [
+    "qwen38-flash-next-tp2"
+  ],
+  "schema": "sparkring-installer-image/v2",
+  "status_version": "0.3.3",
+  "toolchain_receipt_sha256": "e0446688b26c157538c73c4ad5c9cfad10bc984b384996eee07275cfbdbd5f46",
+  "transport_manifest_sha256": "9f2c0ae62e1e045b0c90dab99313de2f627f2a2f8bc68143c50eafa0531cf27c",
+  "transport_profile": "tp2-rocenante-adaptive-prepared"
+}
