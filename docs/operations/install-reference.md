@@ -1536,24 +1536,24 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
-- On two Sparks the Qwen `qad-step5500-mxfp8-attention` entry is
-  **implemented** on the installer image. On one pair, `sudo sparkring
-  install` derived it from scratch: it downloaded the 2 donor files
-  (2.6 GiB) in 31 s, wrote the 6 derived files in 32 s and copied them to the
-  other Spark in 6 s, each matching the manifest. Served from it, the pair
-  passed all 7 functional checks and a 256-request correctness screen with no
-  degenerate or failed response, and against stock step 5500 on the same
-  pair and image, two runs each, ran 17%, 8% and 7% more decode steps per
-  second at 1, 8 and 16 streams (27.3 / 92.2 / 130.8 against 23.3 / 85.5 /
-  122.1) and prefilled 4.2 to 5.3% faster ([record](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md)). It costs a
-  little quality: the [research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md)
+- The Qwen `qad-step5500-mxfp8-attention` entry is **implemented** on the
+  installer image on two and four Sparks. On one pair and one four-Spark
+  ring, `sudo sparkring install` derived it on the Sparks (on the pair,
+  including the 2.6 GiB donor download in 31 s; the recipe took 32 s and
+  39.5 s), every file matching the manifest. Served from it, each passed all
+  7 functional checks and a 256-request correctness screen with no
+  degenerate or failed response. Against stock step 5500 on the same
+  cluster and image, two runs each, it ran more decode steps per second at
+  1, 8 and 16 streams: 17%, 8% and 7% more on the pair (27.3 / 92.2 / 130.8
+  against 23.3 / 85.5 / 122.1) and 8%, 4% and 1% more on the ring (36.8 /
+  124.5 / 178.9 against 34.0 / 119.5 / 176.9), and prefilled 4.2 to 5.3% and
+  1.9 to 2.3% faster ([pair](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md), [ring](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-qad-tp4-qad-step5500-mxfp8-attention-20261002.md)). It
+  costs a little quality: the [research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md)
   measured, over a 9,708-token log-likelihood check, a mean negative
   log-likelihood 0.0045 and 0.0063 nats per token above step 5500's, about
   0.5% in perplexity, against 0.0003 and 0.0015 between two runs of one
-  checkpoint, and 1.19 GiB less weight memory on each Spark. It is never a
-  profile's default. On four Sparks
-  the entry is **research-only**: no four-Spark installation of it has been
-  measured.
+  checkpoint, and 1.19 GiB less weight memory on each Spark of a pair. It is
+  never a profile's default.
 - The Qwen `jmni-qad5500-hybrid` entry is **research-only** and third-party:
   JMNI Labs built it from Local Inference Lab's published tensors, and Local
   Inference Lab has not reviewed or qualified it. Its model card reports, on
