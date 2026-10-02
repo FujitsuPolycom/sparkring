@@ -356,14 +356,30 @@ def existing_deployment(profile, instance="main"):
     return directory
 
 
-def model_site(cluster, profile, instance="main"):
+def model_site(cluster, profile, instance="main", placement=None):
+    """The raw site of a deployment of ``profile`` on the cluster's Sparks.
+
+    Without ``placement`` the site holds every Spark, each at port 0's primary
+    fabric function. With a placement (``runtime.host.placement``) it holds
+    the two Sparks of that ring half, each at the port functions facing its
+    partner, records the placement, and keeps Node A as the controller. The
+    API address is Node A's recorded LAN address, or for half (2, 3) the one
+    ``placement.api_address`` gives.
+    """
+    from runtime.host import placement as placements
     plan = cluster["plan"]
     rows = []
     identities = plan.get("nodes", [])
-    for rank, host in enumerate(plan["spec"]["hosts"]):
-        port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
-        rows.append({"host": host["host"], "management_ip": host["management_address"],
-                     "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
+    ranks = list(range(len(plan["spec"]["hosts"]))) if placement is None else list(placement)
+    fabric = placements.fabric_rows(cluster, placement) if placement is not None else None
+    for index, rank in enumerate(ranks):
+        host = plan["spec"]["hosts"][rank]
+        if fabric is None:
+            port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
+            rows.append({"host": host["host"], "management_ip": host["management_address"],
+                         "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
+        else:
+            rows.append(dict(fabric[index]))
         if len(identities) == len(plan["spec"]["hosts"]) and isinstance(identities[rank], dict) and identities[rank].get("node_id"):
             rows[-1]["node_id"] = identities[rank]["node_id"]
     import re
@@ -373,9 +389,14 @@ def model_site(cluster, profile, instance="main"):
     name = cluster["name"][:12] + "-" + profile[:18] + "-" + hashlib.sha256(identity.encode()).hexdigest()[:6]
     result = {"schema": "sparkring-install-site/v1", "name": name,
               "workspace": "/srv/sparkring/" + cluster["name"] + "/" + identity,
-              "hosts": rows, "controller_address": rows[0]["management_ip"]}
-    if cluster.get("api_address"):
-        result["api_address"] = cluster["api_address"]
+              "hosts": rows, "controller_address": plan["spec"]["hosts"][0]["management_address"]}
+    address = cluster.get("api_address")
+    if placement is not None and placement[0] != 0:
+        address, _ = placements.api_address(cluster, placement)
+    if address:
+        result["api_address"] = address
+    if placement is not None:
+        result["placement"] = list(placement)
     return result
 
 

@@ -100,6 +100,14 @@ class Transport:
         self.config.write_text("\n".join(lines) + "\n", encoding="utf-8")
         self.config.chmod(0o600)
 
+    def local(self, rank):
+        """Whether rank ``rank`` is Node A, which runs this transport's commands itself."""
+        return rank == 0
+
+    def view(self, ranks):
+        """This transport limited to ``ranks``, renumbered from 0 in that order (``View``)."""
+        return View(self, ranks)
+
     def argv(self, rank):
         if rank == 0:
             return []
@@ -139,3 +147,33 @@ class Transport:
             if result.stdout.strip() != host["node_id"]:
                 raise ValueError(f"Node {rank}: fabric path reached a different persistent node identity")
         return {"transport": self.mode, "ranks": len(self.hosts), "caller_relay": False}
+
+
+class View:
+    """A transport limited to some of the cluster's ranks, renumbered from 0 in their order.
+
+    A deployment on half of a four-Spark ring numbers its two Sparks 0 and 1;
+    checkpoint transfers address them by those numbers, and this view sends
+    each command to the cluster rank it stands for. Node A runs a rank's
+    commands itself only when that rank is Node A (``local``).
+    """
+
+    def __init__(self, transport, ranks):
+        self.transport, self.ranks = transport, list(ranks)
+        self.hosts = [transport.hosts[rank] for rank in self.ranks]
+        self.mode = transport.mode
+
+    def local(self, rank):
+        return self.transport.local(self.ranks[rank])
+
+    def argv(self, rank):
+        return self.transport.argv(self.ranks[rank])
+
+    def command(self, rank, argv):
+        return self.transport.command(self.ranks[rank], argv)
+
+    def forwarded(self, rank, remote_port, local_port, argv):
+        return self.transport.forwarded(self.ranks[rank], remote_port, local_port, argv)
+
+    def verify(self):
+        return self.transport.verify()

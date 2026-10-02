@@ -142,8 +142,17 @@ class Assets:
         self.run, self.popen = run, popen
         self.download_limit = download_limit
 
+    def local(self, rank):
+        """Whether transport rank ``rank`` is Node A, which runs its commands itself without sudo.
+
+        A transport limited to a ring half (``fabric_ssh.View``) numbers its
+        Sparks from 0, so its rank 0 is Node A only on half (0, 1).
+        """
+        local = getattr(self.transport, "local", None)
+        return local(rank) if local is not None else rank == 0
+
     def command(self, rank, argv):
-        return self.transport.command(rank, argv if rank == 0 else ["sudo", "-n", *argv])
+        return self.transport.command(rank, argv if self.local(rank) else ["sudo", "-n", *argv])
 
     @staticmethod
     def code(function, *args, **kwargs):
@@ -425,8 +434,9 @@ class Assets:
         and ``--checksum``; ``model-transfer-complete`` then hashes each staged
         file and places it. Returns the result of ``model-transfer-complete``.
         """
-        if 0 not in (source, target) or source == target:
-            raise ValueError("rsync copies run between Node A and one other Spark")
+        if not (self.local(source) or self.local(target)) or source == target:
+            raise ValueError(f"rsync copies run between Node A and one other Spark; Node {source} and Node {target} "
+                             "copy only over their shared cable")
         subset = transfer_manifest(manifest, names)
         data = json.dumps(subset).encode()
         with progress.step(f"Node {target}: Copy checkpoint files from Node {source} over {self.transport.mode}"):
@@ -435,11 +445,11 @@ class Assets:
             if isinstance(prepared, dict) and isinstance(prepared.get("needed"), list):
                 needed = sorted(set(prepared["needed"]) & set(subset["files"]))
             if needed:
-                remote = source if source != 0 else target
+                remote = target if self.local(source) else source
                 ssh = shlex.join(self.transport.argv(remote)[:-1])
                 alias = self.transport.argv(remote)[-1]
-                origin = (alias + ":" if source != 0 else "") + rows[source]["model"] + "/"
-                destination = (alias + ":" if target != 0 else "") + rsync_staging(rows[target]["model"]) + "/"
+                origin = (alias + ":" if not self.local(source) else "") + rows[source]["model"] + "/"
+                destination = (alias + ":" if not self.local(target) else "") + rsync_staging(rows[target]["model"]) + "/"
                 progress.command([*RSYNC, "--files-from=-", "-e", ssh, origin, destination],
                                  title=f"Node {target}: Transfer checkpoint files", invoke=self.run, check=True,
                                  input=("\n".join(needed) + "\n").encode())
@@ -582,7 +592,8 @@ class Assets:
                 document = {"names": after["hub"]}
                 if self.download_limit:
                     document["limit"] = self.download_limit
-                meter = download_meter(rows[0]["model"], manifest, after["hub"])
+                # The meter reads the staging directory on Node A, so it reports only a download there.
+                meter = download_meter(rows[0]["model"], manifest, after["hub"]) if self.local(0) else None
                 with progress.step("Node 0: Download missing checkpoint files from huggingface.co", phase="model-fetch",
                                    report=meter):
                     outcome = operation(runner, 0, "model-fetch", json.dumps(document).encode())

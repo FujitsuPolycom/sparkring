@@ -1972,6 +1972,11 @@ def perform(operation, lock, number):
     if operation in ("gid-serve", "gid-check"):
         from runtime.host import roce_gid
         return (roce_gid.serve if operation == "gid-serve" else roce_gid.check)(row["hcas"], row["gid"])
+    if operation in ("ring-park", "ring-parked"):
+        if not lock["site"].get("placement"):
+            raise ValueError("Only a deployment on half of a four-Spark ring parks the ring's mesh")
+        from runtime.host import native_mesh
+        return native_mesh.park_local() if operation == "ring-park" else native_mesh.parked_local()
     if operation.startswith("mesh-"):
         from runtime.host import native_mesh
         if operation == "mesh-prepare":

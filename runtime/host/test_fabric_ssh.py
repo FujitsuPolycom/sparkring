@@ -57,3 +57,16 @@ def test_fabric_peer_must_match_the_enrolled_node_id(tmp_path):
     transport = fabric_ssh.Transport(value, tmp_path / "ssh", root=tmp_path, run=run)
     with pytest.raises(ValueError, match="node identity"):
         transport.verify()
+
+
+def test_a_view_numbers_a_halfs_sparks_from_zero_and_sends_each_command_to_its_spark(tmp_path):
+    value = cluster(4)
+    def run(argv, **kwargs):
+        return SimpleNamespace(stdout="hostname 192.0.2.8\nuser root\nport 22\n")
+    transport = fabric_ssh.Transport(value, tmp_path / "ssh", root=tmp_path, run=run)
+    view = transport.view((2, 3))
+    assert [host["rank"] for host in view.hosts] == [2, 3] and view.mode == transport.mode
+    assert view.command(0, ["true"]) == transport.command(2, ["true"]) == ["ssh", "-F", str(transport.config),
+                                                                          "sparkring-r2", "true"]
+    assert view.argv(1) == transport.argv(3) and not view.local(0)
+    assert transport.view((0, 1)).local(0) and transport.view((0, 1)).command(0, ["true"]) == ["true"]

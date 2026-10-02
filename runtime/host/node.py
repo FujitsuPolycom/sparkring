@@ -570,6 +570,17 @@ def orphaned_markers(report):
     return bool(report) and bool(report.get("markers")) and not report.get("active")
 
 
+def parked_mesh(reference, parked):
+    """Whether the mesh of site ``reference`` is among the ``parked`` units (``native_mesh.parked_units``)."""
+    if not parked:
+        return False
+    from runtime.host import native_mesh
+    try:
+        return native_mesh.mesh_unit(reference["site_path"]) in parked
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.time):
     """The ``sparkring-node-status/v1`` document of this Spark, as the agent records it every 30 seconds.
 
@@ -633,8 +644,11 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
         verify_persistence(config, facts, run=run)
         if config.get("ownership") == "observed" and config.get("native_mesh"):
             from runtime.common import qwen_mesh
+            from runtime.host import native_mesh
             mesh = config["native_mesh"]
-            qwen_mesh.check(mesh["reference"], config["rank"], mesh["hcas"], 3, mesh["host_ip"])
+            # A mesh parked while two-Spark models serve on the ring's halves is not checked.
+            if not parked_mesh(mesh.get("reference"), native_mesh.parked_units(root=root)):
+                qwen_mesh.check(mesh["reference"], config["rank"], mesh["hcas"], 3, mesh["host_ip"])
         elif config.get("ownership") != "observed" and call(["systemctl", "is-active", "sparkring-fabric.service"], run=run, accepted=(0, 3)).returncode:
             raise ValueError("Fabric service is not active; inspect journalctl -u sparkring-fabric")
         result.update(state="network-configured", next_action="sparkring models",
