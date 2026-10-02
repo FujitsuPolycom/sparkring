@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from runtime.common import installer
-from runtime.host import node
+from runtime.host import node, placement as placements
 
 # What the candidate's stop before preparation tells the operator, by the unfinished operation it clears.
 UNFINISHED = {"up": "This model's last start did not complete; it stops on every Spark first.",
@@ -10,8 +10,17 @@ UNFINISHED = {"up": "This model's last start did not complete; it stops on every
 
 
 def execute(directory, previous, *, state_root, prepare, apply, verify, supersede=False, serving=None,
-            unfinished=None):
+            unfinished=None, placement=None, displaced=()):
     """All mutations pass through deployment adapters; the active pointer commits last.
+
+    ``placement`` selects the slot (``runtime.host.placement``) whose switch
+    record and active pointer this switch uses: the whole cluster's
+    ``transaction.json`` and ``active.json`` for None, a ring half's under
+    ``slots/`` otherwise. ``displaced`` lists running deployments of the
+    conflicting slots. They stop after the previous deployment and before the
+    candidate starts; once the candidate is verified the conflicting slots
+    record no deployment, and when the switch fails the displaced deployments
+    start again with the previous deployment.
 
     When the candidate is the active deployment, ``serving(directory)`` tells
     whether it serves on every rank; one that does not stops before it starts
@@ -28,10 +37,14 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
     directory = Path(directory).resolve()
     previous = Path(previous).resolve() if previous else None
     state_root = Path(state_root)
+    displaced = [Path(path).resolve() for path in displaced]
     record = {"schema": "sparkring-install-transaction/v1", "candidate": str(directory),
               "previous": str(previous) if previous else None, "state": "preparing", "complete": False}
+    if displaced:
+        record["displaced"] = [str(path) for path in displaced]
     resume = False
-    journal = state_root / "transaction.json"
+    slot = placements.slot_directory(state_root, placement)
+    journal = slot / "transaction.json"
     if journal.exists():
         retained = installer.read(journal)
         pending = retained["state"] in ("stopping-previous", "starting", "verifying", "recovering-previous", "needs-attention")
@@ -59,10 +72,11 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
                                  f"other GPU workload is running to replace it ({journal})")
             record = retained
             previous = Path(record["previous"]) if record["previous"] else None
+            displaced = [Path(path) for path in record.get("displaced") or []]
             resume = True
     def save(state):
         record["state"] = state
-        node.save(state_root, "transaction.json", record, mode=0o600)
+        node.save(slot, "transaction.json", record, mode=0o600)
     # No other deployment is stopped if prerequisites, transfer, space or asset
     # verification fail. The existing active pointer remains authoritative.
     # Only a candidate whose own start or stop did not complete stops before
@@ -83,6 +97,7 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
             save("preparation-failed")
             raise
     switched = False
+    restore = ([previous] if previous is not None and previous != directory else []) + displaced
     try:
         if previous is not None and previous != directory:
             save("stopping-previous")
@@ -92,12 +107,17 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
             print("The installed model does not serve on every Spark; it stops on every Spark and starts again.")
             save("stopping-previous")
             apply(directory, "down")
+        for other in displaced:
+            save("stopping-previous")
+            switched = True
+            apply(other, "down")
         save("starting")
         apply(directory, "up")
         save("verifying")
         observed = verify(directory)
         record["verification"] = observed
-        node.save(state_root, "active.json", {"path": str(directory)}, mode=0o600)
+        node.save(slot, "active.json", {"path": str(directory)}, mode=0o600)
+        placements.clear_conflicting(state_root, placement)
         record["complete"] = True
         save("complete")
         return record
@@ -108,12 +128,17 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
             try:
                 apply(directory, "down")
                 # A failure while stopping the previous cluster may have left
-                # only some ranks stopped. Reconcile that retained operation
+                # only some ranks stopped. Reconcile each retained operation
                 # before asking its own source version to bring it back.
-                apply(previous, "down")
-                apply(previous, "up")
-                record["recovery_verification"] = verify(previous)
-                node.save(state_root, "active.json", {"path": str(previous)}, mode=0o600)
+                for other in restore:
+                    apply(other, "down")
+                for other in restore:
+                    apply(other, "up")
+                record["recovery_verification"] = [verify(other) for other in restore]
+                if len(restore) == 1:
+                    record["recovery_verification"] = record["recovery_verification"][0]
+                if previous is not None and previous != directory:
+                    node.save(slot, "active.json", {"path": str(previous)}, mode=0o600)
                 record["recovered"] = True
                 save("failed-recovered")
             except Exception as recovery:
@@ -125,6 +150,6 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
         raise RuntimeError("Installation did not complete; " + record["state"] + ": " + str(error)) from error
 
 
-def active(state_root):
-    path = Path(state_root) / "active.json"
-    return Path(installer.read(path)["path"]) if path.exists() else None
+def active(state_root, placement=None):
+    """The deployment the slot of ``placement`` records active; the whole cluster's for None."""
+    return placements.recorded(state_root, placement)

@@ -84,8 +84,8 @@ def test_half_two_three_advertises_spark_twos_own_lan_address():
     plan = value["plan"]
     routes(plan, 2, [{"dst": "default", "dev": "enP7s7"}],
            [{"name": "enP7s8", "ipv4": ["169.254.3.1/16"]}])
-    plan["inventory"]["hosts"]["root@192.0.2.12"]["interfaces"][0]["ipv4"] = ["192.168.50.12/24"]
-    assert placement.api_address(value, (2, 3)) == ("192.168.50.12", None)
+    plan["inventory"]["hosts"]["root@192.0.2.12"]["interfaces"][0]["ipv4"] = ["198.51.100.12/24"]
+    assert placement.api_address(value, (2, 3)) == ("198.51.100.12", None)
     assert placement.api_address(value, (0, 1)) == (None, None)
     routes(plan, 2, [{"dst": "default", "dev": "sr-control"}])
     address, note = placement.api_address(value, (2, 3))
@@ -94,17 +94,17 @@ def test_half_two_three_advertises_spark_twos_own_lan_address():
 
 def test_a_half_site_records_its_placement_fabric_and_api_address():
     value = cluster(4)
-    value["api_address"] = "192.168.50.10"
+    value["api_address"] = "198.51.100.10"
     plan = value["plan"]
-    plan["inventory"]["hosts"]["root@192.0.2.12"]["interfaces"][0]["ipv4"] = ["192.168.50.12/24"]
+    plan["inventory"]["hosts"]["root@192.0.2.12"]["interfaces"][0]["ipv4"] = ["198.51.100.12/24"]
     site = controller.model_site(value, GLM, "iabc", (2, 3))
-    assert site["placement"] == [2, 3] and site["api_address"] == "192.168.50.12"
+    assert site["placement"] == [2, 3] and site["api_address"] == "198.51.100.12"
     assert site["controller_address"] == "192.0.2.10"
     assert [(row["host"], row["fabric_ip"], row["interface"], row["hcas"], row["node_id"]) for row in site["hosts"]] == [
         ("root@192.0.2.12", "198.18.3.1", "enp1s0f0np0", ["rocep1s0f0", "roceP2p1s0f0"], plan["nodes"][2]["node_id"]),
         ("root@192.0.2.13", "198.18.3.2", "enp1s0f1np1", ["rocep1s0f1", "roceP2p1s0f1"], plan["nodes"][3]["node_id"])]
     first = controller.model_site(value, QWEN, "iabd", (0, 1))
-    assert first["api_address"] == "192.168.50.10" and first["placement"] == [0, 1]
+    assert first["api_address"] == "198.51.100.10" and first["placement"] == [0, 1]
 
 
 def environment(lock, rank):

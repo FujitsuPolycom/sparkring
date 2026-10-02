@@ -751,23 +751,29 @@ def roles(state_root):
 
     The active deployment is ``active.json``'s. ``transaction.json`` names the
     rollback target (``previous``) and, while a model switch has not settled,
-    the candidate being switched to.
+    the candidate being switched to. Each half of a four-Spark ring keeps
+    its own records under ``slots/`` (``runtime.host.placement``); the models a
+    switch stopped in other slots (``displaced``) are rollback targets too.
     """
     state_root = Path(state_root)
     result = {}
-    try:
-        transaction = _read(state_root / "transaction.json")
-    except (OSError, ValueError):
-        transaction = {}
-    if isinstance(transaction, dict):
-        if transaction.get("candidate") and transaction.get("state") not in SETTLED:
-            result[os.path.realpath(transaction["candidate"])] = "switching"
-        if transaction.get("previous"):
-            result[os.path.realpath(transaction["previous"])] = "rollback"
-    try:
-        result[os.path.realpath(_read(state_root / "active.json")["path"])] = "active"
-    except (OSError, ValueError, KeyError, TypeError):
-        pass
+    folders = [state_root, *sorted(path for path in (state_root / "slots").glob("*") if path.is_dir())]
+    for folder in folders:
+        try:
+            transaction = _read(folder / "transaction.json")
+        except (OSError, ValueError):
+            transaction = {}
+        if isinstance(transaction, dict):
+            if transaction.get("candidate") and transaction.get("state") not in SETTLED:
+                result[os.path.realpath(transaction["candidate"])] = "switching"
+            for path in [transaction.get("previous"), *(transaction.get("displaced") or [])]:
+                if isinstance(path, str) and path:
+                    result[os.path.realpath(path)] = "rollback"
+    for folder in folders:
+        try:
+            result[os.path.realpath(_read(folder / "active.json")["path"])] = "active"
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
     return result
 
 

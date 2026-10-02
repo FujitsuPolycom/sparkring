@@ -66,7 +66,8 @@ Items
 
 - ``installed``: a deployment that SparkRing keeps installed uses it: the active
   deployment (``active.json``), the rollback target recorded in
-  ``transaction.json`` or the candidate of an unfinished model switch. Node A
+  ``transaction.json`` or the candidate of an unfinished model switch, also
+  those of each half of a four-Spark ring (``checkpoints.roles``). Node A
   reads each deployment's lock and container specifications
   (``deployment.lock.json`` and ``rank<N>/container.json`` in its directory
   below ``/var/lib/sparkring/controller/deployments``): the workspace, model, source

@@ -19,8 +19,10 @@ functions (``ccw_primary`` and ``ccw_secondary``). ``fabric_rows`` takes each
 rank's host address, socket interface and RDMA devices from those functions.
 """
 import ipaddress
+from pathlib import Path
 
-from runtime.host import control
+from runtime.common import installer
+from runtime.host import control, node
 
 HALVES = ((0, 1), (2, 3))
 # What a whole ring is called in messages, beside the halves' "Sparks 0 and 1".
@@ -174,3 +176,156 @@ def from_lock(lock):
     value = (lock.get("site") or {}).get("placement")
     return tuple(value) if value else None
 
+
+
+# Slots ------------------------------------------------------------------------
+#
+# A cluster has one slot per placement: a pair has only the whole cluster, a
+# four-Spark ring the whole ring and its two halves. Each slot records its own
+# active deployment and its own model switch. The whole cluster keeps
+# ``active.json`` and ``transaction.json`` in Node A's controller directory;
+# a half keeps them in ``slots/0-1`` or ``slots/2-3`` there. The whole ring
+# and a half never serve at the same time: a switch into one stops the models
+# of the other (``displaced``).
+
+def slot_directory(state_root, placement):
+    """The directory holding the slot's ``active.json`` and ``transaction.json``."""
+    root = Path(state_root)
+    return root if placement is None else root / "slots" / f"{placement[0]}-{placement[1]}"
+
+
+def slots(cluster_size):
+    """Every slot of a cluster: ``[None]`` for a pair, the whole ring and both halves for a ring."""
+    return [None] if cluster_size != 4 else [None, *HALVES]
+
+
+def conflicting(placement):
+    """The slots that cannot serve while ``placement`` serves: the halves for the whole ring, else the whole ring."""
+    return list(HALVES) if placement is None else [None]
+
+
+def recorded(state_root, placement):
+    """The deployment directory the slot's ``active.json`` names, or None without a record."""
+    path = slot_directory(state_root, placement) / "active.json"
+    if not path.exists():
+        return None
+    return Path(installer.read(path)["path"])
+
+
+def record(state_root, placement, directory):
+    """Make ``directory`` the slot's active deployment."""
+    node.save(slot_directory(state_root, placement), "active.json", {"path": str(directory)}, mode=0o600)
+
+
+def forget(state_root, placement, directory):
+    """Remove the slot's active record when it still names ``directory``."""
+    current = recorded(state_root, placement)
+    if current is not None and Path(current).resolve() == Path(directory).resolve():
+        (slot_directory(state_root, placement) / "active.json").unlink()
+
+
+def clear_conflicting(state_root, placement):
+    """Remove the active records of the slots that conflict with ``placement``; their models are stopped."""
+    for slot in conflicting(placement):
+        (slot_directory(state_root, slot) / "active.json").unlink(missing_ok=True)
+
+
+def journal(state_root, placement):
+    """The slot's model switch record (``transaction.json``), or None."""
+    path = slot_directory(state_root, placement) / "transaction.json"
+    return installer.read(path) if path.exists() else None
+
+
+def of_directory(directory):
+    """The placement of the deployment in ``directory``; None for one on every Spark or without a lock."""
+    try:
+        return from_lock(installer.read(Path(directory) / "deployment.lock.json"))
+    except (OSError, ValueError):
+        return None
+
+
+def exists(directory):
+    return directory is not None and (Path(directory) / "deployment.lock.json").exists()
+
+
+def stopped(directory):
+    """Whether the deployment runs no model: its last operation is a completed down, or none ran.
+
+    A deployment that automatic release removed (``retention.release_record``)
+    has a completed down as its last operation too.
+    """
+    path = Path(directory) / "state.json"
+    if not path.exists():
+        return True
+    state = installer.read(path)
+    return state.get("operation") == "down" and bool(state.get("complete"))
+
+
+def actives(state_root, cluster_size):
+    """``{slot: deployment directory}`` of every slot whose record names an existing deployment."""
+    result = {}
+    for slot in slots(cluster_size):
+        directory = recorded(state_root, slot)
+        if exists(directory):
+            result[slot] = directory
+    return result
+
+
+def displaced(state_root, placement, cluster_size):
+    """The deployments of the conflicting slots that a switch into ``placement`` stops, as directories.
+
+    Only deployments that may run count; a stopped one is only forgotten.
+    """
+    if cluster_size != 4:
+        return []
+    found = []
+    for slot in conflicting(placement):
+        directory = recorded(state_root, slot)
+        if exists(directory) and not stopped(directory):
+            found.append(Path(directory))
+    return found
+
+
+PENDING = ("stopping-previous", "starting", "verifying", "recovering-previous", "needs-attention")
+
+
+def unfinished_switches(state_root, placement, cluster_size):
+    """``[(slot, record)]`` of conflicting slots whose model switch stopped before it finished."""
+    if cluster_size != 4:
+        return []
+    result = []
+    for slot in conflicting(placement):
+        value = journal(state_root, slot)
+        if value and value.get("state") in PENDING:
+            result.append((slot, value))
+    return result
+
+
+def choose(state_root, profile):
+    """The half for a two-rank profile installed on a four-Spark ring without ``--on``.
+
+    The one half that serves no model is chosen; otherwise ValueError names
+    both choices and what each half holds.
+    """
+    holding = {}
+    for half in HALVES:
+        directory = recorded(state_root, half)
+        holding[half] = directory if exists(directory) and not stopped(directory) else None
+    free = [half for half in HALVES if holding[half] is None]
+    if len(free) == 1:
+        return free[0]
+    lines = [f"--on {half[0]},{half[1]}: {text(half)}, " + ("free" if holding[half] is None
+                                                             else "serving " + profile_of(holding[half]))
+             for half in HALVES]
+    error = ValueError(f"{profile} uses two Sparks and this ring has four. Choose a half with --on 0,1 or --on 2,3. "
+                       "Nothing has been changed.")
+    error.details = {"lines": lines}
+    raise error
+
+
+def profile_of(directory):
+    """The profile of the deployment in ``directory``, or its directory name when its lock cannot be read."""
+    try:
+        return installer.read(Path(directory) / "deployment.lock.json")["selection"]["profile"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return Path(directory).name
