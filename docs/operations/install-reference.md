@@ -919,6 +919,48 @@ Spark whose two cables to swap, and the ring order afterwards.
 ([command](commands.md#cabling)). For a loop it names the fewest swaps;
 when two choices tie, it leaves Node A's cables alone.
 
+## Re-form Sparks into another pair or ring
+
+Sparks that belonged to other SparkRing clusters can form a new pair or ring:
+
+1. Cable them as a [pair or ring](#cabling); `sudo sparkring cabling` names
+   any cable to move.
+2. Stop their models: on each earlier Node A, `sudo sparkring down --execute`.
+3. On the Spark that becomes Node A, review, then set up:
+
+   ```bash
+   sudo sparkring setup --name NAME --plan
+   sudo sparkring setup --name NAME
+   ```
+
+Setup re-forms the Sparks when the Sparks cabled to Node A differ from its
+cluster record, or when a cabled Spark keeps another cluster's setup. It
+reaches each Spark over the LAN or the cables, as in
+[Setup and access](#setup-and-access), and its plan lists by Spark what it
+moves aside:
+
+- an earlier Node A's records in `/var/lib/sparkring/controller`; Node A keeps
+  its SSH key;
+- the admin network (`sr-control`) configuration and its services;
+- the fabric record, its boot service and its routes;
+- automatic recovery, mesh services and the ConnectX hairpin approval;
+- fabric IPv4 addresses that SparkRing did not set. Setup replaces them after
+  backing up their NetworkManager connections.
+
+After the one `Proceed?` approval, or `--yes`, setup moves that state to
+`/var/lib/sparkring/retired/STAMP/` on each Spark and keeps it there, with a
+`receipt.json` that lists how to restore it. Node A's `reform.json` there
+collects every Spark's receipt. Setup installs Node A's SparkRing on each
+worker, which asks for that worker's `sudo` password once, then sets the
+Sparks up as new, with new fabric addresses.
+
+- Setup stops while a SparkRing model runs on one of the Sparks and prints
+  the command that stops it. It never stops a model itself.
+- Checkpoints, images and caches in `/srv/sparkring` stay; `sparkring install`
+  finds checkpoint copies there.
+- Each Spark keeps its own identity, `/etc/sparkring/node.json`.
+- Run setup again after an interruption; it skips finished steps.
+
 ## Four-Spark rings
 
 Four-Spark rings need the ConnectX hairpin setting on every Spark; pairs do

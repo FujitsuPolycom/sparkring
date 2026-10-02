@@ -617,9 +617,12 @@ def main(argv=None):
         if not hasattr(os, "geteuid") or os.geteuid() != 0:
             raise ValueError("Run sudo sparkring cabling: LLDP and the cluster record need root")
         recorded = (single_uplink.installed_targets(controller.STATE) or [])[1:]
-        # Host keys and connections stay in a temporary directory, so nothing persists.
+        # Node A's setup key signs in where workers trust it; SSH asks for a
+        # password elsewhere. Host keys and connections stay in a temporary
+        # directory, so nothing persists.
+        key = controller.STATE / "controller_ed25519"
         with tempfile.TemporaryDirectory(prefix="sparkring-cabling-") as directory:
-            transport = bootstrap.SSH(directory)
+            transport = bootstrap.SSH(directory, identity=key if key.is_file() else None)
             try:
                 found = survey.survey(transport, recorded=recorded, user=args.ssh_user,
                                       sign_in=not args.no_sign_in, say=say)

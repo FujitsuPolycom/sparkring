@@ -114,7 +114,10 @@ stops first or a plan from the extracted package ends without a result (stage
 ## setup
 
 `sudo sparkring setup [flags]` discovers the cabled Sparks and configures them,
-without a model. `sparkring install` runs it on first use.
+without a model. `sparkring install` runs it on first use. Sparks that belonged
+to other SparkRing clusters are
+[re-formed](install-reference.md#re-form-sparks-into-another-pair-or-ring)
+into the pair or ring now cabled.
 
 | Flag | Meaning |
 |---|---|
