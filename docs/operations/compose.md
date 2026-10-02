@@ -8,7 +8,8 @@ The normal path is `sudo sparkring install` ([Install SparkRing](install.md));
 it also writes each rank's runtime-binding file and verifies the image before
 any model downtime.
 
-[All commands and flags](commands.md) · [Published Compose files](compose-files.md)
+[All commands and flags](commands.md) · [Published Compose files](compose-files.md) ·
+[Compose builder](compose-builder.md), a web page that writes these deployments for your Sparks
 
 ## Supported profiles
 

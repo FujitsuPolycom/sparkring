@@ -1,0 +1,67 @@
+name: Compose builder pages
+
+# Publishes the Compose builder (docs/operations/compose-builder.md) to the
+# repository's GitHub Pages site for each published release that is not a
+# prerelease, or for a tag or commit named by hand. Deploying needs Pages
+# enabled with GitHub Actions as its source; until then the deploy job fails
+# and nothing is published. The page is built with --verify, so a page whose
+# engine differs from compose.build is never published.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or commit to build the page from
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-builder-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build and verify
+    if: github.event_name != 'release' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the page's build dependency
+        run: python -m pip install PyYAML==6.0.3
+      - name: Build the page, comparing its engine with compose.build
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python scripts/generate_compose_builder.py --output site --verify --cases 20 ${RELEASE_TAG:+--tag "$RELEASE_TAG"}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

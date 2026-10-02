@@ -28,6 +28,7 @@ at every boot.
 
 More: [all commands](docs/operations/commands.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·
+[Compose builder](docs/operations/compose-builder.md) ·
 [pinned install command](docs/operations/install-reference.md#get-the-package)
 
 ## Profiles

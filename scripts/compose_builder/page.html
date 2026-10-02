@@ -1,0 +1,1086 @@
+<title>SparkRing Compose Builder</title>
+<style>
+/* Layout: configuration steps in a narrow left column; the output (install command or per-Spark Compose files) in a wide right pane that stays in view on desktop. Palette follows SparkRing's runtime-status dashboard. */
+:root {
+  color-scheme: dark;
+  --bg: #10151c;
+  --panel: #19212c;
+  --sunk: #0c1117;
+  --line: #2d3949;
+  --text: #e5edf7;
+  --muted: #a1b0c3;
+  --accent: #84d8c4;
+  --accent-soft: #15262b;
+  --on-accent: #0b1a17;
+  --warn: #ffd181;
+  --warn-soft: #2a2416;
+  --bad: #ffa6ae;
+  --bad-soft: #2c1a1e;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f1f4f7; --panel: #ffffff; --sunk: #f7f9fb; --line: #d3dbe5; --text: #132030; --muted: #536375;
+    --accent: #0c7565; --accent-soft: #e2f2ee; --on-accent: #ffffff; --warn: #7d5200; --warn-soft: #fbf1dc;
+    --bad: #ad2530; --bad-soft: #fbe7e9;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f1f4f7; --panel: #ffffff; --sunk: #f7f9fb; --line: #d3dbe5; --text: #132030; --muted: #536375;
+  --accent: #0c7565; --accent-soft: #e2f2ee; --on-accent: #ffffff; --warn: #7d5200; --warn-soft: #fbf1dc;
+  --bad: #ad2530; --bad-soft: #fbe7e9;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1380px; margin: 0 auto; padding-inline: 28px; padding-block: 26px 40px; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: 0.92em; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Header */
+.top { display: flex; gap: 20px 32px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap;
+  padding-bottom: 22px; border-bottom: 1px solid var(--line); margin-bottom: 26px; }
+.top > div:first-child { min-width: 0; max-width: 760px; }
+.eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; margin: 0 0 8px; }
+h1 { font-size: clamp(24px, 3.2vw, 34px); font-weight: 650; letter-spacing: -.03em; line-height: 1.2; margin-bottom: 10px; }
+.lead { margin: 0; color: var(--muted); max-width: 70ch; }
+.engine { display: inline-flex; gap: 9px; align-items: center; padding: 7px 14px; border: 1px solid var(--line);
+  border-radius: 999px; background: var(--panel); font-size: 13px; color: var(--text); max-width: 100%; }
+.engine .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+
+/* Two panes */
+.layout { display: grid; grid-template-columns: minmax(0, 500px) minmax(0, 1fr); gap: 28px; align-items: start; }
+/* Single-column grids use minmax(0, 1fr) so long code lines scroll inside their block instead of widening the page. */
+.config { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
+.output { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 18px 20px 20px; }
+@media (max-width: 1040px) { .layout { grid-template-columns: minmax(0, 1fr); } .output { position: static; } }
+@media (max-width: 600px) { .wrap { padding-inline: 16px; } .output { padding: 14px 14px 16px; } }
+
+/* Steps */
+.step { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 16px 18px 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.step h2 { font-size: 16px; font-weight: 640; display: flex; gap: 10px; align-items: baseline; }
+.step h2 .n { font: 600 12px/1 var(--mono); color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; }
+.step-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.sub { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 6px 0 0; }
+.hint { margin: 0; color: var(--muted); font-size: 12.5px; }
+.hint code { font-size: 11.5px; }
+
+.choices { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.choice { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: start; padding: 11px 13px;
+  border: 1px solid var(--line); border-radius: 9px; cursor: pointer; background: var(--sunk); }
+.choice:hover { border-color: var(--muted); }
+.choice.selected { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { margin: 4px 0 0; accent-color: var(--accent); }
+.choice-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; }
+.choice-body strong { font-weight: 600; font-size: 14px; }
+.choice-body .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.chips { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 1; padding: 4px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.good { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.changes { grid-column: 2; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--muted); display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.changes code { font-size: 11.5px; overflow-wrap: anywhere; }
+
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.segmented button { border: 0; background: transparent; padding: 5px 11px; font-size: 12.5px; cursor: pointer; color: var(--muted); }
+.segmented button + button { border-left: 1px solid var(--line); }
+.segmented button[aria-pressed="true"], .segmented button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+.modes button { padding: 7px 14px; font-size: 13.5px; }
+
+/* Settings */
+.settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.setting { display: grid; grid-template-columns: minmax(0, 1fr) 172px; gap: 3px 14px; align-items: center; }
+.setting > label { font-size: 14px; }
+.setting .hint { grid-column: 1 / -1; }
+.setting.changed > label::after { content: "changed"; margin-left: 8px; font-size: 11px; color: var(--accent); }
+.field { display: flex; align-items: center; gap: 7px; }
+.field .unit { color: var(--muted); font-size: 12px; width: 52px; flex: none; }
+input[type="number"], input[type="text"], textarea {
+  width: 100%; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunk);
+  font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+input[aria-invalid="true"] { border-color: var(--bad); }
+.check { display: inline-flex; gap: 9px; align-items: center; cursor: pointer; font-size: 14px; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.setting.switch { grid-template-columns: minmax(0, 1fr); }
+
+/* Sparks */
+.sparks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+fieldset { margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px 14px; min-width: 0; background: var(--sunk); }
+legend { padding: 0 6px; font-size: 13px; font-weight: 600; display: inline-flex; gap: 8px; align-items: center; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.grid .wide { grid-column: 1 / -1; }
+.f { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+.f label { font-size: 12px; color: var(--muted); }
+@media (max-width: 460px) { .grid { grid-template-columns: minmax(0, 1fr); } .setting { grid-template-columns: minmax(0, 1fr); } }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+details.import summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+details.import[open] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+details.import textarea { min-height: 140px; resize: vertical; }
+
+.btn { border: 1px solid var(--line); background: var(--sunk); border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+.btn.quiet { background: transparent; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Output */
+.out-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.facts { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+@media (max-width: 460px) { .facts { grid-template-columns: minmax(0, 1fr); } .facts dd { margin-bottom: 6px; } }
+.msg { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 13px; border-radius: 4px; font-size: 13px; }
+.msg.warn { border-color: var(--warn); background: var(--warn-soft); }
+.msg.bad { border-color: var(--bad); background: var(--bad-soft); }
+.msg strong { display: block; margin-bottom: 2px; }
+.msg ul { margin: 4px 0 0; padding-left: 18px; }
+.messages { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.messages:empty { display: none; }
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+
+.opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--sunk); }
+.opt { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 4px 12px; align-items: start; font-size: 13px; }
+.opt > .opt-label { color: var(--muted); padding-top: 2px; }
+.radios { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.radios label { display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
+.radios input { accent-color: var(--accent); margin: 0; }
+.opt input[type="text"] { max-width: 220px; }
+@media (max-width: 460px) { .opt { grid-template-columns: minmax(0, 1fr); } }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.tab { border: 1px solid var(--line); background: transparent; border-radius: 7px; padding: 6px 11px; cursor: pointer; font-size: 13px;
+  display: inline-grid; text-align: left; line-height: 1.25; }
+.tab small { color: var(--muted); font-size: 11px; }
+.tab[aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.tab[aria-selected="true"] small { color: var(--accent); }
+.file { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.file-bar { display: flex; gap: 8px 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.file-bar .path { font-family: var(--mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.file-bar .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+pre.code { margin: 0; background: var(--sunk); border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; overflow: auto;
+  max-height: min(62vh, 640px); font: 12px/1.55 var(--mono); tab-size: 2; }
+pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; max-height: none; }
+.panel[data-stale="true"] pre.code, .panel[data-stale="true"] .tabs { opacity: .45; }
+.zip-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--sunk); }
+.zip-bar .hint { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+
+.run h3 { font-size: 14px; font-weight: 640; margin-bottom: 8px; }
+.run ol { margin: 0; padding-left: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; font-size: 13.5px; }
+.run li > code.block, .run li > .block { display: block; margin-top: 5px; padding: 7px 10px; background: var(--sunk); border: 1px solid var(--line);
+  border-radius: 7px; font-size: 12px; overflow-x: auto; white-space: pre; }
+.notes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--muted); }
+footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+footer p { margin: 0; max-width: 110ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">SparkRing · DGX Spark · Linux ARM64</p>
+      <h1>Compose builder</h1>
+      <p class="lead">Choose a model, its checkpoint and its serving settings. The page writes the <code>sparkring install</code> command that deploys them, or one Docker Compose file per Spark exactly as <code>sparkring compose render</code> writes them, with the whole deployment as a zip. The addresses and paths you type never leave this page.</p>
+    </div>
+    <div class="engine" role="status"><span class="dot"></span><span id="engine-text">Matches compose.py</span></div>
+  </header>
+
+  <div class="layout">
+    <form class="config" id="config" autocomplete="off" novalidate>
+      <section class="step" aria-labelledby="h-release">
+        <h2 id="h-release"><span class="n">1</span>Release</h2>
+        <div class="choices">
+          <label class="choice selected" for="release-current">
+            <input type="radio" name="release" id="release-current" value="current" checked>
+            <span class="choice-body"><strong id="release-name">SparkRing</strong><span class="meta" id="release-meta"></span></span>
+            <span class="chips" id="release-chips"></span>
+          </label>
+        </div>
+        <p class="hint">The page describes the profiles of this source. The install command pins it unless you choose main, and the Compose files need the same SparkRing checkout on every Spark: they read its loader seccomp policy.</p>
+      </section>
+
+      <section class="step" aria-labelledby="h-model">
+        <div class="step-head">
+          <h2 id="h-model"><span class="n">2</span>Model</h2>
+          <div class="segmented" role="group" aria-label="Show models for">
+            <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" id="filter-2" data-filter="2" aria-pressed="false">2 Sparks</button>
+            <button type="button" id="filter-4" data-filter="4" aria-pressed="false">4 Sparks</button>
+          </div>
+        </div>
+        <div class="choices" id="profiles"></div>
+        <p class="sub" id="h-checkpoint">Checkpoint</p>
+        <div class="choices" id="checkpoints" aria-labelledby="h-checkpoint"></div>
+      </section>
+
+      <section class="step" aria-labelledby="h-settings">
+        <div class="step-head">
+          <h2 id="h-settings"><span class="n">3</span>Serving settings</h2>
+          <button type="button" class="btn quiet" id="reset-settings">Use the profile's values</button>
+        </div>
+        <p class="hint">An empty field keeps the checkpoint's value. These are the settings <code>sparkring install</code> accepts; the profile's measurements cover only its own values.</p>
+        <div class="settings" id="settings"></div>
+      </section>
+
+      <section class="step" aria-labelledby="h-sparks">
+        <div class="step-head">
+          <h2 id="h-sparks"><span class="n">4</span>Your Sparks</h2>
+          <button type="button" class="btn quiet" id="reset-sparks">Restore the example values</button>
+        </div>
+        <p class="hint">Only the Docker Compose files use this step; <code>sparkring install</code> finds your Sparks itself.</p>
+        <p class="hint" id="example-note">Filled with the profile's documentation example (addresses in 192.0.2.0/24). Replace every value with your Sparks'.</p>
+        <p class="hint">Paths may use letters, digits and <code>. _ / + = @ ~ -</code>; addresses are IPv4. <code>sparkring compose render</code> accepts more, and this page refuses rather than guess its encoding.</p>
+        <div class="grid">
+          <div class="f">
+            <label for="site-name">Deployment name</label>
+            <input type="text" id="site-name" spellcheck="false" aria-describedby="site-name-hint">
+          </div>
+          <div class="f" style="align-content:end">
+            <label class="check" for="shared"><input type="checkbox" id="shared">Same NICs and paths on every Spark</label>
+          </div>
+          <p class="hint wide" id="site-name-hint">Lowercase letters, digits and hyphens. Names the zip, its folder and the containers (<code id="name-preview">sr-name-r0</code>).</p>
+        </div>
+        <div class="sparks" id="sparks"></div>
+        <details class="import" id="import">
+          <summary>Paste a site file instead</summary>
+          <label class="sr" for="site-text">Site file</label>
+          <textarea id="site-text" spellcheck="false" placeholder="schema: sparkring-compose-site/v1&#10;name: my-ring&#10;master: 10.0.0.10&#10;ranks:&#10;- rank: 0&#10;  host: spark0&#10;  ..."></textarea>
+          <div class="row-actions"><button type="button" class="btn" id="site-read">Read site file</button><span class="hint" id="site-read-result"></span></div>
+        </details>
+      </section>
+    </form>
+
+    <aside class="output" id="output" aria-label="Output">
+      <div class="out-head">
+        <div class="segmented modes" role="tablist" aria-label="Deploy with">
+          <button type="button" role="tab" id="mode-install" aria-controls="install-panel" aria-selected="true">sparkring install</button>
+          <button type="button" role="tab" id="mode-compose" aria-controls="compose-panel" aria-selected="false">Docker Compose</button>
+        </div>
+        <span class="chip" id="out-state">Ready</span>
+      </div>
+      <dl class="facts" id="facts"></dl>
+      <div class="messages" id="messages"></div>
+      <div class="row-actions" id="share-bar" hidden>
+        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>
+        <span class="hint">The link holds the model, checkpoint, settings and install options, never your Sparks.</span>
+      </div>
+
+      <section class="panel" id="install-panel" role="tabpanel" aria-labelledby="mode-install">
+        <div class="opts">
+          <div class="opt" role="radiogroup" aria-labelledby="opt-form">
+            <span class="opt-label" id="opt-form">Run</span>
+            <div class="radios">
+              <label for="form-script"><input type="radio" name="form" id="form-script" value="script">First install, on Node A</label>
+              <label for="form-installed"><input type="radio" name="form" id="form-installed" value="installed">SparkRing already installed</label>
+            </div>
+          </div>
+          <div class="opt" role="radiogroup" aria-labelledby="opt-source" id="source-row">
+            <span class="opt-label" id="opt-source">Source</span>
+            <div class="radios">
+              <label for="source-release"><input type="radio" name="source" id="source-release" value="release"><span id="source-release-label">This source</span></label>
+              <label for="source-main"><input type="radio" name="source" id="source-main" value="main">Newest on main</label>
+            </div>
+          </div>
+          <div class="opt" role="radiogroup" aria-labelledby="opt-approval">
+            <span class="opt-label" id="opt-approval">Approval</span>
+            <div class="radios">
+              <label for="approval-ask"><input type="radio" name="approval" id="approval-ask" value="ask">Ask before changes</label>
+              <label for="approval-plan"><input type="radio" name="approval" id="approval-plan" value="plan">Plan only</label>
+              <label for="approval-yes"><input type="radio" name="approval" id="approval-yes" value="yes">Approve (<code>--yes</code>)</label>
+            </div>
+          </div>
+          <div class="opt">
+            <label class="opt-label" for="download-limit">Download limit</label>
+            <input type="text" id="download-limit" spellcheck="false" placeholder="none, 850Mbit, 2Gbit">
+          </div>
+        </div>
+        <div class="messages" id="install-messages"></div>
+        <div class="file">
+          <div class="file-bar">
+            <span class="path" id="install-where">On Node A, as a user with sudo</span>
+            <div class="btns"><button type="button" class="btn primary" id="copy-install">Copy command</button></div>
+          </div>
+          <pre class="code cmd" id="install-pre" tabindex="0" aria-label="Install command"><code id="install-code"></code></pre>
+        </div>
+        <ul class="notes" id="install-notes"></ul>
+      </section>
+
+      <section class="panel" id="compose-panel" role="tabpanel" aria-labelledby="mode-compose" data-stale="false" hidden>
+        <div class="zip-bar">
+          <button type="button" class="btn primary" id="save-zip" disabled>Download zip</button>
+          <span class="hint" id="zip-note">Checking whether this view can save files.</span>
+        </div>
+        <dl class="facts" id="compose-facts"></dl>
+        <div class="messages" id="compose-messages"></div>
+        <div class="tabs" role="tablist" aria-label="Generated files" id="tabs"></div>
+        <div class="file" id="file">
+          <div class="file-bar">
+            <span class="path" id="file-path"></span>
+            <div class="btns">
+              <button type="button" class="btn" id="copy-file">Copy file</button>
+              <button type="button" class="btn" id="copy-shell">Copy as shell command</button>
+            </div>
+          </div>
+          <pre class="code" id="file-pre" tabindex="0" aria-label="File contents"><code id="file-code"></code></pre>
+        </div>
+        <section class="run" aria-labelledby="h-run">
+          <h3 id="h-run">Start the model</h3>
+          <ol id="run-steps"></ol>
+          <ul class="notes" id="notes"></ul>
+        </section>
+      </section>
+    </aside>
+  </div>
+
+  <footer id="footer">
+    <p id="provenance"></p>
+    <p id="checks"></p>
+  </footer>
+</div>
+
+<script type="application/json" id="data">__DATA__</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js" integrity="sha512-CSBhVREyzHAjAFfBlIBakjoRUKp5h7VSweP0InR/pAJyptH7peuhCsqAI/snV+TwZmXZqoUklpXp6R6wMnYf5Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+__ENGINE__
+</script>
+<script>
+(() => {
+  'use strict';
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const CATALOG = DATA.profiles;
+  const BY_ID = Object.fromEntries(CATALOG.map(p => [p.id, p]));
+  const META = { repository: DATA.repository, tag: DATA.tag, commit: DATA.commit, ref: DATA.ref };
+  // A page framed by a claude.ai viewer saves files through its downloads capability; a
+  // hosted page (GitHub Pages) saves them as an ordinary browser download and can carry its
+  // choices in a shareable link.
+  const FRAMED = Boolean(window.claude && typeof window.claude.use === 'function');
+  const E = SparkRingEngine;
+  const STORE = 'sparkring-compose-builder/v1';
+  const LABELS = {
+    max_concurrency: 'Concurrent requests', context_length: 'Maximum context', kv_cache_gib: 'KV cache per Spark',
+    max_images: 'Images per request', max_videos: 'Videos per request', save_cpu: 'Save CPU between decode steps',
+  };
+  const UNITS = { max_concurrency: 'requests', context_length: 'tokens', kv_cache_gib: 'GiB', max_images: 'images', max_videos: 'videos' };
+  const ORDER = ['max_concurrency', 'context_length', 'kv_cache_gib', 'max_images', 'max_videos', 'save_cpu'];
+  const FIELDS = {
+    host: { label: 'SSH host' },
+    host_ip: { label: 'IP address' },
+    interface: { label: 'Bootstrap interface' },
+    hcas: { label: 'RoCE HCAs, in order', wide: true },
+    gid: { label: 'RoCE GID index' },
+    model: { label: 'Model directory', wide: true },
+    cache: { label: 'Cache directory', wide: true },
+    repository: { label: 'SparkRing checkout', wide: true },
+    deployment_root: { label: 'Deployment root', wide: true },
+    'fabric.site_path': { label: 'Mesh site file', wide: true },
+    'fabric.site_sha256': { label: 'Mesh site SHA-256', wide: true },
+    'fabric.plan_sha256': { label: 'Mesh plan SHA-256', wide: true },
+  };
+  const RANK_KEYS = ['host', 'host_ip'];
+  const SHARED_KEYS = ['interface', 'hcas', 'gid', 'model', 'cache', 'repository', 'deployment_root'];
+  const FABRIC_KEYS = ['fabric.site_path', 'fabric.site_sha256', 'fabric.plan_sha256'];
+
+  const $ = id => document.getElementById(id);
+  function el(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs || {})) {
+      if (value === null || value === undefined || value === false) continue;
+      if (key === 'class') node.className = value;
+      else if (key === 'for') node.htmlFor = value;
+      else node.setAttribute(key, value === true ? '' : value);
+    }
+    for (const child of children.flat()) {
+      if (child === null || child === undefined || child === false) continue;
+      node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    }
+    return node;
+  }
+  const chip = (text, tone) => el('span', { class: 'chip' + (tone ? ' ' + tone : '') }, text);
+  const fmt = n => typeof n === 'number' ? n.toLocaleString('en-US') : String(n);
+  const rev = r => (r || '').slice(0, 12);
+  const clone = v => JSON.parse(JSON.stringify(v));
+  // Text with `code` spans, as in the notes.
+  const rich = text => text.split('`').map((part, i) => i % 2 ? el('code', {}, part) : part);
+  const msg = (tone, title, ...body) => el('div', { class: 'msg' + (tone ? ' ' + tone : '') }, title ? el('strong', {}, rich(title)) : null, ...body);
+
+  // ---- State -------------------------------------------------------------
+  const state = {
+    profile: 'qwen38-flash-next-tp2', filter: 'all', mode: 'install', settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
+    install: { form: 'script', source: 'release', approval: 'ask', limit: '' },
+  };
+
+  const profile = () => BY_ID[state.profile];
+  const checkpointName = p => state.checkpoints[p.id] ?? null;
+  const checkpointOf = p => E.checkpointOf(p, checkpointName(p));
+  const settingsOf = id => (state.settings[id] ||= {});
+
+  function exampleCluster(nodes) {
+    const p = CATALOG.find(x => x.nodes === nodes && !x.sparkcache);
+    const ranks = p.example_site.ranks.map(r => {
+      const row = { host: r.host, host_ip: r.host_ip, interface: r.interface, hcas: [...r.hcas], gid: r.gid,
+        repository: r.repository, deployment_root: r.deployment_root };
+      if (r.fabric) row.fabric = { ...r.fabric };
+      return row;
+    });
+    return { shared: true, ranks };
+  }
+  // The example model directory: the profile's own for its default checkpoint; the
+  // directory `sudo sparkring install` derives a derived checkpoint into, with CLUSTER for
+  // its cluster name; else <models root>/<repository name>/<revision prefix> beside the default.
+  function exampleModel(p, cp) {
+    const base = p.example_site.ranks.map(r => r.model);
+    if (cp.default) return base;
+    if (cp.derived) return base.map(() => E.derivedDirectory(cp).replace('<cluster>', 'CLUSTER'));
+    const root = base[0].split('/').slice(0, -2).join('/');
+    return base.map(() => `${root}/${(cp.model_repository || 'model').split('/').pop()}/${rev(cp.model_revision)}`);
+  }
+  function examplePaths(p) {
+    return { name: p.example_site.name, model: exampleModel(p, checkpointOf(p)), cache: p.example_site.ranks.map(r => r.cache) };
+  }
+  const cluster = n => (state.clusters[n] ||= exampleCluster(n));
+  const paths = p => (state.perProfile[p.id] ||= examplePaths(p));
+
+  function siteFor(p) {
+    const c = cluster(p.nodes), pp = paths(p);
+    return {
+      schema: 'sparkring-compose-site/v1', name: pp.name, master: c.ranks[0].host_ip,
+      ranks: c.ranks.map((r, i) => {
+        const row = { rank: i, host: r.host, host_ip: r.host_ip, interface: r.interface, hcas: r.hcas, gid: r.gid,
+          model: pp.model[i], cache: pp.cache[i], repository: r.repository, deployment_root: r.deployment_root };
+        if (p.nodes === 4) row.fabric = { ...(r.fabric || { site_path: '', site_sha256: '', plan_sha256: '' }) };
+        return row;
+      }),
+    };
+  }
+
+  function getValue(p, i, key) {
+    const c = cluster(p.nodes), pp = paths(p);
+    if (key === 'model' || key === 'cache') return pp[key][i];
+    if (key.startsWith('fabric.')) return (c.ranks[i].fabric || {})[key.slice(7)];
+    return c.ranks[i][key];
+  }
+  function setValue(p, i, key, value) {
+    const c = cluster(p.nodes), pp = paths(p);
+    if (key === 'model' || key === 'cache') pp[key][i] = value;
+    else if (key.startsWith('fabric.')) (c.ranks[i].fabric ||= {})[key.slice(7)] = value;
+    else c.ranks[i][key] = value;
+  }
+  const shown = (key, value) => key === 'hcas' ? (value || []).join(', ') : (value ?? '') + '';
+  function parsed(key, text) {
+    if (key === 'hcas') return text.split(/[\s,]+/).filter(Boolean);
+    if (key === 'gid') return /^\s*\d+\s*$/.test(text) ? Number(text) : text.trim();
+    return text.trim();
+  }
+
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (_) { /* storage unavailable */ }
+  }
+  function load() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (_) { saved = null; }
+    if (!saved || typeof saved !== 'object') return;
+    if (BY_ID[saved.profile]) state.profile = saved.profile;
+    if (['all', '2', '4'].includes(saved.filter)) state.filter = saved.filter;
+    if (['install', 'compose'].includes(saved.mode)) state.mode = saved.mode;
+    for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints']) {
+      if (saved[key] && typeof saved[key] === 'object') state[key] = saved[key];
+    }
+    const i = saved.install || {};
+    if (['script', 'installed'].includes(i.form)) state.install.form = i.form;
+    if (['release', 'main'].includes(i.source)) state.install.source = i.source;
+    if (['ask', 'plan', 'yes'].includes(i.approval)) state.install.approval = i.approval;
+    if (typeof i.limit === 'string') state.install.limit = i.limit;
+    for (const id of Object.keys(state.checkpoints)) {
+      const p = BY_ID[id];
+      if (!p || !p.checkpoints.some(c => c.name === state.checkpoints[id])) delete state.checkpoints[id];
+    }
+    for (const n of Object.keys(state.clusters)) {
+      const c = state.clusters[n];
+      if (!c || !Array.isArray(c.ranks) || c.ranks.length !== Number(n)) delete state.clusters[n];
+    }
+    for (const id of Object.keys(state.perProfile)) {
+      const pp = state.perProfile[id], p = BY_ID[id];
+      if (!p || !pp || typeof pp.name !== 'string' || !Array.isArray(pp.model) || pp.model.length !== p.nodes
+          || !Array.isArray(pp.cache) || pp.cache.length !== p.nodes) delete state.perProfile[id];
+    }
+  }
+
+  // ---- Steps ---------------------------------------------------------------
+  function renderFilter() {
+    for (const button of document.querySelectorAll('[data-filter]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter));
+    }
+  }
+
+  function renderProfiles() {
+    const list = $('profiles');
+    list.replaceChildren();
+    for (const p of CATALOG) {
+      if (state.filter !== 'all' && String(p.nodes) !== state.filter) continue;
+      const id = 'profile-' + p.id;
+      const input = el('input', { type: 'radio', name: 'profile', id, value: p.id });
+      input.checked = p.id === state.profile;
+      input.addEventListener('change', () => { state.profile = p.id; currentTab = 'rank0'; renderAll(); changed(); });
+      list.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
+        input,
+        el('span', { class: 'choice-body' }, el('strong', {}, p.title), el('span', { class: 'meta mono' }, p.id)),
+        el('span', { class: 'chips' }, chip(p.nodes + ' Sparks'),
+          p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null,
+          p.sparkcache ? chip('SparkCache · ' + p.image_release) : null,
+          p.installable ? null : chip('Compose only'))));
+    }
+    if (!list.children.length) list.append(el('p', { class: 'hint' }, 'No model runs on that many Sparks.'));
+  }
+
+  function selectCheckpoint(p, name) {
+    const before = examplePaths(p).model;
+    state.checkpoints[p.id] = name;
+    const pp = paths(p);
+    // A model directory still at the old checkpoint's example moves to the new one's.
+    if (JSON.stringify(pp.model) === JSON.stringify(before)) pp.model = examplePaths(p).model;
+  }
+
+  function renderCheckpoints() {
+    const p = profile(), current = checkpointOf(p), box = $('checkpoints');
+    box.replaceChildren();
+    if (p.checkpoints.length < 2) {
+      box.append(el('p', { class: 'hint' }, 'This profile serves one checkpoint: ',
+        el('code', {}, current.model_repository + ' @ ' + rev(current.model_revision)), '.'));
+      return;
+    }
+    for (const cp of p.checkpoints) {
+      const id = 'checkpoint-' + cp.name;
+      const input = el('input', { type: 'radio', name: 'checkpoint', id, value: cp.name });
+      input.checked = cp === current;
+      input.addEventListener('change', () => {
+        selectCheckpoint(p, cp.default ? null : cp.name);
+        renderCheckpoints(); renderSettings(); renderSparks(); changed();
+      });
+      const details = cp.default
+        ? [el('li', {}, "The profile's default" + (cp.aliases.length ? '; also named ' : ''), ...cp.aliases.map(a => el('code', {}, a)))]
+        : cp.changes.map(change => el('li', {}, el('code', {}, change)));
+      box.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
+        input,
+        el('span', { class: 'choice-body' }, el('strong', { class: 'mono' }, cp.name),
+          el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + ' · served as ' + cp.served_model_name)),
+        el('ul', { class: 'changes' }, details),
+        cp.default ? el('span', { class: 'chips' }, chip('Default', 'good')) : null));
+    }
+  }
+
+  function renderSettings() {
+    const p = profile(), cp = checkpointOf(p), s = settingsOf(p.id), box = $('settings');
+    box.replaceChildren();
+    const rows = [...cp.settings].sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
+    for (const row of rows) {
+      const id = 'setting-' + row.name;
+      if (row.switch) {
+        const input = el('input', { type: 'checkbox', id });
+        input.checked = s[row.name] === true;
+        const wrap = el('div', { class: 'setting switch' + (input.checked ? ' changed' : '') },
+          el('label', { class: 'check', for: id }, input, LABELS[row.name] || row.option),
+          el('p', { class: 'hint' }, row.help.charAt(0).toUpperCase() + row.help.slice(1) + '. ', el('code', {}, row.option), ' sets ', el('code', {}, row.flag + '=' + row.value), '.'));
+        input.addEventListener('change', () => {
+          if (input.checked) s[row.name] = true; else delete s[row.name];
+          wrap.classList.toggle('changed', input.checked);
+          changed();
+        });
+        box.append(wrap);
+        continue;
+      }
+      const input = el('input', { type: 'number', id, inputmode: 'numeric', min: row.minimum, max: row.maximum, step: 1, placeholder: String(row.profile) });
+      if (s[row.name] !== undefined) input.value = s[row.name];
+      const limit = row.maximum ? ' · at most ' + fmt(row.maximum) : '';
+      const wrap = el('div', { class: 'setting' + (s[row.name] !== undefined ? ' changed' : '') },
+        el('label', { for: id }, LABELS[row.name] || row.option),
+        el('div', { class: 'field' }, input, el('span', { class: 'unit' }, UNITS[row.name] || '')),
+        el('p', { class: 'hint' }, 'Checkpoint value: ' + fmt(row.profile) + limit + '. ', el('code', {}, row.option), ' replaces ', el('code', {}, row.flag), '.'));
+      input.addEventListener('input', () => {
+        const text = input.value.trim();
+        const valid = text === '' || /^\d+$/.test(text);
+        input.setAttribute('aria-invalid', String(!valid));
+        if (text === '' || !valid) delete s[row.name]; else s[row.name] = Number(text);
+        wrap.classList.toggle('changed', s[row.name] !== undefined);
+        changed();
+      });
+      box.append(wrap);
+    }
+  }
+
+  function fieldInput(p, key, id, rank) {
+    const def = FIELDS[key];
+    const input = el('input', { type: 'text', id, spellcheck: 'false', inputmode: key === 'gid' ? 'numeric' : null });
+    input.value = shown(key, getValue(p, rank ?? 0, key));
+    input.addEventListener('input', () => {
+      const value = parsed(key, input.value);
+      const c = cluster(p.nodes);
+      if (rank === undefined) c.ranks.forEach((_, i) => setValue(p, i, key, Array.isArray(value) ? [...value] : value));
+      else setValue(p, rank, key, value);
+      if (key === 'gid') input.setAttribute('aria-invalid', String(typeof value !== 'number' || value > 255));
+      changed();
+    });
+    return el('div', { class: 'f' + (def.wide ? ' wide' : '') }, el('label', { for: id }, def.label), input);
+  }
+
+  function renderSparks() {
+    const p = profile(), c = cluster(p.nodes), pp = paths(p), box = $('sparks');
+    $('site-name').value = pp.name;
+    $('shared').checked = c.shared;
+    $('name-preview').textContent = 'sr-' + (pp.name || 'name') + '-r0';
+    const sharedKeys = [...SHARED_KEYS, ...(p.nodes === 4 ? FABRIC_KEYS : [])];
+    box.replaceChildren();
+    if (c.shared) {
+      box.append(el('fieldset', {}, el('legend', {}, 'Every Spark'),
+        el('div', { class: 'grid' }, sharedKeys.map(key => fieldInput(p, key, 'shared-' + key.replace('.', '-'))))));
+    }
+    c.ranks.forEach((_, i) => {
+      const keys = c.shared ? RANK_KEYS : [...RANK_KEYS, ...sharedKeys];
+      box.append(el('fieldset', {}, el('legend', {}, 'Spark ' + i, chip(i === 0 ? 'rank 0 · API and master' : 'rank ' + i, i === 0 ? 'good' : '')),
+        el('div', { class: 'grid' }, keys.map(key => fieldInput(p, key, 'rank' + i + '-' + key.replace('.', '-'), i)))));
+    });
+    $('example-note').hidden = !isExample(p);
+  }
+
+  function isExample(p) {
+    return JSON.stringify(cluster(p.nodes).ranks) === JSON.stringify(exampleCluster(p.nodes).ranks)
+      && JSON.stringify(paths(p)) === JSON.stringify(examplePaths(p));
+  }
+
+  function renderMode() {
+    const install = state.mode === 'install';
+    $('mode-install').setAttribute('aria-selected', String(install));
+    $('mode-compose').setAttribute('aria-selected', String(!install));
+    $('install-panel').hidden = !install;
+    $('compose-panel').hidden = install;
+    renderChip();
+  }
+
+  function renderAll() {
+    renderFilter();
+    renderProfiles();
+    renderCheckpoints();
+    renderSettings();
+    renderSparks();
+    renderMode();
+  }
+
+  // ---- Shared facts and the install command --------------------------------
+  let serving = null;      // servingCheck of the current profile, checkpoint and settings
+  let installReady = false;
+
+  function renderShared() {
+    const p = profile();
+    serving = E.servingCheck(p, settingsOf(p.id), checkpointName(p));
+    const cp = checkpointOf(p);
+    const rows = [
+      ['Profile', p.id],
+      ['Checkpoint', (cp.name ? cp.name + (cp.default ? ' (default)' : '') + ' · ' : '') + cp.model_repository + ' @ ' + rev(cp.model_revision)],
+      ['Served model', cp.served_model_name + ' on port ' + cp.port],
+      ['Image', p.image],
+      ['Image ID', p.image_id + ' (' + p.image_release + ')'],
+    ];
+    $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
+    const box = $('messages');
+    box.replaceChildren();
+    if (!serving.ok) { box.append(msg('bad', 'These serving settings cannot be used', serving.error)); return; }
+    if (serving.lines.length) box.append(msg('', 'Your changes', el('ul', {}, serving.lines.map(line => el('li', {}, el('code', {}, line))))));
+    for (const line of serving.warnings) box.append(msg('warn', '', line));
+  }
+
+  function renderInstall() {
+    renderShared();
+    const p = profile(), o = state.install;
+    for (const [name, value] of [['form', o.form], ['source', o.source], ['approval', o.approval]]) {
+      for (const input of document.querySelectorAll(`input[name="${name}"]`)) input.checked = input.value === value;
+    }
+    if ($('download-limit').value !== o.limit) $('download-limit').value = o.limit;
+    $('source-row').hidden = o.form !== 'script';
+    const limitOk = E.validDownloadLimit(o.limit);
+    $('download-limit').setAttribute('aria-invalid', String(!limitOk));
+    const box = $('install-messages');
+    box.replaceChildren();
+    let command = '';
+    if (!p.installable) {
+      box.append(msg('warn', '`sparkring install` does not offer this profile',
+        ...rich('It runs on the ' + p.image_release + ' image, not an installer image. Use the Docker Compose files, or its guide in `profiles/' + p.id.replace(/-sparkcache$/, '') + '/`.')));
+    } else if (!limitOk) {
+      box.append(msg('bad', 'Download limit', 'Use none, or a rate of at least 1Mbit such as 850Mbit or 2Gbit.'));
+    } else if (serving.ok) {
+      command = E.installCommand(p, serving.checkpoint, serving.settings, META,
+        { form: o.form, pin: o.source === 'release', approval: o.approval, downloadLimit: o.limit.trim() });
+    }
+    installReady = Boolean(command);
+    $('install-code').textContent = command || 'No command for these choices.';
+    $('copy-install').disabled = !command;
+    $('install-where').textContent = o.form === 'script' ? 'On Node A, the Spark on your network, as a user with sudo' : 'On Node A';
+    const notes = [];
+    if (command) {
+      const cp = serving.checkpoint;
+      const source = E.sourceName(META);
+      if (o.form === 'script') {
+        notes.push('The script builds the SparkRing package ' + (o.source === 'release' ? 'of ' + source : 'from main') +
+          ' and asks before it installs it on Node A and before it changes any Spark' + (o.approval === 'yes' ? '; `--yes` answers both.' : '.'));
+        notes.push(o.source === 'release'
+          ? 'Pinned to ' + source + ', the source this page describes. Rerunning the unpinned command later upgrades to the newest SparkRing on main.'
+          : 'main may hold a newer SparkRing than ' + source + ', whose profiles, checkpoints and limits this page shows.');
+      } else {
+        notes.push('Runs the SparkRing package installed on Node A. Its version decides what the profile means; this page shows ' + source + '.');
+      }
+      if (o.approval === 'plan') notes.push('`--plan` prints the setup, checkpoint and model plan and changes nothing. A later `--yes` stays within a saved plan.');
+      if (cp.derived) notes.push('No repository publishes `' + cp.name + '`: the installer derives it on the Sparks from ' + cp.changes[0].replace(/^derived on the Sparks from /, '') + '.');
+      if (!cp.default) notes.push('`--checkpoint ' + cp.name + '` installs that checkpoint as its own deployment, with its own pinned revision and checkpoint directory. Installing again without it switches back to the default.');
+      if (Object.keys(serving.settings).length) notes.push('A deployment records its settings: other values make another deployment, and installing it replaces the running model, restarting it once.');
+      notes.push('It ends with `Model ready:` and the API and dashboard addresses. If it stops early, run the same command again; it continues where it stopped.');
+      notes.push('Stopping another program\'s GPU container always needs its own answer, or `--stop-workloads`.');
+    }
+    $('install-notes').replaceChildren(...notes.map(text => el('li', {}, ...rich(text))));
+    renderChip();
+  }
+
+  // ---- Compose files ---------------------------------------------------------
+  let currentTab = 'rank0';
+  let result = null;       // the last accepted render
+  let composeOk = true;
+  let timer = null;
+  let ticket = 0;
+  let downloads;           // undefined until the viewer answers; null when this view cannot save files
+
+  function changed() {
+    save();
+    renderInstall();
+    $('compose-panel').dataset.stale = 'true';
+    clearTimeout(timer);
+    timer = setTimeout(generate, 180);
+  }
+
+  async function generate() {
+    const p = profile(), site = clone(siteFor(p)), settings = { ...settingsOf(p.id) };
+    $('example-note').hidden = !isExample(p);
+    const mine = ++ticket;
+    const output = await E.render(p, site, settings, checkpointName(p));
+    if (mine === ticket) showCompose(output, p, site, settings);
+  }
+
+  function showCompose(output, p, site, settings) {
+    const panel = $('compose-panel');
+    const box = $('compose-messages');
+    box.replaceChildren();
+    if (!output.ok) {
+      composeOk = false;
+      result = null;
+      box.append(msg('bad', 'The generator refuses this configuration', output.error));
+      panel.dataset.stale = 'true';
+      renderZip();
+      renderChip();
+      return;
+    }
+    composeOk = true;
+    panel.dataset.stale = 'false';
+    result = { output, p, site, settings, cp: E.checkpointOf(p, output.checkpoint) };
+    const rows = [['API', 'http://' + site.master + ':' + result.cp.port + '/v1'], ['Deployment ID', output.id]];
+    $('compose-facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
+    renderTabs();
+    renderRun();
+    renderZip();
+    renderChip();
+  }
+
+  function renderChip() {
+    const node = $('out-state');
+    const ok = state.mode === 'install' ? installReady : composeOk;
+    node.textContent = state.mode === 'install' ? (ok ? 'Command ready' : 'No command') : (ok ? 'Files ready' : 'Refused');
+    node.className = 'chip ' + (ok ? 'good' : 'bad');
+  }
+
+  function rankDirectory(site, i) {
+    return site.ranks[i].deployment_root.replace(/\/+$/, '') + '/' + site.name + '/rank' + i;
+  }
+  const quote = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
+  function files() {
+    const { output, site } = result;
+    const list = site.ranks.map((r, i) => {
+      const dir = rankDirectory(site, i);
+      const text = output.files['rank' + i + '/compose.yaml'];
+      return {
+        key: 'rank' + i, label: r.host || 'Spark ' + i, sub: i === 0 ? 'rank 0 · API' : 'rank ' + i,
+        path: dir + '/compose.yaml', text,
+        shell: 'umask 077\nmkdir -p ' + quote(dir) + '\ncat > ' + quote(dir + '/compose.yaml') + " <<'SPARKRING_COMPOSE'\n" + text + 'SPARKRING_COMPOSE\n',
+      };
+    });
+    list.push({ key: 'site', label: 'site.yaml', sub: 'your site file', path: site.name + '/' + site.name + '.site.yaml', text: output.site_yaml });
+    list.push({ key: 'deployment', label: 'deployment.json', sub: 'identities', path: site.name + '/deployment.json', text: output.deployment });
+    return list;
+  }
+
+  function renderTabs() {
+    const list = files();
+    if (!list.some(f => f.key === currentTab)) currentTab = 'rank0';
+    $('tabs').replaceChildren(...list.map(f => {
+      const button = el('button', { type: 'button', role: 'tab', class: 'tab', id: 'tab-' + f.key, 'aria-selected': String(f.key === currentTab), 'aria-controls': 'file' },
+        f.label, el('small', {}, f.sub));
+      button.addEventListener('click', () => { currentTab = f.key; renderTabs(); });
+      return button;
+    }));
+    const file = list.find(f => f.key === currentTab);
+    $('file-path').textContent = file.path;
+    $('file-code').textContent = file.text;
+    $('copy-shell').hidden = !file.shell;
+    $('copy-file').onclick = () => copy(file.text, $('copy-file'), $('file-code'));
+    $('copy-shell').onclick = () => copy(file.shell, $('copy-shell'), $('file-code'));
+  }
+
+  function block(text) { return el('code', { class: 'block' }, text); }
+
+  function renderRun() {
+    const { p, site, settings, cp } = result;
+    const n = site.ranks.length;
+    const repo = site.ranks[0].repository.replace(/\/+$/, '');
+    const steps = [
+      el('li', {}, 'Put each Spark\'s file on that Spark: open its tab, choose ', el('strong', {}, 'Copy as shell command'),
+        ' and paste it into a terminal on the Spark. The zip holds the same files.'),
+      el('li', {}, 'On every Spark, pull the image and check its ID. The files never pull it themselves.',
+        block('docker pull ' + p.image + "\ndocker image inspect --format '{{.Id}}' " + p.image + '\n# expect ' + p.image_id)),
+      cp.derived
+        ? el('li', {}, 'Each Spark needs the complete checkpoint in its model directory. No repository publishes this derived checkpoint; this writes it on every Spark into ',
+          el('code', {}, E.derivedDirectory(cp)), ':', block('sudo sparkring install --profile ' + p.id + ' --checkpoint ' + cp.name))
+        : el('li', {}, 'Each Spark needs the complete checkpoint in its model directory, every shard checked, for example:',
+          block('hf download ' + cp.model_repository + ' --revision ' + cp.model_revision + ' --local-dir ' + site.ranks[0].model)),
+      el('li', {}, 'Each fabric address\'s RoCE v2 GID must be at index ' + site.ranks[0].gid + ' when the container starts. This prints the index on a Spark:',
+        block('python3 ' + repo + '/integrations/vllm/spark_roce_gid.py')),
+    ];
+    if (n === 4) steps.push(el('li', {}, 'Four-Spark profiles need the prepared mesh fabric. The mesh fields name the site file and hashes that the mesh setup wrote on each Spark.'));
+    steps.push(el('li', {}, 'Start the workers first, rank ' + (n === 2 ? '1' : '1 to ' + (n - 1)) + ', then rank 0. On each Spark:',
+      block('docker compose -f ' + site.ranks[0].deployment_root.replace(/\/+$/, '') + '/' + site.name + '/rankN/compose.yaml up -d')));
+    steps.push(el('li', {}, 'Wait for the API to list ' + cp.served_model_name + '. The first start on this image compiles and tunes kernels, about 10 minutes.',
+      block('curl http://' + site.master + ':' + cp.port + '/v1/models')));
+    $('run-steps').replaceChildren(...steps);
+    const notes = [
+      'These files equal what `' + E.renderCommand(p, cp, settings, site) + '` writes from the site.yaml tab with ' + E.sourceName(META) +
+        ', and `sparkring compose check --deployment ' + site.name + '` accepts the unzipped folder.',
+      'The status dashboard reports worker identity as binding_not_configured: only `sparkring install` writes the per-rank runtime-binding file. Serving is unaffected.',
+      'The containers do not restart on their own (restart: no).',
+    ];
+    $('notes').replaceChildren(...notes.map(text => el('li', {}, ...rich(text))));
+  }
+
+  function renderZip() {
+    const button = $('save-zip'), note = $('zip-note');
+    if (downloads === undefined) {
+      button.disabled = true;
+      note.textContent = 'Checking whether this view can save files.';
+      return;
+    }
+    if (downloads === null) {
+      button.hidden = true;
+      note.textContent = 'This view cannot save files. Copy each file from its tab instead.';
+      return;
+    }
+    button.hidden = false;
+    button.disabled = !result;
+    if (!result) {
+      button.textContent = 'Download zip';
+      note.textContent = 'Fix the fields the generator refuses to build the zip.';
+      return;
+    }
+    const { site } = result, last = site.ranks.length - 1;
+    button.textContent = 'Download ' + site.name + '.zip';
+    note.textContent = 'Unzips to ' + site.name + '/ as sparkring compose render writes it: deployment.json and rank0–' + last +
+      '/compose.yaml and container.json, with ' + site.name + '.site.yaml and a README.txt.';
+  }
+
+  async function saveZip() {
+    if (!result || !downloads) return;
+    const { output, p, site, settings, cp } = result;
+    const { filename, bytes } = E.archive(p, cp, site, settings, output, META);
+    const note = $('zip-note');
+    try {
+      await downloads.save({ filename, data: new Blob([bytes], { type: 'application/zip' }) });
+      note.textContent = 'Saved ' + filename + '.';
+    } catch (error) {
+      const code = error && error.code;
+      note.textContent = code === 'declined' ? 'Not saved: the download was declined.'
+        : code === 'rate_limited' ? 'A save prompt is already open. Answer it, then try again.'
+        : code === 'rejected_extension' || code === 'extension_not_enabled' ? 'This view does not save .zip files. Copy each file from its tab instead.'
+        : 'This view could not save the file' + (error && error.message ? ': ' + error.message : '.');
+    }
+  }
+
+  async function copy(text, button, source) {
+    const label = button.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = 'Copied';
+    } catch (_) {
+      const range = document.createRange();
+      range.selectNodeContents(source);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      button.textContent = 'Selected: press Ctrl+C';
+    }
+    setTimeout(() => { button.textContent = label; }, 1600);
+  }
+
+  // ---- Controls ------------------------------------------------------------
+  for (const button of document.querySelectorAll('[data-filter]')) {
+    button.addEventListener('click', () => { state.filter = button.dataset.filter; renderFilter(); renderProfiles(); save(); });
+  }
+  for (const [id, mode] of [['mode-install', 'install'], ['mode-compose', 'compose']]) {
+    $(id).addEventListener('click', () => { state.mode = mode; renderMode(); save(); });
+  }
+  for (const name of ['form', 'source', 'approval']) {
+    for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
+      input.addEventListener('change', () => { if (input.checked) { state.install[name] = input.value; save(); renderInstall(); } });
+    }
+  }
+  $('download-limit').addEventListener('input', () => { state.install.limit = $('download-limit').value; save(); renderInstall(); });
+  $('copy-install').addEventListener('click', () => copy($('install-code').textContent, $('copy-install'), $('install-code')));
+  $('save-zip').addEventListener('click', saveZip);
+  $('reset-settings').addEventListener('click', () => { state.settings[state.profile] = {}; renderSettings(); changed(); });
+  $('reset-sparks').addEventListener('click', () => {
+    const p = profile();
+    state.clusters[p.nodes] = exampleCluster(p.nodes);
+    state.perProfile[p.id] = examplePaths(p);
+    renderSparks(); changed();
+  });
+  $('site-name').addEventListener('input', () => {
+    const p = profile();
+    paths(p).name = $('site-name').value.trim();
+    $('name-preview').textContent = 'sr-' + (paths(p).name || 'name') + '-r0';
+    changed();
+  });
+  $('shared').addEventListener('change', () => {
+    const p = profile(), c = cluster(p.nodes);
+    c.shared = $('shared').checked;
+    if (c.shared) {
+      for (const key of [...SHARED_KEYS, ...(p.nodes === 4 ? FABRIC_KEYS : [])]) {
+        const first = getValue(p, 0, key);
+        c.ranks.forEach((_, i) => setValue(p, i, key, Array.isArray(first) ? [...first] : first));
+      }
+    }
+    renderSparks(); changed();
+  });
+  $('site-read').addEventListener('click', () => {
+    const out = $('site-read-result');
+    let site;
+    try {
+      const text = $('site-text').value;
+      site = window.jsyaml ? window.jsyaml.load(text) : JSON.parse(text);
+    } catch (error) {
+      out.textContent = 'This is not a readable site file: ' + String(error.message || error).split('\n')[0];
+      return;
+    }
+    if (!site || typeof site !== 'object' || !Array.isArray(site.ranks)) { out.textContent = 'A site file holds schema, name, master and a list of ranks.'; return; }
+    const n = site.ranks.length;
+    if (n !== 2 && n !== 4) { out.textContent = 'A site file lists two or four Sparks; this one lists ' + n + '.'; return; }
+    try {
+      const c = { shared: false, ranks: site.ranks.map(r => {
+        const row = { host: r.host, host_ip: r.host_ip, interface: r.interface, hcas: [...(r.hcas || [])], gid: r.gid,
+          repository: r.repository, deployment_root: r.deployment_root };
+        if (r.fabric) row.fabric = { ...r.fabric };
+        return row;
+      }) };
+      let p = profile();
+      if (p.nodes !== n) p = CATALOG.find(x => x.nodes === n && !x.sparkcache);
+      state.profile = p.id;
+      state.clusters[n] = c;
+      state.perProfile[p.id] = { name: site.name, model: site.ranks.map(r => r.model), cache: site.ranks.map(r => r.cache) };
+      c.shared = [...SHARED_KEYS, ...(n === 4 ? FABRIC_KEYS : [])].every(key => site.ranks.every((_, i) => JSON.stringify(getValue(p, i, key)) === JSON.stringify(getValue(p, 0, key))));
+      out.textContent = 'Read ' + n + ' Sparks into ' + p.id + '.';
+      currentTab = 'rank0';
+      renderAll(); changed();
+    } catch (error) {
+      out.textContent = 'This site file is missing documented host fields.';
+    }
+  });
+
+  // ---- Shareable links (hosted pages) ----------------------------------------
+  // A link carries the model, checkpoint, serving settings, install options and output mode
+  // as query parameters, never a site value.
+  function linkFor() {
+    const p = profile(), query = new URLSearchParams({ profile: p.id, mode: state.mode });
+    const name = checkpointName(p);
+    if (name) query.set('checkpoint', name);
+    for (const [key, value] of Object.entries(settingsOf(p.id))) query.set(key, value === true ? '1' : String(value));
+    for (const [key, value] of Object.entries(state.install)) if (value) query.set(key, value);
+    return location.origin + location.pathname + '?' + query.toString();
+  }
+  function fromLink() {
+    let query;
+    try { query = new URLSearchParams(location.search); } catch (_) { return; }
+    const p = BY_ID[query.get('profile')];
+    if (!p) return;
+    state.profile = p.id;
+    const name = query.get('checkpoint');
+    state.checkpoints[p.id] = p.checkpoints.some(c => c.name === name && !c.default) ? name : null;
+    const settings = {};
+    for (const row of checkpointOf(p).settings) {
+      const text = query.get(row.name);
+      if (text === null) continue;
+      if (row.switch) { if (text === '1') settings[row.name] = true; }
+      else if (/^\d+$/.test(text)) settings[row.name] = Number(text);
+    }
+    state.settings[p.id] = settings;
+    if (['install', 'compose'].includes(query.get('mode'))) state.mode = query.get('mode');
+    if (['script', 'installed'].includes(query.get('form'))) state.install.form = query.get('form');
+    if (['release', 'main'].includes(query.get('source'))) state.install.source = query.get('source');
+    if (['ask', 'plan', 'yes'].includes(query.get('approval'))) state.install.approval = query.get('approval');
+    state.install.limit = query.get('limit') || '';
+    state.filter = 'all';
+  }
+
+  // ---- Start ---------------------------------------------------------------
+  const source = E.sourceName(META);
+  $('release-name').textContent = source;
+  $('release-meta').textContent = (META.tag ? 'Release · ' : 'Commit ') + META.commit.slice(0, 12) + ' of ' + META.repository;
+  $('release-chips').replaceChildren(chip(META.tag ? 'Release' : 'Development build', META.tag ? 'good' : 'warn'));
+  $('source-release-label').textContent = source;
+  const v = DATA.verification;
+  $('engine-text').textContent = v ? 'Matches compose.py on ' + fmt(v.valid) + ' test sites' : 'Built from ' + META.ref.slice(0, 12);
+  $('provenance').textContent = 'Templates rendered by runtime/common/compose.py from ' + source + ' (' + META.commit.slice(0, 12) +
+    ') with placeholder site values, for every checkpoint; this page checks your site with the generator\'s rules and puts your values in their place. Nothing you type is sent anywhere.';
+  $('checks').textContent = v
+    ? 'Checked when this page was built: for ' + fmt(v.valid) + ' random sites, checkpoints and settings across the ' + CATALOG.length +
+      ' profiles, every file, deployment.json, site.yaml and deployment ID equalled compose.py byte for byte; ' + fmt(v.invalid) +
+      ' invalid sites were refused with the generator\'s own messages; and compose.load_deployment accepted the unzipped folder of all ' +
+      fmt(v.archives) + ' archives tried.'
+    : 'This page was built without the engine comparison; python scripts/generate_compose_builder.py --verify runs it.';
+  load();
+  if (!FRAMED) fromLink();
+  renderAll();
+  renderInstall();
+  generate();
+  if (FRAMED) {
+    window.claude.use('downloads').then(ns => { downloads = ns; renderZip(); }, () => { downloads = null; renderZip(); });
+  } else {
+    downloads = {
+      save: async ({ filename, data }) => {
+        const url = URL.createObjectURL(data);
+        const link = el('a', { href: url, download: filename, hidden: true });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return { status: 'saved' };
+      },
+    };
+    renderZip();
+    if (/^https?:$/.test(location.protocol)) {
+      $('share-bar').hidden = false;
+      $('copy-link').addEventListener('click', () => copy(linkFor(), $('copy-link'), $('copy-link')));
+    }
+  }
+})();
+</script>
