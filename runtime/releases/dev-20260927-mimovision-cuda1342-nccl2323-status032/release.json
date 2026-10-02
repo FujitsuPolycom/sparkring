@@ -10,7 +10,7 @@
     },
     {
       "path": "runtime/releases/dev-20260927-mimovision-cuda1342-nccl2323-status032/installer-image.json",
-      "sha256": "4197d0f273103c38828b8c0caa00d12ea81ebc4704c47a9466ce1e72e86b3b8c"
+      "sha256": "a41610705105e4d4f70e00965d81a5ffedd1fe06d7370e2ca2a965073d8fab1d"
     }
   ]
 }

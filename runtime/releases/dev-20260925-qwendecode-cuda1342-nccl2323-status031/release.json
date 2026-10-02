@@ -10,7 +10,7 @@
     },
     {
       "path": "runtime/releases/dev-20260925-qwendecode-cuda1342-nccl2323-status031/installer-image.json",
-      "sha256": "525656b823469c46ab25e4a5da2f5d7ac2094431343d57d506aa94920fe98e18"
+      "sha256": "31f1dba89779d2933daad087cdf1454979056d7f41a761dcdfb7a56bf7a6716b"
     }
   ]
 }

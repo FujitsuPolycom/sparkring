@@ -10,7 +10,7 @@
     },
     {
       "path": "runtime/releases/dev-20260928-peerwait-cuda1342-nccl2323-status032/installer-image.json",
-      "sha256": "718d1582e478837c44d8ecac6879885f40280a06422ed7d32a9d6c67dc6cafc9"
+      "sha256": "f6d9aa66e76f4316c0e74e09cbe7026f6b7482f8beea2330ae8e54e0fdb03780"
     }
   ]
 }

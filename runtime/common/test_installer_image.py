@@ -268,10 +268,21 @@ def test_image_names_resolve_by_release_name_tag_or_unique_part():
 
 
 def test_an_image_without_the_profile_names_the_images_that_run_it():
-    lock = installer.read(installer_image.lock_path("2026.09.5"))
+    lock = installer.read(installer_image.lock_path("qwendecode"))
     with pytest.raises(ValueError, match="images that run it: dev-20261001-kraken") as refused:
-        installer_image.for_profile("mimo-v26-flash-mopd-tp2", lock)
-    assert "mimovision" not in str(refused.value).split("images that run it:")[1]
+        installer_image.for_profile("deepseek-v41-flash-tp4", lock)
+    assert "qwendecode" not in str(refused.value).split("images that run it:")[1]
+
+
+def test_images_that_admit_a_replaced_profile_admit_its_replacement():
+    # The MOPD checkpoint keeps the RL checkpoint's architecture and config.json,
+    # so every image admitted for an RL profile is admitted for its MOPD profile.
+    for row in installer_image.catalog():
+        listed = set(installer_image.profiles_of(row["lock"]))
+        for old, replacement in profiles.REPLACED.items():
+            assert old not in listed or replacement in listed, row["name"]
+    release = installer.read(installer_image.lock_path("2026.09.5"))
+    assert installer_image.for_profile("mimo-v26-flash-mopd-tp2", release)["name"] == release["name"]
 
 SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
           "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2",
