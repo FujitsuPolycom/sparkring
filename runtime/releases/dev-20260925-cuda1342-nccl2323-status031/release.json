@@ -10,7 +10,7 @@
     },
     {
       "path": "runtime/releases/dev-20260925-cuda1342-nccl2323-status031/installer-image.json",
-      "sha256": "1adb03d34c0b7ace63340669a242576a023f5e8d1fe8969630c109f944a37cac"
+      "sha256": "59da2933a3f782dcd32038ee05dd58a3eb400f071c688045449b7862b5498c34"
     }
   ]
 }

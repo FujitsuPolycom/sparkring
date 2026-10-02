@@ -10,7 +10,7 @@
     },
     {
       "path": "runtime/releases/dev-20260927-b12xcache-cuda1342-nccl2323-status032/installer-image.json",
-      "sha256": "68601061c2a11b8868a18f2ab66aeda7d5cf1672bb7d4d1228937fb14507d970"
+      "sha256": "53b808c351ac0bd5a4c9cbd0a6507775a7c79b9049a2970d2e80e90c744182fa"
     }
   ]
 }
