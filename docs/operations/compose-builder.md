@@ -14,7 +14,12 @@ The page runs in your browser. The addresses and paths you type never leave it.
 The [Pages workflow](../../.github/workflows/compose-builder-pages.yml)
 publishes the page for each release at
 `https://fujitsupolycom.github.io/sparkring/`. The repository needs GitHub
-Pages enabled, with GitHub Actions as its source.
+Pages enabled with GitHub Actions as its source; the address needs no custom
+domain. To publish the page for another tag or commit:
+
+```bash
+gh workflow run compose-builder-pages.yml --ref main -f ref=TAG_OR_COMMIT
+```
 
 To build the page for your checkout instead:
 

@@ -1,11 +1,13 @@
 name: Compose builder pages
 
 # Publishes the Compose builder (docs/operations/compose-builder.md) to the
-# repository's GitHub Pages site for each published release that is not a
-# prerelease, or for a tag or commit named by hand. Deploying needs Pages
-# enabled with GitHub Actions as its source; until then the deploy job fails
-# and nothing is published. The page is built with --verify, so a page whose
-# engine differs from compose.build is never published.
+# repository's GitHub Pages site for a tag or commit: each published release
+# that is not a prerelease, or one named by hand. Deploying needs Pages enabled
+# with GitHub Actions as its source. The github-pages environment deploys only
+# from main, and a release event runs on its tag, so the release job starts this
+# workflow again on main with the tag as its input; the page itself is built
+# from the input's tree. The page is built with --verify, so a page whose engine
+# differs from compose.build is never published.
 
 on:
   release:
@@ -20,19 +22,33 @@ permissions:
   contents: read
 
 concurrency:
-  group: compose-builder-pages
+  group: compose-builder-pages-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
+  start-on-main:
+    name: start on main
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Run this workflow on main for the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh workflow run compose-builder-pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f ref="$TAG"
+
   build:
     name: build and verify
-    if: github.event_name != 'release' || !github.event.release.prerelease
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -42,11 +58,9 @@ jobs:
           node-version: '22'
       - name: Install the page's build dependency
         run: python -m pip install PyYAML==6.0.3
+      # The page names and pins the checkout's exact release tag when it has one, else its commit.
       - name: Build the page, comparing its engine with compose.build
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          python scripts/generate_compose_builder.py --output site --verify --cases 20 ${RELEASE_TAG:+--tag "$RELEASE_TAG"}
+        run: python scripts/generate_compose_builder.py --output site --verify --cases 20
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
