@@ -1281,6 +1281,21 @@ def test_a_pair_holding_the_parent_image_reserves_only_the_missing_layers(machin
                      "/srv/sparkring/test/cache/qwen-flash-next-cuda13.4.2-60215d26cf5e"]
 
 
+
+def test_a_named_image_installs_its_lock_and_the_default_name_installs_no_lock(machine, sparks, capsys):
+    def planned(*options):
+        assert sparkring.main(["install", "--profile", PROFILE, *options, "--plan", "--json"]) == 0
+        return json.loads(capsys.readouterr().out)["deployment"]
+
+    named = planned("--image", "statusrows")
+    assert named == planned("--image-lock", str(RELEASES / STATUSROWS / "installer-image.json"))
+    assert planned("--image", "2026.10.0") == planned() != named
+    for options in (["--image", "nope"], ["--image", "statusrows", "--image-lock", "lock.json"]):
+        with pytest.raises(SystemExit) as stopped:
+            sparkring.main(["install", "--profile", PROFILE, *options, "--plan"])
+        assert stopped.value.code == 2
+    assert "--image: No installer image is named nope" in capsys.readouterr().err
+
 def test_a_ring_rank_holding_the_parent_image_reserves_only_the_missing_layers(machine, sparks, monkeypatch, capsys):
     # Ranks 0-2 hold the statusrows image; rank 3 holds spinwait and has 61.8 GiB free. Statusrows adds two layers
     # to spinwait; the whole-image and compile cache allowances needed 100 GiB on rank 3.

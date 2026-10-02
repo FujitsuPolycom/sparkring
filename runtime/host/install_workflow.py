@@ -903,7 +903,11 @@ def execute(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
     parser.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
-    parser.add_argument("--image-lock", type=Path, help="development image lock replacing the shared installer image")
+    images = parser.add_mutually_exclusive_group()
+    images.add_argument("--image", metavar="NAME",
+                        help="run the profile on another installer image: a name or release tag that sparkring images "
+                             "lists; default: the installer's own image")
+    images.add_argument("--image-lock", type=Path, help="development image lock replacing the shared installer image")
     parser.add_argument("--model-path", action="append", metavar="[N=]PATH",
                         help="a local copy of the checkpoint; PATH for every Spark or N=PATH for Node N (repeatable); "
                              "SparkRing links or copies its files into its own directory, or serves an exact copy on "
@@ -937,6 +941,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.events is not None and not args.events.parent.is_dir():
         parser.error(f"--events: the directory {args.events.parent} does not exist")
+    if args.image is not None:
+        # A named image is its lock in this package; naming the default image
+        # requests the same deployment as no selection.
+        try:
+            args.image_lock = installer_image.lock_path(args.image)
+        except ValueError as error:
+            parser.error(f"--image: {error}")
     output = sys.stdout
     code = 0
     with contextlib.redirect_stdout(sys.stderr), progress.run("install", events=args.events):

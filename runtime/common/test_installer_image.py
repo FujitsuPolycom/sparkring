@@ -234,6 +234,45 @@ def test_controller_allows_preview_while_another_deployment_is_running(tmp_path,
     assert installer.read(tmp_path / "active.json")["path"] == str(tmp_path / "baseline")
 
 
+
+def test_up_takes_a_named_image_only_with_an_exact_profile():
+    with pytest.raises(ValueError, match="require up with an exact profile"):
+        controller.lifecycle(["status", "--image", "statusrows"])
+
+
+def test_release_tags_name_published_installer_images():
+    tags = installer_image.release_tags()
+    assert tags["2026.10.0"] == installer_image.DEFAULT_LOCK.parent.name
+    assert set(tags.values()) <= {row["name"] for row in installer_image.catalog()}
+
+
+def test_catalog_lists_the_default_first_and_only_registry_images():
+    rows = installer_image.catalog()
+    assert rows[0]["path"] == installer_image.DEFAULT_LOCK and rows[0]["default"] and rows[0]["tags"] == ["2026.10.0"]
+    assert sum(row["default"] for row in rows) == 1
+    assert all("@sha256:" in row["lock"]["image_reference"] for row in rows)
+
+
+def test_image_names_resolve_by_release_name_tag_or_unique_part():
+    statusrows = installer_image.RELEASES / "dev-20261001-statusrows-cuda1342-nccl2323-status034" / "installer-image.json"
+    assert installer_image.lock_path("statusrows") == statusrows
+    assert installer_image.lock_path(statusrows.parent.name) == statusrows
+    assert installer_image.lock_path("2026.09.5").parent.name == "dev-20260927-mimovision-cuda1342-nccl2323-status032"
+    # The default image, however it is named, is no selection.
+    for name in ("2026.10.0", "kraken", installer_image.DEFAULT_LOCK.parent.name):
+        assert installer_image.lock_path(name) is None
+    with pytest.raises(ValueError, match="matches several images"):
+        installer_image.lock_path("20261001")
+    with pytest.raises(ValueError, match="No installer image is named status"):
+        installer_image.lock_path("status")
+
+
+def test_an_image_without_the_profile_names_the_images_that_run_it():
+    lock = installer.read(installer_image.lock_path("2026.09.5"))
+    with pytest.raises(ValueError, match="images that run it: dev-20261001-kraken") as refused:
+        installer_image.for_profile("mimo-v26-flash-mopd-tp2", lock)
+    assert "mimovision" not in str(refused.value).split("images that run it:")[1]
+
 SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
           "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2",
           "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")

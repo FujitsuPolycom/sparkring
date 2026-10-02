@@ -170,6 +170,7 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("setup", help="guided Linux pair/ring setup; show/storage retain profile planning")
     subcommands.add_parser("node", help="Linux node services and observations")
     subcommands.add_parser("models", help="list exact model/version/topology profiles")
+    subcommands.add_parser("images", help="list the installer images this package can run, for install --image")
     subcommands.add_parser("logs", help="follow concise installation progress")
     subcommands.add_parser("install", help="install across the ring and deploy a model in one workflow")
     subcommands.add_parser("checkpoints", help="list SparkRing's checkpoint directories on every Spark, or release one")
@@ -198,6 +199,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "models":
         from runtime.host.models import main as models_main
         return models_main(raw[1:])
+    if raw and raw[0] == "images":
+        from runtime.host.images import main as images_main
+        return images_main(raw[1:])
     if raw and raw[0] == "logs":
         from runtime.host.progress import main as logs_main
         return logs_main(raw[1:])

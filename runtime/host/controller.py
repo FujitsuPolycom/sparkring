@@ -400,7 +400,9 @@ def lifecycle(argv):
     parser.add_argument("operation", choices=("up", "down", "status"))
     parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
     parser.add_argument("--model-path", help="serve this complete copy read-only on every rank; it is verified, never changed")
-    parser.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
+    images = parser.add_mutually_exclusive_group()
+    images.add_argument("--image", metavar="NAME", help="another installer image: a name or release tag that sparkring images lists")
+    images.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
     parser.add_argument("--fresh-mesh", action="store_true", help="review replacement of an existing native mesh")
     parser.add_argument("--instance", default="main", help="separate local deployment name for a rehearsal")
     parser.add_argument("--plan", action="store_true")
@@ -414,8 +416,11 @@ def lifecycle(argv):
     if settings and (args.operation != "up" or not args.profile):
         raise ValueError("Serving settings apply to up with an exact profile")
     image_runtime = None
-    if args.image_lock and (args.operation != "up" or not args.profile):
-        raise ValueError("--image-lock requires up with an exact profile")
+    if (args.image or args.image_lock) and (args.operation != "up" or not args.profile):
+        raise ValueError("--image and --image-lock require up with an exact profile")
+    if args.image:
+        from runtime.common import installer_image
+        args.image_lock = installer_image.lock_path(args.image)
     if args.instance != "main" and not args.profile:
         raise ValueError("--instance names one deployment of a profile; give the profile as well")
     from runtime.host import retained_source

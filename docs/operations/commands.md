@@ -15,6 +15,7 @@ sudo sparkring install --profile PROFILE                     # set up the Sparks
 sudo sparkring install --profile PROFILE --plan              # print the plan, change nothing
 sudo sparkring install --profile PROFILE --model-path /data/models/my-model  # reuse a copy
 sudo sparkring install --profile PROFILE --checkpoint NAME   # another checkpoint the profile lists
+sudo sparkring install --profile PROFILE --image NAME        # another image from sparkring images
 sudo sparkring logs --follow                                 # follow progress
 ```
 
@@ -25,6 +26,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
+| [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that four-Spark rings need |
@@ -65,6 +67,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--env FILE` | Preferences file: setup keys on first installation, the download limit and the [retained deployments](#automatic-release) on every run ([keys](install-reference.md#optional-preferences)) |
 | `--stop-workloads` | Stop (never remove) GPU containers that are not SparkRing's |
 | `--no-auto-recover` | Do not restart this model by itself when a Spark stops serving ([automatic recovery](install-reference.md#automatic-recovery)) |
+| `--image NAME` | Another installer image: a name or release tag from [`sparkring images`](#images) ([details](install-reference.md#another-image)); default: the installer's own image |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |
@@ -154,6 +157,15 @@ Two setup actions run offline without sudo and accept `--variant`:
 
 `sparkring models [--json]` lists every profile (exact model, version,
 quantization and topology) and marks those `sparkring install` supports.
+
+## images
+
+`sparkring images [--profile PROFILE] [--json]` lists the installer images
+this package records, the default first, with the GitHub release that
+published each, its download size and the profiles it runs. `--profile`
+lists only the images that run that profile. Any listed name, release tag or
+part of a name that only one image has selects that image in
+`sudo sparkring install --image NAME`.
 
 ## status
 
@@ -341,6 +353,7 @@ one of them. The deployment directories are under
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
 | `--max-images N` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values for a new deployment; an existing deployment keeps its own |
+| `--image NAME` | `up PROFILE` only: another installer image from [`sparkring images`](#images) |
 | `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal. An existing deployment keeps the image it recorded, and naming another lock for it is refused |
 | `--deployment DIR` | Use a deployment saved by `sparkring init` instead ([lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing)) |
 

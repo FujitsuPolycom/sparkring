@@ -399,8 +399,39 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   cache on.
 - Profiles that select other images, such as the `shared-2026.09.3` release,
   keep their own guides; `sparkring install` does not install them.
-- `--image-lock FILE` replaces the shared lock for a development rehearsal and
-  must list the selected profile.
+- `--image NAME` runs a profile on another installer image this package
+  records ([Another image](#another-image)). `--image-lock FILE` replaces the
+  shared lock for a development rehearsal and must list the selected profile.
+
+### Another image
+
+`sparkring images` lists the installer images this package records, the
+default first, with the GitHub release that published each and the profiles
+each runs. `--image NAME` installs a profile on one of them:
+
+```bash
+sudo sparkring install --profile qwen38-flash-next-tp2 --image statusrows
+```
+
+`NAME` is an image's full name
+(`dev-20261001-statusrows-cuda1342-nccl2323-status034`), the release tag that
+published it (`2026.10.0`), or a part of the name that only one image has
+(`kraken`, `statusrows`). `sparkring images --profile PROFILE` lists only the
+images that run that profile.
+
+- The image is part of the deployment: another image installs a separate
+  deployment, and the one it replaces becomes the rollback target, as with
+  another checkpoint. Running the command without `--image` returns to the
+  default image; naming the default image is the same as leaving `--image`
+  out.
+- The profiles' measurements and checks were made on the default image. On
+  another image, each Spark checks before the model starts that the image
+  has what the profile needs, and the installation stops if it does not.
+- A Spark downloads an image it does not hold; an image built on one the
+  Spark holds downloads only its added layers. Compile caches are kept per
+  image, so a profile's first start on an image compiles its kernels again.
+- `sudo sparkring up PROFILE --image NAME` selects an image for a deployment
+  the same way.
 
 ### Serving settings
 
