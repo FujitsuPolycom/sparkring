@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from runtime.host import checkpoint_plan, install_assets as assets
+from runtime.host import checkpoint_plan, fabric_ssh, install_assets as assets
 from runtime.host.install_errors import NeedsInput
 from runtime.host.test_fabric_ssh import cluster
 
@@ -766,3 +766,47 @@ def test_checkpoint_work_waits_for_image_distribution(tmp_path, monkeypatch, pin
     result = runner._call(rows[1]["host"], ["installer", "model", "1"], 60)
     assert result["returncode"] == 1 and result["stderr"].startswith("Image distribution failed")
     assert not started.is_set() and runner.needs_input is None
+
+
+class HalfFabric(Fabric):
+    """Transfers on Sparks 2 and 3 of a ring, which a deployment on that half numbers 0 and 1."""
+
+    def __init__(self, spark):
+        super().__init__(spark, 2)
+        whole = FabricTransport(4)
+        whole.local = lambda rank: rank == 0
+        self.transport = fabric_ssh.View(whole, (2, 3))
+
+    def popen(self, argv, **kwargs):
+        return super().popen([f"node{int(argv[0].removeprefix('node')) - 2}", *argv[1:]], **kwargs)
+
+    def run(self, argv, **kwargs):
+        if argv[0].startswith("node"):
+            argv = [f"node{int(argv[0].removeprefix('node')) - 2}", *argv[1:]]
+        return super().run(argv, **kwargs)
+
+
+def test_a_half_without_node_a_downloads_on_its_first_spark_and_streams_over_its_cable(tmp_path, pinned, monkeypatch):
+    reports = {}
+
+    @contextlib.contextmanager
+    def step(message, **kwargs):
+        reports[kwargs.get("phase") or message] = kwargs.get("report")
+        yield {"failed": False}
+    monkeypatch.setattr(assets.progress, "step", step)
+    rows = ranks(2)
+    plan = approve([survey(0), survey(1, candidate(FOLDER, [W1]))], rows)
+    spark = Spark(2)
+    fabric = HalfFabric(spark)
+    current = fabric.assets(tmp_path)
+    # Rank 0 of the half is Spark 2, a worker: its commands run over SSH with sudo.
+    assert current.command(0, ["true"]) == ["node2", "sudo", "-n", "true"]
+    result = current.models(lock(rows), spark, plan=plan)
+    # The meter reads Node A's disk, so a download on Spark 2 carries none.
+    assert reports["model-fetch"] is None
+    assert result["downloaded"] == sorted(REQUIRED - {W1}) and result["donor_rank"] == 0
+    assert [(item["source"], item["transport"]) for item in result["pooled"]] == [(1, "fabric")]
+    assert not any(event[0] == "rsync" for event in spark.events)
+    assert all(held == REQUIRED for held in spark.held.values())
+    with pytest.raises(ValueError, match="Node 1 and Node 0 copy only over their shared cable"):
+        current.copy(spark, rows, {"repository": REPO, "revision": REV, "files": {}, "sizes": {}}, 1, 0, [])

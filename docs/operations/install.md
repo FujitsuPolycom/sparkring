@@ -88,6 +88,10 @@ model with the same install command. If `sudo sparkring status` shows
 `needs-attention`, run `sudo sparkring hairpin` on Node A.
 [More about the setting](install-reference.md#four-spark-rings).
 
+A ring can also serve two two-Spark models, one on each half:
+`sudo sparkring install --profile PROFILE --on 0,1`, then `--on 2,3`.
+[Two models on one ring](install-reference.md#two-models-on-one-ring).
+
 ## Reuse a model already on disk
 
 The installer looks for the model on every Spark (Hugging Face caches and

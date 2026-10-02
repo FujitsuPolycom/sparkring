@@ -190,7 +190,8 @@ def option(entry, *, abbreviate=False):
 def install_command(request=None, named=(), *, ignore_local=False):
     """The ``sudo sparkring install`` command that repeats one deployment request.
 
-    ``request`` holds ``profile``, ``checkpoint``, ``cache_path`` and ``image_lock``. With the
+    ``request`` holds ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``
+    and, for a deployment on half of a four-Spark ring, ``placement``. With the
     ``--model-path`` entries ``named`` they make the deployment's identity, so
     a command that leaves one out plans another deployment.
     ``--ignore-local-copies`` is kept when set, because it narrows the search
@@ -200,6 +201,8 @@ def install_command(request=None, named=(), *, ignore_local=False):
     argv = ["sudo", "sparkring", "install"]
     if request.get("profile"):
         argv += ["--profile", str(request["profile"])]
+    if request.get("placement"):
+        argv += ["--on", ",".join(str(rank) for rank in request["placement"])]
     if request.get("checkpoint"):
         argv += ["--checkpoint", str(request["checkpoint"])]
     for entry in named_paths(named):
@@ -738,7 +741,11 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     if len(surveys) != count:
         raise ValueError("The checkpoint plan needs one survey per Spark")
     entries = named_paths(named, count)
-    request = {key: (request or {}).get(key) for key in ("profile", "checkpoint", "cache_path", "image_lock")}
+    given = request or {}
+    request = {key: given.get(key) for key in ("profile", "checkpoint", "cache_path", "image_lock")}
+    if given.get("placement"):
+        # Only a deployment on half of a four-Spark ring records its placement.
+        request["placement"] = list(given["placement"])
     context = {"request": request, "named": entries, "ignore_local_copies": bool(ignore_local)}
     command = install_command(request, entries, ignore_local=ignore_local)
     policy = policy or storage_policy()

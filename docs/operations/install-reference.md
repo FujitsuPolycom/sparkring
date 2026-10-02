@@ -734,8 +734,9 @@ Log lines beginning `RoCEnante rank` tell which rank was late and why.
 ### Automatic recovery
 
 Node A restarts the model by itself. Once a minute
-(`sparkring-recover.timer`), it checks the active model and, for the first
-four rows of the table, runs the same `up`, or `down` and then `up`, that the
+(`sparkring-recover.timer`), it checks the active model, or each half's model
+on a [ring that serves two](#two-models-on-one-ring), and, for the first four
+rows of the table, runs the same `up`, or `down` and then `up`, that the
 table names. It acts only when all of these hold:
 
 - The last model operation was a completed `sudo sparkring up` or
@@ -746,7 +747,7 @@ table names. It acts only when all of these hold:
   the Spark it waits for.
 - Two checks in a row found the model not serving. An API that gives no
   answer at all, rather than a 503, must stay silent for 5 minutes.
-- On four Sparks: every Spark reports its mesh services, the
+- For a four-Spark model: every Spark reports its mesh services, the
   [hairpin setting](#four-spark-rings) is in effect, and no mesh forwarding
   process runs without its service ([below](#mesh-forwarding-without-its-service)).
 
@@ -1080,7 +1081,8 @@ Every four-Spark installer profile runs on a native mesh; the installer
 renders each rank's container from the profile's shared container
 specification.
 
-- It reuses the mesh service every Spark has enabled or running.
+- It reuses the mesh service every Spark has enabled or running, or stopped
+  while [two models served on the ring](#two-models-on-one-ring).
 - If no Spark has one, it downloads and verifies the pinned host marker on
   every rank, creates stopped model containers, installs supervised mesh
   services, waits for every rank and starts the model.
@@ -1165,6 +1167,77 @@ deployment created. When those containers are created again, for example
 after `docker container prune` removed them while the model was stopped, the
 deployment's next `up` installs its mesh services again for the new
 containers, in the same way.
+
+## Two models on one ring
+
+A four-Spark ring serves one four-Spark model, or two two-Spark models: one
+on Sparks 0 and 1, one on Sparks 2 and 3. Switch between them with
+`sudo sparkring install`, as you switch models.
+
+```bash
+sudo sparkring install --profile TWO_SPARK_PROFILE --on 0,1   # Sparks 0 and 1
+sudo sparkring install --profile TWO_SPARK_PROFILE --on 2,3   # Sparks 2 and 3
+sudo sparkring install --profile FOUR_SPARK_PROFILE           # all four again
+```
+
+- **Which half.** `--on` takes `0,1` or `2,3`: each pair shares a cable.
+  Without `--on`, a two-Spark profile goes on the half that serves no model,
+  and the run says which. When both halves serve, or neither does, it asks
+  for `--on`. `--on` is refused on a pair and for four-Spark profiles.
+- **What stops.** A model on a half replaces that half's model and leaves the
+  other half running. It stops a running four-Spark model. A four-Spark
+  model stops the models on both halves. The plan lists every model the
+  switch stops (`It stops PROFILE on Sparks 2 and 3.`), and the run asks
+  before it stops one outside the half you named; `--yes` approves that.
+- **Where it serves.** A half serves on its first Spark, at the profile's
+  port: Sparks 0 and 1 on Node A's address, Sparks 2 and 3 on Spark 2's own
+  LAN address. `Model ready:` and `sudo sparkring status` print each URL. A
+  Spark 2 without its own LAN connection serves on its administration
+  address, which only Node A reaches; the plan says so.
+- **Its own steps.** A half's checkpoint plan and model steps call its two
+  Sparks Node 0 and Node 1 and name their host names. Package updates and the
+  serving image go to every Spark; they restart no model.
+
+### The ring's mesh while halves serve
+
+Before a half's model starts, every Spark stops and disables its mesh
+service, and the half's own start checks that no mesh runs on its two Sparks.
+A two-Spark model uses its cable directly, as a pair does, so its two Sparks
+restore their fabric addresses in [GID index 3](#roce-gid-index-3) first.
+Fabric addresses, routes and the [hairpin setting](#the-hairpin-setting)
+stay as setup left them, and a half's installation applies no hairpin change.
+
+Each Spark records the mesh services it stopped in
+`/etc/sparkring/mesh-parked.json`, and such a service counts as enabled for
+the next four-Spark installation, which reuses it. That installation's
+[mesh step](#the-rings-mesh) enables and starts it again on every Spark and
+removes the record. `sudo sparkring node mesh-park` stops and disables the
+mesh services of one Spark by hand.
+
+### Status, stop and recovery
+
+- `sudo sparkring status` lists each half's model, its checkpoint, its API
+  URL and its automatic recovery.
+- `sudo sparkring down --on 2,3 --execute` stops one half's model, and
+  `sudo sparkring up --on 2,3 --execute` starts it again. With models on
+  both halves, `up` and `down` without a profile ask for `--on`.
+- `sudo sparkring up` refuses a four-Spark model while a half's model runs,
+  and a half's model while the four-Spark model runs, and names the `down`
+  command that frees the Sparks.
+- [Automatic recovery](#automatic-recovery) checks each half's model and
+  restarts only the half that stopped serving. `recover on` and `recover off`
+  apply to both halves.
+- [Automatic release](#automatic-release) keeps each half's active model and
+  the model its last switch replaced.
+
+One installation lock covers the whole ring. While one half installs, the
+other half's model keeps serving, and its recovery check reports `busy` and
+runs again a minute later.
+
+Node A keeps each half's records in
+`/var/lib/sparkring/controller/slots/0-1/` and `slots/2-3/`
+(`active.json`, `transaction.json`); the whole ring's stay in
+`/var/lib/sparkring/controller/`.
 
 ## Security and host exposure
 
@@ -1429,7 +1502,8 @@ image and checkpoint revision. After every `sudo sparkring install` and
 `sudo sparkring up` that completes, Node A keeps a deployment when:
 
 - it is the active deployment, the rollback target or the candidate of an
-  unfinished model switch;
+  unfinished model switch, on the whole ring or pair or on either half of a
+  ring that serves [two models](#two-models-on-one-ring);
 - its model container runs on a Spark;
 - a mesh installed on a Spark uses its workspace. On a four-Spark ring, the
   deployment that created the mesh holds the mesh's host marker, and the mesh

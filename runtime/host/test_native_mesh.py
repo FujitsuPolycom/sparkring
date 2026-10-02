@@ -553,3 +553,76 @@ def test_port_preparation_names_a_foreign_service_on_the_ssh_port(monkeypatch):
     public = algorithm.decode() + " " + base64.b64encode(encoded).decode() + " fixture"
     with pytest.raises(ValueError, match="dropbear"):
         seed.prepare(public, interfaces=["p0", "p1", "p2", "p3"], run=run)
+
+
+class Parking(Units):
+    """systemctl on one Spark that records the changes a park makes."""
+
+    def __init__(self, active=(), enabled=()):
+        super().__init__(active, enabled)
+        self.changes = []
+
+    def call(self, argv, accepted=(0,)):
+        if argv[:2] == ["systemctl", "list-units"]:
+            return SimpleNamespace(stdout="".join(f"{unit} loaded active running mesh\n" for unit in sorted(self.active)))
+        if argv[1] in ("disable", "reset-failed"):
+            self.changes.append(argv)
+            for unit in argv[2:]:
+                if unit != "--now":
+                    self.enabled.discard(unit)
+                    if "--now" in argv:
+                        self.active.discard(unit)
+            return SimpleNamespace(returncode=0, stdout="")
+        return super().call(argv, accepted)
+
+
+def test_a_park_stops_and_disables_every_mesh_and_records_it(tmp_path, monkeypatch):
+    units = Parking(active=[UNIT], enabled=[UNIT])
+    installed(tmp_path, monkeypatch, units, names=(None, "home"))
+    root = tmp_path / "root"
+    result = native_mesh.park_local(call=units.call, root=root)
+    assert result == {"ok": True, "parked": [UNIT], "recorded": [UNIT]}
+    assert units.changes == [["systemctl", "disable", "--now", UNIT], ["systemctl", "reset-failed", UNIT]]
+    assert native_mesh.parked_units(root=root) == [UNIT]
+    assert native_mesh.parked_local(call=units.call) == {"ok": True}
+    # Repeating it stops nothing more and keeps the record.
+    units.changes.clear()
+    assert native_mesh.park_local(call=units.call, root=root)["parked"] == []
+    assert units.changes == [["systemctl", "reset-failed", UNIT]] and native_mesh.parked_units(root=root) == [UNIT]
+
+
+def test_a_parked_check_refuses_a_running_or_enabled_mesh(tmp_path, monkeypatch):
+    units = Parking(active=[UNIT], enabled=[UNIT])
+    installed(tmp_path, monkeypatch, units)
+    with pytest.raises(ValueError, match="Mesh services still run on this Spark: sparkring-mesh.service"):
+        native_mesh.parked_local(call=units.call)
+    units.active.clear()
+    with pytest.raises(ValueError, match="stay enabled"):
+        native_mesh.parked_local(call=units.call)
+
+
+def test_a_parked_mesh_is_reported_for_reuse_and_served_again(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    installed(tmp_path, monkeypatch, Units())
+    assert native_mesh.inspect_local(1) == {"mesh": None}
+    native_mesh._save_parked([UNIT], root=root)
+    monkeypatch.setattr(native_mesh, "parked_units", lambda **kwargs: [UNIT])
+    mesh = native_mesh.inspect_local(1)["mesh"]
+    assert mesh["unit"] == UNIT and mesh["active"] is False and mesh["parked"] is True
+    unparked = []
+    spark = Spark()
+    result = native_mesh.serve_ring(REFERENCE, 1, ["mlx5_0"], 3, "192.0.2.111", call=spark.call, check=spark.check,
+                                    stale=spark.stale, sleep=lambda seconds: None, code=spark.code,
+                                    unpark=unparked.append)
+    assert result["action"] == "started" and unparked == [UNIT]
+    assert spark.changes() == [["update-code", UNIT], ["systemctl", "enable", "--now", UNIT]]
+
+
+def test_unparking_removes_one_unit_and_the_record_with_the_last(tmp_path):
+    native_mesh._save_parked([UNIT, "sparkring-home-mesh.service"], root=tmp_path)
+    native_mesh._unpark(UNIT, root=tmp_path)
+    assert native_mesh.parked_units(root=tmp_path) == ["sparkring-home-mesh.service"]
+    native_mesh._unpark("sparkring-other-mesh.service", root=tmp_path)
+    native_mesh._unpark("sparkring-home-mesh.service", root=tmp_path)
+    assert not (tmp_path / "etc/sparkring/mesh-parked.json").exists()
+    assert native_mesh.parked_units(root=tmp_path) == []

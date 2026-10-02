@@ -200,8 +200,23 @@ def managed_workspace(name):
     return "/srv/sparkring/" + name + "-managed"
 
 
+# The ring halves a two-rank deployment may occupy on a four-Spark ring (runtime/host/placement.py).
+HALVES = ((0, 1), (2, 3))
+# The RDMA devices of a pair's rank: the primary and secondary functions of ConnectX port 0.
+PAIR_HCAS = ["rocep1s0f0", "roceP2p1s0f0"]
+
+
 def site_document(raw, card, revision):
-    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address", "api_address", "native_mesh"}:
+    """The normalized site of a deployment lock from its raw site input.
+
+    ``placement``, on a two-rank card only, names the half of a four-Spark
+    ring (``[0, 1]`` or ``[2, 3]``) whose two Sparks the rows list in rank
+    order. A row's ``hcas``, on a two-rank card only, names the rank's
+    primary and secondary RDMA devices facing its partner; a row without
+    ``hcas`` uses port 0's functions (``PAIR_HCAS``), as on a pair.
+    """
+    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address",
+                                                "api_address", "native_mesh", "placement"}:
         raise ValueError("Unknown site setting")
     if raw.get("schema") != "sparkring-install-site/v1":
         raise ValueError("Expected sparkring-install-site/v1")
@@ -216,8 +231,16 @@ def site_document(raw, card, revision):
         raise ValueError("Use a dedicated workspace below an operator-owned parent")
     ranks = []
     cache_default = managed_workspace(name) + "/cache" if backend(card) == "glm-managed" else workspace + "/cache"
+    if "placement" in raw:
+        placement = raw["placement"]
+        if card["nodes"] != 2 or not (isinstance(placement, list) and len(placement) == 2
+                                      and all(type(item) is int for item in placement)
+                                      and tuple(placement) in HALVES):
+            raise ValueError("A placement names one half of a four-Spark ring, [0, 1] or [2, 3], for a two-Spark "
+                             "profile")
     for number, row in enumerate(rows):
-        allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model", "fabric", "node_id"}
+        allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model",
+                   "fabric", "node_id", "hcas"}
         if not isinstance(row, dict) or set(row) - allowed:
             raise ValueError("Unknown host field; passwords and runtime overrides are not site inputs")
         interface = row.get("interface")
@@ -226,11 +249,17 @@ def site_document(raw, card, revision):
         reuse = row.get("reuse_verified_model", False)
         if type(reuse) is not bool:
             raise ValueError("reuse_verified_model must be a boolean operator declaration")
+        hcas = row.get("hcas", PAIR_HCAS)
+        if "hcas" in row and (card["nodes"] != 2 or not isinstance(hcas, list) or len(hcas) != 2
+                              or len(set(hcas)) != 2
+                              or not all(isinstance(hca, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca)
+                                         for hca in hcas)):
+            raise ValueError("A two-Spark rank's hcas name its two distinct RDMA devices that face its partner")
         item = {
             "rank": number, "host": host(row["host"]),
             "management_ip": address(row["management_ip"]), "host_ip": address(row["fabric_ip"]),
             "interface": interface, "gid": 3,
-            "hcas": ["rocep1s0f0", "roceP2p1s0f0"] if card["nodes"] == 2 else
+            "hcas": list(hcas) if card["nodes"] == 2 else
                     ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"],
             "model": str(compose.linux_path(row.get("model", workspace + "/models/" + card["model_revision"]))),
             "cache": str(compose.linux_path(row.get("cache", cache_default))),
@@ -266,6 +295,8 @@ def site_document(raw, card, revision):
               "controller_address": address(raw.get("controller_address", ranks[0]["management_ip"]))}
     if "api_address" in raw:
         result["api_address"] = address(raw["api_address"])
+    if "placement" in raw:
+        result["placement"] = list(raw["placement"])
     if "native_mesh" in raw:
         if card["profile"] not in compose.TP4_PROFILES:
             raise ValueError("A native-mesh plan requires a four-Spark Compose profile")
@@ -520,6 +551,13 @@ def operation_plan(lock, action):
                     phases += [phase("ring-stop", ranks, "mutates-host", "ring-stopped"),
                                phase("ring-serve", ranks, "mutates-host", "ring-check")]
                 elif len(ranks) == 2:
+                    if lock["site"].get("placement"):
+                        # A half of a four-Spark ring uses ports that the
+                        # ring's four-rank mesh also forwards on. Its two
+                        # Sparks stop and disable their mesh services first;
+                        # a four-rank deployment's ring-serve enables them
+                        # again (native_mesh.park_local, serve_ring).
+                        phases += [phase("ring-park", ranks, "mutates-host", "ring-parked")]
                     # A pair's fabric addresses return to RoCE GID index 3,
                     # which they leave when the cabled Spark restarts while
                     # the model runs.

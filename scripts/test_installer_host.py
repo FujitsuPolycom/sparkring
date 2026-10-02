@@ -30,8 +30,8 @@ def facts(row):
     return {"platform": "Linux", "architecture": "aarch64", "tools": {"docker": True, "PyYAML": True},
             "gpu": "GPU 0: NVIDIA GB10 (UUID: test)",
             "management_ip": row["management_ip"], "fabric_ip": row["host_ip"], "interface": row["interface"],
-            "rdma": [{"device": device, "active": True, "type": "RoCE v2", "mtu": 9000, "rdma_mtu": 4096,
-                      "gid_ip": "198.18.20.1", "ips": ["198.18.20.1"]} for device in row["hcas"]]}
+            "rdma": [{"device": device, "netdev": row["interface"], "active": True, "type": "RoCE v2", "mtu": 9000,
+                      "rdma_mtu": 4096, "gid_ip": "198.18.20.1", "ips": ["198.18.20.1"]} for device in row["hcas"]]}
 
 
 def test_image_prepare_accepts_verified_untagged_id_hidden_from_default_listing(tmp_path, monkeypatch):
@@ -100,6 +100,43 @@ def test_a_port_whose_address_left_gid_index_3_passes_the_prerequisites():
     value["rdma"][0]["active"] = False
     with pytest.raises(ValueError, match="expected link"):
         runner.check_facts(value, row)
+
+
+def test_the_higher_rank_of_a_ring_half_is_checked_on_its_port_1_functions():
+    from runtime.host import controller
+    from runtime.host.test_fabric_ssh import cluster
+    raw = controller.model_site(cluster(4), QWEN, "itest", (2, 3))
+    for row in raw["hosts"]:
+        row["model"] = "/srv/sparkring/test/checkpoints/model"
+    row = installer.make_lock(QWEN, raw, "1" * 40, "2" * 64)["site"]["ranks"][1]
+    value = facts(row)
+    # The probe's top-level fields describe port 0, which faces Spark 0, not the partner.
+    value.update(fabric_ip="198.18.4.1", interface="enp1s0f0np0")
+    value["rdma"] = [{"device": "rocep1s0f0", "netdev": "enp1s0f0np0", "active": True, "mtu": 9000, "rdma_mtu": 4096,
+                      "ips": ["198.18.4.1"]}]
+    value["rdma"] += [{"device": device, "netdev": netdev, "active": True, "mtu": 9000, "rdma_mtu": 4096, "ips": [ip]}
+                      for device, netdev, ip in (("rocep1s0f1", "enp1s0f1np1", "198.18.3.2"),
+                                                 ("roceP2p1s0f1", "enP2p1s0f1np1", "198.18.103.2"))]
+    runner.check_facts(value, row)
+    value["rdma"][1]["ips"] = ["198.18.9.2"]
+    with pytest.raises(ValueError, match="mapping differs"):
+        runner.check_facts(value, row)
+
+
+def test_only_a_ring_half_parks_the_ring_mesh(tmp_path, monkeypatch):
+    from runtime.host import native_mesh
+    calls = []
+    monkeypatch.setattr(native_mesh, "park_local", lambda: calls.append("park") or {"ok": True})
+    monkeypatch.setattr(native_mesh, "parked_local", lambda: calls.append("check") or {"ok": True})
+    lock = {"id": "fixture", "selection": {}, "site": {"workspace": str(tmp_path), "ranks": [{}], "placement": [2, 3]}}
+    (tmp_path / ".installer-owner.json").write_text(json.dumps({"deployment": "fixture"}))
+    monkeypatch.setattr(installer, "validate", lambda _: lock)
+    assert host.perform("ring-park", lock, 0) == {"ok": True}
+    assert host.perform("ring-parked", lock, 0) == {"ok": True}
+    assert calls == ["park", "check"]
+    del lock["site"]["placement"]
+    with pytest.raises(ValueError, match="Only a deployment on half of a four-Spark ring"):
+        host.perform("ring-park", lock, 0)
 
 
 def inspection(spec):
