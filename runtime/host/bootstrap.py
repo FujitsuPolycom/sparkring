@@ -131,9 +131,13 @@ def login_failure(hop, errors):
                    "(sudo systemctl enable --now ssh) or prepare it offline with sudo sparkring setup --worker-bundle")
     elif any(text in errors for text in UNANSWERED):
         message = f"{where} did not answer SSH; check the fabric cable to that Spark"
-    elif "Host key verification failed" in errors:
+    elif "REMOTE HOST IDENTIFICATION HAS CHANGED" in errors or offending:
         message = (f"{where} presented an SSH host key that differs from the one recorded for it; if that Spark "
                    "was reinstalled, remove its known_hosts line")
+    elif "Host key verification failed" in errors:
+        # OpenSSH prints the same last line when strict checking meets a key it has no record of.
+        message = (f"{where} has no recorded SSH host key yet; run the command in a terminal to compare and "
+                   "accept its fingerprint")
     elif any(text in errors for text in ("Connection closed", "Connection reset")):
         message = (f"{where} closed the SSH connection before sign-in finished; SSH closes a password prompt "
                    "left unanswered for about 2 minutes, so run the command again and answer it")
