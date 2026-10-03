@@ -1,7 +1,10 @@
-"""Local node identity, approved boot configuration, and read-only observations.
+"""Local node identity, approved boot configuration, observations and fabric route upkeep.
 
-Only the node CLI runs privileged operations. No listening control socket or
-sudoers rule is installed; setup uses the operator's existing SSH/sudo authority.
+Only the node CLI runs privileged operations, including the host agent it
+runs (``sparkring node agent``). The agent observes, and adds the approved
+fabric routes that are missing (``restore_routes``); it changes nothing else.
+No listening control socket or sudoers rule is installed; setup uses the
+operator's existing SSH/sudo authority.
 """
 import ipaddress
 import json
@@ -10,6 +13,7 @@ from pathlib import Path, PurePosixPath
 import re
 import socket
 import subprocess
+import sys
 import time
 import uuid
 
@@ -29,6 +33,10 @@ HAIRPIN_REMEDY = "on Node A: sudo sparkring hairpin"
 HANDSHAKE_STALE = control.HANDSHAKE_STALE
 # The characters of an error line that a status document carries.
 ERROR_TEXT = 300
+# The boot service that restores the approved fabric (routes, forwarding settings and rules).
+FABRIC_UNIT = "sparkring-fabric.service"
+# Seconds between the agent's observations, and so between its route checks.
+AGENT_INTERVAL = 30
 
 
 class HairpinNotInEffect(ValueError):
@@ -200,11 +208,142 @@ def restore(config, *, collect=_collect_local, run=subprocess.run):
     return {"configured": True, "hardware_qualified": False}
 
 
-def verify_persistence(config, facts, *, run=subprocess.run):
+def route_text(route):
+    """``198.18.4.0/24 via 198.18.6.1 dev enp1s0f1np1`` for an approved route of a fabric record."""
+    return f"{route['destination']} via {route['via']} dev {route['dev']}"
+
+
+def routed(row, route):
+    """Whether an ``ip -j route`` row is the approved ``route``: same destination, gateway and device."""
+    return (row.get("dst") == route["destination"] and row.get("gateway") == route["via"]
+            and row.get("dev") == route["dev"])
+
+
+def ipv4_addresses(rows):
+    """``{netdev: ["198.18.6.2/24", ...]}`` from the rows of ``ip -j -4 address show``."""
+    return {row.get("ifname"): [f"{a['local']}/{a['prefixlen']}" for a in row.get("addr_info") or []
+                                if a.get("family") == "inet" and "local" in a and "prefixlen" in a]
+            for row in rows}
+
+
+def route_states(config, routes, addresses, *, root="/"):
+    """``(route, state)`` for each approved route of the fabric record ``config``.
+
+    ``routes`` are the rows of ``ip -j -4 route show table all``; ``addresses``
+    maps each netdev to its IPv4 addresses (``ipv4_addresses``). ``state`` is:
+
+    - ``present``: a route to the destination through the approved gateway and
+      device exists;
+    - ``conflict``: only other routes to the destination exist; SparkRing never
+      replaces them;
+    - ``no-link``: the device does not report carrier, because the Spark at the
+      cable's other end is down or restarting the link, or the cable is out;
+    - ``unconfigured``: the device has carrier but not yet its approved address
+      and that address's subnet route, which NetworkManager adds when it
+      activates the connection; the gateway is reachable only after that;
+    - ``missing``: none of these; ``ip route add`` restores the route.
+    """
+    ports = {port["netdev"]: port for port in config["interfaces"]}
+    result = []
+    for route in config["routes"]:
+        same = [row for row in routes if row.get("dst") == route["destination"]]
+        address = ipaddress.ip_interface(ports[route["dev"]]["address"])
+        if any(routed(row, route) for row in same):
+            state = "present"
+        elif same:
+            state = "conflict"
+        elif link_state(route["dev"], root=root)[0] is not True:
+            state = "no-link"
+        elif (str(address) not in addresses.get(route["dev"], ())
+              or not any(row.get("dst") == str(address.network) and row.get("dev") == route["dev"]
+                         and not row.get("gateway") for row in routes)):
+            state = "unconfigured"
+        else:
+            state = "missing"
+        result.append((route, state))
+    return result
+
+
+def _log(text):
+    print("SparkRing node: " + text, file=sys.stderr, flush=True)
+
+
+def restore_routes(config, *, root="/", run=subprocess.run, log=_log):
+    """Add the approved fabric routes of ``config`` that are missing while their link is up.
+
+    The host agent runs this every AGENT_INTERVAL seconds. A fabric function
+    loses every route through it when it loses its IPv4 address: NetworkManager
+    removes the address when the link loses carrier (the neighboring Spark
+    reboots or restarts that ConnectX function, or the cable is out), and a
+    driver restart of the function itself removes the netdev. NetworkManager
+    adds the address again when the link returns, but the approved routes are
+    not part of its connection profiles; sparkring-fabric.service adds them
+    once per boot (``restore``). This function adds them again afterwards.
+
+    It acts only while sparkring-fabric.service is active: that service's
+    restoration in this boot succeeded and is not running at the moment.
+    Stopping or disabling the service ends route restoration; a re-form
+    disables it before it removes the routes. It adds exactly the routes whose
+    state (``route_states``) is ``missing``, with the command ``restore`` uses,
+    and never removes or replaces a route. Repeated calls change nothing once
+    every route is present.
+
+    Returns None for a record without routes (a pair, or an adopted fabric),
+    ``{"active": False, "routes": []}`` while the service is not active, else
+    ``{"active": True, "routes": [...]}``: each approved route with its
+    ``state``, which is ``restored``, or ``failed`` with the command's
+    ``error``, where this call tried to add it, and otherwise its
+    ``route_states`` state.
+    """
+    validate(config)
+    if config.get("ownership") == "observed" or not config["routes"]:
+        return None
+    if call(["systemctl", "is-active", FABRIC_UNIT], run=run, accepted=(0, 3)).returncode:
+        return {"active": False, "routes": []}
+    routes = json.loads(call(["ip", "-j", "-4", "route", "show", "table", "all"], run=run).stdout or "[]")
+    addresses = ipv4_addresses(json.loads(call(["ip", "-j", "-4", "address", "show"], run=run).stdout or "[]"))
+    rows = []
+    for route, state in route_states(config, routes, addresses, root=root):
+        row = dict(route, state=state)
+        if state == "missing":
+            try:
+                call(["ip", "route", "add", route["destination"], "via", route["via"], "dev", route["dev"],
+                      "proto", "static"], run=run)
+            except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                row.update(state="failed", error=str(error))
+                log("could not restore approved fabric route " + route_text(route) + ": " + str(error))
+            else:
+                row["state"] = "restored"
+                log("restored approved fabric route " + route_text(route))
+        rows.append(row)
+    return {"active": True, "routes": rows}
+
+
+def verify_persistence(config, facts, *, run=subprocess.run, restoration=None, active=True):
+    """Raise ValueError naming the first approved route, forwarding rule or forwarding setting that is missing.
+
+    A missing route's error says why it is missing: another route to its
+    destination is in its place; the agent's attempt to add it failed
+    (``restoration``, the result of ``restore_routes``); sparkring-fabric.service
+    is not ``active``, so the agent does not add it; or else the agent adds it
+    within AGENT_INTERVAL seconds.
+    """
+    attempts = {row["destination"]: row for row in (restoration or {}).get("routes") or []}
     for expected in config["routes"]:
-        if not any(r.get("dst") == expected["destination"] and r.get("dev") == expected["dev"]
-                   and r.get("gateway") == expected["via"] for r in facts["routes"]):
-            raise ValueError("Approved fabric route is missing: " + expected["destination"])
+        same = [r for r in facts["routes"] if r.get("dst") == expected["destination"]]
+        if any(routed(r, expected) for r in same):
+            continue
+        text = "Approved fabric route is missing: " + route_text(expected)
+        error = (attempts.get(expected["destination"]) or {}).get("error")
+        if same:
+            text += f"; another route to {expected['destination']} is in its place, and SparkRing does not replace it"
+        elif error:
+            text += "; adding it failed: " + error
+        elif not active:
+            text += f"; sparkring-agent adds it only while {FABRIC_UNIT} is active"
+        else:
+            text += f"; sparkring-agent adds it again within {AGENT_INTERVAL} seconds"
+        raise ValueError(text)
     for incoming, outgoing in config["forwarding"]:
         rule = ["FORWARD", "-i", incoming, "-o", outgoing, "-m", "comment", "--comment", "sparkring:" + config["cluster_id"][:16], "-j", "ACCEPT"]
         call(["iptables", "-w", "-C", *rule], run=run)
@@ -586,8 +725,12 @@ def parked_mesh(reference, parked, active=()):
     return unit in parked and unit not in active
 
 
-def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.time):
+def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.time, repair=False):
     """The ``sparkring-node-status/v1`` document of this Spark, as the agent records it every 30 seconds.
+
+    With ``repair``, which only the agent passes, the approved fabric routes
+    that are missing while their link is up are added first
+    (``restore_routes``), so a route this restores counts as present.
 
     A Spark with a recorded administration network adds ``control``
     (``control_report``) and a warning per tunnel peer without a recent
@@ -641,12 +784,21 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
         elif location(root, "/etc/sparkring/hairpin.json").exists():
             warnings.append("hairpin approval on a Spark that is not in a four-Spark ring: "
                             "sudo sparkring node hairpin revoke")
+        validate(config)
+        restoration = None
+        if repair:
+            try:
+                restoration = restore_routes(config, root=root, run=run)
+            except reads as error:
+                warnings.append("approved fabric routes could not be checked for restoration: " + str(error))
         facts = observe(config, collect=collect)
         if four:
             # Checked before the fabric routes, the fabric service and the mesh:
             # a mesh that its start check refused then reports the root cause.
             check_hairpin(config, facts, warnings, root=root, run=run)
-        verify_persistence(config, facts, run=run)
+        active = config.get("ownership") == "observed" or not call(
+            ["systemctl", "is-active", FABRIC_UNIT], run=run, accepted=(0, 3)).returncode
+        verify_persistence(config, facts, run=run, restoration=restoration, active=active)
         if config.get("ownership") == "observed" and config.get("native_mesh"):
             from runtime.common import qwen_mesh
             from runtime.host import native_mesh
@@ -655,7 +807,7 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
             if not parked_mesh(mesh.get("reference"), native_mesh.parked_units(root=root),
                                (result.get("mesh") or {}).get("active") or ()):
                 qwen_mesh.check(mesh["reference"], config["rank"], mesh["hcas"], 3, mesh["host_ip"])
-        elif config.get("ownership") != "observed" and call(["systemctl", "is-active", "sparkring-fabric.service"], run=run, accepted=(0, 3)).returncode:
+        elif not active:
             raise ValueError("Fabric service is not active; inspect journalctl -u sparkring-fabric")
         result.update(state="network-configured", next_action="sparkring models",
                       containers=[{"name": c.get("name"), "state": c.get("state")} for c in (facts["docker"].get("containers") or [])],
@@ -689,8 +841,13 @@ def status(*, root="/", now=time.time):
 
 
 def agent(*, root="/", once=False):
+    """Record this Spark's status every AGENT_INTERVAL seconds, adding missing approved fabric routes first.
+
+    Package installation restarts sparkring-agent.service, so an updated
+    package restores missing routes without setup or a reboot.
+    """
     while True:
-        save(root, "/run/sparkring/status.json", snapshot(root=root))
+        save(root, "/run/sparkring/status.json", snapshot(root=root, repair=True))
         if once:
             return
-        time.sleep(30)
+        time.sleep(AGENT_INTERVAL)
