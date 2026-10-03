@@ -3,8 +3,8 @@
 The Install Builder is a web page for one SparkRing source. Pick how your
 Sparks serve, a profile, a checkpoint and serving settings, and it writes:
 
-- the `sparkring install` commands that deploy them, switch layouts and
-  check the result, in order, or
+- the `sparkring install` commands that deploy them and check the result,
+  in order, and optionally switch layouts later, or
 - one Docker Compose file per Spark, exactly as `sparkring compose render`
   writes them for your site, and the whole deployment as a zip.
 
@@ -79,15 +79,17 @@ the argument parsers of `runtime/host/install_workflow.py` and
 ## Commands
 
 For the `sparkring install` output the page writes the layout's commands in
-order, under three headings. Every command runs on Node A, as a user with
+order: **Install**, then **Check**. On a ring an optional **Switch** section
+follows, with its own numbers and the line "Optional: switch layouts later.
+This stops the models above." Every command runs on Node A, as a user with
 sudo. Each one says what it does and, for an installation, the address its
 model serves at, with a copy button.
 
 | Heading | Two Sparks | One model on all four | Two models, one per pair |
 |---|---|---|---|
 | Install | The profile on both Sparks | The profile on all four | `--on 0,1` for the first pair, then `--on 2,3` for the second |
-| Switch | None | The two pairs' commands, `--on 0,1` then `--on 2,3`; the first stops the four-Spark model | The four-Spark profile, which stops both pairs' models |
 | Check | `sudo sparkring status` | `sudo sparkring status` | `sudo sparkring status`, which shows each pair's model separately |
+| Switch (optional) | None | The two pairs' commands, `--on 0,1` then `--on 2,3`; the first stops the four-Spark model | The four-Spark profile, which stops both pairs' models |
 
 - A model serves on the first Spark of its Sparks, at its profile's port from
   the page's data: Node A for a pair, a ring and the first pair, and Spark 2's

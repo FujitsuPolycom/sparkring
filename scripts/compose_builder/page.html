@@ -204,6 +204,10 @@ pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; 
 .cmd { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
 .cmd .path { display: inline-flex; gap: 9px; align-items: baseline; }
 .cmd-n { font: 600 12px/1 var(--mono); color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; flex: none; }
+/* Optional commands, after the ones that install and check: set apart, with their own numbers. */
+.pack-optional { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; margin-top: 6px; padding-top: 12px;
+  border-top: 1px dashed var(--line); }
+.cmd-n.optional { color: var(--muted); border-style: dashed; }
 .what { margin: 0; font-size: 13.5px; }
 .endpoint { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .kv-estimate { grid-column: 1 / -1; margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--accent); }
@@ -1313,17 +1317,21 @@ __ENGINE__
       box.append(el('pre', { class: 'code cmd' }, el('code', {}, pack ? 'Fix the marked fields to see the commands.' : 'No command for these choices.')));
       return;
     }
-    let number = 0;
+    // The commands run in order and are numbered in order; an optional group, last, has its own numbers.
+    let number = 0, primary = true;
     for (const group of pack.groups) {
+      if (group.optional) number = 0;
       const list = el('ol', { class: 'cmds' });
       for (const c of group.commands) {
         number += 1;
         const code = el('code', {}, c.command || 'No command for these choices.');
-        const button = el('button', { type: 'button', class: 'btn' + (number === 1 ? ' primary' : '') }, 'Copy command');
+        const button = el('button', { type: 'button', class: 'btn' + (primary ? ' primary' : '') }, 'Copy command');
+        primary = false;
         button.disabled = !c.command;
         button.addEventListener('click', () => copy(c.command, button, code));
         list.append(el('li', { class: 'cmd' },
-          el('div', { class: 'file-bar' }, el('span', { class: 'path' }, el('span', { class: 'cmd-n' }, String(number)), c.where),
+          el('div', { class: 'file-bar' }, el('span', { class: 'path' },
+            el('span', { class: 'cmd-n' + (group.optional ? ' optional' : '') }, String(number)), c.where),
             el('div', { class: 'btns' }, button)),
           el('p', { class: 'what' }, c.what),
           el('pre', { class: 'code cmd', tabindex: '0', 'aria-label': group.title + ' command ' + number }, code),
@@ -1331,7 +1339,9 @@ __ENGINE__
       }
       // The switch commands install the deployed model on the other layout (switchSlot).
       const hint = group.key !== 'switch' ? null : switchHint();
-      box.append(el('h3', { class: 'sub' }, group.title), ...(hint ? [el('p', { class: 'hint' }, hint)] : []), list);
+      const parts = [el('h3', { class: 'sub' }, group.title), ...(group.note ? [el('p', { class: 'hint' }, group.note)] : []),
+        ...(hint ? [el('p', { class: 'hint' }, hint)] : []), list];
+      box.append(...(group.optional ? [el('div', { class: 'pack-optional' }, ...parts)] : parts));
     }
     $('roles').replaceChildren(...pack.roles.flatMap(r => [el('dt', {}, r.spark), el('dd', {}, r.text)]));
     $('roles-order').hidden = !pack.order;

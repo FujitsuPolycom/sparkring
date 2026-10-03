@@ -194,8 +194,9 @@ def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data,
     ])
     assert commands(ring, "install") == [SCRIPT + f"--profile {TP4}"]
     assert endpoints(ring, "install") == [f"http://NODE_A:{port}/v1"]
-    switch = next(g for g in ring["groups"] if g["key"] == "switch")
-    assert switch["title"] == "Switch to two models"
+    assert [g["key"] for g in ring["groups"]] == ["install", "check", "switch"]
+    switch = ring["groups"][-1]
+    assert switch["title"] == "Switch to two models" and switch["optional"]
     assert [c["command"] for c in switch["commands"]] == [
         f"sudo sparkring install --profile {TP2} --on 0,1",
         f"sudo sparkring install --profile {GLM2} --on 2,3 --checkpoint nvfp4-qad"]
@@ -215,7 +216,10 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
         {"layout": "halves", "features": BOTH, "main": {"profile": TP4}, "halves": halves,
          "opts": {**NEW, "order": "fill", "sparks": MY_SPARKS}},
     ])
-    assert [g["key"] for g in auto["groups"]] == ["install", "switch", "check"]
+    # Install, then check the requested models; switching layouts is optional and comes last.
+    assert [g["key"] for g in auto["groups"]] == ["install", "check", "switch"]
+    assert [g.get("optional", False) for g in auto["groups"]] == [False, False, True]
+    assert auto["groups"][2]["note"] == "Optional: switch layouts later. This stops the models above."
     assert commands(auto, "install") == [SCRIPT + f"--profile {TP2} --on 0,1 --checkpoint qad-step-4000",
                                          f"sudo sparkring install --profile {MIMO2} --on 2,3"]
     assert endpoints(auto, "install") == ["http://NODE_A:8000/v1", f"http://SPARK_2:{mimo_port}/v1"]
@@ -223,12 +227,12 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
     assert first["what"] == "Installs SparkRing and starts Qwen3.8-Flash-Next (qad-step-4000) on the first pair: Node A and Spark 1."
     assert second["what"].startswith("Starts MiMo-V2.6-Flash-MOPD on the second pair: Spark 2 and Spark 3.")
     assert commands(auto, "switch") == [f"sudo sparkring install --profile {TP4}"]
-    assert "stops both pairs' models" in auto["groups"][1]["commands"][0]["what"]
-    assert auto["groups"][2]["commands"][0]["what"] == "Shows each pair's model separately."
+    assert "stops both pairs' models" in auto["groups"][2]["commands"][0]["what"]
+    assert auto["groups"][1]["commands"][0]["what"] == "Shows each pair's model separately."
     assert "Replace NODE_A and SPARK_2 with the addresses of Node A and Spark 2." in auto["notes"]
     # Fill in my Sparks: the user's names say where to run, their addresses where each model answers.
     assert commands(filled) == commands(auto)
-    assert {c["where"] for c in filled["groups"][0]["commands"][1:] + filled["groups"][2]["commands"]} == {
+    assert {c["where"] for c in filled["groups"][0]["commands"][1:] + filled["groups"][1]["commands"]} == {
         "On spark-a (Node A), as a user with sudo"}
     assert endpoints(filled, "install") == ["http://198.51.100.10:8000/v1", f"http://198.51.100.12:{mimo_port}/v1"]
     assert endpoints(filled, "switch") == ["http://198.51.100.10:8015/v1"]

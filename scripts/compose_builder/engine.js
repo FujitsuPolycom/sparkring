@@ -775,10 +775,12 @@ const SparkRingEngine = (() => {
   //            command is the one-command installer, which passes --on to `sparkring install`;
   //            every later command runs the `sudo sparkring install` it installed. A second half
   //            runs after the first: SparkRing runs one installation at a time.
-  //   switch:  on a ring, the commands that serve the other layout. Installing a half stops the
-  //            four-Spark model, and installing the four-Spark model stops both halves' models.
   //   check:   `sudo sparkring status`, and `sudo sparkring cabling --bandwidth` when
   //            features.cable_check.
+  //   switch:  on a ring, the commands that serve the other layout, last and `optional`, with
+  //            `note` saying so: they replace the models the install group starts. Installing a
+  //            half stops the four-Spark model, and installing the four-Spark model stops both
+  //            halves' models.
   // Each command is {where, what, command, endpoint, error}: `endpoint` is the API it serves,
   // and `error` why it has no command. `plan` is {layout, features, main, halves}, where a
   // selection is {profile, checkpoint: name or null, settings: requested values, endpoint,
@@ -839,23 +841,25 @@ const SparkRingEngine = (() => {
     };
     const next = ' Run it once the one before has finished.';
     const groups = [];
+    let switching = null;
+    const optional = { optional: true, note: 'Optional: switch layouts later. This stops the models above.' };
     if (layout === 'halves') {
       groups.push({ key: 'install', title: 'Install', commands: [
         install(plan.halves[0], HALVES[0], 0, ` on the first pair: ${pairOf(0)}.`, 0),
         install(plan.halves[1], HALVES[1], 2, ` on the second pair: ${pairOf(1)}.` + next, 1),
       ] });
-      groups.push({ key: 'switch', title: 'Switch to one model', commands: [
+      switching = { key: 'switch', title: 'Switch to one model', ...optional, commands: [
         install(plan.main, null, 0, " on all four Sparks, and stops both pairs' models."),
-      ] });
+      ] };
     } else {
       groups.push({ key: 'install', title: 'Install', commands: [
         install(plan.main, null, 0, layout === 'pair' ? ' on both Sparks.' : ' on all four Sparks.'),
       ] });
       if (layout === 'ring' && features.ring_halves) {
-        groups.push({ key: 'switch', title: 'Switch to two models', commands: [
+        switching = { key: 'switch', title: 'Switch to two models', ...optional, commands: [
           install(plan.halves[0], HALVES[0], 0, ` on ${pairOf(0)}, and stops the model on all four.`),
           install(plan.halves[1], HALVES[1], 2, ` on ${pairOf(1)}.` + next),
-        ] });
+        ] };
       }
     }
     const check = [{ where: run, what: layout === 'halves' ? "Shows each pair's model separately." : 'Shows each Spark and the model.',
@@ -865,6 +869,7 @@ const SparkRingEngine = (() => {
         command: 'sudo sparkring cabling --bandwidth', endpoint: null, error: null });
     }
     groups.push({ key: 'check', title: 'Check', commands: check });
+    if (switching) groups.push(switching);
 
     // What each Spark becomes.
     const roles = names.map((spark, rank) => {
