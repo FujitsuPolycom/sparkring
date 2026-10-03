@@ -1,4 +1,4 @@
-"""Data and page of the Compose builder.
+"""Data and page of the Install Builder.
 
 The page writes the `sparkring install` command for a profile, checkpoint and
 serving settings, and the per-rank Compose files that `sparkring compose
@@ -9,7 +9,19 @@ values for those tokens line by line. export() refuses to produce data unless
 every token appears only on the lines the engine rewrites and the site fields
 that never reach a container file are absent from them. verify.py compares the
 engine with compose.build for random sites.
+
+The page's command pack offers what the source's commands accept: export()
+records in ``features`` whether `sparkring install` defines ``--on`` (a
+two-Spark model on half of a four-Spark ring) and whether `sparkring cabling`
+defines ``--bandwidth`` (a measurement of every cable), read from the
+argument parsers in the source files.
+
+Each checkpoint carries ``capacity``: the engine-reported KV pool of
+performance/profile-capacity.json that the page scales to the chosen KV cache
+size for its token estimate (kv_measurement), or None when the profile has
+no usable measurement.
 """
+import ast
 import json
 from pathlib import Path
 import re
@@ -32,6 +44,15 @@ SITE_KEYS = {"name", "container_name", "VLLM_HOST_IP", "GLOO_SOCKET_IFNAME", "NC
 GID_KEYS = {"NCCL_IB_GID_INDEX", "B12X_ROCE_GID_INDEX"}
 # Site fields that no container file contains; their sentinels must not appear.
 ABSENT = ("zqhost", "zqdeploy", "zqfabric")
+# The command options the page's command pack uses, by feature: the source file whose
+# argument parser defines the option, and the option. A feature is offered only when its
+# file defines the option.
+FEATURES = {
+    # sudo sparkring install --on 0,1 | 2,3: a two-Spark model on one half of a four-Spark ring.
+    "ring_halves": ("runtime/host/install_workflow.py", "--on"),
+    # sudo sparkring cabling --bandwidth: measure the bandwidth of every cable.
+    "cable_check": ("runtime/host/cabling.py", "--bandwidth"),
+}
 
 
 def profile_ids():
@@ -102,6 +123,34 @@ def _checkpoints(profile_id, configuration, site, options):
     return rows
 
 
+def capacity_records():
+    """performance/profile-capacity.json's records by profile ID: the engine-reported KV pools."""
+    return json.loads((ROOT / "performance" / "profile-capacity.json").read_text(encoding="utf-8"))["profiles"]
+
+
+def kv_measurement(record, checkpoint, default):
+    """The engine-reported KV pool that sizes a checkpoint of a profile, from the profile's capacity record.
+
+    ``checkpoint`` is the checkpoint's name and ``default`` the profile's
+    default checkpoint name (None for a profile without named checkpoints).
+    A measurement of that checkpoint wins: one in the record's
+    ``checkpoints``, or the record's own when it measured that checkpoint
+    (its ``checkpoint``, else the profile's default). Otherwise the record's
+    own measurement, of another checkpoint of the same profile, sizes it. A
+    measurement without ``kv_bytes_per_rank`` cannot be scaled to another KV
+    size and sizes nothing. Returns {tokens, kv_bytes_per_rank, checkpoint}
+    or None; a record is for one profile, so a two-Spark measurement never
+    sizes a four-Spark profile.
+    """
+    if not record:
+        return None
+    other = (record.get("checkpoints") or {}).get(checkpoint)
+    measured, name = (other, checkpoint) if other else (record, record.get("checkpoint") or default)
+    if not measured.get("kv_bytes_per_rank"):
+        return None
+    return {"tokens": measured["tokens"], "kv_bytes_per_rank": measured["kv_bytes_per_rank"], "checkpoint": name}
+
+
 def sentinel_site(example):
     """The example site with every host value replaced by a unique token."""
     site = json.loads(json.dumps(example))
@@ -166,6 +215,9 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
     options = {"image_runtime": runtime} if runtime is not None else {}
     specs, image = compose.specifications(profile_id, example, **options)
     checkpoints = _checkpoints(profile_id, configuration, example, options)
+    record = capacity_records().get(profile_id)
+    for checkpoint in checkpoints:
+        checkpoint["capacity"] = kv_measurement(record, checkpoint["name"], checkpoints[0]["name"])
     site = sentinel_site(example)
     for checkpoint in checkpoints:
         name = None if checkpoint["default"] else checkpoint["name"]
@@ -201,6 +253,29 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
     }
 
 
+def command_options(path):
+    """The option strings that the ``add_argument`` calls of a Python source file define, such as ``--on``."""
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add_argument":
+            found.update(arg.value for arg in node.args
+                         if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and arg.value.startswith("-"))
+    return found
+
+
+def features(root=ROOT):
+    """``{feature: bool}`` for every FEATURES entry: whether the source at ``root`` defines its option.
+
+    A missing source file offers nothing.
+    """
+    result = {}
+    for name, (relative, option) in FEATURES.items():
+        path = Path(root) / relative
+        result[name] = path.is_file() and option in command_options(path)
+    return result
+
+
 def _git(*argv):
     result = subprocess.run(["git", "-C", str(ROOT), *argv], capture_output=True, text=True)
     return result.stdout.strip() if result.returncode == 0 else None
@@ -222,12 +297,13 @@ def release_distance(description):
 
 
 def export(*, tag=None, commit=None, repository=REPOSITORY):
-    """The page's data: every listed profile, and the source the install command pins.
+    """The page's data: every listed profile, the source the install command pins and its command features.
 
     ``ref`` is the tag when the checkout is a release, else the commit: the
     install command fetches install.sh from it and passes it as --ref. For a
     checkout between releases, ``since_tag`` and ``commits_since`` name the
-    release before it and how many commits it is ahead.
+    release before it and how many commits it is ahead. ``features`` is
+    features() of the checkout.
     """
     since_tag = commits_since = None
     if commit is None:
@@ -238,7 +314,8 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
     if not commit:
         raise ValueError("The builder needs the checkout's commit; pass --commit outside Git")
     return {"schema": SCHEMA, "repository": repository, "tag": tag, "commit": commit, "ref": tag or commit,
-            "since_tag": since_tag, "commits_since": commits_since, "image": None, "images": image_catalog(),
+            "since_tag": since_tag, "commits_since": commits_since, "features": features(),
+            "image": None, "images": image_catalog(),
             "profiles": [profile_data(profile_id) for profile_id in profile_ids()]}
 
 

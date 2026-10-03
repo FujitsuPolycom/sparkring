@@ -37,8 +37,8 @@ its tag and the image's release name to
 `sudo sparkring install --image TAG` selects that image.
 
 Publishing a GitHub release that is not a prerelease runs the
-[Compose builder pages workflow](../../.github/workflows/compose-builder-pages.yml):
-it builds the [Compose builder](../operations/compose-builder.md) from the
+[Install Builder pages workflow](../../.github/workflows/compose-builder-pages.yml):
+it builds the [Install Builder](../operations/compose-builder.md) from the
 release tag, compares the page's engine with `compose.build`, and publishes the
 page to the repository's GitHub Pages site only when every case matches.
 

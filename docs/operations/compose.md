@@ -9,7 +9,7 @@ it also writes each rank's runtime-binding file and verifies the image before
 any model downtime.
 
 [All commands and flags](commands.md) · [Published Compose files](compose-files.md) ·
-[Compose builder](compose-builder.md), a web page that writes these deployments for your Sparks
+[Install Builder](compose-builder.md), a web page that writes these deployments for your Sparks
 
 ## Supported profiles
 

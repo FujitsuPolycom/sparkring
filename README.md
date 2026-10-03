@@ -12,7 +12,8 @@ profiles support vLLM and SGLang.
 1. Check the [requirements](docs/operations/install.md#requirements) and cable
    your Sparks as shown there.
 2. Pick a `--profile` value from the [table below](#profiles) for your preferred model and
-   number of Sparks.
+   number of Sparks, or open the [Install Builder](https://fujitsupolycom.github.io/sparkring/)
+   to pick a model, checkpoint and layout and copy the exact commands.
 3. On the Spark connected to your network, run:
 
 ```bash
@@ -28,7 +29,7 @@ at every boot.
 
 More: [all commands](docs/operations/commands.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·
-[Compose builder](docs/operations/compose-builder.md) ·
+[Install Builder](https://fujitsupolycom.github.io/sparkring/) ([how it works](docs/operations/compose-builder.md)) ·
 [pinned install command](docs/operations/install-reference.md#get-the-package)
 
 ## Profiles

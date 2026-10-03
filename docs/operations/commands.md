@@ -481,7 +481,7 @@ Both accept `--json`. See
   `render` takes `--image NAME`, `--checkpoint NAME` and the serving-setting
   flags of `sparkring install`.
 - `python scripts/generate_compose_builder.py --output DIR [--verify]` writes
-  the [Compose builder](compose-builder.md) page for the checkout.
+  the [Install Builder](compose-builder.md) page for the checkout.
 - `sparkring validate-compose FILE` (or `--all`, `--json`, `--output FILE`)
   checks Compose files without Docker or GPUs.
 

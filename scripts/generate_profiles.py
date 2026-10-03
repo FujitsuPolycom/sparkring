@@ -144,11 +144,20 @@ def profile_table(root=ROOT, *, compact=False):
         return profile_catalog_table(rows, names, root)
     if not set(capacity) <= {p['id'] for p, _ in rows}:
         raise ValueError('Capacity records must name catalog profiles')
+    def positive(value):
+        return type(value) is int and value > 0
+
     for record in capacity.values():
-        if type(record['tokens']) is not int or record['tokens'] <= 0 or not record['conditions']:
+        if not positive(record['tokens']) or not record['conditions']:
             raise ValueError('Capacity records require positive token counts and measurement conditions')
         if record['witness'] not in local_path(record['source'], root).read_text(encoding='utf-8-sig'):
             raise ValueError(f"Capacity evidence changed: {record['source']}")
+        # Optional: the KV bytes per rank at measurement, and further measurements by checkpoint.
+        if 'kv_bytes_per_rank' in record and not positive(record['kv_bytes_per_rank']):
+            raise ValueError('Capacity records state KV bytes per rank as a positive integer')
+        for entry in (record.get('checkpoints') or {}).values():
+            if not positive(entry.get('tokens')) or not positive(entry.get('kv_bytes_per_rank')) or not entry.get('conditions'):
+                raise ValueError('Checkpoint capacity records require tokens, KV bytes per rank and conditions')
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
              'Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.', '']
     if compact:
