@@ -19,7 +19,7 @@ import time
 import pytest
 
 from runtime.common import installer
-from runtime.host import fabric_bandwidth as bandwidth, placement
+from runtime.host import controller, fabric_bandwidth as bandwidth, placement
 from runtime.host.test_fabric_ssh import cluster
 
 HEADER = (" #bytes     #iterations    BW peak[Gb/sec]    BW average[Gb/sec]   MsgRate[Mpps]\n")
@@ -495,6 +495,31 @@ def test_status_treats_a_result_of_another_setup_or_an_unreadable_one_as_unmeasu
     value = bandwidth.summary(tmp_path)
     assert value["state"] == "unreadable"
     assert bandwidth.status_lines(value)[0].startswith("Fabric bandwidth: the saved result cannot be read (")
+
+
+def test_sparkring_status_prints_the_saved_result_and_never_measures(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(controller, "STATE", tmp_path)
+    value = recorded(tmp_path, 4)
+    monkeypatch.setattr(controller.node, "status", lambda: {"state": "network-configured", "next_action": "sparkring models"})
+    monkeypatch.setattr(controller.discovery, "ssh", lambda host, argv: json.dumps(
+        {"state": "network-configured", "hostname": "spark"}))
+    measure = bandwidth.check
+    monkeypatch.setattr(bandwidth, "check", lambda *args, **kwargs: pytest.fail("status measured the fabric"))
+    monkeypatch.setattr(bandwidth, "Access", lambda *args, **kwargs: pytest.fail("status contacted the fabric"))
+    assert controller.lifecycle(["status"]) == 0
+    assert ("Fabric bandwidth: never measured; sudo sparkring cabling --bandwidth measures it"
+            in capsys.readouterr().out.splitlines())
+    assert controller.lifecycle(["status", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["fabric_bandwidth"] == {"state": "never-measured"}
+    sparks = Sparks(value["plan"], clients={(2, "rocep1s0f0"): DEGRADED})
+    bandwidth.save(tmp_path, measure(value, access=sparks, now=lambda: time.time() - 120))
+    assert controller.lifecycle(["status"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    at = lines.index("Fabric bandwidth: 1 of 4 cables degraded, measured 2 min ago")
+    assert lines[at + 1] == "  spark2 port 0 ↔ spark3 port 1: degraded, 118.66 and 213.05 Gb/s (healthy is 190 or more)"
+    assert lines[at + 2].startswith("    To repair: reboot both spark2 and spark3")
+    assert controller.lifecycle(["status", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["fabric_bandwidth"]["verdict"] == "degraded"
 
 
 # Setup.
