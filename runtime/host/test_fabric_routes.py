@@ -1,8 +1,10 @@
-"""The host agent's restoration of approved fabric routes, with a fake routing table, sysfs and systemd; no host access."""
+"""The host agent's restoration of approved fabric routes and settings, with a fake kernel, sysfs and systemd; no host access."""
 import ipaddress
 import json
+import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,17 +18,18 @@ ROUTE_CHANGES = ("del", "delete", "replace", "change", "flush", "append", "prepe
 
 
 class Spark(Answers):
-    """A ring member's routing table, IPv4 addresses, link carrier and fabric unit state.
+    """A Spark's routing table, IPv4 addresses, per-interface settings, link carrier and fabric unit state.
 
     ``ip route add`` appends to the same route list that the status facts
     read, as the kernel does. Every fabric function starts with carrier, its
-    approved address and that address's subnet route.
+    approved address, that address's subnet route and the approved settings.
     """
 
     def __init__(self, root, config, facts, *, active=True, fail=None, answers=None, **kwargs):
         super().__init__(answers or {}, **kwargs)
         self.root, self.routes, self.active, self.fail = Path(root), facts["routes"], active, fail
         self.addresses = {row["name"]: list(row["ipv4"]) for row in facts["interfaces"]}
+        self.settings = {key: value for _, key, value in node.approved_settings(config)}
         for port in config["interfaces"]:
             self.routes.append({"dst": str(ipaddress.ip_interface(port["address"]).network), "dev": port["netdev"],
                                 "protocol": "kernel", "scope": "link"})
@@ -42,8 +45,17 @@ class Spark(Answers):
         """Remove every route through ``netdev`` except its subnet route, as a lost address does once it returns."""
         self.routes[:] = [row for row in self.routes if row.get("dev") != netdev or not row.get("gateway")]
 
+    def recreate(self, netdev, forwarding="1"):
+        """A driver restart: the netdev returns with the kernel's default settings and without its routes."""
+        self.lose(netdev)
+        self.settings.update({f"net.ipv4.conf.{netdev}.forwarding": forwarding,
+                              f"net.ipv4.conf.{netdev}.rp_filter": "2"})
+
     def added(self):
         return [argv for argv in self.calls if argv[:3] == ["ip", "route", "add"]]
+
+    def written(self):
+        return [argv[-1] for argv in self.calls if argv[:2] == ["sysctl", "-w"]]
 
     def __call__(self, argv, **kwargs):
         argv = list(argv)
@@ -66,8 +78,20 @@ class Spark(Answers):
                 return subprocess.CompletedProcess(argv, 2, "", self.fail)
             self.routes.append({"dst": argv[3], "gateway": argv[5], "dev": argv[7], "protocol": "static"})
             return subprocess.CompletedProcess(argv, 0, "", "")
-        if argv[0] == "ip":
-            pytest.fail("unexpected ip command: " + " ".join(argv))
+        if argv[:2] == ["sysctl", "-n"]:
+            self.calls.append(argv)
+            if argv[2] not in self.settings:
+                pytest.fail("read a setting the fabric record does not approve: " + argv[2])
+            return subprocess.CompletedProcess(argv, 0, self.settings[argv[2]] + "\n", "")
+        if argv[:2] == ["sysctl", "-w"]:
+            self.calls.append(argv)
+            if self.fail:
+                return subprocess.CompletedProcess(argv, 255, "", self.fail)
+            key, _, value = argv[2].partition("=")
+            self.settings[key] = value
+            return subprocess.CompletedProcess(argv, 0, argv[2] + "\n", "")
+        if argv[0] in ("ip", "sysctl"):
+            pytest.fail("unexpected command: " + " ".join(argv))
         return super().__call__(argv, **kwargs)
 
 
@@ -94,13 +118,13 @@ def test_only_the_routes_of_a_returned_link_are_added_and_a_repeat_changes_nothi
     netdev, lost = through(config, "ccw_primary")
     spark.lose(netdev)
     logged = []
-    result = node.restore_routes(config, root=tmp_path, run=spark, log=logged.append)
+    result = node.restore_fabric(config, root=tmp_path, run=spark, log=logged.append)
     assert result["active"] is True
     assert spark.added() == [["ip", "route", "add", r["destination"], "via", r["via"], "dev", r["dev"], "proto", "static"]
                              for r in lost]
     assert states(result) == {r["destination"]: "restored" if r in lost else "present" for r in config["routes"]}
     assert logged == ["restored approved fabric route " + node.route_text(r) for r in lost]
-    again = node.restore_routes(config, root=tmp_path, run=spark, log=logged.append)
+    again = node.restore_fabric(config, root=tmp_path, run=spark, log=logged.append)
     assert set(states(again).values()) == {"present"}
     assert len(spark.added()) == len(lost) and len(logged) == len(lost)
 
@@ -114,14 +138,15 @@ def test_restoration_changes_no_other_route_setting_or_rule(tmp_path):
                  {"dst": "198.18.200.0/24", "gateway": "198.18.1.9", "dev": "enp1s0f0np0", "protocol": "static"}]
     spark.routes.extend(unrelated)
     before = list(spark.routes)
-    node.restore_routes(config, root=tmp_path, run=spark, log=lambda text: None)
+    node.restore_fabric(config, root=tmp_path, run=spark, log=lambda text: None)
     assert all(row in spark.routes for row in unrelated)
     assert all(row in spark.routes for row in before)
-    mutations = [argv for argv in spark.calls if argv[0] != "systemctl" and argv[:3] != ["ip", "-j", "-4"]]
+    mutations = [argv for argv in spark.calls
+                 if argv[0] != "systemctl" and argv[:3] != ["ip", "-j", "-4"] and argv[:2] != ["sysctl", "-n"]]
     assert mutations == spark.added() and len(mutations) == 2
     assert {argv[3] for argv in mutations} <= {r["destination"] for r in config["routes"]}
     assert not any(word in argv for argv in spark.calls for word in ROUTE_CHANGES)
-    assert not any(argv[0] in ("sysctl", "iptables", "nmcli") for argv in spark.calls)
+    assert spark.written() == [] and not any(argv[0] in ("iptables", "nmcli") for argv in spark.calls)
 
 
 def test_another_route_to_an_approved_destination_is_left_in_place_and_named(tmp_path):
@@ -130,7 +155,7 @@ def test_another_route_to_an_approved_destination_is_left_in_place_and_named(tmp
     spark.lose(netdev)
     other = {"dst": lost[0]["destination"], "gateway": "198.18.1.9", "dev": "enp1s0f0np0", "protocol": "static"}
     spark.routes.append(other)
-    result = node.restore_routes(config, root=tmp_path, run=spark, log=lambda text: None)
+    result = node.restore_fabric(config, root=tmp_path, run=spark, log=lambda text: None)
     assert states(result)[lost[0]["destination"]] == "conflict" and spark.added() == []
     status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
     assert status["state"] == "needs-attention"
@@ -151,7 +176,7 @@ def test_a_route_waits_for_carrier_then_for_the_address_and_its_subnet_route(tmp
     spark.link(netdev, False)
 
     def run():
-        return states(node.restore_routes(config, root=tmp_path, run=spark, log=lambda text: None))
+        return states(node.restore_fabric(config, root=tmp_path, run=spark, log=lambda text: None))
 
     assert run()[lost[0]["destination"]] == "no-link"
     # NetworkManager has not configured the returned link yet.
@@ -222,8 +247,9 @@ def test_nothing_is_restored_while_the_fabric_service_is_not_active(tmp_path):
     config, facts, spark = member(tmp_path, active=False)
     netdev, lost = through(config, "ccw_primary")
     spark.lose(netdev)
-    assert node.restore_routes(config, root=tmp_path, run=spark) == {"active": False, "routes": []}
-    assert [argv for argv in spark.calls if argv[0] == "ip"] == []
+    spark.recreate(through(config, "ccw_secondary")[0])
+    assert node.restore_fabric(config, root=tmp_path, run=spark) == {"active": False, "routes": [], "settings": []}
+    assert [argv for argv in spark.calls if argv[0] in ("ip", "sysctl")] == []
     status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
     assert status["error"] == (f"Approved fabric route is missing: {node.route_text(lost[0])}; "
                                "sparkring-agent adds it only while sparkring-fabric.service is active")
@@ -235,7 +261,7 @@ def test_a_failed_addition_is_logged_and_named_by_the_status(tmp_path):
     netdev, lost = through(config, "ccw_primary")
     spark.lose(netdev)
     logged = []
-    result = node.restore_routes(config, root=tmp_path, run=spark, log=logged.append)
+    result = node.restore_fabric(config, root=tmp_path, run=spark, log=logged.append)
     failed = [row for row in result["routes"] if row["state"] == "failed"]
     assert [row["destination"] for row in failed] == [r["destination"] for r in lost]
     assert failed[0]["error"] == f"ip route add {lost[0]['destination']}: Error: Nexthop has invalid gateway."
@@ -248,23 +274,108 @@ def test_a_failed_addition_is_logged_and_named_by_the_status(tmp_path):
 def test_a_pair_and_an_adopted_fabric_have_no_routes_to_restore(tmp_path):
     config, facts = ring(tmp_path, size=2)
     spark = Spark(tmp_path, config, facts)
-    assert config["routes"] == [] and node.restore_routes(config, root=tmp_path, run=spark) is None
+    assert config["routes"] == [] and node.restore_fabric(config, root=tmp_path, run=spark) is None
     assert spark.calls == []
     status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
     assert set(status) == PAIR_KEYS and status["state"] == "network-configured"
     assert spark.added() == []
     observed = dict(config, ownership="observed", routes=[], forwarding=[])
-    assert node.restore_routes(observed, root=tmp_path, run=spark) is None
+    assert node.restore_fabric(observed, root=tmp_path, run=spark) is None
 
 
-def test_routes_are_kept_while_two_spark_models_serve_on_the_halves(tmp_path):
+def test_routes_and_settings_are_kept_while_two_spark_models_serve_on_the_halves(tmp_path):
     config, facts, spark = member(tmp_path, rank=2)
     native_mesh._save_parked(["sparkring-mesh.service"], root=tmp_path)
     netdev, lost = through(config, "cw_primary")
-    spark.lose(netdev)
-    result = node.restore_routes(config, root=tmp_path, run=spark, log=lambda text: None)
-    assert [row["destination"] for row in result["routes"] if row["state"] == "restored"] == \
-        [r["destination"] for r in lost]
+    spark.recreate(netdev)
+    result = node.restore_fabric(config, root=tmp_path, run=spark, log=lambda text: None)
+    assert [row["destination"] for row in result["routes"] if row["state"] == "restored"] == [
+        r["destination"] for r in lost]
+    assert spark.written() == [f"net.ipv4.conf.{netdev}.rp_filter=0"]
+
+
+def setting_states(result):
+    return {row["key"]: row["state"] for row in result["settings"]}
+
+
+def test_a_recreated_netdev_gets_its_approved_settings_back_once(tmp_path):
+    config, _, spark = member(tmp_path)
+    netdev, lost = through(config, "ccw_primary")
+    # Where the global ip_forward is 0, a recreated netdev also stops forwarding.
+    spark.recreate(netdev, forwarding="0")
+    logged = []
+    result = node.restore_fabric(config, root=tmp_path, run=spark, log=logged.append)
+    assert spark.written() == [f"net.ipv4.conf.{netdev}.forwarding=1", f"net.ipv4.conf.{netdev}.rp_filter=0"]
+    assert logged == ["restored approved fabric route " + node.route_text(r) for r in lost] + [
+        f"set approved fabric setting net.ipv4.conf.{netdev}.forwarding to 1 (was 0)",
+        f"set approved fabric setting net.ipv4.conf.{netdev}.rp_filter to 0 (was 2)"]
+    assert setting_states(result) == {key: "restored" if key.startswith(f"net.ipv4.conf.{netdev}.") else "present"
+                                      for _, key, _ in node.approved_settings(config)}
+    again = node.restore_fabric(config, root=tmp_path, run=spark, log=logged.append)
+    assert set(setting_states(again).values()) == {"present"}
+    assert len(spark.written()) == 2 and len(logged) == len(lost) + 2
+
+
+def test_settings_are_set_only_on_existing_fabric_functions_and_never_globally(tmp_path):
+    config, _, spark = member(tmp_path)
+    for port in config["interfaces"]:
+        spark.recreate(port["netdev"])
+    gone = through(config, "cw_secondary")[0]
+    shutil.rmtree(tmp_path / "sys/class/net" / gone)
+    result = node.restore_fabric(config, root=tmp_path, run=spark, log=lambda text: None)
+    assert {row["state"] for row in result["settings"] if row["interface"] == gone} == {"absent"}
+    assert not any(gone in argv[2] for argv in spark.calls if argv[0] == "sysctl")
+    approved = {f"{key}={value}" for _, key, value in node.approved_settings(config)}
+    assert len(spark.written()) == 3 and set(spark.written()) <= approved
+    assert not any(word in key for key in spark.written()
+                   for word in (".all.", ".default.", "ip_forward", config["management"]["interface"]))
+
+
+def test_status_names_a_differing_setting_until_the_agent_sets_it(tmp_path):
+    config, facts, spark = member(tmp_path)
+    key = f"net.ipv4.conf.{through(config, 'ccw_primary')[0]}.rp_filter"
+    spark.settings[key] = "2"
+    status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark)
+    assert status["state"] == "needs-attention" and spark.written() == []
+    assert status["error"] == (f"Approved fabric setting differs: {key} is 2, approved 0; "
+                               "sparkring-agent sets it again within 30 seconds")
+    status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
+    assert status["state"] == "network-configured" and "error" not in status
+    assert spark.written() == [key + "=0"]
+
+
+def test_status_names_why_a_differing_setting_is_not_set(tmp_path):
+    config, facts, spark = member(tmp_path, active=False)
+    key = f"net.ipv4.conf.{through(config, 'cw_primary')[0]}.rp_filter"
+    spark.settings[key] = "2"
+    status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
+    assert status["error"] == (f"Approved fabric setting differs: {key} is 2, approved 0; "
+                               "sparkring-agent sets it only while sparkring-fabric.service is active")
+    assert spark.written() == []
+    config, facts, spark = member(tmp_path, fail="sysctl: permission denied on key")
+    spark.settings[key] = "2"
+    logged = []
+    result = node.restore_fabric(config, root=tmp_path, run=spark, log=logged.append)
+    assert setting_states(result)[key] == "failed"
+    assert logged == [f"could not set approved fabric setting {key} to 0: sysctl -w {key}=0: "
+                      "sysctl: permission denied on key"]
+    status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
+    assert status["error"] == (f"Approved fabric setting differs: {key} is 2, approved 0; setting it failed: "
+                               f"sysctl -w {key}=0: sysctl: permission denied on key")
+
+
+def test_boot_restoration_applies_the_settings_the_agent_keeps(tmp_path):
+    config, facts = ring(tmp_path)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=1 if "-C" in argv else 0, stdout="", stderr="")
+
+    node.restore(config, collect=lambda _: facts, run=run)
+    assert [argv[2] for argv in calls if argv[:2] == ["sysctl", "-w"]] == [
+        f"{key}={value}" for _, key, value in node.approved_settings(config)]
+    assert len(node.approved_settings(config)) == 8
 
 
 def test_the_agent_records_the_snapshot_that_restores_routes(tmp_path, monkeypatch):
@@ -275,11 +386,13 @@ def test_the_agent_records_the_snapshot_that_restores_routes(tmp_path, monkeypat
     assert node.read(tmp_path, "/run/sparkring/status.json") == {"observed_at": 1}
 
 
-def test_the_agent_unit_can_add_routes_and_package_installation_restarts_it():
+def test_the_agent_unit_can_add_routes_and_set_settings_and_package_installation_restarts_it():
     unit = unit_settings((PACKAGING / "sparkring-agent.service").read_text())
-    # Root in the host network namespace keeps CAP_NET_ADMIN for "ip route add".
+    # Root in the host network namespace keeps CAP_NET_ADMIN for "ip route add";
+    # ProtectSystem=strict leaves /proc/sys writable for "sysctl -w" unless
+    # ProtectKernelTunables is set.
     for key in ("User", "CapabilityBoundingSet", "AmbientCapabilities", "PrivateNetwork", "RestrictAddressFamilies",
-                "NetworkNamespacePath", "PrivateUsers"):
+                "NetworkNamespacePath", "PrivateUsers", "ProtectKernelTunables"):
         assert ("Service", key) not in unit, key
     assert unit[("Service", "ExecStart")] == ["/usr/bin/sparkring", "node", "agent"]
     assert "systemctl restart sparkring-agent.service" in (PACKAGING / "postinst").read_text()

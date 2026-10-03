@@ -1,5 +1,5 @@
 [Unit]
-Description=SparkRing host observations and approved fabric route restoration
+Description=SparkRing host observations and approved fabric route and setting restoration
 After=network-online.target
 Wants=network-online.target
 
