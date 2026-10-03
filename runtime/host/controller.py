@@ -468,6 +468,9 @@ def lifecycle(argv):
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--allow-loopback-bind", action="store_true",
+                        help="accept a loopback --api-bind such as 127.0.0.1 for a new deployment: only programs on "
+                             "Node A can then use the model")
     from runtime.common import serving
     serving.add_arguments(parser)
     args = parser.parse_args(argv)
@@ -626,6 +629,15 @@ def lifecycle(argv):
             if profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
+            if {"api_port", "api_bind"} & set(settings):
+                # The API Spark is checked for the listen address and the
+                # port before the deployment is created, as sparkring install
+                # checks it.
+                from runtime.host import install_workflow
+                arguments = install_workflow.profile_arguments(installer.setup.selection(profile))
+                serving.apply(arguments, settings)
+                install_workflow.check_endpoint(args, cluster, requested, STATE, directory, settings,
+                                                settings.get("api_port") or serving.profile_value(arguments, "api_port"))
             installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings)
         else:
             # The deployment's own source validates its lock (retained_source);

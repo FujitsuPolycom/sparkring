@@ -29,6 +29,12 @@ models of the conflicting slots: a four-rank model stops both halves' models,
 and a half's model stops a running four-rank model. Starting a half's model
 first stops and disables the ring's mesh services on every Spark
 (``park_ring``); a four-rank model's own ring step starts them again.
+
+The model's API listens on the deployment's API rank (``runtime.host.api_endpoint``).
+``--api-port`` and ``--api-bind`` are serving settings, checked against the
+API Spark's addresses and listening ports before any Spark is surveyed. In a
+terminal, a run without ``--yes`` and without these options asks for the
+listen address and the port before it surveys the Sparks (``ask_endpoint``).
 """
 import argparse
 import concurrent.futures
@@ -45,9 +51,9 @@ import time
 
 from runtime.common import distribution, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
-from runtime.host import (checkpoint_plan, checkpoint_search, controller, derivation, discovery, fabric_ssh,
-                          hairpin_ring, install_assets, install_space, models, native_mesh, node, progress, recovery,
-                          retained_source, retention, rollout, settings, topology)
+from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, controller, derivation, discovery,
+                          fabric_ssh, hairpin_ring, install_assets, install_space, models, native_mesh, node, progress,
+                          recovery, retained_source, retention, rollout, settings, topology)
 from runtime.host import placement as placements
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
@@ -372,6 +378,65 @@ def _select_mesh(site, cluster, profile, hint, **options):
         raise
 
 
+def profile_arguments(card):
+    """The vLLM arguments of the card's profile with the card's checkpoint settings."""
+    from runtime.common import qwen_flash_next
+    configuration = profiles.read_json(installer.ROOT / card["configuration"])
+    if "checkpoints" in configuration:
+        configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
+    return configuration.get("vllm_args", [])
+
+
+ENDPOINT_SETTINGS = ("api_port", "api_bind")
+
+
+def endpoint_requested(args):
+    """Whether the command line names the API endpoint: ``--api-port`` or ``--api-bind``."""
+    return any(getattr(args, "serving_" + name, None) is not None for name in ENDPOINT_SETTINGS)
+
+
+def ask_endpoint(args, cluster, placement, arguments):
+    """Ask in a terminal where the model's API listens (``api_endpoint.ask``); the answers become serving settings.
+
+    The chosen listen address and port are set on ``args`` as ``--api-bind``
+    and ``--api-port`` would set them. Returns the API Spark's report, or None
+    when it could not be read: the question is then not asked and the
+    endpoint stays automatic.
+    """
+    port = serving_settings.profile_value(arguments, "api_port")
+    if port is None:
+        return None
+    try:
+        document = api_endpoint.inspect(cluster, placement)
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError):
+        return None
+    chosen = api_endpoint.ask(cluster, placement, document, port)
+    for name, value in chosen.items():
+        setattr(args, "serving_" + name, value)
+    return document
+
+
+def check_endpoint(args, cluster, placement, state_root, directory, requested, port, document=None):
+    """Refuse an API listen address or port that the API Spark cannot serve (``api_endpoint.check``).
+
+    The deployment itself, the slot's active deployment and the deployments of
+    the conflicting slots, which the installation replaces or stops, may hold
+    the port. ``document`` is the API Spark's report when the terminal
+    question already read it.
+    """
+    if document is None:
+        try:
+            document = api_endpoint.inspect(cluster, placement)
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+            name = api_endpoint.spark_name(cluster, api_endpoint.api_rank(placement))
+            raise NeedsInput(f"Could not read the addresses and listening ports of {name}, which serves the model's "
+                             f"API: {_error_text(error)}. Nothing has been changed.", field="api_endpoint") from None
+    size = len(cluster["plan"]["nodes"])
+    allowed = [directory, rollout.active(state_root, placement), *placements.displaced(state_root, placement, size)]
+    api_endpoint.check(cluster, placement, requested, document, port=port, allowed=[path for path in allowed if path],
+                       created=not directory.exists(), allow_loopback=getattr(args, "allow_loopback_bind", False))
+
+
 def derivation_section(card, rows, surveys, *, invoke=None):
     """The plan's derivation section when the card's checkpoint is derived, else None.
 
@@ -413,7 +478,8 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     request.
     """
     count = len(placement) if placement is not None else len(cluster["plan"]["nodes"])
-    profile = choose_profile(args.profile, count, not args.json and sys.stdin.isatty())
+    interactive = not args.json and sys.stdin.isatty()
+    profile = choose_profile(args.profile, count, interactive)
     image = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
     try:
         named = checkpoint_plan.named_paths(args.model_path, count)
@@ -438,20 +504,28 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         request["placement"] = list(placement)
     if checkpoint is not None:
         request["checkpoint"] = checkpoint
+    # In a terminal without --yes, where the model's API listens is asked
+    # unless the command line names the endpoint; the answers are serving
+    # settings like --api-bind and --api-port.
+    document = None
+    if (interactive and not getattr(args, "yes", False) and not endpoint_requested(args)
+            and installer.backend({"profile": profile}) == "compose"):
+        document = ask_endpoint(args, cluster, placement, profile_arguments(card))
     # Serving settings are part of the request, so other settings install
     # another deployment; without any, the request is unchanged.
     requested = serving_settings.from_arguments(args)
     if requested:
         # A setting whose vLLM flag the profile does not set, or a value above
         # the selected checkpoint's limit, is refused before any Spark is surveyed.
-        from runtime.common import qwen_flash_next
-        configuration = profiles.read_json(installer.ROOT / card["configuration"])
-        if "checkpoints" in configuration:
-            configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
-        serving_settings.apply(configuration.get("vllm_args", []), requested)
+        arguments = profile_arguments(card)
+        serving_settings.apply(arguments, requested)
         request["serving"] = requested
     instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
     directory = state_root / "deployments" / (profile + "-" + instance)
+    if set(ENDPOINT_SETTINGS) & set(requested):
+        # So is an API listen address or port that the API Spark cannot serve.
+        check_endpoint(args, cluster, placement, state_root, directory, requested,
+                       requested.get("api_port") or serving_settings.profile_value(arguments, "api_port"), document)
     pins = installer.checkpoint_pins(card)
     owned = installer.checkpoint_directory(cluster, card)
     locked = directory.exists()
@@ -893,6 +967,8 @@ def execute(args):
             print("Serving settings: " + "; ".join(serving_settings.describe(lock["serving"], base)))
             for line in serving_settings.warnings(lock["serving"], base):
                 print("Warning: " + line)
+        if lock is not None and endpoint_requested(args):
+            print("Model API: " + installer.connection(lock)["api_url"])
         if lock is not None and "native_mesh" in lock["site_input"]:
             if previous or displaced:
                 raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "
@@ -1117,6 +1193,9 @@ def main(argv=None):
     parser.add_argument("--no-auto-recover", action="store_true",
                         help="do not restart this model automatically when a Spark stops serving; "
                              "sudo sparkring recover on turns it on later")
+    parser.add_argument("--allow-loopback-bind", action="store_true",
+                        help="accept a loopback --api-bind such as 127.0.0.1: only programs on Node A can then use "
+                             "the model")
     serving_settings.add_arguments(parser)
     args = parser.parse_args(argv)
     if args.events is not None and not args.events.parent.is_dir():
