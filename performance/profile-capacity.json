@@ -33,8 +33,10 @@
       "checkpoints": {
         "nvfp4-qad": {
           "tokens": 736274,
+          "source": "performance/records/glm53-flash/nvfp4-qad-tp2-kv-capacity-20261002.md",
+          "witness": "GPU KV cache size: 736,274 tokens",
           "kv_bytes_per_rank": 5368709120,
-          "conditions": "GLM-5.3-Flash nvfp4-qad TP2/DCP1 installer profile on image dev-20261001-kraken-cuda1342-nccl2323-status034, 5 GiB FP8 KV per rank in 2,048-token pages. Engine-reported capacity (GPU KV cache size: 736,274 tokens), recorded in performance/records/glm53-flash/mxfp8-attention-head-20261002.md, which this source tree does not contain; not full-context qualification."
+          "conditions": "GLM-5.3-Flash nvfp4-qad TP2/DCP1 installer profile on image dev-20261001-kraken-cuda1342-nccl2323-status034, on one half of a four-Spark ring, 5 GiB FP8 KV per rank in 2,048-token pages and 524288 configured context. Engine-reported capacity; not proof that concurrent full-context requests fit."
         }
       }
     },

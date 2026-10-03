@@ -20,14 +20,18 @@ profiles support vLLM and SGLang.
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
 ```
 
-The installer requires approval for several operations. Use the `--yes` flag to auto-accept all prompts. Use `--plan` to display what the installer would do, without actually executing the install. The installer sets up every gb10 device, downloads the
+The installer asks before it changes anything. Use `--yes` to approve setup,
+downloads and model changes. Unknown SSH host keys, and stopping another
+program's GPU containers (unless you add `--stop-workloads`), still ask. Use
+`--plan` to see what it would do without changing anything. The installer sets up every gb10 device, downloads the
 image/models and distributes them if needed, and prints the API address when ready.
 Run the same command again to update a profile or swap to another. Each model has a
 [status dashboard](docs/operations/dashboard.md); on four Sparks the installer
 also applies a [ConnectX driver setting](docs/operations/install.md#four-spark-rings)
 at every boot.
 
-More: [all commands](docs/operations/commands.md) ·
+More: [documentation by task](docs/README.md) ·
+[all commands](docs/operations/commands.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·
 [Install Builder](https://fujitsupolycom.github.io/sparkring/) ([how it works](docs/operations/compose-builder.md)) ·
 [pinned install command](docs/operations/install-reference.md#get-the-package)

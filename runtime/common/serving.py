@@ -47,7 +47,7 @@ ABOVE_PROFILE = frozenset({"kv_cache_gib"})
 # runtime/images/derive_spin_wait.py reads the variable.
 SWITCHES = {
     "save_cpu": ("SPARKRING_SHM_BUSY_LOOP_S", "0.002",
-                 "let vLLM's waiting processes sleep between decode steps: less CPU use, about 1-2% slower decode"),
+                 "let vLLM's waiting processes sleep between decode steps: less CPU use, about 1 to 2 percent slower decode"),
 }
 # name: (vLLM flag, accepted values or None for the model's own, metavar, help)
 CHOICES = {
