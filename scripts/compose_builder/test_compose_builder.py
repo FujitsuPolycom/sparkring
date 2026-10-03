@@ -307,6 +307,68 @@ console.log(JSON.stringify({ search, back: E.linkChoices(search, byId, { ring_ha
     assert unknown is None
 
 
+GIB = 2 ** 30
+
+
+def test_kv_measurement_prefers_the_checkpoint_then_the_profile():
+    record = {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "conditions": "c", "source": "s", "witness": "w",
+              "checkpoints": {"other": {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "conditions": "c"}}}
+    assert export.kv_measurement(record, "default", "default") == {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "default"}
+    assert export.kv_measurement(record, "other", "default") == {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "other"}
+    # Another checkpoint of the same profile takes the profile's own measurement and names its checkpoint.
+    assert export.kv_measurement({**record, "checkpoint": "older"}, "third", "default")["checkpoint"] == "older"
+    assert export.kv_measurement({k: v for k, v in record.items() if k != "kv_bytes_per_rank"}, "default", "default") is None
+    assert export.kv_measurement(None, "default", "default") is None
+
+
+def test_checkpoints_carry_the_measurement_of_their_own_profile(data):
+    capacity = {(p["id"], c["name"]): c["capacity"] for p in data["profiles"] for c in p["checkpoints"]}
+    assert capacity[(GLM2, "nvfp4-spark")] == {"tokens": 1530566, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "nvfp4-spark"}
+    assert capacity[(GLM2, "nvfp4-qad")] == {"tokens": 736274, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "nvfp4-qad"}
+    # A four-Spark profile never takes a two-Spark figure.
+    assert capacity[(TP4, "nvfp4-qad")] == {"tokens": 6128169, "kv_bytes_per_rank": 40 * GIB, "checkpoint": "nvfp4-spark"}
+    assert capacity[(TP2, "qad-step5500-ple1000")]["checkpoint"] == "qad-step-4000"
+    assert capacity[(MIMO2, None)] is None
+
+
+def test_kv_estimate_scales_the_measured_pool_to_the_chosen_size(data, node):
+    by_id = {p["id"]: p for p in data["profiles"]}
+    cases = [(GLM2, None, {}), (GLM2, None, {"kv_cache_gib": 5}), (GLM2, "nvfp4-qad", {}), (TP2, None, {"context_length": 131072}),
+             (MIMO2, None, {}), ("deepseek-v41-flash-tp4", None, {})]
+    found = run_engine(node, """
+console.log(JSON.stringify(value.cases.map(([id, name, settings]) => {
+  const checkpoint = E.checkpointOf(value.byId[id], name);
+  return [E.kvEstimate(checkpoint, settings), E.kvText(checkpoint, settings)];
+})));""", {"byId": {key: by_id[key] for key in {c[0] for c in cases}}, "cases": cases})
+    (glm, glm_text), (half, half_text), (qad, qad_text), (qwen, qwen_text), (mimo, mimo_text), (deepseek, deepseek_text) = found
+    # 1,530,566 tokens at 10 GiB in a 1,048,576-token window.
+    assert (glm["gib"], glm["tokens"], glm["requests"]) == (10, 1500000, 1.5)
+    assert glm_text == {"gib": 10, "line": "About 1.5 million tokens · 1.5 full-context requests",
+                        "note": "Estimated from the engine's report at 10 GiB; the engine reports the exact figure when the model starts."}
+    # Half the bytes hold half the tokens: 765,283, rounded to two figures.
+    assert (half["tokens"], half["requests"]) == (770000, 0.7)
+    assert half_text["line"] == "About 770,000 tokens · 0.7 full-context requests"
+    # nvfp4-qad has its own measurement: 736,274 tokens at 5 GiB in a 524,288-token window.
+    assert (qad["gib"], qad["tokens"], qad["requests"], qad["measured_gib"]) == (5, 740000, 1.4, 5)
+    # Qwen's measurement is of qad-step-4000 at 24 GiB, and the note says so.
+    assert (qwen["tokens"], qwen["requests"]) == (2900000, 22.0)
+    assert qwen_text["note"].startswith("Estimated from the engine's report for qad-step-4000 at 24 GiB;")
+    assert mimo == {"gib": 12, "measured": False} and mimo_text == {"gib": 12, "line": "Not measured for this model", "note": ""}
+    assert deepseek is None and deepseek_text is None
+
+
+def test_kv_estimate_follows_each_pair_and_its_link(data, node):
+    by_id = {p["id"]: p for p in data["profiles"] if p["id"] in {TP4, TP2, GLM2}}
+    found = run_engine(node, """
+const { byId, search } = value, choices = E.linkChoices(search, byId, { ring_halves: true });
+console.log(JSON.stringify({ choices, lines: choices.halves.map(s => {
+  const check = E.servingCheck(byId[s.profile], s.settings, s.checkpoint);
+  return E.kvText(check.checkpoint, check.settings).line;
+}) }));""", {"byId": by_id, "search": f"profile={TP4}&layout=halves&first={GLM2}&first.kv_cache_gib=5&second={GLM2}&second.checkpoint=nvfp4-qad"})
+    assert found["choices"]["halves"][0]["settings"] == {"kv_cache_gib": 5}
+    assert found["lines"] == ["About 770,000 tokens · 0.7 full-context requests", "About 740,000 tokens · 1.4 full-context requests"]
+
+
 def test_field_problems_name_each_field_the_generator_refuses(node):
     example = export.example_site("qwen38-flash-next-tp2")
     site = json.loads(json.dumps(example))

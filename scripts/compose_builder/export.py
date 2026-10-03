@@ -15,6 +15,11 @@ records in ``features`` whether `sparkring install` defines ``--on`` (a
 two-Spark model on half of a four-Spark ring) and whether `sparkring cabling`
 defines ``--bandwidth`` (a measurement of every cable), read from the
 argument parsers in the source files.
+
+Each checkpoint carries ``capacity``: the engine-reported KV pool of
+performance/profile-capacity.json that the page scales to the chosen KV cache
+size for its token estimate (kv_measurement), or None when the profile has
+no usable measurement.
 """
 import ast
 import json
@@ -118,6 +123,34 @@ def _checkpoints(profile_id, configuration, site, options):
     return rows
 
 
+def capacity_records():
+    """performance/profile-capacity.json's records by profile ID: the engine-reported KV pools."""
+    return json.loads((ROOT / "performance" / "profile-capacity.json").read_text(encoding="utf-8"))["profiles"]
+
+
+def kv_measurement(record, checkpoint, default):
+    """The engine-reported KV pool that sizes a checkpoint of a profile, from the profile's capacity record.
+
+    ``checkpoint`` is the checkpoint's name and ``default`` the profile's
+    default checkpoint name (None for a profile without named checkpoints).
+    A measurement of that checkpoint wins: one in the record's
+    ``checkpoints``, or the record's own when it measured that checkpoint
+    (its ``checkpoint``, else the profile's default). Otherwise the record's
+    own measurement, of another checkpoint of the same profile, sizes it. A
+    measurement without ``kv_bytes_per_rank`` cannot be scaled to another KV
+    size and sizes nothing. Returns {tokens, kv_bytes_per_rank, checkpoint}
+    or None; a record is for one profile, so a two-Spark measurement never
+    sizes a four-Spark profile.
+    """
+    if not record:
+        return None
+    other = (record.get("checkpoints") or {}).get(checkpoint)
+    measured, name = (other, checkpoint) if other else (record, record.get("checkpoint") or default)
+    if not measured.get("kv_bytes_per_rank"):
+        return None
+    return {"tokens": measured["tokens"], "kv_bytes_per_rank": measured["kv_bytes_per_rank"], "checkpoint": name}
+
+
 def sentinel_site(example):
     """The example site with every host value replaced by a unique token."""
     site = json.loads(json.dumps(example))
@@ -182,6 +215,9 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
     options = {"image_runtime": runtime} if runtime is not None else {}
     specs, image = compose.specifications(profile_id, example, **options)
     checkpoints = _checkpoints(profile_id, configuration, example, options)
+    record = capacity_records().get(profile_id)
+    for checkpoint in checkpoints:
+        checkpoint["capacity"] = kv_measurement(record, checkpoint["name"], checkpoints[0]["name"])
     site = sentinel_site(example)
     for checkpoint in checkpoints:
         name = None if checkpoint["default"] else checkpoint["name"]

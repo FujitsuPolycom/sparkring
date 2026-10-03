@@ -111,6 +111,25 @@ Each install command carries `--profile`, `--on` for a pair of a ring,
 [serving settings](install-reference.md#serving-settings) changed for that
 selection. A setting outside its limits shows its problem under the field.
 
+### KV cache estimate
+
+Under **KV cache per Spark** in step 4, and as **KV cache** in the summary of
+each model above the commands, the page estimates how many tokens the chosen
+KV cache holds. It scales the engine-reported pool that
+[profile-capacity.json](../../performance/profile-capacity.json) records for
+the profile, with the KV bytes per Spark at that measurement:
+
+- tokens ≈ measured tokens × chosen KV bytes per Spark ÷ measured KV bytes
+  per Spark, rounded to two significant figures;
+- full-context requests ≈ tokens ÷ the context window, to one decimal.
+
+A measurement of the selected checkpoint is used when the file has one;
+otherwise the profile's own, and the note names the checkpoint it measured.
+Each record belongs to one profile, so a two-Spark measurement never sizes a
+four-Spark profile. A model without a measurement shows "Not measured for
+this model". The estimate follows the KV cache and context fields as they
+change; the engine reports the exact figure when the model starts.
+
 ### Spark order
 
 Node A is the Spark that runs setup, which the first installation does; it

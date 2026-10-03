@@ -312,6 +312,45 @@ const SparkRingEngine = (() => {
     return JSON.stringify(limits);
   }
 
+  // ---- KV cache token estimate ---------------------------------------------------------
+  // How many tokens a checkpoint's KV cache holds at the chosen size, scaled from the
+  // engine-reported pool its data carries (checkpoint.capacity, export.kv_measurement):
+  // tokens = measured tokens x chosen KV bytes per Spark / measured KV bytes per Spark, rounded to
+  // two significant figures, and full-context requests = tokens / the context window, to one
+  // decimal. `settings` are servingCheck's; a setting left out takes the checkpoint's value.
+  // Returns null for a checkpoint without a KV cache setting; `measured` is false without a
+  // measurement, which the page reports instead of guessing.
+  const GIB = 2 ** 30;
+  function twoFigures(value) {
+    if (!(value > 0)) return 0;
+    const step = 10 ** (Math.floor(Math.log10(value)) - 1);
+    return Math.round(value / step) * step;
+  }
+  function kvEstimate(checkpoint, settings) {
+    const rows = Object.fromEntries(checkpoint.settings.map(r => [r.name, r]));
+    if (!rows.kv_cache_gib) return null;
+    const gib = settings.kv_cache_gib ?? rows.kv_cache_gib.profile, measured = checkpoint.capacity;
+    if (!measured) return { gib, measured: false };
+    const tokens = measured.tokens * gib * GIB / measured.kv_bytes_per_rank;
+    const context = settings.context_length ?? (rows.context_length || {}).profile;
+    return { gib, measured: true, tokens: twoFigures(tokens), requests: context ? Math.round(tokens / context * 10) / 10 : null,
+      measured_gib: measured.kv_bytes_per_rank / GIB, measured_checkpoint: measured.checkpoint };
+  }
+  // The estimate in words: {line, note}, or null without a KV cache setting.
+  function kvText(checkpoint, settings) {
+    const kv = kvEstimate(checkpoint, settings);
+    if (!kv) return null;
+    if (!kv.measured) return { gib: kv.gib, line: 'Not measured for this model', note: '' };
+    const n = kv.tokens;
+    const tokens = 'About ' + (n >= 1e6 ? (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 }) + ' million'
+      : n.toLocaleString('en-US')) + ' tokens';
+    const requests = kv.requests === null ? '' : ' · ' + kv.requests.toFixed(1) + ' full-context requests';
+    const other = kv.measured_checkpoint && kv.measured_checkpoint !== checkpoint.name ? ' for ' + kv.measured_checkpoint : '';
+    const gib = kv.measured_gib.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return { gib: kv.gib, line: tokens + requests,
+      note: `Estimated from the engine's report${other} at ${gib} GiB; the engine reports the exact figure when the model starts.` };
+  }
+
   // ---- Template substitution ---------------------------------------------------------
   function replacements(site, n, identity, sentinelIdentity) {
     const row = site.ranks[n];
@@ -835,6 +874,6 @@ const SparkRingEngine = (() => {
 
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
     checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems,
-    layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices };
+    layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;

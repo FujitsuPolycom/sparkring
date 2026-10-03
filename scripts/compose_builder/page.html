@@ -206,6 +206,7 @@ pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; 
 .cmd-n { font: 600 12px/1 var(--mono); color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; flex: none; }
 .what { margin: 0; font-size: 13.5px; }
 .endpoint { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.kv-estimate { grid-column: 1 / -1; margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--accent); }
 .endpoint code { color: var(--text); }
 .roles { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13px; }
 .roles dt { font-weight: 600; overflow-wrap: anywhere; }
@@ -868,10 +869,13 @@ __ENGINE__
       if (s[row.name] !== undefined) input.value = s[row.name];
       const limit = row.maximum ? ' (max ' + fmt(row.maximum) + ')' : '';
       const err = el('p', { class: 'err', id: 'err-' + id });
+      // The KV cache size shows how many tokens it holds (renderKv).
+      const kv = row.name === 'kv_cache_gib'
+        ? [el('p', { class: 'kv-estimate', id: 'kv-estimate', 'aria-live': 'polite' }), el('p', { class: 'hint', id: 'kv-note' })] : [];
       const wrap = el('div', { class: 'setting' + (s[row.name] !== undefined ? ' changed' : '') },
         el('label', { for: id }, LABELS[row.name] || row.option),
         el('div', { class: 'field' }, input, el('span', { class: 'unit' }, UNITS[row.name] || '')),
-        el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit), err);
+        el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit), err, ...kv);
       const check = () => {
         err.textContent = settingProblem(row, input.value.trim());
         input.setAttribute('aria-invalid', String(Boolean(err.textContent)));
@@ -886,6 +890,26 @@ __ENGINE__
       });
       box.append(wrap);
     }
+    renderKv();
+  }
+
+  // How many tokens the shown selection's KV cache holds (E.kvText), live as its settings change;
+  // nothing while a setting cannot be used.
+  function renderKv() {
+    const line = $('kv-estimate'), note = $('kv-note');
+    if (!line) return;
+    const p = profile(), check = E.servingCheck(p, settingsOf(p.id), checkpointName(p));
+    const kv = check.ok ? E.kvText(check.checkpoint, check.settings) : null;
+    line.textContent = kv ? kv.line + '.' : '';
+    note.textContent = kv ? kv.note : '';
+    line.hidden = !kv;
+    note.hidden = !kv || !kv.note;
+  }
+
+  // The KV cache fact of a selection: its size per Spark and how many tokens it holds.
+  function kvFact(p, check) {
+    const kv = check.ok ? E.kvText(check.checkpoint, check.settings) : null;
+    return kv ? fmt(kv.gib) + ' GiB per Spark · ' + kv.line.charAt(0).toLowerCase() + kv.line.slice(1) : null;
   }
 
   function fieldInput(p, key, id, rank) {
@@ -1083,11 +1107,13 @@ __ENGINE__
       const p = rendered(BY_ID[slot.profile]), check = E.servingCheck(p, slotSettings(slot, p.id), slotCheckpoint(slot, p));
       let cp;
       try { cp = E.checkpointOf(p, slotCheckpoint(slot, p)); } catch (_) { cp = p.checkpoints[0]; }
+      const kv = kvFact(p, check);
       if (single) {
         rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + cp.port],
-          ['Image', p.image], ['Image ID', p.image_id + ' (' + p.image_release + ')']);
+          ...(kv ? [['KV cache', kv]] : []), ['Image', p.image], ['Image ID', p.image_id + ' (' + p.image_release + ')']);
       } else {
-        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + cp.port]);
+        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + cp.port],
+          ...(kv ? [['KV cache', kv]] : []));
         images.add(p.image);
       }
       if (wait) continue;
@@ -1193,6 +1219,7 @@ __ENGINE__
   function changed() {
     save();
     renderProblems();
+    renderKv();
     renderInstall();
     renderCollapse();
     $('compose-panel').dataset.stale = 'true';
