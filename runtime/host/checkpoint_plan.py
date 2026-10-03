@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import ipaddress
 import json
 from pathlib import Path, PurePosixPath
 import shlex
@@ -226,6 +227,9 @@ def install_command(request=None, named=(), *, ignore_local=False):
             argv.append(serving.option(name))
         elif settings.get(name) is not None and name in serving.SETTINGS:
             argv += [serving.option(name), str(settings[name])]
+    if settings.get("api_bind") and ipaddress.ip_address(settings["api_bind"]).is_loopback:
+        # A new deployment with a loopback listen address needs this approval.
+        argv.append("--allow-loopback-bind")
     if ignore_local:
         argv.append("--ignore-local-copies")
     return shlex.join(argv)

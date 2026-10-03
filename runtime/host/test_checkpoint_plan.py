@@ -893,6 +893,10 @@ def test_install_command_repeats_the_deployment_request():
     assert cp.install_command(served) == (
         "sudo sparkring install --profile deepseek-v41-flash-tp4 --max-images 16 --max-concurrency 32 --save-cpu")
     assert cp.install_command({**served, "serving": {}}) == "sudo sparkring install --profile deepseek-v41-flash-tp4"
+    # A loopback listen address needs its approval again when the command creates the deployment.
+    assert cp.install_command({**served, "serving": {"api_bind": "127.0.0.1"}}).endswith(
+        " --api-bind 127.0.0.1 --allow-loopback-bind")
+    assert "--allow-loopback-bind" not in cp.install_command({**served, "serving": {"api_bind": "192.0.2.10"}})
     result = make(owner_copy_surveys(2), named=["1=" + FOLDER], ignore_local=True, request=request)
     assert result["command"] == cp.install_command(request, ["1=" + FOLDER], ignore_local=True)
     assert result["request"] == {**request, "checkpoint": None} and result["profile"] == "qwen38-flash-next-tp2"
