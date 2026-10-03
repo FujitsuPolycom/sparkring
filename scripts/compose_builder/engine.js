@@ -177,6 +177,60 @@ const SparkRingEngine = (() => {
     });
   }
 
+  // Every site field validateSite would refuse, as {rank, key, message}: `rank` is null for the
+  // deployment name, `key` a rank field or fabric.<field>. The page shows each message beside its
+  // field; validateSite stays the authority and reports the generator's first refusal.
+  const PATH_KEYS = ['model', 'cache', 'repository', 'deployment_root'];
+  const PATH_LABELS = { model: 'model directory', cache: 'cache directory', repository: 'SparkRing checkout', deployment_root: 'deployment root' };
+  function fieldProblems(site, nodes) {
+    const problems = [];
+    const add = (rank, key, message) => problems.push({ rank, key, message });
+    if (typeof site.name !== 'string' || !/^[a-z][a-z0-9-]{0,39}$/.test(site.name)) {
+      add(null, 'name', 'Start with a lowercase letter; use lowercase letters, digits and hyphens, at most 40 characters.');
+    }
+    const usable = value => {
+      try { linuxPath(value); limited(value, ''); return true; } catch (_) { return false; }
+    };
+    (site.ranks || []).forEach((rank, i) => {
+      const others = site.ranks.slice(0, i);
+      if (typeof rank.host !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.@-]*$/.test(rank.host) || rank.host === 'controller') {
+        add(i, 'host', 'An SSH host or user@host: letters, digits and . _ @ -.');
+      } else if (others.some(r => r.host === rank.host)) {
+        add(i, 'host', 'Spark ' + others.findIndex(r => r.host === rank.host) + ' has this host too.');
+      }
+      if (typeof rank.host_ip !== 'string' || !IPV4.test(rank.host_ip)) {
+        add(i, 'host_ip', 'An IPv4 address, such as 192.0.2.10.');
+      } else if (others.some(r => r.host_ip === rank.host_ip)) {
+        add(i, 'host_ip', 'Spark ' + others.findIndex(r => r.host_ip === rank.host_ip) + ' has this address too.');
+      }
+      if (typeof rank.interface !== 'string' || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,14}$/.test(rank.interface)) {
+        add(i, 'interface', 'One network interface name, at most 15 characters.');
+      }
+      const h = rank.hcas;
+      if (!Array.isArray(h) || h.length !== nodes || new Set(h).size !== nodes || h.some(x => typeof x !== 'string' || !/^[A-Za-z0-9_]{1,64}$/.test(x))) {
+        add(i, 'hcas', `${nodes} distinct HCA names in cable order, separated by commas.`);
+      }
+      if (!isInt(rank.gid) || rank.gid < 0 || rank.gid > 255) add(i, 'gid', 'A whole number from 0 to 255.');
+      PATH_KEYS.forEach((key, k) => {
+        const value = rank[key];
+        if (!usable(value)) {
+          add(i, key, 'An absolute Linux path of letters, digits and . _ / + = @ ~ -, without a trailing /.');
+          return;
+        }
+        const overlap = PATH_KEYS.slice(0, k).find(other => usable(rank[other]) && (relative(value, rank[other]) || relative(rank[other], value)));
+        if (overlap) add(i, key, 'Must not be inside, or contain, the ' + PATH_LABELS[overlap] + '.');
+      });
+      if (nodes === 4) {
+        const f = rank.fabric || {};
+        if (!usable(f.site_path)) add(i, 'fabric.site_path', 'An absolute Linux file path of letters, digits and . _ / + = @ ~ -.');
+        for (const key of ['site_sha256', 'plan_sha256']) {
+          if (typeof f[key] !== 'string' || !/^[0-9a-f]{64}$/.test(f[key])) add(i, 'fabric.' + key, '64 lowercase hexadecimal characters.');
+        }
+      }
+    });
+    return problems;
+  }
+
   // ---- Serving settings (runtime/common/serving.py) ----------------------------------
   function option(name) { return '--' + name.replace(/_/g, '-'); }
   function normalized(profile, values) {
@@ -454,8 +508,10 @@ const SparkRingEngine = (() => {
     if (meta.since_tag) return `SparkRing ${meta.since_tag} + ${meta.commits_since} commit${meta.commits_since === 1 ? '' : 's'}`;
     return 'SparkRing at ' + meta.commit.slice(0, 12);
   }
-  function selectionWords(checkpoint, settings) {
+  // A profile rendered on a non-default installer image carries the `--image` value that selects it.
+  function selectionWords(profile, checkpoint, settings) {
     const words = [];
+    if (profile.image_option) words.push('--image', profile.image_option);
     if (!checkpoint.default) words.push('--checkpoint', checkpoint.name);
     for (const name of Object.keys(settings).sort()) {
       words.push(...(settings[name] === true ? [option(name)] : [option(name), String(settings[name])]));
@@ -468,7 +524,7 @@ const SparkRingEngine = (() => {
   // `approval` is "ask" (no flag), "plan" or "yes". `downloadLimit` uses the syntax of
   // runtime/host/settings.py download_limit.
   function installCommand(profile, checkpoint, settings, meta, opts) {
-    const words = ['--profile', profile.id, ...selectionWords(checkpoint, settings)];
+    const words = ['--profile', profile.id, ...selectionWords(profile, checkpoint, settings)];
     if (opts.downloadLimit) words.push('--download-limit', opts.downloadLimit);
     if (opts.approval === 'plan') words.push('--plan');
     if (opts.approval === 'yes') words.push('--yes');
@@ -480,7 +536,7 @@ const SparkRingEngine = (() => {
   // The `sparkring compose render` command that writes the same deployment.
   function renderCommand(profile, checkpoint, settings, site) {
     return ['sparkring compose render', profile.id, '--site', site.name + '.site.yaml', '--output', site.name,
-      ...selectionWords(checkpoint, settings)].join(' ');
+      ...selectionWords(profile, checkpoint, settings)].join(' ');
   }
   function validDownloadLimit(text) {
     if (!text) return true;
@@ -565,6 +621,6 @@ const SparkRingEngine = (() => {
   }
 
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
-    checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite };
+    checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;

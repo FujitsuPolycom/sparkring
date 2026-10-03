@@ -478,8 +478,8 @@ Both accept `--json`. See
 
 - `sparkring compose render|check|start|stop` generates and coordinates
   profile-owned Compose deployments; see [Compose deployments](compose.md).
-  `render` takes `--checkpoint NAME` and the serving-setting flags of
-  `sparkring install`.
+  `render` takes `--image NAME`, `--checkpoint NAME` and the serving-setting
+  flags of `sparkring install`.
 - `python scripts/generate_compose_builder.py --output DIR [--verify]` writes
   the [Compose builder](compose-builder.md) page for the checkout.
 - `sparkring validate-compose FILE` (or `--all`, `--json`, `--output FILE`)
