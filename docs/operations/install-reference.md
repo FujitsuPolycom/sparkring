@@ -1245,9 +1245,11 @@ Node A keeps each half's records in
 Review this list before approving `Proceed? [Y/n]`; it is how the installer
 changes each Spark's network exposure.
 
-**Open model API.** The OpenAI-compatible API listens on all of Node A's
-interfaces with no API key, so anyone who can reach its port can use the
-model. Keep Node A on a trusted network or firewall the port. Containers use
+**Open model API.** The OpenAI-compatible API listens with no API key on all
+interfaces of the Spark that serves it: Node A, or Spark 2 for a model on
+Sparks 2 and 3 ([where each half serves](#two-models-on-one-ring)). Anyone who
+can reach its port can use the model, so keep that Spark on a trusted network
+or firewall the port. Containers use
 host networking, and the runtime-status dashboard
 (`/v1/sparkring/status/view`) answers on the same port:
 

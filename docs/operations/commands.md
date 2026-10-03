@@ -59,7 +59,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
 | `--on 0,1` or `--on 2,3` | Put a two-Spark profile on one half of a four-Spark ring ([two models on one ring](install-reference.md#two-models-on-one-ring)); default: the half that serves no model |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
-| `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation |
+| `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
 | `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
@@ -88,7 +88,7 @@ built version is installed.
 
 | Flag | Meaning |
 |---|---|
-| `--yes` | Answer the package question and `sparkring install`'s questions; required without a terminal |
+| `--yes` | Answer the package question and pass `--yes` to `sparkring install`, with the same limits; required without a terminal |
 | `--plan` | Install nothing; plan with the built version (below) |
 | `--package-only` | Ask the package question, install or keep the package and stop before `sparkring install`; not with `--plan` |
 | `--json` | One `sparkring-install-result/v1` document on stdout (below); progress, questions and `apt` output on stderr |
@@ -124,7 +124,7 @@ into the pair or ring now cabled.
 | Flag | Meaning |
 |---|---|
 | `--plan` | Discover and review over existing SSH access; configure nothing |
-| `--yes` | Accept the listed changes; unknown SSH host keys still need confirmation |
+| `--yes` | Accept the listed changes; unknown SSH host keys still need confirmation, and stopping GPU containers still asks unless you add `--stop-workloads` |
 | `--env FILE` | Literal preferences file; its keys set the defaults below ([keys](install-reference.md#optional-preferences)) |
 | `--name NAME` | Cluster name: a lowercase letter, then lowercase letters, digits or `-`; at most 35 characters (default `sparkring`) |
 | `--ssh-user USER` | Worker account (default: the account that ran `sudo`; `root` with `--env` or port 2222) |
