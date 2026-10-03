@@ -315,6 +315,9 @@ def setup(argv=None):
     if path.exists() and installer.read(path)["plan"]["id"] != plan["id"]:
         raise ValueError("Controller already records another cluster; inspect " + str(path))
     node.save(STATE, "cluster.json", cluster, mode=0o600)
+    from runtime.host import fabric_bandwidth
+    # A degraded cable is a warning with its repair steps; setup never fails here.
+    fabric_bandwidth.after_setup(STATE, cluster)
     print("Network configured. Choose a model: sparkring models")
     return 0
 

@@ -19,9 +19,12 @@ import time
 import pytest
 
 from runtime.common import installer
-from runtime.host import controller, fabric_bandwidth as bandwidth, placement
+from runtime.host import controller, fabric_bandwidth as bandwidth, placement, single_uplink
 from runtime.host.test_fabric_ssh import cluster
+from runtime.host.test_setup_prompts import four_sparks  # noqa: F401 (fixture)
 
+# The check itself; conftest replaces setup's call of it in every host test.
+REAL_AFTER_SETUP = bandwidth.after_setup
 HEADER = (" #bytes     #iterations    BW peak[Gb/sec]    BW average[Gb/sec]   MsgRate[Mpps]\n")
 RULE = "---------------------------------------------------------------------------------------\n"
 HEALTHY_LINE = " 1048576    38096            0.00               213.05 \t\t   0.025397\n"
@@ -528,7 +531,7 @@ def test_setup_warns_about_a_degraded_cable_and_saves_the_result(tmp_path):
     value = cluster(4)
     sparks = Sparks(value["plan"], clients={(1, "rocep1s0f0"): DEGRADED, (1, "roceP2p1s0f0"): DEGRADED})
     said = []
-    document = bandwidth.after_setup(tmp_path, value, access=sparks, say=said.append)
+    document = REAL_AFTER_SETUP(tmp_path, value, access=sparks, say=said.append)
     assert document["verdict"] == "degraded"
     assert json.loads((tmp_path / bandwidth.RECORD).read_text()) == document
     assert said[0] == "Measure the bandwidth of each fabric cable (about 30 seconds per cable)"
@@ -548,7 +551,7 @@ def test_setup_check_that_cannot_run_is_a_warning(tmp_path, monkeypatch):
     value = cluster(2)
     said = []
     monkeypatch.setattr(bandwidth, "save", lambda root, document: (_ for _ in ()).throw(OSError("No space left")))
-    assert bandwidth.after_setup(tmp_path, value, access=Sparks(value["plan"]), say=said.append) is None
+    assert REAL_AFTER_SETUP(tmp_path, value, access=Sparks(value["plan"]), say=said.append) is None
     assert said[-1] == ("Warning: the fabric bandwidth check could not run (No space left); sudo sparkring cabling "
                         "--bandwidth runs it again.")
 
@@ -558,10 +561,41 @@ def test_setup_measures_nothing_while_a_model_serves(tmp_path):
     deployment(tmp_path, (2, 3))
     sparks = Sparks(value["plan"])
     said = []
-    assert bandwidth.after_setup(tmp_path, value, access=sparks, say=said.append) is None
+    assert REAL_AFTER_SETUP(tmp_path, value, access=sparks, say=said.append) is None
     assert sparks.events == [] and not (tmp_path / bandwidth.RECORD).exists()
     assert said == ["Fabric bandwidth: not measured, because a model is serving; sudo sparkring cabling --bandwidth "
                     "measures it after the model stops."]
+
+
+def test_setup_with_nodes_ends_with_the_check(four_sparks, monkeypatch, tmp_path):  # noqa: F811 (fixture argument)
+    _, plan, _, targets = four_sparks
+    monkeypatch.setattr(controller, "apply", lambda value, directory, **options: value)
+    received = []
+    monkeypatch.setattr(bandwidth, "after_setup", lambda root, value: received.append((root, value)))
+    assert controller.setup([*targets, "--apply", "--yes", "--skip-enroll", "--output", str(tmp_path / "setup")]) == 0
+    [(root, value)] = received
+    assert root == controller.STATE and value["plan"]["id"] == plan["id"]
+    assert json.loads((controller.STATE / "cluster.json").read_text())["plan"]["id"] == plan["id"]
+
+
+def test_repeated_setup_ends_with_the_check(tmp_path, monkeypatch):
+    monkeypatch.setattr(controller, "STATE", tmp_path / "state")
+    value = cluster(2)
+    installer.write(controller.STATE / "cluster.json", value)
+    monkeypatch.setattr(single_uplink.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(single_uplink.distribution, "installed", lambda root: True)
+    monkeypatch.setattr(single_uplink, "identity_key", lambda directory: (tmp_path / "key", "controller public key"))
+    monkeypatch.setattr(single_uplink, "record_reason", lambda base: None)
+    monkeypatch.setattr(single_uplink.controller, "collect", lambda targets: value["plan"]["nodes"])
+    monkeypatch.setattr(single_uplink, "match_revisions", lambda targets, nodes, directory: nodes)
+    monkeypatch.setattr(single_uplink.node, "read", lambda root, name: {"node_id": value["plan"]["nodes"][0]["node_id"]})
+    monkeypatch.setattr(single_uplink.topology, "build_spec", lambda *args, **kwargs: value["plan"])
+    monkeypatch.setattr(single_uplink.controller, "apply", lambda plan, directory, **options: plan)
+    received = []
+    monkeypatch.setattr(bandwidth, "after_setup", lambda root, record: received.append((root, record)))
+    assert single_uplink.main(["--yes"]) == 0
+    [(root, record)] = received
+    assert root == controller.STATE and record["plan"]["id"] == value["plan"]["id"]
 
 
 # The programs that run on the Sparks and the processes on Node A.
