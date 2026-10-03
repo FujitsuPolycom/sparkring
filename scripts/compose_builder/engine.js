@@ -5,7 +5,8 @@
 // runtime/common/serving.py does, and computes the deployment identity and manifest as
 // compose.build does; scripts/compose_builder/verify.py checks that the results are equal.
 // Inputs are limited to characters whose YAML and JSON encodings it reproduces exactly;
-// anything else is refused rather than encoded differently.
+// anything else is refused rather than encoded differently. It also writes the page's
+// `sparkring install` commands, the command pack of a layout and the page's shareable links.
 const SparkRingEngine = (() => {
   'use strict';
 
@@ -227,6 +228,31 @@ const SparkRingEngine = (() => {
           if (typeof f[key] !== 'string' || !/^[0-9a-f]{64}$/.test(f[key])) add(i, 'fabric.' + key, '64 lowercase hexadecimal characters.');
         }
       }
+    });
+    return problems;
+  }
+
+  // The problems with the Spark names and addresses that name the Sparks in a command pack
+  // (sparkNames), as {rank, key, message} with `key` "host" or "host_ip": each Spark needs a
+  // name or an address, a name is a host or user@host as a site's, an address is IPv4, and no
+  // two Sparks share either.
+  function sparkProblems(ranks) {
+    const problems = [];
+    const add = (rank, key, message) => problems.push({ rank, key, message });
+    const text = value => String(value ?? '').trim();
+    const role = i => i === 0 ? 'Node A' : 'Spark ' + i;
+    ranks.forEach((rank, i) => {
+      const others = ranks.slice(0, i), host = text(rank.host), address = text(rank.host_ip);
+      if (!host && !address) {
+        add(i, 'host', 'Enter a name or an address.');
+        return;
+      }
+      const sameHost = others.findIndex(r => text(r.host) === host);
+      if (host && (!/^[A-Za-z0-9][A-Za-z0-9_.@-]*$/.test(host) || host === 'controller')) add(i, 'host', 'A name or user@name: letters, digits and . _ @ -.');
+      else if (host && sameHost >= 0) add(i, 'host', role(sameHost) + ' has this name too.');
+      const sameAddress = others.findIndex(r => text(r.host_ip) === address);
+      if (address && !IPV4.test(address)) add(i, 'host_ip', 'An IPv4 address, such as 192.0.2.10.');
+      else if (address && sameAddress >= 0) add(i, 'host_ip', role(sameAddress) + ' has this address too.');
     });
     return problems;
   }
@@ -522,9 +548,10 @@ const SparkRingEngine = (() => {
   // which passes every other option to `sparkring install`); "installed" runs the installed
   // package. `pin` fetches install.sh from meta.ref and builds that source instead of main.
   // `approval` is "ask" (no flag), "plan" or "yes". `downloadLimit` uses the syntax of
-  // runtime/host/settings.py download_limit.
+  // runtime/host/settings.py download_limit. `on` ("0,1" or "2,3") places a two-Spark
+  // profile on that half of a four-Spark ring.
   function installCommand(profile, checkpoint, settings, meta, opts) {
-    const words = ['--profile', profile.id, ...selectionWords(profile, checkpoint, settings)];
+    const words = ['--profile', profile.id, ...(opts.on ? ['--on', opts.on] : []), ...selectionWords(profile, checkpoint, settings)];
     if (opts.downloadLimit) words.push('--download-limit', opts.downloadLimit);
     if (opts.approval === 'plan') words.push('--plan');
     if (opts.approval === 'yes') words.push('--yes');
@@ -547,6 +574,192 @@ const SparkRingEngine = (() => {
   // Where a derived checkpoint's directory is: `sudo sparkring install --checkpoint` writes it.
   function derivedDirectory(checkpoint) {
     return `/srv/sparkring/<cluster>/checkpoints/${checkpoint.model_repository.replace('/', '--')}/${checkpoint.model_revision}`;
+  }
+
+  // ---- Command pack --------------------------------------------------------------------
+  // A layout is how the Sparks serve: "pair", two Sparks with one model; "ring", four Sparks
+  // with one four-Spark model; "halves", four Sparks with one two-Spark model on each half,
+  // Sparks 0 and 1 (`--on 0,1`) and Sparks 2 and 3 (`--on 2,3`), as runtime/host/placement.py
+  // defines them. A source offers "halves" only when its `sparkring install` defines --on
+  // (features.ring_halves, export.features).
+  const LAYOUT_SPARKS = { pair: 2, ring: 4, halves: 4 };
+  const HALVES = ['0,1', '2,3'];
+  function layouts(features) {
+    return ['pair', 'ring', ...(features && features.ring_halves ? ['halves'] : [])];
+  }
+
+  // How the pack names each Spark, in rank order. Node A is rank 0: the Spark where setup, and
+  // so the first install, runs, and where every command runs. The cabling ranks the others: every
+  // cable joins port 0 of one Spark to port 1 of the next, and rank r+1 is the Spark on rank r's
+  // port 0. `sparks`, the user's [{host, host_ip}] in rank order, names a Spark by its name or
+  // address and its API by its address, or its name without one; a Spark without either, or
+  // every Spark without `sparks`, is "Node A" or "Spark N", with NODE_A or SPARK_N standing for
+  // its address.
+  function sparkNames(count, sparks) {
+    return Array.from({ length: count }, (_, rank) => {
+      const role = rank === 0 ? 'Node A' : 'Spark ' + rank;
+      const row = (sparks && sparks[rank]) || {};
+      const name = String(row.host || '').trim(), address = String(row.host_ip || '').trim();
+      if (!name && !address) return { role, short: role, label: role, address: rank === 0 ? 'NODE_A' : 'SPARK_' + rank, given: false };
+      return { role, short: name || address, label: `${name || address} (${role})`, address: address || name, given: true };
+    });
+  }
+
+  // The ordered commands of a layout, in groups:
+  //   install: the layout's installation. For a new installation (opts.form "script") the first
+  //            command is the one-command installer, which passes --on to `sparkring install`;
+  //            every later command runs the `sudo sparkring install` it installed. A second half
+  //            runs after the first: SparkRing runs one installation at a time.
+  //   switch:  on a ring, the commands that serve the other layout. Installing a half stops the
+  //            four-Spark model, and installing the four-Spark model stops both halves' models.
+  //   check:   `sudo sparkring status`, and `sudo sparkring cabling --bandwidth` when
+  //            features.cable_check.
+  // Each command is {where, what, command, endpoint, error}: `endpoint` is the API it serves,
+  // and `error` why it has no command. `plan` is {layout, features, main, halves}, where a
+  // selection is {profile, checkpoint: name or null, settings: requested values}: `main` is the
+  // pair's or the ring's model, and the four-Spark model the halves layout switches to; `halves`
+  // are the two halves' models, which the ring layout switches to. `opts` carries installCommand's
+  // form, pin, approval and downloadLimit, and `order`: "auto", "ask", which leaves out --yes so
+  // that every installation asks before it changes a Spark, or "fill", which names the Sparks
+  // after `opts.sparks`.
+  function commandPack(plan, meta, opts) {
+    const layout = plan.layout, features = plan.features || {};
+    const names = sparkNames(LAYOUT_SPARKS[layout], opts.order === 'fill' ? opts.sparks : null);
+    const approval = opts.order === 'ask' && opts.approval === 'yes' ? 'ask' : opts.approval;
+    const pairOf = half => `${names[2 * half].short} and ${names[2 * half + 1].short}`;
+    const run = 'On ' + names[0].label + ', as a user with sudo';
+    let first = true;
+    // One install command; `apiRank` is the rank that serves its API.
+    const install = (selection, on, apiRank, what) => {
+      const form = first ? opts.form : 'installed';
+      first = false;
+      const check = servingCheck(selection.profile, selection.settings, selection.checkpoint);
+      const model = check.ok ? selection.profile.model_name + (check.checkpoint.default ? '' : ' (' + check.checkpoint.name + ')')
+        : selection.profile.model_name;
+      return {
+        where: form === 'script' ? 'On ' + names[0].label + ', the Spark on your network, as a user with sudo' : run,
+        what: (form === 'script' ? 'Installs SparkRing and starts ' : 'Starts ') + model + what,
+        command: check.ok ? installCommand(selection.profile, check.checkpoint, check.settings, meta,
+          { form, pin: opts.pin, approval, downloadLimit: opts.downloadLimit, on }) : '',
+        endpoint: check.ok ? `http://${names[apiRank].address}:${check.checkpoint.port}/v1` : null,
+        error: check.ok ? null : check.error,
+      };
+    };
+    const next = ' Run it once the one before has finished.';
+    const groups = [];
+    if (layout === 'halves') {
+      groups.push({ key: 'install', title: 'Install', commands: [
+        install(plan.halves[0], HALVES[0], 0, ` on the first pair: ${pairOf(0)}.`),
+        install(plan.halves[1], HALVES[1], 2, ` on the second pair: ${pairOf(1)}.` + next),
+      ] });
+      groups.push({ key: 'switch', title: 'Switch to one model', commands: [
+        install(plan.main, null, 0, " on all four Sparks, and stops both pairs' models."),
+      ] });
+    } else {
+      groups.push({ key: 'install', title: 'Install', commands: [
+        install(plan.main, null, 0, layout === 'pair' ? ' on both Sparks.' : ' on all four Sparks.'),
+      ] });
+      if (layout === 'ring' && features.ring_halves) {
+        groups.push({ key: 'switch', title: 'Switch to two models', commands: [
+          install(plan.halves[0], HALVES[0], 0, ` on ${pairOf(0)}, and stops the model on all four.`),
+          install(plan.halves[1], HALVES[1], 2, ` on ${pairOf(1)}.` + next),
+        ] });
+      }
+    }
+    const check = [{ where: run, what: layout === 'halves' ? "Shows each pair's model separately." : 'Shows each Spark and the model.',
+      command: 'sudo sparkring status', endpoint: null, error: null }];
+    if (features.cable_check) {
+      check.push({ where: run, what: "Measures each cable's speed. It skips cables a running model uses.",
+        command: 'sudo sparkring cabling --bandwidth', endpoint: null, error: null });
+    }
+    groups.push({ key: 'check', title: 'Check', commands: check });
+
+    // What each Spark becomes.
+    const roles = names.map((spark, rank) => {
+      let text;
+      if (rank === 0) text = 'Where you run every command. Serves ' + (layout === 'halves' ? 'the first pair.' : 'the model.');
+      else if (layout === 'pair') text = 'The Spark cabled to Node A.';
+      else text = `Cabled to ${names[rank - 1].role}'s p0 port.` + (layout !== 'halves' ? '' : rank === 1 ? ' First pair.'
+        : rank === 2 ? ' Serves the second pair.' : ' Second pair.');
+      return { spark: spark.label, text };
+    });
+    const commands = groups.flatMap(group => group.commands);
+    const notes = ['If an install stops early, run it again; it picks up where it left off.'];
+    const serves = spark => commands.some(c => c.endpoint && c.endpoint.startsWith(`http://${spark.address}:`));
+    const placeholders = names.filter(spark => !spark.given && serves(spark));
+    if (placeholders.length) {
+      notes.push('Replace ' + placeholders.map(spark => spark.address).join(' and ')
+        + (placeholders.length > 1 ? ' with the addresses of ' : ' with the address of ')
+        + placeholders.map(spark => spark.role).join(' and ') + '.');
+    }
+    // A half's API on Spark 2 is its own LAN address, or its administration address without one.
+    if (names.length > 2 && serves(names[2])) {
+      notes.push(`If ${names[2].short} has no network cable of its own, only ${names[0].short} can reach its model.`);
+    }
+    if (opts.order === 'ask') notes.push('Each install shows which Spark is which and asks before it changes anything.');
+    return {
+      layout, roles, groups, notes,
+      order: layout === 'pair' ? null : "The cables set this order. You can't choose it, or which Spark leads a pair.",
+      ready: commands.every(c => c.command),
+    };
+  }
+
+  // ---- Shareable links -----------------------------------------------------------------
+  // A link carries the page's choices as query parameters, never a site value: `profile` and
+  // its `checkpoint` and changed serving settings (one parameter per setting) for the pair's or
+  // the ring's model; on a ring, `first` and `second` with `first.checkpoint`, `first.<setting>`
+  // and so on for the halves' models; `layout`, `mode`, `image` and the install options.
+  // `choices` is {layout, mode, image, main, halves, install}, a selection being
+  // {profile: id, checkpoint: name or null, settings}.
+  const LINK_HALVES = ['first', 'second'];
+  const INSTALL_CHOICES = { form: ['script', 'installed'], source: ['release', 'main'], approval: ['ask', 'plan', 'yes'],
+    order: ['auto', 'ask', 'fill'] };
+  function linkQuery(choices) {
+    const query = new URLSearchParams();
+    const add = (key, selection) => {
+      const prefix = key === 'profile' ? '' : key + '.';
+      query.set(key, selection.profile);
+      if (selection.checkpoint) query.set(prefix + 'checkpoint', selection.checkpoint);
+      for (const name of Object.keys(selection.settings || {}).sort()) {
+        query.set(prefix + name, selection.settings[name] === true ? '1' : String(selection.settings[name]));
+      }
+    };
+    add('profile', choices.main);
+    query.set('layout', choices.layout);
+    query.set('mode', choices.mode);
+    if (choices.layout !== 'pair') choices.halves.forEach((selection, i) => add(LINK_HALVES[i], selection));
+    if (choices.image) query.set('image', choices.image);
+    for (const [key, value] of Object.entries(choices.install)) if (value) query.set(key, value);
+    return query.toString();
+  }
+  // The choices a link's query names, against `byId` (profile ID -> profile) and the layouts that
+  // `features` offers; null without a known `profile`. A value the page does not offer is left
+  // out (null for a half, mode and image); a layout that does not fit `profile` follows its size.
+  function linkChoices(search, byId, features) {
+    const query = new URLSearchParams(search);
+    const selection = (key, nodes) => {
+      const p = byId[query.get(key)];
+      if (!p || (nodes && p.nodes !== nodes)) return null;
+      const prefix = key === 'profile' ? '' : key + '.', name = query.get(prefix + 'checkpoint');
+      const checkpoint = p.checkpoints.some(c => c.name === name && !c.default) ? name : null;
+      const settings = {};
+      for (const row of checkpointOf(p, checkpoint).settings) {
+        const text = query.get(prefix + row.name);
+        if (text === null) continue;
+        if (row.switch) { if (text === '1') settings[row.name] = true; }
+        else if (/^\d+$/.test(text)) settings[row.name] = Number(text);
+      }
+      return { profile: p.id, checkpoint, settings };
+    };
+    const main = selection('profile');
+    if (!main) return null;
+    const nodes = byId[main.profile].nodes, wanted = query.get('layout');
+    const layout = layouts(features).includes(wanted) && LAYOUT_SPARKS[wanted] === nodes ? wanted : nodes === 4 ? 'ring' : 'pair';
+    const install = {};
+    for (const [key, values] of Object.entries(INSTALL_CHOICES)) if (values.includes(query.get(key))) install[key] = query.get(key);
+    install.limit = query.get('limit') || '';
+    return { layout, main, halves: LINK_HALVES.map(key => selection(key, 2)),
+      mode: ['install', 'compose'].includes(query.get('mode')) ? query.get('mode') : null, image: query.get('image'), install };
   }
 
   function readme(profile, checkpoint, site, settings, output, meta) {
@@ -621,6 +834,7 @@ const SparkRingEngine = (() => {
   }
 
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
-    checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems };
+    checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems,
+    layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;
