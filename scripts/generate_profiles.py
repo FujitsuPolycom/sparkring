@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve, legacy_recipe_bytes, quickstart_status  # noqa: E402
 
 from runtime.common.environment import render_environment  # noqa: E402
+from runtime.common import thinking  # noqa: E402
 
 START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
@@ -288,6 +289,42 @@ def profile_catalog_table(rows, names, root):
     return re.sub(r'\]\((?!https?://|#)([^)]+)\)', lambda m: '](' + ('../' + m[1]) + ')', text)
 
 
+INSTALLER_TABLE = '| Model | Checkpoint | Sparks | `--profile` value |'
+THINKING = 'Thinking'
+
+
+def thinking_column(text, root=ROOT):
+    """``text`` with the Thinking cell of each installer-table row set from its profile's thinking record.
+
+    The repository README's installer table, whose header starts with
+    INSTALLER_TABLE, is maintained by hand except this column: each row's
+    cell is thinking.summary of the profile in its `--profile` value column,
+    such as ``on · xhigh``. A table without the column, or a row whose profile
+    has no record, is refused.
+    """
+    lines = text.split('\n')
+    header = next((number for number, line in enumerate(lines) if line.startswith(INSTALLER_TABLE)), None)
+    if header is None:
+        raise ValueError('README.md requires the installer profile table')
+    names = [cell.strip() for cell in lines[header].strip().strip('|').split('|')]
+    if THINKING not in names:
+        raise ValueError('README.md installer profile table requires a Thinking column')
+    column, profile_column = names.index(THINKING), names.index('`--profile` value')
+    number = header + 2
+    while number < len(lines) and lines[number].startswith('|'):
+        cells = [cell.strip() for cell in lines[number].strip().strip('|').split('|')]
+        if len(cells) != len(names):
+            raise ValueError('README.md installer profile table rows require every column')
+        profile = cells[profile_column].strip('`')
+        record = thinking.of(profile, root=root)
+        if record is None:
+            raise ValueError(f'README.md installer profile {profile} has no thinking record in {thinking.CATALOG}')
+        cells[column] = thinking.summary(record)
+        lines[number] = '| ' + ' | '.join(cells) + ' |'
+        number += 1
+    return '\n'.join(lines)
+
+
 def generate(check=False, root=ROOT):
     expected = {}
     manifest = read_json(root/'profiles/compatibility.json')
@@ -317,7 +354,8 @@ def generate(check=False, root=ROOT):
             raise ValueError('Environment exports must have unique destinations within the checkout')
         expected[target] = render_environment(row['profile'], root=root, template_only=True).encode('utf-8')
     # The repository README lists only the installer's profiles, maintained by
-    # hand; every catalog profile appears in the generated catalog page.
+    # hand except their Thinking column (thinking_column); every catalog
+    # profile appears in the generated catalog page.
     readme = root/'profiles/README.md'
     text = readme.read_text(encoding='utf-8-sig')
     if START not in text or END not in text:
@@ -325,6 +363,8 @@ def generate(check=False, root=ROOT):
     before, tail = text.split(START, 1)
     _, after = tail.split(END, 1)
     expected[readme] = (before+profile_table(root)+after).encode()
+    installer_readme = root/'README.md'
+    expected[installer_readme] = thinking_column(installer_readme.read_text(encoding='utf-8-sig'), root).encode()
     stale = []
     for path, content in expected.items():
         if not path.exists() or path.read_bytes().replace(b'\r\n', b'\n') != content.replace(b'\r\n', b'\n'):
