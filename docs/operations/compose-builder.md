@@ -245,7 +245,9 @@ On a page served over HTTP, **Copy link to these choices** copies the page's
 address with the layout, each selection's profile, checkpoint, changed
 serving settings and API endpoint choice, the installer image, the install
 options, the Spark order and the output. The link carries no name, address or path from step 5. A link
-without a layout opens the layout that fits its profile's size.
+without a layout opens the layout that fits its profile's size. Where the
+browser does not let the page write to the clipboard, the link appears in a
+field beside the button, selected, to copy by hand.
 
 ## Compose files
 

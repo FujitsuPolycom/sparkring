@@ -136,6 +136,8 @@ legend { padding: 0 6px; font-size: 13px; font-weight: 600; display: inline-flex
 .f label { font-size: 12px; color: var(--muted); }
 @media (max-width: 460px) { .grid { grid-template-columns: minmax(0, 1fr); } .setting { grid-template-columns: minmax(0, 1fr); } }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+/* The link itself, shown selected when the clipboard cannot take it. */
+#share-url { flex: 1 1 260px; }
 details.import summary { cursor: pointer; font-size: 13px; color: var(--accent); }
 details.import[open] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 details.import textarea { min-height: 140px; resize: vertical; }
@@ -354,7 +356,9 @@ footer p { margin: 0; max-width: 110ch; }
       <dl class="facts" id="facts"></dl>
       <div class="messages" id="messages"></div>
       <div class="row-actions" id="share-bar" hidden>
-        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>      </div>
+        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>
+        <input type="text" id="share-url" readonly spellcheck="false" aria-label="Link to these choices" hidden>
+      </div>
 
       <section class="panel" id="install-panel" role="tabpanel" aria-labelledby="mode-install">
         <div class="opts">
@@ -1717,6 +1721,22 @@ __ENGINE__
     return location.origin + location.pathname + '?' + E.linkQuery({ layout: state.layout, mode: state.mode,
       image: row ? row.option : null, main: pick(MAIN), halves: state.halves.map(pick), install: state.install });
   }
+  // Copies the link; where the clipboard refuses, shows it in a field, selected, to copy by hand.
+  async function copyLink() {
+    const url = linkFor(), button = $('copy-link'), field = $('share-url'), label = 'Copy link to these choices';
+    field.hidden = true;
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = 'Copied';
+    } catch (_) {
+      field.value = url;
+      field.hidden = false;
+      field.focus();
+      field.select();
+      button.textContent = 'Selected: press Ctrl+C';
+    }
+    setTimeout(() => { button.textContent = label; }, 1600);
+  }
   function fromLink() {
     let choices;
     try { choices = E.linkChoices(location.search, BY_ID, FEATURES); } catch (_) { return; }
@@ -1767,7 +1787,7 @@ __ENGINE__
     renderZip();
     if (/^https?:$/.test(location.protocol)) {
       $('share-bar').hidden = false;
-      $('copy-link').addEventListener('click', () => copy(linkFor(), $('copy-link'), $('copy-link')));
+      $('copy-link').addEventListener('click', copyLink);
     }
   }
 })();
