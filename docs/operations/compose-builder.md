@@ -49,6 +49,12 @@ published the image, such as `2026.09.5`, or the part of its name that only it
 has, such as `statusrows`
 ([another image](install-reference.md#another-image)).
 
+Step 4 offers **Save CPU between decode steps** only for a model whose image
+reads its variable, as the page's data records for each image
+([serving settings](install-reference.md#serving-settings)). On another
+image, such as `plainstatus`, step 4 says the image can't, and the commands
+and files leave the switch out.
+
 ## Layout
 
 Step 2 chooses how the Sparks serve:
@@ -302,7 +308,7 @@ files with `sparkring compose`. A derived checkpoint, such as
 ## How the page is checked
 
 The page runs no Python. For every installer image, profile, checkpoint and
-save-CPU state, [export.py](../../scripts/compose_builder/export.py) renders the deployment
+save-CPU state the image offers, [export.py](../../scripts/compose_builder/export.py) renders the deployment
 with `compose.build` for a site whose values are unique placeholders, and
 [engine.js](../../scripts/compose_builder/engine.js) puts a real site's values
 in their place line by line. The export stops if a placeholder lands anywhere
@@ -317,7 +323,8 @@ sites per checkpoint on the default image, `--image-cases` on each other image:
 - every rank's `compose.yaml` and `container.json`, `deployment.json`,
   `site.yaml` and the deployment ID;
 - the refusal message for each invalid site and setting, such as a port that
-  SparkRing uses or an address no Spark can listen on;
+  SparkRing uses, an address no Spark can listen on, or the save-CPU switch on
+  an image without the shared-memory reader window;
 - for a sample, the zip: Python's `zipfile` opens it and
   `compose.load_deployment` accepts the unzipped folder.
 

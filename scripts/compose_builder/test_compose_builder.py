@@ -129,6 +129,27 @@ def test_image_catalog_lists_the_default_first_with_options_install_accepts(data
     assert {row["name"]: row["option"] for row in rows}["dev-20261001-statusrows-cuda1342-nccl2323-status034"] == "statusrows"
 
 
+def test_save_cpu_is_offered_only_on_images_that_read_its_variable(data, node, monkeypatch):
+    from runtime.common import serving
+    older = "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
+    # The Builder and the installer read the same capability: the default image has the reader window.
+    for profile in data["profiles"]:
+        assert profile["image_capabilities"] == list(installer_image.capabilities(profile["image_release"])) == ["shm_reader_window"]
+        assert next(r for r in profile["checkpoints"][0]["settings"] if r["name"] == "save_cpu")["needs"] == "shm_reader_window"
+    monkeypatch.setattr(export, "profile_ids", lambda: [TP2])
+    profile, = export.image_data(older)["profiles"]
+    assert profile["image_capabilities"] == [] and all(set(c["variants"]) == {"off"} for c in profile["checkpoints"])
+    found = run_engine(node, """
+const { profile } = value, cp = E.checkpointOf(profile, null);
+console.log(JSON.stringify({ check: E.servingCheck(profile, { save_cpu: true }, null), offered: E.offered(profile, cp.settings.find(r => r.switch)),
+  read: E.readSelection(profile, cp, { save_cpu: true, max_images: 1 }, { mode: 'auto' }) }));""", {"profile": profile})
+    with pytest.raises(ValueError) as refused:
+        serving.check_image({"save_cpu": True}, older, installer_image.capabilities(older))
+    # The engine refuses the switch with the installer's message, and the page's fields leave it out.
+    assert found["check"] == {"ok": False, "error": str(refused.value)}
+    assert found["offered"] is False and found["read"]["settings"] == {"max_images": 1}
+
+
 def test_image_data_renders_profiles_on_that_image(monkeypatch, data):
     monkeypatch.setattr(export, "profile_ids", lambda: ["mimo-v26-flash-mopd-tp2"])
     row = next(row for row in data["images"] if "2026.09.5" in row["tags"])

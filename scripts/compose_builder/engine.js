@@ -308,6 +308,19 @@ const SparkRingEngine = (() => {
       }
     }
   }
+  // serving.check_image: a switch that needs an image capability (row.needs) the profile's image
+  // lacks (profile.image_capabilities) is refused, naming the image's release.
+  const offered = (profile, row) => !row.needs || (profile.image_capabilities || []).includes(row.needs);
+  function checkImage(profile, checkpoint, settings) {
+    const rows = Object.fromEntries(checkpoint.settings.map(r => [r.name, r]));
+    for (const name of Object.keys(settings).sort()) {
+      const row = rows[name];
+      if (row && row.switch && !offered(profile, row)) {
+        throw new Error(`${option(name)} needs an image whose vLLM reads ${row.flag}, and ${profile.image_release} does not. `
+          + `Leave out ${option(name)} or choose another image.`);
+      }
+    }
+  }
   const FLAGS = {
     max_images: ['--limit-mm-per-prompt', 'image', 1], max_videos: ['--limit-mm-per-prompt', 'video', 1],
     context_length: ['--max-model-len', null, 1], max_concurrency: ['--max-num-seqs', null, 1],
@@ -411,7 +424,8 @@ const SparkRingEngine = (() => {
   }
   // A selection's entries: `entries` holds each serving field's entry by setting name, `endpoint`
   // is the API endpoint choice {mode, address}. The endpoint's fields count only when its mode is
-  // "set"; an entry for a setting the checkpoint does not have is left out. Returns {settings,
+  // "set"; an entry for a setting the checkpoint does not have, or for a switch the profile's
+  // image cannot apply, which the page does not offer, is left out. Returns {settings,
   // address, problems}: the settings and shown address the commands take, and [{field, message}]
   // for every field with a problem, `field` being a setting name or "api_address".
   function readSelection(profile, checkpoint, entries, endpoint) {
@@ -420,7 +434,7 @@ const SparkRingEngine = (() => {
       const entry = (entries || {})[row.name];
       if (entry === undefined || entry === null || (row.endpoint && !set)) continue;
       if (row.switch) {
-        if (entry === true) settings[row.name] = true;
+        if (entry === true && offered(profile, row)) settings[row.name] = true;
         continue;
       }
       const read = readSetting(row, entry);
@@ -589,6 +603,7 @@ const SparkRingEngine = (() => {
     try {
       const checkpoint = checkpointOf(profile, checkpointName);
       const settings = normalized(checkpoint, requested);
+      checkImage(profile, checkpoint, settings);
       checkCeilings(checkpoint, settings);
       return { ok: true, checkpoint, settings, lines: describe(checkpoint, settings), warnings: warnings(checkpoint, settings) };
     } catch (error) {
@@ -603,6 +618,7 @@ const SparkRingEngine = (() => {
       const checkpoint = checkpointOf(profile, checkpointName);
       const settings = normalized(checkpoint, requested);
       validateSite(site, profile.nodes);
+      checkImage(profile, checkpoint, settings);
       checkCeilings(checkpoint, settings);
       const variant = checkpoint.variants[settings.save_cpu ? 'on' : 'off'];
       const numeric = Object.keys(settings).filter(k => k !== 'save_cpu').sort();
@@ -1055,6 +1071,6 @@ const SparkRingEngine = (() => {
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
     checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
     layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText,
-    readSetting, readAddress, readDownloadLimit, readSelection };
+    readSetting, readAddress, readDownloadLimit, readSelection, offered };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;

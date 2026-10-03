@@ -10,6 +10,10 @@ every token appears only on the lines the engine rewrites and the site fields
 that never reach a container file are absent from them. verify.py compares the
 engine with compose.build for random sites.
 
+Each profile names its image's capabilities (installer_image.capabilities):
+the page offers the save-CPU switch, and export() renders its "on" variant,
+only on an image whose vLLM reads the switch's variable.
+
 The page's command pack offers what the source's commands accept: export()
 records in ``features`` whether `sparkring install` defines ``--on`` (a
 two-Spark model on half of a four-Spark ring) and ``--api-address`` (the
@@ -39,7 +43,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.common import compose, profiles, qwen_flash_next
+from runtime.common import compose, installer_image, profiles, qwen_flash_next
 from runtime.common import serving as serving_settings
 
 HERE = Path(__file__).resolve().parent
@@ -95,6 +99,9 @@ def _argument(command, flag):
 def _setting_rows(command):
     """The serving settings a command sets, with the command's values and their limits.
 
+    A switch that needs an image capability (serving.NEEDS) names it in
+    ``needs``; the profile's ``image_capabilities`` say whether its image has it.
+
     ``maximum`` is the ceiling of an ABOVE_PROFILE setting and ``largest``
     the largest whole number a setting takes (serving.MAXIMUM). The API
     endpoint's settings, which the page offers in its API endpoint option,
@@ -119,8 +126,11 @@ def _setting_rows(command):
             row.update(endpoint=True, address=True)
         rows.append(row)
     for name, (variable, value, text) in serving_settings.SWITCHES.items():
-        rows.append({"name": name, "option": serving_settings.option(name), "flag": variable, "switch": True,
-                     "value": value, "help": text})
+        row = {"name": name, "option": serving_settings.option(name), "flag": variable, "switch": True,
+               "value": value, "help": text}
+        if name in serving_settings.NEEDS:
+            row["needs"] = serving_settings.NEEDS[name]
+        rows.append(row)
     return rows
 
 
@@ -308,10 +318,14 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
         checkpoint["capacity"] = kv_measurement(record, checkpoint["name"], checkpoints[0]["name"])
     status = _labelled(profile_id, metadata, checkpoints, labels())
     site = sentinel_site(example)
+    release = (runtime or {}).get("name") or Path(metadata["release"]).parent.name
+    capabilities = list(installer_image.capabilities(release))
+    # The save-CPU switch renders only on an image that reads its variable; elsewhere it is refused.
+    renders = [("off", None)] + ([("on", {"save_cpu": True})] if serving_settings.NEEDS["save_cpu"] in capabilities else [])
     for checkpoint in checkpoints:
         name = None if checkpoint["default"] else checkpoint["name"]
         variants = {}
-        for variant, serving in (("off", None), ("on", {"save_cpu": True})):
+        for variant, serving in renders:
             manifest, files = compose.build(profile_id, site, checkpoint=name, serving=serving, image_runtime=runtime)
             ranks = []
             for n in range(len(site["ranks"])):
@@ -333,7 +347,8 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
         "installable": profile_id in (runtime or {}).get("profiles", []),
         "image": image,
         "image_id": specs[0].image_id,
-        "image_release": (runtime or {}).get("name") or Path(metadata["release"]).parent.name,
+        "image_release": release,
+        "image_capabilities": capabilities,
         "image_option": image_option,
         "checkpoints": checkpoints,
         "example_site": example,
@@ -432,7 +447,6 @@ def image_catalog():
     data file of a non-default image, which the page loads when the image is
     selected.
     """
-    from runtime.common import installer_image
     listed = set(profile_ids())
     catalog = installer_image.catalog()
     names = [row["name"] for row in catalog]
@@ -459,7 +473,6 @@ def _image_option(row, names):
 
 def image_data(name):
     """The profiles a non-default installer image runs, rendered on it, for its data file."""
-    from runtime.common import installer_image
     catalog = installer_image.catalog()
     row = next(row for row in catalog if row["name"] == name)
     option = _image_option(row, [row["name"] for row in catalog])

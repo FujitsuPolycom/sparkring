@@ -362,7 +362,11 @@ def init(directory, profile, raw_site, *, variant=None, image_runtime=None, sett
     revision = distribution.identity(ROOT)
     provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings)
     if settings:
-        # Refuses a setting whose vLLM flag the profile does not set.
+        # Refuses a switch that the deployment's image cannot apply, and a
+        # setting whose vLLM flag the profile does not set. A recorded
+        # deployment's lock is not checked again, so it stays usable.
+        release = provisional["selection"]["release"]
+        serving.check_image(serving.normalized(settings), release, installer_image.capabilities(release))
         specifications(provisional)
     if directory.is_relative_to(ROOT) and not directory.is_relative_to(ROOT / ".sparkring"):
         raise ValueError("Private deployments inside the checkout belong under .sparkring/")

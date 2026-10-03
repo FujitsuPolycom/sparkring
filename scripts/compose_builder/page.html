@@ -918,6 +918,12 @@ __ENGINE__
     const rows = cp.settings.filter(row => !row.endpoint).sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
     for (const row of rows) {
       const id = 'setting-' + row.name;
+      // A switch the selected image cannot apply is not offered (E.offered); its choice is kept for an image that can.
+      if (row.switch && !E.offered(p, row)) {
+        const label = LABELS[row.name] || row.option;
+        box.append(el('p', { class: 'hint' }, "This image can't " + label.charAt(0).toLowerCase() + label.slice(1) + '.'));
+        continue;
+      }
       if (row.switch) {
         const input = el('input', { type: 'checkbox', id });
         input.checked = s[row.name] === true;

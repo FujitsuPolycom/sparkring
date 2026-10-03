@@ -42,6 +42,11 @@ RELEASES = ROOT / "runtime/releases"
 # that `--image 2026.10.0` selects the image its release notes name.
 RELEASE_TAGS = RELEASES / "installer-releases.json"
 RELEASE_TAGS_SCHEMA = "sparkring-installer-releases/v1"
+# What image layers provide that a deployment setting needs, such as the
+# shared-memory reader window that `--save-cpu` sets (``capabilities``).
+CAPABILITIES = "installer-capabilities.json"
+CAPABILITIES_SCHEMA = "sparkring-installer-capabilities/v1"
+RELEASE_NAME = re.compile(r"[a-z0-9][a-z0-9.-]{0,127}")
 # The Qwen3.8-Flash-Next profiles, the only profiles a v1 lock can name.
 QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 # Profiles whose checkpoints use the Qwen3.8-Flash-Next (Qwen4Exp) architecture,
@@ -140,6 +145,49 @@ def release_tags():
     if document.get("schema") != RELEASE_TAGS_SCHEMA or not isinstance(document.get("releases"), dict):
         raise ValueError(f"{RELEASE_TAGS} is not a {RELEASE_TAGS_SCHEMA} document")
     return dict(document["releases"])
+
+
+def capability_records(root=None):
+    """installer-capabilities.json's ``capabilities``, validated: capability -> {summary, added_by}.
+
+    ``added_by`` maps each image release whose own layer adds the capability
+    to the repository file that describes that layer.
+    """
+    root = ROOT if root is None else Path(root)
+    path = root / "runtime" / "releases" / CAPABILITIES
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if set(document) != {"schema", "capabilities"} or document["schema"] != CAPABILITIES_SCHEMA:
+        raise ValueError(f"{path} is not a {CAPABILITIES_SCHEMA} document")
+    for name, row in document["capabilities"].items():
+        if (not isinstance(row, dict) or set(row) != {"summary", "added_by"} or not isinstance(row["added_by"], dict)
+                or any(not (root / "runtime" / "releases" / release / "release.json").is_file()
+                       or not isinstance(layer, str) or not (root / layer).is_file()
+                       for release, layer in row["added_by"].items())):
+            raise ValueError(f"{path}: {name} needs a summary and the existing releases whose layers add it")
+    return document["capabilities"]
+
+
+def capabilities(name, root=None):
+    """The capabilities of installer image release ``name``, sorted.
+
+    An image has what its own layer adds (``added_by`` in
+    installer-capabilities.json) and what every image it derives from has:
+    its ``publication.json`` names its parent in ``derivation.parent_release``,
+    and a derived image keeps its parent's layers. A release this package does
+    not record, such as a development lock's, has none.
+    """
+    root = ROOT if root is None else Path(root)
+    records = capability_records(root)
+    found, seen = set(), set()
+    while isinstance(name, str) and RELEASE_NAME.fullmatch(name) and name not in seen:
+        seen.add(name)
+        found.update(capability for capability, row in records.items() if name in row["added_by"])
+        try:
+            publication = json.loads((root / "runtime" / "releases" / name / "publication.json").read_text(encoding="utf-8"))
+            name = publication["derivation"]["parent_release"]
+        except (OSError, ValueError, KeyError, TypeError):
+            break
+    return tuple(sorted(found))
 
 
 def catalog():

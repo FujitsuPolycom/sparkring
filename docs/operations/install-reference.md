@@ -495,7 +495,15 @@ flag, the profile's value applies.
   about 1.7 CPU cores on Node A while a model decoded and cost about 1% of
   decode speed with one request and 2% with eight
   ([record](../../performance/records/qwen38-flash-next/shm-spin-window-20260930.md)).
-  Without requests, the processes sleep either way.
+  Without requests, the processes sleep either way. It needs an image whose
+  vLLM reads `SPARKRING_SHM_BUSY_LOOP_S`: the default image, and
+  `dev-20260930-spinwait-cuda1342-nccl2323-status033` and the images derived
+  from it. On another image, such as `--image plainstatus`, `sparkring
+  install`, `sparkring up`, `sparkring init` and `sparkring compose render`
+  refuse `--save-cpu` and name the image.
+  [installer-capabilities.json](../../runtime/releases/installer-capabilities.json)
+  records the images whose own layer adds it; an image derived from one of
+  them has it too.
 - `--kv-cache-gib` accepts up to a tenth above the profile's value, and at
   least 1 GiB above it (11 for a profile of 10, 26 for 24, 44 for 40), and
   prints a warning for a value above the profile's: each Spark keeps that much

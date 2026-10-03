@@ -391,6 +391,18 @@ def test_unlisted_checkpoints_and_invalid_settings_are_refused(options, message)
         compose.build(profile, example_site(profile), **options)
 
 
+def test_save_cpu_is_refused_on_an_image_without_the_reader_window():
+    profile = "qwen38-flash-next-tp2"
+    older = compose.named_image("plainstatus")
+    with pytest.raises(ValueError, match=f"--save-cpu needs an image whose vLLM reads SPARKRING_SHM_BUSY_LOOP_S, and {older['name']}"):
+        compose.build(profile, example_site(profile), serving={"save_cpu": True}, image_runtime=older)
+    # Other settings still apply on that image, and the switch on an image derived from the spin-wait layer.
+    assert compose.build(profile, example_site(profile), serving={"max_images": 1}, image_runtime=older)[0]["serving"]
+    manifest, _ = compose.build(profile, example_site(profile), serving={"save_cpu": True},
+                                image_runtime=compose.named_image("statusrows"))
+    assert manifest["serving"] == {"save_cpu": True}
+
+
 def test_profiles_without_checkpoint_choice_refuse_one():
     profile = "mimo-v26-flash-mopd-tp2"
     with pytest.raises(ValueError, match="no checkpoint choice"):

@@ -112,6 +112,23 @@ def test_save_cpu_is_a_switch_that_sets_the_reader_window_on_every_rank():
     assert all("SPARKRING_SHM_BUSY_LOOP_S" not in spec.environment for spec in installer.specifications(plain))
 
 
+def test_save_cpu_needs_an_image_that_reads_the_reader_window(tmp_path, monkeypatch):
+    serving.check_image({"save_cpu": True, "max_images": 2}, "an-image", ("shm_reader_window",))
+    serving.check_image({"max_images": 2}, "an-image", ())
+    with pytest.raises(ValueError, match="--save-cpu needs an image whose vLLM reads SPARKRING_SHM_BUSY_LOOP_S, and an-image "
+                                         "does not. Leave out --save-cpu or choose another image."):
+        serving.check_image({"save_cpu": True}, "an-image", ())
+    # init refuses it on an image without the reader window before it creates the deployment.
+    monkeypatch.setattr(installer.distribution, "identity", lambda root: "1" * 40)
+    image = installer_image.for_profile(QWEN, json.loads(installer_image.lock_path("plainstatus").read_text(encoding="utf-8")))
+    with pytest.raises(ValueError, match="dev-20260928-plainstatus-cuda1342-nccl2323-status033 does not"):
+        installer.init(tmp_path / "deployment", QWEN, site(), image_runtime=image, settings={"save_cpu": True})
+    assert not (tmp_path / "deployment").exists()
+    # A recorded deployment's lock is not checked again, so it still loads and runs.
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, image_runtime=image, settings={"save_cpu": True})
+    assert installer.specifications(lock)
+
+
 def value_of(command, flag):
     return command[command.index(flag) + 1]
 
