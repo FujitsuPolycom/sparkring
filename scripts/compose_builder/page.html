@@ -228,7 +228,6 @@ footer p { margin: 0; max-width: 110ch; }
           <h2 id="h-model"><span class="n">2</span>Model</h2>
           <div class="row-actions">
             <div class="segmented" id="model-filter" role="group" aria-label="Show models for">
-              <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All</button>
               <button type="button" id="filter-2" data-filter="2" aria-pressed="false">2 Sparks</button>
               <button type="button" id="filter-4" data-filter="4" aria-pressed="false">4 Sparks</button>
             </div>
@@ -446,7 +445,7 @@ __ENGINE__
 
   // ---- State -------------------------------------------------------------
   const state = {
-    profile: 'qwen38-flash-next-tp2', filter: 'all', mode: 'install', settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
+    profile: 'qwen38-flash-next-tp2', filter: '2', mode: 'install', settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
     install: { form: 'script', source: 'release', approval: 'ask', limit: '' },
     // Every step opens collapsed on each page load.
     collapsed: { release: true, model: true, settings: true, sparks: true },
@@ -532,7 +531,6 @@ __ENGINE__
     try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (_) { saved = null; }
     if (!saved || typeof saved !== 'object') return;
     if (BY_ID[saved.profile]) state.profile = saved.profile;
-    if (['all', '2', '4'].includes(saved.filter)) state.filter = saved.filter;
     for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints']) {
       if (saved[key] && typeof saved[key] === 'object') state[key] = saved[key];
     }
@@ -570,7 +568,7 @@ __ENGINE__
     list.replaceChildren();
     for (const p of CATALOG) {
       // Collapsed, the list shows only the selected model.
-      if (state.collapsed.model ? p.id !== state.profile : state.filter !== 'all' && String(p.nodes) !== state.filter) continue;
+      if (state.collapsed.model ? p.id !== state.profile : String(p.nodes) !== state.filter) continue;
       const id = 'profile-' + p.id;
       const input = el('input', { type: 'radio', name: 'profile', id, value: p.id });
       input.checked = p.id === state.profile;
@@ -1114,7 +1112,6 @@ __ENGINE__
     if (['release', 'main'].includes(query.get('source'))) state.install.source = query.get('source');
     if (['ask', 'plan', 'yes'].includes(query.get('approval'))) state.install.approval = query.get('approval');
     state.install.limit = query.get('limit') || '';
-    state.filter = 'all';
   }
 
   // ---- Start ---------------------------------------------------------------
@@ -1126,6 +1123,8 @@ __ENGINE__
   $('provenance').textContent = 'Built from ' + source + '.';
   load();
   if (!FRAMED) fromLink();
+  // The size filter starts on the selected model's size.
+  state.filter = String(profile().nodes);
   renderAll();
   renderInstall();
   generate();

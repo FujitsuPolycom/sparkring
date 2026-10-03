@@ -39,13 +39,10 @@ The page writes the command for the choices on the left: `--profile`,
 
 | Option | Command |
 |---|---|
-| First install, on Node A | The [one-command installer](install-reference.md#get-the-package), pinned to the page's source with `--ref`, or from `main` |
+| New installation | The [one-command installer](install-reference.md#get-the-package) on Node A, pinned to the page's source with `--ref`, or from `main` |
 | SparkRing already installed | `sudo sparkring install …` |
 | Approval | No flag (asks before changes), `--plan` or `--yes` |
 | Download limit | `--download-limit`, such as `850Mbit` |
-
-The SparkCache Qwen profile does not run from `sparkring install`; the page
-offers its Compose files only.
 
 ## Compose files
 
@@ -55,8 +52,10 @@ deployment directories. Four-Spark profiles also take the mesh fabric
 reference. **Paste a site file instead** reads an existing
 `sparkring-compose-site/v1` file.
 
-**Download *name*.zip** saves the deployment named in step 4, by default the
-profile's name, such as `qwen38-flash-next-tp2.zip`:
+**Download *name*.zip** saves the deployment under the name beside it, which is
+also in step 4. By default it is the profile's name for its default
+checkpoint, such as `qwen38-flash-next-tp2.zip`, and otherwise names the
+checkpoint, such as `glm53-nvidia-nvfp4-tp4.zip`:
 
 ```text
 NAME/deployment.json
@@ -89,6 +88,7 @@ files with `sparkring compose`. A derived checkpoint, such as
 - Pasted site files are read as YAML 1.2: an unquoted `on` or `yes` stays a
   string, which SparkRing's own reader would read as true.
 - The page lists every [Compose profile](compose.md#supported-profiles) except
+  the two SparkCache Qwen profiles, `qwen38-flash-next-tp2-sparkcache` and
   `qwen38-flash-next-qad-tp4-sparkcache`.
 - Generated files carry no serving qualification, like every `compose render`
   deployment.
