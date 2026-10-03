@@ -214,10 +214,10 @@ def install_command(request=None, named=(), *, ignore_local=False):
     if request.get("image_lock"):
         argv += ["--image-lock", str(request["image_lock"])]
     settings = request.get("serving") or {}
-    for name in (*serving.SETTINGS, *serving.SWITCHES):
+    for name in (*serving.SETTINGS, *serving.SWITCHES, *serving.CHOICES):
         if settings.get(name) is True and name in serving.SWITCHES:
             argv.append(serving.option(name))
-        elif settings.get(name) is not None and name in serving.SETTINGS:
+        elif settings.get(name) is not None and name not in serving.SWITCHES:
             argv += [serving.option(name), str(settings[name])]
     if ignore_local:
         argv.append("--ignore-local-copies")
