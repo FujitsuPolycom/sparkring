@@ -201,7 +201,9 @@ failure.
 ## models
 
 `sparkring models [--json]` lists every profile (exact model, version,
-quantization and topology) and marks those `sparkring install` supports.
+quantization and topology) and marks those `sparkring install` supports. For
+each installer profile it also shows what the model does with thinking when a
+request doesn't say, such as `on · xhigh`, and the effort levels it accepts.
 
 ## images
 
@@ -224,12 +226,15 @@ half's model under `Sparks 0 and 1:` and `Sparks 2 and 3:`:
 ```text
 Saved model operation: PROFILE | up complete
 Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
+Thinking: on · xhigh (model default)
 Automatic recovery: on
 ```
 
 A profile with one checkpoint shows only `REPOSITORY @ REVISION`; a
 [derived checkpoint](install-reference.md#derived-checkpoints) adds
-`, derived from REPOSITORY @ REVISION` of its base. The
+`, derived from REPOSITORY @ REVISION` of its base. `Thinking` is what the
+model does when a request doesn't say whether, or how hard, to think: the
+model's default, or the deployment's own default beside it. The
 recovery lines add the Spark it waits for, its last attempt and the next.
 After `sparkring down` they read `on; idle until the next sudo sparkring up
 --execute or sudo sparkring install`, and a deployment that recovery does not
