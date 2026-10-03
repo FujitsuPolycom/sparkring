@@ -893,36 +893,47 @@ const SparkRingEngine = (() => {
     groups.push({ key: 'check', title: 'Check', commands: check });
     if (switching) groups.push(switching);
 
-    // What each Spark becomes.
-    const roles = names.map((spark, rank) => {
-      let text;
-      if (rank === 0) text = 'Where you run every command. Serves ' + (layout === 'halves' ? 'the first pair.' : 'the model.');
-      else if (layout === 'pair') text = 'The Spark cabled to Node A.';
-      else text = `Cabled to ${names[rank - 1].role}'s port 0.` + (layout !== 'halves' ? '' : rank === 1 ? ' First pair.'
-        : rank === 2 ? ' Serves the second pair.' : ' Second pair.');
-      return { spark: spark.label, text };
-    });
+    // Where to run the commands and where each model answers. In the ring order, Spark 2 is the
+    // only Spark that no cable joins to Node A: Node A's port 0 leads to Spark 1, and Spark 3's
+    // port 0 leads back to Node A. Sparks the user named are called by their names and addresses.
+    const roles = [];
+    const far = names[2] && (names[2].given ? names[2].short : "the Spark that isn't cabled to Node A");
+    const at = (spark, unnamed) => spark.given ? spark.address : unnamed;
+    if (layout === 'halves') {
+      const [a, b, c, d] = names;
+      roles.push({ spark: 'First pair', text: (a.given || b.given ? `${a.short} and ${b.short}` : 'Node A and the Spark on its port 0')
+        + `. Answers at ${at(a, "Node A's address")}.` });
+      roles.push({ spark: 'Second pair', text: (c.given || d.given ? `${c.short} and ${d.short}` : 'The other two')
+        + `. Answers at ${at(c, 'the address of ' + far)}.` });
+    } else {
+      const others = names.slice(1), shorts = others.map(spark => spark.short);
+      const named = shorts.length < 3 ? shorts.join(' and ') : shorts.slice(0, -1).join(', ') + ' and ' + shorts[shorts.length - 1];
+      roles.push({ spark: names[0].label, text: `Run the commands here. The model answers at ${at(names[0], 'its address')}.` });
+      roles.push({ spark: others.some(spark => spark.given) ? named : others.length > 1 ? 'The other three' : 'The other Spark',
+        text: others.length > 1 ? 'Nothing to run on them.' : 'Nothing to run on it.' });
+    }
     const commands = groups.flatMap(group => group.commands);
     if (problems.length) {
       for (const c of commands) Object.assign(c, { command: '', error: c.error || 'Fix the marked fields.' });
     }
     const notes = ['If an install stops early, run it again; it picks up where it left off.'];
     const serves = spark => commands.some(c => c.endpoint && c.endpoint.startsWith(`http://${spark.address}:`));
+    // NODE_A and SPARK_2 stand for the addresses of Sparks the user did not name.
     const placeholders = names.filter(spark => !spark.given && serves(spark));
     if (placeholders.length) {
-      notes.push('Replace ' + placeholders.map(spark => spark.address).join(' and ')
-        + (placeholders.length > 1 ? ' with the addresses of ' : ' with the address of ')
-        + placeholders.map(spark => spark.role).join(' and ') + '.');
+      notes.push('Replace ' + placeholders.map(spark => `${spark.address} with ` + (spark === names[0] ? "Node A's address"
+        : `the address of ${far}`)).join(' and ') + '.');
     }
     // A half's API on Spark 2 is its own LAN address, or its administration address without one.
     if (names.length > 2 && serves(names[2])) {
-      notes.push(`If ${names[2].short} has no network cable of its own, only ${names[0].short} can reach its model.`);
+      notes.push(`If ${far} has no network cable of its own, only ${names[0].given ? names[0].short : 'Node A'} can reach the second pair's model.`);
     }
     if (opts.order === 'ask') notes.push('Each install shows which Spark is which and asks before it changes anything.');
     if (asks) notes.push("An install set to ask lists the Spark's addresses and asks which address and port the model uses.");
     return {
       layout, roles, groups, notes, problems,
-      order: layout === 'pair' ? null : "The cables set this order. You can't choose it, or which Spark leads a pair.",
+      run: layout === 'halves' ? `Run every command on ${names[0].given ? names[0].short : 'Node A'}.` : null,
+      order: layout === 'halves' ? "The cables set this order; you can't choose which Spark leads a pair." : null,
       ready: !problems.length && commands.every(c => c.command),
     };
   }

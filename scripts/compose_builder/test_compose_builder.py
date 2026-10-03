@@ -248,8 +248,11 @@ def test_pack_for_a_pair_installs_and_checks(data, node):
     assert install["endpoint"] == "http://NODE_A:8000/v1"
     assert commands(plain, "check") == ["sudo sparkring status"]
     assert commands(measured, "check") == ["sudo sparkring status", "sudo sparkring cabling --bandwidth"]
-    assert [r["spark"] for r in plain["roles"]] == ["Node A", "Spark 1"] and plain["order"] is None
-    assert plain["ready"] and "Replace NODE_A with the address of Node A." in plain["notes"]
+    # Where to run and connect: Node A runs the commands and serves; nothing runs on the other Spark.
+    assert [(r["spark"], r["text"]) for r in plain["roles"]] == [
+        ("Node A", "Run the commands here. The model answers at its address."), ("The other Spark", "Nothing to run on it.")]
+    assert plain["run"] is None and plain["order"] is None
+    assert plain["ready"] and "Replace NODE_A with Node A's address." in plain["notes"]
 
 
 def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data, node):
@@ -271,8 +274,9 @@ def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data,
     assert "stops the model on all four" in switch["commands"][0]["what"]
     assert "once the one before has finished" in switch["commands"][1]["what"]
     assert [g["key"] for g in without["groups"]] == ["install", "check"]
-    assert [r["spark"] for r in ring["roles"]] == ["Node A", "Spark 1", "Spark 2", "Spark 3"]
-    assert ring["roles"][1]["text"] == "Cabled to Node A's port 0." and "can't choose" in ring["order"]
+    assert [(r["spark"], r["text"]) for r in ring["roles"]] == [
+        ("Node A", "Run the commands here. The model answers at its address."), ("The other three", "Nothing to run on them.")]
+    assert ring["run"] is None and ring["order"] is None
 
 
 def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
@@ -296,7 +300,14 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
     assert commands(auto, "switch") == [f"sudo sparkring install --profile {TP4}"]
     assert "stops both pairs' models" in auto["groups"][2]["commands"][0]["what"]
     assert auto["groups"][1]["commands"][0]["what"] == "Shows each pair's model separately."
-    assert "Replace NODE_A and SPARK_2 with the addresses of Node A and Spark 2." in auto["notes"]
+    # Spark 2, two cables from Node A in the ring order, serves the second pair; SPARK_2 stands for its address.
+    assert [(r["spark"], r["text"]) for r in auto["roles"]] == [
+        ("First pair", "Node A and the Spark on its port 0. Answers at Node A's address."),
+        ("Second pair", "The other two. Answers at the address of the Spark that isn't cabled to Node A.")]
+    assert auto["run"] == "Run every command on Node A."
+    assert auto["order"] == "The cables set this order; you can't choose which Spark leads a pair."
+    assert ("Replace NODE_A with Node A's address and SPARK_2 with the address of the Spark that isn't cabled to Node A."
+            in auto["notes"])
     # Fill in my Sparks: the user's names say where to run, their addresses where each model answers.
     assert commands(filled) == commands(auto)
     assert {c["where"] for c in filled["groups"][0]["commands"][1:] + filled["groups"][1]["commands"]} == {
@@ -304,8 +315,25 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
     assert endpoints(filled, "install") == ["http://198.51.100.10:8000/v1", f"http://198.51.100.12:{mimo_port}/v1"]
     assert endpoints(filled, "switch") == ["http://198.51.100.10:8015/v1"]
     assert filled["groups"][0]["commands"][0]["what"].endswith("on the first pair: spark-a and spark-b.")
-    assert [r["spark"] for r in filled["roles"]] == ["spark-a (Node A)", "spark-b (Spark 1)", "spark-c (Spark 2)", "spark-d (Spark 3)"]
+    assert [(r["spark"], r["text"]) for r in filled["roles"]] == [
+        ("First pair", "spark-a and spark-b. Answers at 198.51.100.10."),
+        ("Second pair", "spark-c and spark-d. Answers at 198.51.100.12.")]
+    assert filled["run"] == "Run every command on spark-a."
     assert not any("Replace" in note for note in filled["notes"])
+    assert "If spark-c has no network cable of its own, only spark-a can reach the second pair's model." in filled["notes"]
+
+
+def test_where_to_run_names_the_sparks_the_user_fills_in(data, node):
+    pair, ring = packs(node, data, [
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2}, "opts": {**NEW, "order": "fill", "sparks": MY_SPARKS[:2]}},
+        {"layout": "ring", "features": BOTH, "main": {"profile": TP4}, "opts": {**NEW, "order": "fill", "sparks": MY_SPARKS}},
+    ])
+    assert [(r["spark"], r["text"]) for r in pair["roles"]] == [
+        ("spark-a (Node A)", "Run the commands here. The model answers at 198.51.100.10."), ("spark-b", "Nothing to run on it.")]
+    assert [(r["spark"], r["text"]) for r in ring["roles"]] == [
+        ("spark-a (Node A)", "Run the commands here. The model answers at 198.51.100.10."),
+        ("spark-b, spark-c and spark-d", "Nothing to run on them.")]
+    assert pair["order"] is ring["order"] is None
 
 
 @pytest.mark.parametrize("opts, expected", [
@@ -367,7 +395,8 @@ def test_pack_carries_each_deployed_selection_s_api_endpoint(data, node):
     assert endpoints(pack, "install") == ["http://llm.example.net:9100/v1", f"http://SPARK_2:{mimo_port}/v1"]
     # The switch command takes the automatic endpoint.
     assert commands(pack, "switch") == [f"sudo sparkring install --profile {TP4} --yes"]
-    assert "Replace NODE_A and SPARK_2 with the addresses of Node A and Spark 2." in pack["notes"]
+    assert ("Replace NODE_A with Node A's address and SPARK_2 with the address of the Spark that isn't cabled to Node A."
+            in pack["notes"])
     assert ("An install set to ask lists the Spark's addresses and asks which address and port the model uses."
             in pack["notes"])
     first, = bad["groups"][0]["commands"]

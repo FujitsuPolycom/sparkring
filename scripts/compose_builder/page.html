@@ -402,9 +402,10 @@ footer p { margin: 0; max-width: 110ch; }
         <div class="messages" id="install-messages"></div>
         <section class="pack" id="pack" aria-label="Commands"></section>
         <section class="pack" id="pack-roles" aria-labelledby="h-roles">
-          <h3 class="sub" id="h-roles">Which Spark is which</h3>
+          <h3 class="sub" id="h-roles">Where to run and connect</h3>
           <dl class="roles" id="roles"></dl>
-          <p class="hint" id="roles-order"></p>
+          <p class="what" id="roles-run" hidden></p>
+          <p class="hint" id="roles-order" hidden></p>
         </section>
         <ul class="notes" id="install-notes"></ul>
       </section>
@@ -1379,8 +1380,10 @@ __ENGINE__
       box.append(...(group.optional ? [el('div', { class: 'pack-optional' }, ...parts)] : parts));
     }
     $('roles').replaceChildren(...pack.roles.flatMap(r => [el('dt', {}, r.spark), el('dd', {}, r.text)]));
-    $('roles-order').hidden = !pack.order;
-    $('roles-order').textContent = pack.order || '';
+    for (const [id, text] of [['roles-run', pack.run], ['roles-order', pack.order]]) {
+      $(id).hidden = !text;
+      $(id).textContent = text || '';
+    }
     $('install-notes').replaceChildren(...pack.notes.map(text => el('li', {}, ...rich(text))));
   }
 

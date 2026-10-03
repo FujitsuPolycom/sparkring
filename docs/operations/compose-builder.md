@@ -225,19 +225,29 @@ Node A is the Spark that runs setup, which the first installation does; it
 becomes rank 0. The cabling ranks the others: every cable joins port 0 of one
 Spark to port 1 of the next, and rank r+1 is the Spark on rank r's port 0. So
 the first pair is Node A and the Spark on its port 0, and the second pair is
-the other two, headed by Spark 2. Neither the order nor a pair's head can be
-chosen.
+the other two, headed by Spark 2, the only Spark no cable joins to Node A.
+Neither the order nor a pair's head can be chosen.
 
 - **Automatic** writes the commands as the options above set them and names
-  the Sparks Node A and Spark 1 to Spark 3. `NODE_A` and `SPARK_2` stand for
-  their addresses in the API addresses.
+  the Sparks Node A and Spark 1 to Spark 3. `NODE_A` stands for Node A's
+  address and `SPARK_2` for the address of the Spark that isn't cabled to
+  Node A.
 - **Ask during install** leaves out `--yes`, so every installation shows which
   Spark is which and asks before it changes anything.
 - **Fill in my Sparks** takes a name, an address or both for each Spark in
   step 5. The commands say where to run by name, and the API addresses use the
   addresses, or the names without one.
 
-A list under the commands says what each Spark becomes.
+Under the commands, **Where to run and connect** says where to run them and
+where each model answers:
+
+| Layout | Text |
+|---|---|
+| Two Sparks | Node A: run the commands here; the model answers at its address. The other Spark: nothing to run on it. |
+| One model on all four | Node A, as for two Sparks. The other three: nothing to run on them. |
+| Two models, one per pair | First pair: Node A and the Spark on its port 0, answering at Node A's address. Second pair: the other two, answering at the address of the Spark that isn't cabled to Node A. Then "Run every command on Node A." and one line saying the cables set the order. |
+
+With **Fill in my Sparks** it uses the names and addresses from step 5.
 
 ## Share the choices
 
