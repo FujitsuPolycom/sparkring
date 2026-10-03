@@ -11,7 +11,8 @@ checkpoint, `local-inference-lab/GLM-5.3-Flash-NVFP4` revision
 
 ## Conditions
 
-- **Installation:** `sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad --on 2,3`.
+- **Installation:** `sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad --on 2,3`,
+  from a SparkRing package built from commit `682cedd6` (the ring-split change, merged to main as `1e5577d6`).
 - **Cluster:** Sparks 2 and 3 of a four-Spark ring, which share a direct
   cable and serve the model as a two-Spark tensor-parallel deployment (TP2)
   ([two models on one ring](../../../docs/operations/install-reference.md#two-models-on-one-ring)).
