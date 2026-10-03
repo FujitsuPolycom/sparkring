@@ -734,7 +734,6 @@ __ENGINE__
         if (collapsed) summary.textContent = summaryFor(step);
       }
     }
-    $('model-filter').hidden = Boolean(state.collapsed.model);
   }
 
   function renderAll() {
@@ -981,8 +980,13 @@ __ENGINE__
   }
 
   // ---- Controls ------------------------------------------------------------
+  // A filter applies to the full list, so choosing one expands a collapsed model step.
   for (const button of document.querySelectorAll('[data-filter]')) {
-    button.addEventListener('click', () => { state.filter = button.dataset.filter; renderFilter(); renderProfiles(); save(); });
+    button.addEventListener('click', () => {
+      state.filter = button.dataset.filter;
+      state.collapsed.model = false;
+      renderFilter(); renderProfiles(); renderCheckpoints(); renderCollapse(); save();
+    });
   }
   for (const section of document.querySelectorAll('.step[data-step]')) {
     section.querySelector('.toggle').addEventListener('click', () => {
