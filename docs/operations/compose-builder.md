@@ -27,15 +27,31 @@ To build the page for your checkout instead:
 python scripts/generate_compose_builder.py --output .sparkring/compose-builder
 ```
 
-Then open `.sparkring/compose-builder/index.html` in a browser.
-`--verify` first compares the page's file generator with SparkRing's own and
-needs Node.js ([how the page is checked](#how-the-page-is-checked)).
+Serve that directory over HTTP, for example with
+`python -m http.server --directory .sparkring/compose-builder`, and open the
+address it prints. Opened as a local file, the page offers only the default
+installer image: each other image's data is a file beside the page,
+`images/NAME.json`, which a browser loads only over HTTP.
+`--default-image-only` writes no image files. `--verify` first compares the
+page's file generator with SparkRing's own and needs Node.js
+([how the page is checked](#how-the-page-is-checked)).
+
+## Installer image
+
+Step 1 offers the installer images that run the selected profile, as
+[`sparkring images`](commands.md#images) lists them, the default first. Another
+image adds `--image NAME` to the install command and to the `render` command
+in the zip's README, and the Compose files use that image's digest. `NAME` is
+the release tag that published the image, such as `2026.09.5`, or the part of
+its name that only it has, such as `statusrows`
+([another image](install-reference.md#another-image)).
 
 ## Install command
 
 The page writes the command for the choices on the left: `--profile`,
-`--checkpoint` when it is not the profile's default, and the
-[serving settings](install-reference.md#serving-settings) you changed.
+`--image` and `--checkpoint` when they are not the defaults, and the
+[serving settings](install-reference.md#serving-settings) you changed. A
+setting outside its limits shows its problem under the field.
 
 | Option | Command |
 |---|---|
@@ -50,7 +66,9 @@ Step 4 of the page takes your Sparks: SSH host, IP address, bootstrap
 interface, RoCE HCAs and GID index, and the model, cache, checkout and
 deployment directories. Four-Spark profiles also take the mesh fabric
 reference. **Paste a site file instead** reads an existing
-`sparkring-compose-site/v1` file.
+`sparkring-compose-site/v1` file. A value the generator refuses shows its
+problem under the field, and a collapsed step 4 counts the fields that need a
+change. While step 4 holds the example values, the download area says so.
 
 **Download *name*.zip** saves the deployment under the name beside it, which is
 also in step 4. By default it is the profile's name for its default
@@ -65,8 +83,8 @@ NAME/README.txt
 ```
 
 - The folder is what `sparkring compose render` writes for that site file,
-  with the same `--checkpoint` and serving-setting flags. The README names the
-  command.
+  with the same `--image`, `--checkpoint` and serving-setting flags. The
+  README names the command.
 - `sparkring compose check --deployment NAME` accepts the unzipped folder.
 - Files have mode 0600 in 0700 folders, as `render` writes them.
 - **Copy as shell command** writes one rank's `compose.yaml` on its Spark.
@@ -87,24 +105,25 @@ files with `sparkring compose`. A derived checkpoint, such as
   instead of encoding them differently.
 - Pasted site files are read as YAML 1.2: an unquoted `on` or `yes` stays a
   string, which SparkRing's own reader would read as true.
-- The page lists every [Compose profile](compose.md#supported-profiles) except
-  the two SparkCache Qwen profiles, `qwen38-flash-next-tp2-sparkcache` and
-  `qwen38-flash-next-qad-tp4-sparkcache`.
+- The page lists the [Compose profiles](compose.md#supported-profiles) that
+  `sparkring install` deploys; it omits the SparkCache Qwen profiles,
+  `qwen38-flash-next-tp2-sparkcache` and `qwen38-flash-next-qad-tp4-sparkcache`.
 - Generated files carry no serving qualification, like every `compose render`
   deployment.
 
 ## How the page is checked
 
-The page runs no Python. For every profile, checkpoint and save-CPU state,
-[export.py](../../scripts/compose_builder/export.py) renders the deployment
+The page runs no Python. For every installer image, profile, checkpoint and
+save-CPU state, [export.py](../../scripts/compose_builder/export.py) renders the deployment
 with `compose.build` for a site whose values are unique placeholders, and
 [engine.js](../../scripts/compose_builder/engine.js) puts a real site's values
 in their place line by line. The export stops if a placeholder lands anywhere
 the engine does not rewrite.
 
 [verify.py](../../scripts/compose_builder/verify.py) renders random sites,
-checkpoints and settings with the engine under Node.js and with
-`compose.build`, and requires them to match byte for byte:
+checkpoints and settings on every image with the engine under Node.js and with
+`compose.build`, and requires them to match byte for byte. `--cases` sets the
+sites per checkpoint on the default image, `--image-cases` on each other image:
 
 - every rank's `compose.yaml` and `container.json`, `deployment.json`,
   `site.yaml` and the deployment ID;

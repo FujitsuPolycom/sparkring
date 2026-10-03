@@ -176,7 +176,10 @@ STRICTER = (
 
 
 def cases(data, *, per_checkpoint, seed, archive_every=5):
-    """Valid, invalid and stricter cases for every profile and checkpoint of ``data``."""
+    """Valid, invalid and stricter cases for every profile and checkpoint of ``data``.
+
+    Every case carries ``data``'s installer image: None for the default image.
+    """
     sites = Sites(seed)
     found = []
     for profile in data["profiles"]:
@@ -202,6 +205,8 @@ def cases(data, *, per_checkpoint, seed, archive_every=5):
                               "checkpoint": sites.checkpoint_name(checkpoint), "kind": kind})
         found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": {"max_concurrency": 0},
                       "checkpoint": None, "kind": "invalid"})
+    for case in found:
+        case["image"] = data.get("image")
     return found
 
 
@@ -209,7 +214,8 @@ def expected(case):
     """compose.build's result for a case, in the engine's output shape."""
     site = copy.deepcopy(case["site"])
     try:
-        manifest, files = compose.build(case["profile"], site, checkpoint=case["checkpoint"], serving=case["settings"])
+        manifest, files = compose.build(case["profile"], site, checkpoint=case["checkpoint"], serving=case["settings"],
+                                        image_runtime=compose.named_image(case.get("image")))
         settings = manifest.get("serving") or {}
         options = {key: value for key, value in compose.selection_options(manifest).items() if key != "serving"}
         command = compose.specifications(manifest["profile"], manifest["site"], **options)[0][0].command

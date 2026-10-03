@@ -273,6 +273,20 @@ def installer_container(spec, image_runtime, *, profile_id, source_root):
     return replace(adapted, mounts=mounts, environment=environment)
 
 
+def named_image(name):
+    """The image lock of the installer image ``name`` selects, or None for the default image or no name.
+
+    ``name`` is what `sparkring install --image` takes: a release name, the
+    GitHub release tag that published it, or a unique part of a release name
+    (installer_image.lock_path).
+    """
+    if name is None:
+        return None
+    from runtime.common import installer_image
+    path = installer_image.lock_path(name)
+    return None if path is None else json.loads(path.read_text(encoding="utf-8"))
+
+
 def installer_image_runtime(profile_id):
     """The image lock that `sparkring install` selects for this profile, or None.
 

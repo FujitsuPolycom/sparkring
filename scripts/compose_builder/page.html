@@ -101,6 +101,7 @@ h1 { font-size: clamp(24px, 3.2vw, 34px); font-weight: 650; letter-spacing: -.03
 .step-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .step-body.choices { gap: 8px; }
 .summary { margin: 0; font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
+.summary.bad { color: var(--bad); }
 .modes button { padding: 7px 14px; font-size: 13.5px; }
 
 /* Settings */
@@ -116,6 +117,11 @@ input[type="number"], input[type="text"], textarea {
   font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
 input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
 input[aria-invalid="true"] { border-color: var(--bad); }
+/* A field's own problem, under it. */
+.err { margin: 0; color: var(--bad); font-size: 12px; }
+.err:empty { display: none; }
+select { width: 100%; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunk);
+  font-family: var(--mono); font-size: 13px; }
 .check { display: inline-flex; gap: 9px; align-items: center; cursor: pointer; font-size: 14px; }
 .check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 .setting.switch { grid-template-columns: minmax(0, 1fr); }
@@ -182,6 +188,8 @@ pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; 
   border-radius: 9px; background: var(--sunk); }
 .zip-bar .hint { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
 .zip-bar .zip-name { flex: 1 1 100%; max-width: 360px; }
+.zip-bar.warn { border-color: var(--warn); background: var(--warn-soft); }
+.zip-bar.warn .hint { color: var(--warn); font-weight: 600; }
 
 .run h3 { font-size: 14px; font-weight: 640; margin-bottom: 8px; }
 .run ol { margin: 0; padding-left: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; font-size: 13.5px; }
@@ -220,6 +228,11 @@ footer p { margin: 0; max-width: 110ch; }
             <span class="choice-body"><strong id="release-name">SparkRing</strong><span class="meta" id="release-meta"></span></span>
             <span class="chips" id="release-chips"></span>
           </label>
+          <div class="f">
+            <label for="image">Installer image</label>
+            <select id="image"></select>
+          </div>
+          <p class="hint" id="image-note" hidden></p>
         </div>
       </section>
 
@@ -270,7 +283,8 @@ footer p { margin: 0; max-width: 110ch; }
           <div class="grid">
             <div class="f">
               <label for="site-name">Deployment name</label>
-              <input type="text" id="site-name" spellcheck="false" aria-describedby="site-name-hint">
+              <input type="text" id="site-name" spellcheck="false" aria-describedby="site-name-hint err-site-name">
+              <p class="err" id="err-site-name"></p>
             </div>
             <div class="f" style="align-content:end">
               <label class="check" for="shared"><input type="checkbox" id="shared">Same NICs and paths on every Spark</label>
@@ -342,10 +356,11 @@ footer p { margin: 0; max-width: 110ch; }
       </section>
 
       <section class="panel" id="compose-panel" role="tabpanel" aria-labelledby="mode-compose" data-stale="false" hidden>
-        <div class="zip-bar">
+        <div class="zip-bar" id="zip-bar">
           <div class="f zip-name">
             <label for="zip-name">Deployment name</label>
-            <input type="text" id="zip-name" spellcheck="false">
+            <input type="text" id="zip-name" spellcheck="false" aria-describedby="err-zip-name">
+            <p class="err" id="err-zip-name"></p>
           </div>
           <button type="button" class="btn primary" id="save-zip" disabled>Download zip</button>
           <span class="hint" id="zip-note">Checking whether this view can save files.</span>
@@ -388,6 +403,11 @@ __ENGINE__
   const DATA = JSON.parse(document.getElementById('data').textContent);
   const CATALOG = DATA.profiles;
   const BY_ID = Object.fromEntries(CATALOG.map(p => [p.id, p]));
+  // Installer images, default first. A non-default image's profiles are in its own data file,
+  // fetched when it is selected: name -> {status: 'loading' | 'ready' | 'failed', byId}.
+  const IMAGES = DATA.images || [];
+  const DEFAULT_IMAGE = IMAGES.find(row => row.default) || null;
+  const imageData = {};
   const META = { repository: DATA.repository, tag: DATA.tag, commit: DATA.commit, ref: DATA.ref,
     since_tag: DATA.since_tag, commits_since: DATA.commits_since };
   // A page framed by a claude.ai viewer saves files through its downloads capability; a
@@ -445,19 +465,45 @@ __ENGINE__
 
   // ---- State -------------------------------------------------------------
   const state = {
-    profile: 'qwen38-flash-next-tp2', filter: '2', mode: 'install', settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
+    profile: 'qwen38-flash-next-tp2', filter: '2', mode: 'install', image: null, settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
     install: { form: 'script', source: 'release', approval: 'ask', limit: '' },
     // Every step opens collapsed on each page load.
     collapsed: { release: true, model: true, settings: true, sparks: true },
   };
 
-  const profile = () => BY_ID[state.profile];
+  const base = () => BY_ID[state.profile];
+  // The selected non-default image when it runs the selected model; null selects the default image.
+  function imageRow(p) {
+    const row = IMAGES.find(r => r.name === state.image);
+    return row && !row.default && row.profiles.includes(p.id) ? row : null;
+  }
+  // The selected model rendered on the selected image; the default image's until that image's data loads.
+  function profile() {
+    const p = base(), row = imageRow(p), d = row && imageData[row.name];
+    return d && d.status === 'ready' ? d.byId[p.id] : p;
+  }
+  // {row, failed} while the selected image's data is loading or could not load, else null.
+  function imageWait() {
+    const row = imageRow(base());
+    if (!row) return null;
+    const d = imageData[row.name];
+    return d && d.status === 'ready' ? null : { row, failed: Boolean(d && d.status === 'failed') };
+  }
+  function loadImage(row) {
+    if (imageData[row.name]) return;
+    imageData[row.name] = { status: 'loading' };
+    fetch(row.file)
+      .then(response => { if (!response.ok) throw new Error(String(response.status)); return response.json(); })
+      .then(doc => { imageData[row.name] = { status: 'ready', byId: Object.fromEntries(doc.profiles.map(x => [x.id, x])) }; },
+        () => { imageData[row.name] = { status: 'failed' }; })
+      .then(() => { renderAll(); changed(); });
+  }
   const checkpointName = p => state.checkpoints[p.id] ?? null;
   const checkpointOf = p => E.checkpointOf(p, checkpointName(p));
   const settingsOf = id => (state.settings[id] ||= {});
 
   function exampleCluster(nodes) {
-    const p = CATALOG.find(x => x.nodes === nodes && !x.sparkcache);
+    const p = CATALOG.find(x => x.nodes === nodes);
     const ranks = p.example_site.ranks.map(r => {
       const row = { host: r.host, host_ip: r.host_ip, interface: r.interface, hcas: [...r.hcas], gid: r.gid,
         repository: r.repository, deployment_root: r.deployment_root };
@@ -531,6 +577,7 @@ __ENGINE__
     try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (_) { saved = null; }
     if (!saved || typeof saved !== 'object') return;
     if (BY_ID[saved.profile]) state.profile = saved.profile;
+    if (IMAGES.some(row => row.name === saved.image && !row.default)) state.image = saved.image;
     for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints']) {
       if (saved[key] && typeof saved[key] === 'object') state[key] = saved[key];
     }
@@ -575,13 +622,22 @@ __ENGINE__
       input.addEventListener('change', () => { state.profile = p.id; currentTab = 'rank0'; renderAll(); changed(); });
       list.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + (p.sparkcache ? ' with SparkCache' : '') + ' · ' + p.nodes + ' Sparks'), el('span', { class: 'meta mono' }, p.id)),
-        el('span', { class: 'chips' },
-          p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null,
-          p.sparkcache ? chip('SparkCache · ' + p.image_release) : null,
-          p.installable ? null : chip('Compose only'))));
+        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + ' · ' + p.nodes + ' Sparks'), el('span', { class: 'meta mono' }, p.id)),
+        el('span', { class: 'chips' }, p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
     }
     if (!list.children.length) list.append(el('p', { class: 'hint' }, 'No model runs on that many Sparks.'));
+  }
+
+  // The images that run the selected model, as `sparkring images` lists them.
+  function renderImages() {
+    const p = base(), row = imageRow(p), select = $('image');
+    select.replaceChildren(...IMAGES.filter(r => r.default || r.profiles.includes(p.id))
+      .map(r => el('option', { value: r.name }, r.option + (r.default ? ' (default)' : ''))));
+    if (DEFAULT_IMAGE) select.value = (row || DEFAULT_IMAGE).name;
+    if (row) loadImage(row);
+    const wait = imageWait(), note = $('image-note');
+    note.hidden = !wait;
+    if (wait) note.textContent = wait.failed ? 'This view cannot load this image.' : 'Loading this image.';
   }
 
   function selectCheckpoint(p, name) {
@@ -628,6 +684,15 @@ __ENGINE__
     return effect.charAt(0).toUpperCase() + effect.slice(1) + '.';
   }
 
+  // The problem with a serving setting's text, as `sparkring install` would refuse it; '' when none.
+  function settingProblem(row, text) {
+    if (text === '') return '';
+    if (!/^\d+$/.test(text)) return 'Enter a whole number.';
+    if (Number(text) < row.minimum) return 'At least ' + fmt(row.minimum) + '.';
+    if (row.maximum && Number(text) > row.maximum) return 'At most ' + fmt(row.maximum) + '.';
+    return '';
+  }
+
   function renderSettings() {
     const p = profile(), cp = checkpointOf(p), s = settingsOf(p.id), box = $('settings');
     box.replaceChildren();
@@ -648,18 +713,24 @@ __ENGINE__
         box.append(wrap);
         continue;
       }
-      const input = el('input', { type: 'number', id, inputmode: 'numeric', min: row.minimum, max: row.maximum, step: 1, placeholder: String(row.profile) });
+      const input = el('input', { type: 'number', id, inputmode: 'numeric', min: row.minimum, max: row.maximum, step: 1,
+        placeholder: String(row.profile), 'aria-describedby': 'err-' + id });
       if (s[row.name] !== undefined) input.value = s[row.name];
       const limit = row.maximum ? ' (max ' + fmt(row.maximum) + ')' : '';
+      const err = el('p', { class: 'err', id: 'err-' + id });
       const wrap = el('div', { class: 'setting' + (s[row.name] !== undefined ? ' changed' : '') },
         el('label', { for: id }, LABELS[row.name] || row.option),
         el('div', { class: 'field' }, input, el('span', { class: 'unit' }, UNITS[row.name] || '')),
-        el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit));
+        el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit), err);
+      const check = () => {
+        err.textContent = settingProblem(row, input.value.trim());
+        input.setAttribute('aria-invalid', String(Boolean(err.textContent)));
+      };
+      check();
       input.addEventListener('input', () => {
         const text = input.value.trim();
-        const valid = text === '' || /^\d+$/.test(text);
-        input.setAttribute('aria-invalid', String(!valid));
-        if (text === '' || !valid) delete s[row.name]; else s[row.name] = Number(text);
+        check();
+        if (text === '' || !/^\d+$/.test(text)) delete s[row.name]; else s[row.name] = Number(text);
         wrap.classList.toggle('changed', s[row.name] !== undefined);
         changed();
       });
@@ -669,17 +740,36 @@ __ENGINE__
 
   function fieldInput(p, key, id, rank) {
     const def = FIELDS[key];
-    const input = el('input', { type: 'text', id, spellcheck: 'false', inputmode: key === 'gid' ? 'numeric' : null });
+    const input = el('input', { type: 'text', id, spellcheck: 'false', inputmode: key === 'gid' ? 'numeric' : null, 'aria-describedby': 'err-' + id });
     input.value = shown(key, getValue(p, rank ?? 0, key));
     input.addEventListener('input', () => {
       const value = parsed(key, input.value);
       const c = cluster(p.nodes);
       if (rank === undefined) c.ranks.forEach((_, i) => setValue(p, i, key, Array.isArray(value) ? [...value] : value));
       else setValue(p, rank, key, value);
-      if (key === 'gid') input.setAttribute('aria-invalid', String(typeof value !== 'number' || value > 255));
       changed();
     });
-    return el('div', { class: 'f' + (def.wide ? ' wide' : '') }, el('label', { for: id }, def.label), input);
+    return el('div', { class: 'f' + (def.wide ? ' wide' : '') }, el('label', { for: id }, def.label), input, el('p', { class: 'err', id: 'err-' + id }));
+  }
+
+  // Shows each site problem under its field; a shared field shows the problem of its value on
+  // every Spark. Returns the number of fields with a problem.
+  function renderProblems() {
+    const p = base(), c = cluster(p.nodes);
+    const shared = new Set(c.shared ? [...SHARED_KEYS, ...(p.nodes === 4 ? FABRIC_KEYS : [])] : []);
+    const found = {};
+    for (const x of E.fieldProblems(siteFor(p), p.nodes)) {
+      const id = x.key === 'name' ? 'site-name'
+        : (shared.has(x.key) ? 'shared-' : 'rank' + x.rank + '-') + x.key.replace('.', '-');
+      found[id] ||= x.message;
+    }
+    if (found['site-name']) found['zip-name'] = found['site-name'];
+    for (const err of document.querySelectorAll('#sparks .err, #err-site-name, #err-zip-name')) {
+      const id = err.id.slice(4);
+      err.textContent = found[id] || '';
+      $(id)?.setAttribute('aria-invalid', String(Boolean(found[id])));
+    }
+    return Object.keys(found).filter(id => id !== 'zip-name').length;
   }
 
   function renderSparks() {
@@ -700,6 +790,7 @@ __ENGINE__
         el('div', { class: 'grid' }, keys.map(key => fieldInput(p, key, 'rank' + i + '-' + key.replace('.', '-'), i)))));
     });
     $('example-note').hidden = !isExample(p);
+    renderProblems();
   }
 
   function isExample(p) {
@@ -716,19 +807,24 @@ __ENGINE__
     renderChip();
   }
 
-  // The one line a collapsed step shows. The model step keeps its selected model and checkpoint instead.
+  // [text, problem] of the one line a collapsed step shows. The model step keeps its selected model and checkpoint instead.
   function summaryFor(step) {
-    const p = profile();
-    if (step === 'release') return E.sourceName(META);
+    const p = base();
+    if (step === 'release') {
+      const row = imageRow(p);
+      return [E.sourceName(META) + (row ? ' · image ' + row.option : ''), false];
+    }
     if (step === 'settings') {
       const check = E.servingCheck(p, settingsOf(p.id), checkpointName(p));
-      if (!check.ok) return 'These settings cannot be used: ' + check.error;
+      if (!check.ok) return ['These settings cannot be used: ' + check.error, true];
       const changes = Object.entries(check.settings).map(([name, value]) => value === true ? LABELS[name] : LABELS[name] + ' ' + fmt(value));
-      return changes.length ? changes.join(' · ') : 'Defaults';
+      return [changes.length ? changes.join(' · ') : 'Defaults', false];
     }
-    if (isExample(p)) return 'Example values';
+    const problems = E.fieldProblems(siteFor(p), p.nodes).length;
+    if (problems) return [problems + (problems === 1 ? ' field needs' : ' fields need') + ' a change', true];
+    if (isExample(p)) return ['Example values', false];
     const site = siteFor(p);
-    return site.name + ': ' + site.ranks.map(r => r.host + ' (' + r.host_ip + ')').join(', ');
+    return [site.name + ': ' + site.ranks.map(r => r.host + ' (' + r.host_ip + ')').join(', '), false];
   }
 
   function renderCollapse() {
@@ -741,12 +837,17 @@ __ENGINE__
       if (body) body.hidden = collapsed;
       if (summary) {
         summary.hidden = !collapsed;
-        if (collapsed) summary.textContent = summaryFor(step);
+        if (collapsed) {
+          const [text, problem] = summaryFor(step);
+          summary.textContent = text;
+          summary.classList.toggle('bad', problem);
+        }
       }
     }
   }
 
   function renderAll() {
+    renderImages();
     renderFilter();
     renderProfiles();
     renderCheckpoints();
@@ -774,6 +875,13 @@ __ENGINE__
     $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
     const box = $('messages');
     box.replaceChildren();
+    const wait = imageWait();
+    if (wait) {
+      box.append(wait.failed
+        ? msg('bad', 'This view cannot load the ' + wait.row.option + ' image', 'Choose the default image in step 1, or open the page from its web address.')
+        : msg('', 'Loading the ' + wait.row.option + ' image'));
+      return;
+    }
     if (!serving.ok) { box.append(msg('bad', 'These serving settings cannot be used', serving.error)); return; }
     if (serving.lines.length) box.append(msg('', 'Your changes', el('ul', {}, serving.lines.map(line => el('li', {}, el('code', {}, line))))));
     for (const line of serving.warnings) box.append(msg('warn', '', line));
@@ -792,9 +900,8 @@ __ENGINE__
     const box = $('install-messages');
     box.replaceChildren();
     let command = '';
-    if (!p.installable) {
-      box.append(msg('warn', '`sparkring install` does not offer this profile',
-        ...rich('It runs on the ' + p.image_release + ' image, not an installer image. Use the Docker Compose files, or its guide in `profiles/' + p.id.replace(/-sparkcache$/, '') + '/`.')));
+    if (imageWait()) {
+      // renderShared names the image that is loading or failed to load.
     } else if (!limitOk) {
       box.append(msg('bad', 'Download limit', 'Use none, or a rate of at least 1Mbit such as 850Mbit or 2Gbit.'));
     } else if (serving.ok) {
@@ -823,6 +930,7 @@ __ENGINE__
 
   function changed() {
     save();
+    renderProblems();
     renderInstall();
     renderCollapse();
     $('compose-panel').dataset.stale = 'true';
@@ -833,6 +941,16 @@ __ENGINE__
   async function generate() {
     const p = profile(), site = clone(siteFor(p)), settings = { ...settingsOf(p.id) };
     $('example-note').hidden = !isExample(p);
+    if (imageWait()) {
+      ++ticket;
+      composeOk = false;
+      result = null;
+      $('compose-messages').replaceChildren();
+      $('compose-panel').dataset.stale = 'true';
+      renderZip();
+      renderChip();
+      return;
+    }
     const mine = ++ticket;
     const output = await E.render(p, site, settings, checkpointName(p));
     if (mine === ticket) showCompose(output, p, site, settings);
@@ -947,13 +1065,16 @@ __ENGINE__
     }
     button.hidden = false;
     button.disabled = !result;
+    const example = Boolean(result) && isExample(result.p);
+    $('zip-bar').classList.toggle('warn', example);
     if (!result) {
       button.textContent = 'Download zip';
-      note.textContent = 'Fix the fields the generator refuses to build the zip.';
+      note.textContent = imageWait() ? 'The zip needs the selected image.' : 'Fix the fields the generator refuses to build the zip.';
       return;
     }
     button.textContent = 'Download ' + result.site.name + '.zip';
-    note.textContent = 'One folder per Spark, plus a README with the start steps.';
+    note.textContent = example ? "These files hold example addresses and paths. Enter your Sparks' values in step 4 first."
+      : 'One folder per Spark, plus a README with the start steps.';
   }
 
   async function saveZip() {
@@ -1015,6 +1136,11 @@ __ENGINE__
       input.addEventListener('change', () => { if (input.checked) { state.install[name] = input.value; save(); renderInstall(); } });
     }
   }
+  $('image').addEventListener('change', () => {
+    const row = IMAGES.find(r => r.name === $('image').value);
+    state.image = row && !row.default ? row.name : null;
+    renderAll(); changed();
+  });
   $('download-limit').addEventListener('input', () => { state.install.limit = $('download-limit').value; save(); renderInstall(); });
   $('copy-install').addEventListener('click', () => copy($('install-code').textContent, $('copy-install'), $('install-code')));
   $('save-zip').addEventListener('click', saveZip);
@@ -1067,7 +1193,7 @@ __ENGINE__
         return row;
       }) };
       let p = profile();
-      if (p.nodes !== n) p = CATALOG.find(x => x.nodes === n && !x.sparkcache);
+      if (p.nodes !== n) p = CATALOG.find(x => x.nodes === n);
       state.profile = p.id;
       state.clusters[n] = c;
       state.perProfile[p.id] = { name: site.name, model: site.ranks.map(r => r.model), cache: site.ranks.map(r => r.cache) };
@@ -1085,7 +1211,8 @@ __ENGINE__
   // as query parameters, never a site value.
   function linkFor() {
     const p = profile(), query = new URLSearchParams({ profile: p.id, mode: state.mode });
-    const name = checkpointName(p);
+    const name = checkpointName(p), row = imageRow(p);
+    if (row) query.set('image', row.option);
     if (name) query.set('checkpoint', name);
     for (const [key, value] of Object.entries(settingsOf(p.id))) query.set(key, value === true ? '1' : String(value));
     for (const [key, value] of Object.entries(state.install)) if (value) query.set(key, value);
@@ -1097,6 +1224,8 @@ __ENGINE__
     const p = BY_ID[query.get('profile')];
     if (!p) return;
     state.profile = p.id;
+    const image = IMAGES.find(row => !row.default && row.profiles.includes(p.id) && [row.option, row.name].includes(query.get('image')));
+    state.image = image ? image.name : null;
     const name = query.get('checkpoint');
     state.checkpoints[p.id] = p.checkpoints.some(c => c.name === name && !c.default) ? name : null;
     const settings = {};

@@ -40,8 +40,7 @@ def profile_ids():
 
 
 def example_site(profile_id):
-    owner = profile_id.removesuffix("-sparkcache")
-    return compose.read_site(ROOT / "profiles" / owner / "compose" / "site.example.yaml")
+    return compose.read_site(ROOT / "profiles" / profile_id / "compose" / "site.example.yaml")
 
 
 def _argument(command, flag):
@@ -154,12 +153,16 @@ def _check_template(text, site, n, identity, key_of, label):
             raise ValueError(f"{label}: GID line without the GID sentinel: {line.strip()}")
 
 
-def profile_data(profile_id):
-    """One profile's facts, checkpoints and sentinel templates."""
+def profile_data(profile_id, image_runtime=None, image_option=None):
+    """One profile's facts, checkpoints and sentinel templates, on the default or the given installer image.
+
+    ``image_option`` is the `--image` value that selects ``image_runtime``; the
+    page's commands pass it when it is set.
+    """
     metadata, _ = profiles.load(profile_id)
     configuration = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
     example = example_site(profile_id)
-    runtime = compose.installer_image_runtime(profile_id)
+    runtime = image_runtime or compose.installer_image_runtime(profile_id)
     options = {"image_runtime": runtime} if runtime is not None else {}
     specs, image = compose.specifications(profile_id, example, **options)
     checkpoints = _checkpoints(profile_id, configuration, example, options)
@@ -168,7 +171,7 @@ def profile_data(profile_id):
         name = None if checkpoint["default"] else checkpoint["name"]
         variants = {}
         for variant, serving in (("off", None), ("on", {"save_cpu": True})):
-            manifest, files = compose.build(profile_id, site, checkpoint=name, serving=serving)
+            manifest, files = compose.build(profile_id, site, checkpoint=name, serving=serving, image_runtime=runtime)
             ranks = []
             for n in range(len(site["ranks"])):
                 label = f"{profile_id} {checkpoint['name']} save-cpu {variant} rank{n}"
@@ -185,11 +188,11 @@ def profile_data(profile_id):
         "title": metadata.get("title", profile_id),
         "model_name": names.get(checkpoints[0]["model_repository"], metadata.get("title", profile_id)),
         "nodes": len(example["ranks"]),
-        "sparkcache": profile_id.endswith("-sparkcache"),
         "installable": profile_id in (runtime or {}).get("profiles", []),
         "image": image,
         "image_id": specs[0].image_id,
         "image_release": (runtime or {}).get("name") or Path(metadata["release"]).parent.name,
+        "image_option": image_option,
         "checkpoints": checkpoints,
         "example_site": example,
         "inputs": inputs,
@@ -235,8 +238,54 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
     if not commit:
         raise ValueError("The builder needs the checkout's commit; pass --commit outside Git")
     return {"schema": SCHEMA, "repository": repository, "tag": tag, "commit": commit, "ref": tag or commit,
-            "since_tag": since_tag, "commits_since": commits_since,
+            "since_tag": since_tag, "commits_since": commits_since, "image": None, "images": image_catalog(),
             "profiles": [profile_data(profile_id) for profile_id in profile_ids()]}
+
+
+def image_catalog():
+    """The installer images `sparkring images` lists, default first, with the listed profiles each runs.
+
+    ``option`` is the value `--image` takes: the release tag that published the
+    image when there is one, else the first part of its release name that
+    contains a letter and names no other image (``statusrows``), else its
+    release name; installer_image.lock_path resolves each form. ``file`` is the
+    data file of a non-default image, which the page loads when the image is
+    selected.
+    """
+    from runtime.common import installer_image
+    listed = set(profile_ids())
+    catalog = installer_image.catalog()
+    names = [row["name"] for row in catalog]
+    rows = []
+    for row in catalog:
+        runs = [profile_id for profile_id in installer_image.profiles_of(row["lock"]) if profile_id in listed]
+        if not runs:
+            continue
+        rows.append({"name": row["name"], "default": row["default"], "tags": row["tags"],
+                     "option": _image_option(row, names),
+                     "download_bytes": row["lock"].get("download_bytes"), "profiles": runs,
+                     "file": None if row["default"] else f"images/{row['name']}.json"})
+    return rows
+
+
+def _image_option(row, names):
+    if row["tags"]:
+        return row["tags"][-1]
+    for part in row["name"].split("-"):
+        if part != "dev" and re.search("[a-z]", part) and sum(f"-{part}-" in f"-{name}-" for name in names) == 1:
+            return part
+    return row["name"]
+
+
+def image_data(name):
+    """The profiles a non-default installer image runs, rendered on it, for its data file."""
+    from runtime.common import installer_image
+    catalog = installer_image.catalog()
+    row = next(row for row in catalog if row["name"] == name)
+    option = _image_option(row, [row["name"] for row in catalog])
+    runs = [profile_id for profile_id in profile_ids() if profile_id in installer_image.profiles_of(row["lock"])]
+    return {"schema": SCHEMA, "image": name,
+            "profiles": [profile_data(profile_id, row["lock"], option) for profile_id in runs]}
 
 
 def engine_source():
