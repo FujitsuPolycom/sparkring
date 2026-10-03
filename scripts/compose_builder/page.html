@@ -291,6 +291,12 @@ footer p { margin: 0; max-width: 110ch; }
           <div class="tabs" id="settings-pairs" role="tablist" aria-label="Pair" hidden></div>
           <p class="hint">Leave a field empty to keep the default.</p>
           <div class="settings" id="settings"></div>
+          <div class="settings" id="endpoint" hidden>
+            <p class="sub" id="h-endpoint">API endpoint</p>
+            <div class="choices" id="endpoint-modes" role="radiogroup" aria-labelledby="h-endpoint"></div>
+            <div class="grid" id="endpoint-fields"></div>
+            <p class="hint" id="endpoint-note" hidden></p>
+          </div>
         </div>
       </section>
 
@@ -458,6 +464,18 @@ __ENGINE__
   const LABELS = {
     max_concurrency: 'Concurrent requests', context_length: 'Maximum context', kv_cache_gib: 'KV cache per Spark',
     max_images: 'Images per request', max_videos: 'Videos per request', save_cpu: 'Save CPU between decode steps',
+    api_port: 'API port', api_bind: 'API listens only on',
+  };
+  // The API endpoint choices the source offers (export.features): automatic; ask during install,
+  // where `sparkring install` asks for the listen address and port; set here, with the fields the
+  // source takes.
+  const ENDPOINT_FIELDS = ['api_port', 'api_bind', 'api_address'].filter(name => FEATURES[name]);
+  const ENDPOINT_MODES = ['auto', ...(FEATURES.api_port || FEATURES.api_bind ? ['ask'] : []), ...(ENDPOINT_FIELDS.length ? ['set'] : [])];
+  // Each choice's title, and the line under it; Automatic's line names the model's port (renderEndpoint).
+  const ENDPOINT_TEXT = {
+    auto: ['Automatic', ''],
+    ask: ['Ask during install', 'The install shows the Spark\'s addresses and asks. Its command has no --yes.'],
+    set: ['Set here', 'Pick the port and addresses below.'],
   };
   const UNITS = { max_concurrency: 'requests', context_length: 'tokens', kv_cache_gib: 'GiB', max_images: 'images', max_videos: 'videos' };
   const ORDER = ['max_concurrency', 'context_length', 'kv_cache_gib', 'max_images', 'max_videos', 'save_cpu'];
@@ -511,13 +529,14 @@ __ENGINE__
 
   // ---- State -------------------------------------------------------------
   const DEFAULT_PAIR = (CATALOG.find(p => p.nodes === 2) || CATALOG[0]).id;
-  const half = () => ({ profile: DEFAULT_PAIR, checkpoints: {}, settings: {} });
+  const half = () => ({ profile: DEFAULT_PAIR, checkpoints: {}, settings: {}, endpoints: {} });
   const state = {
     // `profile` is the pair's or the ring's model: two Sparks for the pair layout, four for the
     // ring layouts, where the two-pair layout switches back to it. `last` keeps the last one of
-    // each size, so that changing the layout restores it.
+    // each size, so that changing the layout restores it. `endpoints` holds the API endpoint
+    // choice by model ({mode, address}); its port and listen address are in `settings`.
     profile: 'qwen38-flash-next-tp2', layout: 'pair', last: {}, mode: 'install', image: null,
-    settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
+    settings: {}, checkpoints: {}, endpoints: {}, clusters: {}, perProfile: {},
     // Each half of a ring split into two pairs: its model, and its checkpoint and serving settings
     // by model. `half` is the pair that the model and settings steps show.
     halves: [half(), half()], half: 0,
@@ -533,6 +552,7 @@ __ENGINE__
     set profile(id) { state.profile = id; state.last[BY_ID[id].nodes] = id; },
     get checkpoints() { return state.checkpoints; },
     get settings() { return state.settings; },
+    get endpoints() { return state.endpoints; },
   };
   // The selection the model and settings steps edit.
   const active = () => state.layout === 'halves' ? state.halves[state.half] : MAIN;
@@ -540,9 +560,9 @@ __ENGINE__
   const deployed = () => state.layout === 'halves'
     ? state.halves.map((slot, i) => ({ slot, label: PAIRS[i] })) : [{ slot: MAIN, label: null }];
   // A selection that a layout switch installs: the profile of `nodes` Sparks for the model of
-  // profile `id`, with its default checkpoint and serving settings; without one, the first
-  // installable profile of that size. The switch commands follow the deployed models, so no
-  // choice made earlier in another layout carries into them.
+  // profile `id`, with its default checkpoint and serving settings and the automatic API
+  // endpoint; without one, the first installable profile of that size. The switch commands
+  // follow the deployed models, so no choice made earlier in another layout carries into them.
   function switchSlot(id, nodes) {
     const name = BY_ID[id].model_name, sized = CATALOG.filter(p => p.nodes === nodes);
     const p = sized.find(q => q.model_name === name && q.installable) || sized.find(q => q.model_name === name)
@@ -601,10 +621,29 @@ __ENGINE__
   const checkpointName = p => slotCheckpoint(active(), p);
   const checkpointOf = p => E.checkpointOf(p, checkpointName(p));
   const settingsOf = id => slotSettings(active(), id);
-  // A selection as the engine takes it: the model on the selected image, its checkpoint name and requested settings.
+  // A selection's API endpoint choice for model `id`: {mode: 'auto' | 'ask' | 'set', address}.
+  const slotEndpoint = (slot, id) => ((slot.endpoints ||= {})[id] ||= { mode: 'auto', address: '' });
+  // The endpoint mode that applies: the chosen one when the source offers it, else automatic.
+  const endpointMode = (slot, id) => ENDPOINT_MODES.includes(slotEndpoint(slot, id).mode) ? slotEndpoint(slot, id).mode : 'auto';
+  // The address shown for the model when its endpoint is set here and the address is usable, else null.
+  function shownAddress(slot, id) {
+    const text = slotEndpoint(slot, id).address.trim();
+    if (endpointMode(slot, id) !== 'set' || !FEATURES.api_address || !text) return null;
+    try { return E.apiAddress(text); } catch (_) { return null; }
+  }
+  // The serving settings a selection requests: the API port and listen address only while its
+  // endpoint is set here.
+  function requested(slot, id) {
+    const settings = { ...slotSettings(slot, id) };
+    if (endpointMode(slot, id) !== 'set') { delete settings.api_port; delete settings.api_bind; }
+    return settings;
+  }
+  // A selection as the engine takes it: the model on the selected image, its checkpoint name,
+  // requested settings and API endpoint choice.
   function selectionOf(slot) {
     const p = rendered(BY_ID[slot.profile]);
-    return { profile: p, checkpoint: slotCheckpoint(slot, p), settings: { ...slotSettings(slot, p.id) } };
+    return { profile: p, checkpoint: slotCheckpoint(slot, p), settings: requested(slot, p.id),
+      endpoint: { ask: endpointMode(slot, p.id) === 'ask', address: shownAddress(slot, p.id) } };
   }
   // Makes the pair's or the ring's model fit the layout's size: the last one of that size, else the first.
   function fitLayout() {
@@ -692,7 +731,7 @@ __ENGINE__
     if (!saved || typeof saved !== 'object') return;
     if (BY_ID[saved.profile]) state.profile = saved.profile;
     if (IMAGES.some(row => row.name === saved.image && !row.default)) state.image = saved.image;
-    for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints']) {
+    for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints', 'endpoints']) {
       if (saved[key] && typeof saved[key] === 'object') state[key] = saved[key];
     }
     const i = saved.install || {};
@@ -707,10 +746,18 @@ __ENGINE__
     if (Array.isArray(saved.halves) && saved.halves.length === 2) {
       state.halves = saved.halves.map((h, n) => h && BY_ID[h.profile]?.nodes === 2
         ? { profile: h.profile, checkpoints: h.checkpoints && typeof h.checkpoints === 'object' ? h.checkpoints : {},
-          settings: h.settings && typeof h.settings === 'object' ? h.settings : {} }
+          settings: h.settings && typeof h.settings === 'object' ? h.settings : {},
+          endpoints: h.endpoints && typeof h.endpoints === 'object' ? h.endpoints : {} }
         : state.halves[n]);
     }
     if (saved.half === 0 || saved.half === 1) state.half = saved.half;
+    // An endpoint choice must name a mode and an address text.
+    for (const map of [state.endpoints, ...state.halves.map(h => h.endpoints)]) {
+      for (const id of Object.keys(map)) {
+        const e = map[id];
+        if (!BY_ID[id] || !e || !['auto', 'ask', 'set'].includes(e.mode) || typeof e.address !== 'string') delete map[id];
+      }
+    }
     for (const map of [state.checkpoints, ...state.halves.map(h => h.checkpoints)]) {
       for (const id of Object.keys(map)) {
         const p = BY_ID[id];
@@ -861,7 +908,8 @@ __ENGINE__
   function renderSettings() {
     const p = profile(), cp = checkpointOf(p), s = settingsOf(p.id), box = $('settings');
     box.replaceChildren();
-    const rows = [...cp.settings].sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
+    // The API endpoint's settings are in its own option (renderEndpoint).
+    const rows = cp.settings.filter(row => !row.endpoint).sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
     for (const row of rows) {
       const id = 'setting-' + row.name;
       if (row.switch) {
@@ -905,6 +953,69 @@ __ENGINE__
       box.append(wrap);
     }
     renderKv();
+    renderEndpoint();
+  }
+
+  // The problem with an API endpoint field's text, as `sparkring install` would refuse it; '' when none.
+  function endpointProblem(key, row, text) {
+    if (text === '') return '';
+    if (key === 'api_port') {
+      if (!/^\d+$/.test(text)) return 'Enter a whole number.';
+      const port = Number(text), taken = (row.reserved || []).find(([value]) => value === port);
+      if (port < row.minimum || port > row.largest) return `From ${row.minimum} to ${row.largest}.`;
+      return taken ? `This is ${taken[1]}.` : '';
+    }
+    if (key === 'api_bind') return E.listenable(text) ? '' : 'An IPv4 address of the Spark, such as 192.0.2.10.';
+    try { E.apiAddress(text); return ''; } catch (_) { return 'A name or an address, without http:// or a port.'; }
+  }
+
+  // The API endpoint option of the shown selection: automatic, ask during install, or set here with
+  // the port, the address it listens on and the address shown for it. Only what the source offers.
+  function renderEndpoint() {
+    const box = $('endpoint'), p = profile(), cp = checkpointOf(p), slot = active();
+    const s = settingsOf(p.id), endpoint = slotEndpoint(slot, p.id), mode = endpointMode(slot, p.id);
+    const rows = Object.fromEntries(cp.settings.map(row => [row.name, row]));
+    const fields = ENDPOINT_FIELDS.filter(key => key === 'api_address' || rows[key]);
+    box.hidden = ENDPOINT_MODES.length < 2 || !fields.length;
+    if (box.hidden) return;
+    $('endpoint-modes').replaceChildren(...ENDPOINT_MODES.map(name => {
+      const id = 'endpoint-' + name, input = el('input', { type: 'radio', name: 'endpoint', id, value: name });
+      input.checked = name === mode;
+      input.addEventListener('change', () => { endpoint.mode = name; renderEndpoint(); changed(); });
+      const meta = name === 'auto' ? `Every address of the Spark, at port ${cp.port}.` : ENDPOINT_TEXT[name][1];
+      return el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id }, input,
+        el('span', { class: 'choice-body' }, el('strong', {}, ENDPOINT_TEXT[name][0]), el('span', { class: 'meta' }, meta)));
+    }));
+    const labels = { api_port: ['Port', String(cp.port), '1024 to 65535.'],
+      api_bind: ['Listens only on', 'every address', 'One of the Spark\'s own addresses.'],
+      api_address: ['Address people use', 'automatic', 'A name or address shown for the model, such as llm.example.net. Only shown: SparkRing\'s own checks don\'t use it.'] };
+    $('endpoint-fields').hidden = mode !== 'set';
+    $('endpoint-fields').replaceChildren(...(mode === 'set' ? fields : []).map(key => {
+      const id = 'endpoint-field-' + key, [label, placeholder, hint] = labels[key];
+      const input = el('input', { type: 'text', id, spellcheck: 'false', inputmode: key === 'api_port' ? 'numeric' : null,
+        placeholder, 'aria-describedby': id + '-hint err-' + id });
+      input.value = key === 'api_address' ? endpoint.address : (s[key] ?? '');
+      const err = el('p', { class: 'err', id: 'err-' + id });
+      const check = () => {
+        err.textContent = endpointProblem(key, rows[key], input.value.trim());
+        input.setAttribute('aria-invalid', String(Boolean(err.textContent)));
+      };
+      check();
+      input.addEventListener('input', () => {
+        const text = input.value.trim();
+        check();
+        // A value the installer would refuse stays out of the commands; its field says why.
+        if (key === 'api_address') endpoint.address = text;
+        else if (text === '' || err.textContent) delete s[key];
+        else s[key] = key === 'api_port' ? Number(text) : text;
+        changed();
+      });
+      return el('div', { class: 'f' + (key === 'api_address' ? ' wide' : '') }, el('label', { for: id }, label), input,
+        el('p', { class: 'hint', id: id + '-hint' }, hint), err);
+    }));
+    const note = $('endpoint-note');
+    note.hidden = !(outputMode() === 'compose' && mode === 'ask');
+    note.textContent = note.hidden ? '' : "Docker Compose files can't ask, so they use the automatic endpoint.";
   }
 
   // How many tokens the shown selection's KV cache holds (E.kvText), live as its settings change;
@@ -912,7 +1023,7 @@ __ENGINE__
   function renderKv() {
     const line = $('kv-estimate'), note = $('kv-note');
     if (!line) return;
-    const p = profile(), check = E.servingCheck(p, settingsOf(p.id), checkpointName(p));
+    const p = profile(), check = E.servingCheck(p, requested(active(), p.id), checkpointName(p));
     const kv = check.ok ? E.kvText(check.checkpoint, check.settings) : null;
     line.textContent = kv ? kv.line + '.' : '';
     note.textContent = kv ? kv.note : '';
@@ -1042,9 +1153,13 @@ __ENGINE__
 
   // The one line of a selection's serving settings: its changes, 'Defaults' or why they cannot be used.
   function settingsLine(slot) {
-    const p = rendered(BY_ID[slot.profile]), check = E.servingCheck(p, slotSettings(slot, p.id), slotCheckpoint(slot, p));
+    const p = rendered(BY_ID[slot.profile]), check = E.servingCheck(p, requested(slot, p.id), slotCheckpoint(slot, p));
     if (!check.ok) return ['These settings cannot be used: ' + check.error, true];
-    const changes = Object.entries(check.settings).map(([name, value]) => value === true ? LABELS[name] : LABELS[name] + ' ' + fmt(value));
+    const changes = Object.entries(check.settings).map(([name, value]) => value === true ? LABELS[name]
+      : LABELS[name] + ' ' + (typeof value === 'number' && name !== 'api_port' ? fmt(value) : value));
+    if (endpointMode(slot, p.id) === 'ask') changes.push('API asked during install');
+    const address = shownAddress(slot, p.id);
+    if (address) changes.push('API shown at ' + address);
     return [changes.length ? changes.join(' · ') : 'Defaults', false];
   }
 
@@ -1118,15 +1233,15 @@ __ENGINE__
     box.replaceChildren();
     const wait = imageWait();
     for (const { slot, label } of deployed()) {
-      const p = rendered(BY_ID[slot.profile]), check = E.servingCheck(p, slotSettings(slot, p.id), slotCheckpoint(slot, p));
+      const p = rendered(BY_ID[slot.profile]), check = E.servingCheck(p, requested(slot, p.id), slotCheckpoint(slot, p));
       let cp;
       try { cp = E.checkpointOf(p, slotCheckpoint(slot, p)); } catch (_) { cp = p.checkpoints[0]; }
-      const kv = kvFact(p, check);
+      const kv = kvFact(p, check), port = (check.ok && check.settings.api_port) || cp.port;
       if (single) {
-        rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + cp.port],
+        rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + port],
           ...(kv ? [['KV cache', kv]] : []), ['Image', p.image], ['Image ID', p.image_id + ' (' + p.image_release + ')']);
       } else {
-        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + cp.port],
+        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + port],
           ...(kv ? [['KV cache', kv]] : []));
         images.add(p.image);
       }
@@ -1262,7 +1377,8 @@ __ENGINE__
       result = null;
       return;
     }
-    const p = profile(), site = clone(siteFor(p)), settings = { ...settingsOf(p.id) };
+    // Compose files take the endpoint set here; "ask during install" stays automatic.
+    const p = profile(), site = clone(siteFor(p)), settings = requested(active(), p.id);
     if (imageWait()) {
       ++ticket;
       composeOk = false;
@@ -1273,12 +1389,13 @@ __ENGINE__
       renderChip();
       return;
     }
-    const mine = ++ticket;
+    const mine = ++ticket, address = shownAddress(active(), p.id);
     const output = await E.render(p, site, settings, checkpointName(p));
-    if (mine === ticket) showCompose(output, p, site, settings);
+    if (mine === ticket) showCompose(output, p, site, settings, address);
   }
 
-  function showCompose(output, p, site, settings) {
+  // `address` is the address shown for the model (the endpoint's "Address people use"), or null.
+  function showCompose(output, p, site, settings, address) {
     const panel = $('compose-panel');
     const box = $('compose-messages');
     box.replaceChildren();
@@ -1293,8 +1410,8 @@ __ENGINE__
     }
     composeOk = true;
     panel.dataset.stale = 'false';
-    result = { output, p, site, settings, cp: E.checkpointOf(p, output.checkpoint) };
-    const rows = [['API', 'http://' + site.master + ':' + result.cp.port + '/v1'], ['Deployment ID', output.id]];
+    result = { output, p, site, settings, address, cp: E.checkpointOf(p, output.checkpoint) };
+    const rows = [['API', E.apiUrl(result.cp, settings, site.master, address)], ['Deployment ID', output.id]];
     $('compose-facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
     renderTabs();
     renderRun();
@@ -1350,7 +1467,7 @@ __ENGINE__
   function block(text) { return el('code', { class: 'block' }, text); }
 
   function renderRun() {
-    const { p, site, cp } = result;
+    const { p, site, cp, settings, address } = result;
     const n = site.ranks.length;
     const repo = site.ranks[0].repository.replace(/\/+$/, '');
     const steps = [
@@ -1368,7 +1485,7 @@ __ENGINE__
     steps.push(el('li', {}, (n === 2 ? 'Start rank 1' : 'Start ranks 1–' + (n - 1)) + ', then rank 0:',
       block('docker compose -f ' + site.ranks[0].deployment_root.replace(/\/+$/, '') + '/' + site.name + '/rankN/compose.yaml up -d')));
     steps.push(el('li', {}, 'Wait for the model; the first start takes about 10 minutes:',
-      block('curl http://' + site.master + ':' + cp.port + '/v1/models')));
+      block('curl ' + E.apiUrl(cp, settings, site.master, address) + '/models')));
     $('run-steps').replaceChildren(...steps);
     $('notes').replaceChildren(el('li', {}, 'Containers don\'t restart on their own.'));
   }
@@ -1401,8 +1518,8 @@ __ENGINE__
 
   async function saveZip() {
     if (!result || !downloads) return;
-    const { output, p, site, settings, cp } = result;
-    const { filename, bytes } = E.archive(p, cp, site, settings, output, META);
+    const { output, p, site, settings, cp, address } = result;
+    const { filename, bytes } = E.archive(p, cp, site, settings, output, META, new Date(), address);
     const note = $('zip-note');
     try {
       await downloads.save({ filename, data: new Blob([bytes], { type: 'application/zip' }) });
@@ -1444,7 +1561,7 @@ __ENGINE__
   }
   // Step 5 shows the whole site for Docker Compose and only names and addresses for the commands.
   for (const [id, mode] of [['mode-install', 'install'], ['mode-compose', 'compose']]) {
-    $(id).addEventListener('click', () => { state.mode = mode; renderMode(); renderSparks(); renderCollapse(); renderInstall(); save(); });
+    $(id).addEventListener('click', () => { state.mode = mode; renderMode(); renderSparks(); renderEndpoint(); renderCollapse(); renderInstall(); save(); });
   }
   for (const name of ['form', 'source', 'approval', 'order']) {
     for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
@@ -1465,7 +1582,11 @@ __ENGINE__
   });
   $('download-limit').addEventListener('input', () => { state.install.limit = $('download-limit').value; save(); renderInstall(); });
   $('save-zip').addEventListener('click', saveZip);
-  $('reset-settings').addEventListener('click', () => { active().settings[base().id] = {}; renderSettings(); changed(); });
+  $('reset-settings').addEventListener('click', () => {
+    active().settings[base().id] = {};
+    slotEndpoint(active(), base().id).mode = 'auto';
+    renderSettings(); changed();
+  });
   $('reset-sparks').addEventListener('click', () => {
     state.clusters[sparkCount()] = exampleCluster(sparkCount());
     if (composeOffered()) state.perProfile[profile().id] = examplePaths(profile());
@@ -1529,11 +1650,15 @@ __ENGINE__
   });
 
   // ---- Shareable links (hosted pages) ----------------------------------------
-  // A link carries the layout, each selection's model, checkpoint and serving settings, the image,
-  // the install options and the output mode as query parameters (E.linkQuery), never a site value.
+  // A link carries the layout, each selection's model, checkpoint, serving settings and API endpoint
+  // choice, the image, the install options and the output mode as query parameters (E.linkQuery),
+  // never a site value.
   function linkFor() {
-    const pick = slot => ({ profile: slot.profile, checkpoint: slot.checkpoints[slot.profile] ?? null,
-      settings: slot.settings[slot.profile] || {} });
+    const pick = slot => {
+      const mode = endpointMode(slot, slot.profile);
+      return { profile: slot.profile, checkpoint: slot.checkpoints[slot.profile] ?? null, settings: requested(slot, slot.profile),
+        ...(mode === 'auto' ? {} : { endpoint: { mode, address: mode === 'set' ? slotEndpoint(slot, slot.profile).address : '' } }) };
+    };
     const row = IMAGES.find(r => r.name === state.image && !r.default && packSlots().some(slot => r.profiles.includes(slot.profile)));
     return location.origin + location.pathname + '?' + E.linkQuery({ layout: state.layout, mode: state.mode,
       image: row ? row.option : null, main: pick(MAIN), halves: state.halves.map(pick), install: state.install });
@@ -1546,6 +1671,7 @@ __ENGINE__
       slot.profile = chosen.profile;
       slot.checkpoints[chosen.profile] = chosen.checkpoint;
       slot.settings[chosen.profile] = chosen.settings;
+      (slot.endpoints ||= {})[chosen.profile] = chosen.endpoint ? { ...chosen.endpoint } : { mode: 'auto', address: '' };
     };
     state.layout = choices.layout;
     take(MAIN, choices.main);

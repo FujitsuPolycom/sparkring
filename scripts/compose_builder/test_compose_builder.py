@@ -52,15 +52,24 @@ def test_features_record_the_command_options_the_source_defines(data, tmp_path):
     # This checkout's `sparkring install` defines --on.
     assert data["features"]["ring_halves"] is True
     assert data["features"] == export.features()
+    assert all(data["features"][name] for name in ("api_port", "api_bind", "api_address"))
     host = tmp_path / "runtime" / "host"
     host.mkdir(parents=True)
-    assert export.features(tmp_path) == {"ring_halves": False, "cable_check": False}
+    none = {"ring_halves": False, "cable_check": False, "api_address": False, "api_port": False, "api_bind": False}
+    assert export.features(tmp_path) == none
     (host / "install_workflow.py").write_text('def main():\n    parser.add_argument("--on", metavar="RANKS")\n')
     # A help text that names an option does not define it.
     (host / "cabling.py").write_text('def main():\n    parser.add_argument("--json", help="unlike --bandwidth")\n')
-    assert export.features(tmp_path) == {"ring_halves": True, "cable_check": False}
+    assert export.features(tmp_path) == {**none, "ring_halves": True}
     (host / "cabling.py").write_text('def main():\n    parser.add_argument("--bandwidth", action="store_true")\n')
-    assert export.features(tmp_path) == {"ring_halves": True, "cable_check": True}
+    assert export.features(tmp_path) == {**none, "ring_halves": True, "cable_check": True}
+    # The API endpoint's settings are keys of the source's SETTINGS; a value that names one is not.
+    common = tmp_path / "runtime" / "common"
+    common.mkdir(parents=True)
+    (common / "serving.py").write_text('SETTINGS = {"api_port": ("--port", None, 1, 1024, "api_bind")}\n')
+    assert export.features(tmp_path) == {**none, "ring_halves": True, "cable_check": True, "api_port": True}
+    (host / "install_workflow.py").write_text('def main():\n    parser.add_argument("--api-address")\n')
+    assert export.features(tmp_path)["api_address"] is True
 
 
 def test_image_catalog_lists_the_default_first_with_options_install_accepts(data):
@@ -125,7 +134,7 @@ def packs(node, data, cases):
     script = """
 const byId = Object.fromEntries(value.profiles.map(p => [p.id, p]));
 const sel = s => ({ profile: { ...byId[s.profile], image_option: s.image_option || null }, checkpoint: s.checkpoint || null,
-  settings: s.settings || {} });
+  settings: s.settings || {}, endpoint: s.endpoint || null });
 console.log(JSON.stringify(value.cases.map(c => E.commandPack({ layout: c.layout, features: c.features, main: sel(c.main),
   halves: (c.halves || [c.main, c.main]).map(sel) }, value.meta, c.opts))));"""
     return run_engine(node, script, {"profiles": [p for p in data["profiles"] if p["id"] in used], "cases": cases,
@@ -268,6 +277,50 @@ def test_pack_carries_each_selection_settings_image_and_problems(data, node):
     assert not bad["ready"] and good["ready"]
 
 
+def test_pack_carries_each_deployed_selection_s_api_endpoint(data, node):
+    mimo_port = next(p for p in data["profiles"] if p["id"] == MIMO2)["checkpoints"][0]["port"]
+    halves = [{"profile": TP2, "settings": {"api_port": 9100, "api_bind": "198.51.100.20"},
+               "endpoint": {"address": "llm.example.net"}},
+              {"profile": MIMO2, "endpoint": {"ask": True}}]
+    pack, bad, refused = packs(node, data, [
+        {"layout": "halves", "features": BOTH, "main": {"profile": TP4}, "halves": halves,
+         "opts": {**NEW, "form": "installed", "approval": "yes"}},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2, "endpoint": {"address": "http://llm:8000"}}, "opts": NEW},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2, "settings": {"api_port": 29638}}, "opts": NEW},
+    ])
+    assert commands(pack, "install") == [
+        f"sudo sparkring install --profile {TP2} --on 0,1 --api-bind 198.51.100.20 --api-port 9100 --api-address "
+        "llm.example.net --yes",
+        # Ask during install leaves out --yes, so that the installer asks.
+        f"sudo sparkring install --profile {MIMO2} --on 2,3"]
+    assert endpoints(pack, "install") == ["http://llm.example.net:9100/v1", f"http://SPARK_2:{mimo_port}/v1"]
+    # The switch command takes the automatic endpoint.
+    assert commands(pack, "switch") == [f"sudo sparkring install --profile {TP4} --yes"]
+    assert "Replace NODE_A and SPARK_2 with the addresses of Node A and Spark 2." in pack["notes"]
+    assert ("An install set to ask lists the Spark's addresses and asks which address and port the model uses."
+            in pack["notes"])
+    first, = bad["groups"][0]["commands"]
+    assert first["command"] == "" and first["error"].startswith("--api-address takes a host name or an IP address")
+    first, = refused["groups"][0]["commands"]
+    assert first["error"] == "--api-port 29638 is the profile's --master-port. Choose another port."
+
+
+def test_compose_readme_names_the_api_at_its_shown_address(data, node):
+    profile = next(p for p in data["profiles"] if p["id"] == TP2)
+    readme = run_engine(node, """
+(async () => {
+  const { profile, site, meta } = value, settings = { api_port: 9100, api_bind: '198.51.100.20' };
+  const output = await E.render(profile, site, settings, null);
+  const checkpoint = E.checkpointOf(profile, null);
+  const { bytes } = E.archive(profile, checkpoint, site, settings, output, meta, new Date(2026, 0, 1), 'llm.example.net');
+  const text = Buffer.from(bytes).toString('latin1');
+  console.log(JSON.stringify(text.slice(text.indexOf('SparkRing Compose deployment'), text.indexOf('PK', text.indexOf('SparkRing Compose deployment')))));
+})();""", {"profile": profile, "site": profile["example_site"], "meta": meta_of(data)})
+    assert "API http://llm.example.net:9100/v1, model " in readme
+    assert "5. curl http://llm.example.net:9100/v1/models lists " in readme
+    assert "--api-bind 198.51.100.20 --api-port 9100 --api-address llm.example.net" in readme
+
+
 def test_spark_problems_name_each_field_the_pack_cannot_use(node):
     ranks = [{"host": "spark-a", "host_ip": ""}, {"host": "", "host_ip": "198.51.100.11"}, {"host": "", "host_ip": ""},
              {"host": "spark-a", "host_ip": "300.1.1.1"}]
@@ -305,6 +358,27 @@ console.log(JSON.stringify({ search, back: E.linkChoices(search, byId, { ring_ha
     assert unsupported["layout"] == "ring" and unsupported["halves"][0]["profile"] == TP2
     assert mismatched["layout"] == "pair" and mismatched["halves"] == [None, None] and "order" not in mismatched["install"]
     assert unknown is None
+
+
+def test_links_carry_each_selection_s_api_endpoint(data, node):
+    by_id = {p["id"]: p for p in data["profiles"] if p["id"] in {TP2, TP4, MIMO2}}
+    choices = {"layout": "halves", "mode": "install", "image": None,
+               "main": {"profile": TP4, "checkpoint": None, "settings": {}},
+               "halves": [{"profile": TP2, "checkpoint": None, "settings": {"api_bind": "198.51.100.20", "api_port": 9100},
+                           "endpoint": {"mode": "set", "address": "llm.example.net"}},
+                          {"profile": MIMO2, "checkpoint": None, "settings": {}, "endpoint": {"mode": "ask", "address": ""}}],
+               "install": {"form": "installed", "approval": "ask", "limit": ""}}
+    found = run_engine(node, """
+const { choices, byId } = value, search = E.linkQuery(choices);
+console.log(JSON.stringify({ search, back: E.linkChoices(search, byId, { ring_halves: true }),
+  odd: E.linkChoices('profile=""" + TP2 + """&endpoint=never&api_bind=0.1.2.3.4&api_port=x', byId, {}) }));""",
+                       {"choices": choices, "byId": by_id})
+    assert found["search"] == (f"profile={TP4}&layout=halves&mode=install&first={TP2}&first.api_bind=198.51.100.20"
+                               "&first.api_port=9100&first.endpoint=set&first.api_address=llm.example.net"
+                               f"&second={MIMO2}&second.endpoint=ask&form=installed&approval=ask")
+    assert found["back"] == choices
+    # A link that names no valid endpoint choice leaves it automatic.
+    assert found["odd"]["main"] == {"profile": TP2, "checkpoint": None, "settings": {}}
 
 
 GIB = 2 ** 30
