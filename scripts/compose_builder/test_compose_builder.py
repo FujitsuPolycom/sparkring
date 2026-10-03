@@ -362,6 +362,7 @@ def test_page_inlines_data_engine_and_verification(data):
     assert "<" not in embedded
     document = json.loads(embedded)
     assert document["profiles"] == data["profiles"] and document["verification"]["archives"] == 4
+    assert document["features"] == data["features"]
     assert "module.exports" not in html
 
 
