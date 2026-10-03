@@ -1,7 +1,12 @@
-# Repository layout migration inventory
+<a id="repository-layout-migration-inventory"></a>
 
-Historical migration inventory. The [adoption report](repository-layout-adoption.md)
-specifies the integrated branch, contributor work and validation.
+# Repository layout migration inventory: historical record
+
+**Historical record.** This inventory lists the callers and dispositions
+found in September 2026 while moving the repository to its present layout; it
+is not a current plan. The [repository ownership guide](layout.md) states the
+rules that apply now. The [adoption record](repository-layout-adoption.md)
+describes the integrated branch, contributor work and validation of that move.
 
 Base: `c65a9981e2a69f821ac716f6f13484d99d23f4ea`, fetched from
 FujitsuPolycom/sparkring main on 2026-09-11. Work is isolated on

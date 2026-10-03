@@ -325,6 +325,18 @@ def discover(target):
     return {"host": target, "management_ip": facts["management_ip"], "fabric_ip": facts["fabric_ip"], "interface": facts["interface"]}
 
 
+def fabric_matches(facts, row):
+    """Whether the rank's first RDMA device has the row's socket interface as its netdev, holding only the row's host IP.
+
+    A pair's rank and the lower rank of a ring half use port 0's primary
+    function (``rocep1s0f0``); the higher rank of a ring half uses port 1's
+    (``rocep1s0f1``), which faces its partner.
+    """
+    device = next((entry for entry in facts["rdma"] if entry.get("device") == row["hcas"][0] and "error" not in entry),
+                  {})
+    return device.get("netdev") == row["interface"] and device.get("ips") == [row["host_ip"]]
+
+
 def check_facts(facts, row):
     if facts["platform"] != "Linux" or facts["architecture"] not in ("aarch64", "arm64"):
         raise ValueError("Serving hosts must be Linux ARM64 GB10 machines")
@@ -341,7 +353,7 @@ def check_facts(facts, row):
         matching = [name for name, values in facts.get("ipv4", {}).items() if row["host_ip"] in values]
         if matching != [row["interface"]] or row["interface"] in {d.get("netdev") for d in facts["rdma"]}:
             raise ValueError("TP4 bootstrap address must identify its independent management interface")
-    elif facts["fabric_ip"] != row["host_ip"] or facts["interface"] != row["interface"]:
+    elif not fabric_matches(facts, row):
         raise ValueError("Discovered management/fabric mapping differs from the saved site; inspect before reinitializing")
     devices = {entry["device"]: entry for entry in facts["rdma"]}
     for name in row["hcas"]:
@@ -575,6 +587,7 @@ class Runner:
         labels = {"prerequisites": "Check host and GPU availability", "prepare-prerequisites": "Check host before preparing assets", "source": "Copy installer source",
                   "source-check": "Verify installer source", "image": "Prepare pinned image", "image-check": "Verify image",
                   "model": "Prepare checkpoint and verify all shards", "model-check": "Verify checkpoint receipt",
+                  "derive": "Derive checkpoint and verify all files", "derive-check": "Verify derived checkpoint receipt",
                   "preflight": "Check model and fabric", "create": "Create stopped model container", "created": "Verify model container",
                   "start": "Start model", "running": "Check model process", "ready": "Wait for API readiness",
                   "smoke": "Test a short model response", "model-settled": "Confirm checkpoint unchanged during loading",
@@ -584,6 +597,8 @@ class Runner:
                   "ring-stopped": "Check that only a healthy ring mesh runs",
                   "ring-serve": "Start and check the ring mesh", "ring-check": "Check the ring mesh",
                   "gid-serve": "Restore fabric addresses in RoCE GID index 3", "gid-check": "Check RoCE GID index 3",
+                  "ring-park": "Stop and disable the four-Spark mesh",
+                  "ring-parked": "Check that no four-Spark mesh runs",
                   "mesh-gate": "Verify all four fabric ranks", "stop": "Stop model", "stopped": "Confirm model stopped"}
         operation = argv[1] if len(argv) > 1 else "operation"
         rank = argv[2] if len(argv) > 2 else "?"

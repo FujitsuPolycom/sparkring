@@ -1,0 +1,537 @@
+{
+  "decode_runs": [
+    {
+      "file": "decode-mxattn-r1.json",
+      "sha256": "16021d3ca523debf476faa463e88ac28336df864cc88cc05c6975e3741dae465",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T11:13:48.884733",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 19.985,
+          "aggregate_tps": 59.69477107830699,
+          "server_gen_throughput": 59.55471246006615,
+          "server_spec_accept_rate": 0.4017252002464572,
+          "server_spec_accept_length": 2.2051756007393717,
+          "server_spec_drafts": 541,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 20.0,
+          "aggregate_tps": 209.55,
+          "server_gen_throughput": 209.38249400476207,
+          "server_spec_accept_rate": 0.41936063218390807,
+          "server_spec_accept_length": 2.258081896551724,
+          "server_spec_drafts": 1856,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.093,
+          "tok_per_sec": 3914.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.328,
+          "tok_per_sec": 3782.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 37.734,
+          "tok_per_sec": 3474.0
+        }
+      }
+    },
+    {
+      "file": "decode-mxattn-r2.json",
+      "sha256": "ce98457c6f91ac3da5eefcd0aa4461a133c1aea6269f51d2154c3332a3dfece1",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T11:16:12.830172",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 20.0,
+          "aggregate_tps": 64.55,
+          "server_gen_throughput": 64.49840127898976,
+          "server_spec_accept_rate": 0.4650587507730365,
+          "server_spec_accept_length": 2.3951762523191094,
+          "server_spec_drafts": 539,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 19.969,
+          "aggregate_tps": 214.13190445192916,
+          "server_gen_throughput": 213.45846645368218,
+          "server_spec_accept_rate": 0.46205357142857145,
+          "server_spec_accept_length": 2.3861607142857144,
+          "server_spec_drafts": 1792,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.078,
+          "tok_per_sec": 3942.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.156,
+          "tok_per_sec": 3820.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 37.75,
+          "tok_per_sec": 3472.0
+        }
+      }
+    },
+    {
+      "file": "decode-mxattn-r3.json",
+      "sha256": "7167288d39bf34617614d79a23188676a668325a4b10c76109f8e3542fa2e45c",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T11:18:36.410362",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 19.969,
+          "aggregate_tps": 63.29811207372274,
+          "server_gen_throughput": 63.14948041565718,
+          "server_spec_accept_rate": 0.4527363184079602,
+          "server_spec_accept_length": 2.3582089552238807,
+          "server_spec_drafts": 536,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 19.953,
+          "aggregate_tps": 211.54713576904308,
+          "server_gen_throughput": 210.72337876296587,
+          "server_spec_accept_rate": 0.4553437967115097,
+          "server_spec_accept_length": 2.366031390134529,
+          "server_spec_drafts": 1784,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.094,
+          "tok_per_sec": 3912.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.171,
+          "tok_per_sec": 3817.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 37.75,
+          "tok_per_sec": 3472.0
+        }
+      }
+    },
+    {
+      "file": "decode-stock-r1.json",
+      "sha256": "3e4632e5e00a0414544a1ed43df7604c9ad9d925e5d184ba38d35cd1cbd3115a",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T10:55:36.064345",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 19.969,
+          "aggregate_tps": 51.37963843958824,
+          "server_gen_throughput": 51.25899280574705,
+          "server_spec_accept_rate": 0.3881856540084388,
+          "server_spec_accept_length": 2.1645569620253164,
+          "server_spec_drafts": 474,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 19.969,
+          "aggregate_tps": 202.5138965395898,
+          "server_gen_throughput": 202.03836930452346,
+          "server_spec_accept_rate": 0.46524486571879936,
+          "server_spec_accept_length": 2.395734597156398,
+          "server_spec_drafts": 1688,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.203,
+          "tok_per_sec": 3719.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.875,
+          "tok_per_sec": 3666.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 39.016,
+          "tok_per_sec": 3359.0
+        }
+      }
+    },
+    {
+      "file": "decode-stock-r2.json",
+      "sha256": "ce9404273a65f081e32d13e329e2a402e2470abc5282007412b4a9fe393dcfde",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T10:58:01.822274",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 19.985,
+          "aggregate_tps": 53.64023017262791,
+          "server_gen_throughput": 53.70703437251277,
+          "server_spec_accept_rate": 0.4258474576271186,
+          "server_spec_accept_length": 2.277542372881356,
+          "server_spec_drafts": 472,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 19.985,
+          "aggregate_tps": 212.0090067550601,
+          "server_gen_throughput": 211.91094249202078,
+          "server_spec_accept_rate": 0.478019877675841,
+          "server_spec_accept_length": 2.4340596330275233,
+          "server_spec_drafts": 1744,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.187,
+          "tok_per_sec": 3746.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.844,
+          "tok_per_sec": 3673.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 39.063,
+          "tok_per_sec": 3355.0
+        }
+      }
+    },
+    {
+      "file": "decode-stock-r3.json",
+      "sha256": "eb154567c32dcb18ac22fc50e226308adea3cf60456276bdf5dcab7cd22ba57c",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T11:00:27.291139",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 19.985,
+          "aggregate_tps": 53.490117588189584,
+          "server_gen_throughput": 53.40727418064678,
+          "server_spec_accept_rate": 0.42321302193913657,
+          "server_spec_accept_length": 2.26963906581741,
+          "server_spec_drafts": 471,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 19.953,
+          "aggregate_tps": 199.66922267326882,
+          "server_gen_throughput": 199.04076738605872,
+          "server_spec_accept_rate": 0.45339652448657186,
+          "server_spec_accept_length": 2.3601895734597154,
+          "server_spec_drafts": 1688,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.204,
+          "tok_per_sec": 3717.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.813,
+          "tok_per_sec": 3679.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 39.031,
+          "tok_per_sec": 3358.0
+        }
+      }
+    },
+    {
+      "file": "decode-stockrc-r1.json",
+      "sha256": "da423f1c9e4726c618f55b2241e2cdc8e48b94dfe24a966b6a4e713bc8ece017",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T11:30:24.197113",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 20.0,
+          "aggregate_tps": 58.4,
+          "server_gen_throughput": 59.80215827337155,
+          "server_spec_accept_rate": 0.500347947112039,
+          "server_spec_accept_length": 2.501043841336117,
+          "server_spec_drafts": 479,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 20.0,
+          "aggregate_tps": 209.05,
+          "server_gen_throughput": 209.48241406878705,
+          "server_spec_accept_rate": 0.4830607476635514,
+          "server_spec_accept_length": 2.4491822429906542,
+          "server_spec_drafts": 1712,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.188,
+          "tok_per_sec": 3744.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.907,
+          "tok_per_sec": 3660.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 39.016,
+          "tok_per_sec": 3359.0
+        }
+      }
+    },
+    {
+      "file": "decode-stockrc-r2.json",
+      "sha256": "effaf32741215751fdb29dcfb56a54314e9959120935c475a643aa9c02e6824e",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T11:32:49.828268",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 19.969,
+          "aggregate_tps": 55.285692823884425,
+          "server_gen_throughput": 55.25855608293941,
+          "server_spec_accept_rate": 0.4395527603074773,
+          "server_spec_accept_length": 2.318658280922432,
+          "server_spec_drafts": 477,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 19.984,
+          "aggregate_tps": 201.1609287430272,
+          "server_gen_throughput": 200.84936297777253,
+          "server_spec_accept_rate": 0.44937694704049846,
+          "server_spec_accept_length": 2.3481308411214954,
+          "server_spec_drafts": 1712,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.203,
+          "tok_per_sec": 3719.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.859,
+          "tok_per_sec": 3670.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 39.047,
+          "tok_per_sec": 3357.0
+        }
+      }
+    },
+    {
+      "file": "decode-stockrc-r3.json",
+      "sha256": "b2ff385960735b5f1b7a03e208869a64ba4258fbc07479c090e9818b338b4ff6",
+      "bench_version": "0.6.2",
+      "timestamp": "2026-10-01T11:35:13.961452",
+      "cells": [
+        {
+          "concurrency": 1,
+          "context_tokens": 0,
+          "measurement_seconds": 19.984,
+          "aggregate_tps": 55.79463570857595,
+          "server_gen_throughput": 55.908068948290406,
+          "server_spec_accept_rate": 0.45358649789029537,
+          "server_spec_accept_length": 2.3607594936708862,
+          "server_spec_drafts": 474,
+          "num_errors": 0
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 0,
+          "measurement_seconds": 19.953,
+          "aggregate_tps": 197.21345161127329,
+          "server_gen_throughput": 196.5927258193125,
+          "server_spec_accept_rate": 0.4400550314465409,
+          "server_spec_accept_length": 2.3201650943396226,
+          "server_spec_drafts": 1696,
+          "num_errors": 0
+        }
+      ],
+      "prefill": {
+        "8192": {
+          "prompt_tokens": 8192,
+          "ttft_seconds": 2.187,
+          "tok_per_sec": 3746.0
+        },
+        "65536": {
+          "prompt_tokens": 65536,
+          "ttft_seconds": 17.859,
+          "tok_per_sec": 3670.0
+        },
+        "131072": {
+          "prompt_tokens": 131072,
+          "ttft_seconds": 39.109,
+          "tok_per_sec": 3351.0
+        }
+      }
+    }
+  ],
+  "probes": [
+    {
+      "file": "probe-mxattn-1.json",
+      "sha256": "7220ddd97f8992bbedab37e05c60019768631449da156e273d7fb0f0f301e0ce",
+      "label": "mxfp8 attention",
+      "requests": 48,
+      "concurrency": 4,
+      "max_tokens": 384,
+      "temperature": 1.0,
+      "elapsed_s": 88.5,
+      "completion_tokens": 12433,
+      "counters": {
+        "drafts": 4602.0,
+        "draft_tokens": 13806.0,
+        "accepted_tokens": 7852.0
+      },
+      "acceptance_rate": 0.568738229755179,
+      "accept_length": 2.7062146892655368,
+      "per_position_acceptance": {
+        "0": 0.7753150803998262,
+        "1": 0.556497175141243,
+        "2": 0.37440243372446763
+      },
+      "finish_reasons": {
+        "length": 11,
+        "stop": 37
+      }
+    },
+    {
+      "file": "probe-mxattn-2.json",
+      "sha256": "e14e8ac5b1d7f06fab147621f67f7fcfad0722a8d427c6685927d246080e3d73",
+      "label": "mxfp8 attention repeat",
+      "requests": 48,
+      "concurrency": 4,
+      "max_tokens": 384,
+      "temperature": 1.0,
+      "elapsed_s": 92.3,
+      "completion_tokens": 12864,
+      "counters": {
+        "drafts": 4807.0,
+        "draft_tokens": 14421.0,
+        "accepted_tokens": 8064.0
+      },
+      "acceptance_rate": 0.5591845225712503,
+      "accept_length": 2.6775535677137507,
+      "per_position_acceptance": {
+        "0": 0.7665903890160183,
+        "1": 0.5452465154982318,
+        "2": 0.36571666319950075
+      },
+      "finish_reasons": {
+        "length": 13,
+        "stop": 35
+      }
+    },
+    {
+      "file": "probe-stock-1.json",
+      "sha256": "8446db44bc45b0ef94f62652a705d974d3384ae2cbfb44c5fc04ac4b190ced91",
+      "label": "stock step 5500",
+      "requests": 48,
+      "concurrency": 4,
+      "max_tokens": 384,
+      "temperature": 1.0,
+      "elapsed_s": 90.9,
+      "completion_tokens": 12127,
+      "counters": {
+        "drafts": 4507.0,
+        "draft_tokens": 13521.0,
+        "accepted_tokens": 7633.0
+      },
+      "acceptance_rate": 0.5645292507950596,
+      "accept_length": 2.6935877523851786,
+      "per_position_acceptance": {
+        "0": 0.7721322387397381,
+        "1": 0.5482582649212336,
+        "2": 0.3731972487242068
+      },
+      "finish_reasons": {
+        "length": 12,
+        "stop": 36
+      }
+    },
+    {
+      "file": "probe-stock-2.json",
+      "sha256": "3b539120911ef485828f8d2e8ba310cd6f040864ffb9289d3fefa148e17ed49a",
+      "label": "stock step 5500 repeat",
+      "requests": 48,
+      "concurrency": 4,
+      "max_tokens": 384,
+      "temperature": 1.0,
+      "elapsed_s": 94.0,
+      "completion_tokens": 12451,
+      "counters": {
+        "drafts": 4675.0,
+        "draft_tokens": 14025.0,
+        "accepted_tokens": 7781.0
+      },
+      "acceptance_rate": 0.554795008912656,
+      "accept_length": 2.6643850267379676,
+      "per_position_acceptance": {
+        "0": 0.7627807486631016,
+        "1": 0.5373262032085562,
+        "2": 0.36427807486631014
+      },
+      "finish_reasons": {
+        "length": 9,
+        "stop": 39
+      }
+    }
+  ]
+}

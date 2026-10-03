@@ -11,6 +11,7 @@ import subprocess
 import yaml
 
 from runtime.common import profiles, qwen_flash_next
+from runtime.common import serving as serving_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 # Qwen Flash-Next profiles: the two installer profiles, which run on the shared
@@ -172,9 +173,11 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "runtime/common/ports.py",
         "runtime/common/process_lock.py",
         "runtime/common/qwen_flash_next.py",
+        "runtime/common/derived_checkpoint.py",
         "runtime/common/profiles.py",
         "runtime/common/candidate.py",
         "runtime/common/cache_candidate.py",
+        "runtime/common/serving.py",
         "scripts/sparkring_compose.py",
         "scripts/deploy_engine.py",
         "profiles/catalog.json",
@@ -270,6 +273,20 @@ def installer_container(spec, image_runtime, *, profile_id, source_root):
     return replace(adapted, mounts=mounts, environment=environment)
 
 
+def named_image(name):
+    """The image lock of the installer image ``name`` selects, or None for the default image or no name.
+
+    ``name`` is what `sparkring install --image` takes: a release name, the
+    GitHub release tag that published it, or a unique part of a release name
+    (installer_image.lock_path).
+    """
+    if name is None:
+        return None
+    from runtime.common import installer_image
+    path = installer_image.lock_path(name)
+    return None if path is None else json.loads(path.read_text(encoding="utf-8"))
+
+
 def installer_image_runtime(profile_id):
     """The image lock that `sparkring install` selects for this profile, or None.
 
@@ -286,11 +303,17 @@ def installer_image_runtime(profile_id):
 
 
 def specifications(profile_id, site, *, local_image_id=None, local_source_extension=None,
-                   local_kv_cache_gib=None, local_master_port=None, image_runtime=None, checkpoint=None):
+                   local_kv_cache_gib=None, local_master_port=None, image_runtime=None, checkpoint=None,
+                   serving=None):
     """Per-rank container specifications and the image reference Compose names.
 
     ``checkpoint`` selects an entry of the profile's checkpoints table; None
     keeps the profile's default checkpoint.
+
+    ``serving`` holds runtime/common/serving.py settings, which replace the
+    profile's vLLM values and set their switches' variables in every rank's
+    container, as `sparkring install` applies them. Local source-extension
+    trials select their KV alternative with ``local_kv_cache_gib`` instead.
 
     ``image_runtime`` is an installer image lock. With it, each rank is the
     container that installer_container derives for the host; build records the
@@ -372,7 +395,32 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
             spec = installer_container(spec, image_runtime, profile_id=profile_id,
                                        source_root=rank["repository"])
         specs.append(replace(spec, name=f"sr-{site['name']}-r{rank['rank']}"))
+    settings = serving_settings.normalized(serving)
+    if settings:
+        if local_source_extension is not None:
+            raise ValueError("Serving settings apply to published images; a local source-extension trial "
+                             "selects its KV alternative with --local-kv-cache-gib")
+        specs = [replace(spec, command=serving_settings.apply(spec.command, settings),
+                         environment={**spec.environment, **serving_settings.environment(settings)})
+                 for spec in specs]
     return specs, image
+
+
+def checkpoint_selection(profile_id, name):
+    """The listed checkpoint that ``name`` selects, or None for the profile's default.
+
+    An alias selects the checkpoint it names, and naming the default checkpoint
+    selects the same deployment as naming none, as `sparkring install
+    --checkpoint` does. A name the profile does not list is refused.
+    """
+    if name is None:
+        return None
+    metadata, _ = profiles.load(profile_id)
+    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
+    default, _ = qwen_flash_next.checkpoint_names(profile)
+    name = qwen_flash_next.checkpoint_name(profile, name)
+    qwen_flash_next.checkpoint_settings(profile, name)
+    return None if name == default else name
 
 
 def service(spec, image):
@@ -457,20 +505,27 @@ def compose_text(spec, image):
 
 
 def selection_options(manifest):
-    """Carry only explicit image/test selections into deterministic regeneration."""
+    """Carry only explicit image, checkpoint, serving and test selections into deterministic regeneration."""
     return {name: manifest[name] for name in (
         "local_image_id", "local_source_extension", "local_kv_cache_gib", "local_master_port",
-        "image_runtime",
+        "image_runtime", "checkpoint", "serving",
     ) if name in manifest}
 
 
 def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
-          local_kv_cache_gib=None, local_master_port=None, image_runtime=None):
+          local_kv_cache_gib=None, local_master_port=None, image_runtime=None, checkpoint=None,
+          serving=None):
     """Deployment manifest and generated files for one site.
 
     Profiles on the shared toolchain image always deploy the installer's
     containers: without an explicit ``image_runtime`` the installer's default
     image lock is selected, and the manifest records the lock document.
+
+    ``checkpoint`` and ``serving`` select a checkpoint and serving settings as
+    `sparkring install --checkpoint` and its serving-setting flags do. The
+    manifest records a checkpoint other than the default (checkpoint_selection)
+    and nonempty serving settings; without them a deployment's manifest and ID
+    are those of the profile's own checkpoint and values.
 
     The manifest ``id``, which labels every container, is the digest of the
     profile ID, the site, the selection options and identity_inventory of the
@@ -481,7 +536,8 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     options = {key: value for key, value in {
         "local_image_id": local_image_id, "local_source_extension": local_source_extension,
         "local_kv_cache_gib": local_kv_cache_gib, "local_master_port": local_master_port,
-        "image_runtime": image_runtime,
+        "image_runtime": image_runtime, "checkpoint": checkpoint_selection(profile_id, checkpoint),
+        "serving": serving_settings.normalized(serving) or None,
     }.items() if value is not None}
     specs, image = specifications(profile_id, site, **options)
     inputs = (source_inventory(profile_id) if local_source_extension is None else
@@ -513,11 +569,12 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
 
 
 def render(profile_id, site, output, *, local_image_id=None, local_source_extension=None,
-           local_kv_cache_gib=None, local_master_port=None, image_runtime=None):
+           local_kv_cache_gib=None, local_master_port=None, image_runtime=None, checkpoint=None,
+           serving=None):
     manifest, files = build(profile_id, site, local_image_id=local_image_id,
                           local_source_extension=local_source_extension,
                           local_kv_cache_gib=local_kv_cache_gib, local_master_port=local_master_port,
-                          image_runtime=image_runtime)
+                          image_runtime=image_runtime, checkpoint=checkpoint, serving=serving)
     output = Path(output).resolve()
     if output.is_relative_to(ROOT) and not output.is_relative_to(ROOT / ".sparkring"):
         raise ValueError(
@@ -530,6 +587,16 @@ def render(profile_id, site, output, *, local_image_id=None, local_source_extens
         path.write_text(text, encoding="utf-8", newline="\n")
         path.chmod(0o600)
     return manifest
+
+
+def serving_warnings(manifest):
+    """The warnings `sparkring install` prints for a deployment's serving settings above the profile's values."""
+    settings = manifest.get("serving")
+    if not settings:
+        return []
+    options = {key: value for key, value in selection_options(manifest).items() if key != "serving"}
+    specs, _ = specifications(manifest["profile"], manifest["site"], **options)
+    return serving_settings.warnings(settings, specs[0].command)
 
 
 def load_deployment(output):

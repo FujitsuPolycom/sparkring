@@ -1,5 +1,6 @@
 """Prepare head/worker packages, cached images and the pinned checkpoint through verified fabric paths."""
 import concurrent.futures
+import contextlib
 import inspect
 import json
 import os
@@ -141,8 +142,17 @@ class Assets:
         self.run, self.popen = run, popen
         self.download_limit = download_limit
 
+    def local(self, rank):
+        """Whether transport rank ``rank`` is Node A, which runs its commands itself without sudo.
+
+        A transport limited to a ring half (``fabric_ssh.View``) numbers its
+        Sparks from 0, so its rank 0 is Node A only on half (0, 1).
+        """
+        local = getattr(self.transport, "local", None)
+        return local(rank) if local is not None else rank == 0
+
     def command(self, rank, argv):
-        return self.transport.command(rank, argv if rank == 0 else ["sudo", "-n", *argv])
+        return self.transport.command(rank, argv if self.local(rank) else ["sudo", "-n", *argv])
 
     @staticmethod
     def code(function, *args, **kwargs):
@@ -424,8 +434,9 @@ class Assets:
         and ``--checksum``; ``model-transfer-complete`` then hashes each staged
         file and places it. Returns the result of ``model-transfer-complete``.
         """
-        if 0 not in (source, target) or source == target:
-            raise ValueError("rsync copies run between Node A and one other Spark")
+        if not (self.local(source) or self.local(target)) or source == target:
+            raise ValueError(f"rsync copies run between Node A and one other Spark; Node {source} and Node {target} "
+                             "copy only over their shared cable")
         subset = transfer_manifest(manifest, names)
         data = json.dumps(subset).encode()
         with progress.step(f"Node {target}: Copy checkpoint files from Node {source} over {self.transport.mode}"):
@@ -434,11 +445,11 @@ class Assets:
             if isinstance(prepared, dict) and isinstance(prepared.get("needed"), list):
                 needed = sorted(set(prepared["needed"]) & set(subset["files"]))
             if needed:
-                remote = source if source != 0 else target
+                remote = target if self.local(source) else source
                 ssh = shlex.join(self.transport.argv(remote)[:-1])
                 alias = self.transport.argv(remote)[-1]
-                origin = (alias + ":" if source != 0 else "") + rows[source]["model"] + "/"
-                destination = (alias + ":" if target != 0 else "") + rsync_staging(rows[target]["model"]) + "/"
+                origin = (alias + ":" if not self.local(source) else "") + rows[source]["model"] + "/"
+                destination = (alias + ":" if not self.local(target) else "") + rsync_staging(rows[target]["model"]) + "/"
                 progress.command([*RSYNC, "--files-from=-", "-e", ssh, origin, destination],
                                  title=f"Node {target}: Transfer checkpoint files", invoke=self.run, check=True,
                                  input=("\n".join(needed) + "\n").encode())
@@ -581,7 +592,8 @@ class Assets:
                 document = {"names": after["hub"]}
                 if self.download_limit:
                     document["limit"] = self.download_limit
-                meter = download_meter(rows[0]["model"], manifest, after["hub"])
+                # The meter reads the staging directory on Node A, so it reports only a download there.
+                meter = download_meter(rows[0]["model"], manifest, after["hub"]) if self.local(0) else None
                 with progress.step("Node 0: Download missing checkpoint files from huggingface.co", phase="model-fetch",
                                    report=meter):
                     outcome = operation(runner, 0, "model-fetch", json.dumps(document).encode())
@@ -603,6 +615,109 @@ class Assets:
         node.save(self.directory, "checkpoint-result.json", result, mode=0o600)
         return result
 
+    def derive(self, lock, runner, previous=None, plan=None, receipts=None):
+        """Write the derived checkpoint on every Spark within the approved plan's derivation section.
+
+        Runs after the base is complete and verified on every Spark (the
+        ``model`` phase) and the serving image is on every Spark (the ``image``
+        phase); ``runtime.host.derivation`` describes the steps. ``plan`` is the
+        approved checkpoint plan; without one, or without its ``derivation``
+        section, nothing is downloaded and each Spark may write at most the
+        guard's tolerance, so only a derived checkpoint that the Sparks already
+        hold passes. ``receipts`` are the other deployments' receipts that
+        linking refreshes, as ``models`` takes them.
+
+        1. ``derive-link`` runs on every Spark at once: it settles the derived
+           directory, hard-links the base files it keeps and writes the
+           receipt when the directory is complete.
+        2. The recipe's files come from the lowest-numbered Spark that holds
+           them all; without one, Node A pools them when the other Sparks hold
+           every file between them, and otherwise downloads the donor files it
+           lacks (``derive-donor``, within the approved downloads) and runs the
+           recipe (``derive-run``).
+        3. The other Sparks receive the recipe's files along the cables, with
+           rsync through Node A as the fallback; each places a file only after
+           its SHA-256 equals the manifest's.
+
+        The result is saved as ``derivation-result.json``. Returns None for a
+        checkpoint that is not derived.
+        """
+        manifest = installer.derived_checkpoint.load(lock["selection"])
+        if manifest is None:
+            return None
+        from runtime.host import derivation
+        rows = lock["site"]["ranks"]
+        count = len(rows)
+        approved = (plan or {}).get("derivation")
+        if approved is not None and (approved["repository"], approved["revision"]) != (manifest["repository"],
+                                                                                       manifest["revision"]):
+            raise ValueError("The approved checkpoint plan derives another checkpoint than the deployment lock")
+        allowed = list(approved["donor"]["download"]) if approved else []
+        limits = approved or {"nodes": [{"rank": rank, "hostname": row["host"], "write_bytes": 0}
+                                        for rank, row in enumerate(rows)]}
+        recipe = installer.derived_checkpoint.files_of(manifest, "recipe")
+
+        def link(rank):
+            data = json.dumps({"receipts": receipts_for(receipts, rank)}).encode()
+            with progress.step(f"Node {rank}: Link the derived checkpoint's files from the base"):
+                return operation(runner, rank, "derive-link", data)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=count) as pool:
+            results = list(pool.map(link, range(count)))
+        holdings = [set(result.get("verified") or ()) & set(recipe) for result in results]
+        after = checkpoint_plan._distribute(count, holdings, recipe)
+        derive = bool(after["hub"])
+        writes = [0] * count
+        if derive:
+            writes[0] += sum(recipe.values())
+            writes[0] += sum(approved["donor"]["files"][name] for name in allowed) if approved else 0
+        else:
+            writes[0] += sum(recipe[name] for item in after["pool"] for name in item["names"])
+        for item in after["receive"]:
+            writes[item["target"]] += sum(recipe[name] for name in item["names"])
+        items = derivation.bound(limits, writes)
+        if items:
+            raise NeedsInput(checkpoint_plan.unplanned_message(items, (plan or {}).get("command")
+                                                                or checkpoint_plan.COMMAND),
+                             field="checkpoint", details={"items": items})
+        complete = {rank for rank, result in enumerate(results) if result.get("complete")}
+        view = [{**row, "model": installer.derived_checkpoint.directory(row["model"], manifest)} for row in rows]
+        transfer = transfer_manifest({"repository": manifest["repository"], "revision": manifest["revision"],
+                                      "files": {name: manifest["files"][name]["sha256"] for name in recipe},
+                                      "sizes": dict(recipe)})
+        pooled, fetched = [], []
+        if derive:
+            document = {"names": allowed}
+            if self.download_limit:
+                document["limit"] = self.download_limit
+            step = (progress.step("Node 0: Download the donor files of the derived checkpoint from huggingface.co",
+                                  phase="derive-donor") if allowed else contextlib.nullcontext())
+            with step:
+                fetched = operation(runner, 0, "derive-donor", json.dumps(document).encode()).get("fetched") or []
+            with progress.step("Node 0: Derive the checkpoint in the installer image", phase="derive-run"):
+                outcome = operation(runner, 0, "derive-run")
+            finished(outcome, 0, "deriving it")
+            complete.add(0)
+        elif after["pool"]:
+            outcome = None
+            for item in after["pool"]:
+                outcome, transport = self.assemble(runner, view, transfer, item)
+                pooled.append({**item, "transport": transport})
+            finished(outcome, 0, "assembling it from the other Sparks")
+            complete.add(0)
+        received = self.distribute(runner, view, transfer, after["donor"], after["receive"], complete)
+        incomplete = [rank for rank in range(count) if rank not in complete]
+        if incomplete:
+            raise ValueError("The derived checkpoint is incomplete on " + ", ".join(f"Node {rank}" for rank in incomplete)
+                             + " after linking, derivation and transfers; repeat sudo sparkring install")
+        result = {"schema": DERIVATION_SCHEMA, "repository": manifest["repository"], "revision": manifest["revision"],
+                  "approval": (plan or {}).get("approval"), "derived": derive, "donor_downloaded": fetched,
+                  "source_rank": after["donor"], "linked": [{"rank": rank, "files": len(result.get("linked") or ()),
+                                                             "complete_after_linking": bool(result.get("complete"))}
+                                                            for rank, result in enumerate(results)],
+                  "pooled": pooled, "received": received}
+        node.save(self.directory, "derivation-result.json", result, mode=0o600)
+        return result
+
     def runner(self, directory, previous=None, images=None, plan=None, receipts=None):
         """Runner whose checkpoint and image phases wait for ``images``, a pending fan-out.
 
@@ -617,6 +732,10 @@ class Assets:
         which raises ``needs_input`` when the preparation fails. Any other
         failure is kept as ``models_error``, whose text names the Spark and the
         cause. ``checkpoint`` holds the result of ``models``.
+
+        The ``derive`` phase of a derived checkpoint runs ``derive`` the same
+        way, once, when its first action arrives; ``derivation`` holds its
+        result.
         """
         from scripts.installer_runner import Runner
         assets = self
@@ -635,6 +754,8 @@ class Assets:
                 self.models_error = None
                 self.needs_input = None
                 self.checkpoint = None
+                self.derived_prepared = False
+                self.derivation = None
 
             def _call(self, target, argv, timeout):
                 if argv[1] in ("model", "image") and images is not None and images.exception() is not None:
@@ -658,6 +779,19 @@ class Assets:
                                 self.models_error = "Checkpoint preparation failed: " + str(error)
                         if self.models_error is not None:
                             return failed(self.models_error)
+                if argv[1] == "derive":
+                    with self.model_lock:
+                        if not self.derived_prepared and self.models_error is None:
+                            try:
+                                self.derivation = assets.derive(self.lock, self, previous, **extra)
+                                self.derived_prepared = True
+                            except NeedsInput as error:
+                                self.needs_input = error
+                                self.models_error = STOPPED
+                            except Exception as error:  # noqa: BLE001 - reported as the phase's failure
+                                self.models_error = "Checkpoint derivation failed: " + str(error)
+                        if self.models_error is not None:
+                            return failed(self.models_error)
                 return super()._call(target, argv, timeout)
         return PreparedRunner(directory)
 
@@ -665,6 +799,7 @@ class Assets:
 # Transfer errors after which the rsync path is tried; NeedsInput is re-raised before.
 FALLBACK = (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError)
 RESULT_SCHEMA = "sparkring-checkpoint-result/v1"
+DERIVATION_SCHEMA = "sparkring-derivation-result/v1"
 # What each Spark's checkpoint action reports when the plan needs a decision; the request is printed once.
 STOPPED = "Stopped: the checkpoint plan needs a decision; the request is printed at the end."
 # rsync writes new files into an empty staging directory. Without -t, -a,

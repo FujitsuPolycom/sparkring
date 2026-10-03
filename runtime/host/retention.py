@@ -17,7 +17,9 @@ A deployment is kept while any of these holds (``REASONS``):
 
 - ``active``, ``rollback``, ``switching``: it is the active deployment
   (``active.json``), the rollback target or the candidate of an unfinished
-  model switch (``transaction.json``; ``checkpoints.roles``).
+  model switch (``transaction.json``; ``checkpoints.roles``). On a four-Spark
+  ring each half keeps these records too (``runtime.host.placement``), and the
+  models a switch stopped on other Sparks are rollback targets.
 - ``running``: its model container runs on a Spark.
 - ``mesh``: a SparkRing mesh installed on a Spark uses its workspace
   (``storage.installed_meshes``). On a four-Spark ring the deployment that
@@ -45,9 +47,11 @@ each Spark:
 - its stopped model containers (``sr-<site>-r<rank>``, labelled with its lock
   ID); the ``create`` phase of its next ``up`` creates them again;
 - its workspace; the ``source`` phase of its next ``up`` or installation
-  creates it again from the deployment's ``source.bundle`` on Node A, and the
+  creates it again from the deployment's ``source.bundle`` on Node A, the
   ``model`` phase writes the checkpoint receipt again from the checkpoint
-  directory's journal and path records, hashing only changed files;
+  directory's journal and path records, hashing only changed files, and a
+  derived checkpoint's ``derive`` phase writes its receipt again from the
+  derived directory's journal;
 - each compile cache that no kept deployment uses and no installer profile of
   the installed package references (class ``unreferenced`` of ``sudo sparkring
   storage``); the next start that uses it compiles and tunes again;
@@ -66,9 +70,13 @@ deployment's label and not be the container that an installed mesh starts, and
 each workspace and cache passes ``storage.release_local`` with the paths that
 the kept deployments name there, so the installed-mesh, model-file, mount-point
 and running-container checks of ``sudo sparkring storage --release`` apply.
-Checkpoint directories, Docker images, the deployment directories on Node A
+Checkpoint directories, a derived checkpoint's directory and its donor
+directory among them, Docker images, the deployment directories on Node A
 (lock, source bundle and receipts) and anything SparkRing's installer did not
-create are never released.
+create are never released. A kept deployment of a derived checkpoint uses its
+base's directory and the derived directory it serves, so ``sudo sparkring
+checkpoints --release`` refuses both while that deployment is the active one,
+the rollback target or the candidate of an unfinished model switch.
 
 A released deployment's directory on Node A records the release in
 ``released.json`` with the deployment's state generation and whether nothing

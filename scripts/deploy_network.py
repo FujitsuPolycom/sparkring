@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from pathlib import PurePosixPath
 
 from scripts import hairpin_setting
+from scripts.deploy_inventory import gid_index_hint
 from scripts.hairpin_setting import HAIRPIN_QUEUE_SIZE
 from spark_transport.fabric.cx7_hairpin_diagonal.fabric import RANK_COUNT
 
@@ -1060,6 +1061,7 @@ def verify_network(spec, inventory, *, hairpin=True, stale_gids=False):
             elif function.get("gid_index") != 3 or mapped != expected:
                 raise NetworkPlanError(
                     f"{host['host']}: GID index 3 does not match {port['netdev']} IPv4 address"
+                    + gid_index_hint(inventory[host["host"]], port["netdev"])
                 )
             elif function.get("gid_type") != "RoCE v2":
                 raise NetworkPlanError(f"{host['host']}: GID index 3 must use RoCE v2")

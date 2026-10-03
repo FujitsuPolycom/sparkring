@@ -507,7 +507,10 @@ def test_checkpoint_pins_agree_with_every_installer_profile():
         configuration = installer.read(installer.ROOT / card["configuration"])
         for name in sorted(set(configuration.get("checkpoints", {})) - {card["target_variant"]}):
             other = installer.setup.selection(profile, name)
-            pins = installer.checkpoint_pins(other)
+            # A derived checkpoint's manifest pins its files instead (runtime/common/test_derived_checkpoint.py).
+            manifest = installer.derived_checkpoint.load(other)
+            pins = installer.checkpoint_pins(other) if manifest is None else {
+                "files": manifest["files"], "index": manifest["index"]}
             assert pins["files"]["config.json"]["sha256"] == configuration["checkpoints"][name]["model"]["config_sha256"]
             assert pins["files"][pins["index"]]["sha256"] == configuration["checkpoints"][name]["model"]["index_sha256"]
     # The Qwen revision: 56 files, of which 53 are served (41 weight files).

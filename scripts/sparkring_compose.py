@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.common import compose, ports, profiles, qwen_flash_next  # noqa: E402
+from runtime.common import serving as serving_settings  # noqa: E402
 from scripts import deploy_engine  # noqa: E402
 
 # Check repository inputs before importing host code. The controller provides
@@ -428,6 +429,11 @@ def main(argv=None):
     render.add_argument("--local-source-extension", help="select a registered local source-extension test instead of the public image")
     render.add_argument("--local-kv-cache-gib", type=int, help="select the local TP2 33 GiB or TP4 40 GiB KV alternative; requires a source extension")
     render.add_argument("--local-master-port", type=int, help="isolated source-extension test bootstrap port")
+    render.add_argument("--checkpoint", metavar="NAME",
+                        help="another checkpoint the profile lists, with the settings it needs, as sparkring install selects it")
+    render.add_argument("--image", metavar="NAME",
+                        help="another installer image, by a name or release tag that sparkring images lists, as sparkring install --image selects it")
+    serving_settings.add_arguments(render)
     check = sub.add_parser(
         "check", help="check canonical inputs and resolved Compose equivalence"
     )
@@ -457,7 +463,12 @@ def main(argv=None):
                 local_source_extension=args.local_source_extension,
                 local_kv_cache_gib=args.local_kv_cache_gib,
                 local_master_port=args.local_master_port,
+                checkpoint=args.checkpoint,
+                serving=serving_settings.from_arguments(args),
+                image_runtime=compose.named_image(args.image),
             )
+            for line in compose.serving_warnings(manifest):
+                print("Warning: " + line, file=sys.stderr)
             print(
                 compose.encoded({"deployment": str(args.output), "id": manifest["id"]})
             )

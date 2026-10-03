@@ -37,7 +37,12 @@ Items
 ``kind`` says what an item is:
 
 - ``checkpoint``: a SparkRing checkpoint directory, as
-  ``runtime/host/checkpoints.py`` lists it, with the sizes it reports.
+  ``runtime/host/checkpoints.py`` lists it, with the sizes it reports. A
+  derived checkpoint's directory (``runtime/common/derived_checkpoint.py``)
+  also carries ``derived``: the checkpoint name and the base and donor it is
+  derived from. It hard-links the files it keeps from the base's directory,
+  so its ``frees_bytes`` counts only the files its recipe wrote, and the base
+  keeps its data whatever becomes of the derived directory.
 - ``cache``: a directory directly in a cache root whose name has the form
   installer containers give their caches, ``<family>-<image-12>-<revision-12>``
   or ``<family>-cuda<version>-<revision-12>`` (``cache_names``). Cache
@@ -61,7 +66,8 @@ Items
 
 - ``installed``: a deployment that SparkRing keeps installed uses it: the active
   deployment (``active.json``), the rollback target recorded in
-  ``transaction.json`` or the candidate of an unfinished model switch. Node A
+  ``transaction.json`` or the candidate of an unfinished model switch, also
+  those of each half of a four-Spark ring (``checkpoints.roles``). Node A
   reads each deployment's lock and container specifications
   (``deployment.lock.json`` and ``rank<N>/container.json`` in its directory
   below ``/var/lib/sparkring/controller/deployments``): the workspace, model, source
@@ -78,9 +84,10 @@ Items
   in use after its deployment is neither active nor the rollback target. The
   item's ``meshes`` name each such mesh by its unit and site file.
 - ``profile``: an installer profile of the installed package references it:
-  a checkpoint revision the profile lists, the image of the image lock that the
-  installer selects for it (``installer_image.for_profile``), or a cache name
-  that they produce. A later installation of that profile reuses it.
+  a checkpoint revision the profile lists, a derived checkpoint it lists, the
+  image of the image lock that the installer selects for it
+  (``installer_image.for_profile``), or a cache name that they produce. A
+  later installation of that profile reuses it.
 - ``unreferenced``: neither. Other retained deployments that use the item are
   named; after a release they need ``sudo sparkring install`` again. An item
   that a running container on the Spark reaches (``_users``) is named with
@@ -1110,13 +1117,14 @@ def profile_references():
 
     Returns ``{"checkpoints": {"<repository>@<revision>": [profile, ...]},
     "caches": {name: [...]}, "images": {image_id: [...]}, "locks": {image_id:
-    [lock name, ...]}}``. A profile references the checkpoints it lists, the
-    image of the lock ``installer_image.for_profile`` selects and the caches
-    those produce. ``locks`` names every installer image lock in
-    ``runtime/releases``, including development locks that only ``--image-lock``
-    selects.
+    [lock name, ...]}, "derived": {"<repository>@<revision>": {"name",
+    "base", "donor"}}}``. A profile references the checkpoints it lists, derived
+    ones included, the image of the lock ``installer_image.for_profile``
+    selects and the caches those produce. ``locks`` names every installer
+    image lock in ``runtime/releases``, including development locks that only
+    ``--image-lock`` selects; ``derived`` describes each derived checkpoint.
     """
-    from runtime.common import installer_image, profiles, qwen_flash_next
+    from runtime.common import derived_checkpoint, installer_image, profiles, qwen_flash_next
     tables = {"checkpoints": {}, "caches": {}, "images": {}, "locks": {}}
 
     def note(table, key, value):
@@ -1143,7 +1151,10 @@ def profile_references():
             note("checkpoints", selection["model"]["repository"] + "@" + selection["model"]["revision"], profile)
             for name in cache_names(selection, image, toolchain=toolchain):
                 note("caches", name, profile)
-    return {name: {key: sorted(values) for key, values in table.items()} for name, table in tables.items()}
+    result = {name: {key: sorted(values) for key, values in table.items()} for name, table in tables.items()}
+    result["derived"] = {f"{repository}@{revision}": {key: item[key] for key in ("name", "base", "donor")}
+                         for (repository, revision), item in derived_checkpoint.listed().items()}
+    return result
 
 
 def cache_names(selection, image, *, toolchain):
@@ -1212,6 +1223,10 @@ def classify(nodes, retained, role, references):
                 elif item["kind"] == "checkpoint":
                     item["profiles"] = references["checkpoints"].get(f"{item['repository']}@{item['revision']}", [])
                 item["class"] = "profile" if item["profiles"] else "unreferenced"
+            if item["kind"] == "checkpoint":
+                derived = (references.get("derived") or {}).get(f"{item['repository']}@{item['revision']}")
+                if derived:
+                    item["derived"] = derived
             item["release"] = _release_command(item)
         node_entry["items"] = sorted(node_entry.get("items", ()), key=lambda item: (-(item.get("bytes") or 0),
                                                                                    item["path"]))
@@ -1409,6 +1424,12 @@ def _details(item):
     if item["kind"] == "checkpoint":
         lines.append(f"{item['repository']} at {item['revision'][:12]}"
                      + ("" if item["state"] == "ok" else f" ({item['state']})"))
+        derived = item.get("derived")
+        if derived:
+            lines.append(f"derived checkpoint {derived['name']} of {derived['base']['repository']} at "
+                         f"{derived['base']['revision'][:12]} with files of {derived['donor']['revision'][:12]}; "
+                         "its unchanged files are hard links to the base's, so releasing it frees only the files "
+                         "its recipe wrote")
     if item["kind"] == "releasing":
         lines.append("remainder of an interrupted release; releasing the path again removes it")
     if item.get("deployments"):

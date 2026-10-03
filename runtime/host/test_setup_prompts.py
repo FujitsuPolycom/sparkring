@@ -236,6 +236,8 @@ def test_fresh_setup_plan_lists_the_hairpin_step_when_it_finds_four_sparks(tmp_p
         def trusted(self):
             return []
     monkeypatch.setattr(single_uplink.bootstrap, "SSH", Transport)
+    # Sparks without another cluster's setup leave discovery to the ordinary flow.
+    monkeypatch.setattr(single_uplink, "reform_step", lambda *args, **options: None)
     for count in (4, 2):
         found = {"head": "n0", "nodes": [{"id": f"n{index}", "hostname": f"spark{index}"} for index in range(count)],
                  "routes": {}, "edges": []}

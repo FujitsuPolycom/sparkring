@@ -31,7 +31,16 @@ gives the admission steps. A new installer image release also names the
 builder of its final layer in the `releases` field of
 [builders.json](../../runtime/images/builders.json); the repository layout check
 rejects an installer image lock without one. [Installer image builders](../../runtime/images/installer-images.md)
-describes the chain.
+describes the chain. A GitHub release that publishes an installer image adds
+its tag and the image's release name to
+[installer-releases.json](../../runtime/releases/installer-releases.json), so
+`sudo sparkring install --image TAG` selects that image.
+
+Publishing a GitHub release that is not a prerelease runs the
+[Install Builder pages workflow](../../.github/workflows/compose-builder-pages.yml):
+it builds the [Install Builder](../operations/compose-builder.md) from the
+release tag, compares the page's engine with `compose.build`, and publishes the
+page to the repository's GitHub Pages site only when every case matches.
 
 Prepare the candidate and local PR description before requesting adoption.
 Pushes, GitHub posts, merges, image publication and cluster operations require

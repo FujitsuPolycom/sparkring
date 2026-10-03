@@ -465,3 +465,31 @@ def test_start_rechecks_gpu_after_creation(deployment, tmp_path, monkeypatch, op
         coordinator.host_operation(operation, payload)
         assert calls[0][1] == "--query-compute-apps=pid"
         assert calls[-1][-2:] == ["start", "model"]
+
+
+def test_render_selects_a_checkpoint_and_serving_settings(tmp_path, capsys):
+    site = compose.ROOT / "profiles/qwen38-flash-next-tp2/compose/site.example.yaml"
+    output = tmp_path / "deployment"
+    assert coordinator.main(["render", "qwen38-flash-next-tp2", "--site", str(site), "--output", str(output),
+                             "--checkpoint", "qad-step-4000", "--max-concurrency", "8", "--kv-cache-gib", "26"]) == 0
+    printed = capsys.readouterr()
+    manifest, _ = compose.load_deployment(output)
+    assert json.loads(printed.out)["id"] == manifest["id"]
+    assert manifest["checkpoint"] == "qad-step-4000"
+    assert manifest["serving"] == {"kv_cache_gib": 26, "max_concurrency": 8}
+    assert "Warning: --kv-cache-gib 26 is above the profile's 24" in printed.err
+
+
+def test_render_selects_another_installer_image(tmp_path):
+    from runtime.common import installer_image
+    site = compose.ROOT / "profiles/qwen38-flash-next-tp2/compose/site.example.yaml"
+    other = next(row for row in installer_image.catalog()
+                 if not row["default"] and "qwen38-flash-next-tp2" in installer_image.profiles_of(row["lock"]))
+    output = tmp_path / "deployment"
+    assert coordinator.main(["render", "qwen38-flash-next-tp2", "--site", str(site), "--output", str(output),
+                             "--image", other["name"]]) == 0
+    manifest, files = compose.load_deployment(output)
+    assert manifest["image_runtime"] == other["lock"]
+    assert other["lock"]["image_reference"] in files["rank0/compose.yaml"]
+    assert compose.named_image(None) is None
+    assert compose.named_image(installer_image.catalog()[0]["name"]) is None

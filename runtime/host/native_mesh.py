@@ -45,6 +45,12 @@ INSTALLATION_RECEIPT = "installation.json"
 SOURCE_HASHES = "source-hashes.json"
 # systemctl is-active states of a unit with no process.
 STOPPED_STATES = ("inactive", "failed")
+# The mesh services that park_local stopped and disabled on this Spark while two-Spark
+# models serve on the ring's halves. inspect_local reports them as enabled, so a
+# four-rank deployment reuses them, and serve_ring enables them again and removes
+# them from this record.
+PARKED = "/etc/sparkring/mesh-parked.json"
+PARKED_SCHEMA = "sparkring-parked-mesh/v1"
 
 
 def modules():
@@ -60,16 +66,94 @@ def _service_configs():
             *sorted(Path("/etc/sparkring/deployments").glob("*/service.json"))]
 
 
+def parked_units(*, root="/"):
+    """The mesh units this Spark's park record (PARKED) lists; empty without a record."""
+    path = node.location(root, PARKED)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{path} cannot be read: {error}") from None
+    if not isinstance(value, dict) or value.get("schema") != PARKED_SCHEMA or not isinstance(value.get("units"), list):
+        raise ValueError(f"{path} is not a {PARKED_SCHEMA} record")
+    return [unit for unit in value["units"] if isinstance(unit, str)]
+
+
+def _save_parked(units, *, root="/"):
+    path = node.location(root, PARKED)
+    if units:
+        node.save(path.parent, path.name, {"schema": PARKED_SCHEMA, "units": sorted(set(units))})
+    else:
+        path.unlink(missing_ok=True)
+
+
+def _unpark(unit, *, root="/"):
+    """Remove ``unit`` from the park record; a unit it does not list leaves the record unchanged."""
+    units = parked_units(root=root)
+    if unit in units:
+        _save_parked([name for name in units if name != unit], root=root)
+
+
+def _mesh_units():
+    """The mesh unit of every managed mesh configuration installed on this Spark."""
+    units = []
+    for path in _service_configs():
+        if path.is_file():
+            config = json.loads(path.read_text())
+            units.append(managed_deployment.validate_config_paths(config)["mesh_unit"])
+    return units
+
+
+def park_local(*, call=node.call, root="/"):
+    """Stop and disable every SparkRing mesh service on this Spark, recording each one in PARKED.
+
+    A two-Spark model on half of a four-Spark ring uses ports on which the
+    ring's mesh forwards and rewrites RDMA traffic, so no mesh may run on a
+    Spark of either half. The record is written before any unit stops, so an
+    interrupted run leaves every stopped unit recorded. A unit that failed
+    earlier keeps no failed state, so status and automatic recovery do not
+    report a mesh failure while the ring serves two-Spark models. The
+    fabric's addresses, routes and forwarding and the ConnectX hairpin setting
+    are not changed. Repeating it changes nothing.
+    """
+    units = [unit for unit in _mesh_units()
+             if call(["systemctl", "is-active", unit], accepted=(0, 3, 4)).returncode == 0
+             or call(["systemctl", "is-enabled", unit], accepted=(0, 1, 4)).stdout.strip() == "enabled"]
+    recorded = sorted(set(parked_units(root=root)) | set(units))
+    _save_parked(recorded, root=root)
+    if units:
+        call(["systemctl", "disable", "--now", *units])
+    for unit in recorded:
+        call(["systemctl", "reset-failed", unit], accepted=(0, 1, 5))
+    return {"ok": True, "parked": units, "recorded": recorded}
+
+
+def parked_local(*, call=node.call):
+    """Verify park_local without changing anything: no SparkRing mesh service runs or is enabled here."""
+    running = sorted(_active_mesh_units(call))
+    if running:
+        raise ValueError("Mesh services still run on this Spark: " + ", ".join(running))
+    enabled = [unit for unit in _mesh_units()
+               if call(["systemctl", "is-enabled", unit], accepted=(0, 1, 4)).stdout.strip() == "enabled"]
+    if enabled:
+        raise ValueError("Mesh services stay enabled on this Spark: " + ", ".join(enabled))
+    return {"ok": True}
+
+
 def inspect_local(rank):
     """The SparkRing mesh installed on this Spark as ``{"mesh": ...}``, or ``{"mesh": None}``.
 
     An active mesh unit is reported with ``active`` true and its ring check:
     ``snapshot`` when the check passes, else ``problem``. Without an active
     unit, an enabled one is reported with ``active`` false, as on the Sparks
-    whose mesh failed when a cabled neighbor restarted. The ring step of a
-    model installation starts, restarts or repairs a reported mesh.
+    whose mesh failed when a cabled neighbor restarted. A unit that
+    park_local stopped and disabled counts as enabled and is reported with
+    ``parked`` true. The ring step of a model installation starts, restarts
+    or repairs a reported mesh.
     """
     active, enabled = [], []
+    parked = parked_units()
     for path in _service_configs():
         if not path.is_file():
             continue
@@ -77,7 +161,8 @@ def inspect_local(rank):
         unit = managed_deployment.validate_config_paths(config)["mesh_unit"]
         if node.call(["systemctl", "is-active", unit], accepted=(0, 3, 4)).returncode == 0:
             active.append((path, config, unit))
-        elif node.call(["systemctl", "is-enabled", unit], accepted=(0, 1, 4)).stdout.strip() == "enabled":
+        elif (node.call(["systemctl", "is-enabled", unit], accepted=(0, 1, 4)).stdout.strip() == "enabled"
+              or unit in parked):
             enabled.append((path, config, unit))
     if len(active) > 1:
         raise ValueError("Multiple active mesh owners found; inspect before selecting one")
@@ -95,6 +180,8 @@ def inspect_local(rank):
     address = manager.site["management_addresses"][rank]
     mesh = {"reference": reference, "host_ip": address, "interface": manager.local.management_netdev,
             "unit": unit, "config": str(path), "active": bool(active), "snapshot": None}
+    if not active and unit in parked:
+        mesh["parked"] = True
     if active:
         hcas = [manager.local.port(d, f).rdma_device for f in (0, 1) for d in ("clockwise", "counter_clockwise")]
         try:
@@ -297,6 +384,7 @@ def set_aside(selected, name):
     present = [unit for unit, path in zip(units, paths) if path.exists()]
     if present:
         node.call(["systemctl", "disable", "--now", *present])
+    _unpark(selected["mesh_unit"])
     target = REPLACED_ROOT / f"{name}-{time.time_ns()}"
     if any(p.is_symlink() for p in (target, *target.parents)):
         raise ValueError("The holding path for replaced meshes contains a symlink")
@@ -712,12 +800,14 @@ def ring_stopped(reference, rank, hcas, gid, host_ip, *, call=node.call, check=q
 
 
 def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check,
-               stale=qwen_mesh.stale_gid_ports, sleep=time.sleep, clock=time.monotonic, code=update_code):
+               stale=qwen_mesh.stale_gid_ports, sleep=time.sleep, clock=time.monotonic, code=update_code,
+               unpark=_unpark):
     """Serve the pinned four-Spark mesh on this Spark and wait until its ring check passes.
 
     Every rank runs this at the same time, after stop_ring, before the ring
     check of an installation. The mesh unit is enabled, so it returns at each
-    boot. An inactive unit starts. A running unit whose ring check fails
+    boot, and ``unpark`` removes it from the park record (PARKED) that a switch
+    to two-Spark models on the ring's halves left. An inactive unit starts. A running unit whose ring check fails
     stops and starts again, which rebuilds routes and rules lost when a cabled
     neighbor restarted. When a port's pinned RoCE GID slot lacks its IPv4
     address, as on the neighbors of a restarted Spark, the mesh stops, the
@@ -735,10 +825,12 @@ def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwe
     if state == "running":
         refreshed = code(selected, rank, call=call)
         call(["systemctl", "enable", unit])
+        unpark(unit)
         return {"ok": True, "unit": unit, "action": "checked", "repaired": [], "code": refreshed}
     action = {"repaired": "repaired", "stopped": "restarted", "inactive": "started"}[state]
     refreshed = code(selected, rank, call=call)
     call(["systemctl", "enable", "--now", unit])
+    unpark(unit)
     deadline = clock() + RING_READY_SECONDS
     while True:
         try:
@@ -791,6 +883,7 @@ def operate_local(lock, rank, operation):
                 if compose.digest(Path(prior["reference"]["site_path"]).read_bytes()) != prior["reference"]["site_sha256"]:
                     raise ValueError("Previous mesh site changed since replacement review")
                 node.call(["systemctl", "disable", "--now", prior["unit"]])
+                _unpark(prior["unit"])
     else:
         raise ValueError("Unsupported native mesh operation")
     return {"ok": True}

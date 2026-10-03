@@ -479,3 +479,19 @@ def test_mesh_code_that_differs_from_its_deployments_warns(tmp_path, report):
     assert result["warnings"] == [
         "mesh code of sparkring-mesh.service installed 2026-09-21 differs from this deployment's; "
         "it refreshes when sparkring up next starts the mesh on all four Sparks"]
+
+
+def test_an_adopted_mesh_parked_for_two_spark_models_is_not_checked(tmp_path, report, monkeypatch):
+    config, facts = ring(tmp_path)
+    approve(tmp_path, config, facts)
+    reference = {"site_path": "/etc/sparkring/managed-mesh/site.json", "site_sha256": "c" * 64, "plan_sha256": "d" * 64}
+    config.update(ownership="observed", routes=[], forwarding=[],
+                  native_mesh={"reference": reference, "hcas": [], "host_ip": "198.18.1.1"})
+    node.save(tmp_path, "/etc/sparkring/fabric.json", config)
+    checked = []
+    monkeypatch.setattr(qwen_mesh, "check", lambda *a, **k: checked.append(a))
+    node.snapshot(root=tmp_path, collect=lambda _: facts, run=Host(armed=True))
+    assert len(checked) == 1
+    native_mesh._save_parked(["sparkring-mesh.service"], root=tmp_path)
+    result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Host(armed=True))
+    assert len(checked) == 1 and result["state"] == "existing-network-verified"

@@ -888,6 +888,11 @@ def test_install_command_repeats_the_deployment_request():
         "--cache-path '/mnt/fast cache' --image-lock locks/dev.json --ignore-local-copies")
     assert cp.install_command({**request, "checkpoint": "qad-step-4000"}).startswith(
         "sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000 ")
+    # Serving settings are part of the deployment, so the command names each one; a switch takes no value.
+    served = {"profile": "deepseek-v41-flash-tp4", "serving": {"max_concurrency": 32, "max_images": 16, "save_cpu": True}}
+    assert cp.install_command(served) == (
+        "sudo sparkring install --profile deepseek-v41-flash-tp4 --max-images 16 --max-concurrency 32 --save-cpu")
+    assert cp.install_command({**served, "serving": {}}) == "sudo sparkring install --profile deepseek-v41-flash-tp4"
     result = make(owner_copy_surveys(2), named=["1=" + FOLDER], ignore_local=True, request=request)
     assert result["command"] == cp.install_command(request, ["1=" + FOLDER], ignore_local=True)
     assert result["request"] == {**request, "checkpoint": None} and result["profile"] == "qwen38-flash-next-tp2"

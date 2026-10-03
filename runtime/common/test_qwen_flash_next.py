@@ -10,7 +10,7 @@ import sys
 import pytest
 from runtime.common.qwen_flash_next import ROOT, render, publication
 from runtime.common import qwen_flash_next as adapter
-from runtime.common import native_candidate
+from runtime.common import installer, native_candidate
 
 
 def shared_publication():
@@ -43,19 +43,23 @@ def plan(rank=0, **extra):
 
 def test_checkpoint_table_names_the_default_and_its_alternatives():
     profile = adapter.read(PROFILE)
-    assert adapter.checkpoint_names(profile) == ("qad-step5500-ple1000", ("qad-step-4000", "qad-step5500-ple1000"))
+    assert adapter.checkpoint_names(profile) == ("qad-step5500-ple1000", (
+        "jmni-qad5500-hybrid", "qad-step-4000", "qad-step5500-mxfp8-attention", "qad-step5500-ple1000"))
     assert adapter.checkpoint_settings(profile, None) is profile
     assert adapter.checkpoint_settings(profile, "qad-step5500-ple1000") is profile
     # qad-step-5500 spells step 5500 like the step-4000 branch.
     assert adapter.checkpoint_name(profile, "qad-step-5500") == "qad-step5500-ple1000"
     assert adapter.checkpoint_settings(profile, "qad-step-5500") is profile
     tp4 = adapter.read(ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json")
-    assert tp4["checkpoint"] == profile["checkpoint"] and tp4["checkpoints"] == profile["checkpoints"]
+    # Both profiles list the same checkpoints; served names end with each profile's -TP<nodes>.
+    assert tp4["checkpoint"] == profile["checkpoint"] and json.loads(json.dumps(tp4["checkpoints"]).replace(
+        "-TP4", "-TP2")) == profile["checkpoints"]
     assert tp4["checkpoint_aliases"] == profile["checkpoint_aliases"]
     for aliases in ({"qad-step-5500": "main"}, {"qad-step-4000": "qad-step5500-ple1000"}, {"Step 5500": "qad-step-4000"}):
         with pytest.raises(ValueError, match="new name for a listed checkpoint"):
             adapter.checkpoint_names({**profile, "checkpoint_aliases": aliases})
-    with pytest.raises(ValueError, match="lists: qad-step-4000, qad-step5500-ple1000"):
+    with pytest.raises(ValueError, match="lists: jmni-qad5500-hybrid, qad-step-4000, qad-step5500-mxfp8-attention, "
+                                         "qad-step5500-ple1000"):
         adapter.checkpoint_settings(profile, "main")
     added = copy.deepcopy(profile)
     added["checkpoints"]["qad-step-4000"]["environment"]["VLLM_NEW_SETTING"] = "1"
@@ -122,6 +126,23 @@ def test_the_step_4000_checkpoint_runs_its_pinned_settings():
     assert command[command.index("--served-model-name") + 1] == default[default.index("--served-model-name") + 1]
     with pytest.raises(ValueError, match="lists"):
         plan(checkpoint="main")
+
+
+def test_the_jmni_hybrid_runs_its_nvfp4_draft_experts_on_b12x():
+    """The third-party hybrid keeps step 5500's LM head and stores the MTP experts as W4A16 NVFP4, as step 4000 does."""
+    command, default = plan(checkpoint="jmni-qad5500-hybrid"), plan()
+    draft = json.loads(command[command.index("--speculative-config") + 1])
+    assert draft == {**json.loads(default[default.index("--speculative-config") + 1]), "moe_backend": "b12x"}
+    assert "VLLM_MXFP8_LM_HEAD=0" in command
+    assert command[command.index("--served-model-name") + 1] == "Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2"
+    assert f"VLLM_CACHE_ROOT=/cache/qwen-flash-next-{installer_image_id()[7:19]}-87c8f2fb738b/vllm" in command
+    pins = installer.checkpoint_pins(installer.setup.selection("qwen38-flash-next-tp2", "jmni-qad5500-hybrid"))
+    assert (pins["repository"], len(pins["weights"]), len(set(pins["files"]) - set(pins["optional"]))) == (
+        "JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid", 40, 56)
+    # The shard holding its MXFP8 attention projections is step 4000's model-00035-of-00036.safetensors.
+    step4000 = installer.checkpoint_pins(installer.setup.selection("qwen38-flash-next-tp2", "qad-step-4000"))
+    assert (pins["files"]["hybrid-main-00002.safetensors"]["sha256"]
+            == step4000["files"]["model-00035-of-00036.safetensors"]["sha256"])
 
 
 GLM_TP4 = ROOT / "profiles/glm53-flash-nvfp4-spark-tp4/config.json"

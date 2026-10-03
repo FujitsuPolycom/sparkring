@@ -275,6 +275,11 @@ def test_switch_back_names_the_replacement_of_a_replaced_profile(tmp_path):
     (previous / flow.PLAN_FILE).unlink()
     (previous / "deployment.lock.json").write_text(json.dumps({"selection": {"profile": "mimo-v26-flash-rl-tp4"}}))
     assert flow.switch_back_command(str(previous)) == "sudo sparkring install --profile mimo-v26-flash-mopd-tp4"
+    # Without a saved plan, the lock's serving settings still return with the previous model.
+    (previous / "deployment.lock.json").write_text(json.dumps({
+        "selection": {"profile": "mimo-v26-flash-mopd-tp4"}, "serving": {"max_concurrency": 32}}))
+    assert flow.switch_back_command(str(previous)) == (
+        "sudo sparkring install --profile mimo-v26-flash-mopd-tp4 --max-concurrency 32")
 
 
 def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
@@ -880,7 +885,8 @@ def test_an_unlisted_checkpoint_changes_nothing(machine, sparks, capsys):
     assert command("--checkpoint", "main") == 3
     result = json.loads(capsys.readouterr().out)
     assert result["field"] == "checkpoint_name"
-    assert "qad-step-4000, qad-step5500-ple1000" in result["message"] and not sparks.surveys
+    assert ("jmni-qad5500-hybrid, qad-step-4000, qad-step5500-mxfp8-attention, qad-step5500-ple1000" in result["message"]
+            and not sparks.surveys)
 
 
 def test_naming_the_default_checkpoint_installs_the_same_deployment(machine, capsys):
@@ -1281,6 +1287,21 @@ def test_a_pair_holding_the_parent_image_reserves_only_the_missing_layers(machin
                      "/srv/sparkring/test/cache/qwen-flash-next-cuda13.4.2-60215d26cf5e"]
 
 
+
+def test_a_named_image_installs_its_lock_and_the_default_name_installs_no_lock(machine, sparks, capsys):
+    def planned(*options):
+        assert sparkring.main(["install", "--profile", PROFILE, *options, "--plan", "--json"]) == 0
+        return json.loads(capsys.readouterr().out)["deployment"]
+
+    named = planned("--image", "statusrows")
+    assert named == planned("--image-lock", str(RELEASES / STATUSROWS / "installer-image.json"))
+    assert planned("--image", "2026.10.0") == planned() != named
+    for options in (["--image", "nope"], ["--image", "statusrows", "--image-lock", "lock.json"]):
+        with pytest.raises(SystemExit) as stopped:
+            sparkring.main(["install", "--profile", PROFILE, *options, "--plan"])
+        assert stopped.value.code == 2
+    assert "--image: No installer image is named nope" in capsys.readouterr().err
+
 def test_a_ring_rank_holding_the_parent_image_reserves_only_the_missing_layers(machine, sparks, monkeypatch, capsys):
     # Ranks 0-2 hold the statusrows image; rank 3 holds spinwait and has 61.8 GiB free. Statusrows adds two layers
     # to spinwait; the whole-image and compile cache allowances needed 100 GiB on rank 3.
@@ -1427,6 +1448,11 @@ def test_suggested_commands_repeat_the_deployment_request(machine, sparks, capsy
     repeat = f"{REPEAT} --model-path 1=/mnt/usb/qwen --cache-path /mnt/fast/cache"
     assert result["checkpoint"]["command"] == repeat
     assert f"Plan saved. Install it with {repeat} --yes." in output_lines(out.err)
+    # A plan with serving settings suggests the command that installs those settings, not the profile's values.
+    assert command("--plan", "--max-concurrency", "8", *options) == 0
+    out = capsys.readouterr()
+    assert f"Plan saved. Install it with {repeat} --max-concurrency 8 --yes." in output_lines(out.err)
+    assert json.loads(out.out)["checkpoint"]["command"] == f"{repeat} --max-concurrency 8"
     # The survey measures the named cache's filesystem, which the plan counts the cache allowance on.
     assert {options["cache"] for _, options in sparks.surveys} == {"/mnt/fast/cache"}
     # Without --yes and without a terminal, the request names both ways forward.
@@ -1482,7 +1508,10 @@ def test_retained_deployments_are_named_and_their_receipts_passed_for_refresh(ma
     # Each receipt carries the deployment its workspace's owner record must name.
     receipt = {"path": "/srv/sparkring/test/qwen38-flash-next-tp2-iold/installer/model.json",
                "deployment": "id-old"}
-    assert assets.prepared["receipts"] == {0: [receipt], 1: [receipt]}
+    # A derived checkpoint's receipt records inodes it shares with its base; a Spark skips one that is absent.
+    derived = {"path": "/srv/sparkring/test/qwen38-flash-next-tp2-iold/installer/derived/model.json",
+               "deployment": "id-old"}
+    assert assets.prepared["receipts"] == {0: [receipt, derived], 1: [receipt, derived]}
     assert json.loads(out.out)["checkpoint"]["refreshed_receipts"] == 1
 
 

@@ -582,3 +582,49 @@ def test_commands_route_to_the_checkpoints_module(tmp_path, monkeypatch, capsys)
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     assert sparkring_node.main(["checkpoints"]) == 0
     assert json.loads(capsys.readouterr().out) == {"paths": []}
+
+
+def test_a_derived_checkpoint_directory_counts_as_used_by_the_deployments_that_serve_it(tmp_path, capsys):
+    from runtime.common import derived_checkpoint, setup
+    card = setup.selection("qwen38-flash-next-tp2", "qad-step5500-mxfp8-attention")
+    base = f"/srv/sparkring/tp2/checkpoints/{SLUG}/{card['model_revision']}"
+    manifest = derived_checkpoint.load(card)
+    derived = derived_checkpoint.directory(base, manifest)
+    state = controller_state(tmp_path, {"qwen-tp2-iaaaa": (base, False, "/srv/sparkring/tp2/qwen-tp2-iaaaa")},
+                             active="qwen-tp2-iaaaa")
+    for path in (state / "deployments/qwen-tp2-iaaaa/deployment.lock.json",):
+        lock = json.loads(path.read_text())
+        path.write_text(json.dumps({**lock, "selection": card}))
+    [record] = checkpoints.deployments(state)
+    assert {(row["model"], row["served"]) for row in record["rows"]} == {(base, derived)}
+    entry = listed(derived, repository=manifest["repository"], revision=manifest["revision"])
+    spark = Spark({host: local_listing([entry, listed(base, revision=card["model_revision"])]) for host in HOSTS})
+    # The active deployment serves the derived directory, so it is not released.
+    assert checkpoints.main(["--release", derived, "--yes"], state_root=state, invoke=spark) == 2
+    assert f"{derived} is the checkpoint directory of the active deployment qwen-tp2-iaaaa" in capsys.readouterr().err
+    assert spark.releases() == []
+    assert checkpoints.main([], state_root=state, invoke=spark) == 0
+    printed = capsys.readouterr().out.splitlines()
+    start = printed.index("    " + derived)
+    assert printed[start + 2] == (f"        derived checkpoint qad-step5500-mxfp8-attention of {REPOSITORY} at "
+                                  f"{card['model_revision'][:12]}; its unchanged files are hard links to the base's")
+    assert printed[start + 3] == "        used by qwen-tp2-iaaaa (active)"
+    assert printed[printed.index("    " + base) + 2] == "        used by qwen-tp2-iaaaa (active)"
+    # The probe of each Spark names both directories.
+    paths = [request["paths"] for host, argv, request in spark.calls if argv == LIST][-1]
+    assert paths == sorted([base, derived])
+
+
+@linux
+def test_a_release_refreshes_a_derived_checkpoints_receipt_too(tmp_path, monkeypatch):
+    monkeypatch.setattr(checkpoints, "CHECKPOINTS", str(tmp_path / "records"))
+    workspace = tmp_path / "srv/sparkring/tp2/qwen-derived"
+    (workspace / "installer/derived").mkdir(parents=True)
+    write_json(workspace / ".installer-owner.json", {"deployment": "id-derived"})
+    write_json(workspace / "installer/model.json", {"path": DIRECTORY})
+    write_json(workspace / "installer/derived/model.json", {"path": DIRECTORY + "-derived"})
+    found = checkpoints.receipt_paths([{"workspace": str(workspace), "deployment": "id-derived"}])
+    assert found == [str(workspace / "installer/model.json"), str(workspace / "installer/derived/model.json")]
+    (workspace / "installer/derived/model.json").unlink()
+    assert checkpoints.receipt_paths([{"workspace": str(workspace), "deployment": "id-derived"}]) == [
+        str(workspace / "installer/model.json")]

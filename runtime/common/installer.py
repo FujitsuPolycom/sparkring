@@ -13,7 +13,8 @@ import re
 import uuid
 import zipfile
 
-from runtime.common import compose, distribution, installer_image, process_lock, profiles, serving, setup, tp2
+from runtime.common import (compose, derived_checkpoint, distribution, installer_image, process_lock, profiles, serving,
+                            setup, tp2)
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
@@ -61,13 +62,24 @@ def address(value):
 
 
 def checkpoint_contract(card):
+    """The pinned model (repository, revision, config.json and index SHA-256) of the card's checkpoint.
+
+    A derived checkpoint's entry (runtime/common/derived_checkpoint.py) has two:
+    a selection naming the base's repository and revision, which the installer
+    acquires first, gets the base entry's model, and the derived checkpoint's
+    own card (derived_checkpoint.view) the entry's model.
+    """
     source, _ = profiles.load(card["profile"])
     model = profiles.resolve(card["profile"])["model"]
     configuration = profiles.read_json(profiles.local_path(source["configuration"]["path"]))
     if source["configuration"]["format"] == "release-profile":
         model = configuration["target_variants"][card["target_variant"]]
     elif card.get("target_variant") and "checkpoints" in configuration:
-        model = configuration["checkpoints"][card["target_variant"]]["model"]
+        entry = configuration["checkpoints"][card["target_variant"]]
+        model = entry["model"]
+        if "derived" in entry and (card["model_repository"], card["model_revision"]) != (
+                model["repository"], model["revision"]):
+            model = configuration["checkpoints"][entry["derived"]["base"]]["model"]
     return model
 
 
@@ -188,8 +200,23 @@ def managed_workspace(name):
     return "/srv/sparkring/" + name + "-managed"
 
 
+# The ring halves a two-rank deployment may occupy on a four-Spark ring (runtime/host/placement.py).
+HALVES = ((0, 1), (2, 3))
+# The RDMA devices of a pair's rank: the primary and secondary functions of ConnectX port 0.
+PAIR_HCAS = ["rocep1s0f0", "roceP2p1s0f0"]
+
+
 def site_document(raw, card, revision):
-    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address", "api_address", "native_mesh"}:
+    """The normalized site of a deployment lock from its raw site input.
+
+    ``placement``, on a two-rank card only, names the half of a four-Spark
+    ring (``[0, 1]`` or ``[2, 3]``) whose two Sparks the rows list in rank
+    order. A row's ``hcas``, on a two-rank card only, names the rank's
+    primary and secondary RDMA devices facing its partner; a row without
+    ``hcas`` uses port 0's functions (``PAIR_HCAS``), as on a pair.
+    """
+    if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address",
+                                                "api_address", "native_mesh", "placement"}:
         raise ValueError("Unknown site setting")
     if raw.get("schema") != "sparkring-install-site/v1":
         raise ValueError("Expected sparkring-install-site/v1")
@@ -204,8 +231,16 @@ def site_document(raw, card, revision):
         raise ValueError("Use a dedicated workspace below an operator-owned parent")
     ranks = []
     cache_default = managed_workspace(name) + "/cache" if backend(card) == "glm-managed" else workspace + "/cache"
+    if "placement" in raw:
+        placement = raw["placement"]
+        if card["nodes"] != 2 or not (isinstance(placement, list) and len(placement) == 2
+                                      and all(type(item) is int for item in placement)
+                                      and tuple(placement) in HALVES):
+            raise ValueError("A placement names one half of a four-Spark ring, [0, 1] or [2, 3], for a two-Spark "
+                             "profile")
     for number, row in enumerate(rows):
-        allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model", "fabric", "node_id"}
+        allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model",
+                   "fabric", "node_id", "hcas"}
         if not isinstance(row, dict) or set(row) - allowed:
             raise ValueError("Unknown host field; passwords and runtime overrides are not site inputs")
         interface = row.get("interface")
@@ -214,11 +249,17 @@ def site_document(raw, card, revision):
         reuse = row.get("reuse_verified_model", False)
         if type(reuse) is not bool:
             raise ValueError("reuse_verified_model must be a boolean operator declaration")
+        hcas = row.get("hcas", PAIR_HCAS)
+        if "hcas" in row and (card["nodes"] != 2 or not isinstance(hcas, list) or len(hcas) != 2
+                              or len(set(hcas)) != 2
+                              or not all(isinstance(hca, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca)
+                                         for hca in hcas)):
+            raise ValueError("A two-Spark rank's hcas name its two distinct RDMA devices that face its partner")
         item = {
             "rank": number, "host": host(row["host"]),
             "management_ip": address(row["management_ip"]), "host_ip": address(row["fabric_ip"]),
             "interface": interface, "gid": 3,
-            "hcas": ["rocep1s0f0", "roceP2p1s0f0"] if card["nodes"] == 2 else
+            "hcas": list(hcas) if card["nodes"] == 2 else
                     ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"],
             "model": str(compose.linux_path(row.get("model", workspace + "/models/" + card["model_revision"]))),
             "cache": str(compose.linux_path(row.get("cache", cache_default))),
@@ -254,6 +295,8 @@ def site_document(raw, card, revision):
               "controller_address": address(raw.get("controller_address", ranks[0]["management_ip"]))}
     if "api_address" in raw:
         result["api_address"] = address(raw["api_address"])
+    if "placement" in raw:
+        result["placement"] = list(raw["placement"])
     if "native_mesh" in raw:
         if card["profile"] not in compose.TP4_PROFILES:
             raise ValueError("A native-mesh plan requires a four-Spark Compose profile")
@@ -336,9 +379,22 @@ def init(directory, profile, raw_site, *, variant=None, image_runtime=None, sett
     return lock
 
 
+def served_model(lock, row):
+    """The checkpoint directory that rank ``row``'s container mounts.
+
+    It is the row's ``model``, except for a derived checkpoint, whose row names
+    the base's SparkRing checkpoint directory; the container then mounts the
+    derived checkpoint's directory beside it (derived_checkpoint.directory).
+    """
+    derived = derived_checkpoint.model_of(lock["selection"])
+    return row["model"] if derived is None else derived_checkpoint.directory(row["model"], derived)
+
+
 def compose_site(lock):
     ranks = [{k: v for k, v in row.items() if k not in ("management_ip", "reuse_verified_model", "node_id")}
              for row in lock["site"]["ranks"]]
+    for rank, row in zip(ranks, lock["site"]["ranks"], strict=True):
+        rank["model"] = served_model(lock, row)
     return {"schema": "sparkring-compose-site/v1", "name": lock["site"]["name"],
             "master": ranks[0]["host_ip"], "ranks": ranks}
 
@@ -453,6 +509,12 @@ def operation_plan(lock, action):
         phases = [phase("prepare-prerequisites" if action == "prepare" else "prerequisites", ranks), phase("source", ranks, "mutates-host", "source-check"),
                   phase("model", ranks, "mutates-host", "model-check"),
                   phase("image", ranks, "mutates-host", "image-check")]
+        if derived_checkpoint.model_of(lock["selection"]) is not None:
+            # A derived checkpoint is written from the verified base inside the
+            # serving image, so its phase follows both; sparkring install runs
+            # the derivation (install_assets.Assets.derive) when the first rank
+            # reaches it, and every rank then verifies its own directory.
+            phases.append(phase("derive", ranks, "mutates-host", "derive-check"))
         if action == "prepare":
             if lock["backend"] in ("glm-managed", "glm-existing-mesh"):
                 phases += [phase("managed-prepare", ranks[:1], "mutates-host", "managed-prepared")]
@@ -489,6 +551,13 @@ def operation_plan(lock, action):
                     phases += [phase("ring-stop", ranks, "mutates-host", "ring-stopped"),
                                phase("ring-serve", ranks, "mutates-host", "ring-check")]
                 elif len(ranks) == 2:
+                    if lock["site"].get("placement"):
+                        # A half of a four-Spark ring uses ports that the
+                        # ring's four-rank mesh also forwards on. Its two
+                        # Sparks stop and disable their mesh services first;
+                        # a four-rank deployment's ring-serve enables them
+                        # again (native_mesh.park_local, serve_ring).
+                        phases += [phase("ring-park", ranks, "mutates-host", "ring-parked")]
                     # A pair's fabric addresses return to RoCE GID index 3,
                     # which they leave when the cabled Spark restarts while
                     # the model runs.
@@ -589,10 +658,18 @@ def unfinished(directory):
 
 
 def identity(lock):
-    """The checkpoint and image release that a deployment lock selects."""
+    """The checkpoint and image release that a deployment lock selects.
+
+    For a derived checkpoint, ``model_repository`` and ``model_revision`` name
+    its base and ``derived`` the derived checkpoint's own repository and revision.
+    """
     card = lock["selection"]
-    return {"checkpoint": card["target_variant"], "model_repository": card["model_repository"],
-            "model_revision": card["model_revision"], "image_release": card["release"]}
+    result = {"checkpoint": card["target_variant"], "model_repository": card["model_repository"],
+              "model_revision": card["model_revision"], "image_release": card["release"]}
+    derived = derived_checkpoint.model_of(card)
+    if derived is not None:
+        result["derived"] = {"repository": derived["repository"], "revision": derived["revision"]}
+    return result
 
 
 def status(directory):
@@ -629,6 +706,10 @@ def export(directory, output, *, share=False):
         if count == 4 and lock["selection"]["profile"] in compose.TP4_PROFILES:
             for row in example["hosts"]:
                 row["fabric"] = {"site_path": "/srv/sparkring/mesh-site.json", "site_sha256": "0" * 64, "plan_sha256": "0" * 64}
+        if derived_checkpoint.model_of(lock["selection"]) is not None:
+            # A derived checkpoint is written beside its base's SparkRing checkpoint directory.
+            for row in example["hosts"]:
+                row["model"] = checkpoint_directory("example", lock["selection"])
         runtime = lock.get("image_runtime")
         if runtime is not None:
             runtime = {**runtime, "image_reference": runtime["image_id"]}

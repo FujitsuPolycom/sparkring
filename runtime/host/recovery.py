@@ -1,9 +1,11 @@
-"""Automatic recovery of the active model deployment on Node A.
+"""Automatic recovery of the active model deployments on Node A.
 
 ``sparkring-recover.timer`` runs ``sparkring recover --auto`` a minute after
-the previous run ends. One run (``check``) observes the active deployment and,
-when the model stopped serving, starts it again through the deployment's own
-lifecycle code (``retained_source.apply``), as the operator's commands do:
+the previous run ends. One run (``check``) observes each active deployment:
+the whole cluster's, and on a four-Spark ring each half's
+(``runtime.host.placement``). When a model stopped serving, the run starts it
+again through the deployment's own lifecycle code (``retained_source.apply``),
+as the operator's commands do:
 
 - The model container runs on no Spark: ``up``, the code path of
   ``sudo sparkring up --execute``. A completed Compose ``up`` whose ranks all
@@ -21,13 +23,15 @@ A run acts only when every guard holds:
   stopped (FAILURE_LIMIT consecutive failed attempts, or RESTART_LIMIT
   restarts within RESTART_WINDOW);
 - the install lock (``install.lock``, ``process_lock.hold``) is free, so no
-  install, setup, hairpin procedure, up or down runs;
+  install, setup, hairpin procedure, up or down runs. The lock covers the
+  whole cluster: while one half of a ring installs, a run reports the other
+  half's model as ``busy`` and checks it again at its next run;
 - the deployment's last operation is a completed ``up``, or the state that
   recovery's own previous attempt left (a manual ``down`` is never undone);
 - the deployment is a Compose deployment;
 - every Spark answers over SSH; otherwise the run only records which Sparks
   it waits for;
-- on a four-Spark ring, every Spark's status report is current and reports
+- for a four-rank model, every Spark's status report is current and reports
   its mesh units, no mesh marker process runs without an active mesh unit,
   and the ConnectX hairpin setting is in effect;
 - consecutive runs found the model not serving: CONFIRMATIONS runs, or for an
@@ -206,9 +210,10 @@ def update(directory, **changes):
 
 
 def is_active(directory):
-    """Whether ``directory`` is the deployment that ``active.json`` names."""
-    file = controller.STATE / "active.json"
-    return file.exists() and Path(installer.read(file)["path"]).resolve() == Path(directory).resolve()
+    """Whether ``directory`` is the deployment its slot's ``active.json`` names."""
+    from runtime.host import placement
+    recorded = placement.recorded(controller.STATE, placement.of_directory(directory))
+    return recorded is not None and Path(recorded).resolve() == Path(directory).resolve()
 
 
 def supported(lock):
@@ -602,7 +607,7 @@ def forget_attempt(directory):
 
 
 def set_enabled(enabled, *, directory=None):
-    """``sparkring recover on|off`` for the active deployment; ``on`` also clears failures, restarts and backoff."""
+    """``sparkring recover on|off`` for one active deployment; ``on`` also clears failures, restarts and backoff."""
     directory = directory or controller.active_deployment()
     if directory is None:
         raise ValueError("No model deployment is active. Start one with sudo sparkring install.")
@@ -647,6 +652,11 @@ def _confirmed(finding, pending, t):
     return pending["count"] >= CONFIRMATIONS
 
 
+# The outcome of a run over several deployments: the first state in this order that one of them reached.
+PRECEDENCE = ("failed", "recovered", "stopped", "report", "waiting", "backoff", "confirming", "changed", "busy",
+              "unsupported", "inactive", "off", "serving", "idle")
+
+
 def check(*, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
     """One run of ``sparkring recover --auto``; returns ``{"state", "summary", "deployment", ...}``.
 
@@ -656,11 +666,28 @@ def check(*, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
     ``recovered`` or ``failed``. ``invoke`` replaces SSH, ``api`` the API
     probe, ``apply`` the lifecycle call ``apply(operation)`` and ``tunnel``
     Node A's ``control`` report.
+
+    Each slot's active deployment is checked in turn (``check_one``). With one
+    active deployment the result is its own; with several, ``deployments``
+    holds each result and ``state`` the first of ``PRECEDENCE`` that one of
+    them reached.
     """
-    invoke = invoke or discovery.ssh
-    directory = controller.active_deployment()
-    if directory is None:
+    found = controller.active_deployments()
+    if not found:
         return _outcome("idle", "No model deployment is active")
+    results = [check_one(directory, now=now, invoke=invoke, api=api, apply=apply, tunnel=tunnel)
+               for _, directory in found]
+    if len(results) == 1:
+        return results[0]
+    state = next(state for state in PRECEDENCE if any(result["state"] == state for result in results))
+    return {"state": state, "summary": "; ".join(f"{Path(result['deployment']).name}: {result['summary']}"
+                                                 for result in results),
+            "deployment": None, "deployments": results}
+
+
+def check_one(directory, *, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
+    """``check`` of one active deployment."""
+    invoke = invoke or discovery.ssh
     directory = Path(directory).resolve()
     record = record_of(load(repair=True), directory)
     if not record["enabled"]:
@@ -793,8 +820,7 @@ def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invok
             return _outcome("off", "Automatic recovery was turned off during the check", directory)
         if record["stopped"]:
             return _outcome("stopped", _stopped_text(record), directory)
-        active = controller.active_deployment()
-        if active is None or Path(active).resolve() != directory:
+        if not is_active(directory):
             update(directory, pending=None)
             return _outcome("changed", "Another deployment became active during the check", directory)
         if _state_key(saved_state(directory)) != _state_key(state):
@@ -915,28 +941,38 @@ def status_lines(record, *, now=time.time, timer=None, state=None, backend="comp
 
 
 def describe():
-    """``sparkring recover status``: the active deployment and its record."""
-    directory = controller.active_deployment()
-    if directory is None:
+    """``sparkring recover status``: each active deployment and its record.
+
+    With one active deployment the document holds its ``deployment`` and
+    ``record``; with several, ``deployments`` holds one such pair each.
+    """
+    found = controller.active_deployments()
+    if not found:
         return {"deployment": None, "record": None, "lines": ["No model deployment is active."]}
-    directory = Path(directory).resolve()
-    record = record_of(load(), directory)
-    backend = installer.read(directory / "deployment.lock.json").get("backend")
-    lines = ["Deployment: " + str(directory),
-             *status_lines(record, state=saved_state(directory), timer=timer_enabled(), backend=backend)]
-    finding = record.get("finding")
-    if finding and record.get("checked_at"):
-        lines.append(f"Last check at {clock(record['checked_at'])}: {finding['summary']}"
-                     + (f" | next: {finding['next_action']}" if finding.get("next_action") else ""))
-        lines += ["  " + line for line in finding.get("details") or []]
-    return {"deployment": str(directory), "record": record, "lines": lines}
+    documents, lines = [], []
+    for _, directory in found:
+        directory = Path(directory).resolve()
+        record = record_of(load(), directory)
+        backend = installer.read(directory / "deployment.lock.json").get("backend")
+        lines += ["Deployment: " + str(directory),
+                  *status_lines(record, state=saved_state(directory), timer=timer_enabled(), backend=backend)]
+        finding = record.get("finding")
+        if finding and record.get("checked_at"):
+            lines.append(f"Last check at {clock(record['checked_at'])}: {finding['summary']}"
+                         + (f" | next: {finding['next_action']}" if finding.get("next_action") else ""))
+            lines += ["  " + line for line in finding.get("details") or []]
+        documents.append({"deployment": str(directory), "record": record})
+    if len(documents) == 1:
+        return {**documents[0], "lines": lines}
+    return {"deployment": None, "record": None, "deployments": documents, "lines": lines}
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring recover",
-                                     description="Automatic restart of the active model when a Spark stops serving.")
+                                     description="Automatic restart of the active models when a Spark stops serving.")
     parser.add_argument("action", nargs="?", choices=("status", "on", "off"),
-                        help="status (default), or turn automatic recovery on or off for the active deployment")
+                        help="status (default), or turn automatic recovery on or off for the active deployments: "
+                             "the whole ring's or pair's, and each ring half's")
     parser.add_argument("--auto", action="store_true",
                         help="check once and restart the model if needed; sparkring-recover.timer runs this")
     parser.add_argument("--json", action="store_true", help="print one JSON document")
@@ -946,13 +982,24 @@ def main(argv=None):
     try:
         if args.auto:
             result = check()
-            print(json.dumps(result, indent=2) if args.json else f"{result['state']}: {result['summary']}")
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                for item in result.get("deployments") or [result]:
+                    print(f"{item['state']}: {item['summary']}")
             return 1 if result["state"] == "failed" else 0
         if args.action in ("on", "off"):
-            record = set_enabled(args.action == "on")
-            directory = Path(controller.active_deployment()).resolve()
-            result = {"deployment": str(directory), "record": record,
-                      "lines": status_lines(record, state=saved_state(directory))}
+            # Applies to every slot's active deployment: the whole cluster's and each ring half's.
+            found = [directory for _, directory in controller.active_deployments()] or [None]
+            documents, lines = [], []
+            for directory in found:
+                record = set_enabled(args.action == "on", directory=directory)
+                directory = Path(directory or controller.active_deployment()).resolve()
+                documents.append({"deployment": str(directory), "record": record})
+                lines += ([f"Deployment: {directory}"] if len(found) > 1 else []) + status_lines(
+                    record, state=saved_state(directory))
+            result = ({**documents[0], "lines": lines} if len(documents) == 1 else
+                      {"deployment": None, "record": None, "deployments": documents, "lines": lines})
         else:
             result = describe()
         print(json.dumps({key: value for key, value in result.items() if key != "lines"}, indent=2)

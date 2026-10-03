@@ -12,6 +12,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import json
 import os
 import re
+import shlex
 
 from . import throughput
 
@@ -131,9 +132,32 @@ def _link(directory, name, label):
     return f"[{label}]({directory}/{name})"
 
 
-def render(*, profile, name, record_dir, repo_root, files, install=None, source=None,
+def _install_flags(arguments):
+    """The installer's further arguments as a record prints them.
+
+    A development image lock is a file on Node A, so its path is shown as
+    `LOCK`; the conditions name the image that served.
+    """
+    shown, lock_path = [], False
+    for argument in arguments:
+        if lock_path:
+            argument, lock_path = "LOCK", False
+        elif argument == "--image-lock":
+            lock_path = True
+        elif argument.startswith("--image-lock="):
+            argument = "--image-lock=LOCK"
+        shown.append(shlex.quote(argument))
+    return "".join(f" {argument}" for argument in shown)
+
+
+def render(*, profile, name, record_dir, repo_root, files, install=None, source=None, install_arguments=(),
            functional=None, stress=None, summary=None, status=None, client, harness_revision):
-    """Return the record's Markdown. `files` maps roles to file names in the record directory."""
+    """Return the record's Markdown.
+
+    `files` maps roles to file names in the record directory;
+    `install_arguments` are the arguments the installer received after
+    `--profile ID --yes --json`.
+    """
     status = status or profile.status
     if status not in STATUSES:
         raise ValueError(f"Record status must be one of {', '.join(STATUSES)}")
@@ -160,7 +184,8 @@ def render(*, profile, name, record_dir, repo_root, files, install=None, source=
     ]
     if installed:
         revision = (install.get("source_revision") or "")[:12] or "unknown"
-        lines.append(f"`install.sh --profile {profile.id} --yes --json`, from {source.describe()}, installed "
+        flags = _install_flags(install_arguments)
+        lines.append(f"`install.sh --profile {profile.id} --yes --json{flags}`, from {source.describe()}, installed "
                      f"source commit `{revision}` on one {cluster}, which then served `{profile.repository}` "
                      f"revision `{profile.revision[:12]}` as `{profile.served_model_name}`.")
     else:

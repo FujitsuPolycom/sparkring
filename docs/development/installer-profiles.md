@@ -65,7 +65,7 @@ or `profiles/glm53-flash-nvfp4-spark-tp2/` (two Sparks) and set:
 | `profiles/storage-planning.json` | Optional with a pin manifest: `checkpoint_allowance_gib["<owner>/<name>"]`, whole GiB reserved for a revision of that repository without one | `No storage allowance for this checkpoint` from `setup.storage_plan` (`sparkring setup storage`; a host that pulls the image under `sparkring up`) when the revision has neither |
 | `profiles/model-names.json` | `models`, `quant_labels`, `publishers["<owner>"]` | `generate_profiles.py` stops: `needs a standard display name` or `needs a credited publisher` |
 | `runtime/common/installer.py`, `scripts/sparkring_installer.py` | Optional: `DEFAULTS` and `--model` choices | `sparkring.py init --model` offers no family default |
-| `performance/profile-capacity.json` | Optional: KV capacity record (`tokens`, `source`, `witness`, `conditions`) | The catalog's KV column shows `—` |
+| `performance/profile-capacity.json` | Optional: KV capacity record (`tokens`, `source`, `witness`, `conditions`); `kv_bytes_per_rank` at measurement, `checkpoint` when the measured checkpoint is not the profile's default, `kv_evidence` when `source` does not state the KV bytes, and `checkpoints` with further measurements by checkpoint name (`tokens`, `source`, `witness`, `kv_bytes_per_rank`, `conditions`). Every `source` is a repository file that contains its `witness` text; `generate_profiles.py` refuses a record or checkpoint measurement without one | The catalog's KV column shows `—`; the Install Builder shows no token estimate |
 
 Tests that list installer profiles:
 
@@ -125,6 +125,7 @@ cache and context window).
 | `arguments` | Optional: new values for vLLM options that `vllm_args` already sets, such as `--quantization`, `--load-format`, `--kv-cache-memory-bytes` and `--max-model-len`; no option is added |
 | `environment` | Optional: new values for variables that `environment` already sets |
 | `speculative` | Optional: keys to change or add in `--speculative-config` |
+| `derived` | Optional: `{"base": NAME, "donor": NAME}` naming two other entries, for a checkpoint that the installer derives on the Sparks (below); its `model` then names the derived checkpoint |
 
 `checkpoint_aliases` optionally maps more names to listed ones. A checkpoint
 entry needs its pin manifest (steps 1–2 below), from which storage planning
@@ -136,6 +137,24 @@ in `scripts/test_pin_checkpoint.py`, add render assertions for its settings to
 with its size in the Downloads table. Without `--checkpoint`, the profile
 installs its default checkpoint with unchanged settings; each other name is a
 separate deployment.
+
+A derived entry describes a checkpoint that no repository publishes: the
+installer acquires its base like any checkpoint, then writes the derived
+files on the Sparks with a recipe module below `runtime/` and serves them from
+their own checkpoint directory ([derived checkpoints](../operations/install-reference.md#derived-checkpoints)).
+Its `model` names a `sparkring-derived/<name>` repository, a revision that is
+`runtime.common.derived_checkpoint.identity` of the base, the donor's files
+and the recipe's SHA-256, and the derived `config.json` and index. Its
+manifest, `profiles/checkpoints/sparkring-derived--<name>/<revision>.json`
+(`sparkring-derived-checkpoint/v1`), pins the size and SHA-256 of every
+derived file; files kept from the base must equal the base's pins, and
+`derivation.json` must equal the record the manifest implies
+(`derived_checkpoint.check` names every difference, with the expected
+revision and record). Any change to the recipe file therefore gives the entry
+another revision, manifest name and `model`. Register a derived entry in
+`DERIVED` in `scripts/test_pin_checkpoint.py`, cover it in
+`runtime/common/test_derived_checkpoint.py`, and list it with its storage
+figures in the install reference.
 
 ## Invariants the tests enforce
 

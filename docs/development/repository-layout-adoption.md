@@ -1,4 +1,15 @@
-# Repository layout adoption plan
+<a id="repository-layout-adoption-plan"></a>
+
+# Repository layout adoption plan: historical record
+
+**Historical record.** This document is the plan and verification summary
+prepared in September 2026 for merging the `refactor/repository-layout`
+branch, which introduced the repository's present layout, into main. It
+describes that branch and the review, push, pull-request and rollback steps
+proposed for it at the time; it is not a current plan. The
+[repository ownership guide](layout.md) states the ownership, compatibility
+and retirement rules that apply now, and the
+[release procedure](releases.md) states how deployments are promoted.
 
 ## Result and base
 

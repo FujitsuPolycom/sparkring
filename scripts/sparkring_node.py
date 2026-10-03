@@ -25,6 +25,9 @@ def main(argv=None):
     inspect.add_argument("--witness", required=True)
     native = commands.add_parser("native-mesh")
     native.add_argument("--rank", type=int, required=True, choices=range(4))
+    commands.add_parser("mesh-park", help="stop and disable this Spark's SparkRing mesh services while two-Spark "
+                                          "models serve on the ring's halves; a four-Spark model's installation "
+                                          "starts them again")
     assets = commands.add_parser("assets", help="survey this Spark for the profile's pinned checkpoint and print "
                                  "where copies are (read-only)")
     assets.add_argument("--profile", required=True)
@@ -100,6 +103,9 @@ def main(argv=None):
         elif args.action == "native-mesh":
             from runtime.host.native_mesh import inspect_local
             result = inspect_local(args.rank)
+        elif args.action == "mesh-park":
+            from runtime.host.native_mesh import park_local
+            result = park_local()
         elif args.action == "assets":
             from runtime.host.assets import discover
             result = discover(args.profile)

@@ -332,20 +332,55 @@ def deployment_directory(profile, instance="main"):
     return STATE / "deployments" / (profile if instance == "main" else profile + "-" + instance)
 
 
-def active_deployment(*, report=True):
+def active_deployment(*, report=True, placement=None):
     """The deployment that up last started, or that down last stopped when none was active; None if neither.
 
-    A recorded directory that no longer holds a deployment, for example one
-    moved by hand, counts as none and, with ``report``, is noted on stderr.
+    ``placement`` selects the slot (``runtime.host.placement``): None for the
+    whole cluster, a ring half otherwise. A recorded directory that no longer
+    holds a deployment, for example one moved by hand, counts as none and,
+    with ``report``, is noted on stderr.
     """
-    if not (STATE / "active.json").exists():
+    from runtime.host import placement as placements
+    path = placements.recorded(STATE, placement)
+    if path is None:
         return None
-    path = Path(installer.read(STATE / "active.json")["path"])
     if (path / "deployment.lock.json").exists():
         return path
     if report:
         print(f"Note: the recorded active deployment {path} does not exist; no deployment is active.", file=sys.stderr)
     return None
+
+
+def active_deployments(*, report=False):
+    """``[(placement, directory)]`` of every slot's active deployment, the whole cluster first.
+
+    ``report`` notes each recorded directory that no longer holds a deployment, as ``active_deployment`` does.
+    """
+    from runtime.host import placement as placements
+    return [(slot, path) for slot in placements.slots(4)
+            if (path := active_deployment(report=report, placement=slot)) is not None]
+
+
+def lifecycle_slot(on):
+    """The slot that ``sparkring up``, ``down`` or ``status`` without a profile acts on.
+
+    ``--on`` names a half. Without it, the one slot that records a deployment;
+    the whole cluster when none does. With several recorded, ValueError lists
+    each and the command that names it.
+    """
+    from runtime.host import placement as placements
+    if on:
+        return placements.parse(on)
+    found = active_deployments()
+    if len(found) <= 1:
+        return found[0][0] if found else None
+    lines = [f"{placements.text(slot)}: {placements.profile_of(path)} "
+             + ("(stopped)" if placements.stopped(path) else "(started)") + "; name it with "
+             + (placements.flag(slot) if slot else _up_arguments(path)) for slot, path in found]
+    error = ValueError("This ring records a model on more than one placement. Name one with --on 0,1, --on 2,3 or "
+                       "the deployment's profile.")
+    error.details = {"lines": lines}
+    raise error
 
 
 def existing_deployment(profile, instance="main"):
@@ -356,14 +391,30 @@ def existing_deployment(profile, instance="main"):
     return directory
 
 
-def model_site(cluster, profile, instance="main"):
+def model_site(cluster, profile, instance="main", placement=None):
+    """The raw site of a deployment of ``profile`` on the cluster's Sparks.
+
+    Without ``placement`` the site holds every Spark, each at port 0's primary
+    fabric function. With a placement (``runtime.host.placement``) it holds
+    the two Sparks of that ring half, each at the port functions facing its
+    partner, records the placement, and keeps Node A as the controller. The
+    API address is Node A's recorded LAN address, or for half (2, 3) the one
+    ``placement.api_address`` gives.
+    """
+    from runtime.host import placement as placements
     plan = cluster["plan"]
     rows = []
     identities = plan.get("nodes", [])
-    for rank, host in enumerate(plan["spec"]["hosts"]):
-        port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
-        rows.append({"host": host["host"], "management_ip": host["management_address"],
-                     "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
+    ranks = list(range(len(plan["spec"]["hosts"]))) if placement is None else list(placement)
+    fabric = placements.fabric_rows(cluster, placement) if placement is not None else None
+    for index, rank in enumerate(ranks):
+        host = plan["spec"]["hosts"][rank]
+        if fabric is None:
+            port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
+            rows.append({"host": host["host"], "management_ip": host["management_address"],
+                         "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
+        else:
+            rows.append(dict(fabric[index]))
         if len(identities) == len(plan["spec"]["hosts"]) and isinstance(identities[rank], dict) and identities[rank].get("node_id"):
             rows[-1]["node_id"] = identities[rank]["node_id"]
     import re
@@ -373,9 +424,14 @@ def model_site(cluster, profile, instance="main"):
     name = cluster["name"][:12] + "-" + profile[:18] + "-" + hashlib.sha256(identity.encode()).hexdigest()[:6]
     result = {"schema": "sparkring-install-site/v1", "name": name,
               "workspace": "/srv/sparkring/" + cluster["name"] + "/" + identity,
-              "hosts": rows, "controller_address": rows[0]["management_ip"]}
-    if cluster.get("api_address"):
-        result["api_address"] = cluster["api_address"]
+              "hosts": rows, "controller_address": plan["spec"]["hosts"][0]["management_address"]}
+    address = cluster.get("api_address")
+    if placement is not None and placement[0] != 0:
+        address, _ = placements.api_address(cluster, placement)
+    if address:
+        result["api_address"] = address
+    if placement is not None:
+        result["placement"] = list(placement)
     return result
 
 
@@ -400,9 +456,14 @@ def lifecycle(argv):
     parser.add_argument("operation", choices=("up", "down", "status"))
     parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
     parser.add_argument("--model-path", help="serve this complete copy read-only on every rank; it is verified, never changed")
-    parser.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
+    images = parser.add_mutually_exclusive_group()
+    images.add_argument("--image", metavar="NAME", help="another installer image: a name or release tag that sparkring images lists")
+    images.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
     parser.add_argument("--fresh-mesh", action="store_true", help="review replacement of an existing native mesh")
     parser.add_argument("--instance", default="main", help="separate local deployment name for a rehearsal")
+    parser.add_argument("--on", metavar="RANKS",
+                        help="the half of a four-Spark ring: 0,1 or 2,3; without a profile, its model; with up "
+                             "PROFILE, where a two-Spark profile's deployment runs")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--refresh", action="store_true")
@@ -414,8 +475,11 @@ def lifecycle(argv):
     if settings and (args.operation != "up" or not args.profile):
         raise ValueError("Serving settings apply to up with an exact profile")
     image_runtime = None
-    if args.image_lock and (args.operation != "up" or not args.profile):
-        raise ValueError("--image-lock requires up with an exact profile")
+    if (args.image or args.image_lock) and (args.operation != "up" or not args.profile):
+        raise ValueError("--image and --image-lock require up with an exact profile")
+    if args.image:
+        from runtime.common import installer_image
+        args.image_lock = installer_image.lock_path(args.image)
     if args.instance != "main" and not args.profile:
         raise ValueError("--instance names one deployment of a profile; give the profile as well")
     from runtime.host import retained_source
@@ -434,39 +498,34 @@ def lifecycle(argv):
                 except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                     observation = {"state": "unreachable", "error": str(error)}
                 result["nodes"].append({"host": host["host"], **observation})
-        path = existing_deployment(args.profile, args.instance) if args.profile else active_deployment()
+        from runtime.host import placement as placements
         from runtime.host import recovery
-        record = None
-        if path is not None:
-            result["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=cache)
-            # Read here rather than by the retained source, whose revision may
-            # predate these fields.
-            lock = installer.read(Path(path) / "deployment.lock.json")
-            result["deployment"].update(installer.identity(lock), containers=installer.containers(lock),
-                                        serving=lock.get("serving") or {})
-            try:
-                record = recovery.record_of(recovery.load(), path)
-                # Automatic recovery acts on the active deployment only.
-                if not args.profile or recovery.is_active(path):
-                    result["recovery"] = {**record, "supported": recovery.supported(lock),
-                                          "timer_enabled": recovery.timer_enabled()}
-            except (OSError, ValueError) as error:
-                result["recovery"] = {"error": str(error)}
-            if args.refresh:
-                # Node A's own document carries its administration tunnel report.
-                model = recovery.status_assessment(result["deployment"], result.get("nodes"), record,
-                                                   tunnel=result.get("control"))
-                if model is not None:
-                    result["model"] = model
+        if args.profile:
+            path = existing_deployment(args.profile, args.instance)
+            paths = [(placements.of_directory(path), path)]
+        elif args.on:
+            slot = placements.parse(args.on)
+            paths = [(slot, path) for path in [active_deployment(placement=slot)] if path is not None]
+        else:
+            paths = active_deployments(report=True)
+        views = [_status_view(slot, path, args, result, cache) for slot, path in paths]
+        if views:
+            # The first slot's model keeps the document's single-deployment fields.
+            result.update({key: views[0][key] for key in ("deployment", "recovery", "model") if key in views[0]})
+        if len(views) > 1 or any(view["placement"] for view in views):
+            result["slots"] = [{key: value for key, value in view.items() if key not in ("lock", "record")}
+                               for view in views]
         if args.json:
             print(json.dumps(result, indent=2))
         else:
-            model = result.get("model")
-            if model and model["state"] != "serving":
-                # What stops the model comes first, with the step that restarts it.
-                print(model["summary"] + " | next: " + model["next_action"])
-                for line in model["details"]:
-                    print("  " + line)
+            for view in views:
+                model = view.get("model")
+                if model and model["state"] != "serving":
+                    # What stops a model comes first, with the step that restarts it.
+                    where = f"{placements.text(tuple(view['placement']))}: " if view["placement"] else ""
+                    print(where + model["summary"] + " | next: " + model["next_action"])
+                    for line in model["details"]:
+                        print("  " + line)
             # Node A's own state; each Spark's line follows.
             print(result["state"] + " | next: " + result.get("next_action", "sparkring status"))
             if not result.get("nodes"):
@@ -496,11 +555,17 @@ def lifecycle(argv):
                     print("    admin tunnel: " + fallback)
             if attention:
                 print("Sparks that need attention: " + ", ".join(attention))
-            if result.get("deployment"):
-                saved = result["deployment"]
+            for view in views:
+                saved, lock, record, model = view["deployment"], view["lock"], view["record"], view.get("model")
+                if len(views) > 1 or view["placement"]:
+                    where = placements.text(tuple(view["placement"]) if view["placement"] else None)
+                    print(where[0].upper() + where[1:] + ":")
                 print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
-                # A profile with one checkpoint has no checkpoint name.
+                # A profile with one checkpoint has no checkpoint name; a derived checkpoint names its base too.
                 source = f"{saved['model_repository']} @ {saved['model_revision'][:12]}"
+                if saved.get("derived"):
+                    source = (f"{saved['derived']['repository']} @ {saved['derived']['revision'][:12]}, "
+                              f"derived from {source}")
                 print("Checkpoint: " + (f"{saved['checkpoint']} ({source})" if saved["checkpoint"] else source)
                       + f" | Image: {saved['image_release']}")
                 if saved.get("serving"):
@@ -515,7 +580,7 @@ def lifecycle(argv):
                         print("Model: " + model["summary"])
                 else:
                     print("Use --refresh for current model container state.")
-                recorded = result.get("recovery")
+                recorded = view.get("recovery")
                 if recorded is not None:
                     for line in recovery.status_lines(None if "error" in recorded else record,
                                                       timer=recorded.get("timer_enabled"), state=saved["state"],
@@ -525,16 +590,30 @@ def lifecycle(argv):
         return 0
     if args.plan and args.execute:
         raise ValueError("Choose --plan or --execute")
-    active = active_deployment()
+    from runtime.host import placement as placements
+    requested = placements.parse(args.on) if args.on else None
+    if args.profile and requested is not None and args.operation != "up":
+        raise ValueError("--on with a profile names where up places a new deployment; down takes the profile alone")
+    slot = None if args.profile else lifecycle_slot(args.on)
+    active = active_deployment(placement=slot)
     if args.operation == "up" and args.profile:
-        directory = deployment_directory(args.profile, args.instance)
+        instance = args.instance
+        if requested is not None and instance == "main":
+            # Each half's deployment of a profile needs its own directory.
+            instance = placements.instance_label(requested)
+        directory = deployment_directory(args.profile, instance)
+        # Refused before a new deployment is created; checked again under the installation lock.
+        _refuse_conflicts(requested if not directory.exists() else placements.of_directory(directory))
         if not directory.exists():
             from runtime.common import installer_image
             from runtime.host import models
             cluster = installer.read(STATE / "cluster.json")
-            profile = models.select(args.profile, len(cluster["plan"]["nodes"]))
+            size = len(cluster["plan"]["nodes"])
+            nodes = 2 if requested is not None else size
+            profile = models.select(args.profile, nodes)
+            placements.check(requested, cluster_size=size, profile_nodes=nodes, profile=profile)
             image_runtime = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
-            site = model_site(cluster, profile, args.instance)
+            site = model_site(cluster, profile, instance, requested)
             # Every rank uses the cluster's SparkRing checkpoint directory for the
             # profile's revision, whose model operation adopts what that
             # directory holds and downloads the rest on that rank. A copy
@@ -563,6 +642,9 @@ def lifecycle(argv):
                 raise ValueError("Deployment reuses an existing mesh; use --instance fresh --fresh-mesh for a separate rehearsal")
             if settings and (existing.get("serving") or {}) != settings:
                 raise ValueError("Deployment uses other serving settings; choose a distinct --instance")
+            if requested is not None and placements.from_lock(existing) != requested:
+                raise ValueError(f"{directory.name} runs on {placements.text(placements.from_lock(existing))}; "
+                                 "choose a distinct --instance")
     elif args.profile:
         directory = existing_deployment(args.profile, args.instance)
     elif active is not None:
@@ -570,6 +652,9 @@ def lifecycle(argv):
     else:
         raise ValueError(f"No model deployment is active. To {args.operation} one, name its profile"
                          " and, for a deployment other than main, its --instance.")
+    # The slot of the deployment acted on: its own placement when a profile names it.
+    slot = placements.of_directory(directory) if args.profile else slot
+    active = active_deployment(placement=slot, report=False) if args.profile else active
     from runtime.host import retention
     released = retention.release_record(directory) if args.operation == "down" else None
     if released:
@@ -615,7 +700,7 @@ def lifecycle(argv):
         # lock, so the record read before the lock may be stale. Every decision
         # below uses the record read under the lock; a command without a
         # profile, whose target is the earlier record, stops when they differ.
-        held_active = active_deployment(report=False)
+        held_active = active_deployment(report=False, placement=slot)
         if not args.profile and held_active != active:
             raise ValueError(f"The active deployment changed from {active} to {held_active or 'none'} after this "
                              f"command printed its steps. Review with 'sparkring {args.operation} --plan', then repeat.")
@@ -624,6 +709,8 @@ def lifecycle(argv):
             if previous.get("operation") != "down" or not previous.get("complete"):
                 raise ValueError("Run sparkring down before selecting another model")
         if args.operation == "up":
+            _refuse_conflicts(slot)
+        if args.operation == "up" and slot is None:
             # A mesh refused by its hairpin start check would otherwise surface
             # only as a failed systemd job, so nothing starts without the setting.
             problem = _hairpin_problem()
@@ -635,10 +722,15 @@ def lifecycle(argv):
         # own, neither in this deployment nor in the active one it replaces.
         for path in {directory, active} - {None}:
             recovery.forget_attempt(path)
+        if args.operation == "up" and slot is not None:
+            from runtime.host import install_workflow
+            install_workflow.park_ring(installer.read(STATE / "cluster.json"))
         result = retained_source.apply(directory, args.operation, cache=cache)
         # Stopping another deployment leaves the active one in place.
         if args.operation == "up" or held_active is None:
-            node.save(STATE, "active.json", {"path": str(directory)}, mode=0o600)
+            placements.record(STATE, slot, directory)
+        if args.operation == "up":
+            placements.clear_conflicting(STATE, slot)
         if args.operation == "up" and result.get("complete"):
             # Resets automatic recovery's failures and records the generation's boots.
             recovery.started(directory)
@@ -647,6 +739,51 @@ def lifecycle(argv):
                 STATE, discovery.ssh, write=(lambda line: print(line, file=sys.stderr)) if args.json else print)
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
+
+
+def _refuse_conflicts(slot):
+    """Refuse to start a model in ``slot`` while the conflicting slots' model runs: the whole ring and its halves never serve at once."""
+    from runtime.host import placement as placements
+    for other in placements.conflicting(slot):
+        running = active_deployment(report=False, placement=other)
+        if running is not None and not placements.stopped(running):
+            raise ValueError(f"{placements.profile_of(running)} runs on {placements.text(other)}. Stop it first: "
+                             "sudo sparkring down " + (placements.flag(other) if other else _up_arguments(running))
+                             + " --execute")
+
+
+def _status_view(slot, path, args, result, cache):
+    """One deployment's part of ``sparkring status``: its saved state, recovery record and, with --refresh, model check.
+
+    Returns ``placement``, ``deployment``, ``recovery`` (only for a slot's
+    active deployment, which automatic recovery acts on), ``model`` and the
+    ``lock`` and ``record`` the terminal text reads.
+    """
+    from runtime.host import recovery, retained_source
+    view = {"placement": list(slot) if slot else None, "record": None}
+    view["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=cache)
+    # Read here rather than by the retained source, whose revision may
+    # predate these fields.
+    lock = view["lock"] = installer.read(Path(path) / "deployment.lock.json")
+    view["deployment"].update(installer.identity(lock), containers=installer.containers(lock),
+                              serving=lock.get("serving") or {})
+    try:
+        record = view["record"] = recovery.record_of(recovery.load(), path)
+        # Automatic recovery acts on each slot's active deployment only.
+        if not args.profile or recovery.is_active(path):
+            view["recovery"] = {**record, "supported": recovery.supported(lock),
+                                "timer_enabled": recovery.timer_enabled()}
+    except (OSError, ValueError) as error:
+        view["recovery"] = {"error": str(error)}
+    if args.refresh:
+        # Node A's own document carries its administration tunnel report.
+        nodes = result.get("nodes")
+        if nodes and slot:
+            nodes = [row for row in nodes if row["host"] in {item["host"] for item in lock["site"]["ranks"]}]
+        model = recovery.status_assessment(view["deployment"], nodes, view["record"], tunnel=result.get("control"))
+        if model is not None:
+            view["model"] = model
+    return view
 
 
 def _up_arguments(directory):

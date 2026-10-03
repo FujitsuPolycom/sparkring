@@ -1,0 +1,10 @@
+{
+  "served_models": [
+    "Qwen3.8-Flash-Next-NVFP4-QAD-TP2"
+  ],
+  "expected": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+  "seconds": 0.0,
+  "attempts": 1,
+  "ok": true,
+  "complete": true
+}

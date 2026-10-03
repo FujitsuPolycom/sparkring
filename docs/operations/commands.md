@@ -15,6 +15,8 @@ sudo sparkring install --profile PROFILE                     # set up the Sparks
 sudo sparkring install --profile PROFILE --plan              # print the plan, change nothing
 sudo sparkring install --profile PROFILE --model-path /data/models/my-model  # reuse a copy
 sudo sparkring install --profile PROFILE --checkpoint NAME   # another checkpoint the profile lists
+sudo sparkring install --profile PROFILE --image NAME        # another image from sparkring images
+sudo sparkring install --profile PROFILE --on 2,3            # a two-Spark model on half of a four-Spark ring
 sudo sparkring logs --follow                                 # follow progress
 ```
 
@@ -24,7 +26,9 @@ sudo sparkring logs --follow                                 # follow progress
 |---|---|---|---|
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
+| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled and what to move; changes nothing |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
+| [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that four-Spark rings need |
@@ -53,8 +57,9 @@ serves, it releases what older deployments hold on the Sparks
 | Flag | Meaning |
 |---|---|
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
+| `--on 0,1` or `--on 2,3` | Put a two-Spark profile on one half of a four-Spark ring ([two models on one ring](install-reference.md#two-models-on-one-ring)); default: the half that serves no model |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
-| `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation |
+| `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
 | `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
@@ -65,6 +70,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--env FILE` | Preferences file: setup keys on first installation, the download limit and the [retained deployments](#automatic-release) on every run ([keys](install-reference.md#optional-preferences)) |
 | `--stop-workloads` | Stop (never remove) GPU containers that are not SparkRing's |
 | `--no-auto-recover` | Do not restart this model by itself when a Spark stops serving ([automatic recovery](install-reference.md#automatic-recovery)) |
+| `--image NAME` | Another installer image: a name or release tag from [`sparkring images`](#images) ([details](install-reference.md#another-image)); default: the installer's own image |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |
@@ -82,7 +88,7 @@ built version is installed.
 
 | Flag | Meaning |
 |---|---|
-| `--yes` | Answer the package question and `sparkring install`'s questions; required without a terminal |
+| `--yes` | Answer the package question and pass `--yes` to `sparkring install`, with the same limits; required without a terminal |
 | `--plan` | Install nothing; plan with the built version (below) |
 | `--package-only` | Ask the package question, install or keep the package and stop before `sparkring install`; not with `--plan` |
 | `--json` | One `sparkring-install-result/v1` document on stdout (below); progress, questions and `apt` output on stderr |
@@ -110,12 +116,15 @@ stops first or a plan from the extracted package ends without a result (stage
 ## setup
 
 `sudo sparkring setup [flags]` discovers the cabled Sparks and configures them,
-without a model. `sparkring install` runs it on first use.
+without a model. `sparkring install` runs it on first use. Sparks that belonged
+to other SparkRing clusters are
+[re-formed](install-reference.md#re-form-sparks-into-another-pair-or-ring)
+into the pair or ring now cabled.
 
 | Flag | Meaning |
 |---|---|
 | `--plan` | Discover and review over existing SSH access; configure nothing |
-| `--yes` | Accept the listed changes; unknown SSH host keys still need confirmation |
+| `--yes` | Accept the listed changes; unknown SSH host keys still need confirmation, and stopping GPU containers still asks unless you add `--stop-workloads` |
 | `--env FILE` | Literal preferences file; its keys set the defaults below ([keys](install-reference.md#optional-preferences)) |
 | `--name NAME` | Cluster name: a lowercase letter, then lowercase letters, digits or `-`; at most 35 characters (default `sparkring`) |
 | `--ssh-user USER` | Worker account (default: the account that ran `sudo`; `root` with `--env` or port 2222) |
@@ -150,17 +159,67 @@ Two setup actions run offline without sudo and accept `--variant`:
 - `sparkring setup storage PROFILE --model-path P --cache-path P --docker-path P [--reuse-model] [--reuse-image] [--json]`
   checks free space on those filesystems without writing.
 
+## cabling
+
+`sudo sparkring cabling [flags]` shows how the Sparks on this Spark's fabric
+cables are cabled, and what to move for a pair or a four-Spark ring. It
+changes nothing on any Spark. Setup stops with the same advice when the
+cables do not fit ([cabling rules](install-reference.md#cabling)).
+
+```text
+Sparks read:
+  spark-a: this Spark
+  spark-b: the admin network at 10.253.255.2
+  spark-c: the LAN at 192.0.2.13 as operator (LLDP not readable without sudo)
+  spark-d: the LAN at 192.0.2.14 as operator (LLDP not readable without sudo)
+Cables:
+  spark-a port 0 ↔ spark-b port 1
+  spark-b port 0 ↔ spark-c port 1
+  spark-c port 0 ↔ spark-d port 0
+  spark-d port 1 ↔ spark-a port 1
+The four Sparks form a loop, but 2 cables join the same port number at both ends. In a ring, every cable runs from port 0 of one Spark to port 1 of the next.
+To fix:
+  On spark-d, swap its two cables (port 0 ↔ port 1).
+Ring order after the fix: spark-a → spark-b → spark-c → spark-d
+```
+
+It reads this Spark, the Sparks of its recorded cluster over the admin
+network, and the other Sparks on the cables. It signs in to those over the
+LAN or the cables as the account that ran `sudo`, with Node A's setup key
+where they accept it; SSH asks for a password elsewhere.
+
+| Flag | Meaning |
+|---|---|
+| `--json` | One `sparkring-cabling/v1` document |
+| `--ssh-user USER` | Account for signing in to the other Sparks (default: the account that ran `sudo`) |
+| `--no-sign-in` | Read only this Spark and its recorded cluster's Sparks |
+
+It exits with 0 when the cables form a pair or ring as SparkRing needs, 1
+when a cable needs to move or not every cable could be seen, and 2 on
+failure.
+
 ## models
 
 `sparkring models [--json]` lists every profile (exact model, version,
 quantization and topology) and marks those `sparkring install` supports.
+
+## images
+
+`sparkring images [--profile PROFILE] [--json]` lists the installer images
+this package records, the default first, with the GitHub release that
+published each, its download size and the profiles it runs. `--profile`
+lists only the images that run that profile. Any listed name, release tag or
+part of a name that only one image has selects that image in
+`sudo sparkring install --image NAME`.
 
 ## status
 
 `sudo sparkring status [PROFILE [--instance NAME]] [flags]` prints Node A's
 state, one line per Spark with the next action for any Spark that needs
 attention, the saved model (the active deployment, or the one named) and
-automatic recovery:
+automatic recovery. On a ring that serves
+[two models](install-reference.md#two-models-on-one-ring) it prints each
+half's model under `Sparks 0 and 1:` and `Sparks 2 and 3:`:
 
 ```text
 Saved model operation: PROFILE | up complete
@@ -168,7 +227,9 @@ Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
 Automatic recovery: on
 ```
 
-A profile with one checkpoint shows only `REPOSITORY @ REVISION`. The
+A profile with one checkpoint shows only `REPOSITORY @ REVISION`; a
+[derived checkpoint](install-reference.md#derived-checkpoints) adds
+`, derived from REPOSITORY @ REVISION` of its base. The
 recovery lines add the Spark it waits for, its last attempt and the next.
 After `sparkring down` they read `on; idle until the next sudo sparkring up
 --execute or sudo sparkring install`, and a deployment that recovery does not
@@ -186,7 +247,8 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 | Flag | Meaning |
 |---|---|
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
-| `--json` | Print the full observation as JSON |
+| `--on 0,1` or `--on 2,3` | Only that half's model |
+| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half |
 
 ## logs
 
@@ -216,7 +278,9 @@ runs a different SparkRing revision than Node A.
 ## checkpoints
 
 `sudo sparkring checkpoints [flags]` lists SparkRing's checkpoint directories on
-every Spark, the deployments that use them and what a release frees.
+every Spark, the deployments that use them and what a release frees. A
+[derived checkpoint](install-reference.md#derived-checkpoints)'s directory
+names the base it is derived from; a deployment of it uses both directories.
 
 | Flag | Meaning |
 |---|---|
@@ -245,7 +309,7 @@ ran out.
 | Class | Meaning |
 |---|---|
 | `installed` | Used by the active deployment, the rollback target, an unfinished model switch or a mesh installed on that Spark, such as the workspace holding the host marker of a four-Spark ring's mesh. The report names the mesh |
-| `profile` | An installer profile of the installed package references it: a checkpoint the profile lists, the image the installer selects for it, or their compile cache. Kept for that profile's next installation |
+| `profile` | An installer profile of the installed package references it: a checkpoint the profile lists, derived ones included, the image the installer selects for it, or their compile cache. Kept for that profile's next installation |
 | `unreferenced` | Neither. Proposed for release unless a running container uses it or it holds model files. Other retained deployments that use it are named; they need `sudo sparkring install` again after a release |
 | `unmanaged` | Not created by SparkRing's installer, such as a directory you made in `/srv/sparkring`; never removed |
 
@@ -332,6 +396,13 @@ with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under
 `/var/lib/sparkring/controller/deployments/`.
 
+On a ring that serves [two models](install-reference.md#two-models-on-one-ring),
+each half has its own active deployment: `sudo sparkring down --on 2,3
+--execute` stops the model on Sparks 2 and 3. Without a profile or `--on`,
+`up` and `down` act on the one recorded model and ask for `--on` when there
+are several. `up` refuses to start a four-Spark model while a half's model
+runs, or a half's model while the four-Spark model runs.
+
 | Flag | Meaning |
 |---|---|
 | `--plan` | Print the steps; change nothing |
@@ -339,8 +410,10 @@ one of them. The deployment directories are under
 | `--json` | Print the result as JSON |
 | `--model-path PATH` | `up PROFILE` only: serve this complete copy read-only on every Spark |
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
+| `--on 0,1` or `--on 2,3` | Without PROFILE: that half's model. With `up PROFILE`: a two-Spark profile on that half, as instance `on-0-1` or `on-2-3` unless `--instance` names another |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
 | `--max-images N` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values for a new deployment; an existing deployment keeps its own |
+| `--image NAME` | `up PROFILE` only: another installer image from [`sparkring images`](#images) |
 | `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal. An existing deployment keeps the image it recorded, and naming another lock for it is refused |
 | `--deployment DIR` | Use a deployment saved by `sparkring init` instead ([lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing)) |
 
@@ -348,7 +421,9 @@ one of them. The deployment directories are under
 
 `sudo sparkring recover [status|on|off]` shows or sets the automatic restart
 of the active model when a Spark stops serving
-([how it works](install-reference.md#automatic-recovery)).
+([how it works](install-reference.md#automatic-recovery)). On a ring that
+serves [two models](install-reference.md#two-models-on-one-ring), each
+command covers both halves' models.
 
 | Command | Does |
 |---|---|
@@ -403,6 +478,10 @@ Both accept `--json`. See
 
 - `sparkring compose render|check|start|stop` generates and coordinates
   profile-owned Compose deployments; see [Compose deployments](compose.md).
+  `render` takes `--image NAME`, `--checkpoint NAME` and the serving-setting
+  flags of `sparkring install`.
+- `python scripts/generate_compose_builder.py --output DIR [--verify]` writes
+  the [Install Builder](compose-builder.md) page for the checkout.
 - `sparkring validate-compose FILE` (or `--all`, `--json`, `--output FILE`)
   checks Compose files without Docker or GPUs.
 

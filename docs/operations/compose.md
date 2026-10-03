@@ -8,7 +8,8 @@ The normal path is `sudo sparkring install` ([Install SparkRing](install.md));
 it also writes each rank's runtime-binding file and verifies the image before
 any model downtime.
 
-[All commands and flags](commands.md) · [Published Compose files](compose-files.md)
+[All commands and flags](commands.md) · [Published Compose files](compose-files.md) ·
+[Install Builder](compose-builder.md), a web page that writes these deployments for your Sparks
 
 ## Supported profiles
 
@@ -48,6 +49,9 @@ A site cannot change serving settings or select another image.
 | Input | Controls |
 |---|---|
 | Profile configuration | Model, context, KV allocation, batching, MTP, media limits, engine arguments and integrations |
+| `render --checkpoint NAME` | Another checkpoint the profile lists, with the settings it needs, as `sparkring install --checkpoint` selects it |
+| `render --image NAME` | Another installer image that runs the profile: a name or release tag that [`sparkring images`](commands.md#images) lists, as `sparkring install --image` selects it |
+| `render` serving-setting flags | The [serving settings](install-reference.md#serving-settings) that `sparkring install` accepts, such as `--max-concurrency 8`, replacing the profile's values in every rank |
 | Image release or installer image lock | Registry digest, image ID, platform and image verification |
 | Site file | SSH targets, rank addresses, bootstrap interface, HCA order, GID index, and model, cache, repository and deployment paths; TP4 adds the prepared fabric reference |
 | Generated container specification | Effective arguments, environment, entrypoint, mounts, GPU/RDMA access, limits and health checks |
@@ -105,6 +109,15 @@ python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/q
 - `render` works offline and refuses an existing output directory; inside the
   repository, output must be under `.sparkring/`. Use one output directory per
   variant.
+- `--image NAME`, `--checkpoint NAME` and the serving-setting flags of
+  `sparkring install` (`--max-concurrency`, `--context-length`,
+  `--kv-cache-gib`, `--max-images`, `--max-videos`, `--save-cpu`) select
+  another installer image, checkpoint and settings.
+  `deployment.json` records them, so `check`, `start` and `stop` derive the
+  same containers; a deployment rendered without them keeps its ID. The
+  profile's default checkpoint, by name or alias, selects the deployment
+  without `--checkpoint`. `render` prints a warning for a KV cache above the
+  profile's value, as `sparkring install` does.
 - `check` runs `docker compose config` locally, with `.env` loading disabled
   and literal `$` signs escaped, and compares every resolved setting with the
   specification: arguments, image, environment, GPU reservation, RDMA devices,

@@ -176,6 +176,8 @@ def test_record_names_the_image_the_installer_verified(tmp_path):
     markdown = (h.records / f"{name}.md").read_text()
     assert f"on installer image `{release}`" in markdown
     assert f"runtime/releases/{release}/release.json" in markdown
+    assert f"`install.sh --profile {PROFILE} --yes --json --image-lock LOCK`" in markdown
+    assert "/var/tmp/lock.json" not in markdown
 
 
 def test_a_checkpoint_choice_reaches_the_installer_and_names_the_served_model(tmp_path):

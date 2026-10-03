@@ -1,0 +1,294 @@
+[
+ {
+  "a": "stock pass 1",
+  "b": "stock pass 2",
+  "tokens": 9708,
+  "nll_a": 1.565100374412501,
+  "nll_b": 1.5648077678158843,
+  "nll_b_minus_a": -0.00029260659661672087,
+  "mean_abs_logprob_diff": 0.179304757920513,
+  "top1_a": 0.6593531108364236,
+  "top1_b": 0.6564688916357643,
+  "files": [
+   {
+    "file": "README.md",
+    "tokens": 2108,
+    "nll_a": 1.1597551255682743,
+    "nll_b": 1.1641499413290424,
+    "nll_b_minus_a": 0.004394815760768115,
+    "mean_abs_logprob_diff": 0.11844022071339515,
+    "top1_a": 0.74146110056926,
+    "top1_b": 0.7376660341555977
+   },
+   {
+    "file": "runtime/images/derived_layer.py",
+    "tokens": 1490,
+    "nll_a": 1.7421210060168302,
+    "nll_b": 1.7418825073439876,
+    "nll_b_minus_a": -0.00023849867284236903,
+    "mean_abs_logprob_diff": 0.23663703349502097,
+    "top1_a": 0.6161073825503356,
+    "top1_b": 0.6187919463087248
+   },
+   {
+    "file": "docs/operations/commands.md",
+    "tokens": 1508,
+    "nll_a": 1.8066820899913543,
+    "nll_b": 1.8244815028817998,
+    "nll_b_minus_a": 0.01779941289044561,
+    "mean_abs_logprob_diff": 0.211172372271287,
+    "top1_a": 0.6140583554376657,
+    "top1_b": 0.6007957559681698
+   },
+   {
+    "file": "performance/records/qwen38-flash-next/shm-spin-window-20260930.md",
+    "tokens": 1106,
+    "nll_a": 1.8367899254843154,
+    "nll_b": 1.8239521806044423,
+    "nll_b_minus_a": -0.012837744879873048,
+    "mean_abs_logprob_diff": 0.2241859448045394,
+    "top1_a": 0.5867992766726944,
+    "top1_b": 0.5913200723327305
+   },
+   {
+    "file": "scripts/check_repository_layout.py",
+    "tokens": 1414,
+    "nll_a": 1.269743764469453,
+    "nll_b": 1.271253043022848,
+    "nll_b_minus_a": 0.0015092785533950383,
+    "mean_abs_logprob_diff": 0.13674398730434828,
+    "top1_a": 0.7397454031117398,
+    "top1_b": 0.7376237623762376
+   },
+   {
+    "file": "profiles/qwen38-flash-next-tp2/README.md",
+    "tokens": 2082,
+    "nll_a": 1.730108741057223,
+    "nll_b": 1.7173678082439323,
+    "nll_b_minus_a": -0.012740932813290595,
+    "mean_abs_logprob_diff": 0.1818808041948377,
+    "top1_a": 0.6239193083573487,
+    "top1_b": 0.6210374639769453
+   }
+  ]
+ },
+ {
+  "a": "mxfp8 attention pass 1",
+  "b": "mxfp8 attention pass 2",
+  "tokens": 9708,
+  "nll_a": 1.569613278535576,
+  "nll_b": 1.5711268106975944,
+  "nll_b_minus_a": 0.00151353216201846,
+  "mean_abs_logprob_diff": 0.1925629204259429,
+  "top1_a": 0.6549237742068397,
+  "top1_b": 0.6587350638648537,
+  "files": [
+   {
+    "file": "README.md",
+    "tokens": 2108,
+    "nll_a": 1.1642440865378023,
+    "nll_b": 1.16808800393107,
+    "nll_b_minus_a": 0.00384391739326762,
+    "mean_abs_logprob_diff": 0.1288118428052029,
+    "top1_a": 0.7386148007590133,
+    "top1_b": 0.7433586337760911
+   },
+   {
+    "file": "runtime/images/derived_layer.py",
+    "tokens": 1490,
+    "nll_a": 1.7577126285296785,
+    "nll_b": 1.7547820527018094,
+    "nll_b_minus_a": -0.002930575827868907,
+    "mean_abs_logprob_diff": 0.24684172799081272,
+    "top1_a": 0.6060402684563758,
+    "top1_b": 0.6201342281879194
+   },
+   {
+    "file": "docs/operations/commands.md",
+    "tokens": 1508,
+    "nll_a": 1.8142295777038289,
+    "nll_b": 1.813093591988043,
+    "nll_b_minus_a": -0.0011359857157858932,
+    "mean_abs_logprob_diff": 0.2319129661678047,
+    "top1_a": 0.6041114058355438,
+    "top1_b": 0.6087533156498673
+   },
+   {
+    "file": "performance/records/qwen38-flash-next/shm-spin-window-20260930.md",
+    "tokens": 1106,
+    "nll_a": 1.8465920593135614,
+    "nll_b": 1.8606067252212732,
+    "nll_b_minus_a": 0.014014665907711747,
+    "mean_abs_logprob_diff": 0.24253247262221986,
+    "top1_a": 0.5840867992766727,
+    "top1_b": 0.581374321880651
+   },
+   {
+    "file": "scripts/check_repository_layout.py",
+    "tokens": 1414,
+    "nll_a": 1.2735813572571886,
+    "nll_b": 1.2813214018272503,
+    "nll_b_minus_a": 0.007740044570061678,
+    "mean_abs_logprob_diff": 0.1508924905958866,
+    "top1_a": 0.7376237623762376,
+    "top1_b": 0.7362093352192363
+   },
+   {
+    "file": "profiles/qwen38-flash-next-tp2/README.md",
+    "tokens": 2082,
+    "nll_a": 1.7221682503134612,
+    "nll_b": 1.7155521952177837,
+    "nll_b_minus_a": -0.006616055095677557,
+    "mean_abs_logprob_diff": 0.19151952101420106,
+    "top1_a": 0.6234390009606148,
+    "top1_b": 0.6253602305475504
+   }
+  ]
+ },
+ {
+  "a": "stock pass 1",
+  "b": "mxfp8 attention pass 1",
+  "tokens": 9708,
+  "nll_a": 1.565100374412501,
+  "nll_b": 1.569613278535576,
+  "nll_b_minus_a": 0.004512904123075069,
+  "mean_abs_logprob_diff": 0.20152620872278348,
+  "top1_a": 0.6593531108364236,
+  "top1_b": 0.6549237742068397,
+  "files": [
+   {
+    "file": "README.md",
+    "tokens": 2108,
+    "nll_a": 1.1597551255682743,
+    "nll_b": 1.1642440865378023,
+    "nll_b_minus_a": 0.004488960969527905,
+    "mean_abs_logprob_diff": 0.13871911312535798,
+    "top1_a": 0.74146110056926,
+    "top1_b": 0.7386148007590133
+   },
+   {
+    "file": "runtime/images/derived_layer.py",
+    "tokens": 1490,
+    "nll_a": 1.7421210060168302,
+    "nll_b": 1.7577126285296785,
+    "nll_b_minus_a": 0.01559162251284834,
+    "mean_abs_logprob_diff": 0.26697735054720034,
+    "top1_a": 0.6161073825503356,
+    "top1_b": 0.6060402684563758
+   },
+   {
+    "file": "docs/operations/commands.md",
+    "tokens": 1508,
+    "nll_a": 1.8066820899913543,
+    "nll_b": 1.8142295777038289,
+    "nll_b_minus_a": 0.0075474877124746854,
+    "mean_abs_logprob_diff": 0.23476728946341882,
+    "top1_a": 0.6140583554376657,
+    "top1_b": 0.6041114058355438
+   },
+   {
+    "file": "performance/records/qwen38-flash-next/shm-spin-window-20260930.md",
+    "tokens": 1106,
+    "nll_a": 1.8367899254843154,
+    "nll_b": 1.8465920593135614,
+    "nll_b_minus_a": 0.009802133829246126,
+    "mean_abs_logprob_diff": 0.23155954196019746,
+    "top1_a": 0.5867992766726944,
+    "top1_b": 0.5840867992766727
+   },
+   {
+    "file": "scripts/check_repository_layout.py",
+    "tokens": 1414,
+    "nll_a": 1.269743764469453,
+    "nll_b": 1.2735813572571886,
+    "nll_b_minus_a": 0.0038375927877358027,
+    "mean_abs_logprob_diff": 0.15653229276144054,
+    "top1_a": 0.7397454031117398,
+    "top1_b": 0.7376237623762376
+   },
+   {
+    "file": "profiles/qwen38-flash-next-tp2/README.md",
+    "tokens": 2082,
+    "nll_a": 1.730108741057223,
+    "nll_b": 1.7221682503134612,
+    "nll_b_minus_a": -0.007940490743761701,
+    "mean_abs_logprob_diff": 0.20880389222560414,
+    "top1_a": 0.6239193083573487,
+    "top1_b": 0.6234390009606148
+   }
+  ]
+ },
+ {
+  "a": "stock pass 2",
+  "b": "mxfp8 attention pass 2",
+  "tokens": 9708,
+  "nll_a": 1.5648077678158843,
+  "nll_b": 1.5711268106975944,
+  "nll_b_minus_a": 0.00631904288171025,
+  "mean_abs_logprob_diff": 0.20264651939820796,
+  "top1_a": 0.6564688916357643,
+  "top1_b": 0.6587350638648537,
+  "files": [
+   {
+    "file": "README.md",
+    "tokens": 2108,
+    "nll_a": 1.1641499413290424,
+    "nll_b": 1.16808800393107,
+    "nll_b_minus_a": 0.00393806260202741,
+    "mean_abs_logprob_diff": 0.12857312360889347,
+    "top1_a": 0.7376660341555977,
+    "top1_b": 0.7433586337760911
+   },
+   {
+    "file": "runtime/images/derived_layer.py",
+    "tokens": 1490,
+    "nll_a": 1.7418825073439876,
+    "nll_b": 1.7547820527018094,
+    "nll_b_minus_a": 0.012899545357821802,
+    "mean_abs_logprob_diff": 0.2545135520632319,
+    "top1_a": 0.6187919463087248,
+    "top1_b": 0.6201342281879194
+   },
+   {
+    "file": "docs/operations/commands.md",
+    "tokens": 1508,
+    "nll_a": 1.8244815028817998,
+    "nll_b": 1.813093591988043,
+    "nll_b_minus_a": -0.011387910893756816,
+    "mean_abs_logprob_diff": 0.2459993665999573,
+    "top1_a": 0.6007957559681698,
+    "top1_b": 0.6087533156498673
+   },
+   {
+    "file": "performance/records/qwen38-flash-next/shm-spin-window-20260930.md",
+    "tokens": 1106,
+    "nll_a": 1.8239521806044423,
+    "nll_b": 1.8606067252212732,
+    "nll_b_minus_a": 0.03665454461683092,
+    "mean_abs_logprob_diff": 0.2596252229991109,
+    "top1_a": 0.5913200723327305,
+    "top1_b": 0.581374321880651
+   },
+   {
+    "file": "scripts/check_repository_layout.py",
+    "tokens": 1414,
+    "nll_a": 1.271253043022848,
+    "nll_b": 1.2813214018272503,
+    "nll_b_minus_a": 0.010068358804402442,
+    "mean_abs_logprob_diff": 0.14927595471003685,
+    "top1_a": 0.7376237623762376,
+    "top1_b": 0.7362093352192363
+   },
+   {
+    "file": "profiles/qwen38-flash-next-tp2/README.md",
+    "tokens": 2082,
+    "nll_a": 1.7173678082439323,
+    "nll_b": 1.7155521952177837,
+    "nll_b_minus_a": -0.0018156130261486642,
+    "mean_abs_logprob_diff": 0.2151039057378942,
+    "top1_a": 0.6210374639769453,
+    "top1_b": 0.6253602305475504
+   }
+  ]
+ }
+]
