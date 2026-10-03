@@ -315,6 +315,9 @@ def setup(argv=None):
     if path.exists() and installer.read(path)["plan"]["id"] != plan["id"]:
         raise ValueError("Controller already records another cluster; inspect " + str(path))
     node.save(STATE, "cluster.json", cluster, mode=0o600)
+    from runtime.host import fabric_bandwidth
+    # A degraded cable is a warning with its repair steps; setup never fails here.
+    fabric_bandwidth.after_setup(STATE, cluster)
     print("Network configured. Choose a model: sparkring models")
     return 0
 
@@ -485,9 +488,14 @@ def lifecycle(argv):
     from runtime.host import retained_source
     cache = STATE / "retained-sources"
     if args.operation == "status":
+        from runtime.host import fabric_bandwidth
         result = node.snapshot() if args.refresh else node.status()
+        plan_id = None
         if (STATE / "cluster.json").exists():
             cluster = installer.read(STATE / "cluster.json")
+            plan_id = cluster["plan"].get("id")
+            # The saved result of the last bandwidth check; status never measures.
+            result["fabric_bandwidth"] = fabric_bandwidth.summary(STATE)
             result["nodes"] = []
             for host in cluster["plan"]["spec"]["hosts"]:
                 try:
@@ -555,6 +563,9 @@ def lifecycle(argv):
                     print("    admin tunnel: " + fallback)
             if attention:
                 print("Sparks that need attention: " + ", ".join(attention))
+            if "fabric_bandwidth" in result:
+                for line in fabric_bandwidth.status_lines(result["fabric_bandwidth"], plan_id):
+                    print(line)
             for view in views:
                 saved, lock, record, model = view["deployment"], view["lock"], view["record"], view.get("model")
                 if len(views) > 1 or view["placement"]:

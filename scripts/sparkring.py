@@ -178,8 +178,8 @@ def _parser() -> argparse.ArgumentParser:
                                            "cache directory or deployment workspace")
     subcommands.add_parser("hairpin", help="apply the ConnectX hairpin setting that four-Spark rings need (Node A)")
     subcommands.add_parser("recover", help="restart the active model automatically when a Spark stops serving (Node A)")
-    subcommands.add_parser("cabling", help="show how the Sparks are cabled and what to change for a pair or ring; "
-                                           "changes nothing")
+    subcommands.add_parser("cabling", help="show how the Sparks are cabled and what to change for a pair or ring, "
+                                           "or with --bandwidth measure each cable's speed; changes nothing")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
     for operation in ("init", "up", "status", "down", "export"):
         subcommands.add_parser(operation, help="profile installer: " + operation)

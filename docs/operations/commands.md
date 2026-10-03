@@ -26,7 +26,7 @@ sudo sparkring logs --follow                                 # follow progress
 |---|---|---|---|
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
-| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled and what to move; changes nothing |
+| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
@@ -119,7 +119,9 @@ stops first or a plan from the extracted package ends without a result (stage
 without a model. `sparkring install` runs it on first use. Sparks that belonged
 to other SparkRing clusters are
 [re-formed](install-reference.md#re-form-sparks-into-another-pair-or-ring)
-into the pair or ring now cabled.
+into the pair or ring now cabled. Setup ends by measuring each cable's
+[speed](#cable-speed) when no model serves; a degraded cable is a warning
+with its repair steps, not a failure.
 
 | Flag | Meaning |
 |---|---|
@@ -190,13 +192,48 @@ where they accept it; SSH asks for a password elsewhere.
 
 | Flag | Meaning |
 |---|---|
-| `--json` | One `sparkring-cabling/v1` document |
+| `--json` | One `sparkring-cabling/v1` document; with `--bandwidth`, one `sparkring-fabric-bandwidth/v1` document |
 | `--ssh-user USER` | Account for signing in to the other Sparks (default: the account that ran `sudo`) |
 | `--no-sign-in` | Read only this Spark and its recorded cluster's Sparks |
+| `--bandwidth` | Measure each cable's speed instead ([cable speed](#cable-speed)) |
+| `--while-serving` | With `--bandwidth`, also measure cables a serving model uses |
 
 It exits with 0 when the cables form a pair or ring as SparkRing needs, 1
 when a cable needs to move or not every cable could be seen, and 2 on
 failure.
+
+### Cable speed
+
+`sudo sparkring cabling --bandwidth` measures each cable of the pair or ring
+that setup recorded and saves the result for `sparkring status`. Setup runs
+it as its last step. It takes about 30 seconds per cable.
+
+```text
+Fabric bandwidth, both directions at once (190 Gb/s or more per link is healthy):
+spark-a port 0 ↔ spark-b port 1: healthy
+  enp1s0f0np0 ↔ enp1s0f1np1      213.05 Gb/s  healthy
+  enP2p1s0f0np0 ↔ enP2p1s0f1np1  212.87 Gb/s  healthy
+spark-b port 0 ↔ spark-c port 1: degraded
+  enp1s0f0np0 ↔ enp1s0f1np1      118.66 Gb/s  degraded
+  enP2p1s0f0np0 ↔ enP2p1s0f1np1  119.02 Gb/s  degraded
+  To repair: reboot both spark-b and spark-c, then run sudo sparkring cabling --bandwidth again.
+  Restarting the link or the network driver does not clear this.
+  If the cable is still degraded after the reboot, reseat it at both ends.
+```
+
+Each cable carries two links, and each is measured on its own. A degraded
+cable shows no errors and models still run, but prompt processing over it is
+slower. Reboot both Sparks on that cable to clear it.
+
+The test slows a model that uses the cable, so cables of a serving model's
+Sparks are listed as not measured; `--while-serving` measures them anyway.
+A link the test cannot measure shows the reason, for example a RoCE GID
+entry that does not hold the link's address.
+
+It exits with 0 when every cable is healthy, 1 when a cable is degraded,
+could not be measured or was skipped, and 2 when the check could not run,
+for example while a model serves on every cable.
+[Cable speed](install-reference.md#cable-speed) explains the test.
 
 ## models
 
@@ -235,6 +272,11 @@ After `sparkring down` they read `on; idle until the next sudo sparkring up
 --execute or sudo sparkring install`, and a deployment that recovery does not
 restart, such as managed GLM, reads `not available`.
 
+After the Spark lines, a `Fabric bandwidth:` line shows the last
+[cable speed](#cable-speed) result and its age, such as `healthy on all 4
+cables, measured 3 h ago`, or `never measured`. A degraded cable follows with
+its repair steps. Status does not measure.
+
 With `--refresh`, a line per model container follows the saved model. When
 the model does not serve, the first line says why and gives the command that
 fixes it ([every case](install-reference.md#when-a-model-stops-serving)):
@@ -248,7 +290,7 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 |---|---|
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
 | `--on 0,1` or `--on 2,3` | Only that half's model |
-| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half |
+| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half, and a recorded cluster adds `fabric_bandwidth` |
 
 ## logs
 
