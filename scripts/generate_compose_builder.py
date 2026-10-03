@@ -7,8 +7,8 @@ checkout it is built from:
     python scripts/generate_compose_builder.py --output DIRECTORY [--verify]
 
 --verify first compares the page's engine with compose.build under Node.js
-(scripts/compose_builder/verify.py), writes nothing if any case differs, and
-shows the result on the page.
+(scripts/compose_builder/verify.py) and writes nothing if any case differs;
+the page's data records the comparison's counts.
 """
 
 import argparse
