@@ -211,6 +211,8 @@ pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; 
 .what { margin: 0; font-size: 13.5px; }
 .endpoint { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .kv-estimate { grid-column: 1 / -1; margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--accent); }
+/* What a KV estimate is scaled from, under the summary's figure. */
+.kv-basis { display: block; margin-top: 2px; font-family: var(--sans); font-size: 12px; color: var(--muted); }
 .endpoint code { color: var(--text); }
 .roles { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13px; }
 .roles dt { font-weight: 600; overflow-wrap: anywhere; }
@@ -1022,15 +1024,25 @@ __ENGINE__
     const p = profile(), read = readOf(active(), p), check = E.servingCheck(p, read.settings, checkpointName(p));
     const kv = check.ok && !read.problems.length ? E.kvText(check.checkpoint, check.settings) : null;
     line.textContent = kv ? kv.line + '.' : '';
-    note.textContent = kv ? kv.note : '';
+    note.replaceChildren(...(kv && kv.basis ? kvBasis(kv, ' The engine reports the exact figure when the model starts.') : []));
     line.hidden = !kv;
-    note.hidden = !kv || !kv.note;
+    note.hidden = !kv || !kv.basis;
   }
 
-  // The KV cache fact of a selection: its size per Spark and how many tokens it holds.
+  // The measurement an estimate is scaled from, with a link to its record at the page's source
+  // commit; the record's conditions show on hover.
+  function kvBasis(kv, after = '') {
+    const link = kv.source ? el('a', { href: `https://github.com/${META.repository}/blob/${META.commit}/${kv.source}`,
+      target: '_blank', rel: 'noopener', title: kv.conditions || null }, 'record') : null;
+    return [kv.basis, ...(link ? [' (', link, ')'] : []), '.', after];
+  }
+
+  // The KV cache fact of a selection: its size per Spark, how many tokens it holds and what that is estimated from.
   function kvFact(p, check) {
     const kv = check.ok ? E.kvText(check.checkpoint, check.settings) : null;
-    return kv ? fmt(kv.gib) + ' GiB per Spark · ' + kv.line.charAt(0).toLowerCase() + kv.line.slice(1) : null;
+    if (!kv) return null;
+    return [fmt(kv.gib) + ' GiB per Spark · ' + kv.line.charAt(0).toLowerCase() + kv.line.slice(1),
+      ...(kv.basis ? [el('span', { class: 'kv-basis' }, kvBasis(kv))] : [])];
   }
 
   function fieldInput(p, key, id, rank) {

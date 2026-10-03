@@ -193,14 +193,25 @@ the profile, with the KV bytes per Spark at that measurement:
 
 - tokens ≈ measured tokens × chosen KV bytes per Spark ÷ measured KV bytes
   per Spark, rounded to two significant figures;
-- full-context requests ≈ tokens ÷ the context window, to one decimal.
+- full-length requests ≈ tokens ÷ the context window, to one decimal. This
+  is how many requests of the whole window the cache holds by size, not a
+  number of requests tested at the same time.
+
+For example, the JMNI hybrid checkpoint on four Sparks shows "about 3.1
+million tokens · room for about 11.9 full-length requests by size; not a
+tested concurrency", estimated from qad-step-4000 at 24 GiB.
 
 A measurement of the selected checkpoint is used when the file has one;
-otherwise the profile's own, and the note names the checkpoint it measured.
-Each record belongs to one profile, so a two-Spark measurement never sizes a
-four-Spark profile. A model without a measurement shows "Not measured for
-this model". The estimate follows the KV cache and context fields as they
-change; the engine reports the exact figure when the model starts.
+otherwise the profile's own. Beside each estimate the page says what it is
+estimated from, such as "Estimated from qad-step-4000 at 24 GiB", and links
+the measurement's record at the page's source commit; the record's
+conditions (image, configuration and what the figure does not prove) show
+when you point at the link. The page's data keeps each measurement's
+`source`, `conditions` and `kv_evidence`. Each record belongs to one
+profile, so a two-Spark measurement never sizes a four-Spark profile. A model
+without a measurement shows "Not measured for this model". The estimate
+follows the KV cache and context fields as they change; the engine reports
+the exact figure when the model starts.
 
 ### Spark order
 

@@ -437,9 +437,12 @@ const SparkRingEngine = (() => {
   // engine-reported pool its data carries (checkpoint.capacity, export.kv_measurement):
   // tokens = measured tokens x chosen KV bytes per Spark / measured KV bytes per Spark, rounded to
   // two significant figures, and full-context requests = tokens / the context window, to one
-  // decimal. `settings` are servingCheck's; a setting left out takes the checkpoint's value.
-  // Returns null for a checkpoint without a KV cache setting; `measured` is false without a
-  // measurement, which the page reports instead of guessing.
+  // decimal: how many requests of the whole window the cache holds by size, not a number of
+  // requests that was served at once. `settings` are servingCheck's; a setting left out takes the
+  // checkpoint's value. Returns null for a checkpoint without a KV cache setting; `measured` is
+  // false without a measurement, which the page reports instead of guessing. A measurement names
+  // its checkpoint and KV size, and its record (`source`, a repository path), `conditions` and
+  // `kv_evidence` when its data does.
   const GIB = 2 ** 30;
   function twoFigures(value) {
     if (!(value > 0)) return 0;
@@ -454,21 +457,24 @@ const SparkRingEngine = (() => {
     const tokens = measured.tokens * gib * GIB / measured.kv_bytes_per_rank;
     const context = settings.context_length ?? (rows.context_length || {}).profile;
     return { gib, measured: true, tokens: twoFigures(tokens), requests: context ? Math.round(tokens / context * 10) / 10 : null,
-      measured_gib: measured.kv_bytes_per_rank / GIB, measured_checkpoint: measured.checkpoint };
+      measured_gib: measured.kv_bytes_per_rank / GIB, measured_checkpoint: measured.checkpoint,
+      source: measured.source ?? null, conditions: measured.conditions ?? null, kv_evidence: measured.kv_evidence ?? null };
   }
-  // The estimate in words: {line, note}, or null without a KV cache setting.
+  // The estimate in words, or null without a KV cache setting: {gib, line, basis, source,
+  // conditions}. `basis` names the measurement it is scaled from ('' without one), and `source`
+  // and `conditions` are that measurement's.
   function kvText(checkpoint, settings) {
     const kv = kvEstimate(checkpoint, settings);
     if (!kv) return null;
-    if (!kv.measured) return { gib: kv.gib, line: 'Not measured for this model', note: '' };
+    if (!kv.measured) return { gib: kv.gib, line: 'Not measured for this model', basis: '', source: null, conditions: null };
     const n = kv.tokens;
     const tokens = 'About ' + (n >= 1e6 ? (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 }) + ' million'
       : n.toLocaleString('en-US')) + ' tokens';
-    const requests = kv.requests === null ? '' : ' · ' + kv.requests.toFixed(1) + ' full-context requests';
-    const other = kv.measured_checkpoint && kv.measured_checkpoint !== checkpoint.name ? ' for ' + kv.measured_checkpoint : '';
+    const requests = kv.requests === null ? ''
+      : ` · room for about ${kv.requests.toFixed(1)} full-length requests by size; not a tested concurrency`;
     const gib = kv.measured_gib.toLocaleString('en-US', { maximumFractionDigits: 2 });
-    return { gib: kv.gib, line: tokens + requests,
-      note: `Estimated from the engine's report${other} at ${gib} GiB; the engine reports the exact figure when the model starts.` };
+    return { gib: kv.gib, line: tokens + requests, basis: `Estimated from ${kv.measured_checkpoint || 'a measurement'} at ${gib} GiB`,
+      source: kv.source, conditions: kv.conditions };
   }
 
   // ---- Template substitution ---------------------------------------------------------

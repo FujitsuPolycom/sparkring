@@ -494,10 +494,13 @@ GIB = 2 ** 30
 
 
 def test_kv_measurement_prefers_the_checkpoint_then_the_profile():
-    record = {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "conditions": "c", "source": "s", "witness": "w",
-              "checkpoints": {"other": {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "conditions": "c"}}}
-    assert export.kv_measurement(record, "default", "default") == {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "default"}
-    assert export.kv_measurement(record, "other", "default") == {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "other"}
+    record = {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "conditions": "c", "source": "s", "witness": "w", "kv_evidence": "e",
+              "checkpoints": {"other": {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "conditions": "d"}}}
+    # A measurement carries its record, conditions and KV-size evidence, None where it names none.
+    assert export.kv_measurement(record, "default", "default") == {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "default",
+                                                                    "source": "s", "conditions": "c", "kv_evidence": "e"}
+    assert export.kv_measurement(record, "other", "default") == {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "other",
+                                                                  "source": None, "conditions": "d", "kv_evidence": None}
     # Another checkpoint of the same profile takes the profile's own measurement and names its checkpoint.
     assert export.kv_measurement({**record, "checkpoint": "older"}, "third", "default")["checkpoint"] == "older"
     assert export.kv_measurement({k: v for k, v in record.items() if k != "kv_bytes_per_rank"}, "default", "default") is None
@@ -506,37 +509,55 @@ def test_kv_measurement_prefers_the_checkpoint_then_the_profile():
 
 def test_checkpoints_carry_the_measurement_of_their_own_profile(data):
     capacity = {(p["id"], c["name"]): c["capacity"] for p in data["profiles"] for c in p["checkpoints"]}
-    assert capacity[(GLM2, "nvfp4-spark")] == {"tokens": 1530566, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "nvfp4-spark"}
-    assert capacity[(GLM2, "nvfp4-qad")] == {"tokens": 736274, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "nvfp4-qad"}
+    records = export.capacity_records()
+    measured = lambda c: {key: c[key] for key in ("tokens", "kv_bytes_per_rank", "checkpoint")}  # noqa: E731
+    assert measured(capacity[(GLM2, "nvfp4-spark")]) == {"tokens": 1530566, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "nvfp4-spark"}
+    assert measured(capacity[(GLM2, "nvfp4-qad")]) == {"tokens": 736274, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "nvfp4-qad"}
     # A four-Spark profile never takes a two-Spark figure.
-    assert capacity[(TP4, "nvfp4-qad")] == {"tokens": 6128169, "kv_bytes_per_rank": 40 * GIB, "checkpoint": "nvfp4-spark"}
-    assert capacity[(TP2, "qad-step5500-ple1000")]["checkpoint"] == "qad-step-4000"
+    assert measured(capacity[(TP4, "nvfp4-qad")]) == {"tokens": 6128169, "kv_bytes_per_rank": 40 * GIB, "checkpoint": "nvfp4-spark"}
+    assert capacity[(TP4, "nvfp4-qad")]["source"] == records[TP4]["source"]
+    # The Qwen estimate keeps where it comes from: step 4000 with SparkCache on the shared 2026.09.3 image.
+    qwen = capacity[(TP2, "qad-step5500-ple1000")]
+    assert qwen["checkpoint"] == "qad-step-4000" and qwen["source"] == "runtime/releases/shared-2026.09.3/correctness.json"
+    assert "SparkRing 2026.09.3" in qwen["conditions"] and "sparkcache.json" in qwen["kv_evidence"]
     assert capacity[(MIMO2, None)] is None
 
 
 def test_kv_estimate_scales_the_measured_pool_to_the_chosen_size(data, node):
     by_id = {p["id"]: p for p in data["profiles"]}
     cases = [(GLM2, None, {}), (GLM2, None, {"kv_cache_gib": 5}), (GLM2, "nvfp4-qad", {}), (TP2, None, {"context_length": 131072}),
-             (MIMO2, None, {}), ("deepseek-v41-flash-tp4", None, {})]
+             (MIMO2, None, {}), ("deepseek-v41-flash-tp4", None, {}), ("qwen38-flash-next-qad-tp4", "jmni-qad5500-hybrid", {})]
     found = run_engine(node, """
 console.log(JSON.stringify(value.cases.map(([id, name, settings]) => {
   const checkpoint = E.checkpointOf(value.byId[id], name);
   return [E.kvEstimate(checkpoint, settings), E.kvText(checkpoint, settings)];
 })));""", {"byId": {key: by_id[key] for key in {c[0] for c in cases}}, "cases": cases})
-    (glm, glm_text), (half, half_text), (qad, qad_text), (qwen, qwen_text), (mimo, mimo_text), (deepseek, deepseek_text) = found
+    ((glm, glm_text), (half, half_text), (qad, qad_text), (qwen, qwen_text), (mimo, mimo_text), (deepseek, deepseek_text),
+     (jmni, jmni_text)) = found
+    room = "room for about {} full-length requests by size; not a tested concurrency"
+    glm_record = export.capacity_records()[GLM2]
     # 1,530,566 tokens at 10 GiB in a 1,048,576-token window.
     assert (glm["gib"], glm["tokens"], glm["requests"]) == (10, 1500000, 1.5)
-    assert glm_text == {"gib": 10, "line": "About 1.5 million tokens · 1.5 full-context requests",
-                        "note": "Estimated from the engine's report at 10 GiB; the engine reports the exact figure when the model starts."}
+    assert glm_text == {"gib": 10, "line": "About 1.5 million tokens · " + room.format("1.5"),
+                        "basis": "Estimated from nvfp4-spark at 10 GiB", "source": glm_record["source"],
+                        "conditions": glm_record["conditions"]}
     # Half the bytes hold half the tokens: 765,283, rounded to two figures.
     assert (half["tokens"], half["requests"]) == (770000, 0.7)
-    assert half_text["line"] == "About 770,000 tokens · 0.7 full-context requests"
-    # nvfp4-qad has its own measurement: 736,274 tokens at 5 GiB in a 524,288-token window.
+    assert half_text["line"] == "About 770,000 tokens · " + room.format("0.7")
+    # nvfp4-qad has its own measurement and record: 736,274 tokens at 5 GiB in a 524,288-token window.
     assert (qad["gib"], qad["tokens"], qad["requests"], qad["measured_gib"]) == (5, 740000, 1.4, 5)
-    # Qwen's measurement is of qad-step-4000 at 24 GiB, and the note says so.
+    assert (qad_text["basis"], qad_text["source"]) == (
+        "Estimated from nvfp4-qad at 5 GiB", glm_record["checkpoints"]["nvfp4-qad"]["source"])
+    assert qad_text["source"].startswith("performance/records/")
+    # Qwen's measurement is of qad-step-4000 at 24 GiB, and the basis says so.
     assert (qwen["tokens"], qwen["requests"]) == (2900000, 22.0)
-    assert qwen_text["note"].startswith("Estimated from the engine's report for qad-step-4000 at 24 GiB;")
-    assert mimo == {"gib": 12, "measured": False} and mimo_text == {"gib": 12, "line": "Not measured for this model", "note": ""}
+    assert qwen_text["basis"] == "Estimated from qad-step-4000 at 24 GiB"
+    assert qwen_text["source"] == "runtime/releases/shared-2026.09.3/correctness.json"
+    # The JMNI hybrid on four Sparks is sized by step 4000's four-Spark measurement.
+    assert jmni_text["line"] == "About 3.1 million tokens · " + room.format("11.9")
+    assert jmni_text["basis"] == "Estimated from qad-step-4000 at 24 GiB"
+    assert mimo == {"gib": 12, "measured": False}
+    assert mimo_text == {"gib": 12, "line": "Not measured for this model", "basis": "", "source": None, "conditions": None}
     assert deepseek is None and deepseek_text is None
 
 
@@ -549,7 +570,9 @@ console.log(JSON.stringify({ choices, lines: choices.halves.map(s => {
   return E.kvText(check.checkpoint, check.settings).line;
 }) }));""", {"byId": by_id, "search": f"profile={TP4}&layout=halves&first={GLM2}&first.kv_cache_gib=5&second={GLM2}&second.checkpoint=nvfp4-qad"})
     assert found["choices"]["halves"][0]["settings"] == {"kv_cache_gib": 5}
-    assert found["lines"] == ["About 770,000 tokens · 0.7 full-context requests", "About 740,000 tokens · 1.4 full-context requests"]
+    assert found["lines"] == [
+        "About 770,000 tokens · room for about 0.7 full-length requests by size; not a tested concurrency",
+        "About 740,000 tokens · room for about 1.4 full-length requests by size; not a tested concurrency"]
 
 
 def test_field_problems_name_each_field_the_generator_refuses(node):

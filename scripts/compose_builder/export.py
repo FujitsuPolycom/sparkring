@@ -21,8 +21,9 @@ include the API endpoint's port and listen address (``api_port``,
 
 Each checkpoint carries ``capacity``: the engine-reported KV pool of
 performance/profile-capacity.json that the page scales to the chosen KV cache
-size for its token estimate (kv_measurement), or None when the profile has
-no usable measurement.
+size for its token estimate, with the measurement's record, conditions and
+KV-size evidence, which the page names beside the estimate
+(kv_measurement), or None when the profile has no usable measurement.
 
 Each profile and checkpoint carries ``status`` and ``purpose``, which the page
 shows beside it. A profile's status is its profile.json ``status``; its
@@ -220,9 +221,13 @@ def kv_measurement(record, checkpoint, default):
     (its ``checkpoint``, else the profile's default). Otherwise the record's
     own measurement, of another checkpoint of the same profile, sizes it. A
     measurement without ``kv_bytes_per_rank`` cannot be scaled to another KV
-    size and sizes nothing. Returns {tokens, kv_bytes_per_rank, checkpoint}
-    or None; a record is for one profile, so a two-Spark measurement never
-    sizes a four-Spark profile.
+    size and sizes nothing. Returns {tokens, kv_bytes_per_rank, checkpoint,
+    source, conditions, kv_evidence} or None: ``source`` is the repository
+    file that records the measurement, ``conditions`` how it was measured
+    (image, configuration and what the figure does not prove) and
+    ``kv_evidence`` where its KV size comes from, each None when the
+    measurement does not name it. A record is for one profile, so a
+    two-Spark measurement never sizes a four-Spark profile.
     """
     if not record:
         return None
@@ -230,7 +235,8 @@ def kv_measurement(record, checkpoint, default):
     measured, name = (other, checkpoint) if other else (record, record.get("checkpoint") or default)
     if not measured.get("kv_bytes_per_rank"):
         return None
-    return {"tokens": measured["tokens"], "kv_bytes_per_rank": measured["kv_bytes_per_rank"], "checkpoint": name}
+    return {"tokens": measured["tokens"], "kv_bytes_per_rank": measured["kv_bytes_per_rank"], "checkpoint": name,
+            **{key: measured.get(key) for key in ("source", "conditions", "kv_evidence")}}
 
 
 def sentinel_site(example):
