@@ -113,8 +113,8 @@ def meta_of(data):
 
 TP2, TP4, GLM2, MIMO2 = "qwen38-flash-next-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp2"
 SCRIPT = f"curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/{COMMIT}/install.sh | bash -s -- --ref {COMMIT} "
-MY_SPARKS = [{"host": "spark-a", "host_ip": "192.168.1.10"}, {"host": "spark-b", "host_ip": "192.168.1.11"},
-             {"host": "spark-c", "host_ip": "192.168.1.12"}, {"host": "spark-d", "host_ip": ""}]
+MY_SPARKS = [{"host": "spark-a", "host_ip": "198.51.100.10"}, {"host": "spark-b", "host_ip": "198.51.100.11"},
+             {"host": "spark-c", "host_ip": "198.51.100.12"}, {"host": "spark-d", "host_ip": ""}]
 
 
 def packs(node, data, cases):
@@ -221,8 +221,8 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
     assert commands(filled) == commands(auto)
     assert {c["where"] for c in filled["groups"][0]["commands"][1:] + filled["groups"][2]["commands"]} == {
         "On spark-a (Node A), as a user with sudo"}
-    assert endpoints(filled, "install") == ["http://192.168.1.10:8000/v1", f"http://192.168.1.12:{mimo_port}/v1"]
-    assert endpoints(filled, "switch") == ["http://192.168.1.10:8015/v1"]
+    assert endpoints(filled, "install") == ["http://198.51.100.10:8000/v1", f"http://198.51.100.12:{mimo_port}/v1"]
+    assert endpoints(filled, "switch") == ["http://198.51.100.10:8015/v1"]
     assert filled["groups"][0]["commands"][0]["what"].endswith("on the first pair: spark-a and spark-b.")
     assert [r["spark"] for r in filled["roles"]] == ["spark-a (Node A)", "spark-b (Spark 1)", "spark-c (Spark 2)", "spark-d (Spark 3)"]
     assert not any("Replace" in note for note in filled["notes"])
@@ -269,7 +269,7 @@ def test_pack_carries_each_selection_settings_image_and_problems(data, node):
 
 
 def test_spark_problems_name_each_field_the_pack_cannot_use(node):
-    ranks = [{"host": "spark-a", "host_ip": ""}, {"host": "", "host_ip": "192.168.1.11"}, {"host": "", "host_ip": ""},
+    ranks = [{"host": "spark-a", "host_ip": ""}, {"host": "", "host_ip": "198.51.100.11"}, {"host": "", "host_ip": ""},
              {"host": "spark-a", "host_ip": "300.1.1.1"}]
     problems = run_engine(node, "console.log(JSON.stringify(E.sparkProblems(value)))", ranks)
     assert [(p["rank"], p["key"], p["message"]) for p in problems] == [
