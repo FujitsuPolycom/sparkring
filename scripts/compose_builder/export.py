@@ -23,7 +23,7 @@ ROOT = compose.ROOT
 SCHEMA = "sparkring-compose-builder-data/v1"
 REPOSITORY = "FujitsuPolycom/sparkring"
 # Compose-supported profiles the builder does not list.
-EXCLUDED = frozenset({"qwen38-flash-next-qad-tp4-sparkcache"})
+EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache"})
 
 # Lines on which a substituted site value may appear: these YAML keys, or a list item ("-").
 SITE_KEYS = {"name", "container_name", "VLLM_HOST_IP", "GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME",
