@@ -30,7 +30,8 @@ Run the same command again to update a profile or swap to another. Each model ha
 also applies a [ConnectX driver setting](docs/operations/install.md#four-spark-rings)
 at every boot.
 
-More: [all commands](docs/operations/commands.md) ·
+More: [documentation by task](docs/README.md) ·
+[all commands](docs/operations/commands.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·
 [Install Builder](https://fujitsupolycom.github.io/sparkring/) ([how it works](docs/operations/compose-builder.md)) ·
 [pinned install command](docs/operations/install-reference.md#get-the-package)
