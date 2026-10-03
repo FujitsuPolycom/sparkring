@@ -16,10 +16,16 @@ records retain their original scope even when navigation retires a profile.
 
 ## Shared serving versions
 
-[Shared runtime 2026.09.3](shared-2026.09.3/README.md) is selected by Qwen TP2
-and TP4, with and without SparkCache, and GLM TP2/TP4 DCP1 with SparkCache.
-GLM supports separate Spark and QAD checkpoint selections. Other profiles
-retain independent image pins and qualification records.
+A profile's `release` field selects its image. These profiles select
+[shared runtime 2026.09.3](shared-2026.09.3/README.md): the Qwen SparkCache
+profiles `qwen38-flash-next-tp2-sparkcache` and
+`qwen38-flash-next-qad-tp4-sparkcache`, and the GLM DCP1 profiles
+`glm53-flash-spark-tp2-dcp1-sparkcache`, `glm53-flash-spark-tp2-dcp1-nocache`,
+`glm53-flash-spark-tp4-dcp1-sparkcache` and `glm53-flash-spark-tp4-dcp1-nocache`.
+GLM supports separate Spark and QAD checkpoint selections. The release record
+also lists Qwen configurations without SparkCache that it qualified; the
+installer profiles for those layouts select installer images instead. Other
+profiles retain independent image pins and qualification records.
 
 GitHub Releases provides the version landing page; GHCR Packages stores the
 container layers. A serving Release links an exact image digest, build/source
