@@ -319,6 +319,51 @@ def restore_routes(config, *, root="/", run=subprocess.run, log=_log):
     return {"active": True, "routes": rows}
 
 
+class LinkDown(ValueError):
+    """Approved fabric functions report no carrier; ``next_action`` names the Sparks at the other ends."""
+
+    def __init__(self, text, next_action):
+        super().__init__(text)
+        self.next_action = next_action
+
+
+def neighbor(config, port):
+    """The rank at the other end of an approved fabric function's cable.
+
+    On rank r of a ring of n Sparks, port 0 (roles ``cw_*``) leads to rank
+    (r + 1) mod n and port 1 (``ccw_*``) to rank (r - 1) mod n; in a pair,
+    both lead to the other Spark.
+    """
+    return (config["rank"] + (1 if str(port.get("role", "")).startswith("cw_") else -1)) % config["size"]
+
+
+def require_links(config, *, root="/"):
+    """Raise LinkDown when an approved fabric function reports no carrier.
+
+    The error names the functions by the rank their cable leads to, and the
+    approved routes through them, which ``restore_routes`` adds again when the
+    link returns. A function whose carrier the kernel does not report, such as
+    an administratively disabled one, is left to ``observe``.
+    """
+    down = {}
+    for port in config["interfaces"]:
+        if link_state(port["netdev"], root=root)[0] is False:
+            down.setdefault(neighbor(config, port), []).append(port["netdev"])
+    if not down:
+        return
+    ranks = sorted(down)
+    links = " and ".join(f"to rank {rank} on {', '.join(down[rank])}" for rank in ranks)
+    names = " and ".join(f"rank {rank}" for rank in ranks)
+    text = (f"No link {links}: {names} {'is' if len(ranks) == 1 else 'are'} down or restarting the link, "
+            "or the cable is out")
+    netdevs = {netdev for rank in ranks for netdev in down[rank]}
+    lost = [route["destination"] for route in config["routes"] if route["dev"] in netdevs]
+    if lost:
+        text += (f"; the fabric routes through {'them' if len(netdevs) > 1 else 'it'} ({', '.join(lost)}) "
+                 "return with the link")
+    raise LinkDown(text, f"start {names} or reconnect the cable")
+
+
 def verify_persistence(config, facts, *, run=subprocess.run, restoration=None, active=True):
     """Raise ValueError naming the first approved route, forwarding rule or forwarding setting that is missing.
 
@@ -730,7 +775,11 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
 
     With ``repair``, which only the agent passes, the approved fabric routes
     that are missing while their link is up are added first
-    (``restore_routes``), so a route this restores counts as present.
+    (``restore_routes``), so a route this restores counts as present. An
+    approved fabric function without carrier makes the Spark
+    ``needs-attention`` with an error naming the rank at the other end of its
+    cable (``require_links``), ahead of a failed mesh unit, which that lost
+    link causes.
 
     A Spark with a recorded administration network adds ``control``
     (``control_report``) and a warning per tunnel peer without a recent
@@ -791,6 +840,7 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
                 restoration = restore_routes(config, root=root, run=run)
             except reads as error:
                 warnings.append("approved fabric routes could not be checked for restoration: " + str(error))
+        require_links(config, root=root)
         facts = observe(config, collect=collect)
         if four:
             # Checked before the fabric routes, the fabric service and the mesh:

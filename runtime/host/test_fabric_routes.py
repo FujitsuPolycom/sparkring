@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from runtime.host import native_mesh, node
-from runtime.host.test_node_status import PAIR_KEYS, Answers, approve, ring
+from runtime.host.test_node_status import FAILED_MESH, PAIR_KEYS, Answers, approve, ring
 from runtime.host.test_persistence import unit_settings
 
 PACKAGING = Path(__file__).resolve().parents[2] / "packaging/debian"
@@ -164,6 +164,44 @@ def test_a_route_waits_for_carrier_then_for_the_address_and_its_subnet_route(tmp
     spark.routes.append(subnet)
     assert run()[lost[0]["destination"]] == "restored"
     assert len(spark.added()) == 1
+
+
+def test_status_names_the_rank_behind_a_link_without_carrier_ahead_of_a_failed_mesh(tmp_path):
+    config, facts, spark = member(tmp_path, answers=FAILED_MESH)
+    lost = []
+    for role in ("ccw_primary", "ccw_secondary"):
+        netdev, routes = through(config, role)
+        spark.lose(netdev)
+        spark.link(netdev, False)
+        lost += routes
+    status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
+    assert status["state"] == "needs-attention" and spark.added() == []
+    assert status["error"] == ("No link to rank 3 on enp1s0f1np1, enP2p1s0f1np1: rank 3 is down or restarting the "
+                               "link, or the cable is out; the fabric routes through them ("
+                               + ", ".join(r["destination"] for r in lost) + ") return with the link")
+    assert status["next_action"] == "start rank 3 or reconnect the cable"
+    assert status["mesh"]["failed"][0]["unit"] == "sparkring-mesh.service"
+
+
+def test_status_names_both_ranks_when_both_neighbors_are_down(tmp_path):
+    config, facts, spark = member(tmp_path, rank=1)
+    for port in config["interfaces"]:
+        spark.link(port["netdev"], False)
+    status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark)
+    assert status["error"].startswith("No link to rank 0 on enp1s0f1np1, enP2p1s0f1np1 and to rank 2 on "
+                                      "enp1s0f0np0, enP2p1s0f0np0: rank 0 and rank 2 are down or restarting")
+    assert status["next_action"] == "start rank 0 and rank 2 or reconnect the cable"
+
+
+def test_a_pair_names_the_other_spark_when_its_cable_has_no_link(tmp_path):
+    config, facts = ring(tmp_path, size=2, rank=1)
+    spark = Spark(tmp_path, config, facts)
+    for port in config["interfaces"]:
+        spark.link(port["netdev"], False)
+    status = node.snapshot(root=tmp_path, collect=lambda _: facts, run=spark, repair=True)
+    assert status["error"] == ("No link to rank 0 on " + ", ".join(p["netdev"] for p in config["interfaces"])
+                               + ": rank 0 is down or restarting the link, or the cable is out")
+    assert status["next_action"] == "start rank 0 or reconnect the cable" and spark.added() == []
 
 
 def test_the_agent_snapshot_restores_a_route_and_reports_the_spark_configured(tmp_path):
