@@ -144,7 +144,9 @@ def profile_table(root=ROOT, *, compact=False):
         return profile_catalog_table(rows, names, root)
     if not set(capacity) <= {p['id'] for p, _ in rows}:
         raise ValueError('Capacity records must name catalog profiles')
-    positive = lambda value: type(value) is int and value > 0
+    def positive(value):
+        return type(value) is int and value > 0
+
     for record in capacity.values():
         if not positive(record['tokens']) or not record['conditions']:
             raise ValueError('Capacity records require positive token counts and measurement conditions')
