@@ -31,6 +31,7 @@ TOOLS = (
     "systemctl",
     "ibdev2netdev",
     "ibv_devinfo",
+    "ib_write_bw",
     "rdma",
     "devlink",
     "tc",
