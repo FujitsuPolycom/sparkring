@@ -4,7 +4,7 @@
 |---|---|
 | `profiles/` | Deployment discovery, configuration, evidence scope and primary quickstarts |
 | `runtime/common/` | Shared resolution, site parsing, command planning and guarded rank launching |
-| `runtime/host/` | Linux host identity, fabric enrollment, private administration and persistent observations |
+| `runtime/host/` | The installer and host lifecycle: `sparkring install` and `setup`, Linux host identity, fabric enrollment, private administration, model switching, status, recovery and persistent observations |
 | `packaging/` | Linux package entry points, service definitions and maintainer scripts |
 | `runtime/images/` | Image-builder selection and shared build entry point |
 | `runtime/releases/` | Release selection and protection of retained immutable inputs |
