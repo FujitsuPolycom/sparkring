@@ -488,7 +488,8 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                 retained=retained, locked=locked,
                                 request={"profile": profile, "checkpoint": checkpoint, "cache_path": args.cache_path,
                                          "image_lock": str(args.image_lock) if args.image_lock else None,
-                                         **({"placement": list(placement)} if placement is not None else {})},
+                                         **({"placement": list(placement)} if placement is not None else {}),
+                                         **({"serving": request["serving"]} if request.get("serving") else {})},
                                 derivation=derivation_section(selection, rows, surveys))
     if not locked:
         if plan["problems"]:
@@ -760,10 +761,13 @@ def switch_back_command(previous):
         command = plan["command"]
     else:
         try:
-            profile = installer.read(Path(previous) / "deployment.lock.json")["selection"]["profile"]
+            lock = installer.read(Path(previous) / "deployment.lock.json")
+            profile = lock["selection"]["profile"]
         except (OSError, ValueError, KeyError, TypeError):
             return None
-        command = checkpoint_plan.install_command({"profile": profile})
+        # The lock's serving settings are part of the deployment, so the
+        # command repeats them; without them it would install the profile's values.
+        command = checkpoint_plan.install_command({"profile": profile, "serving": lock.get("serving") or {}})
     for old, new in profiles.REPLACED.items():
         command = command.replace(f"--profile {old}", f"--profile {new}")
     return command

@@ -275,6 +275,11 @@ def test_switch_back_names_the_replacement_of_a_replaced_profile(tmp_path):
     (previous / flow.PLAN_FILE).unlink()
     (previous / "deployment.lock.json").write_text(json.dumps({"selection": {"profile": "mimo-v26-flash-rl-tp4"}}))
     assert flow.switch_back_command(str(previous)) == "sudo sparkring install --profile mimo-v26-flash-mopd-tp4"
+    # Without a saved plan, the lock's serving settings still return with the previous model.
+    (previous / "deployment.lock.json").write_text(json.dumps({
+        "selection": {"profile": "mimo-v26-flash-mopd-tp4"}, "serving": {"max_concurrency": 32}}))
+    assert flow.switch_back_command(str(previous)) == (
+        "sudo sparkring install --profile mimo-v26-flash-mopd-tp4 --max-concurrency 32")
 
 
 def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
@@ -1443,6 +1448,11 @@ def test_suggested_commands_repeat_the_deployment_request(machine, sparks, capsy
     repeat = f"{REPEAT} --model-path 1=/mnt/usb/qwen --cache-path /mnt/fast/cache"
     assert result["checkpoint"]["command"] == repeat
     assert f"Plan saved. Install it with {repeat} --yes." in output_lines(out.err)
+    # A plan with serving settings suggests the command that installs those settings, not the profile's values.
+    assert command("--plan", "--max-concurrency", "8", *options) == 0
+    out = capsys.readouterr()
+    assert f"Plan saved. Install it with {repeat} --max-concurrency 8 --yes." in output_lines(out.err)
+    assert json.loads(out.out)["checkpoint"]["command"] == f"{repeat} --max-concurrency 8"
     # The survey measures the named cache's filesystem, which the plan counts the cache allowance on.
     assert {options["cache"] for _, options in sparks.surveys} == {"/mnt/fast/cache"}
     # Without --yes and without a terminal, the request names both ways forward.
