@@ -50,10 +50,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .top > div:first-child { min-width: 0; max-width: 760px; }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; margin: 0 0 8px; }
 h1 { font-size: clamp(24px, 3.2vw, 34px); font-weight: 650; letter-spacing: -.03em; line-height: 1.2; margin-bottom: 10px; }
-.lead { margin: 0; color: var(--muted); max-width: 70ch; }
-.engine { display: inline-flex; gap: 9px; align-items: center; padding: 7px 14px; border: 1px solid var(--line);
-  border-radius: 999px; background: var(--panel); font-size: 13px; color: var(--text); max-width: 100%; }
-.engine .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.lead { margin: 0; padding-left: 1.2em; color: var(--muted); max-width: 70ch; display: grid; gap: 2px; }
 
 /* Two panes */
 .layout { display: grid; grid-template-columns: minmax(0, 500px) minmax(0, 1fr); gap: 28px; align-items: start; }
@@ -191,9 +188,12 @@ footer p { margin: 0; max-width: 110ch; }
     <div>
       <p class="eyebrow">SparkRing · DGX Spark · Linux ARM64</p>
       <h1>Compose builder</h1>
-      <p class="lead">Choose a model, its checkpoint and its serving settings. The page writes the <code>sparkring install</code> command that deploys them, or one Docker Compose file per Spark exactly as <code>sparkring compose render</code> writes them, with the whole deployment as a zip. The addresses and paths you type never leave this page.</p>
+      <ul class="lead">
+        <li>Choose a model, its checkpoint and its serving settings.</li>
+        <li>Grab the <code>sparkring install</code> command that deploys them.</li>
+        <li>Or grab a Docker Compose setup package.</li>
+      </ul>
     </div>
-    <div class="engine" role="status"><span class="dot"></span><span id="engine-text">Matches compose.py</span></div>
   </header>
 
   <div class="layout">
@@ -206,9 +206,7 @@ footer p { margin: 0; max-width: 110ch; }
             <span class="choice-body"><strong id="release-name">SparkRing</strong><span class="meta" id="release-meta"></span></span>
             <span class="chips" id="release-chips"></span>
           </label>
-        </div>
-        <p class="hint">The page describes the profiles of this source. The install command pins it unless you choose main, and the Compose files need the same SparkRing checkout on every Spark: they read its loader seccomp policy.</p>
-      </section>
+        </div>      </section>
 
       <section class="step" aria-labelledby="h-model">
         <div class="step-head">
@@ -229,7 +227,7 @@ footer p { margin: 0; max-width: 110ch; }
           <h2 id="h-settings"><span class="n">3</span>Serving settings</h2>
           <button type="button" class="btn quiet" id="reset-settings">Use the profile's values</button>
         </div>
-        <p class="hint">An empty field keeps the checkpoint's value. These are the settings <code>sparkring install</code> accepts; the profile's measurements cover only its own values.</p>
+        <p class="hint">Leave a field empty to keep the default.</p>
         <div class="settings" id="settings"></div>
       </section>
 
@@ -238,9 +236,9 @@ footer p { margin: 0; max-width: 110ch; }
           <h2 id="h-sparks"><span class="n">4</span>Your Sparks</h2>
           <button type="button" class="btn quiet" id="reset-sparks">Restore the example values</button>
         </div>
-        <p class="hint">Only the Docker Compose files use this step; <code>sparkring install</code> finds your Sparks itself.</p>
-        <p class="hint" id="example-note">Filled with the profile's documentation example (addresses in 192.0.2.0/24). Replace every value with your Sparks'.</p>
-        <p class="hint">Paths may use letters, digits and <code>. _ / + = @ ~ -</code>; addresses are IPv4. <code>sparkring compose render</code> accepts more, and this page refuses rather than guess its encoding.</p>
+        <p class="hint">Only needed for Docker Compose.</p>
+        <p class="hint" id="example-note">These are example values. Replace them with your Sparks'.</p>
+        <p class="hint">Paths: letters, digits and <code>. _ / + = @ ~ -</code>. IPv4 addresses only.</p>
         <div class="grid">
           <div class="f">
             <label for="site-name">Deployment name</label>
@@ -272,9 +270,7 @@ footer p { margin: 0; max-width: 110ch; }
       <dl class="facts" id="facts"></dl>
       <div class="messages" id="messages"></div>
       <div class="row-actions" id="share-bar" hidden>
-        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>
-        <span class="hint">The link holds the model, checkpoint, settings and install options, never your Sparks.</span>
-      </div>
+        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>      </div>
 
       <section class="panel" id="install-panel" role="tabpanel" aria-labelledby="mode-install">
         <div class="opts">
@@ -345,7 +341,6 @@ footer p { margin: 0; max-width: 110ch; }
 
   <footer id="footer">
     <p id="provenance"></p>
-    <p id="checks"></p>
   </footer>
 </div>
 
@@ -495,7 +490,6 @@ __ENGINE__
     if (!saved || typeof saved !== 'object') return;
     if (BY_ID[saved.profile]) state.profile = saved.profile;
     if (['all', '2', '4'].includes(saved.filter)) state.filter = saved.filter;
-    if (['install', 'compose'].includes(saved.mode)) state.mode = saved.mode;
     for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints']) {
       if (saved[key] && typeof saved[key] === 'object') state[key] = saved[key];
     }
@@ -584,6 +578,12 @@ __ENGINE__
     }
   }
 
+  // A switch's effect from serving.py's help text: the part after its colon, as a sentence.
+  function switchSummary(help) {
+    const effect = help.includes(': ') ? help.slice(help.indexOf(': ') + 2) : help;
+    return effect.charAt(0).toUpperCase() + effect.slice(1) + '.';
+  }
+
   function renderSettings() {
     const p = profile(), cp = checkpointOf(p), s = settingsOf(p.id), box = $('settings');
     box.replaceChildren();
@@ -595,7 +595,7 @@ __ENGINE__
         input.checked = s[row.name] === true;
         const wrap = el('div', { class: 'setting switch' + (input.checked ? ' changed' : '') },
           el('label', { class: 'check', for: id }, input, LABELS[row.name] || row.option),
-          el('p', { class: 'hint' }, row.help.charAt(0).toUpperCase() + row.help.slice(1) + '. ', el('code', {}, row.option), ' sets ', el('code', {}, row.flag + '=' + row.value), '.'));
+          el('p', { class: 'hint' }, switchSummary(row.help)));
         input.addEventListener('change', () => {
           if (input.checked) s[row.name] = true; else delete s[row.name];
           wrap.classList.toggle('changed', input.checked);
@@ -606,11 +606,11 @@ __ENGINE__
       }
       const input = el('input', { type: 'number', id, inputmode: 'numeric', min: row.minimum, max: row.maximum, step: 1, placeholder: String(row.profile) });
       if (s[row.name] !== undefined) input.value = s[row.name];
-      const limit = row.maximum ? ' · at most ' + fmt(row.maximum) : '';
+      const limit = row.maximum ? ' (max ' + fmt(row.maximum) + ')' : '';
       const wrap = el('div', { class: 'setting' + (s[row.name] !== undefined ? ' changed' : '') },
         el('label', { for: id }, LABELS[row.name] || row.option),
         el('div', { class: 'field' }, input, el('span', { class: 'unit' }, UNITS[row.name] || '')),
-        el('p', { class: 'hint' }, 'Checkpoint value: ' + fmt(row.profile) + limit + '. ', el('code', {}, row.option), ' replaces ', el('code', {}, row.flag), '.'));
+        el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit));
       input.addEventListener('input', () => {
         const text = input.value.trim();
         const valid = text === '' || /^\d+$/.test(text);
@@ -731,23 +731,7 @@ __ENGINE__
     $('install-where').textContent = o.form === 'script' ? 'On Node A, the Spark on your network, as a user with sudo' : 'On Node A';
     const notes = [];
     if (command) {
-      const cp = serving.checkpoint;
-      const source = E.sourceName(META);
-      if (o.form === 'script') {
-        notes.push('The script builds the SparkRing package ' + (o.source === 'release' ? 'of ' + source : 'from main') +
-          ' and asks before it installs it on Node A and before it changes any Spark' + (o.approval === 'yes' ? '; `--yes` answers both.' : '.'));
-        notes.push(o.source === 'release'
-          ? 'Pinned to ' + source + ', the source this page describes. Rerunning the unpinned command later upgrades to the newest SparkRing on main.'
-          : 'main may hold a newer SparkRing than ' + source + ', whose profiles, checkpoints and limits this page shows.');
-      } else {
-        notes.push('Runs the SparkRing package installed on Node A. Its version decides what the profile means; this page shows ' + source + '.');
-      }
-      if (o.approval === 'plan') notes.push('`--plan` prints the setup, checkpoint and model plan and changes nothing. A later `--yes` stays within a saved plan.');
-      if (cp.derived) notes.push('No repository publishes `' + cp.name + '`: the installer derives it on the Sparks from ' + cp.changes[0].replace(/^derived on the Sparks from /, '') + '.');
-      if (!cp.default) notes.push('`--checkpoint ' + cp.name + '` installs that checkpoint as its own deployment, with its own pinned revision and checkpoint directory. Installing again without it switches back to the default.');
-      if (Object.keys(serving.settings).length) notes.push('A deployment records its settings: other values make another deployment, and installing it replaces the running model, restarting it once.');
-      notes.push('It ends with `Model ready:` and the API and dashboard addresses. If it stops early, run the same command again; it continues where it stopped.');
-      notes.push('Stopping another program\'s GPU container always needs its own answer, or `--stop-workloads`.');
+      notes.push('If it stops early, run it again; it picks up where it left off.');
     }
     $('install-notes').replaceChildren(...notes.map(text => el('li', {}, ...rich(text))));
     renderChip();
@@ -849,35 +833,27 @@ __ENGINE__
   function block(text) { return el('code', { class: 'block' }, text); }
 
   function renderRun() {
-    const { p, site, settings, cp } = result;
+    const { p, site, cp } = result;
     const n = site.ranks.length;
     const repo = site.ranks[0].repository.replace(/\/+$/, '');
     const steps = [
-      el('li', {}, 'Put each Spark\'s file on that Spark: open its tab, choose ', el('strong', {}, 'Copy as shell command'),
-        ' and paste it into a terminal on the Spark. The zip holds the same files.'),
-      el('li', {}, 'On every Spark, pull the image and check its ID. The files never pull it themselves.',
+      el('li', {}, 'Copy each Spark\'s file to it, using ', el('strong', {}, 'Copy as shell command'), ' or the zip.'),
+      el('li', {}, 'On every Spark, pull the image:',
         block('docker pull ' + p.image + "\ndocker image inspect --format '{{.Id}}' " + p.image + '\n# expect ' + p.image_id)),
       cp.derived
-        ? el('li', {}, 'Each Spark needs the complete checkpoint in its model directory. No repository publishes this derived checkpoint; this writes it on every Spark into ',
-          el('code', {}, E.derivedDirectory(cp)), ':', block('sudo sparkring install --profile ' + p.id + ' --checkpoint ' + cp.name))
-        : el('li', {}, 'Each Spark needs the complete checkpoint in its model directory, every shard checked, for example:',
+        ? el('li', {}, 'Put the checkpoint in each model directory. This one is created on the Sparks, in ', el('code', {}, E.derivedDirectory(cp)), ':',
+          block('sudo sparkring install --profile ' + p.id + ' --checkpoint ' + cp.name))
+        : el('li', {}, 'Put the checkpoint in each model directory:',
           block('hf download ' + cp.model_repository + ' --revision ' + cp.model_revision + ' --local-dir ' + site.ranks[0].model)),
-      el('li', {}, 'Each fabric address\'s RoCE v2 GID must be at index ' + site.ranks[0].gid + ' when the container starts. This prints the index on a Spark:',
-        block('python3 ' + repo + '/integrations/vllm/spark_roce_gid.py')),
+      el('li', {}, 'Check the RoCE GID index is ' + site.ranks[0].gid + ':', block('python3 ' + repo + '/integrations/vllm/spark_roce_gid.py')),
     ];
-    if (n === 4) steps.push(el('li', {}, 'Four-Spark profiles need the prepared mesh fabric. The mesh fields name the site file and hashes that the mesh setup wrote on each Spark.'));
-    steps.push(el('li', {}, 'Start the workers first, rank ' + (n === 2 ? '1' : '1 to ' + (n - 1)) + ', then rank 0. On each Spark:',
+    if (n === 4) steps.push(el('li', {}, 'Four Sparks only: set up the mesh fabric first.'));
+    steps.push(el('li', {}, (n === 2 ? 'Start rank 1' : 'Start ranks 1–' + (n - 1)) + ', then rank 0:',
       block('docker compose -f ' + site.ranks[0].deployment_root.replace(/\/+$/, '') + '/' + site.name + '/rankN/compose.yaml up -d')));
-    steps.push(el('li', {}, 'Wait for the API to list ' + cp.served_model_name + '. The first start on this image compiles and tunes kernels, about 10 minutes.',
+    steps.push(el('li', {}, 'Wait for the model; the first start takes about 10 minutes:',
       block('curl http://' + site.master + ':' + cp.port + '/v1/models')));
     $('run-steps').replaceChildren(...steps);
-    const notes = [
-      'These files equal what `' + E.renderCommand(p, cp, settings, site) + '` writes from the site.yaml tab with ' + E.sourceName(META) +
-        ', and `sparkring compose check --deployment ' + site.name + '` accepts the unzipped folder.',
-      'The status dashboard reports worker identity as binding_not_configured: only `sparkring install` writes the per-rank runtime-binding file. Serving is unaffected.',
-      'The containers do not restart on their own (restart: no).',
-    ];
-    $('notes').replaceChildren(...notes.map(text => el('li', {}, ...rich(text))));
+    $('notes').replaceChildren(el('li', {}, 'Containers don\'t restart on their own.'));
   }
 
   function renderZip() {
@@ -899,10 +875,8 @@ __ENGINE__
       note.textContent = 'Fix the fields the generator refuses to build the zip.';
       return;
     }
-    const { site } = result, last = site.ranks.length - 1;
-    button.textContent = 'Download ' + site.name + '.zip';
-    note.textContent = 'Unzips to ' + site.name + '/ as sparkring compose render writes it: deployment.json and rank0–' + last +
-      '/compose.yaml and container.json, with ' + site.name + '.site.yaml and a README.txt.';
+    button.textContent = 'Download ' + result.site.name + '.zip';
+    note.textContent = 'One folder per Spark, plus a README with the start steps.';
   }
 
   async function saveZip() {
@@ -1052,16 +1026,7 @@ __ENGINE__
   $('release-meta').textContent = (META.tag ? 'Release · ' : 'Commit ') + META.commit.slice(0, 12) + ' of ' + META.repository;
   $('release-chips').replaceChildren(chip(META.tag ? 'Release' : 'Development build', META.tag ? 'good' : 'warn'));
   $('source-release-label').textContent = source;
-  const v = DATA.verification;
-  $('engine-text').textContent = v ? 'Matches compose.py on ' + fmt(v.valid) + ' test sites' : 'Built from ' + META.ref.slice(0, 12);
-  $('provenance').textContent = 'Templates rendered by runtime/common/compose.py from ' + source + ' (' + META.commit.slice(0, 12) +
-    ') with placeholder site values, for every checkpoint; this page checks your site with the generator\'s rules and puts your values in their place. Nothing you type is sent anywhere.';
-  $('checks').textContent = v
-    ? 'Checked when this page was built: for ' + fmt(v.valid) + ' random sites, checkpoints and settings across the ' + CATALOG.length +
-      ' profiles, every file, deployment.json, site.yaml and deployment ID equalled compose.py byte for byte; ' + fmt(v.invalid) +
-      ' invalid sites were refused with the generator\'s own messages; and compose.load_deployment accepted the unzipped folder of all ' +
-      fmt(v.archives) + ' archives tried.'
-    : 'This page was built without the engine comparison; python scripts/generate_compose_builder.py --verify runs it.';
+  $('provenance').textContent = 'Built from ' + source + '.';
   load();
   if (!FRAMED) fromLink();
   renderAll();
