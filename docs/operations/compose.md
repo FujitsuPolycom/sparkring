@@ -51,7 +51,7 @@ A site cannot change serving settings or select another image.
 | Profile configuration | Model, context, KV allocation, batching, MTP, media limits, engine arguments and integrations |
 | `render --checkpoint NAME` | Another checkpoint the profile lists, with the settings it needs, as `sparkring install --checkpoint` selects it |
 | `render --image NAME` | Another installer image that runs the profile: a name or release tag that [`sparkring images`](commands.md#images) lists, as `sparkring install --image` selects it |
-| `render` serving-setting flags | The [serving settings](install-reference.md#serving-settings) that `sparkring install` accepts, such as `--max-concurrency 8`, replacing the profile's values in every rank |
+| `render` serving-setting flags | The [serving settings](install-reference.md#serving-settings) that `sparkring install` accepts, such as `--max-concurrency 8`, replacing the profile's values in every rank; `--reasoning-effort` and `--thinking off` set the model's [thinking](install-reference.md#thinking) default in the API rank only |
 | Image release or installer image lock | Registry digest, image ID, platform and image verification |
 | Site file | SSH targets, rank addresses, bootstrap interface, HCA order, GID index, and model, cache, repository and deployment paths; TP4 adds the prepared fabric reference |
 | Generated container specification | Effective arguments, environment, entrypoint, mounts, GPU/RDMA access, limits and health checks |
