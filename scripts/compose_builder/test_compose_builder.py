@@ -48,6 +48,21 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
     assert {profile["id"]: profile["model_name"] for profile in data["profiles"]}["glm53-flash-nvfp4-spark-tp4"] == "GLM-5.3-Flash"
 
 
+def test_features_record_the_command_options_the_source_defines(data, tmp_path):
+    # This checkout's `sparkring install` defines --on.
+    assert data["features"]["ring_halves"] is True
+    assert data["features"] == export.features()
+    host = tmp_path / "runtime" / "host"
+    host.mkdir(parents=True)
+    assert export.features(tmp_path) == {"ring_halves": False, "cable_check": False}
+    (host / "install_workflow.py").write_text('def main():\n    parser.add_argument("--on", metavar="RANKS")\n')
+    # A help text that names an option does not define it.
+    (host / "cabling.py").write_text('def main():\n    parser.add_argument("--json", help="unlike --bandwidth")\n')
+    assert export.features(tmp_path) == {"ring_halves": True, "cable_check": False}
+    (host / "cabling.py").write_text('def main():\n    parser.add_argument("--bandwidth", action="store_true")\n')
+    assert export.features(tmp_path) == {"ring_halves": True, "cable_check": True}
+
+
 def test_image_catalog_lists_the_default_first_with_options_install_accepts(data):
     rows = data["images"]
     assert rows[0]["default"] and rows[0]["file"] is None and sum(row["default"] for row in rows) == 1
