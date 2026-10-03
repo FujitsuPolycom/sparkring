@@ -23,6 +23,14 @@ Each checkpoint carries ``capacity``: the engine-reported KV pool of
 performance/profile-capacity.json that the page scales to the chosen KV cache
 size for its token estimate (kv_measurement), or None when the profile has
 no usable measurement.
+
+Each profile and checkpoint carries ``status`` and ``purpose``, which the page
+shows beside it. A profile's status is its profile.json ``status``; its
+purpose, and each other checkpoint's status, purpose and evidence, come from
+profiles/labels.json (labels()). They live there rather than in the profile's
+configuration because the deployment identity covers each checkpoint entry
+of the configuration (compose.identity_inventory), so a label written there
+would make every deployment of the profile another deployment.
 """
 import ast
 import json
@@ -37,6 +45,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = compose.ROOT
 SCHEMA = "sparkring-compose-builder-data/v1"
 REPOSITORY = "FujitsuPolycom/sparkring"
+# The status values of profiles and checkpoints (docs/development/writing.md).
+STATUSES = ("qualified", "implemented", "research-only", "unsupported")
 # Compose-supported profiles the builder does not list.
 EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache"})
 
@@ -151,6 +161,50 @@ def _checkpoints(profile_id, configuration, site, options):
     return rows
 
 
+def labels(root=ROOT):
+    """profiles/labels.json (sparkring-profile-labels/v1), validated: a purpose by profile, and by checkpoint name.
+
+    ``profiles`` maps a profile ID to ``purpose``, one line, and
+    ``checkpoints``, which maps each checkpoint name the profile lists to its
+    ``purpose``. A checkpoint other than the profile's default also has
+    ``status``, one of STATUSES, and ``evidence``, the repository file (with
+    an optional ``#`` anchor) that establishes it; the default checkpoint has
+    the profile's own status.
+    """
+    document = json.loads((Path(root) / "profiles" / "labels.json").read_text(encoding="utf-8"))
+    if set(document) != {"schema", "profiles"} or document["schema"] != "sparkring-profile-labels/v1":
+        raise ValueError("profiles/labels.json: expected sparkring-profile-labels/v1 with profiles")
+    for profile_id, row in document["profiles"].items():
+        if (not isinstance(row, dict) or set(row) != {"purpose", "checkpoints"} or not isinstance(row["purpose"], str)
+                or not row["purpose"] or not isinstance(row["checkpoints"], dict)):
+            raise ValueError(f"profiles/labels.json: {profile_id} needs a purpose and its checkpoints")
+        for name, entry in row["checkpoints"].items():
+            keys = set(entry) if isinstance(entry, dict) else set()
+            if keys not in ({"purpose"}, {"purpose", "status", "evidence"}) or not entry["purpose"]:
+                raise ValueError(f"profiles/labels.json: {profile_id} {name} needs a purpose, and a status and evidence or neither")
+            if "status" in entry and (entry["status"] not in STATUSES
+                                      or not (Path(root) / entry["evidence"].split("#", 1)[0]).is_file()):
+                raise ValueError(f"profiles/labels.json: {profile_id} {name} needs a status of {', '.join(STATUSES)} "
+                                 "and an evidence file of this repository")
+    return document
+
+
+def _labelled(profile_id, metadata, checkpoints, document):
+    """The profile's status and purpose, with each checkpoint's in place; refuses a profile or checkpoint without labels."""
+    row = document["profiles"].get(profile_id)
+    names = [checkpoint["name"] for checkpoint in checkpoints if checkpoint["name"] is not None]
+    if row is None or sorted(row["checkpoints"]) != sorted(names):
+        raise ValueError(f"profiles/labels.json must label {profile_id} and exactly its checkpoints: {', '.join(names) or 'none'}")
+    for checkpoint in checkpoints:
+        entry = row["checkpoints"].get(checkpoint["name"], {})
+        if checkpoint["default"] == ("status" in entry):
+            raise ValueError(f"profiles/labels.json: {profile_id} {checkpoint['name']}: only a checkpoint other than the "
+                             "default has its own status")
+        checkpoint.update(status=entry.get("status", metadata["status"]), purpose=entry.get("purpose"),
+                          evidence=entry.get("evidence"))
+    return {"status": metadata["status"], "purpose": row["purpose"]}
+
+
 def capacity_records():
     """performance/profile-capacity.json's records by profile ID: the engine-reported KV pools."""
     return json.loads((ROOT / "performance" / "profile-capacity.json").read_text(encoding="utf-8"))["profiles"]
@@ -246,6 +300,7 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
     record = capacity_records().get(profile_id)
     for checkpoint in checkpoints:
         checkpoint["capacity"] = kv_measurement(record, checkpoint["name"], checkpoints[0]["name"])
+    status = _labelled(profile_id, metadata, checkpoints, labels())
     site = sentinel_site(example)
     for checkpoint in checkpoints:
         name = None if checkpoint["default"] else checkpoint["name"]
@@ -267,6 +322,7 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
         "id": profile_id,
         "title": metadata.get("title", profile_id),
         "model_name": names.get(checkpoints[0]["model_repository"], metadata.get("title", profile_id)),
+        **status,
         "nodes": len(example["ranks"]),
         "installable": profile_id in (runtime or {}).get("profiles", []),
         "image": image,

@@ -76,6 +76,29 @@ the argument parsers of `runtime/host/install_workflow.py` and
 `runtime/common/serving.py` defines, and records them in the page's data as
 `features`.
 
+## Model and checkpoint
+
+Step 3 lists the profiles of the layout's size. Each card shows the model, one
+line about it and its status; each checkpoint card leads with what the
+checkpoint is for, such as "MXFP8 attention, derived during install", then
+the name `--checkpoint` takes, and shows its status. The output summary
+repeats the status of each model it installs. Statuses use the labels of the
+[profile tables](../../profiles/README.md): **Validated** (`qualified`),
+**Development** (`implemented`) and **Experimental** (`research-only`).
+
+- A profile's status is its `profile.json` `status`; its default checkpoint
+  has the same status.
+- [profiles/labels.json](../../profiles/labels.json)
+  (`sparkring-profile-labels/v1`) holds each profile's line and, for each
+  checkpoint a profile lists, what it is for; a checkpoint other than the
+  default also has its own status and the record that establishes it, such as
+  [checkpoint status](install-reference.md#another-checkpoint-of-a-profile)
+  for the research-only `jmni-qad5500-hybrid`. The page is not built while a
+  profile or checkpoint lacks its labels.
+- The labels are not in the profiles' configurations: the deployment identity
+  covers every checkpoint entry there, so a label would make each deployment
+  of the profile another deployment.
+
 ## Commands
 
 For the `sparkring install` output the page writes the layout's commands in

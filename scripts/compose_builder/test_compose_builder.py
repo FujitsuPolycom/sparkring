@@ -48,6 +48,52 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
     assert {profile["id"]: profile["model_name"] for profile in data["profiles"]}["glm53-flash-nvfp4-spark-tp4"] == "GLM-5.3-Flash"
 
 
+def test_profiles_and_checkpoints_carry_their_status_and_purpose(data):
+    from runtime.common import profiles
+    for profile in data["profiles"]:
+        assert profile["status"] == profiles.load(profile["id"])[0]["status"] and profile["purpose"]
+        for checkpoint in profile["checkpoints"]:
+            assert checkpoint["status"] in export.STATUSES
+            if checkpoint["default"]:
+                # The default checkpoint is what the profile's own status describes.
+                assert checkpoint["status"] == profile["status"] and checkpoint["evidence"] is None
+            else:
+                assert checkpoint["purpose"] and checkpoint["evidence"]
+            assert checkpoint["name"] is None or checkpoint["purpose"]
+    by_id = {profile["id"]: profile for profile in data["profiles"]}
+    assert by_id["swift15-qwen38-flash-next-tp4"]["status"] == "research-only"
+    for profile_id in (TP2, "qwen38-flash-next-qad-tp4"):
+        named = {c["name"]: c for c in by_id[profile_id]["checkpoints"]}
+        assert named["qad-step5500-ple1000"]["purpose"] == "Default QAD checkpoint"
+        assert named["qad-step5500-mxfp8-attention"]["purpose"] == "MXFP8 attention, derived during install"
+        assert (named["jmni-qad5500-hybrid"]["status"], named["jmni-qad5500-hybrid"]["purpose"]) == (
+            "research-only", "Third-party hybrid by JMNI Labs, research-only")
+
+
+def test_labels_refuse_a_missing_label_status_or_evidence(tmp_path, monkeypatch):
+    (tmp_path / "profiles").mkdir()
+    (tmp_path / "record.md").write_text("evidence")
+    path = tmp_path / "profiles" / "labels.json"
+
+    def write(checkpoints):
+        path.write_text(json.dumps({"schema": "sparkring-profile-labels/v1",
+                                    "profiles": {"p": {"purpose": "A model", "checkpoints": checkpoints}}}))
+
+    write({"main": {"purpose": "Default"}, "other": {"purpose": "Other", "status": "implemented", "evidence": "record.md#x"}})
+    assert export.labels(tmp_path)["profiles"]["p"]["purpose"] == "A model"
+    for checkpoints in ({"other": {"purpose": "Other", "status": "tested", "evidence": "record.md"}},
+                        {"other": {"purpose": "Other", "status": "implemented", "evidence": "missing.md"}},
+                        {"other": {"purpose": "Other", "status": "implemented"}},
+                        {"other": {"purpose": ""}}):
+        write(checkpoints)
+        with pytest.raises(ValueError, match="profiles/labels.json"):
+            export.labels(tmp_path)
+    # A profile the file does not label, or a checkpoint it omits, stops the export.
+    monkeypatch.setattr(export, "labels", lambda: {"schema": "sparkring-profile-labels/v1", "profiles": {}})
+    with pytest.raises(ValueError, match="must label mimo-v26-flash-mopd-tp2"):
+        export.profile_data("mimo-v26-flash-mopd-tp2")
+
+
 def test_features_record_the_command_options_the_source_defines(data, tmp_path):
     # This checkout's `sparkring install` defines --on.
     assert data["features"]["ring_halves"] is True

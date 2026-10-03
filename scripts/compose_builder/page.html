@@ -525,6 +525,12 @@ __ENGINE__
     return node;
   }
   const chip = (text, tone) => el('span', { class: 'chip' + (tone ? ' ' + tone : '') }, text);
+  // A profile's or checkpoint's status (export.labels) as the profile tables name it
+  // (docs/development/writing.md), with its chip's tone.
+  const STATUS = { qualified: ['Validated', 'good'], implemented: ['Development', ''], 'research-only': ['Experimental', 'warn'],
+    unsupported: ['Unsupported', 'bad'] };
+  const statusLabel = status => (STATUS[status] || [status || 'Unknown'])[0];
+  const statusChip = status => chip(statusLabel(status), (STATUS[status] || [])[1]);
   const fmt = n => typeof n === 'number' ? n.toLocaleString('en-US') : String(n);
   const rev = r => (r || '').slice(0, 12);
   const clone = v => JSON.parse(JSON.stringify(v));
@@ -826,8 +832,9 @@ __ENGINE__
       input.addEventListener('change', () => { slot.profile = p.id; currentTab = 'rank0'; renderAll(); changed(); });
       list.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + ' · ' + p.nodes + ' Sparks'), el('span', { class: 'meta mono' }, p.id)),
-        el('span', { class: 'chips' }, p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
+        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + ' · ' + p.nodes + ' Sparks'),
+          p.purpose ? el('span', { class: 'meta' }, p.purpose) : null, el('span', { class: 'meta mono' }, p.id)),
+        el('span', { class: 'chips' }, statusChip(p.status), p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
     }
     if (!list.children.length) list.append(el('p', { class: 'hint' }, 'No model runs on that many Sparks.'));
   }
@@ -883,14 +890,16 @@ __ENGINE__
         renderCheckpoints(); renderSettings(); renderSparks(); changed();
       });
       const details = cp.default
-        ? [el('li', {}, "The profile's default" + (cp.aliases.length ? '; also named ' : ''), ...cp.aliases.map(a => el('code', {}, a)))]
+        ? (cp.aliases.length ? [el('li', {}, 'Also named ', ...cp.aliases.map(a => el('code', {}, a)))] : [])
         : cp.changes.map(change => el('li', {}, el('code', {}, change)));
+      // The card leads with what the checkpoint is for; its name, the value --checkpoint takes, follows.
+      const served = cp.changes.includes('served as ' + cp.served_model_name) ? '' : ' · served as ' + cp.served_model_name;
       box.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', { class: 'mono' }, cp.name),
-          el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + ' · served as ' + cp.served_model_name)),
-        el('ul', { class: 'changes' }, details),
-        cp.default ? el('span', { class: 'chips' }, chip('Default', 'good')) : null));
+        el('span', { class: 'choice-body' }, el('strong', {}, cp.purpose || cp.name), el('span', { class: 'meta mono' }, cp.name),
+          el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + served)),
+        details.length ? el('ul', { class: 'changes' }, details) : null,
+        el('span', { class: 'chips' }, cp.default ? chip('Default', 'good') : null, statusChip(cp.status))));
     }
   }
 
@@ -1215,6 +1224,8 @@ __ENGINE__
   let installReady = false;
 
   const checkpointText = cp => (cp.name ? cp.name + (cp.default ? ' (default)' : '') + ' · ' : '') + cp.model_repository + ' @ ' + rev(cp.model_revision);
+  // A deployment's status and what it is: the checkpoint's own for one other than the default, else the profile's.
+  const statusText = (p, cp) => statusLabel(cp.status || p.status) + ' · ' + ((cp.default ? p.purpose : cp.purpose) || p.title);
 
   // The facts and serving-setting messages of the models the layout installs; a half's carry its pair's name.
   function renderShared() {
@@ -1228,10 +1239,12 @@ __ENGINE__
       try { cp = E.checkpointOf(p, slotCheckpoint(slot, p)); } catch (_) { cp = p.checkpoints[0]; }
       const kv = fixing ? null : kvFact(p, check), port = (!fixing && check.ok && check.settings.api_port) || cp.port;
       if (single) {
-        rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + port],
+        rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Status', statusText(p, cp)],
+          ['Served model', cp.served_model_name + ' on port ' + port],
           ...(kv ? [['KV cache', kv]] : []), ['Image', p.image], ['Image ID', p.image_id + ' (' + p.image_release + ')']);
       } else {
-        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + port],
+        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Status', statusText(p, cp)],
+          ['Served model', cp.served_model_name + ' on port ' + port],
           ...(kv ? [['KV cache', kv]] : []));
         images.add(p.image);
       }
