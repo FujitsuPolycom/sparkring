@@ -112,8 +112,24 @@ The options above the commands apply to every install command:
 Each install command carries `--profile`, `--on` for a pair of a ring,
 `--image` and `--checkpoint` when they are not the defaults, the
 [serving settings](install-reference.md#serving-settings) changed for that
-selection and its [API endpoint](#api-endpoint). A setting outside its limits
-shows its problem under the field.
+selection and its [API endpoint](#api-endpoint).
+
+### Fields that need a change
+
+A field holds what you type until it is fixed; a value that `sparkring install`
+would refuse never falls back to the profile's value. While any field the
+output uses has a problem, the page shows the problem under that field, the
+output says **Not ready** and lists those fields, and it offers nothing to
+copy or download:
+
+| Output | Fields it uses |
+|---|---|
+| `sparkring install` | Every serving setting of each model the layout installs, the API endpoint's fields when it is **Set here**, the download limit, and with **Fill in my Sparks** each Spark's name and address |
+| Docker Compose | The model's serving settings and API endpoint fields, and every field of step 5 |
+
+[engine.js](../../scripts/compose_builder/engine.js) reads each field
+(`readSetting`, `readAddress`, `readDownloadLimit`, `readSelection`), and its
+command pack lists the fields it cannot use; the tests drive both.
 
 ### API endpoint
 
@@ -132,7 +148,8 @@ belongs to each model, and with two pairs to each pair.
   address of the Spark that serves the model; the installer checks that the
   Spark has it. **Address people use** is a name or an address, such as
   `llm.example.net`, without `http://` or a port. A value the installer would
-  refuse shows its problem under the field and stays out of the commands.
+  refuse shows its problem under the field, and the page offers no command
+  until it is fixed ([fields that need a change](#fields-that-need-a-change)).
 - The address each install command serves at follows the choice: the address
   people use, else the listen address, else the Spark's address, at the
   chosen port.

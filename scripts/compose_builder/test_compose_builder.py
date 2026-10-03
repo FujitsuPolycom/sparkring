@@ -134,7 +134,7 @@ def packs(node, data, cases):
     script = """
 const byId = Object.fromEntries(value.profiles.map(p => [p.id, p]));
 const sel = s => ({ profile: { ...byId[s.profile], image_option: s.image_option || null }, checkpoint: s.checkpoint || null,
-  settings: s.settings || {}, endpoint: s.endpoint || null });
+  settings: s.settings || {}, endpoint: s.endpoint || null, problems: s.problems || [] });
 console.log(JSON.stringify(value.cases.map(c => E.commandPack({ layout: c.layout, features: c.features, main: sel(c.main),
   halves: (c.halves || [c.main, c.main]).map(sel) }, value.meta, c.opts))));"""
     return run_engine(node, script, {"profiles": [p for p in data["profiles"] if p["id"] in used], "cases": cases,
@@ -303,6 +303,65 @@ def test_pack_carries_each_deployed_selection_s_api_endpoint(data, node):
     assert first["command"] == "" and first["error"].startswith("--api-address takes a host name or an IP address")
     first, = refused["groups"][0]["commands"]
     assert first["error"] == "--api-port 29638 is the profile's --master-port. Choose another port."
+
+
+def test_fields_keep_their_entries_apart_from_the_settings_they_give(data, node):
+    profile = next(p for p in data["profiles"] if p["id"] == TP2)
+    found = run_engine(node, """
+const { profile } = value, cp = E.checkpointOf(profile, null), row = name => cp.settings.find(r => r.name === name);
+console.log(JSON.stringify({
+  kv: ['', '1.5', '24', ' 26 ', '27', '0', 26, 'abc'].map(text => E.readSetting(row('kv_cache_gib'), text)),
+  port: ['80', '2222', '9100', '70000'].map(text => E.readSetting(row('api_port'), text)),
+  bind: ['0.0.0.0', '198.51.100.20'].map(text => E.readSetting(row('api_bind'), text)),
+  address: ['', 'http://llm:8000', 'llm.example.net'].map(E.readAddress),
+  limit: ['', 'none', '850Mbit', 'fast', '500kbit'].map(E.readDownloadLimit),
+  auto: E.readSelection(profile, cp, { kv_cache_gib: '1.5', max_concurrency: '4', api_port: '80', save_cpu: true },
+                        { mode: 'auto', address: 'http://llm:8000' }),
+  set: E.readSelection(profile, cp, { kv_cache_gib: 20, api_port: '80', api_bind: '198.51.100.20' },
+                       { mode: 'set', address: 'http://llm:8000' }),
+}));""", {"profile": profile})
+    whole, smallest, largest = "Enter a whole number.", "At least 1.", "At most 26."
+    # An empty field keeps the profile's value; a value above the ceiling or not a whole number has a problem.
+    assert found["kv"] == [{"problem": ""}, {"problem": whole}, {"value": 24, "problem": ""}, {"value": 26, "problem": ""},
+                           {"problem": largest}, {"problem": smallest}, {"value": 26, "problem": ""}, {"problem": whole}]
+    assert found["port"] == [{"problem": "From 1024 to 65535."}, {"problem": "This is the port of SparkRing's administration SSH."},
+                             {"value": 9100, "problem": ""}, {"problem": "From 1024 to 65535."}]
+    assert found["bind"] == [{"problem": "An IPv4 address of the Spark, such as 192.0.2.10."},
+                             {"value": "198.51.100.20", "problem": ""}]
+    assert found["address"] == [{"value": None, "problem": ""}, {"problem": "A name or an address, without http:// or a port."},
+                                {"value": "llm.example.net", "problem": ""}]
+    assert [bool(x["problem"]) for x in found["limit"]] == [False, False, False, True, True]
+    # The KV cache text 1.5 gives no setting, so nothing falls back to the profile's 24 GiB unnoticed;
+    # the endpoint's fields count only while it is set on the page.
+    assert found["auto"] == {"settings": {"max_concurrency": 4, "save_cpu": True}, "address": None,
+                             "problems": [{"field": "kv_cache_gib", "message": whole}]}
+    assert found["set"] == {"settings": {"kv_cache_gib": 20, "api_bind": "198.51.100.20"}, "address": None,
+                            "problems": [{"field": "api_port", "message": "From 1024 to 65535."},
+                                         {"field": "api_address", "message": "A name or an address, without http:// or a port."}]}
+
+
+def test_a_pack_gives_no_command_while_a_field_has_a_problem(data, node):
+    problem = [{"field": "kv_cache_gib", "message": "Enter a whole number."}]
+    halves = [{"profile": TP2}, {"profile": MIMO2, "problems": problem}]
+    pair, second, limit, sparks, fine = packs(node, data, [
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2, "problems": problem}, "opts": NEW},
+        {"layout": "halves", "features": BOTH, "main": {"profile": TP4}, "halves": halves, "opts": NEW},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2}, "opts": {**NEW, "downloadLimit": "fast"}},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2},
+         "opts": {**NEW, "order": "fill", "sparks": [{"host": "spark-a", "host_ip": ""}, {"host": "", "host_ip": "300.1.1.1"}]}},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2}, "opts": {**NEW, "downloadLimit": "850Mbit"}},
+    ])
+    for pack in (pair, second, limit, sparks):
+        assert not pack["ready"] and set(commands(pack)) == {""}
+        assert all(c["error"] for group in pack["groups"] for c in group["commands"])
+    assert pair["problems"] == [{**problem[0], "pair": None}]
+    # A half's problem names its pair.
+    assert second["problems"] == [{**problem[0], "pair": 1}]
+    assert limit["problems"] == [{"field": "download_limit", "pair": None,
+                                  "message": "Use none, or a rate of at least 1Mbit, such as 850Mbit or 2Gbit."}]
+    assert sparks["problems"] == [{"field": "rank1-host_ip", "message": "An IPv4 address, such as 192.0.2.10.", "pair": None}]
+    assert fine["ready"] and fine["problems"] == []
+    assert commands(fine, "install") == [SCRIPT + f"--profile {TP2} --download-limit 850Mbit"]
 
 
 def test_compose_readme_names_the_api_at_its_shown_address(data, node):
