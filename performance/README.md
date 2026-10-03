@@ -25,7 +25,7 @@ identify the measurements supporting it.
 | `harnesses/indexer_barrier/` | Fused-indexer CUDA-graph correctness stress |
 | `methodology/` | Measurement definitions, attribution rules, and CUDA-graph correctness requirements |
 | `records/glm-3.5bpw/` | GLM-5.2 EXL3 R7 evidence records |
-| `records/glm53-flash/` | GLM-5.3 Flash functional cache evidence and research-only throughput observations |
+| `records/glm53-flash/` | GLM-5.3 Flash functional cache evidence, KV capacity and memory measurements, and research-only throughput observations |
 | `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
 | `records/deepseek-v41-flash/` | DeepSeek-V4.1-Flash evidence records |
 | `records/qwen38-27b/` | Qwen3.8-27B EXL3 K5/K6 evidence records |
