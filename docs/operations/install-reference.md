@@ -705,6 +705,16 @@ failed restart (naming the function and time), a boot started with
 mesh code that differs from the deployment's
 ([when mesh code changes take effect](#the-rings-mesh)).
 
+A fabric link without carrier makes the Spark `needs-attention`, with an
+error naming the link, the rank at its other end and any fabric routes
+through it, which return with the link. On a four-Spark ring, an
+[approved route](#fabric-addresses-and-routes) missing while its link is up
+is named with its reason: another route in its place, a failed addition, or
+`sparkring-fabric.service` not active; otherwise `sparkring-agent` adds it
+within 30 seconds. An approved per-interface setting that differs is named
+with its value, such as `net.ipv4.conf.enp1s0f1np1.rp_filter is 2, approved 0`,
+and the same reasons.
+
 ## When a model stops serving
 
 A multi-Spark model stops serving when any rank stops, and its containers do
@@ -1075,6 +1085,48 @@ On a Spark:
 | `sudo sparkring node hairpin status` | Each function's setting |
 | `sudo sparkring node hairpin apply --dry-run --boot` | The restarts that the next boot performs, in order, or none while the service is not enabled |
 
+### Fabric addresses and routes
+
+Each cable carries two `/24` subnets, one per ConnectX function of its
+ports. With the default fabric network (`--fabric-cidr 198.18.0.0/21`), the
+cable from port 0 of rank e to port 1 of rank e+1 (rank 0 after rank 3)
+uses `198.18.(2e).0/24` and `198.18.(2e+1).0/24`; compatible addresses that
+setup kept may differ. Each Spark reaches the two cables it is not on
+through a neighbor: one static route per subnet, over the shorter side of
+the ring, for example `198.18.4.0/24 via 198.18.6.1 dev enp1s0f1np1` on
+rank 0. Setup records these approved routes in `/etc/sparkring/fabric.json`;
+a pair has none.
+
+- **At boot**, `sparkring-fabric.service` adds the routes, sets each fabric
+  function's per-interface settings (`net.ipv4.conf.IFACE.forwarding=1` and
+  `net.ipv4.conf.IFACE.rp_filter=0`) and adds the forwarding rules.
+- **When a link returns.** A link goes down when the Spark at its other end
+  reboots or restarts a ConnectX function, or when the cable is out.
+  NetworkManager then removes the function's fabric address, and the kernel
+  deletes the routes through it. NetworkManager adds the address again when
+  the link returns, and `sparkring-agent`, which checks every 30 seconds,
+  adds each missing approved route once its function has its link and
+  address.
+- **After a driver restart** of a ConnectX function, its netdev returns with
+  the kernel's default settings, such as `rp_filter` 2. The agent sets the
+  approved settings that differ again on every fabric function that exists,
+  and logs each change.
+- The agent changes only approved routes and settings, never another
+  interface or a global setting, and never removes or replaces a route:
+  another route to the same subnet stays, and `sparkring status` names it.
+  It acts while `sparkring-fabric.service` is active, as it is after a
+  successful boot restoration; stopping that service stops it until the
+  next boot. The forwarding rules come from `sparkring-fabric.service`
+  alone: they match interfaces by name, so a link going down or a restarted
+  function leaves them in place.
+- **Status.** While a link is down, `sparkring status` names the link and
+  the rank at its other end; the routes need no step
+  ([Status observations](#status-observations)).
+- The routes stay while [two models serve on the ring](#two-models-on-one-ring);
+  the halves do not use them.
+- Installing the package restarts `sparkring-agent`, so an updated Spark
+  restores routes and settings this way without setup or a reboot.
+
 ### The ring's mesh
 
 Every four-Spark installer profile runs on a native mesh; the installer
@@ -1204,8 +1256,9 @@ Before a half's model starts, every Spark stops and disables its mesh
 service, and the half's own start checks that no mesh runs on its two Sparks.
 A two-Spark model uses its cable directly, as a pair does, so its two Sparks
 restore their fabric addresses in [GID index 3](#roce-gid-index-3) first.
-Fabric addresses, routes and the [hairpin setting](#the-hairpin-setting)
-stay as setup left them, and a half's installation applies no hairpin change.
+Fabric addresses, [routes](#fabric-addresses-and-routes) and the
+[hairpin setting](#the-hairpin-setting) stay as setup left them, and a
+half's installation applies no hairpin change.
 
 Each Spark records the mesh services it stopped in
 `/etc/sparkring/mesh-parked.json`, and such a service counts as enabled for
@@ -1651,9 +1704,13 @@ its SSH service, also over the remaining links and the
 [fallback paths](#admin-tunnel) if one administration link fails, and
 `sparkring-fabric.service` restores the approved fabric routes,
 per-interface IPv4 forwarding and forwarding rules; NetworkManager keeps the
-fabric addresses. Models start only when requested, or when
-[automatic recovery](#automatic-recovery) restarts the active model after its
-last `up` completed; `sparkring down` stops the selected deployment.
+fabric addresses. Afterwards `sparkring-agent` adds an approved route again
+when the link it uses returns, and sets approved per-interface settings that
+a driver restart reset
+([Fabric addresses and routes](#fabric-addresses-and-routes)). Models start
+only when requested, or when [automatic recovery](#automatic-recovery)
+restarts the active model after its last `up` completed; `sparkring down`
+stops the selected deployment.
 
 **Mesh start check.** The package's systemd generator,
 `/usr/lib/systemd/system-generators/sparkring-hairpin-mesh-check`, adds a
