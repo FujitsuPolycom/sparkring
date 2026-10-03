@@ -312,8 +312,10 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
 
     ``serving`` holds runtime/common/serving.py settings, which replace the
     profile's vLLM values and set their switches' variables in every rank's
-    container, as `sparkring install` applies them. Local source-extension
-    trials select their KV alternative with ``local_kv_cache_gib`` instead.
+    container (the API endpoint's listen address only in the API rank's), as
+    `sparkring install` applies them (serving.container). Local
+    source-extension trials select their KV alternative with
+    ``local_kv_cache_gib`` instead.
 
     ``image_runtime`` is an installer image lock. With it, each rank is the
     container that installer_container derives for the host; build records the
@@ -400,9 +402,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         if local_source_extension is not None:
             raise ValueError("Serving settings apply to published images; a local source-extension trial "
                              "selects its KV alternative with --local-kv-cache-gib")
-        specs = [replace(spec, command=serving_settings.apply(spec.command, settings),
-                         environment={**spec.environment, **serving_settings.environment(settings)})
-                 for spec in specs]
+        specs = [serving_settings.container(spec, settings, rank=number) for number, spec in enumerate(specs)]
     return specs, image
 
 

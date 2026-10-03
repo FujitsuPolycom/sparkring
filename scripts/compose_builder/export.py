@@ -69,9 +69,15 @@ def _argument(command, flag):
 
 
 def _setting_rows(command):
-    """The serving settings a command sets, with the command's values and their limits."""
+    """The serving settings a command sets, with the command's values and their limits.
+
+    The API endpoint's port and listen address (serving.ADDRESSES and
+    ``api_port``) are not listed: the page does not offer them.
+    """
     rows = []
     for name, (flag, key, _, minimum, text) in serving_settings.SETTINGS.items():
+        if name == "api_port" or name in serving_settings.ADDRESSES:
+            continue
         value = serving_settings.profile_value(command, name)
         if value is None:
             continue
