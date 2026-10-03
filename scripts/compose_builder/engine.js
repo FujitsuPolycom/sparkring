@@ -1,4 +1,4 @@
-// Compose builder engine: per-rank files from templates that runtime/common/compose.py
+// Install Builder engine: per-rank files from templates that runtime/common/compose.py
 // rendered with a sentinel site (scripts/compose_builder/export.py). The engine validates a
 // site as compose.site_settings does, substitutes the site's values for the sentinel tokens
 // line by line with PyYAML's quoting rules, applies serving settings as

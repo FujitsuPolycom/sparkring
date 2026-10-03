@@ -1,4 +1,4 @@
-"""Compare the Compose builder's engine with compose.build.
+"""Compare the Install Builder's engine with compose.build.
 
 cases() draws random sites, checkpoints and serving settings for every listed
 profile, invalid sites, and sites that compose.build accepts but the engine

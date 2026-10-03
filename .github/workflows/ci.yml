@@ -120,7 +120,7 @@ jobs:
           python -m pytest runtime/common/test_compose.py runtime/common/test_compose_envelope.py scripts/test_sparkring_compose.py runtime/common/test_qwen_flash_next.py -q
 
   compose-builder:
-    name: Compose builder
+    name: Install Builder
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

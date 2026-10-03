@@ -6,7 +6,7 @@ that both Sparks share. [`sparkring install`](install.md) is the recommended
 path; it also prepares the network, image and checkpoint the files expect.
 
 [Compose deployments](compose.md) · [`compose` and `validate-compose` commands](commands.md#compose-and-validate-compose) ·
-[Compose builder](compose-builder.md): these files for your own Sparks, checkpoint and settings, as a zip
+[Install Builder](compose-builder.md): these files for your own Sparks, checkpoint and settings, as a zip
 
 ## Published files
 

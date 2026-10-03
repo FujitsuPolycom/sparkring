@@ -1,6 +1,6 @@
-# Compose builder
+# Install Builder
 
-The Compose builder is a web page for one SparkRing source. Pick a profile, a
+The Install Builder is a web page for one SparkRing source. Pick a profile, a
 checkpoint and serving settings, and it writes:
 
 - the `sparkring install` command that deploys them, or
@@ -136,5 +136,5 @@ python -m pytest scripts/compose_builder -q
 ```
 
 The test compares the engine only where Node.js is installed. CI's
-`Compose builder` job requires it, and `generate_compose_builder.py --verify`
+`Install Builder` job requires it, and `generate_compose_builder.py --verify`
 writes no page when any case differs.

@@ -1,4 +1,4 @@
-"""Data and page of the Compose builder.
+"""Data and page of the Install Builder.
 
 The page writes the `sparkring install` command for a profile, checkpoint and
 serving settings, and the per-rank Compose files that `sparkring compose

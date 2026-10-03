@@ -1,6 +1,6 @@
-name: Compose builder pages
+name: Install Builder pages
 
-# Publishes the Compose builder (docs/operations/compose-builder.md) to the
+# Publishes the Install Builder (docs/operations/compose-builder.md) to the
 # repository's GitHub Pages site for a tag or commit: each published release
 # that is not a prerelease, or one named by hand. Deploying needs Pages enabled
 # with GitHub Actions as its source. The github-pages environment deploys only

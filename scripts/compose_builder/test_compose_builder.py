@@ -1,4 +1,4 @@
-"""The Compose builder's data, page and engine (docs/operations/compose-builder.md)."""
+"""The Install Builder's data, page and engine (docs/operations/compose-builder.md)."""
 import json
 import os
 import shutil

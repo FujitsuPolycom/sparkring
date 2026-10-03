@@ -1,4 +1,4 @@
-"""Write the Compose builder page for this checkout.
+"""Write the Install Builder page for this checkout.
 
 The page (docs/operations/compose-builder.md) writes `sparkring install`
 commands and `sparkring compose render` deployments for the profiles of the
