@@ -539,10 +539,24 @@ __ENGINE__
   // The selections the layout installs, with the label of a half.
   const deployed = () => state.layout === 'halves'
     ? state.halves.map((slot, i) => ({ slot, label: PAIRS[i] })) : [{ slot: MAIN, label: null }];
-  // Every selection the command pack uses: the deployed ones, then those the ring switches to.
+  // A selection that a layout switch installs: the profile of `nodes` Sparks for the model of
+  // profile `id`, with its default checkpoint and serving settings; without one, the first
+  // installable profile of that size. The switch commands follow the deployed models, so no
+  // choice made earlier in another layout carries into them.
+  function switchSlot(id, nodes) {
+    const name = BY_ID[id].model_name, sized = CATALOG.filter(p => p.nodes === nodes);
+    const p = sized.find(q => q.model_name === name && q.installable) || sized.find(q => q.model_name === name)
+      || sized.find(q => q.installable) || sized[0];
+    return { profile: p.id, checkpoints: {}, settings: {} };
+  }
+  // The four-Spark model that the halves layout switches to: the first pair's model.
+  const switchMain = () => switchSlot(state.halves[0].profile, 4);
+  // The two halves' models that the ring layout switches to: the ring's model on both.
+  const switchHalves = () => [0, 1].map(() => switchSlot(state.profile, 2));
+  // Every selection the command pack uses: the deployed ones, then those the layout switches to.
   function packSlots() {
-    if (state.layout === 'halves') return [...state.halves, MAIN];
-    return state.layout === 'ring' && FEATURES.ring_halves ? [MAIN, ...state.halves] : [MAIN];
+    if (state.layout === 'halves') return [...state.halves, switchMain()];
+    return state.layout === 'ring' && FEATURES.ring_halves ? [MAIN, ...switchHalves()] : [MAIN];
   }
   const sparkCount = () => E.LAYOUT_SPARKS[state.layout];
   // Docker Compose renders a pair or a ring serving one model, not a ring split into two pairs.
@@ -1154,7 +1168,9 @@ __ENGINE__
       box.append(msg('bad', 'Download limit', 'Use none, or a rate of at least 1Mbit such as 850Mbit or 2Gbit.'));
     } else {
       const n = sparkCount();
-      pack = E.commandPack({ layout: state.layout, features: FEATURES, main: selectionOf(MAIN), halves: state.halves.map(selectionOf) }, META,
+      const halves = state.layout === 'halves';
+      pack = E.commandPack({ layout: state.layout, features: FEATURES, main: selectionOf(halves ? switchMain() : MAIN),
+        halves: (state.layout === 'ring' ? switchHalves() : state.halves).map(selectionOf) }, META,
         { form: o.form, pin: o.source === 'release', approval: o.approval, downloadLimit: o.limit.trim(), order: o.order,
           sparks: o.order === 'fill' ? cluster(n).ranks : null });
       if (o.order === 'fill' && namesExample()) box.append(msg('warn', '', "Step 5 still holds example names. Enter your Sparks' there."));
@@ -1197,15 +1213,26 @@ __ENGINE__
           el('pre', { class: 'code cmd', tabindex: '0', 'aria-label': group.title + ' command ' + number }, code),
           c.endpoint ? el('p', { class: 'endpoint' }, 'Serves at ', el('code', {}, c.endpoint)) : null));
       }
-      // The switch commands use the other layout's choices, which that layout's steps change.
-      const hint = group.key !== 'switch' ? null
-        : 'To change ' + (state.layout === 'halves' ? 'this model' : 'these models') + ', choose ' + LAYOUTS[state.layout === 'halves' ? 'ring' : 'halves'][0] + ' in step 2.';
+      // The switch commands install the deployed model on the other layout (switchSlot).
+      const hint = group.key !== 'switch' ? null : switchHint();
       box.append(el('h3', { class: 'sub' }, group.title), ...(hint ? [el('p', { class: 'hint' }, hint)] : []), list);
     }
     $('roles').replaceChildren(...pack.roles.flatMap(r => [el('dt', {}, r.spark), el('dd', {}, r.text)]));
     $('roles-order').hidden = !pack.order;
     $('roles-order').textContent = pack.order || '';
     $('install-notes').replaceChildren(...pack.notes.map(text => el('li', {}, ...rich(text))));
+  }
+
+  // What the switch commands install, in one sentence.
+  function switchHint() {
+    const from = BY_ID[state.layout === 'halves' ? state.halves[0].profile : state.profile];
+    const to = BY_ID[(state.layout === 'halves' ? switchMain() : switchHalves()[0]).profile];
+    if (state.layout === 'halves') {
+      return to.model_name === from.model_name ? "The first pair's model on all four Sparks, with its default checkpoint."
+        : `The first pair's model has no four-Spark version, so this uses ${to.model_name}, with its default checkpoint.`;
+    }
+    return to.model_name === from.model_name ? 'This model on both pairs, with its default checkpoint.'
+      : `This model has no two-Spark version, so both pairs use ${to.model_name}, with its default checkpoint.`;
   }
 
   // ---- Compose files ---------------------------------------------------------
