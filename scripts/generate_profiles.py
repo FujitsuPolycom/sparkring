@@ -128,6 +128,39 @@ def compact_profile_rows(rows, root=ROOT):
     return result, cache_cells
 
 
+def check_capacity_records(capacity, root=ROOT):
+    """Refuse a KV capacity measurement that its cited evidence does not state.
+
+    ``capacity`` maps profile IDs to records of performance/profile-capacity.json.
+    A record, and each measurement in its ``checkpoints``, needs a positive
+    token count, its measurement conditions, and a ``source`` file in this
+    repository that contains its ``witness`` text. A record may state the KV
+    bytes per rank at measurement; a checkpoint measurement must, because the
+    Install Builder scales it to the KV cache size a user chooses.
+    """
+    def positive(value):
+        return type(value) is int and value > 0
+
+    def evidenced(entry, label):
+        if not positive(entry.get('tokens')) or not entry.get('conditions'):
+            raise ValueError(f'{label}: capacity records require positive token counts and measurement conditions')
+        witness = entry.get('witness')
+        if not isinstance(witness, str) or not witness:
+            raise ValueError(f'{label}: capacity records require a source file and the witness text it contains')
+        if witness not in local_path(entry.get('source'), root).read_text(encoding='utf-8-sig'):
+            raise ValueError(f"{label}: capacity evidence changed: {entry['source']}")
+
+    for profile, record in capacity.items():
+        evidenced(record, profile)
+        if 'kv_bytes_per_rank' in record and not positive(record['kv_bytes_per_rank']):
+            raise ValueError(f'{profile}: capacity records state KV bytes per rank as a positive integer')
+        for name, entry in (record.get('checkpoints') or {}).items():
+            label = f'{profile} checkpoint {name}'
+            evidenced(entry, label)
+            if not positive(entry.get('kv_bytes_per_rank')):
+                raise ValueError(f'{label}: checkpoint capacity records require KV bytes per rank')
+
+
 def profile_table(root=ROOT, *, compact=False):
     rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
     model_labels = read_json(root/'profiles/model-names.json')
@@ -144,20 +177,7 @@ def profile_table(root=ROOT, *, compact=False):
         return profile_catalog_table(rows, names, root)
     if not set(capacity) <= {p['id'] for p, _ in rows}:
         raise ValueError('Capacity records must name catalog profiles')
-    def positive(value):
-        return type(value) is int and value > 0
-
-    for record in capacity.values():
-        if not positive(record['tokens']) or not record['conditions']:
-            raise ValueError('Capacity records require positive token counts and measurement conditions')
-        if record['witness'] not in local_path(record['source'], root).read_text(encoding='utf-8-sig'):
-            raise ValueError(f"Capacity evidence changed: {record['source']}")
-        # Optional: the KV bytes per rank at measurement, and further measurements by checkpoint.
-        if 'kv_bytes_per_rank' in record and not positive(record['kv_bytes_per_rank']):
-            raise ValueError('Capacity records state KV bytes per rank as a positive integer')
-        for entry in (record.get('checkpoints') or {}).values():
-            if not positive(entry.get('tokens')) or not positive(entry.get('kv_bytes_per_rank')) or not entry.get('conditions'):
-                raise ValueError('Checkpoint capacity records require tokens, KV bytes per rank and conditions')
+    check_capacity_records(capacity, root)
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
              'Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.', '']
     if compact:
