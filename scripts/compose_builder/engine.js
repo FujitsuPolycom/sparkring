@@ -718,7 +718,7 @@ const SparkRingEngine = (() => {
       let text;
       if (rank === 0) text = 'Where you run every command. Serves ' + (layout === 'halves' ? 'the first pair.' : 'the model.');
       else if (layout === 'pair') text = 'The Spark cabled to Node A.';
-      else text = `Cabled to ${names[rank - 1].role}'s p0 port.` + (layout !== 'halves' ? '' : rank === 1 ? ' First pair.'
+      else text = `Cabled to ${names[rank - 1].role}'s port 0.` + (layout !== 'halves' ? '' : rank === 1 ? ' First pair.'
         : rank === 2 ? ' Serves the second pair.' : ' Second pair.');
       return { spark: spark.label, text };
     });

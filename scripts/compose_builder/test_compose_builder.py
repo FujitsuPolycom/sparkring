@@ -195,7 +195,7 @@ def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data,
     assert "once the one before has finished" in switch["commands"][1]["what"]
     assert [g["key"] for g in without["groups"]] == ["install", "check"]
     assert [r["spark"] for r in ring["roles"]] == ["Node A", "Spark 1", "Spark 2", "Spark 3"]
-    assert ring["roles"][1]["text"] == "Cabled to Node A's p0 port." and "can't choose" in ring["order"]
+    assert ring["roles"][1]["text"] == "Cabled to Node A's port 0." and "can't choose" in ring["order"]
 
 
 def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):

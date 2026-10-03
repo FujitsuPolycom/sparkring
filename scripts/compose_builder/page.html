@@ -973,7 +973,7 @@ __ENGINE__
   function renderNames() {
     const n = sparkCount(), c = cluster(n), box = $('sparks');
     $('names-hint').textContent = 'A name, an address or both for each Spark. '
-      + (n === 2 ? 'Spark 1 is the Spark cabled to Node A.' : "Spark 1 is cabled to Node A's p0 port, Spark 2 to Spark 1's, and Spark 3 to Spark 2's.");
+      + (n === 2 ? 'Spark 1 is the Spark cabled to Node A.' : "Spark 1 is cabled to Node A's port 0, Spark 2 to Spark 1's port 0, and Spark 3 to Spark 2's port 0.");
     box.replaceChildren(...c.ranks.map((row, rank) => el('fieldset', {},
       el('legend', {}, rank === 0 ? 'Node A' : 'Spark ' + rank, roleChip(rank)),
       el('div', { class: 'grid' }, [['host', 'Name'], ['host_ip', 'Address']].map(([key, label]) => {
