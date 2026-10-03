@@ -59,6 +59,7 @@ import json
 from pathlib import Path, PurePosixPath
 import shlex
 
+from runtime.common import serving
 from runtime.host import fabric_stream, install_space
 
 SCHEMA = "sparkring-checkpoint-plan/v1"
@@ -190,8 +191,9 @@ def option(entry, *, abbreviate=False):
 def install_command(request=None, named=(), *, ignore_local=False):
     """The ``sudo sparkring install`` command that repeats one deployment request.
 
-    ``request`` holds ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``
-    and, for a deployment on half of a four-Spark ring, ``placement``. With the
+    ``request`` holds ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``,
+    the serving settings ``serving`` (``runtime.common.serving``) and, for a
+    deployment on half of a four-Spark ring, ``placement``. With the
     ``--model-path`` entries ``named`` they make the deployment's identity, so
     a command that leaves one out plans another deployment.
     ``--ignore-local-copies`` is kept when set, because it narrows the search
@@ -211,6 +213,12 @@ def install_command(request=None, named=(), *, ignore_local=False):
         argv += ["--cache-path", str(request["cache_path"])]
     if request.get("image_lock"):
         argv += ["--image-lock", str(request["image_lock"])]
+    settings = request.get("serving") or {}
+    for name in (*serving.SETTINGS, *serving.SWITCHES):
+        if settings.get(name) is True and name in serving.SWITCHES:
+            argv.append(serving.option(name))
+        elif settings.get(name) is not None and name in serving.SETTINGS:
+            argv += [serving.option(name), str(settings[name])]
     if ignore_local:
         argv.append("--ignore-local-copies")
     return shlex.join(argv)
@@ -730,7 +738,8 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     each retained deployment's name to the model path of each rank, to name the
     deployments whose receipts adoption refreshes. ``locked`` keeps every row's
     mode, for a deployment that already exists. ``request`` holds the
-    ``profile``, ``checkpoint``, ``cache_path`` and ``image_lock`` of the deployment request;
+    ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``, ``placement``
+    and ``serving`` settings of the deployment request;
     with ``named`` and ``ignore_local`` it gives the command that the plan's
     messages suggest (``install_command``). ``derivation`` is the
     ``derivation.section`` of a derived checkpoint, whose files each Spark
@@ -746,6 +755,9 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     if given.get("placement"):
         # Only a deployment on half of a four-Spark ring records its placement.
         request["placement"] = list(given["placement"])
+    if given.get("serving"):
+        # Only a deployment with other serving settings than its profile's records them.
+        request["serving"] = dict(given["serving"])
     context = {"request": request, "named": entries, "ignore_local_copies": bool(ignore_local)}
     command = install_command(request, entries, ignore_local=ignore_local)
     policy = policy or storage_policy()
