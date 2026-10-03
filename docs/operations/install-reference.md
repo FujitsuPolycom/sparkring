@@ -711,7 +711,9 @@ through it, which return with the link. On a four-Spark ring, an
 [approved route](#fabric-addresses-and-routes) missing while its link is up
 is named with its reason: another route in its place, a failed addition, or
 `sparkring-fabric.service` not active; otherwise `sparkring-agent` adds it
-within 30 seconds.
+within 30 seconds. An approved per-interface setting that differs is named
+with its value, such as `net.ipv4.conf.enp1s0f1np1.rp_filter is 2, approved 0`,
+and the same reasons.
 
 ## When a model stops serving
 
@@ -1095,8 +1097,9 @@ the ring, for example `198.18.4.0/24 via 198.18.6.1 dev enp1s0f1np1` on
 rank 0. Setup records these approved routes in `/etc/sparkring/fabric.json`;
 a pair has none.
 
-- **At boot**, `sparkring-fabric.service` adds the routes, per-interface
-  IPv4 forwarding and the forwarding rules.
+- **At boot**, `sparkring-fabric.service` adds the routes, sets each fabric
+  function's per-interface settings (`net.ipv4.conf.IFACE.forwarding=1` and
+  `net.ipv4.conf.IFACE.rp_filter=0`) and adds the forwarding rules.
 - **When a link returns.** A link goes down when the Spark at its other end
   reboots or restarts a ConnectX function, or when the cable is out.
   NetworkManager then removes the function's fabric address, and the kernel
@@ -1104,20 +1107,25 @@ a pair has none.
   the link returns, and `sparkring-agent`, which checks every 30 seconds,
   adds each missing approved route once its function has its link and
   address.
-- The agent adds only approved routes and never removes or replaces a
-  route: another route to the same subnet stays, and `sparkring status`
-  names it. It acts while `sparkring-fabric.service` is active, as it is
-  after a successful boot restoration; stopping that service stops it until
-  the next boot. Forwarding settings and rules come from
-  `sparkring-fabric.service` alone, at boot and after
-  `sudo sparkring hairpin` restarts functions.
+- **After a driver restart** of a ConnectX function, its netdev returns with
+  the kernel's default settings, such as `rp_filter` 2. The agent sets the
+  approved settings that differ again on every fabric function that exists,
+  and logs each change.
+- The agent changes only approved routes and settings, never another
+  interface or a global setting, and never removes or replaces a route:
+  another route to the same subnet stays, and `sparkring status` names it.
+  It acts while `sparkring-fabric.service` is active, as it is after a
+  successful boot restoration; stopping that service stops it until the
+  next boot. The forwarding rules come from `sparkring-fabric.service`
+  alone: they match interfaces by name, so a link going down or a restarted
+  function leaves them in place.
 - **Status.** While a link is down, `sparkring status` names the link and
   the rank at its other end; the routes need no step
   ([Status observations](#status-observations)).
 - The routes stay while [two models serve on the ring](#two-models-on-one-ring);
   the halves do not use them.
 - Installing the package restarts `sparkring-agent`, so an updated Spark
-  restores routes this way without setup or a reboot.
+  restores routes and settings this way without setup or a reboot.
 
 ### The ring's mesh
 
@@ -1697,7 +1705,8 @@ its SSH service, also over the remaining links and the
 `sparkring-fabric.service` restores the approved fabric routes,
 per-interface IPv4 forwarding and forwarding rules; NetworkManager keeps the
 fabric addresses. Afterwards `sparkring-agent` adds an approved route again
-when the link it uses returns
+when the link it uses returns, and sets approved per-interface settings that
+a driver restart reset
 ([Fabric addresses and routes](#fabric-addresses-and-routes)). Models start
 only when requested, or when [automatic recovery](#automatic-recovery)
 restarts the active model after its last `up` completed; `sparkring down`
