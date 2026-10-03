@@ -683,6 +683,9 @@ contacts the enrolled nodes and observes the model containers.
 - `recovery`: the active deployment's
   [automatic recovery](#automatic-recovery) record and whether its timer is
   enabled;
+- `fabric_bandwidth`: the saved [cable speed](#cable-speed) result with
+  `state` `measured` and `age_seconds`, or only `state` `never-measured` or
+  `unreadable`;
 - per Spark, `control`: each administration tunnel peer's primary link,
   carrier, endpoint, the [path](#admin-tunnel) that endpoint names (`path`:
   `via` `cable` or `lan`, `netdev`, `address`, `primary`), its number of
@@ -931,6 +934,60 @@ Spark whose two cables to swap, and the ring order afterwards.
 `sudo sparkring cabling` prints the same advice without setting anything up
 ([command](commands.md#cabling)). For a loop it names the fewest swaps;
 when two choices tie, it leaves Node A's cables alone.
+
+### Cable speed
+
+A cable can stay up and count no errors while it carries far less than it
+should. Models still decode at their usual speed, but prompt processing
+(prefill) over the cable is slower. Status: **implemented**. The measurement
+comes from the [cable speed record](../../performance/records/transport/fabric-cable-bandwidth-20261002.md);
+no hardware run of the command itself is on record.
+
+**What is measured.** Each port appears as two network functions that share
+its cable; the check's output calls each one a link. A function reaches
+about 109 Gb/s each way, the limit of the PCIe Gen5 x4 connection behind it,
+and each such connection carries one function of each port.
+`sudo sparkring cabling --bandwidth`, and setup as its last step, send RDMA
+writes in both directions at once over each link: `ib_write_bw -b` with
+1 MiB messages for 5 seconds, from the Debian package `perftest`, which the
+SparkRing package depends on. A healthy link measures
+about 213 Gb/s; 190 Gb/s or more counts as healthy. A one-way test does not
+show the fault, and neither do RoCE retransmit or FEC counters: corrected-bit
+counts differ by cable model.
+
+**Which cables.** A pair's cable between the ports 0, and each ring cable
+from port 0 of rank r to port 1 of rank r+1. The addresses come from the
+setup record. A pair's second cable between the ports 1 has no fabric
+addresses and is not measured. Links run one at a time, because two links
+share each PCIe connection and parallel tests would disturb each other.
+
+**Before each test.** RoCE GID index 3 of both ends must hold the link's
+fabric address ([RoCE GID index 3](#roce-gid-index-3)); otherwise the link
+reports that instead of a speed. A link that cannot be tested names the
+reason, such as `ib_write_bw` missing on a Spark or a test that did not
+finish. Each test server runs under a time limit and stops when Node A is
+done with it; it listens on a free TCP port from 18620 to 18639.
+
+**Serving models.** The test fills a cable for several seconds per link and
+slows a model that uses it. Cables that touch a serving model's Sparks are
+skipped, also those of a [ring half](#two-models-on-one-ring);
+`--while-serving` measures them anyway and notes that model traffic can lower
+the result. Setup measures nothing while a model serves. The on-demand check
+holds the installation lock, so no model starts meanwhile.
+
+**Repair.** Reboot both Sparks on a degraded cable, then measure again.
+Restarting the link (`ip link set down/up`) or the driver
+(`devlink dev reload`) does not clear it. If the cable is still degraded
+after the reboot, reseat it at both ends. Plugging cables in while the
+Sparks run is a likely cause; it is not confirmed.
+
+**Result.** The latest result is saved as
+`/var/lib/sparkring/controller/fabric-bandwidth.json` (schema
+`sparkring-fabric-bandwidth/v1`, the document `--json` prints). A check that
+measured nothing, because a model served on every cable, keeps the saved
+result. `sparkring status` shows its verdict and age and lists every cable
+that is not healthy, with the repair steps for a degraded one; a result saved
+for another setup of the Sparks counts as never measured.
 
 ## Re-form Sparks into another pair or ring
 
