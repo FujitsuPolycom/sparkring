@@ -443,7 +443,8 @@ __ENGINE__
   const state = {
     profile: 'qwen38-flash-next-tp2', filter: 'all', mode: 'install', settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
     install: { form: 'script', source: 'release', approval: 'ask', limit: '' },
-    collapsed: { release: false, model: false, settings: false, sparks: false },
+    // Every step opens collapsed on each page load.
+    collapsed: { release: true, model: true, settings: true, sparks: true },
   };
 
   const profile = () => BY_ID[state.profile];
@@ -528,9 +529,6 @@ __ENGINE__
     if (['release', 'main'].includes(i.source)) state.install.source = i.source;
     if (['ask', 'plan', 'yes'].includes(i.approval)) state.install.approval = i.approval;
     if (typeof i.limit === 'string') state.install.limit = i.limit;
-    for (const step of Object.keys(state.collapsed)) {
-      if (typeof (saved.collapsed || {})[step] === 'boolean') state.collapsed[step] = saved.collapsed[step];
-    }
     for (const id of Object.keys(state.checkpoints)) {
       const p = BY_ID[id];
       if (!p || !p.checkpoints.some(c => c.name === state.checkpoints[id])) delete state.checkpoints[id];
