@@ -65,7 +65,7 @@ or `profiles/glm53-flash-nvfp4-spark-tp2/` (two Sparks) and set:
 | `profiles/storage-planning.json` | Optional with a pin manifest: `checkpoint_allowance_gib["<owner>/<name>"]`, whole GiB reserved for a revision of that repository without one | `No storage allowance for this checkpoint` from `setup.storage_plan` (`sparkring setup storage`; a host that pulls the image under `sparkring up`) when the revision has neither |
 | `profiles/model-names.json` | `models`, `quant_labels`, `publishers["<owner>"]` | `generate_profiles.py` stops: `needs a standard display name` or `needs a credited publisher` |
 | `runtime/common/installer.py`, `scripts/sparkring_installer.py` | Optional: `DEFAULTS` and `--model` choices | `sparkring.py init --model` offers no family default |
-| `performance/profile-capacity.json` | Optional: KV capacity record (`tokens`, `source`, `witness`, `conditions`) | The catalog's KV column shows `—` |
+| `performance/profile-capacity.json` | Optional: KV capacity record (`tokens`, `source`, `witness`, `conditions`); `kv_bytes_per_rank` at measurement, `checkpoint` when the measured checkpoint is not the profile's default, `kv_evidence` when `source` does not state the KV bytes, and `checkpoints` with further measurements by checkpoint name (`tokens`, `kv_bytes_per_rank`, `conditions`) | The catalog's KV column shows `—`; the Install Builder shows no token estimate |
 
 Tests that list installer profiles:
 
