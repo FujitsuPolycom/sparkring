@@ -242,6 +242,9 @@ def serve(argv, ports, ready_seconds, limit, *, stop=None):
     ends a server that runs longer than ``limit`` seconds; the server also
     ends when ``stop`` returns, by default when the program's input ends:
     Node A closes it when it is done, and it also ends with the SSH session.
+    Only this function's own thread prints. The output reader is joined
+    before the last line; the thread waiting for ``stop`` ends when ``stop``
+    returns, and on a Spark the program exits with it.
     """
     import json
     import subprocess
@@ -344,7 +347,9 @@ class Server:
         self.lines = queue.Queue()
         self.text = []
         self.stopped = False
-        threading.Thread(target=self._read, daemon=True).start()
+        # The reader only queues lines; it never prints, and stop() joins it.
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader.start()
 
     def _read(self):
         try:
@@ -370,7 +375,11 @@ class Server:
         return None
 
     def stop(self):
-        """End the program: close its input, wait ``STOP_SECONDS``, then kill it. Returns its other output."""
+        """End the program: close its input, wait ``STOP_SECONDS``, then kill it. Returns its other output.
+
+        The program's output pipe closes when it exits, which ends the
+        reader; this joins the reader before it returns.
+        """
         if not self.stopped:
             self.stopped = True
             with contextlib.suppress(OSError):
@@ -380,14 +389,13 @@ class Server:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
+            self.reader.join(STOP_SECONDS)
             while True:
                 try:
-                    line = self.lines.get(timeout=1)
+                    line = self.lines.get_nowait()
                 except queue.Empty:
                     break
-                if line is None:
-                    break
-                if _json_object(line) is None and line.strip():
+                if line is not None and _json_object(line) is None and line.strip():
                     self.text.append(line.strip())
         return "\n".join(self.text)
 

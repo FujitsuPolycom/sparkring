@@ -609,7 +609,16 @@ def test_access_runs_node_a_commands_locally_and_worker_commands_over_ssh_as_roo
     assert access.argv(1, ["cat", "a b"]) == ["ssh", *bandwidth.SSH_OPTIONS, "root@192.0.2.11", "sudo -n cat 'a b'"]
 
 
+def threads_finish(before, timeout=5):
+    """Whether the thread count returns to ``before`` within ``timeout`` seconds."""
+    deadline = time.monotonic() + timeout
+    while threading.active_count() > before and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return threading.active_count() <= before
+
+
 def test_server_reads_the_announcement_and_stops_the_program_by_closing_its_input():
+    before = threading.active_count()
     program = ("import json, sys\nprint('Warning: some note', flush=True)\nprint(json.dumps({'port': 18620}), flush=True)\n"
                "sys.stdin.read()\nprint(json.dumps({'returncode': -15, 'output': []}), flush=True)\n")
     # Access.start opens the program's pipes the same way; it would add sudo on Node A.
@@ -618,6 +627,8 @@ def test_server_reads_the_announcement_and_stops_the_program_by_closing_its_inpu
     assert server.announcement(10) == {"port": 18620}
     assert server.stop() == "Warning: some note"
     assert server.process.returncode == 0
+    # stop() joined the reader, so nothing of the server is left to print or read.
+    assert not server.reader.is_alive() and threading.active_count() == before
     assert server.stop() == "Warning: some note"
 
 
@@ -654,22 +665,31 @@ def free_ports(count):
 
 @pytest.mark.skipif(not LINUX, reason="serve reads /proc/net/tcp and runs timeout(1)")
 def test_serve_announces_the_port_once_the_server_listens_and_skips_ports_in_use(capsys):
+    before = threading.active_count()
     taken, free = free_ports(2)
+    done = threading.Event()
     with socket.create_server(("127.0.0.1", taken)):
-        bandwidth.serve([sys.executable, "-c", FAKE_SERVER, "0.5"], [taken, free], 10, 30, stop=threading.Event().wait)
+        bandwidth.serve([sys.executable, "-c", FAKE_SERVER, "0.5"], [taken, free], 10, 30, stop=done.wait)
     first, last = map(json.loads, capsys.readouterr().out.splitlines())
     assert first == {"port": free}
     assert last["returncode"] == 0 and last["output"][-1].split()[3] == "213.05"
+    # The thread waiting for stop ends once stop returns, and prints nothing.
+    done.set()
+    assert threads_finish(before) and capsys.readouterr().out == ""
 
 
 @pytest.mark.skipif(not LINUX, reason="serve reads /proc/net/tcp and runs timeout(1)")
 def test_serve_reports_a_server_that_stops_before_it_listens_and_one_it_was_told_to_stop(capsys):
+    before = threading.active_count()
     [port] = free_ports(1)
-    bandwidth.serve(["false"], [port], 10, 30, stop=threading.Event().wait)
+    done = threading.Event()
+    bandwidth.serve(["false"], [port], 10, 30, stop=done.wait)
     [line] = map(json.loads, capsys.readouterr().out.splitlines())
     assert line == {"error": "the test server stopped before it listened", "returncode": 1, "output": []}
+    done.set()
     started = time.monotonic()
     bandwidth.serve([sys.executable, "-c", FAKE_SERVER, "60"], [port], 10, 30, stop=lambda: time.sleep(1))
     first, last = map(json.loads, capsys.readouterr().out.splitlines())
     assert first == {"port": port} and last["returncode"] != 0
     assert time.monotonic() - started < 15
+    assert threads_finish(before) and capsys.readouterr().out == ""
