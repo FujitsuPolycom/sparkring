@@ -92,6 +92,15 @@ h1 { font-size: clamp(24px, 3.2vw, 34px); font-weight: 650; letter-spacing: -.03
 .segmented button { border: 0; background: transparent; padding: 5px 11px; font-size: 12.5px; cursor: pointer; color: var(--muted); }
 .segmented button + button { border-left: 1px solid var(--line); }
 .segmented button[aria-pressed="true"], .segmented button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+.toggle { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+.toggle svg { width: 12px; height: 12px; flex: none; transition: transform .15s ease; }
+.toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.callout { margin: 0; padding: 8px 12px; border-left: 3px solid var(--warn); border-radius: 4px; background: var(--warn-soft);
+  color: var(--text); font-size: 13.5px; font-weight: 600; }
+/* A collapsed step shows one line instead of its body. */
+.step-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.step-body.choices { gap: 8px; }
+.summary { margin: 0; font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
 .modes button { padding: 7px 14px; font-size: 13.5px; }
 
 /* Settings */
@@ -198,23 +207,31 @@ footer p { margin: 0; max-width: 110ch; }
 
   <div class="layout">
     <form class="config" id="config" autocomplete="off" novalidate>
-      <section class="step" aria-labelledby="h-release">
-        <h2 id="h-release"><span class="n">1</span>Release</h2>
-        <div class="choices">
+      <section class="step" data-step="release" aria-labelledby="h-release">
+        <div class="step-head">
+          <h2 id="h-release"><span class="n">1</span>Release</h2>
+          <div class="row-actions"><button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button></div>
+        </div>
+        <p class="summary" hidden></p>
+        <div class="step-body choices">
           <label class="choice selected" for="release-current">
             <input type="radio" name="release" id="release-current" value="current" checked>
             <span class="choice-body"><strong id="release-name">SparkRing</strong><span class="meta" id="release-meta"></span></span>
             <span class="chips" id="release-chips"></span>
           </label>
-        </div>      </section>
+        </div>
+      </section>
 
-      <section class="step" aria-labelledby="h-model">
+      <section class="step" data-step="model" aria-labelledby="h-model">
         <div class="step-head">
           <h2 id="h-model"><span class="n">2</span>Model</h2>
-          <div class="segmented" role="group" aria-label="Show models for">
-            <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All</button>
-            <button type="button" id="filter-2" data-filter="2" aria-pressed="false">2 Sparks</button>
-            <button type="button" id="filter-4" data-filter="4" aria-pressed="false">4 Sparks</button>
+          <div class="row-actions">
+            <div class="segmented" id="model-filter" role="group" aria-label="Show models for">
+              <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All</button>
+              <button type="button" id="filter-2" data-filter="2" aria-pressed="false">2 Sparks</button>
+              <button type="button" id="filter-4" data-filter="4" aria-pressed="false">4 Sparks</button>
+            </div>
+            <button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button>
           </div>
         </div>
         <div class="choices" id="profiles"></div>
@@ -222,40 +239,52 @@ footer p { margin: 0; max-width: 110ch; }
         <div class="choices" id="checkpoints" aria-labelledby="h-checkpoint"></div>
       </section>
 
-      <section class="step" aria-labelledby="h-settings">
+      <section class="step" data-step="settings" aria-labelledby="h-settings">
         <div class="step-head">
           <h2 id="h-settings"><span class="n">3</span>Serving settings</h2>
-          <button type="button" class="btn quiet" id="reset-settings">Use the profile's values</button>
+          <div class="row-actions">
+            <button type="button" class="btn quiet" id="reset-settings">Use the profile's values</button>
+            <button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button>
+          </div>
         </div>
-        <p class="hint">Leave a field empty to keep the default.</p>
-        <div class="settings" id="settings"></div>
+        <p class="summary" hidden></p>
+        <div class="step-body">
+          <p class="hint">Leave a field empty to keep the default.</p>
+          <div class="settings" id="settings"></div>
+        </div>
       </section>
 
-      <section class="step" aria-labelledby="h-sparks">
+      <section class="step" data-step="sparks" aria-labelledby="h-sparks">
         <div class="step-head">
           <h2 id="h-sparks"><span class="n">4</span>Your Sparks</h2>
-          <button type="button" class="btn quiet" id="reset-sparks">Restore the example values</button>
-        </div>
-        <p class="hint">Only needed for Docker Compose.</p>
-        <p class="hint" id="example-note">These are example values. Replace them with your Sparks'.</p>
-        <p class="hint">Paths: letters, digits and <code>. _ / + = @ ~ -</code>. IPv4 addresses only.</p>
-        <div class="grid">
-          <div class="f">
-            <label for="site-name">Deployment name</label>
-            <input type="text" id="site-name" spellcheck="false" aria-describedby="site-name-hint">
+          <div class="row-actions">
+            <button type="button" class="btn quiet" id="reset-sparks">Restore the example values</button>
+            <button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button>
           </div>
-          <div class="f" style="align-content:end">
-            <label class="check" for="shared"><input type="checkbox" id="shared">Same NICs and paths on every Spark</label>
-          </div>
-          <p class="hint wide" id="site-name-hint">Lowercase letters, digits and hyphens. Names the zip, its folder and the containers (<code id="name-preview">sr-name-r0</code>).</p>
         </div>
-        <div class="sparks" id="sparks"></div>
-        <details class="import" id="import">
-          <summary>Paste a site file instead</summary>
-          <label class="sr" for="site-text">Site file</label>
-          <textarea id="site-text" spellcheck="false" placeholder="schema: sparkring-compose-site/v1&#10;name: my-ring&#10;master: 10.0.0.10&#10;ranks:&#10;- rank: 0&#10;  host: spark0&#10;  ..."></textarea>
-          <div class="row-actions"><button type="button" class="btn" id="site-read">Read site file</button><span class="hint" id="site-read-result"></span></div>
-        </details>
+        <p class="callout">Only needed for Docker Compose.</p>
+        <p class="summary" hidden></p>
+        <div class="step-body">
+          <p class="hint" id="example-note">These are example values. Replace them with your Sparks'.</p>
+          <p class="hint">Paths: letters, digits and <code>. _ / + = @ ~ -</code>. IPv4 addresses only.</p>
+          <div class="grid">
+            <div class="f">
+              <label for="site-name">Deployment name</label>
+              <input type="text" id="site-name" spellcheck="false" aria-describedby="site-name-hint">
+            </div>
+            <div class="f" style="align-content:end">
+              <label class="check" for="shared"><input type="checkbox" id="shared">Same NICs and paths on every Spark</label>
+            </div>
+            <p class="hint wide" id="site-name-hint">Lowercase letters, digits and hyphens. Names the zip, its folder and the containers (<code id="name-preview">sr-name-r0</code>).</p>
+          </div>
+          <div class="sparks" id="sparks"></div>
+          <details class="import" id="import">
+            <summary>Paste a site file instead</summary>
+            <label class="sr" for="site-text">Site file</label>
+            <textarea id="site-text" spellcheck="false" placeholder="schema: sparkring-compose-site/v1&#10;name: my-ring&#10;master: 10.0.0.10&#10;ranks:&#10;- rank: 0&#10;  host: spark0&#10;  ..."></textarea>
+            <div class="row-actions"><button type="button" class="btn" id="site-read">Read site file</button><span class="hint" id="site-read-result"></span></div>
+          </details>
+        </div>
       </section>
     </form>
 
@@ -277,7 +306,7 @@ footer p { margin: 0; max-width: 110ch; }
           <div class="opt" role="radiogroup" aria-labelledby="opt-form">
             <span class="opt-label" id="opt-form">Run</span>
             <div class="radios">
-              <label for="form-script"><input type="radio" name="form" id="form-script" value="script">First install, on Node A</label>
+              <label for="form-script"><input type="radio" name="form" id="form-script" value="script">New installation</label>
               <label for="form-installed"><input type="radio" name="form" id="form-installed" value="installed">SparkRing already installed</label>
             </div>
           </div>
@@ -414,6 +443,7 @@ __ENGINE__
   const state = {
     profile: 'qwen38-flash-next-tp2', filter: 'all', mode: 'install', settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
     install: { form: 'script', source: 'release', approval: 'ask', limit: '' },
+    collapsed: { release: false, model: false, settings: false, sparks: false },
   };
 
   const profile = () => BY_ID[state.profile];
@@ -498,6 +528,9 @@ __ENGINE__
     if (['release', 'main'].includes(i.source)) state.install.source = i.source;
     if (['ask', 'plan', 'yes'].includes(i.approval)) state.install.approval = i.approval;
     if (typeof i.limit === 'string') state.install.limit = i.limit;
+    for (const step of Object.keys(state.collapsed)) {
+      if (typeof (saved.collapsed || {})[step] === 'boolean') state.collapsed[step] = saved.collapsed[step];
+    }
     for (const id of Object.keys(state.checkpoints)) {
       const p = BY_ID[id];
       if (!p || !p.checkpoints.some(c => c.name === state.checkpoints[id])) delete state.checkpoints[id];
@@ -526,7 +559,8 @@ __ENGINE__
     const list = $('profiles');
     list.replaceChildren();
     for (const p of CATALOG) {
-      if (state.filter !== 'all' && String(p.nodes) !== state.filter) continue;
+      // Collapsed, the list shows only the selected model.
+      if (state.collapsed.model ? p.id !== state.profile : state.filter !== 'all' && String(p.nodes) !== state.filter) continue;
       const id = 'profile-' + p.id;
       const input = el('input', { type: 'radio', name: 'profile', id, value: p.id });
       input.checked = p.id === state.profile;
@@ -559,6 +593,7 @@ __ENGINE__
       return;
     }
     for (const cp of p.checkpoints) {
+      if (state.collapsed.model && cp !== current) continue;
       const id = 'checkpoint-' + cp.name;
       const input = el('input', { type: 'radio', name: 'checkpoint', id, value: cp.name });
       input.checked = cp === current;
@@ -671,6 +706,37 @@ __ENGINE__
     renderChip();
   }
 
+  // The one line a collapsed step shows. The model step keeps its selected model and checkpoint instead.
+  function summaryFor(step) {
+    const p = profile();
+    if (step === 'release') return E.sourceName(META);
+    if (step === 'settings') {
+      const check = E.servingCheck(p, settingsOf(p.id), checkpointName(p));
+      if (!check.ok) return 'These settings cannot be used: ' + check.error;
+      const changes = Object.entries(check.settings).map(([name, value]) => value === true ? LABELS[name] : LABELS[name] + ' ' + fmt(value));
+      return changes.length ? changes.join(' · ') : 'Defaults';
+    }
+    if (isExample(p)) return 'Example values';
+    const site = siteFor(p);
+    return site.name + ': ' + site.ranks.map(r => r.host + ' (' + r.host_ip + ')').join(', ');
+  }
+
+  function renderCollapse() {
+    for (const section of document.querySelectorAll('.step[data-step]')) {
+      const step = section.dataset.step, collapsed = Boolean(state.collapsed[step]);
+      const button = section.querySelector('.toggle');
+      button.setAttribute('aria-expanded', String(!collapsed));
+      button.querySelector('span').textContent = collapsed ? (step === 'model' ? 'Show all' : 'Expand') : 'Collapse';
+      const body = section.querySelector('.step-body'), summary = section.querySelector('.summary');
+      if (body) body.hidden = collapsed;
+      if (summary) {
+        summary.hidden = !collapsed;
+        if (collapsed) summary.textContent = summaryFor(step);
+      }
+    }
+    $('model-filter').hidden = Boolean(state.collapsed.model);
+  }
+
   function renderAll() {
     renderFilter();
     renderProfiles();
@@ -678,6 +744,7 @@ __ENGINE__
     renderSettings();
     renderSparks();
     renderMode();
+    renderCollapse();
   }
 
   // ---- Shared facts and the install command --------------------------------
@@ -748,6 +815,7 @@ __ENGINE__
   function changed() {
     save();
     renderInstall();
+    renderCollapse();
     $('compose-panel').dataset.stale = 'true';
     clearTimeout(timer);
     timer = setTimeout(generate, 180);
@@ -915,6 +983,15 @@ __ENGINE__
   // ---- Controls ------------------------------------------------------------
   for (const button of document.querySelectorAll('[data-filter]')) {
     button.addEventListener('click', () => { state.filter = button.dataset.filter; renderFilter(); renderProfiles(); save(); });
+  }
+  for (const section of document.querySelectorAll('.step[data-step]')) {
+    section.querySelector('.toggle').addEventListener('click', () => {
+      const step = section.dataset.step;
+      state.collapsed[step] = !state.collapsed[step];
+      if (step === 'model') { renderProfiles(); renderCheckpoints(); }
+      renderCollapse();
+      save();
+    });
   }
   for (const [id, mode] of [['mode-install', 'install'], ['mode-compose', 'compose']]) {
     $(id).addEventListener('click', () => { state.mode = mode; renderMode(); save(); });
