@@ -1,4 +1,4 @@
-"""Where a model's API listens on its Spark, and the checks of that address and port.
+"""Where a model's API listens on its Spark, and the address SparkRing shows for it.
 
 vLLM serves the API on the deployment's first rank, the API rank: Node A for
 a pair, a four-Spark model and a model on Sparks 0 and 1 of a ring, Spark 2
@@ -14,6 +14,13 @@ SparkRing shows it at the address setup recorded (``installer.connection``).
   loopback address that ``--allow-loopback-bind`` did not allow, and a port
   that another program holds there. A port held by a deployment that the
   installation replaces or stops, or by the deployment itself, is free for it.
+- ``--api-address ADDRESS`` names the address that status, the dashboard
+  link, the "Model ready" card and the printed endpoint show: a DNS name, a
+  Tailscale address or another NIC's address. It is shown only: SparkRing's
+  own readiness, smoke and recovery checks keep using the listen address, or
+  the automatic address, which Node A can reach. It is therefore not part of
+  the deployment's identity: each installation records it in the deployment's
+  directory (ADDRESS_FILE), and an installation without it records none.
 - In a terminal, ``sparkring install`` without ``--yes`` and without these
   options asks for the listen address and the port (``ask``).
 """
@@ -21,12 +28,17 @@ import inspect as source_code
 import ipaddress
 import json
 from pathlib import Path
+import re
+import urllib.parse
 
 from runtime.common import installer, serving
-from runtime.host import control, discovery
+from runtime.host import control, discovery, node
 from runtime.host import placement as placements
 from runtime.host.install_errors import NeedsInput
 
+# The deployment directory's record of the address that SparkRing shows.
+ADDRESS_FILE = "api-address.json"
+ADDRESS_SCHEMA = "sparkring-api-address/v1"
 # The fabric when the cluster records no fabric CIDR: the benchmarking range
 # from which setup takes every fabric's addresses.
 FABRIC_DEFAULT = "198.18.0.0/15"
@@ -297,3 +309,63 @@ def ask(cluster, placement, document, port, *, read=None, write=print):
             raise NeedsInput(f"{error}. Nothing has been changed.", field="api_endpoint") from None
         chosen["api_port"] = value
     return chosen
+
+
+# Display address -------------------------------------------------------------
+
+def shown_address(value):
+    """``--api-address`` checked: a DNS name or an IP address, without a scheme, port or path; returns it.
+
+    An IPv6 address is returned without brackets; ``url`` adds them.
+    """
+    text = str(value or "").strip()
+    try:
+        return str(ipaddress.ip_address(text.strip("[]")))
+    except ValueError:
+        pass
+    labels = text.rstrip(".").split(".")
+    if (not text or len(text) > 253
+            or not all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in labels)):
+        raise ValueError(f"--api-address takes a host name or an IP address, such as llm.example.net or 192.0.2.10, "
+                         f"without http:// or a port: {value}")
+    return text
+
+
+def url(api_url, address):
+    """``api_url`` with ``address`` as its host; its port and path stay."""
+    parts = urllib.parse.urlsplit(api_url)
+    host = f"[{address}]" if ":" in address else address
+    return urllib.parse.urlunsplit((parts.scheme, f"{host}:{parts.port}", parts.path, parts.query, parts.fragment))
+
+
+def recorded(directory):
+    """The address recorded for display in the deployment ``directory``, or None."""
+    try:
+        value = installer.read(Path(directory) / ADDRESS_FILE)
+    except (OSError, ValueError):
+        return None
+    return value.get("address") if isinstance(value, dict) and value.get("schema") == ADDRESS_SCHEMA else None
+
+
+def record(directory, address):
+    """Record ``address`` as the deployment's display address; None removes the record."""
+    path = Path(directory) / ADDRESS_FILE
+    if address is None:
+        path.unlink(missing_ok=True)
+        return
+    node.save(directory, ADDRESS_FILE, {"schema": ADDRESS_SCHEMA, "address": address}, mode=0o600)
+
+
+def present(document, address):
+    """``document`` with ``api_url`` showing ``address``, and ``check_url`` naming the URL SparkRing's checks use.
+
+    ``document`` holds ``api_url`` (``installer.connection``). Without an
+    address, or when it is already the URL's host, ``document`` is returned
+    unchanged.
+    """
+    if not address or not document.get("api_url"):
+        return document
+    shown = url(document["api_url"], address)
+    if shown == document["api_url"]:
+        return document
+    return {**document, "api_url": shown, "check_url": document["api_url"]}

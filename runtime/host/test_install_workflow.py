@@ -1026,6 +1026,42 @@ def test_a_loopback_api_needs_its_own_option_once_and_the_replaced_model_may_hol
     assert command("--plan", "--api-port", "8000") == 0
 
 
+def test_the_api_address_is_shown_and_recorded_but_names_the_same_deployment(machine, sparks, capsys):
+    assert command() == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert "check_url" not in plain and api_endpoint.recorded(plain["deployment"]) is None
+    assert command("--api-address", "llm.example.net") == 0
+    out = capsys.readouterr()
+    shown = json.loads(out.out)
+    assert shown["deployment"] == plain["deployment"] and sparks.endpoints == []
+    assert shown["api_url"] == "http://llm.example.net:8000/v1" and shown["check_url"] == plain["api_url"]
+    assert shown["dashboard_url"] == "http://llm.example.net:8000/v1/sparkring/status/view"
+    assert shown["example_request"].startswith("curl http://llm.example.net:8000/v1/chat/completions ")
+    assert "Model ready: http://llm.example.net:8000/v1" in output_lines(out.err)
+    assert (f"Model API: http://llm.example.net:8000/v1 (SparkRing's own checks use {plain['api_url']})"
+            in output_lines(out.err))
+    assert api_endpoint.recorded(shown["deployment"]) == "llm.example.net"
+    assert shown["checkpoint"]["command"] == REPEAT + " --api-address llm.example.net"
+    # A plan names the address in its command and records nothing.
+    assert command("--plan", "--api-address", "100.64.0.9") == 0
+    out = capsys.readouterr()
+    planned = json.loads(out.out)
+    assert planned["checkpoint"]["command"] == REPEAT + " --api-address 100.64.0.9"
+    assert planned["api_url"] == "http://100.64.0.9:8000/v1"
+    assert f"Plan saved. Install it with {REPEAT} --api-address 100.64.0.9 --yes." in output_lines(out.err)
+    assert api_endpoint.recorded(shown["deployment"]) == "llm.example.net"
+    # An installation without the option shows the automatic address again.
+    assert command() == 0
+    again = json.loads(capsys.readouterr().out)
+    assert again["api_url"] == plain["api_url"] and "check_url" not in again
+    assert api_endpoint.recorded(again["deployment"]) is None
+    assert command("--api-address", "http://llm.example.net:8000") == 3
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["field"] == "api_address" and refused["message"].startswith(
+        "--api-address takes a host name or an IP address, such as llm.example.net or 192.0.2.10, without http:// or "
+        "a port: http://llm.example.net:8000.")
+
+
 class Terminal:
     def isatty(self):
         return True
@@ -1073,6 +1109,7 @@ def test_no_question_with_yes_without_a_terminal_or_with_endpoint_options(machin
     monkeypatch.setattr(flow.sys, "stdin", Terminal())
     monkeypatch.setattr(builtins, "input", lambda prompt: "y" if prompt.startswith("Apply") else pytest.fail(prompt))
     assert sparkring.main(["install", "--profile", PROFILE, "--api-port", "9100"]) == 0
+    assert sparkring.main(["install", "--profile", PROFILE, "--api-address", "llm.example.net"]) == 0
     capsys.readouterr()
 
 

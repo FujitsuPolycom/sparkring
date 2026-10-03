@@ -198,6 +198,9 @@ def install_command(request=None, named=(), *, ignore_local=False):
     a command that leaves one out plans another deployment.
     ``--ignore-local-copies`` is kept when set, because it narrows the search
     whose plan the command repeats.
+    ``api_address``, the address SparkRing shows for the model
+    (``runtime.host.api_endpoint``), is repeated as ``--api-address``; it is
+    not part of the deployment's identity.
     """
     request = request or {}
     argv = ["sudo", "sparkring", "install"]
@@ -207,6 +210,10 @@ def install_command(request=None, named=(), *, ignore_local=False):
         argv += ["--on", ",".join(str(rank) for rank in request["placement"])]
     if request.get("checkpoint"):
         argv += ["--checkpoint", str(request["checkpoint"])]
+    if request.get("api_address"):
+        # Shown only, not part of the deployment's identity; repeated so that
+        # the installation records the same address.
+        argv += ["--api-address", str(request["api_address"])]
     for entry in named_paths(named):
         argv += ["--model-path", (f"{entry['rank']}=" if entry["rank"] is not None else "") + entry["path"]]
     if request.get("cache_path"):
@@ -743,7 +750,8 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     with ``named`` and ``ignore_local`` it gives the command that the plan's
     messages suggest (``install_command``). ``derivation`` is the
     ``derivation.section`` of a derived checkpoint, whose files each Spark
-    writes on the base directory's filesystem.
+    writes on the base directory's filesystem. A ``request`` that names
+    ``api_address`` keeps it, so the command repeats it.
     """
     sizes = required_files(pins)
     count = len(rows)
@@ -752,6 +760,9 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     entries = named_paths(named, count)
     given = request or {}
     request = {key: given.get(key) for key in ("profile", "checkpoint", "cache_path", "image_lock")}
+    if given.get("api_address"):
+        # Only a request that names the address SparkRing shows records it.
+        request["api_address"] = given["api_address"]
     if given.get("placement"):
         # Only a deployment on half of a four-Spark ring records its placement.
         request["placement"] = list(given["placement"])

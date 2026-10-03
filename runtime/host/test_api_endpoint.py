@@ -1,4 +1,4 @@
-"""The API Spark's address and port report, the endpoint check and the terminal question."""
+"""The API Spark's address and port report, the endpoint check and the address SparkRing shows."""
 import json
 import pathlib
 import subprocess
@@ -145,3 +145,23 @@ def test_a_half_on_sparks_2_and_3_is_checked_on_spark_2(probed):
     assert str(caught.value) == ("--api-bind 127.0.0.2 is a loopback address of Spark 2 (spark2); Node A, which checks "
                                  "the model through its API, could not reach it. Choose another address. Nothing has "
                                  "been changed.")
+
+
+def test_the_shown_address_is_a_host_name_or_an_address_and_replaces_only_the_host(tmp_path):
+    assert api_endpoint.shown_address("llm.example.net") == "llm.example.net"
+    assert api_endpoint.shown_address(" 100.64.0.9 ") == "100.64.0.9"
+    assert api_endpoint.shown_address("[fd7a:115c::5]") == "fd7a:115c::5"
+    for bad in ("http://llm.example.net", "llm.example.net:8000", "", "a..b", "-x.example", "x/y"):
+        with pytest.raises(ValueError, match="--api-address takes a host name or an IP address"):
+            api_endpoint.shown_address(bad)
+    assert api_endpoint.url("http://192.0.2.10:8000/v1", "fd7a:115c::5") == "http://[fd7a:115c::5]:8000/v1"
+    connection = {"api_url": "http://192.0.2.10:8000/v1", "model": "m", "port": 8000}
+    assert api_endpoint.present(connection, None) is connection
+    assert api_endpoint.present(connection, "192.0.2.10") is connection
+    assert api_endpoint.present(connection, "llm.example.net") == {
+        "api_url": "http://llm.example.net:8000/v1", "model": "m", "port": 8000, "check_url": "http://192.0.2.10:8000/v1"}
+    assert api_endpoint.recorded(tmp_path) is None
+    api_endpoint.record(tmp_path, "llm.example.net")
+    assert api_endpoint.recorded(tmp_path) == "llm.example.net"
+    api_endpoint.record(tmp_path, None)
+    assert api_endpoint.recorded(tmp_path) is None and not (tmp_path / api_endpoint.ADDRESS_FILE).exists()

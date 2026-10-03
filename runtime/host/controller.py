@@ -574,7 +574,8 @@ def lifecycle(argv):
                 if saved.get("serving"):
                     print("Serving settings: " + ", ".join(serving.label(name, value)
                                                            for name, value in sorted(saved["serving"].items())))
-                print(saved["api_url"])
+                print(saved["api_url"] + (f" (SparkRing's own checks use {saved['check_url']})"
+                                          if saved.get("check_url") else ""))
                 if saved.get("observations"):
                     print("Model containers:")
                     for row in recovery.ranks_from_observations(saved["observations"]):
@@ -738,6 +739,8 @@ def lifecycle(argv):
             from runtime.host import install_workflow
             install_workflow.park_ring(installer.read(STATE / "cluster.json"))
         result = retained_source.apply(directory, args.operation, cache=cache)
+        from runtime.host import api_endpoint
+        result = api_endpoint.present(result, api_endpoint.recorded(directory))
         # Stopping another deployment leaves the active one in place.
         if args.operation == "up" or held_active is None:
             placements.record(STATE, slot, directory)
@@ -795,6 +798,10 @@ def _status_view(slot, path, args, result, cache):
         model = recovery.status_assessment(view["deployment"], nodes, view["record"], tunnel=result.get("control"))
         if model is not None:
             view["model"] = model
+    # The address the installation named for display replaces the API URL's
+    # host; the URL that the checks above used stays as check_url.
+    from runtime.host import api_endpoint
+    view["deployment"] = api_endpoint.present(view["deployment"], api_endpoint.recorded(path))
     return view
 
 

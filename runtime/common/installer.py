@@ -469,7 +469,8 @@ def connection(lock):
     ``api_port``, else the profile's). Its address is the listen address
     (serving setting ``api_bind``), else the site's ``api_address`` (Node A's
     LAN address, or Spark 2's for a half on Sparks 2 and 3), else the API
-    rank's management address. SparkRing's own checks use this URL.
+    rank's management address. SparkRing's own checks use this URL; an address
+    named for display (runtime.host.api_endpoint) never replaces it here.
     """
     if lock["backend"] in ("glm-managed", "glm-existing-mesh"):
         from runtime.common import glm_tp4

@@ -813,6 +813,28 @@ def test_host_tests_never_call_systemd_for_the_timer():
     assert recovery.enable_timer() is False and recovery.timer_enabled() is None
 
 
+def test_status_shows_the_recorded_address_while_checks_and_recovery_use_the_listen_address(pair, monkeypatch,
+                                                                                             capsys):
+    from runtime.host import api_endpoint
+    api_endpoint.record(pair.directory, "llm.example.net")
+    probed = []
+    monkeypatch.setattr(recovery, "api_health", lambda url: probed.append(url) or SERVING)
+    monkeypatch.setattr(recovery, "timer_enabled", lambda: True)
+    monkeypatch.setattr(controller.node, "snapshot", lambda: {"state": "network-configured", "next_action": "x"})
+    capsys.readouterr()
+    assert controller.lifecycle(["status", "--refresh"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert ("http://llm.example.net:8000/v1 (SparkRing's own checks use http://192.0.2.10:8000/v1)" in lines
+            and "Model: The model runs on every Spark and its API answers" in lines)
+    assert controller.lifecycle(["status", "--refresh", "--json"]) == 0
+    deployment = json.loads(capsys.readouterr().out)["deployment"]
+    assert (deployment["api_url"], deployment["check_url"]) == ("http://llm.example.net:8000/v1",
+                                                                 "http://192.0.2.10:8000/v1")
+    assert recovery.check(now=lambda: 2_000_000.0, api=lambda url: probed.append(url) or SERVING,
+                          tunnel={})["state"] == "serving"
+    assert set(probed) == {"http://192.0.2.10:8000/v1"}
+
+
 def test_up_checks_a_new_deployment_s_listen_address_on_its_api_spark(pair, monkeypatch, capsys):
     from runtime.host import api_endpoint, discovery
     reports = []

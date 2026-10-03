@@ -32,9 +32,11 @@ first stops and disables the ring's mesh services on every Spark
 
 The model's API listens on the deployment's API rank (``runtime.host.api_endpoint``).
 ``--api-port`` and ``--api-bind`` are serving settings, checked against the
-API Spark's addresses and listening ports before any Spark is surveyed. In a
-terminal, a run without ``--yes`` and without these options asks for the
-listen address and the port before it surveys the Sparks (``ask_endpoint``).
+API Spark's addresses and listening ports before any Spark is surveyed;
+``--api-address`` names the address shown for the model and is recorded in
+the deployment once the installation is approved. In a terminal, a run
+without ``--yes`` and without these options asks for the listen address and
+the port before it surveys the Sparks (``ask_endpoint``).
 """
 import argparse
 import concurrent.futures
@@ -391,8 +393,9 @@ ENDPOINT_SETTINGS = ("api_port", "api_bind")
 
 
 def endpoint_requested(args):
-    """Whether the command line names the API endpoint: ``--api-port`` or ``--api-bind``."""
-    return any(getattr(args, "serving_" + name, None) is not None for name in ENDPOINT_SETTINGS)
+    """Whether the command line names the API endpoint: ``--api-port``, ``--api-bind`` or ``--api-address``."""
+    return any(getattr(args, "serving_" + name, None) is not None for name in ENDPOINT_SETTINGS) \
+        or getattr(args, "api_address", None) is not None
 
 
 def ask_endpoint(args, cluster, placement, arguments):
@@ -561,6 +564,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                 operator=operator, images=images, caches=caches, relay_device=_device(directory),
                                 retained=retained, locked=locked,
                                 request={"profile": profile, "checkpoint": checkpoint, "cache_path": args.cache_path,
+                                         "api_address": getattr(args, "api_address", None),
                                          "image_lock": str(args.image_lock) if args.image_lock else None,
                                          **({"placement": list(placement)} if placement is not None else {}),
                                          **({"serving": request["serving"]} if request.get("serving") else {})},
@@ -898,6 +902,11 @@ def execute(args):
         checkpoint_plan.named_paths(args.model_path)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="model_path") from None
+    if getattr(args, "api_address", None) is not None:
+        try:
+            args.api_address = api_endpoint.shown_address(args.api_address)
+        except ValueError as error:
+            raise NeedsInput(f"{error}. Nothing has been changed.", field="api_address") from None
     command_line = args.yes
     with process_lock.hold(state_root / "install.lock"):
         if not (state_root / "cluster.json").exists():
@@ -968,7 +977,9 @@ def execute(args):
             for line in serving_settings.warnings(lock["serving"], base):
                 print("Warning: " + line)
         if lock is not None and endpoint_requested(args):
-            print("Model API: " + installer.connection(lock)["api_url"])
+            endpoint = api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))
+            print("Model API: " + endpoint["api_url"]
+                  + (f" (SparkRing's own checks use {endpoint['check_url']})" if endpoint.get("check_url") else ""))
         if lock is not None and "native_mesh" in lock["site_input"]:
             if previous or displaced:
                 raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "
@@ -1002,7 +1013,8 @@ def execute(args):
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
                 "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
-                "serving": lock.get("serving") or {}, **installer.connection(lock)}
+                "serving": lock.get("serving") or {},
+                **api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))}
         if placement is not None:
             plan["placement"] = list(placement)
         if size == 4:
@@ -1054,6 +1066,9 @@ def execute(args):
             plan["checkpoint"]["reviewed"] = True
         elif approval != "reviewed-plan":
             save_plan(directory, checkpoint)
+        # The address shown for the model is the one this installation names,
+        # or none; status and the summary read it from the deployment.
+        api_endpoint.record(directory, getattr(args, "api_address", None))
         _, receipts = retained_deployments(state_root, directory, lock["site"]["ranks"])
 
         def approve_stop(host, names):
@@ -1193,6 +1208,10 @@ def main(argv=None):
     parser.add_argument("--no-auto-recover", action="store_true",
                         help="do not restart this model automatically when a Spark stops serving; "
                              "sudo sparkring recover on turns it on later")
+    parser.add_argument("--api-address", metavar="ADDRESS",
+                        help="the address that status, the dashboard link and Model ready show for the model, such "
+                             "as a DNS name or another network's address; SparkRing's own checks keep using the "
+                             "address the API listens on; default: that address")
     parser.add_argument("--allow-loopback-bind", action="store_true",
                         help="accept a loopback --api-bind such as 127.0.0.1: only programs on Node A can then use "
                              "the model")
