@@ -181,6 +181,7 @@ pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; 
 .zip-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--line);
   border-radius: 9px; background: var(--sunk); }
 .zip-bar .hint { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.zip-bar .zip-name { flex: 1 1 100%; max-width: 360px; }
 
 .run h3 { font-size: 14px; font-weight: 640; margin-bottom: 8px; }
 .run ol { margin: 0; padding-left: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; font-size: 13.5px; }
@@ -343,6 +344,10 @@ footer p { margin: 0; max-width: 110ch; }
 
       <section class="panel" id="compose-panel" role="tabpanel" aria-labelledby="mode-compose" data-stale="false" hidden>
         <div class="zip-bar">
+          <div class="f zip-name">
+            <label for="zip-name">Deployment name</label>
+            <input type="text" id="zip-name" spellcheck="false">
+          </div>
           <button type="button" class="btn primary" id="save-zip" disabled>Download zip</button>
           <span class="hint" id="zip-note">Checking whether this view can save files.</span>
         </div>
@@ -475,7 +480,14 @@ __ENGINE__
   // The deployment name defaults to the profile's ID, which names the zip, its folder and the
   // containers; the example site's own name marks documentation values.
   function examplePaths(p) {
-    return { name: p.id, model: exampleModel(p, checkpointOf(p)), cache: p.example_site.ranks.map(r => r.cache) };
+    return { name: defaultName(p, checkpointOf(p)), model: exampleModel(p, checkpointOf(p)), cache: p.example_site.ranks.map(r => r.cache) };
+  }
+  // The default deployment name: the profile ID for its default checkpoint, else the model
+  // family, checkpoint and size (glm53-nvidia-nvfp4-tp4), within the 40-character site-name rule.
+  function defaultName(p, cp) {
+    if (cp.default || !cp.name) return p.id;
+    return (p.id.split('-')[0] + '-' + cp.name + '-tp' + p.nodes).toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').slice(0, 40).replace(/-+$/, '');
   }
   const cluster = n => (state.clusters[n] ||= exampleCluster(n));
   const paths = p => (state.perProfile[p.id] ||= examplePaths(p));
@@ -542,7 +554,7 @@ __ENGINE__
       if (!p || !pp || typeof pp.name !== 'string' || !Array.isArray(pp.model) || pp.model.length !== p.nodes
           || !Array.isArray(pp.cache) || pp.cache.length !== p.nodes) delete state.perProfile[id];
       // A name saved while the default was the example site's name takes the profile default.
-      else if (pp.name === p.example_site.name) pp.name = p.id;
+      else if (pp.name === p.example_site.name) pp.name = examplePaths(p).name;
     }
   }
 
@@ -565,8 +577,8 @@ __ENGINE__
       input.addEventListener('change', () => { state.profile = p.id; currentTab = 'rank0'; renderAll(); changed(); });
       list.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', {}, p.title), el('span', { class: 'meta mono' }, p.id)),
-        el('span', { class: 'chips' }, chip(p.nodes + ' Sparks'),
+        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + (p.sparkcache ? ' with SparkCache' : '') + ' · ' + p.nodes + ' Sparks'), el('span', { class: 'meta mono' }, p.id)),
+        el('span', { class: 'chips' },
           p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null,
           p.sparkcache ? chip('SparkCache · ' + p.image_release) : null,
           p.installable ? null : chip('Compose only'))));
@@ -575,11 +587,12 @@ __ENGINE__
   }
 
   function selectCheckpoint(p, name) {
-    const before = examplePaths(p).model;
+    const before = examplePaths(p);
     state.checkpoints[p.id] = name;
-    const pp = paths(p);
-    // A model directory still at the old checkpoint's example moves to the new one's.
-    if (JSON.stringify(pp.model) === JSON.stringify(before)) pp.model = examplePaths(p).model;
+    const pp = paths(p), after = examplePaths(p);
+    // A model directory or deployment name still at the old checkpoint's default moves to the new one's.
+    if (JSON.stringify(pp.model) === JSON.stringify(before.model)) pp.model = after.model;
+    if (pp.name === before.name) pp.name = after.name;
   }
 
   function renderCheckpoints() {
@@ -674,6 +687,7 @@ __ENGINE__
   function renderSparks() {
     const p = profile(), c = cluster(p.nodes), pp = paths(p), box = $('sparks');
     $('site-name').value = pp.name;
+    $('zip-name').value = pp.name;
     $('shared').checked = c.shared;
     $('name-preview').textContent = 'sr-' + (pp.name || 'name') + '-r0';
     const sharedKeys = [...SHARED_KEYS, ...(p.nodes === 4 ? FABRIC_KEYS : [])];
@@ -1013,12 +1027,16 @@ __ENGINE__
     state.perProfile[p.id] = examplePaths(p);
     renderSparks(); changed();
   });
-  $('site-name').addEventListener('input', () => {
-    const p = profile();
-    paths(p).name = $('site-name').value.trim();
-    $('name-preview').textContent = 'sr-' + (paths(p).name || 'name') + '-r0';
-    changed();
-  });
+  // The deployment name has two fields, in Your Sparks and beside Download; each keeps the other current.
+  for (const [id, other] of [['site-name', 'zip-name'], ['zip-name', 'site-name']]) {
+    $(id).addEventListener('input', () => {
+      const p = profile();
+      paths(p).name = $(id).value.trim();
+      $(other).value = $(id).value;
+      $('name-preview').textContent = 'sr-' + (paths(p).name || 'name') + '-r0';
+      changed();
+    });
+  }
   $('shared').addEventListener('change', () => {
     const p = profile(), c = cluster(p.nodes);
     c.shared = $('shared').checked;

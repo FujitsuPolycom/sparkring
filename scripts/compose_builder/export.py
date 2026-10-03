@@ -178,9 +178,12 @@ def profile_data(profile_id):
             variants[variant] = {"identity": manifest["id"], "ranks": ranks}
         checkpoint["variants"] = variants
     inputs = compose.source_inventory(profile_id)
+    # The model's display name, from the default checkpoint's repository; the profile title names that checkpoint too.
+    names = json.loads((ROOT / "profiles" / "model-names.json").read_text(encoding="utf-8"))["models"]
     return {
         "id": profile_id,
         "title": metadata.get("title", profile_id),
+        "model_name": names.get(checkpoints[0]["model_repository"], metadata.get("title", profile_id)),
         "nodes": len(example["ranks"]),
         "sparkcache": profile_id.endswith("-sparkcache"),
         "installable": profile_id in (runtime or {}).get("profiles", []),

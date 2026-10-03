@@ -43,6 +43,7 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
     assert names["qad-step5500-ple1000"]["aliases"] == ["qad-step-5500"]
     assert names["qad-step-4000"]["changes"] == ["VLLM_MXFP8_LM_HEAD=1", "speculative moe_backend: b12x"]
     assert names["qad-step5500-mxfp8-attention"]["derived"]
+    assert {profile["id"]: profile["model_name"] for profile in data["profiles"]}["glm53-flash-nvfp4-spark-tp4"] == "GLM-5.3-Flash"
 
 
 def test_tagged_data_pins_the_tag(monkeypatch):
