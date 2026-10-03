@@ -490,7 +490,8 @@ applies.
 - `--kv-cache-gib` accepts up to a tenth above the profile's value, and at
   least 1 GiB above it (11 for a profile of 10, 26 for 24, 44 for 40), and
   prints a warning for a value above the profile's: each Spark keeps that much
-  less memory for images and long requests. A larger value is refused. vLLM
+  less memory for images and long requests, and the value has not been
+  validated as stable. A larger value is refused. vLLM
   allocates the KV cache when the model starts, and a Spark's GPU and CPU
   share one memory: a cache far above the profile's can exhaust it, the kernel
   then stops processes, and the Spark stops answering until it recovers, too
