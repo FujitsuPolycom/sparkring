@@ -274,7 +274,7 @@ const SparkRingEngine = (() => {
   function warnings(profile, settings) {
     const row = profile.settings.find(r => r.name === 'kv_cache_gib');
     if (!row || settings.kv_cache_gib === undefined || settings.kv_cache_gib <= row.profile) return [];
-    return [`--kv-cache-gib ${settings.kv_cache_gib} is above the profile's ${row.profile}: each Spark keeps that much less memory for images and long requests, and the profile's measurements do not cover it.`];
+    return [`--kv-cache-gib ${settings.kv_cache_gib} is above the profile's ${row.profile} GiB, leaving each Spark ${settings.kv_cache_gib - row.profile} GiB less for images and long requests. This value has not been validated as stable.`];
   }
   // New command value for a vLLM flag, from its current template value.
   function servingValue(name, current, value) {

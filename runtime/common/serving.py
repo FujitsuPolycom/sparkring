@@ -146,6 +146,7 @@ def warnings(settings, command):
     for name in sorted(ABOVE_PROFILE & set(settings)):
         profile = profile_value(command, name)
         if profile is not None and settings[name] > profile:
-            lines.append(f"{option(name)} {settings[name]} is above the profile's {profile}: each Spark keeps that much less "
-                         "memory for images and long requests, and the profile's measurements do not cover it.")
+            lines.append(f"{option(name)} {settings[name]} is above the profile's {profile} GiB, leaving each Spark "
+                         f"{settings[name] - profile} GiB less for images and long requests. "
+                         "This value has not been validated as stable.")
     return lines
