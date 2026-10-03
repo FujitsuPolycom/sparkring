@@ -8,7 +8,9 @@ http://NODE_A:PORT/v1/sparkring/status/view
 ```
 
 `PORT` is the profile's API port: 8000, 8015 or 8020
-([profile table](../../README.md#profiles)). The page refreshes every 5
+([profile table](../../README.md#profiles)), or the port that `--api-port` sets
+([API endpoint](install-reference.md#api-endpoint)); `Model ready:` prints the
+page's address. The page refreshes every 5
 seconds. It only reads status: it runs no benchmark and changes no setting.
 
 ![Dashboard summary and draft acceptance](assets/dashboard-overview.png)
