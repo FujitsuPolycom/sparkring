@@ -467,13 +467,16 @@ flag, the profile's value applies.
 | `--max-concurrency N` | `--max-num-seqs` | requests served at the same time |
 | `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark, at most a tenth above the profile's value |
 | `--save-cpu` | vLLM's shared-memory reader window (container variable `SPARKRING_SHM_BUSY_LOOP_S`) | a switch: readers poll 2 ms after a read instead of one second |
+| `--reasoning-effort LEVEL` | the model's default effort level, in `--default-chat-template-kwargs` on Node A | one of the model's [levels](#thinking) |
+| `--thinking off` | the model's default thinking, in `--default-chat-template-kwargs` on Node A | thinking stays off unless a request turns it on |
 | `--api-port N` | `--port` | the TCP port of the model's API, 1024 to 65535 ([API endpoint](#api-endpoint)) |
 | `--api-bind ADDRESS` | `--host` of the Spark that serves the API | one IPv4 address of that Spark, which the API alone listens on |
 
 - A setting for a value the profile does not set is refused.
   `deepseek-v41-flash-tp4` accepts no videos and sizes its KV cache as a
   fraction of GPU memory, so `--max-videos` and `--kv-cache-gib` do not apply
-  to it.
+  to it. The two [thinking](#thinking) settings are the exception: the
+  profiles leave thinking to the model, and these settings set its default.
 - A deployment records its settings, so other settings make another
   deployment. `sparkring install` with other values installs that deployment
   and replaces the running model, restarting it once; the same values select
@@ -507,6 +510,63 @@ flag, the profile's value applies.
   late for the installation to restore the previous model.
   `sudo sparkring install --profile PROFILE` restores a deployment after such
   a failure.
+
+### Thinking
+
+A reasoning model can think before it answers. When a request doesn't say
+whether it should, or how hard, the model's chat template decides; for
+DeepSeek-V4.1-Flash, whose checkpoint has no chat template, vLLM's prompt
+encoder decides. The installer profiles set no default of their own:
+
+| Profiles | Without a choice | Effort levels (`reasoning_effort`) | Turns thinking off |
+|---|---|---|---|
+| `qwen38-flash-next-*`, `swift15-qwen38-flash-next-*` | on, `xhigh` | `low`, `medium`, `xhigh` | `"enable_thinking": false` |
+| `glm53-flash-nvfp4-spark-*` | always, `max` | `low`, `high`, `max` | nothing: the model always thinks |
+| `mimo-v26-flash-mopd-*` | on | none | `"enable_thinking": false` |
+| `deepseek-v41-flash-tp4` | on, `high` | `low` (50), `high` (75), `max` (100), or a whole number from 1 to 100; `xhigh` is 75 like `high` | `"thinking": false`, or `"reasoning_effort": "none"` |
+
+Every checkpoint that these profiles' `--checkpoint` choices install behaves
+like its profile's default checkpoint. `sparkring models` shows each installer
+profile's default and levels.
+
+A request chooses with `chat_template_kwargs`:
+
+```bash
+curl http://NODE_A:PORT/v1/chat/completions -H 'Content-Type: application/json' -d '{
+  "model": "MODEL", "messages": [{"role": "user", "content": "Hello"}],
+  "chat_template_kwargs": {"reasoning_effort": "low"}}'
+```
+
+- `--reasoning-effort LEVEL` and `--thinking off` (serving settings above)
+  change the default of one deployment. The installer writes the model's own
+  argument into vLLM's `--default-chat-template-kwargs` on Node A's model
+  container, which serves the API: `--reasoning-effort low` writes
+  `{"reasoning_effort":"low"}`; `--thinking off` writes
+  `{"enable_thinking":false}` for Qwen, Swift and MiMo and
+  `{"thinking":false}` for DeepSeek. The other Sparks' containers serve no
+  API and are unchanged.
+- A level the model doesn't accept is refused with the ones it does.
+  `--reasoning-effort` is refused for MiMo, which has no levels, and
+  `--thinking off` for GLM, which always thinks; the two settings can't be
+  combined.
+- A request's own `chat_template_kwargs` and its `reasoning_effort` field
+  take precedence over the deployment's default. vLLM also turns thinking on
+  for a request that names a `reasoning_effort` other than `none`, unless the
+  request sets `enable_thinking`. Qwen's template refuses a level outside its
+  own.
+- `sudo sparkring install --plan` lists the setting beside the model's
+  default, `sparkring status` names the deployment's default, and the
+  [dashboard](dashboard.md) shows the deployment's arguments in its
+  `Default chat template arguments` row.
+- Earlier turns' reasoning: GLM keeps it in the prompt unless a request sets
+  `"clear_thinking": true`; DeepSeek drops it unless a request sets
+  `"drop_thinking": false` or the conversation has tools.
+- Evidence: [`profiles/thinking.json`](../../profiles/thinking.json) records
+  each behaviour with the SHA-256 of every chat template read for it, which
+  the checkpoints' pin manifests list, and for DeepSeek the installer image
+  and the digests of vLLM's encoder modules. The records cover the default
+  installer image. Status: implemented. The defaults come from the templates
+  and vLLM source; no measurement covers a deployment with these settings.
 
 ### API endpoint
 

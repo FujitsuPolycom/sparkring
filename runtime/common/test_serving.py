@@ -191,3 +191,140 @@ def test_compose_renders_the_api_endpoint_as_install_does():
     assert value_of(specs[0].command, "--host") == "192.0.2.50" and value_of(specs[1].command, "--host") == "0.0.0.0"
     assert "urlopen('http://192.0.2.50:9100/health'" in files["rank0/compose.yaml"]
     assert "'9100'" in files["rank1/compose.yaml"] and "192.0.2.50" not in files["rank1/compose.yaml"]
+
+
+# Thinking settings write the model's own chat template arguments into vLLM's
+# --default-chat-template-kwargs on the API rank (runtime/common/thinking.py).
+KWARGS = "--default-chat-template-kwargs"
+
+
+def chat_defaults(command):
+    return json.loads(command[command.index(KWARGS) + 1]) if KWARGS in command else None
+
+
+def example_site(profile):
+    from runtime.common import compose
+    return compose.read_site(installer.ROOT / "profiles" / profile.removesuffix("-sparkcache") / "compose/site.example.yaml")
+
+
+@pytest.mark.parametrize("profile, settings, rendered", [
+    ("qwen38-flash-next-tp2", {"reasoning_effort": "low"}, '{"reasoning_effort":"low"}'),
+    ("qwen38-flash-next-qad-tp4", {"thinking": "off"}, '{"enable_thinking":false}'),
+    ("swift15-qwen38-flash-next-tp2", {"reasoning_effort": "medium"}, '{"reasoning_effort":"medium"}'),
+    ("glm53-flash-nvfp4-spark-tp2", {"reasoning_effort": "high"}, '{"reasoning_effort":"high"}'),
+    ("glm53-flash-nvfp4-spark-tp4", {"reasoning_effort": "low"}, '{"reasoning_effort":"low"}'),
+    ("mimo-v26-flash-mopd-tp2", {"thinking": "off"}, '{"enable_thinking":false}'),
+    ("deepseek-v41-flash-tp4", {"reasoning_effort": "max"}, '{"reasoning_effort":"max"}'),
+    ("deepseek-v41-flash-tp4", {"reasoning_effort": 60}, '{"reasoning_effort":60}'),
+    ("deepseek-v41-flash-tp4", {"thinking": "off"}, '{"thinking":false}'),
+])
+def test_thinking_settings_set_the_models_arguments_on_the_api_rank_only(profile, settings, rendered):
+    from runtime.common import compose
+    site_value = example_site(profile)
+    plain, _ = compose.build(profile, site_value)
+    tuned, files = compose.build(profile, site_value, serving=settings)
+    assert tuned["serving"] == settings and tuned["id"] != plain["id"] and "serving" not in plain
+    specs, _ = compose.specifications(profile, site_value, serving=settings)
+    defaults, _ = compose.specifications(profile, site_value)
+    # The API rank's command gains the flag and its JSON object at the end; the
+    # headless ranks keep the profile's command.
+    assert specs[0].command == (*defaults[0].command, KWARGS, rendered)
+    assert [spec.command for spec in specs[1:]] == [spec.command for spec in defaults[1:]]
+    assert all(KWARGS not in spec.command for spec in defaults)
+    composed = [text for name, text in sorted(files.items()) if name.endswith("compose.yaml")]
+    assert f"- '{rendered}'" in composed[0] and not any(KWARGS in text for text in composed[1:])
+
+
+def test_thinking_settings_are_part_of_the_installer_lock_and_its_api_rank_command():
+    plain = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    tuned = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"reasoning_effort": "low"})
+    assert tuned["serving"] == {"reasoning_effort": "low"} and tuned["id"] != plain["id"]
+    assert installer.validate(tuned) == tuned
+    commands = [spec.command for spec in installer.specifications(tuned)]
+    assert [chat_defaults(command) for command in commands] == [{"reasoning_effort": "low"}, None]
+    assert commands[1] == installer.specifications(plain)[1].command
+    # Another checkpoint of the profile keeps the profile's thinking behaviour.
+    other = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, "jmni-qad5500-hybrid", settings={"thinking": "off"})
+    assert chat_defaults(installer.specifications(other)[0].command) == {"enable_thinking": False}
+    composed = [text for name, text in installer.rendered(tuned).items() if name.endswith("compose.yaml")]
+    assert len(composed) == 2 and sum("reasoning_effort" in text for text in composed) == 1
+
+
+@pytest.mark.parametrize("profile, settings, message", [
+    ("glm53-flash-nvfp4-spark-tp2", {"thinking": "off"},
+     "--thinking off does not apply to glm53-flash-nvfp4-spark-tp2: its model always thinks"),
+    ("mimo-v26-flash-mopd-tp2", {"reasoning_effort": "low"},
+     "--reasoning-effort does not apply to mimo-v26-flash-mopd-tp2: its model has no effort levels"),
+    ("qwen38-flash-next-tp2", {"reasoning_effort": "high"},
+     "--reasoning-effort high is not a level that qwen38-flash-next-tp2 accepts; choose low, medium or xhigh"),
+    ("deepseek-v41-flash-tp4", {"reasoning_effort": 101}, "or a whole number from 1 to 100"),
+    ("qwen38-flash-next-tp2", {"reasoning_effort": "low", "thinking": "off"}, "choose one"),
+    ("qwen38-flash-next-tp2-sparkcache", {"thinking": "off"}, "no thinking behaviour is recorded"),
+])
+def test_thinking_settings_the_model_does_not_accept_are_refused_before_rendering(profile, settings, message):
+    from runtime.common import compose
+    with pytest.raises(ValueError, match=message):
+        compose.build(profile, example_site(profile), serving=settings)
+
+
+def test_init_refuses_a_thinking_setting_the_model_does_not_accept_before_creating_the_deployment(tmp_path, monkeypatch):
+    monkeypatch.setattr(installer.distribution, "identity", lambda root: "1" * 40)
+    profile = "glm53-flash-nvfp4-spark-tp2"
+    with pytest.raises(ValueError, match="its model always thinks"):
+        installer.init(tmp_path / "deployment", profile, site(), image_runtime=installer_image.for_profile(profile),
+                       settings={"thinking": "off"})
+    assert not (tmp_path / "deployment").exists()
+
+
+def test_thinking_values_are_words_or_whole_numbers_and_thinking_takes_only_off():
+    assert serving.normalized({"reasoning_effort": "low", "thinking": None}) == {"reasoning_effort": "low"}
+    assert serving.normalized({"reasoning_effort": "60"}) == serving.normalized({"reasoning_effort": 60}) == {
+        "reasoning_effort": 60}
+    assert serving.normalized({"thinking": "off"}) == {"thinking": "off"}
+    for bad, message in (({"reasoning_effort": "Low"}, "--reasoning-effort takes a level name"),
+                         ({"reasoning_effort": ""}, "takes a level name"), ({"reasoning_effort": 0}, "at least 1"),
+                         ({"reasoning_effort": True}, "takes a level name"), ({"thinking": "on"}, "--thinking takes off"),
+                         ({"thinking": False}, "--thinking takes off")):
+        with pytest.raises(ValueError, match=message):
+            serving.normalized(bad)
+    with pytest.raises(ValueError, match="apply only with the profile and checkpoint"):
+        serving.apply(profile_args(QWEN), {"thinking": "off"})
+
+
+def test_thinking_flags_parse_as_serving_settings():
+    import argparse
+    parser = argparse.ArgumentParser()
+    serving.add_arguments(parser)
+    assert serving.from_arguments(parser.parse_args([])) == {}
+    args = parser.parse_args(["--reasoning-effort", "low", "--max-images", "2"])
+    assert serving.from_arguments(args) == {"max_images": 2, "reasoning_effort": "low"}
+    assert serving.from_arguments(parser.parse_args(["--thinking", "off"])) == {"thinking": "off"}
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--thinking", "on"])
+    assert [serving.label(name, value) for name, value in sorted(serving.from_arguments(args).items())] == [
+        "--max-images 2", "--reasoning-effort low"]
+
+
+def test_plans_show_a_thinking_setting_beside_the_models_default():
+    args = tuple(profile_args(QWEN))
+    assert serving.describe({"reasoning_effort": "low", "max_images": 2}, args, model=(QWEN, None)) == [
+        "--max-images 2 (profile: 3)", "--reasoning-effort low (model default: xhigh)"]
+    assert serving.describe({"thinking": "off"}, args, model=("mimo-v26-flash-mopd-tp2", None)) == [
+        "--thinking off (model default: on)"]
+    assert serving.describe({"reasoning_effort": "low"}, args) == ["--reasoning-effort low (model default: not recorded)"]
+
+
+def test_without_thinking_settings_commands_compose_files_and_locks_are_unchanged():
+    from runtime.common import compose
+    for profile in compose.SUPPORTED:
+        site_value = example_site(profile)
+        specs, _ = compose.specifications(profile, site_value)
+        assert compose.build(profile, site_value) == compose.build(profile, site_value, serving={})
+        assert compose.build(profile, site_value, serving={"thinking": None}) == compose.build(profile, site_value)
+        assert all(KWARGS not in spec.command for spec in specs)
+        assert all(serving.apply(spec.command, {}) == spec.command for spec in specs)
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"thinking": None, "reasoning_effort": None})
+    assert "serving" not in lock and lock == installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    # The other serving settings render as before.
+    tuned = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"max_images": 8})
+    assert all(KWARGS not in spec.command for spec in installer.specifications(tuned))

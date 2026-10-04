@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer, process_lock
+from runtime.common import distribution, installer, process_lock, thinking
 from runtime.host import discovery, hairpin_ring, node, topology
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
@@ -574,6 +574,8 @@ def lifecycle(argv):
                 if saved.get("serving"):
                     print("Serving settings: " + ", ".join(serving.label(name, value)
                                                            for name, value in sorted(saved["serving"].items())))
+                if "thinking" in saved:
+                    print("Thinking: " + thinking.deployment_text(saved["thinking"]))
                 print(saved["api_url"] + (f" (SparkRing's own checks use {saved['check_url']})"
                                           if saved.get("check_url") else ""))
                 if saved.get("observations"):
@@ -782,6 +784,14 @@ def _status_view(slot, path, args, result, cache):
     lock = view["lock"] = installer.read(Path(path) / "deployment.lock.json")
     view["deployment"].update(installer.identity(lock), containers=installer.containers(lock),
                               serving=lock.get("serving") or {})
+    # What a request that names no thinking argument gets (thinking.deployment_default), or None
+    # without a record, also for a deployment whose checkpoint the installed package does not list.
+    selection = lock.get("selection") or {}
+    try:
+        model = thinking.of(selection.get("profile"), selection.get("target_variant"))
+    except (OSError, ValueError):
+        model = None
+    view["deployment"]["thinking"] = thinking.deployment_default(model, lock.get("serving"))
     try:
         record = view["record"] = recovery.record_of(recovery.load(), path)
         # Automatic recovery acts on each slot's active deployment only.

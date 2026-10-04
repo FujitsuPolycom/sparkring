@@ -178,9 +178,11 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "runtime/common/candidate.py",
         "runtime/common/cache_candidate.py",
         "runtime/common/serving.py",
+        "runtime/common/thinking.py",
         "scripts/sparkring_compose.py",
         "scripts/deploy_engine.py",
         "profiles/catalog.json",
+        "profiles/thinking.json",
         f"profiles/{profile_id}/profile.json",
         "profiles/qwen38-flash-next-tp2/config.json",
         "profiles/qwen38-flash-next-tp2/sparkcache.json",
@@ -402,7 +404,8 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         if local_source_extension is not None:
             raise ValueError("Serving settings apply to published images; a local source-extension trial "
                              "selects its KV alternative with --local-kv-cache-gib")
-        specs = [serving_settings.container(spec, settings, rank=number) for number, spec in enumerate(specs)]
+        specs = [serving_settings.container(spec, settings, rank=number, model=(profile_id, checkpoint))
+                 for number, spec in enumerate(specs)]
     return specs, image
 
 

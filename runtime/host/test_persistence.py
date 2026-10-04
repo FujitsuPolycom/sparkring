@@ -288,6 +288,41 @@ def test_status_names_the_saved_deployment_checkpoint_and_image(tmp_path, monkey
             in capsys.readouterr().out.splitlines())
 
 
+def test_status_names_the_deployments_thinking_default(tmp_path, monkeypatch, capsys):
+    from runtime.common import installer
+    from runtime.host import retained_source
+    monkeypatch.setattr(controller, "STATE", tmp_path)
+    monkeypatch.setattr(controller.node, "status", lambda: {"state": "network-configured"})
+    installer.write(tmp_path / "active.json", {"path": str(tmp_path / "model")})
+    saved = {"profile": "qwen38-flash-next-tp2", "state": {"operation": "up", "complete": True},
+             "api_url": "http://192.0.2.10:8000/v1"}
+    monkeypatch.setattr(retained_source, "apply", lambda *a, **k: dict(saved))
+
+    def status(selection, serving=None):
+        path = tmp_path / "model" / "deployment.lock.json"
+        if path.exists():
+            path.unlink()
+        installer.write(path, {"id": "d" * 64, "backend": "compose", "selection": {**selection, "release": "dev-image"},
+                               "site": {"name": "sparkring-test", "ranks": [{"rank": 0, "host": "root@192.0.2.10"}]},
+                               **({"serving": serving} if serving else {})})
+        assert controller.lifecycle(["status"]) == 0
+        lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("Thinking: ")]
+        assert controller.lifecycle(["status", "--json"]) == 0
+        return lines, json.loads(capsys.readouterr().out)["deployment"]["thinking"]
+
+    qwen = installer.setup.selection("qwen38-flash-next-tp2")
+    lines, value = status(qwen)
+    assert lines == ["Thinking: on · xhigh (model default)"]
+    assert value == {"thinking": "on", "level": "xhigh", "chosen": False, "model": {"thinking": "on", "level": "xhigh"}}
+    lines, value = status(qwen, {"reasoning_effort": "low"})
+    assert lines == ["Thinking: on · low (deployment default; model default: on · xhigh)"] and value["chosen"]
+    lines, _ = status(installer.setup.selection("mimo-v26-flash-mopd-tp2"), {"thinking": "off"})
+    assert lines == ["Thinking: off (deployment default; model default: on)"]
+    # A deployment whose checkpoint this package does not list, or a profile without a record, has none.
+    lines, value = status({**qwen, "target_variant": "qad-step-1000"})
+    assert lines == ["Thinking: not recorded for this model"] and value is None
+
+
 def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, monkeypatch, capsys):
     from runtime.common import installer
     from runtime.host import retained_source

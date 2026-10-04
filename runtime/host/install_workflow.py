@@ -521,7 +521,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         # A setting whose vLLM flag the profile does not set, or a value above
         # the selected checkpoint's limit, is refused before any Spark is surveyed.
         arguments = profile_arguments(card)
-        serving_settings.apply(arguments, requested)
+        serving_settings.apply(arguments, requested, model=(profile, card["target_variant"]))
         request["serving"] = requested
     instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
     directory = state_root / "deployments" / (profile + "-" + instance)
@@ -973,7 +973,8 @@ def execute(args):
                                                             else "start the selected model."))
         if lock is not None and lock.get("serving"):
             base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
-            print("Serving settings: " + "; ".join(serving_settings.describe(lock["serving"], base)))
+            print("Serving settings: " + "; ".join(serving_settings.describe(
+                lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
             for line in serving_settings.warnings(lock["serving"], base):
                 print("Warning: " + line)
         if lock is not None and endpoint_requested(args):
