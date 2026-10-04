@@ -74,7 +74,15 @@ serves, it releases what older deployments hold on the Sparks
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--reasoning-effort LEVEL`, `--thinking off` | How hard the model thinks, or that it doesn't, when a request doesn't say; requests can still choose ([thinking](install-reference.md#thinking)) |
+| `--api-port N` | The port of the model's API, 1024 to 65535; a serving setting ([API endpoint](install-reference.md#api-endpoint)); default: the profile's |
+| `--api-bind ADDRESS` | Let the API listen only on this IPv4 address of the Spark that serves it; a serving setting; default: every address |
+| `--allow-loopback-bind` | Accept a loopback `--api-bind`, such as 127.0.0.1, which only programs on Node A can reach |
+| `--api-address ADDRESS` | The name or address shown for the model, such as `llm.example.net`; shown only, not part of the deployment |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |
+
+In a terminal, without `--yes` and without the API options, `install` asks
+which address the model's API listens on and which port it uses; Enter keeps
+both ([API endpoint](install-reference.md#api-endpoint)).
 
 ## install.sh
 
@@ -237,7 +245,9 @@ A profile with one checkpoint shows only `REPOSITORY @ REVISION`; a
 `, derived from REPOSITORY @ REVISION` of its base. `Thinking` is what the
 model does when a request doesn't say whether, or how hard, to think: the
 model's default, or the deployment's own default beside it
-([thinking](install-reference.md#thinking)). The
+([thinking](install-reference.md#thinking)). The model's API URL
+follows, at the address `install --api-address` named when there is one,
+with the URL SparkRing's own checks use in parentheses. The
 recovery lines add the Spark it waits for, its last attempt and the next.
 After `sparkring down` they read `on; idle until the next sudo sparkring up
 --execute or sudo sparkring install`, and a deployment that recovery does not
@@ -421,6 +431,7 @@ runs, or a half's model while the four-Spark model runs.
 | `--on 0,1` or `--on 2,3` | Without PROFILE: that half's model. With `up PROFILE`: a two-Spark profile on that half, as instance `on-0-1` or `on-2-3` unless `--instance` names another |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
 | `--max-images N`, `--reasoning-effort LEVEL` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values, or the model's thinking default, for a new deployment; an existing deployment keeps its own |
+| `--allow-loopback-bind` | `up PROFILE` only: accept a loopback `--api-bind` for a new deployment |
 | `--image NAME` | `up PROFILE` only: another installer image from [`sparkring images`](#images) |
 | `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal. An existing deployment keeps the image it recorded, and naming another lock for it is refused |
 | `--deployment DIR` | Use a deployment saved by `sparkring init` instead ([lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing)) |
@@ -487,7 +498,7 @@ Both accept `--json`. See
 - `sparkring compose render|check|start|stop` generates and coordinates
   profile-owned Compose deployments; see [Compose deployments](compose.md).
   `render` takes `--image NAME`, `--checkpoint NAME` and the serving-setting
-  flags of `sparkring install`.
+  flags of `sparkring install`, `--api-port` and `--api-bind` among them.
 - `python scripts/generate_compose_builder.py --output DIR [--verify]` writes
   the [Install Builder](compose-builder.md) page for the checkout.
 - `sparkring validate-compose FILE` (or `--all`, `--json`, `--output FILE`)

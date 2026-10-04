@@ -259,6 +259,12 @@ const SparkRingEngine = (() => {
 
   // ---- Serving settings (runtime/common/serving.py) ----------------------------------
   function option(name) { return '--' + name.replace(/_/g, '-'); }
+  // serving.listenable: a dotted IPv4 address outside 0.0.0.0/8 and below 224.0.0.0.
+  function listenable(value) {
+    if (typeof value !== 'string' || !IPV4.test(value)) return false;
+    const first = Number(value.split('.')[0]);
+    return first > 0 && first < 224;
+  }
   function normalized(profile, values) {
     const rows = Object.fromEntries(profile.settings.map(r => [r.name, r]));
     const result = {};
@@ -272,25 +278,81 @@ const SparkRingEngine = (() => {
         result[name] = true;
         continue;
       }
-      if (!isInt(value) || value < row.minimum) throw new Error(`${option(name)} takes a whole number of at least ${row.minimum}`);
+      if (row.address) {
+        if (!listenable(value)) {
+          throw new Error(`${option(name)} takes one IPv4 address of the Spark that serves the API, such as 192.0.2.10; without it the API listens on every address`);
+        }
+        result[name] = value;
+        continue;
+      }
+      const largest = row.largest ?? null;
+      if (!isInt(value) || value < row.minimum || (largest !== null && value > largest)) {
+        throw new Error(`${option(name)} takes a whole number ` + (largest !== null ? `from ${row.minimum} to ${largest}` : `of at least ${row.minimum}`));
+      }
       result[name] = value;
     }
     return result;
   }
-  // serving.apply refuses a value above its ceiling after the site has been validated.
+  // serving.apply, after the site has been validated and in setting-name order, refuses a port
+  // the API may not take (serving.reserved_ports) and a value above its ceiling.
   function checkCeilings(profile, settings) {
-    for (const row of profile.settings) {
-      const value = settings[row.name];
-      if (value !== undefined && row.maximum !== null && row.maximum !== undefined && value > row.maximum) {
-        throw new Error(`${option(row.name)} ${value} is more than ${row.maximum}, a tenth above the profile's ${row.profile}. A larger value can exhaust a Spark's memory while the model starts.`);
+    const rows = Object.fromEntries(profile.settings.map(r => [r.name, r]));
+    for (const name of Object.keys(settings).sort()) {
+      const row = rows[name], value = settings[name];
+      if (!row || row.switch) continue;
+      for (const [port, reason] of row.reserved || []) {
+        if (value === port) throw new Error(`${option(name)} ${port} is ${reason}. Choose another port.`);
+      }
+      if (row.maximum !== null && row.maximum !== undefined && value > row.maximum) {
+        throw new Error(`${option(name)} ${value} is more than ${row.maximum}, a tenth above the profile's ${row.profile}. A larger value can exhaust a Spark's memory while the model starts.`);
       }
     }
   }
   const FLAGS = {
     max_images: ['--limit-mm-per-prompt', 'image', 1], max_videos: ['--limit-mm-per-prompt', 'video', 1],
     context_length: ['--max-model-len', null, 1], max_concurrency: ['--max-num-seqs', null, 1],
-    kv_cache_gib: ['--kv-cache-memory-bytes', null, 2 ** 30],
+    kv_cache_gib: ['--kv-cache-memory-bytes', null, 2 ** 30], api_port: ['--port', null, 1], api_bind: ['--host', null, 1],
   };
+  // Settings that only the API rank's command takes (serving.API_RANK).
+  const API_RANK = ['api_bind'];
+  // The API rank's health check asks the API at 127.0.0.1 on the profile's port; with the
+  // endpoint's port or listen address it asks there instead (serving.container). Returns the
+  // [before, after] text of its URL, or null without either setting.
+  function healthEdit(checkpoint, settings) {
+    if (settings.api_port === undefined && settings.api_bind === undefined) return null;
+    const port = (checkpoint.settings.find(r => r.name === 'api_port') || {}).profile;
+    return [`//127.0.0.1:${port}/`, `//${settings.api_bind ?? '127.0.0.1'}:${settings.api_port ?? port}/`];
+  }
+  const HEALTH = '--api-port and --api-bind do not apply to this profile: its health check does not ask the API at 127.0.0.1 on its --port';
+  function editHealth(lines, health) {
+    if (!health) return;
+    const at = lines.findIndex(line => line.includes(health[0]));
+    if (at < 0) throw new Error(HEALTH);
+    lines[at] = lines[at].split(health[0]).join(health[1]);
+  }
+
+  // ---- API endpoint --------------------------------------------------------------------
+  // runtime/host/api_endpoint.shown_address: the address `--api-address` names, a host name or an
+  // IP address without a scheme, port or path. An IPv4 address or a host name is returned as
+  // given and an IPv6 address without brackets; the installer writes an IPv6 address in its
+  // shortest form.
+  function apiAddress(value) {
+    const text = String(value ?? '').trim(), bare = text.replace(/^\[|\]$/g, '');
+    if (IPV4.test(bare)) return bare;
+    if (bare.includes(':') && /^[0-9A-Fa-f:.]+$/.test(bare) && (bare.match(/::/g) || []).length <= 1) return bare.toLowerCase();
+    const labels = text.replace(/\.+$/, '').split('.');
+    if (!text || text.length > 253 || !labels.every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))) {
+      throw new Error(`--api-address takes a host name or an IP address, such as llm.example.net or 192.0.2.10, without http:// or a port: ${value}`);
+    }
+    return text;
+  }
+  const urlHost = host => host.includes(':') ? `[${host}]` : host;
+  // The URL of a model's API: at `address` (the shown address), else the listen address, else
+  // `host`, the address the API answers on without either; at the endpoint's port, else the
+  // checkpoint's.
+  function apiUrl(checkpoint, settings, host, address) {
+    return `http://${urlHost(address || settings.api_bind || host)}:${settings.api_port ?? checkpoint.port}/v1`;
+  }
   function describe(profile, settings) {
     const rows = Object.fromEntries(profile.settings.map(r => [r.name, r]));
     return Object.keys(settings).sort().map(name => rows[name].switch
@@ -305,6 +367,7 @@ const SparkRingEngine = (() => {
   // New command value for a vLLM flag, from its current template value.
   function servingValue(name, current, value) {
     const [, key, scale] = FLAGS[name];
+    if (typeof value === 'string') return value;
     if (key === null) return String(value * scale);
     const limits = JSON.parse(current);
     if (!limits || typeof limits !== 'object' || !(key in limits)) throw new Error(`${option(name)} does not apply to this profile`);
@@ -369,7 +432,7 @@ const SparkRingEngine = (() => {
   }
   const GID_KEYS = ['NCCL_IB_GID_INDEX', 'B12X_ROCE_GID_INDEX'];
 
-  function composeText(template, pairs, gidSentinel, gid, edits) {
+  function composeText(template, pairs, gidSentinel, gid, edits, health) {
     const lines = template.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -390,10 +453,11 @@ const SparkRingEngine = (() => {
       const m = lines[at + 1].match(/^(\s*- )(.+)$/);
       lines[at + 1] = m[1] + yamlScalar(servingValue(name, yamlUnquote(m[2]), value));
     }
+    editHealth(lines, health);
     return lines.join('\n');
   }
 
-  function containerText(template, pairs, gidSentinel, gid, edits) {
+  function containerText(template, pairs, gidSentinel, gid, edits, health) {
     const lines = template.split('\n');
     const literal = /"((?:[^"\\]|\\.)*)"/g;
     for (let i = 0; i < lines.length; i++) {
@@ -421,6 +485,7 @@ const SparkRingEngine = (() => {
       const m = lines[at + 1].match(/^(\s*)("(?:[^"\\]|\\.)*")(,?)$/);
       lines[at + 1] = m[1] + jsonString(servingValue(name, JSON.parse(m[2]), value)) + m[3];
     }
+    editHealth(lines, health);
     return lines.join('\n');
   }
 
@@ -486,9 +551,11 @@ const SparkRingEngine = (() => {
       for (let n = 0; n < site.ranks.length; n++) {
         const pairs = replacements(site, n, identity, variant.identity);
         const gidSentinel = String(201 + n);
-        const edits = numeric.map(name => [FLAGS[name][0], name, settings[name]]);
-        files[`rank${n}/compose.yaml`] = composeText(variant.ranks[n].compose, pairs, gidSentinel, site.ranks[n].gid, edits);
-        files[`rank${n}/container.json`] = containerText(variant.ranks[n].container, pairs, gidSentinel, site.ranks[n].gid, edits);
+        // The API rank alone takes the listen address, and its health check asks the API there.
+        const edits = numeric.filter(name => n === 0 || !API_RANK.includes(name)).map(name => [FLAGS[name][0], name, settings[name]]);
+        const health = n === 0 ? healthEdit(checkpoint, settings) : null;
+        files[`rank${n}/compose.yaml`] = composeText(variant.ranks[n].compose, pairs, gidSentinel, site.ranks[n].gid, edits, health);
+        files[`rank${n}/container.json`] = containerText(variant.ranks[n].container, pairs, gidSentinel, site.ranks[n].gid, edits, health);
       }
       const digests = {};
       for (const [name, text] of Object.entries(files)) digests[name] = await sha256(text);
@@ -588,9 +655,11 @@ const SparkRingEngine = (() => {
   // package. `pin` fetches install.sh from meta.ref and builds that source instead of main.
   // `approval` is "ask" (no flag), "plan" or "yes". `downloadLimit` uses the syntax of
   // runtime/host/settings.py download_limit. `on` ("0,1" or "2,3") places a two-Spark
-  // profile on that half of a four-Spark ring.
+  // profile on that half of a four-Spark ring. `apiAddress` is the address shown for the
+  // model (apiAddress()).
   function installCommand(profile, checkpoint, settings, meta, opts) {
     const words = ['--profile', profile.id, ...(opts.on ? ['--on', opts.on] : []), ...selectionWords(profile, checkpoint, settings)];
+    if (opts.apiAddress) words.push('--api-address', opts.apiAddress);
     if (opts.downloadLimit) words.push('--download-limit', opts.downloadLimit);
     if (opts.approval === 'plan') words.push('--plan');
     if (opts.approval === 'yes') words.push('--yes');
@@ -655,33 +724,43 @@ const SparkRingEngine = (() => {
   //            features.cable_check.
   // Each command is {where, what, command, endpoint, error}: `endpoint` is the API it serves,
   // and `error` why it has no command. `plan` is {layout, features, main, halves}, where a
-  // selection is {profile, checkpoint: name or null, settings: requested values}: `main` is the
-  // pair's or the ring's model, and the four-Spark model the halves layout switches to; `halves`
-  // are the two halves' models, which the ring layout switches to. `opts` carries installCommand's
-  // form, pin, approval and downloadLimit, and `order`: "auto", "ask", which leaves out --yes so
-  // that every installation asks before it changes a Spark, or "fill", which names the Sparks
-  // after `opts.sparks`.
+  // selection is {profile, checkpoint: name or null, settings: requested values, endpoint}: `main`
+  // is the pair's or the ring's model, and the four-Spark model the halves layout switches to;
+  // `halves` are the two halves' models, which the ring layout switches to. A selection's
+  // optional `endpoint` is {ask, address}: `ask` leaves out --yes so that the installation asks
+  // where the model's API listens, and `address` is the address shown for it (--api-address);
+  // its port and listen address are the settings api_port and api_bind. `opts` carries
+  // installCommand's form, pin, approval and downloadLimit, and `order`: "auto", "ask", which
+  // leaves out --yes so that every installation asks before it changes a Spark, or "fill",
+  // which names the Sparks after `opts.sparks`.
   function commandPack(plan, meta, opts) {
     const layout = plan.layout, features = plan.features || {};
     const names = sparkNames(LAYOUT_SPARKS[layout], opts.order === 'fill' ? opts.sparks : null);
     const approval = opts.order === 'ask' && opts.approval === 'yes' ? 'ask' : opts.approval;
     const pairOf = half => `${names[2 * half].short} and ${names[2 * half + 1].short}`;
     const run = 'On ' + names[0].label + ', as a user with sudo';
-    let first = true;
+    let first = true, asks = false;
     // One install command; `apiRank` is the rank that serves its API.
     const install = (selection, on, apiRank, what) => {
       const form = first ? opts.form : 'installed';
       first = false;
       const check = servingCheck(selection.profile, selection.settings, selection.checkpoint);
+      const endpoint = selection.endpoint || {};
+      let address = null, problem = check.ok ? null : check.error;
+      if (!problem && endpoint.address) {
+        try { address = apiAddress(endpoint.address); } catch (error) { problem = error.message; }
+      }
+      if (endpoint.ask) asks = true;
       const model = check.ok ? selection.profile.model_name + (check.checkpoint.default ? '' : ' (' + check.checkpoint.name + ')')
         : selection.profile.model_name;
       return {
         where: form === 'script' ? 'On ' + names[0].label + ', the Spark on your network, as a user with sudo' : run,
         what: (form === 'script' ? 'Installs SparkRing and starts ' : 'Starts ') + model + what,
-        command: check.ok ? installCommand(selection.profile, check.checkpoint, check.settings, meta,
-          { form, pin: opts.pin, approval, downloadLimit: opts.downloadLimit, on }) : '',
-        endpoint: check.ok ? `http://${names[apiRank].address}:${check.checkpoint.port}/v1` : null,
-        error: check.ok ? null : check.error,
+        command: problem ? '' : installCommand(selection.profile, check.checkpoint, check.settings, meta,
+          { form, pin: opts.pin, approval: endpoint.ask && approval === 'yes' ? 'ask' : approval,
+            downloadLimit: opts.downloadLimit, on, apiAddress: address }),
+        endpoint: problem ? null : apiUrl(check.checkpoint, check.settings, names[apiRank].address, address),
+        error: problem,
       };
     };
     const next = ' Run it once the one before has finished.';
@@ -736,6 +815,7 @@ const SparkRingEngine = (() => {
       notes.push(`If ${names[2].short} has no network cable of its own, only ${names[0].short} can reach its model.`);
     }
     if (opts.order === 'ask') notes.push('Each install shows which Spark is which and asks before it changes anything.');
+    if (asks) notes.push("An install set to ask lists the Spark's addresses and asks which address and port the model uses.");
     return {
       layout, roles, groups, notes,
       order: layout === 'pair' ? null : "The cables set this order. You can't choose it, or which Spark leads a pair.",
@@ -747,12 +827,15 @@ const SparkRingEngine = (() => {
   // A link carries the page's choices as query parameters, never a site value: `profile` and
   // its `checkpoint` and changed serving settings (one parameter per setting) for the pair's or
   // the ring's model; on a ring, `first` and `second` with `first.checkpoint`, `first.<setting>`
-  // and so on for the halves' models; `layout`, `mode`, `image` and the install options.
+  // and so on for the halves' models; `layout`, `mode`, `image` and the install options. A
+  // selection's API endpoint choice other than automatic adds `endpoint` (`ask` or `set`) and,
+  // when set, `api_address`; its port and listen address are settings.
   // `choices` is {layout, mode, image, main, halves, install}, a selection being
-  // {profile: id, checkpoint: name or null, settings}.
+  // {profile: id, checkpoint: name or null, settings} with an optional endpoint {mode, address}.
   const LINK_HALVES = ['first', 'second'];
   const INSTALL_CHOICES = { form: ['script', 'installed'], source: ['release', 'main'], approval: ['ask', 'plan', 'yes'],
     order: ['auto', 'ask', 'fill'] };
+  const ENDPOINT_MODES = ['ask', 'set'];
   function linkQuery(choices) {
     const query = new URLSearchParams();
     const add = (key, selection) => {
@@ -762,6 +845,9 @@ const SparkRingEngine = (() => {
       for (const name of Object.keys(selection.settings || {}).sort()) {
         query.set(prefix + name, selection.settings[name] === true ? '1' : String(selection.settings[name]));
       }
+      const endpoint = selection.endpoint || {};
+      if (ENDPOINT_MODES.includes(endpoint.mode)) query.set(prefix + 'endpoint', endpoint.mode);
+      if (endpoint.mode === 'set' && endpoint.address) query.set(prefix + 'api_address', endpoint.address);
     };
     add('profile', choices.main);
     query.set('layout', choices.layout);
@@ -786,9 +872,13 @@ const SparkRingEngine = (() => {
         const text = query.get(prefix + row.name);
         if (text === null) continue;
         if (row.switch) { if (text === '1') settings[row.name] = true; }
+        else if (row.address) { if (IPV4.test(text)) settings[row.name] = text; }
         else if (/^\d+$/.test(text)) settings[row.name] = Number(text);
       }
-      return { profile: p.id, checkpoint, settings };
+      const mode = query.get(prefix + 'endpoint');
+      if (!ENDPOINT_MODES.includes(mode)) return { profile: p.id, checkpoint, settings };
+      return { profile: p.id, checkpoint, settings,
+        endpoint: { mode, address: mode === 'set' ? query.get(prefix + 'api_address') || '' : '' } };
     };
     const main = selection('profile');
     if (!main) return null;
@@ -801,8 +891,9 @@ const SparkRingEngine = (() => {
       mode: ['install', 'compose'].includes(query.get('mode')) ? query.get('mode') : null, image: query.get('image'), install };
   }
 
-  function readme(profile, checkpoint, site, settings, output, meta) {
-    const ranks = site.ranks.length;
+  // `address` is the address shown for the model (apiAddress()), or null.
+  function readme(profile, checkpoint, site, settings, output, meta, address = null) {
+    const ranks = site.ranks.length, api = apiUrl(checkpoint, settings, site.master, address);
     const changed = output.serving_lines.length > 0;
     const model = checkpoint.derived
       ? ['     the complete checkpoint in its model directory. No repository publishes this derived checkpoint:',
@@ -820,7 +911,7 @@ const SparkRingEngine = (() => {
       `Deployment ID ${output.id}`,
       '',
       'Ranks',
-      ...site.ranks.map((r, i) => `  rank${i}  ${r.host}  ${r.host_ip}` + (i === 0 ? `  API http://${site.master}:${checkpoint.port}/v1, model ${checkpoint.served_model_name}` : '')),
+      ...site.ranks.map((r, i) => `  rank${i}  ${r.host}  ${r.host_ip}` + (i === 0 ? `  API ${api}, model ${checkpoint.served_model_name}` : '')),
       '',
       'Checkpoint',
       `  ${checkpoint.name || 'the profile\'s model'}${checkpoint.default ? ' (default)' : ''}: ${checkpoint.model_repository} at revision ${checkpoint.model_revision}`,
@@ -844,7 +935,7 @@ const SparkRingEngine = (() => {
       ...model,
       `     Each fabric address's RoCE v2 GID must be at index ${site.ranks[0].gid}` + (ranks === 4 ? ', and the prepared mesh fabric in place.' : '.'),
       `  4. Start rank ${ranks === 2 ? '1' : '1 to ' + (ranks - 1)} first, then rank 0: docker compose -f rankN/compose.yaml up -d`,
-      `  5. curl http://${site.master}:${checkpoint.port}/v1/models lists ${checkpoint.served_model_name} when the model serves.`,
+      `  5. curl ${api}/models lists ${checkpoint.served_model_name} when the model serves.`,
       '     The first start on this image compiles and tunes kernels, about 10 minutes.',
       '',
       '`sparkring compose check --deployment <this directory>` checks these files against the source.',
@@ -853,13 +944,14 @@ const SparkRingEngine = (() => {
     if (profile.installable) {
       lines.push('', 'Without Compose, `sparkring install` sets up the Sparks, downloads the image and checkpoint and',
         'starts the same model. On Node A:',
-        '  ' + installCommand(profile, checkpoint, settings, meta, { form: 'script', pin: true, approval: 'ask' }));
+        '  ' + installCommand(profile, checkpoint, settings, meta, { form: 'script', pin: true, approval: 'ask', apiAddress: address }));
     }
     lines.push('');
     return lines.join('\n');
   }
 
-  function archive(profile, checkpoint, site, settings, output, meta, when = new Date()) {
+  // `address` is the address shown for the model in its README, or null.
+  function archive(profile, checkpoint, site, settings, output, meta, when = new Date(), address = null) {
     const root = site.name + '/';
     const entries = [{ name: root, dir: true }, { name: root + 'deployment.json', text: output.deployment }];
     for (let n = 0; n < site.ranks.length; n++) {
@@ -868,12 +960,12 @@ const SparkRingEngine = (() => {
       entries.push({ name: `${root}rank${n}/container.json`, text: output.files[`rank${n}/container.json`] });
     }
     entries.push({ name: `${root}${site.name}.site.yaml`, text: output.site_yaml });
-    entries.push({ name: root + 'README.txt', text: readme(profile, checkpoint, site, settings, output, meta) });
+    entries.push({ name: root + 'README.txt', text: readme(profile, checkpoint, site, settings, output, meta, address) });
     return { filename: site.name + '.zip', bytes: zip(entries, when), names: entries.filter(e => !e.dir).map(e => e.name) };
   }
 
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
-    checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems,
+    checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
     layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;

@@ -10,9 +10,11 @@ http://API_HOST:PORT/v1/sparkring/status/view
 - `API_HOST` is Node A for a pair, a four-Spark model or the model on Sparks
   0 and 1 of a ring. For the model on Sparks 2 and 3 (`--on 2,3`), it is
   Spark 2 ([where each half serves](install-reference.md#two-models-on-one-ring)).
+  A deployment installed with `--api-bind` serves only at that address.
   `Model ready:` and `sudo sparkring status` print each model's address.
 - `PORT` is the profile's API port: 8000, 8015 or 8020
-  ([profile table](../../README.md#profiles)).
+  ([profile table](../../README.md#profiles)), or the port that `--api-port`
+  sets ([API endpoint](install-reference.md#api-endpoint)).
 
 The page refreshes every 5 seconds. It only reads status: it runs no
 benchmark and changes no setting.

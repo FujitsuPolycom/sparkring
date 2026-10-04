@@ -12,9 +12,12 @@ engine with compose.build for random sites.
 
 The page's command pack offers what the source's commands accept: export()
 records in ``features`` whether `sparkring install` defines ``--on`` (a
-two-Spark model on half of a four-Spark ring) and whether `sparkring cabling`
-defines ``--bandwidth`` (a measurement of every cable), read from the
-argument parsers in the source files.
+two-Spark model on half of a four-Spark ring) and ``--api-address`` (the
+address shown for the model) and whether `sparkring cabling` defines
+``--bandwidth`` (a measurement of every cable), read from the argument
+parsers in the source files, and whether the source's serving settings
+include the API endpoint's port and listen address (``api_port``,
+``api_bind``), read from runtime/common/serving.py.
 
 Each checkpoint carries ``capacity``: the engine-reported KV pool of
 performance/profile-capacity.json that the page scales to the chosen KV cache
@@ -52,6 +55,16 @@ FEATURES = {
     "ring_halves": ("runtime/host/install_workflow.py", "--on"),
     # sudo sparkring cabling --bandwidth: measure the bandwidth of every cable.
     "cable_check": ("runtime/host/cabling.py", "--bandwidth"),
+    # sudo sparkring install --api-address ADDRESS: the address shown for the model.
+    "api_address": ("runtime/host/install_workflow.py", "--api-address"),
+}
+# The serving settings the page's API endpoint option uses, by feature: the
+# source file that defines the serving settings, and the setting's name, a key
+# of its SETTINGS. `sparkring install` takes each as an option (--api-port,
+# --api-bind) and, in a terminal without --yes, asks for both.
+SETTING_FEATURES = {
+    "api_port": ("runtime/common/serving.py", "api_port"),
+    "api_bind": ("runtime/common/serving.py", "api_bind"),
 }
 
 
@@ -69,16 +82,31 @@ def _argument(command, flag):
 
 
 def _setting_rows(command):
-    """The serving settings a command sets, with the command's values and their limits."""
+    """The serving settings a command sets, with the command's values and their limits.
+
+    ``maximum`` is the ceiling of an ABOVE_PROFILE setting and ``largest``
+    the largest whole number a setting takes (serving.MAXIMUM). The API
+    endpoint's settings, which the page offers in its API endpoint option,
+    carry ``endpoint``; ``api_port`` lists the ports it may not take
+    (serving.reserved_ports) in ``reserved``, and a listen address
+    (serving.ADDRESSES) carries ``address``.
+    """
     rows = []
     for name, (flag, key, _, minimum, text) in serving_settings.SETTINGS.items():
         value = serving_settings.profile_value(command, name)
         if value is None:
             continue
-        rows.append({"name": name, "option": serving_settings.option(name), "flag": flag + (f" ({key})" if key else ""),
-                     "profile": value, "minimum": minimum,
-                     "maximum": serving_settings.ceiling(value) if name in serving_settings.ABOVE_PROFILE else None,
-                     "help": text})
+        row = {"name": name, "option": serving_settings.option(name), "flag": flag + (f" ({key})" if key else ""),
+               "profile": value, "minimum": minimum,
+               "maximum": serving_settings.ceiling(value) if name in serving_settings.ABOVE_PROFILE else None,
+               "help": text}
+        if name in serving_settings.MAXIMUM:
+            row["largest"] = serving_settings.MAXIMUM[name]
+        if name == "api_port":
+            row.update(endpoint=True, reserved=[list(item) for item in serving_settings.reserved_ports(command)])
+        if name in serving_settings.ADDRESSES:
+            row.update(endpoint=True, address=True)
+        rows.append(row)
     for name, (variable, value, text) in serving_settings.SWITCHES.items():
         rows.append({"name": name, "option": serving_settings.option(name), "flag": variable, "switch": True,
                      "value": value, "help": text})
@@ -264,8 +292,18 @@ def command_options(path):
     return found
 
 
+def setting_names(path):
+    """The keys of the ``SETTINGS`` dictionary that a Python source file assigns, such as ``api_port``."""
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "SETTINGS"
+                                                 for target in node.targets) and isinstance(node.value, ast.Dict)):
+            return {key.value for key in node.value.keys if isinstance(key, ast.Constant) and isinstance(key.value, str)}
+    return set()
+
+
 def features(root=ROOT):
-    """``{feature: bool}`` for every FEATURES entry: whether the source at ``root`` defines its option.
+    """``{feature: bool}`` for every FEATURES and SETTING_FEATURES entry: whether the source at ``root`` defines it.
 
     A missing source file offers nothing.
     """
@@ -273,6 +311,9 @@ def features(root=ROOT):
     for name, (relative, option) in FEATURES.items():
         path = Path(root) / relative
         result[name] = path.is_file() and option in command_options(path)
+    for name, (relative, setting) in SETTING_FEATURES.items():
+        path = Path(root) / relative
+        result[name] = path.is_file() and setting in setting_names(path)
     return result
 
 

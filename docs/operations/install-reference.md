@@ -107,7 +107,7 @@ sparkring models
 
 `sudo sparkring install --profile PROFILE` on Node A installs one installer
 profile ([commands](install.md#install)) and ends with `Model ready:` and the
-model's API URL on Node A. Below it a short card names the served model, the
+model's API URL ([API endpoint](#api-endpoint)). Below it a short card names the served model, the
 API and [dashboard](dashboard.md) addresses, a sample `curl` request, and the
 commands that switch back to the model it replaced, stop the model and remove
 the package. Without `--profile`, it lists the installer profiles for the
@@ -132,7 +132,10 @@ approves). That covers:
 
 Asked separately: each worker's SSH password when no key login exists, a
 non-root worker account's sudo password (twice), and stopping any running GPU
-container, which always needs its own answer or `--stop-workloads`. Setup
+container, which always needs its own answer or `--stop-workloads`. In a
+terminal, a run without `--yes` and without the API options also asks, before
+it searches the Sparks, which address the model's API listens on and which
+port it uses ([API endpoint](#api-endpoint)); Enter keeps both. Setup
 signs in to each Spark once; that Spark's inventory identifies its other
 fabric functions and return paths.
 
@@ -300,6 +303,10 @@ sudo sparkring status --refresh --json
   when the image has no dashboard), `example_request` (a `curl` command for
   `/v1/chat/completions` with the served model name) and `commands` with
   `switch_back` (null when no other model ran before), `stop` and `remove`.
+- With `--api-address`, `api_url`, `dashboard_url` and `example_request` use
+  that address, and `check_url` holds the URL that SparkRing's own checks use
+  ([API endpoint](#api-endpoint)). `serving` lists `api_port` and `api_bind`
+  with the other serving settings.
 - `retention` reports [automatic release](#automatic-release): `state` is
   `released`, `nothing`, `off` or `failed` (with `message`); a release lists
   the `released` deployments, `freed_bytes` and each Spark's results, with
@@ -447,10 +454,10 @@ images that run that profile.
 
 ### Serving settings
 
-`sudo sparkring install`, `sudo sparkring up PROFILE` and `sparkring init`
-accept optional settings, each of which replaces one value of the profile's
-vLLM configuration for that deployment. Without a flag, the profile's value
-applies.
+`sudo sparkring install`, `sudo sparkring up PROFILE`, `sparkring init` and
+`sparkring compose render` accept optional settings, each of which replaces
+one value of the profile's vLLM configuration for that deployment. Without a
+flag, the profile's value applies.
 
 | Flag | vLLM value it replaces | Unit |
 |---|---|---|
@@ -462,6 +469,8 @@ applies.
 | `--save-cpu` | vLLM's shared-memory reader window (container variable `SPARKRING_SHM_BUSY_LOOP_S`) | a switch: readers poll 2 ms after a read instead of one second |
 | `--reasoning-effort LEVEL` | the model's default effort level, in `--default-chat-template-kwargs` on Node A | one of the model's [levels](#thinking) |
 | `--thinking off` | the model's default thinking, in `--default-chat-template-kwargs` on Node A | thinking stays off unless a request turns it on |
+| `--api-port N` | `--port` | the TCP port of the model's API, 1024 to 65535 ([API endpoint](#api-endpoint)) |
+| `--api-bind ADDRESS` | `--host` of the Spark that serves the API | one IPv4 address of that Spark, which the API alone listens on |
 
 - A setting for a value the profile does not set is refused.
   `deepseek-v41-flash-tp4` accepts no videos and sizes its KV cache as a
@@ -558,6 +567,74 @@ curl http://NODE_A:PORT/v1/chat/completions -H 'Content-Type: application/json' 
   and the digests of vLLM's encoder modules. The records cover the default
   installer image. Status: implemented. The defaults come from the templates
   and vLLM source; no measurement covers a deployment with these settings.
+
+### API endpoint
+
+vLLM serves the model's API on the deployment's first Spark: Node A for a
+pair, a four-Spark model and a model on Sparks 0 and 1, and Spark 2 for a
+model on Sparks 2 and 3. Without options it listens on every address of that
+Spark at the profile's port ([ports](#security-and-host-exposure)), and
+SparkRing shows it at the LAN address setup recorded for Node A, or at Spark
+2's own ([where it serves](#two-models-on-one-ring)).
+
+| Option | Sets | Part of the deployment |
+|---|---|---|
+| `--api-port N` | The API's TCP port, 1024 to 65535 | Yes, a serving setting |
+| `--api-bind ADDRESS` | The one IPv4 address of that Spark the API listens on | Yes, a serving setting |
+| `--api-address ADDRESS` | The address shown for the model: a DNS name, a Tailscale address or another network's address | No, shown only |
+
+- `--api-port` and `--api-bind` are [serving settings](#serving-settings):
+  the same values select the same deployment, and other values another one.
+  `--api-port` replaces `--port` on every Spark; `--api-bind` replaces
+  `--host 0.0.0.0` on the API's Spark only. The container's health check,
+  which the installation waits for, the short test request and the dashboard
+  check ask the API at that address and port.
+- `--api-port` refuses the ports SparkRing uses: 2222 (administration SSH),
+  5255 (image relay), 29500 (vLLM's default master port) and the profile's
+  `--master-port`.
+- Before it plans a deployment with either setting, and before
+  `sparkring up PROFILE` creates one, Node A reads the addresses and the
+  listening TCP ports of the API's Spark (`ip` and `ss` over SSH). Before any
+  Spark is searched, it refuses a listen address that is not one of that
+  Spark's, and names the Spark's addresses; a loopback address such as
+  127.0.0.1, unless `--allow-loopback-bind` accepts it for a new deployment;
+  a loopback address on Spark 2 in any case, because Node A's checks reach the
+  API over the network; and a port that another program holds on that
+  address or on every address. The port may be held by the deployment itself
+  and by the running models that the installation replaces or stops. The
+  API's Spark checks the address and the port again before the model starts.
+- `--api-address` changes only what SparkRing shows: the plan's `Model API:`
+  line, `Model ready:`, the card's dashboard and `curl` lines, `api_url` in
+  the JSON results and `sparkring status`. The readiness wait, the short
+  test request, `sparkring status --refresh` and
+  [automatic recovery](#automatic-recovery) keep using the listen address,
+  or the automatic address, which Node A reaches. Status prints that URL in
+  parentheses, and the JSON results hold it as `check_url`. The address is
+  not part of the deployment: the same request with another address
+  installs the same deployment. An approved installation records it in the
+  deployment's `api-address.json`; one without `--api-address` shows the
+  automatic address again, and `--plan` records nothing. The commands that
+  plans suggest repeat it.
+- In a terminal, a run without `--yes`, `--json` and these options asks
+  before it searches the Sparks:
+
+  ```text
+  Model API (Enter keeps the first choice):
+    1. Every address of Node A, shown as http://198.51.100.10:8000/v1
+    2. Only 198.51.100.10 (enP7s7)
+    3. Only 198.51.100.11 (wlP9s9)
+  API address number [1]:
+  API port [8000]:
+  ```
+
+  The list leaves out the fabric (the cluster's fabric CIDR), the
+  administration network, loopback and link-local addresses and links that
+  are down. A listed address becomes `--api-bind` and a port `--api-port`.
+  When the Spark's addresses cannot be read, the question is skipped and the
+  endpoint stays automatic.
+- `sparkring setup` takes no `--api-address`. It records Node A's automatic
+  address, which every deployment's site includes, and a model on Sparks 2
+  and 3 serves on Spark 2, which that address does not name.
 
 ### Tool-result contract
 
@@ -737,6 +814,8 @@ contacts the enrolled nodes and observes the model containers.
   cached ones keep their original time and go stale after 90 seconds;
 - container observations: the inspected container ID, start time and actual
   image ID, and for a stopped container its `exit_code` and `finished_at`;
+- `api_url`, the model's API as SparkRing shows it, and `check_url`, the URL
+  its checks use, when an [address is shown](#api-endpoint) in its place;
 - `model`, when the last operation is a completed `up`: `state` (`serving`,
   `stopped`, `partial`, `api-failing`, `rebooted`, `mesh-failed`,
   `mesh-cleanup`, `unreachable` or `unknown`), `summary`, `next_action` and
@@ -1254,7 +1333,9 @@ sudo sparkring install --profile FOUR_SPARK_PROFILE           # all four again
   port: Sparks 0 and 1 on Node A's address, Sparks 2 and 3 on Spark 2's own
   LAN address. `Model ready:` and `sudo sparkring status` print each URL. A
   Spark 2 without its own LAN connection serves on its administration
-  address, which only Node A reaches; the plan says so.
+  address, which only Node A reaches; the plan says so. For Sparks 2 and 3,
+  the [API options](#api-endpoint) and the question name Spark 2's
+  addresses.
 - **Its own steps.** A half's checkpoint plan and model steps call its two
   Sparks Node 0 and Node 1 and name their host names. Package updates and the
   serving image go to every Spark; they restart no model.
@@ -1309,7 +1390,8 @@ changes each Spark's network exposure.
 interfaces of the Spark that serves it: Node A, or Spark 2 for a model on
 Sparks 2 and 3 ([where each half serves](#two-models-on-one-ring)). Anyone who
 can reach its port can use the model, so keep that Spark on a trusted network
-or firewall the port. Containers use
+or firewall the port. `--api-bind` lets it listen on one address only, and
+`--api-port` moves it ([API endpoint](#api-endpoint)). Containers use
 host networking, and the runtime-status dashboard
 (`/v1/sparkring/status/view`) answers on the same port:
 

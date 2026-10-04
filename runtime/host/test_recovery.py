@@ -811,3 +811,52 @@ def test_prerm_stops_a_running_recovery_before_tearing_units_down():
 
 def test_host_tests_never_call_systemd_for_the_timer():
     assert recovery.enable_timer() is False and recovery.timer_enabled() is None
+
+
+def test_status_shows_the_recorded_address_while_checks_and_recovery_use_the_listen_address(pair, monkeypatch,
+                                                                                             capsys):
+    from runtime.host import api_endpoint
+    api_endpoint.record(pair.directory, "llm.example.net")
+    probed = []
+    monkeypatch.setattr(recovery, "api_health", lambda url: probed.append(url) or SERVING)
+    monkeypatch.setattr(recovery, "timer_enabled", lambda: True)
+    monkeypatch.setattr(controller.node, "snapshot", lambda: {"state": "network-configured", "next_action": "x"})
+    capsys.readouterr()
+    assert controller.lifecycle(["status", "--refresh"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert ("http://llm.example.net:8000/v1 (SparkRing's own checks use http://192.0.2.10:8000/v1)" in lines
+            and "Model: The model runs on every Spark and its API answers" in lines)
+    assert controller.lifecycle(["status", "--refresh", "--json"]) == 0
+    deployment = json.loads(capsys.readouterr().out)["deployment"]
+    assert (deployment["api_url"], deployment["check_url"]) == ("http://llm.example.net:8000/v1",
+                                                                 "http://192.0.2.10:8000/v1")
+    assert recovery.check(now=lambda: 2_000_000.0, api=lambda url: probed.append(url) or SERVING,
+                          tunnel={})["state"] == "serving"
+    assert set(probed) == {"http://192.0.2.10:8000/v1"}
+
+
+def test_up_checks_a_new_deployment_s_listen_address_on_its_api_spark(pair, monkeypatch, capsys):
+    from runtime.host import api_endpoint, discovery
+    reports = []
+    report = {"addresses": [{"interface": "enP7s7", "address": "203.0.113.7", "prefix": 24, "state": "UP"},
+                            {"interface": "lo", "address": "127.0.0.1", "prefix": 8, "state": "UNKNOWN"}],
+              "listeners": [], "control_subnet": None}
+
+    def ssh(host, argv, **kwargs):
+        if argv == api_endpoint.PROBE_COMMAND:
+            reports.append(host)
+            return json.dumps(report)
+        return pair.ssh(host, argv, **kwargs)
+    monkeypatch.setattr(discovery, "ssh", ssh)
+    with pytest.raises(ValueError, match="--api-bind 198.51.100.9 is not an address of Node A"):
+        controller.lifecycle(["up", PROFILE, "--instance", "bound", "--api-bind", "198.51.100.9", "--plan"])
+    assert not (controller.STATE / "deployments" / (PROFILE + "-bound")).exists()
+    with pytest.raises(ValueError, match="Add --allow-loopback-bind to serve it that way"):
+        controller.lifecycle(["up", PROFILE, "--instance", "bound", "--api-bind", "127.0.0.1", "--plan"])
+    assert controller.lifecycle(["up", PROFILE, "--instance", "bound", "--api-bind", "203.0.113.7", "--api-port",
+                                 "9100", "--plan"]) == 0
+    lock = installer.read(controller.STATE / "deployments" / (PROFILE + "-bound") / "deployment.lock.json")
+    assert lock["serving"] == {"api_bind": "203.0.113.7", "api_port": 9100}
+    assert installer.connection(lock)["api_url"] == "http://203.0.113.7:9100/v1"
+    assert reports == ["root@192.0.2.10"] * 3
+    assert "Serving settings: --api-bind 203.0.113.7, --api-port 9100" in capsys.readouterr().out

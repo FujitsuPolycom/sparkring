@@ -60,17 +60,20 @@ Step 2 chooses how the Sparks serve:
 | Two models, one per pair | One model on each half of a ring: Sparks 0 and 1, and Sparks 2 and 3 ([two models on one ring](install-reference.md#two-models-on-one-ring)) | Two-Spark profiles, for each pair |
 
 With two pairs, steps 3 and 4 show one pair at a time behind **First pair**
-and **Second pair** tabs. Each pair keeps its own profile, checkpoint and
-serving settings, so the pairs can run different models and checkpoints. The
-page also keeps the four-Spark profile last chosen under **One model on all
-four**, and the pairs' choices while that layout is selected: the switch
-commands use them.
+and **Second pair** tabs. Each pair keeps its own profile, checkpoint,
+serving settings and [API endpoint](#api-endpoint), so the pairs can run
+different models and checkpoints. The switch commands follow the deployed
+models: two pairs switch to the four-Spark profile of the first pair's model,
+and one model on all four switches both pairs to that model's two-Spark
+profile, each with its default checkpoint, serving settings and the automatic
+API endpoint.
 
 The page offers **Two models, one per pair** only when its source's
 `sparkring install` takes `--on`. When building the page,
 [export.py](../../scripts/compose_builder/export.py) reads the options that
 the argument parsers of `runtime/host/install_workflow.py` and
-`runtime/host/cabling.py` define and records them in the page's data as
+`runtime/host/cabling.py` define, and the serving settings that
+`runtime/common/serving.py` defines, and records them in the page's data as
 `features`.
 
 ## Commands
@@ -107,9 +110,36 @@ The options above the commands apply to every install command:
 | Download limit | `--download-limit`, such as `850Mbit` |
 
 Each install command carries `--profile`, `--on` for a pair of a ring,
-`--image` and `--checkpoint` when they are not the defaults, and the
+`--image` and `--checkpoint` when they are not the defaults, the
 [serving settings](install-reference.md#serving-settings) changed for that
-selection. A setting outside its limits shows its problem under the field.
+selection and its [API endpoint](#api-endpoint). A setting outside its limits
+shows its problem under the field.
+
+### API endpoint
+
+Step 4 ends with **API endpoint**: where the model's API listens and the
+address shown for it ([API endpoint](install-reference.md#api-endpoint)). It
+belongs to each model, and with two pairs to each pair.
+
+| Choice | Install command | Compose files |
+|---|---|---|
+| Automatic (default) | No option: every address of the Spark that serves the model, at its profile's port | The same |
+| Ask during install | No `--yes`, so `sparkring install` lists that Spark's addresses and asks which one and which port to use | Automatic; the page says so |
+| Set here | `--api-port`, `--api-bind` and `--api-address` from the **Port**, **Listens only on** and **Address people use** fields | The port and the listen address in the API rank's command and health check; the address in the API line and the `curl` check of the README and the page |
+
+- **Port** takes 1024 to 65535 and refuses the ports SparkRing uses, such as
+  2222 and the profile's `--master-port`. **Listens only on** takes an IPv4
+  address of the Spark that serves the model; the installer checks that the
+  Spark has it. **Address people use** is a name or an address, such as
+  `llm.example.net`, without `http://` or a port. A value the installer would
+  refuse shows its problem under the field and stays out of the commands.
+- The address each install command serves at follows the choice: the address
+  people use, else the listen address, else the Spark's address, at the
+  chosen port.
+- The switch commands use the automatic endpoint.
+- The page offers each field only when its source's `sparkring install`
+  takes the option, and **Ask during install** only when it takes
+  `--api-port` or `--api-bind`.
 
 ### KV cache estimate
 
@@ -153,9 +183,9 @@ A list under the commands says what each Spark becomes.
 ## Share the choices
 
 On a page served over HTTP, **Copy link to these choices** copies the page's
-address with the layout, each selection's profile, checkpoint and changed
-serving settings, the installer image, the install options, the Spark order
-and the output. The link carries no name, address or path from step 5. A link
+address with the layout, each selection's profile, checkpoint, changed
+serving settings and API endpoint choice, the installer image, the install
+options, the Spark order and the output. The link carries no name, address or path from step 5. A link
 without a layout opens the layout that fits its profile's size.
 
 ## Compose files
@@ -187,8 +217,9 @@ NAME/README.txt
 ```
 
 - The folder is what `sparkring compose render` writes for that site file,
-  with the same `--image`, `--checkpoint` and serving-setting flags. The
-  README names the command.
+  with the same `--image`, `--checkpoint` and serving-setting flags, the API
+  endpoint's `--api-port` and `--api-bind` among them. The README names the
+  command and the model's API address.
 - `sparkring compose check --deployment NAME` accepts the unzipped folder.
 - Files have mode 0600 in 0700 folders, as `render` writes them.
 - **Copy as shell command** writes one rank's `compose.yaml` on its Spark.
@@ -225,13 +256,15 @@ in their place line by line. The export stops if a placeholder lands anywhere
 the engine does not rewrite.
 
 [verify.py](../../scripts/compose_builder/verify.py) renders random sites,
-checkpoints and settings on every image with the engine under Node.js and with
-`compose.build`, and requires them to match byte for byte. `--cases` sets the
+checkpoints and settings, the API endpoint's port and listen address among
+them, on every image with the engine under Node.js and with `compose.build`,
+and requires them to match byte for byte. `--cases` sets the
 sites per checkpoint on the default image, `--image-cases` on each other image:
 
 - every rank's `compose.yaml` and `container.json`, `deployment.json`,
   `site.yaml` and the deployment ID;
-- the refusal message for each invalid site;
+- the refusal message for each invalid site and setting, such as a port that
+  SparkRing uses or an address no Spark can listen on;
 - for a sample, the zip: Python's `zipfile` opens it and
   `compose.load_deployment` accepts the unzipped folder.
 

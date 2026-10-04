@@ -1,4 +1,5 @@
 """Per-deployment serving settings replace only the named profile values and belong to the deployment's identity."""
+import dataclasses
 import json
 
 import pytest
@@ -109,6 +110,87 @@ def test_save_cpu_is_a_switch_that_sets_the_reader_window_on_every_rank():
         assert spec.environment == {**default.environment, "SPARKRING_SHM_BUSY_LOOP_S": "0.002"}
         assert spec.command == default.command
     assert all("SPARKRING_SHM_BUSY_LOOP_S" not in spec.environment for spec in installer.specifications(plain))
+
+
+def value_of(command, flag):
+    return command[command.index(flag) + 1]
+
+
+def test_api_port_replaces_the_port_on_every_rank_and_in_the_health_check():
+    plain = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    moved = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"api_port": 9100})
+    assert moved["serving"] == {"api_port": 9100} and moved["id"] != plain["id"]
+    specs = installer.specifications(moved)
+    assert [value_of(spec.command, "--port") for spec in specs] == ["9100", "9100"]
+    assert "http://127.0.0.1:9100/health" in specs[0].health_command[-1] and specs[1].health_command == ()
+    defaults = installer.specifications(plain)
+    assert [len(spec.command) for spec in specs] == [len(spec.command) for spec in defaults]
+    assert installer.connection(moved) == {**installer.connection(plain), "port": 9100,
+                                           "api_url": installer.connection(plain)["api_url"].replace(":8000/", ":9100/")}
+    assert serving.describe({"api_port": 9100}, tuple(defaults[0].command)) == ["--api-port 9100 (profile: 8000)"]
+
+
+def test_api_bind_replaces_the_listen_address_of_the_api_rank_only():
+    plain = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    bound = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"api_bind": "192.0.2.50"})
+    assert bound["id"] != plain["id"] and installer.validate(bound) == bound
+    api, worker = installer.specifications(bound)
+    assert value_of(api.command, "--host") == "192.0.2.50" and value_of(worker.command, "--host") == "0.0.0.0"
+    assert "http://192.0.2.50:8000/health" in api.health_command[-1]
+    assert dataclasses.replace(worker, labels={}) == dataclasses.replace(installer.specifications(plain)[1], labels={})
+    # The checks, and the URL SparkRing shows without another address, use the listen address.
+    assert installer.connection(bound)["api_url"] == "http://192.0.2.50:8000/v1"
+    both = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"api_bind": "192.0.2.50", "api_port": 9100})
+    assert "http://192.0.2.50:9100/health" in installer.specifications(both)[0].health_command[-1]
+    assert installer.connection(both)["api_url"] == "http://192.0.2.50:9100/v1"
+    base = installer.specifications(plain)[0].command
+    assert serving.describe({"api_bind": "192.0.2.50"}, tuple(base)) == ["--api-bind 192.0.2.50 (profile: 0.0.0.0)"]
+    composed = installer.rendered(both)
+    assert "- 192.0.2.50" in composed["rank0/compose.yaml"] and "- 192.0.2.50" not in composed["rank1/compose.yaml"]
+    assert "urlopen('http://192.0.2.50:9100/health'" in composed["rank0/compose.yaml"]
+
+
+def test_api_endpoint_settings_take_a_port_in_range_and_an_address_a_spark_can_listen_on():
+    assert serving.normalized({"api_port": 1024, "api_bind": "10.1.2.3"}) == {"api_bind": "10.1.2.3", "api_port": 1024}
+    for bad in (1023, 65536, "8080", True):
+        with pytest.raises(ValueError, match="--api-port takes a whole number from 1024 to 65535"):
+            serving.normalized({"api_port": bad})
+    for bad in ("0.0.0.0", "0.1.2.3", "224.0.0.1", "255.255.255.255", "1.2.3", "010.0.0.1", "spark", 3, "::1"):
+        with pytest.raises(ValueError, match="--api-bind takes one IPv4 address of the Spark that serves the API, "
+                                             "such as 192.0.2.10; without it the API listens on every address"):
+            serving.normalized({"api_bind": bad})
+
+
+def test_api_port_refuses_the_ports_sparkring_and_the_profile_use():
+    args = profile_args(QWEN)
+    assert serving.reserved_ports(args) == [(2222, "the port of SparkRing's administration SSH"),
+                                            (5255, "the port of SparkRing's image relay"),
+                                            (29500, "vLLM's default master port"),
+                                            (29638, "the profile's --master-port")]
+    for port, reason in serving.reserved_ports(args):
+        with pytest.raises(ValueError, match=f"--api-port {port} is {reason}. Choose another port."):
+            serving.apply(args, {"api_port": port})
+    assert value_of(serving.apply(args, {"api_port": 8001}), "--port") == "8001"
+    # The profile's own port is accepted; it names another deployment with the same command.
+    assert serving.apply(args, {"api_port": 8000}) == tuple(args)
+
+
+def test_without_settings_a_container_is_unchanged():
+    lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    for rank, spec in enumerate(installer.specifications(dict(lock, serving={}))):
+        assert serving.container(spec, {}, rank=rank) is spec
+
+
+def test_compose_renders_the_api_endpoint_as_install_does():
+    from runtime.common import compose
+    example = compose.read_site(installer.ROOT / "profiles" / QWEN / "compose" / "site.example.yaml")
+    plain, _ = compose.build(QWEN, example)
+    manifest, files = compose.build(QWEN, example, serving={"api_port": 9100, "api_bind": "192.0.2.50"})
+    assert manifest["serving"] == {"api_bind": "192.0.2.50", "api_port": 9100} and manifest["id"] != plain["id"]
+    specs, _ = compose.specifications(QWEN, example, image_runtime=manifest["image_runtime"], serving=manifest["serving"])
+    assert value_of(specs[0].command, "--host") == "192.0.2.50" and value_of(specs[1].command, "--host") == "0.0.0.0"
+    assert "urlopen('http://192.0.2.50:9100/health'" in files["rank0/compose.yaml"]
+    assert "'9100'" in files["rank1/compose.yaml"] and "192.0.2.50" not in files["rank1/compose.yaml"]
 
 
 # Thinking settings write the model's own chat template arguments into vLLM's

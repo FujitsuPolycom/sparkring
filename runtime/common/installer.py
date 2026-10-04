@@ -431,12 +431,11 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     if only_rank is not None and card["profile"] in compose.SUPPORTED:
         specs = [specs[only_rank]]
     settings = lock.get("serving") or {}
-    return [replace(spec, name=container_name(lock, only_rank if only_rank is not None else number),
-                    labels={**spec.labels, **container_labels(lock, only_rank if only_rank is not None else number)},
-                    command=serving.apply(spec.command, settings, model=(card["profile"], card["target_variant"]))
-                    if settings else spec.command,
-                    environment={**spec.environment, **serving.environment(settings)})
-            for number, spec in enumerate(specs)]
+    ranks = [only_rank] if only_rank is not None else range(len(specs))
+    selected = (card["profile"], card["target_variant"])
+    return [replace(serving.container(spec, settings, rank=rank, model=selected), name=container_name(lock, rank),
+                    labels={**spec.labels, **container_labels(lock, rank)})
+            for rank, spec in zip(ranks, specs, strict=True)]
 
 
 def container_name(lock, rank):
@@ -465,6 +464,15 @@ def rendered(lock):
 
 
 def connection(lock):
+    """The API of the deployment: ``api_url``, the served ``model`` and the ``port``.
+
+    The API answers on the API rank at the deployment's port (serving setting
+    ``api_port``, else the profile's). Its address is the listen address
+    (serving setting ``api_bind``), else the site's ``api_address`` (Node A's
+    LAN address, or Spark 2's for a half on Sparks 2 and 3), else the API
+    rank's management address. SparkRing's own checks use this URL; an address
+    named for display (runtime.host.api_endpoint) never replaces it here.
+    """
     if lock["backend"] in ("glm-managed", "glm-existing-mesh"):
         from runtime.common import glm_tp4
         port = int(glm_tp4.DEFAULTS["PORT"])
@@ -473,7 +481,8 @@ def connection(lock):
         args = specifications(lock, only_rank=0)[0].command
         port = int(args[args.index("--port") + 1])
         model = args[args.index("--served-model-name") + 1]
-    host_ip = lock["site"].get("api_address", lock["site"]["ranks"][0]["management_ip"])
+    host_ip = ((lock.get("serving") or {}).get("api_bind")
+               or lock["site"].get("api_address", lock["site"]["ranks"][0]["management_ip"]))
     return {"api_url": f"http://{host_ip}:{port}/v1", "model": model, "port": port}
 
 
