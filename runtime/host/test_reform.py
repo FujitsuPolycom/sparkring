@@ -290,6 +290,16 @@ def test_retire_on_node_a_moves_cluster_state_and_keeps_the_key_lock_and_this_se
         assert oct((retired / "receipt.json").stat().st_mode & 0o777) == "0o644"
 
 
+def test_retire_stops_the_fabric_service_before_it_removes_the_fabric_routes(tmp_path):
+    # The host agent restores approved routes while the fabric service is active.
+    former_node_a(tmp_path)
+    host = Host(tmp_path, units=dict(ENABLED))
+    reform.retire({"stamp": STAMP, "node_a": True, "keep": list(reform.NODE_A_KEEPS)}, call=host, root=tmp_path)
+    stop = host.calls.index(["systemctl", "disable", "--now", "sparkring-fabric.service"])
+    removals = [index for index, argv in enumerate(host.calls) if argv[:3] == ["ip", "route", "del"]]
+    assert removals and stop < min(removals)
+
+
 def test_retire_repeats_safely_after_an_interruption(tmp_path):
     former_node_a(tmp_path)
     host = Host(tmp_path, units=dict(ENABLED))

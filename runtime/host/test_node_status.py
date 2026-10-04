@@ -30,7 +30,8 @@ class Host:
             pytest.fail("status read the driver again instead of using the collected facts")
         stdout = ""
         if argv[:2] == ["sysctl", "-n"]:
-            stdout = "1\n"
+            # The approved per-interface fabric settings: forwarding 1, rp_filter 0.
+            stdout = "0\n" if argv[-1].endswith(".rp_filter") else "1\n"
         elif argv[:2] == ["systemctl", "show"] and "DropInPaths" in argv:
             stdout = " ".join(self.drop_ins.get(argv[-1], [])) + "\n"
         elif argv[0] == "lldpctl":

@@ -266,6 +266,8 @@ def retire(order, call=None, root="/"):
     if fabric_path.exists():
         fabric = json.loads(fabric_path.read_text(encoding="utf-8"))
         # Stale routes to the fabric /24s would conflict with the renumbered ones.
+        # sparkring-agent adds approved routes only while sparkring-fabric.service
+        # is active; the loop above stopped it, so these stay removed.
         for route in fabric.get("routes") or []:
             argv = ["ip", "route", "del", route["destination"], "via", route["via"], "dev", route["dev"]]
             run(argv, accepted=(0, 2))
