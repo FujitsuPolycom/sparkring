@@ -1376,7 +1376,10 @@ __ENGINE__
             el('div', { class: 'btns' }, button)),
           el('p', { class: 'what' }, c.what),
           el('pre', { class: 'code cmd', tabindex: '0', 'aria-label': group.title + ' command ' + number }, code),
-          c.endpoint ? el('p', { class: 'endpoint' }, 'Serves at ', el('code', {}, c.endpoint)) : null));
+          c.endpoints.length > 1
+            ? el('p', { class: 'endpoint' }, 'The first pair serves at ', el('code', {}, c.endpoints[0]), ', the second at ',
+              el('code', {}, c.endpoints[1]))
+            : c.endpoint ? el('p', { class: 'endpoint' }, 'Serves at ', el('code', {}, c.endpoint)) : null));
       }
       // The switch commands install the deployed model on the other layout (switchSlot).
       const hint = group.key !== 'switch' ? null : switchHint();

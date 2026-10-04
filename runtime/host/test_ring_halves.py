@@ -266,6 +266,138 @@ def test_a_half_moves_its_checkpoint_between_its_own_sparks(ring, capsys):
     assert ("view", (2, 3)) in ring.events
 
 
+# Two installations in one run: `sparkring install ... --on 0,1 --and ... --on 2,3`.
+
+BOTH = ["--profile", QWEN, "--on", "0,1", "--and", "--profile", GLM, "--on", "2,3", "--checkpoint", "nvfp4-qad"]
+
+
+def ring_with_four_spark_model(ring, capsys):
+    assert install("--profile", TP4) == 0
+    tp4 = result(capsys)
+    ops(ring)
+    return tp4
+
+
+def test_one_command_installs_both_halves_and_stops_the_four_spark_model_once(ring, capsys):
+    ring_with_four_spark_model(ring, capsys)
+    assert install(*BOTH) == 0
+    out = capsys.readouterr()
+    both = json.loads(out.out)
+    assert both["state"] == "complete"
+    assert both["command"] == (f"sudo sparkring install --profile {QWEN} --on 0,1 --and --profile {GLM} --on 2,3 "
+                               "--checkpoint nvfp4-qad")
+    first, second = both["installs"]
+    assert (first["placement"], second["placement"]) == ([0, 1], [2, 3])
+    # The first installation stops the four-Spark model; the second stops nothing more.
+    assert [row["profile"] for row in first["stops"]] == [TP4] and second["stops"] == []
+    assert ops(ring) == [f"{TP4}:down", "park-ring", f"{QWEN}@01:up", f"{QWEN}@01:verify",
+                         "park-ring", f"{GLM}@23:up", f"{GLM}@23:verify"]
+    assert recorded() == {None: None, (0, 1): QWEN + "@01", (2, 3): GLM + "@23"}
+    assert installer.read(Path(second["deployment"]) / "deployment.lock.json")["selection"]["target_variant"] == "nvfp4-qad"
+    # Both plans print before either installs, and the four-Spark model is listed once.
+    assert out.err.index(f"Install {GLM} on Sparks 2 and 3") < out.err.index(f"Model ready on Sparks 0 and 1: {first['api_url']}")
+    assert out.err.count(f"It stops {TP4} on all four Sparks.") == 1
+    assert f"Model ready on Sparks 2 and 3: {second['api_url']}" in out.err
+    # Older deployments are released once, after the last installation.
+    assert "retention" not in first and "retention" in second
+    assert first["checkpoint"]["approval"] == second["checkpoint"]["approval"] == "command-line"
+
+
+def test_plan_saves_both_plans_and_a_later_yes_stays_within_them(ring, capsys):
+    ring_with_four_spark_model(ring, capsys)
+    assert sparkring.main(["install", *BOTH, "--plan"]) == 0
+    err = capsys.readouterr().err
+    assert (f"Plans saved. Install both with sudo sparkring install --profile {QWEN} --on 0,1 --and --profile {GLM} "
+            "--on 2,3 --checkpoint nvfp4-qad --yes.") in err
+    assert ops(ring) == []
+    assert sparkring.main(["install", *BOTH, "--plan", "--json"]) == 0
+    planned = result(capsys)
+    assert planned["state"] == "planned" and [item["state"] for item in planned["installs"]] == ["planned", "planned"]
+    assert [item["checkpoint"]["reviewed"] for item in planned["installs"]] == [True, True]
+    assert ops(ring) == [] and recorded()[None] == TP4
+    assert install(*BOTH) == 0
+    done = result(capsys)
+    assert [item["checkpoint"]["approval"] for item in done["installs"]] == ["reviewed-plan", "reviewed-plan"]
+
+
+def test_a_failed_second_half_keeps_the_first_serving_and_names_its_own_command(ring, capsys):
+    ring_with_four_spark_model(ring, capsys)
+    ring.fail = (GLM + "@23", "verify")
+    # The run-wide options may follow the second installation.
+    assert sparkring.main(["install", *BOTH, "--yes", "--json"]) == 2
+    out = capsys.readouterr()
+    stopped = json.loads(out.out)
+    first, second = stopped["installs"]
+    assert stopped["state"] == "failed" and stopped["message"].startswith("Sparks 2 and 3: Installation did not complete")
+    assert first["state"] == "complete" and second["state"] == "failed"
+    assert second["command"] == f"sudo sparkring install --profile {GLM} --on 2,3 --checkpoint nvfp4-qad"
+    assert second["transaction"]["state"] == "failed"
+    # The four-Spark model that the first installation stopped stays stopped; the first half keeps serving.
+    assert ops(ring) == [f"{TP4}:down", "park-ring", f"{QWEN}@01:up", f"{QWEN}@01:verify",
+                         "park-ring", f"{GLM}@23:up", f"{GLM}@23:verify"]
+    assert recorded() == {None: None, (0, 1): QWEN + "@01", (2, 3): None}
+    assert f"Model ready on Sparks 0 and 1: {first['api_url']}" in out.err
+    assert (f"Repeat only this half with sudo sparkring install --profile {GLM} --on 2,3 --checkpoint nvfp4-qad --yes."
+            in out.err)
+
+
+def test_a_failed_first_half_starts_nothing_else_and_restores_the_four_spark_model(ring, capsys):
+    tp4 = ring_with_four_spark_model(ring, capsys)
+    ring.fail = (QWEN + "@01", "verify")
+    assert install(*BOTH) == 2
+    failed = result(capsys)
+    assert "installs" not in failed and failed["transaction"]["state"] == "failed-recovered"
+    assert ops(ring) == [f"{TP4}:down", "park-ring", f"{QWEN}@01:up", f"{QWEN}@01:verify", f"{QWEN}@01:down",
+                         f"{TP4}:down", f"{TP4}:up", f"{TP4}:verify"]
+    assert recorded() == {None: TP4, (0, 1): None, (2, 3): None}
+    assert rollout.active(controller.STATE) == Path(tp4["deployment"]).resolve()
+
+
+def test_one_question_covers_both_installations_in_a_terminal(ring, capsys, monkeypatch):
+    ring_with_four_spark_model(ring, capsys)
+    questions = []
+
+    def confirm(prompt, yes=False, *, default=False):
+        questions.append(prompt)
+    monkeypatch.setattr(flow.controller, "confirm", confirm)
+    monkeypatch.setattr(flow, "ask_endpoint", lambda *args, **kwargs: None)
+    monkeypatch.setattr(flow.sys.stdin, "isatty", lambda: True)
+    assert sparkring.main(["install", *BOTH]) == 0
+    assert questions == [f"Stop {TP4} on all four Sparks and apply both installations?"]
+    assert recorded() == {None: None, (0, 1): QWEN + "@01", (2, 3): GLM + "@23"}
+
+
+def test_without_a_terminal_or_yes_nothing_installs(ring, capsys):
+    ring_with_four_spark_model(ring, capsys)
+    assert sparkring.main(["install", *BOTH, "--json"]) == 3
+    refused = result(capsys)
+    assert refused["field"] == "approval" and refused["message"].startswith(
+        f"Approve both installations with sudo sparkring install --profile {QWEN} --on 0,1 --and")
+    assert ops(ring) == [] and recorded()[None] == TP4
+
+
+def test_a_joined_four_spark_profile_is_refused_before_any_change(ring, capsys):
+    ring_with_four_spark_model(ring, capsys)
+    assert install("--profile", QWEN, "--on", "0,1", "--and", "--profile", TP4, "--on", "2,3") == 3
+    refused = result(capsys)
+    assert refused["field"] == "placement" and ops(ring) == [] and recorded()[None] == TP4
+
+
+@pytest.mark.parametrize("argv, message", [
+    (["--profile", QWEN, "--on", "0,1", "--and", "--profile", GLM, "--on", "0,1"], "go on different halves"),
+    (["--profile", QWEN, "--on", "0,1", "--and", "--profile", GLM], "names its two-Spark --profile and its half"),
+    (["--profile", QWEN, "--on", "0,1", "--and", "--profile", GLM, "--on", "2,3", "--and", "--profile", QWEN],
+     "--and joins two installations"),
+    (["--profile", QWEN, "--on", "0,1", "--download-limit", "1Gbit", "--and", "--profile", GLM, "--on", "2,3",
+      "--download-limit", "2Gbit"], "--download-limit has a different value in each installation"),
+])
+def test_joined_installations_are_checked_before_anything_runs(ring, capsys, argv, message):
+    with pytest.raises(SystemExit) as stop:
+        sparkring.main(["install", "--yes", *argv])
+    assert stop.value.code == 2 and message in capsys.readouterr().err
+    assert ops(ring) == []
+
+
 def test_parking_the_ring_runs_on_every_spark():
     value = cluster(4)
     calls = []

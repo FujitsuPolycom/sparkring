@@ -91,6 +91,8 @@ Clones the SparkRing repository at --ref and builds its Debian package, asks
 before installing the package on this Spark, then runs `sudo sparkring install`
 with every other option, for example --profile qwen38-flash-next-tp2. That
 command asks for approval before it changes any Spark. --yes approves both.
+On a four-Spark ring, --profile A --on 0,1 --and --profile B --on 2,3 installs
+a two-Spark model on each half in one run.
 
 --package-only stops after installing the package, before any other Spark or
 model changes; `sudo sparkring install --plan` can then review the rest.

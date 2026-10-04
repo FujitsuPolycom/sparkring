@@ -737,8 +737,11 @@ const SparkRingEngine = (() => {
   // profile on that half of a four-Spark ring. `apiAddress` is the address shown for the
   // model (apiAddress()).
   function installCommand(profile, checkpoint, settings, meta, opts) {
-    const words = ['--profile', profile.id, ...(opts.on ? ['--on', opts.on] : []), ...selectionWords(profile, checkpoint, settings)];
-    if (opts.apiAddress) words.push('--api-address', opts.apiAddress);
+    const words = installWords(profile, checkpoint, settings, opts);
+    // A second installation that --and joins (opts.and: {profile, checkpoint, settings, on,
+    // apiAddress}) has its own words; the run-wide flags follow both
+    // (install_workflow.parse_joined).
+    if (opts.and) words.push('--and', ...installWords(opts.and.profile, opts.and.checkpoint, opts.and.settings, opts.and));
     if (opts.downloadLimit) words.push('--download-limit', opts.downloadLimit);
     if (opts.approval === 'plan') words.push('--plan');
     if (opts.approval === 'yes') words.push('--yes');
@@ -746,6 +749,12 @@ const SparkRingEngine = (() => {
     const ref = opts.pin ? meta.ref : 'main';
     return `curl -fsSL https://raw.githubusercontent.com/${meta.repository}/${ref}/install.sh | bash -s -- `
       + (opts.pin ? `--ref ${ref} ` : '') + words.join(' ');
+  }
+  // One installation's own words: its profile, half, checkpoint, serving settings and shown address.
+  function installWords(profile, checkpoint, settings, opts) {
+    const words = ['--profile', profile.id, ...(opts.on ? ['--on', opts.on] : []), ...selectionWords(profile, checkpoint, settings)];
+    if (opts.apiAddress) words.push('--api-address', opts.apiAddress);
+    return words;
   }
   // The `sparkring compose render` command that writes the same deployment.
   function renderCommand(profile, checkpoint, settings, site) {
@@ -795,7 +804,8 @@ const SparkRingEngine = (() => {
   // The ordered commands of a layout, in groups:
   //   install: the layout's installation. For a new installation (opts.form "script") the first
   //            command is the one-command installer, which passes --on to `sparkring install`;
-  //            every later command runs the `sudo sparkring install` it installed. A second half
+  //            every later command runs the `sudo sparkring install` it installed. Both halves
+  //            are one command joined by --and when features.joined_halves, else the second half
   //            runs after the first: SparkRing runs one installation at a time.
   //   check:   `sudo sparkring status`, and `sudo sparkring cabling --bandwidth` when
   //            features.cable_check.
@@ -803,8 +813,8 @@ const SparkRingEngine = (() => {
   //            `note` saying so: they replace the models the install group starts. Installing a
   //            half stops the four-Spark model, and installing the four-Spark model stops both
   //            halves' models.
-  // Each command is {where, what, command, endpoint, error}: `endpoint` is the API it serves,
-  // and `error` why it has no command. `plan` is {layout, features, main, halves}, where a
+  // Each command is {where, what, command, endpoint, endpoints, error}: `endpoints` are the APIs
+  // it serves in order, `endpoint` the first of them, and `error` why it has no command. `plan` is {layout, features, main, halves}, where a
   // selection is {profile, checkpoint: name or null, settings: requested values, endpoint,
   // problems}: `main` is the pair's or the ring's model, and the four-Spark model the halves
   // layout switches to; `halves` are the two halves' models, which the ring layout switches to. A
@@ -836,11 +846,10 @@ const SparkRingEngine = (() => {
       for (const x of sparkProblems(opts.sparks || [])) problems.push({ field: `rank${x.rank}-${x.key}`, message: x.message, pair: null });
     }
     let first = true, asks = false;
-    // One install command; `apiRank` is the rank that serves its API and `pair` the half whose
-    // fields the selection holds.
-    const install = (selection, on, apiRank, what, pair = null) => {
-      const form = first ? opts.form : 'installed';
-      first = false;
+    // One selection's checked request: its serving check, its shown address and the problem that
+    // keeps it from a command, with its fields' problems added to `problems`; `pair` is the half
+    // whose fields the selection holds.
+    const request = (selection, pair) => {
       const check = servingCheck(selection.profile, selection.settings, selection.checkpoint);
       const endpoint = selection.endpoint || {};
       let address = null, problem = check.ok ? null : check.error;
@@ -853,15 +862,42 @@ const SparkRingEngine = (() => {
       if (endpoint.ask) asks = true;
       const model = check.ok ? selection.profile.model_name + (check.checkpoint.default ? '' : ' (' + check.checkpoint.name + ')')
         : selection.profile.model_name;
+      return { selection, check, address, problem, ask: Boolean(endpoint.ask), model };
+    };
+    const where = form => form === 'script' ? 'On ' + names[0].label + ', the Spark connected to your network, as a user with sudo' : run;
+    const installs = form => form !== 'script' ? 'Starts '
+      : layout === 'halves' ? 'Installs SparkRing on all four Sparks and starts ' : 'Installs SparkRing and starts ';
+    // One install command; `apiRank` is the rank that serves its API.
+    const install = (selection, on, apiRank, what, pair = null) => {
+      const form = first ? opts.form : 'installed';
+      first = false;
+      const r = request(selection, pair);
+      const url = r.problem ? null : apiUrl(r.check.checkpoint, r.check.settings, names[apiRank].address, r.address);
       return {
-        where: form === 'script' ? 'On ' + names[0].label + ', the Spark connected to your network, as a user with sudo' : run,
-        what: (form === 'script' ? (layout === 'halves' ? 'Installs SparkRing on all four Sparks and starts ' : 'Installs SparkRing and starts ')
-          : 'Starts ') + model + what,
-        command: problem ? '' : installCommand(selection.profile, check.checkpoint, check.settings, meta,
-          { form, pin: opts.pin, approval: endpoint.ask && approval === 'yes' ? 'ask' : approval,
-            downloadLimit: limit.value, on, apiAddress: address }),
-        endpoint: problem ? null : apiUrl(check.checkpoint, check.settings, names[apiRank].address, address),
-        error: problem,
+        where: where(form), what: installs(form) + r.model + what,
+        command: r.problem ? '' : installCommand(selection.profile, r.check.checkpoint, r.check.settings, meta,
+          { form, pin: opts.pin, approval: r.ask && approval === 'yes' ? 'ask' : approval,
+            downloadLimit: limit.value, on, apiAddress: r.address }),
+        endpoint: url, endpoints: url ? [url] : [], error: r.problem,
+      };
+    };
+    // Both halves in one command joined by --and (features.joined_halves): `sparkring install`
+    // plans both, asks once and installs them in order. Each half serves on its first Spark.
+    const installBoth = (selections, what) => {
+      const form = first ? opts.form : 'installed';
+      first = false;
+      const [a, b] = selections.map((selection, pair) => request(selection, pair));
+      const problem = a.problem || b.problem;
+      const urls = problem ? [] : [a, b].map((r, pair) => apiUrl(r.check.checkpoint, r.check.settings, names[2 * pair].address, r.address));
+      return {
+        where: where(form),
+        what: installs(form) + `${a.model} on the first pair (${pairOf(0)}) and ${b.model} on the second pair (${pairOf(1)})` + what,
+        command: problem ? '' : installCommand(a.selection.profile, a.check.checkpoint, a.check.settings, meta,
+          { form, pin: opts.pin, approval: (a.ask || b.ask) && approval === 'yes' ? 'ask' : approval,
+            downloadLimit: limit.value, on: HALVES[0], apiAddress: a.address,
+            and: { profile: b.selection.profile, checkpoint: b.check.checkpoint, settings: b.check.settings, on: HALVES[1],
+              apiAddress: b.address } }),
+        endpoint: urls[0] || null, endpoints: urls, error: problem,
       };
     };
     const next = ' Run it after the command above finishes.';
@@ -869,10 +905,10 @@ const SparkRingEngine = (() => {
     let switching = null;
     const optional = { optional: true, note: 'Optional: switch layouts later. This stops the models above.' };
     if (layout === 'halves') {
-      groups.push({ key: 'install', title: 'Install', commands: [
-        install(plan.halves[0], HALVES[0], 0, ` on the first pair: ${pairOf(0)}.`, 0),
-        install(plan.halves[1], HALVES[1], 2, ` on the second pair: ${pairOf(1)}.` + next, 1),
-      ] });
+      groups.push({ key: 'install', title: 'Install', commands: features.joined_halves
+        ? [installBoth(plan.halves, '. It plans both, asks once, then installs them in order.')]
+        : [install(plan.halves[0], HALVES[0], 0, ` on the first pair: ${pairOf(0)}.`, 0),
+          install(plan.halves[1], HALVES[1], 2, ` on the second pair: ${pairOf(1)}.` + next, 1)] });
       switching = { key: 'switch', title: 'Switch to one model', ...optional, commands: [
         install(plan.main, null, 0, " on all four Sparks, and stops both pairs' models."),
       ] };
@@ -881,17 +917,17 @@ const SparkRingEngine = (() => {
         install(plan.main, null, 0, layout === 'pair' ? ' on both Sparks.' : ' on all four Sparks.'),
       ] });
       if (layout === 'ring' && features.ring_halves) {
-        switching = { key: 'switch', title: 'Switch to two models', ...optional, commands: [
-          install(plan.halves[0], HALVES[0], 0, ` on ${pairOf(0)}, and stops the model on all four.`),
-          install(plan.halves[1], HALVES[1], 2, ` on ${pairOf(1)}.` + next),
-        ] };
+        switching = { key: 'switch', title: 'Switch to two models', ...optional, commands: features.joined_halves
+          ? [installBoth(plan.halves, ', and stops the model on all four.')]
+          : [install(plan.halves[0], HALVES[0], 0, ` on ${pairOf(0)}, and stops the model on all four.`),
+            install(plan.halves[1], HALVES[1], 2, ` on ${pairOf(1)}.` + next)] };
       }
     }
     const check = [{ where: run, what: layout === 'halves' ? "Shows each pair's model separately." : 'Shows each Spark and the model.',
-      command: 'sudo sparkring status', endpoint: null, error: null }];
+      command: 'sudo sparkring status', endpoint: null, endpoints: [], error: null }];
     if (features.cable_check) {
       check.push({ where: run, what: "Measures each cable's speed. It skips cables a running model uses.",
-        command: 'sudo sparkring cabling --bandwidth', endpoint: null, error: null });
+        command: 'sudo sparkring cabling --bandwidth', endpoint: null, endpoints: [], error: null });
     }
     groups.push({ key: 'check', title: 'Check', commands: check });
     if (switching) groups.push(switching);
@@ -918,7 +954,7 @@ const SparkRingEngine = (() => {
       for (const c of commands) Object.assign(c, { command: '', error: c.error || 'Fix the marked fields.' });
     }
     const notes = ['If an install stops early, run it again; it picks up where it left off.'];
-    const serves = spark => commands.some(c => c.endpoint && c.endpoint.startsWith(`http://${spark.address}:`));
+    const serves = spark => commands.some(c => c.endpoints.some(url => url.startsWith(`http://${spark.address}:`)));
     // NODE_A and SPARK_2 stand for the addresses of Sparks the user did not name.
     const placeholders = names.filter(spark => !spark.given && serves(spark));
     if (placeholders.length) {

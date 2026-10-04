@@ -17,6 +17,7 @@ sudo sparkring install --profile PROFILE --model-path /data/models/my-model  # r
 sudo sparkring install --profile PROFILE --checkpoint NAME   # another checkpoint the profile lists
 sudo sparkring install --profile PROFILE --image NAME        # another image from sparkring images
 sudo sparkring install --profile PROFILE --on 2,3            # a two-Spark model on half of a four-Spark ring
+sudo sparkring install --profile A --on 0,1 --and --profile B --on 2,3  # a two-Spark model on each half
 sudo sparkring logs --follow                                 # follow progress
 ```
 
@@ -58,6 +59,7 @@ serves, it releases what older deployments hold on the Sparks
 |---|---|
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
 | `--on 0,1` or `--on 2,3` | Put a two-Spark profile on one half of a four-Spark ring ([two models on one ring](install-reference.md#two-models-on-one-ring)); default: the half that serves no model |
+| `--and` | Join a second installation for the ring's other half to the same run: `--profile A --on 0,1 [its flags] --and --profile B --on 2,3 [its flags]`. Both are planned first, one approval covers both, and they install in order ([one command for both halves](install-reference.md#one-command-for-both-halves)) |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
