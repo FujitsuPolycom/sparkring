@@ -5,7 +5,10 @@
       "tokens": 2877721,
       "source": "runtime/releases/shared-2026.09.3/correctness.json",
       "witness": "\"reported_kv_pool_tokens\": 2877721",
-      "conditions": "Qwen QAD TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit."
+      "conditions": "Qwen QAD TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit.",
+      "kv_bytes_per_rank": 25769803776,
+      "checkpoint": "qad-step-4000",
+      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in the serving configuration of the measured SparkCache profile, profiles/qwen38-flash-next-tp2/sparkcache.json at tag shared-2026.09.3; correctness.json records the checkpoint revision 629bc3218833 (qad-step-4000)."
     },
     "deepseek-v41-flash-sglang-cycle": {
       "tokens": 1499904,
@@ -17,25 +20,39 @@
       "tokens": 1081922,
       "source": "runtime/releases/shared-2026.09.3/correctness.json",
       "witness": "\"reported_kv_pool_tokens\": 1081922",
-      "conditions": "GLM Spark TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 7.5 GiB KV per rank and 1048576 configured context. Engine-reported capacity; not full-context qualification."
+      "conditions": "GLM Spark TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 7.5 GiB KV per rank and 1048576 configured context. Engine-reported capacity; not full-context qualification.",
+      "kv_bytes_per_rank": 8053063680,
+      "kv_evidence": "\"kv_cache_memory_bytes\": 8053063680 of tp2-dcp1-sparkcache in runtime/releases/shared-2026.09.3/glm-profile-contract.json."
     },
     "glm53-flash-nvfp4-spark-tp2": {
       "tokens": 1530566,
       "source": "performance/records/images/dev-20260928-plainstatus-glm53-flash-tp2-20260929.md",
       "witness": "GPU KV cache size: 1,530,566 tokens",
-      "conditions": "GLM-5.3-Flash NVFP4-Spark TP2/DCP1 installer profile on image dev-20260928-plainstatus-cuda1342-nccl2323-status033, 10 GiB KV per rank in 2,048-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification."
+      "conditions": "GLM-5.3-Flash NVFP4-Spark TP2/DCP1 installer profile on image dev-20260928-plainstatus-cuda1342-nccl2323-status033, 10 GiB KV per rank in 2,048-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification.",
+      "kv_bytes_per_rank": 10737418240,
+      "checkpoints": {
+        "nvfp4-qad": {
+          "tokens": 736274,
+          "source": "performance/records/glm53-flash/nvfp4-qad-tp2-kv-capacity-20261002.md",
+          "witness": "GPU KV cache size: 736,274 tokens",
+          "kv_bytes_per_rank": 5368709120,
+          "conditions": "GLM-5.3-Flash nvfp4-qad TP2/DCP1 installer profile on image dev-20261001-kraken-cuda1342-nccl2323-status034, on one half of a four-Spark ring, 5 GiB FP8 KV per rank in 2,048-token pages and 524288 configured context. Engine-reported capacity; not proof that concurrent full-context requests fit."
+        }
+      }
     },
     "glm53-flash-nvfp4-spark-tp4": {
       "tokens": 6128169,
       "source": "performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md",
       "witness": "GPU KV cache size: 6,128,169 tokens",
-      "conditions": "GLM-5.3-Flash NVFP4-Spark TP4/DCP1 installer profile on image dev-20260928-plainstatus-cuda1342-nccl2323-status033, 40 GiB KV per rank in 1,024-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification."
+      "conditions": "GLM-5.3-Flash NVFP4-Spark TP4/DCP1 installer profile on image dev-20260928-plainstatus-cuda1342-nccl2323-status033, 40 GiB KV per rank in 1,024-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification.",
+      "kv_bytes_per_rank": 42949672960
     },
     "glm52-exl3-r7-3.5bpw": {
       "tokens": 1156864,
       "source": "profiles/glm52-exl3-r7-3.5bpw/recipe.json",
       "witness": "\"reported_kv_tokens\": 1156864",
-      "conditions": "Recorded EXL3 TP4/DCP4 profile, 9,250,000,000 KV bytes per rank."
+      "conditions": "Recorded EXL3 TP4/DCP4 profile, 9,250,000,000 KV bytes per rank.",
+      "kv_bytes_per_rank": 9250000000
     },
     "deepseek-v41-flash-cycle": {
       "tokens": 2182642,
@@ -60,7 +77,9 @@
       "tokens": 2278454,
       "source": "runtime/releases/shared-2026.09.3/correctness.json",
       "witness": "\"reported_kv_pool_tokens\": 2278454",
-      "conditions": "GLM Spark TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB KV per rank and 1048576 configured context. Engine-reported capacity; not full-context qualification."
+      "conditions": "GLM Spark TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB KV per rank and 1048576 configured context. Engine-reported capacity; not full-context qualification.",
+      "kv_bytes_per_rank": 25769803776,
+      "kv_evidence": "\"kv_cache_memory_bytes\": 25769803776 of tp4-dcp1-sparkcache in runtime/releases/shared-2026.09.3/glm-profile-contract.json."
     },
     "deepseek-v4-flash-0731": {
       "tokens": 1000000,
@@ -73,45 +92,54 @@
       "tokens": 2198756,
       "source": "performance/records/deepseek-v4-flash/image827a8e8c-tp2.json",
       "witness": "GPU KV cache size: 2,198,756 tokens",
-      "conditions": "Measured TP2/DCP1 engine pool on the cached published DeepSeek image, DSpark K5, fp8_ds_mla and 16 GiB KV per rank. Model configuration/index hashes and 48-shard presence checked; no full weight checksum, fresh pull or 1M-token output-quality qualification."
+      "conditions": "Measured TP2/DCP1 engine pool on the cached published DeepSeek image, DSpark K5, fp8_ds_mla and 16 GiB KV per rank. Model configuration/index hashes and 48-shard presence checked; no full weight checksum, fresh pull or 1M-token output-quality qualification.",
+      "kv_bytes_per_rank": 17179869184
     },
     "glm53-flash-nvfp4-dflash2-bf16-tp4": {
       "tokens": 4321618,
       "source": "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json",
       "witness": "\"logical_kv_capacity_tokens\": 4321618",
-      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe."
+      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe.",
+      "kv_bytes_per_rank": 25769803776
     },
     "sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4": {
       "tokens": 4321618,
       "source": "profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json",
       "witness": "\"logical_kv_capacity_tokens\": 4321618",
-      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe."
+      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe.",
+      "kv_bytes_per_rank": 25769803776
     },
     "glm53-flash-spark-tp4-dcp1": {
       "tokens": 2300000,
       "source": "performance/capacity-references.md",
       "witness": "cache-disabled MTP3 TP4/DCP1 profile at 2.3M tokens",
       "conditions": "Reference from the shared-image MTP3 TP4/DCP1 layout at 24 GiB per rank; not a separate R33 startup measurement.",
-      "approximate": true
+      "approximate": true,
+      "kv_bytes_per_rank": 25769803776
     },
     "glm53-flash-spark-tp4-switched": {
       "tokens": 2300000,
       "source": "performance/capacity-references.md",
       "witness": "Its table uses the shared-image table's 2.3M",
       "conditions": "Sizing estimate using the same target checkpoint, TP4/DCP1, FP8 KV and 24 GiB per rank. Transport and source-image composition differ; not a measured switched-startup pool.",
-      "approximate": true
+      "approximate": true,
+      "kv_bytes_per_rank": 25769803776
     },
     "glm53-flash-spark-tp4-dcp4-sparkcache": {
       "tokens": 8364901,
       "source": "performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md",
       "witness": "GPU KV cache size: 8,364,901 tokens",
-      "conditions": "Published R33 image plus DCP4 contract/entrypoint overlay, TP4/DCP4, 24 GiB FP8 KV per rank, SparkCache enabled."
+      "conditions": "Published R33 image plus DCP4 contract/entrypoint overlay, TP4/DCP4, 24 GiB FP8 KV per rank, SparkCache enabled.",
+      "kv_bytes_per_rank": 25769803776
     },
     "qwen38-flash-next-qad-tp4": {
       "tokens": 3131214,
       "source": "runtime/releases/shared-2026.09.3/correctness.json",
       "witness": "\"reported_kv_pool_tokens\": 3131214",
-      "conditions": "Qwen QAD TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit."
+      "conditions": "Qwen QAD TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit.",
+      "kv_bytes_per_rank": 25769803776,
+      "checkpoint": "qad-step-4000",
+      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in the serving configuration of the measured SparkCache profile, profiles/qwen38-flash-next-qad-tp4/sparkcache.json at tag shared-2026.09.3; correctness.json records the checkpoint revision 629bc3218833 (qad-step-4000)."
     }
   }
 }

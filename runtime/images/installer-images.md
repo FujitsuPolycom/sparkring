@@ -63,6 +63,26 @@ and composition SHA-256
 `46ecfc99659799934e7429fb0f8c80310b93aee485337114139bb5fe1df096d4`, as the
 release's installer image lock records.
 
+## Capabilities
+
+Some serving settings need what a layer adds. `--save-cpu` sets
+`SPARKRING_SHM_BUSY_LOOP_S`, which only an image with the shared-memory reader
+window reads.
+[installer-capabilities.json](../releases/installer-capabilities.json)
+(`sparkring-installer-capabilities/v1`) names, for each capability, the
+releases whose own layer adds it and the file that describes that layer:
+`dev-20260930-spinwait-cuda1342-nccl2323-status033` through
+[derive_spin_wait.py](derive_spin_wait.py), and
+`dev-20261001-kraken-cuda1342-nccl2323-status034`, whose vLLM branch carries
+the same edit. `installer_image.capabilities` gives an image what its own
+layer adds and what every image it derives from has, following
+`derivation.parent_release` in each `publication.json`.
+`runtime/common/serving.py` `NEEDS` names the capability each setting needs;
+the installer, `sparkring compose render` and the
+[Install Builder](../../docs/operations/compose-builder.md) refuse the setting,
+or do not offer it, on an image without it. A release whose own layer adds a
+capability, such as an image built from new sources, is listed in the file.
+
 ## Derived layers
 
 Every layer above `dev-20260924` except the Qwen decode layer is built by

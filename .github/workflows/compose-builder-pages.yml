@@ -1,6 +1,6 @@
-name: Compose builder pages
+name: Install Builder pages
 
-# Publishes the Compose builder (docs/operations/compose-builder.md) to the
+# Publishes the Install Builder (docs/operations/compose-builder.md) to the
 # repository's GitHub Pages site for a tag or commit: each published release
 # that is not a prerelease, or one named by hand. Deploying needs Pages enabled
 # with GitHub Actions as its source. The github-pages environment deploys only
@@ -46,14 +46,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Install the page's build dependency
@@ -61,7 +61,7 @@ jobs:
       # The page names and pins the checkout's exact release tag when it has one, else its commit.
       - name: Build the page, comparing its engine with compose.build
         run: python scripts/generate_compose_builder.py --output site --verify --cases 20
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -78,4 +78,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

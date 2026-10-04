@@ -178,9 +178,11 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "runtime/common/candidate.py",
         "runtime/common/cache_candidate.py",
         "runtime/common/serving.py",
+        "runtime/common/thinking.py",
         "scripts/sparkring_compose.py",
         "scripts/deploy_engine.py",
         "profiles/catalog.json",
+        "profiles/thinking.json",
         f"profiles/{profile_id}/profile.json",
         "profiles/qwen38-flash-next-tp2/config.json",
         "profiles/qwen38-flash-next-tp2/sparkcache.json",
@@ -273,6 +275,20 @@ def installer_container(spec, image_runtime, *, profile_id, source_root):
     return replace(adapted, mounts=mounts, environment=environment)
 
 
+def named_image(name):
+    """The image lock of the installer image ``name`` selects, or None for the default image or no name.
+
+    ``name`` is what `sparkring install --image` takes: a release name, the
+    GitHub release tag that published it, or a unique part of a release name
+    (installer_image.lock_path).
+    """
+    if name is None:
+        return None
+    from runtime.common import installer_image
+    path = installer_image.lock_path(name)
+    return None if path is None else json.loads(path.read_text(encoding="utf-8"))
+
+
 def installer_image_runtime(profile_id):
     """The image lock that `sparkring install` selects for this profile, or None.
 
@@ -298,8 +314,10 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
 
     ``serving`` holds runtime/common/serving.py settings, which replace the
     profile's vLLM values and set their switches' variables in every rank's
-    container, as `sparkring install` applies them. Local source-extension
-    trials select their KV alternative with ``local_kv_cache_gib`` instead.
+    container (the API endpoint's listen address only in the API rank's), as
+    `sparkring install` applies them (serving.container). Local
+    source-extension trials select their KV alternative with
+    ``local_kv_cache_gib`` instead.
 
     ``image_runtime`` is an installer image lock. With it, each rank is the
     container that installer_container derives for the host; build records the
@@ -386,9 +404,12 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         if local_source_extension is not None:
             raise ValueError("Serving settings apply to published images; a local source-extension trial "
                              "selects its KV alternative with --local-kv-cache-gib")
-        specs = [replace(spec, command=serving_settings.apply(spec.command, settings),
-                         environment={**spec.environment, **serving_settings.environment(settings)})
-                 for spec in specs]
+        # A switch needs an image that reads its variable, as `sparkring install` requires.
+        from runtime.common import installer_image
+        release = image_runtime["name"] if image_runtime is not None else Path(metadata["release"]).parent.name
+        serving_settings.check_image(settings, release, installer_image.capabilities(release))
+        specs = [serving_settings.container(spec, settings, rank=number, model=(profile_id, checkpoint))
+                 for number, spec in enumerate(specs)]
     return specs, image
 
 

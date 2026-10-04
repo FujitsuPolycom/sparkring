@@ -1142,3 +1142,32 @@ def test_download_program_is_unchanged_without_a_limit_and_compiles_with_one():
     code = host.fetch_code(106_250_000)
     assert code.endswith(host.FETCH_CODE) and "\nlimit_download(106250000)\n" in code
     compile(code, "<fetch>", "exec")
+
+
+def test_the_api_rank_s_own_checks_reach_its_api_at_the_listen_address(monkeypatch):
+    plain = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
+    bound = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"api_bind": "192.0.2.50", "api_port": 9100})
+    assert host.local_api_host(installer.specifications(plain, only_rank=0)[0].command) == "127.0.0.1"
+    command = installer.specifications(bound, only_rank=0)[0].command
+    assert host.local_api_host(command) == "192.0.2.50"
+    asked = []
+
+    class Response:
+        def __init__(self, url):
+            self.url = url
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b'{"data": [{"id": "x"}]}'
+    monkeypatch.setattr(host.urllib.request, "urlopen",
+                        lambda request, timeout: asked.append(request.full_url) or Response(request.full_url))
+    assert host.http_json(9100, "/v1/models", host="192.0.2.50") == {"data": [{"id": "x"}]}
+    assert asked == ["http://192.0.2.50:9100/v1/models"]
+    # 203.0.113.77 is not an address of this machine, so the API could not listen there.
+    with pytest.raises(ValueError, match="The model's API cannot listen at 203.0.113.77:9100 on this Spark"):
+        host.check_api_address(["serve", "--host", "203.0.113.77", "--port", "9100"])

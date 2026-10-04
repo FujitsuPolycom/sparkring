@@ -29,7 +29,7 @@ import pytest
 
 from runtime.common import distribution, installer, installer_image
 from runtime.host import checkpoint_place as place
-from runtime.host import (checkpoint_plan, control, controller, hairpin, hairpin_ring, install_assets,
+from runtime.host import (api_endpoint, checkpoint_plan, control, controller, hairpin, hairpin_ring, install_assets,
                           install_space, install_workflow as flow, node, rollout, single_uplink, test_hairpin,
                           topology)
 from runtime.host.install_errors import NeedsInput
@@ -125,12 +125,17 @@ class Sparks:
     ids)`` names the image IDs of the serving image's lineage that a Spark
     holds (by default the image itself), and ``caches(host, paths)`` the use of
     each compile cache directory (by default none exists); ``inspections``
-    records ``(host, ids, paths)`` of every inspection.
+    records ``(host, ids, paths)`` of every inspection. ``endpoint(host)``
+    answers the API Spark's address and port report (``api_endpoint.inspect``)
+    with a document or an exception to raise; by default the report is empty
+    text, which is no report. ``endpoints`` records the host of every report.
     """
 
     def __init__(self):
         self.surveys = []
         self.inspections = []
+        self.endpoints = []
+        self.endpoint = lambda host: None
         self.guard = threading.Lock()
         self.barrier = None
         self.mesh = lambda rank: None
@@ -161,6 +166,12 @@ class Sparks:
                                "caches": self.caches(host, paths)})
         if "native-mesh" in argv:
             return json.dumps({"mesh": self.mesh(int(argv[-1]))})
+        if argv == api_endpoint.PROBE_COMMAND:
+            self.endpoints.append(host)
+            answer = self.endpoint(host)
+            if isinstance(answer, BaseException):
+                raise answer
+            return "" if answer is None else json.dumps(answer)
         return ""
 
     def options(self, host):
@@ -275,6 +286,11 @@ def test_switch_back_names_the_replacement_of_a_replaced_profile(tmp_path):
     (previous / flow.PLAN_FILE).unlink()
     (previous / "deployment.lock.json").write_text(json.dumps({"selection": {"profile": "mimo-v26-flash-rl-tp4"}}))
     assert flow.switch_back_command(str(previous)) == "sudo sparkring install --profile mimo-v26-flash-mopd-tp4"
+    # Without a saved plan, the lock's serving settings still return with the previous model.
+    (previous / "deployment.lock.json").write_text(json.dumps({
+        "selection": {"profile": "mimo-v26-flash-mopd-tp4"}, "serving": {"max_concurrency": 32}}))
+    assert flow.switch_back_command(str(previous)) == (
+        "sudo sparkring install --profile mimo-v26-flash-mopd-tp4 --max-concurrency 32")
 
 
 def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
@@ -914,6 +930,212 @@ def test_serving_settings_install_another_deployment_and_are_listed(machine, spa
     # A value within a tenth above the profile's is planned with a warning.
     assert command("--plan", "--kv-cache-gib", "26") == 0
     assert "Warning: --kv-cache-gib 26 is above the profile's 24" in capsys.readouterr().err
+    # --save-cpu needs an image that reads the shared-memory reader window: the default image does, and an image
+    # from before the spin-wait layer is refused before any Spark is surveyed.
+    assert command("--plan", "--save-cpu") == 0
+    assert json.loads(capsys.readouterr().out)["serving"] == {"save_cpu": True}
+    surveys = len(sparks.surveys)
+    assert command("--plan", "--save-cpu", "--image", "plainstatus") == 2
+    assert json.loads(capsys.readouterr().out)["message"] == (
+        "--save-cpu needs an image whose vLLM reads SPARKRING_SHM_BUSY_LOOP_S, and "
+        "dev-20260928-plainstatus-cuda1342-nccl2323-status033 does not. Leave out --save-cpu or choose another image.")
+    assert len(sparks.surveys) == surveys
+
+
+def endpoint_report(listeners=()):
+    """Node A's address and port report: its LAN and Wi-Fi addresses besides loopback, fabric and administration."""
+    return {"addresses": [{"interface": "lo", "address": "127.0.0.1", "prefix": 8, "state": "UNKNOWN"},
+                          {"interface": "enP7s7", "address": "192.0.2.10", "prefix": 24, "state": "UP"},
+                          {"interface": "wlP9s9", "address": "203.0.113.7", "prefix": 24, "state": "UP"},
+                          {"interface": "enp1s0f0np0", "address": "198.18.0.1", "prefix": 24, "state": "UP"},
+                          {"interface": "sr-control", "address": "10.253.255.1", "prefix": 32, "state": "UNKNOWN"},
+                          {"interface": "docker0", "address": "198.51.100.254", "prefix": 16, "state": "DOWN"}],
+            "listeners": list(listeners), "control_subnet": "10.253.255.0/29"}
+
+
+def listener(address, port, name="nginx", pid=41, container=None):
+    return {"address": address, "port": port, "processes": [{"name": name, "pid": pid, "container": container}]}
+
+
+def test_api_endpoint_settings_install_another_deployment_checked_on_the_api_spark(machine, sparks, capsys):
+    sparks.endpoint = lambda host: endpoint_report([listener("127.0.0.1", 8000)])
+    assert command("--plan") == 0
+    plain = json.loads(capsys.readouterr().out)
+    # Without endpoint options the API Spark is not asked for its addresses and ports.
+    assert sparks.endpoints == []
+    assert command("--plan", "--api-port", "9100", "--api-bind", "203.0.113.7") == 0
+    out = capsys.readouterr()
+    tuned = json.loads(out.out)
+    assert tuned["deployment"] != plain["deployment"] and tuned["serving"] == {"api_bind": "203.0.113.7", "api_port": 9100}
+    assert (tuned["api_url"], tuned["port"]) == ("http://203.0.113.7:9100/v1", 9100) and "check_url" not in tuned
+    assert "Serving settings: --api-bind 203.0.113.7 (profile: 0.0.0.0); --api-port 9100 (profile: 8000)" in out.err
+    assert "Model API: http://203.0.113.7:9100/v1" in output_lines(out.err)
+    assert sparks.endpoints == ["root@192.0.2.10"]
+    # A listener on 127.0.0.1:8000 does not hold 8000 on another address.
+    assert command("--plan", "--api-bind", "203.0.113.7") == 0
+    assert json.loads(capsys.readouterr().out)["api_url"] == "http://203.0.113.7:8000/v1"
+
+
+@pytest.mark.parametrize("options, listeners, message", [
+    (("--api-bind", "198.51.100.9"), [],
+     "--api-bind 198.51.100.9 is not an address of Node A, which serves the model's API. Its addresses: 192.0.2.10 "
+     "(enP7s7), 203.0.113.7 (wlP9s9). Nothing has been changed."),
+    (("--api-bind", "127.0.0.1"), [],
+     "--api-bind 127.0.0.1 is a loopback address: only programs on Node A could use the model. Add "
+     "--allow-loopback-bind to serve it that way. Nothing has been changed."),
+    (("--api-port", "9100"), [listener("0.0.0.0", 9100)],
+     "TCP port 9100 on Node A is in use by nginx (pid 41) at 0.0.0.0:9100. Choose another port with --api-port, or "
+     "stop that program. Nothing has been changed."),
+    # The profile's port held on every address by another program's container blocks an API on one address too.
+    (("--api-bind", "192.0.2.10"), [listener("*", 8000, "python3", 7, {"id": "c" * 64, "name": "other", "deployment": None})],
+     "TCP port 8000 on Node A is in use by python3 (pid 7, container other) at *:8000. Choose another port with "
+     "--api-port, or stop that program. Nothing has been changed."),
+])
+def test_an_api_endpoint_the_api_spark_cannot_serve_is_refused_before_any_survey(machine, sparks, capsys, options,
+                                                                                  listeners, message):
+    events, previous, _, _ = machine
+    sparks.endpoint = lambda host: endpoint_report(listeners)
+    assert command("--plan", *options) == 3
+    result = json.loads(capsys.readouterr().out)
+    assert (result["field"], result["message"]) == ("api_endpoint", message)
+    assert not sparks.surveys and deployments_besides(previous) == [] and not events
+
+
+def test_ports_sparkring_uses_are_refused_and_an_unreadable_spark_stops_the_plan(machine, sparks, capsys):
+    assert command("--plan", "--api-port", "2222") == 2
+    assert json.loads(capsys.readouterr().out)["message"] == (
+        "--api-port 2222 is the port of SparkRing's administration SSH. Choose another port.")
+    assert command("--plan", "--api-port", "29638") == 2
+    assert json.loads(capsys.readouterr().out)["message"] == (
+        "--api-port 29638 is the profile's --master-port. Choose another port.")
+    assert command("--plan", "--api-port", "70000") == 2
+    assert "--api-port takes a whole number from 1024 to 65535" in json.loads(capsys.readouterr().out)["message"]
+    sparks.endpoint = lambda host: RuntimeError("root@192.0.2.10: Connection timed out")
+    assert command("--plan", "--api-port", "9100") == 3
+    result = json.loads(capsys.readouterr().out)
+    assert result["field"] == "api_endpoint" and result["message"] == (
+        "Could not read the addresses and listening ports of Node A, which serves the model's API: "
+        "root@192.0.2.10: Connection timed out. Nothing has been changed.")
+    assert not sparks.surveys
+
+
+def test_a_loopback_api_needs_its_own_option_once_and_the_replaced_model_may_hold_the_port(machine, sparks, capsys):
+    events, previous, _, _ = machine
+    node.save(previous, "deployment.lock.json", {"id": "f" * 64, "backend": "compose", "site": {
+        "name": "old", "ranks": [{"rank": 0, "host": "root@192.0.2.10"}, {"rank": 1, "host": "root@192.0.2.11"}]}})
+    held = listener("0.0.0.0", 8000, "python3", 7, {"id": "c" * 64, "name": "sr-old-r0", "deployment": "f" * 64})
+    sparks.endpoint = lambda host: endpoint_report([held])
+    assert command("--plan", "--api-bind", "127.0.0.1", "--allow-loopback-bind") == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["api_url"] == "http://127.0.0.1:8000/v1"
+    # The deployment exists now; repeating its request needs no second allowance.
+    assert command("--plan", "--api-bind", "127.0.0.1") == 0
+    assert json.loads(capsys.readouterr().out)["deployment"] == first["deployment"]
+    # A container that only carries the replaced deployment's name holds the port for it as well.
+    held["processes"][0]["container"] = {"id": "c" * 64, "name": "sr-old-r0", "deployment": None}
+    assert command("--plan", "--api-port", "8000") == 0
+
+
+def test_the_api_address_is_shown_and_recorded_but_names_the_same_deployment(machine, sparks, capsys):
+    assert command() == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert "check_url" not in plain and api_endpoint.recorded(plain["deployment"]) is None
+    assert command("--api-address", "llm.example.net") == 0
+    out = capsys.readouterr()
+    shown = json.loads(out.out)
+    assert shown["deployment"] == plain["deployment"] and sparks.endpoints == []
+    assert shown["api_url"] == "http://llm.example.net:8000/v1" and shown["check_url"] == plain["api_url"]
+    assert shown["dashboard_url"] == "http://llm.example.net:8000/v1/sparkring/status/view"
+    assert shown["example_request"].startswith("curl http://llm.example.net:8000/v1/chat/completions ")
+    assert "Model ready: http://llm.example.net:8000/v1" in output_lines(out.err)
+    assert (f"Model API: http://llm.example.net:8000/v1 (SparkRing's own checks use {plain['api_url']})"
+            in output_lines(out.err))
+    assert api_endpoint.recorded(shown["deployment"]) == "llm.example.net"
+    assert shown["checkpoint"]["command"] == REPEAT + " --api-address llm.example.net"
+    # A plan names the address in its command and records nothing.
+    assert command("--plan", "--api-address", "100.64.0.9") == 0
+    out = capsys.readouterr()
+    planned = json.loads(out.out)
+    assert planned["checkpoint"]["command"] == REPEAT + " --api-address 100.64.0.9"
+    assert planned["api_url"] == "http://100.64.0.9:8000/v1"
+    assert f"Plan saved. Install it with {REPEAT} --api-address 100.64.0.9 --yes." in output_lines(out.err)
+    assert api_endpoint.recorded(shown["deployment"]) == "llm.example.net"
+    # An installation without the option shows the automatic address again.
+    assert command() == 0
+    again = json.loads(capsys.readouterr().out)
+    assert again["api_url"] == plain["api_url"] and "check_url" not in again
+    assert api_endpoint.recorded(again["deployment"]) is None
+    assert command("--api-address", "http://llm.example.net:8000") == 3
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["field"] == "api_address" and refused["message"].startswith(
+        "--api-address takes a host name or an IP address, such as llm.example.net or 192.0.2.10, without http:// or "
+        "a port: http://llm.example.net:8000.")
+
+
+class Terminal:
+    def isatty(self):
+        return True
+
+
+def test_a_terminal_installation_asks_where_the_api_listens(machine, sparks, monkeypatch, capsys):
+    sparks.endpoint = lambda host: endpoint_report()
+    monkeypatch.setattr(flow.sys, "stdin", Terminal())
+    prompts = []
+
+    def answer(prompt):
+        prompts.append(prompt)
+        return answers.pop(0)
+    monkeypatch.setattr(builtins, "input", answer)
+    answers = ["3", "9100", "y"]
+    assert sparkring.main(["install", "--profile", PROFILE]) == 0
+    err = output_lines(capsys.readouterr().err)
+    assert prompts == ["API address number [1]: ", "API port [8000]: ", "Apply this installation? [Y/n]: "]
+    assert err[line_index(err, "Model API (Enter keeps the first choice):") + 1:][:3] == [
+        "  1. Every address of Node A, shown as http://192.0.2.10:8000/v1",
+        "  2. Only 192.0.2.10 (enP7s7)",
+        "  3. Only 203.0.113.7 (wlP9s9)"]
+    assert "Model ready: http://203.0.113.7:9100/v1" in err
+    chosen = rollout.active(controller.STATE)
+    assert installer.read(chosen / "deployment.lock.json")["serving"] == {"api_bind": "203.0.113.7", "api_port": 9100}
+    # Enter keeps the automatic endpoint: the deployment of the same request without the question.
+    answers = ["", "", "y"]
+    assert sparkring.main(["install", "--profile", PROFILE]) == 0
+    automatic = rollout.active(controller.STATE)
+    assert automatic != chosen and "serving" not in installer.read(automatic / "deployment.lock.json")
+    capsys.readouterr()
+    assert command() == 0
+    assert json.loads(capsys.readouterr().out)["deployment"] == str(automatic)
+    # An answer that is not listed changes nothing.
+    answers = ["7"]
+    assert sparkring.main(["install", "--profile", PROFILE]) == 3
+    assert "Choose one of the listed API addresses. Nothing has been changed." in capsys.readouterr().err
+
+
+def test_no_question_with_yes_without_a_terminal_or_with_endpoint_options(machine, sparks, monkeypatch, capsys):
+    sparks.endpoint = lambda host: endpoint_report()
+    monkeypatch.setattr(builtins, "input", lambda prompt: pytest.fail("prompted: " + prompt))
+    assert command() == 0
+    assert sparks.endpoints == []
+    monkeypatch.setattr(flow.sys, "stdin", Terminal())
+    monkeypatch.setattr(builtins, "input", lambda prompt: "y" if prompt.startswith("Apply") else pytest.fail(prompt))
+    assert sparkring.main(["install", "--profile", PROFILE, "--api-port", "9100"]) == 0
+    assert sparkring.main(["install", "--profile", PROFILE, "--api-address", "llm.example.net"]) == 0
+    capsys.readouterr()
+
+
+def test_thinking_settings_install_another_deployment_and_the_plan_names_the_models_default(machine, sparks, capsys):
+    assert command("--plan") == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert command("--plan", "--reasoning-effort", "low") == 0
+    out = capsys.readouterr()
+    tuned = json.loads(out.out)
+    assert tuned["deployment"] != plain["deployment"] and tuned["serving"] == {"reasoning_effort": "low"}
+    assert "Serving settings: --reasoning-effort low (model default: xhigh)" in out.err
+    # A level the model does not accept is refused before any Spark is surveyed.
+    surveys = len(sparks.surveys)
+    assert command("--plan", "--reasoning-effort", "max") == 2
+    message = json.loads(capsys.readouterr().out)["message"]
+    assert "choose low, medium or xhigh (default: xhigh)" in message and len(sparks.surveys) == surveys
 
 
 def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, sparks, capsys):
@@ -1443,6 +1665,11 @@ def test_suggested_commands_repeat_the_deployment_request(machine, sparks, capsy
     repeat = f"{REPEAT} --model-path 1=/mnt/usb/qwen --cache-path /mnt/fast/cache"
     assert result["checkpoint"]["command"] == repeat
     assert f"Plan saved. Install it with {repeat} --yes." in output_lines(out.err)
+    # A plan with serving settings suggests the command that installs those settings, not the profile's values.
+    assert command("--plan", "--max-concurrency", "8", *options) == 0
+    out = capsys.readouterr()
+    assert f"Plan saved. Install it with {repeat} --max-concurrency 8 --yes." in output_lines(out.err)
+    assert json.loads(out.out)["checkpoint"]["command"] == f"{repeat} --max-concurrency 8"
     # The survey measures the named cache's filesystem, which the plan counts the cache allowance on.
     assert {options["cache"] for _, options in sparks.surveys} == {"/mnt/fast/cache"}
     # Without --yes and without a terminal, the request names both ways forward.

@@ -1,4 +1,4 @@
-// Render verify.py's cases with the Compose builder engine.
+// Render verify.py's cases with the Install Builder engine.
 // Usage: node run_engine.js DATA_JSON CASES_JSON > OUTPUTS_JSON
 // A case with `archive` set also returns the deployment archive, base64-encoded.
 const fs = require('fs');

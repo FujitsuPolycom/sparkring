@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve, legacy_recipe_bytes, quickstart_status  # noqa: E402
 
 from runtime.common.environment import render_environment  # noqa: E402
+from runtime.common import thinking  # noqa: E402
 
 START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
@@ -128,6 +129,39 @@ def compact_profile_rows(rows, root=ROOT):
     return result, cache_cells
 
 
+def check_capacity_records(capacity, root=ROOT):
+    """Refuse a KV capacity measurement that its cited evidence does not state.
+
+    ``capacity`` maps profile IDs to records of performance/profile-capacity.json.
+    A record, and each measurement in its ``checkpoints``, needs a positive
+    token count, its measurement conditions, and a ``source`` file in this
+    repository that contains its ``witness`` text. A record may state the KV
+    bytes per rank at measurement; a checkpoint measurement must, because the
+    Install Builder scales it to the KV cache size a user chooses.
+    """
+    def positive(value):
+        return type(value) is int and value > 0
+
+    def evidenced(entry, label):
+        if not positive(entry.get('tokens')) or not entry.get('conditions'):
+            raise ValueError(f'{label}: capacity records require positive token counts and measurement conditions')
+        witness = entry.get('witness')
+        if not isinstance(witness, str) or not witness:
+            raise ValueError(f'{label}: capacity records require a source file and the witness text it contains')
+        if witness not in local_path(entry.get('source'), root).read_text(encoding='utf-8-sig'):
+            raise ValueError(f"{label}: capacity evidence changed: {entry['source']}")
+
+    for profile, record in capacity.items():
+        evidenced(record, profile)
+        if 'kv_bytes_per_rank' in record and not positive(record['kv_bytes_per_rank']):
+            raise ValueError(f'{profile}: capacity records state KV bytes per rank as a positive integer')
+        for name, entry in (record.get('checkpoints') or {}).items():
+            label = f'{profile} checkpoint {name}'
+            evidenced(entry, label)
+            if not positive(entry.get('kv_bytes_per_rank')):
+                raise ValueError(f'{label}: checkpoint capacity records require KV bytes per rank')
+
+
 def profile_table(root=ROOT, *, compact=False):
     rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
     model_labels = read_json(root/'profiles/model-names.json')
@@ -144,11 +178,7 @@ def profile_table(root=ROOT, *, compact=False):
         return profile_catalog_table(rows, names, root)
     if not set(capacity) <= {p['id'] for p, _ in rows}:
         raise ValueError('Capacity records must name catalog profiles')
-    for record in capacity.values():
-        if type(record['tokens']) is not int or record['tokens'] <= 0 or not record['conditions']:
-            raise ValueError('Capacity records require positive token counts and measurement conditions')
-        if record['witness'] not in local_path(record['source'], root).read_text(encoding='utf-8-sig'):
-            raise ValueError(f"Capacity evidence changed: {record['source']}")
+    check_capacity_records(capacity, root)
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
              'Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.', '']
     if compact:
@@ -279,6 +309,42 @@ def profile_catalog_table(rows, names, root):
     return re.sub(r'\]\((?!https?://|#)([^)]+)\)', lambda m: '](' + ('../' + m[1]) + ')', text)
 
 
+INSTALLER_TABLE = '| Model | Checkpoint | Sparks | `--profile` value |'
+THINKING = 'Thinking'
+
+
+def thinking_column(text, root=ROOT):
+    """``text`` with the Thinking cell of each installer-table row set from its profile's thinking record.
+
+    The repository README's installer table, whose header starts with
+    INSTALLER_TABLE, is maintained by hand except this column: each row's
+    cell is thinking.summary of the profile in its `--profile` value column,
+    such as ``on · xhigh``. A table without the column, or a row whose profile
+    has no record, is refused.
+    """
+    lines = text.split('\n')
+    header = next((number for number, line in enumerate(lines) if line.startswith(INSTALLER_TABLE)), None)
+    if header is None:
+        raise ValueError('README.md requires the installer profile table')
+    names = [cell.strip() for cell in lines[header].strip().strip('|').split('|')]
+    if THINKING not in names:
+        raise ValueError('README.md installer profile table requires a Thinking column')
+    column, profile_column = names.index(THINKING), names.index('`--profile` value')
+    number = header + 2
+    while number < len(lines) and lines[number].startswith('|'):
+        cells = [cell.strip() for cell in lines[number].strip().strip('|').split('|')]
+        if len(cells) != len(names):
+            raise ValueError('README.md installer profile table rows require every column')
+        profile = cells[profile_column].strip('`')
+        record = thinking.of(profile, root=root)
+        if record is None:
+            raise ValueError(f'README.md installer profile {profile} has no thinking record in {thinking.CATALOG}')
+        cells[column] = thinking.summary(record)
+        lines[number] = '| ' + ' | '.join(cells) + ' |'
+        number += 1
+    return '\n'.join(lines)
+
+
 def generate(check=False, root=ROOT):
     expected = {}
     manifest = read_json(root/'profiles/compatibility.json')
@@ -308,7 +374,8 @@ def generate(check=False, root=ROOT):
             raise ValueError('Environment exports must have unique destinations within the checkout')
         expected[target] = render_environment(row['profile'], root=root, template_only=True).encode('utf-8')
     # The repository README lists only the installer's profiles, maintained by
-    # hand; every catalog profile appears in the generated catalog page.
+    # hand except their Thinking column (thinking_column); every catalog
+    # profile appears in the generated catalog page.
     readme = root/'profiles/README.md'
     text = readme.read_text(encoding='utf-8-sig')
     if START not in text or END not in text:
@@ -316,6 +383,8 @@ def generate(check=False, root=ROOT):
     before, tail = text.split(START, 1)
     _, after = tail.split(END, 1)
     expected[readme] = (before+profile_table(root)+after).encode()
+    installer_readme = root/'README.md'
+    expected[installer_readme] = thinking_column(installer_readme.read_text(encoding='utf-8-sig'), root).encode()
     stale = []
     for path, content in expected.items():
         if not path.exists() or path.read_bytes().replace(b'\r\n', b'\n') != content.replace(b'\r\n', b'\n'):

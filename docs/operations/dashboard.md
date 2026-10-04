@@ -1,15 +1,23 @@
 # Status dashboard
 
 Every model that `sparkring install` starts serves a live status page from
-Node A:
+the Spark that serves its API:
 
 ```text
-http://NODE_A:PORT/v1/sparkring/status/view
+http://API_HOST:PORT/v1/sparkring/status/view
 ```
 
-`PORT` is the profile's API port: 8000, 8015 or 8020
-([profile table](../../README.md#profiles)). The page refreshes every 5
-seconds. It only reads status: it runs no benchmark and changes no setting.
+- `API_HOST` is Node A for a pair, a four-Spark model or the model on Sparks
+  0 and 1 of a ring. For the model on Sparks 2 and 3 (`--on 2,3`), it is
+  Spark 2 ([where each half serves](install-reference.md#two-models-on-one-ring)).
+  A deployment installed with `--api-bind` serves only at that address.
+  `Model ready:` and `sudo sparkring status` print each model's address.
+- `PORT` is the profile's API port: 8000, 8015 or 8020
+  ([profile table](../../README.md#profiles)), or the port that `--api-port`
+  sets ([API endpoint](install-reference.md#api-endpoint)).
+
+The page refreshes every 5 seconds. It only reads status: it runs no
+benchmark and changes no setting.
 
 ![Dashboard summary and draft acceptance](assets/dashboard-overview.png)
 
@@ -38,8 +46,8 @@ requests:
 | Tool-call parser | The parser that reads tool calls from the model's output |
 | Default chat template arguments | Defaults passed to the chat template, such as `{"enable_thinking": false}`, or `Not set (the chat template decides)` |
 
-The last two rows read `API server only`, because only Node A's API server holds
-them. Thinking is set per request: a request's `chat_template_kwargs` or
+The last two rows read `API server only`, because only the API server, on
+`API_HOST`, holds them. Thinking is set per request: a request's `chat_template_kwargs` or
 `reasoning_effort` take precedence over these defaults, as the note under the
 table says.
 
@@ -58,9 +66,9 @@ without.
 ## From a terminal
 
 ```bash
-curl http://NODE_A:PORT/v1/sparkring/status.txt   # the report as text
-curl http://NODE_A:PORT/v1/sparkring/status       # the report as JSON
-vllm-top --url http://NODE_A:PORT                 # live rates
+curl http://API_HOST:PORT/v1/sparkring/status.txt   # the report as text
+curl http://API_HOST:PORT/v1/sparkring/status       # the report as JSON
+vllm-top --url http://API_HOST:PORT                 # live rates
 ```
 
 [vllm-top](https://github.com/mratsim/vllm-top) shows live prefill and decode
@@ -73,8 +81,8 @@ behaving.
 ## Access
 
 Like the model API, the dashboard has no key and listens on every interface of
-Node A. It shows hostnames, NIC MAC addresses and software versions, so keep
-Node A on a trusted network ([Security](install.md#security)).
+`API_HOST`. It shows hostnames, NIC MAC addresses and software versions, so keep
+that Spark on a trusted network ([Security](install.md#security)).
 
 ## Source
 

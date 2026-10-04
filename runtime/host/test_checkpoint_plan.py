@@ -888,6 +888,19 @@ def test_install_command_repeats_the_deployment_request():
         "--cache-path '/mnt/fast cache' --image-lock locks/dev.json --ignore-local-copies")
     assert cp.install_command({**request, "checkpoint": "qad-step-4000"}).startswith(
         "sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000 ")
+    # Serving settings are part of the deployment, so the command names each one; a switch takes no value.
+    served = {"profile": "deepseek-v41-flash-tp4", "serving": {"max_concurrency": 32, "max_images": 16, "save_cpu": True}}
+    assert cp.install_command(served) == (
+        "sudo sparkring install --profile deepseek-v41-flash-tp4 --max-images 16 --max-concurrency 32 --save-cpu")
+    assert cp.install_command({**served, "serving": {}}) == "sudo sparkring install --profile deepseek-v41-flash-tp4"
+    # A loopback listen address needs its approval again when the command creates the deployment.
+    assert cp.install_command({**served, "serving": {"api_bind": "127.0.0.1"}}).endswith(
+        " --api-bind 127.0.0.1 --allow-loopback-bind")
+    assert "--allow-loopback-bind" not in cp.install_command({**served, "serving": {"api_bind": "192.0.2.10"}})
+    # A thinking choice is a word, or for DeepSeek a number, after its option.
+    assert cp.install_command({**served, "serving": {"reasoning_effort": "low", "max_concurrency": 32}}) == (
+        "sudo sparkring install --profile deepseek-v41-flash-tp4 --max-concurrency 32 --reasoning-effort low")
+    assert cp.install_command({**served, "serving": {"thinking": "off"}}).endswith(" --thinking off")
     result = make(owner_copy_surveys(2), named=["1=" + FOLDER], ignore_local=True, request=request)
     assert result["command"] == cp.install_command(request, ["1=" + FOLDER], ignore_local=True)
     assert result["request"] == {**request, "checkpoint": None} and result["profile"] == "qwen38-flash-next-tp2"

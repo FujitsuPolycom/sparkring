@@ -39,8 +39,8 @@ import time
 from types import SimpleNamespace
 import urllib.request
 
-from runtime.common import (compose, derived_checkpoint, glm_native_candidate, installer, native_candidate, profiles,
-                            qwen_flash_next, setup)
+from runtime.common import (compose, derived_checkpoint, glm_native_candidate, installer, native_candidate, ports,
+                            profiles, qwen_flash_next, setup)
 from runtime.common.container_spec import expected_inspection
 from runtime.host import checkpoint_place as place
 from scripts import deploy_engine
@@ -1793,8 +1793,35 @@ def smoke_request(card):
     return {"chat_template_kwargs": {"enable_thinking": False}}
 
 
-def http_json(port, path, body=None):
-    request = urllib.request.Request(f"http://127.0.0.1:{port}{path}",
+def local_api_host(command):
+    """The address at which the API rank's API answers on its own Spark.
+
+    That is the command's ``--host``, the listen address that serving setting
+    ``api_bind`` sets, or 127.0.0.1 when the API listens on every address.
+    """
+    host = command[command.index("--host") + 1] if "--host" in command else "0.0.0.0"
+    return "127.0.0.1" if host in ("0.0.0.0", "::") else host
+
+
+def check_api_address(command):
+    """Refuse an API rank whose API cannot listen at its ``--host`` and ``--port`` on this Spark.
+
+    Checked before a deployment with an API endpoint setting
+    (runtime/common/serving.py) starts its API rank: the address must be one
+    of this Spark's, and no other process may hold the port there.
+    """
+    address = command[command.index("--host") + 1]
+    port = int(command[command.index("--port") + 1])
+    try:
+        ports.check_tcp_bind(address, port)
+    except ValueError:
+        raise ValueError(f"The model's API cannot listen at {address}:{port} on this Spark: another process holds "
+                         "the port, or the address is not this Spark's. Choose another --api-port or --api-bind"
+                         ) from None
+
+
+def http_json(port, path, body=None, *, host="127.0.0.1"):
+    request = urllib.request.Request(f"http://{host}:{port}{path}",
                                      data=json.dumps(body).encode() if body is not None else None,
                                      headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=180) as response:
@@ -2026,7 +2053,7 @@ def perform(operation, lock, number):
             return profiles.read_json(image_receipt)
         if operation == "smoke":
             connection = installer.connection(lock)
-            name, port = connection["model"], connection["port"]
+            name, port, host = connection["model"], connection["port"], "127.0.0.1"
         else:
             raise ValueError("Managed GLM uses the existing host lifecycle coordinator")
     else:
@@ -2094,6 +2121,8 @@ def perform(operation, lock, number):
                 qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
             if not (info and info["State"].get("Running")):
                 require_idle()
+                if number == 0 and operation == "preflight" and {"api_port", "api_bind"} & set(lock.get("serving") or {}):
+                    check_api_address(spec.command)
             compose.check_project_containers(spec.name, owned_id=info["Id"] if info else None, run=run)
             # Installer-owned containers name the admitted local image by its
             # configuration ID. A copy received over the fabric has no registry
@@ -2146,20 +2175,21 @@ def perform(operation, lock, number):
             raise ValueError("Readiness exceeded 30 minutes; inspect logs before restarting")
         name = spec.command[spec.command.index("--served-model-name") + 1]
         port = int(spec.command[spec.command.index("--port") + 1])
+        host = local_api_host(spec.command)
     if operation == "smoke":
-        listed = http_json(port, "/v1/models")
+        listed = http_json(port, "/v1/models", host=host)
         if name not in [entry["id"] for entry in listed["data"]]:
             raise ValueError("API serves a different model")
         response = http_json(port, "/v1/chat/completions", {"model": name,
                              "messages": [{"role": "user", "content": "Reply only READY"}],
-                             "max_tokens": 256, "temperature": 0, **smoke_request(card)})
+                             "max_tokens": 256, "temperature": 0, **smoke_request(card)}, host=host)
         if not response.get("choices") or not (response["choices"][0]["message"].get("content") or "").strip():
             raise ValueError("Smoke request returned no answer")
         result = {"ok": True, "model": name, "scope": "One short generation; not cache/performance qualification"}
         if "image_runtime" in lock:
             # The shared image carries the runtime-status dashboard; its absence
             # means the status plugin or runtime binding did not load.
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/sparkring/status/view", timeout=60) as page:
+            with urllib.request.urlopen(f"http://{host}:{port}/v1/sparkring/status/view", timeout=60) as page:
                 if page.status != 200 or page.headers.get_content_type() != "text/html":
                     raise ValueError("Runtime-status dashboard is unavailable")
             result["dashboard"] = "/v1/sparkring/status/view"

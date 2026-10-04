@@ -55,10 +55,12 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import ipaddress
 import json
 from pathlib import Path, PurePosixPath
 import shlex
 
+from runtime.common import serving
 from runtime.host import fabric_stream, install_space
 
 SCHEMA = "sparkring-checkpoint-plan/v1"
@@ -190,12 +192,16 @@ def option(entry, *, abbreviate=False):
 def install_command(request=None, named=(), *, ignore_local=False):
     """The ``sudo sparkring install`` command that repeats one deployment request.
 
-    ``request`` holds ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``
-    and, for a deployment on half of a four-Spark ring, ``placement``. With the
+    ``request`` holds ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``,
+    the serving settings ``serving`` (``runtime.common.serving``) and, for a
+    deployment on half of a four-Spark ring, ``placement``. With the
     ``--model-path`` entries ``named`` they make the deployment's identity, so
     a command that leaves one out plans another deployment.
     ``--ignore-local-copies`` is kept when set, because it narrows the search
     whose plan the command repeats.
+    ``api_address``, the address SparkRing shows for the model
+    (``runtime.host.api_endpoint``), is repeated as ``--api-address``; it is
+    not part of the deployment's identity.
     """
     request = request or {}
     argv = ["sudo", "sparkring", "install"]
@@ -205,12 +211,25 @@ def install_command(request=None, named=(), *, ignore_local=False):
         argv += ["--on", ",".join(str(rank) for rank in request["placement"])]
     if request.get("checkpoint"):
         argv += ["--checkpoint", str(request["checkpoint"])]
+    if request.get("api_address"):
+        # Shown only, not part of the deployment's identity; repeated so that
+        # the installation records the same address.
+        argv += ["--api-address", str(request["api_address"])]
     for entry in named_paths(named):
         argv += ["--model-path", (f"{entry['rank']}=" if entry["rank"] is not None else "") + entry["path"]]
     if request.get("cache_path"):
         argv += ["--cache-path", str(request["cache_path"])]
     if request.get("image_lock"):
         argv += ["--image-lock", str(request["image_lock"])]
+    settings = request.get("serving") or {}
+    for name in (*serving.SETTINGS, *serving.SWITCHES, *serving.CHOICES):
+        if settings.get(name) is True and name in serving.SWITCHES:
+            argv.append(serving.option(name))
+        elif settings.get(name) is not None and name not in serving.SWITCHES:
+            argv += [serving.option(name), str(settings[name])]
+    if settings.get("api_bind") and ipaddress.ip_address(settings["api_bind"]).is_loopback:
+        # A new deployment with a loopback listen address needs this approval.
+        argv.append("--allow-loopback-bind")
     if ignore_local:
         argv.append("--ignore-local-copies")
     return shlex.join(argv)
@@ -730,11 +749,13 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     each retained deployment's name to the model path of each rank, to name the
     deployments whose receipts adoption refreshes. ``locked`` keeps every row's
     mode, for a deployment that already exists. ``request`` holds the
-    ``profile``, ``checkpoint``, ``cache_path`` and ``image_lock`` of the deployment request;
+    ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``, ``placement``
+    and ``serving`` settings of the deployment request;
     with ``named`` and ``ignore_local`` it gives the command that the plan's
     messages suggest (``install_command``). ``derivation`` is the
     ``derivation.section`` of a derived checkpoint, whose files each Spark
-    writes on the base directory's filesystem.
+    writes on the base directory's filesystem. A ``request`` that names
+    ``api_address`` keeps it, so the command repeats it.
     """
     sizes = required_files(pins)
     count = len(rows)
@@ -743,9 +764,15 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     entries = named_paths(named, count)
     given = request or {}
     request = {key: given.get(key) for key in ("profile", "checkpoint", "cache_path", "image_lock")}
+    if given.get("api_address"):
+        # Only a request that names the address SparkRing shows records it.
+        request["api_address"] = given["api_address"]
     if given.get("placement"):
         # Only a deployment on half of a four-Spark ring records its placement.
         request["placement"] = list(given["placement"])
+    if given.get("serving"):
+        # Only a deployment with other serving settings than its profile's records them.
+        request["serving"] = dict(given["serving"])
     context = {"request": request, "named": entries, "ignore_local_copies": bool(ignore_local)}
     command = install_command(request, entries, ignore_local=ignore_local)
     policy = policy or storage_policy()
