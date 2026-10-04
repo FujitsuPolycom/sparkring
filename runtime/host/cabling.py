@@ -597,7 +597,10 @@ def main(argv=None):
 
     Exit status: 0 when the cables form a pair or ring as SparkRing needs, 1
     when they need a change or could not all be seen, 2 when the command
-    could not run.
+    could not run. With ``--bandwidth`` it measures each recorded cable
+    instead (``fabric_bandwidth.command``): 0 when every cable is healthy, 1
+    when one is degraded, failed or was skipped, 2 when the check could not
+    run.
     """
     import argparse
     import json
@@ -609,17 +612,31 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(prog="sparkring cabling", description=(
         "Show how the Sparks on this Spark's fabric cables are cabled and what to change for a pair or a "
-        "four-Spark ring. Reads only; changes nothing on any Spark."))
-    parser.add_argument("--json", action="store_true", help="print one sparkring-cabling/v1 document")
+        "four-Spark ring. Reads only; changes nothing on any Spark. With --bandwidth, measure the RDMA "
+        "bandwidth of each cable of the recorded pair or ring instead."))
+    parser.add_argument("--json", action="store_true",
+                        help="print one sparkring-cabling/v1 document, or with --bandwidth one "
+                             "sparkring-fabric-bandwidth/v1 document")
     parser.add_argument("--ssh-user", default=os.environ.get("SUDO_USER") or "root",
                         help="account for signing in to the other Sparks (default: the account that ran sudo)")
     parser.add_argument("--no-sign-in", action="store_true",
                         help="read only this Spark and the Sparks of its recorded cluster; ask for no password")
+    parser.add_argument("--bandwidth", action="store_true",
+                        help="measure each cable of the recorded pair or ring in both directions, one link at a "
+                             "time (about 30 seconds per cable), and save the result for sparkring status")
+    parser.add_argument("--while-serving", action="store_true",
+                        help="with --bandwidth, also measure cables a serving model uses; the test slows the model "
+                             "for several seconds per link")
     args = parser.parse_args(argv)
+    if args.while_serving and not args.bandwidth:
+        parser.error("--while-serving applies to --bandwidth")
     say = (lambda line: print(line, file=sys.stderr)) if args.json else print
     try:
         if not hasattr(os, "geteuid") or os.geteuid() != 0:
             raise ValueError("Run sudo sparkring cabling: LLDP and the cluster record need root")
+        if args.bandwidth:
+            from runtime.host import fabric_bandwidth
+            return fabric_bandwidth.command(json_output=args.json, allow_serving=args.while_serving)
         recorded = (single_uplink.installed_targets(controller.STATE) or [])[1:]
         # Node A's setup key signs in where workers trust it; SSH asks for a
         # password elsewhere. Host keys and connections stay in a temporary

@@ -223,7 +223,6 @@ def test_setup_accepts_the_driver_reload_flag_and_explains_it(tmp_path, monkeypa
 
 
 def test_fresh_setup_plan_lists_the_hairpin_step_when_it_finds_four_sparks(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(controller, "STATE", tmp_path / "state")
     monkeypatch.setattr(single_uplink.os, "geteuid", lambda: 0, raising=False)
     monkeypatch.setattr(single_uplink.distribution, "installed", lambda root: True)
     # Planning never reads the controller's public key.
@@ -239,6 +238,10 @@ def test_fresh_setup_plan_lists_the_hairpin_step_when_it_finds_four_sparks(tmp_p
     # Sparks without another cluster's setup leave discovery to the ordinary flow.
     monkeypatch.setattr(single_uplink, "reform_step", lambda *args, **options: None)
     for count in (4, 2):
+        # Each setup run writes into setups/<time.time_ns()>, created exclusively.
+        # Windows' time_ns advances every 15.6 ms, so two runs in one test need
+        # their own controller directories.
+        monkeypatch.setattr(controller, "STATE", tmp_path / f"state-{count}")
         found = {"head": "n0", "nodes": [{"id": f"n{index}", "hostname": f"spark{index}"} for index in range(count)],
                  "routes": {}, "edges": []}
         monkeypatch.setattr(single_uplink.bootstrap, "discover", lambda transport, found=found, **options: found)

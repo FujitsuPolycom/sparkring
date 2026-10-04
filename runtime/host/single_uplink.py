@@ -10,8 +10,8 @@ import sys
 import time
 
 from runtime.common import distribution, installer
-from runtime.host import (bootstrap, cabling, control, control_node, controller, discovery, lan_peers, node, packages,
-                          reform, seed, settings, survey, topology)
+from runtime.host import (bootstrap, cabling, control, control_node, controller, discovery, fabric_bandwidth, lan_peers,
+                          node, packages, reform, seed, settings, survey, topology)
 from scripts import hairpin_setting
 
 # The approval line for the ConnectX hairpin setting on four-Spark rings. The
@@ -535,7 +535,11 @@ def main(argv=None, *, follow=None):
     # step on four-Spark rings; controller.apply runs it after addressing.
     final = controller.apply(plan, directory, approved=args.yes,
                              review=lambda p: (controller.summarize(p), controller.confirm("Apply this refreshed fabric plan?", args.yes)))
-    node.save(base, "cluster.json", {"schema": "sparkring-appliance-cluster/v1", "name": args.name,
-                                    "plan": final, "api_address": api_address, "setup_receipt": str(directory / "setup.json")}, mode=0o600)
+    cluster = {"schema": "sparkring-appliance-cluster/v1", "name": args.name, "plan": final,
+               "api_address": api_address, "setup_receipt": str(directory / "setup.json")}
+    node.save(base, "cluster.json", cluster, mode=0o600)
+    # Fresh setups, re-forms and repeated setups all end here. A degraded
+    # cable is a warning with its repair steps; setup never fails here.
+    fabric_bandwidth.after_setup(base, cluster)
     print("Setup complete. Choose a model: sparkring models")
     return 0
