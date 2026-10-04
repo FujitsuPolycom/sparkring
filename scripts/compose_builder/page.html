@@ -136,6 +136,8 @@ legend { padding: 0 6px; font-size: 13px; font-weight: 600; display: inline-flex
 .f label { font-size: 12px; color: var(--muted); }
 @media (max-width: 460px) { .grid { grid-template-columns: minmax(0, 1fr); } .setting { grid-template-columns: minmax(0, 1fr); } }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+/* The link itself, shown selected when the clipboard cannot take it. */
+#share-url { flex: 1 1 260px; }
 details.import summary { cursor: pointer; font-size: 13px; color: var(--accent); }
 details.import[open] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 details.import textarea { min-height: 140px; resize: vertical; }
@@ -204,9 +206,15 @@ pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; 
 .cmd { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
 .cmd .path { display: inline-flex; gap: 9px; align-items: baseline; }
 .cmd-n { font: 600 12px/1 var(--mono); color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; flex: none; }
+/* Optional commands, after the ones that install and check: set apart, with their own numbers. */
+.pack-optional { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; margin-top: 6px; padding-top: 12px;
+  border-top: 1px dashed var(--line); }
+.cmd-n.optional { color: var(--muted); border-style: dashed; }
 .what { margin: 0; font-size: 13.5px; }
 .endpoint { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .kv-estimate { grid-column: 1 / -1; margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--accent); }
+/* What a KV estimate is scaled from, under the summary's figure. */
+.kv-basis { display: block; margin-top: 2px; font-family: var(--sans); font-size: 12px; color: var(--muted); }
 .endpoint code { color: var(--text); }
 .roles { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13px; }
 .roles dt { font-weight: 600; overflow-wrap: anywhere; }
@@ -348,7 +356,9 @@ footer p { margin: 0; max-width: 110ch; }
       <dl class="facts" id="facts"></dl>
       <div class="messages" id="messages"></div>
       <div class="row-actions" id="share-bar" hidden>
-        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>      </div>
+        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>
+        <input type="text" id="share-url" readonly spellcheck="false" aria-label="Link to these choices" hidden>
+      </div>
 
       <section class="panel" id="install-panel" role="tabpanel" aria-labelledby="mode-install">
         <div class="opts">
@@ -385,15 +395,17 @@ footer p { margin: 0; max-width: 110ch; }
           </div>
           <div class="opt">
             <label class="opt-label" for="download-limit">Download limit</label>
-            <input type="text" id="download-limit" spellcheck="false" placeholder="none, 850Mbit, 2Gbit">
+            <input type="text" id="download-limit" spellcheck="false" placeholder="none, 850Mbit, 2Gbit" aria-describedby="err-download-limit">
+            <p class="err opt-hint" id="err-download-limit"></p>
           </div>
         </div>
         <div class="messages" id="install-messages"></div>
         <section class="pack" id="pack" aria-label="Commands"></section>
         <section class="pack" id="pack-roles" aria-labelledby="h-roles">
-          <h3 class="sub" id="h-roles">Which Spark is which</h3>
+          <h3 class="sub" id="h-roles">Where to run and connect</h3>
           <dl class="roles" id="roles"></dl>
-          <p class="hint" id="roles-order"></p>
+          <p class="what" id="roles-run" hidden></p>
+          <p class="hint" id="roles-order" hidden></p>
         </section>
         <ul class="notes" id="install-notes"></ul>
       </section>
@@ -520,6 +532,12 @@ __ENGINE__
     return node;
   }
   const chip = (text, tone) => el('span', { class: 'chip' + (tone ? ' ' + tone : '') }, text);
+  // A profile's or checkpoint's status (export.labels) as the profile tables name it
+  // (docs/development/writing.md), with its chip's tone.
+  const STATUS = { qualified: ['Validated', 'good'], implemented: ['Development', ''], 'research-only': ['Experimental', 'warn'],
+    unsupported: ['Unsupported', 'bad'] };
+  const statusLabel = status => (STATUS[status] || [status || 'Unknown'])[0];
+  const statusChip = status => chip(statusLabel(status), (STATUS[status] || [])[1]);
   const fmt = n => typeof n === 'number' ? n.toLocaleString('en-US') : String(n);
   const rev = r => (r || '').slice(0, 12);
   const clone = v => JSON.parse(JSON.stringify(v));
@@ -625,25 +643,24 @@ __ENGINE__
   const slotEndpoint = (slot, id) => ((slot.endpoints ||= {})[id] ||= { mode: 'auto', address: '' });
   // The endpoint mode that applies: the chosen one when the source offers it, else automatic.
   const endpointMode = (slot, id) => ENDPOINT_MODES.includes(slotEndpoint(slot, id).mode) ? slotEndpoint(slot, id).mode : 'auto';
-  // The address shown for the model when its endpoint is set here and the address is usable, else null.
-  function shownAddress(slot, id) {
-    const text = slotEndpoint(slot, id).address.trim();
-    if (endpointMode(slot, id) !== 'set' || !FEATURES.api_address || !text) return null;
-    try { return E.apiAddress(text); } catch (_) { return null; }
-  }
-  // The serving settings a selection requests: the API port and listen address only while its
+  // What a selection's fields give for model `p` (E.readSelection): the settings it requests, the
+  // address shown for its model and the problems of its fields. slot.settings keeps each field's
+  // entry as typed, so a field the installer would refuse stays visible with its problem instead
+  // of falling back to the profile's value; the API port and listen address count only while the
   // endpoint is set here.
-  function requested(slot, id) {
-    const settings = { ...slotSettings(slot, id) };
-    if (endpointMode(slot, id) !== 'set') { delete settings.api_port; delete settings.api_bind; }
-    return settings;
+  function readOf(slot, p) {
+    let cp;
+    try { cp = E.checkpointOf(p, slotCheckpoint(slot, p)); } catch (_) { cp = p.checkpoints[0]; }
+    return E.readSelection(p, cp, slotSettings(slot, p.id),
+      { mode: endpointMode(slot, p.id), address: FEATURES.api_address ? slotEndpoint(slot, p.id).address : '' });
   }
+  const requested = (slot, id) => readOf(slot, rendered(BY_ID[id])).settings;
   // A selection as the engine takes it: the model on the selected image, its checkpoint name,
-  // requested settings and API endpoint choice.
+  // requested settings, API endpoint choice and its fields' problems.
   function selectionOf(slot) {
-    const p = rendered(BY_ID[slot.profile]);
-    return { profile: p, checkpoint: slotCheckpoint(slot, p), settings: requested(slot, p.id),
-      endpoint: { ask: endpointMode(slot, p.id) === 'ask', address: shownAddress(slot, p.id) } };
+    const p = rendered(BY_ID[slot.profile]), read = readOf(slot, p);
+    return { profile: p, checkpoint: slotCheckpoint(slot, p), settings: read.settings,
+      endpoint: { ask: endpointMode(slot, p.id) === 'ask', address: read.address }, problems: read.problems };
   }
   // Makes the pair's or the ring's model fit the layout's size: the last one of that size, else the first.
   function fitLayout() {
@@ -822,8 +839,9 @@ __ENGINE__
       input.addEventListener('change', () => { slot.profile = p.id; currentTab = 'rank0'; renderAll(); changed(); });
       list.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + ' · ' + p.nodes + ' Sparks'), el('span', { class: 'meta mono' }, p.id)),
-        el('span', { class: 'chips' }, p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
+        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + ' · ' + p.nodes + ' Sparks'),
+          p.purpose ? el('span', { class: 'meta' }, p.purpose) : null, el('span', { class: 'meta mono' }, p.id)),
+        el('span', { class: 'chips' }, statusChip(p.status), p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
     }
     if (!list.children.length) list.append(el('p', { class: 'hint' }, 'No model runs on that many Sparks.'));
   }
@@ -879,14 +897,16 @@ __ENGINE__
         renderCheckpoints(); renderSettings(); renderSparks(); changed();
       });
       const details = cp.default
-        ? [el('li', {}, "The profile's default" + (cp.aliases.length ? '; also named ' : ''), ...cp.aliases.map(a => el('code', {}, a)))]
+        ? (cp.aliases.length ? [el('li', {}, 'Also named ', ...cp.aliases.map(a => el('code', {}, a)))] : [])
         : cp.changes.map(change => el('li', {}, el('code', {}, change)));
+      // The card leads with what the checkpoint is for; its name, the value --checkpoint takes, follows.
+      const served = cp.changes.includes('served as ' + cp.served_model_name) ? '' : ' · served as ' + cp.served_model_name;
       box.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', { class: 'mono' }, cp.name),
-          el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + ' · served as ' + cp.served_model_name)),
-        el('ul', { class: 'changes' }, details),
-        cp.default ? el('span', { class: 'chips' }, chip('Default', 'good')) : null));
+        el('span', { class: 'choice-body' }, el('strong', {}, cp.purpose || cp.name), el('span', { class: 'meta mono' }, cp.name),
+          el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + served)),
+        details.length ? el('ul', { class: 'changes' }, details) : null,
+        el('span', { class: 'chips' }, cp.default ? chip('Default', 'good') : null, statusChip(cp.status))));
     }
   }
 
@@ -896,15 +916,6 @@ __ENGINE__
     return effect.charAt(0).toUpperCase() + effect.slice(1) + '.';
   }
 
-  // The problem with a serving setting's text, as `sparkring install` would refuse it; '' when none.
-  function settingProblem(row, text) {
-    if (text === '') return '';
-    if (!/^\d+$/.test(text)) return 'Enter a whole number.';
-    if (Number(text) < row.minimum) return 'At least ' + fmt(row.minimum) + '.';
-    if (row.maximum && Number(text) > row.maximum) return 'At most ' + fmt(row.maximum) + '.';
-    return '';
-  }
-
   function renderSettings() {
     const p = profile(), cp = checkpointOf(p), s = settingsOf(p.id), box = $('settings');
     box.replaceChildren();
@@ -912,6 +923,12 @@ __ENGINE__
     const rows = cp.settings.filter(row => !row.endpoint).sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
     for (const row of rows) {
       const id = 'setting-' + row.name;
+      // A switch the selected image cannot apply is not offered (E.offered); its choice is kept for an image that can.
+      if (row.switch && !E.offered(p, row)) {
+        const label = LABELS[row.name] || row.option;
+        box.append(el('p', { class: 'hint' }, "This image can't " + label.charAt(0).toLowerCase() + label.slice(1) + '.'));
+        continue;
+      }
       if (row.switch) {
         const input = el('input', { type: 'checkbox', id });
         input.checked = s[row.name] === true;
@@ -926,7 +943,8 @@ __ENGINE__
         box.append(wrap);
         continue;
       }
-      const input = el('input', { type: 'number', id, inputmode: 'numeric', min: row.minimum, max: row.maximum, step: 1,
+      // A text field: a number field reports no value for text it cannot read, which would hide the entry.
+      const input = el('input', { type: 'text', id, inputmode: 'numeric', spellcheck: 'false',
         placeholder: String(row.profile), 'aria-describedby': 'err-' + id });
       if (s[row.name] !== undefined) input.value = s[row.name];
       const limit = row.maximum ? ' (max ' + fmt(row.maximum) + ')' : '';
@@ -939,14 +957,14 @@ __ENGINE__
         el('div', { class: 'field' }, input, el('span', { class: 'unit' }, UNITS[row.name] || '')),
         el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit), err, ...kv);
       const check = () => {
-        err.textContent = settingProblem(row, input.value.trim());
+        err.textContent = E.readSetting(row, input.value).problem || '';
         input.setAttribute('aria-invalid', String(Boolean(err.textContent)));
       };
       check();
       input.addEventListener('input', () => {
         const text = input.value.trim();
         check();
-        if (text === '' || !/^\d+$/.test(text)) delete s[row.name]; else s[row.name] = Number(text);
+        if (text === '') delete s[row.name]; else s[row.name] = text;
         wrap.classList.toggle('changed', s[row.name] !== undefined);
         changed();
       });
@@ -956,18 +974,8 @@ __ENGINE__
     renderEndpoint();
   }
 
-  // The problem with an API endpoint field's text, as `sparkring install` would refuse it; '' when none.
-  function endpointProblem(key, row, text) {
-    if (text === '') return '';
-    if (key === 'api_port') {
-      if (!/^\d+$/.test(text)) return 'Enter a whole number.';
-      const port = Number(text), taken = (row.reserved || []).find(([value]) => value === port);
-      if (port < row.minimum || port > row.largest) return `From ${row.minimum} to ${row.largest}.`;
-      return taken ? `This is ${taken[1]}.` : '';
-    }
-    if (key === 'api_bind') return E.listenable(text) ? '' : 'An IPv4 address of the Spark, such as 192.0.2.10.';
-    try { E.apiAddress(text); return ''; } catch (_) { return 'A name or an address, without http:// or a port.'; }
-  }
+  // The problem with an API endpoint field's entry, as `sparkring install` would refuse it; '' when none.
+  const endpointProblem = (key, row, text) => (key === 'api_address' ? E.readAddress(text) : E.readSetting(row, text)).problem || '';
 
   // The API endpoint option of the shown selection: automatic, ask during install, or set here with
   // the port, the address it listens on and the address shown for it. Only what the source offers.
@@ -1004,10 +1012,11 @@ __ENGINE__
       input.addEventListener('input', () => {
         const text = input.value.trim();
         check();
-        // A value the installer would refuse stays out of the commands; its field says why.
+        // The entry stays as typed; while the installer would refuse it, its field says why and
+        // the page offers no command.
         if (key === 'api_address') endpoint.address = text;
-        else if (text === '' || err.textContent) delete s[key];
-        else s[key] = key === 'api_port' ? Number(text) : text;
+        else if (text === '') delete s[key];
+        else s[key] = text;
         changed();
       });
       return el('div', { class: 'f' + (key === 'api_address' ? ' wide' : '') }, el('label', { for: id }, label), input,
@@ -1019,22 +1028,32 @@ __ENGINE__
   }
 
   // How many tokens the shown selection's KV cache holds (E.kvText), live as its settings change;
-  // nothing while a setting cannot be used.
+  // nothing while a field has a problem or a setting cannot be used.
   function renderKv() {
     const line = $('kv-estimate'), note = $('kv-note');
     if (!line) return;
-    const p = profile(), check = E.servingCheck(p, requested(active(), p.id), checkpointName(p));
-    const kv = check.ok ? E.kvText(check.checkpoint, check.settings) : null;
+    const p = profile(), read = readOf(active(), p), check = E.servingCheck(p, read.settings, checkpointName(p));
+    const kv = check.ok && !read.problems.length ? E.kvText(check.checkpoint, check.settings) : null;
     line.textContent = kv ? kv.line + '.' : '';
-    note.textContent = kv ? kv.note : '';
+    note.replaceChildren(...(kv && kv.basis ? kvBasis(kv, ' The engine reports the exact figure when the model starts.') : []));
     line.hidden = !kv;
-    note.hidden = !kv || !kv.note;
+    note.hidden = !kv || !kv.basis;
   }
 
-  // The KV cache fact of a selection: its size per Spark and how many tokens it holds.
+  // The measurement an estimate is scaled from, with a link to its record at the page's source
+  // commit; the record's conditions show on hover.
+  function kvBasis(kv, after = '') {
+    const link = kv.source ? el('a', { href: `https://github.com/${META.repository}/blob/${META.commit}/${kv.source}`,
+      target: '_blank', rel: 'noopener', title: kv.conditions || null }, 'record') : null;
+    return [kv.basis, ...(link ? [' (', link, ')'] : []), '.', after];
+  }
+
+  // The KV cache fact of a selection: its size per Spark, how many tokens it holds and what that is estimated from.
   function kvFact(p, check) {
     const kv = check.ok ? E.kvText(check.checkpoint, check.settings) : null;
-    return kv ? fmt(kv.gib) + ' GiB per Spark · ' + kv.line.charAt(0).toLowerCase() + kv.line.slice(1) : null;
+    if (!kv) return null;
+    return [fmt(kv.gib) + ' GiB per Spark · ' + kv.line.charAt(0).toLowerCase() + kv.line.slice(1),
+      ...(kv.basis ? [el('span', { class: 'kv-basis' }, kvBasis(kv))] : [])];
   }
 
   function fieldInput(p, key, id, rank) {
@@ -1151,15 +1170,17 @@ __ENGINE__
     renderChip();
   }
 
-  // The one line of a selection's serving settings: its changes, 'Defaults' or why they cannot be used.
+  // The one line of a selection's serving settings: its changes, 'Defaults', the fields that need a
+  // change or why the settings cannot be used.
   function settingsLine(slot) {
-    const p = rendered(BY_ID[slot.profile]), check = E.servingCheck(p, requested(slot, p.id), slotCheckpoint(slot, p));
+    const p = rendered(BY_ID[slot.profile]), read = readOf(slot, p);
+    const check = E.servingCheck(p, read.settings, slotCheckpoint(slot, p)), count = read.problems.length;
+    if (count) return [count + (count === 1 ? ' field needs' : ' fields need') + ' a change', true];
     if (!check.ok) return ['These settings cannot be used: ' + check.error, true];
     const changes = Object.entries(check.settings).map(([name, value]) => value === true ? LABELS[name]
       : LABELS[name] + ' ' + (typeof value === 'number' && name !== 'api_port' ? fmt(value) : value));
     if (endpointMode(slot, p.id) === 'ask') changes.push('API asked during install');
-    const address = shownAddress(slot, p.id);
-    if (address) changes.push('API shown at ' + address);
+    if (read.address) changes.push('API shown at ' + read.address);
     return [changes.length ? changes.join(' · ') : 'Defaults', false];
   }
 
@@ -1226,6 +1247,8 @@ __ENGINE__
   let installReady = false;
 
   const checkpointText = cp => (cp.name ? cp.name + (cp.default ? ' (default)' : '') + ' · ' : '') + cp.model_repository + ' @ ' + rev(cp.model_revision);
+  // A deployment's status and what it is: the checkpoint's own for one other than the default, else the profile's.
+  const statusText = (p, cp) => statusLabel(cp.status || p.status) + ' · ' + ((cp.default ? p.purpose : cp.purpose) || p.title);
 
   // The facts and serving-setting messages of the models the layout installs; a half's carry its pair's name.
   function renderShared() {
@@ -1233,19 +1256,22 @@ __ENGINE__
     box.replaceChildren();
     const wait = imageWait();
     for (const { slot, label } of deployed()) {
-      const p = rendered(BY_ID[slot.profile]), check = E.servingCheck(p, requested(slot, p.id), slotCheckpoint(slot, p));
+      const p = rendered(BY_ID[slot.profile]), read = readOf(slot, p);
+      const check = E.servingCheck(p, read.settings, slotCheckpoint(slot, p)), fixing = read.problems.length > 0;
       let cp;
       try { cp = E.checkpointOf(p, slotCheckpoint(slot, p)); } catch (_) { cp = p.checkpoints[0]; }
-      const kv = kvFact(p, check), port = (check.ok && check.settings.api_port) || cp.port;
+      const kv = fixing ? null : kvFact(p, check), port = (!fixing && check.ok && check.settings.api_port) || cp.port;
       if (single) {
-        rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + port],
+        rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Status', statusText(p, cp)],
+          ['Served model', cp.served_model_name + ' on port ' + port],
           ...(kv ? [['KV cache', kv]] : []), ['Image', p.image], ['Image ID', p.image_id + ' (' + p.image_release + ')']);
       } else {
-        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Served model', cp.served_model_name + ' on port ' + port],
+        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Status', statusText(p, cp)],
+          ['Served model', cp.served_model_name + ' on port ' + port],
           ...(kv ? [['KV cache', kv]] : []));
         images.add(p.image);
       }
-      if (wait) continue;
+      if (wait || fixing) continue;
       const named = text => (label ? label + ': ' : '') + text;
       if (!check.ok) { box.append(msg('bad', named('These serving settings cannot be used'), check.error)); continue; }
       if (check.lines.length) box.append(msg('', named('Your changes'), el('ul', {}, check.lines.map(line => el('li', {}, el('code', {}, line))))));
@@ -1272,22 +1298,22 @@ __ENGINE__
     $('order-hint').textContent = 'The Spark you run setup on becomes Node A.' + (o.order === 'fill' ? ' Enter your Sparks in step 5.' : '');
     if ($('download-limit').value !== o.limit) $('download-limit').value = o.limit;
     $('source-row').hidden = o.form !== 'script';
-    const limitOk = E.validDownloadLimit(o.limit);
-    $('download-limit').setAttribute('aria-invalid', String(!limitOk));
+    const limit = E.readDownloadLimit(o.limit);
+    $('download-limit').setAttribute('aria-invalid', String(Boolean(limit.problem)));
+    $('err-download-limit').textContent = limit.problem || '';
     const box = $('install-messages');
     box.replaceChildren();
     let pack = null;
     if (imageWait()) {
       // renderShared names the image that is loading or failed to load.
-    } else if (!limitOk) {
-      box.append(msg('bad', 'Download limit', 'Use none, or a rate of at least 1Mbit such as 850Mbit or 2Gbit.'));
     } else {
       const n = sparkCount();
       const halves = state.layout === 'halves';
       pack = E.commandPack({ layout: state.layout, features: FEATURES, main: selectionOf(halves ? switchMain() : MAIN),
         halves: (state.layout === 'ring' ? switchHalves() : state.halves).map(selectionOf) }, META,
-        { form: o.form, pin: o.source === 'release', approval: o.approval, downloadLimit: o.limit.trim(), order: o.order,
+        { form: o.form, pin: o.source === 'release', approval: o.approval, downloadLimit: o.limit, order: o.order,
           sparks: o.order === 'fill' ? cluster(n).ranks : null });
+      if (pack.problems.length) box.append(notReady(pack.problems));
       if (o.order === 'fill' && namesExample()) box.append(msg('warn', '', "Step 5 still holds example names. Enter your Sparks' there."));
       // The selected image applies only to the commands whose model it runs.
       const row = IMAGES.find(r => r.name === state.image && !r.default);
@@ -1303,26 +1329,45 @@ __ENGINE__
     renderChip();
   }
 
+  // Where a field that the commands or files cannot use is, from the engine's field key.
+  function fieldName(field, pair) {
+    const pairLabel = pair === null || pair === undefined ? '' : PAIRS[pair] + ' · ';
+    const endpoint = { api_port: 'API port', api_bind: 'API listens only on', api_address: 'Address people use' };
+    if (field === 'download_limit') return 'Download limit';
+    const spark = /^rank(\d)-(host|host_ip)$/.exec(field || '');
+    if (spark) return 'Step 5 · ' + (spark[1] === '0' ? 'Node A' : 'Spark ' + spark[1]) + (spark[2] === 'host' ? ' name' : ' address');
+    return 'Step 4 · ' + pairLabel + (endpoint[field] || LABELS[field] || 'Serving settings');
+  }
+  // The not-ready message: each field that needs a change and why.
+  function notReady(problems, files = false) {
+    return msg('bad', files ? 'No files until these are fixed' : 'No commands until these are fixed',
+      el('ul', {}, problems.map(x => el('li', {}, fieldName(x.field, x.pair) + ': ' + x.message))));
+  }
+
   function renderPack(pack) {
     const box = $('pack');
     box.replaceChildren();
-    $('pack-roles').hidden = !pack;
+    $('pack-roles').hidden = !pack || !pack.ready;
     $('install-notes').replaceChildren();
-    if (!pack) {
-      box.append(el('pre', { class: 'code cmd' }, el('code', {}, 'No command for these choices.')));
+    if (!pack || !pack.ready) {
+      box.append(el('pre', { class: 'code cmd' }, el('code', {}, pack ? 'Fix the marked fields to see the commands.' : 'No command for these choices.')));
       return;
     }
-    let number = 0;
+    // The commands run in order and are numbered in order; an optional group, last, has its own numbers.
+    let number = 0, primary = true;
     for (const group of pack.groups) {
+      if (group.optional) number = 0;
       const list = el('ol', { class: 'cmds' });
       for (const c of group.commands) {
         number += 1;
         const code = el('code', {}, c.command || 'No command for these choices.');
-        const button = el('button', { type: 'button', class: 'btn' + (number === 1 ? ' primary' : '') }, 'Copy command');
+        const button = el('button', { type: 'button', class: 'btn' + (primary ? ' primary' : '') }, 'Copy command');
+        primary = false;
         button.disabled = !c.command;
         button.addEventListener('click', () => copy(c.command, button, code));
         list.append(el('li', { class: 'cmd' },
-          el('div', { class: 'file-bar' }, el('span', { class: 'path' }, el('span', { class: 'cmd-n' }, String(number)), c.where),
+          el('div', { class: 'file-bar' }, el('span', { class: 'path' },
+            el('span', { class: 'cmd-n' + (group.optional ? ' optional' : '') }, String(number)), c.where),
             el('div', { class: 'btns' }, button)),
           el('p', { class: 'what' }, c.what),
           el('pre', { class: 'code cmd', tabindex: '0', 'aria-label': group.title + ' command ' + number }, code),
@@ -1330,11 +1375,15 @@ __ENGINE__
       }
       // The switch commands install the deployed model on the other layout (switchSlot).
       const hint = group.key !== 'switch' ? null : switchHint();
-      box.append(el('h3', { class: 'sub' }, group.title), ...(hint ? [el('p', { class: 'hint' }, hint)] : []), list);
+      const parts = [el('h3', { class: 'sub' }, group.title), ...(group.note ? [el('p', { class: 'hint' }, group.note)] : []),
+        ...(hint ? [el('p', { class: 'hint' }, hint)] : []), list];
+      box.append(...(group.optional ? [el('div', { class: 'pack-optional' }, ...parts)] : parts));
     }
     $('roles').replaceChildren(...pack.roles.flatMap(r => [el('dt', {}, r.spark), el('dd', {}, r.text)]));
-    $('roles-order').hidden = !pack.order;
-    $('roles-order').textContent = pack.order || '';
+    for (const [id, text] of [['roles-run', pack.run], ['roles-order', pack.order]]) {
+      $(id).hidden = !text;
+      $(id).textContent = text || '';
+    }
     $('install-notes').replaceChildren(...pack.notes.map(text => el('li', {}, ...rich(text))));
   }
 
@@ -1378,7 +1427,7 @@ __ENGINE__
       return;
     }
     // Compose files take the endpoint set here; "ask during install" stays automatic.
-    const p = profile(), site = clone(siteFor(p)), settings = requested(active(), p.id);
+    const p = profile(), site = clone(siteFor(p)), read = readOf(active(), p), settings = read.settings;
     if (imageWait()) {
       ++ticket;
       composeOk = false;
@@ -1389,7 +1438,17 @@ __ENGINE__
       renderChip();
       return;
     }
-    const mine = ++ticket, address = shownAddress(active(), p.id);
+    if (read.problems.length) {
+      ++ticket;
+      composeOk = false;
+      result = null;
+      $('compose-messages').replaceChildren(notReady(read.problems, true));
+      $('compose-panel').dataset.stale = 'true';
+      renderZip();
+      renderChip();
+      return;
+    }
+    const mine = ++ticket, address = read.address;
     const output = await E.render(p, site, settings, checkpointName(p));
     if (mine === ticket) showCompose(output, p, site, settings, address);
   }
@@ -1422,7 +1481,7 @@ __ENGINE__
   function renderChip() {
     const node = $('out-state');
     const install = outputMode() === 'install', ok = install ? installReady : composeOk;
-    node.textContent = install ? (ok ? 'Commands ready' : 'No command') : (ok ? 'Files ready' : 'Refused');
+    node.textContent = install ? (ok ? 'Commands ready' : 'Not ready') : (ok ? 'Files ready' : 'Not ready');
     node.className = 'chip ' + (ok ? 'good' : 'bad');
   }
 
@@ -1492,6 +1551,8 @@ __ENGINE__
 
   function renderZip() {
     const button = $('save-zip'), note = $('zip-note');
+    // The shown file is from the last accepted render; while the choices are not ready it is not copied.
+    $('copy-file').disabled = $('copy-shell').disabled = !result;
     if (downloads === undefined) {
       button.disabled = true;
       note.textContent = 'Checking whether this view can save files.';
@@ -1508,7 +1569,7 @@ __ENGINE__
     $('zip-bar').classList.toggle('warn', example);
     if (!result) {
       button.textContent = 'Download zip';
-      note.textContent = imageWait() ? 'The zip needs the selected image.' : 'Fix the fields the generator refuses to build the zip.';
+      note.textContent = imageWait() ? 'The zip needs the selected image.' : 'Fix the marked fields to build the zip.';
       return;
     }
     button.textContent = 'Download ' + result.site.name + '.zip';
@@ -1663,6 +1724,22 @@ __ENGINE__
     return location.origin + location.pathname + '?' + E.linkQuery({ layout: state.layout, mode: state.mode,
       image: row ? row.option : null, main: pick(MAIN), halves: state.halves.map(pick), install: state.install });
   }
+  // Copies the link; where the clipboard refuses, shows it in a field, selected, to copy by hand.
+  async function copyLink() {
+    const url = linkFor(), button = $('copy-link'), field = $('share-url'), label = 'Copy link to these choices';
+    field.hidden = true;
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = 'Copied';
+    } catch (_) {
+      field.value = url;
+      field.hidden = false;
+      field.focus();
+      field.select();
+      button.textContent = 'Selected: press Ctrl+C';
+    }
+    setTimeout(() => { button.textContent = label; }, 1600);
+  }
   function fromLink() {
     let choices;
     try { choices = E.linkChoices(location.search, BY_ID, FEATURES); } catch (_) { return; }
@@ -1713,7 +1790,7 @@ __ENGINE__
     renderZip();
     if (/^https?:$/.test(location.protocol)) {
       $('share-bar').hidden = false;
-      $('copy-link').addEventListener('click', () => copy(linkFor(), $('copy-link'), $('copy-link')));
+      $('copy-link').addEventListener('click', copyLink);
     }
   }
 })();

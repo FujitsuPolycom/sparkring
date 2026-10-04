@@ -1,0 +1,79 @@
+{
+  "schema": "sparkring-profile-labels/v1",
+  "profiles": {
+    "qwen38-flash-next-tp2": {
+      "purpose": "Local Inference Lab's NVFP4 QAD, 262K context",
+      "checkpoints": {
+        "qad-step5500-ple1000": {"purpose": "Default QAD checkpoint"},
+        "qad-step-4000": {
+          "status": "implemented",
+          "purpose": "QAD step 4000, with an MXFP8 LM head",
+          "evidence": "performance/records/qwen38-flash-next/installer-tuning-20260925.md"
+        },
+        "qad-step5500-mxfp8-attention": {
+          "status": "implemented",
+          "purpose": "MXFP8 attention, derived during install",
+          "evidence": "performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md"
+        },
+        "jmni-qad5500-hybrid": {
+          "status": "research-only",
+          "purpose": "Third-party hybrid by JMNI Labs, research-only",
+          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+        }
+      }
+    },
+    "qwen38-flash-next-qad-tp4": {
+      "purpose": "Local Inference Lab's NVFP4 QAD, 262K context",
+      "checkpoints": {
+        "qad-step5500-ple1000": {"purpose": "Default QAD checkpoint"},
+        "qad-step-4000": {
+          "status": "implemented",
+          "purpose": "QAD step 4000, with an MXFP8 LM head",
+          "evidence": "performance/records/qwen38-flash-next/installer-tuning-20260925.md"
+        },
+        "qad-step5500-mxfp8-attention": {
+          "status": "implemented",
+          "purpose": "MXFP8 attention, derived during install",
+          "evidence": "performance/records/images/dev-20261001-kraken-qwen38-flash-next-qad-tp4-qad-step5500-mxfp8-attention-20261002.md"
+        },
+        "jmni-qad5500-hybrid": {
+          "status": "research-only",
+          "purpose": "Third-party hybrid by JMNI Labs, research-only",
+          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+        }
+      }
+    },
+    "glm53-flash-nvfp4-spark-tp2": {
+      "purpose": "Local Inference Lab's NVFP4-Spark, 1M context",
+      "checkpoints": {
+        "nvfp4-spark": {"purpose": "Default NVFP4-Spark checkpoint"},
+        "nvfp4-qad": {
+          "status": "implemented",
+          "purpose": "Local Inference Lab's QAD weights, 512K context",
+          "evidence": "performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md"
+        }
+      }
+    },
+    "glm53-flash-nvfp4-spark-tp4": {
+      "purpose": "Local Inference Lab's NVFP4-Spark, 1M context",
+      "checkpoints": {
+        "nvfp4-spark": {"purpose": "Default NVFP4-Spark checkpoint"},
+        "nvfp4-qad": {
+          "status": "implemented",
+          "purpose": "Local Inference Lab's QAD weights",
+          "evidence": "performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvfp4-qad-20261001.md"
+        },
+        "nvidia-nvfp4": {
+          "status": "implemented",
+          "purpose": "NVIDIA's NVFP4 weights",
+          "evidence": "performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvidia-nvfp4-20261001.md"
+        }
+      }
+    },
+    "mimo-v26-flash-mopd-tp2": {"purpose": "Xiaomi MiMo's MXFP8/BF16 weights, 262K context", "checkpoints": {}},
+    "mimo-v26-flash-mopd-tp4": {"purpose": "Xiaomi MiMo's MXFP8/BF16 weights, 262K context", "checkpoints": {}},
+    "swift15-qwen38-flash-next-tp2": {"purpose": "UkisAI's NVFP4 fine-tune of Qwen3.8-Flash-Next, 262K context", "checkpoints": {}},
+    "swift15-qwen38-flash-next-tp4": {"purpose": "UkisAI's NVFP4 fine-tune of Qwen3.8-Flash-Next; no serving run on four Sparks", "checkpoints": {}},
+    "deepseek-v41-flash-tp4": {"purpose": "DeepSeek's FP8/MXFP4 weights, 1M context", "checkpoints": {}}
+  }
+}

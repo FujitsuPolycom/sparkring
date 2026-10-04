@@ -48,6 +48,52 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
     assert {profile["id"]: profile["model_name"] for profile in data["profiles"]}["glm53-flash-nvfp4-spark-tp4"] == "GLM-5.3-Flash"
 
 
+def test_profiles_and_checkpoints_carry_their_status_and_purpose(data):
+    from runtime.common import profiles
+    for profile in data["profiles"]:
+        assert profile["status"] == profiles.load(profile["id"])[0]["status"] and profile["purpose"]
+        for checkpoint in profile["checkpoints"]:
+            assert checkpoint["status"] in export.STATUSES
+            if checkpoint["default"]:
+                # The default checkpoint is what the profile's own status describes.
+                assert checkpoint["status"] == profile["status"] and checkpoint["evidence"] is None
+            else:
+                assert checkpoint["purpose"] and checkpoint["evidence"]
+            assert checkpoint["name"] is None or checkpoint["purpose"]
+    by_id = {profile["id"]: profile for profile in data["profiles"]}
+    assert by_id["swift15-qwen38-flash-next-tp4"]["status"] == "research-only"
+    for profile_id in (TP2, "qwen38-flash-next-qad-tp4"):
+        named = {c["name"]: c for c in by_id[profile_id]["checkpoints"]}
+        assert named["qad-step5500-ple1000"]["purpose"] == "Default QAD checkpoint"
+        assert named["qad-step5500-mxfp8-attention"]["purpose"] == "MXFP8 attention, derived during install"
+        assert (named["jmni-qad5500-hybrid"]["status"], named["jmni-qad5500-hybrid"]["purpose"]) == (
+            "research-only", "Third-party hybrid by JMNI Labs, research-only")
+
+
+def test_labels_refuse_a_missing_label_status_or_evidence(tmp_path, monkeypatch):
+    (tmp_path / "profiles").mkdir()
+    (tmp_path / "record.md").write_text("evidence")
+    path = tmp_path / "profiles" / "labels.json"
+
+    def write(checkpoints):
+        path.write_text(json.dumps({"schema": "sparkring-profile-labels/v1",
+                                    "profiles": {"p": {"purpose": "A model", "checkpoints": checkpoints}}}))
+
+    write({"main": {"purpose": "Default"}, "other": {"purpose": "Other", "status": "implemented", "evidence": "record.md#x"}})
+    assert export.labels(tmp_path)["profiles"]["p"]["purpose"] == "A model"
+    for checkpoints in ({"other": {"purpose": "Other", "status": "tested", "evidence": "record.md"}},
+                        {"other": {"purpose": "Other", "status": "implemented", "evidence": "missing.md"}},
+                        {"other": {"purpose": "Other", "status": "implemented"}},
+                        {"other": {"purpose": ""}}):
+        write(checkpoints)
+        with pytest.raises(ValueError, match="profiles/labels.json"):
+            export.labels(tmp_path)
+    # A profile the file does not label, or a checkpoint it omits, stops the export.
+    monkeypatch.setattr(export, "labels", lambda: {"schema": "sparkring-profile-labels/v1", "profiles": {}})
+    with pytest.raises(ValueError, match="must label mimo-v26-flash-mopd-tp2"):
+        export.profile_data("mimo-v26-flash-mopd-tp2")
+
+
 def test_features_record_the_command_options_the_source_defines(data, tmp_path):
     # This checkout's `sparkring install` defines --on.
     assert data["features"]["ring_halves"] is True
@@ -81,6 +127,27 @@ def test_image_catalog_lists_the_default_first_with_options_install_accepts(data
         assert path is None if row["default"] else path.parent.name == row["name"]
         assert row["default"] or row["file"] == f"images/{row['name']}.json"
     assert {row["name"]: row["option"] for row in rows}["dev-20261001-statusrows-cuda1342-nccl2323-status034"] == "statusrows"
+
+
+def test_save_cpu_is_offered_only_on_images_that_read_its_variable(data, node, monkeypatch):
+    from runtime.common import serving
+    older = "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
+    # The Builder and the installer read the same capability: the default image has the reader window.
+    for profile in data["profiles"]:
+        assert profile["image_capabilities"] == list(installer_image.capabilities(profile["image_release"])) == ["shm_reader_window"]
+        assert next(r for r in profile["checkpoints"][0]["settings"] if r["name"] == "save_cpu")["needs"] == "shm_reader_window"
+    monkeypatch.setattr(export, "profile_ids", lambda: [TP2])
+    profile, = export.image_data(older)["profiles"]
+    assert profile["image_capabilities"] == [] and all(set(c["variants"]) == {"off"} for c in profile["checkpoints"])
+    found = run_engine(node, """
+const { profile } = value, cp = E.checkpointOf(profile, null);
+console.log(JSON.stringify({ check: E.servingCheck(profile, { save_cpu: true }, null), offered: E.offered(profile, cp.settings.find(r => r.switch)),
+  read: E.readSelection(profile, cp, { save_cpu: true, max_images: 1 }, { mode: 'auto' }) }));""", {"profile": profile})
+    with pytest.raises(ValueError) as refused:
+        serving.check_image({"save_cpu": True}, older, installer_image.capabilities(older))
+    # The engine refuses the switch with the installer's message, and the page's fields leave it out.
+    assert found["check"] == {"ok": False, "error": str(refused.value)}
+    assert found["offered"] is False and found["read"]["settings"] == {"max_images": 1}
 
 
 def test_image_data_renders_profiles_on_that_image(monkeypatch, data):
@@ -134,7 +201,7 @@ def packs(node, data, cases):
     script = """
 const byId = Object.fromEntries(value.profiles.map(p => [p.id, p]));
 const sel = s => ({ profile: { ...byId[s.profile], image_option: s.image_option || null }, checkpoint: s.checkpoint || null,
-  settings: s.settings || {}, endpoint: s.endpoint || null });
+  settings: s.settings || {}, endpoint: s.endpoint || null, problems: s.problems || [] });
 console.log(JSON.stringify(value.cases.map(c => E.commandPack({ layout: c.layout, features: c.features, main: sel(c.main),
   halves: (c.halves || [c.main, c.main]).map(sel) }, value.meta, c.opts))));"""
     return run_engine(node, script, {"profiles": [p for p in data["profiles"] if p["id"] in used], "cases": cases,
@@ -181,8 +248,11 @@ def test_pack_for_a_pair_installs_and_checks(data, node):
     assert install["endpoint"] == "http://NODE_A:8000/v1"
     assert commands(plain, "check") == ["sudo sparkring status"]
     assert commands(measured, "check") == ["sudo sparkring status", "sudo sparkring cabling --bandwidth"]
-    assert [r["spark"] for r in plain["roles"]] == ["Node A", "Spark 1"] and plain["order"] is None
-    assert plain["ready"] and "Replace NODE_A with the address of Node A." in plain["notes"]
+    # Where to run and connect: Node A runs the commands and serves; nothing runs on the other Spark.
+    assert [(r["spark"], r["text"]) for r in plain["roles"]] == [
+        ("Node A", "Run the commands here. The model answers at its address."), ("The other Spark", "Nothing to run on it.")]
+    assert plain["run"] is None and plain["order"] is None
+    assert plain["ready"] and "Replace NODE_A with Node A's address." in plain["notes"]
 
 
 def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data, node):
@@ -194,8 +264,9 @@ def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data,
     ])
     assert commands(ring, "install") == [SCRIPT + f"--profile {TP4}"]
     assert endpoints(ring, "install") == [f"http://NODE_A:{port}/v1"]
-    switch = next(g for g in ring["groups"] if g["key"] == "switch")
-    assert switch["title"] == "Switch to two models"
+    assert [g["key"] for g in ring["groups"]] == ["install", "check", "switch"]
+    switch = ring["groups"][-1]
+    assert switch["title"] == "Switch to two models" and switch["optional"]
     assert [c["command"] for c in switch["commands"]] == [
         f"sudo sparkring install --profile {TP2} --on 0,1",
         f"sudo sparkring install --profile {GLM2} --on 2,3 --checkpoint nvfp4-qad"]
@@ -203,8 +274,9 @@ def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data,
     assert "stops the model on all four" in switch["commands"][0]["what"]
     assert "once the one before has finished" in switch["commands"][1]["what"]
     assert [g["key"] for g in without["groups"]] == ["install", "check"]
-    assert [r["spark"] for r in ring["roles"]] == ["Node A", "Spark 1", "Spark 2", "Spark 3"]
-    assert ring["roles"][1]["text"] == "Cabled to Node A's port 0." and "can't choose" in ring["order"]
+    assert [(r["spark"], r["text"]) for r in ring["roles"]] == [
+        ("Node A", "Run the commands here. The model answers at its address."), ("The other three", "Nothing to run on them.")]
+    assert ring["run"] is None and ring["order"] is None
 
 
 def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
@@ -215,7 +287,10 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
         {"layout": "halves", "features": BOTH, "main": {"profile": TP4}, "halves": halves,
          "opts": {**NEW, "order": "fill", "sparks": MY_SPARKS}},
     ])
-    assert [g["key"] for g in auto["groups"]] == ["install", "switch", "check"]
+    # Install, then check the requested models; switching layouts is optional and comes last.
+    assert [g["key"] for g in auto["groups"]] == ["install", "check", "switch"]
+    assert [g.get("optional", False) for g in auto["groups"]] == [False, False, True]
+    assert auto["groups"][2]["note"] == "Optional: switch layouts later. This stops the models above."
     assert commands(auto, "install") == [SCRIPT + f"--profile {TP2} --on 0,1 --checkpoint qad-step-4000",
                                          f"sudo sparkring install --profile {MIMO2} --on 2,3"]
     assert endpoints(auto, "install") == ["http://NODE_A:8000/v1", f"http://SPARK_2:{mimo_port}/v1"]
@@ -223,18 +298,42 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
     assert first["what"] == "Installs SparkRing and starts Qwen3.8-Flash-Next (qad-step-4000) on the first pair: Node A and Spark 1."
     assert second["what"].startswith("Starts MiMo-V2.6-Flash-MOPD on the second pair: Spark 2 and Spark 3.")
     assert commands(auto, "switch") == [f"sudo sparkring install --profile {TP4}"]
-    assert "stops both pairs' models" in auto["groups"][1]["commands"][0]["what"]
-    assert auto["groups"][2]["commands"][0]["what"] == "Shows each pair's model separately."
-    assert "Replace NODE_A and SPARK_2 with the addresses of Node A and Spark 2." in auto["notes"]
+    assert "stops both pairs' models" in auto["groups"][2]["commands"][0]["what"]
+    assert auto["groups"][1]["commands"][0]["what"] == "Shows each pair's model separately."
+    # Spark 2, two cables from Node A in the ring order, serves the second pair; SPARK_2 stands for its address.
+    assert [(r["spark"], r["text"]) for r in auto["roles"]] == [
+        ("First pair", "Node A and the Spark on its port 0. Answers at Node A's address."),
+        ("Second pair", "The other two. Answers at the address of the Spark that isn't cabled to Node A.")]
+    assert auto["run"] == "Run every command on Node A."
+    assert auto["order"] == "The cables set this order; you can't choose which Spark leads a pair."
+    assert ("Replace NODE_A with Node A's address and SPARK_2 with the address of the Spark that isn't cabled to Node A."
+            in auto["notes"])
     # Fill in my Sparks: the user's names say where to run, their addresses where each model answers.
     assert commands(filled) == commands(auto)
-    assert {c["where"] for c in filled["groups"][0]["commands"][1:] + filled["groups"][2]["commands"]} == {
+    assert {c["where"] for c in filled["groups"][0]["commands"][1:] + filled["groups"][1]["commands"]} == {
         "On spark-a (Node A), as a user with sudo"}
     assert endpoints(filled, "install") == ["http://198.51.100.10:8000/v1", f"http://198.51.100.12:{mimo_port}/v1"]
     assert endpoints(filled, "switch") == ["http://198.51.100.10:8015/v1"]
     assert filled["groups"][0]["commands"][0]["what"].endswith("on the first pair: spark-a and spark-b.")
-    assert [r["spark"] for r in filled["roles"]] == ["spark-a (Node A)", "spark-b (Spark 1)", "spark-c (Spark 2)", "spark-d (Spark 3)"]
+    assert [(r["spark"], r["text"]) for r in filled["roles"]] == [
+        ("First pair", "spark-a and spark-b. Answers at 198.51.100.10."),
+        ("Second pair", "spark-c and spark-d. Answers at 198.51.100.12.")]
+    assert filled["run"] == "Run every command on spark-a."
     assert not any("Replace" in note for note in filled["notes"])
+    assert "If spark-c has no network cable of its own, only spark-a can reach the second pair's model." in filled["notes"]
+
+
+def test_where_to_run_names_the_sparks_the_user_fills_in(data, node):
+    pair, ring = packs(node, data, [
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2}, "opts": {**NEW, "order": "fill", "sparks": MY_SPARKS[:2]}},
+        {"layout": "ring", "features": BOTH, "main": {"profile": TP4}, "opts": {**NEW, "order": "fill", "sparks": MY_SPARKS}},
+    ])
+    assert [(r["spark"], r["text"]) for r in pair["roles"]] == [
+        ("spark-a (Node A)", "Run the commands here. The model answers at 198.51.100.10."), ("spark-b", "Nothing to run on it.")]
+    assert [(r["spark"], r["text"]) for r in ring["roles"]] == [
+        ("spark-a (Node A)", "Run the commands here. The model answers at 198.51.100.10."),
+        ("spark-b, spark-c and spark-d", "Nothing to run on them.")]
+    assert pair["order"] is ring["order"] is None
 
 
 @pytest.mark.parametrize("opts, expected", [
@@ -296,13 +395,73 @@ def test_pack_carries_each_deployed_selection_s_api_endpoint(data, node):
     assert endpoints(pack, "install") == ["http://llm.example.net:9100/v1", f"http://SPARK_2:{mimo_port}/v1"]
     # The switch command takes the automatic endpoint.
     assert commands(pack, "switch") == [f"sudo sparkring install --profile {TP4} --yes"]
-    assert "Replace NODE_A and SPARK_2 with the addresses of Node A and Spark 2." in pack["notes"]
+    assert ("Replace NODE_A with Node A's address and SPARK_2 with the address of the Spark that isn't cabled to Node A."
+            in pack["notes"])
     assert ("An install set to ask lists the Spark's addresses and asks which address and port the model uses."
             in pack["notes"])
     first, = bad["groups"][0]["commands"]
     assert first["command"] == "" and first["error"].startswith("--api-address takes a host name or an IP address")
     first, = refused["groups"][0]["commands"]
     assert first["error"] == "--api-port 29638 is the profile's --master-port. Choose another port."
+
+
+def test_fields_keep_their_entries_apart_from_the_settings_they_give(data, node):
+    profile = next(p for p in data["profiles"] if p["id"] == TP2)
+    found = run_engine(node, """
+const { profile } = value, cp = E.checkpointOf(profile, null), row = name => cp.settings.find(r => r.name === name);
+console.log(JSON.stringify({
+  kv: ['', '1.5', '24', ' 26 ', '27', '0', 26, 'abc'].map(text => E.readSetting(row('kv_cache_gib'), text)),
+  port: ['80', '2222', '9100', '70000'].map(text => E.readSetting(row('api_port'), text)),
+  bind: ['0.0.0.0', '198.51.100.20'].map(text => E.readSetting(row('api_bind'), text)),
+  address: ['', 'http://llm:8000', 'llm.example.net'].map(E.readAddress),
+  limit: ['', 'none', '850Mbit', 'fast', '500kbit'].map(E.readDownloadLimit),
+  auto: E.readSelection(profile, cp, { kv_cache_gib: '1.5', max_concurrency: '4', api_port: '80', save_cpu: true },
+                        { mode: 'auto', address: 'http://llm:8000' }),
+  set: E.readSelection(profile, cp, { kv_cache_gib: 20, api_port: '80', api_bind: '198.51.100.20' },
+                       { mode: 'set', address: 'http://llm:8000' }),
+}));""", {"profile": profile})
+    whole, smallest, largest = "Enter a whole number.", "At least 1.", "At most 26."
+    # An empty field keeps the profile's value; a value above the ceiling or not a whole number has a problem.
+    assert found["kv"] == [{"problem": ""}, {"problem": whole}, {"value": 24, "problem": ""}, {"value": 26, "problem": ""},
+                           {"problem": largest}, {"problem": smallest}, {"value": 26, "problem": ""}, {"problem": whole}]
+    assert found["port"] == [{"problem": "From 1024 to 65535."}, {"problem": "This is the port of SparkRing's administration SSH."},
+                             {"value": 9100, "problem": ""}, {"problem": "From 1024 to 65535."}]
+    assert found["bind"] == [{"problem": "An IPv4 address of the Spark, such as 192.0.2.10."},
+                             {"value": "198.51.100.20", "problem": ""}]
+    assert found["address"] == [{"value": None, "problem": ""}, {"problem": "A name or an address, without http:// or a port."},
+                                {"value": "llm.example.net", "problem": ""}]
+    assert [bool(x["problem"]) for x in found["limit"]] == [False, False, False, True, True]
+    # The KV cache text 1.5 gives no setting, so nothing falls back to the profile's 24 GiB unnoticed;
+    # the endpoint's fields count only while it is set on the page.
+    assert found["auto"] == {"settings": {"max_concurrency": 4, "save_cpu": True}, "address": None,
+                             "problems": [{"field": "kv_cache_gib", "message": whole}]}
+    assert found["set"] == {"settings": {"kv_cache_gib": 20, "api_bind": "198.51.100.20"}, "address": None,
+                            "problems": [{"field": "api_port", "message": "From 1024 to 65535."},
+                                         {"field": "api_address", "message": "A name or an address, without http:// or a port."}]}
+
+
+def test_a_pack_gives_no_command_while_a_field_has_a_problem(data, node):
+    problem = [{"field": "kv_cache_gib", "message": "Enter a whole number."}]
+    halves = [{"profile": TP2}, {"profile": MIMO2, "problems": problem}]
+    pair, second, limit, sparks, fine = packs(node, data, [
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2, "problems": problem}, "opts": NEW},
+        {"layout": "halves", "features": BOTH, "main": {"profile": TP4}, "halves": halves, "opts": NEW},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2}, "opts": {**NEW, "downloadLimit": "fast"}},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2},
+         "opts": {**NEW, "order": "fill", "sparks": [{"host": "spark-a", "host_ip": ""}, {"host": "", "host_ip": "300.1.1.1"}]}},
+        {"layout": "pair", "features": BOTH, "main": {"profile": TP2}, "opts": {**NEW, "downloadLimit": "850Mbit"}},
+    ])
+    for pack in (pair, second, limit, sparks):
+        assert not pack["ready"] and set(commands(pack)) == {""}
+        assert all(c["error"] for group in pack["groups"] for c in group["commands"])
+    assert pair["problems"] == [{**problem[0], "pair": None}]
+    # A half's problem names its pair.
+    assert second["problems"] == [{**problem[0], "pair": 1}]
+    assert limit["problems"] == [{"field": "download_limit", "pair": None,
+                                  "message": "Use none, or a rate of at least 1Mbit, such as 850Mbit or 2Gbit."}]
+    assert sparks["problems"] == [{"field": "rank1-host_ip", "message": "An IPv4 address, such as 192.0.2.10.", "pair": None}]
+    assert fine["ready"] and fine["problems"] == []
+    assert commands(fine, "install") == [SCRIPT + f"--profile {TP2} --download-limit 850Mbit"]
 
 
 def test_compose_readme_names_the_api_at_its_shown_address(data, node):
@@ -385,10 +544,13 @@ GIB = 2 ** 30
 
 
 def test_kv_measurement_prefers_the_checkpoint_then_the_profile():
-    record = {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "conditions": "c", "source": "s", "witness": "w",
-              "checkpoints": {"other": {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "conditions": "c"}}}
-    assert export.kv_measurement(record, "default", "default") == {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "default"}
-    assert export.kv_measurement(record, "other", "default") == {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "other"}
+    record = {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "conditions": "c", "source": "s", "witness": "w", "kv_evidence": "e",
+              "checkpoints": {"other": {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "conditions": "d"}}}
+    # A measurement carries its record, conditions and KV-size evidence, None where it names none.
+    assert export.kv_measurement(record, "default", "default") == {"tokens": 1000, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "default",
+                                                                    "source": "s", "conditions": "c", "kv_evidence": "e"}
+    assert export.kv_measurement(record, "other", "default") == {"tokens": 400, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "other",
+                                                                  "source": None, "conditions": "d", "kv_evidence": None}
     # Another checkpoint of the same profile takes the profile's own measurement and names its checkpoint.
     assert export.kv_measurement({**record, "checkpoint": "older"}, "third", "default")["checkpoint"] == "older"
     assert export.kv_measurement({k: v for k, v in record.items() if k != "kv_bytes_per_rank"}, "default", "default") is None
@@ -397,37 +559,55 @@ def test_kv_measurement_prefers_the_checkpoint_then_the_profile():
 
 def test_checkpoints_carry_the_measurement_of_their_own_profile(data):
     capacity = {(p["id"], c["name"]): c["capacity"] for p in data["profiles"] for c in p["checkpoints"]}
-    assert capacity[(GLM2, "nvfp4-spark")] == {"tokens": 1530566, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "nvfp4-spark"}
-    assert capacity[(GLM2, "nvfp4-qad")] == {"tokens": 736274, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "nvfp4-qad"}
+    records = export.capacity_records()
+    measured = lambda c: {key: c[key] for key in ("tokens", "kv_bytes_per_rank", "checkpoint")}  # noqa: E731
+    assert measured(capacity[(GLM2, "nvfp4-spark")]) == {"tokens": 1530566, "kv_bytes_per_rank": 10 * GIB, "checkpoint": "nvfp4-spark"}
+    assert measured(capacity[(GLM2, "nvfp4-qad")]) == {"tokens": 736274, "kv_bytes_per_rank": 5 * GIB, "checkpoint": "nvfp4-qad"}
     # A four-Spark profile never takes a two-Spark figure.
-    assert capacity[(TP4, "nvfp4-qad")] == {"tokens": 6128169, "kv_bytes_per_rank": 40 * GIB, "checkpoint": "nvfp4-spark"}
-    assert capacity[(TP2, "qad-step5500-ple1000")]["checkpoint"] == "qad-step-4000"
+    assert measured(capacity[(TP4, "nvfp4-qad")]) == {"tokens": 6128169, "kv_bytes_per_rank": 40 * GIB, "checkpoint": "nvfp4-spark"}
+    assert capacity[(TP4, "nvfp4-qad")]["source"] == records[TP4]["source"]
+    # The Qwen estimate keeps where it comes from: step 4000 with SparkCache on the shared 2026.09.3 image.
+    qwen = capacity[(TP2, "qad-step5500-ple1000")]
+    assert qwen["checkpoint"] == "qad-step-4000" and qwen["source"] == "runtime/releases/shared-2026.09.3/correctness.json"
+    assert "SparkRing 2026.09.3" in qwen["conditions"] and "sparkcache.json" in qwen["kv_evidence"]
     assert capacity[(MIMO2, None)] is None
 
 
 def test_kv_estimate_scales_the_measured_pool_to_the_chosen_size(data, node):
     by_id = {p["id"]: p for p in data["profiles"]}
     cases = [(GLM2, None, {}), (GLM2, None, {"kv_cache_gib": 5}), (GLM2, "nvfp4-qad", {}), (TP2, None, {"context_length": 131072}),
-             (MIMO2, None, {}), ("deepseek-v41-flash-tp4", None, {})]
+             (MIMO2, None, {}), ("deepseek-v41-flash-tp4", None, {}), ("qwen38-flash-next-qad-tp4", "jmni-qad5500-hybrid", {})]
     found = run_engine(node, """
 console.log(JSON.stringify(value.cases.map(([id, name, settings]) => {
   const checkpoint = E.checkpointOf(value.byId[id], name);
   return [E.kvEstimate(checkpoint, settings), E.kvText(checkpoint, settings)];
 })));""", {"byId": {key: by_id[key] for key in {c[0] for c in cases}}, "cases": cases})
-    (glm, glm_text), (half, half_text), (qad, qad_text), (qwen, qwen_text), (mimo, mimo_text), (deepseek, deepseek_text) = found
+    ((glm, glm_text), (half, half_text), (qad, qad_text), (qwen, qwen_text), (mimo, mimo_text), (deepseek, deepseek_text),
+     (jmni, jmni_text)) = found
+    room = "room for about {} full-length requests by size; not a tested concurrency"
+    glm_record = export.capacity_records()[GLM2]
     # 1,530,566 tokens at 10 GiB in a 1,048,576-token window.
     assert (glm["gib"], glm["tokens"], glm["requests"]) == (10, 1500000, 1.5)
-    assert glm_text == {"gib": 10, "line": "About 1.5 million tokens · 1.5 full-context requests",
-                        "note": "Estimated from the engine's report at 10 GiB; the engine reports the exact figure when the model starts."}
+    assert glm_text == {"gib": 10, "line": "About 1.5 million tokens · " + room.format("1.5"),
+                        "basis": "Estimated from nvfp4-spark at 10 GiB", "source": glm_record["source"],
+                        "conditions": glm_record["conditions"]}
     # Half the bytes hold half the tokens: 765,283, rounded to two figures.
     assert (half["tokens"], half["requests"]) == (770000, 0.7)
-    assert half_text["line"] == "About 770,000 tokens · 0.7 full-context requests"
-    # nvfp4-qad has its own measurement: 736,274 tokens at 5 GiB in a 524,288-token window.
+    assert half_text["line"] == "About 770,000 tokens · " + room.format("0.7")
+    # nvfp4-qad has its own measurement and record: 736,274 tokens at 5 GiB in a 524,288-token window.
     assert (qad["gib"], qad["tokens"], qad["requests"], qad["measured_gib"]) == (5, 740000, 1.4, 5)
-    # Qwen's measurement is of qad-step-4000 at 24 GiB, and the note says so.
+    assert (qad_text["basis"], qad_text["source"]) == (
+        "Estimated from nvfp4-qad at 5 GiB", glm_record["checkpoints"]["nvfp4-qad"]["source"])
+    assert qad_text["source"].startswith("performance/records/")
+    # Qwen's measurement is of qad-step-4000 at 24 GiB, and the basis says so.
     assert (qwen["tokens"], qwen["requests"]) == (2900000, 22.0)
-    assert qwen_text["note"].startswith("Estimated from the engine's report for qad-step-4000 at 24 GiB;")
-    assert mimo == {"gib": 12, "measured": False} and mimo_text == {"gib": 12, "line": "Not measured for this model", "note": ""}
+    assert qwen_text["basis"] == "Estimated from qad-step-4000 at 24 GiB"
+    assert qwen_text["source"] == "runtime/releases/shared-2026.09.3/correctness.json"
+    # The JMNI hybrid on four Sparks is sized by step 4000's four-Spark measurement.
+    assert jmni_text["line"] == "About 3.1 million tokens · " + room.format("11.9")
+    assert jmni_text["basis"] == "Estimated from qad-step-4000 at 24 GiB"
+    assert mimo == {"gib": 12, "measured": False}
+    assert mimo_text == {"gib": 12, "line": "Not measured for this model", "basis": "", "source": None, "conditions": None}
     assert deepseek is None and deepseek_text is None
 
 
@@ -440,7 +620,9 @@ console.log(JSON.stringify({ choices, lines: choices.halves.map(s => {
   return E.kvText(check.checkpoint, check.settings).line;
 }) }));""", {"byId": by_id, "search": f"profile={TP4}&layout=halves&first={GLM2}&first.kv_cache_gib=5&second={GLM2}&second.checkpoint=nvfp4-qad"})
     assert found["choices"]["halves"][0]["settings"] == {"kv_cache_gib": 5}
-    assert found["lines"] == ["About 770,000 tokens · 0.7 full-context requests", "About 740,000 tokens · 1.4 full-context requests"]
+    assert found["lines"] == [
+        "About 770,000 tokens · room for about 0.7 full-length requests by size; not a tested concurrency",
+        "About 740,000 tokens · room for about 1.4 full-length requests by size; not a tested concurrency"]
 
 
 def test_field_problems_name_each_field_the_generator_refuses(node):

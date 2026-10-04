@@ -34,7 +34,12 @@ rejects an installer image lock without one. [Installer image builders](../../ru
 describes the chain. A GitHub release that publishes an installer image adds
 its tag and the image's release name to
 [installer-releases.json](../../runtime/releases/installer-releases.json), so
-`sudo sparkring install --image TAG` selects that image.
+`sudo sparkring install --image TAG` selects that image. An image whose own
+layer adds a capability that a serving setting needs, such as the
+shared-memory reader window of `--save-cpu`, is listed in
+[installer-capabilities.json](../../runtime/releases/installer-capabilities.json)
+([capabilities](../../runtime/images/installer-images.md#capabilities)); an
+image derived from a listed one needs no entry.
 
 Publishing a GitHub release that is not a prerelease runs the
 [Install Builder pages workflow](../../.github/workflows/compose-builder-pages.yml):

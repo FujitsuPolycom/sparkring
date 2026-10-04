@@ -484,6 +484,9 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     interactive = not args.json and sys.stdin.isatty()
     profile = choose_profile(args.profile, count, interactive)
     image = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+    # A switch the image cannot apply, such as --save-cpu without the shared-memory
+    # reader window, is refused before anything is asked or surveyed.
+    serving_settings.check_image(serving_settings.from_arguments(args), image["name"], installer_image.capabilities(image["name"]))
     try:
         named = checkpoint_plan.named_paths(args.model_path, count)
     except ValueError as error:

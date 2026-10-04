@@ -3,8 +3,8 @@
 The Install Builder is a web page for one SparkRing source. Pick how your
 Sparks serve, a profile, a checkpoint and serving settings, and it writes:
 
-- the `sparkring install` commands that deploy them, switch layouts and
-  check the result, in order, or
+- the `sparkring install` commands that deploy them and check the result,
+  in order, and optionally switch layouts later, or
 - one Docker Compose file per Spark, exactly as `sparkring compose render`
   writes them for your site, and the whole deployment as a zip.
 
@@ -49,6 +49,12 @@ published the image, such as `2026.09.5`, or the part of its name that only it
 has, such as `statusrows`
 ([another image](install-reference.md#another-image)).
 
+Step 4 offers **Save CPU between decode steps** only for a model whose image
+reads its variable, as the page's data records for each image
+([serving settings](install-reference.md#serving-settings)). On another
+image, such as `plainstatus`, step 4 says the image can't, and the commands
+and files leave the switch out.
+
 ## Layout
 
 Step 2 chooses how the Sparks serve:
@@ -76,18 +82,43 @@ the argument parsers of `runtime/host/install_workflow.py` and
 `runtime/common/serving.py` defines, and records them in the page's data as
 `features`.
 
+## Model and checkpoint
+
+Step 3 lists the profiles of the layout's size. Each card shows the model, one
+line about it and its status; each checkpoint card leads with what the
+checkpoint is for, such as "MXFP8 attention, derived during install", then
+the name `--checkpoint` takes, and shows its status. The output summary
+repeats the status of each model it installs. Statuses use the labels of the
+[profile tables](../../profiles/README.md): **Validated** (`qualified`),
+**Development** (`implemented`) and **Experimental** (`research-only`).
+
+- A profile's status is its `profile.json` `status`; its default checkpoint
+  has the same status.
+- [profiles/labels.json](../../profiles/labels.json)
+  (`sparkring-profile-labels/v1`) holds each profile's line and, for each
+  checkpoint a profile lists, what it is for; a checkpoint other than the
+  default also has its own status and the record that establishes it, such as
+  [checkpoint status](install-reference.md#another-checkpoint-of-a-profile)
+  for the research-only `jmni-qad5500-hybrid`. The page is not built while a
+  profile or checkpoint lacks its labels.
+- The labels are not in the profiles' configurations: the deployment identity
+  covers every checkpoint entry there, so a label would make each deployment
+  of the profile another deployment.
+
 ## Commands
 
 For the `sparkring install` output the page writes the layout's commands in
-order, under three headings. Every command runs on Node A, as a user with
+order: **Install**, then **Check**. On a ring an optional **Switch** section
+follows, with its own numbers and the line "Optional: switch layouts later.
+This stops the models above." Every command runs on Node A, as a user with
 sudo. Each one says what it does and, for an installation, the address its
 model serves at, with a copy button.
 
 | Heading | Two Sparks | Four Sparks – One Model | Four Sparks – Two Models |
 |---|---|---|---|
 | Install | The profile on both Sparks | The profile on all four | `--on 0,1` for the first pair, then `--on 2,3` for the second |
-| Switch | None | The two pairs' commands, `--on 0,1` then `--on 2,3`; the first stops the four-Spark model | The four-Spark profile, which stops both pairs' models |
 | Check | `sudo sparkring status` | `sudo sparkring status` | `sudo sparkring status`, which shows each pair's model separately |
+| Switch (optional) | None | The two pairs' commands, `--on 0,1` then `--on 2,3`; the first stops the four-Spark model | The four-Spark profile, which stops both pairs' models |
 
 - A model serves on the first Spark of its Sparks, at its profile's port from
   the page's data: Node A for a pair, a ring and the first pair, and Spark 2's
@@ -112,8 +143,24 @@ The options above the commands apply to every install command:
 Each install command carries `--profile`, `--on` for a pair of a ring,
 `--image` and `--checkpoint` when they are not the defaults, the
 [serving settings](install-reference.md#serving-settings) changed for that
-selection and its [API endpoint](#api-endpoint). A setting outside its limits
-shows its problem under the field.
+selection and its [API endpoint](#api-endpoint).
+
+### Fields that need a change
+
+A field holds what you type until it is fixed; a value that `sparkring install`
+would refuse never falls back to the profile's value. While any field the
+output uses has a problem, the page shows the problem under that field, the
+output says **Not ready** and lists those fields, and it offers nothing to
+copy or download:
+
+| Output | Fields it uses |
+|---|---|
+| `sparkring install` | Every serving setting of each model the layout installs, the API endpoint's fields when it is **Set here**, the download limit, and with **Fill in my Sparks** each Spark's name and address |
+| Docker Compose | The model's serving settings and API endpoint fields, and every field of step 5 |
+
+[engine.js](../../scripts/compose_builder/engine.js) reads each field
+(`readSetting`, `readAddress`, `readDownloadLimit`, `readSelection`), and its
+command pack lists the fields it cannot use; the tests drive both.
 
 ### API endpoint
 
@@ -132,7 +179,8 @@ belongs to each model, and with two pairs to each pair.
   address of the Spark that serves the model; the installer checks that the
   Spark has it. **Address people use** is a name or an address, such as
   `llm.example.net`, without `http://` or a port. A value the installer would
-  refuse shows its problem under the field and stays out of the commands.
+  refuse shows its problem under the field, and the page offers no command
+  until it is fixed ([fields that need a change](#fields-that-need-a-change)).
 - The address each install command serves at follows the choice: the address
   people use, else the listen address, else the Spark's address, at the
   chosen port.
@@ -151,14 +199,25 @@ the profile, with the KV bytes per Spark at that measurement:
 
 - tokens ≈ measured tokens × chosen KV bytes per Spark ÷ measured KV bytes
   per Spark, rounded to two significant figures;
-- full-context requests ≈ tokens ÷ the context window, to one decimal.
+- full-length requests ≈ tokens ÷ the context window, to one decimal. This
+  is how many requests of the whole window the cache holds by size, not a
+  number of requests tested at the same time.
+
+For example, the JMNI hybrid checkpoint on four Sparks shows "about 3.1
+million tokens · room for about 11.9 full-length requests by size; not a
+tested concurrency", estimated from qad-step-4000 at 24 GiB.
 
 A measurement of the selected checkpoint is used when the file has one;
-otherwise the profile's own, and the note names the checkpoint it measured.
-Each record belongs to one profile, so a two-Spark measurement never sizes a
-four-Spark profile. A model without a measurement shows "Not measured for
-this model". The estimate follows the KV cache and context fields as they
-change; the engine reports the exact figure when the model starts.
+otherwise the profile's own. Beside each estimate the page says what it is
+estimated from, such as "Estimated from qad-step-4000 at 24 GiB", and links
+the measurement's record at the page's source commit; the record's
+conditions (image, configuration and what the figure does not prove) show
+when you point at the link. The page's data keeps each measurement's
+`source`, `conditions` and `kv_evidence`. Each record belongs to one
+profile, so a two-Spark measurement never sizes a four-Spark profile. A model
+without a measurement shows "Not measured for this model". The estimate
+follows the KV cache and context fields as they change; the engine reports
+the exact figure when the model starts.
 
 ### Spark order
 
@@ -166,19 +225,29 @@ Node A is the Spark that runs setup, which the first installation does; it
 becomes rank 0. The cabling ranks the others: every cable joins port 0 of one
 Spark to port 1 of the next, and rank r+1 is the Spark on rank r's port 0. So
 the first pair is Node A and the Spark on its port 0, and the second pair is
-the other two, headed by Spark 2. Neither the order nor a pair's head can be
-chosen.
+the other two, headed by Spark 2, the only Spark no cable joins to Node A.
+Neither the order nor a pair's head can be chosen.
 
 - **Automatic** writes the commands as the options above set them and names
-  the Sparks Node A and Spark 1 to Spark 3. `NODE_A` and `SPARK_2` stand for
-  their addresses in the API addresses.
+  the Sparks Node A and Spark 1 to Spark 3. `NODE_A` stands for Node A's
+  address and `SPARK_2` for the address of the Spark that isn't cabled to
+  Node A.
 - **Ask during install** leaves out `--yes`, so every installation shows which
   Spark is which and asks before it changes anything.
 - **Fill in my Sparks** takes a name, an address or both for each Spark in
   step 5. The commands say where to run by name, and the API addresses use the
   addresses, or the names without one.
 
-A list under the commands says what each Spark becomes.
+Under the commands, **Where to run and connect** says where to run them and
+where each model answers:
+
+| Layout | Text |
+|---|---|
+| Two Sparks | Node A: run the commands here; the model answers at its address. The other Spark: nothing to run on it. |
+| One model on all four | Node A, as for two Sparks. The other three: nothing to run on them. |
+| Two models, one per pair | First pair: Node A and the Spark on its port 0, answering at Node A's address. Second pair: the other two, answering at the address of the Spark that isn't cabled to Node A. Then "Run every command on Node A." and one line saying the cables set the order. |
+
+With **Fill in my Sparks** it uses the names and addresses from step 5.
 
 ## Share the choices
 
@@ -186,7 +255,9 @@ On a page served over HTTP, **Copy link to these choices** copies the page's
 address with the layout, each selection's profile, checkpoint, changed
 serving settings and API endpoint choice, the installer image, the install
 options, the Spark order and the output. The link carries no name, address or path from step 5. A link
-without a layout opens the layout that fits its profile's size.
+without a layout opens the layout that fits its profile's size. Where the
+browser does not let the page write to the clipboard, the link appears in a
+field beside the button, selected, to copy by hand.
 
 ## Compose files
 
@@ -249,7 +320,7 @@ files with `sparkring compose`. A derived checkpoint, such as
 ## How the page is checked
 
 The page runs no Python. For every installer image, profile, checkpoint and
-save-CPU state, [export.py](../../scripts/compose_builder/export.py) renders the deployment
+save-CPU state the image offers, [export.py](../../scripts/compose_builder/export.py) renders the deployment
 with `compose.build` for a site whose values are unique placeholders, and
 [engine.js](../../scripts/compose_builder/engine.js) puts a real site's values
 in their place line by line. The export stops if a placeholder lands anywhere
@@ -264,7 +335,8 @@ sites per checkpoint on the default image, `--image-cases` on each other image:
 - every rank's `compose.yaml` and `container.json`, `deployment.json`,
   `site.yaml` and the deployment ID;
 - the refusal message for each invalid site and setting, such as a port that
-  SparkRing uses or an address no Spark can listen on;
+  SparkRing uses, an address no Spark can listen on, or the save-CPU switch on
+  an image without the shared-memory reader window;
 - for a sample, the zip: Python's `zipfile` opens it and
   `compose.load_deployment` accepts the unzipped folder.
 

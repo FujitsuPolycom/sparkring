@@ -930,6 +930,16 @@ def test_serving_settings_install_another_deployment_and_are_listed(machine, spa
     # A value within a tenth above the profile's is planned with a warning.
     assert command("--plan", "--kv-cache-gib", "26") == 0
     assert "Warning: --kv-cache-gib 26 is above the profile's 24" in capsys.readouterr().err
+    # --save-cpu needs an image that reads the shared-memory reader window: the default image does, and an image
+    # from before the spin-wait layer is refused before any Spark is surveyed.
+    assert command("--plan", "--save-cpu") == 0
+    assert json.loads(capsys.readouterr().out)["serving"] == {"save_cpu": True}
+    surveys = len(sparks.surveys)
+    assert command("--plan", "--save-cpu", "--image", "plainstatus") == 2
+    assert json.loads(capsys.readouterr().out)["message"] == (
+        "--save-cpu needs an image whose vLLM reads SPARKRING_SHM_BUSY_LOOP_S, and "
+        "dev-20260928-plainstatus-cuda1342-nccl2323-status033 does not. Leave out --save-cpu or choose another image.")
+    assert len(sparks.surveys) == surveys
 
 
 def endpoint_report(listeners=()):

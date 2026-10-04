@@ -2,7 +2,8 @@
 
 cases() draws random sites, checkpoints and serving settings, the API
 endpoint's port and listen address among them, for every listed
-profile, invalid sites, and sites that compose.build accepts but the engine
+profile, invalid sites and settings (the save-CPU switch on an image that
+cannot apply it among them), and sites that compose.build accepts but the engine
 refuses because it limits their characters (paths with spaces, IPv6
 addresses). run() renders every case with engine.js under Node (run_engine.js)
 and with compose.build, and reports each difference in the per-rank files,
@@ -120,10 +121,11 @@ class Sites:
         return ".".join(str(n) for n in (self.rng.randint(1, 223), self.rng.randint(0, 255), self.rng.randint(0, 255),
                                          self.rng.randint(0, 255)))
 
-    def settings(self, checkpoint):
+    def settings(self, checkpoint, capabilities):
+        """Settings both accept: a switch only where the image has the capability it needs (``capabilities``)."""
         chosen = {}
         for row in checkpoint["settings"]:
-            if self.rng.random() < 0.5:
+            if self.rng.random() < 0.5 or (row.get("needs") and row["needs"] not in capabilities):
                 continue
             if row.get("switch"):
                 chosen[row["name"]] = True
@@ -199,9 +201,10 @@ def cases(data, *, per_checkpoint, seed, archive_every=5):
         nodes = profile["nodes"]
         found.append({"profile": profile["id"], "site": profile["example_site"], "settings": {}, "checkpoint": None,
                       "kind": "valid", "archive": True})
+        capabilities = profile.get("image_capabilities", [])
         for checkpoint in profile["checkpoints"]:
             for _ in range(per_checkpoint):
-                found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": sites.settings(checkpoint),
+                found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": sites.settings(checkpoint, capabilities),
                               "checkpoint": sites.checkpoint_name(checkpoint), "kind": "valid",
                               "archive": len(found) % archive_every == 0})
             ceiling = next((row for row in checkpoint["settings"] if row["name"] == "kv_cache_gib"), None)
@@ -217,6 +220,11 @@ def cases(data, *, per_checkpoint, seed, archive_every=5):
             if any(row.get("address") for row in checkpoint["settings"]):
                 refused += [{"api_bind": "0.0.0.0"}, {"api_bind": "224.0.0.1"}, {"api_bind": "10.0.0"},
                             {"api_bind": "198.51.100.7", "api_port": port["reserved"][-1][0] if port else 1}]
+            # A switch whose capability the image lacks, alone and with a KV cache above its ceiling: the
+            # image is refused first.
+            for row in checkpoint["settings"]:
+                if row.get("needs") and row["needs"] not in capabilities:
+                    refused += [{row["name"]: True}, *([{row["name"]: True, "kv_cache_gib": ceiling["maximum"] + 1}] if ceiling else [])]
             for settings in refused:
                 found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": settings,
                               "checkpoint": sites.checkpoint_name(checkpoint), "kind": "invalid"})

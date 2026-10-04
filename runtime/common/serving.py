@@ -68,12 +68,15 @@ ABOVE_PROFILE = frozenset({"kv_cache_gib"})
 # so between decode steps they sleep until notified instead of keeping CPU
 # cores busy; each step then waits for a reader to wake, which cost about 1%
 # of decode steps per second with one request and 2% with eight
-# (FujitsuPolycom/sparkring#189). Only an image derived with
-# runtime/images/derive_spin_wait.py reads the variable.
+# (FujitsuPolycom/sparkring#189). Only an image with the shared-memory reader
+# window of runtime/images/derive_spin_wait.py reads the variable (NEEDS).
 SWITCHES = {
     "save_cpu": ("SPARKRING_SHM_BUSY_LOOP_S", "0.002",
                  "let vLLM's waiting processes sleep between decode steps: less CPU use, about 1 to 2 percent slower decode"),
 }
+# The installer image capability (installer_image.capabilities) that each
+# switch needs: on an image without it, the switch's variable would change nothing.
+NEEDS = {"save_cpu": "shm_reader_window"}
 # name: (vLLM flag, accepted values or None for the model's own, metavar, help)
 CHOICES = {
     "reasoning_effort": ("--default-chat-template-kwargs", None, "LEVEL",
@@ -157,6 +160,14 @@ def normalized(values):
                              + (f"from {minimum} to {maximum}" if maximum is not None else f"of at least {minimum}"))
         result[name] = value
     return result
+
+
+def check_image(settings, image, capabilities):
+    """Refuse a switch that image release ``image``, whose capabilities are ``capabilities``, cannot apply (NEEDS)."""
+    for name in sorted(set(settings) & set(NEEDS)):
+        if NEEDS[name] not in capabilities:
+            raise ValueError(f"{option(name)} needs an image whose vLLM reads {SWITCHES[name][0]}, and "
+                             f"{image} does not. Leave out {option(name)} or choose another image.")
 
 
 def choice(name, value):

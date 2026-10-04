@@ -404,6 +404,10 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         if local_source_extension is not None:
             raise ValueError("Serving settings apply to published images; a local source-extension trial "
                              "selects its KV alternative with --local-kv-cache-gib")
+        # A switch needs an image that reads its variable, as `sparkring install` requires.
+        from runtime.common import installer_image
+        release = image_runtime["name"] if image_runtime is not None else Path(metadata["release"]).parent.name
+        serving_settings.check_image(settings, release, installer_image.capabilities(release))
         specs = [serving_settings.container(spec, settings, rank=number, model=(profile_id, checkpoint))
                  for number, spec in enumerate(specs)]
     return specs, image

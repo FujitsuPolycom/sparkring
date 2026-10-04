@@ -10,6 +10,10 @@ every token appears only on the lines the engine rewrites and the site fields
 that never reach a container file are absent from them. verify.py compares the
 engine with compose.build for random sites.
 
+Each profile names its image's capabilities (installer_image.capabilities):
+the page offers the save-CPU switch, and export() renders its "on" variant,
+only on an image whose vLLM reads the switch's variable.
+
 The page's command pack offers what the source's commands accept: export()
 records in ``features`` whether `sparkring install` defines ``--on`` (a
 two-Spark model on half of a four-Spark ring) and ``--api-address`` (the
@@ -21,8 +25,17 @@ include the API endpoint's port and listen address (``api_port``,
 
 Each checkpoint carries ``capacity``: the engine-reported KV pool of
 performance/profile-capacity.json that the page scales to the chosen KV cache
-size for its token estimate (kv_measurement), or None when the profile has
-no usable measurement.
+size for its token estimate, with the measurement's record, conditions and
+KV-size evidence, which the page names beside the estimate
+(kv_measurement), or None when the profile has no usable measurement.
+
+Each profile and checkpoint carries ``status`` and ``purpose``, which the page
+shows beside it. A profile's status is its profile.json ``status``; its
+purpose, and each other checkpoint's status, purpose and evidence, come from
+profiles/labels.json (labels()). They live there rather than in the profile's
+configuration because the deployment identity covers each checkpoint entry
+of the configuration (compose.identity_inventory), so a label written there
+would make every deployment of the profile another deployment.
 """
 import ast
 import json
@@ -30,13 +43,15 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.common import compose, profiles, qwen_flash_next
+from runtime.common import compose, installer_image, profiles, qwen_flash_next
 from runtime.common import serving as serving_settings
 
 HERE = Path(__file__).resolve().parent
 ROOT = compose.ROOT
 SCHEMA = "sparkring-compose-builder-data/v1"
 REPOSITORY = "FujitsuPolycom/sparkring"
+# The status values of profiles and checkpoints (docs/development/writing.md).
+STATUSES = ("qualified", "implemented", "research-only", "unsupported")
 # Compose-supported profiles the builder does not list.
 EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache"})
 
@@ -84,6 +99,9 @@ def _argument(command, flag):
 def _setting_rows(command):
     """The serving settings a command sets, with the command's values and their limits.
 
+    A switch that needs an image capability (serving.NEEDS) names it in
+    ``needs``; the profile's ``image_capabilities`` say whether its image has it.
+
     ``maximum`` is the ceiling of an ABOVE_PROFILE setting and ``largest``
     the largest whole number a setting takes (serving.MAXIMUM). The API
     endpoint's settings, which the page offers in its API endpoint option,
@@ -108,8 +126,11 @@ def _setting_rows(command):
             row.update(endpoint=True, address=True)
         rows.append(row)
     for name, (variable, value, text) in serving_settings.SWITCHES.items():
-        rows.append({"name": name, "option": serving_settings.option(name), "flag": variable, "switch": True,
-                     "value": value, "help": text})
+        row = {"name": name, "option": serving_settings.option(name), "flag": variable, "switch": True,
+               "value": value, "help": text}
+        if name in serving_settings.NEEDS:
+            row["needs"] = serving_settings.NEEDS[name]
+        rows.append(row)
     return rows
 
 
@@ -151,6 +172,50 @@ def _checkpoints(profile_id, configuration, site, options):
     return rows
 
 
+def labels(root=ROOT):
+    """profiles/labels.json (sparkring-profile-labels/v1), validated: a purpose by profile, and by checkpoint name.
+
+    ``profiles`` maps a profile ID to ``purpose``, one line, and
+    ``checkpoints``, which maps each checkpoint name the profile lists to its
+    ``purpose``. A checkpoint other than the profile's default also has
+    ``status``, one of STATUSES, and ``evidence``, the repository file (with
+    an optional ``#`` anchor) that establishes it; the default checkpoint has
+    the profile's own status.
+    """
+    document = json.loads((Path(root) / "profiles" / "labels.json").read_text(encoding="utf-8"))
+    if set(document) != {"schema", "profiles"} or document["schema"] != "sparkring-profile-labels/v1":
+        raise ValueError("profiles/labels.json: expected sparkring-profile-labels/v1 with profiles")
+    for profile_id, row in document["profiles"].items():
+        if (not isinstance(row, dict) or set(row) != {"purpose", "checkpoints"} or not isinstance(row["purpose"], str)
+                or not row["purpose"] or not isinstance(row["checkpoints"], dict)):
+            raise ValueError(f"profiles/labels.json: {profile_id} needs a purpose and its checkpoints")
+        for name, entry in row["checkpoints"].items():
+            keys = set(entry) if isinstance(entry, dict) else set()
+            if keys not in ({"purpose"}, {"purpose", "status", "evidence"}) or not entry["purpose"]:
+                raise ValueError(f"profiles/labels.json: {profile_id} {name} needs a purpose, and a status and evidence or neither")
+            if "status" in entry and (entry["status"] not in STATUSES
+                                      or not (Path(root) / entry["evidence"].split("#", 1)[0]).is_file()):
+                raise ValueError(f"profiles/labels.json: {profile_id} {name} needs a status of {', '.join(STATUSES)} "
+                                 "and an evidence file of this repository")
+    return document
+
+
+def _labelled(profile_id, metadata, checkpoints, document):
+    """The profile's status and purpose, with each checkpoint's in place; refuses a profile or checkpoint without labels."""
+    row = document["profiles"].get(profile_id)
+    names = [checkpoint["name"] for checkpoint in checkpoints if checkpoint["name"] is not None]
+    if row is None or sorted(row["checkpoints"]) != sorted(names):
+        raise ValueError(f"profiles/labels.json must label {profile_id} and exactly its checkpoints: {', '.join(names) or 'none'}")
+    for checkpoint in checkpoints:
+        entry = row["checkpoints"].get(checkpoint["name"], {})
+        if checkpoint["default"] == ("status" in entry):
+            raise ValueError(f"profiles/labels.json: {profile_id} {checkpoint['name']}: only a checkpoint other than the "
+                             "default has its own status")
+        checkpoint.update(status=entry.get("status", metadata["status"]), purpose=entry.get("purpose"),
+                          evidence=entry.get("evidence"))
+    return {"status": metadata["status"], "purpose": row["purpose"]}
+
+
 def capacity_records():
     """performance/profile-capacity.json's records by profile ID: the engine-reported KV pools."""
     return json.loads((ROOT / "performance" / "profile-capacity.json").read_text(encoding="utf-8"))["profiles"]
@@ -166,9 +231,13 @@ def kv_measurement(record, checkpoint, default):
     (its ``checkpoint``, else the profile's default). Otherwise the record's
     own measurement, of another checkpoint of the same profile, sizes it. A
     measurement without ``kv_bytes_per_rank`` cannot be scaled to another KV
-    size and sizes nothing. Returns {tokens, kv_bytes_per_rank, checkpoint}
-    or None; a record is for one profile, so a two-Spark measurement never
-    sizes a four-Spark profile.
+    size and sizes nothing. Returns {tokens, kv_bytes_per_rank, checkpoint,
+    source, conditions, kv_evidence} or None: ``source`` is the repository
+    file that records the measurement, ``conditions`` how it was measured
+    (image, configuration and what the figure does not prove) and
+    ``kv_evidence`` where its KV size comes from, each None when the
+    measurement does not name it. A record is for one profile, so a
+    two-Spark measurement never sizes a four-Spark profile.
     """
     if not record:
         return None
@@ -176,7 +245,8 @@ def kv_measurement(record, checkpoint, default):
     measured, name = (other, checkpoint) if other else (record, record.get("checkpoint") or default)
     if not measured.get("kv_bytes_per_rank"):
         return None
-    return {"tokens": measured["tokens"], "kv_bytes_per_rank": measured["kv_bytes_per_rank"], "checkpoint": name}
+    return {"tokens": measured["tokens"], "kv_bytes_per_rank": measured["kv_bytes_per_rank"], "checkpoint": name,
+            **{key: measured.get(key) for key in ("source", "conditions", "kv_evidence")}}
 
 
 def sentinel_site(example):
@@ -246,11 +316,16 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
     record = capacity_records().get(profile_id)
     for checkpoint in checkpoints:
         checkpoint["capacity"] = kv_measurement(record, checkpoint["name"], checkpoints[0]["name"])
+    status = _labelled(profile_id, metadata, checkpoints, labels())
     site = sentinel_site(example)
+    release = (runtime or {}).get("name") or Path(metadata["release"]).parent.name
+    capabilities = list(installer_image.capabilities(release))
+    # The save-CPU switch renders only on an image that reads its variable; elsewhere it is refused.
+    renders = [("off", None)] + ([("on", {"save_cpu": True})] if serving_settings.NEEDS["save_cpu"] in capabilities else [])
     for checkpoint in checkpoints:
         name = None if checkpoint["default"] else checkpoint["name"]
         variants = {}
-        for variant, serving in (("off", None), ("on", {"save_cpu": True})):
+        for variant, serving in renders:
             manifest, files = compose.build(profile_id, site, checkpoint=name, serving=serving, image_runtime=runtime)
             ranks = []
             for n in range(len(site["ranks"])):
@@ -267,11 +342,13 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
         "id": profile_id,
         "title": metadata.get("title", profile_id),
         "model_name": names.get(checkpoints[0]["model_repository"], metadata.get("title", profile_id)),
+        **status,
         "nodes": len(example["ranks"]),
         "installable": profile_id in (runtime or {}).get("profiles", []),
         "image": image,
         "image_id": specs[0].image_id,
-        "image_release": (runtime or {}).get("name") or Path(metadata["release"]).parent.name,
+        "image_release": release,
+        "image_capabilities": capabilities,
         "image_option": image_option,
         "checkpoints": checkpoints,
         "example_site": example,
@@ -370,7 +447,6 @@ def image_catalog():
     data file of a non-default image, which the page loads when the image is
     selected.
     """
-    from runtime.common import installer_image
     listed = set(profile_ids())
     catalog = installer_image.catalog()
     names = [row["name"] for row in catalog]
@@ -397,7 +473,6 @@ def _image_option(row, names):
 
 def image_data(name):
     """The profiles a non-default installer image runs, rendered on it, for its data file."""
-    from runtime.common import installer_image
     catalog = installer_image.catalog()
     row = next(row for row in catalog if row["name"] == name)
     option = _image_option(row, [row["name"] for row in catalog])

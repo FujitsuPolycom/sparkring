@@ -308,6 +308,19 @@ const SparkRingEngine = (() => {
       }
     }
   }
+  // serving.check_image: a switch that needs an image capability (row.needs) the profile's image
+  // lacks (profile.image_capabilities) is refused, naming the image's release.
+  const offered = (profile, row) => !row.needs || (profile.image_capabilities || []).includes(row.needs);
+  function checkImage(profile, checkpoint, settings) {
+    const rows = Object.fromEntries(checkpoint.settings.map(r => [r.name, r]));
+    for (const name of Object.keys(settings).sort()) {
+      const row = rows[name];
+      if (row && row.switch && !offered(profile, row)) {
+        throw new Error(`${option(name)} needs an image whose vLLM reads ${row.flag}, and ${profile.image_release} does not. `
+          + `Leave out ${option(name)} or choose another image.`);
+      }
+    }
+  }
   const FLAGS = {
     max_images: ['--limit-mm-per-prompt', 'image', 1], max_videos: ['--limit-mm-per-prompt', 'video', 1],
     context_length: ['--max-model-len', null, 1], max_concurrency: ['--max-num-seqs', null, 1],
@@ -375,14 +388,75 @@ const SparkRingEngine = (() => {
     return JSON.stringify(limits);
   }
 
+  // ---- Field entries ---------------------------------------------------------------------
+  // The page keeps what each field holds, its entry, apart from the settings the commands and
+  // files take. An entry is the text typed, or a value from a link or saved choices; the readers
+  // here turn it into a value, or into the problem `sparkring install` would refuse it with. A
+  // field with a problem gives no value, and the page offers no command or file until it is
+  // fixed, so a refused value never falls back to the profile's silently.
+  const wholeNumber = (row, n) => row.largest !== undefined && row.largest !== null ? String(n) : n.toLocaleString('en-US');
+  // A serving setting's entry, against `row`, one of a checkpoint's settings (export._setting_rows):
+  // {value, problem}, value undefined for an empty field, which keeps the profile's value.
+  function readSetting(row, entry) {
+    const text = String(entry ?? '').trim();
+    if (text === '') return { value: undefined, problem: '' };
+    if (row.address) return listenable(text) ? { value: text, problem: '' } : { problem: 'An IPv4 address of the Spark, such as 192.0.2.10.' };
+    if (!/^\d+$/.test(text)) return { problem: 'Enter a whole number.' };
+    const n = Number(text), largest = row.largest ?? null, maximum = row.maximum ?? null;
+    if (!Number.isSafeInteger(n)) return { problem: 'Enter a smaller number.' };
+    if (largest !== null && (n < row.minimum || n > largest)) return { problem: `From ${wholeNumber(row, row.minimum)} to ${wholeNumber(row, largest)}.` };
+    if (n < row.minimum) return { problem: 'At least ' + wholeNumber(row, row.minimum) + '.' };
+    if (maximum !== null && n > maximum) return { problem: 'At most ' + wholeNumber(row, maximum) + '.' };
+    const taken = (row.reserved || []).find(([port]) => port === n);
+    if (taken) return { problem: `This is ${taken[1]}.` };
+    return { value: n, problem: '' };
+  }
+  // The entry of the address shown for a model (--api-address): {value, problem}, value null when empty.
+  function readAddress(entry) {
+    const text = String(entry ?? '').trim();
+    if (!text) return { value: null, problem: '' };
+    try { return { value: apiAddress(text), problem: '' }; } catch (_) { return { problem: 'A name or an address, without http:// or a port.' }; }
+  }
+  // The download limit's entry: {value, problem}, value '' when empty.
+  function readDownloadLimit(entry) {
+    const text = String(entry ?? '').trim();
+    return validDownloadLimit(text) ? { value: text, problem: '' } : { problem: 'Use none, or a rate of at least 1Mbit, such as 850Mbit or 2Gbit.' };
+  }
+  // A selection's entries: `entries` holds each serving field's entry by setting name, `endpoint`
+  // is the API endpoint choice {mode, address}. The endpoint's fields count only when its mode is
+  // "set"; an entry for a setting the checkpoint does not have, or for a switch the profile's
+  // image cannot apply, which the page does not offer, is left out. Returns {settings,
+  // address, problems}: the settings and shown address the commands take, and [{field, message}]
+  // for every field with a problem, `field` being a setting name or "api_address".
+  function readSelection(profile, checkpoint, entries, endpoint) {
+    const set = (endpoint || {}).mode === 'set', settings = {}, problems = [];
+    for (const row of checkpoint.settings) {
+      const entry = (entries || {})[row.name];
+      if (entry === undefined || entry === null || (row.endpoint && !set)) continue;
+      if (row.switch) {
+        if (entry === true && offered(profile, row)) settings[row.name] = true;
+        continue;
+      }
+      const read = readSetting(row, entry);
+      if (read.problem) problems.push({ field: row.name, message: read.problem });
+      else if (read.value !== undefined) settings[row.name] = read.value;
+    }
+    const shown = set ? readAddress((endpoint || {}).address) : { value: null, problem: '' };
+    if (shown.problem) problems.push({ field: 'api_address', message: shown.problem });
+    return { settings, address: shown.value ?? null, problems };
+  }
+
   // ---- KV cache token estimate ---------------------------------------------------------
   // How many tokens a checkpoint's KV cache holds at the chosen size, scaled from the
   // engine-reported pool its data carries (checkpoint.capacity, export.kv_measurement):
   // tokens = measured tokens x chosen KV bytes per Spark / measured KV bytes per Spark, rounded to
   // two significant figures, and full-context requests = tokens / the context window, to one
-  // decimal. `settings` are servingCheck's; a setting left out takes the checkpoint's value.
-  // Returns null for a checkpoint without a KV cache setting; `measured` is false without a
-  // measurement, which the page reports instead of guessing.
+  // decimal: how many requests of the whole window the cache holds by size, not a number of
+  // requests that was served at once. `settings` are servingCheck's; a setting left out takes the
+  // checkpoint's value. Returns null for a checkpoint without a KV cache setting; `measured` is
+  // false without a measurement, which the page reports instead of guessing. A measurement names
+  // its checkpoint and KV size, and its record (`source`, a repository path), `conditions` and
+  // `kv_evidence` when its data does.
   const GIB = 2 ** 30;
   function twoFigures(value) {
     if (!(value > 0)) return 0;
@@ -397,21 +471,24 @@ const SparkRingEngine = (() => {
     const tokens = measured.tokens * gib * GIB / measured.kv_bytes_per_rank;
     const context = settings.context_length ?? (rows.context_length || {}).profile;
     return { gib, measured: true, tokens: twoFigures(tokens), requests: context ? Math.round(tokens / context * 10) / 10 : null,
-      measured_gib: measured.kv_bytes_per_rank / GIB, measured_checkpoint: measured.checkpoint };
+      measured_gib: measured.kv_bytes_per_rank / GIB, measured_checkpoint: measured.checkpoint,
+      source: measured.source ?? null, conditions: measured.conditions ?? null, kv_evidence: measured.kv_evidence ?? null };
   }
-  // The estimate in words: {line, note}, or null without a KV cache setting.
+  // The estimate in words, or null without a KV cache setting: {gib, line, basis, source,
+  // conditions}. `basis` names the measurement it is scaled from ('' without one), and `source`
+  // and `conditions` are that measurement's.
   function kvText(checkpoint, settings) {
     const kv = kvEstimate(checkpoint, settings);
     if (!kv) return null;
-    if (!kv.measured) return { gib: kv.gib, line: 'Not measured for this model', note: '' };
+    if (!kv.measured) return { gib: kv.gib, line: 'Not measured for this model', basis: '', source: null, conditions: null };
     const n = kv.tokens;
     const tokens = 'About ' + (n >= 1e6 ? (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 }) + ' million'
       : n.toLocaleString('en-US')) + ' tokens';
-    const requests = kv.requests === null ? '' : ' · ' + kv.requests.toFixed(1) + ' full-context requests';
-    const other = kv.measured_checkpoint && kv.measured_checkpoint !== checkpoint.name ? ' for ' + kv.measured_checkpoint : '';
+    const requests = kv.requests === null ? ''
+      : ` · room for about ${kv.requests.toFixed(1)} full-length requests by size; not a tested concurrency`;
     const gib = kv.measured_gib.toLocaleString('en-US', { maximumFractionDigits: 2 });
-    return { gib: kv.gib, line: tokens + requests,
-      note: `Estimated from the engine's report${other} at ${gib} GiB; the engine reports the exact figure when the model starts.` };
+    return { gib: kv.gib, line: tokens + requests, basis: `Estimated from ${kv.measured_checkpoint || 'a measurement'} at ${gib} GiB`,
+      source: kv.source, conditions: kv.conditions };
   }
 
   // ---- Template substitution ---------------------------------------------------------
@@ -526,6 +603,7 @@ const SparkRingEngine = (() => {
     try {
       const checkpoint = checkpointOf(profile, checkpointName);
       const settings = normalized(checkpoint, requested);
+      checkImage(profile, checkpoint, settings);
       checkCeilings(checkpoint, settings);
       return { ok: true, checkpoint, settings, lines: describe(checkpoint, settings), warnings: warnings(checkpoint, settings) };
     } catch (error) {
@@ -540,6 +618,7 @@ const SparkRingEngine = (() => {
       const checkpoint = checkpointOf(profile, checkpointName);
       const settings = normalized(checkpoint, requested);
       validateSite(site, profile.nodes);
+      checkImage(profile, checkpoint, settings);
       checkCeilings(checkpoint, settings);
       const variant = checkpoint.variants[settings.save_cpu ? 'on' : 'off'];
       const numeric = Object.keys(settings).filter(k => k !== 'save_cpu').sort();
@@ -718,30 +797,46 @@ const SparkRingEngine = (() => {
   //            command is the one-command installer, which passes --on to `sparkring install`;
   //            every later command runs the `sudo sparkring install` it installed. A second half
   //            runs after the first: SparkRing runs one installation at a time.
-  //   switch:  on a ring, the commands that serve the other layout. Installing a half stops the
-  //            four-Spark model, and installing the four-Spark model stops both halves' models.
   //   check:   `sudo sparkring status`, and `sudo sparkring cabling --bandwidth` when
   //            features.cable_check.
+  //   switch:  on a ring, the commands that serve the other layout, last and `optional`, with
+  //            `note` saying so: they replace the models the install group starts. Installing a
+  //            half stops the four-Spark model, and installing the four-Spark model stops both
+  //            halves' models.
   // Each command is {where, what, command, endpoint, error}: `endpoint` is the API it serves,
   // and `error` why it has no command. `plan` is {layout, features, main, halves}, where a
-  // selection is {profile, checkpoint: name or null, settings: requested values, endpoint}: `main`
-  // is the pair's or the ring's model, and the four-Spark model the halves layout switches to;
-  // `halves` are the two halves' models, which the ring layout switches to. A selection's
-  // optional `endpoint` is {ask, address}: `ask` leaves out --yes so that the installation asks
-  // where the model's API listens, and `address` is the address shown for it (--api-address);
-  // its port and listen address are the settings api_port and api_bind. `opts` carries
-  // installCommand's form, pin, approval and downloadLimit, and `order`: "auto", "ask", which
-  // leaves out --yes so that every installation asks before it changes a Spark, or "fill",
-  // which names the Sparks after `opts.sparks`.
+  // selection is {profile, checkpoint: name or null, settings: requested values, endpoint,
+  // problems}: `main` is the pair's or the ring's model, and the four-Spark model the halves
+  // layout switches to; `halves` are the two halves' models, which the ring layout switches to. A
+  // selection's optional `endpoint` is {ask, address}: `ask` leaves out --yes so that the
+  // installation asks where the model's API listens, and `address` is the address shown for it
+  // (--api-address); its port and listen address are the settings api_port and api_bind. Its
+  // optional `problems` are its fields' (readSelection). `opts` carries installCommand's form,
+  // pin, approval and downloadLimit, and `order`: "auto", "ask", which leaves out --yes so that
+  // every installation asks before it changes a Spark, or "fill", which names the Sparks after
+  // `opts.sparks`.
+  //
+  // `problems` lists every field the pack cannot use, as {field, message, pair}: a selection's
+  // fields (`pair` 0 or 1 for a half, else null), the download limit ("download_limit") and, for
+  // "fill", each Spark's name or address ("rank<N>-host", "rank<N>-host_ip"); `field` is null for
+  // a selection's settings that `sparkring install` refuses together. While any remains, no
+  // command is given and the pack is not ready.
   function commandPack(plan, meta, opts) {
     const layout = plan.layout, features = plan.features || {};
     const names = sparkNames(LAYOUT_SPARKS[layout], opts.order === 'fill' ? opts.sparks : null);
     const approval = opts.order === 'ask' && opts.approval === 'yes' ? 'ask' : opts.approval;
     const pairOf = half => `${names[2 * half].short} and ${names[2 * half + 1].short}`;
     const run = 'On ' + names[0].label + ', as a user with sudo';
+    const problems = [];
+    const limit = readDownloadLimit(opts.downloadLimit);
+    if (limit.problem) problems.push({ field: 'download_limit', message: limit.problem, pair: null });
+    if (opts.order === 'fill') {
+      for (const x of sparkProblems(opts.sparks || [])) problems.push({ field: `rank${x.rank}-${x.key}`, message: x.message, pair: null });
+    }
     let first = true, asks = false;
-    // One install command; `apiRank` is the rank that serves its API.
-    const install = (selection, on, apiRank, what) => {
+    // One install command; `apiRank` is the rank that serves its API and `pair` the half whose
+    // fields the selection holds.
+    const install = (selection, on, apiRank, what, pair = null) => {
       const form = first ? opts.form : 'installed';
       first = false;
       const check = servingCheck(selection.profile, selection.settings, selection.checkpoint);
@@ -750,6 +845,9 @@ const SparkRingEngine = (() => {
       if (!problem && endpoint.address) {
         try { address = apiAddress(endpoint.address); } catch (error) { problem = error.message; }
       }
+      for (const x of selection.problems || []) problems.push({ ...x, pair });
+      if (problem) problems.push({ field: null, message: problem, pair });
+      else if ((selection.problems || []).length) problem = 'Fix the marked fields.';
       if (endpoint.ask) asks = true;
       const model = check.ok ? selection.profile.model_name + (check.checkpoint.default ? '' : ' (' + check.checkpoint.name + ')')
         : selection.profile.model_name;
@@ -758,30 +856,32 @@ const SparkRingEngine = (() => {
         what: (form === 'script' ? 'Installs SparkRing and starts ' : 'Starts ') + model + what,
         command: problem ? '' : installCommand(selection.profile, check.checkpoint, check.settings, meta,
           { form, pin: opts.pin, approval: endpoint.ask && approval === 'yes' ? 'ask' : approval,
-            downloadLimit: opts.downloadLimit, on, apiAddress: address }),
+            downloadLimit: limit.value, on, apiAddress: address }),
         endpoint: problem ? null : apiUrl(check.checkpoint, check.settings, names[apiRank].address, address),
         error: problem,
       };
     };
     const next = ' Run it once the one before has finished.';
     const groups = [];
+    let switching = null;
+    const optional = { optional: true, note: 'Optional: switch layouts later. This stops the models above.' };
     if (layout === 'halves') {
       groups.push({ key: 'install', title: 'Install', commands: [
-        install(plan.halves[0], HALVES[0], 0, ` on the first pair: ${pairOf(0)}.`),
-        install(plan.halves[1], HALVES[1], 2, ` on the second pair: ${pairOf(1)}.` + next),
+        install(plan.halves[0], HALVES[0], 0, ` on the first pair: ${pairOf(0)}.`, 0),
+        install(plan.halves[1], HALVES[1], 2, ` on the second pair: ${pairOf(1)}.` + next, 1),
       ] });
-      groups.push({ key: 'switch', title: 'Switch to one model', commands: [
+      switching = { key: 'switch', title: 'Switch to one model', ...optional, commands: [
         install(plan.main, null, 0, " on all four Sparks, and stops both pairs' models."),
-      ] });
+      ] };
     } else {
       groups.push({ key: 'install', title: 'Install', commands: [
         install(plan.main, null, 0, layout === 'pair' ? ' on both Sparks.' : ' on all four Sparks.'),
       ] });
       if (layout === 'ring' && features.ring_halves) {
-        groups.push({ key: 'switch', title: 'Switch to two models', commands: [
+        switching = { key: 'switch', title: 'Switch to two models', ...optional, commands: [
           install(plan.halves[0], HALVES[0], 0, ` on ${pairOf(0)}, and stops the model on all four.`),
           install(plan.halves[1], HALVES[1], 2, ` on ${pairOf(1)}.` + next),
-        ] });
+        ] };
       }
     }
     const check = [{ where: run, what: layout === 'halves' ? "Shows each pair's model separately." : 'Shows each Spark and the model.',
@@ -791,35 +891,50 @@ const SparkRingEngine = (() => {
         command: 'sudo sparkring cabling --bandwidth', endpoint: null, error: null });
     }
     groups.push({ key: 'check', title: 'Check', commands: check });
+    if (switching) groups.push(switching);
 
-    // What each Spark becomes.
-    const roles = names.map((spark, rank) => {
-      let text;
-      if (rank === 0) text = 'Where you run every command. Serves ' + (layout === 'halves' ? 'the first pair.' : 'the model.');
-      else if (layout === 'pair') text = 'The Spark cabled to Node A.';
-      else text = `Cabled to ${names[rank - 1].role}'s port 0.` + (layout !== 'halves' ? '' : rank === 1 ? ' First pair.'
-        : rank === 2 ? ' Serves the second pair.' : ' Second pair.');
-      return { spark: spark.label, text };
-    });
+    // Where to run the commands and where each model answers. In the ring order, Spark 2 is the
+    // only Spark that no cable joins to Node A: Node A's port 0 leads to Spark 1, and Spark 3's
+    // port 0 leads back to Node A. Sparks the user named are called by their names and addresses.
+    const roles = [];
+    const far = names[2] && (names[2].given ? names[2].short : "the Spark that isn't cabled to Node A");
+    const at = (spark, unnamed) => spark.given ? spark.address : unnamed;
+    if (layout === 'halves') {
+      const [a, b, c, d] = names;
+      roles.push({ spark: 'First pair', text: (a.given || b.given ? `${a.short} and ${b.short}` : 'Node A and the Spark on its port 0')
+        + `. Answers at ${at(a, "Node A's address")}.` });
+      roles.push({ spark: 'Second pair', text: (c.given || d.given ? `${c.short} and ${d.short}` : 'The other two')
+        + `. Answers at ${at(c, 'the address of ' + far)}.` });
+    } else {
+      const others = names.slice(1), shorts = others.map(spark => spark.short);
+      const named = shorts.length < 3 ? shorts.join(' and ') : shorts.slice(0, -1).join(', ') + ' and ' + shorts[shorts.length - 1];
+      roles.push({ spark: names[0].label, text: `Run the commands here. The model answers at ${at(names[0], 'its address')}.` });
+      roles.push({ spark: others.some(spark => spark.given) ? named : others.length > 1 ? 'The other three' : 'The other Spark',
+        text: others.length > 1 ? 'Nothing to run on them.' : 'Nothing to run on it.' });
+    }
     const commands = groups.flatMap(group => group.commands);
+    if (problems.length) {
+      for (const c of commands) Object.assign(c, { command: '', error: c.error || 'Fix the marked fields.' });
+    }
     const notes = ['If an install stops early, run it again; it picks up where it left off.'];
     const serves = spark => commands.some(c => c.endpoint && c.endpoint.startsWith(`http://${spark.address}:`));
+    // NODE_A and SPARK_2 stand for the addresses of Sparks the user did not name.
     const placeholders = names.filter(spark => !spark.given && serves(spark));
     if (placeholders.length) {
-      notes.push('Replace ' + placeholders.map(spark => spark.address).join(' and ')
-        + (placeholders.length > 1 ? ' with the addresses of ' : ' with the address of ')
-        + placeholders.map(spark => spark.role).join(' and ') + '.');
+      notes.push('Replace ' + placeholders.map(spark => `${spark.address} with ` + (spark === names[0] ? "Node A's address"
+        : `the address of ${far}`)).join(' and ') + '.');
     }
     // A half's API on Spark 2 is its own LAN address, or its administration address without one.
     if (names.length > 2 && serves(names[2])) {
-      notes.push(`If ${names[2].short} has no network cable of its own, only ${names[0].short} can reach its model.`);
+      notes.push(`If ${far} has no network cable of its own, only ${names[0].given ? names[0].short : 'Node A'} can reach the second pair's model.`);
     }
     if (opts.order === 'ask') notes.push('Each install shows which Spark is which and asks before it changes anything.');
     if (asks) notes.push("An install set to ask lists the Spark's addresses and asks which address and port the model uses.");
     return {
-      layout, roles, groups, notes,
-      order: layout === 'pair' ? null : "The cables set this order. You can't choose it, or which Spark leads a pair.",
-      ready: commands.every(c => c.command),
+      layout, roles, groups, notes, problems,
+      run: layout === 'halves' ? `Run every command on ${names[0].given ? names[0].short : 'Node A'}.` : null,
+      order: layout === 'halves' ? "The cables set this order; you can't choose which Spark leads a pair." : null,
+      ready: !problems.length && commands.every(c => c.command),
     };
   }
 
@@ -966,6 +1081,7 @@ const SparkRingEngine = (() => {
 
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
     checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
-    layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText };
+    layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText,
+    readSetting, readAddress, readDownloadLimit, readSelection, offered };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;
