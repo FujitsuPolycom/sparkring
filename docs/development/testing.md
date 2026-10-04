@@ -22,7 +22,7 @@ before running them. Review prose meaning manually using the
 [writing policy](writing.md); CI does not enforce a prose-quality score or
 banned-word list. Suggestions about wording are advisory.
 
-For changes to Compose generation or the [Compose builder](../operations/compose-builder.md),
+For changes to Compose generation or the [Install Builder](../operations/compose-builder.md),
 also run `python -m pytest scripts/compose_builder -q` with Node.js installed;
 without Node.js the engine comparison is skipped.
 

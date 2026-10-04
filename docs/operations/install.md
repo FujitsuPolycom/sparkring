@@ -49,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
 - It asks before it installs the SparkRing package, before it changes any
   Spark and before a model download larger than 1 GiB. `--yes` answers these.
 - Stopping another program's GPU container always needs its own answer, or
-  `--stop-workloads`.
+  `--stop-workloads`. An unknown SSH host key always needs its own answer.
 - `--plan` shows what it would change and changes nothing. On a Spark without
   SparkRing, run with `--package-only` first; it installs only the package.
 - Qwen profiles install checkpoint step 5500; add `--checkpoint qad-step-4000`
@@ -123,21 +123,23 @@ sudo sparkring install --profile PROFILE \
 ```bash
 sudo sparkring logs --follow        # installation progress
 sudo sparkring status --refresh     # each Spark's state and the installed model
-sudo docker logs -f $(sudo docker ps -qf label=io.sparkring.rank=0)   # model server output, on Node A
+sudo docker logs -f $(sudo docker ps -qf label=io.sparkring.rank=0)   # model server output, on API_HOST
 ```
 
-For the running model, open the [status dashboard](dashboard.md), read it as
-text with `curl http://NODE_A:PORT/v1/sparkring/status.txt`, or watch live
-throughput with [vllm-top](https://github.com/mratsim/vllm-top). Installer logs
-are in `/var/log/sparkring/`.
+`API_HOST` is the Spark that serves the model's API: Node A, or Spark 2 for a
+model on Sparks 2 and 3. For the running model, open the
+[status dashboard](dashboard.md), read it as text with
+`curl http://API_HOST:PORT/v1/sparkring/status.txt`, or watch live throughput
+with [vllm-top](https://github.com/mratsim/vllm-top). Installer logs are in
+`/var/log/sparkring/`.
 
 Scripts and agents can add `--events FILE` to get progress as one JSON object
 per line ([fields](install-reference.md#event-stream)).
 
 ## Security
 
-The model API has no key and listens on every interface of Node A: keep Node A
-on a trusted network or firewall the port. Setup adds a WireGuard
+The model API has no key and listens on every interface of `API_HOST`: keep
+that Spark on a trusted network or firewall the port. Setup adds a WireGuard
 administration network and an SSH service on port 2222 for Node A's key, and
 shares Node A's Internet connection with the workers.
 [Details](install-reference.md#security-and-host-exposure).

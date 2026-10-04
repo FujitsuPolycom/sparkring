@@ -12,40 +12,50 @@ profiles support vLLM and SGLang.
 1. Check the [requirements](docs/operations/install.md#requirements) and cable
    your Sparks as shown there.
 2. Pick a `--profile` value from the [table below](#profiles) for your preferred model and
-   number of Sparks.
+   number of Sparks, or open the [Install Builder](https://fujitsupolycom.github.io/sparkring/)
+   to pick a model, checkpoint and layout and copy the exact commands.
 3. On the Spark connected to your network, run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
 ```
 
-The installer requires approval for several operations. Use the `--yes` flag to auto-accept all prompts. Use `--plan` to display what the installer would do, without actually executing the install. The installer sets up every gb10 device, downloads the
+The installer asks before it changes anything. Use `--yes` to approve setup,
+downloads and model changes. Unknown SSH host keys, and stopping another
+program's GPU containers (unless you add `--stop-workloads`), still ask. Use
+`--plan` to see what it would do without changing anything. The installer sets up every gb10 device, downloads the
 image/models and distributes them if needed, and prints the API address when ready.
 Run the same command again to update a profile or swap to another. Each model has a
 [status dashboard](docs/operations/dashboard.md); on four Sparks the installer
 also applies a [ConnectX driver setting](docs/operations/install.md#four-spark-rings)
 at every boot.
 
-More: [all commands](docs/operations/commands.md) ·
+More: [documentation by task](docs/README.md) ·
+[all commands](docs/operations/commands.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·
-[Compose builder](docs/operations/compose-builder.md) ·
+[Install Builder](https://fujitsupolycom.github.io/sparkring/) ([how it works](docs/operations/compose-builder.md)) ·
 [pinned install command](docs/operations/install-reference.md#get-the-package)
 
 ## Profiles
 
 `sparkring install --profile` accepts these profiles:
 
-| Model | Checkpoint | Sparks | `--profile` value | API port | Decode at 16K context, 1 / 4 / 8 / 16 users (tok/s) | Prefill 64K (tok/s) |
-|---|---|---|---|---|---|---|
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | 45.1 / 120 / 169 / 243 | 3,649 |
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | 64.9 / 167 / 235 / 341 | 4,524 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | 38.0 / 78 / 106 / 85\* | 2,454 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | 62.0 / 137 / 199 / 261 | 3,610 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | 37.5 / 78 / 115 / 184 | 2,754 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | 47.7 / 119 / 167 / 295 | 3,959 |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | 62.2 / 135 / 206 / 278 | 4,302 |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | — | — |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | — | — |
+| Model | Checkpoint | Sparks | `--profile` value | API port | Thinking | Decode at 16K context, 1 / 4 / 8 / 16 users (tok/s) | Prefill 64K (tok/s) |
+|---|---|---|---|---|---|---|---|
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh | 45.1 / 120 / 169 / 243 | 3,649 |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | on · xhigh | 64.9 / 167 / 235 / 341 | 4,524 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | always · max | 38.0 / 78 / 106 / 85\* | 2,454 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | always · max | 62.0 / 137 / 199 / 261 | 3,610 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | on | 37.5 / 78 / 115 / 184 | 2,754 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | on | 47.7 / 119 / 167 / 295 | 3,959 |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | on · high | 62.2 / 135 / 206 / 278 | 4,302 |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | on · xhigh | — | — |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | on · xhigh | — | — |
+
+Thinking is what the model does when a request doesn't say: *on* (a request
+can turn it off) or *always*, then how hard it thinks. Requests can choose
+otherwise, and `--reasoning-effort LEVEL` or `--thinking off` change the default
+for an install ([details](docs/operations/install-reference.md#thinking)).
 
 Decode is the total output rate with 1, 4, 8 and 16 users at once, each with
 16K tokens of context, averaged over three runs of

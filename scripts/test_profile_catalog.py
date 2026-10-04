@@ -149,3 +149,25 @@ def test_cross_release_cache_pair_requires_matching_model_and_layout():
     retired[0][0]['recommendation'] = 'retired'
     _, cells = compact_profile_rows(retired)
     assert cells[ids[1]] == 'Included'
+
+
+def test_readme_thinking_column_follows_each_profiles_thinking_record():
+    import pytest
+    from runtime.common.profiles import ROOT
+    from scripts.generate_profiles import thinking_column
+    text = (ROOT / 'README.md').read_text(encoding='utf-8-sig')
+    assert thinking_column(text) == text
+    rows = {line.split('|')[4].strip().strip('`'): line.split('|')[6].strip()
+            for line in text.splitlines() if line.startswith('| ') and line.split('|')[4].strip().startswith('`')
+            and line.split('|')[6].strip() != 'Thinking'}
+    assert rows == {'qwen38-flash-next-tp2': 'on · xhigh', 'qwen38-flash-next-qad-tp4': 'on · xhigh',
+                    'glm53-flash-nvfp4-spark-tp2': 'always · max', 'glm53-flash-nvfp4-spark-tp4': 'always · max',
+                    'mimo-v26-flash-mopd-tp2': 'on', 'mimo-v26-flash-mopd-tp4': 'on', 'deepseek-v41-flash-tp4': 'on · high',
+                    'swift15-qwen38-flash-next-tp2': 'on · xhigh', 'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
+    # A stale cell is rewritten; the hand-maintained cells stay as written.
+    stale = text.replace('| 8000 | on · xhigh | 45.1', '| 8000 | off | 45.1')
+    assert stale != text and thinking_column(stale) == text
+    with pytest.raises(ValueError, match='requires a Thinking column'):
+        thinking_column(text.replace('| API port | Thinking |', '| API port | Effort |'))
+    with pytest.raises(ValueError, match='qwen38-flash-next-tp2-sparkcache has no thinking record'):
+        thinking_column(text.replace('`qwen38-flash-next-tp2` |', '`qwen38-flash-next-tp2-sparkcache` |'))

@@ -1,7 +1,9 @@
-"""Compare the Compose builder's engine with compose.build.
+"""Compare the Install Builder's engine with compose.build.
 
-cases() draws random sites, checkpoints and serving settings for every listed
-profile, invalid sites, and sites that compose.build accepts but the engine
+cases() draws random sites, checkpoints and serving settings, the API
+endpoint's port and listen address among them, for every listed
+profile, invalid sites and settings (the save-CPU switch on an image that
+cannot apply it among them), and sites that compose.build accepts but the engine
 refuses because it limits their characters (paths with spaces, IPv6
 addresses). run() renders every case with engine.js under Node (run_engine.js)
 and with compose.build, and reports each difference in the per-rank files,
@@ -114,13 +116,26 @@ class Sites:
             ranks.append(row)
         return {"schema": "sparkring-compose-site/v1", "name": self.name(), "master": ranks[0]["host_ip"], "ranks": ranks}
 
-    def settings(self, checkpoint):
+    def listen_address(self):
+        """An IPv4 address that a Spark can listen on (serving.listenable)."""
+        return ".".join(str(n) for n in (self.rng.randint(1, 223), self.rng.randint(0, 255), self.rng.randint(0, 255),
+                                         self.rng.randint(0, 255)))
+
+    def settings(self, checkpoint, capabilities):
+        """Settings both accept: a switch only where the image has the capability it needs (``capabilities``)."""
         chosen = {}
         for row in checkpoint["settings"]:
-            if self.rng.random() < 0.5:
+            if self.rng.random() < 0.5 or (row.get("needs") and row["needs"] not in capabilities):
                 continue
             if row.get("switch"):
                 chosen[row["name"]] = True
+            elif row.get("address"):
+                chosen[row["name"]] = self.listen_address()
+            elif row["name"] == "api_port":
+                reserved = {port for port, _ in row["reserved"]}
+                chosen[row["name"]] = self.rng.choice([port for port in (row["minimum"], row["largest"], row["profile"],
+                                                                          self.rng.randint(row["minimum"], row["largest"]))
+                                                       if port not in reserved])
             elif row["name"] == "kv_cache_gib":
                 chosen[row["name"]] = self.rng.randint(1, row["maximum"])
             elif row["name"] == "context_length":
@@ -176,22 +191,42 @@ STRICTER = (
 
 
 def cases(data, *, per_checkpoint, seed, archive_every=5):
-    """Valid, invalid and stricter cases for every profile and checkpoint of ``data``."""
+    """Valid, invalid and stricter cases for every profile and checkpoint of ``data``.
+
+    Every case carries ``data``'s installer image: None for the default image.
+    """
     sites = Sites(seed)
     found = []
     for profile in data["profiles"]:
         nodes = profile["nodes"]
         found.append({"profile": profile["id"], "site": profile["example_site"], "settings": {}, "checkpoint": None,
                       "kind": "valid", "archive": True})
+        capabilities = profile.get("image_capabilities", [])
         for checkpoint in profile["checkpoints"]:
             for _ in range(per_checkpoint):
-                found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": sites.settings(checkpoint),
+                found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": sites.settings(checkpoint, capabilities),
                               "checkpoint": sites.checkpoint_name(checkpoint), "kind": "valid",
                               "archive": len(found) % archive_every == 0})
             ceiling = next((row for row in checkpoint["settings"] if row["name"] == "kv_cache_gib"), None)
             if ceiling:
                 found.append({"profile": profile["id"], "site": sites.site(nodes),
                               "settings": {"kv_cache_gib": ceiling["maximum"] + 1},
+                              "checkpoint": sites.checkpoint_name(checkpoint), "kind": "invalid"})
+            # The API endpoint: every port the API may not take, ports outside its range, and
+            # listen addresses that no Spark can listen on.
+            port = next((row for row in checkpoint["settings"] if row["name"] == "api_port"), None)
+            refused = ([{"api_port": value} for value, _ in port["reserved"]]
+                       + [{"api_port": port["minimum"] - 1}, {"api_port": port["largest"] + 1}] if port else [])
+            if any(row.get("address") for row in checkpoint["settings"]):
+                refused += [{"api_bind": "0.0.0.0"}, {"api_bind": "224.0.0.1"}, {"api_bind": "10.0.0"},
+                            {"api_bind": "198.51.100.7", "api_port": port["reserved"][-1][0] if port else 1}]
+            # A switch whose capability the image lacks, alone and with a KV cache above its ceiling: the
+            # image is refused first.
+            for row in checkpoint["settings"]:
+                if row.get("needs") and row["needs"] not in capabilities:
+                    refused += [{row["name"]: True}, *([{row["name"]: True, "kv_cache_gib": ceiling["maximum"] + 1}] if ceiling else [])]
+            for settings in refused:
+                found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": settings,
                               "checkpoint": sites.checkpoint_name(checkpoint), "kind": "invalid"})
         for kind, edits in (("invalid", INVALID), ("stricter", STRICTER)):
             for edit in edits:
@@ -202,6 +237,8 @@ def cases(data, *, per_checkpoint, seed, archive_every=5):
                               "checkpoint": sites.checkpoint_name(checkpoint), "kind": kind})
         found.append({"profile": profile["id"], "site": sites.site(nodes), "settings": {"max_concurrency": 0},
                       "checkpoint": None, "kind": "invalid"})
+    for case in found:
+        case["image"] = data.get("image")
     return found
 
 
@@ -209,7 +246,8 @@ def expected(case):
     """compose.build's result for a case, in the engine's output shape."""
     site = copy.deepcopy(case["site"])
     try:
-        manifest, files = compose.build(case["profile"], site, checkpoint=case["checkpoint"], serving=case["settings"])
+        manifest, files = compose.build(case["profile"], site, checkpoint=case["checkpoint"], serving=case["settings"],
+                                        image_runtime=compose.named_image(case.get("image")))
         settings = manifest.get("serving") or {}
         options = {key: value for key, value in compose.selection_options(manifest).items() if key != "serving"}
         command = compose.specifications(manifest["profile"], manifest["site"], **options)[0][0].command

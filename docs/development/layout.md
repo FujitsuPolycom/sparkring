@@ -4,7 +4,7 @@
 |---|---|
 | `profiles/` | Deployment discovery, configuration, evidence scope and primary quickstarts |
 | `runtime/common/` | Shared resolution, site parsing, command planning and guarded rank launching |
-| `runtime/host/` | Linux host identity, fabric enrollment, private administration and persistent observations |
+| `runtime/host/` | The installer and host lifecycle: `sparkring install` and `setup`, Linux host identity, fabric enrollment, private administration, model switching, status, recovery and persistent observations |
 | `packaging/` | Linux package entry points, service definitions and maintainer scripts |
 | `runtime/images/` | Image-builder selection and shared build entry point |
 | `runtime/releases/` | Release selection and protection of retained immutable inputs |
@@ -61,6 +61,16 @@ Existing Markdown URLs retain heading anchors and point to their authoritative
 guides. [documentation-paths.json](documentation-paths.json) records the moves.
 Preserve evidence and traces according to their release and measurement contracts.
 
-See the [migration inventory](layout-migration.md) for callers, dispositions and
-conditions for retiring compatibility paths. New work belongs with its owner;
-adding another version-named launcher is not the default extension mechanism.
+## Retiring compatibility paths
+
+A generated compatibility export or retained public path has one authored
+source and stays until every documented caller, package input and supported
+release consumer uses the owner instead. It is then removed in a release that
+announces the breaking change. Frozen release inputs are never regenerated
+from changed implementation. New work belongs with its owner; adding another
+version-named launcher is not the default extension mechanism.
+
+The [migration inventory](layout-migration.md) and the
+[adoption record](repository-layout-adoption.md) are historical records of the
+move to this layout: the callers, dispositions and validation found at that
+time.

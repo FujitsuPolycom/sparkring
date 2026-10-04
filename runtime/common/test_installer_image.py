@@ -240,6 +240,41 @@ def test_up_takes_a_named_image_only_with_an_exact_profile():
         controller.lifecycle(["status", "--image", "statusrows"])
 
 
+def test_capabilities_follow_each_image_s_own_layer_and_its_parents():
+    found = {row["name"]: installer_image.capabilities(row["name"]) for row in installer_image.catalog()}
+    # The spin-wait layer adds the shared-memory reader window, its descendants keep it, and the default
+    # image's vLLM source carries the same edit; the images before the spin-wait layer lack it.
+    assert {name for name, capabilities in found.items() if "shm_reader_window" in capabilities} == {
+        "dev-20260930-spinwait-cuda1342-nccl2323-status033", "dev-20261001-portgid-cuda1342-nccl2323-status033",
+        "dev-20261001-statusrows-cuda1342-nccl2323-status034", "dev-20261001-kraken-cuda1342-nccl2323-status034"}
+    assert found[installer_image.default_lock()["name"]] == ("shm_reader_window",)
+    for name in ("shared-2026.09.3", "unrecorded-release", "../escape", None):
+        assert installer_image.capabilities(name) == ()
+
+
+def test_capability_records_name_recorded_releases_and_their_layers(tmp_path):
+    from runtime.common import serving
+    assert set(serving.NEEDS.values()) <= set(installer_image.capability_records())
+    releases = tmp_path / "runtime" / "releases"
+    (releases / "dev-a").mkdir(parents=True)
+    (releases / "dev-a" / "release.json").write_text("{}")
+    (tmp_path / "layer.py").write_text("")
+    (releases / "dev-b").mkdir()
+    (releases / "dev-b" / "release.json").write_text("{}")
+    (releases / "dev-b" / "publication.json").write_text(json.dumps({"derivation": {"parent_release": "dev-a"}}))
+
+    def record(added_by):
+        (releases / "installer-capabilities.json").write_text(json.dumps(
+            {"schema": "sparkring-installer-capabilities/v1", "capabilities": {"c": {"summary": "s", "added_by": added_by}}}))
+
+    record({"dev-a": "layer.py"})
+    assert installer_image.capabilities("dev-b", tmp_path) == ("c",)
+    for added_by in ({"dev-missing": "layer.py"}, {"dev-a": "missing.py"}):
+        record(added_by)
+        with pytest.raises(ValueError, match="needs a summary and the existing releases"):
+            installer_image.capabilities("dev-a", tmp_path)
+
+
 def test_release_tags_name_published_installer_images():
     tags = installer_image.release_tags()
     assert tags["2026.10.0"] == installer_image.DEFAULT_LOCK.parent.name

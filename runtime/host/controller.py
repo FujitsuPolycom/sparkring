@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer, process_lock
+from runtime.common import distribution, installer, process_lock, thinking
 from runtime.host import discovery, hairpin_ring, node, topology
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
@@ -471,6 +471,9 @@ def lifecycle(argv):
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--allow-loopback-bind", action="store_true",
+                        help="accept a loopback --api-bind such as 127.0.0.1 for a new deployment: only programs on "
+                             "Node A can then use the model")
     from runtime.common import serving
     serving.add_arguments(parser)
     args = parser.parse_args(argv)
@@ -582,7 +585,10 @@ def lifecycle(argv):
                 if saved.get("serving"):
                     print("Serving settings: " + ", ".join(serving.label(name, value)
                                                            for name, value in sorted(saved["serving"].items())))
-                print(saved["api_url"])
+                if "thinking" in saved:
+                    print("Thinking: " + thinking.deployment_text(saved["thinking"]))
+                print(saved["api_url"] + (f" (SparkRing's own checks use {saved['check_url']})"
+                                          if saved.get("check_url") else ""))
                 if saved.get("observations"):
                     print("Model containers:")
                     for row in recovery.ranks_from_observations(saved["observations"]):
@@ -637,6 +643,15 @@ def lifecycle(argv):
             if profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
+            if {"api_port", "api_bind"} & set(settings):
+                # The API Spark is checked for the listen address and the
+                # port before the deployment is created, as sparkring install
+                # checks it.
+                from runtime.host import install_workflow
+                arguments = install_workflow.profile_arguments(installer.setup.selection(profile))
+                serving.apply(arguments, settings)
+                install_workflow.check_endpoint(args, cluster, requested, STATE, directory, settings,
+                                                settings.get("api_port") or serving.profile_value(arguments, "api_port"))
             installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings)
         else:
             # The deployment's own source validates its lock (retained_source);
@@ -737,6 +752,8 @@ def lifecycle(argv):
             from runtime.host import install_workflow
             install_workflow.park_ring(installer.read(STATE / "cluster.json"))
         result = retained_source.apply(directory, args.operation, cache=cache)
+        from runtime.host import api_endpoint
+        result = api_endpoint.present(result, api_endpoint.recorded(directory))
         # Stopping another deployment leaves the active one in place.
         if args.operation == "up" or held_active is None:
             placements.record(STATE, slot, directory)
@@ -778,6 +795,14 @@ def _status_view(slot, path, args, result, cache):
     lock = view["lock"] = installer.read(Path(path) / "deployment.lock.json")
     view["deployment"].update(installer.identity(lock), containers=installer.containers(lock),
                               serving=lock.get("serving") or {})
+    # What a request that names no thinking argument gets (thinking.deployment_default), or None
+    # without a record, also for a deployment whose checkpoint the installed package does not list.
+    selection = lock.get("selection") or {}
+    try:
+        model = thinking.of(selection.get("profile"), selection.get("target_variant"))
+    except (OSError, ValueError):
+        model = None
+    view["deployment"]["thinking"] = thinking.deployment_default(model, lock.get("serving"))
     try:
         record = view["record"] = recovery.record_of(recovery.load(), path)
         # Automatic recovery acts on each slot's active deployment only.
@@ -794,6 +819,10 @@ def _status_view(slot, path, args, result, cache):
         model = recovery.status_assessment(view["deployment"], nodes, view["record"], tunnel=result.get("control"))
         if model is not None:
             view["model"] = model
+    # The address the installation named for display replaces the API URL's
+    # host; the URL that the checks above used stays as check_url.
+    from runtime.host import api_endpoint
+    view["deployment"] = api_endpoint.present(view["deployment"], api_endpoint.recorded(path))
     return view
 
 

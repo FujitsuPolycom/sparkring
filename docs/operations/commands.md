@@ -59,7 +59,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
 | `--on 0,1` or `--on 2,3` | Put a two-Spark profile on one half of a four-Spark ring ([two models on one ring](install-reference.md#two-models-on-one-ring)); default: the half that serves no model |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
-| `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation |
+| `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
 | `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
@@ -73,7 +73,16 @@ serves, it releases what older deployments hold on the Sparks
 | `--image NAME` | Another installer image: a name or release tag from [`sparkring images`](#images) ([details](install-reference.md#another-image)); default: the installer's own image |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
+| `--reasoning-effort LEVEL`, `--thinking off` | How hard the model thinks, or that it doesn't, when a request doesn't say; requests can still choose ([thinking](install-reference.md#thinking)) |
+| `--api-port N` | The port of the model's API, 1024 to 65535; a serving setting ([API endpoint](install-reference.md#api-endpoint)); default: the profile's |
+| `--api-bind ADDRESS` | Let the API listen only on this IPv4 address of the Spark that serves it; a serving setting; default: every address |
+| `--allow-loopback-bind` | Accept a loopback `--api-bind`, such as 127.0.0.1, which only programs on Node A can reach |
+| `--api-address ADDRESS` | The name or address shown for the model, such as `llm.example.net`; shown only, not part of the deployment |
 | `--allow-driver-reload` | Accepted and not needed; the approval covers ConnectX restarts |
+
+In a terminal, without `--yes` and without the API options, `install` asks
+which address the model's API listens on and which port it uses; Enter keeps
+both ([API endpoint](install-reference.md#api-endpoint)).
 
 ## install.sh
 
@@ -88,7 +97,7 @@ built version is installed.
 
 | Flag | Meaning |
 |---|---|
-| `--yes` | Answer the package question and `sparkring install`'s questions; required without a terminal |
+| `--yes` | Answer the package question and pass `--yes` to `sparkring install`, with the same limits; required without a terminal |
 | `--plan` | Install nothing; plan with the built version (below) |
 | `--package-only` | Ask the package question, install or keep the package and stop before `sparkring install`; not with `--plan` |
 | `--json` | One `sparkring-install-result/v1` document on stdout (below); progress, questions and `apt` output on stderr |
@@ -126,7 +135,7 @@ with its repair steps, not a failure.
 | Flag | Meaning |
 |---|---|
 | `--plan` | Discover and review over existing SSH access; configure nothing |
-| `--yes` | Accept the listed changes; unknown SSH host keys still need confirmation |
+| `--yes` | Accept the listed changes; unknown SSH host keys still need confirmation, and stopping GPU containers still asks unless you add `--stop-workloads` |
 | `--env FILE` | Literal preferences file; its keys set the defaults below ([keys](install-reference.md#optional-preferences)) |
 | `--name NAME` | Cluster name: a lowercase letter, then lowercase letters, digits or `-`; at most 35 characters (default `sparkring`) |
 | `--ssh-user USER` | Worker account (default: the account that ran `sudo`; `root` with `--env` or port 2222) |
@@ -238,7 +247,10 @@ for example while a model serves on every cable.
 ## models
 
 `sparkring models [--json]` lists every profile (exact model, version,
-quantization and topology) and marks those `sparkring install` supports.
+quantization and topology) and marks those `sparkring install` supports. For
+each installer profile it also shows what the model does with thinking when a
+request doesn't say, such as `on · xhigh`, and the effort levels it accepts
+([thinking](install-reference.md#thinking)).
 
 ## images
 
@@ -261,12 +273,18 @@ half's model under `Sparks 0 and 1:` and `Sparks 2 and 3:`:
 ```text
 Saved model operation: PROFILE | up complete
 Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
+Thinking: on · xhigh (model default)
 Automatic recovery: on
 ```
 
 A profile with one checkpoint shows only `REPOSITORY @ REVISION`; a
 [derived checkpoint](install-reference.md#derived-checkpoints) adds
-`, derived from REPOSITORY @ REVISION` of its base. The
+`, derived from REPOSITORY @ REVISION` of its base. `Thinking` is what the
+model does when a request doesn't say whether, or how hard, to think: the
+model's default, or the deployment's own default beside it
+([thinking](install-reference.md#thinking)). The model's API URL
+follows, at the address `install --api-address` named when there is one,
+with the URL SparkRing's own checks use in parentheses. The
 recovery lines add the Spark it waits for, its last attempt and the next.
 After `sparkring down` they read `on; idle until the next sudo sparkring up
 --execute or sudo sparkring install`, and a deployment that recovery does not
@@ -454,7 +472,8 @@ runs, or a half's model while the four-Spark model runs.
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
 | `--on 0,1` or `--on 2,3` | Without PROFILE: that half's model. With `up PROFILE`: a two-Spark profile on that half, as instance `on-0-1` or `on-2-3` unless `--instance` names another |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
-| `--max-images N` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values for a new deployment; an existing deployment keeps its own |
+| `--max-images N`, `--reasoning-effort LEVEL` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values, or the model's thinking default, for a new deployment; an existing deployment keeps its own |
+| `--allow-loopback-bind` | `up PROFILE` only: accept a loopback `--api-bind` for a new deployment |
 | `--image NAME` | `up PROFILE` only: another installer image from [`sparkring images`](#images) |
 | `--image-lock FILE` | `up PROFILE` only: another image lock, for a rehearsal. An existing deployment keeps the image it recorded, and naming another lock for it is refused |
 | `--deployment DIR` | Use a deployment saved by `sparkring init` instead ([lower-level commands](install-reference.md#lower-level-commands-and-compose-sharing)) |
@@ -520,10 +539,10 @@ Both accept `--json`. See
 
 - `sparkring compose render|check|start|stop` generates and coordinates
   profile-owned Compose deployments; see [Compose deployments](compose.md).
-  `render` takes `--checkpoint NAME` and the serving-setting flags of
-  `sparkring install`.
+  `render` takes `--image NAME`, `--checkpoint NAME` and the serving-setting
+  flags of `sparkring install`, `--api-port` and `--api-bind` among them.
 - `python scripts/generate_compose_builder.py --output DIR [--verify]` writes
-  the [Compose builder](compose-builder.md) page for the checkout.
+  the [Install Builder](compose-builder.md) page for the checkout.
 - `sparkring validate-compose FILE` (or `--all`, `--json`, `--output FILE`)
   checks Compose files without Docker or GPUs.
 

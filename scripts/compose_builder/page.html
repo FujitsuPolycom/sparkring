@@ -1,4 +1,4 @@
-<title>SparkRing Compose Builder</title>
+<title>SparkRing Install Builder</title>
 <style>
 /* Layout: configuration steps in a narrow left column; the output (install command or per-Spark Compose files) in a wide right pane that stays in view on desktop. Palette follows SparkRing's runtime-status dashboard. */
 :root {
@@ -101,6 +101,7 @@ h1 { font-size: clamp(24px, 3.2vw, 34px); font-weight: 650; letter-spacing: -.03
 .step-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .step-body.choices { gap: 8px; }
 .summary { margin: 0; font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
+.summary.bad { color: var(--bad); }
 .modes button { padding: 7px 14px; font-size: 13.5px; }
 
 /* Settings */
@@ -116,6 +117,11 @@ input[type="number"], input[type="text"], textarea {
   font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
 input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
 input[aria-invalid="true"] { border-color: var(--bad); }
+/* A field's own problem, under it. */
+.err { margin: 0; color: var(--bad); font-size: 12px; }
+.err:empty { display: none; }
+select { width: 100%; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunk);
+  font-family: var(--mono); font-size: 13px; }
 .check { display: inline-flex; gap: 9px; align-items: center; cursor: pointer; font-size: 14px; }
 .check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 .setting.switch { grid-template-columns: minmax(0, 1fr); }
@@ -130,6 +136,8 @@ legend { padding: 0 6px; font-size: 13px; font-weight: 600; display: inline-flex
 .f label { font-size: 12px; color: var(--muted); }
 @media (max-width: 460px) { .grid { grid-template-columns: minmax(0, 1fr); } .setting { grid-template-columns: minmax(0, 1fr); } }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+/* The link itself, shown selected when the clipboard cannot take it. */
+#share-url { flex: 1 1 260px; }
 details.import summary { cursor: pointer; font-size: 13px; color: var(--accent); }
 details.import[open] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 details.import textarea { min-height: 140px; resize: vertical; }
@@ -182,12 +190,39 @@ pre.code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; 
   border-radius: 9px; background: var(--sunk); }
 .zip-bar .hint { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
 .zip-bar .zip-name { flex: 1 1 100%; max-width: 360px; }
+.zip-bar.warn { border-color: var(--warn); background: var(--warn-soft); }
+.zip-bar.warn .hint { color: var(--warn); font-weight: 600; }
 
 .run h3 { font-size: 14px; font-weight: 640; margin-bottom: 8px; }
 .run ol { margin: 0; padding-left: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; font-size: 13.5px; }
 .run li > code.block, .run li > .block { display: block; margin-top: 5px; padding: 7px 10px; background: var(--sunk); border: 1px solid var(--line);
   border-radius: 7px; font-size: 12px; overflow-x: auto; white-space: pre; }
 .notes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--muted); }
+
+/* Command pack: numbered commands in groups, each with where to run it, what it does and its API address. */
+.pack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.pack .sub { margin: 4px 0 0; }
+.cmds { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.cmd { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
+.cmd .path { display: inline-flex; gap: 9px; align-items: baseline; }
+.cmd-n { font: 600 12px/1 var(--mono); color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; flex: none; }
+/* Optional commands, after the ones that install and check: set apart, with their own numbers. */
+.pack-optional { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; margin-top: 6px; padding-top: 12px;
+  border-top: 1px dashed var(--line); }
+.cmd-n.optional { color: var(--muted); border-style: dashed; }
+.what { margin: 0; font-size: 13.5px; }
+.endpoint { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.kv-estimate { grid-column: 1 / -1; margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--accent); }
+/* What a KV estimate is scaled from, under the summary's figure. */
+.kv-basis { display: block; margin-top: 2px; font-family: var(--sans); font-size: 12px; color: var(--muted); }
+.endpoint code { color: var(--text); }
+.roles { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13px; }
+.roles dt { font-weight: 600; overflow-wrap: anywhere; }
+.roles dd { margin: 0; color: var(--muted); }
+@media (max-width: 460px) { .roles { grid-template-columns: minmax(0, 1fr); } .roles dd { margin-bottom: 6px; } }
+.opt .opt-hint { grid-column: 2; }
+@media (max-width: 460px) { .opt .opt-hint { grid-column: 1; } }
+.segmented button:disabled { opacity: .5; cursor: not-allowed; }
 footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 footer p { margin: 0; max-width: 110ch; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -197,10 +232,10 @@ footer p { margin: 0; max-width: 110ch; }
   <header class="top">
     <div>
       <p class="eyebrow">SparkRing · DGX Spark · Linux ARM64</p>
-      <h1>Compose builder</h1>
+      <h1>Install Builder</h1>
       <ul class="lead">
-        <li>Choose a model, its checkpoint and its serving settings.</li>
-        <li>Grab the <code>sparkring install</code> command that deploys them.</li>
+        <li>Choose how your Sparks serve, a model, its checkpoint and its serving settings.</li>
+        <li>Grab the <code>sparkring install</code> commands that deploy and check them.</li>
         <li>Or grab a Docker Compose setup package.</li>
       </ul>
     </div>
@@ -220,20 +255,32 @@ footer p { margin: 0; max-width: 110ch; }
             <span class="choice-body"><strong id="release-name">SparkRing</strong><span class="meta" id="release-meta"></span></span>
             <span class="chips" id="release-chips"></span>
           </label>
+          <div class="f">
+            <label for="image">Installer image</label>
+            <select id="image"></select>
+          </div>
+          <p class="hint" id="image-note" hidden></p>
         </div>
+      </section>
+
+      <section class="step" data-step="layout" aria-labelledby="h-layout">
+        <div class="step-head">
+          <h2 id="h-layout"><span class="n">2</span>Layout</h2>
+          <div class="row-actions"><button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button></div>
+        </div>
+        <p class="summary" hidden></p>
+        <div class="step-body choices" id="layouts"></div>
       </section>
 
       <section class="step" data-step="model" aria-labelledby="h-model">
         <div class="step-head">
-          <h2 id="h-model"><span class="n">2</span>Model</h2>
+          <h2 id="h-model"><span class="n">3</span>Model</h2>
           <div class="row-actions">
-            <div class="segmented" id="model-filter" role="group" aria-label="Show models for">
-              <button type="button" id="filter-2" data-filter="2" aria-pressed="false">2 Sparks</button>
-              <button type="button" id="filter-4" data-filter="4" aria-pressed="false">4 Sparks</button>
-            </div>
             <button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button>
           </div>
         </div>
+        <div class="tabs" id="model-pairs" role="tablist" aria-label="Pair" hidden></div>
+        <p class="hint" id="pairs-hint" hidden>Pick a model for each pair. They can differ.</p>
         <div class="choices" id="profiles"></div>
         <p class="sub" id="h-checkpoint">Checkpoint</p>
         <div class="choices" id="checkpoints" aria-labelledby="h-checkpoint"></div>
@@ -241,7 +288,7 @@ footer p { margin: 0; max-width: 110ch; }
 
       <section class="step" data-step="settings" aria-labelledby="h-settings">
         <div class="step-head">
-          <h2 id="h-settings"><span class="n">3</span>Serving settings</h2>
+          <h2 id="h-settings"><span class="n">4</span>Serving settings</h2>
           <div class="row-actions">
             <button type="button" class="btn quiet" id="reset-settings">Use the profile's values</button>
             <button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button>
@@ -249,28 +296,37 @@ footer p { margin: 0; max-width: 110ch; }
         </div>
         <p class="summary" hidden></p>
         <div class="step-body">
+          <div class="tabs" id="settings-pairs" role="tablist" aria-label="Pair" hidden></div>
           <p class="hint">Leave a field empty to keep the default.</p>
           <div class="settings" id="settings"></div>
+          <div class="settings" id="endpoint" hidden>
+            <p class="sub" id="h-endpoint">API endpoint</p>
+            <div class="choices" id="endpoint-modes" role="radiogroup" aria-labelledby="h-endpoint"></div>
+            <div class="grid" id="endpoint-fields"></div>
+            <p class="hint" id="endpoint-note" hidden></p>
+          </div>
         </div>
       </section>
 
       <section class="step" data-step="sparks" aria-labelledby="h-sparks">
         <div class="step-head">
-          <h2 id="h-sparks"><span class="n">4</span>Your Sparks</h2>
+          <h2 id="h-sparks"><span class="n">5</span>Your Sparks</h2>
           <div class="row-actions">
             <button type="button" class="btn quiet" id="reset-sparks">Restore the example values</button>
             <button type="button" class="btn toggle" aria-expanded="true"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Collapse</span></button>
           </div>
         </div>
-        <p class="callout">Only needed for Docker Compose.</p>
+        <p class="callout" id="sparks-callout">Only needed for Docker Compose.</p>
         <p class="summary" hidden></p>
         <div class="step-body">
           <p class="hint" id="example-note">These are example values. Replace them with your Sparks'.</p>
-          <p class="hint">Paths: letters, digits and <code>. _ / + = @ ~ -</code>. IPv4 addresses only.</p>
-          <div class="grid">
+          <p class="hint" id="names-hint" hidden></p>
+          <p class="hint" id="paths-hint">Paths: letters, digits and <code>. _ / + = @ ~ -</code>. IPv4 addresses only.</p>
+          <div class="grid" id="site-fields">
             <div class="f">
               <label for="site-name">Deployment name</label>
-              <input type="text" id="site-name" spellcheck="false" aria-describedby="site-name-hint">
+              <input type="text" id="site-name" spellcheck="false" aria-describedby="site-name-hint err-site-name">
+              <p class="err" id="err-site-name"></p>
             </div>
             <div class="f" style="align-content:end">
               <label class="check" for="shared"><input type="checkbox" id="shared">Same NICs and paths on every Spark</label>
@@ -296,10 +352,13 @@ footer p { margin: 0; max-width: 110ch; }
         </div>
         <span class="chip" id="out-state">Ready</span>
       </div>
+      <p class="hint" id="mode-note" hidden>Install command only for two pairs on a ring.</p>
       <dl class="facts" id="facts"></dl>
       <div class="messages" id="messages"></div>
       <div class="row-actions" id="share-bar" hidden>
-        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>      </div>
+        <button type="button" class="btn quiet" id="copy-link">Copy link to these choices</button>
+        <input type="text" id="share-url" readonly spellcheck="false" aria-label="Link to these choices" hidden>
+      </div>
 
       <section class="panel" id="install-panel" role="tabpanel" aria-labelledby="mode-install">
         <div class="opts">
@@ -325,27 +384,38 @@ footer p { margin: 0; max-width: 110ch; }
               <label for="approval-yes"><input type="radio" name="approval" id="approval-yes" value="yes">Approve (<code>--yes</code>)</label>
             </div>
           </div>
+          <div class="opt" role="radiogroup" aria-labelledby="opt-order">
+            <span class="opt-label" id="opt-order">Spark order</span>
+            <div class="radios">
+              <label for="order-auto"><input type="radio" name="order" id="order-auto" value="auto">Automatic</label>
+              <label for="order-ask"><input type="radio" name="order" id="order-ask" value="ask">Ask during install</label>
+              <label for="order-fill"><input type="radio" name="order" id="order-fill" value="fill">Fill in my Sparks</label>
+            </div>
+            <p class="hint opt-hint" id="order-hint">The Spark you run setup on becomes Node A.</p>
+          </div>
           <div class="opt">
             <label class="opt-label" for="download-limit">Download limit</label>
-            <input type="text" id="download-limit" spellcheck="false" placeholder="none, 850Mbit, 2Gbit">
+            <input type="text" id="download-limit" spellcheck="false" placeholder="none, 850Mbit, 2Gbit" aria-describedby="err-download-limit">
+            <p class="err opt-hint" id="err-download-limit"></p>
           </div>
         </div>
         <div class="messages" id="install-messages"></div>
-        <div class="file">
-          <div class="file-bar">
-            <span class="path" id="install-where">On Node A, as a user with sudo</span>
-            <div class="btns"><button type="button" class="btn primary" id="copy-install">Copy command</button></div>
-          </div>
-          <pre class="code cmd" id="install-pre" tabindex="0" aria-label="Install command"><code id="install-code"></code></pre>
-        </div>
+        <section class="pack" id="pack" aria-label="Commands"></section>
+        <section class="pack" id="pack-roles" aria-labelledby="h-roles">
+          <h3 class="sub" id="h-roles">Where to run and connect</h3>
+          <dl class="roles" id="roles"></dl>
+          <p class="what" id="roles-run" hidden></p>
+          <p class="hint" id="roles-order" hidden></p>
+        </section>
         <ul class="notes" id="install-notes"></ul>
       </section>
 
       <section class="panel" id="compose-panel" role="tabpanel" aria-labelledby="mode-compose" data-stale="false" hidden>
-        <div class="zip-bar">
+        <div class="zip-bar" id="zip-bar">
           <div class="f zip-name">
             <label for="zip-name">Deployment name</label>
-            <input type="text" id="zip-name" spellcheck="false">
+            <input type="text" id="zip-name" spellcheck="false" aria-describedby="err-zip-name">
+            <p class="err" id="err-zip-name"></p>
           </div>
           <button type="button" class="btn primary" id="save-zip" disabled>Download zip</button>
           <span class="hint" id="zip-note">Checking whether this view can save files.</span>
@@ -388,8 +458,15 @@ __ENGINE__
   const DATA = JSON.parse(document.getElementById('data').textContent);
   const CATALOG = DATA.profiles;
   const BY_ID = Object.fromEntries(CATALOG.map(p => [p.id, p]));
+  // Installer images, default first. A non-default image's profiles are in its own data file,
+  // fetched when it is selected: name -> {status: 'loading' | 'ready' | 'failed', byId}.
+  const IMAGES = DATA.images || [];
+  const DEFAULT_IMAGE = IMAGES.find(row => row.default) || null;
+  const imageData = {};
   const META = { repository: DATA.repository, tag: DATA.tag, commit: DATA.commit, ref: DATA.ref,
     since_tag: DATA.since_tag, commits_since: DATA.commits_since };
+  // The command options of the page's source (export.features): the ring-split layout and the cable check.
+  const FEATURES = DATA.features || {};
   // A page framed by a claude.ai viewer saves files through its downloads capability; a
   // hosted page (GitHub Pages) saves them as an ordinary browser download and can carry its
   // choices in a shareable link.
@@ -399,6 +476,18 @@ __ENGINE__
   const LABELS = {
     max_concurrency: 'Concurrent requests', context_length: 'Maximum context', kv_cache_gib: 'KV cache per Spark',
     max_images: 'Images per request', max_videos: 'Videos per request', save_cpu: 'Save CPU between decode steps',
+    api_port: 'API port', api_bind: 'API listens only on',
+  };
+  // The API endpoint choices the source offers (export.features): automatic; ask during install,
+  // where `sparkring install` asks for the listen address and port; set here, with the fields the
+  // source takes.
+  const ENDPOINT_FIELDS = ['api_port', 'api_bind', 'api_address'].filter(name => FEATURES[name]);
+  const ENDPOINT_MODES = ['auto', ...(FEATURES.api_port || FEATURES.api_bind ? ['ask'] : []), ...(ENDPOINT_FIELDS.length ? ['set'] : [])];
+  // Each choice's title, and the line under it; Automatic's line names the model's port (renderEndpoint).
+  const ENDPOINT_TEXT = {
+    auto: ['Automatic', ''],
+    ask: ['Ask during install', 'The install shows the Spark\'s addresses and asks. Its command has no --yes.'],
+    set: ['Set here', 'Pick the port and addresses below.'],
   };
   const UNITS = { max_concurrency: 'requests', context_length: 'tokens', kv_cache_gib: 'GiB', max_images: 'images', max_videos: 'videos' };
   const ORDER = ['max_concurrency', 'context_length', 'kv_cache_gib', 'max_images', 'max_videos', 'save_cpu'];
@@ -416,6 +505,13 @@ __ENGINE__
     'fabric.site_sha256': { label: 'Mesh site SHA-256', wide: true },
     'fabric.plan_sha256': { label: 'Mesh plan SHA-256', wide: true },
   };
+  // Each layout's choice: its title and one line.
+  const LAYOUTS = {
+    pair: ['Two Sparks', 'One model on a pair.'],
+    ring: ['Four Sparks – One Model', 'One model on a four-Spark ring.'],
+    halves: ['Four Sparks – Two Models', 'Two models on a ring, two TP2 pairs.'],
+  };
+  const PAIRS = ['First pair', 'Second pair'];
   const RANK_KEYS = ['host', 'host_ip'];
   const SHARED_KEYS = ['interface', 'hcas', 'gid', 'model', 'cache', 'repository', 'deployment_root'];
   const FABRIC_KEYS = ['fabric.site_path', 'fabric.site_sha256', 'fabric.plan_sha256'];
@@ -436,6 +532,12 @@ __ENGINE__
     return node;
   }
   const chip = (text, tone) => el('span', { class: 'chip' + (tone ? ' ' + tone : '') }, text);
+  // A profile's or checkpoint's status (export.labels) as the profile tables name it
+  // (docs/development/writing.md), with its chip's tone.
+  const STATUS = { qualified: ['Validated', 'good'], implemented: ['Development', ''], 'research-only': ['Experimental', 'warn'],
+    unsupported: ['Unsupported', 'bad'] };
+  const statusLabel = status => (STATUS[status] || [status || 'Unknown'])[0];
+  const statusChip = status => chip(statusLabel(status), (STATUS[status] || [])[1]);
   const fmt = n => typeof n === 'number' ? n.toLocaleString('en-US') : String(n);
   const rev = r => (r || '').slice(0, 12);
   const clone = v => JSON.parse(JSON.stringify(v));
@@ -444,20 +546,134 @@ __ENGINE__
   const msg = (tone, title, ...body) => el('div', { class: 'msg' + (tone ? ' ' + tone : '') }, title ? el('strong', {}, rich(title)) : null, ...body);
 
   // ---- State -------------------------------------------------------------
+  const DEFAULT_PAIR = (CATALOG.find(p => p.nodes === 2) || CATALOG[0]).id;
+  const half = () => ({ profile: DEFAULT_PAIR, checkpoints: {}, settings: {}, endpoints: {} });
   const state = {
-    profile: 'qwen38-flash-next-tp2', filter: '2', mode: 'install', settings: {}, checkpoints: {}, clusters: {}, perProfile: {},
-    install: { form: 'script', source: 'release', approval: 'ask', limit: '' },
+    // `profile` is the pair's or the ring's model: two Sparks for the pair layout, four for the
+    // ring layouts, where the two-pair layout switches back to it. `last` keeps the last one of
+    // each size, so that changing the layout restores it. `endpoints` holds the API endpoint
+    // choice by model ({mode, address}); its port and listen address are in `settings`.
+    profile: 'qwen38-flash-next-tp2', layout: 'pair', last: {}, mode: 'install', image: null,
+    settings: {}, checkpoints: {}, endpoints: {}, clusters: {}, perProfile: {},
+    // Each half of a ring split into two pairs: its model, and its checkpoint and serving settings
+    // by model. `half` is the pair that the model and settings steps show.
+    halves: [half(), half()], half: 0,
+    install: { form: 'script', source: 'release', approval: 'ask', order: 'auto', limit: '' },
     // Every step opens collapsed on each page load.
-    collapsed: { release: true, model: true, settings: true, sparks: true },
+    collapsed: { release: true, layout: true, model: true, settings: true, sparks: true },
   };
 
-  const profile = () => BY_ID[state.profile];
-  const checkpointName = p => state.checkpoints[p.id] ?? null;
+  // A selection is what one install command deploys: a model, and its checkpoint and serving
+  // settings by model. MAIN is the pair's or the ring's; state.halves holds each half's.
+  const MAIN = {
+    get profile() { return state.profile; },
+    set profile(id) { state.profile = id; state.last[BY_ID[id].nodes] = id; },
+    get checkpoints() { return state.checkpoints; },
+    get settings() { return state.settings; },
+    get endpoints() { return state.endpoints; },
+  };
+  // The selection the model and settings steps edit.
+  const active = () => state.layout === 'halves' ? state.halves[state.half] : MAIN;
+  // The selections the layout installs, with the label of a half.
+  const deployed = () => state.layout === 'halves'
+    ? state.halves.map((slot, i) => ({ slot, label: PAIRS[i] })) : [{ slot: MAIN, label: null }];
+  // A selection that a layout switch installs: the profile of `nodes` Sparks for the model of
+  // profile `id`, with its default checkpoint and serving settings and the automatic API
+  // endpoint; without one, the first installable profile of that size. The switch commands
+  // follow the deployed models, so no choice made earlier in another layout carries into them.
+  function switchSlot(id, nodes) {
+    const name = BY_ID[id].model_name, sized = CATALOG.filter(p => p.nodes === nodes);
+    const p = sized.find(q => q.model_name === name && q.installable) || sized.find(q => q.model_name === name)
+      || sized.find(q => q.installable) || sized[0];
+    return { profile: p.id, checkpoints: {}, settings: {} };
+  }
+  // The four-Spark model that the halves layout switches to: the first pair's model.
+  const switchMain = () => switchSlot(state.halves[0].profile, 4);
+  // The two halves' models that the ring layout switches to: the ring's model on both.
+  const switchHalves = () => [0, 1].map(() => switchSlot(state.profile, 2));
+  // Every selection the command pack uses: the deployed ones, then those the layout switches to.
+  function packSlots() {
+    if (state.layout === 'halves') return [...state.halves, switchMain()];
+    return state.layout === 'ring' && FEATURES.ring_halves ? [MAIN, ...switchHalves()] : [MAIN];
+  }
+  const sparkCount = () => E.LAYOUT_SPARKS[state.layout];
+  // Docker Compose renders a pair or a ring serving one model, not a ring split into two pairs.
+  const composeOffered = () => state.layout !== 'halves';
+  const outputMode = () => composeOffered() ? state.mode : 'install';
+
+  const base = () => BY_ID[active().profile];
+  // The selected non-default image when it runs model `p`; null selects the default image.
+  function imageRow(p) {
+    const row = IMAGES.find(r => r.name === state.image);
+    return row && !row.default && row.profiles.includes(p.id) ? row : null;
+  }
+  // Model `p` rendered on the selected image; the default image's until that image's data loads.
+  function rendered(p) {
+    const row = imageRow(p), d = row && imageData[row.name];
+    return d && d.status === 'ready' ? d.byId[p.id] : p;
+  }
+  // The selected model rendered on the selected image.
+  const profile = () => rendered(base());
+  // {row, failed} while the selected image's data is loading or could not load for a model the
+  // command pack uses, else null.
+  function imageWait() {
+    for (const slot of packSlots()) {
+      const row = imageRow(BY_ID[slot.profile]);
+      if (!row) continue;
+      const d = imageData[row.name];
+      if (!(d && d.status === 'ready')) return { row, failed: Boolean(d && d.status === 'failed') };
+    }
+    return null;
+  }
+  function loadImage(row) {
+    if (imageData[row.name]) return;
+    imageData[row.name] = { status: 'loading' };
+    fetch(row.file)
+      .then(response => { if (!response.ok) throw new Error(String(response.status)); return response.json(); })
+      .then(doc => { imageData[row.name] = { status: 'ready', byId: Object.fromEntries(doc.profiles.map(x => [x.id, x])) }; },
+        () => { imageData[row.name] = { status: 'failed' }; })
+      .then(() => { renderAll(); changed(); });
+  }
+  const slotCheckpoint = (slot, p) => slot.checkpoints[p.id] ?? null;
+  const slotSettings = (slot, id) => (slot.settings[id] ||= {});
+  const checkpointName = p => slotCheckpoint(active(), p);
   const checkpointOf = p => E.checkpointOf(p, checkpointName(p));
-  const settingsOf = id => (state.settings[id] ||= {});
+  const settingsOf = id => slotSettings(active(), id);
+  // A selection's API endpoint choice for model `id`: {mode: 'auto' | 'ask' | 'set', address}.
+  const slotEndpoint = (slot, id) => ((slot.endpoints ||= {})[id] ||= { mode: 'auto', address: '' });
+  // The endpoint mode that applies: the chosen one when the source offers it, else automatic.
+  const endpointMode = (slot, id) => ENDPOINT_MODES.includes(slotEndpoint(slot, id).mode) ? slotEndpoint(slot, id).mode : 'auto';
+  // What a selection's fields give for model `p` (E.readSelection): the settings it requests, the
+  // address shown for its model and the problems of its fields. slot.settings keeps each field's
+  // entry as typed, so a field the installer would refuse stays visible with its problem instead
+  // of falling back to the profile's value; the API port and listen address count only while the
+  // endpoint is set here.
+  function readOf(slot, p) {
+    let cp;
+    try { cp = E.checkpointOf(p, slotCheckpoint(slot, p)); } catch (_) { cp = p.checkpoints[0]; }
+    return E.readSelection(p, cp, slotSettings(slot, p.id),
+      { mode: endpointMode(slot, p.id), address: FEATURES.api_address ? slotEndpoint(slot, p.id).address : '' });
+  }
+  const requested = (slot, id) => readOf(slot, rendered(BY_ID[id])).settings;
+  // A selection as the engine takes it: the model on the selected image, its checkpoint name,
+  // requested settings, API endpoint choice and its fields' problems.
+  function selectionOf(slot) {
+    const p = rendered(BY_ID[slot.profile]), read = readOf(slot, p);
+    return { profile: p, checkpoint: slotCheckpoint(slot, p), settings: read.settings,
+      endpoint: { ask: endpointMode(slot, p.id) === 'ask', address: read.address }, problems: read.problems };
+  }
+  // Makes the pair's or the ring's model fit the layout's size: the last one of that size, else the first.
+  function fitLayout() {
+    if (!E.layouts(FEATURES).includes(state.layout)) state.layout = BY_ID[state.profile].nodes === 4 ? 'ring' : 'pair';
+    const size = sparkCount();
+    if (BY_ID[state.profile].nodes !== size) {
+      state.profile = BY_ID[state.last[size]]?.nodes === size ? state.last[size] : CATALOG.find(p => p.nodes === size).id;
+    }
+    state.last[size] = state.profile;
+  }
 
   function exampleCluster(nodes) {
-    const p = CATALOG.find(x => x.nodes === nodes && !x.sparkcache);
+    const p = CATALOG.find(x => x.nodes === nodes);
     const ranks = p.example_site.ranks.map(r => {
       const row = { host: r.host, host_ip: r.host_ip, interface: r.interface, hcas: [...r.hcas], gid: r.gid,
         repository: r.repository, deployment_root: r.deployment_root };
@@ -531,17 +747,39 @@ __ENGINE__
     try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (_) { saved = null; }
     if (!saved || typeof saved !== 'object') return;
     if (BY_ID[saved.profile]) state.profile = saved.profile;
-    for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints']) {
+    if (IMAGES.some(row => row.name === saved.image && !row.default)) state.image = saved.image;
+    for (const key of ['settings', 'clusters', 'perProfile', 'checkpoints', 'endpoints']) {
       if (saved[key] && typeof saved[key] === 'object') state[key] = saved[key];
     }
     const i = saved.install || {};
     if (['script', 'installed'].includes(i.form)) state.install.form = i.form;
     if (['release', 'main'].includes(i.source)) state.install.source = i.source;
     if (['ask', 'plan', 'yes'].includes(i.approval)) state.install.approval = i.approval;
+    if (['auto', 'ask', 'fill'].includes(i.order)) state.install.order = i.order;
     if (typeof i.limit === 'string') state.install.limit = i.limit;
-    for (const id of Object.keys(state.checkpoints)) {
-      const p = BY_ID[id];
-      if (!p || !p.checkpoints.some(c => c.name === state.checkpoints[id])) delete state.checkpoints[id];
+    // A saved state without a layout takes the layout of its model's size; fitLayout repairs the rest.
+    state.layout = E.layouts(FEATURES).includes(saved.layout) ? saved.layout : BY_ID[state.profile].nodes === 4 ? 'ring' : 'pair';
+    for (const n of [2, 4]) if (BY_ID[(saved.last || {})[n]]?.nodes === n) state.last[n] = saved.last[n];
+    if (Array.isArray(saved.halves) && saved.halves.length === 2) {
+      state.halves = saved.halves.map((h, n) => h && BY_ID[h.profile]?.nodes === 2
+        ? { profile: h.profile, checkpoints: h.checkpoints && typeof h.checkpoints === 'object' ? h.checkpoints : {},
+          settings: h.settings && typeof h.settings === 'object' ? h.settings : {},
+          endpoints: h.endpoints && typeof h.endpoints === 'object' ? h.endpoints : {} }
+        : state.halves[n]);
+    }
+    if (saved.half === 0 || saved.half === 1) state.half = saved.half;
+    // An endpoint choice must name a mode and an address text.
+    for (const map of [state.endpoints, ...state.halves.map(h => h.endpoints)]) {
+      for (const id of Object.keys(map)) {
+        const e = map[id];
+        if (!BY_ID[id] || !e || !['auto', 'ask', 'set'].includes(e.mode) || typeof e.address !== 'string') delete map[id];
+      }
+    }
+    for (const map of [state.checkpoints, ...state.halves.map(h => h.checkpoints)]) {
+      for (const id of Object.keys(map)) {
+        const p = BY_ID[id];
+        if (!p || !p.checkpoints.some(c => c.name === map[id])) delete map[id];
+      }
     }
     for (const n of Object.keys(state.clusters)) {
       const c = state.clusters[n];
@@ -557,34 +795,82 @@ __ENGINE__
   }
 
   // ---- Steps ---------------------------------------------------------------
-  function renderFilter() {
-    for (const button of document.querySelectorAll('[data-filter]')) {
-      button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter));
+  // The layouts the page's source offers (E.layouts).
+  function renderLayouts() {
+    $('layouts').replaceChildren(...E.layouts(FEATURES).map(name => {
+      const id = 'layout-' + name, input = el('input', { type: 'radio', name: 'layout', id, value: name });
+      input.checked = name === state.layout;
+      input.addEventListener('change', () => {
+        state.layout = name;
+        fitLayout();
+        currentTab = 'rank0';
+        renderAll(); changed();
+      });
+      return el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id }, input,
+        el('span', { class: 'choice-body' }, el('strong', {}, LAYOUTS[name][0]), el('span', { class: 'meta' }, LAYOUTS[name][1])));
+    }));
+  }
+
+  // With two pairs, the model and settings steps show one pair at a time; these tabs choose it.
+  function renderPairTabs() {
+    const halves = state.layout === 'halves';
+    $('pairs-hint').hidden = !halves || state.collapsed.model;
+    for (const id of ['model-pairs', 'settings-pairs']) {
+      const box = $(id);
+      box.hidden = !halves;
+      box.replaceChildren(...(halves ? state.halves : []).map((slot, i) => {
+        const button = el('button', { type: 'button', role: 'tab', class: 'tab', 'aria-selected': String(i === state.half) },
+          PAIRS[i], el('small', {}, BY_ID[slot.profile].model_name));
+        button.addEventListener('click', () => { state.half = i; renderAll(); save(); });
+        return button;
+      }));
     }
   }
 
   function renderProfiles() {
-    const list = $('profiles');
+    const list = $('profiles'), slot = active(), size = state.layout === 'ring' ? 4 : 2;
     list.replaceChildren();
     for (const p of CATALOG) {
-      // Collapsed, the list shows only the selected model.
-      if (state.collapsed.model ? p.id !== state.profile : String(p.nodes) !== state.filter) continue;
+      // Collapsed, the list shows only the selected model; expanded, the models of the layout's size.
+      if (state.collapsed.model ? p.id !== slot.profile : p.nodes !== size) continue;
       const id = 'profile-' + p.id;
       const input = el('input', { type: 'radio', name: 'profile', id, value: p.id });
-      input.checked = p.id === state.profile;
-      input.addEventListener('change', () => { state.profile = p.id; currentTab = 'rank0'; renderAll(); changed(); });
+      input.checked = p.id === slot.profile;
+      input.addEventListener('change', () => { slot.profile = p.id; currentTab = 'rank0'; renderAll(); changed(); });
       list.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + (p.sparkcache ? ' with SparkCache' : '') + ' · ' + p.nodes + ' Sparks'), el('span', { class: 'meta mono' }, p.id)),
-        el('span', { class: 'chips' },
-          p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null,
-          p.sparkcache ? chip('SparkCache · ' + p.image_release) : null,
-          p.installable ? null : chip('Compose only'))));
+        el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + ' · ' + p.nodes + ' Sparks'),
+          p.purpose ? el('span', { class: 'meta' }, p.purpose) : null, el('span', { class: 'meta mono' }, p.id)),
+        el('span', { class: 'chips' }, statusChip(p.status), p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
     }
     if (!list.children.length) list.append(el('p', { class: 'hint' }, 'No model runs on that many Sparks.'));
   }
 
+  // The selected non-default image when it runs a model the layout installs, else null.
+  function layoutImage() {
+    const ids = deployed().map(d => d.slot.profile);
+    return IMAGES.find(r => r.name === state.image && !r.default && ids.some(id => r.profiles.includes(id))) || null;
+  }
+
+  // The images that run a model the layout installs, as `sparkring images` lists them. The selected
+  // image applies to every command whose model it runs.
+  function renderImages() {
+    const ids = deployed().map(d => d.slot.profile), select = $('image');
+    select.replaceChildren(...IMAGES.filter(r => r.default || ids.some(id => r.profiles.includes(id)))
+      .map(r => el('option', { value: r.name }, r.option + (r.default ? ' (default)' : ''))));
+    if (DEFAULT_IMAGE) select.value = (layoutImage() || DEFAULT_IMAGE).name;
+    for (const slot of packSlots()) {
+      const row = imageRow(BY_ID[slot.profile]);
+      if (row) loadImage(row);
+    }
+    const wait = imageWait(), note = $('image-note');
+    note.hidden = !wait;
+    if (wait) note.textContent = wait.failed ? 'This view cannot load this image.' : 'Loading this image.';
+  }
+
   function selectCheckpoint(p, name) {
+    const slot = active();
+    if (slot !== MAIN) { slot.checkpoints[p.id] = name; return; }
     const before = examplePaths(p);
     state.checkpoints[p.id] = name;
     const pp = paths(p), after = examplePaths(p);
@@ -611,14 +897,16 @@ __ENGINE__
         renderCheckpoints(); renderSettings(); renderSparks(); changed();
       });
       const details = cp.default
-        ? [el('li', {}, "The profile's default" + (cp.aliases.length ? '; also named ' : ''), ...cp.aliases.map(a => el('code', {}, a)))]
+        ? (cp.aliases.length ? [el('li', {}, 'Also named ', ...cp.aliases.map(a => el('code', {}, a)))] : [])
         : cp.changes.map(change => el('li', {}, el('code', {}, change)));
+      // The card leads with what the checkpoint is for; its name, the value --checkpoint takes, follows.
+      const served = cp.changes.includes('served as ' + cp.served_model_name) ? '' : ' · served as ' + cp.served_model_name;
       box.append(el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id },
         input,
-        el('span', { class: 'choice-body' }, el('strong', { class: 'mono' }, cp.name),
-          el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + ' · served as ' + cp.served_model_name)),
-        el('ul', { class: 'changes' }, details),
-        cp.default ? el('span', { class: 'chips' }, chip('Default', 'good')) : null));
+        el('span', { class: 'choice-body' }, el('strong', {}, cp.purpose || cp.name), el('span', { class: 'meta mono' }, cp.name),
+          el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + served)),
+        details.length ? el('ul', { class: 'changes' }, details) : null,
+        el('span', { class: 'chips' }, cp.default ? chip('Default', 'good') : null, statusChip(cp.status))));
     }
   }
 
@@ -631,9 +919,16 @@ __ENGINE__
   function renderSettings() {
     const p = profile(), cp = checkpointOf(p), s = settingsOf(p.id), box = $('settings');
     box.replaceChildren();
-    const rows = [...cp.settings].sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
+    // The API endpoint's settings are in its own option (renderEndpoint).
+    const rows = cp.settings.filter(row => !row.endpoint).sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
     for (const row of rows) {
       const id = 'setting-' + row.name;
+      // A switch the selected image cannot apply is not offered (E.offered); its choice is kept for an image that can.
+      if (row.switch && !E.offered(p, row)) {
+        const label = LABELS[row.name] || row.option;
+        box.append(el('p', { class: 'hint' }, "This image can't " + label.charAt(0).toLowerCase() + label.slice(1) + '.'));
+        continue;
+      }
       if (row.switch) {
         const input = el('input', { type: 'checkbox', id });
         input.checked = s[row.name] === true;
@@ -648,41 +943,199 @@ __ENGINE__
         box.append(wrap);
         continue;
       }
-      const input = el('input', { type: 'number', id, inputmode: 'numeric', min: row.minimum, max: row.maximum, step: 1, placeholder: String(row.profile) });
+      // A text field: a number field reports no value for text it cannot read, which would hide the entry.
+      const input = el('input', { type: 'text', id, inputmode: 'numeric', spellcheck: 'false',
+        placeholder: String(row.profile), 'aria-describedby': 'err-' + id });
       if (s[row.name] !== undefined) input.value = s[row.name];
       const limit = row.maximum ? ' (max ' + fmt(row.maximum) + ')' : '';
+      const err = el('p', { class: 'err', id: 'err-' + id });
+      // The KV cache size shows how many tokens it holds (renderKv).
+      const kv = row.name === 'kv_cache_gib'
+        ? [el('p', { class: 'kv-estimate', id: 'kv-estimate', 'aria-live': 'polite' }), el('p', { class: 'hint', id: 'kv-note' })] : [];
       const wrap = el('div', { class: 'setting' + (s[row.name] !== undefined ? ' changed' : '') },
         el('label', { for: id }, LABELS[row.name] || row.option),
         el('div', { class: 'field' }, input, el('span', { class: 'unit' }, UNITS[row.name] || '')),
-        el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit));
+        el('p', { class: 'hint' }, 'Default ' + fmt(row.profile) + limit), err, ...kv);
+      const check = () => {
+        err.textContent = E.readSetting(row, input.value).problem || '';
+        input.setAttribute('aria-invalid', String(Boolean(err.textContent)));
+      };
+      check();
       input.addEventListener('input', () => {
         const text = input.value.trim();
-        const valid = text === '' || /^\d+$/.test(text);
-        input.setAttribute('aria-invalid', String(!valid));
-        if (text === '' || !valid) delete s[row.name]; else s[row.name] = Number(text);
+        check();
+        if (text === '') delete s[row.name]; else s[row.name] = text;
         wrap.classList.toggle('changed', s[row.name] !== undefined);
         changed();
       });
       box.append(wrap);
     }
+    renderKv();
+    renderEndpoint();
+  }
+
+  // The problem with an API endpoint field's entry, as `sparkring install` would refuse it; '' when none.
+  const endpointProblem = (key, row, text) => (key === 'api_address' ? E.readAddress(text) : E.readSetting(row, text)).problem || '';
+
+  // The API endpoint option of the shown selection: automatic, ask during install, or set here with
+  // the port, the address it listens on and the address shown for it. Only what the source offers.
+  function renderEndpoint() {
+    const box = $('endpoint'), p = profile(), cp = checkpointOf(p), slot = active();
+    const s = settingsOf(p.id), endpoint = slotEndpoint(slot, p.id), mode = endpointMode(slot, p.id);
+    const rows = Object.fromEntries(cp.settings.map(row => [row.name, row]));
+    const fields = ENDPOINT_FIELDS.filter(key => key === 'api_address' || rows[key]);
+    box.hidden = ENDPOINT_MODES.length < 2 || !fields.length;
+    if (box.hidden) return;
+    $('endpoint-modes').replaceChildren(...ENDPOINT_MODES.map(name => {
+      const id = 'endpoint-' + name, input = el('input', { type: 'radio', name: 'endpoint', id, value: name });
+      input.checked = name === mode;
+      input.addEventListener('change', () => { endpoint.mode = name; renderEndpoint(); changed(); });
+      const meta = name === 'auto' ? `Every address of the Spark, at port ${cp.port}.` : ENDPOINT_TEXT[name][1];
+      return el('label', { class: 'choice' + (input.checked ? ' selected' : ''), for: id }, input,
+        el('span', { class: 'choice-body' }, el('strong', {}, ENDPOINT_TEXT[name][0]), el('span', { class: 'meta' }, meta)));
+    }));
+    const labels = { api_port: ['Port', String(cp.port), '1024 to 65535.'],
+      api_bind: ['Listens only on', 'every address', 'One of the Spark\'s own addresses.'],
+      api_address: ['Address people use', 'automatic', 'A name or address shown for the model, such as llm.example.net. Only shown: SparkRing\'s own checks don\'t use it.'] };
+    $('endpoint-fields').hidden = mode !== 'set';
+    $('endpoint-fields').replaceChildren(...(mode === 'set' ? fields : []).map(key => {
+      const id = 'endpoint-field-' + key, [label, placeholder, hint] = labels[key];
+      const input = el('input', { type: 'text', id, spellcheck: 'false', inputmode: key === 'api_port' ? 'numeric' : null,
+        placeholder, 'aria-describedby': id + '-hint err-' + id });
+      input.value = key === 'api_address' ? endpoint.address : (s[key] ?? '');
+      const err = el('p', { class: 'err', id: 'err-' + id });
+      const check = () => {
+        err.textContent = endpointProblem(key, rows[key], input.value.trim());
+        input.setAttribute('aria-invalid', String(Boolean(err.textContent)));
+      };
+      check();
+      input.addEventListener('input', () => {
+        const text = input.value.trim();
+        check();
+        // The entry stays as typed; while the installer would refuse it, its field says why and
+        // the page offers no command.
+        if (key === 'api_address') endpoint.address = text;
+        else if (text === '') delete s[key];
+        else s[key] = text;
+        changed();
+      });
+      return el('div', { class: 'f' + (key === 'api_address' ? ' wide' : '') }, el('label', { for: id }, label), input,
+        el('p', { class: 'hint', id: id + '-hint' }, hint), err);
+    }));
+    const note = $('endpoint-note');
+    note.hidden = !(outputMode() === 'compose' && mode === 'ask');
+    note.textContent = note.hidden ? '' : "Docker Compose files can't ask, so they use the automatic endpoint.";
+  }
+
+  // How many tokens the shown selection's KV cache holds (E.kvText), live as its settings change;
+  // nothing while a field has a problem or a setting cannot be used.
+  function renderKv() {
+    const line = $('kv-estimate'), note = $('kv-note');
+    if (!line) return;
+    const p = profile(), read = readOf(active(), p), check = E.servingCheck(p, read.settings, checkpointName(p));
+    const kv = check.ok && !read.problems.length ? E.kvText(check.checkpoint, check.settings) : null;
+    line.textContent = kv ? kv.line + '.' : '';
+    note.replaceChildren(...(kv && kv.basis ? kvBasis(kv, ' The engine reports the exact figure when the model starts.') : []));
+    line.hidden = !kv;
+    note.hidden = !kv || !kv.basis;
+  }
+
+  // The measurement an estimate is scaled from, with a link to its record at the page's source
+  // commit; the record's conditions show on hover.
+  function kvBasis(kv, after = '') {
+    const link = kv.source ? el('a', { href: `https://github.com/${META.repository}/blob/${META.commit}/${kv.source}`,
+      target: '_blank', rel: 'noopener', title: kv.conditions || null }, 'record') : null;
+    return [kv.basis, ...(link ? [' (', link, ')'] : []), '.', after];
+  }
+
+  // The KV cache fact of a selection: its size per Spark, how many tokens it holds and what that is estimated from.
+  function kvFact(p, check) {
+    const kv = check.ok ? E.kvText(check.checkpoint, check.settings) : null;
+    if (!kv) return null;
+    return [fmt(kv.gib) + ' GiB per Spark · ' + kv.line.charAt(0).toLowerCase() + kv.line.slice(1),
+      ...(kv.basis ? [el('span', { class: 'kv-basis' }, kvBasis(kv))] : [])];
   }
 
   function fieldInput(p, key, id, rank) {
     const def = FIELDS[key];
-    const input = el('input', { type: 'text', id, spellcheck: 'false', inputmode: key === 'gid' ? 'numeric' : null });
+    const input = el('input', { type: 'text', id, spellcheck: 'false', inputmode: key === 'gid' ? 'numeric' : null, 'aria-describedby': 'err-' + id });
     input.value = shown(key, getValue(p, rank ?? 0, key));
     input.addEventListener('input', () => {
       const value = parsed(key, input.value);
       const c = cluster(p.nodes);
       if (rank === undefined) c.ranks.forEach((_, i) => setValue(p, i, key, Array.isArray(value) ? [...value] : value));
       else setValue(p, rank, key, value);
-      if (key === 'gid') input.setAttribute('aria-invalid', String(typeof value !== 'number' || value > 255));
       changed();
     });
-    return el('div', { class: 'f' + (def.wide ? ' wide' : '') }, el('label', { for: id }, def.label), input);
+    return el('div', { class: 'f' + (def.wide ? ' wide' : '') }, el('label', { for: id }, def.label), input, el('p', { class: 'err', id: 'err-' + id }));
   }
 
+  // Shows each problem under its field: with the commands output, of the Sparks' names and
+  // addresses; with Docker Compose, of the site, where a shared field shows the problem of its
+  // value on every Spark.
+  function renderProblems() {
+    const found = {};
+    if (outputMode() === 'install') {
+      for (const x of E.sparkProblems(cluster(sparkCount()).ranks)) found['rank' + x.rank + '-' + x.key] ||= x.message;
+      $('example-note').hidden = !namesExample();
+    } else {
+      const p = base(), c = cluster(p.nodes);
+      const shared = new Set(c.shared ? [...SHARED_KEYS, ...(p.nodes === 4 ? FABRIC_KEYS : [])] : []);
+      for (const x of E.fieldProblems(siteFor(p), p.nodes)) {
+        const id = x.key === 'name' ? 'site-name'
+          : (shared.has(x.key) ? 'shared-' : 'rank' + x.rank + '-') + x.key.replace('.', '-');
+        found[id] ||= x.message;
+      }
+      if (found['site-name']) found['zip-name'] = found['site-name'];
+      $('example-note').hidden = !isExample(profile());
+    }
+    for (const err of document.querySelectorAll('#sparks .err, #err-site-name, #err-zip-name')) {
+      const id = err.id.slice(4);
+      err.textContent = found[id] || '';
+      $(id)?.setAttribute('aria-invalid', String(Boolean(found[id])));
+    }
+  }
+
+  // The chip beside a Spark's name: the pair it serves in, and the Sparks that serve an API.
+  function roleChip(rank) {
+    if (state.layout !== 'halves') return rank === 0 ? chip('API', 'good') : null;
+    return chip(PAIRS[rank >> 1].toLowerCase() + (rank % 2 ? '' : ' · API'), rank % 2 ? '' : 'good');
+  }
+
+  // With the commands output, the step takes only each Spark's name and address, which "Fill in
+  // my Sparks" uses; Docker Compose takes the whole site.
   function renderSparks() {
+    const install = outputMode() === 'install', fill = state.install.order === 'fill';
+    for (const id of ['site-fields', 'paths-hint', 'import']) $(id).hidden = install;
+    $('names-hint').hidden = !install;
+    $('sparks-callout').hidden = install && fill;
+    $('sparks-callout').textContent = install ? 'Only needed for Docker Compose or Fill in my Sparks.' : 'Only needed for Docker Compose.';
+    if (install) renderNames(); else renderSite();
+    renderProblems();
+  }
+
+  function renderNames() {
+    const n = sparkCount(), c = cluster(n), box = $('sparks');
+    $('names-hint').textContent = 'A name, an address or both for each Spark. '
+      + (n === 2 ? 'Spark 1 is the Spark cabled to Node A.' : "Spark 1 is cabled to Node A's port 0, Spark 2 to Spark 1's port 0, and Spark 3 to Spark 2's port 0.");
+    box.replaceChildren(...c.ranks.map((row, rank) => el('fieldset', {},
+      el('legend', {}, rank === 0 ? 'Node A' : 'Spark ' + rank, roleChip(rank)),
+      el('div', { class: 'grid' }, [['host', 'Name'], ['host_ip', 'Address']].map(([key, label]) => {
+        const id = 'rank' + rank + '-' + key;
+        const input = el('input', { type: 'text', id, spellcheck: 'false', 'aria-describedby': 'err-' + id });
+        input.value = row[key] ?? '';
+        input.addEventListener('input', () => { row[key] = input.value.trim(); changed(); });
+        return el('div', { class: 'f' }, el('label', { for: id }, label), input, el('p', { class: 'err', id: 'err-' + id }));
+      })))));
+  }
+
+  // Whether the Sparks' names and addresses are still the example ones.
+  function namesExample() {
+    const n = sparkCount(), pick = c => JSON.stringify(c.ranks.map(r => [r.host, r.host_ip]));
+    return pick(cluster(n)) === pick(exampleCluster(n));
+  }
+
+  function renderSite() {
     const p = profile(), c = cluster(p.nodes), pp = paths(p), box = $('sparks');
     $('site-name').value = pp.name;
     $('zip-name').value = pp.name;
@@ -699,7 +1152,6 @@ __ENGINE__
       box.append(el('fieldset', {}, el('legend', {}, 'Spark ' + i, chip(i === 0 ? 'rank 0 · API and master' : 'rank ' + i, i === 0 ? 'good' : '')),
         el('div', { class: 'grid' }, keys.map(key => fieldInput(p, key, 'rank' + i + '-' + key.replace('.', '-'), i)))));
     });
-    $('example-note').hidden = !isExample(p);
   }
 
   function isExample(p) {
@@ -708,7 +1160,9 @@ __ENGINE__
   }
 
   function renderMode() {
-    const install = state.mode === 'install';
+    const install = outputMode() === 'install';
+    $('mode-compose').disabled = !composeOffered();
+    $('mode-note').hidden = composeOffered();
     $('mode-install').setAttribute('aria-selected', String(install));
     $('mode-compose').setAttribute('aria-selected', String(!install));
     $('install-panel').hidden = !install;
@@ -716,19 +1170,46 @@ __ENGINE__
     renderChip();
   }
 
-  // The one line a collapsed step shows. The model step keeps its selected model and checkpoint instead.
+  // The one line of a selection's serving settings: its changes, 'Defaults', the fields that need a
+  // change or why the settings cannot be used.
+  function settingsLine(slot) {
+    const p = rendered(BY_ID[slot.profile]), read = readOf(slot, p);
+    const check = E.servingCheck(p, read.settings, slotCheckpoint(slot, p)), count = read.problems.length;
+    if (count) return [count + (count === 1 ? ' field needs' : ' fields need') + ' a change', true];
+    if (!check.ok) return ['These settings cannot be used: ' + check.error, true];
+    const changes = Object.entries(check.settings).map(([name, value]) => value === true ? LABELS[name]
+      : LABELS[name] + ' ' + (typeof value === 'number' && name !== 'api_port' ? fmt(value) : value));
+    if (endpointMode(slot, p.id) === 'ask') changes.push('API asked during install');
+    if (read.address) changes.push('API shown at ' + read.address);
+    return [changes.length ? changes.join(' · ') : 'Defaults', false];
+  }
+
+  // [text, problem] of the one line a collapsed step shows. The model step keeps its selected model and checkpoint instead.
   function summaryFor(step) {
-    const p = profile();
-    if (step === 'release') return E.sourceName(META);
-    if (step === 'settings') {
-      const check = E.servingCheck(p, settingsOf(p.id), checkpointName(p));
-      if (!check.ok) return 'These settings cannot be used: ' + check.error;
-      const changes = Object.entries(check.settings).map(([name, value]) => value === true ? LABELS[name] : LABELS[name] + ' ' + fmt(value));
-      return changes.length ? changes.join(' · ') : 'Defaults';
+    const p = base();
+    if (step === 'release') {
+      const row = layoutImage();
+      return [E.sourceName(META) + (row ? ' · image ' + row.option : ''), false];
     }
-    if (isExample(p)) return 'Example values';
+    if (step === 'layout') return [LAYOUTS[state.layout][0], false];
+    if (step === 'settings') {
+      const lines = deployed().map(({ slot, label }) => {
+        const [text, problem] = settingsLine(slot);
+        return [(label ? label + ': ' : '') + text, problem];
+      });
+      return [lines.map(line => line[0]).join(' · '), lines.some(line => line[1])];
+    }
+    if (outputMode() === 'install') {
+      const n = sparkCount(), problems = E.sparkProblems(cluster(n).ranks).length;
+      if (problems) return [problems + (problems === 1 ? ' field needs' : ' fields need') + ' a change', true];
+      if (namesExample()) return ['Example values', false];
+      return [cluster(n).ranks.map(r => [r.host, r.host_ip].filter(Boolean).join(' · ')).join(', '), false];
+    }
+    const problems = E.fieldProblems(siteFor(p), p.nodes).length;
+    if (problems) return [problems + (problems === 1 ? ' field needs' : ' fields need') + ' a change', true];
+    if (isExample(p)) return ['Example values', false];
     const site = siteFor(p);
-    return site.name + ': ' + site.ranks.map(r => r.host + ' (' + r.host_ip + ')').join(', ');
+    return [site.name + ': ' + site.ranks.map(r => r.host + ' (' + r.host_ip + ')').join(', '), false];
   }
 
   function renderCollapse() {
@@ -741,13 +1222,19 @@ __ENGINE__
       if (body) body.hidden = collapsed;
       if (summary) {
         summary.hidden = !collapsed;
-        if (collapsed) summary.textContent = summaryFor(step);
+        if (collapsed) {
+          const [text, problem] = summaryFor(step);
+          summary.textContent = text;
+          summary.classList.toggle('bad', problem);
+        }
       }
     }
   }
 
   function renderAll() {
-    renderFilter();
+    renderImages();
+    renderLayouts();
+    renderPairTabs();
     renderProfiles();
     renderCheckpoints();
     renderSettings();
@@ -756,61 +1243,160 @@ __ENGINE__
     renderCollapse();
   }
 
-  // ---- Shared facts and the install command --------------------------------
-  let serving = null;      // servingCheck of the current profile, checkpoint and settings
+  // ---- Shared facts and the command pack -----------------------------------
   let installReady = false;
 
+  const checkpointText = cp => (cp.name ? cp.name + (cp.default ? ' (default)' : '') + ' · ' : '') + cp.model_repository + ' @ ' + rev(cp.model_revision);
+  // A deployment's status and what it is: the checkpoint's own for one other than the default, else the profile's.
+  const statusText = (p, cp) => statusLabel(cp.status || p.status) + ' · ' + ((cp.default ? p.purpose : cp.purpose) || p.title);
+
+  // The facts and serving-setting messages of the models the layout installs; a half's carry its pair's name.
   function renderShared() {
-    const p = profile();
-    serving = E.servingCheck(p, settingsOf(p.id), checkpointName(p));
-    const cp = checkpointOf(p);
-    const rows = [
-      ['Profile', p.id],
-      ['Checkpoint', (cp.name ? cp.name + (cp.default ? ' (default)' : '') + ' · ' : '') + cp.model_repository + ' @ ' + rev(cp.model_revision)],
-      ['Served model', cp.served_model_name + ' on port ' + cp.port],
-      ['Image', p.image],
-      ['Image ID', p.image_id + ' (' + p.image_release + ')'],
-    ];
-    $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
-    const box = $('messages');
+    const rows = [], images = new Set(), box = $('messages'), single = state.layout !== 'halves';
     box.replaceChildren();
-    if (!serving.ok) { box.append(msg('bad', 'These serving settings cannot be used', serving.error)); return; }
-    if (serving.lines.length) box.append(msg('', 'Your changes', el('ul', {}, serving.lines.map(line => el('li', {}, el('code', {}, line))))));
-    for (const line of serving.warnings) box.append(msg('warn', '', line));
+    const wait = imageWait();
+    for (const { slot, label } of deployed()) {
+      const p = rendered(BY_ID[slot.profile]), read = readOf(slot, p);
+      const check = E.servingCheck(p, read.settings, slotCheckpoint(slot, p)), fixing = read.problems.length > 0;
+      let cp;
+      try { cp = E.checkpointOf(p, slotCheckpoint(slot, p)); } catch (_) { cp = p.checkpoints[0]; }
+      const kv = fixing ? null : kvFact(p, check), port = (!fixing && check.ok && check.settings.api_port) || cp.port;
+      if (single) {
+        rows.push(['Profile', p.id], ['Checkpoint', checkpointText(cp)], ['Status', statusText(p, cp)],
+          ['Served model', cp.served_model_name + ' on port ' + port],
+          ...(kv ? [['KV cache', kv]] : []), ['Image', p.image], ['Image ID', p.image_id + ' (' + p.image_release + ')']);
+      } else {
+        rows.push([label, p.id + ' · ' + checkpointText(cp)], ['Status', statusText(p, cp)],
+          ['Served model', cp.served_model_name + ' on port ' + port],
+          ...(kv ? [['KV cache', kv]] : []));
+        images.add(p.image);
+      }
+      if (wait || fixing) continue;
+      const named = text => (label ? label + ': ' : '') + text;
+      if (!check.ok) { box.append(msg('bad', named('These serving settings cannot be used'), check.error)); continue; }
+      if (check.lines.length) box.append(msg('', named('Your changes'), el('ul', {}, check.lines.map(line => el('li', {}, el('code', {}, line))))));
+      for (const line of check.warnings) box.append(msg('warn', '', named(line)));
+    }
+    if (images.size) rows.push([images.size > 1 ? 'Images' : 'Image', [...images].join(' · ')]);
+    $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
+    if (wait) {
+      box.append(wait.failed
+        ? msg('bad', 'This view cannot load the ' + wait.row.option + ' image', 'Choose the default image in step 1, or open the page from its web address.')
+        : msg('', 'Loading the ' + wait.row.option + ' image'));
+    }
   }
 
   function renderInstall() {
     renderShared();
-    const p = profile(), o = state.install;
-    for (const [name, value] of [['form', o.form], ['source', o.source], ['approval', o.approval]]) {
+    const o = state.install;
+    // "Ask during install" leaves out --yes, so the installer asks.
+    if (o.order === 'ask' && o.approval === 'yes') o.approval = 'ask';
+    for (const [name, value] of [['form', o.form], ['source', o.source], ['approval', o.approval], ['order', o.order]]) {
       for (const input of document.querySelectorAll(`input[name="${name}"]`)) input.checked = input.value === value;
     }
+    $('approval-yes').disabled = o.order === 'ask';
+    $('order-hint').textContent = 'The Spark you run setup on becomes Node A.' + (o.order === 'fill' ? ' Enter your Sparks in step 5.' : '');
     if ($('download-limit').value !== o.limit) $('download-limit').value = o.limit;
     $('source-row').hidden = o.form !== 'script';
-    const limitOk = E.validDownloadLimit(o.limit);
-    $('download-limit').setAttribute('aria-invalid', String(!limitOk));
+    const limit = E.readDownloadLimit(o.limit);
+    $('download-limit').setAttribute('aria-invalid', String(Boolean(limit.problem)));
+    $('err-download-limit').textContent = limit.problem || '';
     const box = $('install-messages');
     box.replaceChildren();
-    let command = '';
-    if (!p.installable) {
-      box.append(msg('warn', '`sparkring install` does not offer this profile',
-        ...rich('It runs on the ' + p.image_release + ' image, not an installer image. Use the Docker Compose files, or its guide in `profiles/' + p.id.replace(/-sparkcache$/, '') + '/`.')));
-    } else if (!limitOk) {
-      box.append(msg('bad', 'Download limit', 'Use none, or a rate of at least 1Mbit such as 850Mbit or 2Gbit.'));
-    } else if (serving.ok) {
-      command = E.installCommand(p, serving.checkpoint, serving.settings, META,
-        { form: o.form, pin: o.source === 'release', approval: o.approval, downloadLimit: o.limit.trim() });
+    let pack = null;
+    if (imageWait()) {
+      // renderShared names the image that is loading or failed to load.
+    } else {
+      const n = sparkCount();
+      const halves = state.layout === 'halves';
+      pack = E.commandPack({ layout: state.layout, features: FEATURES, main: selectionOf(halves ? switchMain() : MAIN),
+        halves: (state.layout === 'ring' ? switchHalves() : state.halves).map(selectionOf) }, META,
+        { form: o.form, pin: o.source === 'release', approval: o.approval, downloadLimit: o.limit, order: o.order,
+          sparks: o.order === 'fill' ? cluster(n).ranks : null });
+      if (pack.problems.length) box.append(notReady(pack.problems));
+      if (o.order === 'fill' && namesExample()) box.append(msg('warn', '', "Step 5 still holds example names. Enter your Sparks' there."));
+      // The selected image applies only to the commands whose model it runs.
+      const row = IMAGES.find(r => r.name === state.image && !r.default);
+      const ids = [...new Set(packSlots().map(slot => slot.profile))];
+      const others = row ? ids.filter(id => !row.profiles.includes(id)) : [];
+      if (others.length && others.length < ids.length) {
+        box.append(msg('', '', 'The ' + row.option + ' image does not run ' + others.map(id => BY_ID[id].model_name + ' (' + id + ')').join(' or ')
+          + '; its commands use the default image.'));
+      }
     }
-    installReady = Boolean(command);
-    $('install-code').textContent = command || 'No command for these choices.';
-    $('copy-install').disabled = !command;
-    $('install-where').textContent = o.form === 'script' ? 'On Node A, the Spark on your network, as a user with sudo' : 'On Node A';
-    const notes = [];
-    if (command) {
-      notes.push('If it stops early, run it again; it picks up where it left off.');
-    }
-    $('install-notes').replaceChildren(...notes.map(text => el('li', {}, ...rich(text))));
+    renderPack(pack);
+    installReady = Boolean(pack && pack.ready);
     renderChip();
+  }
+
+  // Where a field that the commands or files cannot use is, from the engine's field key.
+  function fieldName(field, pair) {
+    const pairLabel = pair === null || pair === undefined ? '' : PAIRS[pair] + ' · ';
+    const endpoint = { api_port: 'API port', api_bind: 'API listens only on', api_address: 'Address people use' };
+    if (field === 'download_limit') return 'Download limit';
+    const spark = /^rank(\d)-(host|host_ip)$/.exec(field || '');
+    if (spark) return 'Step 5 · ' + (spark[1] === '0' ? 'Node A' : 'Spark ' + spark[1]) + (spark[2] === 'host' ? ' name' : ' address');
+    return 'Step 4 · ' + pairLabel + (endpoint[field] || LABELS[field] || 'Serving settings');
+  }
+  // The not-ready message: each field that needs a change and why.
+  function notReady(problems, files = false) {
+    return msg('bad', files ? 'No files until these are fixed' : 'No commands until these are fixed',
+      el('ul', {}, problems.map(x => el('li', {}, fieldName(x.field, x.pair) + ': ' + x.message))));
+  }
+
+  function renderPack(pack) {
+    const box = $('pack');
+    box.replaceChildren();
+    $('pack-roles').hidden = !pack || !pack.ready;
+    $('install-notes').replaceChildren();
+    if (!pack || !pack.ready) {
+      box.append(el('pre', { class: 'code cmd' }, el('code', {}, pack ? 'Fix the marked fields to see the commands.' : 'No command for these choices.')));
+      return;
+    }
+    // The commands run in order and are numbered in order; an optional group, last, has its own numbers.
+    let number = 0, primary = true;
+    for (const group of pack.groups) {
+      if (group.optional) number = 0;
+      const list = el('ol', { class: 'cmds' });
+      for (const c of group.commands) {
+        number += 1;
+        const code = el('code', {}, c.command || 'No command for these choices.');
+        const button = el('button', { type: 'button', class: 'btn' + (primary ? ' primary' : '') }, 'Copy command');
+        primary = false;
+        button.disabled = !c.command;
+        button.addEventListener('click', () => copy(c.command, button, code));
+        list.append(el('li', { class: 'cmd' },
+          el('div', { class: 'file-bar' }, el('span', { class: 'path' },
+            el('span', { class: 'cmd-n' + (group.optional ? ' optional' : '') }, String(number)), c.where),
+            el('div', { class: 'btns' }, button)),
+          el('p', { class: 'what' }, c.what),
+          el('pre', { class: 'code cmd', tabindex: '0', 'aria-label': group.title + ' command ' + number }, code),
+          c.endpoint ? el('p', { class: 'endpoint' }, 'Serves at ', el('code', {}, c.endpoint)) : null));
+      }
+      // The switch commands install the deployed model on the other layout (switchSlot).
+      const hint = group.key !== 'switch' ? null : switchHint();
+      const parts = [el('h3', { class: 'sub' }, group.title), ...(group.note ? [el('p', { class: 'hint' }, group.note)] : []),
+        ...(hint ? [el('p', { class: 'hint' }, hint)] : []), list];
+      box.append(...(group.optional ? [el('div', { class: 'pack-optional' }, ...parts)] : parts));
+    }
+    $('roles').replaceChildren(...pack.roles.flatMap(r => [el('dt', {}, r.spark), el('dd', {}, r.text)]));
+    for (const [id, text] of [['roles-run', pack.run], ['roles-order', pack.order]]) {
+      $(id).hidden = !text;
+      $(id).textContent = text || '';
+    }
+    $('install-notes').replaceChildren(...pack.notes.map(text => el('li', {}, ...rich(text))));
+  }
+
+  // What the switch commands install, in one sentence.
+  function switchHint() {
+    const from = BY_ID[state.layout === 'halves' ? state.halves[0].profile : state.profile];
+    const to = BY_ID[(state.layout === 'halves' ? switchMain() : switchHalves()[0]).profile];
+    if (state.layout === 'halves') {
+      return to.model_name === from.model_name ? "The first pair's model on all four Sparks, with its default checkpoint."
+        : `The first pair's model has no four-Spark version, so this uses ${to.model_name}, with its default checkpoint.`;
+    }
+    return to.model_name === from.model_name ? 'This model on both pairs, with its default checkpoint.'
+      : `This model has no two-Spark version, so both pairs use ${to.model_name}, with its default checkpoint.`;
   }
 
   // ---- Compose files ---------------------------------------------------------
@@ -823,6 +1409,8 @@ __ENGINE__
 
   function changed() {
     save();
+    renderProblems();
+    renderKv();
     renderInstall();
     renderCollapse();
     $('compose-panel').dataset.stale = 'true';
@@ -831,14 +1419,42 @@ __ENGINE__
   }
 
   async function generate() {
-    const p = profile(), site = clone(siteFor(p)), settings = { ...settingsOf(p.id) };
-    $('example-note').hidden = !isExample(p);
-    const mine = ++ticket;
+    // Compose files exist for the pair's or the ring's model only.
+    if (!composeOffered()) {
+      ++ticket;
+      composeOk = false;
+      result = null;
+      return;
+    }
+    // Compose files take the endpoint set here; "ask during install" stays automatic.
+    const p = profile(), site = clone(siteFor(p)), read = readOf(active(), p), settings = read.settings;
+    if (imageWait()) {
+      ++ticket;
+      composeOk = false;
+      result = null;
+      $('compose-messages').replaceChildren();
+      $('compose-panel').dataset.stale = 'true';
+      renderZip();
+      renderChip();
+      return;
+    }
+    if (read.problems.length) {
+      ++ticket;
+      composeOk = false;
+      result = null;
+      $('compose-messages').replaceChildren(notReady(read.problems, true));
+      $('compose-panel').dataset.stale = 'true';
+      renderZip();
+      renderChip();
+      return;
+    }
+    const mine = ++ticket, address = read.address;
     const output = await E.render(p, site, settings, checkpointName(p));
-    if (mine === ticket) showCompose(output, p, site, settings);
+    if (mine === ticket) showCompose(output, p, site, settings, address);
   }
 
-  function showCompose(output, p, site, settings) {
+  // `address` is the address shown for the model (the endpoint's "Address people use"), or null.
+  function showCompose(output, p, site, settings, address) {
     const panel = $('compose-panel');
     const box = $('compose-messages');
     box.replaceChildren();
@@ -853,8 +1469,8 @@ __ENGINE__
     }
     composeOk = true;
     panel.dataset.stale = 'false';
-    result = { output, p, site, settings, cp: E.checkpointOf(p, output.checkpoint) };
-    const rows = [['API', 'http://' + site.master + ':' + result.cp.port + '/v1'], ['Deployment ID', output.id]];
+    result = { output, p, site, settings, address, cp: E.checkpointOf(p, output.checkpoint) };
+    const rows = [['API', E.apiUrl(result.cp, settings, site.master, address)], ['Deployment ID', output.id]];
     $('compose-facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
     renderTabs();
     renderRun();
@@ -864,8 +1480,8 @@ __ENGINE__
 
   function renderChip() {
     const node = $('out-state');
-    const ok = state.mode === 'install' ? installReady : composeOk;
-    node.textContent = state.mode === 'install' ? (ok ? 'Command ready' : 'No command') : (ok ? 'Files ready' : 'Refused');
+    const install = outputMode() === 'install', ok = install ? installReady : composeOk;
+    node.textContent = install ? (ok ? 'Commands ready' : 'Not ready') : (ok ? 'Files ready' : 'Not ready');
     node.className = 'chip ' + (ok ? 'good' : 'bad');
   }
 
@@ -910,7 +1526,7 @@ __ENGINE__
   function block(text) { return el('code', { class: 'block' }, text); }
 
   function renderRun() {
-    const { p, site, cp } = result;
+    const { p, site, cp, settings, address } = result;
     const n = site.ranks.length;
     const repo = site.ranks[0].repository.replace(/\/+$/, '');
     const steps = [
@@ -928,13 +1544,15 @@ __ENGINE__
     steps.push(el('li', {}, (n === 2 ? 'Start rank 1' : 'Start ranks 1–' + (n - 1)) + ', then rank 0:',
       block('docker compose -f ' + site.ranks[0].deployment_root.replace(/\/+$/, '') + '/' + site.name + '/rankN/compose.yaml up -d')));
     steps.push(el('li', {}, 'Wait for the model; the first start takes about 10 minutes:',
-      block('curl http://' + site.master + ':' + cp.port + '/v1/models')));
+      block('curl ' + E.apiUrl(cp, settings, site.master, address) + '/models')));
     $('run-steps').replaceChildren(...steps);
     $('notes').replaceChildren(el('li', {}, 'Containers don\'t restart on their own.'));
   }
 
   function renderZip() {
     const button = $('save-zip'), note = $('zip-note');
+    // The shown file is from the last accepted render; while the choices are not ready it is not copied.
+    $('copy-file').disabled = $('copy-shell').disabled = !result;
     if (downloads === undefined) {
       button.disabled = true;
       note.textContent = 'Checking whether this view can save files.';
@@ -947,19 +1565,22 @@ __ENGINE__
     }
     button.hidden = false;
     button.disabled = !result;
+    const example = Boolean(result) && isExample(result.p);
+    $('zip-bar').classList.toggle('warn', example);
     if (!result) {
       button.textContent = 'Download zip';
-      note.textContent = 'Fix the fields the generator refuses to build the zip.';
+      note.textContent = imageWait() ? 'The zip needs the selected image.' : 'Fix the marked fields to build the zip.';
       return;
     }
     button.textContent = 'Download ' + result.site.name + '.zip';
-    note.textContent = 'One folder per Spark, plus a README with the start steps.';
+    note.textContent = example ? "These files hold example addresses and paths. Enter your Sparks' values in step 5 first."
+      : 'One folder per Spark, plus a README with the start steps.';
   }
 
   async function saveZip() {
     if (!result || !downloads) return;
-    const { output, p, site, settings, cp } = result;
-    const { filename, bytes } = E.archive(p, cp, site, settings, output, META);
+    const { output, p, site, settings, cp, address } = result;
+    const { filename, bytes } = E.archive(p, cp, site, settings, output, META, new Date(), address);
     const note = $('zip-note');
     try {
       await downloads.save({ filename, data: new Blob([bytes], { type: 'application/zip' }) });
@@ -990,39 +1611,46 @@ __ENGINE__
   }
 
   // ---- Controls ------------------------------------------------------------
-  // A filter applies to the full list, so choosing one expands a collapsed model step.
-  for (const button of document.querySelectorAll('[data-filter]')) {
-    button.addEventListener('click', () => {
-      state.filter = button.dataset.filter;
-      state.collapsed.model = false;
-      renderFilter(); renderProfiles(); renderCheckpoints(); renderCollapse(); save();
-    });
-  }
   for (const section of document.querySelectorAll('.step[data-step]')) {
     section.querySelector('.toggle').addEventListener('click', () => {
       const step = section.dataset.step;
       state.collapsed[step] = !state.collapsed[step];
-      if (step === 'model') { renderProfiles(); renderCheckpoints(); }
+      if (step === 'model') { renderProfiles(); renderCheckpoints(); renderPairTabs(); }
       renderCollapse();
       save();
     });
   }
+  // Step 5 shows the whole site for Docker Compose and only names and addresses for the commands.
   for (const [id, mode] of [['mode-install', 'install'], ['mode-compose', 'compose']]) {
-    $(id).addEventListener('click', () => { state.mode = mode; renderMode(); save(); });
+    $(id).addEventListener('click', () => { state.mode = mode; renderMode(); renderSparks(); renderEndpoint(); renderCollapse(); renderInstall(); save(); });
   }
-  for (const name of ['form', 'source', 'approval']) {
+  for (const name of ['form', 'source', 'approval', 'order']) {
     for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
-      input.addEventListener('change', () => { if (input.checked) { state.install[name] = input.value; save(); renderInstall(); } });
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        state.install[name] = input.value;
+        // Filling in the Sparks opens step 5, where they go.
+        if (name === 'order' && input.value === 'fill') state.collapsed.sparks = false;
+        if (name === 'order') { renderSparks(); renderCollapse(); }
+        save(); renderInstall();
+      });
     }
   }
+  $('image').addEventListener('change', () => {
+    const row = IMAGES.find(r => r.name === $('image').value);
+    state.image = row && !row.default ? row.name : null;
+    renderAll(); changed();
+  });
   $('download-limit').addEventListener('input', () => { state.install.limit = $('download-limit').value; save(); renderInstall(); });
-  $('copy-install').addEventListener('click', () => copy($('install-code').textContent, $('copy-install'), $('install-code')));
   $('save-zip').addEventListener('click', saveZip);
-  $('reset-settings').addEventListener('click', () => { state.settings[state.profile] = {}; renderSettings(); changed(); });
+  $('reset-settings').addEventListener('click', () => {
+    active().settings[base().id] = {};
+    slotEndpoint(active(), base().id).mode = 'auto';
+    renderSettings(); changed();
+  });
   $('reset-sparks').addEventListener('click', () => {
-    const p = profile();
-    state.clusters[p.nodes] = exampleCluster(p.nodes);
-    state.perProfile[p.id] = examplePaths(p);
+    state.clusters[sparkCount()] = exampleCluster(sparkCount());
+    if (composeOffered()) state.perProfile[profile().id] = examplePaths(profile());
     renderSparks(); changed();
   });
   // The deployment name has two fields, in Your Sparks and beside Download; each keeps the other current.
@@ -1066,9 +1694,11 @@ __ENGINE__
         if (r.fabric) row.fabric = { ...r.fabric };
         return row;
       }) };
-      let p = profile();
-      if (p.nodes !== n) p = CATALOG.find(x => x.nodes === n && !x.sparkcache);
-      state.profile = p.id;
+      // A site file is for Docker Compose: a pair, or a ring serving one model.
+      let p = composeOffered() ? profile() : BY_ID[state.profile];
+      if (p.nodes !== n) p = CATALOG.find(x => x.nodes === n);
+      state.layout = n === 4 ? 'ring' : 'pair';
+      MAIN.profile = p.id;
       state.clusters[n] = c;
       state.perProfile[p.id] = { name: site.name, model: site.ranks.map(r => r.model), cache: site.ranks.map(r => r.cache) };
       c.shared = [...SHARED_KEYS, ...(n === 4 ? FABRIC_KEYS : [])].every(key => site.ranks.every((_, i) => JSON.stringify(getValue(p, i, key)) === JSON.stringify(getValue(p, 0, key))));
@@ -1081,37 +1711,53 @@ __ENGINE__
   });
 
   // ---- Shareable links (hosted pages) ----------------------------------------
-  // A link carries the model, checkpoint, serving settings, install options and output mode
-  // as query parameters, never a site value.
+  // A link carries the layout, each selection's model, checkpoint, serving settings and API endpoint
+  // choice, the image, the install options and the output mode as query parameters (E.linkQuery),
+  // never a site value.
   function linkFor() {
-    const p = profile(), query = new URLSearchParams({ profile: p.id, mode: state.mode });
-    const name = checkpointName(p);
-    if (name) query.set('checkpoint', name);
-    for (const [key, value] of Object.entries(settingsOf(p.id))) query.set(key, value === true ? '1' : String(value));
-    for (const [key, value] of Object.entries(state.install)) if (value) query.set(key, value);
-    return location.origin + location.pathname + '?' + query.toString();
+    const pick = slot => {
+      const mode = endpointMode(slot, slot.profile);
+      return { profile: slot.profile, checkpoint: slot.checkpoints[slot.profile] ?? null, settings: requested(slot, slot.profile),
+        ...(mode === 'auto' ? {} : { endpoint: { mode, address: mode === 'set' ? slotEndpoint(slot, slot.profile).address : '' } }) };
+    };
+    const row = IMAGES.find(r => r.name === state.image && !r.default && packSlots().some(slot => r.profiles.includes(slot.profile)));
+    return location.origin + location.pathname + '?' + E.linkQuery({ layout: state.layout, mode: state.mode,
+      image: row ? row.option : null, main: pick(MAIN), halves: state.halves.map(pick), install: state.install });
+  }
+  // Copies the link; where the clipboard refuses, shows it in a field, selected, to copy by hand.
+  async function copyLink() {
+    const url = linkFor(), button = $('copy-link'), field = $('share-url'), label = 'Copy link to these choices';
+    field.hidden = true;
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = 'Copied';
+    } catch (_) {
+      field.value = url;
+      field.hidden = false;
+      field.focus();
+      field.select();
+      button.textContent = 'Selected: press Ctrl+C';
+    }
+    setTimeout(() => { button.textContent = label; }, 1600);
   }
   function fromLink() {
-    let query;
-    try { query = new URLSearchParams(location.search); } catch (_) { return; }
-    const p = BY_ID[query.get('profile')];
-    if (!p) return;
-    state.profile = p.id;
-    const name = query.get('checkpoint');
-    state.checkpoints[p.id] = p.checkpoints.some(c => c.name === name && !c.default) ? name : null;
-    const settings = {};
-    for (const row of checkpointOf(p).settings) {
-      const text = query.get(row.name);
-      if (text === null) continue;
-      if (row.switch) { if (text === '1') settings[row.name] = true; }
-      else if (/^\d+$/.test(text)) settings[row.name] = Number(text);
-    }
-    state.settings[p.id] = settings;
-    if (['install', 'compose'].includes(query.get('mode'))) state.mode = query.get('mode');
-    if (['script', 'installed'].includes(query.get('form'))) state.install.form = query.get('form');
-    if (['release', 'main'].includes(query.get('source'))) state.install.source = query.get('source');
-    if (['ask', 'plan', 'yes'].includes(query.get('approval'))) state.install.approval = query.get('approval');
-    state.install.limit = query.get('limit') || '';
+    let choices;
+    try { choices = E.linkChoices(location.search, BY_ID, FEATURES); } catch (_) { return; }
+    if (!choices) return;
+    const take = (slot, chosen) => {
+      slot.profile = chosen.profile;
+      slot.checkpoints[chosen.profile] = chosen.checkpoint;
+      slot.settings[chosen.profile] = chosen.settings;
+      (slot.endpoints ||= {})[chosen.profile] = chosen.endpoint ? { ...chosen.endpoint } : { mode: 'auto', address: '' };
+    };
+    state.layout = choices.layout;
+    take(MAIN, choices.main);
+    choices.halves.forEach((chosen, i) => { if (chosen) take(state.halves[i], chosen); });
+    const ids = [choices.main.profile, ...choices.halves.filter(Boolean).map(chosen => chosen.profile)];
+    const image = IMAGES.find(row => !row.default && ids.some(id => row.profiles.includes(id)) && [row.option, row.name].includes(choices.image));
+    state.image = image ? image.name : null;
+    if (choices.mode) state.mode = choices.mode;
+    Object.assign(state.install, choices.install);
   }
 
   // ---- Start ---------------------------------------------------------------
@@ -1123,8 +1769,7 @@ __ENGINE__
   $('provenance').textContent = 'Built from ' + source + '.';
   load();
   if (!FRAMED) fromLink();
-  // The size filter starts on the selected model's size.
-  state.filter = String(profile().nodes);
+  fitLayout();
   renderAll();
   renderInstall();
   generate();
@@ -1145,7 +1790,7 @@ __ENGINE__
     renderZip();
     if (/^https?:$/.test(location.protocol)) {
       $('share-bar').hidden = false;
-      $('copy-link').addEventListener('click', () => copy(linkFor(), $('copy-link'), $('copy-link')));
+      $('copy-link').addEventListener('click', copyLink);
     }
   }
 })();
