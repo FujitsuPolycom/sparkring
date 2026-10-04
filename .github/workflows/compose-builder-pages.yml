@@ -7,7 +7,11 @@ name: Install Builder pages
 # from main, and a release event runs on its tag, so the release job starts this
 # workflow again on main with the tag as its input; the page itself is built
 # from the input's tree. The page is built with --verify, so a page whose engine
-# differs from compose.build is never published.
+# differs from compose.build is never published. When the repository variable
+# INSTALL_BUILDER_USAGE_COUNTER holds a GoatCounter count endpoint
+# (https://NAME.goatcounter.com/count), the page counts its views and the output
+# visitors take from it (docs/operations/compose-builder.md#usage-counts); without
+# the variable it sends nothing.
 
 on:
   release:
@@ -60,7 +64,20 @@ jobs:
         run: python -m pip install PyYAML==6.0.3
       # The page names and pins the checkout's exact release tag when it has one, else its commit.
       - name: Build the page, comparing its engine with compose.build
-        run: python scripts/generate_compose_builder.py --output site --verify --cases 20
+        env:
+          USAGE_COUNTER: ${{ vars.INSTALL_BUILDER_USAGE_COUNTER }}
+          REF: ${{ inputs.ref }}
+        # A source older than --usage-counter builds a page that counts nothing.
+        run: |
+          args=(--output site --verify --cases 20)
+          if [ -n "$USAGE_COUNTER" ]; then
+            if python scripts/generate_compose_builder.py --help | grep -q -- --usage-counter; then
+              args+=(--usage-counter "$USAGE_COUNTER")
+            else
+              echo "::warning::$REF predates --usage-counter; the page counts nothing"
+            fi
+          fi
+          python scripts/generate_compose_builder.py "${args[@]}"
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site

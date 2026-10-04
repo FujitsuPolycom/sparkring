@@ -1320,7 +1320,7 @@ __ENGINE__
         const code = el('code', {}, c.command || 'No command for these choices.');
         const button = el('button', { type: 'button', class: 'btn' + (number === 1 ? ' primary' : '') }, 'Copy command');
         button.disabled = !c.command;
-        button.addEventListener('click', () => copy(c.command, button, code));
+        button.addEventListener('click', () => { copy(c.command, button, code); count('copy-command'); });
         list.append(el('li', { class: 'cmd' },
           el('div', { class: 'file-bar' }, el('span', { class: 'path' }, el('span', { class: 'cmd-n' }, String(number)), c.where),
             el('div', { class: 'btns' }, button)),
@@ -1460,8 +1460,8 @@ __ENGINE__
     $('file-path').textContent = file.path;
     $('file-code').textContent = file.text;
     $('copy-shell').hidden = !file.shell;
-    $('copy-file').onclick = () => copy(file.text, $('copy-file'), $('file-code'));
-    $('copy-shell').onclick = () => copy(file.shell, $('copy-shell'), $('file-code'));
+    $('copy-file').onclick = () => { copy(file.text, $('copy-file'), $('file-code')); count('copy-file'); };
+    $('copy-shell').onclick = () => { copy(file.shell, $('copy-shell'), $('file-code')); count('copy-shell'); };
   }
 
   function block(text) { return el('code', { class: 'block' }, text); }
@@ -1524,6 +1524,7 @@ __ENGINE__
     try {
       await downloads.save({ filename, data: new Blob([bytes], { type: 'application/zip' }) });
       note.textContent = 'Saved ' + filename + '.';
+      count('download-zip');
     } catch (error) {
       const code = error && error.code;
       note.textContent = code === 'declined' ? 'Not saved: the download was declined.'
@@ -1531,6 +1532,38 @@ __ENGINE__
         : code === 'rejected_extension' || code === 'extension_not_enabled' ? 'This view does not save .zip files. Copy each file from its tab instead.'
         : 'This view could not save the file' + (error && error.message ? ': ' + error.message : '.');
     }
+  }
+
+  // ---- Usage counts (hosted pages) -------------------------------------------
+  // A page built with a GoatCounter count endpoint (DATA.usage_counter) and served over HTTPS counts
+  // one view under the path "/" and one event each time a visitor takes output, named by
+  // E.usageEvent from catalog values only. Each count is an image request to the endpoint with
+  // the path, a title, the event flag and, for the view, the origin of the referring site. It never
+  // carries the page's query string, which a shareable link fills with choices including API
+  // addresses, and referrerPolicy "no-referrer" keeps the browser from sending the page's URL. No
+  // GoatCounter script runs on the page. A framed page, a local file and a page built without an
+  // endpoint count nothing.
+  const COUNTER = !FRAMED && location.protocol === 'https:' && typeof DATA.usage_counter === 'string'
+    ? DATA.usage_counter : null;
+  function send(fields) {
+    if (!COUNTER) return;
+    try {
+      const query = new URLSearchParams({ ...fields, rnd: Math.random().toString(36).slice(2) });
+      const image = new Image();
+      image.referrerPolicy = 'no-referrer';
+      image.src = COUNTER + '?' + query;
+    } catch (_) { /* a count never affects the page */ }
+  }
+  function countView() {
+    let referrer = '';
+    try { referrer = document.referrer ? new URL(document.referrer).origin : ''; } catch (_) { referrer = ''; }
+    send({ p: '/', t: 'Install Builder', e: 'false', ...(referrer && referrer !== location.origin ? { r: referrer } : {}) });
+  }
+  function count(action) {
+    if (!COUNTER) return;
+    const pick = slot => ({ profile: slot.profile, checkpoint: slot.checkpoints[slot.profile] ?? null });
+    send({ p: E.usageEvent(action, { layout: state.layout, mode: state.mode, main: pick(MAIN),
+      halves: state.halves.map(pick) }, BY_ID), t: action, e: 'true' });
   }
 
   async function copy(text, button, source) {
@@ -1689,7 +1722,9 @@ __ENGINE__
   $('release-meta').textContent = (META.tag ? 'Release · ' : 'Commit ') + META.commit.slice(0, 12) + ' of ' + META.repository;
   $('release-chips').replaceChildren(chip(META.tag ? 'Release' : 'Development build', META.tag ? 'good' : 'warn'));
   $('source-release-label').textContent = source;
-  $('provenance').textContent = 'Built from ' + source + '.';
+  $('provenance').textContent = 'Built from ' + source + '.' + (COUNTER
+    ? ' This page counts its views and copied commands and files with GoatCounter: no cookies, and never your'
+      + ' Sparks\' names, addresses or settings.' : '');
   load();
   if (!FRAMED) fromLink();
   fitLayout();
@@ -1713,8 +1748,9 @@ __ENGINE__
     renderZip();
     if (/^https?:$/.test(location.protocol)) {
       $('share-bar').hidden = false;
-      $('copy-link').addEventListener('click', () => copy(linkFor(), $('copy-link'), $('copy-link')));
+      $('copy-link').addEventListener('click', () => { copy(linkFor(), $('copy-link'), $('copy-link')); count('copy-link'); });
     }
+    countView();
   }
 })();
 </script>

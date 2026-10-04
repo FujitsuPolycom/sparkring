@@ -9,6 +9,8 @@ Sparks serve, a profile, a checkpoint and serving settings, and it writes:
   writes them for your site, and the whole deployment as a zip.
 
 The page runs in your browser. The addresses and paths you type never leave it.
+The published page can count its views and copied output without them
+([usage counts](#usage-counts)).
 
 ## Open it
 
@@ -187,6 +189,50 @@ address with the layout, each selection's profile, checkpoint, changed
 serving settings and API endpoint choice, the installer image, the install
 options, the Spark order and the output. The link carries no name, address or path from step 5. A link
 without a layout opens the layout that fits its profile's size.
+
+## Usage counts
+
+When the repository variable `INSTALL_BUILDER_USAGE_COUNTER` holds a
+[GoatCounter](https://www.goatcounter.com/) count endpoint,
+`https://NAME.goatcounter.com/count`, the page that the Pages workflow
+publishes counts its views and the output visitors take from it, and its
+footer says so. Without the variable, and on a page built without
+`--usage-counter`, framed in claude.ai or opened as a local file, the page
+sends nothing.
+
+Each count is one image request to the endpoint, GoatCounter's
+[tracking pixel](https://www.goatcounter.com/help/pixel); no GoatCounter
+script runs on the page.
+
+| Count | When | Path sent |
+|---|---|---|
+| View | Each page load, with the referring site's origin, such as `https://forums.developer.nvidia.com` | `/` |
+| Event | **Copy command**, **Copy file**, **Copy as shell command**, **Download** of the zip, **Copy link to these choices** | `ACTION/LAYOUT/MODE/MODELS`, such as `copy-command/ring/install/glm53-flash-nvfp4-spark-tp4` |
+
+`MODELS` lists each deployed model's profile ID, with a non-default
+checkpoint after a colon, and for two pairs joins both with `+`, as in
+`copy-file/halves/compose/qwen38-flash-next-tp2+glm53-flash-nvfp4-spark-tp2:nvfp4-qad`.
+Every part comes from the page's own catalog or a fixed list
+(`usageEvent` in [engine.js](../../scripts/compose_builder/engine.js)); any
+other value is sent as `other`. A count never carries a Spark name, address,
+path or serving setting, or the page's query string, where a shareable link
+holds the API addresses among its choices; with `referrerPolicy` set to
+`no-referrer`, the browser does not send the page's address either. Like any
+web request, a count reaches GoatCounter with the visitor's IP address and
+browser user agent; GoatCounter's [privacy notes](https://www.goatcounter.com/help/gdpr)
+state that it keeps aggregate counts computed from them, not the values.
+
+To turn counting on, create a GoatCounter site, set the variable and publish
+the page again:
+
+```bash
+gh variable set INSTALL_BUILDER_USAGE_COUNTER --body https://NAME.goatcounter.com/count
+gh workflow run compose-builder-pages.yml --ref main -f ref=TAG_OR_COMMIT
+```
+
+The counts appear on the dashboard at `https://NAME.goatcounter.com`; events
+are listed under their paths. Deleting the variable and publishing again
+stops counting.
 
 ## Compose files
 

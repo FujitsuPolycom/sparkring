@@ -891,6 +891,28 @@ const SparkRingEngine = (() => {
       mode: ['install', 'compose'].includes(query.get('mode')) ? query.get('mode') : null, image: query.get('image'), install };
   }
 
+  // ---- Usage counts ----------------------------------------------------------------------
+  // The event a hosted page counts when a visitor takes output from it
+  // (docs/operations/compose-builder.md#usage-counts): the action, the layout, the output mode and
+  // each deployed selection's profile ID, with a non-default checkpoint's name after a colon, as in
+  // "copy-command/ring/install/glm53-flash-nvfp4-spark-tp4". Each part is a value of the page's own
+  // catalog (`byId`, profile ID -> profile) or of a fixed list, else "other", so no site value,
+  // serving setting or API address can appear in it.
+  const USAGE_ACTIONS = ['copy-command', 'copy-file', 'copy-shell', 'download-zip', 'copy-link'];
+  function usageEvent(action, choices, byId) {
+    const known = (value, allowed) => allowed.includes(value) ? value : 'other';
+    const model = selection => {
+      const p = selection && Object.prototype.hasOwnProperty.call(byId, selection.profile) ? byId[selection.profile] : null;
+      if (!p) return 'other';
+      const checkpoint = p.checkpoints.find(c => c.name === selection.checkpoint && !c.default);
+      return checkpoint ? p.id + ':' + checkpoint.name : p.id;
+    };
+    const layout = known(choices.layout, Object.keys(LAYOUT_SPARKS));
+    const deployed = layout === 'halves' ? (choices.halves || []).slice(0, 2) : [choices.main];
+    return [known(action, USAGE_ACTIONS), layout, known(choices.mode, ['install', 'compose']),
+      deployed.map(model).join('+') || 'other'].join('/');
+  }
+
   // `address` is the address shown for the model (apiAddress()), or null.
   function readme(profile, checkpoint, site, settings, output, meta, address = null) {
     const ranks = site.ranks.length, api = apiUrl(checkpoint, settings, site.master, address);
@@ -966,6 +988,7 @@ const SparkRingEngine = (() => {
 
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
     checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
-    layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText };
+    layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, usageEvent, kvEstimate,
+    kvText };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;
