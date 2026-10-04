@@ -66,7 +66,18 @@ jobs:
       - name: Build the page, comparing its engine with compose.build
         env:
           USAGE_COUNTER: ${{ vars.INSTALL_BUILDER_USAGE_COUNTER }}
-        run: python scripts/generate_compose_builder.py --output site --verify --cases 20 --usage-counter "$USAGE_COUNTER"
+          REF: ${{ inputs.ref }}
+        # A source older than --usage-counter builds a page that counts nothing.
+        run: |
+          args=(--output site --verify --cases 20)
+          if [ -n "$USAGE_COUNTER" ]; then
+            if python scripts/generate_compose_builder.py --help | grep -q -- --usage-counter; then
+              args+=(--usage-counter "$USAGE_COUNTER")
+            else
+              echo "::warning::$REF predates --usage-counter; the page counts nothing"
+            fi
+          fi
+          python scripts/generate_compose_builder.py "${args[@]}"
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
