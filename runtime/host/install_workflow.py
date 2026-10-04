@@ -448,7 +448,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         configuration = profiles.read_json(installer.ROOT / card["configuration"])
         if "checkpoints" in configuration:
             configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
-        serving_settings.apply(configuration.get("vllm_args", []), requested)
+        serving_settings.apply(configuration.get("vllm_args", []), requested, model=(profile, card["target_variant"]))
         request["serving"] = requested
     instance = "i" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:12]
     directory = state_root / "deployments" / (profile + "-" + instance)
@@ -890,7 +890,8 @@ def execute(args):
                                                             else "start the selected model."))
         if lock is not None and lock.get("serving"):
             base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
-            print("Serving settings: " + "; ".join(serving_settings.describe(lock["serving"], base)))
+            print("Serving settings: " + "; ".join(serving_settings.describe(
+                lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
             for line in serving_settings.warnings(lock["serving"], base):
                 print("Warning: " + line)
         if lock is not None and "native_mesh" in lock["site_input"]:
