@@ -1123,6 +1123,21 @@ def test_no_question_with_yes_without_a_terminal_or_with_endpoint_options(machin
     capsys.readouterr()
 
 
+def test_thinking_settings_install_another_deployment_and_the_plan_names_the_models_default(machine, sparks, capsys):
+    assert command("--plan") == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert command("--plan", "--reasoning-effort", "low") == 0
+    out = capsys.readouterr()
+    tuned = json.loads(out.out)
+    assert tuned["deployment"] != plain["deployment"] and tuned["serving"] == {"reasoning_effort": "low"}
+    assert "Serving settings: --reasoning-effort low (model default: xhigh)" in out.err
+    # A level the model does not accept is refused before any Spark is surveyed.
+    surveys = len(sparks.surveys)
+    assert command("--plan", "--reasoning-effort", "max") == 2
+    message = json.loads(capsys.readouterr().out)["message"]
+    assert "choose low, medium or xhigh (default: xhigh)" in message and len(sparks.surveys) == surveys
+
+
 def test_survey_runs_on_every_install_and_rewrites_the_saved_plan(machine, sparks, capsys):
     assert command("--plan") == 0
     first = json.loads(capsys.readouterr().out)

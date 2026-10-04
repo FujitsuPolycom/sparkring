@@ -1,0 +1,72 @@
+{
+  "schema": "sparkring-thinking/v1",
+  "behaviours": {
+    "qwen38-flash-next-template": {
+      "default": "on",
+      "level": "xhigh",
+      "levels": ["low", "medium", "xhigh"],
+      "effort": "reasoning_effort",
+      "off": {"enable_thinking": false},
+      "source": {
+        "chat_templates": ["c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"],
+        "reading": "chat_template.jinja lines 45-56: while enable_thinking is unset or true, reasoning_effort defaults to xhigh, any value other than xhigh, medium or low raises an error, and xhigh and low add an instruction to the system message. Lines 163-169: the generation prompt opens a <think> block, or an empty closed one when enable_thinking is false."
+      }
+    },
+    "glm53-flash-template": {
+      "default": "always",
+      "level": "max",
+      "levels": ["low", "high", "max"],
+      "effort": "reasoning_effort",
+      "off": null,
+      "source": {
+        "chat_templates": [
+          "0c4099f3382d6c92700dfb99725025360966fd73032f0ecf32377c0d9e6309c5",
+          "34d5ee66b12fa6446cdae131c352b8f68cd85369e0e6fda115583805fada3891"
+        ],
+        "reading": "chat_template.jinja lines 2-3: reasoning_effort low or high selects that level, and any other value, or none, selects max; the level is written as a system line such as 'Reasoning Effort: Max'. Line 4: clear_thinking defaults to false, which keeps earlier turns' reasoning in the prompt. The last lines: the generation prompt always opens a <think> block, and no variable closes it. The two templates differ only in content and tool-call rendering."
+      }
+    },
+    "mimo-v26-flash-template": {
+      "default": "on",
+      "level": null,
+      "levels": [],
+      "effort": null,
+      "off": {"enable_thinking": false},
+      "source": {
+        "chat_templates": ["11ea52e156de38a458e6b7720ad45915d65b97d4ec979a09f55e3c9bd1b4d059"],
+        "reading": "chat_template.jinja lines 90-95: the generation prompt adds an empty closed <think></think> block when enable_thinking is false and leaves the reply open otherwise, so the model starts its own <think> block. The template reads no effort variable."
+      }
+    },
+    "deepseek-v41-encoder": {
+      "default": "on",
+      "level": "high",
+      "levels": ["low", "high", "xhigh", "max"],
+      "range": [1, 100],
+      "effort": "reasoning_effort",
+      "off": {"thinking": false},
+      "source": {
+        "chat_templates": [],
+        "tokenizer_config_sha256": "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547",
+        "image": "dev-20261001-kraken-cuda1342-nccl2323-status034",
+        "modules": {
+          "vllm/tokenizers/deepseek_v41.py": "0afb465c862ae1414f92e410bc8e0a16b918e03728d7ce254f35edbab65952f1",
+          "vllm/tokenizers/deepseek_v41_encoding.py": "45ddceef6627667652055e71ab086bab0d70c4e358683cde2050847ca7adbf8c",
+          "vllm/renderers/deepseek_v4.py": "b989ea4b4240df0f5eeb832942d1aaa8e72e56743b45186b1b6145d7e7bbbd3a"
+        },
+        "reading": "The checkpoint has no chat template; vLLM selects its deepseek_v41 tokenizer for DeepseekV41ForCausalLM, and the deepseek_v4 renderer passes every chat template argument to it unfiltered. deepseek_v41.py apply_chat_template: thinking is on unless the thinking or enable_thinking argument is false, or reasoning_effort is none; reasoning_effort defaults to high and must be low, high, xhigh, max or an integer from 1 to 100; drop_thinking defaults to true, which drops earlier turns' reasoning. deepseek_v41_encoding.py REASONING_EFFORT_MAPPINGS: low 50, high 75, xhigh 75, max 100, written as 'Reasoning Effort: N' at the start of the prompt."
+      }
+    }
+  },
+  "checkpoints": {
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@60215d26cf5e42c2db6128774032d57fc62678da": "qwen38-flash-next-template",
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc3218833a38b475b719f34aa571666f4a03e": "qwen38-flash-next-template",
+    "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a96e5f130ab62702113242d8e1ddd6e76": "qwen38-flash-next-template",
+    "JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid@87c8f2fb738b597de99bf9a885130f4a18a94f3d": "qwen38-flash-next-template",
+    "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4@3ff0520224f264a2d0ac4ab56ece8f2f13aadb38": "qwen38-flash-next-template",
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a608241037e4c2565356bff7ca293f2133888f88": "glm53-flash-template",
+    "local-inference-lab/GLM-5.3-Flash-NVFP4@175ae8ce3b5af842b0d0140dbeb43e9cfc557c49": "glm53-flash-template",
+    "nvidia/GLM-5.3-Flash-NVFP4@da920bb0b9f4a06727223a349e55468e38352348": "glm53-flash-template",
+    "XiaomiMiMo/MiMo-V2.6-Flash-MOPD@2479e2d0029eca9a34cc7e7f55a121925f81908e": "mimo-v26-flash-template",
+    "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a40aa45a94ad051997016db3960a90277": "deepseek-v41-encoder"
+  }
+}

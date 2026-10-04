@@ -2,7 +2,9 @@
 import argparse
 import json
 
-from runtime.common import installer, profiles
+from runtime.common import installer, profiles, thinking
+
+THINKING_FIELDS = ("default", "level", "levels", "range", "effort", "off")
 
 
 def catalog():
@@ -10,11 +12,20 @@ def catalog():
     for ident in profiles.catalog():
         definition, _ = profiles.load(ident)
         resolved = profiles.resolve(ident)
+        record = thinking.of(ident)
         rows.append({"profile": ident, "title": definition["title"],
                      "nodes": resolved.get("serving", {}).get("node_count"),
                      "model": resolved.get("model", {}), "guide": definition["guide"],
-                     "automated": ident in installer.INSTALLABLE})
+                     "automated": ident in installer.INSTALLABLE,
+                     # The default checkpoint's thinking record (runtime/common/thinking.py), or None.
+                     "thinking": None if record is None else {key: record[key] for key in THINKING_FIELDS if key in record}})
     return rows
+
+
+def thinking_text(record):
+    """A profile's thinking default and levels in one line: ``on · xhigh (levels: low, medium or xhigh)``."""
+    levels = thinking.levels_text(record)
+    return thinking.summary(record) + (f" (levels: {levels})" if levels else " (no levels)")
 
 
 def select(value, nodes):
@@ -46,5 +57,7 @@ def main(argv=None):
         for row in rows:
             mode = "installer" if row["automated"] else "guide"
             print(f"{row['profile']}  [{mode}]\n  {row['title']}")
+            if row["thinking"] is not None:
+                print("  Thinking: " + thinking_text(row["thinking"]))
         print("Install a profile with: sudo sparkring install --profile PROFILE")
     return 0
